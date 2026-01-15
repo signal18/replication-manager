@@ -1373,6 +1373,130 @@ func (server *ServerMonitor) ReadMysqldumpUser(backupfile string) (io.Reader, er
 	return fz, nil
 }
 
+// JobReseedResticDump will reseed from a restic snapshot using dump command and pipe to MySQL
+// Similar to JobReseedMysqldump but sources data from restic snapshot instead of file
+func (server *ServerMonitor) JobReseedResticDump(snapshotID string, filePath string) error {
+	cluster := server.ClusterGroup
+	var err error
+	defer server.SetInReseedBackup("")
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Dumping restic snapshot to MySQL %s", server.URL)
+
+	// Check if restic is enabled
+	if !cluster.Conf.BackupRestic {
+		return fmt.Errorf("restic backup is not enabled for cluster %s", cluster.Name)
+	}
+
+	// Ensure restic manager is initialized
+	if cluster.ResticManager == nil {
+		if err := cluster.StartResticManager(); err != nil {
+			return fmt.Errorf("failed to start restic manager: %s", err)
+		}
+	}
+
+	server.StopSlave()
+
+	// Create a pipe to stream restic dump output
+	pipeReader, pipeWriter := io.Pipe()
+
+	// Start dumping from restic in a goroutine
+	dumpErr := make(chan error, 1)
+	go func() {
+		defer pipeWriter.Close()
+		err := cluster.ResticDumpSnapshot(snapshotID, filePath, pipeWriter)
+		if err != nil {
+			dumpErr <- fmt.Errorf("failed to dump restic snapshot: %s", err)
+			return
+		}
+		dumpErr <- nil
+	}()
+
+	// Create gzip reader if the dump is compressed (most MySQL dumps are gzipped)
+	var reader io.Reader
+	// Try to detect if it's gzipped by reading magic bytes
+	bufReader := bufio.NewReaderSize(pipeReader, 2)
+	magic, err := bufReader.Peek(2)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("failed to peek dump stream: %s", err)
+	}
+
+	// Check for gzip magic number (0x1f 0x8b)
+	if len(magic) >= 2 && magic[0] == 0x1f && magic[1] == 0x8b {
+		fz, err := gzip.NewReaderN(bufReader, cluster.Conf.SSTSendBuffer, 16)
+		if err != nil {
+			return fmt.Errorf("failed to create gzip reader: %s", err)
+		}
+		defer fz.Close()
+		reader = fz
+	} else {
+		// Not gzipped, use buffered reader directly
+		reader = bufReader
+	}
+
+	// Prepare MySQL client command
+	cliParams := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client")...)
+	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s", strings.Replace(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
+
+	// Prepare SQL commands to execute before dump
+	sql_log_bin := 0
+	resetmaster := "RESET MASTER;"
+	if server.DBVersion.IsMySQLOrPerconaGreater84() {
+		resetmaster = "RESET BINARY LOGS AND GTIDS;"
+	}
+
+	if server.URL == cluster.GetMaster().URL {
+		sql_log_bin = 1
+		resetmaster = ""
+	}
+
+	cmdstring := "%sSET sql_log_bin=%d;SET long_query_time=10;"
+	if server.DBVersion.IsMySQLOrPerconaGreater84() {
+		cmdstring = "%sSET sql_log_bin=%d;SET long_query_time=10;"
+	}
+	cmdstring = fmt.Sprintf(cmdstring, resetmaster, sql_log_bin)
+
+	// Pipe SQL commands and dump to MySQL client
+	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), reader)
+
+	stderr, _ := clientCmd.StdoutPipe()
+	clientCmd.Stderr = clientCmd.Stdout
+
+	if err := clientCmd.Start(); err != nil {
+		return fmt.Errorf("can't start mysql client:%s at %s", err, strings.ReplaceAll(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX"))
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		server.copyLogs(stderr, config.ConstLogModBackupStream, config.LvlDbg)
+	}()
+
+	wg.Wait()
+
+	err = clientCmd.Wait()
+	if err != nil {
+		return fmt.Errorf("error waiting for mysql client %s: %s", server.URL, err)
+	}
+
+	// Check if dump had any errors
+	select {
+	case dumpError := <-dumpErr:
+		if dumpError != nil {
+			return dumpError
+		}
+	default:
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Restic dump to MySQL completed successfully for %s", server.URL)
+
+	return nil
+}
+
 // JobReseedBackupScript will execute the backup load script
 // The script will be executed with the following parameters:
 // 1. Server Host

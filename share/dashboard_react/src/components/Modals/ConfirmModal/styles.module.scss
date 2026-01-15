@@ -8,7 +8,13 @@
   }
   .modalHeader {
     white-space: pre-line;
-    font-size: rem(16);
-    margin-top: rem(24);
+    font-size: rem(18);
+    font-weight: 600;
+    margin-top: rem(8);
+    margin-bottom: rem(4);
+  }
+  .modalBody {
+    padding-top: rem(8);
+    padding-bottom: rem(8);
   }
 }

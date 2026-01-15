@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, memo, useCallback, useRef } from 'react'
 import PropTypes from 'prop-types'
-import { Box, Checkbox, FormControl, FormHelperText, FormLabel, HStack, Input, Select, Text, Textarea, VStack } from '@chakra-ui/react'
+import { Box, Checkbox, FormControl, FormHelperText, FormLabel, HStack, Input, Select, Text, Textarea, VStack, Icon, Divider, Badge, Spinner } from '@chakra-ui/react'
+import { HiDatabase, HiDocumentText, HiExclamationCircle } from 'react-icons/hi'
 
 const QueueMoveForm = memo(({ list = [], currentId, onChange = () => { } }) => {
   const [direction, setDirection] = useState('first')
@@ -403,6 +404,173 @@ const SnapshotRestoreForm = memo(({
 
 SnapshotRestoreForm.displayName = 'SnapshotRestoreForm'
 
+const SnapshotDumpForm = memo(({
+  serverId = '',
+  filePath = '',
+  availableServers = [],
+  availableFiles = [],
+  isLoadingFiles = false,
+  filesError = null,
+  onServerChange = () => {},
+  onFilePathChange = () => {}
+}) => {
+  const [customFilePath, setCustomFilePath] = useState(filePath)
+
+  const serverList = useMemo(() => {
+    return availableServers.map((server) => ({
+      value: server.id,
+      label: `${server.host}:${server.port} ${server.state ? `(${server.state})` : ''}`
+    }))
+  }, [availableServers])
+
+  useEffect(() => {
+    setCustomFilePath(filePath)
+  }, [filePath])
+
+  const handleFilePathChange = (value) => {
+    setCustomFilePath(value)
+    onFilePathChange(value)
+  }
+
+  return (
+    <VStack align="stretch" spacing={4}>
+      {/* Server Selection */}
+      <FormControl isRequired>
+        <FormLabel fontWeight="semibold" fontSize="sm" mb={2}>
+          <HStack spacing={2}>
+            <Icon as={HiDatabase} color="gray.600" boxSize={4} />
+            <Text>Target MySQL Server</Text>
+            <Badge colorScheme="red" fontSize="2xs">Required</Badge>
+          </HStack>
+        </FormLabel>
+        <Select
+          value={serverId}
+          onChange={(e) => onServerChange(e.target.value)}
+          placeholder="Select a server"
+          size="md"
+          borderColor="gray.300"
+          _hover={{ borderColor: 'blue.400' }}
+          _focus={{ borderColor: 'blue.500', boxShadow: '0 0 0 1px var(--chakra-colors-blue-500)' }}
+        >
+          {serverList.length > 0 ? (
+            serverList.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))
+          ) : (
+            <option disabled>No servers available</option>
+          )}
+        </Select>
+        <FormHelperText fontSize="xs" mt={1}>
+          Replication will be stopped during the dump process
+        </FormHelperText>
+      </FormControl>
+
+      {/* File Selection */}
+      <FormControl isRequired>
+        <FormLabel fontWeight="semibold" fontSize="sm" mb={2}>
+          <HStack spacing={2}>
+            <Icon as={HiDocumentText} color="gray.600" boxSize={4} />
+            <Text>SQL Dump File</Text>
+            <Badge colorScheme="red" fontSize="2xs">Required</Badge>
+          </HStack>
+        </FormLabel>
+
+        {isLoadingFiles && (
+          <Box p={2} bg="gray.50" borderRadius="md" borderWidth="1px" borderColor="gray.200" mb={2}>
+            <HStack spacing={2}>
+              <Spinner size="sm" color="blue.500" />
+              <Text fontSize="sm" color="gray.600">Loading files...</Text>
+            </HStack>
+          </Box>
+        )}
+        
+        {!isLoadingFiles && filesError && (
+          <Box p={2} bg="red.50" borderRadius="md" borderWidth="1px" borderColor="red.200" mb={2}>
+            <HStack spacing={2}>
+              <Icon as={HiExclamationCircle} color="red.500" boxSize={4} />
+              <Text fontSize="sm" color="red.700">{filesError}</Text>
+            </HStack>
+          </Box>
+        )}
+
+        {!isLoadingFiles && availableFiles && availableFiles.length > 0 ? (
+          <VStack align="stretch" spacing={2}>
+            <Select
+              value={customFilePath}
+              onChange={(e) => handleFilePathChange(e.target.value)}
+              placeholder="Select from snapshot"
+              size="md"
+              borderColor="gray.300"
+              _hover={{ borderColor: 'blue.400' }}
+              _focus={{ borderColor: 'blue.500', boxShadow: '0 0 0 1px var(--chakra-colors-blue-500)' }}
+            >
+              {availableFiles
+                .filter((file) => file.type === 'file')
+                .map((file) => (
+                  <option key={file.path} value={file.path}>
+                    {file.path} {file.size ? `(${(file.size / (1024 * 1024)).toFixed(2)} MB)` : ''}
+                  </option>
+                ))}
+            </Select>
+            
+            <HStack spacing={2} align="center">
+              <Divider />
+              <Text fontSize="xs" color="gray.500" whiteSpace="nowrap">or</Text>
+              <Divider />
+            </HStack>
+
+            <Input
+              value={customFilePath}
+              onChange={(e) => handleFilePathChange(e.target.value)}
+              placeholder="/var/backups/dump.sql.gz"
+              size="md"
+              borderColor="gray.300"
+              _hover={{ borderColor: 'blue.400' }}
+              _focus={{ borderColor: 'blue.500', boxShadow: '0 0 0 1px var(--chakra-colors-blue-500)' }}
+            />
+          </VStack>
+        ) : !isLoadingFiles && !filesError ? (
+          <Input
+            value={customFilePath}
+            onChange={(e) => handleFilePathChange(e.target.value)}
+            placeholder="/var/backups/dump.sql.gz"
+            size="md"
+            borderColor="gray.300"
+            _hover={{ borderColor: 'blue.400' }}
+            _focus={{ borderColor: 'blue.500', boxShadow: '0 0 0 1px var(--chakra-colors-blue-500)' }}
+          />
+        ) : null}
+
+        <FormHelperText fontSize="xs" mt={1}>
+          Supports gzipped (.gz) or plain SQL files
+        </FormHelperText>
+      </FormControl>
+
+      {/* Warning Box */}
+      <Box 
+        p={3} 
+        bg="yellow.50" 
+        borderRadius="md" 
+        borderWidth="1px" 
+        borderColor="yellow.300"
+        borderLeftWidth="3px"
+        borderLeftColor="yellow.500"
+      >
+        <HStack spacing={2} align="start">
+          <Icon as={HiExclamationCircle} color="yellow.600" boxSize={4} mt={0.5} />
+          <Text fontSize="xs" color="yellow.800" lineHeight="1.4">
+            <strong>Warning:</strong> This will stop replication and replace existing data. Operation cannot be undone.
+          </Text>
+        </HStack>
+      </Box>
+    </VStack>
+  )
+})
+
+SnapshotDumpForm.displayName = 'SnapshotDumpForm'
+
 const formConfig = {
   queueMove: {
     component: QueueMoveForm,
@@ -428,6 +596,19 @@ const formConfig = {
       onOverwriteChange: onRestoreOverwrite,
       onPathsChange: onRestorePaths
     })
+  },
+  snapshotDump: {
+    component: SnapshotDumpForm,
+    getProps: ({ payload, onDumpServerChange, onDumpFilePathChange, dumpFiles, dumpFilesLoading, dumpFilesError, availableServers }) => ({
+      serverId: payload?.data?.serverId,
+      filePath: payload?.data?.filePath,
+      availableServers: availableServers,
+      availableFiles: dumpFiles,
+      isLoadingFiles: dumpFilesLoading,
+      filesError: dumpFilesError,
+      onServerChange: onDumpServerChange,
+      onFilePathChange: onDumpFilePathChange
+    })
   }
 }
 
@@ -441,7 +622,13 @@ function ConfirmActionForm({
   onRestorePaths = () => { },
   restorePaths = [],
   restorePathsLoading = false,
-  restorePathsError = null
+  restorePathsError = null,
+  onDumpServerChange = () => { },
+  onDumpFilePathChange = () => { },
+  dumpFiles = [],
+  dumpFilesLoading = false,
+  dumpFilesError = null,
+  availableServers = []
 }) {
   if (!payload) return null
 
@@ -460,7 +647,13 @@ function ConfirmActionForm({
     onRestorePaths,
     restorePaths,
     restorePathsLoading,
-    restorePathsError
+    restorePathsError,
+    onDumpServerChange,
+    onDumpFilePathChange,
+    dumpFiles,
+    dumpFilesLoading,
+    dumpFilesError,
+    availableServers
   })
 
   return <Component {...props} />
@@ -495,6 +688,30 @@ SnapshotRestoreForm.propTypes = {
   onPathsChange: PropTypes.func
 }
 
+SnapshotDumpForm.propTypes = {
+  serverId: PropTypes.string,
+  filePath: PropTypes.string,
+  availableServers: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.string.isRequired,
+      host: PropTypes.string,
+      port: PropTypes.string,
+      state: PropTypes.string
+    })
+  ),
+  availableFiles: PropTypes.arrayOf(
+    PropTypes.shape({
+      path: PropTypes.string,
+      type: PropTypes.string,
+      size: PropTypes.number
+    })
+  ),
+  isLoadingFiles: PropTypes.bool,
+  filesError: PropTypes.string,
+  onServerChange: PropTypes.func,
+  onFilePathChange: PropTypes.func
+}
+
 ConfirmActionForm.propTypes = {
   payload: PropTypes.shape({
     action: PropTypes.string,
@@ -514,5 +731,24 @@ ConfirmActionForm.propTypes = {
     })
   ),
   restorePathsLoading: PropTypes.bool,
-  restorePathsError: PropTypes.string
+  restorePathsError: PropTypes.string,
+  onDumpServerChange: PropTypes.func,
+  onDumpFilePathChange: PropTypes.func,
+  dumpFiles: PropTypes.arrayOf(
+    PropTypes.shape({
+      path: PropTypes.string,
+      type: PropTypes.string,
+      size: PropTypes.number
+    })
+  ),
+  dumpFilesLoading: PropTypes.bool,
+  dumpFilesError: PropTypes.string,
+  availableServers: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.string.isRequired,
+      host: PropTypes.string,
+      port: PropTypes.string,
+      state: PropTypes.string
+    })
+  )
 }

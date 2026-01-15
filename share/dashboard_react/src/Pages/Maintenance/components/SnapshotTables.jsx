@@ -5,7 +5,7 @@ import { Box, HStack, Text, VStack } from '@chakra-ui/react'
 import { DataTable } from '../../../components/DataTable'
 import TableType3 from '../../../components/TableType3'
 import RMIconButton from '../../../components/RMIconButton'
-import { HiDownload, HiPause, HiPlay, HiTrash } from 'react-icons/hi'
+import { HiDownload, HiPause, HiPlay, HiTrash, HiUpload } from 'react-icons/hi'
 import styles from '../styles.module.scss'
 
 const columnHelper = createColumnHelper()
@@ -240,6 +240,20 @@ function SnapshotTables({
                       basePaths: restorePaths,
                       paths: [],
                       overwrite: ''
+                    }
+                  })
+                }
+              />
+              <RMIconButton
+                icon={HiUpload}
+                tooltip="Dump to MySQL"
+                onClick={() =>
+                  onConfirmAction('Dump to MySQL', {
+                    action: 'snapshotDump',
+                    data: {
+                      snapshotId: row.id,
+                      filePath: '',
+                      serverId: ''
                     }
                   })
                 }

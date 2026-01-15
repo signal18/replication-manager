@@ -24,6 +24,7 @@ export const clusterService = {
   purgeResticByPolicy,
   resticListSnapshot,
   resticRestoreSnapshot,
+  resticDumpToMysql,
   getResticQueue,
   resticQueueResume,
   resticQueuePause,
@@ -729,6 +730,10 @@ function resticListSnapshot(clusterName, snapshotId, paths, recursive, baseURL) 
 
 function resticRestoreSnapshot(clusterName, snapshotId, payload, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/restic/restore/${snapshotId}`, payload)
+}
+
+function resticDumpToMysql(clusterName, snapshotId, payload, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/restic/dump/${snapshotId}`, payload)
 }
 
 function getResticQueue(clusterName, baseURL) {

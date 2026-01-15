@@ -142,6 +142,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticRestoreSnapshot)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/restic/dump/{snapshotID}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticDumpToMysql)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/restic/unlock", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticUnlock)),
@@ -6953,6 +6958,11 @@ type ResticRestoreSnapshotRequest struct {
 	Overwrite      string   `json:"overwrite"`
 }
 
+type ResticDumpToMysqlRequest struct {
+	ServerID string `json:"serverId"`
+	FilePath string `json:"filePath"`
+}
+
 // handlerMuxResticRestoreConfig handles the HTTP request to restore the restic config for a given cluster.
 // @Summary Restore Restic Config
 // @Description Restores the restic config for the specified cluster.
@@ -7186,6 +7196,72 @@ func (repman *ReplicationManager) handlerMuxResticRestoreSnapshot(w http.Respons
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Restic snapshot restore done"))
+	})
+}
+
+// handlerMuxResticDumpToMysql handles the HTTP request to dump a restic snapshot directly to a MySQL server.
+// @Summary Dump Restic Snapshot to MySQL
+// @Description Dumps the specified restic snapshot directly to a MySQL server using a pipe (similar to JobReseedMysqldump).
+// @Tags ClusterRestic
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param snapshotID path string true "Snapshot ID"
+// @Param body body ResticDumpToMysqlRequest true "Dump configuration"
+// @Success 200 {string} string "Restic snapshot dump to MySQL initiated"
+// @Failure 400 {string} string "Invalid request body"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/restic/dump/{snapshotID} [post]
+func (repman *ReplicationManager) handlerMuxResticDumpToMysql(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
+		snapshotID := vars["snapshotID"]
+		if snapshotID == "" {
+			http.Error(w, "No snapshot ID provided", http.StatusBadRequest)
+			return
+		}
+
+		var payload ResticDumpToMysqlRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if payload.ServerID == "" {
+			http.Error(w, "Server ID is required", http.StatusBadRequest)
+			return
+		}
+
+		if payload.FilePath == "" {
+			http.Error(w, "File path is required", http.StatusBadRequest)
+			return
+		}
+
+		// Security: Validate file path to prevent path traversal
+		filePath := filepath.Clean(payload.FilePath)
+		if strings.Contains(filePath, "..") {
+			http.Error(w, "File path contains invalid path traversal sequences", http.StatusBadRequest)
+			return
+		}
+
+		// Find the server
+		srv := mycluster.GetServerFromName(payload.ServerID)
+		if srv == nil {
+			http.Error(w, "Server not found: "+payload.ServerID, http.StatusNotFound)
+			return
+		}
+
+		// Queue the job asynchronously
+		go func() {
+			if err := srv.JobReseedResticDump(snapshotID, filePath); err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+					"Error dumping restic snapshot to MySQL: %s", err)
+			}
+		}()
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Restic snapshot dump to MySQL initiated"))
 	})
 }
 

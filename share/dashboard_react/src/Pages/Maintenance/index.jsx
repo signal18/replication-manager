@@ -9,7 +9,7 @@ import BackupSettings from '../Settings/BackupSettings'
 import SchedulerSettings from '../Settings/SchedulerSettings'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
-import { pauseAutoReload, purgeResticSnapshot, resticListSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume, resticRestoreSnapshot } from '../../redux/clusterSlice'
+import { pauseAutoReload, purgeResticSnapshot, resticDumpToMysql, resticListSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume, resticRestoreSnapshot } from '../../redux/clusterSlice'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { showWarningToast } from '../../redux/toastSlice'
 import BackupTables from './components/BackupTables'
@@ -59,6 +59,7 @@ function Maintenance({ selectedCluster, user }) {
   const [snapshotData, setSnapshotData] = useState([])
   const [queueData, setQueueData] = useState([])
   const [restoreListState, setRestoreListState] = useState({ snapshotId: null, pathsKey: '', items: [], isLoading: false, error: null })
+  const [dumpFilesState, setDumpFilesState] = useState({ snapshotId: null, items: [], isLoading: false, error: null })
   const [confirmState, setConfirmState] = useState({ isOpen: false, title: '', payload: null })
   const { isOpen: isConfirmModalOpen, title, payload } = confirmState
   const confirmPauseRef = useRef(false)
@@ -90,6 +91,7 @@ function Maintenance({ selectedCluster, user }) {
   const snapshots = useSelector((state) => state.cluster.restic.snapshots)
   const stats = useSelector((state) => state.cluster.restic.stats)
   const resticQueue = useSelector((state) => state.cluster.restic.queue)
+  const clusterServers = useSelector((state) => state.cluster.clusterServers)
 
   const openConfirmModal = (title, payload) => {
     setConfirmState({ isOpen: true, title, payload })
@@ -144,6 +146,25 @@ function Maintenance({ selectedCluster, user }) {
               sourcePath,
               sourcePathType,
               overwrite: payload.data?.overwrite
+            })
+          )
+          break
+        }
+        case 'snapshotDump': {
+          if (!payload.data?.serverId) {
+            dispatch(showWarningToast({ title: 'Missing server', description: 'Please select a target MySQL server.' }))
+            return
+          }
+          if (!payload.data?.filePath) {
+            dispatch(showWarningToast({ title: 'Missing file path', description: 'Please specify the file path in the snapshot.' }))
+            return
+          }
+          dispatch(
+            resticDumpToMysql({
+              clusterName: selectedCluster.name,
+              snapshotId: payload.data.snapshotId,
+              serverId: payload.data.serverId,
+              filePath: payload.data.filePath
             })
           )
           break
@@ -242,6 +263,32 @@ function Maintenance({ selectedCluster, user }) {
     }))
   }, [])
 
+  const handleDumpServerChange = useCallback((serverId) => {
+    setConfirmState((prevState) => ({
+      ...prevState,
+      payload: {
+        ...prevState.payload,
+        data: {
+          ...prevState.payload.data,
+          serverId
+        }
+      }
+    }))
+  }, [])
+
+  const handleDumpFilePathChange = useCallback((filePath) => {
+    setConfirmState((prevState) => ({
+      ...prevState,
+      payload: {
+        ...prevState.payload,
+        data: {
+          ...prevState.payload.data,
+          filePath
+        }
+      }
+    }))
+  }, [])
+
   const loadRestoreList = useCallback(async (snapshotId, listPaths, pathsKey) => {
     if (!snapshotId || !clusterName) {
       return
@@ -277,6 +324,41 @@ function Maintenance({ selectedCluster, user }) {
         items: [],
         isLoading: false,
         error: error?.message || 'Failed to load restic file list'
+      })
+    }
+  }, [clusterName, dispatch])
+
+  const loadDumpFiles = useCallback(async (snapshotId) => {
+    if (!snapshotId || !clusterName) {
+      return
+    }
+    setDumpFilesState({ snapshotId, items: [], isLoading: true, error: null })
+    try {
+      const result = await dispatch(
+        resticListSnapshot({
+          clusterName,
+          snapshotId,
+          paths: undefined,
+          recursive: true
+        })
+      ).unwrap()
+      const items = Array.isArray(result?.data) ? result.data : []
+      const seen = new Set()
+      const uniqueItems = items.filter((entry) => {
+        const path = entry?.path
+        if (!path || seen.has(path)) {
+          return false
+        }
+        seen.add(path)
+        return true
+      })
+      setDumpFilesState({ snapshotId, items: uniqueItems, isLoading: false, error: null })
+    } catch (error) {
+      setDumpFilesState({
+        snapshotId,
+        items: [],
+        isLoading: false,
+        error: error?.message || 'Failed to load snapshot files'
       })
     }
   }, [clusterName, dispatch])
@@ -368,6 +450,31 @@ function Maintenance({ selectedCluster, user }) {
     loadRestoreList
   ])
 
+  useEffect(() => {
+    if (!isConfirmModalOpen || payload?.action !== 'snapshotDump') {
+      if (dumpFilesState.snapshotId) {
+        setDumpFilesState({ snapshotId: null, items: [], isLoading: false, error: null })
+      }
+      return
+    }
+
+    const dumpSnapshotId = payload?.data?.snapshotId
+    if (
+      dumpSnapshotId
+      && !dumpFilesState.isLoading
+      && dumpSnapshotId !== dumpFilesState.snapshotId
+    ) {
+      loadDumpFiles(dumpSnapshotId)
+    }
+  }, [
+    isConfirmModalOpen,
+    payload?.action,
+    payload?.data?.snapshotId,
+    dumpFilesState.snapshotId,
+    dumpFilesState.isLoading,
+    loadDumpFiles
+  ])
+
   return (
     <VStack className={styles.backupContainer}>
       <AccordionComponent
@@ -439,6 +546,7 @@ function Maintenance({ selectedCluster, user }) {
         <ConfirmModal
           title={title}
           isOpen={isConfirmModalOpen}
+          size={payload?.action === 'snapshotDump' ? 'lg' : 'md'}
           body={
             <ConfirmActionForm
               payload={payload}
@@ -451,6 +559,12 @@ function Maintenance({ selectedCluster, user }) {
               restorePaths={restoreListState.items}
               restorePathsLoading={restoreListState.isLoading}
               restorePathsError={restoreListState.error}
+              onDumpServerChange={handleDumpServerChange}
+              onDumpFilePathChange={handleDumpFilePathChange}
+              dumpFiles={dumpFilesState.items}
+              dumpFilesLoading={dumpFilesState.isLoading}
+              dumpFilesError={dumpFilesState.error}
+              availableServers={clusterServers || []}
             />
           }
           onConfirmClick={handleConfirm}

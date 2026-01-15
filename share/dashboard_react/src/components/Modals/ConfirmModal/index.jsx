@@ -24,12 +24,13 @@ function ConfirmModal({
   closeOnOverlayClick = true,
   closeOnEsc = true,
   cancelButtonText = 'Cancel',
-  confirmButtonText = 'Confirm'
+  confirmButtonText = 'Confirm',
+  size = 'md'
 }) {
   const { theme } = useTheme()
 
   return (
-    <Modal isOpen={isOpen} onClose={closeModal} closeOnOverlayClick={closeOnOverlayClick} closeOnEsc={closeOnEsc}>
+    <Modal isOpen={isOpen} onClose={closeModal} closeOnOverlayClick={closeOnOverlayClick} closeOnEsc={closeOnEsc} size={size}>
       <ModalOverlay />
       <ModalContent
         className={`${styles.modalContent} ${theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}`}>

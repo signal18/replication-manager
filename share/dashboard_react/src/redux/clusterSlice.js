@@ -326,6 +326,21 @@ export const resticRestoreSnapshot = createGuardedAsyncThunk('cluster/resticRest
   }
 })
 
+export const resticDumpToMysql = createGuardedAsyncThunk('cluster/resticDumpToMysql', async ({ clusterName, snapshotId, serverId, filePath }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.resticDumpToMysql(
+      clusterName,
+      snapshotId,
+      { serverId, filePath },
+      baseURL
+    )
+    return { data, status }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
 export const getResticQueue = createGuardedAsyncThunk('cluster/getResticQueue', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -2388,10 +2403,6 @@ export const clusterSlice = createSlice({
         }
       }
     )
-    builder.addCase(preserveVariable.fulfilled, (state, action) => {
-      // Refresh the variables after preserve/accept/clear action
-      // This will be handled by the component dispatching getDatabaseService again
-    })
     builder.addMatcher(
       (action) =>
         (action.type.endsWith('/fulfilled') || action.type.endsWith('/rejected')) && shouldTrackThunk(action),
