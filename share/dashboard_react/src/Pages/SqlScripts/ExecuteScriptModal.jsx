@@ -22,7 +22,8 @@ import {
   Select,
   Textarea,
   Alert,
-  AlertIcon
+  AlertIcon,
+  Text
 } from '@chakra-ui/react'
 import styles from './styles.module.scss'
 
