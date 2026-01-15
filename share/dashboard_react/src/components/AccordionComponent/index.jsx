@@ -1,6 +1,6 @@
 import React from 'react'
 import styles from './styles.module.scss'
-import { Accordion, AccordionButton, AccordionIcon, AccordionItem, AccordionPanel, Box } from '@chakra-ui/react'
+import { Accordion, AccordionButton, AccordionIcon, AccordionItem, AccordionPanel, Box, HStack } from '@chakra-ui/react'
 
 function AccordionComponent({
   heading,
@@ -11,7 +11,8 @@ function AccordionComponent({
   panelClassName,
   isOpen = null,
   allowToggle = true,
-  onToggle
+  onToggle,
+  actions = null
 }) {
   return (
     <Accordion
@@ -28,6 +29,11 @@ function AccordionComponent({
             <Box as='h4' flex='1' textAlign='left'>
               {heading}
             </Box>
+            {actions && (
+              <Box onClick={(e) => e.stopPropagation()}>
+                {actions}
+              </Box>
+            )}
             {allowToggle && <AccordionIcon className={styles.icon} />}
           </AccordionButton>
         </h2>

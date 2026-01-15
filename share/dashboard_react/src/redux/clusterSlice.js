@@ -97,6 +97,20 @@ const fulfilledHandlers = {
   },
   'cluster/getJobs': (state, action) => {
     state.jobs = action.payload.data
+  },
+  'cluster/getSQLScriptJobs': (state, action) => {
+    state.sqlScripts.jobs = action.payload.data
+  },
+  'cluster/executeSQLScript': (state, action) => {
+    if (action.payload.data) {
+      state.sqlScripts.executionHistory = [
+        {
+          ...action.payload.data,
+          timestamp: new Date().toISOString()
+        },
+        ...state.sqlScripts.executionHistory
+      ].slice(0, 100) // Keep last 100 executions
+    }
   }
 }
 
@@ -377,6 +391,20 @@ export const getQueryRules = createGuardedAsyncThunk('cluster/getQueryRules', as
     const { data, status } = await clusterService.getQueryRules(clusterName, baseURL)
     return { data, status }
   } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const executeQuery = createGuardedAsyncThunk('cluster/executeQuery', async ({ clusterName, query }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.executeQuery(clusterName, query, baseURL)
+    if (status === 200) {
+      showSuccessBanner('Query executed successfully!', status, thunkAPI)
+    }
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Query execution failed!', error, thunkAPI)
     return handleError(error, thunkAPI)
   }
 })
@@ -1963,6 +1991,78 @@ export const monitorAllSchemas = createGuardedAsyncThunk('cluster/monitorAllSche
   }
 })
 
+// SQL Script Management
+export const getSQLScriptJobs = createGuardedAsyncThunk('cluster/getSQLScriptJobs', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.getSQLScriptJobs(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const executeSQLScript = createGuardedAsyncThunk('cluster/executeSQLScript', async ({ clusterName, payload }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.executeSQLScript(clusterName, payload, baseURL)
+    if (status !== 200) {
+      showErrorBanner('SQL script execution failed', data, thunkAPI)
+      throw new Error(data)
+    }
+    showSuccessBanner('SQL script executed successfully', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('SQL script execution error', error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const triggerScheduledScripts = createGuardedAsyncThunk('cluster/triggerScheduledScripts', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.triggerScheduledScripts(clusterName, baseURL)
+    if (status !== 200) {
+      throw new Error(data)
+    }
+    showSuccessBanner('Scheduled SQL scripts triggered', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Error triggering scheduled scripts', error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const saveSQLScriptJob = createGuardedAsyncThunk('cluster/saveSQLScriptJob', async ({ clusterName, job }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.saveSQLScriptJob(clusterName, job, baseURL)
+    if (status !== 200) {
+      throw new Error(data)
+    }
+    showSuccessBanner('SQL script job saved successfully', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Error saving SQL script job', error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const deleteSQLScriptJob = createGuardedAsyncThunk('cluster/deleteSQLScriptJob', async ({ clusterName, jobName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.deleteSQLScriptJob(clusterName, jobName, baseURL)
+    if (status !== 200) {
+      throw new Error(data)
+    }
+    showSuccessBanner('SQL script job deleted', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Error deleting SQL script job', error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
 const initialState = {
   loading: false,
   pendingThunks: {},
@@ -2022,6 +2122,10 @@ const initialState = {
     serviceOpensvc: null,
     metadataLocks: null,
     responsetime: null
+  },
+  sqlScripts: {
+    jobs: null,
+    executionHistory: []
   }
 }
 
@@ -2048,6 +2152,11 @@ export const clusterSlice = createSlice({
     }
   },
   extraReducers: (builder) => {
+    builder.addCase(preserveVariable.fulfilled, (state, action) => {
+      // Refresh the variables after preserve/accept/clear action
+      // This will be handled by the component dispatching getDatabaseService again
+    })
+    
     builder.addMatcher(
       (action) => action.type.endsWith('/pending') && shouldTrackThunk(action),
       (state, action) => {
@@ -2363,10 +2472,7 @@ export const clusterSlice = createSlice({
         }
       }
     )
-    builder.addCase(preserveVariable.fulfilled, (state, action) => {
-      // Refresh the variables after preserve/accept/clear action
-      // This will be handled by the component dispatching getDatabaseService again
-    })
+    
     builder.addMatcher(
       (action) =>
         (action.type.endsWith('/fulfilled') || action.type.endsWith('/rejected')) && shouldTrackThunk(action),

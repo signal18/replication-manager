@@ -645,6 +645,7 @@ func (cluster *Cluster) initScheduler() {
 		cluster.SetSchedulerDbJobsSsh()
 		cluster.SetSchedulerAlertDisable()
 		cluster.SetSchedulerMonitorSchema()
+		cluster.SetSchedulerSQLScripts()
 		cluster.scheduler.Start()
 	}
 

@@ -142,6 +142,7 @@ var clusterACLRules = []ACLRule{
 
 	// Routes and Certificates
 	{"/queryrules", nil, []string{config.GrantClusterShowRoutes}},
+	{"/actions/query", nil, []string{config.GrantDBQueryExecute}},
 	{"/certificates", nil, []string{config.GrantClusterShowCertificates}},
 	{"/actions/certificates-reload", nil, []string{config.GrantClusterCertificatesReload}},
 	{"/actions/certificates-rotate", nil, []string{config.GrantClusterCertificatesRotate}},

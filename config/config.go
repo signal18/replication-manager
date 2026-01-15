@@ -714,6 +714,19 @@ type Config struct {
 	SchedulerRollingReprovCron                string                 `mapstructure:"scheduler-rolling-reprov-cron" toml:"scheduler-rolling-reprov-cron" json:"schedulerRollingReprovCron"`
 	SchedulerJobsSSH                          bool                   `mapstructure:"scheduler-jobs-ssh" toml:"scheduler-jobs-ssh" json:"schedulerJobsSsh"`
 	SchedulerJobsSSHCron                      string                 `mapstructure:"scheduler-jobs-ssh-cron" toml:"scheduler-jobs-ssh-cron" json:"schedulerJobsSshCron"`
+	SchedulerSQLScripts                       bool                   `mapstructure:"scheduler-sql-scripts" toml:"scheduler-sql-scripts" json:"schedulerSqlScripts"`
+	SchedulerSQLScriptsCron                   string                 `mapstructure:"scheduler-sql-scripts-cron" toml:"scheduler-sql-scripts-cron" json:"schedulerSqlScriptsCron"`
+	SchedulerSQLScriptsPath                   string                 `mapstructure:"scheduler-sql-scripts-path" toml:"scheduler-sql-scripts-path" json:"schedulerSqlScriptsPath"`
+	SchedulerSQLScriptsDatabase               string                 `mapstructure:"scheduler-sql-scripts-database" toml:"scheduler-sql-scripts-database" json:"schedulerSqlScriptsDatabase"`
+	SchedulerSQLScriptsTargetServer           string                 `mapstructure:"scheduler-sql-scripts-target-server" toml:"scheduler-sql-scripts-target-server" json:"schedulerSqlScriptsTargetServer"`
+	SchedulerSQLScriptsTimeout                int                    `mapstructure:"scheduler-sql-scripts-timeout" toml:"scheduler-sql-scripts-timeout" json:"schedulerSqlScriptsTimeout"`
+	SchedulerSQLScriptsValidate               bool                   `mapstructure:"scheduler-sql-scripts-validate" toml:"scheduler-sql-scripts-validate" json:"schedulerSqlScriptsValidate"`
+	SchedulerSQLScriptsAllowDropDatabase      bool                   `mapstructure:"scheduler-sql-scripts-allow-drop-database" toml:"scheduler-sql-scripts-allow-drop-database" json:"schedulerSqlScriptsAllowDropDatabase"`
+	SchedulerSQLScriptsAllowDropTable         bool                   `mapstructure:"scheduler-sql-scripts-allow-drop-table" toml:"scheduler-sql-scripts-allow-drop-table" json:"schedulerSqlScriptsAllowDropTable"`
+	SchedulerSQLScriptsAllowTruncate          bool                   `mapstructure:"scheduler-sql-scripts-allow-truncate" toml:"scheduler-sql-scripts-allow-truncate" json:"schedulerSqlScriptsAllowTruncate"`
+	SchedulerSQLScriptsAllowDeleteAll         bool                   `mapstructure:"scheduler-sql-scripts-allow-delete-all" toml:"scheduler-sql-scripts-allow-delete-all" json:"schedulerSqlScriptsAllowDeleteAll"`
+	SchedulerSQLScriptsAllowUpdateAll         bool                   `mapstructure:"scheduler-sql-scripts-allow-update-all" toml:"scheduler-sql-scripts-allow-update-all" json:"schedulerSqlScriptsAllowUpdateAll"`
+	SchedulerSQLScriptsAlertOnError           bool                   `mapstructure:"scheduler-sql-scripts-alert-on-error" toml:"scheduler-sql-scripts-alert-on-error" json:"schedulerSqlScriptsAlertOnError"`
 	Backup                                    bool                   `mapstructure:"backup" toml:"backup" json:"backup"`
 	BackupLogicalType                         string                 `mapstructure:"backup-logical-type" toml:"backup-logical-type" json:"backupLogicalType"`
 	BackupLogicalLoadThreads                  int                    `mapstructure:"backup-logical-load-threads" toml:"backup-logical-load-threads" json:"backupLogicalLoadThreads"`
@@ -1209,6 +1222,7 @@ const (
 	GrantDBShowProcess     string = "db-show-process"
 	GrantDBShowLogs        string = "db-show-logs"
 	GrantDBCapture         string = "db-capture"
+	GrantDBQueryExecute    string = "db-query-execute"
 	GrantDBMaintenance     string = "db-maintenance"
 	GrantDBConfigCreate    string = "db-config-create"
 	GrantDBConfigRessource string = "db-config-ressource"
@@ -2314,6 +2328,7 @@ func GetGrantType() map[string]string {
 		GrantDBRestore:                 GrantDBRestore,
 		GrantDBReadOnly:                GrantDBReadOnly,
 		GrantDBLogs:                    GrantDBLogs,
+		GrantDBQueryExecute:            GrantDBQueryExecute,
 		GrantDBCapture:                 GrantDBCapture,
 		GrantDBMaintenance:             GrantDBMaintenance,
 		GrantDBConfigCreate:            GrantDBConfigCreate,
@@ -2407,6 +2422,7 @@ func GetGrantDB() []string {
 		GrantDBReadOnly,
 		GrantDBLogs,
 		GrantDBCapture,
+		GrantDBQueryExecute,
 		GrantDBMaintenance,
 		GrantDBConfigCreate,
 		GrantDBConfigRessource,

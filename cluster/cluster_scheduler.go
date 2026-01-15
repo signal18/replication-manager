@@ -117,6 +117,8 @@ func scheduleDescription(title string) string {
 		return "Alert Disable"
 	case "monitor-schemas":
 		return "Monitor Schemas"
+	case "sqlscripts":
+		return "SQL Script Execution"
 	default:
 		return title
 	}
@@ -191,4 +193,8 @@ func (cluster *Cluster) SetSchedulerAlertDisable() {
 
 func (cluster *Cluster) SetSchedulerMonitorSchema() {
 	cluster.SetScheduler(cluster.Conf.MonitorSchemaScheduler, "monitorschema", cluster.Conf.MonitorSchemaSchedulerCron, cluster.GetMonitorSchemasFunction())
+}
+
+func (cluster *Cluster) SetSchedulerSQLScripts() {
+	cluster.SetScheduler(cluster.Conf.SchedulerSQLScripts, "sqlscripts", cluster.Conf.SchedulerSQLScriptsCron, cluster.GetSQLScriptJobFunction())
 }

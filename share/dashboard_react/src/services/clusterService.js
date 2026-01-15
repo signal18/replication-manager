@@ -16,6 +16,7 @@ export const clusterService = {
   getJobs,
   getShardSchema,
   getQueryRules,
+  executeQuery,
   
   // Restic management APIs
   getResticSnapshot,
@@ -155,7 +156,14 @@ export const clusterService = {
   storageFieldIndexAdd,
   storageFieldIndexDrop,
 
-  connectDockerRegistry
+  connectDockerRegistry,
+
+  // SQL Script management APIs
+  getSQLScriptJobs,
+  executeSQLScript,
+  triggerScheduledScripts,
+  saveSQLScriptJob,
+  deleteSQLScriptJob
 }
 
 //#region Cluster data APIs
@@ -222,6 +230,10 @@ function getShardSchema(clusterName, baseURL) {
 
 function getQueryRules(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/queryrules`)
+}
+
+function executeQuery(clusterName, query, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/query`, { query })
 }
 //#endregion Cluster data APIs
 
@@ -747,3 +759,24 @@ function resticQueueReset(clusterName, baseURL) {
 }
 
 // Utility functions
+
+// SQL Script Management Functions
+function getSQLScriptJobs(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/sql-jobs`)
+}
+
+function executeSQLScript(clusterName, payload, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/execute-sql-script`, payload)
+}
+
+function triggerScheduledScripts(clusterName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/trigger-scheduled-sql-scripts`, {})
+}
+
+function saveSQLScriptJob(clusterName, job, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/sql-jobs/save`, job)
+}
+
+function deleteSQLScriptJob(clusterName, jobName, baseURL) {
+  return getApi(baseURL).del(`clusters/${clusterName}/sql-jobs/${jobName}`)
+}

@@ -45,6 +45,8 @@ import Maintenance from '../Maintenance'
 import Top from '../Top'
 import Shards from '../Shards'
 import QueryRules from '../QueryRules'
+import SqlQuery from '../SqlQuery'
+import SqlScripts from '../SqlScripts'
 import PeerClusterList from '../PeerClusterList'
 import ClustersGlobalSettings from '../ClustersGlobalSettings'
 import NewClusterModal from '../../components/Modals/NewClusterModal'
@@ -116,6 +118,10 @@ function Home() {
             }
             if (apiUser.grants['db-show-schema']) {
               authorizedTabs.push('Shards')
+            }
+            if (apiUser.grants['db-query-execute']) {
+              authorizedTabs.push('SQL Query')
+              authorizedTabs.push('SQL Scripts')
             }
             if (apiUser.grants['cluster-grant']) {
               authorizedTabs.push('Users')
@@ -284,6 +290,7 @@ function Home() {
                   ? [<QueryRules selectedCluster={selectedCluster} />]
                   : []),
                 ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} />] : []),
+                ...(user?.grants['db-query-execute'] ? [<SqlQuery selectedCluster={selectedCluster} />, <SqlScripts selectedCluster={selectedCluster} user={user} />] : []),
                 ...(user?.grants['cluster-grant'] ? [<Users selectedCluster={selectedCluster} user={user} />] : [])
               ]
               : globalTabsRef.current.includes('Clusters Peer') // monitor?.config?.cloud18 is false, do not show "Peer Clusters" tab

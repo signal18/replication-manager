@@ -225,15 +225,6 @@ export const globalClustersSlice = createSlice({
     }
   },
   extraReducers: (builder) => {
-    builder.addMatcher(
-      (action) => action.type.endsWith('/pending') && shouldTrackThunk(action),
-      (state, action) => {
-        const typePrefix = getThunkTypePrefix(action.type)
-        const pendingKey = getPendingKey(typePrefix)
-        state.pendingThunks[pendingKey] = true
-      }
-    )
-
     builder
       .addCase(getClusters.pending, (state) => {
         state.loading = true
@@ -284,16 +275,23 @@ export const globalClustersSlice = createSlice({
       .addCase(refreshAppTemplateRepo.rejected, (state, action) => {
         state.error = action.error
       })
-
-    builder.addMatcher(
-      (action) =>
-        (action.type.endsWith('/fulfilled') || action.type.endsWith('/rejected')) && shouldTrackThunk(action),
-      (state, action) => {
-        const typePrefix = getThunkTypePrefix(action.type)
-        const pendingKey = getPendingKey(typePrefix)
-        state.pendingThunks[pendingKey] = false
-      }
-    )
+      .addMatcher(
+        (action) => action.type.endsWith('/pending') && shouldTrackThunk(action),
+        (state, action) => {
+          const typePrefix = getThunkTypePrefix(action.type)
+          const pendingKey = getPendingKey(typePrefix)
+          state.pendingThunks[pendingKey] = true
+        }
+      )
+      .addMatcher(
+        (action) =>
+          (action.type.endsWith('/fulfilled') || action.type.endsWith('/rejected')) && shouldTrackThunk(action),
+        (state, action) => {
+          const typePrefix = getThunkTypePrefix(action.type)
+          const pendingKey = getPendingKey(typePrefix)
+          state.pendingThunks[pendingKey] = false
+        }
+      )
   }
 })
 
