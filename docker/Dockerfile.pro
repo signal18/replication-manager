@@ -26,15 +26,13 @@ RUN apt-get update && apt-get -y  install apt-transport-https curl \
  && mkdir -p /etc/apt/keyrings && curl -o /etc/apt/keyrings/mariadb-keyring.pgp 'https://mariadb.org/mariadb_release_signing_key.pgp'
 
 COPY --from=builder /go/src/github.com/signal18/replication-manager/etc/local/config.toml.docker /etc/replication-manager/config.toml
-COPY --from=builder /go/src/github.com/signal18/replication-manager/etc/local/masterslave/haproxy/config.toml /etc/replication-manager/cluster.d/localmasterslavehaproxy.toml
-COPY --from=builder /go/src/github.com/signal18/replication-manager/etc/local/masterslave/proxysql/config.toml /etc/replication-manager/cluster.d/localmasterslaveproxysql.toml
 COPY --from=builder /go/src/github.com/signal18/replication-manager/share /usr/share/replication-manager/
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-pro /usr/bin/replication-manager
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
 COPY --from=builder /go/bin/gotty-client /usr/local/bin/gotty-client
 
 RUN curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash -s -- --mariadb-server-version="mariadb-$MARIADB_VERSION" --skip-maxscale
-RUN apt-get update && apt-get -y install mydumper ca-certificates restic mariadb-server=1:11* mariadb-client mariadb-plugin-spider haproxy \
+RUN apt-get update && apt-get -y install mydumper ca-certificates restic mariadb-client=1:11* mariadb-plugin-spider haproxy \
     libmariadb-dev fuse sysbench curl wget openssh-client libatomic1 libglib2.0 libpcre3 adduser libfontconfig1 \
   && curl -LO https://dl.grafana.com/oss/release/grafana_8.1.1_amd64.deb && dpkg -i grafana_8.1.1_amd64.deb && rm -f grafana_8.1.1_amd64.deb \
   && curl -LO https://github.com/sysown/proxysql/releases/download/v$PROXYSQL_VERSION/proxysql_$PROXYSQL_VERSION-debian12_amd64.deb && dpkg -i proxysql_$PROXYSQL_VERSION-debian12_amd64.deb \

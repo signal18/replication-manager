@@ -1,0 +1,57 @@
+version: "3.8"
+
+services:
+  db1:
+    image: mariadb:10.5
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+    command:
+      - "--server-id=1"
+      - "--log-bin=mysql-bin"
+      - "--binlog-format=ROW"
+      - "--gtid-strict-mode=ON"
+      - "--log-slave-updates=ON"
+      - "--relay-log=relay-bin"
+    networks:
+      - repman
+
+  db2:
+    image: mariadb:10.5
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+    command:
+      - "--server-id=2"
+      - "--log-bin=mysql-bin"
+      - "--binlog-format=ROW"
+      - "--gtid-strict-mode=ON"
+      - "--log-slave-updates=ON"
+      - "--relay-log=relay-bin"
+    networks:
+      - repman
+
+  replication-manager:
+    image: signal18/replication-manager:2.0
+    command:
+      - "monitor"
+      - "--cluster=cluster1"
+    ports:
+      - "10001:10001"
+    depends_on:
+      - db1
+      - db2
+    environment:
+      REPLICATION_MANAGER_DEFAULT_HTTP_SERVER: "true"
+      REPLICATION_MANAGER_DEFAULT_HTTP_BIND_ADDRESS: "0.0.0.0"
+      REPLICATION_MANAGER_DEFAULT_HTTP_PORT: "10001"
+      REPLICATION_MANAGER_CLUSTER1_TITLE: "mariadb-repl"
+      REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_HOSTS: "db1,db2"
+      REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_PREFERED_MASTER: "db1"
+      REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_CREDENTIAL: "root:admin"
+      REPLICATION_MANAGER_CLUSTER1_REPLICATION_CREDENTIAL: "root:admin"
+      REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_CONNECT_TIMEOUT: "1"
+    networks:
+      - repman
+
+networks:
+  repman:
+    driver: bridge

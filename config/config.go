@@ -1700,57 +1700,65 @@ func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
 			return err
 		}
 
-		newdir := "/home/repman/.config/replication-manager/etc"
-		newpath := newdir + "/.replication-manager.key"
+		fallbackDir := conf.ConfDirExtra
+		if fallbackDir == "" {
+			if homeDir, homeErr := os.UserHomeDir(); homeErr == nil {
+				fallbackDir = filepath.Join(homeDir, ".config", "replication-manager")
+			}
+		}
+		fallbackPath := ""
+		if fallbackDir != "" {
+			fallbackPath = filepath.Join(fallbackDir, ".replication-manager.key")
+			Logger.Debugf("Key not found. Checking in extra path : %s", fallbackPath)
 
-		Logger.Debugf("Key not found. Checking in extra path : %s", newpath)
+			_, err = os.Stat(fallbackPath)
+			if err == nil {
+				Logger.Debugf("Repman discovered key in alternative path. Using existing key on %s", fallbackPath)
+				conf.MonitoringKeyPath = fallbackPath
+				return nil
+			}
+		}
 
-		_, err = os.Stat(newpath)
-		if err == nil {
-			Logger.Debugf("Repman discovered key in alternative path. Using existing key on %s", newpath)
-			conf.MonitoringKeyPath = newpath
-			return nil
-		} else {
+		Logger.Debugf("Key not found. Generating : %s", conf.MonitoringKeyPath)
 
-			Logger.Debugf("Key not found. Generating : %s", conf.MonitoringKeyPath)
+		if err = misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && conf.WithEmbed == "OFF" {
+			if fallbackPath == "" {
+				Logger.Errorf("File %s is not accessible and no fallback path is available", conf.MonitoringKeyPath)
+				return err
+			}
 
-			if err = misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && conf.WithEmbed == "OFF" {
-				newdir := "/home/repman/.config/replication-manager/etc"
-				newpath := newdir + "/.replication-manager.key"
+			Logger.Debugf("File %s is not accessible. Try using alternative path: %s", conf.MonitoringKeyPath, fallbackPath)
 
-				Logger.Infof("File %s is not accessible. Try using alternative path: %s", conf.MonitoringKeyPath, newpath)
+			_, err := os.Stat(fallbackPath)
+			if err == nil {
+				Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", fallbackPath)
+				conf.MonitoringKeyPath = fallbackPath
+				return nil
+			}
 
-				_, err := os.Stat(newpath)
-				if err == nil {
-					Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", newpath)
-					return nil
-				}
-
-				_, err = os.Stat(newdir)
-				if err != nil {
-					if !os.IsNotExist(err) {
-						Logger.Errorf("Can't access %s : %v", newdir, err)
-						return err
-					} else {
-						err = os.MkdirAll(newdir, 0755)
-						if err != nil {
-							Logger.Errorf("Can't create directory %s : %v", newdir, err)
-							return err
-						}
-					}
-				}
-
-				if err := misc.TryOpenFile(newpath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
-					Logger.Errorf("Can't write keys in %s : %v", newdir, err)
+			_, err = os.Stat(fallbackDir)
+			if err != nil {
+				if !os.IsNotExist(err) {
+					Logger.Errorf("Can't access %s : %v", fallbackDir, err)
 					return err
 				}
-
-				// New path is writable
-				conf.MonitoringKeyPath = newpath
-				Logger.Infof("Path writable. Flag 'monitoring-key-path' set to: %s.", newpath)
-				Logger.Infof("Generating key on: %s", conf.MonitoringKeyPath)
-
+				err = os.MkdirAll(fallbackDir, 0755)
+				if err != nil {
+					Logger.Errorf("Can't create directory %s : %v", fallbackDir, err)
+					return err
+				}
 			}
+
+			if err := misc.TryOpenFile(fallbackPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
+				Logger.Errorf("Can't write keys in %s : %v", fallbackDir, err)
+				return err
+			}
+
+			// New path is writable
+			conf.MonitoringKeyPath = fallbackPath
+			Logger.Debugf("Path writable. Flag 'monitoring-key-path' set to: %s.", fallbackPath)
+			Logger.Debugf("Generating key on: %s", conf.MonitoringKeyPath)
+
 		}
 
 		p := crypto.Password{}
@@ -3161,22 +3169,29 @@ func IsScope(toml string, scope string) bool {
 	return false
 }
 
-func (conf *Config) ReadCloud18Config(viper *viper.Viper, path string) {
-	viper = viper.Sub("default")
-	viper.SetConfigType("toml")
-
+func (conf *Config) ReadCloud18Config(v *viper.Viper, path string) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return
 	}
+	if v == nil {
+		return
+	}
+
+	subViper := v.Sub("default")
+	if subViper == nil {
+		subViper = viper.New()
+	}
+	subViper.SetConfigType("toml")
+
 	fmt.Printf("Parsing saved config from working directory %s ", path)
 
-	viper.SetConfigFile(path)
-	err := viper.MergeInConfig()
+	subViper.SetConfigFile(path)
+	err := subViper.MergeInConfig()
 	if err != nil {
 		log.Error("Config error in " + path + ":" + err.Error())
 	}
 
-	viper.Unmarshal(&conf)
+	subViper.Unmarshal(&conf)
 
 }
 
