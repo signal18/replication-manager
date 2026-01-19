@@ -1247,6 +1247,7 @@ func (repman *ReplicationManager) handlerMuxServerOptimize(w http.ResponseWriter
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
 // @Param backupMethod path string true "Backup Method"
+// @Param line query string false "Backup line: default or adhoc"
 // @Success 200 {string} string "Reseed initiated successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error reseed logical backup" or "Error reseed physical backup"
@@ -1260,10 +1261,20 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
+		opts, err := parseBackupRunOptions(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		// Default to "default" line if not specified
+		backupLine := "default"
+		if opts.Line != "" {
+			backupLine = opts.Line
+		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			if vars["backupMethod"] == "logicalbackup" {
-				err := node.JobReseedLogicalBackup("default")
+				err := node.JobReseedLogicalBackup(backupLine)
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "logical reseed restore failed %s", err)
 					http.Error(w, "Error reseed logical backup", 500)
@@ -1277,7 +1288,7 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 				}
 			}
 			if vars["backupMethod"] == "physicalbackup" {
-				err := node.JobReseedPhysicalBackup("default")
+				err := node.JobReseedPhysicalBackup(backupLine)
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "physical reseed restore failed %s", err)
 				}

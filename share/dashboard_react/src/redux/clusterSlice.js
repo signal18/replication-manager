@@ -925,10 +925,10 @@ export const setAsIgnored = createGuardedAsyncThunk('cluster/setAsIgnored', asyn
 
 export const reseedLogicalFromBackup = createGuardedAsyncThunk(
   'cluster/reseedLogicalFromBackup',
-  async ({ clusterName, serverId }, thunkAPI) => {
+  async ({ clusterName, serverId, options }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.reseedLogicalFromBackup(clusterName, serverId, baseURL)
+      const { data, status } = await clusterService.reseedLogicalFromBackup(clusterName, serverId, options, baseURL)
       showSuccessBanner('Reseed logical from backup successful!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -955,14 +955,29 @@ export const reseedLogicalFromMaster = createGuardedAsyncThunk(
 
 export const reseedPhysicalFromBackup = createGuardedAsyncThunk(
   'cluster/reseedPhysicalFromBackup',
-  async ({ clusterName, serverId }, thunkAPI) => {
+  async ({ clusterName, serverId, options }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.reseedPhysicalFromBackup(clusterName, serverId, baseURL)
+      const { data, status } = await clusterService.reseedPhysicalFromBackup(clusterName, serverId, options, baseURL)
       showSuccessBanner('Reseed physical from backup successful!', status, thunkAPI)
       return { data, status }
     } catch (error) {
       showErrorBanner('Reseed physical from backup failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const pitrRestore = createGuardedAsyncThunk(
+  'cluster/pitrRestore',
+  async ({ clusterName, serverId, pitrData }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.pitrRestore(clusterName, serverId, pitrData, baseURL)
+      showSuccessBanner('Point-in-time recovery initiated successfully!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Point-in-time recovery failed!', error, thunkAPI)
       return handleError(error, thunkAPI)
     }
   }
@@ -2195,6 +2210,7 @@ export const clusterSlice = createSlice({
         reseedLogicalFromBackup.pending,
         reseedLogicalFromMaster.pending,
         reseedPhysicalFromBackup.pending,
+        pitrRestore.pending,
         flushLogs.pending,
         physicalBackupMaster.pending,
         logicalBackup.pending,
@@ -2269,6 +2285,7 @@ export const clusterSlice = createSlice({
         reseedLogicalFromBackup.fulfilled,
         reseedLogicalFromMaster.fulfilled,
         reseedPhysicalFromBackup.fulfilled,
+        pitrRestore.fulfilled,
         flushLogs.fulfilled,
         physicalBackupMaster.fulfilled,
         logicalBackup.fulfilled,
@@ -2344,6 +2361,7 @@ export const clusterSlice = createSlice({
         reseedLogicalFromBackup.rejected,
         reseedLogicalFromMaster.rejected,
         reseedPhysicalFromBackup.rejected,
+        pitrRestore.rejected,
         flushLogs.rejected,
         physicalBackupMaster.rejected,
         logicalBackup.rejected,

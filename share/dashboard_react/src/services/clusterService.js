@@ -76,6 +76,7 @@ export const clusterService = {
   reseedLogicalFromBackup,
   reseedLogicalFromMaster,
   reseedPhysicalFromBackup,
+  pitrRestore,
   flushLogs,
   physicalBackupMaster,
   logicalBackup,
@@ -398,16 +399,22 @@ function setAsIgnored(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/set-ignored`)
 }
 
-function reseedLogicalFromBackup(clusterName, serverId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/reseed/logicalbackup`)
+function reseedLogicalFromBackup(clusterName, serverId, options = {}, baseURL) {
+  const query = buildBackupQuery(options)
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/reseed/logicalbackup${query}`)
 }
 
 function reseedLogicalFromMaster(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/reseed/logicalmaster`)
 }
 
-function reseedPhysicalFromBackup(clusterName, serverId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/reseed/physicalbackup`)
+function reseedPhysicalFromBackup(clusterName, serverId, options = {}, baseURL) {
+  const query = buildBackupQuery(options)
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/reseed/physicalbackup${query}`)
+}
+
+function pitrRestore(clusterName, serverId, pitrData, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/pitr`, pitrData)
 }
 
 function flushLogs(clusterName, serverId, baseURL) {

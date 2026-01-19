@@ -1,8 +1,9 @@
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import {
   FormControl,
   FormLabel,
   HStack,
+  Input,
   Modal,
   ModalBody,
   ModalCloseButton,
@@ -14,6 +15,7 @@ import {
   NumberInputField,
   Radio,
   RadioGroup,
+  Select,
   Stack,
   Switch,
   Text
@@ -28,6 +30,7 @@ import {
   logicalBackup,
   optimizeServer,
   physicalBackupMaster,
+  pitrRestore,
   promoteToLeader,
   provisionDatabase,
   reseedLogicalFromBackup,
@@ -119,6 +122,7 @@ function ServerMenu({
 }) {
   const dispatch = useDispatch()
   const { theme } = useTheme()
+  const backupsList = useSelector((state) => state.cluster?.backups?.list)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
@@ -128,6 +132,14 @@ function ServerMenu({
   const [advancedBackupLine, setAdvancedBackupLine] = useState('default')
   const [advancedRetentionDays, setAdvancedRetentionDays] = useState(0)
   const [advancedResticEnabled, setAdvancedResticEnabled] = useState(Boolean(backupRestic))
+  const [isAdvancedReseedOpen, setIsAdvancedReseedOpen] = useState(false)
+  const [advancedReseedType, setAdvancedReseedType] = useState('logical')
+  const [advancedReseedSource, setAdvancedReseedSource] = useState('backup')
+  const [advancedReseedLine, setAdvancedReseedLine] = useState('default')
+  const [isPitrOpen, setIsPitrOpen] = useState(false)
+  const [pitrBackupId, setPitrBackupId] = useState('')
+  const [pitrRestoreTime, setPitrRestoreTime] = useState('')
+  const [pitrUseBinlog, setPitrUseBinlog] = useState(true)
 
   const getHref = useHref('/').replace(/\/+$/, '');
 
@@ -179,6 +191,61 @@ function ServerMenu({
       dispatch(logicalBackup({ clusterName, serverId: row.id, options }))
     }
     closeAdvancedBackupModal()
+  }
+
+  const openAdvancedReseedModal = () => {
+    setAdvancedReseedType('logical')
+    setAdvancedReseedSource('backup')
+    setAdvancedReseedLine('default')
+    setIsAdvancedReseedOpen(true)
+  }
+
+  const closeAdvancedReseedModal = () => {
+    setIsAdvancedReseedOpen(false)
+  }
+
+  const handleAdvancedReseed = () => {
+    const options = { line: advancedReseedLine }
+
+    if (advancedReseedSource === 'master') {
+      // Reseed from master (only for logical)
+      dispatch(reseedLogicalFromMaster({ clusterName, serverId: row.id }))
+    } else {
+      // Reseed from backup
+      if (advancedReseedType === 'physical') {
+        dispatch(reseedPhysicalFromBackup({ clusterName, serverId: row.id, options }))
+      } else {
+        dispatch(reseedLogicalFromBackup({ clusterName, serverId: row.id, options }))
+      }
+    }
+    closeAdvancedReseedModal()
+  }
+
+  const openPitrModal = () => {
+    // Get the most recent backup ID if available
+    if (backupsList && backupsList.length > 0) {
+      const serverBackups = backupsList.filter(b => b.server_id === row.id)
+      if (serverBackups.length > 0) {
+        setPitrBackupId(serverBackups[0].id?.toString() || '')
+      }
+    }
+    setPitrRestoreTime('')
+    setPitrUseBinlog(true)
+    setIsPitrOpen(true)
+  }
+
+  const closePitrModal = () => {
+    setIsPitrOpen(false)
+  }
+
+  const handlePitrRestore = () => {
+    const pitrData = {
+      Backup: parseInt(pitrBackupId, 10) || 0,
+      RestoreTime: pitrRestoreTime ? new Date(pitrRestoreTime).getTime() / 1000 : 0,
+      UseBinlog: pitrUseBinlog
+    }
+    dispatch(pitrRestore({ clusterName, serverId: row.id, pitrData }))
+    closePitrModal()
   }
 
   return (
@@ -297,44 +364,19 @@ function ServerMenu({
                     }
                   }
                 ]
-                : user?.grants['db-restore']
-                  ? [
-                    {
-                      name: 'Reseed Logical From Backup',
-                      onClick: () => {
-                        openConfirmModal()
-                        setConfirmTitle(
-                          `Confirm reseed with logical backup (${backupLogicalType}) for ${serverName}?`
-                        )
-                        setConfirmHandler(
-                          () => () => dispatch(reseedLogicalFromBackup({ clusterName, serverId: row.id }))
-                        )
-                      }
-                    },
-                    {
-                      name: 'Reseed Logical From Master',
-                      onClick: () => {
-                        openConfirmModal()
-                        setConfirmTitle(`Confirm reseed with ${backupLogicalType} for ${serverName}?`)
-                        setConfirmHandler(
-                          () => () => dispatch(reseedLogicalFromMaster({ clusterName, serverId: row.id }))
-                        )
-                      }
-                    },
-                    {
-                      name: 'Reseed Physical From Backup',
-                      onClick: () => {
-                        openConfirmModal()
-                        setConfirmTitle(
-                          `Confirm reseed with physical backup (${backupPhysicalType}) for ${serverName}?`
-                        )
-                        setConfirmHandler(
-                          () => () => dispatch(reseedPhysicalFromBackup({ clusterName, serverId: row.id }))
-                        )
-                      }
-                    }
-                  ]
-                  : []),
+                : []),
+              ...(clusterMasterId !== row.id && user?.grants['db-restore']
+                ? [
+                  {
+                    name: 'Advanced Reseed',
+                    onClick: () => openAdvancedReseedModal()
+                  },
+                  {
+                    name: 'Point-In-Time Recovery',
+                    onClick: () => openPitrModal()
+                  }
+                ]
+                : []),
               ...(user?.grants['db-backup']
                 ? [
                   {
@@ -656,6 +698,148 @@ function ServerMenu({
             </RMButton>
             <RMButton colorScheme='blue' size='medium' onClick={handleAdvancedBackup}>
               Start Backup
+            </RMButton>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+      <Modal isOpen={isAdvancedReseedOpen} onClose={closeAdvancedReseedModal} size='lg'>
+        <ModalOverlay />
+        <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
+          <ModalHeader>Advanced Reseed</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Stack spacing={4}>
+              <FormControl>
+                <FormLabel>Reseed type</FormLabel>
+                <RadioGroup value={advancedReseedType} onChange={(value) => {
+                  setAdvancedReseedType(value)
+                  // Reset source to backup when switching to physical (physical only supports backup source)
+                  if (value === 'physical') {
+                    setAdvancedReseedSource('backup')
+                  }
+                }}>
+                  <HStack spacing={4}>
+                    <Radio value='logical'>Logical ({backupLogicalType})</Radio>
+                    <Radio value='physical'>Physical ({backupPhysicalType})</Radio>
+                  </HStack>
+                </RadioGroup>
+              </FormControl>
+              <FormControl>
+                <FormLabel>Reseed source</FormLabel>
+                <RadioGroup value={advancedReseedSource} onChange={setAdvancedReseedSource}>
+                  <Stack spacing={2}>
+                    <Radio value='backup'>From Backup</Radio>
+                    <Radio value='master' isDisabled={advancedReseedType === 'physical'}>
+                      From Master {advancedReseedType === 'physical' && '(not available for physical)'}
+                    </Radio>
+                  </Stack>
+                </RadioGroup>
+                {advancedReseedSource === 'backup' && (
+                  <Text fontSize='sm' color='gray.500' mt={2}>
+                    Restore from a previously created backup.
+                  </Text>
+                )}
+                {advancedReseedSource === 'master' && (
+                  <Text fontSize='sm' color='gray.500' mt={2}>
+                    Create a fresh dump from the current master and restore it.
+                  </Text>
+                )}
+              </FormControl>
+              {advancedReseedSource === 'backup' && (
+                <FormControl>
+                  <FormLabel>Backup line</FormLabel>
+                  <RadioGroup value={advancedReseedLine} onChange={setAdvancedReseedLine}>
+                    <HStack spacing={4}>
+                      <Radio value='default'>Default line</Radio>
+                      <Radio value='adhoc'>Ad-hoc</Radio>
+                    </HStack>
+                  </RadioGroup>
+                  {advancedReseedLine === 'default' ? (
+                    <Text fontSize='sm' color='gray.500' mt={2}>
+                      Restore from the default backup line (latest default backup).
+                    </Text>
+                  ) : (
+                    <Text fontSize='sm' color='blue.500' mt={2}>
+                      Restore from the most recent ad-hoc backup.
+                    </Text>
+                  )}
+                </FormControl>
+              )}
+            </Stack>
+          </ModalBody>
+          <ModalFooter gap={3}>
+            <RMButton variant='outline' colorScheme='white' size='medium' onClick={closeAdvancedReseedModal}>
+              Cancel
+            </RMButton>
+            <RMButton colorScheme='blue' size='medium' onClick={handleAdvancedReseed}>
+              Start Reseed
+            </RMButton>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+      <Modal isOpen={isPitrOpen} onClose={closePitrModal} size='lg'>
+        <ModalOverlay />
+        <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
+          <ModalHeader>Point-In-Time Recovery (PITR)</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Stack spacing={4}>
+              <FormControl isRequired>
+                <FormLabel>Select Backup</FormLabel>
+                <Select 
+                  placeholder='Select a backup to restore from' 
+                  value={pitrBackupId}
+                  onChange={(e) => setPitrBackupId(e.target.value)}
+                >
+                  {backupsList && backupsList
+                    .filter(backup => backup.server_id === row.id)
+                    .map(backup => (
+                      <option key={backup.id} value={backup.id}>
+                        {backup.backup_tool} - {new Date(backup.start_time * 1000).toLocaleString()} 
+                        {backup.backup_line ? ` (${backup.backup_line})` : ''}
+                      </option>
+                    ))
+                  }
+                </Select>
+                <Text fontSize='sm' color='gray.500' mt={2}>
+                  Select the backup to use as the base for point-in-time recovery.
+                </Text>
+              </FormControl>
+              <FormControl>
+                <FormLabel>Restore to Time (optional)</FormLabel>
+                <Input
+                  type='datetime-local'
+                  value={pitrRestoreTime}
+                  onChange={(e) => setPitrRestoreTime(e.target.value)}
+                  placeholder='Leave empty to restore to latest'
+                />
+                <Text fontSize='sm' color='gray.500' mt={2}>
+                  Specify a point in time to restore to. Leave empty to restore to the latest point available.
+                </Text>
+              </FormControl>
+              <FormControl display='flex' alignItems='center' justifyContent='space-between'>
+                <FormLabel mb='0'>Use Binary Logs</FormLabel>
+                <Switch 
+                  isChecked={pitrUseBinlog} 
+                  onChange={(e) => setPitrUseBinlog(e.target.checked)} 
+                />
+              </FormControl>
+              <Text fontSize='sm' color='blue.500'>
+                PITR will restore the selected backup and optionally apply binary logs up to the specified point in time.
+              </Text>
+            </Stack>
+          </ModalBody>
+          <ModalFooter gap={3}>
+            <RMButton variant='outline' colorScheme='white' size='medium' onClick={closePitrModal}>
+              Cancel
+            </RMButton>
+            <RMButton 
+              colorScheme='blue' 
+              size='medium' 
+              onClick={handlePitrRestore}
+              isDisabled={!pitrBackupId}
+            >
+              Start PITR
             </RMButton>
           </ModalFooter>
         </ModalContent>
