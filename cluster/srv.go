@@ -227,6 +227,7 @@ type ServerMonitor struct {
 	RestartRid                  string     // RestartRid stores rid parameter for restart cookie (owned by cookie mechanism, single writer assumption)
 	jobMutex                    sync.Mutex // protects IsRunningJobs flag
 	configGenMutex              sync.Mutex // protects config generation operations
+	backupMetaMutex             sync.Mutex // protects LastBackupMeta from concurrent Restic callback updates
 }
 
 type ServerBackupMeta struct {

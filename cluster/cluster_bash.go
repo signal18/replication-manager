@@ -219,7 +219,8 @@ func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, i
 				server.WriteBackupBinlogMetadata()
 				// Backup to restic when no error (defer to prevent unfinished physical copy)
 				backtype := "binlog"
-				defer server.BackupRestic(server.BuildResticTags(backtype, "")...)
+				// Use BackupMethodLogical for binlogs (metadata won't be updated, just snapshot created)
+				defer server.BackupRestic(backupmgr.BackupMethodLogical, false, server.GetMyBackupDirectory(), server.BuildResticTags(backtype, "", backupmgr.BackupLineDefault)...)
 			}
 		}
 

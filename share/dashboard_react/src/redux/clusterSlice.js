@@ -982,10 +982,10 @@ export const flushLogs = createGuardedAsyncThunk('cluster/flushLogs', async ({ c
 
 export const physicalBackupMaster = createGuardedAsyncThunk(
   'cluster/physicalBackupMaster',
-  async ({ clusterName, serverId }, thunkAPI) => {
+  async ({ clusterName, serverId, options }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.physicalBackupMaster(clusterName, serverId, baseURL)
+      const { data, status } = await clusterService.physicalBackupMaster(clusterName, serverId, options, baseURL)
       showSuccessBanner('Physical master backup successful!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -995,10 +995,10 @@ export const physicalBackupMaster = createGuardedAsyncThunk(
   }
 )
 
-export const logicalBackup = createGuardedAsyncThunk('cluster/logicalBackup', async ({ clusterName, serverId }, thunkAPI) => {
+export const logicalBackup = createGuardedAsyncThunk('cluster/logicalBackup', async ({ clusterName, serverId, options }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await clusterService.logicalBackup(clusterName, serverId, baseURL)
+    const { data, status } = await clusterService.logicalBackup(clusterName, serverId, options, baseURL)
     showSuccessBanner('Logical backup successful!', status, thunkAPI)
     return { data, status }
   } catch (error) {

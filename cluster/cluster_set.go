@@ -2018,6 +2018,14 @@ func (cluster *Cluster) SetInResticBackupState(value bool) {
 	cluster.InResticBackup = value
 }
 
+func (cluster *Cluster) SetInResticLogicalBackupState(value bool) {
+	cluster.InResticLogicalBackup = value
+}
+
+func (cluster *Cluster) SetInResticPhysicalBackupState(value bool) {
+	cluster.InResticPhysicalBackup = value
+}
+
 func (cluster *Cluster) SetGraphiteWhitelistTemplate(value string) {
 	cluster.Conf.GraphiteWhitelistTemplate = value
 }

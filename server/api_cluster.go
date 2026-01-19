@@ -4959,6 +4959,9 @@ func (repman *ReplicationManager) handlerMuxClusterStatus(w http.ResponseWriter,
 // @Accept json
 // @Produce json
 // @Param clusterName path string true "Cluster Name"
+// @Param line query string false "Backup line: default or adhoc"
+// @Param retention-days query int false "Retention days for ad-hoc backups"
+// @Param restic query bool false "Override restic usage for this backup"
 // @Success 200 {string} string "Successfully triggered physical backup"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 400 {string} string "No cluster found"
@@ -4972,8 +4975,13 @@ func (repman *ReplicationManager) handlerMuxClusterMasterPhysicalBackup(w http.R
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
+		opts, err := parseBackupRunOptions(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
-		mycluster.GetMaster().JobBackupPhysical()
+		mycluster.GetMaster().JobBackupPhysicalWithOptions(opts)
 	} else {
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, "No cluster found:"+vars["clusterName"])

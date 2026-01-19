@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -569,7 +570,18 @@ func (cluster *Cluster) IsVariableServerLevel(v string) bool {
 }
 
 func (cluster *Cluster) IsInBackup() bool {
-	return cluster.InPhysicalBackup || cluster.InLogicalBackup || cluster.InBinlogBackup || cluster.InResticBackup
+	return cluster.InPhysicalBackup || cluster.InLogicalBackup || cluster.InBinlogBackup || cluster.InResticBackup || cluster.InResticLogicalBackup || cluster.InResticPhysicalBackup
+}
+
+func (cluster *Cluster) IsInResticBackupForMethod(method backupmgr.BackupMethod) bool {
+	switch method {
+	case backupmgr.BackupMethodLogical:
+		return cluster.InResticLogicalBackup
+	case backupmgr.BackupMethodPhysical:
+		return cluster.InResticPhysicalBackup
+	default:
+		return false
+	}
 }
 
 func (cluster *Cluster) HasWaitDBACredCookie() bool {

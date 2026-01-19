@@ -137,9 +137,10 @@ type ResticLsEntry struct {
 
 // ResticResult holds the output or error of a task
 type ResticResult struct {
-	TaskID   int
-	TaskType TaskType
-	Error    error
+	TaskID     int
+	TaskType   TaskType
+	Error      error
+	SnapshotID string // Snapshot ID returned from backup operation
 }
 
 // ResticPurgeOption holds the configuration for purge
@@ -485,13 +486,20 @@ func (repo *ResticManager) worker() {
 			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		case BackupTask:
 			var err error
+			var snapshotID string
 			if task.BackupOpt != nil {
-				err = repo.BackupWithOptions(*task.BackupOpt)
+				snapshotID, err = repo.BackupWithOptions(*task.BackupOpt)
+				if err == nil && snapshotID != "" {
+					// Store snapshot ID in result for retrieval
+					result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err, SnapshotID: snapshotID}
+				} else {
+					result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
+				}
 			} else {
 				err = errors.New("BackupTask requires BackupOpt to be set")
+				result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 			}
 			_ = repo.FetchRepo()
-			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		case UnlockTask:
 			err := repo.UnlockRepo()
 			_ = repo.FetchRepo()
@@ -531,10 +539,30 @@ func (repo *ResticManager) worker() {
 		}
 
 		if task.resultCh != nil {
-			select {
-			case task.resultCh <- result:
-			default:
+			// CRITICAL FIX: Always send result with timeout to prevent goroutine hangs
+			// The receiver goroutine in BackupRestic() is waiting on this channel
+			// If we use 'default' and skip sending, the receiver gets zero value on close
+			sendResult := func() {
+				select {
+				case task.resultCh <- result:
+					// Success - result delivered
+				case <-time.After(5 * time.Second):
+					// Timeout - receiver may be gone (e.g., during shutdown)
+					repo.Printf(logrus.WarnLevel,
+						"Timeout sending result for task %d (receiver may be gone)", task.ID)
+					// Try to send error result as fallback
+					select {
+					case task.resultCh <- ResticResult{
+						TaskID:   task.ID,
+						TaskType: task.Type,
+						Error:    fmt.Errorf("result delivery timeout"),
+					}:
+					default:
+						// Give up if channel is full
+					}
+				}
 			}
+			sendResult()
 			close(task.resultCh)
 		}
 
@@ -1017,17 +1045,29 @@ func (repo *ResticManager) appendPurgeTask(opt ResticPurgeOption) {
 }
 
 func (repo *ResticManager) AddBackupTask(dirpath string, tags []string) {
-	task := ResticTask{
+	repo.appendTask(&ResticTask{
 		ID:   repo.GenerateTaskID(),
 		Type: BackupTask,
 		BackupOpt: &ResticBackupOption{
 			DirPath: dirpath,
 			Tags:    tags,
 		},
-	}
+	})
+}
 
-	// Add task to slice
-	repo.appendTask(&task)
+// AddBackupTaskWithCallback adds a backup task and returns a channel to receive the result
+func (repo *ResticManager) AddBackupTaskWithCallback(dirpath string, tags []string) <-chan ResticResult {
+	resultCh := make(chan ResticResult, 1)
+	repo.appendTask(&ResticTask{
+		ID:   repo.GenerateTaskID(),
+		Type: BackupTask,
+		BackupOpt: &ResticBackupOption{
+			DirPath: dirpath,
+			Tags:    tags,
+		},
+		resultCh: resultCh,
+	})
+	return resultCh
 }
 
 func (repo *ResticManager) AddUnlockTask() {
@@ -1662,15 +1702,34 @@ func (repo *ResticManager) PurgeRepo(opt ResticPurgeOption) error {
 }
 
 // Backup is a backward-compatible wrapper. New code should use BackupWithOptions
-func (repo *ResticManager) Backup(dirpath string, tags []string) error {
+func (repo *ResticManager) Backup(dirpath string, tags []string) (string, error) {
 	return repo.BackupWithOptions(ResticBackupOption{
 		DirPath: dirpath,
 		Tags:    tags,
 	})
 }
 
+// ResticBackupSummary represents the JSON summary output from restic backup
+type ResticBackupSummary struct {
+	MessageType         string  `json:"message_type"`
+	FilesNew            int     `json:"files_new"`
+	FilesChanged        int     `json:"files_changed"`
+	FilesUnmodified     int     `json:"files_unmodified"`
+	DirsNew             int     `json:"dirs_new"`
+	DirsChanged         int     `json:"dirs_changed"`
+	DirsUnmodified      int     `json:"dirs_unmodified"`
+	DataBlobs           int     `json:"data_blobs"`
+	TreeBlobs           int     `json:"tree_blobs"`
+	DataAdded           int64   `json:"data_added"`
+	TotalFilesProcessed int     `json:"total_files_processed"`
+	TotalBytesProcessed int64   `json:"total_bytes_processed"`
+	TotalDuration       float64 `json:"total_duration"`
+	SnapshotID          string  `json:"snapshot_id"`
+}
+
 // BackupWithOptions performs backup with full options support
-func (repo *ResticManager) BackupWithOptions(opt ResticBackupOption) error {
+// Returns the snapshot ID if successful
+func (repo *ResticManager) BackupWithOptions(opt ResticBackupOption) (string, error) {
 	if !repo.GetCanFetch() {
 		time.Sleep(time.Second)
 		return repo.BackupWithOptions(opt)
@@ -1680,7 +1739,7 @@ func (repo *ResticManager) BackupWithOptions(opt ResticBackupOption) error {
 	defer repo.SetCanFetch(true)
 
 	// Prepare the arguments for the "backup" command
-	args := []string{"backup"}
+	args := []string{"backup", "--json"}
 
 	// Add tags
 	for _, tag := range opt.Tags {
@@ -1765,14 +1824,109 @@ func (repo *ResticManager) BackupWithOptions(opt ResticBackupOption) error {
 	// Add the directory path
 	args = append(args, opt.DirPath)
 
-	// Execute the Restic "backup" command using RunCommand
-	_, stderr, err := repo.RunCommand(args, logrus.InfoLevel, false)
+	// Execute the Restic "backup" command with streaming to minimize memory usage
+	lastLine, stderr, err := repo.runBackupCommand(args)
 	if err != nil {
 		// Handle error (including stderr)
-		return fmt.Errorf("failed to backup repo: %v, stderr: %s", err, stderr)
+		return "", fmt.Errorf("failed to backup repo: %v, stderr: %s", err, stderr)
 	}
 
-	return nil
+	// Parse the last JSON line to extract snapshot ID
+	snapshotID := repo.parseBackupSummary(lastLine)
+
+	return snapshotID, nil
+}
+
+// runBackupCommand executes restic backup and streams output, only keeping the last line
+// This minimizes memory usage for large backups that produce many JSON status lines
+func (repo *ResticManager) runBackupCommand(args []string) ([]byte, []byte, error) {
+	cmd := exec.Command(repo.BinaryPath, args...)
+	cmd.Env = append(os.Environ(), repo.Env...)
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+
+	repo.Printf(logrus.InfoLevel, "Starting command: %s %v", repo.BinaryPath, args)
+
+	if err := cmd.Start(); err != nil {
+		return nil, nil, fmt.Errorf("error starting command: %w", err)
+	}
+
+	// Stream stdout line-by-line, keeping only the last non-empty line (the summary)
+	var lastLine []byte
+	var stderrBuf bytes.Buffer
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Stream stdout and keep only the last line
+	go func() {
+		defer wg.Done()
+		scanner := bufio.NewScanner(stdoutPipe)
+		for scanner.Scan() {
+			line := scanner.Bytes()
+			// Log for debugging, but don't accumulate in memory
+			repo.Print(logrus.DebugLevel, "[OUT] "+string(line))
+			// Only keep the last non-empty line
+			if len(bytes.TrimSpace(line)) > 0 {
+				lastLine = append([]byte(nil), line...) // Copy the line
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			repo.Printf(logrus.ErrorLevel, "[OUT] Error reading output: %v", err)
+		}
+	}()
+
+	// Capture stderr for error reporting
+	go func() {
+		defer wg.Done()
+		scanner := bufio.NewScanner(stderrPipe)
+		for scanner.Scan() {
+			line := scanner.Text()
+			repo.Print(logrus.DebugLevel, "[ERR] "+line)
+			stderrBuf.WriteString(line + "\n")
+		}
+		if err := scanner.Err(); err != nil {
+			repo.Printf(logrus.ErrorLevel, "[ERR] Error reading output: %v", err)
+		}
+	}()
+
+	wg.Wait()
+
+	if err := cmd.Wait(); err != nil {
+		return lastLine, stderrBuf.Bytes(), fmt.Errorf("command execution failed: %w", err)
+	}
+
+	repo.Printf(logrus.InfoLevel, "Command completed successfully: %s %v", repo.BinaryPath, args)
+
+	return lastLine, stderrBuf.Bytes(), nil
+}
+
+// parseBackupSummary extracts the snapshot ID from restic backup JSON summary line
+func (repo *ResticManager) parseBackupSummary(summaryLine []byte) string {
+	if len(summaryLine) == 0 {
+		repo.Printf(logrus.WarnLevel, "No summary line found in backup output")
+		return ""
+	}
+
+	var summary ResticBackupSummary
+	if err := json.Unmarshal(summaryLine, &summary); err != nil {
+		repo.Printf(logrus.WarnLevel, "Failed to parse backup summary: %v", err)
+		return ""
+	}
+
+	if summary.MessageType == "summary" && summary.SnapshotID != "" {
+		repo.Printf(logrus.InfoLevel, "Backup completed: snapshot %s created", summary.SnapshotID[:8])
+		return summary.SnapshotID
+	}
+
+	repo.Printf(logrus.WarnLevel, "Could not extract snapshot ID from backup summary")
+	return ""
 }
 
 func (repo *ResticManager) CheckResticLocks() error {

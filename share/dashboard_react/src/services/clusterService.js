@@ -414,12 +414,29 @@ function flushLogs(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/flush-logs`)
 }
 
-function physicalBackupMaster(clusterName, serverId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/backup-physical`)
+function buildBackupQuery(options = {}) {
+  const params = new URLSearchParams()
+  if (options?.line) {
+    params.set('line', options.line)
+  }
+  if (Number.isFinite(options?.retentionDays) && options.retentionDays > 0) {
+    params.set('retention-days', options.retentionDays)
+  }
+  if (typeof options?.restic === 'boolean') {
+    params.set('restic', options.restic)
+  }
+  const query = params.toString()
+  return query ? `?${query}` : ''
 }
 
-function logicalBackup(clusterName, serverId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/backup-logical`)
+function physicalBackupMaster(clusterName, serverId, options = {}, baseURL) {
+  const query = buildBackupQuery(options)
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/backup-physical${query}`)
+}
+
+function logicalBackup(clusterName, serverId, options = {}, baseURL) {
+  const query = buildBackupQuery(options)
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/backup-logical${query}`)
 }
 
 function stopDatabase(clusterName, serverId, baseURL) {

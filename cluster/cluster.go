@@ -233,7 +233,9 @@ type Cluster struct {
 	InPhysicalBackup       bool                        `json:"inPhysicalBackup" groups:"web"`
 	InLogicalBackup        bool                        `json:"inLogicalBackup" groups:"web"`
 	InBinlogBackup         bool                        `json:"inBinlogBackup" groups:"web"`
-	InResticBackup         bool                        `json:"inResticBackup" groups:"web"`
+	InResticBackup         bool                        `json:"inResticBackup" groups:"web"`         // Generic Restic flag
+	InResticLogicalBackup  bool                        `json:"inResticLogicalBackup" groups:"web"`  // Restic backup of logical backup in progress
+	InResticPhysicalBackup bool                        `json:"inResticPhysicalBackup" groups:"web"` // Restic backup of physical backup in progress
 	InRollingRestart       bool                        `json:"inRollingRestart" groups:"web"`
 	failLoadP12Cert        bool                        `json:"-"`
 	Mailer                 *mailer.Mailer              `json:"-"`
@@ -807,6 +809,7 @@ func (cluster *Cluster) Run() {
 							// Set in parallel since it will wait for fetch to finish
 							go cluster.RefreshAllAppTemplateMD5()
 							cluster.ResticPurgeRepo(false)
+							cluster.PurgeExpiredAdhocBackups()
 							cluster.RefreshToolVersions()
 							cluster.CheckBackupToolVersions()
 						} else {

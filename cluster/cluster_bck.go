@@ -177,6 +177,7 @@ func (cluster *Cluster) ResticPurgeRepo(now bool) error {
 			KeepWithinWeekly:  cluster.Conf.BackupKeepWithinWeekly,
 			KeepWithinMonthly: cluster.Conf.BackupKeepWithinMonthly,
 			KeepWithinYearly:  cluster.Conf.BackupKeepWithinYearly,
+			KeepTag:           []string{fmt.Sprintf("line:%s", backupmgr.BackupLineAdhoc)},
 			GroupBy:           groupBy,
 			Prune:             true,
 		}, now)
@@ -719,7 +720,7 @@ func normalizeResticPurgeGroupBy(value string) (string, error) {
 	return strings.Join(groupBy, ","), nil
 }
 
-func (server *ServerMonitor) BuildResticTags(backupType, backupTool string) []string {
+func (server *ServerMonitor) BuildResticTags(backupType, backupTool, backupLine string) []string {
 	cluster := server.ClusterGroup
 	categories := parseResticTagCategories(cluster.Conf.BackupResticTagCategories)
 	if len(categories) == 0 {
@@ -741,6 +742,11 @@ func (server *ServerMonitor) BuildResticTags(backupType, backupTool string) []st
 		if value != "" {
 			tags = append(tags, fmt.Sprintf("%s:%s", category, value))
 		}
+	}
+
+	lineTag := strings.TrimSpace(backupLine)
+	if lineTag != "" {
+		tags = append(tags, fmt.Sprintf("line:%s", lineTag))
 	}
 	return tags
 }

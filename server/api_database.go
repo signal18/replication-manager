@@ -1128,6 +1128,9 @@ func (repman *ReplicationManager) handlerMuxServerStop(w http.ResponseWriter, r 
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
+// @Param line query string false "Backup line: default or adhoc"
+// @Param retention-days query int false "Retention days for ad-hoc backups"
+// @Param restic query bool false "Override restic usage for this backup"
 // @Success 200 {string} string "Backup initiated successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
@@ -1141,9 +1144,14 @@ func (repman *ReplicationManager) handlerMuxServerBackupPhysical(w http.Response
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
+		opts, err := parseBackupRunOptions(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			node.JobBackupPhysical()
+			node.JobBackupPhysicalWithOptions(opts)
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
@@ -1162,6 +1170,9 @@ func (repman *ReplicationManager) handlerMuxServerBackupPhysical(w http.Response
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
+// @Param line query string false "Backup line: default or adhoc"
+// @Param retention-days query int false "Retention days for ad-hoc backups"
+// @Param restic query bool false "Override restic usage for this backup"
 // @Success 200 {string} string "Backup initiated successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
@@ -1175,9 +1186,14 @@ func (repman *ReplicationManager) handlerMuxServerBackupLogical(w http.ResponseW
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
+		opts, err := parseBackupRunOptions(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			go node.JobBackupLogical()
+			go node.JobBackupLogicalWithOptions(opts)
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
@@ -3078,6 +3094,9 @@ func (repman *ReplicationManager) handlerMuxServersPortIsSlaveStatus(w http.Resp
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
 // @Param serverPort path string true "Server Port"
+// @Param line query string false "Backup line: default or adhoc"
+// @Param retention-days query int false "Retention days for ad-hoc backups"
+// @Param restic query bool false "Override restic usage for this backup"
 // @Success 200 {string} string "Backup initiated successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
@@ -3091,9 +3110,14 @@ func (repman *ReplicationManager) handlerMuxServersPortBackup(w http.ResponseWri
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
+		opts, err := parseBackupRunOptions(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node.IsDown() == false && node.IsMaintenance == false {
-			go node.JobBackupPhysical()
+			go node.JobBackupPhysicalWithOptions(opts)
 			return
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)

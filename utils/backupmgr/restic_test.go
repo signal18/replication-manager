@@ -128,7 +128,7 @@ func newResticRepo(t *testing.T, withBackup bool) (*ResticManager, string, strin
 		if err := os.WriteFile(filepath.Join(dataDir, "file.txt"), []byte("payload"), 0644); err != nil {
 			t.Fatalf("write data file: %v", err)
 		}
-		if err := repo.Backup(dataDir, []string{"tag1"}); err != nil {
+		if _, err := repo.Backup(dataDir, []string{"tag1"}); err != nil {
 			t.Fatalf("backup: %v", err)
 		}
 		if err := repo.FetchRepo(); err != nil {
@@ -455,7 +455,7 @@ func TestPurgeAndBackupCommands(t *testing.T) {
 		t.Fatalf("purge single: %v", err)
 	}
 
-	if err := repo.Backup(dataDir, []string{"tag1"}); err != nil {
+	if _, err := repo.Backup(dataDir, []string{"tag1"}); err != nil {
 		t.Fatalf("backup: %v", err)
 	}
 

@@ -1,6 +1,26 @@
 import { useDispatch } from 'react-redux'
+import {
+  FormControl,
+  FormLabel,
+  HStack,
+  Modal,
+  ModalBody,
+  ModalCloseButton,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalOverlay,
+  NumberInput,
+  NumberInputField,
+  Radio,
+  RadioGroup,
+  Stack,
+  Switch,
+  Text
+} from '@chakra-ui/react'
 import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
+import RMButton from '../../../../components/RMButton'
 import {
   dropServer,
   flushLogs,
@@ -34,6 +54,8 @@ import {
 import { useState, useEffect, useCallback } from 'react'
 import { useHref } from 'react-router-dom'
 import { generateConfig } from '../../../../redux/configSlice'
+import { useTheme } from '../../../../ThemeProvider'
+import parentStyles from '../../../../components/Modals/styles.module.scss'
 
 // Constants
 const JOBS_CONTAINER_RID = 'container#jobs'
@@ -56,6 +78,7 @@ const JOBS_CONTAINER_RID = 'container#jobs'
  * @param {string} props.clusterMasterId - ID of the master server in the cluster
  * @param {string} props.backupPhysicalType - Physical backup type (e.g., 'xtrabackup', 'mariabackup')
  * @param {string} props.backupLogicalType - Logical backup type (e.g., 'mysqldump', 'mydumper')
+ * @param {boolean} props.backupRestic - Whether restic backups are enabled
  * @param {string} props.orchestrator - Orchestrator type (e.g., 'opensvc', 'kubernetes')
  * @param {Object} props.row - Server data object
  * @param {string} props.row.id - Server ID
@@ -63,6 +86,7 @@ const JOBS_CONTAINER_RID = 'container#jobs'
  * @param {number} props.row.port - Server port
  * @param {boolean} props.row.isSlave - Whether server is a slave
  * @param {boolean} props.row.prefered - Whether server is marked as preferred for failover
+ * @param {boolean} props.row.preferedBackup - Whether server is the preferred backup server
  * @param {boolean} props.row.ignored - Whether server is ignored for failover
  * @param {Object} props.user - User object with permission grants
  * @param {Object} props.user.grants - User permission grants object
@@ -81,6 +105,7 @@ function ServerMenu({
   clusterMasterId,
   backupPhysicalType,
   backupLogicalType,
+  backupRestic,
   orchestrator,
   row,
   user,
@@ -93,10 +118,16 @@ function ServerMenu({
   showTerminal = false
 }) {
   const dispatch = useDispatch()
+  const { theme } = useTheme()
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [serverName, setServerName] = useState('')
+  const [isAdvancedBackupOpen, setIsAdvancedBackupOpen] = useState(false)
+  const [advancedBackupType, setAdvancedBackupType] = useState('logical')
+  const [advancedBackupLine, setAdvancedBackupLine] = useState('default')
+  const [advancedRetentionDays, setAdvancedRetentionDays] = useState(0)
+  const [advancedResticEnabled, setAdvancedResticEnabled] = useState(Boolean(backupRestic))
 
   const getHref = useHref('/').replace(/\/+$/, '');
 
@@ -118,6 +149,36 @@ function ServerMenu({
     setIsConfirmModalOpen(false)
     setConfirmHandler(null)
     setConfirmTitle('')
+  }
+
+  const openAdvancedBackupModal = () => {
+    const canUseDefaultLine = row?.preferedBackup || clusterMasterId === row?.id
+    setAdvancedBackupType('logical')
+    setAdvancedBackupLine(canUseDefaultLine ? 'default' : 'adhoc')
+    setAdvancedRetentionDays(0)
+    setAdvancedResticEnabled(Boolean(backupRestic))
+    setIsAdvancedBackupOpen(true)
+  }
+
+  const closeAdvancedBackupModal = () => {
+    setIsAdvancedBackupOpen(false)
+  }
+
+  const handleAdvancedBackup = () => {
+    const options = { line: advancedBackupLine }
+    if (advancedBackupLine === 'adhoc' && advancedRetentionDays > 0) {
+      options.retentionDays = advancedRetentionDays
+    }
+    if (advancedBackupLine === 'adhoc' && backupRestic) {
+      options.restic = advancedResticEnabled
+    }
+
+    if (advancedBackupType === 'physical') {
+      dispatch(physicalBackupMaster({ clusterName, serverId: row.id, options }))
+    } else {
+      dispatch(logicalBackup({ clusterName, serverId: row.id, options }))
+    }
+    closeAdvancedBackupModal()
   }
 
   return (
@@ -276,6 +337,10 @@ function ServerMenu({
                   : []),
               ...(user?.grants['db-backup']
                 ? [
+                  {
+                    name: 'Advanced Backup',
+                    onClick: () => openAdvancedBackupModal()
+                  },
                   {
                     name: 'Flush logs',
                     onClick: () => {
@@ -512,6 +577,89 @@ function ServerMenu({
           }}
         />
       )}
+      <Modal isOpen={isAdvancedBackupOpen} onClose={closeAdvancedBackupModal} size='lg'>
+        <ModalOverlay />
+        <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
+          <ModalHeader>Advanced Backup</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Stack spacing={4}>
+              <FormControl>
+                <FormLabel>Backup type</FormLabel>
+                <RadioGroup value={advancedBackupType} onChange={setAdvancedBackupType}>
+                  <HStack spacing={4}>
+                    <Radio value='logical'>Logical ({backupLogicalType})</Radio>
+                    <Radio value='physical'>Physical ({backupPhysicalType})</Radio>
+                  </HStack>
+                </RadioGroup>
+              </FormControl>
+              <FormControl>
+                <FormLabel>Backup line</FormLabel>
+                {(row?.preferedBackup || clusterMasterId === row?.id) ? (
+                  <>
+                    <RadioGroup value={advancedBackupLine} onChange={setAdvancedBackupLine}>
+                      <HStack spacing={4}>
+                        <Radio value='default'>Default line</Radio>
+                        <Radio value='adhoc'>Ad-hoc</Radio>
+                      </HStack>
+                    </RadioGroup>
+                    {advancedBackupLine === 'default' ? (
+                      <Text fontSize='sm' color='gray.500'>
+                        Default line backup replaces the previous default backup file.
+                      </Text>
+                    ) : (
+                      <Text fontSize='sm' color='blue.500'>
+                        Ad-hoc backups are stored independently with timestamped filenames and can use per-backup retention.
+                      </Text>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <RadioGroup value='adhoc' isDisabled>
+                      <HStack spacing={4}>
+                        <Radio value='adhoc' isChecked>Ad-hoc (forced)</Radio>
+                      </HStack>
+                    </RadioGroup>
+                    <Text fontSize='sm' color='orange.500' mt={2}>
+                      Only preferred backup server or master can use default line. Ad-hoc backups are stored independently with timestamped filenames.
+                    </Text>
+                  </>
+                )}
+              </FormControl>
+              {advancedBackupLine === 'adhoc' && (
+                <>
+                  <FormControl>
+                    <FormLabel>Retention days</FormLabel>
+                    <NumberInput
+                      min={0}
+                      step={1}
+                      precision={0}
+                      value={advancedRetentionDays}
+                      onChange={(_, valueNumber) => setAdvancedRetentionDays(Number.isNaN(valueNumber) ? 0 : valueNumber)}
+                    >
+                      <NumberInputField placeholder='0 = keep indefinitely' />
+                    </NumberInput>
+                  </FormControl>
+                  {backupRestic && (
+                    <FormControl display='flex' alignItems='center' justifyContent='space-between'>
+                      <FormLabel mb='0'>Backup to Restic</FormLabel>
+                      <Switch isChecked={advancedResticEnabled} onChange={(event) => setAdvancedResticEnabled(event.target.checked)} />
+                    </FormControl>
+                  )}
+                </>
+              )}
+            </Stack>
+          </ModalBody>
+          <ModalFooter gap={3}>
+            <RMButton variant='outline' colorScheme='white' size='medium' onClick={closeAdvancedBackupModal}>
+              Cancel
+            </RMButton>
+            <RMButton colorScheme='blue' size='medium' onClick={handleAdvancedBackup}>
+              Start Backup
+            </RMButton>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </>
   )
 }

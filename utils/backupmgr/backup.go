@@ -24,6 +24,11 @@ const (
 	BackupStrategyDifferential = 3
 )
 
+const (
+	BackupLineDefault = "default"
+	BackupLineAdhoc   = "adhoc"
+)
+
 type BackupMetadata struct {
 	Id                int64          `json:"id"`
 	StartTime         time.Time      `json:"startTime"`
@@ -42,12 +47,17 @@ type BackupMetadata struct {
 	EncryptionKey     string         `json:"encryptionKey"`
 	Checksum          string         `json:"checksum"`
 	RetentionDays     int            `json:"retentionDays"`
+	BackupLine        string         `json:"backupLine,omitempty"`
+	MetaFile          string         `json:"metaFile,omitempty"`
 	BinLogFileName    string         `json:"binLogFileName"`
 	BinLogFilePos     uint64         `json:"binLogFilePos"`
 	BinLogGtid        string         `json:"binLogUuid"`
 	Completed         bool           `json:"completed"`
 	SplitUser         bool           `json:"splitUser"`
 	Previous          int64          `json:"previous"`
+	ResticEnabled     bool           `json:"resticEnabled,omitempty"`
+	ResticSnapshotID  string         `json:"resticSnapshotID"`
+	ResticFilePath    string         `json:"resticFilePath"`
 }
 
 type PointInTimeMeta struct {
@@ -70,6 +80,16 @@ func (bm *BackupMetadata) GetSizeAndFileCount() error {
 	bm.Size = size
 	bm.FileCount = fileCount
 	return err
+}
+
+func (bm *BackupMetadata) IsAdhoc() bool {
+	if bm == nil {
+		return false
+	}
+	if bm.BackupLine == BackupLineAdhoc {
+		return true
+	}
+	return bm.RetentionDays > 0
 }
 
 type ReadBinaryLogsBoundary struct {
@@ -207,6 +227,9 @@ func (b *BackupMetaMap) GetPreviousBackup(backupTool string, source string) *Bac
 	var result *BackupMetadata
 	b.Map.Range(func(key, value interface{}) bool {
 		if backup, ok := value.(*BackupMetadata); ok {
+			if backup.IsAdhoc() {
+				return true
+			}
 			if backup.BackupTool == backupTool && backup.Source == source {
 				result = backup
 				return false

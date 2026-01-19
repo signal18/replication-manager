@@ -81,6 +81,7 @@ function DBServers({ selectedCluster, user }) {
               clusterMasterId={clusterMaster?.id}
               backupLogicalType={selectedCluster?.config?.backupLogicalType}
               backupPhysicalType={selectedCluster?.config?.backupPhysicalType}
+              backupRestic={selectedCluster?.config?.backupRestic}
               orchestrator={selectedCluster?.config?.provOrchestrator}
               row={row}
               user={user}
@@ -269,6 +270,7 @@ function DBServers({ selectedCluster, user }) {
       selectedCluster?.name,
       selectedCluster?.config?.backupPhysicalType,
       selectedCluster?.config?.backupLogicalType,
+      selectedCluster?.config?.backupRestic,
       clusterStates,
     ]
   )
@@ -284,6 +286,7 @@ function DBServers({ selectedCluster, user }) {
           clusterName={selectedCluster?.name}
           backupLogicalType={selectedCluster?.config?.backupLogicalType}
           backupPhysicalType={selectedCluster?.config?.backupPhysicalType}
+          backupRestic={selectedCluster?.config?.backupRestic}
           orchestrator={selectedCluster?.config?.provOrchestrator}
           user={user}
           showTableView={showTableView}
