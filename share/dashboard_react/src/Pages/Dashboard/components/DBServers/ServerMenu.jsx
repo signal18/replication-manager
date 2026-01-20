@@ -386,10 +386,9 @@ function ServerMenu({
   const [advancedReseedResticMode, setAdvancedReseedResticMode] = useState('dump')
   const [advancedReseedResticInPlace, setAdvancedReseedResticInPlace] = useState(false)
   const [advancedReseedResticUseSourcePath, setAdvancedReseedResticUseSourcePath] = useState(false)
-  const [isPitrOpen, setIsPitrOpen] = useState(false)
   const [pitrBackupId, setPitrBackupId] = useState('')
   const [pitrRestoreTime, setPitrRestoreTime] = useState('')
-  const [pitrUseBinlog, setPitrUseBinlog] = useState(true)
+  const [pitrUseBinlog, setPitrUseBinlog] = useState(false)
 
   const getHref = useHref('/').replace(/\/+$/, '');
 
@@ -399,15 +398,6 @@ function ServerMenu({
     }
     return Array.isArray(backupsList) ? backupsList : Object.values(backupsList)
   }, [backupsList])
-
-  const serverBackupsForPitr = useMemo(() => {
-    if (!normalizedBackupsList.length) {
-      return []
-    }
-    const matching = normalizedBackupsList.filter((backup) => backupMatchesServer(backup, row))
-    const candidates = matching.length > 0 ? matching : normalizedBackupsList
-    return candidates.sort((a, b) => getBackupStartTimestampMs(b) - getBackupStartTimestampMs(a))
-  }, [normalizedBackupsList, row])
 
   const normalizedBackupLogicalType = useMemo(() => {
     return typeof backupLogicalType === 'string' ? backupLogicalType.toLowerCase() : ''
@@ -422,6 +412,13 @@ function ServerMenu({
     }
     return isResticMysqldump ? 'dump' : 'restore'
   }, [isResticPhysical, isResticMysqldump])
+
+  const normalizedReseedTool = useMemo(() => {
+    if (advancedReseedType === 'physical') {
+      return typeof backupPhysicalType === 'string' ? backupPhysicalType.toLowerCase() : ''
+    }
+    return normalizedBackupLogicalType
+  }, [advancedReseedType, backupPhysicalType, normalizedBackupLogicalType])
 
   const resticSnapshotsForReseed = useMemo(() => {
     if (!isAdvancedReseedOpen || !backupRestic || !Array.isArray(resticSnapshots)) {
@@ -497,6 +494,57 @@ function ServerMenu({
     const candidates = matching.length > 0 ? matching : filtered
     return candidates.sort((a, b) => getBackupStartTimestampMs(b) - getBackupStartTimestampMs(a))
   }, [normalizedBackupsList, advancedReseedType, row])
+
+  const defaultBackupsForReseed = useMemo(() => {
+    if (!normalizedBackupsList.length) {
+      return []
+    }
+    const expectedType = advancedReseedType === 'physical' ? 'physical' : 'logical'
+    const filtered = normalizedBackupsList.filter((backup) => {
+      if (!backup) {
+        return false
+      }
+      const line = getBackupLineValue(backup)
+      const isAdhoc = line === 'adhoc' || getBackupRetentionDays(backup) > 0
+      if (isAdhoc) {
+        return false
+      }
+      const methodType = getBackupMethodType(backup)
+      if (methodType && methodType !== expectedType) {
+        return false
+      }
+      const backupTool = getBackupToolValue(backup).toLowerCase()
+      if (normalizedReseedTool && backupTool && backupTool !== normalizedReseedTool) {
+        return false
+      }
+      return true
+    })
+    const matching = filtered.filter((backup) => backupMatchesServer(backup, row))
+    const candidates = matching.length > 0 ? matching : filtered
+    return candidates.sort((a, b) => getBackupStartTimestampMs(b) - getBackupStartTimestampMs(a))
+  }, [normalizedBackupsList, advancedReseedType, normalizedReseedTool, row])
+
+  const selectedReseedBackup = useMemo(() => {
+    if (advancedReseedLine === 'adhoc') {
+      return adhocBackupsForReseed.find(
+        (backup) => String(backup?.id ?? backup?.Id ?? '') === String(advancedReseedBackupId)
+      ) || null
+    }
+    return defaultBackupsForReseed[0] || null
+  }, [advancedReseedLine, adhocBackupsForReseed, advancedReseedBackupId, defaultBackupsForReseed])
+
+  const selectedReseedBackupLabel = useMemo(() => {
+    if (!selectedReseedBackup) {
+      return ''
+    }
+    const backupId = selectedReseedBackup?.id ?? selectedReseedBackup?.Id
+    const backupTool = getBackupToolValue(selectedReseedBackup) || 'backup'
+    const backupLine = getBackupLineValue(selectedReseedBackup)
+    const backupTime = getBackupStartTimestampMs(selectedReseedBackup)
+    const backupSource = normalizeBackupValue(selectedReseedBackup?.source ?? selectedReseedBackup?.Source)
+    const timeLabel = backupTime ? new Date(backupTime).toLocaleString() : 'Unknown time'
+    return `${backupTool} - ${timeLabel}${backupLine ? ` (${backupLine})` : ''}${backupSource ? ` [${backupSource}]` : ''}${backupId ? ` #${backupId}` : ''}`
+  }, [selectedReseedBackup])
 
   const selectedResticSnapshot = useMemo(() => {
     if (!advancedReseedResticSnapshot) {
@@ -617,11 +665,13 @@ function ServerMenu({
   }, [isAdvancedReseedOpen, backupRestic, clusterName, dispatch])
 
   useEffect(() => {
-    if (!isAdvancedReseedOpen || advancedReseedSource !== 'backup' || advancedReseedLine !== 'adhoc' || !clusterName) {
+    if (!isAdvancedReseedOpen || advancedReseedSource !== 'backup' || !clusterName) {
       return
     }
-    dispatch(getBackups({ clusterName }))
-  }, [isAdvancedReseedOpen, advancedReseedSource, advancedReseedLine, clusterName, dispatch])
+    if (advancedReseedLine === 'adhoc' || pitrUseBinlog) {
+      dispatch(getBackups({ clusterName }))
+    }
+  }, [isAdvancedReseedOpen, advancedReseedSource, advancedReseedLine, pitrUseBinlog, clusterName, dispatch])
 
   useEffect(() => {
     if (!isAdvancedReseedOpen || advancedReseedSource !== 'restic') {
@@ -738,6 +788,40 @@ function ServerMenu({
     advancedReseedBackupId
   ])
 
+  useEffect(() => {
+    if (advancedReseedSource !== 'backup' || !pitrUseBinlog) {
+      if (pitrBackupId !== '') {
+        setPitrBackupId('')
+      }
+      return
+    }
+    const nextId = selectedReseedBackup ? String(selectedReseedBackup?.id ?? selectedReseedBackup?.Id ?? '') : ''
+    if (!nextId) {
+      if (pitrBackupId !== '') {
+        setPitrBackupId('')
+      }
+      return
+    }
+    if (pitrBackupId !== nextId) {
+      setPitrBackupId(nextId)
+    }
+  }, [advancedReseedSource, pitrUseBinlog, selectedReseedBackup, pitrBackupId])
+
+  useEffect(() => {
+    if (advancedReseedSource === 'backup' && pitrUseBinlog) {
+      return
+    }
+    if (pitrRestoreTime !== '') {
+      setPitrRestoreTime('')
+    }
+  }, [advancedReseedSource, pitrUseBinlog, pitrRestoreTime])
+
+  useEffect(() => {
+    if (!pitrUseBinlog && pitrRestoreTime !== '') {
+      setPitrRestoreTime('')
+    }
+  }, [pitrUseBinlog, pitrRestoreTime])
+
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true)
   }
@@ -777,9 +861,9 @@ function ServerMenu({
     closeAdvancedBackupModal()
   }
 
-  const openAdvancedReseedModal = () => {
+  const openAdvancedReseedModal = (initialSource = 'backup', enablePitr = false) => {
     setAdvancedReseedType('logical')
-    setAdvancedReseedSource('backup')
+    setAdvancedReseedSource(initialSource)
     setAdvancedReseedLine('default')
     setAdvancedReseedBackupId('')
     setAdvancedReseedResticMode(defaultResticMode)
@@ -787,6 +871,9 @@ function ServerMenu({
     setAdvancedReseedResticFilePath('')
     setAdvancedReseedResticInPlace(false)
     setAdvancedReseedResticUseSourcePath(false)
+    setPitrBackupId('')
+    setPitrRestoreTime('')
+    setPitrUseBinlog(enablePitr)
     setIsAdvancedReseedOpen(true)
   }
 
@@ -800,7 +887,9 @@ function ServerMenu({
       options.backupId = advancedReseedBackupId
     }
 
-    if (advancedReseedSource === 'master') {
+    if (advancedReseedSource === 'backup' && pitrUseBinlog) {
+      handlePitrRestore()
+    } else if (advancedReseedSource === 'master') {
       // Reseed from master (only for logical)
       dispatch(reseedLogicalFromMaster({ clusterName, serverId: row.id }))
     } else if (advancedReseedSource === 'restic') {
@@ -832,31 +921,16 @@ function ServerMenu({
     closeAdvancedReseedModal()
   }
 
-  const openPitrModal = () => {
-    // Get the most recent backup ID if available
-    if (serverBackupsForPitr.length > 0) {
-      const backupId = serverBackupsForPitr[0]?.id ?? serverBackupsForPitr[0]?.Id
-      if (backupId) {
-        setPitrBackupId(String(backupId))
-      }
-    }
-    setPitrRestoreTime('')
-    setPitrUseBinlog(true)
-    setIsPitrOpen(true)
-  }
-
-  const closePitrModal = () => {
-    setIsPitrOpen(false)
-  }
-
   const handlePitrRestore = () => {
+    if (!pitrBackupId) {
+      return
+    }
     const pitrData = {
       Backup: parseInt(pitrBackupId, 10) || 0,
       RestoreTime: pitrRestoreTime ? new Date(pitrRestoreTime).getTime() / 1000 : 0,
       UseBinlog: pitrUseBinlog
     }
     dispatch(pitrRestore({ clusterName, serverId: row.id, pitrData }))
-    closePitrModal()
   }
 
   return (
@@ -984,7 +1058,7 @@ function ServerMenu({
                   },
                   {
                     name: 'Point-In-Time Recovery',
-                    onClick: () => openPitrModal()
+                    onClick: () => openAdvancedReseedModal('backup', true)
                   }
                 ]
                 : []),
@@ -1379,8 +1453,19 @@ function ServerMenu({
                     </Text>
                   ) : (
                     <Text fontSize='sm' color='blue.500' mt={2}>
-                      Restore from the most recent ad-hoc backup.
+                      Select an ad-hoc backup from the list below.
                     </Text>
+                  )}
+                  {advancedReseedLine === 'default' && !pitrUseBinlog && (
+                    selectedReseedBackup ? (
+                      <Text fontSize='sm' color='gray.500' mt={2}>
+                        Base backup: {selectedReseedBackupLabel}
+                      </Text>
+                    ) : (
+                      <Text fontSize='sm' color='orange.500' mt={2}>
+                        No default backup available. Create a backup before reseeding.
+                      </Text>
+                    )
                   )}
                 </FormControl>
               )}
@@ -1419,6 +1504,49 @@ function ServerMenu({
                     </Text>
                   )}
                 </FormControl>
+              )}
+              {advancedReseedSource === 'backup' && (
+                <>
+                  <FormControl display='flex' alignItems='center' justifyContent='space-between'>
+                    <FormLabel mb='0'>Apply Binary Logs (PITR)</FormLabel>
+                    <Switch
+                      isChecked={pitrUseBinlog}
+                      onChange={(e) => setPitrUseBinlog(e.target.checked)}
+                    />
+                  </FormControl>
+                  {pitrUseBinlog ? (
+                    <>
+                      {selectedReseedBackup ? (
+                        <Text fontSize='sm' color='gray.500'>
+                          Base backup: {selectedReseedBackupLabel}
+                        </Text>
+                      ) : (
+                        <Text fontSize='sm' color='orange.500'>
+                          No base backup available for PITR. Select a backup first.
+                        </Text>
+                      )}
+                      <FormControl>
+                        <FormLabel>Restore to Time (optional)</FormLabel>
+                        <Input
+                          type='datetime-local'
+                          value={pitrRestoreTime}
+                          onChange={(e) => setPitrRestoreTime(e.target.value)}
+                          placeholder='Leave empty to restore to latest'
+                        />
+                        <Text fontSize='sm' color='gray.500' mt={2}>
+                          Specify a point in time to restore to. Leave empty to restore to the latest point available.
+                        </Text>
+                      </FormControl>
+                      <Text fontSize='sm' color='blue.500'>
+                        PITR restores the selected backup and applies binary logs up to the chosen time (or latest). Replication is not restarted.
+                      </Text>
+                    </>
+                  ) : (
+                    <Text fontSize='sm' color='gray.500'>
+                      This will restore the base backup and rejoin replication.
+                    </Text>
+                  )}
+                </>
               )}
               {advancedReseedSource === 'restic' && (
                 <>
@@ -1537,81 +1665,10 @@ function ServerMenu({
               size='medium'
               onClick={handleAdvancedReseed}
               isDisabled={(advancedReseedSource === 'restic' && (!advancedReseedResticSnapshot || !selectedResticSnapshotPath || !resticReseedModeSupported))
-                || (advancedReseedSource === 'backup' && advancedReseedLine === 'adhoc' && advancedReseedType === 'logical' && !advancedReseedBackupId)}
+                || (advancedReseedSource === 'backup' && advancedReseedLine === 'adhoc' && advancedReseedType === 'logical' && !advancedReseedBackupId)
+                || (advancedReseedSource === 'backup' && pitrUseBinlog && !pitrBackupId)}
             >
               Start Reseed
-            </RMButton>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-      <Modal isOpen={isPitrOpen} onClose={closePitrModal} size='lg'>
-        <ModalOverlay />
-        <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
-          <ModalHeader>Point-In-Time Recovery (PITR)</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <Stack spacing={4}>
-              <FormControl isRequired>
-                <FormLabel>Select Backup</FormLabel>
-                <Select 
-                  placeholder='Select a backup to restore from' 
-                  value={pitrBackupId}
-                  onChange={(e) => setPitrBackupId(e.target.value)}
-                >
-                  {serverBackupsForPitr.map((backup) => {
-                    const backupId = backup?.id ?? backup?.Id
-                    const backupTool = getBackupToolValue(backup) || 'backup'
-                    const backupLine = getBackupLineValue(backup)
-                    const backupTime = getBackupStartTimestampMs(backup)
-                    const backupSource = normalizeBackupValue(backup?.source ?? backup?.Source)
-                    return (
-                      <option key={backupId || backupTime} value={backupId || ''}>
-                        {backupTool} - {backupTime ? new Date(backupTime).toLocaleString() : 'Unknown time'}
-                        {backupLine ? ` (${backupLine})` : ''}
-                        {backupSource ? ` [${backupSource}]` : ''}
-                      </option>
-                    )
-                  })}
-                </Select>
-                <Text fontSize='sm' color='gray.500' mt={2}>
-                  Select the backup to use as the base for point-in-time recovery.
-                </Text>
-              </FormControl>
-              <FormControl>
-                <FormLabel>Restore to Time (optional)</FormLabel>
-                <Input
-                  type='datetime-local'
-                  value={pitrRestoreTime}
-                  onChange={(e) => setPitrRestoreTime(e.target.value)}
-                  placeholder='Leave empty to restore to latest'
-                />
-                <Text fontSize='sm' color='gray.500' mt={2}>
-                  Specify a point in time to restore to. Leave empty to restore to the latest point available.
-                </Text>
-              </FormControl>
-              <FormControl display='flex' alignItems='center' justifyContent='space-between'>
-                <FormLabel mb='0'>Use Binary Logs</FormLabel>
-                <Switch 
-                  isChecked={pitrUseBinlog} 
-                  onChange={(e) => setPitrUseBinlog(e.target.checked)} 
-                />
-              </FormControl>
-              <Text fontSize='sm' color='blue.500'>
-                PITR will restore the selected backup and optionally apply binary logs up to the specified point in time.
-              </Text>
-            </Stack>
-          </ModalBody>
-          <ModalFooter gap={3}>
-            <RMButton variant='outline' colorScheme='white' size='medium' onClick={closePitrModal}>
-              Cancel
-            </RMButton>
-            <RMButton 
-              colorScheme='blue' 
-              size='medium' 
-              onClick={handlePitrRestore}
-              isDisabled={!pitrBackupId}
-            >
-              Start PITR
             </RMButton>
           </ModalFooter>
         </ModalContent>
