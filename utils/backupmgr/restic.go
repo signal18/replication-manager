@@ -652,6 +652,10 @@ func (repo *ResticManager) RestoreSnapshot(snapshotID, targetDir string, paths [
 	return nil
 }
 
+func (repo *ResticManager) RestoreSnapshotSync(snapshotID, targetDir string, paths []string, overwrite string) error {
+	return repo.restoreSnapshot(snapshotID, targetDir, paths, overwrite)
+}
+
 var resticRestoreOverwriteModes = map[string]struct{}{
 	"always":                   {},
 	"if-changed":               {},

@@ -15,6 +15,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"path"
 	"path/filepath"
 	"slices"
 
@@ -1514,6 +1515,457 @@ func (server *ServerMonitor) JobReseedResticDump(snapshotID string, filePath str
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Restic dump to MySQL completed successfully for %s", server.URL)
 
 	return nil
+}
+
+func sanitizeResticReseedComponent(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	re := regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
+	return re.ReplaceAllString(trimmed, "_")
+}
+
+func normalizeResticSnapshotPath(value string) (string, string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", "", fmt.Errorf("file path is empty")
+	}
+	normalized := strings.ReplaceAll(trimmed, "\\", "/")
+	normalized = strings.TrimPrefix(normalized, "/")
+	cleaned := path.Clean("/" + normalized)
+	cleaned = strings.TrimPrefix(cleaned, "/")
+	if cleaned == "" || cleaned == "." || strings.HasPrefix(cleaned, "..") {
+		return "", "", fmt.Errorf("invalid file path")
+	}
+	return "/" + cleaned, cleaned, nil
+}
+
+func (server *ServerMonitor) resticReseedTargetDir(snapshotID string) string {
+	cluster := server.ClusterGroup
+	serverComponent := sanitizeResticReseedComponent(server.Id)
+	if serverComponent == "" {
+		serverComponent = sanitizeResticReseedComponent(server.Name)
+	}
+	if serverComponent == "" {
+		serverComponent = "server"
+	}
+	snapshotComponent := sanitizeResticReseedComponent(snapshotID)
+	if snapshotComponent == "" {
+		snapshotComponent = "snapshot"
+	}
+	return filepath.Join(cluster.Conf.WorkingDir, cluster.Name, "restic-reseed", serverComponent, snapshotComponent)
+}
+
+func (server *ServerMonitor) resticReseedResolveLogicalTool(backupTool, mode string) (string, error) {
+	cluster := server.ClusterGroup
+	tool := strings.ToLower(strings.TrimSpace(backupTool))
+	if tool == "" {
+		tool = strings.ToLower(cluster.Conf.BackupLogicalType)
+	}
+	switch tool {
+	case config.ConstBackupLogicalTypeMysqldump:
+		return tool, nil
+	case config.ConstBackupLogicalTypeMydumper:
+		if cluster.VersionsMap.Get("mydumper") == nil {
+			return "", errors.New("No mydumper version found")
+		}
+		return tool, nil
+	default:
+		return "", fmt.Errorf("restic %s mode supports mysqldump or mydumper backups", mode)
+	}
+}
+
+func (server *ServerMonitor) resticReseedResolvePhysicalTool(backupTool, mode string) (string, string, error) {
+	cluster := server.ClusterGroup
+	tool := strings.TrimSpace(backupTool)
+	if tool == "" {
+		tool = cluster.Conf.BackupPhysicalType
+	}
+	if tool == "" {
+		return "", "", fmt.Errorf("restic %s mode requires a physical backup tool", mode)
+	}
+	ext := ".xbtream"
+	if cluster.Conf.CompressBackups {
+		ext = ext + ".gz"
+	}
+	return tool, tool + ext, nil
+}
+
+func copyFile(src, dest string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return err
+	}
+	if info, statErr := in.Stat(); statErr == nil {
+		_ = os.Chmod(dest, info.Mode())
+	}
+	return nil
+}
+
+func (server *ServerMonitor) resticReseedPlacePhysicalFile(sourcePath, destPath string) error {
+	if _, err := os.Stat(destPath); err == nil {
+		backupPath := fmt.Sprintf("%s.restic-old-%d", destPath, time.Now().Unix())
+		if err := os.Rename(destPath, backupPath); err != nil {
+			return fmt.Errorf("failed to backup existing file: %s", err)
+		}
+	}
+
+	if err := os.Rename(sourcePath, destPath); err == nil {
+		return nil
+	}
+
+	if err := copyFile(sourcePath, destPath); err != nil {
+		return err
+	}
+	_ = os.Remove(sourcePath)
+	return nil
+}
+
+func (server *ServerMonitor) resticReseedFinalizeMydumper(backupdir string, restoreUser bool) error {
+	cluster := server.ClusterGroup
+	err := server.JobReseedMyLoader(backupdir, restoreUser)
+	if err != nil {
+		return err
+	}
+
+	if server.IsSlave && !server.PointInTimeMeta.IsInPITR {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")
+		meta, err := cluster.JobMyLoaderParseMeta(backupdir)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err)
+			return err
+		}
+		if server.IsMariaDB() && server.HaveMariaDBGTID {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata")
+			server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+meta.BinLogUuid+"'", time.Second)
+		}
+		server.StartSlave()
+	}
+	return nil
+}
+
+func (server *ServerMonitor) JobReseedResticRestore(snapshotID, filePath, backupTool string) error {
+	cluster := server.ClusterGroup
+	defer server.SetInReseedBackup("")
+
+	if !cluster.Conf.BackupRestic {
+		return fmt.Errorf("restic backup is not enabled for cluster %s", cluster.Name)
+	}
+	if cluster.ResticManager == nil {
+		if err := cluster.StartResticManager(); err != nil {
+			return fmt.Errorf("failed to start restic manager: %s", err)
+		}
+	}
+	tool, err := server.resticReseedResolveLogicalTool(backupTool, "restore")
+	if err != nil {
+		return err
+	}
+
+	includePath, relativePath, err := normalizeResticSnapshotPath(filePath)
+	if err != nil {
+		return err
+	}
+	includePaths := []string{includePath}
+	if tool == config.ConstBackupLogicalTypeMysqldump {
+		dirPath := path.Dir(relativePath)
+		if dirPath != "." {
+			includePaths = []string{"/" + dirPath}
+		} else if cluster.Conf.BackupRestoreMysqlUser {
+			userPath := "/mysql.user.sql.gz"
+			if entries, err := cluster.ResticManager.ListSnapshot(snapshotID, []string{userPath}, false); err == nil && len(entries) > 0 {
+				includePaths = append(includePaths, userPath)
+			}
+		}
+	}
+
+	server.StopSlave()
+
+	targetDir := server.resticReseedTargetDir(snapshotID)
+	defer os.RemoveAll(targetDir)
+
+	if err := cluster.ResticManager.RestoreSnapshotSync(snapshotID, targetDir, includePaths, ""); err != nil {
+		return err
+	}
+
+	localPath := filepath.Join(targetDir, filepath.FromSlash(relativePath))
+	info, err := os.Stat(localPath)
+	if err != nil {
+		return fmt.Errorf("restic restore path not found: %s", localPath)
+	}
+	switch tool {
+	case config.ConstBackupLogicalTypeMydumper:
+		if !info.IsDir() {
+			return fmt.Errorf("restic restore path is not a directory: %s", localPath)
+		}
+		return server.resticReseedFinalizeMydumper(localPath, cluster.Conf.BackupRestoreMysqlUser)
+	case config.ConstBackupLogicalTypeMysqldump:
+		if info.IsDir() {
+			return fmt.Errorf("restic restore path is a directory: %s", localPath)
+		}
+		restoreUser := false
+		userFile := filepath.Join(filepath.Dir(localPath), "mysql.user.sql.gz")
+		if _, err := os.Stat(userFile); err == nil {
+			restoreUser = true
+		}
+		return server.JobReseedMysqldump(localPath, restoreUser)
+	default:
+		return fmt.Errorf("unsupported backup tool for restic restore")
+	}
+}
+
+func (server *ServerMonitor) JobReseedResticMount(snapshotID, filePath, backupTool string) error {
+	cluster := server.ClusterGroup
+	defer server.SetInReseedBackup("")
+
+	if !cluster.Conf.BackupRestic {
+		return fmt.Errorf("restic backup is not enabled for cluster %s", cluster.Name)
+	}
+	if cluster.ResticManager == nil {
+		if err := cluster.StartResticManager(); err != nil {
+			return fmt.Errorf("failed to start restic manager: %s", err)
+		}
+	}
+	tool, err := server.resticReseedResolveLogicalTool(backupTool, "mount")
+	if err != nil {
+		return err
+	}
+
+	_, relativePath, err := normalizeResticSnapshotPath(filePath)
+	if err != nil {
+		return err
+	}
+
+	server.StopSlave()
+
+	mountDir := filepath.Join(cluster.Conf.WorkingDir, cluster.Name, "restic-mount")
+	if err := cluster.ResticManager.MountRepo(mountDir); err != nil {
+		return err
+	}
+	defer cluster.ResticManager.UnmountRepo()
+
+	snapshotRoot := filepath.Join(mountDir, "snapshots", snapshotID)
+	if info, err := os.Stat(snapshotRoot); err != nil || !info.IsDir() {
+		entries, err := os.ReadDir(filepath.Join(mountDir, "snapshots"))
+		if err == nil {
+			for _, entry := range entries {
+				if entry.IsDir() {
+					name := entry.Name()
+					if name == snapshotID || strings.HasPrefix(name, snapshotID) || strings.HasPrefix(snapshotID, name) {
+						snapshotRoot = filepath.Join(mountDir, "snapshots", name)
+						break
+					}
+				}
+			}
+		}
+	}
+	if info, err := os.Stat(snapshotRoot); err != nil || !info.IsDir() {
+		altRoot := filepath.Join(mountDir, snapshotID)
+		if info, err := os.Stat(altRoot); err == nil && info.IsDir() {
+			snapshotRoot = altRoot
+		} else {
+			return fmt.Errorf("snapshot %s not found in restic mount", snapshotID)
+		}
+	}
+
+	localPath := filepath.Join(snapshotRoot, filepath.FromSlash(relativePath))
+	info, err := os.Stat(localPath)
+	if err != nil {
+		return fmt.Errorf("restic mount path not found: %s", localPath)
+	}
+	switch tool {
+	case config.ConstBackupLogicalTypeMydumper:
+		if !info.IsDir() {
+			return fmt.Errorf("restic mount path is not a directory: %s", localPath)
+		}
+		backupDir := localPath
+		cleanup := func() {}
+		if !cluster.Conf.BackupRestoreMysqlUser {
+			userFile := filepath.Join(localPath, "mysql.user.sql.gz")
+			if _, err := os.Stat(userFile); err == nil {
+				copyDir := filepath.Join(server.resticReseedTargetDir(snapshotID), "mydumper-copy", fmt.Sprintf("%d", time.Now().UnixNano()))
+				if err := misc.CopyDir(localPath, copyDir); err != nil {
+					return err
+				}
+				backupDir = copyDir
+				cleanup = func() {
+					_ = os.RemoveAll(copyDir)
+				}
+			}
+		}
+		defer cleanup()
+		return server.resticReseedFinalizeMydumper(backupDir, cluster.Conf.BackupRestoreMysqlUser)
+	case config.ConstBackupLogicalTypeMysqldump:
+		if info.IsDir() {
+			return fmt.Errorf("restic mount path is a directory: %s", localPath)
+		}
+		restoreUser := false
+		userFile := filepath.Join(filepath.Dir(localPath), "mysql.user.sql.gz")
+		if _, err := os.Stat(userFile); err == nil {
+			restoreUser = true
+		}
+		return server.JobReseedMysqldump(localPath, restoreUser)
+	default:
+		return fmt.Errorf("unsupported backup tool for restic mount")
+	}
+}
+
+func (server *ServerMonitor) JobReseedResticPhysicalRestore(snapshotID, filePath, backupTool string, inPlace bool) error {
+	cluster := server.ClusterGroup
+
+	if !cluster.Conf.BackupRestic {
+		return fmt.Errorf("restic backup is not enabled for cluster %s", cluster.Name)
+	}
+	if cluster.ResticManager == nil {
+		if err := cluster.StartResticManager(); err != nil {
+			return fmt.Errorf("failed to start restic manager: %s", err)
+		}
+	}
+
+	tool, fileName, err := server.resticReseedResolvePhysicalTool(backupTool, "restore")
+	if err != nil {
+		return err
+	}
+
+	includePath, relativePath, err := normalizeResticSnapshotPath(filePath)
+	if err != nil {
+		return err
+	}
+
+	server.StopSlave()
+
+	master := cluster.GetMaster()
+	if master == nil {
+		return errors.New("No master found. Cancel reseed physical backup")
+	}
+
+	if inPlace {
+		// Restore the snapshot directly into the master backup path to overwrite the existing file.
+		cleanPath := filepath.Clean(filepath.FromSlash(includePath))
+		masterDir := filepath.Clean(master.GetMyBackupDirectory())
+		if !strings.HasPrefix(cleanPath, masterDir+string(os.PathSeparator)) {
+			return fmt.Errorf("restic in-place restore path %s is not under master backup dir %s", cleanPath, masterDir)
+		}
+		if err := cluster.ResticManager.RestoreSnapshotSync(snapshotID, "/", []string{includePath}, "always"); err != nil {
+			return err
+		}
+		return server.JobReseedPhysicalBackup(tool)
+	}
+
+	targetDir := server.resticReseedTargetDir(snapshotID)
+	if err := cluster.ResticManager.RestoreSnapshotSync(snapshotID, targetDir, []string{includePath}, ""); err != nil {
+		return err
+	}
+	defer os.RemoveAll(targetDir)
+
+	localPath := filepath.Join(targetDir, filepath.FromSlash(relativePath))
+	info, err := os.Stat(localPath)
+	if err != nil {
+		return fmt.Errorf("restic restore path not found: %s", localPath)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("restic restore path is a directory: %s", localPath)
+	}
+
+	destPath := filepath.Join(master.GetMyBackupDirectory(), fileName)
+	if err := server.resticReseedPlacePhysicalFile(localPath, destPath); err != nil {
+		return err
+	}
+
+	return server.JobReseedPhysicalBackup(tool)
+}
+
+func (server *ServerMonitor) JobReseedResticPhysicalMount(snapshotID, filePath, backupTool string) error {
+	cluster := server.ClusterGroup
+
+	if !cluster.Conf.BackupRestic {
+		return fmt.Errorf("restic backup is not enabled for cluster %s", cluster.Name)
+	}
+	if cluster.ResticManager == nil {
+		if err := cluster.StartResticManager(); err != nil {
+			return fmt.Errorf("failed to start restic manager: %s", err)
+		}
+	}
+
+	tool, fileName, err := server.resticReseedResolvePhysicalTool(backupTool, "mount")
+	if err != nil {
+		return err
+	}
+
+	_, relativePath, err := normalizeResticSnapshotPath(filePath)
+	if err != nil {
+		return err
+	}
+
+	server.StopSlave()
+
+	mountDir := filepath.Join(cluster.Conf.WorkingDir, cluster.Name, "restic-mount")
+	if err := cluster.ResticManager.MountRepo(mountDir); err != nil {
+		return err
+	}
+	defer cluster.ResticManager.UnmountRepo()
+
+	snapshotRoot := filepath.Join(mountDir, "snapshots", snapshotID)
+	if info, err := os.Stat(snapshotRoot); err != nil || !info.IsDir() {
+		entries, err := os.ReadDir(filepath.Join(mountDir, "snapshots"))
+		if err == nil {
+			for _, entry := range entries {
+				if entry.IsDir() {
+					name := entry.Name()
+					if name == snapshotID || strings.HasPrefix(name, snapshotID) || strings.HasPrefix(snapshotID, name) {
+						snapshotRoot = filepath.Join(mountDir, "snapshots", name)
+						break
+					}
+				}
+			}
+		}
+	}
+	if info, err := os.Stat(snapshotRoot); err != nil || !info.IsDir() {
+		altRoot := filepath.Join(mountDir, snapshotID)
+		if info, err := os.Stat(altRoot); err == nil && info.IsDir() {
+			snapshotRoot = altRoot
+		} else {
+			return fmt.Errorf("snapshot %s not found in restic mount", snapshotID)
+		}
+	}
+
+	localPath := filepath.Join(snapshotRoot, filepath.FromSlash(relativePath))
+	info, err := os.Stat(localPath)
+	if err != nil {
+		return fmt.Errorf("restic mount path not found: %s", localPath)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("restic mount path is a directory: %s", localPath)
+	}
+
+	master := cluster.GetMaster()
+	if master == nil {
+		return errors.New("No master found. Cancel reseed physical backup")
+	}
+
+	destPath := filepath.Join(master.GetMyBackupDirectory(), fileName)
+	if err := server.resticReseedPlacePhysicalFile(localPath, destPath); err != nil {
+		return err
+	}
+
+	return server.JobReseedPhysicalBackup(tool)
 }
 
 // JobReseedBackupScript will execute the backup load script

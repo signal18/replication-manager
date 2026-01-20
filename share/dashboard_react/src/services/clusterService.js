@@ -76,6 +76,7 @@ export const clusterService = {
   reseedLogicalFromBackup,
   reseedLogicalFromMaster,
   reseedPhysicalFromBackup,
+  reseedFromRestic,
   pitrRestore,
   flushLogs,
   physicalBackupMaster,
@@ -411,6 +412,25 @@ function reseedLogicalFromMaster(clusterName, serverId, baseURL) {
 function reseedPhysicalFromBackup(clusterName, serverId, options = {}, baseURL) {
   const query = buildBackupQuery(options)
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/reseed/physicalbackup${query}`)
+}
+
+function reseedFromRestic(clusterName, serverId, snapshotId, filePath, mode, backupTool, backupType, inPlace, baseURL) {
+  const params = new URLSearchParams()
+  params.set('snapshotId', snapshotId)
+  params.set('filePath', filePath)
+  if (mode) {
+    params.set('mode', mode)
+  }
+  if (backupTool) {
+    params.set('backupTool', backupTool)
+  }
+  if (backupType) {
+    params.set('backupType', backupType)
+  }
+  if (typeof inPlace === 'boolean') {
+    params.set('inPlace', String(inPlace))
+  }
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/reseed-restic?${params.toString()}`)
 }
 
 function pitrRestore(clusterName, serverId, pitrData, baseURL) {

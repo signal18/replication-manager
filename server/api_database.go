@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -354,6 +355,11 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed/{backupMethod}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseed)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed-restic", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseedRestic)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/pitr", negroni.New(
@@ -1294,6 +1300,103 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 				}
 			}
 
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+// handlerMuxServerReseedRestic handles the HTTP request to reseed a server from a restic snapshot.
+// @Summary Reseed a server from restic snapshot
+// @Description Reseeds a specified server within a cluster using a restic snapshot.
+// @Tags DatabaseBackup
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param snapshotId query string true "Restic Snapshot ID"
+// @Param filePath query string true "File path within snapshot"
+// @Param mode query string false "Reseed mode: dump|restore|mount"
+// @Param backupTool query string false "Backup tool (mysqldump|mydumper|xtrabackup|mariabackup)"
+// @Param backupType query string false "Backup type: logical|physical"
+// @Param inPlace query bool false "Restore physical backup in-place (overwrite existing file)"
+// @Success 200 {string} string "Reseed initiated successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 400 {string} string "Missing required parameters"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error reseed from restic"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/reseed-restic [post]
+func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		// Parse query parameters
+		snapshotID := r.URL.Query().Get("snapshotId")
+		filePath := r.URL.Query().Get("filePath")
+		mode := strings.TrimSpace(r.URL.Query().Get("mode"))
+		backupTool := strings.TrimSpace(r.URL.Query().Get("backupTool"))
+		backupType := strings.TrimSpace(r.URL.Query().Get("backupType"))
+		inPlace, _ := strconv.ParseBool(strings.TrimSpace(r.URL.Query().Get("inPlace")))
+		if backupType == "" {
+			backupType = "logical"
+		}
+		if mode == "" {
+			if strings.EqualFold(backupType, "physical") {
+				mode = "restore"
+			} else {
+				mode = "dump"
+			}
+		}
+
+		if snapshotID == "" || filePath == "" {
+			http.Error(w, "Missing required parameters: snapshotId and filePath", http.StatusBadRequest)
+			return
+		}
+
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			var err error
+			switch strings.ToLower(backupType) {
+			case "physical":
+				switch strings.ToLower(mode) {
+				case "restore":
+					err = node.JobReseedResticPhysicalRestore(snapshotID, filePath, backupTool, inPlace)
+				case "mount":
+					err = node.JobReseedResticPhysicalMount(snapshotID, filePath, backupTool)
+				default:
+					http.Error(w, "Invalid reseed mode for physical backup", http.StatusBadRequest)
+					return
+				}
+			case "logical":
+				switch strings.ToLower(mode) {
+				case "dump":
+					err = node.JobReseedResticDump(snapshotID, filePath)
+				case "restore":
+					err = node.JobReseedResticRestore(snapshotID, filePath, backupTool)
+				case "mount":
+					err = node.JobReseedResticMount(snapshotID, filePath, backupTool)
+				default:
+					http.Error(w, "Invalid reseed mode", http.StatusBadRequest)
+					return
+				}
+			default:
+				http.Error(w, "Invalid backup type", http.StatusBadRequest)
+				return
+			}
+			if err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "restic reseed restore failed %s", err)
+				http.Error(w, "Error reseed from restic", 500)
+				return
+			}
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return

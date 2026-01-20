@@ -33,9 +33,11 @@ import {
   pitrRestore,
   promoteToLeader,
   provisionDatabase,
+  getResticSnapshot,
   reseedLogicalFromBackup,
   reseedLogicalFromMaster,
   reseedPhysicalFromBackup,
+  reseedFromRestic,
   resetMaster,
   resetSlaveAll,
   runRemoteJobs,
@@ -54,7 +56,7 @@ import {
   toggleSlowQueryCapture,
   unprovisionDatabase
 } from '../../../../redux/clusterSlice'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useHref } from 'react-router-dom'
 import { generateConfig } from '../../../../redux/configSlice'
 import { useTheme } from '../../../../ThemeProvider'
@@ -62,6 +64,160 @@ import parentStyles from '../../../../components/Modals/styles.module.scss'
 
 // Constants
 const JOBS_CONTAINER_RID = 'container#jobs'
+const RESTIC_BACKUP_TYPE_TAG = 'backup-type'
+
+const normalizeResticTags = (tags) => {
+  if (Array.isArray(tags)) {
+    return tags
+  }
+  if (typeof tags === 'string') {
+    return tags.split(',').map((tag) => tag.trim()).filter(Boolean)
+  }
+  return []
+}
+
+const normalizeResticTagCategory = (value) => {
+  if (!value || typeof value !== 'string') {
+    return ''
+  }
+  return value.trim().toLowerCase().replace(/[_\s]+/g, '-')
+}
+
+const getResticBackupType = (tags) => {
+  const normalizedTags = normalizeResticTags(tags)
+  for (const tag of normalizedTags) {
+    if (typeof tag !== 'string') {
+      continue
+    }
+    const trimmed = tag.trim()
+    if (!trimmed) {
+      continue
+    }
+    const separatorIndex = trimmed.indexOf(':')
+    if (separatorIndex === -1) {
+      continue
+    }
+    const category = normalizeResticTagCategory(trimmed.slice(0, separatorIndex))
+    if (category !== RESTIC_BACKUP_TYPE_TAG) {
+      continue
+    }
+    const value = trimmed.slice(separatorIndex + 1).trim().toLowerCase()
+    if (value) {
+      return value
+    }
+  }
+  return ''
+}
+
+const getSnapshotTimeValue = (snapshot) => {
+  if (!snapshot || typeof snapshot.time !== 'string') {
+    return 0
+  }
+  const parsed = Date.parse(snapshot.time)
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
+const isSupportedReseedBackupType = (backupType) => {
+  return backupType === '' || backupType === 'logical' || backupType === 'physical'
+}
+
+const normalizeSnapshotPath = (value) => {
+  if (!value || typeof value !== 'string') {
+    return ''
+  }
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return ''
+  }
+  const normalized = trimmed.replace(/\/+$/, '')
+  return normalized === '' ? '/' : normalized
+}
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const joinSnapshotPath = (basePath, suffix) => {
+  if (!basePath || !suffix) {
+    return basePath || ''
+  }
+  if (basePath.endsWith(`/${suffix}`) || basePath.endsWith(suffix)) {
+    return basePath
+  }
+  return `${basePath}/${suffix}`
+}
+
+const getResticSnapshotPrimaryPath = (snapshot) => {
+  if (!snapshot) {
+    return ''
+  }
+  const paths = Array.isArray(snapshot.paths) ? snapshot.paths : []
+  for (const path of paths) {
+    if (typeof path === 'string') {
+      const trimmed = normalizeSnapshotPath(path)
+      if (trimmed) {
+        return trimmed
+      }
+    }
+  }
+  return ''
+}
+
+const getResticSnapshotBackupPath = ({
+  snapshot,
+  reseedType,
+  backupLogicalType,
+  backupPhysicalType,
+  compressBackups
+}) => {
+  const basePath = getResticSnapshotPrimaryPath(snapshot)
+  if (!basePath) {
+    return ''
+  }
+
+  const normalizedReseedType = typeof reseedType === 'string' ? reseedType.toLowerCase() : ''
+  if (normalizedReseedType === 'logical') {
+    const tool = typeof backupLogicalType === 'string' ? backupLogicalType.toLowerCase() : ''
+    switch (tool) {
+      case 'dumpling': {
+        const adhocPattern = /\/dumpling\.\d+$/
+        if (adhocPattern.test(basePath) || basePath.endsWith('/dumpling')) {
+          return basePath
+        }
+        return joinSnapshotPath(basePath, 'dumpling')
+      }
+      case 'mydumper': {
+        const adhocPattern = /\/mydumper\.\d+$/
+        if (adhocPattern.test(basePath) || basePath.endsWith('/mydumper')) {
+          return basePath
+        }
+        return joinSnapshotPath(basePath, 'mydumper')
+      }
+      case 'mysqldump':
+      default: {
+        const adhocPattern = /\/mysqldump\.\d+\.sql\.gz$/
+        if (adhocPattern.test(basePath) || basePath.endsWith('/mysqldump.sql.gz')) {
+          return basePath
+        }
+        return joinSnapshotPath(basePath, 'mysqldump.sql.gz')
+      }
+    }
+  }
+
+  if (normalizedReseedType === 'physical') {
+    const tool = typeof backupPhysicalType === 'string' ? backupPhysicalType : ''
+    if (!tool) {
+      return basePath
+    }
+    const ext = compressBackups ? '.xbtream.gz' : '.xbtream'
+    const fileName = `${tool}${ext}`
+    const adhocPattern = new RegExp(`/${escapeRegExp(tool)}\\.\\d+${escapeRegExp(ext)}$`)
+    if (adhocPattern.test(basePath) || basePath.endsWith(`/${fileName}`)) {
+      return basePath
+    }
+    return joinSnapshotPath(basePath, fileName)
+  }
+
+  return basePath
+}
 
 /**
  * ServerMenu - Context menu for database server operations
@@ -123,6 +279,8 @@ function ServerMenu({
   const dispatch = useDispatch()
   const { theme } = useTheme()
   const backupsList = useSelector((state) => state.cluster?.backups?.list)
+  const resticSnapshots = useSelector((state) => state.cluster?.restic?.snapshots)
+  const compressBackups = useSelector((state) => state.cluster?.clusterData?.config?.compressBackups)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
@@ -136,12 +294,144 @@ function ServerMenu({
   const [advancedReseedType, setAdvancedReseedType] = useState('logical')
   const [advancedReseedSource, setAdvancedReseedSource] = useState('backup')
   const [advancedReseedLine, setAdvancedReseedLine] = useState('default')
+  const [advancedReseedResticSnapshot, setAdvancedReseedResticSnapshot] = useState('')
+  const [advancedReseedResticFilePath, setAdvancedReseedResticFilePath] = useState('')
+  const [advancedReseedResticMode, setAdvancedReseedResticMode] = useState('dump')
+  const [advancedReseedResticInPlace, setAdvancedReseedResticInPlace] = useState(false)
   const [isPitrOpen, setIsPitrOpen] = useState(false)
   const [pitrBackupId, setPitrBackupId] = useState('')
   const [pitrRestoreTime, setPitrRestoreTime] = useState('')
   const [pitrUseBinlog, setPitrUseBinlog] = useState(true)
 
   const getHref = useHref('/').replace(/\/+$/, '');
+
+  const normalizedBackupLogicalType = useMemo(() => {
+    return typeof backupLogicalType === 'string' ? backupLogicalType.toLowerCase() : ''
+  }, [backupLogicalType])
+
+  const isResticMysqldump = normalizedBackupLogicalType === 'mysqldump'
+  const isResticMydumper = normalizedBackupLogicalType === 'mydumper'
+  const isResticPhysical = advancedReseedType === 'physical'
+  const defaultResticMode = useMemo(() => {
+    if (isResticPhysical) {
+      return 'restore'
+    }
+    return isResticMysqldump ? 'dump' : 'restore'
+  }, [isResticPhysical, isResticMysqldump])
+
+  const resticSnapshotsForReseed = useMemo(() => {
+    if (!isAdvancedReseedOpen || !backupRestic || !Array.isArray(resticSnapshots)) {
+      return []
+    }
+    const backupType = typeof advancedReseedType === 'string' ? advancedReseedType.toLowerCase() : ''
+
+    const groups = new Map()
+    resticSnapshots.forEach((snapshot, index) => {
+      if (!snapshot) {
+        return
+      }
+      const snapshotType = getResticBackupType(snapshot.tags)
+      if (!isSupportedReseedBackupType(snapshotType)) {
+        return
+      }
+      const treeKey = snapshot.tree || snapshot.id
+      if (!treeKey) {
+        return
+      }
+      const entry = {
+        snapshot,
+        index,
+        timeValue: getSnapshotTimeValue(snapshot),
+        backupType: snapshotType
+      }
+      const existing = groups.get(treeKey)
+      if (existing) {
+        existing.push(entry)
+      } else {
+        groups.set(treeKey, [entry])
+      }
+    })
+
+    const selections = []
+    groups.forEach((entries) => {
+      const matching = entries.filter((entry) => entry.backupType === backupType)
+      const candidates = matching.length > 0 ? matching : entries
+      let chosen = candidates[0]
+      for (const candidate of candidates.slice(1)) {
+        if (candidate.timeValue > chosen.timeValue) {
+          chosen = candidate
+        }
+      }
+      selections.push(chosen)
+    })
+
+    selections.sort((a, b) => a.index - b.index)
+    return selections.map((entry) => entry.snapshot)
+  }, [resticSnapshots, advancedReseedType, isAdvancedReseedOpen, backupRestic])
+
+  const selectedResticSnapshot = useMemo(() => {
+    if (!advancedReseedResticSnapshot) {
+      return null
+    }
+    return resticSnapshotsForReseed.find((snapshot) => snapshot.id === advancedReseedResticSnapshot) || null
+  }, [resticSnapshotsForReseed, advancedReseedResticSnapshot])
+
+  const selectedResticSnapshotPath = useMemo(() => {
+    return getResticSnapshotBackupPath({
+      snapshot: selectedResticSnapshot,
+      reseedType: advancedReseedType,
+      backupLogicalType,
+      backupPhysicalType,
+      compressBackups: Boolean(compressBackups)
+    })
+  }, [selectedResticSnapshot, advancedReseedType, backupLogicalType, backupPhysicalType, compressBackups])
+
+  const resticRestoreLabel = isResticPhysical
+    ? 'Restore to disk (physical)'
+    : 'Restore to disk (mysqldump/mydumper)'
+  const resticMountLabel = isResticPhysical
+    ? 'Mount repo (physical)'
+    : 'Mount repo (mysqldump/mydumper)'
+
+  const resticReseedModeHelp = useMemo(() => {
+    switch (advancedReseedResticMode) {
+      case 'restore':
+        if (isResticPhysical) {
+          return 'Restores the physical backup file to local disk, then runs SST. Uses disk space but works without FUSE.'
+        }
+        if (isResticMysqldump) {
+          return 'Restores the dump file to local disk, then loads it with mysql client. Uses disk space and works with mysqldump files.'
+        }
+        return 'Restores the snapshot to local disk, then runs myloader. Uses disk space but works with mydumper directories.'
+      case 'mount':
+        if (isResticPhysical) {
+          return 'Mounts the restic repo via FUSE and streams the physical backup file via SST. Uses less disk but needs FUSE and a single active mount.'
+        }
+        if (isResticMysqldump) {
+          return 'Mounts the restic repo via FUSE and loads the dump file with mysql client. Uses less disk but needs FUSE and a single active mount.'
+        }
+        return 'Mounts the restic repo via FUSE and runs myloader from the mount. Uses less disk but needs FUSE and a single active mount.'
+      case 'dump':
+      default:
+        return 'Streams the dump directly from restic into MySQL. Fast and low disk usage, but only works with mysqldump files.'
+    }
+  }, [advancedReseedResticMode, isResticMysqldump, isResticPhysical])
+
+  const resticReseedModeSupported = useMemo(() => {
+    if (advancedReseedSource !== 'restic') {
+      return true
+    }
+    if (isResticPhysical) {
+      return advancedReseedResticMode === 'restore' || advancedReseedResticMode === 'mount'
+    }
+    if (advancedReseedResticMode === 'dump') {
+      return isResticMysqldump
+    }
+    if (advancedReseedResticMode === 'restore' || advancedReseedResticMode === 'mount') {
+      return isResticMydumper || isResticMysqldump
+    }
+    return false
+  }, [advancedReseedSource, advancedReseedResticMode, isResticMysqldump, isResticMydumper, isResticPhysical])
 
   const openTerminalPage = useCallback((clusterName, srvId, commandType = '') => {
     const terminalURL = getHref.concat(`/terminal/clusters/${clusterName}/servers/${srvId}/${commandType}`).replace(/\/+$/, '')
@@ -153,6 +443,116 @@ function ServerMenu({
       setServerName(`server ${row.host}:${row.port} (${row.id})`)
     }
   }, [row])
+
+  useEffect(() => {
+    if (!backupRestic && advancedReseedSource === 'restic') {
+      setAdvancedReseedSource('backup')
+    }
+  }, [backupRestic, advancedReseedSource])
+
+  useEffect(() => {
+    if (advancedReseedSource !== 'restic' && advancedReseedResticInPlace) {
+      setAdvancedReseedResticInPlace(false)
+    }
+  }, [advancedReseedSource, advancedReseedResticInPlace])
+
+  useEffect(() => {
+    if (!isResticPhysical && advancedReseedResticInPlace) {
+      setAdvancedReseedResticInPlace(false)
+    }
+  }, [isResticPhysical, advancedReseedResticInPlace])
+
+  useEffect(() => {
+    if (!isAdvancedReseedOpen || !backupRestic || !clusterName) {
+      return
+    }
+    dispatch(getResticSnapshot({ clusterName }))
+  }, [isAdvancedReseedOpen, backupRestic, clusterName, dispatch])
+
+  useEffect(() => {
+    if (!isAdvancedReseedOpen || advancedReseedSource !== 'restic') {
+      return
+    }
+    if (resticSnapshotsForReseed.length === 0) {
+      if (advancedReseedResticSnapshot !== '') {
+        setAdvancedReseedResticSnapshot('')
+      }
+      return
+    }
+    const snapshotExists = resticSnapshotsForReseed.some((snapshot) => snapshot.id === advancedReseedResticSnapshot)
+    if (!snapshotExists) {
+      const serverHost = row?.host
+      const serverId = row?.id
+      const preferredSnapshot = resticSnapshotsForReseed.find((snapshot) => {
+        const snapshotTags = normalizeResticTags(snapshot.tags)
+        const matchesHost = serverHost && snapshot.hostname === serverHost
+        const matchesTag = serverId && snapshotTags.some((tag) => typeof tag === 'string' && tag.includes(serverId))
+        return matchesHost || matchesTag
+      })
+      setAdvancedReseedResticSnapshot(preferredSnapshot?.id || resticSnapshotsForReseed[0]?.id || '')
+    }
+  }, [
+    isAdvancedReseedOpen,
+    advancedReseedSource,
+    resticSnapshotsForReseed,
+    advancedReseedResticSnapshot,
+    row
+  ])
+
+  useEffect(() => {
+    if (!isAdvancedReseedOpen || advancedReseedSource !== 'restic') {
+      return
+    }
+    if (isResticPhysical) {
+      if (advancedReseedResticMode === 'dump') {
+        setAdvancedReseedResticMode(defaultResticMode)
+      }
+      if (advancedReseedResticMode !== 'restore' && advancedReseedResticInPlace) {
+        setAdvancedReseedResticInPlace(false)
+      }
+      return
+    }
+    if (!isResticMysqldump && !isResticMydumper) {
+      return
+    }
+    if (advancedReseedResticMode === 'dump' && !isResticMysqldump) {
+      setAdvancedReseedResticMode(defaultResticMode)
+    }
+    if ((advancedReseedResticMode === 'restore' || advancedReseedResticMode === 'mount')
+      && !isResticMydumper
+      && !isResticMysqldump) {
+      setAdvancedReseedResticMode(defaultResticMode)
+    }
+  }, [
+    isAdvancedReseedOpen,
+    advancedReseedSource,
+    advancedReseedResticMode,
+    isResticMysqldump,
+    isResticMydumper,
+    isResticPhysical,
+    advancedReseedResticInPlace,
+    defaultResticMode
+  ])
+
+  useEffect(() => {
+    if (!isAdvancedReseedOpen || advancedReseedSource !== 'restic') {
+      return
+    }
+    if (selectedResticSnapshotPath) {
+      if (selectedResticSnapshotPath !== advancedReseedResticFilePath) {
+        setAdvancedReseedResticFilePath(selectedResticSnapshotPath)
+      }
+      return
+    }
+    if (advancedReseedResticFilePath !== '') {
+      setAdvancedReseedResticFilePath('')
+    }
+  }, [
+    isAdvancedReseedOpen,
+    advancedReseedSource,
+    selectedResticSnapshotPath,
+    advancedReseedResticFilePath
+  ])
 
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true)
@@ -197,6 +597,10 @@ function ServerMenu({
     setAdvancedReseedType('logical')
     setAdvancedReseedSource('backup')
     setAdvancedReseedLine('default')
+    setAdvancedReseedResticMode(defaultResticMode)
+    setAdvancedReseedResticSnapshot('')
+    setAdvancedReseedResticFilePath('')
+    setAdvancedReseedResticInPlace(false)
     setIsAdvancedReseedOpen(true)
   }
 
@@ -210,6 +614,21 @@ function ServerMenu({
     if (advancedReseedSource === 'master') {
       // Reseed from master (only for logical)
       dispatch(reseedLogicalFromMaster({ clusterName, serverId: row.id }))
+    } else if (advancedReseedSource === 'restic') {
+      // Reseed from restic snapshot
+      const resticBackupTool = advancedReseedType === 'physical' ? backupPhysicalType : normalizedBackupLogicalType
+      dispatch(reseedFromRestic({ 
+        clusterName, 
+        serverId: row.id, 
+        snapshotId: advancedReseedResticSnapshot,
+        filePath: advancedReseedResticFilePath,
+        mode: advancedReseedResticMode,
+        backupTool: resticBackupTool,
+        backupType: advancedReseedType,
+        inPlace: isResticPhysical
+          && advancedReseedResticMode === 'restore'
+          && advancedReseedResticInPlace
+      }))
     } else {
       // Reseed from backup
       if (advancedReseedType === 'physical') {
@@ -713,8 +1132,8 @@ function ServerMenu({
                 <FormLabel>Reseed type</FormLabel>
                 <RadioGroup value={advancedReseedType} onChange={(value) => {
                   setAdvancedReseedType(value)
-                  // Reset source to backup when switching to physical (physical only supports backup source)
-                  if (value === 'physical') {
+                  // Physical reseed cannot use master source; keep restic/backup if already selected.
+                  if (value === 'physical' && advancedReseedSource === 'master') {
                     setAdvancedReseedSource('backup')
                   }
                 }}>
@@ -732,6 +1151,9 @@ function ServerMenu({
                     <Radio value='master' isDisabled={advancedReseedType === 'physical'}>
                       From Master {advancedReseedType === 'physical' && '(not available for physical)'}
                     </Radio>
+                    <Radio value='restic' isDisabled={!backupRestic}>
+                      From Restic Snapshot
+                    </Radio>
                   </Stack>
                 </RadioGroup>
                 {advancedReseedSource === 'backup' && (
@@ -742,6 +1164,11 @@ function ServerMenu({
                 {advancedReseedSource === 'master' && (
                   <Text fontSize='sm' color='gray.500' mt={2}>
                     Create a fresh dump from the current master and restore it.
+                  </Text>
+                )}
+                {advancedReseedSource === 'restic' && (
+                  <Text fontSize='sm' color='gray.500' mt={2}>
+                    Restore from a restic snapshot stored in the restic repository.
                   </Text>
                 )}
               </FormControl>
@@ -765,13 +1192,109 @@ function ServerMenu({
                   )}
                 </FormControl>
               )}
+              {advancedReseedSource === 'restic' && (
+                <>
+                  <FormControl>
+                    <FormLabel>Restic restore mode</FormLabel>
+                    <RadioGroup value={advancedReseedResticMode} onChange={setAdvancedReseedResticMode}>
+                      <Stack spacing={2}>
+                        <Radio value='dump' isDisabled={isResticPhysical || !isResticMysqldump}>
+                          Stream dump (mysqldump)
+                        </Radio>
+                        <Radio
+                          value='restore'
+                          isDisabled={!isResticPhysical && !isResticMydumper && !isResticMysqldump}
+                        >
+                          {resticRestoreLabel}
+                        </Radio>
+                        <Radio
+                          value='mount'
+                          isDisabled={!isResticPhysical && !isResticMydumper && !isResticMysqldump}
+                        >
+                          {resticMountLabel}
+                        </Radio>
+                      </Stack>
+                    </RadioGroup>
+                    <Text fontSize='sm' color='gray.500' mt={2}>
+                      {resticReseedModeHelp}
+                    </Text>
+                    {!isResticPhysical && !isResticMysqldump && !isResticMydumper && (
+                      <Text fontSize='sm' color='orange.500' mt={2}>
+                        Restic reseed supports mysqldump (stream/restore/mount) or mydumper (restore/mount) backups.
+                      </Text>
+                    )}
+                  </FormControl>
+                  {isResticPhysical && advancedReseedResticMode === 'restore' && (
+                    <FormControl display='flex' alignItems='center' justifyContent='space-between'>
+                      <FormLabel mb='0'>Restore in-place (replace backup file)</FormLabel>
+                      <Switch
+                        isChecked={advancedReseedResticInPlace}
+                        onChange={(event) => setAdvancedReseedResticInPlace(event.target.checked)}
+                      />
+                    </FormControl>
+                  )}
+                  {isResticPhysical && advancedReseedResticMode === 'restore' && (
+                    <Text fontSize='sm' color='orange.500'>
+                      In-place restore overwrites the current physical backup file. Make sure the latest backup is saved to restic before running it.
+                    </Text>
+                  )}
+                  <FormControl isRequired>
+                    <FormLabel>Restic Snapshot</FormLabel>
+                    <Select 
+                      placeholder='Select a restic snapshot' 
+                      value={advancedReseedResticSnapshot}
+                      onChange={(e) => {
+                        const snapshotId = e.target.value
+                        setAdvancedReseedResticSnapshot(snapshotId)
+                        const snapshot = resticSnapshotsForReseed.find((item) => item.id === snapshotId)
+                        setAdvancedReseedResticFilePath(getResticSnapshotBackupPath({
+                          snapshot,
+                          reseedType: advancedReseedType,
+                          backupLogicalType,
+                          backupPhysicalType,
+                          compressBackups: Boolean(compressBackups)
+                        }))
+                      }}
+                    >
+                      {resticSnapshotsForReseed.map(snapshot => (
+                        <option key={snapshot.id} value={snapshot.id}>
+                          {snapshot.short_id} - {snapshot.time} {snapshot.hostname ? `(${snapshot.hostname})` : ''}
+                          {snapshot.tags && snapshot.tags.length > 0 ? ` [${snapshot.tags.join(', ')}]` : ''}
+                        </option>
+                      ))}
+                    </Select>
+                    {resticSnapshotsForReseed.length === 0 && (
+                      <Text fontSize='sm' color='orange.500' mt={2}>
+                        No restic snapshots available for reseed.
+                      </Text>
+                    )}
+                    <Text fontSize='sm' color='gray.500' mt={2}>
+                      Select the restic snapshot to restore from.
+                    </Text>
+                  </FormControl>
+                  {selectedResticSnapshotPath ? (
+                    <Text fontSize='sm' color='gray.500'>
+                      Using snapshot path: {selectedResticSnapshotPath}
+                    </Text>
+                  ) : (
+                    <Text fontSize='sm' color='orange.500'>
+                      Selected snapshot does not include a file path to restore.
+                    </Text>
+                  )}
+                </>
+              )}
             </Stack>
           </ModalBody>
           <ModalFooter gap={3}>
             <RMButton variant='outline' colorScheme='white' size='medium' onClick={closeAdvancedReseedModal}>
               Cancel
             </RMButton>
-            <RMButton colorScheme='blue' size='medium' onClick={handleAdvancedReseed}>
+            <RMButton
+              colorScheme='blue'
+              size='medium'
+              onClick={handleAdvancedReseed}
+              isDisabled={advancedReseedSource === 'restic' && (!advancedReseedResticSnapshot || !selectedResticSnapshotPath || !resticReseedModeSupported)}
+            >
               Start Reseed
             </RMButton>
           </ModalFooter>

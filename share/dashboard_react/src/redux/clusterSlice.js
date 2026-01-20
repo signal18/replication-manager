@@ -968,6 +968,31 @@ export const reseedPhysicalFromBackup = createGuardedAsyncThunk(
   }
 )
 
+export const reseedFromRestic = createGuardedAsyncThunk(
+  'cluster/reseedFromRestic',
+  async ({ clusterName, serverId, snapshotId, filePath, mode, backupTool, backupType, inPlace }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.reseedFromRestic(
+        clusterName,
+        serverId,
+        snapshotId,
+        filePath,
+        mode,
+        backupTool,
+        backupType,
+        inPlace,
+        baseURL
+      )
+      showSuccessBanner('Reseed from restic snapshot successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Reseed from restic snapshot failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const pitrRestore = createGuardedAsyncThunk(
   'cluster/pitrRestore',
   async ({ clusterName, serverId, pitrData }, thunkAPI) => {
@@ -2210,6 +2235,7 @@ export const clusterSlice = createSlice({
         reseedLogicalFromBackup.pending,
         reseedLogicalFromMaster.pending,
         reseedPhysicalFromBackup.pending,
+        reseedFromRestic.pending,
         pitrRestore.pending,
         flushLogs.pending,
         physicalBackupMaster.pending,
@@ -2285,6 +2311,7 @@ export const clusterSlice = createSlice({
         reseedLogicalFromBackup.fulfilled,
         reseedLogicalFromMaster.fulfilled,
         reseedPhysicalFromBackup.fulfilled,
+        reseedFromRestic.fulfilled,
         pitrRestore.fulfilled,
         flushLogs.fulfilled,
         physicalBackupMaster.fulfilled,
@@ -2361,6 +2388,7 @@ export const clusterSlice = createSlice({
         reseedLogicalFromBackup.rejected,
         reseedLogicalFromMaster.rejected,
         reseedPhysicalFromBackup.rejected,
+        reseedFromRestic.rejected,
         pitrRestore.rejected,
         flushLogs.rejected,
         physicalBackupMaster.rejected,
