@@ -26,6 +26,7 @@ import RMButton from '../../../../components/RMButton'
 import {
   dropServer,
   flushLogs,
+  getBackups,
   jobsUpgrade,
   logicalBackup,
   optimizeServer,
@@ -219,6 +220,91 @@ const getResticSnapshotBackupPath = ({
   return basePath
 }
 
+const normalizeBackupValue = (value) => {
+  if (value === null || value === undefined) {
+    return ''
+  }
+  if (typeof value === 'string') {
+    return value.trim()
+  }
+  return String(value)
+}
+
+const getBackupLineValue = (backup) => {
+  return normalizeBackupValue(backup?.backup_line ?? backup?.backupLine).toLowerCase()
+}
+
+const getBackupRetentionDays = (backup) => {
+  const raw = backup?.retention_days ?? backup?.retentionDays ?? 0
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const getBackupToolValue = (backup) => {
+  return normalizeBackupValue(backup?.backup_tool ?? backup?.backupTool)
+}
+
+const getBackupMethodType = (backup) => {
+  const rawMethod = backup?.backup_method ?? backup?.backupMethod
+  if (rawMethod !== null && rawMethod !== undefined) {
+    if (typeof rawMethod === 'number') {
+      if (rawMethod === 1) {
+        return 'logical'
+      }
+      if (rawMethod === 2) {
+        return 'physical'
+      }
+    }
+    const normalized = normalizeBackupValue(rawMethod).toLowerCase()
+    if (normalized === '1' || normalized === 'logical') {
+      return 'logical'
+    }
+    if (normalized === '2' || normalized === 'physical') {
+      return 'physical'
+    }
+  }
+
+  const tool = getBackupToolValue(backup).toLowerCase()
+  if (tool === 'xtrabackup' || tool === 'mariabackup') {
+    return 'physical'
+  }
+  if (tool === 'mysqldump' || tool === 'mydumper' || tool === 'dumpling' || tool === 'script') {
+    return 'logical'
+  }
+  return ''
+}
+
+const getBackupStartTimestampMs = (backup) => {
+  const raw = backup?.start_time ?? backup?.startTime
+  if (typeof raw === 'number') {
+    return raw > 1e12 ? raw : raw * 1000
+  }
+  if (typeof raw === 'string') {
+    const parsed = Date.parse(raw)
+    return Number.isNaN(parsed) ? 0 : parsed
+  }
+  const idValue = Number(backup?.id ?? backup?.Id ?? 0)
+  if (Number.isFinite(idValue) && idValue > 0) {
+    return idValue > 1e12 ? idValue : idValue * 1000
+  }
+  return 0
+}
+
+const backupMatchesServer = (backup, row) => {
+  if (!backup || !row) {
+    return true
+  }
+  const backupServerId = backup?.server_id ?? backup?.serverId
+  if (backupServerId !== null && backupServerId !== undefined && row?.id !== null && row?.id !== undefined) {
+    return String(backupServerId) === String(row.id)
+  }
+  const source = normalizeBackupValue(backup?.source ?? backup?.Source)
+  if (source && row?.host && row?.port) {
+    return source === `${row.host}:${row.port}`
+  }
+  return true
+}
+
 /**
  * ServerMenu - Context menu for database server operations
  * 
@@ -294,16 +380,34 @@ function ServerMenu({
   const [advancedReseedType, setAdvancedReseedType] = useState('logical')
   const [advancedReseedSource, setAdvancedReseedSource] = useState('backup')
   const [advancedReseedLine, setAdvancedReseedLine] = useState('default')
+  const [advancedReseedBackupId, setAdvancedReseedBackupId] = useState('')
   const [advancedReseedResticSnapshot, setAdvancedReseedResticSnapshot] = useState('')
   const [advancedReseedResticFilePath, setAdvancedReseedResticFilePath] = useState('')
   const [advancedReseedResticMode, setAdvancedReseedResticMode] = useState('dump')
   const [advancedReseedResticInPlace, setAdvancedReseedResticInPlace] = useState(false)
+  const [advancedReseedResticUseSourcePath, setAdvancedReseedResticUseSourcePath] = useState(false)
   const [isPitrOpen, setIsPitrOpen] = useState(false)
   const [pitrBackupId, setPitrBackupId] = useState('')
   const [pitrRestoreTime, setPitrRestoreTime] = useState('')
   const [pitrUseBinlog, setPitrUseBinlog] = useState(true)
 
   const getHref = useHref('/').replace(/\/+$/, '');
+
+  const normalizedBackupsList = useMemo(() => {
+    if (!backupsList) {
+      return []
+    }
+    return Array.isArray(backupsList) ? backupsList : Object.values(backupsList)
+  }, [backupsList])
+
+  const serverBackupsForPitr = useMemo(() => {
+    if (!normalizedBackupsList.length) {
+      return []
+    }
+    const matching = normalizedBackupsList.filter((backup) => backupMatchesServer(backup, row))
+    const candidates = matching.length > 0 ? matching : normalizedBackupsList
+    return candidates.sort((a, b) => getBackupStartTimestampMs(b) - getBackupStartTimestampMs(a))
+  }, [normalizedBackupsList, row])
 
   const normalizedBackupLogicalType = useMemo(() => {
     return typeof backupLogicalType === 'string' ? backupLogicalType.toLowerCase() : ''
@@ -368,6 +472,31 @@ function ServerMenu({
     selections.sort((a, b) => a.index - b.index)
     return selections.map((entry) => entry.snapshot)
   }, [resticSnapshots, advancedReseedType, isAdvancedReseedOpen, backupRestic])
+
+  const adhocBackupsForReseed = useMemo(() => {
+    if (!normalizedBackupsList.length) {
+      return []
+    }
+    const expectedType = advancedReseedType === 'physical' ? 'physical' : 'logical'
+    const filtered = normalizedBackupsList.filter((backup) => {
+      if (!backup) {
+        return false
+      }
+      const line = getBackupLineValue(backup)
+      const isAdhoc = line === 'adhoc' || getBackupRetentionDays(backup) > 0
+      if (!isAdhoc) {
+        return false
+      }
+      const methodType = getBackupMethodType(backup)
+      if (methodType && methodType !== expectedType) {
+        return false
+      }
+      return true
+    })
+    const matching = filtered.filter((backup) => backupMatchesServer(backup, row))
+    const candidates = matching.length > 0 ? matching : filtered
+    return candidates.sort((a, b) => getBackupStartTimestampMs(b) - getBackupStartTimestampMs(a))
+  }, [normalizedBackupsList, advancedReseedType, row])
 
   const selectedResticSnapshot = useMemo(() => {
     if (!advancedReseedResticSnapshot) {
@@ -463,11 +592,36 @@ function ServerMenu({
   }, [isResticPhysical, advancedReseedResticInPlace])
 
   useEffect(() => {
+    if (advancedReseedSource !== 'restic' && advancedReseedResticUseSourcePath) {
+      setAdvancedReseedResticUseSourcePath(false)
+    }
+  }, [advancedReseedSource, advancedReseedResticUseSourcePath])
+
+  useEffect(() => {
+    if (!isResticPhysical && advancedReseedResticUseSourcePath) {
+      setAdvancedReseedResticUseSourcePath(false)
+    }
+  }, [isResticPhysical, advancedReseedResticUseSourcePath])
+
+  useEffect(() => {
+    if (advancedReseedResticInPlace && advancedReseedResticUseSourcePath) {
+      setAdvancedReseedResticUseSourcePath(false)
+    }
+  }, [advancedReseedResticInPlace, advancedReseedResticUseSourcePath])
+
+  useEffect(() => {
     if (!isAdvancedReseedOpen || !backupRestic || !clusterName) {
       return
     }
     dispatch(getResticSnapshot({ clusterName }))
   }, [isAdvancedReseedOpen, backupRestic, clusterName, dispatch])
+
+  useEffect(() => {
+    if (!isAdvancedReseedOpen || advancedReseedSource !== 'backup' || advancedReseedLine !== 'adhoc' || !clusterName) {
+      return
+    }
+    dispatch(getBackups({ clusterName }))
+  }, [isAdvancedReseedOpen, advancedReseedSource, advancedReseedLine, clusterName, dispatch])
 
   useEffect(() => {
     if (!isAdvancedReseedOpen || advancedReseedSource !== 'restic') {
@@ -510,6 +664,9 @@ function ServerMenu({
       if (advancedReseedResticMode !== 'restore' && advancedReseedResticInPlace) {
         setAdvancedReseedResticInPlace(false)
       }
+      if (advancedReseedResticMode === 'dump' && advancedReseedResticUseSourcePath) {
+        setAdvancedReseedResticUseSourcePath(false)
+      }
       return
     }
     if (!isResticMysqldump && !isResticMydumper) {
@@ -531,6 +688,7 @@ function ServerMenu({
     isResticMydumper,
     isResticPhysical,
     advancedReseedResticInPlace,
+    advancedReseedResticUseSourcePath,
     defaultResticMode
   ])
 
@@ -552,6 +710,32 @@ function ServerMenu({
     advancedReseedSource,
     selectedResticSnapshotPath,
     advancedReseedResticFilePath
+  ])
+
+  useEffect(() => {
+    if (advancedReseedSource !== 'backup' || advancedReseedLine !== 'adhoc' || advancedReseedType !== 'logical') {
+      if (advancedReseedBackupId !== '') {
+        setAdvancedReseedBackupId('')
+      }
+      return
+    }
+    if (adhocBackupsForReseed.length === 0) {
+      if (advancedReseedBackupId !== '') {
+        setAdvancedReseedBackupId('')
+      }
+      return
+    }
+    const currentExists = adhocBackupsForReseed.some((backup) => String(backup?.id ?? backup?.Id ?? '') === advancedReseedBackupId)
+    if (!currentExists) {
+      const nextId = String(adhocBackupsForReseed[0]?.id ?? adhocBackupsForReseed[0]?.Id ?? '')
+      setAdvancedReseedBackupId(nextId)
+    }
+  }, [
+    advancedReseedSource,
+    advancedReseedLine,
+    advancedReseedType,
+    adhocBackupsForReseed,
+    advancedReseedBackupId
   ])
 
   const openConfirmModal = () => {
@@ -597,10 +781,12 @@ function ServerMenu({
     setAdvancedReseedType('logical')
     setAdvancedReseedSource('backup')
     setAdvancedReseedLine('default')
+    setAdvancedReseedBackupId('')
     setAdvancedReseedResticMode(defaultResticMode)
     setAdvancedReseedResticSnapshot('')
     setAdvancedReseedResticFilePath('')
     setAdvancedReseedResticInPlace(false)
+    setAdvancedReseedResticUseSourcePath(false)
     setIsAdvancedReseedOpen(true)
   }
 
@@ -610,6 +796,9 @@ function ServerMenu({
 
   const handleAdvancedReseed = () => {
     const options = { line: advancedReseedLine }
+    if (advancedReseedLine === 'adhoc' && advancedReseedType === 'logical' && advancedReseedBackupId) {
+      options.backupId = advancedReseedBackupId
+    }
 
     if (advancedReseedSource === 'master') {
       // Reseed from master (only for logical)
@@ -627,7 +816,10 @@ function ServerMenu({
         backupType: advancedReseedType,
         inPlace: isResticPhysical
           && advancedReseedResticMode === 'restore'
-          && advancedReseedResticInPlace
+          && advancedReseedResticInPlace,
+        useSourcePath: isResticPhysical
+          && (advancedReseedResticMode === 'restore' || advancedReseedResticMode === 'mount')
+          && advancedReseedResticUseSourcePath
       }))
     } else {
       // Reseed from backup
@@ -642,10 +834,10 @@ function ServerMenu({
 
   const openPitrModal = () => {
     // Get the most recent backup ID if available
-    if (backupsList && backupsList.length > 0) {
-      const serverBackups = backupsList.filter(b => b.server_id === row.id)
-      if (serverBackups.length > 0) {
-        setPitrBackupId(serverBackups[0].id?.toString() || '')
+    if (serverBackupsForPitr.length > 0) {
+      const backupId = serverBackupsForPitr[0]?.id ?? serverBackupsForPitr[0]?.Id
+      if (backupId) {
+        setPitrBackupId(String(backupId))
       }
     }
     setPitrRestoreTime('')
@@ -1192,6 +1384,42 @@ function ServerMenu({
                   )}
                 </FormControl>
               )}
+              {advancedReseedSource === 'backup' && advancedReseedLine === 'adhoc' && (
+                <FormControl>
+                  <FormLabel>Ad-hoc backup</FormLabel>
+                  <Select
+                    placeholder={adhocBackupsForReseed.length > 0 ? 'Select an ad-hoc backup' : 'No ad-hoc backups'}
+                    value={advancedReseedBackupId}
+                    onChange={(event) => setAdvancedReseedBackupId(event.target.value)}
+                    isDisabled={adhocBackupsForReseed.length === 0 || advancedReseedType !== 'logical'}
+                  >
+                    {adhocBackupsForReseed.map((backup) => {
+                      const backupId = backup?.id ?? backup?.Id
+                      const backupTool = getBackupToolValue(backup) || 'backup'
+                      const backupLine = getBackupLineValue(backup)
+                      const backupTime = getBackupStartTimestampMs(backup)
+                      const backupSource = normalizeBackupValue(backup?.source ?? backup?.Source)
+                      return (
+                        <option key={backupId || backupTime} value={backupId || ''}>
+                          {backupTool} - {backupTime ? new Date(backupTime).toLocaleString() : 'Unknown time'}
+                          {backupLine ? ` (${backupLine})` : ''}
+                          {backupSource ? ` [${backupSource}]` : ''}
+                          {backupId ? ` #${backupId}` : ''}
+                        </option>
+                      )
+                    })}
+                  </Select>
+                  {adhocBackupsForReseed.length > 0 ? (
+                    <Text fontSize='sm' color='gray.500' mt={2}>
+                      Only logical ad-hoc backups are selectable here.
+                    </Text>
+                  ) : (
+                    <Text fontSize='sm' color='orange.500' mt={2}>
+                      Create an ad-hoc backup to populate this list.
+                    </Text>
+                  )}
+                </FormControl>
+              )}
               {advancedReseedSource === 'restic' && (
                 <>
                   <FormControl>
@@ -1236,6 +1464,21 @@ function ServerMenu({
                   {isResticPhysical && advancedReseedResticMode === 'restore' && (
                     <Text fontSize='sm' color='orange.500'>
                       In-place restore overwrites the current physical backup file. Make sure the latest backup is saved to restic before running it.
+                    </Text>
+                  )}
+                  {isResticPhysical && (advancedReseedResticMode === 'restore' || advancedReseedResticMode === 'mount') && (
+                    <FormControl display='flex' alignItems='center' justifyContent='space-between'>
+                      <FormLabel mb='0'>Use restic source path directly</FormLabel>
+                      <Switch
+                        isChecked={advancedReseedResticUseSourcePath}
+                        onChange={(event) => setAdvancedReseedResticUseSourcePath(event.target.checked)}
+                        isDisabled={advancedReseedResticInPlace}
+                      />
+                    </FormControl>
+                  )}
+                  {isResticPhysical && advancedReseedResticUseSourcePath && (
+                    <Text fontSize='sm' color='gray.500'>
+                      Streams the restored or mounted file directly for SST and skips the extra copy step. The restic restore directory or mount stays active until reseed completes.
                     </Text>
                   )}
                   <FormControl isRequired>
@@ -1293,7 +1536,8 @@ function ServerMenu({
               colorScheme='blue'
               size='medium'
               onClick={handleAdvancedReseed}
-              isDisabled={advancedReseedSource === 'restic' && (!advancedReseedResticSnapshot || !selectedResticSnapshotPath || !resticReseedModeSupported)}
+              isDisabled={(advancedReseedSource === 'restic' && (!advancedReseedResticSnapshot || !selectedResticSnapshotPath || !resticReseedModeSupported))
+                || (advancedReseedSource === 'backup' && advancedReseedLine === 'adhoc' && advancedReseedType === 'logical' && !advancedReseedBackupId)}
             >
               Start Reseed
             </RMButton>
@@ -1314,15 +1558,20 @@ function ServerMenu({
                   value={pitrBackupId}
                   onChange={(e) => setPitrBackupId(e.target.value)}
                 >
-                  {backupsList && backupsList
-                    .filter(backup => backup.server_id === row.id)
-                    .map(backup => (
-                      <option key={backup.id} value={backup.id}>
-                        {backup.backup_tool} - {new Date(backup.start_time * 1000).toLocaleString()} 
-                        {backup.backup_line ? ` (${backup.backup_line})` : ''}
+                  {serverBackupsForPitr.map((backup) => {
+                    const backupId = backup?.id ?? backup?.Id
+                    const backupTool = getBackupToolValue(backup) || 'backup'
+                    const backupLine = getBackupLineValue(backup)
+                    const backupTime = getBackupStartTimestampMs(backup)
+                    const backupSource = normalizeBackupValue(backup?.source ?? backup?.Source)
+                    return (
+                      <option key={backupId || backupTime} value={backupId || ''}>
+                        {backupTool} - {backupTime ? new Date(backupTime).toLocaleString() : 'Unknown time'}
+                        {backupLine ? ` (${backupLine})` : ''}
+                        {backupSource ? ` [${backupSource}]` : ''}
                       </option>
-                    ))
-                  }
+                    )
+                  })}
                 </Select>
                 <Text fontSize='sm' color='gray.500' mt={2}>
                   Select the backup to use as the base for point-in-time recovery.

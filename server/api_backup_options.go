@@ -50,6 +50,18 @@ func parseBackupRunOptions(r *http.Request) (cluster.BackupRunOptions, error) {
 		opts.ResticEnabled = &value
 	}
 
+	backupIDValue := strings.TrimSpace(query.Get("backup-id"))
+	if backupIDValue == "" {
+		backupIDValue = strings.TrimSpace(query.Get("backupId"))
+	}
+	if backupIDValue != "" {
+		value, err := strconv.ParseInt(backupIDValue, 10, 64)
+		if err != nil || value <= 0 {
+			return opts, fmt.Errorf("invalid backup-id")
+		}
+		opts.BackupID = value
+	}
+
 	return opts, nil
 }
 

@@ -1272,6 +1272,28 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if opts.BackupID > 0 {
+			node := mycluster.GetServerFromName(vars["serverName"])
+			if node == nil {
+				http.Error(w, "Server Not Found", 500)
+				return
+			}
+			switch vars["backupMethod"] {
+			case "logicalbackup":
+				if err := node.JobReseedLogicalBackupByID(opts.BackupID); err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "logical reseed restore failed %s", err)
+					http.Error(w, "Error reseed logical backup", 500)
+					return
+				}
+			case "physicalbackup":
+				http.Error(w, "Backup ID reseed is not supported for physical backups", http.StatusBadRequest)
+				return
+			default:
+				http.Error(w, "Invalid reseed method for backup ID", http.StatusBadRequest)
+				return
+			}
+			return
+		}
 		// Default to "default" line if not specified
 		backupLine := "default"
 		if opts.Line != "" {
@@ -1324,6 +1346,7 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 // @Param backupTool query string false "Backup tool (mysqldump|mydumper|xtrabackup|mariabackup)"
 // @Param backupType query string false "Backup type: logical|physical"
 // @Param inPlace query bool false "Restore physical backup in-place (overwrite existing file)"
+// @Param useSourcePath query bool false "Use restic restore/mount path directly for SST"
 // @Success 200 {string} string "Reseed initiated successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 400 {string} string "Missing required parameters"
@@ -1346,6 +1369,7 @@ func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWr
 		backupTool := strings.TrimSpace(r.URL.Query().Get("backupTool"))
 		backupType := strings.TrimSpace(r.URL.Query().Get("backupType"))
 		inPlace, _ := strconv.ParseBool(strings.TrimSpace(r.URL.Query().Get("inPlace")))
+		useSourcePath, _ := strconv.ParseBool(strings.TrimSpace(r.URL.Query().Get("useSourcePath")))
 		if backupType == "" {
 			backupType = "logical"
 		}
@@ -1369,9 +1393,9 @@ func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWr
 			case "physical":
 				switch strings.ToLower(mode) {
 				case "restore":
-					err = node.JobReseedResticPhysicalRestore(snapshotID, filePath, backupTool, inPlace)
+					err = node.JobReseedResticPhysicalRestore(snapshotID, filePath, backupTool, inPlace, useSourcePath)
 				case "mount":
-					err = node.JobReseedResticPhysicalMount(snapshotID, filePath, backupTool)
+					err = node.JobReseedResticPhysicalMount(snapshotID, filePath, backupTool, useSourcePath)
 				default:
 					http.Error(w, "Invalid reseed mode for physical backup", http.StatusBadRequest)
 					return

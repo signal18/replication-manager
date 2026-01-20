@@ -970,7 +970,7 @@ export const reseedPhysicalFromBackup = createGuardedAsyncThunk(
 
 export const reseedFromRestic = createGuardedAsyncThunk(
   'cluster/reseedFromRestic',
-  async ({ clusterName, serverId, snapshotId, filePath, mode, backupTool, backupType, inPlace }, thunkAPI) => {
+  async ({ clusterName, serverId, snapshotId, filePath, mode, backupTool, backupType, inPlace, useSourcePath }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.reseedFromRestic(
@@ -982,6 +982,7 @@ export const reseedFromRestic = createGuardedAsyncThunk(
         backupTool,
         backupType,
         inPlace,
+        useSourcePath,
         baseURL
       )
       showSuccessBanner('Reseed from restic snapshot successful!', status, thunkAPI)

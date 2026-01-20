@@ -414,7 +414,7 @@ function reseedPhysicalFromBackup(clusterName, serverId, options = {}, baseURL) 
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/reseed/physicalbackup${query}`)
 }
 
-function reseedFromRestic(clusterName, serverId, snapshotId, filePath, mode, backupTool, backupType, inPlace, baseURL) {
+function reseedFromRestic(clusterName, serverId, snapshotId, filePath, mode, backupTool, backupType, inPlace, useSourcePath, baseURL) {
   const params = new URLSearchParams()
   params.set('snapshotId', snapshotId)
   params.set('filePath', filePath)
@@ -429,6 +429,9 @@ function reseedFromRestic(clusterName, serverId, snapshotId, filePath, mode, bac
   }
   if (typeof inPlace === 'boolean') {
     params.set('inPlace', String(inPlace))
+  }
+  if (typeof useSourcePath === 'boolean') {
+    params.set('useSourcePath', String(useSourcePath))
   }
   return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/reseed-restic?${params.toString()}`)
 }
@@ -451,6 +454,9 @@ function buildBackupQuery(options = {}) {
   }
   if (typeof options?.restic === 'boolean') {
     params.set('restic', options.restic)
+  }
+  if (options?.backupId) {
+    params.set('backup-id', options.backupId)
   }
   const query = params.toString()
   return query ? `?${query}` : ''

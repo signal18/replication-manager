@@ -24,6 +24,7 @@ type BackupRunOptions struct {
 	Line          string
 	RetentionDays int
 	ResticEnabled *bool
+	BackupID      int64
 }
 
 var adhocMetaFilePattern = regexp.MustCompile(`\.(\d+)\.meta\.json$`)
