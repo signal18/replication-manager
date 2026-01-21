@@ -104,7 +104,13 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't fetch task")
 		}
 	} else {
-		cluster.OpenSVCCreateMaps(s.Agent)
+		err := cluster.OpenSVCCreateMaps(s.Agent)
+		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && !cluster.Conf.ProvObjectAllowOverwrite {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC service/volume exists and prov-object-allow-overwrite is disabled, skipping provisioning")
+			cluster.errorChan <- err
+			return
+		}
+
 		res, err := s.GenerateDBTemplateV2()
 		if err != nil {
 			cluster.errorChan <- err

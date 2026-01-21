@@ -1076,6 +1076,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvDBCompliance, "prov-db-compliance", "", "Path of compliance file for DB configuration")
 		flags.StringVar(&conf.ProvProxyCompliance, "prov-proxy-compliance", "", "Path of compliance file for Proxy configuration")
 		flags.BoolVar(&conf.MeasurementAutoClampLimit, "measurement-auto-clamp-limit", false, "Auto clamp to allowed value for measurement if exceed the min-max boundaries")
+		flags.BoolVar(&conf.ProvObjectAllowOverwrite, "prov-object-allow-overwrite", false, "Allow overwriting config/secret keys when objects already exist")
 
 		if WithOpenSVC == "ON" {
 
