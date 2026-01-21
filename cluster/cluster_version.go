@@ -58,11 +58,16 @@ func (cluster *Cluster) RefreshDBClientVersion() error {
 		return err
 	}
 
-	vstring := string(out)
+	// Clean up the output to remove paths and extract version info
+	rawOutput := string(out)
+	vstring := version.ExtractVersionFromOutput(rawOutput)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "DB client raw output: %s", rawOutput)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "DB client cleaned version string: %s", vstring)
 
 	v, _, _ := version.NewFullVersionFromString(version.ParseDBFlavor(vstring), vstring)
 	if v == nil {
-		return fmt.Errorf("unable to parse database client version from string: %s", vstring)
+		return fmt.Errorf("unable to parse database client version from string: %s (raw: %s)", vstring, rawOutput)
 	}
 
 	hasChanged, err := version.HasVersionChanged(oldV, v)
@@ -107,7 +112,12 @@ func (cluster *Cluster) RefreshDBClientDumpVersion() error {
 		return err
 	}
 
-	vstring := string(out)
+	// Clean up the output to remove paths and extract version info
+	rawOutput := string(out)
+	vstring := version.ExtractVersionFromOutput(rawOutput)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Dump client raw output: %s", rawOutput)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Dump client cleaned version string: %s", vstring)
 
 	flavor := version.ParseDBFlavor(vstring)
 
@@ -149,13 +159,18 @@ func (cluster *Cluster) RefreshDBClientBinlogVersion() error {
 	if oldV == nil {
 		cstring = "discovered"
 	}
-	// Return if mysqldump not found
+	// Return if mysqlbinlog not found
 	out, err := exec.Command(cluster.GetMysqlBinlogPath(), "--version").Output()
 	if err != nil {
 		return err
 	}
 
-	vstring := string(out)
+	// Clean up the output to remove paths and extract version info
+	rawOutput := string(out)
+	vstring := version.ExtractVersionFromOutput(rawOutput)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Binlog client raw output: %s", rawOutput)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Binlog client cleaned version string: %s", vstring)
 
 	flavor := version.ParseDBFlavor(vstring)
 
@@ -203,7 +218,14 @@ func (cluster *Cluster) RefreshMyDumperVersion() error {
 		return err
 	}
 
-	v, _ := version.NewVersionFromString("mydumper", string(out))
+	// Clean up the output to remove paths and extract version info
+	rawOutput := string(out)
+	vstring := version.ExtractVersionFromOutput(rawOutput)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "MyDumper raw output: %s", rawOutput)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "MyDumper cleaned version string: %s", vstring)
+
+	v, _ := version.NewVersionFromString("mydumper", vstring)
 
 	hasChanged, err := version.HasVersionChanged(oldV, v)
 	if err != nil {
@@ -238,13 +260,20 @@ func (cluster *Cluster) RefreshResticVersion() error {
 	if oldV == nil {
 		cstring = "discovered"
 	}
-	// Return if mydumper not found
+	// Return if restic not found
 	out, err := exec.Command(cluster.Conf.BackupResticBinaryPath, "version").Output()
 	if err != nil {
 		return err
 	}
 
-	v, _ := version.NewVersionFromString("restic", string(out))
+	// Clean up the output to remove paths and extract version info
+	rawOutput := string(out)
+	vstring := version.ExtractVersionFromOutput(rawOutput)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Restic raw output: %s", rawOutput)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Restic cleaned version string: %s", vstring)
+
+	v, _ := version.NewVersionFromString("restic", vstring)
 
 	hasChanged, err := version.HasVersionChanged(oldV, v)
 	if err != nil {
