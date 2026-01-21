@@ -16,6 +16,73 @@ import (
 	"strings"
 )
 
+// ExtractVersionFromOutput extracts the version string from command output,
+// removing paths and other noise that might confuse version parsing.
+// It looks for common version markers like "Ver", "version", "from", etc.
+//
+// This function is useful when parsing output from commands like:
+//   - mysql --version
+//   - mysqldump --version
+//   - mydumper --version
+//   - restic version
+//
+// It handles cases where the output includes file paths like:
+//
+//	/usr/local/mysql-8.0.32/bin/mysql Ver 8.0.28
+//
+// And extracts the clean version string: 8.0.28
+func ExtractVersionFromOutput(output string) string {
+	// Remove leading/trailing whitespace and newlines
+	output = strings.TrimSpace(output)
+
+	// For outputs with multiple lines, take only the first line
+	if lines := strings.Split(output, "\n"); len(lines) > 0 {
+		output = lines[0]
+		output = strings.TrimSpace(output)
+	}
+
+	// Remove any file paths from the beginning (e.g., /usr/bin/mysql Ver 8.0.28...)
+	// Look for patterns like /path/to/binary and remove them
+	pathRegex := regexp.MustCompile(`^[/\w\-\.]+/[\w\-]+\s+`)
+	output = pathRegex.ReplaceAllString(output, "")
+
+	// Look for version markers and extract from that point onwards
+	// These markers indicate where the actual version information starts
+	versionMarkers := []struct {
+		marker      string
+		stripMarker bool
+	}{
+		{"Ver ", true},
+		{"version ", true},
+		{"from ", true},
+		{"v", true},
+	}
+
+	for _, m := range versionMarkers {
+		if idx := strings.Index(output, m.marker); idx != -1 {
+			// Extract from the marker onwards
+			if m.stripMarker {
+				output = output[idx+len(m.marker):]
+			} else {
+				output = output[idx:]
+			}
+			break
+		}
+	}
+
+	// Remove common tool names from the beginning if they appear without version markers
+	// (e.g., "mydumper 0.11.5" -> "0.11.5", "restic 0.15.0" -> "0.15.0")
+	toolNames := []string{"mydumper ", "restic ", "mysql ", "mysqldump ", "mysqlbinlog "}
+	for _, tool := range toolNames {
+		if strings.HasPrefix(output, tool) {
+			output = strings.TrimPrefix(output, tool)
+			break
+		}
+	}
+
+	return strings.TrimSpace(output)
+}
+
 type Version struct {
 	Flavor      string   `json:"flavor"`
 	Major       int      `json:"major"`
