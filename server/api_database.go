@@ -2390,13 +2390,13 @@ func (repman *ReplicationManager) handlerMuxServerRestart(w http.ResponseWriter,
 		return
 	}
 
-	// Store parameters and set restart cookie
+	// Store parameters and set restart container cookie
 	node.RestartNode = nodeParam
 	node.RestartRid = ridParam
-	err := node.SetRestartCookie()
+	err := node.SetRestartContainerCookie()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to set restart cookie: %s", err)})
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to set restart container cookie: %s", err)})
 		return
 	}
 

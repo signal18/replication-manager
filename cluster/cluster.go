@@ -753,7 +753,7 @@ func (cluster *Cluster) Run() {
 						go cluster.refreshApps(wg)
 						cluster.CheckWaitRunJobSSH()
 						cluster.CheckDummyConfigSendCookies()
-						// cluster.CheckRestartCookies()
+						cluster.CheckRestartContainerCookies()
 
 						// Monitor schema when shardproxy is used
 						if cluster.Conf.MdbsProxyOn && cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() {

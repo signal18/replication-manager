@@ -341,6 +341,10 @@ func (server *ServerMonitor) SetRestartCookie() error {
 	return server.createCookie("cookie_restart")
 }
 
+func (server *ServerMonitor) SetRestartContainerCookie() error {
+	return server.createCookie("cookie_restart_container")
+}
+
 func (server *ServerMonitor) SetWaitStartCookie() error {
 	return server.createCookie("cookie_waitstart")
 }
