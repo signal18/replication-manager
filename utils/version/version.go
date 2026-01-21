@@ -86,7 +86,7 @@ func ParseDBFlavor(version string) string {
 
 func NewFullVersionFromString(flavor, vstring string) (*Version, int, int) {
 	// Updated regex to capture numeric version and optional suffix without including dash
-	versionRegex := `([0-9]{1,3}\.(?:[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z-]+))?`
+	versionRegex := `([0-9]{1,3}(?:\.[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z-]+))?`
 	re := regexp.MustCompile(versionRegex)
 	// Find all matches and capture numeric version with optional suffix
 	matches := re.FindAllStringSubmatch(vstring, 2)
@@ -100,7 +100,7 @@ func NewFullVersionFromString(flavor, vstring string) (*Version, int, int) {
 	for i, match := range matches {
 		// If i == 0 then main version else will be distribution version
 		if i == 0 {
-			tokens := strings.Split(re.FindString(match[1]), ".")
+			tokens := strings.Split(match[1], ".")
 			length[i] = len(tokens)
 			ver.Major, _ = strconv.Atoi(tokens[0])
 			if len(tokens) >= 2 {
@@ -109,10 +109,12 @@ func NewFullVersionFromString(flavor, vstring string) (*Version, int, int) {
 					ver.Release, _ = strconv.Atoi(tokens[2])
 				}
 			}
-			ver.Suffix = match[2]
+			if len(match) > 2 {
+				ver.Suffix = match[2]
+			}
 		} else {
 			ver.DistVersion = new(Version)
-			tokens := strings.Split(re.FindString(match[1]), ".")
+			tokens := strings.Split(match[1], ".")
 			length[i] = len(tokens)
 			ver.DistVersion.Major, _ = strconv.Atoi(tokens[0])
 			if len(tokens) >= 2 {
@@ -121,7 +123,9 @@ func NewFullVersionFromString(flavor, vstring string) (*Version, int, int) {
 					ver.DistVersion.Release, _ = strconv.Atoi(tokens[2])
 				}
 			}
-			ver.DistVersion.Suffix = match[2]
+			if len(match) > 2 {
+				ver.DistVersion.Suffix = match[2]
+			}
 		}
 
 	}
@@ -131,16 +135,22 @@ func NewFullVersionFromString(flavor, vstring string) (*Version, int, int) {
 
 func NewVersionFromString(flavor, vstring string) (*Version, int) {
 	// Updated regex to capture numeric version and optional suffix without including dash
-	versionRegex := `([0-9]{1,3}\.(?:[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z]+))?`
+	versionRegex := `([0-9]{1,3}(?:\.[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z]+))?`
 	re := regexp.MustCompile(versionRegex)
 	// Find all matches and capture numeric version with optional suffix
 	match := re.FindStringSubmatch(vstring)
 
 	ver := new(Version)
 	ver.Flavor = flavor
+
+	// Handle no match case
+	if len(match) == 0 {
+		return ver, 0
+	}
+
 	// Get the matched version
 	// match[1] contains the numeric version part, match[2] contains the suffix without dash
-	tokens := strings.Split(re.FindString(match[1]), ".")
+	tokens := strings.Split(match[1], ".")
 	ver.Major, _ = strconv.Atoi(tokens[0])
 	if len(tokens) >= 2 {
 		ver.Minor, _ = strconv.Atoi(tokens[1])
@@ -148,7 +158,9 @@ func NewVersionFromString(flavor, vstring string) (*Version, int) {
 			ver.Release, _ = strconv.Atoi(tokens[2])
 		}
 	}
-	ver.Suffix = match[2]
+	if len(match) > 2 {
+		ver.Suffix = match[2]
+	}
 
 	return ver, len(tokens)
 }

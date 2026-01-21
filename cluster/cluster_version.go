@@ -3,11 +3,68 @@ package cluster
 import (
 	"fmt"
 	"os/exec"
+	"regexp"
+	"strings"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
 )
+
+// extractVersionFromOutput extracts the version string from command output,
+// removing paths and other noise that might confuse version parsing.
+// It looks for common version markers like "Ver", "version", "from", etc.
+func extractVersionFromOutput(output string) string {
+	// Remove leading/trailing whitespace and newlines
+	output = strings.TrimSpace(output)
+
+	// For outputs with multiple lines, take only the first line
+	if lines := strings.Split(output, "\n"); len(lines) > 0 {
+		output = lines[0]
+		output = strings.TrimSpace(output)
+	}
+
+	// Remove any file paths from the beginning (e.g., /usr/bin/mysql Ver 8.0.28...)
+	// Look for patterns like /path/to/binary and remove them
+	pathRegex := regexp.MustCompile(`^[/\w\-\.]+/[\w\-]+\s+`)
+	output = pathRegex.ReplaceAllString(output, "")
+
+	// Look for version markers and extract from that point onwards
+	// These markers indicate where the actual version information starts
+	versionMarkers := []struct {
+		marker      string
+		stripMarker bool
+	}{
+		{"Ver ", true},
+		{"version ", true},
+		{"from ", true},
+		{"v", true},
+	}
+
+	for _, m := range versionMarkers {
+		if idx := strings.Index(output, m.marker); idx != -1 {
+			// Extract from the marker onwards
+			if m.stripMarker {
+				output = output[idx+len(m.marker):]
+			} else {
+				output = output[idx:]
+			}
+			break
+		}
+	}
+
+	// Remove common tool names from the beginning if they appear without version markers
+	// (e.g., "mydumper 0.11.5" -> "0.11.5", "restic 0.15.0" -> "0.15.0")
+	toolNames := []string{"mydumper ", "restic ", "mysql ", "mysqldump ", "mysqlbinlog "}
+	for _, tool := range toolNames {
+		if strings.HasPrefix(output, tool) {
+			output = strings.TrimPrefix(output, tool)
+			break
+		}
+	}
+
+	return strings.TrimSpace(output)
+}
 
 func (cluster *Cluster) RefreshToolVersions() {
 	if err := cluster.RefreshDBClientVersion(); err != nil {
@@ -58,11 +115,16 @@ func (cluster *Cluster) RefreshDBClientVersion() error {
 		return err
 	}
 
-	vstring := string(out)
+	// Clean up the output to remove paths and extract version info
+	rawOutput := string(out)
+	vstring := extractVersionFromOutput(rawOutput)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "DB client raw output: %s", rawOutput)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "DB client cleaned version string: %s", vstring)
 
 	v, _, _ := version.NewFullVersionFromString(version.ParseDBFlavor(vstring), vstring)
 	if v == nil {
-		return fmt.Errorf("unable to parse database client version from string: %s", vstring)
+		return fmt.Errorf("unable to parse database client version from string: %s (raw: %s)", vstring, rawOutput)
 	}
 
 	hasChanged, err := version.HasVersionChanged(oldV, v)
@@ -107,7 +169,12 @@ func (cluster *Cluster) RefreshDBClientDumpVersion() error {
 		return err
 	}
 
-	vstring := string(out)
+	// Clean up the output to remove paths and extract version info
+	rawOutput := string(out)
+	vstring := extractVersionFromOutput(rawOutput)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Dump client raw output: %s", rawOutput)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Dump client cleaned version string: %s", vstring)
 
 	flavor := version.ParseDBFlavor(vstring)
 
@@ -149,13 +216,18 @@ func (cluster *Cluster) RefreshDBClientBinlogVersion() error {
 	if oldV == nil {
 		cstring = "discovered"
 	}
-	// Return if mysqldump not found
+	// Return if mysqlbinlog not found
 	out, err := exec.Command(cluster.GetMysqlBinlogPath(), "--version").Output()
 	if err != nil {
 		return err
 	}
 
-	vstring := string(out)
+	// Clean up the output to remove paths and extract version info
+	rawOutput := string(out)
+	vstring := extractVersionFromOutput(rawOutput)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Binlog client raw output: %s", rawOutput)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Binlog client cleaned version string: %s", vstring)
 
 	flavor := version.ParseDBFlavor(vstring)
 
@@ -203,7 +275,14 @@ func (cluster *Cluster) RefreshMyDumperVersion() error {
 		return err
 	}
 
-	v, _ := version.NewVersionFromString("mydumper", string(out))
+	// Clean up the output to remove paths and extract version info
+	rawOutput := string(out)
+	vstring := extractVersionFromOutput(rawOutput)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "MyDumper raw output: %s", rawOutput)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "MyDumper cleaned version string: %s", vstring)
+
+	v, _ := version.NewVersionFromString("mydumper", vstring)
 
 	hasChanged, err := version.HasVersionChanged(oldV, v)
 	if err != nil {
@@ -238,13 +317,20 @@ func (cluster *Cluster) RefreshResticVersion() error {
 	if oldV == nil {
 		cstring = "discovered"
 	}
-	// Return if mydumper not found
+	// Return if restic not found
 	out, err := exec.Command(cluster.Conf.BackupResticBinaryPath, "version").Output()
 	if err != nil {
 		return err
 	}
 
-	v, _ := version.NewVersionFromString("restic", string(out))
+	// Clean up the output to remove paths and extract version info
+	rawOutput := string(out)
+	vstring := extractVersionFromOutput(rawOutput)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Restic raw output: %s", rawOutput)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Restic cleaned version string: %s", vstring)
+
+	v, _ := version.NewVersionFromString("restic", vstring)
 
 	hasChanged, err := version.HasVersionChanged(oldV, v)
 	if err != nil {
