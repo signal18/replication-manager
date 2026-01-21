@@ -498,7 +498,7 @@ func (cluster *Cluster) RestartDatabaseService(server *ServerMonitor, node strin
 		return errors.New("Restart not supported for this orchestrator yet")
 	}
 	if err == nil {
-		server.DelRestartCookie()
+		server.DelRestartContainerCookie()
 		// Clear stored parameters
 		server.RestartNode = ""
 		server.RestartRid = ""

@@ -73,7 +73,7 @@ err := mycluster.RestartDatabaseService(node, nodeParam, ridParam)
 // NEW: Set cookie (non-blocking)
 node.RestartNode = nodeParam
 node.RestartRid = ridParam
-err := node.SetRestartCookie()
+err := node.SetRestartContainerCookie()
 ```
 
 **API Response:**
@@ -82,16 +82,16 @@ err := node.SetRestartCookie()
 
 ### 3. Checker Function (cluster_chk.go)
 
-Implemented `CheckRestartCookies()` following the same pattern as `CheckDummyConfigSendCookies()`:
+Implemented `CheckRestartContainerCookies()` following the same pattern as `CheckDummyConfigSendCookies()`:
 
 ```go
-func (cluster *Cluster) CheckRestartCookies() {
+func (cluster *Cluster) CheckRestartContainerCookies() {
     for _, srv := range cluster.Servers {
         if srv == nil {
             continue
         }
         
-        if srv.HasRestartCookie() {
+        if srv.HasRestartContainerCookie() {
             // Retrieve stored parameters
             nodeParam := srv.RestartNode
             ridParam := srv.RestartRid
@@ -103,7 +103,7 @@ func (cluster *Cluster) CheckRestartCookies() {
             if err != nil {
                 // Log error
                 // Clean up even on error
-                srv.DelRestartCookie()
+                srv.DelRestartContainerCookie()
                 srv.RestartNode = ""
                 srv.RestartRid = ""
             }
@@ -125,7 +125,7 @@ Added checker call in the main monitoring loop:
 ```go
 cluster.CheckWaitRunJobSSH()
 cluster.CheckDummyConfigSendCookies()
-cluster.CheckRestartCookies()  // ← NEW
+cluster.CheckRestartContainerCookies()  // ← NEW
 ```
 
 **Execution frequency:** Every monitor tick (default: 2 seconds)
@@ -147,11 +147,11 @@ func (server *ServerMonitor) SetRestartRid(value string) {
 ## Cookie Mechanism
 
 ### Cookie File Structure
-- **Location:** `{ServerDatadir}/@cookie_restart`
+- **Location:** `{ServerDatadir}/@cookie_restart_container`
 - **Content:** Empty file (just a marker)
-- **Creation:** Via `SetRestartCookie()`
-- **Detection:** Via `HasRestartCookie()`
-- **Deletion:** Via `DelRestartCookie()`
+- **Creation:** Via `SetRestartContainerCookie()`
+- **Detection:** Via `HasRestartContainerCookie()`
+- **Deletion:** Via `DelRestartContainerCookie()`
 
 ### Cookie Lifecycle
 
@@ -178,17 +178,17 @@ Created comprehensive test suite in `cluster_chk_restart_test.go`:
 
 ### Unit Tests
 
-1. **TestCheckRestartCookies_NoCookies**
+1. **TestCheckRestartContainerCookies_NoCookies**
    - Verifies checker handles no cookies gracefully
    - ✅ PASS
 
-2. **TestCheckRestartCookies_WithCookie**
+2. **TestCheckRestartContainerCookies_WithCookie**
    - Tests cookie creation and parameter storage
    - Verifies cookie deletion
    - Verifies parameter clearing
    - ✅ PASS
 
-3. **TestCheckRestartCookies_ConcurrentCalls**
+3. **TestCheckRestartContainerCookies_ConcurrentCalls**
    - Tests thread safety of checker function
    - Verifies no race conditions
    - ✅ PASS
@@ -200,20 +200,20 @@ Created comprehensive test suite in `cluster_chk_restart_test.go`:
 
 ### Benchmark Tests
 
-1. **BenchmarkCheckRestartCookies_NoCookies**
+1. **BenchmarkCheckRestartContainerCookies_NoCookies**
    - Performance baseline for no-cookie scenario
 
-2. **BenchmarkCheckRestartCookies_WithCookies**
+2. **BenchmarkCheckRestartContainerCookies_WithCookies**
    - Performance with active cookies
 
 ### Test Results
 ```
-=== RUN   TestCheckRestartCookies_NoCookies
---- PASS: TestCheckRestartCookies_NoCookies (0.00s)
-=== RUN   TestCheckRestartCookies_WithCookie
---- PASS: TestCheckRestartCookies_WithCookie (0.00s)
-=== RUN   TestCheckRestartCookies_ConcurrentCalls
---- PASS: TestCheckRestartCookies_ConcurrentCalls (0.00s)
+=== RUN   TestCheckRestartContainerCookies_NoCookies
+--- PASS: TestCheckRestartContainerCookies_NoCookies (0.00s)
+=== RUN   TestCheckRestartContainerCookies_WithCookie
+--- PASS: TestCheckRestartContainerCookies_WithCookie (0.00s)
+=== RUN   TestCheckRestartContainerCookies_ConcurrentCalls
+--- PASS: TestCheckRestartContainerCookies_ConcurrentCalls (0.00s)
 === RUN   TestRestartParameterStorage
 --- PASS: TestRestartParameterStorage (0.00s)
 PASS
@@ -226,7 +226,7 @@ ok  	github.com/signal18/replication-manager/cluster	0.326s
 |------|---------|-------|
 | `cluster/srv.go` | Added RestartNode and RestartRid fields | 219-220 |
 | `server/api_database.go` | Modified handlerMuxServerRestart | 2330-2390 |
-| `cluster/cluster_chk.go` | Added CheckRestartCookies() | 1186-1218 |
+| `cluster/cluster_chk.go` | Added CheckRestartContainerCookies() | 1186-1218 |
 | `cluster/cluster.go` | Integrated checker in monitor loop | 745 |
 | `cluster/srv_set.go` | Added setter methods | 472-479 |
 
@@ -277,7 +277,7 @@ ok  	github.com/signal18/replication-manager/cluster	0.326s
 ### Manual Inspection
 ```bash
 # Check for pending restart cookies
-ls -la /path/to/datadir/@cookie_restart
+ls -la /path/to/datadir/@cookie_restart_container
 
 # Monitor for cookie processing
 tail -f /path/to/logs | grep "restart cookie"
@@ -334,7 +334,7 @@ tail -f /path/to/logs | grep "restart cookie"
 |-----------|------------|------------|---------|
 | Config Push | `cookie_wait_dummy_send` | None | N/A |
 | Job SSH | `cookie_waitrunjobssh` | None | N/A |
-| **Restart** | `cookie_restart` | node, rid | In-memory fields |
+| **Restart** | `cookie_restart_container` | node, rid | In-memory fields |
 
 **Restart is unique** in that it stores parameters, but follows the same checker pattern.
 

@@ -2,7 +2,7 @@
 
 ## Summary
 
-Successfully implemented automatic cleanup of stale restart cookies at cluster startup to prevent unwanted database restarts after process crashes.
+Successfully implemented automatic cleanup of stale restart container cookies at cluster startup to prevent unwanted database restarts after process crashes.
 
 ---
 
@@ -11,7 +11,7 @@ Successfully implemented automatic cleanup of stale restart cookies at cluster s
 - [x] **Cleanup Function Created** (`CleanupRestartCookies()`)
 - [x] **Integrated at Startup** (runs once after topology discovery)
 - [x] **Tests Written** (3 comprehensive tests)
-- [x] **Tests Passing** (7/7 total restart cookie tests)
+- [x] **Tests Passing** (7/7 total restart container cookie tests)
 - [x] **Code Compiles** (no new errors)
 - [x] **Documentation Complete** (2 new docs + updated summary)
 - [x] **Logging Added** (audit trail for cleanup actions)
@@ -90,14 +90,14 @@ ok      github.com/signal18/replication-manager/cluster    0.025s
 When replication-manager starts up, it automatically:
 
 1. **Scans all servers** in the cluster
-2. **Finds restart cookies** left from previous runs
+2. **Finds restart container cookies** left from previous runs
 3. **Deletes the cookies** from disk
 4. **Clears parameter fields** (RestartNode, RestartRid)
 5. **Logs cleanup actions** for audit trail
 
 ### Why It's Needed
 
-**Problem**: If replication-manager crashes after setting a restart cookie but before the restart completes, the cookie remains on disk. When the process restarts, the in-memory parameters are lost but the cookie file exists, potentially causing:
+**Problem**: If replication-manager crashes after setting a restart container cookie but before the restart completes, the cookie remains on disk. When the process restarts, the in-memory parameters are lost but the cookie file exists, potentially causing:
 - Unwanted restart attempts with empty parameters
 - Errors due to missing context
 - Confusion about restart state
@@ -142,7 +142,7 @@ When replication-manager starts up, it automatically:
    → CleanupRestartCookies()  ← NEW
 5. runOnceAfterTopology = false
 6. Monitor loop begins
-   - CheckRestartCookies() (processes valid cookies)
+   - CheckRestartContainerCookies() (processes valid cookies)
 ```
 
 **Key Point**: Cleanup runs BEFORE monitor loop, ensuring stale cookies are removed before any new ones are processed.
@@ -155,7 +155,7 @@ When replication-manager starts up, it automatically:
 
 1. **Create stale cookie**:
    ```bash
-   touch /var/lib/replication-manager/cluster1/server1/@cookie_restart
+   touch /var/lib/replication-manager/cluster1/server1/@cookie_restart_container
    ```
 
 2. **Start replication-manager**:
@@ -165,13 +165,13 @@ When replication-manager starts up, it automatically:
 
 3. **Check logs**:
    ```bash
-   grep "Cleaning up lingering restart cookie" /var/log/replication-manager.log
+   grep "Cleaning up lingering restart container cookie" /var/log/replication-manager.log
    grep "Cleaned up" /var/log/replication-manager.log
    ```
 
 4. **Verify cookie deleted**:
    ```bash
-   ls /var/lib/replication-manager/cluster1/server1/@cookie_restart
+   ls /var/lib/replication-manager/cluster1/server1/@cookie_restart_container
    # Should return: No such file or directory
    ```
 
@@ -270,7 +270,7 @@ When replication-manager starts up, it automatically:
 ## ✨ Summary
 
 ### What Was Built
-A simple, robust mechanism to automatically clean up stale restart cookies at cluster startup.
+A simple, robust mechanism to automatically clean up stale restart container cookies at cluster startup.
 
 ### Problem Solved
 Prevents unwanted database restarts from cookies left by previous process crashes.

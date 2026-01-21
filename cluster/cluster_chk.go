@@ -1171,21 +1171,21 @@ func (cluster *Cluster) CheckDummyConfigSendCookies() {
 	}
 }
 
-// CheckRestartCookies checks all servers for restart cookies and processes them
-func (cluster *Cluster) CheckRestartCookies() {
+// CheckRestartContainerCookies checks all servers for restart container cookies and processes them
+func (cluster *Cluster) CheckRestartContainerCookies() {
 	for _, srv := range cluster.Servers {
 		if srv == nil {
 			continue
 		}
 
-		if srv.HasRestartCookie() {
+		if srv.HasRestartContainerCookie() {
 			// Get the stored parameters
 			nodeParam := srv.RestartNode
 			ridParam := srv.RestartRid
 
 			if cluster.Conf != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-					"Processing restart cookie for server %s (node: %s, rid: %s)", srv.URL, nodeParam, ridParam)
+					"Processing restart container cookie for server %s (node: %s, rid: %s)", srv.URL, nodeParam, ridParam)
 			}
 			// Call the restart function with stored parameters
 			err := cluster.RestartDatabaseService(srv, nodeParam, ridParam)
@@ -1195,7 +1195,7 @@ func (cluster *Cluster) CheckRestartCookies() {
 						"Failed to restart server %s: %s", srv.URL, err)
 				}
 				// Delete cookie even on error to avoid infinite retries
-				srv.DelRestartCookie()
+				srv.DelRestartContainerCookie()
 				// Clear stored parameters
 				srv.RestartNode = ""
 				srv.RestartRid = ""
@@ -1204,7 +1204,7 @@ func (cluster *Cluster) CheckRestartCookies() {
 	}
 }
 
-// CleanupRestartCookies removes any lingering restart cookies and clears parameters at cluster startup
+// CleanupRestartCookies removes any lingering restart container cookies and clears parameters at cluster startup
 // This prevents unwanted restarts from old cookies that may have been left from previous runs
 func (cluster *Cluster) CleanupRestartCookies() {
 	cleanedCount := 0
@@ -1214,15 +1214,15 @@ func (cluster *Cluster) CleanupRestartCookies() {
 		}
 
 		// Check if restart cookie exists
-		if srv.HasRestartCookie() {
+		if srv.HasRestartContainerCookie() {
 			if cluster.Conf != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-					"Cleaning up lingering restart cookie for server %s (node: %s, rid: %s)",
+					"Cleaning up lingering restart container cookie for server %s (node: %s, rid: %s)",
 					srv.URL, srv.RestartNode, srv.RestartRid)
 			}
 
 			// Delete the cookie
-			srv.DelRestartCookie()
+			srv.DelRestartContainerCookie()
 			cleanedCount++
 		}
 
@@ -1233,6 +1233,6 @@ func (cluster *Cluster) CleanupRestartCookies() {
 
 	if cleanedCount > 0 && cluster.Conf != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"Cleaned up %d restart cookie(s) at cluster startup", cleanedCount)
+			"Cleaned up %d restart container cookie(s) at cluster startup", cleanedCount)
 	}
 }

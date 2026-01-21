@@ -147,6 +147,10 @@ func (server *ServerMonitor) HasRestartCookie() bool {
 	return server.hasCookie("cookie_restart")
 }
 
+func (server *ServerMonitor) HasRestartContainerCookie() bool {
+	return server.hasCookie("cookie_restart_container")
+}
+
 func (server *ServerMonitor) HasProvisionCookie() bool {
 	return server.hasCookie("cookie_prov")
 }

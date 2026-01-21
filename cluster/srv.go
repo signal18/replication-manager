@@ -223,8 +223,8 @@ type ServerMonitor struct {
 	IsNeedPathCheck             bool
 	HasConfigPathChanged        bool
 	HasConfigDiff               bool       `json:"hasConfigDiff"` // Indicates if there are differences between deployed and generated config
-	RestartNode                 string     // RestartNode stores node parameter for restart cookie (owned by cookie mechanism, single writer assumption)
-	RestartRid                  string     // RestartRid stores rid parameter for restart cookie (owned by cookie mechanism, single writer assumption)
+	RestartNode                 string     // RestartNode stores node parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
+	RestartRid                  string     // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
 	jobMutex                    sync.Mutex // protects IsRunningJobs flag
 	configGenMutex              sync.Mutex // protects config generation operations
 }
