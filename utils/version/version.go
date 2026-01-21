@@ -31,23 +31,33 @@ import (
 //	/usr/local/mysql-8.0.32/bin/mysql Ver 8.0.28
 //
 // And extracts the clean version string: 8.0.28
+//
+// Processing steps:
+//  1. Take only the first line of multi-line output
+//  2. Remove Unix-style file paths from the beginning
+//  3. Look for version markers and extract from that point
+//  4. Remove tool names if no version marker was found
 func ExtractVersionFromOutput(output string) string {
 	// Remove leading/trailing whitespace and newlines
 	output = strings.TrimSpace(output)
 
 	// For outputs with multiple lines, take only the first line
-	if lines := strings.Split(output, "\n"); len(lines) > 0 {
-		output = lines[0]
+	// strings.Split always returns at least one element, so check for multiple lines
+	if idx := strings.Index(output, "\n"); idx != -1 {
+		output = output[:idx]
 		output = strings.TrimSpace(output)
 	}
 
-	// Remove any file paths from the beginning (e.g., /usr/bin/mysql Ver 8.0.28...)
-	// Look for patterns like /path/to/binary and remove them
+	// Remove any Unix-style file paths from the beginning (e.g., /usr/bin/mysql Ver 8.0.28...)
+	// Pattern matches: /path/to/binary followed by whitespace
+	// Note: This is Unix-specific. Windows paths (C:\path\to\binary) are not handled
+	// as MySQL/MariaDB deployments are typically on Unix systems.
 	pathRegex := regexp.MustCompile(`^[/\w\-\.]+/[\w\-]+\s+`)
 	output = pathRegex.ReplaceAllString(output, "")
 
 	// Look for version markers and extract from that point onwards
 	// These markers indicate where the actual version information starts
+	// If a marker is found, we extract everything after it and skip tool name removal
 	versionMarkers := []struct {
 		marker      string
 		stripMarker bool
@@ -58,6 +68,7 @@ func ExtractVersionFromOutput(output string) string {
 		{"v", true},
 	}
 
+	foundMarker := false
 	for _, m := range versionMarkers {
 		if idx := strings.Index(output, m.marker); idx != -1 {
 			// Extract from the marker onwards
@@ -66,17 +77,21 @@ func ExtractVersionFromOutput(output string) string {
 			} else {
 				output = output[idx:]
 			}
+			foundMarker = true
 			break
 		}
 	}
 
-	// Remove common tool names from the beginning if they appear without version markers
-	// (e.g., "mydumper 0.11.5" -> "0.11.5", "restic 0.15.0" -> "0.15.0")
-	toolNames := []string{"mydumper ", "restic ", "mysql ", "mysqldump ", "mysqlbinlog "}
-	for _, tool := range toolNames {
-		if strings.HasPrefix(output, tool) {
-			output = strings.TrimPrefix(output, tool)
-			break
+	// If no version marker was found, try removing common tool names from the beginning
+	// This handles outputs like "mydumper 0.11.5" or "restic 0.15.0"
+	// We only do this if no version marker was found, to avoid double-processing
+	if !foundMarker {
+		toolNames := []string{"mydumper ", "restic ", "mysql ", "mysqldump ", "mysqlbinlog "}
+		for _, tool := range toolNames {
+			if strings.HasPrefix(output, tool) {
+				output = strings.TrimPrefix(output, tool)
+				break
+			}
 		}
 	}
 
