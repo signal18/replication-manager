@@ -316,6 +316,33 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 	return res.LastInsertId()
 }
 
+func (server *ServerMonitor) HasRunningDBJobs() (bool, error) {
+	if server.Conn == nil {
+		return false, errors.New("no pool connection")
+	}
+
+	conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return false, err
+	}
+	if conn == nil {
+		return false, errors.New("no connection established")
+	}
+	defer conn.Close()
+
+	query := "SELECT COUNT(*) FROM replication_manager_schema.jobs WHERE done=0 AND state IN (?, ?)"
+	var count int
+	err = server.ConnGetQueryWithTimeout(conn, JobTimeout, &count, query, JobStateRunning, JobStateHalted)
+	if err != nil {
+		if isTableMissingError(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
 func (server *ServerMonitor) JobBackupPhysical() error {
 	//server can be nil as no dicovered master
 	if server == nil {

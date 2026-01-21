@@ -1183,6 +1183,26 @@ func (cluster *Cluster) CheckRestartContainerCookies() {
 			nodeParam := srv.RestartNode
 			ridParam := srv.RestartRid
 
+			if ridParam == RestartRidJobsContainer && !srv.IsDown() {
+				running, err := srv.HasRunningDBJobs()
+				if err != nil {
+					if cluster.Conf != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+							"Skipping restart container cookie for server %s (node: %s, rid: %s): unable to check running jobs: %s",
+							srv.URL, nodeParam, ridParam, err)
+					}
+					continue
+				}
+				if running {
+					if cluster.Conf != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+							"Deferring restart container cookie for server %s (node: %s, rid: %s): jobs still running",
+							srv.URL, nodeParam, ridParam)
+					}
+					continue
+				}
+			}
+
 			if cluster.Conf != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 					"Processing restart container cookie for server %s (node: %s, rid: %s)", srv.URL, nodeParam, ridParam)
