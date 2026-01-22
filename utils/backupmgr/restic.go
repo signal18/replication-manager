@@ -3,6 +3,7 @@ package backupmgr
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -225,27 +226,33 @@ type ResticManager struct {
 	mountCmd          *exec.Cmd
 	mountPath         string
 	mountDone         chan error
-	BackupCount       int       // Number of backups since last check
-	LastCheckTime     time.Time // Last time repository check was run
-	LastFullCheckTime time.Time // Last time full data check was run
+	BackupCount       int           // Number of backups since last check
+	LastCheckTime     time.Time     // Last time repository check was run
+	LastFullCheckTime time.Time     // Last time full data check was run
+	DirMode           os.FileMode   // Directory permission mode (default: 0700)
+	FileMode          os.FileMode   // File permission mode (default: 0600)
+	OperationTimeout  time.Duration // Timeout for long-running operations (default: 2 hours)
 }
 
 // NewResticRepo initializes the repository manager
 func NewResticRepo(binaryPath string, msgChan chan sharedlog.Message, logmodule int) *ResticManager {
 	repo := &ResticManager{
-		BinaryPath:  binaryPath,
-		Backups:     make([]BackupSnapshot, 0),
-		MessageChan: msgChan,
-		LogModule:   logmodule,
-		TaskQueue:   make([]*ResticTask, 0),
-		Mutex:       &sync.Mutex{},
-		mountMutex:  &sync.Mutex{},
-		TaskErrors:  make(map[TaskType]error),
-		errorMutex:  &sync.Mutex{},
-		ResultChan:  make(chan ResticResult, 10),
-		stopCh:      make(chan struct{}),
-		CanFetch:    true,
-		CanInitRepo: true,
+		BinaryPath:       binaryPath,
+		Backups:          make([]BackupSnapshot, 0),
+		MessageChan:      msgChan,
+		LogModule:        logmodule,
+		TaskQueue:        make([]*ResticTask, 0),
+		Mutex:            &sync.Mutex{},
+		mountMutex:       &sync.Mutex{},
+		TaskErrors:       make(map[TaskType]error),
+		errorMutex:       &sync.Mutex{},
+		ResultChan:       make(chan ResticResult, 10),
+		stopCh:           make(chan struct{}),
+		CanFetch:         true,
+		CanInitRepo:      true,
+		DirMode:          0700,          // Secure default: owner-only directories
+		FileMode:         0600,          // Secure default: owner-only files
+		OperationTimeout: 2 * time.Hour, // Default: 2 hours for long operations
 	}
 
 	repo.cond = sync.NewCond(repo.Mutex)
@@ -408,6 +415,75 @@ func (repo *ResticManager) SetCanFetch(value bool) {
 // GetCanFetch returns CanFetch value
 func (repo *ResticManager) GetCanFetch() bool {
 	return repo.CanFetch
+}
+
+// SetPermissions sets the permission modes for restic operations
+// dirMode: Directory permission mode (e.g., 0700 for owner-only)
+// fileMode: File permission mode (e.g., 0600 for owner-only)
+func (repo *ResticManager) SetPermissions(dirMode, fileMode os.FileMode) {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+	repo.DirMode = dirMode
+	repo.FileMode = fileMode
+	repo.Printf(logrus.DebugLevel, "Set restic permissions: dir=%#o file=%#o", dirMode, fileMode)
+}
+
+// GetPermissions returns the current permission modes
+func (repo *ResticManager) GetPermissions() (os.FileMode, os.FileMode) {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+	dirMode := repo.DirMode
+	fileMode := repo.FileMode
+	if dirMode == 0 {
+		dirMode = 0700 // Secure default
+	}
+	if fileMode == 0 {
+		fileMode = 0600 // Secure default
+	}
+	return dirMode, fileMode
+}
+
+// SetOperationTimeout sets the timeout for long-running operations
+// timeout: Duration (e.g., 2*time.Hour for 2 hours)
+func (repo *ResticManager) SetOperationTimeout(timeout time.Duration) {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+	repo.OperationTimeout = timeout
+	repo.Printf(logrus.DebugLevel, "Set restic operation timeout: %v", timeout)
+}
+
+// GetOperationTimeout returns the operation timeout
+func (repo *ResticManager) GetOperationTimeout() time.Duration {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+	if repo.OperationTimeout == 0 {
+		return 2 * time.Hour // Default: 2 hours
+	}
+	return repo.OperationTimeout
+}
+
+// setRestorePermissions sets secure permissions on restored files and directories
+// This walks the entire restored directory tree and applies the configured permissions
+func (repo *ResticManager) setRestorePermissions(targetDir string) error {
+	dirMode, fileMode := repo.GetPermissions()
+
+	err := filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return os.Chmod(path, dirMode)
+		}
+		return os.Chmod(path, fileMode)
+	})
+
+	if err != nil {
+		repo.Printf(logrus.WarnLevel, "Failed to set permissions on %s: %v", targetDir, err)
+		return nil // Don't fail restore operation
+	}
+
+	repo.Printf(logrus.DebugLevel, "Set permissions on restored files (dir=%#o, file=%#o) in %s", dirMode, fileMode, targetDir)
+	return nil
 }
 
 func (repo *ResticManager) Print(level logrus.Level, message string) {
@@ -682,7 +758,8 @@ func (repo *ResticManager) restoreSnapshot(snapshotID, targetDir string, paths [
 		return fmt.Errorf("target directory is empty")
 	}
 
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
+	dirMode, _ := repo.GetPermissions()
+	if err := os.MkdirAll(targetDir, dirMode); err != nil {
 		return fmt.Errorf("failed to create target dir: %w", err)
 	}
 
@@ -717,9 +794,22 @@ func (repo *ResticManager) restoreSnapshot(snapshotID, targetDir string, paths [
 		}
 	}
 
-	_, stderr, err := repo.RunCommand(args, logrus.InfoLevel, false)
+	// Add timeout context for long-running restore operations
+	timeout := repo.GetOperationTimeout()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	_, stderr, err := repo.RunCommandWithContext(ctx, args, logrus.InfoLevel, false)
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("restore operation timeout after %v: %w", timeout, err)
+		}
 		return fmt.Errorf("failed to restore snapshot: %v, stderr: %s", err, stderr)
+	}
+
+	// Set secure permissions on all restored files
+	if err := repo.setRestorePermissions(targetDir); err != nil {
+		repo.Printf(logrus.WarnLevel, "Permission setting warning: %v", err)
 	}
 
 	return nil
@@ -756,8 +846,16 @@ func (repo *ResticManager) ListSnapshot(snapshotID string, paths []string, recur
 		}
 	}
 
-	stdout, stderr, err := repo.RunCommand(args, logrus.InfoLevel, true)
+	// Add timeout context for long-running list operations
+	timeout := repo.GetOperationTimeout()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	stdout, stderr, err := repo.RunCommandWithContext(ctx, args, logrus.InfoLevel, true)
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("list operation timeout after %v: %w", timeout, err)
+		}
 		return nil, fmt.Errorf("failed to list snapshot: %v, stderr: %s", err, stderr)
 	}
 
@@ -808,8 +906,13 @@ func (repo *ResticManager) DumpSnapshot(snapshotID, filePath string, writer io.W
 		return err
 	}
 
+	// Add timeout context for long-running dump operations
+	timeout := repo.GetOperationTimeout()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
 	args := []string{"dump", snapshotID, filePath}
-	cmd := exec.Command(repo.BinaryPath, args...)
+	cmd := exec.CommandContext(ctx, repo.BinaryPath, args...)
 	cmd.Env = append(os.Environ(), repo.Env...)
 
 	stdoutPipe, err := cmd.StdoutPipe()
@@ -821,7 +924,7 @@ func (repo *ResticManager) DumpSnapshot(snapshotID, filePath string, writer io.W
 		return fmt.Errorf("failed to get stderr pipe: %w", err)
 	}
 
-	repo.Printf(logrus.InfoLevel, "Starting command: %s %v", repo.BinaryPath, args)
+	repo.Printf(logrus.InfoLevel, "Starting command with timeout: %s %v", repo.BinaryPath, args)
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("error starting command: %w", err)
@@ -852,6 +955,10 @@ func (repo *ResticManager) DumpSnapshot(snapshotID, filePath string, writer io.W
 	}
 
 	if err := cmd.Wait(); err != nil {
+		// Check if timeout occurred
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("dump operation timeout after %v: %w", timeout, ctx.Err())
+		}
 		return fmt.Errorf("command execution failed: %w, stderr: %s", err, stderrBuf.Bytes())
 	}
 
@@ -864,7 +971,8 @@ func (repo *ResticManager) MountRepo(targetDir string) error {
 		return fmt.Errorf("mount target is empty")
 	}
 
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
+	dirMode, _ := repo.GetPermissions()
+	if err := os.MkdirAll(targetDir, dirMode); err != nil {
 		return fmt.Errorf("failed to create mount dir: %w", err)
 	}
 
@@ -959,6 +1067,7 @@ func (repo *ResticManager) MountRepo(targetDir string) error {
 			repo.mountMutex.Lock()
 			if repo.mountCmd != nil && repo.mountCmd.Process != nil {
 				_ = repo.mountCmd.Process.Kill()
+				time.Sleep(100 * time.Millisecond) // Allow cleanup
 			}
 			repo.mountMutex.Unlock()
 			msg := strings.TrimSpace(stderrBuf.String())
@@ -972,12 +1081,12 @@ func (repo *ResticManager) MountRepo(targetDir string) error {
 
 func isMountReady(mountPath string) bool {
 	// Check if mount point is accessible
-	entries, err := os.ReadDir(mountPath)
+	stat, err := os.Stat(mountPath)
 	if err != nil {
 		return false
 	}
-	// Restic mount typically shows snapshot directories
-	return len(entries) > 0
+	// Mount is ready if it's a valid directory (even if empty)
+	return stat.IsDir()
 }
 
 func (repo *ResticManager) UnmountRepo() error {
@@ -1352,6 +1461,79 @@ func (repo *ResticManager) RunCommand(args []string, loglevel logrus.Level, capt
 
 	// Now that all output is read, we can wait for the process to finish
 	if err := cmd.Wait(); err != nil {
+		return stdoutBuf.Bytes(), stderrBuf.Bytes(), fmt.Errorf("command execution failed: %w", err)
+	}
+
+	repo.Printf(loglevel, "Command completed successfully: %s %v", repo.BinaryPath, args)
+
+	// Return captured stdout and stderr if needed
+	if captureOutput {
+		return stdoutBuf.Bytes(), stderrBuf.Bytes(), nil
+	}
+
+	return nil, stderrBuf.Bytes(), nil
+}
+
+// RunCommandWithContext executes a restic command with timeout context
+func (repo *ResticManager) RunCommandWithContext(ctx context.Context, args []string, loglevel logrus.Level, captureOutput bool) ([]byte, []byte, error) {
+	// Set up the command with context
+	cmd := exec.CommandContext(ctx, repo.BinaryPath, args...)
+	cmd.Env = append(os.Environ(), repo.Env...)
+
+	// Buffers for stdout and stderr
+	var stdoutBuf, stderrBuf bytes.Buffer
+
+	// Create pipes for command output
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+
+	repo.Printf(loglevel, "Starting command with timeout: %s %v", repo.BinaryPath, args)
+
+	// Start the command execution
+	if err := cmd.Start(); err != nil {
+		return nil, nil, fmt.Errorf("error starting command: %w", err)
+	}
+
+	// Use WaitGroup to ensure we read both stdout and stderr before cmd.Wait()
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Function to read output
+	streamOutput := func(pipe io.ReadCloser, prefix string, buffer *bytes.Buffer, capture bool) {
+		defer wg.Done() // Mark goroutine as done
+
+		scanner := bufio.NewScanner(pipe)
+		for scanner.Scan() {
+			line := scanner.Text()
+			repo.Print(logrus.DebugLevel, prefix+line)
+			if capture {
+				buffer.WriteString(line + "\n")
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			repo.Printf(logrus.ErrorLevel, prefix+"Error reading output:", err)
+		}
+	}
+
+	// Start streaming stdout and stderr in separate goroutines
+	go streamOutput(stdoutPipe, "[OUT] ", &stdoutBuf, captureOutput)
+	go streamOutput(stderrPipe, "[ERR] ", &stderrBuf, true)
+
+	// Wait for both output goroutines to finish reading
+	wg.Wait()
+
+	// Now that all output is read, we can wait for the process to finish
+	if err := cmd.Wait(); err != nil {
+		// Check if timeout occurred
+		if ctx.Err() == context.DeadlineExceeded {
+			return stdoutBuf.Bytes(), stderrBuf.Bytes(), fmt.Errorf("command timeout after %v: %w", repo.GetOperationTimeout(), ctx.Err())
+		}
 		return stdoutBuf.Bytes(), stderrBuf.Bytes(), fmt.Errorf("command execution failed: %w", err)
 	}
 
