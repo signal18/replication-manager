@@ -101,7 +101,14 @@ func (cluster *Cluster) StartResticManager() error {
 		return nil
 	}
 
-	cluster.ResticManager = backupmgr.NewResticRepo(cluster.Conf.BackupResticBinaryPath, cluster.MessageChan, config.ConstLogModRestic)
+	resticManager := backupmgr.NewResticRepo(cluster.Conf.BackupResticBinaryPath, cluster.MessageChan, config.ConstLogModRestic)
+	if err := cluster.Conf.ValidateResticPermissions(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Invalid restic permission config: %s", err)
+	}
+	resticManager.SetPermissions(cluster.Conf.GetResticDirMode(), cluster.Conf.GetResticFileMode())
+	resticManager.SetOperationTimeout(cluster.Conf.GetResticTimeout())
+	resticManager.AutoDetectAndDisableMount()
+	cluster.ResticManager = resticManager
 	cluster.ReloadResticEnv()
 	go cluster.ResticFetchRepo()
 	return nil

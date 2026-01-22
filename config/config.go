@@ -743,6 +743,8 @@ type Config struct {
 	BackupResticPassword                      string                 `mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
 	BackupResticAws                           bool                   `mapstructure:"backup-restic-aws"  toml:"backup-restic-aws" json:"backupResticAws"`
 	BackupResticTimeout                       int                    `mapstructure:"backup-restic-timeout"  toml:"backup-restic-timeout" json:"backupResticTimeout"`
+	BackupResticDirMode                       int                    `mapstructure:"backup-restic-dir-mode" toml:"backup-restic-dir-mode" json:"backupResticDirMode"`
+	BackupResticFileMode                      int                    `mapstructure:"backup-restic-file-mode" toml:"backup-restic-file-mode" json:"backupResticFileMode"`
 	BackupResticPurgeOldestOnDiskSpace        bool                   `mapstructure:"backup-restic-purge-oldest-on-disk-space" toml:"backup-restic-purge-oldest-on-disk-space" json:"backupResticPurgeOldestOnDiskSpace"`
 	BackupResticPurgeOldestOnDiskThreshold    int                    `mapstructure:"backup-restic-purge-oldest-on-disk-threshold" toml:"backup-restic-purge-oldest-on-disk-treshold" json:"backupResticPurgeOldestOnDiskTreshold"`
 	BackupStreaming                           bool                   `mapstructure:"backup-streaming" toml:"backup-streaming" json:"backupStreaming"`
@@ -1759,7 +1761,6 @@ func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
 			conf.MonitoringKeyPath = fallbackPath
 			Logger.Debugf("Path writable. Flag 'monitoring-key-path' set to: %s.", fallbackPath)
 			Logger.Debugf("Generating key on: %s", conf.MonitoringKeyPath)
-
 		}
 
 		p := crypto.Password{}
@@ -3785,6 +3786,58 @@ func (conf *Config) CheckKeepWithin() error {
 	}
 
 	return nil
+}
+
+func isValidResticMode(value int) bool {
+	if value == 0 {
+		return true
+	}
+	if value < 600 || value > 777 {
+		return false
+	}
+	_, err := strconv.ParseUint(strconv.Itoa(value), 8, 32)
+	return err == nil
+}
+
+func parseResticMode(value int, defaultMode os.FileMode) os.FileMode {
+	if value <= 0 {
+		return defaultMode
+	}
+	if !isValidResticMode(value) {
+		return defaultMode
+	}
+
+	parsed, err := strconv.ParseUint(strconv.Itoa(value), 8, 32)
+	if err != nil {
+		return defaultMode
+	}
+
+	return os.FileMode(parsed)
+}
+
+func (conf *Config) ValidateResticPermissions() error {
+	if !isValidResticMode(conf.BackupResticDirMode) {
+		return NewValidationError("backup-restic-dir-mode", conf.BackupResticDirMode, "expected octal value in 6xx/7xx range, like 700")
+	}
+	if !isValidResticMode(conf.BackupResticFileMode) {
+		return NewValidationError("backup-restic-file-mode", conf.BackupResticFileMode, "expected octal value in 6xx/7xx range, like 600")
+	}
+	return nil
+}
+
+func (conf *Config) GetResticDirMode() os.FileMode {
+	return parseResticMode(conf.BackupResticDirMode, 0700)
+}
+
+func (conf *Config) GetResticFileMode() os.FileMode {
+	return parseResticMode(conf.BackupResticFileMode, 0600)
+}
+
+func (conf *Config) GetResticTimeout() time.Duration {
+	if conf.BackupResticTimeout <= 0 {
+		return 2 * time.Hour
+	}
+	return time.Duration(conf.BackupResticTimeout) * time.Second
 }
 
 type MeasurementConfig struct {

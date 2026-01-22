@@ -2803,6 +2803,43 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-restic-purge-oldest-on-disk-threshold":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.BackupResticPurgeOldestOnDiskThreshold = val
+	case "backup-restic-timeout":
+		val, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for backup-restic-timeout: %q", value)
+		}
+		mycluster.Conf.BackupResticTimeout = val
+		if mycluster.ResticManager != nil {
+			mycluster.ResticManager.SetOperationTimeout(mycluster.Conf.GetResticTimeout())
+		}
+	case "backup-restic-dir-mode":
+		val, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for backup-restic-dir-mode: %q", value)
+		}
+		oldValue := mycluster.Conf.BackupResticDirMode
+		mycluster.Conf.BackupResticDirMode = val
+		if err := mycluster.Conf.ValidateResticPermissions(); err != nil {
+			mycluster.Conf.BackupResticDirMode = oldValue
+			return err
+		}
+		if mycluster.ResticManager != nil {
+			mycluster.ResticManager.SetPermissions(mycluster.Conf.GetResticDirMode(), mycluster.Conf.GetResticFileMode())
+		}
+	case "backup-restic-file-mode":
+		val, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for backup-restic-file-mode: %q", value)
+		}
+		oldValue := mycluster.Conf.BackupResticFileMode
+		mycluster.Conf.BackupResticFileMode = val
+		if err := mycluster.Conf.ValidateResticPermissions(); err != nil {
+			mycluster.Conf.BackupResticFileMode = oldValue
+			return err
+		}
+		if mycluster.ResticManager != nil {
+			mycluster.ResticManager.SetPermissions(mycluster.Conf.GetResticDirMode(), mycluster.Conf.GetResticFileMode())
+		}
 	case "backup-logical-type":
 		mycluster.SetBackupLogicalType(value)
 	case "backup-physical-type":
