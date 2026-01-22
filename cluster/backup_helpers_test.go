@@ -7,9 +7,11 @@
 package cluster
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -575,6 +577,96 @@ func TestIsPathWithinBase(t *testing.T) {
 	}
 	if isPathWithinBase(base, "/tmp") {
 		t.Errorf("expected /tmp to be outside %s", base)
+	}
+}
+
+func TestPurgeExpiredAdhocBackupsConcurrent(t *testing.T) {
+	cluster := &Cluster{
+		Name:          "test-cluster",
+		Conf:          &config.Config{WorkingDir: t.TempDir()},
+		StateMachine:  &state.StateMachine{},
+		Logrus:        logrus.New(),
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
+	}
+	cluster.StateMachine.Init()
+
+	servers := serverList{
+		{Host: "127.0.0.1", Port: "3306", URL: "127.0.0.1:3306", ClusterGroup: cluster},
+		{Host: "127.0.0.2", Port: "3307", URL: "127.0.0.2:3307", ClusterGroup: cluster},
+	}
+	cluster.Servers = servers
+
+	baseTime := time.Now().Add(-48 * time.Hour)
+	type metaPaths struct {
+		id       int64
+		metaFile string
+		destDir  string
+	}
+	paths := make([]metaPaths, 0, len(servers))
+
+	for i, server := range servers {
+		backupDir := server.GetMyBackupDirectory()
+		destDir := filepath.Join(backupDir, "adhoc", server.Host)
+		if err := os.MkdirAll(destDir, 0755); err != nil {
+			t.Fatalf("failed to create dest dir: %v", err)
+		}
+
+		id := baseTime.Unix() + int64(i+1)
+		meta := &backupmgr.BackupMetadata{
+			Id:            id,
+			BackupTool:    "mysqldump",
+			RetentionDays: 1,
+			Completed:     true,
+			EndTime:       baseTime,
+			Dest:          destDir,
+			BackupLine:    backupmgr.BackupLineAdhoc,
+			Source:        server.URL,
+		}
+		metaFile := server.buildBackupMetaFileName(meta.BackupTool, meta.Id, backupmgr.BackupLineAdhoc)
+		if metaFile == "" {
+			t.Fatalf("failed to build metadata file path")
+		}
+		payload, err := json.Marshal(meta)
+		if err != nil {
+			t.Fatalf("failed to marshal metadata: %v", err)
+		}
+		if err := os.WriteFile(metaFile, payload, 0644); err != nil {
+			t.Fatalf("failed to write metadata file: %v", err)
+		}
+
+		cluster.BackupMetaMap.Set(meta.Id, meta)
+		paths = append(paths, metaPaths{id: meta.Id, metaFile: metaFile, destDir: destDir})
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cluster.PurgeExpiredAdhocBackups()
+		}()
+	}
+
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cluster.BackupMetaMap.Range(func(_, _ any) bool { return true })
+		}()
+	}
+
+	wg.Wait()
+
+	for _, entry := range paths {
+		if got := cluster.BackupMetaMap.Get(entry.id); got != nil {
+			t.Errorf("expected metadata %d to be removed", entry.id)
+		}
+		if _, err := os.Stat(entry.metaFile); err == nil {
+			t.Errorf("expected metadata file %s to be removed", entry.metaFile)
+		}
+		if _, err := os.Stat(entry.destDir); err == nil {
+			t.Errorf("expected dest dir %s to be removed", entry.destDir)
+		}
 	}
 }
 
