@@ -49,6 +49,61 @@ WithProvisioning, WithArbitration, WithProxysql, WithHaproxy, WithMaxscale,
 WithMonitoring, WithMail, WithHttp, WithOpenSVC, WithTarball, WithEmbed, etc.
 ```
 
+## Docker Build System
+
+### Docker Variants
+
+The project provides multiple Docker image variants for different deployment scenarios:
+
+**Standard Variants**:
+- `osc` - Open Source Community edition
+- `pro` - Professional edition with OpenSVC
+- `slim` - Minimal footprint
+- `dev` - Development environment with Go tooling
+
+**Rootless Variants** (suffix `-rootless`):
+- Run as non-root user `repman` (UID/GID 10001:10001)
+- Enhanced security posture for production deployments
+- All standard variants have rootless counterparts
+- Fixed UID/GID ensures consistent permissions across deployments
+
+**Dockerfiles**:
+- `Dockerfile` - OSC standard
+- `Dockerfile_rootless` - OSC rootless
+- `Dockerfile.pro` - Professional standard
+- `Dockerfile.pro_rootless` - Professional rootless
+- `Dockerfile.slim` - Slim standard
+- `Dockerfile.slim_rootless` - Slim rootless
+- `Dockerfile.dev_rootless` - Dev rootless
+
+**Jenkins CI/CD Pipeline**:
+
+Automated builds create tagged images:
+- Standard tags: `latest`, `pro`, `slim`, `dev`, `{TAG_NAME}`
+- Rootless tags: `latest-rootless`, `pro-rootless`, `{TAG_NAME}-rootless`
+- Nightly builds: `nightly`, `nightly-rootless`
+
+**Local Development**:
+```bash
+# Build rootless variant
+docker build -f Dockerfile_rootless -t replication-manager:osc-rootless .
+
+# Run with volume mounts (rootless)
+docker run -u repman -v /etc/replication-manager:/etc/replication-manager replication-manager:osc-rootless
+
+# Prepare host directories for rootless containers
+sudo chown -R 10001:10001 /path/to/data /path/to/config
+
+# Docker Compose deployment
+cd docker && docker-compose up
+```
+
+**Security Considerations**:
+- Rootless images use `USER repman` directive with fixed UID/GID 10001:10001
+- File permissions must accommodate non-root execution
+- Volume mounts require appropriate ownership: `chown 10001:10001 <path>`
+- Fixed UID/GID prevents permission issues across different hosts and container rebuilds
+
 ## Architecture
 
 ### Core Package Responsibilities
@@ -91,15 +146,23 @@ WithMonitoring, WithMail, WithHttp, WithOpenSVC, WithTarball, WithEmbed, etc.
 
 **utils/** - Supporting utilities
 - `dbhelper/`: Database operations (GTID, replication control)
-- `backupmgr/`: Backup orchestration
+- `backupmgr/`: Backup orchestration including Restic integration
 - `alert/`: Email, Slack, Pushover, Teams notifications
 - `s18log/`: Module-based logging system
 - `crypto/`: Encryption for sensitive config values
+- `river/`: Job scheduling and management with task queue infrastructure
+- `version/`: Version parsing and comparison utilities
 
 **regtest/** - Regression testing
 - 60+ test scenarios for failover, switchover, replication modes
 - Test definitions in separate files (`test_*.go`)
 - Framework for automated cluster testing
+
+**cluster/backup_helpers.go** - Backup orchestration utilities
+- `BackupRunOptions` struct for backup execution parameters
+- Backup line resolution (default vs ad-hoc configurations)
+- Metadata serialization and validation
+- Retention policy helpers
 
 ### Key Architectural Patterns
 
@@ -138,6 +201,59 @@ failoverCond   *nbc.NonBlockingChan
 switchoverCond *nbc.NonBlockingChan
 ```
 
+### Backup System: Restic Integration
+
+**ResticManager** (`utils/backupmgr/restic.go`) provides sophisticated backup orchestration:
+
+**Architecture**:
+- Task-based queue system with async execution
+- Support for local and cloud backends (S3/AWS)
+- FUSE mount operations for backup browsing
+- Metadata tracking with JSON serialization
+
+**Task Types**:
+```go
+InitTask        // Initialize repository
+FetchTask       // Fetch repository metadata
+BackupTask      // Create backup snapshot
+PurgeTask       // Remove old snapshots
+UnlockTask      // Unlock repository
+ChangePassTask  // Change password
+RestoreTask     // Restore from snapshot
+CheckTask       // Verify repository integrity
+```
+
+**Configuration Options** (in `config.Config`):
+- `backup-restic`: Enable Restic backups
+- `backup-restic-binary-path`: Path to restic executable
+- `backup-restic-repository`: Repository location
+- `backup-restic-password`: Repository encryption password
+- `backup-restic-aws`: Enable AWS S3 backend
+- `backup-restic-timeout`: Operation timeout
+- `backup-restic-purge-oldest-on-disk-space`: Auto-purge on disk pressure
+
+**Backup Helpers** (`cluster/backup_helpers.go`):
+- `BackupRunOptions`: Structure for backup execution parameters
+- `resolveBackupLine()`: Determine default vs ad-hoc backup configuration
+- `shouldRunRestic()`: Decision logic for Restic integration
+- Metadata management for tracking backup state
+
+**API Endpoints**:
+- `GET /api/clusters/{name}/restic/snapshots` - List available snapshots
+- `GET /api/clusters/{name}/restic/stats` - Repository statistics
+- `POST /api/clusters/{name}/restic/fetch` - Fetch repository metadata
+- `DELETE /api/clusters/{name}/restic/purge/{id}` - Delete snapshot
+- `POST /api/clusters/{name}/restic/unlock` - Unlock repository
+- `POST /api/clusters/{name}/restic/init` - Initialize repository
+- `GET /api/clusters/{name}/restic/task-queue` - View task queue
+- `POST /api/clusters/{name}/restic/task-queue/{action}` - Manage queue (pause/resume/cancel/move/reset)
+- `POST /api/clusters/{name}/restic/restore-config` - Restore configuration from backup
+
+**Integration**:
+- Each `cluster.Cluster` has `ResticManager` instance
+- Started via `StartResticManager()` during cluster initialization
+- Coordinated shutdown on cluster cleanup
+
 ## Configuration Files
 
 Configuration is loaded via Viper from TOML files in these locations:
@@ -155,6 +271,39 @@ Structure:
 # Per-cluster settings
 db-servers-hosts = "192.168.1.10,192.168.1.11,192.168.1.12"
 ```
+
+### Configuration: Environment Variables
+
+**Environment Variable Precedence**:
+
+Configuration values are resolved in this order (highest to lowest priority):
+1. Command-line flags
+2. Environment variables (`REPLICATION_MANAGER_*` prefix)
+3. TOML configuration file values
+4. Default values
+
+**Environment Variable Mapping**:
+- Flag name converted to uppercase with underscores
+- Example: `--monitoring-ticker` → `REPLICATION_MANAGER_MONITORING_TICKER`
+
+**Key Path Fallback Mechanism**:
+
+For nested configuration keys, the system tries multiple environment variable formats:
+```bash
+# For a nested key like "cluster.monitoring-ticker"
+REPLICATION_MANAGER_CLUSTER_MONITORING_TICKER=2s
+# Falls back to:
+REPLICATION_MANAGER_MONITORING_TICKER=2s
+```
+
+See `doc/implementation/config/KEY_PATH_FALLBACK.md` for comprehensive details.
+
+**Runtime Defaults**:
+
+Some configuration values have runtime-computed defaults:
+- Backup paths default to `/var/lib/replication-manager/{cluster-name}/backup`
+- Log files default to `/var/log/replication-manager.log`
+- Data directories resolve based on installation type (RPM vs tarball vs dev)
 
 ## Testing
 
@@ -182,6 +331,24 @@ Tests cover:
 go test ./cluster/...
 go test ./utils/...
 ```
+
+### Backup System Tests
+
+**Restic Tests** (`utils/backupmgr/restic_test.go`):
+- ResticManager lifecycle tests
+- Task queue operations (concurrent execution)
+- Snapshot purge operations with expiration logic
+- Repository initialization and unlocking
+- AWS S3 backend integration tests
+
+**Backup Helpers Tests** (`cluster/backup_helpers_test.go`):
+- Backup metadata handling and validation
+- Backup line resolution (default vs ad-hoc)
+- Retention policy application
+
+**Version Tests** (`utils/version/version_test.go`):
+- Multi-line output parsing
+- Version extraction from various database binary formats
 
 ## Development Workflow
 
@@ -282,12 +449,28 @@ Implementation-specific documentation created by Claude Code agents is stored in
 
 **Structure**: `doc/implementation/{package_path}/{DOC_NAME}.md`
 
-**Examples**:
-- `doc/implementation/utils/dbhelper/MIGRATION_STATUS.md` - Migration tracking for dbhelper package
-- `doc/implementation/utils/dbhelper/SECURITY_AUDIT.md` - Security audit findings
-- `doc/implementation/utils/dbhelper/VENDOR_USAGE.md` - Third-party dependency analysis
+The `doc/implementation/` directory has been significantly expanded with module-specific documentation:
 
-When creating new implementation documentation, place it under `doc/implementation/` following the package structure, not alongside the source code.
+**Configuration**:
+- `config/KEY_PATH_FALLBACK.md` - Environment variable resolution mechanics
+- `config/REFACTORING.md` - Configuration system architecture evolution
+- `config/RESTIC_PERMISSION_VALIDATION.md` - Security validation for Restic paths
+
+**Utilities**:
+- `utils/dbhelper/MIGRATION_STATUS.md` - Migration tracking
+- `utils/dbhelper/SECURITY_AUDIT.md` - Security audit findings
+- `utils/dbhelper/VENDOR_USAGE.md` - Third-party dependency analysis
+
+**Testing**:
+- `testing/` - Test coverage reports and strategies
+
+**UI Components**:
+- `ui-components/` - Dashboard component documentation
+
+When creating new implementation documentation:
+- Place under `doc/implementation/{package_path}/`
+- Use descriptive UPPERCASE_FILENAMES.md
+- Focus on implementation decisions, not API usage
 
 ## Common Issues
 
@@ -296,3 +479,9 @@ When creating new implementation documentation, place it under `doc/implementati
 **Module Path**: The module is `github.com/signal18/replication-manager`. Import paths must use this prefix.
 
 **Viper Binding**: Flags must be bound to Viper using `viper.BindPFlags(cmd.Flags())` for environment variable overrides to work.
+
+**Restic Binary Path**: When using Restic backups, ensure `backup-restic-binary-path` points to a valid restic executable. The system does not install restic automatically.
+
+**Docker Rootless Permissions**: When running rootless Docker containers, ensure mounted volumes have correct ownership (`chown 1000:1000` or appropriate UID/GID for the `repman` user).
+
+**Environment Variable Conflicts**: If using both TOML config and environment variables, remember that environment variables take precedence over TOML values. Use `replication-manager config-merge` to debug effective configuration.

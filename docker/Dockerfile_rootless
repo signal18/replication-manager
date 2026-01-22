@@ -36,8 +36,8 @@ RUN apt-get update && apt-get -y install mydumper ca-certificates restic mariadb
   && curl -LO https://github.com/sysown/proxysql/releases/download/v$PROXYSQL_VERSION/proxysql_$PROXYSQL_VERSION-debian12_amd64.deb && dpkg -i proxysql_$PROXYSQL_VERSION-debian12_amd64.deb \
   && curl -LO https://github.com/mydumper/mydumper/releases/download/v$MYDUMPER_VERSION/mydumper_$MYDUMPER_VERSION.bookworm_amd64.deb && dpkg -i mydumper_$MYDUMPER_VERSION.bookworm_amd64.deb \
   && rm -f *.deb && rm -rf /var/lib/mysql/*
-RUN addgroup --system repman \
-  && adduser --system --ingroup repman --home /var/lib/replication-manager --no-create-home --shell /usr/sbin/nologin repman \
+RUN groupadd -g 10001 repman \
+  && useradd -r -u 10001 -g repman -d /var/lib/replication-manager -s /usr/sbin/nologin repman \
   && chown -R repman:repman /etc/replication-manager /etc/replication-manager/cluster.d /var/lib/replication-manager
 USER repman
 CMD ["replication-manager", "monitor", "--http-server"]

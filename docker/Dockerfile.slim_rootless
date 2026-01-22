@@ -31,8 +31,8 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binari
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
 
 RUN curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash -s -- --mariadb-server-version="mariadb-$MARIADB_VERSION" --skip-maxscale
-RUN addgroup --system repman \
-  && adduser --system --ingroup repman --home /var/lib/replication-manager --no-create-home --shell /usr/sbin/nologin repman \
+RUN groupadd -g 10001 repman \
+  && useradd -r -u 10001 -g repman -d /var/lib/replication-manager -s /usr/sbin/nologin repman \
   && chown -R repman:repman /etc/replication-manager /etc/replication-manager/cluster.d /var/lib/replication-manager
 USER repman
 CMD ["replication-manager", "monitor", "--http-server"]

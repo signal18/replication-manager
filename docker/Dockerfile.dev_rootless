@@ -67,8 +67,8 @@ RUN mkdir -p \
             /var/lib/replication-manager \
             /var/lib/replication-manager/conf \
             /var/lib/replication-manager/recover
-RUN addgroup --system repman \
-        && adduser --system --ingroup repman --home /var/lib/replication-manager --no-create-home --shell /usr/sbin/nologin repman \
+RUN groupadd -g 10001 repman \
+        && useradd -r -u 10001 -g repman -d /var/lib/replication-manager -s /usr/sbin/nologin repman \
         && chown -R repman:repman /etc/replication-manager /etc/replication-manager/cluster.d /var/lib/replication-manager
 
 RUN cp etc/local/config.toml.docker /etc/replication-manager/config.toml && \
