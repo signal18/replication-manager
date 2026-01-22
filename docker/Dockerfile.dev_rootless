@@ -1,0 +1,85 @@
+FROM golang:1.24-bookworm AS builder
+
+RUN mkdir -p /go/src/github.com/signal18/replication-manager
+WORKDIR /go/src/github.com/signal18/replication-manager
+
+# Install Go development tools in builder stage
+# Use a specific version of gopls
+RUN /usr/local/go/bin/go install -v golang.org/x/tools/gopls@v0.18.0 
+
+RUN /usr/local/go/bin/go install -v github.com/cweill/gotests/gotests@v1.6.0
+RUN /usr/local/go/bin/go install -v github.com/fatih/gomodifytags@v1.16.0
+RUN /usr/local/go/bin/go install -v github.com/josharian/impl@v1.1.0
+RUN /usr/local/go/bin/go install -v github.com/haya14busa/goplay/cmd/goplay@v1.0.0
+RUN /usr/local/go/bin/go install -v github.com/go-delve/delve/cmd/dlv@latest
+RUN /usr/local/go/bin/go install -v honnef.co/go/tools/cmd/staticcheck@latest
+RUN /usr/local/go/bin/go install -v github.com/moul/gotty-client/cmd/gotty-client@v1.10.0
+
+# Install Node.js 18 from NodeSource
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+        apt-get install -y nodejs && \
+        rm -rf /var/lib/apt/lists/*
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN make pro cli
+
+FROM golang:1.24-bookworm AS final
+
+ENV PROXYSQL_VERSION=2.7.3
+ENV MARIADB_VERSION=11.4
+ENV MYDUMPER_VERSION=0.17.1-1
+
+RUN curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash -s -- --mariadb-server-version="mariadb-$MARIADB_VERSION" --skip-maxscale
+
+# Move to top for better cache
+RUN apt-get update && apt-get -y install ca-certificates restic mariadb-client mariadb-server mariadb-backup mariadb-plugin-spider haproxy wget openssh-client libmariadb-dev fuse sysbench curl vim libatomic1 libglib2.0 libpcre3 adduser
+RUN curl -LO https://github.com/sysown/proxysql/releases/download/v$PROXYSQL_VERSION/proxysql_$PROXYSQL_VERSION-debian12_amd64.deb && dpkg -i proxysql_$PROXYSQL_VERSION-debian12_amd64.deb
+RUN curl -LO https://github.com/mydumper/mydumper/releases/download/v$MYDUMPER_VERSION/mydumper_$MYDUMPER_VERSION.bookworm_amd64.deb && dpkg -i mydumper_$MYDUMPER_VERSION.bookworm_amd64.deb
+
+# Install Node.js 18 from NodeSource for development tools
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+        apt-get install -y nodejs && \
+        rm -rf /var/lib/apt/lists/*
+
+# Copy Go tools from builder stage
+COPY --from=builder /go/bin/ /go/bin/
+
+# Create directories and workspace
+RUN mkdir -p /go/src/github.com/signal18/replication-manager
+WORKDIR /go/src/github.com/signal18/replication-manager
+
+# Copy source and binaries from builder
+COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries /go/src/github.com/signal18/replication-manager/build/binaries
+COPY --from=builder /go/src/github.com/signal18/replication-manager/etc /go/src/github.com/signal18/replication-manager/etc
+COPY --from=builder /go/src/github.com/signal18/replication-manager/share /go/src/github.com/signal18/replication-manager/share
+COPY --from=builder /go/src/github.com/signal18/replication-manager/scripts /go/src/github.com/signal18/replication-manager/scripts
+
+# Create symlinks and configure
+RUN ln -s build/binaries/replication-manager-pro replication-manager-pro && \
+        ln -s build/binaries/replication-manager-cli replication-manager-cli
+
+RUN mkdir -p \
+            /etc/replication-manager \
+            /etc/replication-manager/cluster.d \
+            /var/lib/replication-manager \
+            /var/lib/replication-manager/conf \
+            /var/lib/replication-manager/recover
+RUN addgroup --system repman \
+        && adduser --system --ingroup repman --home /var/lib/replication-manager --no-create-home --shell /usr/sbin/nologin repman \
+        && chown -R repman:repman /etc/replication-manager /etc/replication-manager/cluster.d /var/lib/replication-manager
+
+RUN cp etc/local/config.toml.docker /etc/replication-manager/config.toml && \
+        cp etc/local/masterslave/haproxy/config.toml /etc/replication-manager/cluster.d/localmasterslavehaproxy.toml && \
+        cp etc/local/masterslave/proxysql/config.toml /etc/replication-manager/cluster.d/localmasterslaveproxysql.toml && \
+        cp -r share /usr/share/replication-manager/ && \
+        cp build/binaries/replication-manager-pro /usr/bin/replication-manager && \
+        cp build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
+
+RUN bash scripts/post_install.sh
+
+USER repman
+CMD ["while true; do sleep 86400; done"]
+EXPOSE 10001
