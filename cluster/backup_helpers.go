@@ -20,6 +20,10 @@ import (
 	"github.com/signal18/replication-manager/utils/backupmgr"
 )
 
+// BackupRunOptions defines runtime overrides for backup execution behavior.
+// Line and RetentionDays influence default vs ad-hoc handling.
+// ResticEnabled can force enable/disable restic for this run.
+// BackupID is used for ad-hoc metadata naming.
 type BackupRunOptions struct {
 	Line          string
 	RetentionDays int
@@ -42,6 +46,9 @@ func normalizeBackupLine(value string) string {
 	}
 }
 
+// resolveBackupLine normalizes backup line selection and enforces ad-hoc
+// behavior when retention days are specified or when the server is not the
+// backup source or master.
 func (server *ServerMonitor) resolveBackupLine(opts BackupRunOptions) string {
 	line := normalizeBackupLine(opts.Line)
 	if opts.RetentionDays > 0 {
@@ -69,6 +76,8 @@ func (server *ServerMonitor) resolveBackupLine(opts BackupRunOptions) string {
 	return line
 }
 
+// shouldRunRestic decides whether restic should be used for a backup run.
+// It respects cluster config and an optional per-run override.
 func (server *ServerMonitor) shouldRunRestic(opts BackupRunOptions) bool {
 	cluster := server.ClusterGroup
 	if cluster == nil || !cluster.Conf.BackupRestic {

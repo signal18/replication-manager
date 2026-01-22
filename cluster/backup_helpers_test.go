@@ -196,15 +196,17 @@ func TestRetentionDeadline(t *testing.T) {
 }
 
 func TestBuildBackupMetaFileName(t *testing.T) {
-	// Note: buildBackupMetaFileName needs GetMyBackupDirectory which requires ClusterGroup
-	// This test is limited and should be enhanced with proper cluster mock
-	// For now, skip tests that require full cluster setup
-	t.Skip("Skipping buildBackupMetaFileName test - requires full cluster setup")
-
-	server := &ServerMonitor{
-		Host: "127.0.0.1",
-		Port: "3306",
+	cluster := &Cluster{
+		Name:   "test-cluster",
+		Conf:   &config.Config{WorkingDir: t.TempDir()},
+		Logrus: logrus.New(),
 	}
+	server := &ServerMonitor{
+		Host:         "127.0.0.1",
+		Port:         "3306",
+		ClusterGroup: cluster,
+	}
+	backupDir := server.GetMyBackupDirectory()
 
 	tests := []struct {
 		name       string
@@ -235,6 +237,13 @@ func TestBuildBackupMetaFileName(t *testing.T) {
 			expectFile: "xtrabackup.9999.meta.json",
 		},
 		{
+			name:       "Adhoc without ID uses default",
+			backupTool: "mydumper",
+			backupID:   0,
+			line:       "adhoc",
+			expectFile: "mydumper.meta.json",
+		},
+		{
 			name:       "Empty tool",
 			backupTool: "",
 			backupID:   123,
@@ -258,10 +267,9 @@ func TestBuildBackupMetaFileName(t *testing.T) {
 					t.Errorf("Expected empty result, got %q", result)
 				}
 			} else {
-				expectedSuffix := tt.expectFile
-				if filepath.Base(result) != expectedSuffix {
-					t.Errorf("buildBackupMetaFileName() = %q, expected to end with %q",
-						result, expectedSuffix)
+				expectedPath := filepath.Join(backupDir, tt.expectFile)
+				if result != expectedPath {
+					t.Errorf("buildBackupMetaFileName() = %q, expected %q", result, expectedPath)
 				}
 			}
 		})
