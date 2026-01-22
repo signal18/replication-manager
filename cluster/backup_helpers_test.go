@@ -9,10 +9,14 @@ package cluster
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/state"
+	"github.com/sirupsen/logrus"
 )
 
 func TestNormalizeBackupLine(t *testing.T) {
@@ -126,11 +130,19 @@ func TestRetentionDeadline(t *testing.T) {
 		{
 			name: "Valid with ID as timestamp",
 			meta: &backupmgr.BackupMetadata{
-				Id:            time.Now().Add(-12 * time.Hour).Unix(),
+				Id:            now.Add(-12 * time.Hour).Unix(),
 				RetentionDays: 1,
 			},
 			expectOK:  true,
 			checkDiff: 12 * time.Hour,
+		},
+		{
+			name: "Invalid - ID not a timestamp",
+			meta: &backupmgr.BackupMetadata{
+				Id:            12345,
+				RetentionDays: 1,
+			},
+			expectOK: false,
 		},
 		{
 			name: "Invalid - zero retention",
@@ -229,6 +241,13 @@ func TestBuildBackupMetaFileName(t *testing.T) {
 			line:       "default",
 			expectFile: "",
 		},
+		{
+			name:       "Invalid tool path",
+			backupTool: "../mysqldump",
+			backupID:   123,
+			line:       "default",
+			expectFile: "",
+		},
 	}
 
 	for _, tt := range tests {
@@ -249,50 +268,111 @@ func TestBuildBackupMetaFileName(t *testing.T) {
 	}
 }
 
+func newBackupLineCluster(t *testing.T) (*Cluster, *ServerMonitor, *ServerMonitor, *ServerMonitor) {
+	t.Helper()
+
+	sm := &state.StateMachine{}
+	sm.Init()
+	sm.Discovered = true
+
+	cluster := &Cluster{
+		Name:         "test-cluster",
+		Conf:         &config.Config{},
+		StateMachine: sm,
+		Logrus:       logrus.New(),
+	}
+
+	master := &ServerMonitor{
+		Id:           "1",
+		URL:          "master:3306",
+		State:        stateMaster,
+		ClusterGroup: cluster,
+	}
+	backup := &ServerMonitor{
+		Id:             "2",
+		URL:            "backup:3306",
+		State:          stateSlave,
+		PreferedBackup: true,
+		ClusterGroup:   cluster,
+	}
+	other := &ServerMonitor{
+		Id:           "3",
+		URL:          "other:3306",
+		State:        stateSlave,
+		ClusterGroup: cluster,
+	}
+
+	cluster.master = master
+	cluster.Servers = serverList{master, backup, other}
+
+	return cluster, master, backup, other
+}
+
 func TestResolveBackupLine(t *testing.T) {
 	tests := []struct {
 		name     string
+		server   *ServerMonitor
 		opts     BackupRunOptions
-		isMaster bool
-		isBackup bool
 		expected string
 	}{
 		{
 			name:     "Default with retention forces adhoc",
+			server:   nil,
 			opts:     BackupRunOptions{Line: "default", RetentionDays: 7},
 			expected: backupmgr.BackupLineAdhoc,
 		},
 		{
 			name:     "Explicit adhoc",
+			server:   nil,
 			opts:     BackupRunOptions{Line: "adhoc"},
 			expected: backupmgr.BackupLineAdhoc,
 		},
 		{
-			name:     "Empty defaults to default",
-			opts:     BackupRunOptions{},
-			isMaster: true,
-			isBackup: true,
+			name:     "Default on master stays default",
+			server:   nil,
+			opts:     BackupRunOptions{Line: "default"},
 			expected: backupmgr.BackupLineDefault,
 		},
 		{
-			name:     "Default on non-backup server forces adhoc",
+			name:     "Default on backup server stays default",
+			server:   nil,
 			opts:     BackupRunOptions{Line: "default"},
-			isMaster: false,
-			isBackup: false,
+			expected: backupmgr.BackupLineDefault,
+		},
+		{
+			name:     "Default on other server forces adhoc",
+			server:   nil,
+			opts:     BackupRunOptions{Line: "default"},
+			expected: backupmgr.BackupLineAdhoc,
+		},
+		{
+			name:     "Empty line on other server forces adhoc",
+			server:   nil,
+			opts:     BackupRunOptions{},
 			expected: backupmgr.BackupLineAdhoc,
 		},
 	}
 
+	_, master, backup, other := newBackupLineCluster(t)
+
+	for i := range tests {
+		switch tests[i].name {
+		case "Default on master stays default":
+			tests[i].server = master
+		case "Default on backup server stays default":
+			tests[i].server = backup
+		case "Default on other server forces adhoc", "Empty line on other server forces adhoc":
+			tests[i].server = other
+		default:
+			tests[i].server = master
+		}
+	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Note: This is a simplified test. Full test would require cluster setup
-			// which is complex. This tests the normalization logic.
-			server := &ServerMonitor{}
-			result := server.resolveBackupLine(tt.opts)
-
-			// Basic validation - should return either "default" or "adhoc"
-			if result != backupmgr.BackupLineDefault && result != backupmgr.BackupLineAdhoc {
-				t.Errorf("resolveBackupLine() returned invalid line: %q", result)
+			result := tt.server.resolveBackupLine(tt.opts)
+			if result != tt.expected {
+				t.Errorf("resolveBackupLine() = %q, want %q", result, tt.expected)
 			}
 		})
 	}
@@ -303,6 +383,7 @@ func TestShouldRunRestic(t *testing.T) {
 		name             string
 		resticConfigured bool
 		resticEnabled    *bool
+		clusterNil       bool
 		expected         bool
 	}{
 		{
@@ -335,22 +416,31 @@ func TestShouldRunRestic(t *testing.T) {
 			resticEnabled:    boolPtr(true),
 			expected:         false,
 		},
+		{
+			name:       "Cluster is nil",
+			clusterNil: true,
+			expected:   false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := &ServerMonitor{}
+			if !tt.clusterNil {
+				cluster := &Cluster{
+					Name:   "test-cluster",
+					Conf:   &config.Config{BackupRestic: tt.resticConfigured},
+					Logrus: logrus.New(),
+				}
+				server.ClusterGroup = cluster
+				server.URL = "server:3306"
+			}
 			opts := BackupRunOptions{
 				ResticEnabled: tt.resticEnabled,
 			}
-
-			// Note: Full test would need cluster with BackupRestic config
-			// This is a simplified test of the logic
 			result := server.shouldRunRestic(opts)
-
-			// Without cluster, should always return false
-			if result != false {
-				t.Errorf("shouldRunRestic() without cluster = %v, want false", result)
+			if result != tt.expected {
+				t.Errorf("shouldRunRestic() = %v, want %v", result, tt.expected)
 			}
 		})
 	}
@@ -425,6 +515,58 @@ func TestReadBackupMetadataFile_NotExists(t *testing.T) {
 	_, err := readBackupMetadataFile("/nonexistent/path/file.json")
 	if err == nil {
 		t.Error("Expected error for non-existent file, got nil")
+	}
+}
+
+func TestLoadAdhocBackupMetadataReturnsError(t *testing.T) {
+	cluster := &Cluster{
+		Name:          "test-cluster",
+		Conf:          &config.Config{WorkingDir: t.TempDir()},
+		StateMachine:  &state.StateMachine{},
+		Logrus:        logrus.New(),
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
+	}
+	cluster.StateMachine.Init()
+	server := &ServerMonitor{
+		Host:         "127.0.0.1",
+		Port:         "3306",
+		URL:          "127.0.0.1:3306",
+		ClusterGroup: cluster,
+	}
+
+	backupDir := server.GetMyBackupDirectory()
+	validPath := filepath.Join(backupDir, "mysqldump.123.meta.json")
+	invalidPath := filepath.Join(backupDir, "mysqldump.456.meta.json")
+
+	validData := `{"backupTool":"mysqldump","backupMethod":1,"completed":true,"retentionDays":1}`
+	if err := os.WriteFile(validPath, []byte(validData), 0644); err != nil {
+		t.Fatalf("failed to write valid metadata: %v", err)
+	}
+	if err := os.WriteFile(invalidPath, []byte("{invalid"), 0644); err != nil {
+		t.Fatalf("failed to write invalid metadata: %v", err)
+	}
+
+	metas, err := server.LoadAdhocBackupMetadata()
+	if err == nil {
+		t.Fatalf("expected error when reading invalid metadata")
+	}
+	if !strings.Contains(err.Error(), "failed reading") {
+		t.Fatalf("expected error summary, got %v", err)
+	}
+	if len(metas) != 1 {
+		t.Fatalf("expected 1 valid metadata, got %d", len(metas))
+	}
+}
+
+func TestIsPathWithinBase(t *testing.T) {
+	base := t.TempDir()
+	child := filepath.Join(base, "child")
+
+	if !isPathWithinBase(base, child) {
+		t.Errorf("expected %s to be within %s", child, base)
+	}
+	if isPathWithinBase(base, "/tmp") {
+		t.Errorf("expected /tmp to be outside %s", base)
 	}
 }
 

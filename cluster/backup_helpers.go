@@ -88,6 +88,12 @@ func (server *ServerMonitor) buildBackupMetaFileName(backupTool string, backupID
 	if backupTool == "" {
 		return ""
 	}
+	if !isSafeBackupToolName(backupTool) {
+		if cluster := server.ClusterGroup; cluster != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Invalid backup tool name %q for metadata file", backupTool)
+		}
+		return ""
+	}
 
 	dir := server.GetMyBackupDirectory()
 	if normalizeBackupLine(line) == backupmgr.BackupLineAdhoc && backupID > 0 {
@@ -164,6 +170,8 @@ func (server *ServerMonitor) LoadAdhocBackupMetadata() ([]*backupmgr.BackupMetad
 	}
 
 	metas := make([]*backupmgr.BackupMetadata, 0)
+	var lastErr error
+	readErrors := 0
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -177,6 +185,8 @@ func (server *ServerMonitor) LoadAdhocBackupMetadata() ([]*backupmgr.BackupMetad
 		path := filepath.Join(dir, name)
 		meta, err := readBackupMetadataFile(path)
 		if err != nil {
+			readErrors++
+			lastErr = err
 			if cluster != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Failed reading ad-hoc backup metadata %s: %s", path, err)
 			}
@@ -212,6 +222,10 @@ func (server *ServerMonitor) LoadAdhocBackupMetadata() ([]*backupmgr.BackupMetad
 			cluster.BackupMetaMap.Set(meta.Id, meta)
 		}
 		metas = append(metas, meta)
+	}
+
+	if readErrors > 0 {
+		return metas, fmt.Errorf("failed reading %d ad-hoc backup metadata file(s): %w", readErrors, lastErr)
 	}
 
 	return metas, nil
@@ -275,6 +289,9 @@ func (cluster *Cluster) PurgeExpiredAdhocBackups() {
 		return
 	}
 
+	// BackupMetaMap is backed by sync.Map, so Range/Delete are safe for concurrent use.
+	// Purge operations intentionally rely on that thread-safety to avoid additional locks.
+
 	now := time.Now()
 	for _, server := range cluster.Servers {
 		if server == nil {
@@ -288,10 +305,7 @@ func (cluster *Cluster) PurgeExpiredAdhocBackups() {
 		}
 
 		for _, meta := range metas {
-			if meta == nil || !meta.IsAdhoc() || meta.RetentionDays <= 0 {
-				continue
-			}
-			if !meta.Completed {
+			if meta == nil || !meta.IsAdhoc() || meta.RetentionDays <= 0 || !meta.Completed {
 				continue
 			}
 			deadline, ok := retentionDeadline(meta)
@@ -312,7 +326,10 @@ func (cluster *Cluster) PurgeExpiredAdhocBackups() {
 			}
 
 			if meta.Dest != "" {
-				if err := os.RemoveAll(meta.Dest); err != nil {
+				backupDir := server.GetMyBackupDirectory()
+				if !isPathWithinBase(backupDir, meta.Dest) {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Skip removing ad-hoc backup path %s on %s: outside backup directory", meta.Dest, server.URL)
+				} else if err := os.RemoveAll(meta.Dest); err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed removing ad-hoc backup path %s on %s: %s", meta.Dest, server.URL, err)
 				}
 			}
@@ -339,11 +356,52 @@ func retentionDeadline(meta *backupmgr.BackupMetadata) (time.Time, bool) {
 		base = meta.StartTime
 	}
 	if base.IsZero() && meta.Id > 0 {
-		base = time.Unix(meta.Id, 0)
+		if isLikelyUnixTimestamp(meta.Id) {
+			base = time.Unix(meta.Id, 0)
+		}
 	}
 	if base.IsZero() {
 		return time.Time{}, false
 	}
 
 	return base.Add(time.Duration(meta.RetentionDays) * 24 * time.Hour), true
+}
+
+func isLikelyUnixTimestamp(value int64) bool {
+	if value <= 0 {
+		return false
+	}
+	// Avoid treating small sequential IDs as timestamps.
+	minTimestamp := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).Unix()
+	maxTimestamp := time.Now().Add(24 * time.Hour).Unix()
+	return value >= minTimestamp && value <= maxTimestamp
+}
+
+func isSafeBackupToolName(name string) bool {
+	if name == "" || name == "." || name == ".." {
+		return false
+	}
+	return filepath.Base(name) == name
+}
+
+func isPathWithinBase(baseDir, target string) bool {
+	if baseDir == "" || target == "" {
+		return false
+	}
+	baseAbs, err := filepath.Abs(baseDir)
+	if err != nil {
+		return false
+	}
+	targetAbs, err := filepath.Abs(target)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(baseAbs, targetAbs)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	return !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) && rel != ".."
 }
