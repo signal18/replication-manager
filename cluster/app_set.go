@@ -171,7 +171,6 @@ func (app *App) SwitchSetting(key string) error {
 		return errors.New("unknown setting: " + key)
 	}
 
-	return nil
 }
 
 func (app *App) SetMaintenance(maintenance bool) {
@@ -218,7 +217,6 @@ func (app *App) SetAppProvisionByCredit(creditPlanSize int) error {
 		return nil
 	}
 
-	provCredit := creditPlanSize
 	num_agents := len(app.GetAppAgents())
 
 	if num_agents == 0 {
@@ -229,7 +227,7 @@ func (app *App) SetAppProvisionByCredit(creditPlanSize int) error {
 	}
 
 	// For flex provisioning, we divide the credit planned by the number of agents
-	provCredit = creditPlanSize / num_agents
+	provCredit := creditPlanSize / num_agents
 
 	baseCore, err := config.ParseUnitMeasurementToInt("0", app.ClusterGroup.Conf.ProvAppCpuCores, true)
 	if err != nil {

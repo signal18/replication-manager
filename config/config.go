@@ -527,6 +527,7 @@ type Config struct {
 	ProvUser                                  string                 `mapstructure:"opensvc-user" toml:"opensvc-user" json:"opensvcUser"`
 	ProvCodeApp                               string                 `mapstructure:"opensvc-codeapp" toml:"opensvc-codeapp" json:"opensvcCodeapp"`
 	ProvSerialized                            bool                   `mapstructure:"prov-serialized" toml:"prov-serialized" json:"provSerialized"`
+	ProvObjectAllowOverwrite                  bool                   `mapstructure:"prov-object-allow-overwrite" toml:"prov-object-allow-overwrite" json:"provObjectAllowOverwrite"`
 	ProvOrchestrator                          string                 `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`
 	ProvOrchestratorEnable                    string                 `mapstructure:"prov-orchestrator-enable" toml:"prov-orchestrator-enable" json:"provOrchestratorEnable"`
 	ProvOrchestratorCluster                   string                 `mapstructure:"prov-orchestrator-cluster" toml:"prov-orchestrator-cluster" json:"provOrchestratorCluster"`
@@ -742,6 +743,8 @@ type Config struct {
 	BackupResticPassword                      string                 `mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
 	BackupResticAws                           bool                   `mapstructure:"backup-restic-aws"  toml:"backup-restic-aws" json:"backupResticAws"`
 	BackupResticTimeout                       int                    `mapstructure:"backup-restic-timeout"  toml:"backup-restic-timeout" json:"backupResticTimeout"`
+	BackupResticDirMode                       int                    `mapstructure:"backup-restic-dir-mode" toml:"backup-restic-dir-mode" json:"backupResticDirMode"`
+	BackupResticFileMode                      int                    `mapstructure:"backup-restic-file-mode" toml:"backup-restic-file-mode" json:"backupResticFileMode"`
 	BackupResticPurgeOldestOnDiskSpace        bool                   `mapstructure:"backup-restic-purge-oldest-on-disk-space" toml:"backup-restic-purge-oldest-on-disk-space" json:"backupResticPurgeOldestOnDiskSpace"`
 	BackupResticPurgeOldestOnDiskThreshold    int                    `mapstructure:"backup-restic-purge-oldest-on-disk-threshold" toml:"backup-restic-purge-oldest-on-disk-treshold" json:"backupResticPurgeOldestOnDiskTreshold"`
 	BackupStreaming                           bool                   `mapstructure:"backup-streaming" toml:"backup-streaming" json:"backupStreaming"`
@@ -1031,7 +1034,7 @@ type MyDumperMetaData struct {
 	BinLogFileName string    `json:"log_filename" db:"log_filename"`
 	BinLogFilePos  uint64    `json:"log_pos" db:"log_pos"`
 	BinLogUuid     string    `json:"log_uuid" db:"log_uuid"`
-	EndTimestamp   time.Time `json:"start_timestamp" db:"start_timestamp"`
+	EndTimestamp   time.Time `json:"end_timestamp" db:"end_timestamp"`
 }
 
 type ConfVersion struct {
@@ -1656,8 +1659,7 @@ func (conf *Config) Reveal(clusterName string, tmpDir string) {
 
 		if field.Kind() == reflect.String && strings.HasPrefix(field.String(), "hash_") {
 			decryptedValue := conf.GetDecryptedPassword(key, field.String())
-			line := fmt.Sprintf("Key: %s, Decrypted Value: %s\n", key, decryptedValue)
-			fmt.Fprintf(file, line)
+			fmt.Fprintf(file, "Key: %s, Decrypted Value: %s\n", key, decryptedValue)
 		}
 	}
 
@@ -1693,7 +1695,7 @@ func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
 	_, err := os.Stat(conf.MonitoringKeyPath)
 	// Check if the file does not exist
 	if err == nil {
-		Logger.Infof("Repman discovered that key is already generated. Using existing key.")
+		Logger.Debugf("Repman discovered that key is already generated. Using existing key.")
 		return nil
 	} else {
 		if !os.IsNotExist(err) {
@@ -1701,57 +1703,64 @@ func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
 			return err
 		}
 
-		newdir := "/home/repman/.config/replication-manager/etc"
-		newpath := newdir + "/.replication-manager.key"
+		fallbackDir := conf.ConfDirExtra
+		if fallbackDir == "" {
+			if homeDir, homeErr := os.UserHomeDir(); homeErr == nil {
+				fallbackDir = filepath.Join(homeDir, ".config", "replication-manager")
+			}
+		}
+		fallbackPath := ""
+		if fallbackDir != "" {
+			fallbackPath = filepath.Join(fallbackDir, ".replication-manager.key")
+			Logger.Debugf("Key not found. Checking in extra path : %s", fallbackPath)
 
-		Logger.Infof("Key not found. Checking in extra path : %s", newpath)
+			_, err = os.Stat(fallbackPath)
+			if err == nil {
+				Logger.Debugf("Repman discovered key in alternative path. Using existing key on %s", fallbackPath)
+				conf.MonitoringKeyPath = fallbackPath
+				return nil
+			}
+		}
 
-		_, err = os.Stat(newpath)
-		if err == nil {
-			Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", newpath)
-			conf.MonitoringKeyPath = newpath
-			return nil
-		} else {
+		Logger.Debugf("Key not found. Generating : %s", conf.MonitoringKeyPath)
 
-			Logger.Infof("Key not found. Generating : %s", conf.MonitoringKeyPath)
+		if err = misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && conf.WithEmbed == "OFF" {
+			if fallbackPath == "" {
+				Logger.Errorf("File %s is not accessible and no fallback path is available", conf.MonitoringKeyPath)
+				return err
+			}
 
-			if err = misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && conf.WithEmbed == "OFF" {
-				newdir := "/home/repman/.config/replication-manager/etc"
-				newpath := newdir + "/.replication-manager.key"
+			Logger.Debugf("File %s is not accessible. Try using alternative path: %s", conf.MonitoringKeyPath, fallbackPath)
 
-				Logger.Infof("File %s is not accessible. Try using alternative path: %s", conf.MonitoringKeyPath, newpath)
+			_, err := os.Stat(fallbackPath)
+			if err == nil {
+				Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", fallbackPath)
+				conf.MonitoringKeyPath = fallbackPath
+				return nil
+			}
 
-				_, err := os.Stat(newpath)
-				if err == nil {
-					Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", newpath)
-					return nil
-				}
-
-				_, err = os.Stat(newdir)
-				if err != nil {
-					if !os.IsNotExist(err) {
-						Logger.Errorf("Can't access %s : %v", newdir, err)
-						return err
-					} else {
-						err = os.MkdirAll(newdir, 0755)
-						if err != nil {
-							Logger.Errorf("Can't create directory %s : %v", newdir, err)
-							return err
-						}
-					}
-				}
-
-				if err := misc.TryOpenFile(newpath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
-					Logger.Errorf("Can't write keys in %s : %v", newdir, err)
+			_, err = os.Stat(fallbackDir)
+			if err != nil {
+				if !os.IsNotExist(err) {
+					Logger.Errorf("Can't access %s : %v", fallbackDir, err)
 					return err
 				}
-
-				// New path is writable
-				conf.MonitoringKeyPath = newpath
-				Logger.Infof("Path writable. Flag 'monitoring-key-path' set to: %s.", newpath)
-				Logger.Infof("Generating key on: %s", conf.MonitoringKeyPath)
-
+				err = os.MkdirAll(fallbackDir, 0755)
+				if err != nil {
+					Logger.Errorf("Can't create directory %s : %v", fallbackDir, err)
+					return err
+				}
 			}
+
+			if err := misc.TryOpenFile(fallbackPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
+				Logger.Errorf("Can't write keys in %s : %v", fallbackDir, err)
+				return err
+			}
+
+			// New path is writable
+			conf.MonitoringKeyPath = fallbackPath
+			Logger.Debugf("Path writable. Flag 'monitoring-key-path' set to: %s.", fallbackPath)
+			Logger.Debugf("Generating key on: %s", conf.MonitoringKeyPath)
 		}
 
 		p := crypto.Password{}
@@ -2371,8 +2380,6 @@ func GetGrantType() map[string]string {
 		GrantProvDBProvision:           GrantProvDBProvision,
 		GrantProvProxyProvision:        GrantProvProxyProvision,
 		GrantProvProxyUnprovision:      GrantProvProxyUnprovision,
-		GrantProvAppProvision:          GrantProvAppProvision,
-		GrantProvAppUnprovision:        GrantProvAppUnprovision,
 		GrantAppConfig:                 GrantAppConfig,
 		GrantAppDocker:                 GrantAppDocker,
 		GrantAppDeployment:             GrantAppDeployment,
@@ -3039,7 +3046,7 @@ func (conf Config) MergeConfig(path string, name string, ImmMap map[string]inter
 		dynRead.AddConfigPath(dirPath)
 		err := dynRead.ReadInConfig()
 		if err != nil {
-			fmt.Printf("Could not read in config : " + dirPath + "/overwrite.toml")
+			fmt.Printf("Could not read in config %s: %s", dirPath+"/overwrite.toml", err)
 		}
 
 		dynSub := dynRead.Sub("overwrite-" + name)
@@ -3164,22 +3171,29 @@ func IsScope(toml string, scope string) bool {
 	return false
 }
 
-func (conf *Config) ReadCloud18Config(viper *viper.Viper, path string) {
-	viper = viper.Sub("default")
-	viper.SetConfigType("toml")
-
+func (conf *Config) ReadCloud18Config(v *viper.Viper, path string) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return
 	}
+	if v == nil {
+		return
+	}
+
+	subViper := v.Sub("default")
+	if subViper == nil {
+		subViper = viper.New()
+	}
+	subViper.SetConfigType("toml")
+
 	fmt.Printf("Parsing saved config from working directory %s ", path)
 
-	viper.SetConfigFile(path)
-	err := viper.MergeInConfig()
+	subViper.SetConfigFile(path)
+	err := subViper.MergeInConfig()
 	if err != nil {
 		log.Error("Config error in " + path + ":" + err.Error())
 	}
 
-	viper.Unmarshal(&conf)
+	subViper.Unmarshal(&conf)
 
 }
 
@@ -3686,7 +3700,7 @@ func (conf *Config) CreateGitlabProjects() {
 	acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
 	if err != nil {
 		if conf.Verbose || conf.IsEligibleForPrinting(ConstLogModGit, LvlErr) {
-			log.Errorf(err.Error() + conf.GetDecryptedValue("cloud18-gitlab-password") + "\n")
+			log.Error(err.Error() + conf.GetDecryptedValue("cloud18-gitlab-password") + "\n")
 		}
 		return
 	}
@@ -3694,12 +3708,12 @@ func (conf *Config) CreateGitlabProjects() {
 	uid, err := githelper.GetGitLabUserId(acces_tok, conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
 	if err != nil {
 		if conf.Verbose || conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg) {
-			log.Errorf(err.Error() + "\n")
+			log.Error(err.Error() + "\n")
 		}
 		return
 	} else if uid == 0 {
 		if conf.Verbose || conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg) {
-			log.Errorf("Invalid user Id \n")
+			log.Error("Invalid user Id \n")
 		}
 		return
 	}
@@ -3772,6 +3786,58 @@ func (conf *Config) CheckKeepWithin() error {
 	}
 
 	return nil
+}
+
+func isValidResticMode(value int) bool {
+	if value == 0 {
+		return true
+	}
+	if value < 600 || value > 777 {
+		return false
+	}
+	_, err := strconv.ParseUint(strconv.Itoa(value), 8, 32)
+	return err == nil
+}
+
+func parseResticMode(value int, defaultMode os.FileMode) os.FileMode {
+	if value <= 0 {
+		return defaultMode
+	}
+	if !isValidResticMode(value) {
+		return defaultMode
+	}
+
+	parsed, err := strconv.ParseUint(strconv.Itoa(value), 8, 32)
+	if err != nil {
+		return defaultMode
+	}
+
+	return os.FileMode(parsed)
+}
+
+func (conf *Config) ValidateResticPermissions() error {
+	if !isValidResticMode(conf.BackupResticDirMode) {
+		return NewValidationError("backup-restic-dir-mode", conf.BackupResticDirMode, "expected octal value in 6xx/7xx range, like 700")
+	}
+	if !isValidResticMode(conf.BackupResticFileMode) {
+		return NewValidationError("backup-restic-file-mode", conf.BackupResticFileMode, "expected octal value in 6xx/7xx range, like 600")
+	}
+	return nil
+}
+
+func (conf *Config) GetResticDirMode() os.FileMode {
+	return parseResticMode(conf.BackupResticDirMode, 0700)
+}
+
+func (conf *Config) GetResticFileMode() os.FileMode {
+	return parseResticMode(conf.BackupResticFileMode, 0600)
+}
+
+func (conf *Config) GetResticTimeout() time.Duration {
+	if conf.BackupResticTimeout <= 0 {
+		return 2 * time.Hour
+	}
+	return time.Duration(conf.BackupResticTimeout) * time.Second
 }
 
 type MeasurementConfig struct {

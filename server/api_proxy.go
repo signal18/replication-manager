@@ -125,7 +125,7 @@ func (repman *ReplicationManager) handlerMuxProxyStart(w http.ResponseWriter, r 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		node := mycluster.GetProxyFromName(vars["proxyName"])
@@ -159,7 +159,7 @@ func (repman *ReplicationManager) handlerMuxProxyStop(w http.ResponseWriter, r *
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		node := mycluster.GetProxyFromName(vars["proxyName"])
@@ -193,7 +193,7 @@ func (repman *ReplicationManager) handlerMuxProxyProvision(w http.ResponseWriter
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		node := mycluster.GetProxyFromName(vars["proxyName"])
@@ -227,7 +227,7 @@ func (repman *ReplicationManager) handlerMuxProxyUnprovision(w http.ResponseWrit
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		node := mycluster.GetProxyFromName(vars["proxyName"])
@@ -261,7 +261,7 @@ func (repman *ReplicationManager) handlerMuxSphinxIndexes(w http.ResponseWriter,
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		data, err := os.ReadFile(mycluster.GetConf().SphinxConfig)
@@ -296,17 +296,17 @@ func (repman *ReplicationManager) handlerMuxProxyNeedRestart(w http.ResponseWrit
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		node := mycluster.GetProxyFromName(vars["proxyName"])
-		if node != nil && node.IsDown() == false {
+		if node != nil && !node.IsDown() {
 			if node.HasRestartCookie() {
 				w.Write([]byte("200 -Need restart!"))
 				return
 			}
 			w.Write([]byte("503 -No restart needed!"))
-			http.Error(w, "Encoding error", 503)
+			http.Error(w, "Encoding error", http.StatusServiceUnavailable)
 
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -337,17 +337,17 @@ func (repman *ReplicationManager) handlerMuxProxyNeedReprov(w http.ResponseWrite
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		node := mycluster.GetProxyFromName(vars["proxyName"])
-		if node != nil && node.IsDown() == false {
+		if node != nil && !node.IsDown() {
 			if node.HasReprovCookie() {
 				w.Write([]byte("200 -Need reprov!"))
 				return
 			}
 			w.Write([]byte("503 -No reprov needed!"))
-			http.Error(w, "Encoding error", 503)
+			http.Error(w, "Encoding error", http.StatusServiceUnavailable)
 
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -379,7 +379,7 @@ func (repman *ReplicationManager) handlerMuxProxySetStaging(w http.ResponseWrite
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		node := mycluster.GetProxyFromName(vars["proxyName"])

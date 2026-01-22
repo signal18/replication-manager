@@ -345,7 +345,7 @@ func (cluster *Cluster) GetServers() serverList {
 func (cluster *Cluster) GetServersByState(state string) serverList {
 	var srvs serverList
 	for _, server := range cluster.Servers {
-		if strings.ToLower(server.State) == strings.ToLower(state) {
+		if strings.EqualFold(server.State, state) {
 			srvs = append(srvs, server)
 		}
 	}
@@ -355,7 +355,7 @@ func (cluster *Cluster) GetServersByState(state string) serverList {
 func (cluster *Cluster) GetServerByStateAndIndex(state string, idx int) (*ServerMonitor, error) {
 	counter := 0
 	for _, server := range cluster.Servers {
-		if strings.ToLower(server.State) == strings.ToLower(state) {
+		if strings.EqualFold(server.State, state) {
 			if counter == idx {
 				return server, nil
 			}
@@ -686,6 +686,10 @@ func (cluster *Cluster) GetIgnoredROList() string {
 
 func (cluster *Cluster) GetGComm() string {
 	var gcomms []string
+	if len(cluster.Servers) == 0 {
+		return ""
+	}
+
 	for _, server := range cluster.Servers {
 		if cluster.Conf.MultiMasterWsrep {
 			gcomms = append(gcomms, server.Host+":"+strconv.Itoa(cluster.Conf.MultiMasterWsrepPort))
@@ -939,7 +943,7 @@ func (cluster *Cluster) GetTopologyFromConf() string {
 		targetTopology = config.TopoActivePassive
 	} else {
 		relay := cluster.GetRelayServer()
-		if relay != nil && cluster.Conf.ReplicationNoRelay == false {
+		if relay != nil && !cluster.Conf.ReplicationNoRelay {
 			targetTopology = config.TopoMultiTierSlave
 		}
 	}
@@ -975,16 +979,6 @@ func (cluster *Cluster) GetServerIndice(srv *ServerMonitor) int {
 		}
 	}
 	return 0
-}
-
-func (cluster *Cluster) getClusterByName(clname string) *Cluster {
-
-	for _, c := range cluster.clusterList {
-		if clname == c.GetName() {
-			return c
-		}
-	}
-	return nil
 }
 
 // GetClusterFromShardProxy return all clusters sharing same proxy
@@ -1459,14 +1453,14 @@ func (cluster *Cluster) GetVaultConnection() (*vault.Client, error) {
 
 		roleID := cluster.Conf.VaultRoleId
 		secretid := cluster.Conf.GetDecryptedPassword("vault-secret-id", cluster.Conf.VaultSecretId)
-		secretID := &auth.SecretID{FromString: secretid}
-		if roleID == "" || secretID == nil {
+		if roleID == "" || secretid == "" {
 			cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], err), ErrFrom: "TOPO"})
 			cluster.CanConnectVault = false
 			cluster.errorConnectVault = err
 			return nil, err
 		}
 
+		secretID := &auth.SecretID{FromString: secretid}
 		appRoleAuth, err := auth.NewAppRoleAuth(
 			roleID,
 			secretID,

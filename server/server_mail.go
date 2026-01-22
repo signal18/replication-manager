@@ -10,7 +10,32 @@ import (
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 )
 
+func (repman *ReplicationManager) isInitMailEnabled() bool {
+	return strings.TrimSpace(repman.Conf.MailTo) != ""
+}
+
+func (repman *ReplicationManager) mailerConfigMissing() []string {
+	mailFrom := strings.TrimSpace(repman.Conf.MailFrom)
+	mailSMTPAddr := strings.TrimSpace(repman.Conf.MailSMTPAddr)
+
+	missing := make([]string, 0, 2)
+	if mailFrom == "" {
+		missing = append(missing, "mail-from")
+	}
+	if mailSMTPAddr == "" {
+		missing = append(missing, "mail-smtp-addr")
+	}
+	return missing
+}
+
 func (repman *ReplicationManager) InitMailer() error {
+	missing := repman.mailerConfigMissing()
+	if len(missing) > 0 {
+		err := fmt.Errorf("mailer config incomplete: missing %s", strings.Join(missing, ", "))
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error initializing mailer: %v", err)
+		return err
+	}
+
 	var m *mailer.Mailer
 	var err error
 	m, err = mailer.NewMailer(repman.Conf.MailSMTPAddr, repman.Conf.MailFrom, repman.Conf.MailSMTPUser, repman.Conf.GetDecryptedValue("mail-smtp-password"), repman.Conf.MailSMTPTLSSkipVerify, repman.Conf.MailTimeout, repman.Conf.MailMaxPool)
@@ -26,6 +51,16 @@ func (repman *ReplicationManager) InitMailer() error {
 }
 
 func (repman *ReplicationManager) SendClustersInitMail() {
+	if !repman.isInitMailEnabled() {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Skipping clusters init mail: mail-to not set")
+		return
+	}
+	missing := repman.mailerConfigMissing()
+	if len(missing) > 0 {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Skipping clusters init mail: missing %s", strings.Join(missing, ", "))
+		return
+	}
+
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending clusters init mail")
 
 	if repman.Mailer == nil {

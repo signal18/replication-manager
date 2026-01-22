@@ -1,0 +1,70 @@
+name: Question
+description: Ask a question about replication-manager usage or configuration
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question? We're here to help! Please check the [documentation](https://signal18.io/replication-manager/) first.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Topic Area
+      description: What is your question about?
+      options:
+        - Installation & Setup
+        - Configuration
+        - Failover & Switchover
+        - Replication Topology
+        - Proxy Configuration
+        - Backup & Restore
+        - Monitoring & Alerts
+        - API Usage
+        - Performance Tuning
+        - Upgrade & Migration
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+      placeholder: How do I...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Provide context about your environment and what you're trying to achieve
+      placeholder: |
+        - Environment: Production/Testing/Development
+        - Database: MariaDB/MySQL/Percona
+        - Topology: 3-node cluster with MaxScale
+        - Goal: Implement automatic failover with email alerts
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What Have You Tried
+      description: What have you already attempted or researched?
+      placeholder: I tried... but...
+
+  - type: input
+    id: version
+    attributes:
+      label: Replication Manager Version
+      description: Which version are you using?
+      placeholder: e.g., 3.1.16
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant Configuration
+      description: Share relevant parts of your config (remove sensitive data)
+      render: toml

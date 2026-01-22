@@ -28,14 +28,11 @@ func (repman *ReplicationManager) DeleteCluster(clusterName string) error {
 		}
 	}
 
-	i := 0
 	var newClusterList []string
-	if i < len(repman.ClusterList) {
+	for i := 0; i < len(repman.ClusterList); i++ {
 		if repman.ClusterList[i] != clusterName {
 			newClusterList = append(newClusterList, repman.ClusterList[i])
 		}
-		i++
-
 	}
 
 	repman.ClusterList = newClusterList

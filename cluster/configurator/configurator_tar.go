@@ -9,7 +9,6 @@ package configurator
 import (
 	"archive/tar"
 	"compress/gzip"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,7 +18,7 @@ import (
 func (configurator *Configurator) TarGzWrite(_path string, tw *tar.Writer, fi os.FileInfo, trimprefix string) error {
 	fr, err := os.Open(_path)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Compliance writing config.tar.gz failed : %s", err))
+		return fmt.Errorf("Compliance writing config.tar.gz failed : %s", err)
 	}
 	defer fr.Close()
 	h := new(tar.Header)
@@ -41,14 +40,14 @@ func (configurator *Configurator) TarGzWrite(_path string, tw *tar.Writer, fi os
 
 	err = tw.WriteHeader(h)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Compliance writing config.tar.gz failed : %s", err))
+		return fmt.Errorf("Compliance writing config.tar.gz failed : %s", err)
 	}
 	if !fi.Mode().IsRegular() { //nothing more to do for non-regular
 		return nil
 	}
 	_, err = io.Copy(tw, fr)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Compliance writing config.tar.gz failed : %s", err))
+		return fmt.Errorf("Compliance writing config.tar.gz failed : %s", err)
 	}
 	return nil
 }
@@ -57,7 +56,7 @@ func (configurator *Configurator) TarGz(outFilePath string, inPath string) error
 	// file write
 	fw, err := os.Create(outFilePath)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Compliance writing config.tar.gz failed : %s", err))
+		return fmt.Errorf("Compliance writing config.tar.gz failed : %s", err)
 	}
 	defer fw.Close()
 
@@ -77,12 +76,12 @@ func (configurator *Configurator) TarGz(outFilePath string, inPath string) error
 func (configurator *Configurator) IterDirectory(dirPath string, tw *tar.Writer, trimprefix string) error {
 	dir, err := os.Open(dirPath)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Compliance writing config.tar.gz failed : %s", err))
+		return fmt.Errorf("Compliance writing config.tar.gz failed : %s", err)
 	}
 	defer dir.Close()
 	fis, err := dir.Readdir(0)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Compliance writing config.tar.gz failed : %s", err))
+		return fmt.Errorf("Compliance writing config.tar.gz failed : %s", err)
 	}
 	for _, fi := range fis {
 		curPath := dirPath + "/" + fi.Name()

@@ -9,7 +9,6 @@ package cluster
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"time"
 
@@ -127,8 +126,14 @@ func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 	svc := cluster.OpenSVCConnect()
 	err := svc.CreateSecretV2(cluster.Name, "env", agent)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create secret: %s ", err)
+		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && cluster.Conf.ProvObjectAllowOverwrite {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Secret object exists. Reuse secret env on cluster to avoid truncation of keys")
+			err = nil
+		} else {
+			return err
+		}
 	}
+
 	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", "REPLICATION_MANAGER_PASSWORD", err)
@@ -141,10 +146,17 @@ func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", "SHARDPROXY_ROOT_PASSWORD", err)
 	}
+
 	err = svc.CreateConfigV2(cluster.Name, "env", agent)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create config: %s ", err)
+		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && cluster.Conf.ProvObjectAllowOverwrite {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Config object exists. Reuse config env on cluster to avoid truncation of keys")
+			err = nil
+		} else {
+			return err
+		}
 	}
+
 	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_USER", "admin")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_USER", err)
@@ -158,7 +170,7 @@ func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_CLUSTER_NAME", err)
 	}
 
-	return err
+	return nil
 }
 
 func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) error {
@@ -170,10 +182,10 @@ func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) 
 		time.Sleep(2 * time.Second)
 		status := svc.GetActionStatus(strconv.Itoa(idaction))
 		if status == "Q" {
-			cluster.SetState("WARN0045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
+			cluster.SetState("WARN0045", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0045"], ErrFrom: "TOPO"})
 		}
 		if status == "W" {
-			cluster.SetState("WARN0046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0046"]), ErrFrom: "TOPO"})
+			cluster.SetState("WARN0046", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0046"], ErrFrom: "TOPO"})
 		}
 		if status == "T" {
 			return nil
@@ -263,6 +275,10 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 	var fs string
 	fs = ""
 	disk = ""
+	podpool := pod
+	if collector.ProvFSPool == "lvm" || collector.ProvFSPool == "zpool" {
+		podpool = "10" + pod
+	}
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", collector.ProvFSMode)
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", collector.ProvFSPool)
 	if collector.ProvFSMode == "loopback" {
@@ -283,9 +299,7 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 			disk = disk + "pvs = {disk#01.file}\n"
 			disk = disk + "standby = true\n"
 			disk = disk + "\n"
-
-		}
-		if collector.ProvFSPool == "zpool" {
+		} else if collector.ProvFSPool == "zpool" {
 			disk = disk + "\n"
 			disk = disk + "[disk#1001]\n"
 			disk = disk + "name = zp{namespace}-{svcname}\n"
@@ -293,7 +307,6 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 			disk = disk + "vdev  = {disk#01.file}\n"
 			disk = disk + "standby = true\n"
 			disk = disk + "\n"
-
 		}
 	}
 
@@ -306,18 +319,10 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 		fs = fs + "\n"
 		fs = fs + "\n"
 	} else {
-		podpool := pod
-		if collector.ProvFSPool == "lvm" || collector.ProvFSPool == "zpool" {
-			podpool = "10" + pod
-		}
 		fs = fs + "\n"
 		fs = fs + "[fs#01]\n"
 		fs = fs + "type = " + collector.ProvFSType + "\n"
 		if collector.ProvFSPool == "lvm" {
-			re := regexp.MustCompile("[0-9]+")
-			strlvsize := re.FindAllString(collector.ProvDisk, 1)
-			lvsize, _ := strconv.Atoi(strlvsize[0])
-			lvsize--
 			fs = fs + "dev = /dev/{namespace}-{svcname}\n"
 			fs = fs + "vg = {namespace}-{svcname}\n"
 			fs = fs + "size = 100%FREE\n"
@@ -335,7 +340,7 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 		}
 		fs = fs + "mnt = {env.base_dir}\n"
 		fs = fs + "standby = true\n"
-	} // not a directory
+	}
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", disk+fs)
 	return disk + fs
 }

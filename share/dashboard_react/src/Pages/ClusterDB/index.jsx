@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import PageContainer from '../PageContainer'
 import styles from './styles.module.scss'
 import TabItems from '../../components/TabItems'
@@ -8,12 +8,13 @@ import { Box } from '@chakra-ui/react'
 import CustomIcon from '../../components/Icons/CustomIcon'
 import { HiArrowNarrowLeft } from 'react-icons/hi'
 import { useDispatch, useSelector } from 'react-redux'
-import { getClusterData, getClusterServers, getDatabaseService, getDatabaseVariables, setRefreshInterval } from '../../redux/clusterSlice'
+import { getClusterData, getClusterServers, getDatabaseService, setRefreshInterval } from '../../redux/clusterSlice'
 
 function ClusterDB(props) {
   const params = useParams()
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const location = useLocation()
   const selectedTabRef = useRef(1)
   const digestModeRef = useRef('pfs')
   const variableModeRef = useRef('diff')
@@ -22,6 +23,7 @@ function ClusterDB(props) {
   const [selectedDBServer, setSelectedDBServer] = useState(null)
   const [clusterName, setClusterName] = useState(params.cluster)
   const [dbId, setDbId] = useState(params.dbname)
+  const [variablesSearchFilter, setVariablesSearchFilter] = useState('')
   const tabs = useRef([])
 
   const refreshInterval = useSelector((state) => state.cluster.refreshInterval)
@@ -89,11 +91,29 @@ function ClusterDB(props) {
           authorizedTabs.push('Metadata Locks')
           authorizedTabs.push('Response Time')
         }
+        if (apiUser.grants['db-show-status']) {
+          authorizedTabs.push('PFS Instruments')
+        }
         tabs.current = authorizedTabs
         setUser(apiUser)
       }
     }
   }, [dbId, loggedUser, clusterData])
+
+  // Handle automatic tab opening from navigation state (e.g., from config diff icon)
+  useEffect(() => {
+    if (location.state?.openTab && tabs.current.length > 0) {
+      const tabIndex = tabs.current.findIndex(tab => 
+        typeof tab === 'string' && tab === location.state.openTab
+      )
+      if (tabIndex !== -1) {
+        selectedTabRef.current = tabIndex
+        setSelectedTab(tabIndex)
+      }
+      // Clear the state to prevent reopening on refresh
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+  }, [location.state, tabs.current, navigate, location.pathname])
 
   const callServices = () => {
     dispatch(getClusterServers({ clusterName }))
@@ -126,7 +146,7 @@ function ClusterDB(props) {
       dispatch(getDatabaseService({ clusterName, serviceName: 'status-innodb', dbId }))
     }
     if (tabs.current[selectedTabRef.current] === 'Variables') {
-      dispatch(getDatabaseVariables({ clusterName, serviceName: 'variables', dbId, diff : variableModeRef.current === 'diff' }))
+      dispatch(getDatabaseService({ clusterName, serviceName: 'variables', dbId, queryParams: { diff: variableModeRef.current === 'diff' } }))
     }
     if (tabs.current[selectedTabRef.current] === 'Service OpenSVC') {
       // if (selectedTabRef.current === 8) {
@@ -139,6 +159,11 @@ function ClusterDB(props) {
     if (tabs.current[selectedTabRef.current] === 'Response Time') {
       //if (selectedTabRef.current === 10) {
       dispatch(getDatabaseService({ clusterName, serviceName: 'query-response-time', dbId }))
+    }
+    if (tabs.current[selectedTabRef.current] === 'PFS Instruments') {
+      // PFS Instruments data is already in selectedDBServer.pfsInstruments, no separate API call needed
+      // Just trigger server refresh to ensure data is fresh
+      dispatch(getClusterServers({ clusterName }))
     }
   }
 
@@ -156,6 +181,34 @@ function ClusterDB(props) {
 
   const toggleVariableMode = (value) => {
     variableModeRef.current = value
+  }
+
+  const navigateToPFSInstruments = () => {
+    // Find the index of PFS Instruments tab
+    const pfsTabIndex = tabs.current.findIndex(tab => 
+      typeof tab === 'string' && tab === 'PFS Instruments'
+    )
+    if (pfsTabIndex !== -1) {
+      handleTabChange(pfsTabIndex)
+    }
+  }
+
+  const navigateToVariables = () => {
+    // Set search filter to performance_schema_instrument when coming from PFS Instruments
+    setVariablesSearchFilter('performance_schema_instrument')
+    
+    // Find the index of Variables tab
+    const variablesTabIndex = tabs.current.findIndex(tab => 
+      typeof tab === 'string' && tab === 'Variables'
+    )
+    if (variablesTabIndex !== -1) {
+      handleTabChange(variablesTabIndex)
+    }
+    
+    // Clear the search filter after a short delay to allow it to be consumed
+    setTimeout(() => {
+      setVariablesSearchFilter('')
+    }, 500)
   }
 
   return (
@@ -245,6 +298,9 @@ function ClusterDB(props) {
                     selectedDBServer={selectedDBServer}
                     variableMode={variableModeRef.current}
                     toggleVariableMode={toggleVariableMode}
+                    onNavigateToPFSInstruments={navigateToPFSInstruments}
+                    onNavigateToVariables={navigateToVariables}
+                    variablesSearchFilter={variablesSearchFilter}
                   />
                 ]
               : []),
@@ -272,6 +328,18 @@ function ClusterDB(props) {
                     clusterName={clusterName}
                     user={user}
                     selectedDBServer={selectedDBServer}
+                  />
+                ]
+              : []),
+            ...(user?.grants['db-show-status']
+              ? [
+                  <ClusterDBTabContent
+                    tab='pfsinstruments'
+                    dbId={dbId}
+                    clusterName={clusterName}
+                    user={user}
+                    selectedDBServer={selectedDBServer}
+                    onNavigateToVariables={navigateToVariables}
                   />
                 ]
               : [])

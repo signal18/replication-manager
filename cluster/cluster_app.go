@@ -348,7 +348,7 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 
 	if template != "" {
 		resolvedContent, _ := cluster.ParseTemplateContent(app, content)
-		newViper, err = cluster.LoadTemplateToViper(resolvedContent)
+		newViper, _ = cluster.LoadTemplateToViper(resolvedContent)
 		newViper.Set("app-host", srv)
 		newViper.Set("app-port", port)
 		newViper.Set("prov-app-docker-img", dockerImg)
@@ -711,7 +711,7 @@ func (cluster *Cluster) ParseTemplateContent(app *App, content []byte) ([]byte, 
 	}
 
 	// If the app cluster substitute is still empty, use the template as is
-	var parsed string = string(content)
+	var parsed = string(content)
 	if app.AppClusterSubstitute != "" {
 		parsed, err = cluster.ParseAppTemplate(string(content), app.AppClusterSubstitute)
 		if err != nil {

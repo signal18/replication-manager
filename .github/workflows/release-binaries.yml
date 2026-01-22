@@ -1,0 +1,134 @@
+name: Build and attach release binaries
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build binaries for (e.g., v2.3.0)'
+        required: true
+        type: string
+
+jobs:
+  build-binaries:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          # Linux builds
+          - os: linux
+            arch: amd64
+          - os: linux
+            arch: arm64
+          # macOS builds
+          - os: darwin
+            arch: amd64
+          - os: darwin
+            arch: arm64
+          # TODO: Windows builds disabled due to syslog dependency
+          # - os: windows
+          #   arch: amd64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+          submodules: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Set up Node.js for React dashboard
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build React dashboard
+        run: |
+          rm -rf ./share/dashboard/assets || true
+          npm --prefix=./share/dashboard_react install
+          npm --prefix=./share/dashboard_react run build
+          cp -rp ./share/dashboard_react/dist/* ./share/dashboard/
+
+      - name: Create binaries directory
+        run: mkdir -p build/binaries
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(git describe --abbrev=0 --tags)
+          FULLVERSION=$(git describe --tags)
+          BUILD=$(date +%FT%T%z)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "fullversion=$FULLVERSION" >> $GITHUB_OUTPUT
+          echo "build=$BUILD" >> $GITHUB_OUTPUT
+
+      - name: Build CLI client
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          BINARY_NAME="replication-manager-cli-${{ matrix.os }}-${{ matrix.arch }}"
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+          go build -v --tags "clients" \
+            --ldflags "-w -s -X github.com/signal18/replication-manager/clients.Version=${{ steps.version.outputs.version }} -X github.com/signal18/replication-manager/clients.FullVersion=${{ steps.version.outputs.fullversion }} -X github.com/signal18/replication-manager/clients.Build=${{ steps.version.outputs.build }}" \
+            -o "build/binaries/${BINARY_NAME}"
+
+      - name: Build Arbitrator
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          BINARY_NAME="replication-manager-arb-${{ matrix.os }}-${{ matrix.arch }}"
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+          go build -v --tags "arbitrator" \
+            --ldflags "-w -s -X github.com/signal18/replication-manager/arbitrator.Version=${{ steps.version.outputs.version }} -X github.com/signal18/replication-manager/arbitrator.FullVersion=${{ steps.version.outputs.fullversion }} -X github.com/signal18/replication-manager/arbitrator.Build=${{ steps.version.outputs.build }}" \
+            -o "build/binaries/${BINARY_NAME}"
+
+      - name: Build Embedded server
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          BINARY_NAME="replication-manager-${{ matrix.os }}-${{ matrix.arch }}"
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+          go build -v --tags "server" \
+            --ldflags "-w -s -X github.com/signal18/replication-manager/server.WithEmbed=ON -X github.com/signal18/replication-manager/server.Version=${{ steps.version.outputs.version }} -X github.com/signal18/replication-manager/server.FullVersion=${{ steps.version.outputs.fullversion }} -X github.com/signal18/replication-manager/server.Build=${{ steps.version.outputs.build }} -X github.com/signal18/replication-manager/server.WithOpenSVC=ON" \
+            -o "build/binaries/${BINARY_NAME}"
+
+      - name: Compress binaries
+        run: |
+          cd build/binaries
+          for file in *; do
+            if [ "${{ matrix.os }}" = "windows" ]; then
+              zip "${file%.exe}.zip" "$file"
+            else
+              tar -czf "${file}.tar.gz" "$file"
+            fi
+          done
+
+      - name: Upload binaries to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.event.release.tag_name }}
+          files: |
+            build/binaries/*.tar.gz
+            build/binaries/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

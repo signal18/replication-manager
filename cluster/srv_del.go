@@ -62,6 +62,10 @@ func (server *ServerMonitor) DelRestartCookie() error {
 	return server.delCookie("cookie_restart")
 }
 
+func (server *ServerMonitor) DelRestartContainerCookie() error {
+	return server.delCookie("cookie_restart_container")
+}
+
 func (server *ServerMonitor) DelConfigCookie() error {
 	return server.delCookie("cookie_config")
 }
@@ -176,6 +180,14 @@ func (server *ServerMonitor) DelWaitJobsUpgradeCookie() error {
 	return server.delCookie("cookie_wait_jobs_upgrade")
 }
 
+func (server *ServerMonitor) DelWaitDummyConfigSendCookie() error {
+	return server.delCookie("cookie_wait_dummy_send")
+}
+
 func (server *ServerMonitor) DelRollingJobsUpgradeCookie() error {
 	return server.delCookie("cookie_rolling_jobs_upgrade")
+}
+
+func (server *ServerMonitor) DelWaitRunJobSSHCookie() error {
+	return server.delCookie("cookie_waitrunjobssh")
 }

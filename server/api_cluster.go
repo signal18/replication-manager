@@ -270,6 +270,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropTag)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/preserved-variables-cnf", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetPreservedVarsCnf)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/save-preserved-variables-cnf", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSavePreservedVarsCnf)),
+	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/add-proxy-tag/{tagValue}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddProxyTag)),
@@ -724,16 +732,20 @@ func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *ht
 			servers: make([]map[string]interface{}, 0),
 		}
 		for _, srv := range mycluster.GetServers() {
+			if srv == nil {
+				continue
+			}
+
 			var cont map[string]interface{}
 			data, _ := json.Marshal(srv)
 			data, err = sjson.SetBytes(data, "binaryLogFiles", srv.BinaryLogFiles.ToNewMap())
 			if err != nil {
-				http.Error(w, "Encoding error: "+err.Error(), 500)
+				http.Error(w, "Encoding error: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 			err = json.Unmarshal(data, &cont)
 			if err != nil {
-				http.Error(w, "Encoding error: "+err.Error(), 500)
+				http.Error(w, "Encoding error: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 			res.servers = append(res.servers, cont)
@@ -744,12 +756,12 @@ func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *ht
 		err = e.Encode(res.servers)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -771,7 +783,7 @@ func (repman *ReplicationManager) handlerMuxServersCount(w http.ResponseWriter, 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(strconv.Itoa(len(mycluster.Servers))))
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -807,12 +819,12 @@ func (repman *ReplicationManager) handlerMuxGetServersByState(w http.ResponseWri
 			data, _ := json.Marshal(srv)
 			data, err = sjson.SetBytes(data, "binaryLogFiles", srv.BinaryLogFiles.ToNewMap())
 			if err != nil {
-				http.Error(w, "Encoding error: "+err.Error(), 500)
+				http.Error(w, "Encoding error: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 			err = json.Unmarshal(data, &cont)
 			if err != nil {
-				http.Error(w, "Encoding error: "+err.Error(), 500)
+				http.Error(w, "Encoding error: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 			res.servers = append(res.servers, cont)
@@ -823,12 +835,12 @@ func (repman *ReplicationManager) handlerMuxGetServersByState(w http.ResponseWri
 		err = e.Encode(res.servers)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -857,7 +869,7 @@ func (repman *ReplicationManager) handlerMuxGetServersByStateCount(w http.Respon
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(strconv.Itoa(counter)))
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -883,27 +895,27 @@ func (repman *ReplicationManager) handlerMuxGetServerByStateAndIndex(w http.Resp
 	if mycluster != nil {
 		index, err := strconv.Atoi(vars["index"])
 		if err != nil {
-			http.Error(w, "Invalid index", 500)
+			http.Error(w, "Invalid index", http.StatusInternalServerError)
 			return
 		}
 
 		srv, err := mycluster.GetServerByStateAndIndex(vars["state"], index)
 		if srv == nil {
-			http.Error(w, err.Error(), 500)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		data, _ := json.Marshal(srv)
 		data, err = sjson.SetBytes(data, "binaryLogFiles", srv.BinaryLogFiles.ToNewMap())
 		if err != nil {
-			http.Error(w, "Encoding error: "+err.Error(), 500)
+			http.Error(w, "Encoding error: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
 		w.Write(data)
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -930,20 +942,20 @@ func (repman *ReplicationManager) handlerMuxGetServerAttributeByStateAndIndex(w 
 	if mycluster != nil {
 		index, err := strconv.Atoi(vars["index"])
 		if err != nil {
-			http.Error(w, "Invalid index", 500)
+			http.Error(w, "Invalid index", http.StatusInternalServerError)
 			return
 		}
 
 		srv, err := mycluster.GetServerByStateAndIndex(vars["state"], index)
 		if srv == nil {
-			http.Error(w, err.Error(), 500)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		re := regexp.MustCompile(`\.\[(\d+)\]`)
 		var value []byte
 		var resultval gjson.Result
-		var jsonpath string = re.ReplaceAllString(vars["attrName"], `.$1`) // replace .[n] with .n for gjson compatibility
+		var jsonpath = re.ReplaceAllString(vars["attrName"], `.$1`) // replace .[n] with .n for gjson compatibility
 
 		if vars["attrName"] == "binaryLogFiles" {
 			value, _ = json.Marshal(srv.BinaryLogFiles.ToNewMap())
@@ -957,7 +969,7 @@ func (repman *ReplicationManager) handlerMuxGetServerAttributeByStateAndIndex(w 
 			}
 
 			if !resultval.Exists() {
-				http.Error(w, "Attribute not found", 500)
+				http.Error(w, "Attribute not found", http.StatusInternalServerError)
 				return
 			}
 
@@ -967,7 +979,7 @@ func (repman *ReplicationManager) handlerMuxGetServerAttributeByStateAndIndex(w 
 		w.WriteHeader(http.StatusOK)
 		w.Write(value)
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -992,7 +1004,7 @@ func (repman *ReplicationManager) handlerMuxSlaves(w http.ResponseWriter, r *htt
 		err := json.Unmarshal(data, &srvs)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 		for i := range srvs {
@@ -1003,12 +1015,12 @@ func (repman *ReplicationManager) handlerMuxSlaves(w http.ResponseWriter, r *htt
 		err = e.Encode(srvs)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1030,7 +1042,7 @@ func (repman *ReplicationManager) handlerMuxSlavesCount(w http.ResponseWriter, r
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(strconv.Itoa(len(mycluster.GetSlaves()))))
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1045,50 +1057,56 @@ func (repman *ReplicationManager) handlerMuxSlavesCount(w http.ResponseWriter, r
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /api/clusters/{clusterName}/topology/slaves/index/{slaveIndex} [get]
 func (repman *ReplicationManager) handlerMuxSlaveIndex(w http.ResponseWriter, r *http.Request) {
-	//marshal unmarchal for ofuscation deep copy of struc
+	// Marshal/unmarshal for obfuscation deep copy of struct
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		uname := repman.GetUserFromRequest(r)
-		if _, ok := mycluster.APIUsers[uname]; !ok {
-			http.Error(w, "No Valid ACL", 500)
-			return
-		}
+	if mycluster == nil {
+		http.Error(w, "Cluster not found", http.StatusNotFound)
+		return
+	}
 
-		index, err := strconv.Atoi(vars["slaveIndex"])
-		if err != nil {
-			http.Error(w, "Invalid index", 500)
-			return
-		}
+	uname := repman.GetUserFromRequest(r)
+	if _, ok := mycluster.APIUsers[uname]; !ok {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
 
-		slave := mycluster.GetSlaveByIndex(index)
-		if slave == nil {
-			http.Error(w, "Slave not found", 500)
-			return
-		}
+	index, err := strconv.Atoi(vars["slaveIndex"])
+	if err != nil {
+		http.Error(w, "Invalid slave index", http.StatusBadRequest)
+		return
+	}
 
-		data, _ := json.Marshal(slave)
-		var srv cluster.ServerMonitor
+	slave := mycluster.GetSlaveByIndex(index)
+	if slave == nil {
+		http.Error(w, "Slave not found", http.StatusNotFound)
+		return
+	}
 
-		err = json.Unmarshal(data, &srv)
-		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
-			return
-		}
+	data, err := json.Marshal(slave)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error marshaling slave: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
-		srv.Pass = "XXXXXXXX"
-		e := json.NewEncoder(w)
-		e.SetIndent("", "\t")
-		err = e.Encode(srv)
-		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
-			return
-		}
-	} else {
-		http.Error(w, "No cluster", 500)
+	var srv cluster.ServerMonitor
+	err = json.Unmarshal(data, &srv)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error unmarshaling slave: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	srv.Pass = "XXXXXXXX"
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	err = e.Encode(&srv)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
+		// Cannot send http.Error here as headers are already sent
 		return
 	}
 }
@@ -1111,26 +1129,26 @@ func (repman *ReplicationManager) handlerMuxSlaveAttributeByIndex(w http.Respons
 	if mycluster != nil {
 		uname := repman.GetUserFromRequest(r)
 		if _, ok := mycluster.APIUsers[uname]; !ok {
-			http.Error(w, "No Valid ACL", 500)
+			http.Error(w, "No Valid ACL", http.StatusInternalServerError)
 			return
 		}
 
 		index, err := strconv.Atoi(vars["slaveIndex"])
 		if err != nil {
-			http.Error(w, "Invalid index", 500)
+			http.Error(w, "Invalid index", http.StatusInternalServerError)
 			return
 		}
 
 		slave := mycluster.GetSlaveByIndex(index)
 		if slave == nil {
-			http.Error(w, "Slave not found", 500)
+			http.Error(w, "Slave not found", http.StatusInternalServerError)
 			return
 		}
 
 		re := regexp.MustCompile(`\.\[(\d+)\]`)
 		var value []byte
 		var resultval gjson.Result
-		var jsonpath string = re.ReplaceAllString(vars["attrName"], `.$1`) // replace .[n] with .n for gjson compatibility
+		var jsonpath = re.ReplaceAllString(vars["attrName"], `.$1`) // replace .[n] with .n for gjson compatibility
 		// get the value from the json path
 		// if the attribute is binaryLogFiles, we need to convert the map to json
 		// if the attribute is binaryLogFiles.*, we need to convert the map to json and get the value from the json path
@@ -1148,7 +1166,7 @@ func (repman *ReplicationManager) handlerMuxSlaveAttributeByIndex(w http.Respons
 
 			// if the value is not found, return an error
 			if !resultval.Exists() {
-				http.Error(w, "Attribute not found", 500)
+				http.Error(w, "Attribute not found", http.StatusInternalServerError)
 				return
 			}
 
@@ -1160,7 +1178,7 @@ func (repman *ReplicationManager) handlerMuxSlaveAttributeByIndex(w http.Respons
 		w.WriteHeader(http.StatusOK)
 		w.Write(value)
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1184,7 +1202,7 @@ func (repman *ReplicationManager) handlerMuxProxies(w http.ResponseWriter, r *ht
 		err := json.Unmarshal(data, &prxs)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 		e := json.NewEncoder(w)
@@ -1192,12 +1210,12 @@ func (repman *ReplicationManager) handlerMuxProxies(w http.ResponseWriter, r *ht
 		err = e.Encode(prxs)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1223,12 +1241,12 @@ func (repman *ReplicationManager) handlerMuxAlerts(w http.ResponseWriter, r *htt
 		err := e.Encode(a)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1248,15 +1266,14 @@ func (repman *ReplicationManager) handlerMuxRotateKeys(w http.ResponseWriter, r 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.KeyRotation()
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // @Summary Reset SLA for a specific cluster
@@ -1274,15 +1291,14 @@ func (repman *ReplicationManager) handlerMuxResetSla(w http.ResponseWriter, r *h
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.SetEmptySla()
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxFailover handles the failover process for a given cluster.
@@ -1303,16 +1319,15 @@ func (repman *ReplicationManager) handlerMuxFailover(w http.ResponseWriter, r *h
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.MasterFailover(true)
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxClusterShardingAdd handles the addition of a sharding cluster to an existing cluster.
@@ -1334,16 +1349,15 @@ func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWr
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		repman.AddCluster(vars["clusterShardingName"], vars["clusterName"])
 		mycluster.RollingRestart()
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxRolling handles the rolling restart process for a given cluster.
@@ -1364,15 +1378,14 @@ func (repman *ReplicationManager) handlerMuxRolling(w http.ResponseWriter, r *ht
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.RollingRestart()
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxStartTraffic handles the start traffic process for a given cluster.
@@ -1393,16 +1406,15 @@ func (repman *ReplicationManager) handlerMuxStartTraffic(w http.ResponseWriter, 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.SetTraffic(true)
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxStopTraffic handles the stop traffic process for a given cluster.
@@ -1423,16 +1435,15 @@ func (repman *ReplicationManager) handlerMuxStopTraffic(w http.ResponseWriter, r
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.SetTraffic(false)
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxStartTraffic handles the start traffic process for a given cluster.
@@ -1453,16 +1464,15 @@ func (repman *ReplicationManager) handlerMuxStartTrafficStaging(w http.ResponseW
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.SetTrafficStaging(true)
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxStopTraffic handles the stop traffic process for a given cluster.
@@ -1483,16 +1493,15 @@ func (repman *ReplicationManager) handlerMuxStopTrafficStaging(w http.ResponseWr
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.SetTrafficStaging(false)
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxBootstrapReplicationCleanup handles the cleanup process for replication bootstrap.
@@ -1515,20 +1524,18 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplicationCleanup(w http.R
 	if mycluster != nil {
 
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		err := mycluster.BootstrapReplicationCleanup()
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error Cleanup Replication: %s", err)
-			http.Error(w, err.Error(), 500)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
 }
 
 // handlerMuxBootstrapReplication handles the bootstrap replication process for a given cluster.
@@ -1550,48 +1557,24 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplication(w http.Response
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
 		if err := mycluster.BootstrapTopology(vars["topology"]); err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error bootstraping topology %s", err)
-			http.Error(w, err.Error(), 500)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		if err := mycluster.BootstrapReplication(true); err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error bootstraping replication %s", err)
-			http.Error(w, err.Error(), 500)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
-}
-
-func (repman *ReplicationManager) handlerMuxServicesBootstrap(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-		err := mycluster.ProvisionServices()
-		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error Bootstrap Micro Services: %s", err)
-			http.Error(w, err.Error(), 500)
-			return
-		}
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
-	return
 }
 
 // handlerMuxServicesProvision handles the provisioning of services for a given cluster.
@@ -1612,20 +1595,18 @@ func (repman *ReplicationManager) handlerMuxServicesProvision(w http.ResponseWri
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		err := mycluster.Bootstrap()
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error Bootstrap Micro Services + replication: %s", err)
-			http.Error(w, err.Error(), 500)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
 }
 
 // handlerMuxServicesUnprovision handles the unprovisioning of services for a given cluster.
@@ -1646,15 +1627,13 @@ func (repman *ReplicationManager) handlerMuxServicesUnprovision(w http.ResponseW
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.Unprovision()
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
 }
 
 // handlerMuxServicesCancelRollingRestart handles the cancellation of rolling restart for a given cluster.
@@ -1675,15 +1654,13 @@ func (repman *ReplicationManager) handlerMuxServicesCancelRollingRestart(w http.
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.CancelRollingRestart()
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
 }
 
 // handlerMuxServicesCancelRollingReprov handles the cancellation of rolling reprovision for a given cluster.
@@ -1704,15 +1681,13 @@ func (repman *ReplicationManager) handlerMuxServicesCancelRollingReprov(w http.R
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.CancelRollingReprov()
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
 }
 
 // handlerMuxSetSettingsDiscover handles the discovery of settings for a given cluster.
@@ -1733,19 +1708,17 @@ func (repman *ReplicationManager) handlerMuxSetSettingsDiscover(w http.ResponseW
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		err := mycluster.ConfigDiscovery()
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
 }
 
 // handlerMuxClusterResetFailoverControl handles the reset of failover control for a given cluster.
@@ -1766,16 +1739,14 @@ func (repman *ReplicationManager) handlerMuxClusterResetFailoverControl(w http.R
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.ResetFailoverCtr()
 	} else {
 
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
 }
 
 // handlerMuxSwitchover handles the switchover process for a given cluster.
@@ -1798,7 +1769,7 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive switchover request")
@@ -1821,10 +1792,8 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 		mycluster.SetPrefMaster(savedPrefMaster)
 
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
 }
 
 // handlerMuxMaster handles the HTTP request to retrieve the master of a specified cluster.
@@ -1850,7 +1819,7 @@ func (repman *ReplicationManager) handlerMuxMaster(w http.ResponseWriter, r *htt
 			err := json.Unmarshal(data, &srvs)
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error decoding JSON: ", err)
-				http.Error(w, "Encoding error", 500)
+				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				return
 			}
 			srvs.Pass = "XXXXXXXX"
@@ -1859,12 +1828,12 @@ func (repman *ReplicationManager) handlerMuxMaster(w http.ResponseWriter, r *htt
 		e.SetIndent("", "\t")
 		err := e.Encode(srvs)
 		if err != nil {
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1888,19 +1857,17 @@ func (repman *ReplicationManager) handlerMuxClusterCertificates(w http.ResponseW
 		e.SetIndent("", "\t")
 		certs, err := mycluster.GetClientCertificates()
 		if err != nil {
-			if err != nil {
-				http.Error(w, err.Error(), 500)
-				return
-			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 		err = e.Encode(certs)
 		if err != nil {
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1924,12 +1891,12 @@ func (repman *ReplicationManager) handlerMuxClusterTags(w http.ResponseWriter, r
 		e.SetIndent("", "\t")
 		err := e.Encode(mycluster.Configurator.GetDBModuleTags())
 		if err != nil {
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1951,18 +1918,18 @@ func (repman *ReplicationManager) handlerMuxClusterBackups(w http.ResponseWriter
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 		err := e.Encode(mycluster.GetBackups())
 		if err != nil {
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1984,18 +1951,18 @@ func (repman *ReplicationManager) handlerMuxClusterBackupStat(w http.ResponseWri
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 		err := e.Encode(mycluster.GetBackupStat())
 		if err != nil {
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -2017,18 +1984,18 @@ func (repman *ReplicationManager) handlerMuxClusterShardClusters(w http.Response
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 		err := e.Encode(mycluster.ShardProxyGetShardClusters())
 		if err != nil {
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -2050,18 +2017,18 @@ func (repman *ReplicationManager) handlerMuxClusterQueryRules(w http.ResponseWri
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 		err := e.Encode(mycluster.GetQueryRules())
 		if err != nil {
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -2084,7 +2051,7 @@ func (repman *ReplicationManager) handlerMuxClusterTop(w http.ResponseWriter, r 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -2092,7 +2059,7 @@ func (repman *ReplicationManager) handlerMuxClusterTop(w http.ResponseWriter, r 
 		if svname != "" {
 			node := mycluster.GetServerFromName(svname)
 			if node == nil {
-				http.Error(w, "Not a Valid Server!", 500)
+				http.Error(w, "Not a Valid Server!", http.StatusInternalServerError)
 				return
 			}
 		}
@@ -2102,11 +2069,11 @@ func (repman *ReplicationManager) handlerMuxClusterTop(w http.ResponseWriter, r 
 		e.SetIndent("", "\t")
 		err := e.Encode(mycluster.GetTopMetrics(svname))
 		if err != nil {
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -2144,7 +2111,7 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 	if v, ok := vars["state"]; ok {
 		value = strings.ToLower(v)
 		if value != "on" && value != "off" {
-			http.Error(w, "Invalid state. Only accept on/off", 400)
+			http.Error(w, "Invalid state. Only accept on/off", http.StatusBadRequest)
 			return
 		}
 	}
@@ -2157,23 +2124,23 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			if value == "" {
 				err := repman.switchClusterSettings(mycluster, setting)
 				if err != nil {
-					http.Error(w, "Setting Not Found", 501)
+					http.Error(w, "Setting Not Found", http.StatusNotImplemented)
 					return
 				}
 			} else {
 				err := repman.setClusterSetting(mycluster, setting, value)
 				if err != nil {
-					http.Error(w, fmt.Sprintf("Failed to set value for %s: %s", setting, err.Error()), 400)
+					http.Error(w, fmt.Sprintf("Failed to set value for %s: %s", setting, err.Error()), http.StatusBadRequest)
 					return
 				}
 			}
 		} else {
-			http.Error(w, fmt.Sprintf("User doesn't have required ACL for %s in cluster %s", setting, vars["clusterName"]), 403)
+			http.Error(w, fmt.Sprintf("User doesn't have required ACL for %s in cluster %s", setting, vars["clusterName"]), http.StatusForbidden)
 			return
 		}
 
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 
@@ -2200,7 +2167,7 @@ func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.Response
 	setting := vars["settingName"]
 	serverScope := config.IsScope(setting, "server")
 	if !serverScope {
-		http.Error(w, "setting is not in global scope", 501)
+		http.Error(w, "setting is not in global scope", http.StatusNotImplemented)
 		return
 	}
 
@@ -2219,7 +2186,7 @@ func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.Response
 	if v, ok := vars["state"]; ok {
 		value = strings.ToLower(v)
 		if value != "on" && value != "off" {
-			http.Error(w, "Invalid state. Only accept on/off", 400)
+			http.Error(w, "Invalid state. Only accept on/off", http.StatusBadRequest)
 			return
 		}
 	}
@@ -2230,15 +2197,15 @@ func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.Response
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive switch global setting %s", setting)
 			err := repman.switchServerSetting(user, r.URL.Path, setting, value)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("Failed to set value for %s: %s", setting, err.Error()), 400)
+				http.Error(w, fmt.Sprintf("Failed to set value for %s: %s", setting, err.Error()), http.StatusBadRequest)
 				return
 			}
 		} else {
-			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", setting), 403)
+			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", setting), http.StatusForbidden)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -2379,6 +2346,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchDBApplyDynamicConfig()
 	case "prov-docker-daemon-private":
 		mycluster.SwitchProvDockerDaemonPrivate()
+	case "prov-object-allow-overwrite":
+		mycluster.Conf.ProvObjectAllowOverwrite = !mycluster.Conf.ProvObjectAllowOverwrite
 	case "backup-restic-aws":
 		mycluster.SwitchBackupResticAws()
 	case "backup-restic":
@@ -2531,7 +2500,7 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 	case "analyze-use-persistent":
 		mycluster.SwitchAnalyzeUsePersistent()
 	default:
-		return errors.New("Setting not found")
+		return errors.New("setting not found")
 	}
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	return nil
@@ -2586,16 +2555,16 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			if setting == "cloud18-dba-user-credentials" {
 				err = repman.SendDBACredentialsMail(mycluster, "dbops", delegator)
 				if err != nil {
-					http.Error(w, "Error sending email :"+err.Error(), 500)
+					http.Error(w, "Error sending email :"+err.Error(), http.StatusInternalServerError)
 					return
 				}
 			}
 		} else {
-			http.Error(w, fmt.Sprintf("User doesn't have required ACL for %s in cluster %s", setting, vars["clusterName"]), 403)
+			http.Error(w, fmt.Sprintf("User doesn't have required ACL for %s in cluster %s", setting, vars["clusterName"]), http.StatusForbidden)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -2620,7 +2589,7 @@ func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWri
 	setting := vars["settingName"]
 	serverScope := config.IsScope(setting, "server")
 	if !serverScope {
-		http.Error(w, "Setting Not Found", 501)
+		http.Error(w, "Setting Not Found", http.StatusNotImplemented)
 		return
 	}
 	value := ""
@@ -2650,15 +2619,15 @@ func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWri
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Option '%s' is a shared values between clusters", setting)
 			err := repman.setServerSetting(user, r.URL.Path, setting, value)
 			if err != nil {
-				http.Error(w, err.Error(), 501)
+				http.Error(w, err.Error(), http.StatusNotImplemented)
 				return
 			}
 		} else {
-			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s. path: %s", setting, r.URL.Path), 403)
+			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s. path: %s", setting, r.URL.Path), http.StatusForbidden)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -2684,7 +2653,7 @@ func (repman *ReplicationManager) handlerMuxSetCron(w http.ResponseWriter, r *ht
 	if mycluster != nil {
 		setting := vars["settingName"]
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		cronValue, err := url.QueryUnescape(vars["settingValue"])
@@ -2694,7 +2663,7 @@ func (repman *ReplicationManager) handlerMuxSetCron(w http.ResponseWriter, r *ht
 		repman.setClusterSetting(mycluster, setting, cronValue)
 		return
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -2733,7 +2702,7 @@ func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 }
 
 func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, name string, value string) error {
-	var isactive *bool = setIsActive(value)
+	var isactive = setIsActive(value)
 	var err error
 
 	fmtlog, logargs := GetApiChangeLogFormat(name, value)
@@ -2834,6 +2803,43 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-restic-purge-oldest-on-disk-threshold":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.BackupResticPurgeOldestOnDiskThreshold = val
+	case "backup-restic-timeout":
+		val, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for backup-restic-timeout: %q", value)
+		}
+		mycluster.Conf.BackupResticTimeout = val
+		if mycluster.ResticManager != nil {
+			mycluster.ResticManager.SetOperationTimeout(mycluster.Conf.GetResticTimeout())
+		}
+	case "backup-restic-dir-mode":
+		val, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for backup-restic-dir-mode: %q", value)
+		}
+		oldValue := mycluster.Conf.BackupResticDirMode
+		mycluster.Conf.BackupResticDirMode = val
+		if err := mycluster.Conf.ValidateResticPermissions(); err != nil {
+			mycluster.Conf.BackupResticDirMode = oldValue
+			return err
+		}
+		if mycluster.ResticManager != nil {
+			mycluster.ResticManager.SetPermissions(mycluster.Conf.GetResticDirMode(), mycluster.Conf.GetResticFileMode())
+		}
+	case "backup-restic-file-mode":
+		val, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for backup-restic-file-mode: %q", value)
+		}
+		oldValue := mycluster.Conf.BackupResticFileMode
+		mycluster.Conf.BackupResticFileMode = val
+		if err := mycluster.Conf.ValidateResticPermissions(); err != nil {
+			mycluster.Conf.BackupResticFileMode = oldValue
+			return err
+		}
+		if mycluster.ResticManager != nil {
+			mycluster.ResticManager.SetPermissions(mycluster.Conf.GetResticDirMode(), mycluster.Conf.GetResticFileMode())
+		}
 	case "backup-logical-type":
 		mycluster.SetBackupLogicalType(value)
 	case "backup-physical-type":
@@ -3074,7 +3080,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "alert-script":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.SetAlertScript(string(val))
 	case "alert-slack-channel":
@@ -3082,7 +3088,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "alert-slack-url":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.SetAlertSlackUrl(string(val))
 	case "alert-slack-user":
@@ -3103,7 +3109,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "cloud18-alert-slack-url":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.SetCloud18AlertSlackUrl(string(val))
 	case "cloud18-alert-slack-user":
@@ -3111,7 +3117,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "alert-teams-proxy-url":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.SetAlertTeamsProxyUrl(string(val))
 	case "alert-teams-state":
@@ -3119,7 +3125,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "alert-teams-url":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.SetAlertTeamsUrl(string(val))
 	case "monitoring-alert-trigger":
@@ -3129,7 +3135,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "mail-smtp-password":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.MailSMTPPassword = string(val)
 		var new_secret config.Secret
@@ -3166,7 +3172,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "cloud18-gitlab-password":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.Cloud18GitPassword = string(val)
 		var new_secret config.Secret
@@ -3181,14 +3187,14 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-restic-local-repository":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupResticLocalRepository = string(val)
 		mycluster.ReloadResticEnv()
 	case "backup-restic-repository":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupResticRepository = string(val)
 		mycluster.ReloadResticEnv()
@@ -3197,7 +3203,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-restic-aws-access-secret":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupResticAwsAccessSecret = string(val)
 		var new_secret config.Secret
@@ -3207,7 +3213,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-restic-password":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		newval := string(val)
 		if mycluster.Conf.BackupRestic {
@@ -3246,43 +3252,43 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-mydumper-options":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupMyDumperOptions = string(val)
 	case "backup-mydumper-regex":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupMyDumperRegex = string(val)
 	case "backup-myloader-options":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupMyLoaderOptions = string(val)
 	case "backup-mysqldump-options":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupMysqldumpOptions = string(val)
 	case "backup-mysqlclient-options":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupMysqlclientOptions = string(val)
 	case "backup-logical-post-script":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupLogicalPostScript = string(val)
 	case "backup-physical-post-script":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupPhysicalPostScript = string(val)
 	case "cloud18-monthly-infra-cost":
@@ -3308,7 +3314,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "cloud18-dba-user-credentials":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		err = mycluster.SetDatabaseCredentials("dba", string(val))
 		if err != nil {
@@ -3317,7 +3323,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "cloud18-sponsor-user-credentials":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		err = mycluster.SetDatabaseCredentials("sponsor", string(val))
 		if err != nil {
@@ -3343,25 +3349,25 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-save-script":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupSaveScript = string(val)
 	case "backup-load-script":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupLoadScript = string(val)
 	case "topology-staging-refresh-script":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.TopologyStagingRefreshScript = string(val)
 	case "topology-staging-post-detach-script":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.TopologyStagingPostDetachScript = string(val)
 	case "replication-multisource-head-clusters":
@@ -3546,6 +3552,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ProvDBApplyDynamicConfig = applyIsActive(mycluster.Conf.ProvDBApplyDynamicConfig, isactive)
 	case "prov-docker-daemon-private":
 		mycluster.Conf.ProvDockerDaemonPrivate = applyIsActive(mycluster.Conf.ProvDockerDaemonPrivate, isactive)
+	case "prov-object-allow-overwrite":
+		mycluster.Conf.ProvObjectAllowOverwrite = applyIsActive(mycluster.Conf.ProvObjectAllowOverwrite, isactive)
 	case "backup-restic-aws":
 		mycluster.Conf.BackupResticAws = applyIsActive(mycluster.Conf.BackupResticAws, isactive)
 	case "backup-restic":
@@ -3878,14 +3886,14 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "analyze-use-persistent":
 		mycluster.Conf.AnalyzeUsePersistent = applyIsActive(mycluster.Conf.AnalyzeUsePersistent, isactive)
 	default:
-		return errors.New("Setting not found")
+		return errors.New("setting not found")
 	}
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	return nil
 }
 
 func (repman *ReplicationManager) setRepmanSetting(name string, value string) error {
-	var isactive bool = strings.ToLower(value) == "on"
+	var isactive = strings.ToLower(value) == "on"
 	var v int
 
 	fmtLog, logArgs := GetApiChangeLogFormat(name, value)
@@ -3938,7 +3946,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		}
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		repman.Conf.Cloud18GitPassword = string(val)
 		var new_secret config.Secret
@@ -4044,7 +4052,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "mail-smtp-password":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		repman.Conf.MailSMTPPassword = string(val)
 		var new_secret config.Secret
@@ -4100,7 +4108,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.MailTimeout = v
 		repman.Mailer.UpdateTimeout(v)
 	default:
-		return errors.New("Setting not found")
+		return errors.New("setting not found")
 	}
 
 	repman.ConfigManager.SaveConfig(repman, false)
@@ -4149,7 +4157,7 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 	case "log-support":
 		repman.Conf.LogSupport = !repman.Conf.LogSupport
 	default:
-		return errors.New("Setting not found")
+		return errors.New("setting not found")
 	}
 	repman.ConfigManager.SaveConfig(repman, false)
 	return nil
@@ -4231,11 +4239,11 @@ func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r
 				}
 			}
 		} else {
-			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", r.URL.Path), 403)
+			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", r.URL.Path), http.StatusForbidden)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -4259,15 +4267,14 @@ func (repman *ReplicationManager) handlerMuxAddTag(w http.ResponseWriter, r *htt
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.AddDBTag(vars["tagValue"], false)
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxAddProxyTag handles the addition of a proxy tag to a given cluster.
@@ -4289,20 +4296,19 @@ func (repman *ReplicationManager) handlerMuxAddProxyTag(w http.ResponseWriter, r
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
 		if vars["tagValue"] == "" {
-			http.Error(w, "Empty tag value", 500)
+			http.Error(w, "Empty tag value", http.StatusInternalServerError)
 			return
 		}
 		mycluster.AddProxyTag(vars["tagValue"])
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxDropTag handles the removal of a tag from a given cluster.
@@ -4324,15 +4330,14 @@ func (repman *ReplicationManager) handlerMuxDropTag(w http.ResponseWriter, r *ht
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.DropDBTag(vars["tagValue"], false)
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxDropProxyTag handles the removal of a proxy tag from a given cluster.
@@ -4354,32 +4359,14 @@ func (repman *ReplicationManager) handlerMuxDropProxyTag(w http.ResponseWriter, 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.DropProxyTag(vars["tagValue"])
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
-	return
-}
-
-func (repman *ReplicationManager) handlerMuxSwitchReadOnly(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-		mycluster.SwitchReadOnly()
-	} else {
-		http.Error(w, "Cluster Not Found", 500)
-		return
-	}
-	return
 }
 
 // handlerMuxLog handles the retrieval of logs for a given cluster.
@@ -4409,7 +4396,7 @@ func (repman *ReplicationManager) handlerMuxLog(w http.ResponseWriter, r *http.R
 	e.SetIndent("", "\t")
 	err := e.Encode(clusterlogs)
 	if err != nil {
-		http.Error(w, "Encoding error", 500)
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
 		return
 	}
 }
@@ -4430,12 +4417,12 @@ func (repman *ReplicationManager) handlerMuxWebLog(w http.ResponseWriter, r *htt
 
 	cl := repman.getClusterByName(vars["clusterName"])
 	if cl == nil {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
 
 	if valid, _ := repman.IsValidClusterACL(r, cl); !valid {
-		http.Error(w, "No valid ACL", 403)
+		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
 
@@ -4450,7 +4437,7 @@ func (repman *ReplicationManager) handlerMuxWebLog(w http.ResponseWriter, r *htt
 	e.SetIndent("", "\t")
 	err := e.Encode(logs)
 	if err != nil {
-		http.Error(w, "Encoding error", 500)
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
 		return
 	}
 }
@@ -4475,11 +4462,11 @@ func (repman *ReplicationManager) handlerMuxCrashes(w http.ResponseWriter, r *ht
 		err := e.Encode(mycluster.GetCrashes())
 		if err != nil {
 			log.Println("Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
 }
@@ -4505,7 +4492,7 @@ func (repman *ReplicationManager) handlerMuxOneTest(w http.ResponseWriter, r *ht
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		r.ParseForm() // Parses the request body
@@ -4524,7 +4511,7 @@ func (repman *ReplicationManager) handlerMuxOneTest(w http.ResponseWriter, r *ht
 			err := e.Encode(res[0])
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-				http.Error(w, "Encoding error", 500)
+				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				mycluster.SetTestStartCluster(false)
 				mycluster.SetTestStopCluster(false)
 				return
@@ -4536,7 +4523,7 @@ func (repman *ReplicationManager) handlerMuxOneTest(w http.ResponseWriter, r *ht
 			err := e.Encode(test)
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-				http.Error(w, "Encoding error", 500)
+				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				mycluster.SetTestStartCluster(false)
 				mycluster.SetTestStopCluster(false)
 				return
@@ -4544,14 +4531,13 @@ func (repman *ReplicationManager) handlerMuxOneTest(w http.ResponseWriter, r *ht
 
 		}
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		mycluster.SetTestStartCluster(false)
 		mycluster.SetTestStopCluster(false)
 		return
 	}
 	mycluster.SetTestStartCluster(false)
 	mycluster.SetTestStopCluster(false)
-	return
 }
 
 // handlerMuxTests handles the execution of all tests for a given cluster.
@@ -4572,7 +4558,7 @@ func (repman *ReplicationManager) handlerMuxTests(w http.ResponseWriter, r *http
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -4582,14 +4568,13 @@ func (repman *ReplicationManager) handlerMuxTests(w http.ResponseWriter, r *http
 		err := e.Encode(res)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxSettingsReload handles the reloading of cluster settings.
@@ -4612,7 +4597,7 @@ func (repman *ReplicationManager) handlerMuxSettingsReload(w http.ResponseWriter
 		//mycluster.ReloadConfig(repman.Confs[vars["clusterName"]])
 		mycluster.ReloadConfig(*mycluster.Conf)
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
 
@@ -4692,7 +4677,7 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 			}
 
 			if tag == "" && template == "" {
-				http.Error(w, "Docker image is required for app monitor", 400)
+				http.Error(w, "Docker image is required for app monitor", http.StatusBadRequest)
 				return
 			}
 
@@ -4818,7 +4803,7 @@ func (repman *ReplicationManager) handlerMuxServerDrop(w http.ResponseWriter, r 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive drop %s monitor command for %s", vars["type"], vars["host"]+":"+vars["port"])
@@ -4834,7 +4819,7 @@ func (repman *ReplicationManager) handlerMuxServerDrop(w http.ResponseWriter, r 
 			}
 		}
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
 
@@ -4859,19 +4844,19 @@ func (repman *ReplicationManager) handlerMuxServerDropByName(w http.ResponseWrit
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
 		if vars["serverName"] == "" {
-			http.Error(w, "No server name provided", 400)
+			http.Error(w, "No server name provided", http.StatusBadRequest)
 			return
 		}
 
 		node := mycluster.GetServerFromName(vars["serverName"])
 		prx := mycluster.GetProxyFromName(vars["serverName"])
 		if node == nil && prx == nil {
-			http.Error(w, "No server found with name "+vars["serverName"], 400)
+			http.Error(w, "No server found with name "+vars["serverName"], http.StatusBadRequest)
 			return
 		}
 
@@ -4882,7 +4867,7 @@ func (repman *ReplicationManager) handlerMuxServerDropByName(w http.ResponseWrit
 			mycluster.RemoveProxyMonitor(prx.GetType(), prx.GetHost(), prx.GetPort())
 		}
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
 
@@ -4932,7 +4917,7 @@ func (repman *ReplicationManager) handlerMuxClusterMasterPhysicalBackup(w http.R
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
@@ -4961,33 +4946,11 @@ func (repman *ReplicationManager) handlerMuxClusterOptimize(w http.ResponseWrite
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
 		mycluster.RollingOptimize()
-	} else {
-		w.WriteHeader(http.StatusBadRequest)
-		io.WriteString(w, "No cluster found:"+vars["clusterName"])
-	}
-}
-
-func (repman *ReplicationManager) handlerMuxClusterSSTStop(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	port, err := strconv.Atoi(vars["port"])
-	w.WriteHeader(http.StatusOK)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-		mycluster.SSTCloseReceiver(port)
 	} else {
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, "No cluster found:"+vars["clusterName"])
@@ -5013,7 +4976,7 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		if r.URL.Query().Get("threads") != "" {
@@ -5022,7 +4985,6 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 		}
 		go mycluster.RunSysbench()
 	}
-	return
 }
 
 // handlerMuxClusterApplyDynamicConfig handles the application of dynamic configuration for a given cluster.
@@ -5043,12 +5005,11 @@ func (repman *ReplicationManager) handlerMuxClusterApplyDynamicConfig(w http.Res
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		go mycluster.SetDBDynamicConfig()
 	}
-	return
 }
 
 // handlerMuxClusterReloadCertificates handles the reloading of client certificates for a given cluster.
@@ -5069,12 +5030,11 @@ func (repman *ReplicationManager) handlerMuxClusterReloadCertificates(w http.Res
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		go mycluster.ReloadCertificates()
 	}
-	return
 }
 
 // handlerMuxClusterWaitDatabases handles the waiting for databases to be ready for a given cluster.
@@ -5095,16 +5055,15 @@ func (repman *ReplicationManager) handlerMuxClusterWaitDatabases(w http.Response
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		err := mycluster.WaitDatabaseCanConn()
 		if err != nil {
-			http.Error(w, err.Error(), 403)
+			http.Error(w, err.Error(), http.StatusForbidden)
 			return
 		}
 	}
-	return
 }
 
 // handlerMuxCluster handles the HTTP request to retrieve the details of a specified cluster.
@@ -5125,12 +5084,12 @@ func (repman *ReplicationManager) handlerMuxCluster(w http.ResponseWriter, r *ht
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		cl, err := json.Marshal(mycluster)
 		if err != nil {
-			http.Error(w, "Error Marshal", 500)
+			http.Error(w, "Error Marshal", http.StatusInternalServerError)
 			return
 		}
 
@@ -5138,7 +5097,7 @@ func (repman *ReplicationManager) handlerMuxCluster(w http.ResponseWriter, r *ht
 			cl, err = sjson.SetBytes(cl, "config."+strcase.ToLowerCamel(crkey), "*:*")
 		}
 		if err != nil {
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 
@@ -5152,10 +5111,9 @@ func (repman *ReplicationManager) handlerMuxCluster(w http.ResponseWriter, r *ht
 		w.Write(cl)
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 
 }
 
@@ -5177,22 +5135,21 @@ func (repman *ReplicationManager) handlerMuxClusterSettings(w http.ResponseWrite
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 		err := e.Encode(*mycluster.Conf)
 		if err != nil {
-			http.Error(w, "Encoding error in settings", 500)
+			http.Error(w, "Encoding error in settings", http.StatusInternalServerError)
 			return
 		}
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 
 }
 
@@ -5215,15 +5172,14 @@ func (repman *ReplicationManager) handlerMuxClusterSendVaultToken(w http.Respons
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		go mycluster.SendVaultTokenByMail(mycluster.Conf)
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxClusterMonitorSchemas triggers the monitoring of schemas for a given cluster.
@@ -5245,16 +5201,13 @@ func (repman *ReplicationManager) handlerMuxClusterMonitorSchemas(w http.Respons
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		go mycluster.SetWaitMonitorSchema()
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
-
 }
 
 // handlerMuxClusterSchemaChecksumAllTable handles the checksum calculation for all tables in a given cluster.
@@ -5276,16 +5229,13 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumAllTable(w http
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		go mycluster.CheckAllTableChecksum()
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
-
 }
 
 // handlerMuxClusterChecksumSchema handles the checksum calculation for a specific table in a given cluster.
@@ -5308,16 +5258,13 @@ func (repman *ReplicationManager) handlerMuxClusterChecksumSchema(w http.Respons
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		go mycluster.CheckAllTableChecksumSchema(vars["schemaName"])
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
-
 }
 
 // handlerMuxClusterSchemaChecksumTable handles the checksum calculation for a specific table in a given cluster.
@@ -5341,16 +5288,13 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumTable(w http.Re
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		go mycluster.CheckTableChecksum(vars["schemaName"], vars["tableName"])
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
-
 }
 
 // handlerMuxClusterSchemaAnalyzeAllTables handles the analyze calculation for all tables in a given cluster.
@@ -5372,7 +5316,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaAnalyzeAllTables(w http
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -5385,11 +5329,8 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaAnalyzeAllTables(w http
 
 		go mycluster.JobAnalyzeSQL(persistent)
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
-
 }
 
 // handlerMuxClusterAnalyzeSchema handles the analyze calculation for a specific table in a given cluster.
@@ -5412,7 +5353,7 @@ func (repman *ReplicationManager) handlerMuxClusterAnalyzeSchema(w http.Response
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -5423,16 +5364,13 @@ func (repman *ReplicationManager) handlerMuxClusterAnalyzeSchema(w http.Response
 			persistent = false
 		}
 		if vars["schemaName"] == "" {
-			http.Error(w, "No schema name provided", 400)
+			http.Error(w, "No schema name provided", http.StatusBadRequest)
 			return
 		}
 		go mycluster.JobAnalyzeSchema(vars["schemaName"], "", persistent)
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
-
 }
 
 // handlerMuxClusterSchemaAnalyzeTable handles the analyze calculation for a specific table in a given cluster.
@@ -5456,17 +5394,17 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaAnalyzeTable(w http.Res
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
 		if vars["schemaName"] == "" {
-			http.Error(w, "No schema name provided", 400)
+			http.Error(w, "No schema name provided", http.StatusBadRequest)
 			return
 		}
 
 		if vars["tableName"] == "" {
-			http.Error(w, "No table name provided", 400)
+			http.Error(w, "No table name provided", http.StatusBadRequest)
 			return
 		}
 
@@ -5478,11 +5416,8 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaAnalyzeTable(w http.Res
 		}
 		go mycluster.JobAnalyzeSchema(vars["schemaName"], vars["tableName"], persistent)
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
-
 }
 
 // handlerMuxClusterSchemaUniversalTable handles the setting of a universal table for a given cluster.
@@ -5506,7 +5441,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaUniversalTable(w http.R
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		for _, pri := range mycluster.Proxies {
@@ -5515,11 +5450,8 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaUniversalTable(w http.R
 			}
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
-
 }
 
 // handlerMuxClusterSchemaReshardTable handles the resharding of a table for a given cluster.
@@ -5545,7 +5477,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaReshardTable(w http.Res
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		for _, pri := range mycluster.Proxies {
@@ -5565,11 +5497,8 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaReshardTable(w http.Res
 			}
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
-
 }
 
 // handlerMuxClusterSchemaMoveTable handles the movement of a table to a different shard cluster.
@@ -5592,30 +5521,43 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaMoveTable(w http.Respon
 
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
-
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-		for _, pri := range mycluster.Proxies {
-			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
-				if vars["clusterShard"] != "" {
-					destcluster := repman.getClusterByName(vars["clusterShard"])
-					if mycluster != nil {
-						mycluster.ShardProxyMoveTable(pr, vars["schemaName"], vars["tableName"], destcluster)
-						return
-					}
-				}
-			}
-		}
-	} else {
-		http.Error(w, "No cluster", 500)
+	if mycluster == nil {
+		http.Error(w, "Source cluster not found", http.StatusNotFound)
 		return
 	}
-	http.Error(w, "Unrichable code", 500)
-	return
 
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	// Validate required parameters
+	if vars["clusterShard"] == "" {
+		http.Error(w, "Destination cluster name is required", http.StatusBadRequest)
+		return
+	}
+	if vars["schemaName"] == "" || vars["tableName"] == "" {
+		http.Error(w, "Schema name and table name are required", http.StatusBadRequest)
+		return
+	}
+
+	// Get destination cluster
+	destcluster := repman.getClusterByName(vars["clusterShard"])
+	if destcluster == nil {
+		http.Error(w, "Destination cluster not found", http.StatusNotFound)
+		return
+	}
+
+	// Find shard proxy and move table
+	for _, pri := range mycluster.Proxies {
+		if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
+			mycluster.ShardProxyMoveTable(pr, vars["schemaName"], vars["tableName"], destcluster)
+			return
+		}
+	}
+
+	// No shard proxy found
+	http.Error(w, "No MariaDB shard proxy found in cluster", http.StatusBadRequest)
 }
 
 // handlerMuxClusterSchema handles the retrieval of schema information for a given cluster.
@@ -5636,7 +5578,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchema(w http.ResponseWriter,
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		e := json.NewEncoder(w)
@@ -5644,16 +5586,13 @@ func (repman *ReplicationManager) handlerMuxClusterSchema(w http.ResponseWriter,
 		if mycluster.GetMaster() != nil {
 			err := e.Encode(mycluster.GetMaster().GetDictTables())
 			if err != nil {
-				http.Error(w, "Encoding error in settings", 500)
+				http.Error(w, "Encoding error in settings", http.StatusInternalServerError)
 				return
 			}
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
-		return
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
-	return
-
 }
 
 // handlerDiffVariables handles the retrieval of variable differences for a given cluster.
@@ -5673,7 +5612,7 @@ func (repman *ReplicationManager) handlerDiffVariables(w http.ResponseWriter, r 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		vars := mycluster.DiffVariables
@@ -5684,14 +5623,13 @@ func (repman *ReplicationManager) handlerDiffVariables(w http.ResponseWriter, r 
 		e.SetIndent("", "\t")
 		err := e.Encode(vars)
 		if err != nil {
-			http.Error(w, "Encoding error for DiffVariables", 500)
+			http.Error(w, "Encoding error for DiffVariables", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerRotatePasswords rotates the passwords for a given cluster.
@@ -5713,15 +5651,14 @@ func (repman *ReplicationManager) handlerRotatePasswords(w http.ResponseWriter, 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		go mycluster.RotatePasswords()
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxClusterGraphiteFilterList handles the retrieval of Graphite filter list for a given cluster.
@@ -5745,13 +5682,13 @@ func (repman *ReplicationManager) handlerMuxClusterGraphiteFilterList(w http.Res
 		list := mycluster.GetGraphiteFilterList()
 		err := e.Encode(list)
 		if err != nil {
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -5825,10 +5762,9 @@ func (repman *ReplicationManager) handlerMuxClusterReloadGraphiteFilterList(w ht
 		}
 		go mycluster.ReloadGraphiteFilterList()
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxClusterResetGraphiteFilterList handles the reset of Graphite filter list for a given cluster.
@@ -5856,14 +5792,13 @@ func (repman *ReplicationManager) handlerMuxClusterResetGraphiteFilterList(w htt
 		}
 		mycluster.SetGraphiteWhitelistTemplate(vars["template"])
 		if err := mycluster.ResetFilterListRegexp(); err != nil {
-			http.Error(w, fmt.Sprintf("Error while reset filterlist: %s", err.Error()), 500)
+			http.Error(w, fmt.Sprintf("Error while reset filterlist: %s", err.Error()), http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxClusterGetJobEntries retrieves job entries for a specific cluster.
@@ -5883,14 +5818,14 @@ func (repman *ReplicationManager) handlerMuxClusterGetJobEntries(w http.Response
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		entries, _ := mycluster.JobsGetEntries()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(entries)
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
 }
@@ -5914,7 +5849,7 @@ func (repman *ReplicationManager) handlerMuxAcceptSubscription(w http.ResponseWr
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
-		http.Error(w, "No valid cluster", 500)
+		http.Error(w, "No valid cluster", http.StatusInternalServerError)
 		return
 	}
 
@@ -5950,7 +5885,7 @@ func (repman *ReplicationManager) handlerMuxAcceptSubscription(w http.ResponseWr
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -5969,7 +5904,7 @@ func (repman *ReplicationManager) handlerMuxAcceptSubscription(w http.ResponseWr
 
 	err = repman.setClusterSetting(mycluster, "cloud18-sponsor-user-credentials", base64.StdEncoding.EncodeToString([]byte(suser+":"+spass)))
 	// if err != nil {
-	// 	http.Error(w, "Error setting sponsor db credentials :"+err.Error(), 500)
+	// 	http.Error(w, "Error setting sponsor db credentials :"+err.Error(), http.StatusInternalServerError)
 	// 	return
 	// }
 
@@ -5994,7 +5929,7 @@ func (repman *ReplicationManager) handlerMuxAcceptSubscription(w http.ResponseWr
 		// Reset sponsor credentials if failed
 		repman.setClusterSetting(mycluster, "cloud18-sponsor-user-credentials", base64.StdEncoding.EncodeToString([]byte("")))
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error accepting subscription : %v", err)
-		http.Error(w, "Error accepting subscription :"+err.Error(), 500)
+		http.Error(w, "Error accepting subscription :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -6012,7 +5947,7 @@ func (repman *ReplicationManager) handlerMuxAcceptSubscription(w http.ResponseWr
 	err = repman.SendSponsorActivationMail(mycluster, userform)
 	if err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "Failed to send sponsor activation email to %s: %v", userform.Username, err)
-		http.Error(w, "Error sending email :"+err.Error(), 500)
+		http.Error(w, "Error sending email :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -6023,7 +5958,7 @@ func (repman *ReplicationManager) handlerMuxAcceptSubscription(w http.ResponseWr
 	err = repman.SendSponsorCredentialsMail(mycluster)
 	if err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "Failed to send sponsor db credentials to %s: %v", userform.Username, err)
-		http.Error(w, "Error sending email :"+err.Error(), 500)
+		http.Error(w, "Error sending email :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -6057,7 +5992,7 @@ func (repman *ReplicationManager) handlerMuxRejectSubscription(w http.ResponseWr
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
-		http.Error(w, "No valid cluster", 500)
+		http.Error(w, "No valid cluster", http.StatusInternalServerError)
 		return
 	}
 
@@ -6073,7 +6008,7 @@ func (repman *ReplicationManager) handlerMuxRejectSubscription(w http.ResponseWr
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6087,7 +6022,7 @@ func (repman *ReplicationManager) handlerMuxRejectSubscription(w http.ResponseWr
 
 	err = repman.CancelSubscription(userform, mycluster)
 	if err != nil {
-		http.Error(w, "Error removing subscription :"+err.Error(), 500)
+		http.Error(w, "Error removing subscription :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -6095,7 +6030,7 @@ func (repman *ReplicationManager) handlerMuxRejectSubscription(w http.ResponseWr
 
 	err = repman.SendPendingRejectionMail(mycluster, userform)
 	if err != nil {
-		http.Error(w, "Error sending rejection mail :"+err.Error(), 500)
+		http.Error(w, "Error sending rejection mail :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -6122,7 +6057,7 @@ func (repman *ReplicationManager) handlerMuxRemoveSponsor(w http.ResponseWriter,
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
-		http.Error(w, "No valid cluster", 500)
+		http.Error(w, "No valid cluster", http.StatusInternalServerError)
 		return
 	}
 
@@ -6138,7 +6073,7 @@ func (repman *ReplicationManager) handlerMuxRemoveSponsor(w http.ResponseWriter,
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6157,7 +6092,7 @@ func (repman *ReplicationManager) handlerMuxRemoveSponsor(w http.ResponseWriter,
 	err = repman.EndSubscription(userform, mycluster)
 	if err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error removing sponsor subscription: %s", err)
-		http.Error(w, "Error removing sponsor subscription :"+err.Error(), 500)
+		http.Error(w, "Error removing sponsor subscription :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -6177,7 +6112,7 @@ func (repman *ReplicationManager) handlerMuxRemoveSponsor(w http.ResponseWriter,
 
 	err = repman.SendSponsorUnsubscribeMail(mycluster, userform)
 	if err != nil {
-		http.Error(w, "Error sending rejection mail :"+err.Error(), 500)
+		http.Error(w, "Error sending rejection mail :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -6208,7 +6143,7 @@ func (repman *ReplicationManager) handlerMuxSendCredentials(w http.ResponseWrite
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
-		http.Error(w, "No valid cluster", 500)
+		http.Error(w, "No valid cluster", http.StatusInternalServerError)
 		return
 	}
 
@@ -6253,7 +6188,7 @@ func (repman *ReplicationManager) handlerMuxSendCredentials(w http.ResponseWrite
 
 		err = repman.SendDBACredentialsMail(mycluster, to, delegator)
 		if err != nil {
-			http.Error(w, "Error sending email :"+err.Error(), 500)
+			http.Error(w, "Error sending email :"+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -6265,7 +6200,7 @@ func (repman *ReplicationManager) handlerMuxSendCredentials(w http.ResponseWrite
 		}
 		err = repman.SendSysAdmCredentialsMail(mycluster, to, delegator)
 		if err != nil {
-			http.Error(w, "Error sending email :"+err.Error(), 500)
+			http.Error(w, "Error sending email :"+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -6278,13 +6213,13 @@ func (repman *ReplicationManager) handlerMuxSendCredentials(w http.ResponseWrite
 
 		err = repman.SendSponsorCredentialsMail(mycluster)
 		if err != nil {
-			http.Error(w, "Error sending email :"+err.Error(), 500)
+			http.Error(w, "Error sending email :"+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sponsor Credentials sent to %s. Delegator: %s", to, delegator)
 	default:
-		http.Error(w, "Invalid credential type :"+credForm.CredentialType, 500)
+		http.Error(w, "Invalid credential type :"+credForm.CredentialType, http.StatusInternalServerError)
 		return
 	}
 
@@ -6310,15 +6245,14 @@ func (repman *ReplicationManager) handlerMuxRefreshStagingCluster(w http.Respons
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		go mycluster.RefreshStaging(mycluster, "") // "" means no GTID sync needed since restore from same cluster
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxReloadStagingScript handles the HTTP request to reload the staging script.
@@ -6339,23 +6273,22 @@ func (repman *ReplicationManager) handlerMuxReloadStagingScript(w http.ResponseW
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
 		err := mycluster.ReloadStagingScript()
 		if err != nil {
-			http.Error(w, "Error reloading staging script :"+err.Error(), 500)
+			http.Error(w, "Error reloading staging script :"+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Staging script reloaded"))
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 // handlerMuxSubscribeExternalOps handles the registration of external operations for a given cluster.
@@ -6377,7 +6310,7 @@ func (repman *ReplicationManager) handlerMuxSubscribeExternalOps(w http.Response
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
-		http.Error(w, "No valid cluster", 500)
+		http.Error(w, "No valid cluster", http.StatusInternalServerError)
 		return
 	}
 
@@ -6397,14 +6330,14 @@ func (repman *ReplicationManager) handlerMuxSubscribeExternalOps(w http.Response
 
 	partner, ok := repman.GetPartnerByMail(userform.Username)
 	if !ok {
-		http.Error(w, "Invalid partner", 500)
+		http.Error(w, "Invalid partner", http.StatusInternalServerError)
 		return
 	}
 
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6412,13 +6345,13 @@ func (repman *ReplicationManager) handlerMuxSubscribeExternalOps(w http.Response
 
 	err = repman.RegisterExternalOps(userform, mycluster, uinfomap["User"])
 	if err != nil {
-		http.Error(w, "Error subscribing external operations :"+err.Error(), 500)
+		http.Error(w, "Error subscribing external operations :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	err = repman.SendSponsorExternalOpsSubscriptionMail(mycluster, userform, partner)
 	if err != nil {
-		http.Error(w, "Error sending email to sponsor :"+err.Error(), 500)
+		http.Error(w, "Error sending email to sponsor :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -6447,7 +6380,7 @@ func (repman *ReplicationManager) handlerMuxQuoteExternalOps(w http.ResponseWrit
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
-		http.Error(w, "No valid cluster", 500)
+		http.Error(w, "No valid cluster", http.StatusInternalServerError)
 		return
 	}
 
@@ -6468,7 +6401,7 @@ func (repman *ReplicationManager) handlerMuxQuoteExternalOps(w http.ResponseWrit
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6476,7 +6409,7 @@ func (repman *ReplicationManager) handlerMuxQuoteExternalOps(w http.ResponseWrit
 
 	err = repman.QuoteExternalOps(userform, mycluster, uinfomap["User"])
 	if err != nil {
-		http.Error(w, "Error accepting external operations :"+err.Error(), 500)
+		http.Error(w, "Error accepting external operations :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -6485,7 +6418,7 @@ func (repman *ReplicationManager) handlerMuxQuoteExternalOps(w http.ResponseWrit
 	err = repman.SendExternalOpsSubscriptionMail(mycluster, userform)
 	if err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to send external ops quotation email to %s: %v", userform.Username, err)
-		http.Error(w, "Error sending email :"+err.Error(), 500)
+		http.Error(w, "Error sending email :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -6514,7 +6447,7 @@ func (repman *ReplicationManager) handlerMuxAcceptExternalOps(w http.ResponseWri
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
-		http.Error(w, "No valid cluster", 500)
+		http.Error(w, "No valid cluster", http.StatusInternalServerError)
 		return
 	}
 
@@ -6534,14 +6467,14 @@ func (repman *ReplicationManager) handlerMuxAcceptExternalOps(w http.ResponseWri
 
 	partner, ok := repman.GetPartnerByMail(userform.Username)
 	if !ok {
-		http.Error(w, "Invalid partner", 500)
+		http.Error(w, "Invalid partner", http.StatusInternalServerError)
 		return
 	}
 
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6563,14 +6496,14 @@ func (repman *ReplicationManager) handlerMuxAcceptExternalOps(w http.ResponseWri
 		// Set dba credentials, return error if failed
 		err = repman.setClusterSetting(mycluster, "cloud18-dba-user-credentials", base64.StdEncoding.EncodeToString([]byte(duser+":"+dpass)))
 		if err != nil {
-			http.Error(w, "Error setting dba db credentials :"+err.Error(), 500)
+			http.Error(w, "Error setting dba db credentials :"+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}
 
 	err = repman.AcceptExternalOps(userform, mycluster, uinfomap["User"])
 	if err != nil {
-		http.Error(w, "Error accepting external operations :"+err.Error(), 500)
+		http.Error(w, "Error accepting external operations :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -6588,7 +6521,7 @@ func (repman *ReplicationManager) handlerMuxAcceptExternalOps(w http.ResponseWri
 	err = repman.SendExternalOpsActivationMail(mycluster, userform)
 	if err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to send external ops activation email to %s: %v", userform.Username, err)
-		http.Error(w, "Error sending email :"+err.Error(), 500)
+		http.Error(w, "Error sending email :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -6599,7 +6532,7 @@ func (repman *ReplicationManager) handlerMuxAcceptExternalOps(w http.ResponseWri
 	err = repman.SendSponsorExternalOpsActivationMail(mycluster, userform.Roles, partner)
 	if err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to send external ops activation email to %s: %v", mycluster.GetSponsorEmail(), err)
-		http.Error(w, "Error sending email :"+err.Error(), 500)
+		http.Error(w, "Error sending email :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -6610,7 +6543,7 @@ func (repman *ReplicationManager) handlerMuxAcceptExternalOps(w http.ResponseWri
 		err = repman.SendDBACredentialsMail(mycluster, userform.Username, uinfomap["User"])
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to send dba db credentials to %s: %v", userform.Username, err)
-			http.Error(w, "Error sending email :"+err.Error(), 500)
+			http.Error(w, "Error sending email :"+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else if userform.Roles == "extsysops" {
@@ -6618,7 +6551,7 @@ func (repman *ReplicationManager) handlerMuxAcceptExternalOps(w http.ResponseWri
 		err = repman.SendSysAdmCredentialsMail(mycluster, userform.Username, uinfomap["User"])
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to send sysadm db credentials to %s: %v", userform.Username, err)
-			http.Error(w, "Error sending email :"+err.Error(), 500)
+			http.Error(w, "Error sending email :"+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}
@@ -6648,7 +6581,7 @@ func (repman *ReplicationManager) handlerMuxRefuseExternalOps(w http.ResponseWri
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
-		http.Error(w, "No valid cluster", 500)
+		http.Error(w, "No valid cluster", http.StatusInternalServerError)
 		return
 	}
 
@@ -6662,20 +6595,20 @@ func (repman *ReplicationManager) handlerMuxRefuseExternalOps(w http.ResponseWri
 	}
 
 	if userform.Reason == "" {
-		http.Error(w, "A reason must be provided e.g. 'Subscription expired'", 500)
+		http.Error(w, "A reason must be provided e.g. 'Subscription expired'", http.StatusInternalServerError)
 		return
 	}
 
 	partner, ok := repman.GetPartnerByMail(userform.Username)
 	if !ok {
-		http.Error(w, "Invalid partner", 500)
+		http.Error(w, "Invalid partner", http.StatusInternalServerError)
 		return
 	}
 
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6689,7 +6622,7 @@ func (repman *ReplicationManager) handlerMuxRefuseExternalOps(w http.ResponseWri
 
 	err = repman.CancelExternalOps(userform, mycluster)
 	if err != nil {
-		http.Error(w, "Error removing partnership :"+err.Error(), 500)
+		http.Error(w, "Error removing partnership :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -6697,13 +6630,13 @@ func (repman *ReplicationManager) handlerMuxRefuseExternalOps(w http.ResponseWri
 
 	err = repman.SendSponsorPendingRejectionExternalOpsMail(mycluster, userform.Roles, partner)
 	if err != nil {
-		http.Error(w, "Error sending rejection mail to sponsor:"+err.Error(), 500)
+		http.Error(w, "Error sending rejection mail to sponsor:"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	err = repman.SendPartnerPendingRejectionExternalOpsMail(mycluster, userform)
 	if err != nil {
-		http.Error(w, "Error sending rejection mail to partner:"+err.Error(), 500)
+		http.Error(w, "Error sending rejection mail to partner:"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -6730,7 +6663,7 @@ func (repman *ReplicationManager) handlerMuxRemoveExternalOps(w http.ResponseWri
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
-		http.Error(w, "No valid cluster", 500)
+		http.Error(w, "No valid cluster", http.StatusInternalServerError)
 		return
 	}
 
@@ -6745,19 +6678,19 @@ func (repman *ReplicationManager) handlerMuxRemoveExternalOps(w http.ResponseWri
 
 	partner, ok := repman.GetPartnerByMail(userform.Username)
 	if !ok {
-		http.Error(w, "Invalid partner", 500)
+		http.Error(w, "Invalid partner", http.StatusInternalServerError)
 		return
 	}
 
 	if userform.Reason == "" {
-		http.Error(w, "A reason must be provided e.g. 'Subscription expired'", 500)
+		http.Error(w, "A reason must be provided e.g. 'Subscription expired'", http.StatusInternalServerError)
 		return
 	}
 
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6776,7 +6709,7 @@ func (repman *ReplicationManager) handlerMuxRemoveExternalOps(w http.ResponseWri
 	err = repman.EndExternalOps(userform, mycluster)
 	if err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error removing external partnership: %s", err)
-		http.Error(w, "Error removing sponsor partnership :"+err.Error(), 500)
+		http.Error(w, "Error removing sponsor partnership :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -6796,13 +6729,13 @@ func (repman *ReplicationManager) handlerMuxRemoveExternalOps(w http.ResponseWri
 
 	err = repman.SendSponsorExternalOpsEndMail(mycluster, userform.Roles, partner)
 	if err != nil {
-		http.Error(w, "Error sending partnership end mail for sponsor :"+err.Error(), 500)
+		http.Error(w, "Error sending partnership end mail for sponsor :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	err = repman.SendPartnerExternalOpsEndMail(mycluster, userform)
 	if err != nil {
-		http.Error(w, "Error sending partnership end mail for partner :"+err.Error(), 500)
+		http.Error(w, "Error sending partnership end mail for partner :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -6827,18 +6760,18 @@ func (repman *ReplicationManager) handlerMuxClusterSnapshots(w http.ResponseWrit
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 		err := e.Encode(mycluster.GetSnapshots())
 		if err != nil {
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -6860,18 +6793,18 @@ func (repman *ReplicationManager) handlerMuxClusterSnapshotStat(w http.ResponseW
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 		err := e.Encode(mycluster.GetSnapshotStats())
 		if err != nil {
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -6896,17 +6829,17 @@ func (repman *ReplicationManager) withResticCluster(
 
 	cluster := repman.getClusterByName(vars["clusterName"])
 	if cluster == nil {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 
 	if valid, _ := repman.IsValidClusterACL(r, cluster); !valid {
-		http.Error(w, "No valid ACL", 403)
+		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
 
 	if mustEnabled && !cluster.Conf.BackupRestic {
-		http.Error(w, "Restic backup not enabled", 500)
+		http.Error(w, "Restic backup not enabled", http.StatusInternalServerError)
 		return
 	}
 
@@ -6934,7 +6867,7 @@ func (repman *ReplicationManager) handlerMuxResticRestoreConfig(w http.ResponseW
 
 		err := mycluster.RestoreResticConfig(force)
 		if err != nil {
-			http.Error(w, "Error restoring restic config: "+err.Error(), 500)
+			http.Error(w, "Error restoring restic config: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -6980,19 +6913,19 @@ func (repman *ReplicationManager) handlerMuxResticPurge(w http.ResponseWriter, r
 	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
 
 		if vars["snapshotID"] == "" {
-			http.Error(w, "No snapshot ID provided, please provide one or use 'policy' to purge according to policy", 500)
+			http.Error(w, "No snapshot ID provided, please provide one or use 'policy' to purge according to policy", http.StatusInternalServerError)
 			return
 		}
 		if vars["snapshotID"] == "policy" {
 			err := mycluster.ResticPurgeRepo(true)
 			if err != nil {
-				http.Error(w, "Error purging restic repo: "+err.Error(), 500)
+				http.Error(w, "Error purging restic repo: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 		} else {
 			err := mycluster.AddPurgeTask(vars["snapshotID"])
 			if err != nil {
-				http.Error(w, "Error adding purge task: "+err.Error(), 500)
+				http.Error(w, "Error adding purge task: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 		}
@@ -7045,7 +6978,7 @@ func (repman *ReplicationManager) handlerMuxResticInitRepo(w http.ResponseWriter
 
 		err := mycluster.ResticInitRepo(force)
 		if err != nil {
-			http.Error(w, "Error unlocking archives :"+err.Error(), 500)
+			http.Error(w, "Error unlocking archives :"+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -7070,14 +7003,14 @@ func (repman *ReplicationManager) handlerMuxGetResticTaskQueue(w http.ResponseWr
 
 		taskqueue, err := mycluster.ResticGetQueue()
 		if err != nil {
-			http.Error(w, "Error getting task queue :"+err.Error(), 500)
+			http.Error(w, "Error getting task queue :"+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		// Marshal provided interface into JSON structure
 		taskqueueJSON, err := json.Marshal(taskqueue)
 		if err != nil {
-			http.Error(w, "Error marshalling task queue :"+err.Error(), 500)
+			http.Error(w, "Error marshalling task queue :"+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -7132,14 +7065,14 @@ func (repman *ReplicationManager) handlerMuxResticTaskQueueMove(w http.ResponseW
 		// Parse ID to int
 		taskID, err := strconv.Atoi(vars["taskID"])
 		if err != nil {
-			http.Error(w, "Invalid taskID", 500)
+			http.Error(w, "Invalid taskID", http.StatusInternalServerError)
 			return
 		}
 
 		if moveType == "after" {
 			afterID, err = strconv.Atoi(vars["afterID"])
 			if err != nil {
-				http.Error(w, "Invalid afterID", 500)
+				http.Error(w, "Invalid afterID", http.StatusInternalServerError)
 				return
 			}
 		}
@@ -7148,11 +7081,11 @@ func (repman *ReplicationManager) handlerMuxResticTaskQueueMove(w http.ResponseW
 		case "after", "first", "last":
 			err := mycluster.ResticModifyQueue(moveType, taskID, afterID)
 			if err != nil {
-				http.Error(w, "Error modifying task queue :"+err.Error(), 500)
+				http.Error(w, "Error modifying task queue :"+err.Error(), http.StatusInternalServerError)
 				return
 			}
 		default:
-			http.Error(w, "Invalid moveType. Must be one of: after, first, last", 500)
+			http.Error(w, "Invalid moveType. Must be one of: after, first, last", http.StatusInternalServerError)
 			return
 		}
 
@@ -7178,13 +7111,13 @@ func (repman *ReplicationManager) handlerMuxCancelResticTask(w http.ResponseWrit
 
 		taskID, err := strconv.Atoi(vars["taskID"])
 		if err != nil {
-			http.Error(w, "Invalid taskID", 500)
+			http.Error(w, "Invalid taskID", http.StatusInternalServerError)
 			return
 		}
 
 		err = mycluster.ResticCancelTask(taskID)
 		if err != nil {
-			http.Error(w, "Error cancelling task :"+err.Error(), 500)
+			http.Error(w, "Error cancelling task :"+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -7209,7 +7142,7 @@ func (repman *ReplicationManager) handlerMuxResetResticTaskQueue(w http.Response
 
 		err := mycluster.ResticClearQueue()
 		if err != nil {
-			http.Error(w, "Error clearing task queue :"+err.Error(), 500)
+			http.Error(w, "Error clearing task queue :"+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -7245,13 +7178,13 @@ func (repman *ReplicationManager) handlerMuxSendAlert(w http.ResponseWriter, r *
 	hooktype := vars["hooktype"]
 
 	if hooktype == "" {
-		http.Error(w, "No hook type", 500)
+		http.Error(w, "No hook type", http.StatusInternalServerError)
 		return
 	}
 
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -7265,16 +7198,16 @@ func (repman *ReplicationManager) handlerMuxSendAlert(w http.ResponseWriter, r *
 		}
 
 		if mycluster.LogSlack.IsHookActive(hooktype) {
-			mycluster.LogSlack.WithFields(post.Fields).Warnf(post.Message)
+			mycluster.LogSlack.WithFields(post.Fields).Warn(post.Message)
 		} else {
-			http.Error(w, "No slack hook", 500)
+			http.Error(w, "No slack hook", http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Message sent via logrus"))
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -7323,23 +7256,23 @@ func (repman *ReplicationManager) handlerMuxReseedFromParent(w http.ResponseWrit
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, strUser = repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
 		if mycluster.Conf.ReplicationMultisourceHeadClusters == "" {
-			http.Error(w, "No multisource cluster", 500)
+			http.Error(w, "No multisource cluster", http.StatusInternalServerError)
 			return
 		}
 
 		pcluster := repman.GetParentClusterFromReplicationSource(mycluster.Conf.ReplicationMultisourceHeadClusters)
 		if pcluster == nil {
-			http.Error(w, "No parent cluster", 500)
+			http.Error(w, "No parent cluster", http.StatusInternalServerError)
 			return
 		}
 
 		if !pcluster.IsURLPassACL(strUser, strings.Replace(r.URL.Path, "/"+mycluster.Name+"/", "/"+pcluster.Name+"/", 1), true) {
-			http.Error(w, "No valid ACL in parent cluster", 403)
+			http.Error(w, "No valid ACL in parent cluster", http.StatusForbidden)
 			return
 		}
 
@@ -7396,7 +7329,7 @@ func (repman *ReplicationManager) handlerMuxReseedFromParent(w http.ResponseWrit
 		w.Write([]byte("Reseed from parent queued"))
 
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 
@@ -7419,7 +7352,7 @@ func (repman *ReplicationManager) handlerMuxClusterRegenerateConfigs(w http.Resp
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -7428,7 +7361,7 @@ func (repman *ReplicationManager) handlerMuxClusterRegenerateConfigs(w http.Resp
 			if len(mycluster.Servers) > 0 {
 				mycluster.SetConfigRefreshCookie()
 			} else {
-				http.Error(w, "No server", 500)
+				http.Error(w, "No server", http.StatusInternalServerError)
 				return
 			}
 		} else if vars["servertype"] == "proxy" {
@@ -7437,17 +7370,17 @@ func (repman *ReplicationManager) handlerMuxClusterRegenerateConfigs(w http.Resp
 					if prx != nil {
 						prx.GetProxyConfig()
 					} else {
-						http.Error(w, "No server", 500)
+						http.Error(w, "No server", http.StatusInternalServerError)
 						return
 					}
 				}
 			}
 		} else {
-			http.Error(w, "No valid type", 500)
+			http.Error(w, "No valid type", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
 }
 
@@ -7470,15 +7403,15 @@ func (repman *ReplicationManager) handlerMuxClusterVariablesPreserve(w http.Resp
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
 		if vars["variableName"] == "" {
-			http.Error(w, "Variable name can not be empty", 500)
+			http.Error(w, "Variable name can not be empty", http.StatusInternalServerError)
 			return
 		} else if strings.HasPrefix(vars["variableName"], "optimizer_switch") {
-			http.Error(w, "Can not preserve 'optimizer_switch'. Use db-tags instead", 500)
+			http.Error(w, "Can not preserve 'optimizer_switch'. Use db-tags instead", http.StatusInternalServerError)
 			return
 		}
 
@@ -7491,7 +7424,7 @@ func (repman *ReplicationManager) handlerMuxClusterVariablesPreserve(w http.Resp
 			preserve = false
 			response = "Variable unpreserved successfully"
 		} else {
-			http.Error(w, "No valid preserve key", 500)
+			http.Error(w, "No valid preserve key", http.StatusInternalServerError)
 			return
 		}
 
@@ -7500,7 +7433,7 @@ func (repman *ReplicationManager) handlerMuxClusterVariablesPreserve(w http.Resp
 		w.Write([]byte(response))
 
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -7514,7 +7447,7 @@ func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.
 		apps, err := json.MarshalIndent(mycluster.Apps, "", "\t")
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
 
@@ -7529,12 +7462,12 @@ func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.
 		_, err = w.Write(apps)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
-			http.Error(w, "Error writing response", 500)
+			http.Error(w, "Error writing response", http.StatusInternalServerError)
 			return
 		}
 	} else {
 
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -7569,7 +7502,7 @@ func (repman *ReplicationManager) handlerDockerRegistryConnect(w http.ResponseWr
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -7577,23 +7510,23 @@ func (repman *ReplicationManager) handlerDockerRegistryConnect(w http.ResponseWr
 		var body DockerRegistryLoginForm
 		err := json.NewDecoder(r.Body).Decode(&body)
 		if err != nil {
-			http.Error(w, "Error decoding request body: "+err.Error(), 400)
+			http.Error(w, "Error decoding request body: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		if body.AuthType != "password" && body.AuthType != "token" {
-			http.Error(w, "Invalid auth type, must be 'password' or 'token'", 400)
+			http.Error(w, "Invalid auth type, must be 'password' or 'token'", http.StatusBadRequest)
 			return
 		}
 
 		if body.URL == "" || body.Username == "" {
-			http.Error(w, "URL and Username must be provided", 400)
+			http.Error(w, "URL and Username must be provided", http.StatusBadRequest)
 			return
 		}
 
 		req, err := http.NewRequest("GET", body.URL, nil)
 		if err != nil {
-			http.Error(w, "Error creating request: "+err.Error(), 500)
+			http.Error(w, "Error creating request: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -7610,7 +7543,7 @@ func (repman *ReplicationManager) handlerDockerRegistryConnect(w http.ResponseWr
 
 		resp, err := client.Do(req)
 		if err != nil {
-			http.Error(w, "Error making request to Docker registry: "+err.Error(), 500)
+			http.Error(w, "Error making request to Docker registry: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		defer resp.Body.Close()
@@ -7626,7 +7559,7 @@ func (repman *ReplicationManager) handlerDockerRegistryConnect(w http.ResponseWr
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Docker registry login successful"))
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -7651,12 +7584,12 @@ func (repman *ReplicationManager) handlerDockerImageFilesystemDir(w http.Respons
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		imageRef := strings.TrimSpace(vars["imageRef"])
 		if imageRef == "" {
-			http.Error(w, "Image reference not provided", 400)
+			http.Error(w, "Image reference not provided", http.StatusBadRequest)
 			return
 		}
 
@@ -7664,7 +7597,7 @@ func (repman *ReplicationManager) handlerDockerImageFilesystemDir(w http.Respons
 		results, err := dockerhelper.GetFileTreeCache(cacheDir, imageRef)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error listing files in image directory: ", err)
-			http.Error(w, "Error listing files in image directory: "+err.Error(), 500)
+			http.Error(w, "Error listing files in image directory: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -7674,11 +7607,11 @@ func (repman *ReplicationManager) handlerDockerImageFilesystemDir(w http.Respons
 		encoder.SetIndent("", "\t") // Pretty print
 		if err := encoder.Encode(results); err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error encoding JSON: ", err)
-			http.Error(w, "Error encoding JSON: "+err.Error(), 500)
+			http.Error(w, "Error encoding JSON: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -7700,21 +7633,21 @@ func (repman *ReplicationManager) handlerMuxClusterGatewayServiceNodes(w http.Re
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		svc := mycluster.OpenSVCConnect()
 		nodes, err := svc.GetServiceNodeFromState(mycluster.Conf.Cloud18GatewayService)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting gateway nodes: ", err)
-			http.Error(w, "Error getting gateway nodes: "+err.Error(), 500)
+			http.Error(w, "Error getting gateway nodes: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		// Marshal provided interface into JSON structure
 		nodesJSON, err := json.Marshal(nodes)
 		if err != nil {
-			http.Error(w, "Error marshalling nodes: "+err.Error(), 500)
+			http.Error(w, "Error marshalling nodes: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -7723,11 +7656,11 @@ func (repman *ReplicationManager) handlerMuxClusterGatewayServiceNodes(w http.Re
 		_, err = w.Write(nodesJSON)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
-			http.Error(w, "Error writing response: "+err.Error(), 500)
+			http.Error(w, "Error writing response: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -7749,21 +7682,21 @@ func (repman *ReplicationManager) handlerMuxClusterOpenSVCDaemonStatus(w http.Re
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
 		stats, err := mycluster.GetOpenSVCStats()
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting OpenSVC stats: ", err)
-			http.Error(w, "Error getting OpenSVC stats: "+err.Error(), 500)
+			http.Error(w, "Error getting OpenSVC stats: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		// Marshal provided interface into JSON structure
 		statsJSON, err := json.Marshal(stats)
 		if err != nil {
-			http.Error(w, "Error marshalling stats: "+err.Error(), 500)
+			http.Error(w, "Error marshalling stats: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -7772,11 +7705,11 @@ func (repman *ReplicationManager) handlerMuxClusterOpenSVCDaemonStatus(w http.Re
 		_, err = w.Write(statsJSON)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
-			http.Error(w, "Error writing response: "+err.Error(), 500)
+			http.Error(w, "Error writing response: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -7800,7 +7733,7 @@ func (repman *ReplicationManager) handlerMuxClusterIsInErrState(w http.ResponseW
 
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -7809,11 +7742,11 @@ func (repman *ReplicationManager) handlerMuxClusterIsInErrState(w http.ResponseW
 		_, err := w.Write([]byte(fmt.Sprintf("%t", isInErrorState)))
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
-			http.Error(w, "Error writing response: "+err.Error(), 500)
+			http.Error(w, "Error writing response: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -7835,7 +7768,7 @@ func (repman *ReplicationManager) handlerMuxClusterAllowJobsUpgrade(w http.Respo
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -7844,7 +7777,7 @@ func (repman *ReplicationManager) handlerMuxClusterAllowJobsUpgrade(w http.Respo
 		w.Write([]byte("Cluster flagged for jobs upgrade"))
 		return
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
 }
 
@@ -7892,6 +7825,107 @@ func (repman *ReplicationManager) handlerMuxClusterCheckJobLogLevel(w http.Respo
 		}
 		return
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
+}
+
+// handlerMuxGetPreservedVarsCnf retrieves the content of the preserved variables CNF file
+// @Summary Get preserved variables CNF content
+// @Description This endpoint retrieves the content of the preserved_variables.cnf file from the cluster's working directory
+// @Tags ClusterSettings
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} map[string]string "CNF file content in JSON format with 'content' key"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "File not found"
+// @Failure 500 {string} string "Error reading file"
+// @Router /api/clusters/{clusterName}/settings/preserved-variables-cnf [get]
+func (repman *ReplicationManager) handlerMuxGetPreservedVarsCnf(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	// Read the preserved variables CNF content using cluster method
+	content, err := mycluster.GetPreservedVarsCnfContent()
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		http.Error(w, fmt.Sprintf("Error reading preserved variables file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Return JSON response with content
+	response := map[string]string{
+		"content": content,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+// PreservedVarsCnfRequest represents the request body for saving preserved variables CNF
+type PreservedVarsCnfRequest struct {
+	Content string `json:"content"`
+}
+
+// handlerMuxSavePreservedVarsCnf saves the updated content to the preserved variables CNF file
+// @Summary Save preserved variables CNF content
+// @Description This endpoint saves the updated content to the preserved_variables.cnf file in the cluster's working directory
+// @Tags ClusterSettings
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body PreservedVarsCnfRequest true "CNF file content"
+// @Success 200 {string} string "Successfully saved preserved variables CNF"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 400 {string} string "Invalid request body"
+// @Failure 500 {string} string "Error saving file"
+// @Router /api/clusters/{clusterName}/settings/actions/save-preserved-variables-cnf [post]
+func (repman *ReplicationManager) handlerMuxSavePreservedVarsCnf(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	// Decode the request body
+	var req PreservedVarsCnfRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Write the content using cluster method
+	err = mycluster.WritePreservedVarsCnfContent(req.Content)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error saving preserved variables file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(fmt.Sprintf("Successfully saved preserved variables CNF to %s", mycluster.GetPreservedVarsPath())))
 }

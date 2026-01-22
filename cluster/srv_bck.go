@@ -75,8 +75,8 @@ func (server *ServerMonitor) AppendLastMetadata(method string, latest *int64) {
 }
 
 func (server *ServerMonitor) ReadLastMetadata(method string) (*backupmgr.BackupMetadata, error) {
-	var filename string = method
-	var ext string = ".meta.json"
+	var filename = method
+	var ext = ".meta.json"
 
 	filename = server.GetMyBackupDirectory() + filename + ext
 	_, err := os.Stat(filename)

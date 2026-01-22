@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -105,7 +104,13 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't fetch task")
 		}
 	} else {
-		cluster.OpenSVCCreateMaps(s.Agent)
+		err := cluster.OpenSVCCreateMaps(s.Agent)
+		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && !cluster.Conf.ProvObjectAllowOverwrite {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC service/volume exists and prov-object-allow-overwrite is disabled, skipping provisioning")
+			cluster.errorChan <- err
+			return
+		}
+
 		res, err := s.GenerateDBTemplateV2()
 		if err != nil {
 			cluster.errorChan <- err
@@ -122,7 +127,6 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	cluster.WaitDatabaseStart(s)
 
 	cluster.errorChan <- nil
-	return
 }
 
 func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error {
@@ -169,6 +173,32 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 		}
 	}
 
+	return nil
+}
+
+func (cluster *Cluster) OpenSVCRestartDatabaseService(server *ServerMonitor, node string, rid string) error {
+	svc := cluster.OpenSVCConnect()
+	agent := server.Agent
+	if node != "" {
+		agent = node
+	}
+
+	// Validate rid parameter using shared validation function
+	if err := validateRestartRid(rid); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Database restart validation failed: %s", err)
+		return err
+	}
+
+	if cluster.Conf.ProvOpensvcUseCollectorAPI {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Restart with collector API not supported, use V2 API")
+		return errors.New("Restart with collector API not supported")
+	} else {
+		err := svc.RestartServiceV2(cluster.Name, server.ServiceName, agent, rid)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart database:  %s ", err)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -566,10 +596,6 @@ func (cluster *Cluster) OpenSVCGetFSPodSection() map[string]string {
 		}
 		svcfs["type"] = cluster.Conf.ProvDiskFS
 		if cluster.Conf.ProvDiskPool == "lvm" {
-			re := regexp.MustCompile("[0-9]+")
-			strlvsize := re.FindAllString(cluster.Conf.ProvDisk, 1)
-			lvsize, _ := strconv.Atoi(strlvsize[0])
-			lvsize--
 			svcfs["dev"] = " /dev/{namespace}-{svcname}_01"
 			svcfs["vg"] = "{namespace}-{svcname}_01"
 			svcfs["size"] = "100%FREE"

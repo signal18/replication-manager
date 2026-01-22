@@ -8,7 +8,6 @@ build*
 maxscale*.rpm
 .idea
 googleapis/
-share/dashboard/node_modules/
 .vscode/
 .vscode-server/
 .viminfo
@@ -20,7 +19,7 @@ share/dashboard/node_modules/
 .npm/
 .local/
 .ssh/
-share/dashboard/node_modules
+share/dashboard_react/node_modules
 .vim/
 share/dashboard_react/.vite/
 .gitconfig
@@ -29,8 +28,6 @@ etc/opensvc/cluster-api/cluster-demo/priyanka.toml
 .replication-manager/
 data/
 .config/
-marie.Reveal
-share/dashboard_react/package-lock.json
 share/dashboard/images
 share/dashboard/assets
 share/dashboard/index.html

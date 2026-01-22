@@ -15,18 +15,16 @@ import (
 	"io/fs"
 	"os"
 	"strings"
-
-	"github.com/siddontang/go/log"
 )
 
-func ConvertCSVtoJSON(sourcefile string, destfile string, separator string) error {
+func ConvertCSVtoJSON(sourcefile string, destfile string, separator string) ([]string, error) {
 	var err error
 	var file fs.File
+	warnings := []string{}
 
 	file, err = os.Open(sourcefile)
 	if err != nil {
-		log.Errorf("failed opening file because: %s", err.Error())
-		return err
+		return nil, fmt.Errorf("open csv %s: %w", sourcefile, err)
 	}
 	defer file.Close()
 
@@ -35,19 +33,51 @@ func ConvertCSVtoJSON(sourcefile string, destfile string, separator string) erro
 	r.Comma = []rune(separator)[0]
 	rows, err := r.ReadAll()
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("read csv %s: %w", sourcefile, err)
 	}
 	var res interface{}
 	if len(rows) > 1 {
 		header := rows[0]
 		rows = rows[1:]
-		objs := make([]map[string]string, len(rows))
+		var objs []map[string]string
+
+		idIndex := -1
+		planIndex := -1
+		for i, name := range header {
+			switch strings.TrimSpace(name) {
+			case "id":
+				idIndex = i
+			case "plan":
+				planIndex = i
+			}
+		}
+
 		for y, row := range rows {
+			rowLine := y + 2
+			if isEmptyCSVRow(row) {
+				warnings = append(warnings, fmt.Sprintf("Skipping empty service plan CSV row %d in %s", rowLine, sourcefile))
+				continue
+			}
+			if idIndex >= 0 {
+				if idIndex >= len(row) || strings.TrimSpace(row[idIndex]) == "" {
+					warnings = append(warnings, fmt.Sprintf("Skipping service plan CSV row %d with empty id in %s", rowLine, sourcefile))
+					continue
+				}
+			}
+			if planIndex >= 0 {
+				if planIndex >= len(row) || strings.TrimSpace(row[planIndex]) == "" {
+					warnings = append(warnings, fmt.Sprintf("Skipping service plan CSV row %d with empty plan in %s", rowLine, sourcefile))
+					continue
+				}
+			}
 			obj := map[string]string{}
 			for x, cell := range row {
+				if x >= len(header) {
+					continue
+				}
 				obj[header[x]] = cell
 			}
-			objs[y] = obj
+			objs = append(objs, obj)
 		}
 		res = objs
 	} else {
@@ -55,19 +85,34 @@ func ConvertCSVtoJSON(sourcefile string, destfile string, separator string) erro
 	}
 	output, err := json.Marshal(res)
 	if err != nil {
-		log.Fatal(err)
+		return warnings, fmt.Errorf("marshal csv %s: %w", sourcefile, err)
 	}
 	fileout, err := os.OpenFile(destfile, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return err
+		return warnings, fmt.Errorf("open json %s: %w", destfile, err)
 
 	}
 	defer fileout.Close()
-	fileout.Truncate(0)
-	fileout.Write(output)
-	fileout.Write([]byte("\n"))
+	if err := fileout.Truncate(0); err != nil {
+		return warnings, fmt.Errorf("truncate json %s: %w", destfile, err)
+	}
+	if _, err := fileout.Write(output); err != nil {
+		return warnings, fmt.Errorf("write json %s: %w", destfile, err)
+	}
+	if _, err := fileout.Write([]byte("\n")); err != nil {
+		return warnings, fmt.Errorf("write json newline %s: %w", destfile, err)
+	}
 
-	return nil
+	return warnings, nil
+}
+
+func isEmptyCSVRow(row []string) bool {
+	for _, cell := range row {
+		if strings.TrimSpace(cell) != "" {
+			return false
+		}
+	}
+	return true
 }
 
 // parses the raw stats CSV output to a json string

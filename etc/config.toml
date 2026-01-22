@@ -177,6 +177,9 @@ include = "/etc/replication-manager/cluster.d"
 # backup-mydumper-path = "/usr/bin/mydumper"
 # backup-myloader-path = "/usr/bin/myloader"
 # backup-restic-binary-path = "/usr/bin/restic"
+# backup-restic-timeout = 7200
+# backup-restic-dir-mode = 700
+# backup-restic-file-mode = 600
 # haproxy-binary-path =  "/usr/sbin/haproxy"
 # maxscale-binary-path =  "/usr/sbin/maxscale"
 

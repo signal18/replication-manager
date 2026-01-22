@@ -1,12 +1,34 @@
 package config
 
 import (
+	"encoding/json"
+	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/signal18/replication-manager/utils/version"
+	"gopkg.in/ini.v1"
 )
+
+const EnvPrefix = "REPLICATION_MANAGER"
+
+// EnvScopePrefix builds a config env prefix for a scope.
+func EnvScopePrefix(scope string) string {
+	normalized := normalizeEnvScope(scope)
+	if normalized == "" {
+		return EnvPrefix
+	}
+	return EnvPrefix + "_" + normalized
+}
+
+func normalizeEnvScope(scope string) string {
+	normalized := strings.ToUpper(scope)
+	normalized = strings.ReplaceAll(normalized, "-", "_")
+	normalized = strings.ReplaceAll(normalized, ".", "_")
+	return normalized
+}
 
 type StringsMap struct {
 	*sync.Map
@@ -505,14 +527,226 @@ type VarStateSorter []VariableState
 
 func (a VarStateSorter) Len() int           { return len(a) }
 func (a VarStateSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a VarStateSorter) Less(i, j int) bool { return a[i].Variable_name < a[j].Variable_name }
+func (a VarStateSorter) Less(i, j int) bool { return a[i].VariableName < a[j].VariableName }
+
+type SingleValue string
+
+func (s SingleValue) String() string {
+	return string(s)
+}
+
+func (s *SingleValue) Print(varname string) string {
+	return fmt.Sprintf("%s=%s", varname, s.String())
+}
+
+func (s *SingleValue) PrintWithExclude(varname string, exclude VariableValue) []string {
+	if exclude != nil && s.IsEqual(exclude) {
+		return nil
+	}
+
+	return []string{s.Print(varname)}
+}
+
+func (s *SingleValue) Append(value string) {
+	s.Set(value)
+}
+
+func (s *SingleValue) Set(value string) {
+	*s = SingleValue(value)
+}
+
+func (s SingleValue) IsEqual(other VariableValue) bool {
+	if o, ok := other.(*SingleValue); ok {
+		return s == *o
+	}
+	return false
+}
+
+type SliceValue []string
+
+func (sv SliceValue) String() string {
+	sorted := make([]string, len(sv))
+	copy(sorted, sv)
+	slices.Sort(sorted)
+	return strings.Join(sorted, ",")
+}
+
+func (sv SliceValue) Print(varname string) string {
+	return strings.Join(sv.PrintWithExclude(varname, nil), "\n")
+}
+
+func (sv SliceValue) PrintWithExclude(varname string, exclude VariableValue) []string {
+	excludeMap := make(map[string]struct{})
+	if exclude != nil {
+		if o, ok := exclude.(*SliceValue); ok {
+			for _, v := range *o {
+				excludeMap[v] = struct{}{}
+			}
+		}
+	}
+
+	filtered := make([]string, 0, len(sv))
+	for _, v := range sv {
+		if _, found := excludeMap[v]; !found {
+			filtered = append(filtered, v)
+		}
+	}
+
+	slices.Sort(filtered)
+
+	pairs := make([]string, 0, len(filtered))
+	for _, v := range filtered {
+		pairs = append(pairs, fmt.Sprintf("%s=%s", varname, v))
+	}
+	return pairs
+}
+
+func (sv *SliceValue) Append(value string) {
+	parts := strings.Split(value, ",")
+	for _, part := range parts {
+		v := strings.TrimSpace(part)
+		if !slices.Contains(*sv, v) {
+			*sv = append(*sv, v)
+		}
+	}
+}
+
+func (sv *SliceValue) Set(value string) {
+	parts := strings.Split(value, ",")
+	for _, part := range parts {
+		v := strings.TrimSpace(part)
+		*sv = append(*sv, v)
+	}
+}
+
+func (sv *SliceValue) IsEqual(other VariableValue) bool {
+	o, ok := other.(*SliceValue)
+	if !ok {
+		return false
+	}
+	if len(*sv) != len(*o) {
+		return false
+	}
+
+	sortedA := make([]string, len(*sv))
+	copy(sortedA, *sv)
+	slices.Sort(sortedA)
+
+	sortedB := make([]string, len(*o))
+	copy(sortedB, *o)
+	slices.Sort(sortedB)
+
+	for i := range sortedA {
+		if sortedA[i] != sortedB[i] {
+			return false
+		}
+	}
+	return true
+}
+
+type MapValue map[string]string
+
+func (mv MapValue) String() string {
+	pairs := make([]string, 0, len(mv))
+	for k, v := range mv {
+		pairs = append(pairs, fmt.Sprintf("%s=%s", k, v))
+	}
+	slices.Sort(pairs)
+	return strings.Join(pairs, ",")
+}
+
+func (mv MapValue) Print(varname string) string {
+	return strings.Join(mv.PrintWithExclude(varname, nil), "\n")
+}
+
+func (mv MapValue) PrintWithExclude(varname string, exclude VariableValue) []string {
+	pairs := make([]string, 0)
+
+	o, ok := exclude.(MapValue)
+	if !ok {
+		o = make(MapValue)
+	}
+
+	for k, v := range mv {
+		if ov, found := o[k]; found && ov == v {
+			continue
+		}
+
+		pairs = append(pairs, fmt.Sprintf("%s='%s=%s'", varname, k, v))
+	}
+
+	slices.Sort(pairs)
+	return pairs
+}
+
+func (mv MapValue) Append(value string) {
+	mv.Set(value)
+}
+
+func (mv MapValue) Set(value string) {
+	parts := strings.Split(value, ",")
+	for _, part := range parts {
+		kv := strings.SplitN(part, "=", 2)
+		if len(kv) == 2 {
+			k := strings.TrimSpace(kv[0])
+			vv := strings.TrimSpace(kv[1])
+			mv[k] = vv
+		}
+	}
+}
+
+func (mv MapValue) IsEqual(other VariableValue) bool {
+	o, ok := other.(MapValue)
+	if !ok {
+		return false
+	}
+	if len(mv) != len(o) {
+		return false
+	}
+	for k, v := range mv {
+		if ov, ok := o[k]; !ok || ov != v {
+			return false
+		}
+	}
+	return true
+}
+
+type VariableValue interface {
+	String() string
+	Print(varname string) string
+	PrintWithExclude(varname string, exclude VariableValue) []string
+	Append(value string)
+	Set(value string)
+	IsEqual(other VariableValue) bool
+}
+
+var RepeatOptions = []string{
+	"optimizer_switch",
+	"performance_schema_instrument",
+	"replicate_do_db",
+	"replicate_ignore_db",
+	"replicate_do_table",
+	"replicate_ignore_table",
+	"replicate_wild_do_table",
+	"replicate_wild_ignore_table",
+	"replicate_rewrite_db",
+	"binlog_do_db",
+	"binlog_ignore_db",
+	"plugin_load_add",
+	"init_connect",
+	"ignore_db_dir",
+}
 
 type VariableState struct {
-	Variable_name string  `json:"variableName"`
-	Config        *string `json:"cfgValue"`
-	Deployed      *string `json:"value"`
-	Runtime       *string `json:"runtimeValue"`
-	Preserve      *string `json:"preserveValue"`
+	VariableName          string        `json:"variableName"`
+	RuntimeName           string        `json:"runtimeName"`
+	Config                VariableValue `json:"cfgValue"`
+	Deployed              VariableValue `json:"value"`
+	Runtime               VariableValue `json:"runtimeValue"`
+	Preserved             VariableValue `json:"preservedValue"`
+	PreservedSource       string        `json:"preservedSource,omitempty"`       // "server-specific", "cluster-level", or empty
+	PreservedPriority     int           `json:"preservedPriority,omitempty"`     // 1=server-specific, 2=cluster-level, 3=none/excluded
+	IsExcludedFromCluster bool          `json:"isExcludedFromCluster,omitempty"` // true if server is excluded from cluster-level preserved var
 }
 
 type LastConfigUpdate struct {
@@ -522,10 +756,11 @@ type LastConfigUpdate struct {
 
 func NewVariableState(varname string) *VariableState {
 	return &VariableState{
-		Variable_name: strings.ToLower(varname),
-		Config:        nil,
-		Deployed:      nil,
-		Preserve:      nil,
+		VariableName: strings.ToLower(varname),
+		Config:       nil,
+		Deployed:     nil,
+		Preserved:    nil,
+		Runtime:      nil,
 	}
 }
 
@@ -536,49 +771,151 @@ func (v *VariableState) IsEqual() bool {
 	if v.Config == nil || v.Deployed == nil {
 		return false
 	}
-	return *v.Config == *v.Deployed
+
+	return v.Config.String() == v.Deployed.String()
+}
+
+func (v *VariableState) IsPreserved() bool {
+	if v.Preserved == nil {
+		return false
+	}
+
+	// If the preserved value is different from the config value
+	if !v.Preserved.IsEqual(v.Config) {
+		return true
+	}
+
+	return false
+}
+
+func (v *VariableState) AllowRepeatOptions() bool {
+	return slices.Contains(RepeatOptions, v.VariableName)
+}
+
+func (v *VariableState) setVariableValue(target *VariableValue, value string) {
+	if *target == nil {
+		isMap := strings.Contains(value, "=")
+		if !v.AllowRepeatOptions() {
+			*target = new(SingleValue)
+		} else if isMap {
+			*target = make(MapValue)
+		} else {
+			*target = new(SliceValue)
+		}
+	}
+
+	if v.AllowRepeatOptions() {
+		(*target).Append(value)
+	} else {
+		(*target).Set(value)
+	}
 }
 
 func (v *VariableState) SetConfigValue(value string) {
-	if v.Config == nil {
-		v.Config = new(string)
-	}
-	*v.Config = value
+	v.setVariableValue(&v.Config, value)
 }
 
 func (v *VariableState) SetDeployedValue(value string) {
-	if v.Deployed == nil {
-		v.Deployed = new(string)
-	}
-	*v.Deployed = value
+	v.setVariableValue(&v.Deployed, value)
 }
 
 func (v *VariableState) SetRuntimeValue(value string) {
-	if v.Runtime == nil {
-		v.Runtime = new(string)
+	v.setVariableValue(&v.Runtime, value)
+}
+
+func (v *VariableState) SetPreservedValue(value string) {
+	v.setVariableValue(&v.Preserved, value)
+}
+
+func (v *VariableState) UnsetConfigValue() {
+	v.Config = nil
+}
+
+func (v *VariableState) UnsetDeployedValue() {
+	v.Deployed = nil
+}
+
+func (v *VariableState) UnsetRuntimeValue() {
+	v.Runtime = nil
+}
+
+func (v *VariableState) UnsetPreservedValue() {
+	v.Preserved = nil
+}
+
+func (v *VariableState) Print(conftype string) string {
+	if conftype == "config" && v.Config != nil {
+		return v.Config.Print(v.VariableName)
+	} else if conftype == "deployed" && v.Deployed != nil {
+		return v.Deployed.Print(v.VariableName)
+	} else if conftype == "runtime" && v.Runtime != nil {
+		return v.Runtime.Print(v.VariableName)
+	} else if conftype == "preserved" && v.Preserved != nil {
+		return v.Preserved.Print(v.VariableName)
 	}
-	*v.Runtime = value
+	return ""
+}
+
+func (v *VariableState) PrintDeployedDelta() string {
+	if v.Deployed == nil {
+		return ""
+	}
+
+	return strings.Join(v.Deployed.PrintWithExclude(v.VariableName, v.Config), "\n")
+}
+
+func (vs VariableState) MarshalJSON() ([]byte, error) {
+	type Alias VariableState
+
+	toStr := func(v VariableValue) *string {
+		if v == nil {
+			return nil
+		}
+		s := v.String()
+		return &s
+	}
+
+	return json.Marshal(&struct {
+		Config    *string `json:"cfgValue"`
+		Deployed  *string `json:"value"`
+		Runtime   *string `json:"runtimeValue"`
+		Preserved *string `json:"preservedValue"`
+		Alias
+	}{
+		Config:    toStr(vs.Config),
+		Deployed:  toStr(vs.Deployed),
+		Runtime:   toStr(vs.Runtime),
+		Preserved: toStr(vs.Preserved),
+		Alias:     (Alias)(vs),
+	})
 }
 
 type VariablesMap struct {
 	*sync.Map
+	deployedChanged bool       // Flag to track if deployed values have changed
+	changeMutex     sync.Mutex // Mutex to protect the flag
 }
 
 func NewVariablesMap() *VariablesMap {
 	s := new(sync.Map)
-	m := &VariablesMap{Map: s}
+	m := &VariablesMap{
+		Map:             s,
+		deployedChanged: false,
+	}
 	return m
 }
 
 func (m *VariablesMap) Get(key string) *VariableState {
-	if v, ok := m.Load(key); ok {
+	lowKey := strings.ToLower(key)
+	if v, ok := m.Load(lowKey); ok {
 		return v.(*VariableState)
 	}
 	return nil
 }
 
 func (m *VariablesMap) CheckAndGet(key string) (*VariableState, bool) {
-	v, ok := m.Load(key)
+	lowKey := strings.ToLower(key)
+	v, ok := m.Load(lowKey)
 	if ok {
 		return v.(*VariableState), true
 	}
@@ -586,7 +923,7 @@ func (m *VariablesMap) CheckAndGet(key string) (*VariableState, bool) {
 }
 
 func (m *VariablesMap) Set(key string, value *VariableState) {
-	m.Store(key, value)
+	m.Store(strings.ToLower(key), value)
 }
 
 func (m *VariablesMap) ToNormalMap(c map[string]*VariableState) {
@@ -673,40 +1010,111 @@ func (m *VariablesMap) EmptyConfigValues() {
 	})
 }
 
+func (m *VariablesMap) EmptyRuntimeValues() {
+	m.Range(func(key, value any) bool {
+		if state, ok := value.(*VariableState); ok {
+			state.Runtime = nil
+		}
+		return true
+	})
+}
+
+func (m *VariablesMap) EmptyPreservedValues() {
+	m.Range(func(key, value any) bool {
+		if state, ok := value.(*VariableState); ok {
+			state.Preserved = nil
+		}
+		return true
+	})
+}
+
+func (m *VariablesMap) SetDeployedValue(varname string, value string) {
+	lowerVarName := strings.ToLower(varname)
+	if state, ok := m.Load(lowerVarName); ok {
+		state.(*VariableState).SetDeployedValue(value)
+	} else {
+		state := NewVariableState(lowerVarName)
+		state.SetDeployedValue(value)
+		m.Store(lowerVarName, state)
+	}
+}
+
 func (m *VariablesMap) SetDeployedValues(strmap map[string]string) {
 	for k, v := range strmap {
-		if state, ok := m.Load(k); ok {
-			state.(*VariableState).SetDeployedValue(v)
-		} else {
-			state := NewVariableState(k)
-			state.SetDeployedValue(v)
-			m.Store(k, state)
-		}
+		m.SetDeployedValue(k, v)
+	}
+}
+
+func (m *VariablesMap) SetRuntimeValue(varname string, value string) {
+	lowervarname := strings.ToLower(varname)
+	if state, ok := m.Load(lowervarname); ok {
+		state.(*VariableState).SetRuntimeValue(value)
+	} else {
+		state := NewVariableState(lowervarname)
+		state.SetRuntimeValue(value)
+		m.Store(lowervarname, state)
 	}
 }
 
 func (m *VariablesMap) SetRuntimeValues(strmap map[string]string) {
 	for k, v := range strmap {
-		if state, ok := m.Load(k); ok {
-			state.(*VariableState).SetRuntimeValue(v)
-		} else {
-			state := NewVariableState(k)
-			state.SetRuntimeValue(v)
-			m.Store(k, state)
-		}
+		m.SetRuntimeValue(k, v)
+	}
+}
+
+func (m *VariablesMap) SetConfigValue(varname string, value string) {
+	lowervarname := strings.ToLower(varname)
+	if state, ok := m.Load(lowervarname); ok {
+		state.(*VariableState).SetConfigValue(value)
+	} else {
+		state := NewVariableState(lowervarname)
+		state.SetConfigValue(value)
+		m.Store(lowervarname, state)
 	}
 }
 
 func (m *VariablesMap) SetConfigValues(strmap map[string]string) {
 	for k, v := range strmap {
-		if state, ok := m.Load(k); ok {
-			state.(*VariableState).SetConfigValue(v)
-		} else {
-			state := NewVariableState(k)
-			state.SetConfigValue(v)
-			m.Store(k, state)
-		}
+		m.SetConfigValue(k, v)
 	}
+}
+
+func (m *VariablesMap) SetPreservedValue(varname string, value string) {
+	lowerVarName := strings.ToLower(varname)
+	if state, ok := m.Load(lowerVarName); ok {
+		state.(*VariableState).SetPreservedValue(value)
+	} else {
+		state := NewVariableState(lowerVarName)
+		state.SetPreservedValue(value)
+		m.Store(lowerVarName, state)
+	}
+}
+
+func (m *VariablesMap) SetPreservedValues(strmap map[string]string) {
+	for k, v := range strmap {
+		m.SetPreservedValue(k, v)
+	}
+}
+
+// HasDeployedChanged returns true if deployed values have changed since last check
+func (m *VariablesMap) HasDeployedChanged() bool {
+	m.changeMutex.Lock()
+	defer m.changeMutex.Unlock()
+	return m.deployedChanged
+}
+
+// MarkDeployedChanged marks that deployed values have changed
+func (m *VariablesMap) MarkDeployedChanged() {
+	m.changeMutex.Lock()
+	defer m.changeMutex.Unlock()
+	m.deployedChanged = true
+}
+
+// ClearDeployedChanged clears the deployed changed flag
+func (m *VariablesMap) ClearDeployedChanged() {
+	m.changeMutex.Lock()
+	defer m.changeMutex.Unlock()
+	m.deployedChanged = false
 }
 
 func (m *VariablesMap) ToNormalDeployedMap() map[string]string {
@@ -717,7 +1125,7 @@ func (m *VariablesMap) ToNormalDeployedMap() map[string]string {
 			return true
 		}
 
-		result[k.(string)] = *val.Deployed
+		result[k.(string)] = val.Deployed.String()
 		return true
 	})
 	return result
@@ -727,30 +1135,84 @@ func (m *VariablesMap) ToNormalConfigMap() map[string]string {
 	result := make(map[string]string)
 	m.Range(func(k, v any) bool {
 		val := v.(VariableState)
-		if val.Deployed == nil {
+		if val.Config == nil {
 			return true
 		}
 
-		result[k.(string)] = *val.Deployed
+		result[k.(string)] = val.Config.String()
 		return true
 	})
 	return result
 }
 
-func (m *VariablesMap) GetVariables(differ bool) []VariableState {
+func (m *VariablesMap) GetVariables(diff bool) []VariableState {
 	result := make([]VariableState, 0)
 	m.Range(func(k, v any) bool {
 		val := v.(*VariableState)
 
-		if differ {
-			if (val.Config == nil && val.Deployed != nil) || (val.Config != nil && val.Deployed == nil) || (val.Config != nil && val.Deployed != nil && *val.Config != *val.Deployed) || (val.Config != nil && val.Preserve != nil && *val.Preserve != *val.Config) || (val.Deployed != nil && val.Preserve != nil && *val.Preserve != *val.Deployed) {
-				result = append(result, *val)
-			}
-		} else {
+		if !diff || !val.IsEqual() {
 			result = append(result, *val)
 		}
 
 		return true
 	})
 	return result
+}
+
+// HasDifferences returns true if there are any differences between config and deployed values
+func (m *VariablesMap) HasDifferences() bool {
+	hasDiff := false
+	m.Range(func(k, v any) bool {
+		val := v.(*VariableState)
+		if !val.IsEqual() {
+			hasDiff = true
+			return false // stop iteration
+		}
+		return true // continue iteration
+	})
+	return hasDiff
+}
+
+func (m *VariablesMap) LoadFromConfigFile(path string, cnftype string) error {
+	if cnftype != "config" && cnftype != "deployed" && cnftype != "preserved" {
+		return fmt.Errorf("invalid config type: %s", cnftype)
+	}
+
+	// Allow shadows to handle multiple same options
+	cfgFile, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, AllowBooleanKeys: true}, path)
+	if err != nil {
+		return err
+	}
+
+	section := cfgFile.Section("mysqld")
+	for _, key := range section.Keys() {
+		varname := strings.TrimSpace(strings.TrimPrefix(strings.ReplaceAll(key.Name(), "-", "_"), "loose_"))
+		if slices.Contains(RepeatOptions, varname) {
+			values := key.ValueWithShadows()
+			for _, v := range values {
+				if cnftype == "config" {
+					m.SetConfigValue(varname, v)
+				} else if cnftype == "deployed" {
+					m.SetDeployedValue(varname, v)
+				} else if cnftype == "preserved" {
+					m.SetPreservedValue(varname, v)
+				}
+			}
+		} else {
+			if cnftype == "config" {
+				m.SetConfigValue(varname, key.Value())
+			} else if cnftype == "deployed" {
+				m.SetDeployedValue(varname, key.Value())
+			} else if cnftype == "preserved" {
+				m.SetPreservedValue(varname, key.Value())
+			}
+		}
+	}
+
+	// Mark deployed values as changed if this was a deployed config load
+	if cnftype == "deployed" {
+		m.MarkDeployedChanged()
+	}
+
+	return nil
 }

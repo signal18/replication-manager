@@ -31,7 +31,6 @@ func (repman *ReplicationManager) UnMountS3() {
 	} else {
 		log.Printf("Successfully unmounting S3 streaming backup")
 	}
-	return
 }
 
 func (repman *ReplicationManager) MountS3() {
@@ -70,5 +69,4 @@ func (repman *ReplicationManager) MountS3() {
 	} else {
 		mp.Join(context.Background())
 	}
-	return
 }

@@ -43,34 +43,32 @@ func (server *ServerMonitor) WaitDatabaseStart() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting database start on %s", server.URL)
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.GetConf().MonitoringTicker*1000))
 	for int64(exitloop) < cluster.GetConf().MonitorWaitRetry {
-		select {
-		case <-ticker.C:
+		<-ticker.C
 
-			exitloop++
+		exitloop++
 
-			var err error
-			wg := new(sync.WaitGroup)
-			wg.Add(1)
-			go server.Ping(wg)
-			wg.Wait()
-			err = server.Refresh()
-			if err != nil {
-				cluster.SetState("WARN0128", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0128"], server.URL, err.Error()), ErrFrom: "PROV", ServerUrl: server.URL})
+		var err error
+		wg := new(sync.WaitGroup)
+		wg.Add(1)
+		go server.Ping(wg)
+		wg.Wait()
+		err = server.Refresh()
+		if err != nil {
+			cluster.SetState("WARN0128", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0128"], server.URL, err.Error()), ErrFrom: "PROV", ServerUrl: server.URL})
+		}
+
+		if cluster.GetTopology() == config.TopoMultiMasterWsrep {
+			if !server.IsConnected() {
+				err = errors.New("Not yet connected")
 			}
+			/*	} else { */
 
-			if cluster.GetTopology() == config.TopoMultiMasterWsrep {
-				if !server.IsConnected() {
-					err = errors.New("Not yet connected")
-				}
-				/*	} else { */
+		}
+		if err == nil {
 
-			}
-			if err == nil {
-
-				exitloop = 9999999
-			} else {
-				cluster.SetState("WARN0129", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0129"], server.URL, err.Error()), ErrFrom: "PROV", ServerUrl: server.URL})
-			}
+			exitloop = 9999999
+		} else {
+			cluster.SetState("WARN0129", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0129"], server.URL, err.Error()), ErrFrom: "PROV", ServerUrl: server.URL})
 		}
 	}
 	if exitloop == 9999999 {

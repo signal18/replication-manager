@@ -37,6 +37,8 @@ func (server *ServerMonitor) GetSshEnv() string {
 		REPLICATION_MANAGER_USER
 		REPLICATION_MANAGER_PASSWORD
 		REPLICATION_MANAGER_URL
+		REPLICATION_MANAGER_URL_HOST
+		REPLICATION_MANAGER_URL_PORT
 		REPLICATION_MANAGER_CLUSTER_NAME
 		REPLICATION_MANAGER_HOST_NAME
 		REPLICATION_MANAGER_HOST_USER
@@ -49,34 +51,7 @@ func (server *ServerMonitor) GetSshEnv() string {
 	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
 		adminpassword = user.Password
 	}
-	return "export REPLICATION_MANAGER_HOST_USER=\"" + server.User + "\";export REPLICATION_MANAGER_HOST_PASSWORD=\"" + server.Pass + "\";export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\";export REPLICATION_MANAGER_URL=\"https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + server.Host + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + server.Port + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + server.ClusterGroup.Name + "\"\n"
-}
-
-func (server *ServerMonitor) GetTTYEnv() string {
-	/*
-		REPLICATION_MANAGER_USER
-		REPLICATION_MANAGER_PASSWORD
-		REPLICATION_MANAGER_URL
-		REPLICATION_MANAGER_CLUSTER_NAME
-		REPLICATION_MANAGER_HOST_NAME
-		REPLICATION_MANAGER_HOST_USER
-		REPLICATION_MANAGER_HOST_PASSWORD
-		REPLICATION_MANAGER_HOST_PORT
-
-	*/
-	adminuser := "admin"
-	adminpassword := "repman"
-	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
-		adminpassword = user.Password
-	}
-	return strings.ReplaceAll("export REPLICATION_MANAGER_HOST_USER="+server.User+";export REPLICATION_MANAGER_HOST_PASSWORD="+server.Pass+";export MYSQL_ROOT_PASSWORD="+server.Pass+";export REPLICATION_MANAGER_URL=https://"+server.ClusterGroup.Conf.MonitorAddress+":"+server.ClusterGroup.Conf.APIPort+";export REPLICATION_MANAGER_USER="+adminuser+";export REPLICATION_MANAGER_PASSWORD="+adminpassword+";export REPLICATION_MANAGER_HOST_NAME="+server.Host+";export REPLICATION_MANAGER_HOST_PORT="+server.Port+";export REPLICATION_MANAGER_CLUSTER_NAME="+server.ClusterGroup.Name+"\n", "!", "\\!")
-}
-
-// Log Level will always be debug to prevent too verbose
-func (server *ServerMonitor) GetSshLogEnv(task string) string {
-	var module string = config.GetModuleNameForTask(task)
-
-	return fmt.Sprintf("export JOB_NAME_ENV=\"%s\";export LOG_MODULE_ENV=\"%s\";export LOG_LEVEL_ENV=\"%s\";export LOG_BATCH_LINES_ENV=\"%d\"\n", task, module, config.LvlDbg, server.GetClusterConfig().JobLogBatchSize)
+	return "export REPLICATION_MANAGER_HOST_USER=\"" + server.User + "\";export REPLICATION_MANAGER_HOST_PASSWORD=\"" + server.Pass + "\";export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\";export REPLICATION_MANAGER_URL=\"https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_URL_HOST=\"" + server.ClusterGroup.Conf.MonitorAddress + "\";export REPLICATION_MANAGER_URL_PORT=\"" + server.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + server.Host + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + server.Port + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + server.ClusterGroup.Name + "\"\n"
 }
 
 func (server *ServerMonitor) GetUniversalGtidServerID() uint64 {
@@ -146,7 +121,7 @@ func (server *ServerMonitor) GetReplicationDelay() int64 {
 	if sserr != nil {
 		return 0
 	}
-	if ss.SecondsBehindMaster.Valid == false {
+	if !ss.SecondsBehindMaster.Valid {
 		return 0
 	}
 	return ss.SecondsBehindMaster.Int64
@@ -447,7 +422,7 @@ func (server *ServerMonitor) GetAuditLog() *s18log.HttpLog {
 }
 
 func (server *ServerMonitor) GetPFSQueries() {
-	if !(server.ClusterGroup.Conf.MonitorPFS && server.HavePFSSlowQueryLog && server.HavePFS) {
+	if !server.ClusterGroup.Conf.MonitorPFS || !server.HavePFSSlowQueryLog || !server.HavePFS {
 		return
 	}
 	if server.IsInPFSQueryCapture {
@@ -683,7 +658,7 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 			s.Rows_examined,
 			s.Rows_affected,
 			s.Start_time,
-			strings.Replace(strings.Replace(s.Sql_text.String, "\r\n", " ", -1), "\n", " ", -1),
+			strings.ReplaceAll(strings.ReplaceAll(s.Sql_text.String, "\r\n", " "), "\n", " "),
 		)
 		server.MaxSlowQueryTimestamp = s.Start_time
 	}
