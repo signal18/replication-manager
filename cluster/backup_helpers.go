@@ -1,0 +1,349 @@
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
+// Authors: Guillaume Lefranc <guillaume@signal18.io>
+//          Stephane Varoqui  <svaroqui@gmail.com>
+// This source code is licensed under the GNU General Public License, version 3.
+
+package cluster
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
+)
+
+type BackupRunOptions struct {
+	Line          string
+	RetentionDays int
+	ResticEnabled *bool
+	BackupID      int64
+}
+
+var adhocMetaFilePattern = regexp.MustCompile(`\.(\d+)\.meta\.json$`)
+
+func normalizeBackupLine(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "-", "")
+	switch normalized {
+	case backupmgr.BackupLineDefault:
+		return backupmgr.BackupLineDefault
+	case backupmgr.BackupLineAdhoc:
+		return backupmgr.BackupLineAdhoc
+	default:
+		return ""
+	}
+}
+
+func (server *ServerMonitor) resolveBackupLine(opts BackupRunOptions) string {
+	line := normalizeBackupLine(opts.Line)
+	if opts.RetentionDays > 0 {
+		line = backupmgr.BackupLineAdhoc
+	}
+	if line == "" {
+		line = backupmgr.BackupLineDefault
+	}
+
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return line
+	}
+
+	if line == backupmgr.BackupLineDefault {
+		backupServer := cluster.GetBackupServer()
+		master := cluster.GetMaster()
+		isAllowed := backupServer == server || master == server
+		if !isAllowed {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup request on %s treated as ad-hoc (not primary backup source or master)", server.URL)
+			line = backupmgr.BackupLineAdhoc
+		}
+	}
+
+	return line
+}
+
+func (server *ServerMonitor) shouldRunRestic(opts BackupRunOptions) bool {
+	cluster := server.ClusterGroup
+	if cluster == nil || !cluster.Conf.BackupRestic {
+		if opts.ResticEnabled != nil && *opts.ResticEnabled && cluster != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Restic requested but disabled for %s", server.URL)
+		}
+		return false
+	}
+
+	if opts.ResticEnabled == nil {
+		return true
+	}
+	return *opts.ResticEnabled
+}
+
+func (server *ServerMonitor) buildBackupMetaFileName(backupTool string, backupID int64, line string) string {
+	if backupTool == "" {
+		return ""
+	}
+
+	dir := server.GetMyBackupDirectory()
+	if normalizeBackupLine(line) == backupmgr.BackupLineAdhoc && backupID > 0 {
+		return filepath.Join(dir, fmt.Sprintf("%s.%d.meta.json", backupTool, backupID))
+	}
+	return filepath.Join(dir, fmt.Sprintf("%s.meta.json", backupTool))
+}
+
+func (server *ServerMonitor) backupMetaFilePath(meta *backupmgr.BackupMetadata) string {
+	if meta == nil {
+		return ""
+	}
+	if meta.MetaFile != "" {
+		if filepath.IsAbs(meta.MetaFile) {
+			return meta.MetaFile
+		}
+		return filepath.Join(server.GetMyBackupDirectory(), meta.MetaFile)
+	}
+	line := meta.BackupLine
+	if line == "" && meta.RetentionDays > 0 {
+		line = backupmgr.BackupLineAdhoc
+	}
+	return server.buildBackupMetaFileName(meta.BackupTool, meta.Id, line)
+}
+
+func parseAdhocMetaFileID(name string) (int64, bool) {
+	matches := adhocMetaFilePattern.FindStringSubmatch(name)
+	if len(matches) != 2 {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(matches[1], 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return id, true
+}
+
+func parseBackupToolFromMetaFilename(name string) string {
+	trimmed := strings.TrimSuffix(name, ".meta.json")
+	if trimmed == name {
+		return ""
+	}
+	// For adhoc files like "mysqldump.1234567890.meta.json", return "mysqldump"
+	// For default files like "mysqldump.meta.json", return "mysqldump"
+	idx := strings.LastIndex(trimmed, ".")
+	if idx < 0 {
+		// No dot found, so the trimmed string is the tool name (default case)
+		return trimmed
+	}
+	// Dot found, return everything before it (adhoc case)
+	return trimmed[:idx]
+}
+
+func readBackupMetadataFile(path string) (*backupmgr.BackupMetadata, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	meta := new(backupmgr.BackupMetadata)
+	if err := json.NewDecoder(file).Decode(meta); err != nil {
+		return nil, err
+	}
+	return meta, nil
+}
+
+func (server *ServerMonitor) LoadAdhocBackupMetadata() ([]*backupmgr.BackupMetadata, error) {
+	cluster := server.ClusterGroup
+	dir := server.GetMyBackupDirectory()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	metas := make([]*backupmgr.BackupMetadata, 0)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+		if !adhocMetaFilePattern.MatchString(name) {
+			continue
+		}
+
+		path := filepath.Join(dir, name)
+		meta, err := readBackupMetadataFile(path)
+		if err != nil {
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Failed reading ad-hoc backup metadata %s: %s", path, err)
+			}
+			continue
+		}
+		if meta == nil {
+			continue
+		}
+
+		meta.BackupLine = backupmgr.BackupLineAdhoc
+		if meta.Id == 0 {
+			if id, ok := parseAdhocMetaFileID(name); ok {
+				meta.Id = id
+			}
+		}
+		if meta.Id == 0 {
+			continue
+		}
+		if meta.BackupTool == "" {
+			meta.BackupTool = parseBackupToolFromMetaFilename(name)
+		}
+		if meta.BackupTool == "" {
+			continue
+		}
+		if meta.MetaFile == "" {
+			meta.MetaFile = path
+		}
+		if meta.Source == "" {
+			meta.Source = server.URL
+		}
+
+		if cluster != nil {
+			cluster.BackupMetaMap.Set(meta.Id, meta)
+		}
+		metas = append(metas, meta)
+	}
+
+	return metas, nil
+}
+
+func (server *ServerMonitor) GetLatestMetaForLine(method, line string) (int64, *backupmgr.BackupMetadata) {
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return 0, nil
+	}
+
+	normalizedLine := normalizeBackupLine(line)
+	applyLineFilter := normalizedLine != ""
+
+	var latest int64
+	var meta *backupmgr.BackupMetadata
+	cluster.BackupMetaMap.Range(func(k, v any) bool {
+		m := v.(*backupmgr.BackupMetadata)
+		valid := false
+		switch method {
+		case "logical":
+			if m.BackupMethod == backupmgr.BackupMethodLogical {
+				valid = true
+			}
+		case "physical":
+			if m.BackupMethod == backupmgr.BackupMethodPhysical {
+				valid = true
+			}
+		default:
+			if m.BackupTool == method {
+				valid = true
+			}
+		}
+
+		if m.Source != server.URL {
+			valid = false
+		}
+
+		if applyLineFilter {
+			if normalizedLine == backupmgr.BackupLineDefault && m.IsAdhoc() {
+				valid = false
+			}
+			if normalizedLine == backupmgr.BackupLineAdhoc && !m.IsAdhoc() {
+				valid = false
+			}
+		}
+
+		if valid && latest < m.Id {
+			latest = m.Id
+			meta = m
+		}
+
+		return true
+	})
+
+	return latest, meta
+}
+
+func (cluster *Cluster) PurgeExpiredAdhocBackups() {
+	if cluster == nil {
+		return
+	}
+
+	now := time.Now()
+	for _, server := range cluster.Servers {
+		if server == nil {
+			continue
+		}
+
+		metas, err := server.LoadAdhocBackupMetadata()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to load ad-hoc metadata on %s: %s", server.URL, err)
+			continue
+		}
+
+		for _, meta := range metas {
+			if meta == nil || !meta.IsAdhoc() || meta.RetentionDays <= 0 {
+				continue
+			}
+			if !meta.Completed {
+				continue
+			}
+			deadline, ok := retentionDeadline(meta)
+			if !ok || now.Before(deadline) {
+				continue
+			}
+
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Purging expired ad-hoc backup %d on %s", meta.Id, server.URL)
+
+			if meta.ResticSnapshotID != "" {
+				if cluster.Conf.BackupRestic {
+					if err := cluster.AddPurgeTask(meta.ResticSnapshotID); err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to purge restic snapshot %s on %s: %s", meta.ResticSnapshotID, server.URL, err)
+					}
+				} else {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Restic disabled; skip purging snapshot %s on %s", meta.ResticSnapshotID, server.URL)
+				}
+			}
+
+			if meta.Dest != "" {
+				if err := os.RemoveAll(meta.Dest); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed removing ad-hoc backup path %s on %s: %s", meta.Dest, server.URL, err)
+				}
+			}
+
+			metaPath := server.backupMetaFilePath(meta)
+			if metaPath != "" {
+				if err := os.Remove(metaPath); err != nil && !os.IsNotExist(err) {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed removing ad-hoc metadata %s on %s: %s", metaPath, server.URL, err)
+				}
+			}
+
+			cluster.BackupMetaMap.Delete(meta.Id)
+		}
+	}
+}
+
+func retentionDeadline(meta *backupmgr.BackupMetadata) (time.Time, bool) {
+	if meta == nil || meta.RetentionDays <= 0 {
+		return time.Time{}, false
+	}
+
+	base := meta.EndTime
+	if base.IsZero() {
+		base = meta.StartTime
+	}
+	if base.IsZero() && meta.Id > 0 {
+		base = time.Unix(meta.Id, 0)
+	}
+	if base.IsZero() {
+		return time.Time{}, false
+	}
+
+	return base.Add(time.Duration(meta.RetentionDays) * 24 * time.Hour), true
+}
