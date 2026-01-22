@@ -3788,47 +3788,35 @@ func (conf *Config) CheckKeepWithin() error {
 	return nil
 }
 
-func isValidResticMode(value int) bool {
-	if value == 0 {
-		return true
-	}
-	if value < 0 {
-		return false
-	}
-	for v := value; v > 0; v /= 10 {
-		digit := v % 10
-		if digit < 0 || digit > 7 {
-			return false
-		}
-	}
-	return true
-}
-
 func parseResticMode(value int, defaultMode os.FileMode) os.FileMode {
 	if value <= 0 {
 		return defaultMode
 	}
-	if !isValidResticMode(value) {
-		return defaultMode
-	}
 
-	parsed := 0
-	multiplier := 1
-	for v := value; v > 0; v /= 10 {
-		digit := v % 10
-		parsed += digit * multiplier
-		multiplier *= 8
+	parsed, err := strconv.ParseUint(strconv.Itoa(value), 8, 32)
+	if err != nil {
+		return defaultMode
 	}
 
 	return os.FileMode(parsed)
 }
 
 func (conf *Config) ValidateResticPermissions() error {
-	if !isValidResticMode(conf.BackupResticDirMode) {
+	if conf.BackupResticDirMode < 0 {
 		return NewValidationError("backup-restic-dir-mode", conf.BackupResticDirMode, "expected octal value like 700")
 	}
-	if !isValidResticMode(conf.BackupResticFileMode) {
+	if conf.BackupResticDirMode != 0 {
+		if _, err := strconv.ParseUint(strconv.Itoa(conf.BackupResticDirMode), 8, 32); err != nil {
+			return NewValidationError("backup-restic-dir-mode", conf.BackupResticDirMode, "expected octal value like 700")
+		}
+	}
+	if conf.BackupResticFileMode < 0 {
 		return NewValidationError("backup-restic-file-mode", conf.BackupResticFileMode, "expected octal value like 600")
+	}
+	if conf.BackupResticFileMode != 0 {
+		if _, err := strconv.ParseUint(strconv.Itoa(conf.BackupResticFileMode), 8, 32); err != nil {
+			return NewValidationError("backup-restic-file-mode", conf.BackupResticFileMode, "expected octal value like 600")
+		}
 	}
 	return nil
 }
