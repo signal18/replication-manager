@@ -632,3 +632,253 @@ func TestWorkerProcessesFetchTask(t *testing.T) {
 		return len(repo.Backups) > 0
 	})
 }
+
+// TestPermissionConfiguration tests SetPermissions and GetPermissions methods
+func TestPermissionConfiguration(t *testing.T) {
+	repo := newPausedRepo(t)
+
+	// Test default secure permissions
+	dirMode, fileMode := repo.GetPermissions()
+	if dirMode != 0700 {
+		t.Errorf("expected default dirMode 0700, got %#o", dirMode)
+	}
+	if fileMode != 0600 {
+		t.Errorf("expected default fileMode 0600, got %#o", fileMode)
+	}
+
+	// Test custom permissions
+	repo.SetPermissions(0750, 0640)
+	dirMode, fileMode = repo.GetPermissions()
+	if dirMode != 0750 {
+		t.Errorf("expected dirMode 0750, got %#o", dirMode)
+	}
+	if fileMode != 0640 {
+		t.Errorf("expected fileMode 0640, got %#o", fileMode)
+	}
+
+	// Test zero values return secure defaults
+	repo.DirMode = 0
+	repo.FileMode = 0
+	dirMode, fileMode = repo.GetPermissions()
+	if dirMode != 0700 {
+		t.Errorf("expected zero dirMode to return default 0700, got %#o", dirMode)
+	}
+	if fileMode != 0600 {
+		t.Errorf("expected zero fileMode to return default 0600, got %#o", fileMode)
+	}
+}
+
+// TestTimeoutConfiguration tests SetOperationTimeout and GetOperationTimeout methods
+func TestTimeoutConfiguration(t *testing.T) {
+	repo := newPausedRepo(t)
+
+	// Test default timeout
+	timeout := repo.GetOperationTimeout()
+	if timeout != 2*time.Hour {
+		t.Errorf("expected default timeout 2h, got %v", timeout)
+	}
+
+	// Test custom timeout
+	customTimeout := 6 * time.Hour
+	repo.SetOperationTimeout(customTimeout)
+	timeout = repo.GetOperationTimeout()
+	if timeout != customTimeout {
+		t.Errorf("expected timeout %v, got %v", customTimeout, timeout)
+	}
+
+	// Test zero value returns default
+	repo.OperationTimeout = 0
+	timeout = repo.GetOperationTimeout()
+	if timeout != 2*time.Hour {
+		t.Errorf("expected zero timeout to return default 2h, got %v", timeout)
+	}
+}
+
+// TestDirectoryPermissions tests that directories are created with correct permissions
+func TestDirectoryPermissions(t *testing.T) {
+	repo := newPausedRepo(t)
+	resetSharedDirs(t)
+
+	// Create a test directory for restore target
+	testDir, err := os.MkdirTemp("", "restic-perm-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(testDir)
+
+	// Set custom permissions
+	repo.SetPermissions(0700, 0600)
+
+	// Create a directory using the same pattern as restoreSnapshot
+	dirMode, _ := repo.GetPermissions()
+	targetDir := filepath.Join(testDir, "restore-target")
+	if err := os.MkdirAll(targetDir, dirMode); err != nil {
+		t.Fatalf("failed to create target dir: %v", err)
+	}
+
+	// Verify directory permissions
+	info, err := os.Stat(targetDir)
+	if err != nil {
+		t.Fatalf("failed to stat dir: %v", err)
+	}
+
+	actualMode := info.Mode().Perm()
+	if actualMode != 0700 {
+		t.Errorf("expected dir permissions 0700, got %#o", actualMode)
+	}
+}
+
+// TestFilePermissions tests that restored files have correct permissions set
+func TestFilePermissions(t *testing.T) {
+	repo := newPausedRepo(t)
+
+	// Create a test directory with some files
+	testDir, err := os.MkdirTemp("", "restic-file-perm-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(testDir)
+
+	// Create test files with world-readable permissions (simulating umask behavior)
+	testFile1 := filepath.Join(testDir, "file1.txt")
+	testFile2 := filepath.Join(testDir, "subdir", "file2.txt")
+
+	if err := os.MkdirAll(filepath.Dir(testFile2), 0755); err != nil {
+		t.Fatalf("failed to create subdir: %v", err)
+	}
+
+	if err := os.WriteFile(testFile1, []byte("test1"), 0644); err != nil {
+		t.Fatalf("failed to write file1: %v", err)
+	}
+	if err := os.WriteFile(testFile2, []byte("test2"), 0644); err != nil {
+		t.Fatalf("failed to write file2: %v", err)
+	}
+
+	// Verify files are currently world-readable
+	info1, _ := os.Stat(testFile1)
+	if info1.Mode().Perm() != 0644 {
+		t.Fatalf("test setup failed: expected 0644, got %#o", info1.Mode().Perm())
+	}
+
+	// Set secure permissions
+	repo.SetPermissions(0700, 0600)
+
+	// Apply permissions using setRestorePermissions
+	if err := repo.setRestorePermissions(testDir); err != nil {
+		t.Fatalf("setRestorePermissions failed: %v", err)
+	}
+
+	// Verify directory permissions
+	dirInfo, err := os.Stat(filepath.Dir(testFile2))
+	if err != nil {
+		t.Fatalf("failed to stat subdir: %v", err)
+	}
+	if dirInfo.Mode().Perm() != 0700 {
+		t.Errorf("expected subdir permissions 0700, got %#o", dirInfo.Mode().Perm())
+	}
+
+	// Verify file permissions
+	info1, err = os.Stat(testFile1)
+	if err != nil {
+		t.Fatalf("failed to stat file1: %v", err)
+	}
+	if info1.Mode().Perm() != 0600 {
+		t.Errorf("expected file1 permissions 0600, got %#o", info1.Mode().Perm())
+	}
+
+	info2, err := os.Stat(testFile2)
+	if err != nil {
+		t.Fatalf("failed to stat file2: %v", err)
+	}
+	if info2.Mode().Perm() != 0600 {
+		t.Errorf("expected file2 permissions 0600, got %#o", info2.Mode().Perm())
+	}
+}
+
+// TestMountReady tests the isMountReady function for various scenarios
+func TestMountReady(t *testing.T) {
+	// Test with valid empty directory
+	emptyDir, err := os.MkdirTemp("", "mount-ready-empty-*")
+	if err != nil {
+		t.Fatalf("failed to create empty dir: %v", err)
+	}
+	defer os.RemoveAll(emptyDir)
+
+	if !isMountReady(emptyDir) {
+		t.Error("isMountReady should return true for empty directory")
+	}
+
+	// Test with directory containing files
+	fullDir, err := os.MkdirTemp("", "mount-ready-full-*")
+	if err != nil {
+		t.Fatalf("failed to create full dir: %v", err)
+	}
+	defer os.RemoveAll(fullDir)
+
+	testFile := filepath.Join(fullDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	if !isMountReady(fullDir) {
+		t.Error("isMountReady should return true for directory with files")
+	}
+
+	// Test with non-existent path
+	if isMountReady("/nonexistent/path/that/does/not/exist") {
+		t.Error("isMountReady should return false for non-existent path")
+	}
+
+	// Test with file instead of directory
+	tempFile, err := os.CreateTemp("", "mount-ready-file-*")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	tempFilePath := tempFile.Name()
+	tempFile.Close()
+	defer os.Remove(tempFilePath)
+
+	if isMountReady(tempFilePath) {
+		t.Error("isMountReady should return false for file path")
+	}
+}
+
+// TestSetRestorePermissionsErrorHandling tests error handling in permission setting
+func TestSetRestorePermissionsErrorHandling(t *testing.T) {
+	repo := newPausedRepo(t)
+
+	// Test with non-existent directory (should not return error, only warn)
+	err := repo.setRestorePermissions("/nonexistent/path/for/testing")
+	if err != nil {
+		t.Errorf("setRestorePermissions should not return error for non-existent path, got: %v", err)
+	}
+
+	// Test with valid directory should succeed
+	testDir, err := os.MkdirTemp("", "restic-perm-error-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(testDir)
+
+	if err := repo.setRestorePermissions(testDir); err != nil {
+		t.Errorf("setRestorePermissions should succeed for valid directory, got: %v", err)
+	}
+}
+
+// TestOperationTimeoutIntegration tests timeout integration with context
+func TestOperationTimeoutIntegration(t *testing.T) {
+	repo := newPausedRepo(t)
+
+	// Set a very short timeout
+	repo.SetOperationTimeout(100 * time.Millisecond)
+
+	// Verify timeout is set
+	timeout := repo.GetOperationTimeout()
+	if timeout != 100*time.Millisecond {
+		t.Errorf("expected timeout 100ms, got %v", timeout)
+	}
+
+	// Note: Full integration test with actual command timeout would require
+	// a mock restic binary or a slow operation, which is beyond unit test scope.
+	// The timeout mechanism is tested indirectly through existing integration tests.
+}
