@@ -2803,6 +2803,24 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-restic-purge-oldest-on-disk-threshold":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.BackupResticPurgeOldestOnDiskThreshold = val
+	case "backup-restic-timeout":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.BackupResticTimeout = val
+		if mycluster.ResticManager != nil {
+			mycluster.ResticManager.SetOperationTimeout(mycluster.Conf.GetResticTimeout())
+		}
+	case "backup-restic-dir-mode":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.BackupResticDirMode = val
+		if mycluster.ResticManager != nil {
+			mycluster.ResticManager.SetPermissions(mycluster.Conf.GetResticDirMode(), mycluster.Conf.GetResticFileMode())
+		}
+	case "backup-restic-file-mode":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.BackupResticFileMode = val
+		if mycluster.ResticManager != nil {
+			mycluster.ResticManager.SetPermissions(mycluster.Conf.GetResticDirMode(), mycluster.Conf.GetResticFileMode())
+		}
 	case "backup-logical-type":
 		mycluster.SetBackupLogicalType(value)
 	case "backup-physical-type":
