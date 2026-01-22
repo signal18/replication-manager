@@ -882,3 +882,139 @@ func TestOperationTimeoutIntegration(t *testing.T) {
 	// a mock restic binary or a slow operation, which is beyond unit test scope.
 	// The timeout mechanism is tested indirectly through existing integration tests.
 }
+
+// TestMountDisabledConfiguration tests mount disable flag configuration
+func TestMountDisabledConfiguration(t *testing.T) {
+	repo := newPausedRepo(t)
+
+	// Default should be false (mount enabled)
+	if repo.IsMountDisabled() {
+		t.Error("mount should be enabled by default")
+	}
+
+	// Enable mount disable
+	repo.SetMountDisabled(true)
+	if !repo.IsMountDisabled() {
+		t.Error("mount should be disabled after SetMountDisabled(true)")
+	}
+
+	// Disable mount disable (enable mount)
+	repo.SetMountDisabled(false)
+	if repo.IsMountDisabled() {
+		t.Error("mount should be enabled after SetMountDisabled(false)")
+	}
+}
+
+// TestMountRepoWhenDisabled tests that MountRepo returns error when disabled
+func TestMountRepoWhenDisabled(t *testing.T) {
+	repo := newPausedRepo(t)
+
+	// Disable mount operations
+	repo.SetMountDisabled(true)
+
+	// Create temporary mount directory
+	tempDir, err := os.MkdirTemp("", "restic-mount-disabled-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Try to mount - should fail with clear error
+	err = repo.MountRepo(tempDir)
+	if err == nil {
+		t.Error("MountRepo should fail when mount is disabled")
+	}
+
+	expectedMsg := "mount operations are disabled"
+	if !strings.Contains(err.Error(), expectedMsg) {
+		t.Errorf("error should mention mount is disabled, got: %v", err)
+	}
+}
+
+// TestCheckFUSEAvailability tests FUSE availability detection
+func TestCheckFUSEAvailability(t *testing.T) {
+	repo := newPausedRepo(t)
+
+	// Check FUSE availability (result depends on environment)
+	available := repo.CheckFUSEAvailability()
+
+	// We can't assert the result (depends on environment), but we can test
+	// that the method doesn't panic and returns a boolean
+	t.Logf("FUSE availability on this system: %v", available)
+
+	// The method should consistently return the same result
+	available2 := repo.CheckFUSEAvailability()
+	if available != available2 {
+		t.Error("CheckFUSEAvailability should return consistent results")
+	}
+}
+
+// TestAutoDetectAndDisableMount tests automatic FUSE detection and mount disable
+func TestAutoDetectAndDisableMount(t *testing.T) {
+	repo := newPausedRepo(t)
+
+	// Run auto-detection
+	wasDisabled := repo.AutoDetectAndDisableMount()
+
+	// If FUSE is not available, mount should be disabled
+	if !repo.CheckFUSEAvailability() {
+		if !repo.IsMountDisabled() {
+			t.Error("mount should be disabled when FUSE is not available")
+		}
+		if !wasDisabled {
+			t.Error("AutoDetectAndDisableMount should return true when disabling mount")
+		}
+	} else {
+		// If FUSE is available, mount should still be enabled
+		if repo.IsMountDisabled() {
+			t.Error("mount should not be disabled when FUSE is available")
+		}
+		if wasDisabled {
+			t.Error("AutoDetectAndDisableMount should return false when FUSE is available")
+		}
+	}
+
+	t.Logf("Mount disabled: %v (FUSE available: %v)", repo.IsMountDisabled(), repo.CheckFUSEAvailability())
+}
+
+// TestMountDisabledWorkflow tests complete workflow with mount disabled
+func TestMountDisabledWorkflow(t *testing.T) {
+	repo := newPausedRepo(t)
+
+	// Simulate environment without FUSE
+	repo.SetMountDisabled(true)
+
+	// Create temporary directory
+	tempDir, err := os.MkdirTemp("", "restic-workflow-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Verify mount operations fail gracefully
+	err = repo.MountRepo(tempDir)
+	if err == nil {
+		t.Fatal("MountRepo should fail when disabled")
+	}
+	if !strings.Contains(err.Error(), "disabled") {
+		t.Errorf("error should mention disabled, got: %v", err)
+	}
+
+	// Verify other operations still work (e.g., permission configuration)
+	repo.SetPermissions(0750, 0640)
+	dirMode, fileMode := repo.GetPermissions()
+	if dirMode != 0750 || fileMode != 0640 {
+		t.Errorf("permission configuration should work independently of mount status")
+	}
+
+	// Re-enable mount
+	repo.SetMountDisabled(false)
+
+	// Mount should be allowed now (even if it fails due to missing FUSE/restic binary)
+	// We just verify it doesn't fail with "disabled" error
+	err = repo.MountRepo(tempDir)
+	// Error is expected (no restic binary), but shouldn't be "disabled" error
+	if err != nil && strings.Contains(err.Error(), "operations are disabled") {
+		t.Errorf("MountRepo should not fail with 'disabled' error when enabled, got: %v", err)
+	}
+}

@@ -232,6 +232,7 @@ type ResticManager struct {
 	DirMode           os.FileMode   // Directory permission mode (default: 0700)
 	FileMode          os.FileMode   // File permission mode (default: 0600)
 	OperationTimeout  time.Duration // Timeout for long-running operations (default: 2 hours)
+	MountDisabled     bool          // If true, mount operations are disabled (e.g., FUSE unavailable)
 }
 
 // NewResticRepo initializes the repository manager
@@ -460,6 +461,51 @@ func (repo *ResticManager) GetOperationTimeout() time.Duration {
 		return 2 * time.Hour // Default: 2 hours
 	}
 	return repo.OperationTimeout
+}
+
+// SetMountDisabled enables or disables mount operations
+// Set to true to disable mount operations when FUSE is unavailable
+func (repo *ResticManager) SetMountDisabled(disabled bool) {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+	repo.MountDisabled = disabled
+}
+
+// IsMountDisabled returns whether mount operations are disabled
+func (repo *ResticManager) IsMountDisabled() bool {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+	return repo.MountDisabled
+}
+
+// CheckFUSEAvailability checks if FUSE is available on the system
+// Returns true if FUSE device exists and is accessible
+func (repo *ResticManager) CheckFUSEAvailability() bool {
+	// Check if /dev/fuse exists (Linux/Unix)
+	if _, err := os.Stat("/dev/fuse"); err == nil {
+		return true
+	}
+
+	// Check if fusermount or fusermount3 is available
+	if _, err := exec.LookPath("fusermount"); err == nil {
+		return true
+	}
+	if _, err := exec.LookPath("fusermount3"); err == nil {
+		return true
+	}
+
+	return false
+}
+
+// AutoDetectAndDisableMount checks FUSE availability and disables mount if unavailable
+// Returns true if mount operations were disabled
+func (repo *ResticManager) AutoDetectAndDisableMount() bool {
+	if !repo.CheckFUSEAvailability() {
+		repo.SetMountDisabled(true)
+		repo.Printf(logrus.WarnLevel, "FUSE not available - mount operations disabled")
+		return true
+	}
+	return false
 }
 
 // setRestorePermissions sets secure permissions on restored files and directories
@@ -967,6 +1013,11 @@ func (repo *ResticManager) DumpSnapshot(snapshotID, filePath string, writer io.W
 }
 
 func (repo *ResticManager) MountRepo(targetDir string) error {
+	// Check if mount operations are disabled
+	if repo.IsMountDisabled() {
+		return fmt.Errorf("mount operations are disabled (FUSE not available)")
+	}
+
 	if targetDir == "" {
 		return fmt.Errorf("mount target is empty")
 	}
