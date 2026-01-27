@@ -181,6 +181,9 @@ include = "/etc/replication-manager/cluster.d"
 # backup-restic-dir-mode = 700
 # backup-restic-file-mode = 600
 # backup-restic-tags = "tenant,cluster,engine,version,backup-type,backup-tool,line"
+#   Templates: {tenant},{cluster},{engine},{version},{backup-type},{backup-tool},{line}
+#   You can also add literal tags like env:prod or team:{tenant}.
+# backup-restic-host = "" # Override restic --host (empty = restic default host, no alias)
 # backup-restic-purge-group-by = "host,paths" # default = host+paths grouping, "default" = restic default grouping, "none" = single group
 # backup-restic-purge-keep-tag = "line:adhoc"
 # haproxy-binary-path =  "/usr/sbin/haproxy"

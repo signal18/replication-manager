@@ -735,6 +735,7 @@ type Config struct {
 	BackupKeepWithinMonthly                   string                 `mapstructure:"backup-keep-within-monthly" toml:"backup-keep-within-monthly" json:"backupKeepWithinMonthly"`
 	BackupKeepWithinYearly                    string                 `mapstructure:"backup-keep-within-yearly" toml:"backup-keep-within-yearly" json:"backupKeepWithinYearly"`
 	BackupResticTags                          string                 `mapstructure:"backup-restic-tags" toml:"backup-restic-tags" json:"backupResticTags"`
+	BackupResticHost                          string                 `mapstructure:"backup-restic-host" toml:"backup-restic-host" json:"backupResticHost"`
 	BackupResticPurgeGroupBy                  string                 `mapstructure:"backup-restic-purge-group-by" toml:"backup-restic-purge-group-by" json:"backupResticPurgeGroupBy"`
 	BackupResticPurgeKeepTag                  string                 `mapstructure:"backup-restic-purge-keep-tag" toml:"backup-restic-purge-keep-tag" json:"backupResticPurgeKeepTag"`
 	BackupRestic                              bool                   `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`

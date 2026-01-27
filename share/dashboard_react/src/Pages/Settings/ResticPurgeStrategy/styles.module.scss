@@ -1,47 +1,181 @@
 .container {
-  font-size: rem(15);
-  gap: 0;
-  padding: 0;
+  font-size: rem(14);
   margin-top: rem(4);
   width: 100%;
-  .row {
-    height: 100%;
-  }
-  .label,
-  .value {
-    padding: rem(4);
-    height: 100%;
+  .headerCell {
     display: flex;
     align-items: center;
-    border-width: thin;
-    border-color: var(--tertiary-color);
-    text-align: center;
-  }
-  .label {
-    text-align: center;
-    background-color: var(--tertiary-color);
-  }
-  .subLabel {
-    background-color: var(--quaternary-color);
-  }
-  .value {
-    text-align: center;
+    justify-content: center;
+    gap: rem(4);
+    padding: rem(4) rem(6);
+    border: 1px solid var(--tertiary-color);
     border-radius: rem(6);
-    min-height: rem(24);
+    background-color: var(--tertiary-color);
+    font-weight: 600;
+    text-align: center;
+  }
+  .headerText {
+    margin: 0;
+  }
+  .rowLabel {
+    display: flex;
+    align-items: center;
+    padding: rem(4) rem(6);
+    border: 1px solid var(--quaternary-color);
+    border-radius: rem(6);
+    background-color: var(--quaternary-color);
+    font-weight: 600;
+    text-align: left;
+  }
+  .valueCell {
+    display: flex;
+    flex-direction: column;
+    gap: rem(4);
+    padding: rem(4) rem(6);
+    border: 1px solid var(--tertiary-color);
+    border-radius: rem(6);
     background-color: transparent;
-    padding-left: rem(16);
+    text-align: left;
   }
-  .dividerRow {
-    display: none;
-    @include breakpoint('md') {
-      display: block;
-    }
-  }
-  .divider {
-    height: rem(1);
-    background-color: var(--darkgray-color);
+  .mobileHeader {
+    font-size: rem(12);
+    text-transform: uppercase;
+    letter-spacing: rem(0.4);
+    color: var(--darkgray-color);
   }
   .marginCenter {
     margin: 0 auto;
   }
+}
+
+.filterGrid {
+  font-size: rem(14);
+  width: 100%;
+
+  .rowLabel {
+    display: flex;
+    align-items: center;
+    padding: rem(4) rem(6);
+    border: 1px solid var(--quaternary-color);
+    border-radius: rem(6);
+    background-color: var(--quaternary-color);
+    font-weight: 600;
+    text-align: left;
+  }
+
+  .valueCell {
+    display: flex;
+    flex-direction: column;
+    gap: rem(4);
+    padding: rem(4) rem(6);
+    border: 1px solid var(--tertiary-color);
+    border-radius: rem(6);
+    background-color: transparent;
+    text-align: left;
+  }
+
+  .marginCenter {
+    margin: 0 auto;
+  }
+}
+
+.helperText {
+  font-size: rem(12);
+  color: var(--darkgray-color);
+}
+
+.infoTooltip {
+  padding: rem(8) rem(10);
+  border-radius: rem(8);
+  border: 1px solid var(--gray-color);
+  background-color: var(--secondary-gray-color);
+  color: var(--text-color);
+  font-size: rem(14);
+  line-height: 1.45;
+  max-height: rem(360);
+  overflow: auto;
+
+  p {
+    margin: 0 0 rem(6);
+  }
+
+  p:last-child {
+    margin-bottom: 0;
+  }
+
+  ul,
+  ol {
+    margin: 0 0 rem(6);
+    padding-left: rem(18);
+  }
+
+  li {
+    margin-bottom: rem(4);
+  }
+
+  code {
+    padding: 0 rem(4);
+    border-radius: rem(4);
+    border: 1px solid var(--gray-color);
+    background-color: var(--white-color);
+    font-size: rem(12);
+  }
+
+  strong {
+    color: var(--primary-color);
+  }
+}
+
+.infoModalContent {
+  border: 1px solid var(--tertiary-color);
+  border-radius: rem(12);
+  box-shadow: 0 rem(18) rem(40) rgba(0, 0, 0, 0.12);
+  background: linear-gradient(180deg, var(--quaternary-color) 0%, var(--white-color) 40%, var(--secondary-gray-color) 100%) !important;
+}
+
+.infoModalHeader {
+  padding: rem(12) rem(16);
+  border-bottom: 1px solid var(--tertiary-color);
+  background-color: transparent;
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.infoModalBody {
+  padding: rem(12) rem(16) rem(16);
+}
+
+.infoBox {
+  display: flex;
+  align-items: center;
+  gap: rem(8);
+}
+
+.commandBox {
+  padding: rem(8) rem(12);
+  background-color: var(--secondary-gray-color);
+  border-color: var(--gray-color);
+  display: flex;
+  flex-direction: column;
+  gap: rem(4);
+}
+
+.commandLabel {
+  font-size: rem(12);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: rem(0.6);
+  color: var(--secondary-color);
+}
+
+.commandText {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: rem(13);
+  color: var(--text-color);
+  word-break: break-word;
+}
+
+.commandHint {
+  font-size: rem(12);
+  color: var(--darkgray-color);
 }

@@ -548,7 +548,16 @@ func (cluster *Cluster) SetBackupResticPurgeOldestOnDiskTreshold(threshold int) 
 }
 
 func (cluster *Cluster) SetBackupResticTags(value string) error {
-	cluster.Conf.BackupResticTags = strings.TrimSpace(value)
+	cluster.Conf.BackupResticTags = strings.Join(parseResticTagTemplates(value), ",")
+	return nil
+}
+
+func (cluster *Cluster) SetBackupResticHost(value string) error {
+	normalized := strings.TrimSpace(value)
+	if strings.EqualFold(normalized, "default") || strings.EqualFold(normalized, "none") {
+		normalized = ""
+	}
+	cluster.Conf.BackupResticHost = normalized
 	return nil
 }
 

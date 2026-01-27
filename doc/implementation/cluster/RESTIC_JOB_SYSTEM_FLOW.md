@@ -39,6 +39,8 @@ backward-compatibility expectations for maintainers.
 - `backup-restic-tags`: comma-separated tag templates. Each template can include
   placeholders and is rendered per backup. Templates with missing values are
   skipped. Compact form is supported (e.g., `cluster,backup-type,line`).
+- `backup-restic-host`: optional override for restic `--host` during backup.
+  Leave empty to use restic's default hostname (no alias).
 
 Supported placeholders for templates:
 - `{tenant}`, `{cluster}`, `{engine}`, `{version}`, `{backup-type}`, `{backup-tool}`, `{line}`
