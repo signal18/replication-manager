@@ -1806,10 +1806,20 @@ func GetKeepN(keepLast int, keepHourly int, keepDaily int, keepWeekly int, keepM
 	return keep, useKeep
 }
 
-func (repo *ResticManager) purgeSingleSnapshot(snapshotID string) error {
-	repo.Printf(logrus.InfoLevel, "Purging single snapshot ID: %s", snapshotID)
+func (repo *ResticManager) purgeSingleSnapshot(opt ResticPurgeOption) error {
+	repo.Printf(logrus.InfoLevel, "Purging single snapshot ID: %s", opt.SnapshotID)
 
-	args := []string{"forget", "--prune", snapshotID}
+	args := []string{"forget"}
+
+	if opt.Prune {
+		args = append(args, "--prune")
+	}
+
+	if opt.DryRun {
+		args = append(args, "--dry-run")
+	}
+
+	args = append(args, opt.SnapshotID)
 
 	// Execute the Restic "forget" command using RunCommand
 	_, stderr, err := repo.RunCommand(args, logrus.InfoLevel, false)
@@ -1844,8 +1854,13 @@ func buildForgetArgs(opt ResticPurgeOption) []string {
 		args = append(args, "--prune")
 	}
 
-	if strings.TrimSpace(opt.GroupBy) != "" {
-		args = append(args, "--group-by", strings.TrimSpace(opt.GroupBy))
+	groupBy := strings.TrimSpace(opt.GroupBy)
+	if groupBy != "" && !strings.EqualFold(groupBy, "default") {
+		if strings.EqualFold(groupBy, "none") {
+			args = append(args, "--group-by", "")
+		} else {
+			args = append(args, "--group-by", groupBy)
+		}
 	}
 
 	// Add keep-tag filters
@@ -1924,7 +1939,7 @@ func (repo *ResticManager) PurgeRepo(opt ResticPurgeOption) error {
 
 	// Prepare the arguments for the "forget" command
 	if opt.SnapshotID != "" {
-		err := repo.purgeSingleSnapshot(opt.SnapshotID)
+		err := repo.purgeSingleSnapshot(opt)
 		if err != nil {
 			return err
 		}

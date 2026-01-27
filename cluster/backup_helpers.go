@@ -21,14 +21,15 @@ import (
 )
 
 // BackupRunOptions defines runtime overrides for backup execution behavior.
-// Line and RetentionDays influence default vs ad-hoc handling.
+// Line and retention settings influence default vs ad-hoc handling.
 // ResticEnabled can force enable/disable restic for this run.
 // BackupID is used for ad-hoc metadata naming.
 type BackupRunOptions struct {
-	Line          string
-	RetentionDays int
-	ResticEnabled *bool
-	BackupID      int64
+	Line              string
+	RetentionDays     int
+	RetentionDuration string
+	ResticEnabled     *bool
+	BackupID          int64
 }
 
 var adhocMetaFilePattern = regexp.MustCompile(`\.(\d+)\.meta\.json$`)
@@ -51,7 +52,7 @@ func normalizeBackupLine(value string) string {
 // backup source or master.
 func (server *ServerMonitor) resolveBackupLine(opts BackupRunOptions) string {
 	line := normalizeBackupLine(opts.Line)
-	if opts.RetentionDays > 0 {
+	if opts.RetentionDays > 0 || hasRetentionDurationOpt(opts) {
 		line = backupmgr.BackupLineAdhoc
 	}
 	if line == "" {
@@ -74,6 +75,16 @@ func (server *ServerMonitor) resolveBackupLine(opts BackupRunOptions) string {
 	}
 
 	return line
+}
+
+func hasRetentionDurationOpt(opts BackupRunOptions) bool {
+	if strings.TrimSpace(opts.RetentionDuration) == "" {
+		return false
+	}
+	if d, ok := backupmgr.ParseRetentionDuration(opts.RetentionDuration); ok {
+		return d > 0
+	}
+	return false
 }
 
 // shouldRunRestic decides whether restic should be used for a backup run.
@@ -122,7 +133,7 @@ func (server *ServerMonitor) backupMetaFilePath(meta *backupmgr.BackupMetadata) 
 		return filepath.Join(server.GetMyBackupDirectory(), meta.MetaFile)
 	}
 	line := meta.BackupLine
-	if line == "" && meta.RetentionDays > 0 {
+	if line == "" && hasRetentionPolicy(meta) {
 		line = backupmgr.BackupLineAdhoc
 	}
 	return server.buildBackupMetaFileName(meta.BackupTool, meta.Id, line)
@@ -314,7 +325,7 @@ func (cluster *Cluster) PurgeExpiredAdhocBackups() {
 		}
 
 		for _, meta := range metas {
-			if meta == nil || !meta.IsAdhoc() || meta.RetentionDays <= 0 || !meta.Completed {
+			if meta == nil || !meta.IsAdhoc() || !meta.Completed {
 				continue
 			}
 			deadline, ok := retentionDeadline(meta)
@@ -356,7 +367,11 @@ func (cluster *Cluster) PurgeExpiredAdhocBackups() {
 }
 
 func retentionDeadline(meta *backupmgr.BackupMetadata) (time.Time, bool) {
-	if meta == nil || meta.RetentionDays <= 0 {
+	if meta == nil {
+		return time.Time{}, false
+	}
+	duration, ok := meta.RetentionWindow()
+	if !ok || duration <= 0 {
 		return time.Time{}, false
 	}
 
@@ -373,7 +388,17 @@ func retentionDeadline(meta *backupmgr.BackupMetadata) (time.Time, bool) {
 		return time.Time{}, false
 	}
 
-	return base.Add(time.Duration(meta.RetentionDays) * 24 * time.Hour), true
+	return base.Add(duration), true
+}
+
+func hasRetentionPolicy(meta *backupmgr.BackupMetadata) bool {
+	if meta == nil {
+		return false
+	}
+	if _, ok := meta.RetentionWindow(); ok {
+		return true
+	}
+	return false
 }
 
 func isLikelyUnixTimestamp(value int64) bool {

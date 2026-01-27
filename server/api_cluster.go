@@ -2803,6 +2803,21 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-restic-purge-oldest-on-disk-threshold":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.BackupResticPurgeOldestOnDiskThreshold = val
+	case "backup-restic-tags":
+		err = mycluster.SetBackupResticTags(value)
+		if err != nil {
+			return err
+		}
+	case "backup-restic-purge-group-by":
+		err = mycluster.SetBackupResticPurgeGroupBy(value)
+		if err != nil {
+			return err
+		}
+	case "backup-restic-purge-keep-tag":
+		err = mycluster.SetBackupResticPurgeKeepTag(value)
+		if err != nil {
+			return err
+		}
 	case "backup-restic-timeout":
 		val, err := strconv.Atoi(value)
 		if err != nil {

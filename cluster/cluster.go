@@ -233,6 +233,8 @@ type Cluster struct {
 	InPhysicalBackup       bool                        `json:"inPhysicalBackup" groups:"web"`
 	InLogicalBackup        bool                        `json:"inLogicalBackup" groups:"web"`
 	InBinlogBackup         bool                        `json:"inBinlogBackup" groups:"web"`
+	InResticLogicalBackup  bool                        `json:"inResticLogicalBackup" groups:"web"`
+	InResticPhysicalBackup bool                        `json:"inResticPhysicalBackup" groups:"web"`
 	InResticBackup         bool                        `json:"inResticBackup" groups:"web"`
 	InRollingRestart       bool                        `json:"inRollingRestart" groups:"web"`
 	failLoadP12Cert        bool                        `json:"-"`

@@ -734,6 +734,9 @@ type Config struct {
 	BackupKeepWithinWeekly                    string                 `mapstructure:"backup-keep-within-weekly" toml:"backup-keep-within-weekly" json:"backupKeepWithinWeekly"`
 	BackupKeepWithinMonthly                   string                 `mapstructure:"backup-keep-within-monthly" toml:"backup-keep-within-monthly" json:"backupKeepWithinMonthly"`
 	BackupKeepWithinYearly                    string                 `mapstructure:"backup-keep-within-yearly" toml:"backup-keep-within-yearly" json:"backupKeepWithinYearly"`
+	BackupResticTags                          string                 `mapstructure:"backup-restic-tags" toml:"backup-restic-tags" json:"backupResticTags"`
+	BackupResticPurgeGroupBy                  string                 `mapstructure:"backup-restic-purge-group-by" toml:"backup-restic-purge-group-by" json:"backupResticPurgeGroupBy"`
+	BackupResticPurgeKeepTag                  string                 `mapstructure:"backup-restic-purge-keep-tag" toml:"backup-restic-purge-keep-tag" json:"backupResticPurgeKeepTag"`
 	BackupRestic                              bool                   `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`
 	BackupResticBinaryPath                    string                 `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
 	BackupResticLocalRepository               string                 `mapstructure:"backup-restic-local-repository" toml:"backup-restic-local-repository" json:"backupResticLocalRepository"`
@@ -1764,7 +1767,6 @@ func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
 		}
 
 		p := crypto.Password{}
-		var err error
 		p.Key, err = crypto.Keygen()
 		if err != nil {
 			Logger.Errorf("Error when generating key for encryption: %v", err)
@@ -3367,15 +3369,16 @@ type JobResult struct {
 }
 
 type Task struct {
-	Id     int64  `json:"id" db:"id"`
-	Task   string `json:"task" db:"task"`
-	Port   int    `json:"port" db:"port"`
-	Server string `json:"server" db:"server"`
-	Done   int    `json:"done" db:"done"`
-	State  int    `json:"state" db:"state"`
-	Result string `json:"result,omitempty" db:"result"`
-	Start  int64  `json:"start" db:"utc_start"`
-	End    int64  `json:"end,omitempty" db:"utc_end"`
+	Id      int64  `json:"id" db:"id"`
+	Task    string `json:"task" db:"task"`
+	Port    int    `json:"port" db:"port"`
+	Server  string `json:"server" db:"server"`
+	Done    int    `json:"done" db:"done"`
+	State   int    `json:"state" db:"state"`
+	Result  string `json:"result,omitempty" db:"result"`
+	Payload string `json:"payload,omitempty" db:"payload"`
+	Start   int64  `json:"start" db:"utc_start"`
+	End     int64  `json:"end,omitempty" db:"utc_end"`
 }
 
 func (t *Task) Set(nt Task) {
@@ -3386,6 +3389,7 @@ func (t *Task) Set(nt Task) {
 	t.Done = nt.Done
 	t.State = nt.State
 	t.Result = nt.Result
+	t.Payload = nt.Payload
 	t.Start = nt.Start
 	t.End = nt.End
 }
