@@ -833,6 +833,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupLogicalPostScript, "backup-logical-post-script", "", "Customized backup post script location. Params: <clustername> <hostname> <port> <backup-path>")
 	flags.StringVar(&conf.BackupPhysicalPostScript, "backup-physical-post-script", "", "Customized backup post script location. Params: <clustername> <hostname> <port> <backup-path>")
 	flags.BoolVar(&conf.CompressBackups, "compress-backups", false, "To compress backups")
+	flags.IntVar(&conf.CompressBackupsCompressionLevel, "compress-backups-compression-level", 6, "Compression level for pgzip (1=fastest, 9=best compression, 6=default)")
+	flags.IntVar(&conf.CompressBackupsParallelBlocks, "compress-backups-parallel-blocks", 4, "Number of parallel blocks for pgzip decompression (higher=faster but more memory)")
 	flags.BoolVar(&conf.BackupSplitMysqlUser, "backup-split-mysql-user", false, "To split mysql user in backup")
 	flags.BoolVar(&conf.BackupRestoreMysqlUser, "backup-restore-mysql-user", true, "Restore mysql user alongside with backup")
 	flags.BoolVar(&conf.BackupCheckFreeSpace, "backup-check-size", true, "To check free space before processing backup")
