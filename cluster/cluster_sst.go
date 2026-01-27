@@ -168,6 +168,11 @@ func (cluster *Cluster) SSTRunReceiverToGZip(server *ServerMonitor, filename str
 		sst.file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
 	}
 
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Open file failed for job %s %s", filename, err)
+		return "", err
+	}
+
 	// Use configurable compression level for better performance/size tradeoff
 	compressionLevel := cluster.Conf.CompressBackupsCompressionLevel
 	if compressionLevel < 1 || compressionLevel > 9 {
@@ -180,11 +185,6 @@ func (cluster *Cluster) SSTRunReceiverToGZip(server *ServerMonitor, filename str
 	}
 
 	sst.outfilegzipwriter = gw
-
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Open file failed for job %s %s", filename, err)
-		return "", err
-	}
 
 	sst.listener, err = net.Listen("tcp", cluster.Conf.BindAddr+":"+cluster.SSTGetSenderPort())
 	if err != nil {
@@ -470,9 +470,10 @@ func (cluster *Cluster) SSTRunSendGzip(client net.Conn, backupfile string, sv *S
 	defer file.Close()
 
 	// Use configurable parallel blocks for better performance
+	// For SST/reseed operations, use higher default (16) for speed, matching original behavior
 	parallelBlocks := cluster.Conf.CompressBackupsParallelBlocks
 	if parallelBlocks <= 0 {
-		parallelBlocks = 4 // Fallback to safe default
+		parallelBlocks = 16 // Fallback to original default for SST/reseed performance
 	}
 	fz, err := gzip.NewReaderN(file, cluster.Conf.SSTSendBuffer, parallelBlocks)
 	if err != nil {

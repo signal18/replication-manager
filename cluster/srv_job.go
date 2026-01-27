@@ -1353,9 +1353,10 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	}
 
 	// Use configurable parallel blocks for better performance
+	// For restore operations, use higher default (16) for speed, matching original behavior
 	parallelBlocks := cluster.Conf.CompressBackupsParallelBlocks
 	if parallelBlocks <= 0 {
-		parallelBlocks = 4 // Fallback to safe default
+		parallelBlocks = 16 // Fallback to original default for restore performance
 	}
 	fz, err := gzip.NewReaderN(gzfile, cluster.Conf.SSTSendBuffer, parallelBlocks)
 	if err != nil {
@@ -1445,9 +1446,10 @@ func (server *ServerMonitor) ReadMysqldumpUser(backupfile string) (io.Reader, er
 	}
 
 	// Use configurable parallel blocks for better performance
+	// For restore operations, use higher default (16) for speed, matching original behavior
 	parallelBlocks := cluster.Conf.CompressBackupsParallelBlocks
 	if parallelBlocks <= 0 {
-		parallelBlocks = 4 // Fallback to safe default
+		parallelBlocks = 16 // Fallback to original default for restore performance
 	}
 	fz, err := gzip.NewReaderN(gzfile, cluster.Conf.SSTSendBuffer, parallelBlocks)
 	if err != nil {
