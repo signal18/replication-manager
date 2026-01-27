@@ -451,7 +451,7 @@ func TestPurgeAndBackupCommands(t *testing.T) {
 	}
 
 	snapshotID := repo.Backups[0].Id
-	if err := repo.purgeSingleSnapshot(snapshotID); err != nil {
+	if err := repo.purgeSingleSnapshot(ResticPurgeOption{SnapshotID: snapshotID, Prune: true}); err != nil {
 		t.Fatalf("purge single: %v", err)
 	}
 
@@ -465,6 +465,328 @@ func TestPurgeAndBackupCommands(t *testing.T) {
 
 	if err := repo.PurgeRepo(ResticPurgeOption{SnapshotID: snapshotID, Prune: true}); err != nil {
 		t.Fatalf("purge repo: %v", err)
+	}
+}
+
+func TestResticPurgeDryRunSingleSnapshot(t *testing.T) {
+	repo, _, _, _ := newResticRepo(t, true)
+	if len(repo.Backups) == 0 {
+		t.Fatalf("expected snapshot")
+	}
+
+	snapshotID := repo.Backups[0].Id
+	opt := ResticPurgeOption{
+		SnapshotID: snapshotID,
+		Prune:      true,
+		DryRun:     true,
+	}
+	t.Logf("purge options: %+v", opt)
+	if err := repo.PurgeRepo(opt); err != nil {
+		t.Fatalf("purge repo dry-run: %v", err)
+	}
+
+	if err := repo.FetchRepo(); err != nil {
+		t.Fatalf("fetch repo after dry-run: %v", err)
+	}
+	t.Logf("snapshots after dry-run: %d", len(repo.Backups))
+	for _, snap := range repo.Backups {
+		t.Logf("snapshot %s tags=%v", snap.Id, snap.Tags)
+	}
+
+	hasSnapshot := func(id string) bool {
+		for _, snap := range repo.Backups {
+			if snap.Id == id || snap.ShortId == id || strings.HasPrefix(snap.Id, id) {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !hasSnapshot(snapshotID) {
+		t.Fatalf("expected snapshot to remain after dry-run: %s", snapshotID)
+	}
+}
+
+func TestResticPurgeDryRunPolicy(t *testing.T) {
+	repo, _, _, dataDir := newResticRepo(t, false)
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("mkdir data: %v", err)
+	}
+
+	ids := make([]string, 0, 3)
+	makeBackup := func(idx int, tags []string) {
+		payload := []byte(fmt.Sprintf("payload-%d", idx))
+		if err := os.WriteFile(filepath.Join(dataDir, "file.txt"), payload, 0644); err != nil {
+			t.Fatalf("write data file: %v", err)
+		}
+		snapshotID, err := repo.Backup(dataDir, tags)
+		if err != nil {
+			t.Fatalf("backup %d: %v", idx, err)
+		}
+		ids = append(ids, snapshotID)
+		t.Logf("created snapshot %s tags=%v", snapshotID, tags)
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	makeBackup(0, []string{"line:default"})
+	makeBackup(1, []string{"line:adhoc"})
+	makeBackup(2, []string{"line:default"})
+
+	if err := repo.FetchRepo(); err != nil {
+		t.Fatalf("fetch repo: %v", err)
+	}
+	t.Logf("snapshots before dry-run: %d", len(repo.Backups))
+	for _, snap := range repo.Backups {
+		t.Logf("snapshot %s tags=%v", snap.Id, snap.Tags)
+	}
+
+	opt := ResticPurgeOption{
+		KeepLast: 1,
+		GroupBy:  "none",
+		Prune:    true,
+		DryRun:   true,
+	}
+	t.Logf("purge options: %+v", opt)
+	if err := repo.PurgeRepo(opt); err != nil {
+		t.Fatalf("purge repo dry-run: %v", err)
+	}
+
+	if err := repo.FetchRepo(); err != nil {
+		t.Fatalf("fetch repo after dry-run: %v", err)
+	}
+	t.Logf("snapshots after dry-run: %d", len(repo.Backups))
+	for _, snap := range repo.Backups {
+		t.Logf("snapshot %s tags=%v", snap.Id, snap.Tags)
+	}
+
+	hasSnapshot := func(id string) bool {
+		for _, snap := range repo.Backups {
+			if snap.Id == id || snap.ShortId == id || strings.HasPrefix(snap.Id, id) {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, id := range ids {
+		if !hasSnapshot(id) {
+			t.Fatalf("expected snapshot to remain after dry-run: %s", id)
+		}
+	}
+	if len(repo.Backups) != len(ids) {
+		t.Fatalf("expected %d snapshots after dry-run, got %d", len(ids), len(repo.Backups))
+	}
+}
+
+func TestResticPurgeKeepTagAndPrune(t *testing.T) {
+	repo, _, _, dataDir := newResticRepo(t, false)
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("mkdir data: %v", err)
+	}
+
+	type snapInfo struct {
+		id   string
+		tags []string
+	}
+	snapshots := make([]snapInfo, 0, 3)
+
+	makeBackup := func(idx int, tags []string) {
+		payload := []byte(fmt.Sprintf("payload-%d", idx))
+		if err := os.WriteFile(filepath.Join(dataDir, "file.txt"), payload, 0644); err != nil {
+			t.Fatalf("write data file: %v", err)
+		}
+		snapshotID, err := repo.Backup(dataDir, tags)
+		if err != nil {
+			t.Fatalf("backup %d: %v", idx, err)
+		}
+		t.Logf("created snapshot %s tags=%v", snapshotID, tags)
+		snapshots = append(snapshots, snapInfo{id: snapshotID, tags: tags})
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	makeBackup(0, []string{"line:default"})
+	makeBackup(1, []string{"line:adhoc"})
+	makeBackup(2, []string{"line:default"})
+
+	if err := repo.FetchRepo(); err != nil {
+		t.Fatalf("fetch repo: %v", err)
+	}
+	t.Logf("snapshots before purge: %d", len(repo.Backups))
+	for _, snap := range repo.Backups {
+		t.Logf("snapshot %s tags=%v", snap.Id, snap.Tags)
+	}
+
+	opt := ResticPurgeOption{
+		KeepLast: 1,
+		KeepTag:  []string{"line:adhoc"},
+		GroupBy:  "none",
+		Prune:    true,
+	}
+	t.Logf("purge options: %+v", opt)
+	if err := repo.PurgeRepo(opt); err != nil {
+		t.Fatalf("purge repo: %v", err)
+	}
+
+	if err := repo.FetchRepo(); err != nil {
+		t.Fatalf("fetch repo after purge: %v", err)
+	}
+	t.Logf("snapshots after purge: %d", len(repo.Backups))
+	for _, snap := range repo.Backups {
+		t.Logf("snapshot %s tags=%v", snap.Id, snap.Tags)
+	}
+
+	hasSnapshot := func(id string) bool {
+		for _, snap := range repo.Backups {
+			if snap.Id == id || snap.ShortId == id || strings.HasPrefix(snap.Id, id) {
+				return true
+			}
+		}
+		return false
+	}
+
+	if hasSnapshot(snapshots[0].id) {
+		t.Fatalf("expected oldest default snapshot to be purged: %s", snapshots[0].id)
+	}
+	if !hasSnapshot(snapshots[1].id) {
+		t.Fatalf("expected adhoc snapshot to be kept: %s", snapshots[1].id)
+	}
+	if !hasSnapshot(snapshots[2].id) {
+		t.Fatalf("expected newest default snapshot to be kept: %s", snapshots[2].id)
+	}
+	if len(repo.Backups) != 2 {
+		t.Fatalf("expected 2 snapshots after purge, got %d", len(repo.Backups))
+	}
+}
+
+func TestResticPurgeGroupByPolicies(t *testing.T) {
+	type policy struct {
+		name       string
+		keepLast   int
+		keepHourly int
+		keepDaily  int
+		keepWithin string
+		keepTag    []string
+	}
+
+	type scenario struct {
+		name    string
+		groupBy string
+		prune   bool
+		policy  policy
+	}
+
+	groupBys := []string{"default", "none", "host,tags"}
+	policies := []policy{
+		{name: "keep-last", keepLast: 1},
+		{name: "keep-within", keepWithin: "1h"},
+		{name: "keep-last+daily", keepLast: 1, keepDaily: 1},
+		{name: "keep-tag", keepTag: []string{"line:adhoc"}},
+		{name: "keep-tag+last", keepLast: 1, keepTag: []string{"line:adhoc"}},
+	}
+	pruneValues := []bool{false, true}
+
+	scenarios := make([]scenario, 0, len(groupBys)*len(policies)*len(pruneValues))
+	for _, groupBy := range groupBys {
+		for _, pol := range policies {
+			for _, prune := range pruneValues {
+				name := fmt.Sprintf("group-by %s %s prune=%t", groupBy, pol.name, prune)
+				scenarios = append(scenarios, scenario{
+					name:    name,
+					groupBy: groupBy,
+					prune:   prune,
+					policy:  pol,
+				})
+			}
+		}
+	}
+
+	createRepoWithSnapshots := func(t *testing.T) (*ResticManager, []string) {
+		t.Helper()
+
+		repo, _, _, dataDir := newResticRepo(t, false)
+		if err := os.MkdirAll(dataDir, 0755); err != nil {
+			t.Fatalf("mkdir data: %v", err)
+		}
+
+		ids := make([]string, 0, 3)
+		writeBackup := func(idx int, tags []string) {
+			payload := []byte(fmt.Sprintf("payload-%d", idx))
+			if err := os.WriteFile(filepath.Join(dataDir, "file.txt"), payload, 0644); err != nil {
+				t.Fatalf("write data file: %v", err)
+			}
+			snapshotID, err := repo.Backup(dataDir, tags)
+			if err != nil {
+				t.Fatalf("backup %d: %v", idx, err)
+			}
+			ids = append(ids, snapshotID)
+			t.Logf("created snapshot %s tags=%v", snapshotID, tags)
+			time.Sleep(200 * time.Millisecond)
+		}
+
+		writeBackup(0, []string{"line:default"})
+		writeBackup(1, []string{"line:adhoc"})
+		writeBackup(2, []string{"line:default"})
+
+		if err := repo.FetchRepo(); err != nil {
+			t.Fatalf("fetch repo: %v", err)
+		}
+		t.Logf("snapshots before purge: %d", len(repo.Backups))
+		for _, snap := range repo.Backups {
+			t.Logf("snapshot %s tags=%v", snap.Id, snap.Tags)
+		}
+
+		return repo, ids
+	}
+
+	hasSnapshot := func(repo *ResticManager, id string) bool {
+		for _, snap := range repo.Backups {
+			if snap.Id == id || snap.ShortId == id || strings.HasPrefix(snap.Id, id) {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, sc := range scenarios {
+		t.Run(sc.name, func(t *testing.T) {
+			repo, ids := createRepoWithSnapshots(t)
+
+			opt := ResticPurgeOption{
+				KeepLast:   sc.policy.keepLast,
+				KeepHourly: sc.policy.keepHourly,
+				KeepDaily:  sc.policy.keepDaily,
+				KeepWithin: sc.policy.keepWithin,
+				KeepTag:    sc.policy.keepTag,
+				GroupBy:    sc.groupBy,
+				Prune:      sc.prune,
+			}
+			t.Logf("purge options: %+v", opt)
+			if err := repo.PurgeRepo(opt); err != nil {
+				t.Fatalf("purge repo: %v", err)
+			}
+
+			if err := repo.FetchRepo(); err != nil {
+				t.Fatalf("fetch repo after purge: %v", err)
+			}
+			t.Logf("snapshots after purge: %d", len(repo.Backups))
+			for _, snap := range repo.Backups {
+				t.Logf("snapshot %s tags=%v", snap.Id, snap.Tags)
+			}
+
+			if len(repo.Backups) == 0 {
+				t.Fatalf("expected snapshots to remain after purge")
+			}
+			if len(sc.policy.keepTag) > 0 {
+				if !hasSnapshot(repo, ids[1]) {
+					t.Fatalf("expected adhoc snapshot to be kept: %s", ids[1])
+				}
+			}
+			if sc.policy.keepLast > 0 {
+				if !hasSnapshot(repo, ids[2]) && len(sc.policy.keepTag) == 0 {
+					t.Fatalf("expected newest default snapshot to be kept: %s", ids[2])
+				}
+			}
+		})
 	}
 }
 

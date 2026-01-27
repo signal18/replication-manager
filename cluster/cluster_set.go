@@ -547,6 +547,21 @@ func (cluster *Cluster) SetBackupResticPurgeOldestOnDiskTreshold(threshold int) 
 	cluster.Conf.BackupResticPurgeOldestOnDiskThreshold = threshold
 }
 
+func (cluster *Cluster) SetBackupResticTags(value string) error {
+	cluster.Conf.BackupResticTags = strings.TrimSpace(value)
+	return nil
+}
+
+func (cluster *Cluster) SetBackupResticPurgeGroupBy(value string) error {
+	cluster.Conf.BackupResticPurgeGroupBy = strings.TrimSpace(value)
+	return nil
+}
+
+func (cluster *Cluster) SetBackupResticPurgeKeepTag(value string) error {
+	cluster.Conf.BackupResticPurgeKeepTag = strings.TrimSpace(value)
+	return nil
+}
+
 func (cluster *Cluster) SetMasterReadOnly() {
 	if cluster.GetMaster() != nil {
 		logs, err := cluster.GetMaster().SetReadOnly()
@@ -1996,8 +2011,22 @@ func (cluster *Cluster) SetInBinlogBackupState(value bool) {
 	cluster.InBinlogBackup = value
 }
 
+func (cluster *Cluster) SetInResticLogicalBackupState(value bool) {
+	cluster.InResticLogicalBackup = value
+	cluster.InResticBackup = cluster.InResticLogicalBackup || cluster.InResticPhysicalBackup
+}
+
+func (cluster *Cluster) SetInResticPhysicalBackupState(value bool) {
+	cluster.InResticPhysicalBackup = value
+	cluster.InResticBackup = cluster.InResticLogicalBackup || cluster.InResticPhysicalBackup
+}
+
 func (cluster *Cluster) SetInResticBackupState(value bool) {
 	cluster.InResticBackup = value
+	if !value {
+		cluster.InResticLogicalBackup = false
+		cluster.InResticPhysicalBackup = false
+	}
 }
 
 func (cluster *Cluster) SetGraphiteWhitelistTemplate(value string) {
