@@ -149,7 +149,8 @@ func (server *ServerMonitor) jobsCreateTable() error {
 	}
 	defer Conn.Close()
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
+	master := cluster.GetMaster()
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
 	}
@@ -271,7 +272,8 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 		return 0, errors.New("In failover")
 	}
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
+	master := cluster.GetMaster()
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return 0, errors.New("In super read-only")
 	}
@@ -1155,6 +1157,9 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 
 // ErrorLogWatcher monitor the tail of the log and populate ring buffer
 func (server *ServerMonitor) ErrorLogWatcher() {
+	if server.ErrorLogTailer == nil {
+		return
+	}
 	cluster := server.ClusterGroup
 	for line := range server.ErrorLogTailer.Lines {
 		var log s18log.HttpMessage
@@ -1224,6 +1229,9 @@ func (server *ServerMonitor) SqlErrorLogWatcher() {
 }
 
 func (server *ServerMonitor) SlowLogWatcher() {
+	if server.SlowLogTailer == nil {
+		return
+	}
 	cluster := server.ClusterGroup
 	log := s18log.NewSlowMessage()
 	preline := ""
@@ -1305,7 +1313,7 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 	}
 
 	myargs := cluster.GetMyLoaderCompatibleOptions()
-	if server.URL == cluster.GetMaster().URL {
+	if server.URL == master.URL {
 		myargs = append(myargs, "--enable-binlog")
 	}
 
@@ -1373,7 +1381,11 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 		resetmaster = "RESET BINARY LOGS AND GTIDS;"
 	}
 
-	if server.URL == cluster.GetMaster().URL {
+	master := cluster.GetMaster()
+	if master == nil {
+		return fmt.Errorf("No master found. Cancel backup reseeding %s", server.URL)
+	}
+	if server.URL == master.URL {
 		sql_log_bin = 1
 		resetmaster = ""
 	}
@@ -1466,7 +1478,12 @@ func (server *ServerMonitor) JobReseedBackupScript() {
 	cluster := server.ClusterGroup
 	defer server.SetInReseedBackup("")
 
-	cmd := exec.Command(cluster.Conf.BackupLoadScript, misc.Unbracket(server.Host), misc.Unbracket(cluster.master.Host), server.Port, server.GetCluster().GetMaster().Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name)
+	master := cluster.GetMaster()
+	if master == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "No master found. Cancel backup reseeding %s", server.URL)
+		return
+	}
+	cmd := exec.Command(cluster.Conf.BackupLoadScript, misc.Unbracket(server.Host), misc.Unbracket(master.Host), server.Port, master.Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command backup load script: %s", strings.Replace(cmd.String(), "="+cluster.GetDbPass(), "=XXXX", 1))
 
@@ -1637,7 +1654,8 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 	var canCancel bool = true
 	cluster := server.ClusterGroup
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
+	master := cluster.GetMaster()
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
 	}
@@ -1765,7 +1783,8 @@ func (server *ServerMonitor) JobsCheckStates() error {
 	}
 	defer conn.Close()
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
+	master := cluster.GetMaster()
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
 	}
@@ -1786,7 +1805,8 @@ func (server *ServerMonitor) JobsCheckFinished(conn *sqlx.Conn) error {
 	var err error
 	cluster := server.ClusterGroup
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
+	master := cluster.GetMaster()
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
 	}
@@ -1870,21 +1890,6 @@ func (server *ServerMonitor) GetMyBackupDirectory() string {
 
 }
 
-func (server *ServerMonitor) GetMasterBackupDirectory() string {
-	cluster := server.ClusterGroup
-	s3dir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + cluster.Name + "/" + cluster.master.Host + "_" + cluster.master.Port
-
-	if _, err := os.Stat(s3dir); os.IsNotExist(err) {
-		err := os.MkdirAll(s3dir, os.ModePerm)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Create backup path failed: %s", s3dir, err)
-		}
-	}
-
-	return s3dir + "/"
-
-}
-
 // JobBackupScript execute a backup script
 // The script must be able to handle the following parameters:
 // 1. DB Server Host
@@ -1901,7 +1906,11 @@ func (server *ServerMonitor) JobBackupScript(destination string) error {
 
 	defer cluster.SetInLogicalBackupState(false)
 
-	scriptCmd := exec.Command(cluster.Conf.BackupSaveScript, server.Host, server.GetCluster().GetMaster().Host, server.Port, server.GetCluster().GetMaster().Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name, destination)
+	master := cluster.GetMaster()
+	if master == nil {
+		return fmt.Errorf("No master found. Cancel backup script on %s", server.URL)
+	}
+	scriptCmd := exec.Command(cluster.Conf.BackupSaveScript, server.Host, master.Host, server.Port, master.Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name, destination)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 	stdoutIn, _ := scriptCmd.StdoutPipe()
 	stderrIn, _ := scriptCmd.StderrPipe()
@@ -3344,7 +3353,7 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 		return errors.New("No master found")
 	}
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return errors.New("Slave is in super read-only")
 	}
@@ -3405,7 +3414,7 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 		return errors.New("No master found")
 	}
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return errors.New("Slave is in super read-only")
 	}
