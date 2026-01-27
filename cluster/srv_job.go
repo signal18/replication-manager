@@ -1354,10 +1354,7 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 
 	// Use configurable parallel blocks for better performance
 	// For restore operations, use higher default (16) for speed, matching original behavior
-	parallelBlocks := cluster.Conf.CompressBackupsParallelBlocks
-	if parallelBlocks <= 0 {
-		parallelBlocks = 16 // Fallback to original default for restore performance
-	}
+	parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
 	fz, err := gzip.NewReaderN(gzfile, cluster.Conf.SSTSendBuffer, parallelBlocks)
 	if err != nil {
 		return fmt.Errorf("[%s] Failed to unzip backup file in backup server for reseed:  %s ", server.URL, err)
@@ -1447,10 +1444,7 @@ func (server *ServerMonitor) ReadMysqldumpUser(backupfile string) (io.Reader, er
 
 	// Use configurable parallel blocks for better performance
 	// For restore operations, use higher default (16) for speed, matching original behavior
-	parallelBlocks := cluster.Conf.CompressBackupsParallelBlocks
-	if parallelBlocks <= 0 {
-		parallelBlocks = 16 // Fallback to original default for restore performance
-	}
+	parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
 	fz, err := gzip.NewReaderN(gzfile, cluster.Conf.SSTSendBuffer, parallelBlocks)
 	if err != nil {
 		return nil, fmt.Errorf("[%s] Failed to unzip backup file in backup server for reseed:  %s ", server.URL, err)
@@ -1994,10 +1988,7 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 	defer f.Close()
 
 	// Use configurable compression level for better performance/size tradeoff
-	compressionLevel := cluster.Conf.CompressBackupsCompressionLevel
-	if compressionLevel < 1 || compressionLevel > 9 {
-		compressionLevel = 6 // Default to standard compression
-	}
+	compressionLevel := cluster.getSanitizedCompressionLevel(config.ConstLogModTask)
 	gw, err := gzip.NewWriterLevel(f, compressionLevel)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error creating gzip writer: %s", err.Error())
@@ -2134,10 +2125,7 @@ func (server *ServerMonitor) JobBackupMysqldumpUser() error {
 	}
 
 	// Use configurable compression level for better performance/size tradeoff
-	compressionLevel := cluster.Conf.CompressBackupsCompressionLevel
-	if compressionLevel < 1 || compressionLevel > 9 {
-		compressionLevel = 6 // Default to standard compression
-	}
+	compressionLevel := cluster.getSanitizedCompressionLevel(config.ConstLogModTask)
 	gw, err := gzip.NewWriterLevel(f, compressionLevel)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error creating gzip writer: %s", err.Error())

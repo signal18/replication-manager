@@ -2798,6 +2798,24 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-growth-percentage":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.BackupGrowthPercentage = val
+	case "compress-backups-parallel-blocks":
+		val, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for compress-backups-parallel-blocks: %q", value)
+		}
+		if val < 1 || val > 32 {
+			return fmt.Errorf("compress-backups-parallel-blocks must be between 1 and 32, got %d", val)
+		}
+		mycluster.Conf.CompressBackupsParallelBlocks = val
+	case "compress-backups-compression-level":
+		val, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for compress-backups-compression-level: %q", value)
+		}
+		if val < 1 || val > 9 {
+			return fmt.Errorf("compress-backups-compression-level must be between 1 and 9, got %d", val)
+		}
+		mycluster.Conf.CompressBackupsCompressionLevel = val
 	case "backup-restic-purge-oldest-on-disk-space":
 		mycluster.Conf.BackupResticPurgeOldestOnDiskSpace = applyIsActive(mycluster.Conf.BackupResticPurgeOldestOnDiskSpace, isactive)
 	case "backup-restic-purge-oldest-on-disk-threshold":
