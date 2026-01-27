@@ -697,6 +697,8 @@ type Config struct {
 	BackupLogicalPostScript                   string                 `mapstructure:"backup-logical-post-script" toml:"backup-logical-post-script" json:"backupLogicalPostScript"`
 	BackupPhysicalPostScript                  string                 `mapstructure:"backup-physical-post-script" toml:"backup-physical-post-script" json:"backupPhysicalPostScript"`
 	CompressBackups                           bool                   `mapstructure:"compress-backups" toml:"compress-backups" json:"compressBackups"`
+	CompressBackupsCompressionLevel           int                    `mapstructure:"compress-backups-compression-level" toml:"compress-backups-compression-level" json:"compressBackupsCompressionLevel"`
+	CompressBackupsParallelBlocks             int                    `mapstructure:"compress-backups-parallel-blocks" toml:"compress-backups-parallel-blocks" json:"compressBackupsParallelBlocks"`
 	BackupSplitMysqlUser                      bool                   `mapstructure:"backup-split-mysql-user" toml:"backup-split-mysql-user" json:"backupSplitMysqlUser"`
 	BackupRestoreMysqlUser                    bool                   `mapstructure:"backup-restore-mysql-user" toml:"backup-restore-mysql-user" json:"backupRestoreMysqlUser"`
 	BackupCheckFreeSpace                      bool                   `mapstructure:"backup-check-free-space" toml:"backup-check-free-space" json:"backupCheckFreeSpace"`

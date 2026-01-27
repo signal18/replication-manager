@@ -487,6 +487,62 @@ Leave it empty to use restic's default hostname (no alias).`
         />
       )
     },
+    ...(selectedCluster?.config?.compressBackups
+      ? [
+          {
+            key: (
+              <Stack>
+                <Text>Compression Level (1=fastest, 9=best)</Text>
+              </Stack>
+            ),
+            value: (
+              <NumberInput
+                min={1}
+                max={9}
+                value={selectedCluster?.config?.compressBackupsCompressionLevel}
+                showEditButton={true}
+                showConfirmModal={true}
+                confirmTitle={`Confirm change compression level to: `}
+                onConfirm={(value) =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'compress-backups-compression-level',
+                      value: value
+                    })
+                  )
+                }
+              />
+            )
+          },
+          {
+            key: (
+              <Stack>
+                <Text>Parallel Blocks (higher=faster restore)</Text>
+              </Stack>
+            ),
+            value: (
+              <NumberInput
+                min={1}
+                max={32}
+                value={selectedCluster?.config?.compressBackupsParallelBlocks}
+                showEditButton={true}
+                showConfirmModal={true}
+                confirmTitle={`Confirm change parallel blocks to: `}
+                onConfirm={(value) =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'compress-backups-parallel-blocks',
+                      value: value
+                    })
+                  )
+                }
+              />
+            )
+          }
+        ]
+      : []),
     {
       key: 'Backup Buffer Size',
       value: (
