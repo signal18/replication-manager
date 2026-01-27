@@ -413,6 +413,7 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive physical backup %s (%s line) request for server: %s", cluster.Conf.BackupPhysicalType, backupLine, server.URL)
 
 	now := time.Now()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Physical backup %s started at %s for: %s", cluster.Conf.BackupPhysicalType, now.Format(time.RFC3339), server.URL)
 	var port string
 	var err error
 	var backupext string = ".xbtream"
@@ -1277,6 +1278,8 @@ func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 
 func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser bool) error {
 	cluster := server.ClusterGroup
+	start := time.Now()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (myloader) started at %s for: %s", start.Format(time.RFC3339), server.URL)
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalLoadThreads)
 
 	if restoreUser {
@@ -1340,7 +1343,8 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 	if err := dumpCmd.Wait(); err != nil {
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical restaure %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
+	elapsed := time.Since(start).Round(time.Second)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical restore (myloader) in %s (started at %s) for: %s", elapsed, start.Format(time.RFC3339), server.URL)
 	server.Refresh()
 
 	return nil
@@ -1351,6 +1355,8 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	var err error
 	defer server.SetInReseedBackup("")
 
+	start := time.Now()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (mysqldump) started at %s for: %s", start.Format(time.RFC3339), server.URL)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Sending logical backup to reseed %s", server.URL)
 
 	server.StopSlave()
@@ -1430,6 +1436,8 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 		return fmt.Errorf("Error waiting reseed %s at %s", server.URL, err)
 	}
 
+	elapsed := time.Since(start).Round(time.Second)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical restore (mysqldump) in %s (started at %s) for: %s", elapsed, start.Format(time.RFC3339), server.URL)
 	return nil
 }
 
@@ -1477,6 +1485,8 @@ func (server *ServerMonitor) ReadMysqldumpUser(backupfile string) (io.Reader, er
 func (server *ServerMonitor) JobReseedBackupScript() {
 	cluster := server.ClusterGroup
 	defer server.SetInReseedBackup("")
+	start := time.Now()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (script) started at %s for: %s", start.Format(time.RFC3339), server.URL)
 
 	master := cluster.GetMaster()
 	if master == nil {
@@ -1505,7 +1515,8 @@ func (server *ServerMonitor) JobReseedBackupScript() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "My reload script: %s", err)
 		return
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical restaure from load script on %s ", server.URL)
+	elapsed := time.Since(start).Round(time.Second)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical restore (script) in %s (started at %s) for: %s", elapsed, start.Format(time.RFC3339), server.URL)
 
 }
 
@@ -2399,6 +2410,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(opts BackupRunOptions) 
 	}
 
 	start := time.Now()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical backup %s started at %s for: %s", cluster.Conf.BackupLogicalType, start.Format(time.RFC3339), server.URL)
 	var prevId int64
 	if !isAdhoc {
 		prev := cluster.BackupMetaMap.GetPreviousBackup(cluster.Conf.BackupLogicalType, server.URL)
@@ -2612,6 +2624,12 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(opts BackupRunOptions) 
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "[ERROR] Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
 	}
+	elapsed := time.Since(start).Round(time.Second)
+	backupLogLevel := config.LvlInfo
+	if err != nil {
+		backupLogLevel = config.LvlWarn
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, backupLogLevel, "Logical backup %s completed in %s (started at %s) for: %s", cluster.Conf.BackupLogicalType, elapsed, start.Format(time.RFC3339), server.URL)
 
 	// Create restic snapshot asynchronously and update metadata when complete
 	backtype := "logical"
@@ -3321,11 +3339,16 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncomp
 	if count > 0 {
 		server.JobsUpdateState(task, "processing", 1, 0)
 		go func() {
+			sendStart := time.Now()
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST send for %s started at %s (file: %s)", task, sendStart.Format(time.RFC3339), filename)
 			err := cluster.SSTRunSender(filename, server, uncompress)
+			elapsed := time.Since(sendStart).Round(time.Second)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, err.Error())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST send for %s failed after %s: %s", task, elapsed, err.Error())
 				server.JobsUpdateState(task, err.Error(), 5, 0)
+				return
 			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST send for %s completed in %s (started at %s)", task, elapsed, sendStart.Format(time.RFC3339))
 		}()
 		return nil
 	} else {
@@ -3749,6 +3772,14 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		backtype := "physical"
 		server.WriteBackupMetadata(backupmgr.BackupMethodPhysical)
+		if server.LastBackupMeta.Physical != nil && !server.LastBackupMeta.Physical.StartTime.IsZero() {
+			backupTool := server.LastBackupMeta.Physical.BackupTool
+			if backupTool == "" {
+				backupTool = cluster.Conf.BackupPhysicalType
+			}
+			elapsed := time.Since(server.LastBackupMeta.Physical.StartTime).Round(time.Second)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Physical backup %s completed in %s (started at %s) for: %s", backupTool, elapsed, server.LastBackupMeta.Physical.StartTime.Format(time.RFC3339), server.URL)
+		}
 
 		// CRITICAL: Transition from traditional backup lock to Restic lock atomically
 		// Set Restic flag BEFORE clearing physical backup flag
