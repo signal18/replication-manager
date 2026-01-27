@@ -1849,27 +1849,6 @@ func (server *ServerMonitor) AfterJobProcess(conn *sqlx.Conn, task DBTask) error
 	return nil
 }
 
-func (server *ServerMonitor) JobHandler(JobId int64) error {
-	exitloop := 0
-	ticker := time.NewTicker(time.Second * 3600)
-
-	for exitloop < 8 {
-		select {
-		case <-ticker.C:
-
-			exitloop++
-
-			if true == true {
-				exitloop = 8
-			}
-		default:
-		}
-
-	}
-
-	return nil
-}
-
 func (server *ServerMonitor) GetMyBackupDirectory() string {
 	cluster := server.ClusterGroup
 	s3dir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + cluster.Name + "/" + server.Host + "_" + server.Port
@@ -2782,8 +2761,13 @@ func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, u
 		}
 	}
 
+	resticHost := strings.TrimSpace(cluster.Conf.BackupResticHost)
+	if strings.EqualFold(resticHost, "default") || strings.EqualFold(resticHost, "none") {
+		resticHost = ""
+	}
+
 	// Add backup task asynchronously with callback to update metadata
-	resultCh := cluster.ResticManager.AddBackupTaskWithCallback(backupPath, tags)
+	resultCh := cluster.ResticManager.AddBackupTaskWithCallback(backupPath, tags, resticHost)
 
 	// Launch goroutine to wait for result and update metadata
 	go func() {

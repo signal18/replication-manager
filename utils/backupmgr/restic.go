@@ -1208,19 +1208,20 @@ func (repo *ResticManager) appendPurgeTask(opt ResticPurgeOption) {
 	repo.appendTask(&task)
 }
 
-func (repo *ResticManager) AddBackupTask(dirpath string, tags []string) {
+func (repo *ResticManager) AddBackupTask(dirpath string, tags []string, host string) {
 	repo.appendTask(&ResticTask{
 		ID:   repo.GenerateTaskID(),
 		Type: BackupTask,
 		BackupOpt: &ResticBackupOption{
 			DirPath: dirpath,
 			Tags:    tags,
+			Host:    strings.TrimSpace(host),
 		},
 	})
 }
 
 // AddBackupTaskWithCallback adds a backup task and returns a channel to receive the result
-func (repo *ResticManager) AddBackupTaskWithCallback(dirpath string, tags []string) <-chan ResticResult {
+func (repo *ResticManager) AddBackupTaskWithCallback(dirpath string, tags []string, host string) <-chan ResticResult {
 	resultCh := make(chan ResticResult, 1)
 	repo.appendTask(&ResticTask{
 		ID:   repo.GenerateTaskID(),
@@ -1228,6 +1229,7 @@ func (repo *ResticManager) AddBackupTaskWithCallback(dirpath string, tags []stri
 		BackupOpt: &ResticBackupOption{
 			DirPath: dirpath,
 			Tags:    tags,
+			Host:    strings.TrimSpace(host),
 		},
 		resultCh: resultCh,
 	})

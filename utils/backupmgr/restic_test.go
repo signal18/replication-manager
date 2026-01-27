@@ -318,7 +318,7 @@ func TestAppendAndQueueHelpers(t *testing.T) {
 		t.Fatalf("expected purge task")
 	}
 
-	repo.AddBackupTask("/data", []string{"tag1"})
+	repo.AddBackupTask("/data", []string{"tag1"}, "")
 	if repo.TaskQueue[len(repo.TaskQueue)-1].Type != BackupTask {
 		t.Fatalf("expected backup task")
 	}

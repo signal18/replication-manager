@@ -790,6 +790,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupPhysicalType, "backup-physical-type", "xtrabackup", "type of physical backup: xtrabackup|mariabackup")
 	flags.BoolVar(&conf.BackupRestic, "backup-restic", false, "Use restic to archive and restore backups")
 	flags.StringVar(&conf.BackupResticTags, "backup-restic-tags", "tenant,cluster,engine,version,backup-type,backup-tool,line", "Comma-separated restic tags or templates (e.g. cluster,backup-type,line,env:prod)")
+	flags.StringVar(&conf.BackupResticHost, "backup-restic-host", "", "Restic backup --host override. Empty uses restic default hostname (no alias).")
 	flags.StringVar(&conf.BackupResticPurgeGroupBy, "backup-restic-purge-group-by", "host,paths", "Restic forget --group-by value (e.g. host,paths). Use 'default' for restic defaults, 'none' for no grouping.")
 	flags.StringVar(&conf.BackupResticPurgeKeepTag, "backup-restic-purge-keep-tag", "line:adhoc", "Comma-separated restic tags to keep during purge (e.g. line:adhoc)")
 	flags.StringVar(&conf.BackupResticBinaryPath, "backup-restic-binary-path", "/usr/bin/restic", "Path to restic binary")

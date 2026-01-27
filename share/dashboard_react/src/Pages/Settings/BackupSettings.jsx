@@ -81,6 +81,18 @@ The script will be executed with the following parameters:
 4. Backup Path
 `
 
+  const ResticTagsHelp = `backup-restic-tags controls the tag templates passed to restic backups.  
+Templates can be plain keys or use {placeholders}:
+- {tenant}, {cluster}, {engine}, {version}, {backup-type}, {backup-tool}, {line}
+Shorthand is supported: "cluster" becomes "cluster:{cluster}".  
+You can also add literal tags like "env:prod" or "team:{tenant}".  
+The line tag emits "line:default" or "line:adhoc" automatically.  
+Example: tenant,cluster,backup-type,line,env:prod`
+
+  const ResticHostHelp = `backup-restic-host overrides the restic --host value used for snapshots.  
+Set a value to use a consistent alias across backups.  
+Leave it empty to use restic's default hostname (no alias).`
+
   const openCommonModal = () => {
     setIsCommonModalOpen(true)
   }
@@ -797,6 +809,80 @@ The script will be executed with the following parameters:
                 )
               }
             />
+          )
+        },
+        {
+          key: 'Backup restic host override',
+          value: (
+            <HStack width={'100%'}>
+              <TextForm
+                value={selectedCluster?.config?.backupResticHost}
+                confirmTitle={`Confirm backup-restic-host to `}
+                className={styles.textbox}
+                placeholder="(empty = restic default host)"
+                onSave={(value) =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'backup-restic-host',
+                      value: value
+                    })
+                  )
+                }
+              />
+              <RMIconButton
+                icon={HiQuestionMarkCircle}
+                onClick={() => {
+                  setAction({
+                    title: 'Restic Host Override',
+                    type: '',
+                    body: (
+                      <Box>
+                        <Markdown remarkPlugins={[remarkGfm]}>{ResticHostHelp}</Markdown>
+                      </Box>
+                    )
+                  })
+                  openCommonModal()
+                }}
+              />
+            </HStack>
+          )
+        },
+        {
+          key: 'Backup restic tags',
+          value: (
+            <HStack width={'100%'}>
+              <TextForm
+                value={selectedCluster?.config?.backupResticTags}
+                confirmTitle={`Confirm backup-restic-tags to `}
+                className={styles.textbox}
+                placeholder="tenant,cluster,engine,version,backup-type,backup-tool,line"
+                onSave={(value) =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'backup-restic-tags',
+                      value: value
+                    })
+                  )
+                }
+              />
+              <RMIconButton
+                icon={HiQuestionMarkCircle}
+                onClick={() => {
+                  setAction({
+                    title: 'Restic Tag Templates',
+                    type: '',
+                    body: (
+                      <Box>
+                        <Markdown remarkPlugins={[remarkGfm]}>{ResticTagsHelp}</Markdown>
+                      </Box>
+                    )
+                  })
+                  openCommonModal()
+                }}
+              />
+            </HStack>
           )
         },
         {

@@ -2048,6 +2048,11 @@ export const clusterSlice = createSlice({
     }
   },
   extraReducers: (builder) => {
+    builder.addCase(preserveVariable.fulfilled, (state, action) => {
+      // Refresh the variables after preserve/accept/clear action
+      // This will be handled by the component dispatching getDatabaseService again
+    })
+
     builder.addMatcher(
       (action) => action.type.endsWith('/pending') && shouldTrackThunk(action),
       (state, action) => {
@@ -2363,10 +2368,6 @@ export const clusterSlice = createSlice({
         }
       }
     )
-    builder.addCase(preserveVariable.fulfilled, (state, action) => {
-      // Refresh the variables after preserve/accept/clear action
-      // This will be handled by the component dispatching getDatabaseService again
-    })
     builder.addMatcher(
       (action) =>
         (action.type.endsWith('/fulfilled') || action.type.endsWith('/rejected')) && shouldTrackThunk(action),

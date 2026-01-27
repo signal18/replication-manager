@@ -2808,6 +2808,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return err
 		}
+	case "backup-restic-host":
+		err = mycluster.SetBackupResticHost(value)
+		if err != nil {
+			return err
+		}
 	case "backup-restic-purge-group-by":
 		err = mycluster.SetBackupResticPurgeGroupBy(value)
 		if err != nil {
