@@ -1736,17 +1736,17 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 		// If shardproxy is enabled, check for duplicates in child clusters
 		if cluster.Conf.MdbsProxyOn {
 			for _, cl := range cluster.clusterList {
-				if cl.Conf.MdbsProxyOn && cl.Conf.ClusterHead == cluster.Name {
-					m := cl.GetMaster()
-					if m != nil {
-						cltbldef, _ := m.GetTableFromDict(t.TableSchema + "." + t.TableName)
-						if cltbldef.TableName == t.TableName {
-							duplicates = append(duplicates, cl.GetMaster())
-							tableCluster = append(tableCluster, cl.GetName())
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Found duplicate table %s in %s", t.TableSchema+"."+t.TableName, cl.GetMaster().URL)
+					if cl.Conf.MdbsProxyOn && cl.Conf.ClusterHead == cluster.Name {
+						m := cl.GetMaster()
+						if m != nil {
+							cltbldef, _ := m.GetTableFromDict(t.TableSchema + "." + t.TableName)
+							if cltbldef.TableName == t.TableName {
+								duplicates = append(duplicates, m)
+								tableCluster = append(tableCluster, cl.GetName())
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Found duplicate table %s in %s", t.TableSchema+"."+t.TableName, m.URL)
+							}
 						}
 					}
-				}
 			}
 			t.TableClusters = strings.Join(tableCluster, ",")
 			tables[t.TableSchema+"."+t.TableName] = t
@@ -1965,16 +1965,21 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Can't found elected master from server list on lost arbitration")
 		return
 	}
+	master := cluster.GetMaster()
+	if master == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Can't found failed master on lost arbitration")
+		return
+	}
 	if cluster.Conf.ArbitrationFailedMasterScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Calling abitration failed for master script")
-		out, err := exec.Command(cluster.Conf.ArbitrationFailedMasterScript, cluster.GetMaster().Host, cluster.GetMaster().Port).CombinedOutput()
+		out, err := exec.Command(cluster.Conf.ArbitrationFailedMasterScript, master.Host, master.Port).CombinedOutput()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitration failed master script complete: %s", string(out))
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitration failed attaching failed master %s to electected master :%s", cluster.GetMaster().URL, realmaster.URL)
-		logs, err := cluster.GetMaster().SetReplicationGTIDCurrentPosFromServer(realmaster)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitration failed attaching failed master %s to electected master :%s", master.URL, realmaster.URL)
+		logs, err := master.SetReplicationGTIDCurrentPosFromServer(realmaster)
 		cluster.LogSQL(logs, err, realmaster.URL, "Arbitration", config.LvlErr, "Failed in GTID rejoin lost master to winner master %s", err)
 
 	}

@@ -162,7 +162,14 @@ func (cluster *Cluster) isMasterFailed() bool {
 	/*if cluster.master == nil {
 		return false
 	}*/
-	return cluster.GetMaster().State == stateFailed
+	master := cluster.GetMaster()
+	if master == nil {
+		return false
+	}
+	if master.State == stateFailed {
+		return true
+	}
+	return false
 }
 
 // isMaxMasterFailedCountReach test tentative to connect
@@ -804,18 +811,19 @@ func (cluster *Cluster) IsSameWsrepUUID() bool {
 }
 
 func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
-	if cluster.GetMaster() == nil /*|| cluster.GetMaster().State == stateFailed */ {
+	master := cluster.GetMaster()
+	if master == nil /*|| master.State == stateFailed */ {
 		// disable check if master is crashed as the slave can get more GTID events and so slave GTID is not ubset of masetr GTID
 		return true
 	}
-	if !(cluster.GetMaster().HasMySQLGTID()) {
+	if !master.HasMySQLGTID() {
 		return true
 	}
 	if !cluster.Conf.RplCheckErrantTrx {
 		return true
 	}
-	master_uuid := cluster.master.Variables.Get("SERVER_UUID")
-	mastergtidvectors := strings.Split(cluster.master.Variables.Get("GTID_EXECUTED"), ",")
+	master_uuid := master.Variables.Get("SERVER_UUID")
+	mastergtidvectors := strings.Split(master.Variables.Get("GTID_EXECUTED"), ",")
 	mastergtidvectorstrim := make([]string, 0)
 	for _, vector := range mastergtidvectors {
 		if !strings.Contains(vector, master_uuid) {

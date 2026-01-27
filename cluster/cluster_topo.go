@@ -537,7 +537,8 @@ func (cluster *Cluster) AllServersFailed() bool {
 // TopologyClusterDown track state of unvailable cluster
 func (cluster *Cluster) TopologyClusterDown() bool {
 	// search for all cluster down
-	if cluster.GetMaster() == nil || cluster.GetMaster().State == stateFailed {
+	master := cluster.GetMaster()
+	if master == nil || master.State == stateFailed {
 		allslavefailed := true
 		for _, s := range cluster.slaves {
 			if s.State != stateFailed && s.State != stateErrorAuth && !s.IsIgnored() {
@@ -600,6 +601,9 @@ func (cluster *Cluster) LostMajority() bool {
 func (cluster *Cluster) FailedMasterDiscovery() {
 
 	// Slave master_host variable must point to failed master
+	if len(cluster.slaves) == 0 {
+		return
+	}
 
 	smh := cluster.slaves[0].GetReplicationMasterHost()
 	for k, s := range cluster.Servers {

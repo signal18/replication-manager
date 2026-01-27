@@ -16,7 +16,11 @@ import (
 func (cluster *Cluster) RollingReprov() error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling reprovisionning")
-	masterID := cluster.GetMaster().Id
+	master := cluster.GetMaster()
+	if master == nil {
+		return errors.New("No master found for rolling reprovisionning")
+	}
+	masterID := master.Id
 	for _, slave := range cluster.slaves {
 		if slave == nil || slave.IsIgnored() {
 			continue
@@ -47,12 +51,19 @@ func (cluster *Cluster) RollingReprov() error {
 				return err
 			}
 
-			slave.WaitSyncToMaster(cluster.master)
+			currentMaster := cluster.GetMaster()
+			if currentMaster == nil {
+				return errors.New("No master found for sync during rolling reprovisionning")
+			}
+			slave.WaitSyncToMaster(currentMaster)
 			slave.SwitchMaintenance()
 		}
 	}
 	cluster.SwitchoverWaitTest()
-	master := cluster.GetServerFromName(masterID)
+	master = cluster.GetServerFromName(masterID)
+	if cluster.master == nil {
+		return errors.New("No master found after switchover during rolling reprovisionning")
+	}
 	if cluster.master.DSN == master.DSN {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart master is the same after Switchover")
 		return nil
@@ -93,7 +104,11 @@ func (cluster *Cluster) RollingRestart() error {
 	defer cluster.SetInRollingRestart(false)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling restart")
-	masterID := cluster.GetMaster().Id
+	master := cluster.GetMaster()
+	if master == nil {
+		return errors.New("No master found for rolling restart")
+	}
+	masterID := master.Id
 	saveFailoverMode := cluster.Conf.FailSync
 	cluster.SetFailSync(false)
 	defer cluster.SetFailSync(saveFailoverMode)
@@ -137,11 +152,18 @@ func (cluster *Cluster) RollingRestart() error {
 				return err
 			}
 		}
-		slave.WaitSyncToMaster(cluster.master)
+		currentMaster := cluster.GetMaster()
+		if currentMaster == nil {
+			return errors.New("No master found for sync during rolling restart")
+		}
+		slave.WaitSyncToMaster(currentMaster)
 		slave.SwitchMaintenance()
 	}
 	cluster.SwitchoverWaitTest()
-	master := cluster.GetServerFromName(masterID)
+	master = cluster.GetServerFromName(masterID)
+	if cluster.master == nil {
+		return errors.New("No master found after switchover during rolling restart")
+	}
 	if cluster.master.DSN == master.DSN {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling original master %s is the same %s after switchover", master.URL, cluster.master.URL)
 		return nil
