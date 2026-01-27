@@ -174,10 +174,7 @@ func (cluster *Cluster) SSTRunReceiverToGZip(server *ServerMonitor, filename str
 	}
 
 	// Use configurable compression level for better performance/size tradeoff
-	compressionLevel := cluster.Conf.CompressBackupsCompressionLevel
-	if compressionLevel < 1 || compressionLevel > 9 {
-		compressionLevel = 6 // Default to standard compression
-	}
+	compressionLevel := cluster.getSanitizedCompressionLevel(config.ConstLogModSST)
 	gw, err := gzip.NewWriterLevel(sst.file, compressionLevel)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Error creating gzip writer: %s", err)
@@ -471,10 +468,7 @@ func (cluster *Cluster) SSTRunSendGzip(client net.Conn, backupfile string, sv *S
 
 	// Use configurable parallel blocks for better performance
 	// For SST/reseed operations, use higher default (16) for speed, matching original behavior
-	parallelBlocks := cluster.Conf.CompressBackupsParallelBlocks
-	if parallelBlocks <= 0 {
-		parallelBlocks = 16 // Fallback to original default for SST/reseed performance
-	}
+	parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModSST)
 	fz, err := gzip.NewReaderN(file, cluster.Conf.SSTSendBuffer, parallelBlocks)
 	if err != nil {
 		return fmt.Errorf("SST to server %s failed in init gzip reader, err: %s", sv.URL, err)

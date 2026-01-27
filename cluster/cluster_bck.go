@@ -679,3 +679,31 @@ func (cluster *Cluster) CheckPhysicalBackupToolVersion(server *ServerMonitor) er
 	}
 	return nil
 }
+
+// getSanitizedCompressionLevel validates and returns a safe compression level (1-9).
+// If the configured value is out of range, it logs a warning and returns the default (6).
+func (cluster *Cluster) getSanitizedCompressionLevel(logModule int) int {
+	level := cluster.Conf.CompressBackupsCompressionLevel
+	if level < 1 || level > 9 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, logModule, config.LvlWarn,
+			"compress-backups-compression-level value %d is out of range (1-9), using default 6", level)
+		return 6 // Default to standard compression
+	}
+	return level
+}
+
+// getSanitizedParallelBlocks validates and returns safe parallel blocks (1-32).
+// If the configured value is <= 0, it returns the default (16) for performance.
+// If the configured value is > 32, it logs a warning and caps to 32.
+func (cluster *Cluster) getSanitizedParallelBlocks(logModule int) int {
+	blocks := cluster.Conf.CompressBackupsParallelBlocks
+	if blocks <= 0 {
+		return 16 // Default for SST/restore performance
+	}
+	if blocks > 32 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, logModule, config.LvlWarn,
+			"compress-backups-parallel-blocks value %d exceeds maximum 32, capping to 32", blocks)
+		return 32 // Cap at maximum safe value
+	}
+	return blocks
+}
