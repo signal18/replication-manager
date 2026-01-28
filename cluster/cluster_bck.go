@@ -189,7 +189,19 @@ func (cluster *Cluster) ResticPurgeRepo(now bool) error {
 			groupBy = "none"
 		}
 
-		keepTags := parseResticTagTemplates(cluster.Conf.BackupResticPurgeKeepTag)
+		keepTemplates := parseResticKeepTagTemplates(cluster.Conf.BackupResticPurgeKeepTag)
+		keepValues := map[string]string{
+			"tenant":  cluster.Conf.Cloud18GitUser,
+			"cluster": cluster.Name,
+		}
+		keepTags := make([]string, 0, len(keepTemplates))
+		for _, template := range keepTemplates {
+			rendered, ok := renderResticKeepTagTemplate(template, keepValues, cluster)
+			if !ok || strings.TrimSpace(rendered) == "" {
+				continue
+			}
+			keepTags = append(keepTags, rendered)
+		}
 		cluster.ResticManager.AddPurgeTask(backupmgr.ResticPurgeOption{
 			KeepLast:          cluster.Conf.BackupKeepLast,
 			KeepHourly:        cluster.Conf.BackupKeepHourly,
@@ -317,6 +329,11 @@ var resticTagTemplateKeySet = map[string]struct{}{
 	"line":        {},
 }
 
+var resticKeepTagTemplateKeySet = map[string]struct{}{
+	"tenant":  {},
+	"cluster": {},
+}
+
 var resticTagTemplatePattern = regexp.MustCompile(`\{([^}]+)\}`)
 
 func normalizeResticTagCategory(value string) string {
@@ -331,7 +348,7 @@ func parseResticTagTemplates(value string) []string {
 		return nil
 	}
 
-	parts := strings.Split(value, ",")
+	parts := splitResticTagTemplates(value)
 	templates := make([]string, 0, len(parts))
 	seen := make(map[string]struct{})
 	for _, part := range parts {
@@ -348,10 +365,169 @@ func parseResticTagTemplates(value string) []string {
 	return templates
 }
 
+func parseResticKeepTagTemplates(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+
+	parts := splitResticKeepTagTemplates(value)
+	templates := make([]string, 0, len(parts))
+	seen := make(map[string]struct{})
+	for _, part := range parts {
+		template := strings.TrimSpace(part)
+		if template == "" {
+			continue
+		}
+		if _, ok := seen[template]; ok {
+			continue
+		}
+		seen[template] = struct{}{}
+		templates = append(templates, template)
+	}
+	return templates
+}
+
+func splitResticTagTemplates(value string) []string {
+	var parts []string
+	var current strings.Builder
+	var quote rune
+	escaped := false
+
+	for _, r := range value {
+		if quote != 0 {
+			if quote == '"' && !escaped && r == '\\' {
+				escaped = true
+				current.WriteRune(r)
+				continue
+			}
+			if quote == '"' && escaped {
+				current.WriteRune(r)
+				escaped = false
+				continue
+			}
+			if r == quote {
+				quote = 0
+			}
+			current.WriteRune(r)
+			continue
+		}
+
+		switch r {
+		case '"', '\'':
+			quote = r
+			current.WriteRune(r)
+		case ',':
+			parts = append(parts, current.String())
+			current.Reset()
+		default:
+			current.WriteRune(r)
+		}
+	}
+
+	if current.Len() > 0 || strings.HasSuffix(value, ",") {
+		parts = append(parts, current.String())
+	}
+
+	return parts
+}
+
+func splitResticKeepTagTemplates(value string) []string {
+	var parts []string
+	var current strings.Builder
+	var quote rune
+	escaped := false
+
+	for _, r := range value {
+		if quote != 0 {
+			if quote == '"' && !escaped && r == '\\' {
+				escaped = true
+				current.WriteRune(r)
+				continue
+			}
+			if quote == '"' && escaped {
+				current.WriteRune(r)
+				escaped = false
+				continue
+			}
+			if r == quote {
+				quote = 0
+			}
+			current.WriteRune(r)
+			continue
+		}
+
+		switch r {
+		case '"', '\'':
+			quote = r
+			current.WriteRune(r)
+		case ',', ' ', '\t', '\n', '\r':
+			parts = append(parts, current.String())
+			current.Reset()
+		default:
+			current.WriteRune(r)
+		}
+	}
+
+	if current.Len() > 0 || strings.HasSuffix(value, ",") {
+		parts = append(parts, current.String())
+	}
+
+	return parts
+}
+
+func isQuotedResticTagLiteral(value string) bool {
+	if len(value) < 2 {
+		return false
+	}
+	first := value[0]
+	last := value[len(value)-1]
+	return (first == '"' && last == '"') || (first == '\'' && last == '\'')
+}
+
+func unquoteResticTagLiteral(value string) (string, bool) {
+	if !isQuotedResticTagLiteral(value) {
+		return value, false
+	}
+
+	quote := value[0]
+	raw := value[1 : len(value)-1]
+	if quote == '\'' {
+		return raw, true
+	}
+
+	var b strings.Builder
+	b.Grow(len(raw))
+	escaped := false
+	for _, r := range raw {
+		if escaped {
+			b.WriteRune(r)
+			escaped = false
+			continue
+		}
+		if r == '\\' {
+			escaped = true
+			continue
+		}
+		b.WriteRune(r)
+	}
+	if escaped {
+		b.WriteRune('\\')
+	}
+	return b.String(), true
+}
+
 func renderResticTagTemplate(template string, values map[string]string, cluster *Cluster) (string, bool) {
 	trimmed := strings.TrimSpace(template)
 	if trimmed == "" {
 		return "", false
+	}
+
+	if literal, ok := unquoteResticTagLiteral(trimmed); ok {
+		literal = strings.TrimSpace(literal)
+		if literal == "" {
+			return "", false
+		}
+		return literal, true
 	}
 
 	matches := resticTagTemplatePattern.FindAllStringSubmatch(trimmed, -1)
@@ -386,6 +562,55 @@ func renderResticTagTemplate(template string, values map[string]string, cluster 
 		if _, ok := resticTagTemplateKeySet[key]; !ok {
 			if cluster != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Unknown restic tag template key %q in %q", raw, template)
+			}
+			return "", false
+		}
+		value := strings.TrimSpace(values[key])
+		if value == "" {
+			return "", false
+		}
+		rendered = strings.ReplaceAll(rendered, "{"+raw+"}", value)
+	}
+
+	rendered = strings.TrimSpace(rendered)
+	if rendered == "" {
+		return "", false
+	}
+	return rendered, true
+}
+
+func renderResticKeepTagTemplate(template string, values map[string]string, cluster *Cluster) (string, bool) {
+	trimmed := strings.TrimSpace(template)
+	if trimmed == "" {
+		return "", false
+	}
+
+	if literal, ok := unquoteResticTagLiteral(trimmed); ok {
+		literal = strings.TrimSpace(literal)
+		if literal == "" {
+			return "", false
+		}
+		return literal, true
+	}
+
+	matches := resticTagTemplatePattern.FindAllStringSubmatch(trimmed, -1)
+	if len(matches) == 0 {
+		return trimmed, true
+	}
+
+	rendered := trimmed
+	for _, match := range matches {
+		raw := match[1]
+		key := normalizeResticTagCategory(raw)
+		if key == "" {
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Invalid restic keep-tag template %q", template)
+			}
+			return "", false
+		}
+		if _, ok := resticKeepTagTemplateKeySet[key]; !ok {
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Unsupported restic keep-tag template key %q in %q", raw, template)
 			}
 			return "", false
 		}

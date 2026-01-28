@@ -84,66 +84,6 @@
   color: var(--darkgray-color);
 }
 
-.infoTooltip {
-  padding: rem(8) rem(10);
-  border-radius: rem(8);
-  border: 1px solid var(--gray-color);
-  background-color: var(--secondary-gray-color);
-  color: var(--text-color);
-  font-size: rem(14);
-  line-height: 1.45;
-  max-height: rem(360);
-  overflow: auto;
-
-  p {
-    margin: 0 0 rem(6);
-  }
-
-  p:last-child {
-    margin-bottom: 0;
-  }
-
-  ul,
-  ol {
-    margin: 0 0 rem(6);
-    padding-left: rem(18);
-  }
-
-  li {
-    margin-bottom: rem(4);
-  }
-
-  code {
-    padding: 0 rem(4);
-    border-radius: rem(4);
-    border: 1px solid var(--gray-color);
-    background-color: var(--white-color);
-    font-size: rem(12);
-  }
-
-  strong {
-    color: var(--primary-color);
-  }
-}
-
-.infoModalContent {
-  border: 1px solid var(--tertiary-color);
-  border-radius: rem(12);
-  box-shadow: 0 rem(18) rem(40) rgba(0, 0, 0, 0.12);
-  background: linear-gradient(180deg, var(--quaternary-color) 0%, var(--white-color) 40%, var(--secondary-gray-color) 100%) !important;
-}
-
-.infoModalHeader {
-  padding: rem(12) rem(16);
-  border-bottom: 1px solid var(--tertiary-color);
-  background-color: transparent;
-  color: var(--primary-color);
-  font-weight: 600;
-}
-
-.infoModalBody {
-  padding: rem(12) rem(16) rem(16);
-}
 
 .infoBox {
   display: flex;

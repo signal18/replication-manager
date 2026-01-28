@@ -13,10 +13,12 @@ import TagPill from '../../components/TagPill'
 import RMButton from '../../components/RMButton'
 import Markdown from 'react-markdown'
 import CommonModal from '../../components/Modals/CommonModal'
+import modalStyles from '../../components/Modals/styles.module.scss'
 import remarkGfm from 'remark-gfm'
 
 function CloudSettings({ config }) {
   const dispatch = useDispatch()
+  const joinClasses = (...classes) => classes.filter(Boolean).join(' ')
   const [action, setAction] = useState({
     title: '',
     type: '',
@@ -151,7 +153,7 @@ Start create an account in https://gitlab.signal18.io
     },
     {
       key: 'Cloud18 Connect',
-      value: (<HStack> { config?.cloud18 ? <RMButton onClick={() => { setAction({title:'Confirm disconnect from cloud18?', type: 'cloud18-disconnect'}); openConfirmModal()}}>Disconnect</RMButton> : <RMButton isDisabled={disableConnect}  onClick={() => { setAction({title:'Confirm connect to cloud18?', type: 'cloud18-connect'}); openConfirmModal()}}>Connect</RMButton>} <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({title:'Cloud 18 Benefits', type: '', body: <Box><Markdown className={styles.markdownContent} remarkPlugins={[remarkGfm]}>{benefits}</Markdown></Box>}); openCommonModal()}} /></HStack>)
+      value: (<HStack> { config?.cloud18 ? <RMButton onClick={() => { setAction({title:'Confirm disconnect from cloud18?', type: 'cloud18-disconnect'}); openConfirmModal()}}>Disconnect</RMButton> : <RMButton isDisabled={disableConnect}  onClick={() => { setAction({title:'Confirm connect to cloud18?', type: 'cloud18-connect'}); openConfirmModal()}}>Connect</RMButton>} <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({title:'Cloud 18 Benefits', type: '', body: <Box className={joinClasses(modalStyles.infoTooltip, styles.infoTooltip)}><Markdown remarkPlugins={[remarkGfm]}>{benefits}</Markdown></Box>}); openCommonModal()}} /></HStack>)
     },
     {
       key: 'Reload All Clusters Plans',
@@ -183,7 +185,9 @@ Start create an account in https://gitlab.signal18.io
           size='lg'
           title={title}
           body={action.body}
-          className={styles.markdownContent}
+          contentClassName={joinClasses(modalStyles.infoModalContent, styles.infoModalContent)}
+          headerClassName={joinClasses(modalStyles.infoModalHeader, styles.infoModalHeader)}
+          bodyClassName={joinClasses(modalStyles.infoModalBody, styles.infoModalBody)}
           closeModal={() => {
             closeCommonModal()
           }}
