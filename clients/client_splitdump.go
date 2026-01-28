@@ -60,7 +60,7 @@ var splitDumpCmd = &cobra.Command{
 
 		// create a pipeline of goroutines
 		go SplitDumpLineReader(bus)
-		go SplitDumpLineParser(bus, cliOuputDir)
+		go SplitDumpLineParser(bus, cliOutputDir)
 		//, conf.Combine, conf.OutputPath, conf.SkipData, conf.SkipTable)
 
 		// wait for the writer to finish.
