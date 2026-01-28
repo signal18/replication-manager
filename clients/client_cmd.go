@@ -79,6 +79,8 @@ var (
 	cliShowObjects               string
 	cliConfirm                   string
 	cliLogDir                    string
+	cliOuputDir                  string
+	cliInputFile                 string
 	cfgGroup                     string
 	memprofile                   string
 	cpuprofile                   string
@@ -276,6 +278,12 @@ func initStatusFlags(cmd *cobra.Command) {
 	viper.BindPFlags(cmd.Flags())
 }
 
+func initStatusFlagsDumpSplit(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&cliOuputDir, "outputdir", "./", "Directory to store files")
+	cmd.Flags().StringVar(&cliInputFile, "inputfile", "", "SQL file in text or gzip instead of stdin")
+	viper.BindPFlags(cmd.Flags())
+}
+
 func initConfiguratorFlags(cmd *cobra.Command) {
 	//	initServerApiFlags(configuratorCmd)
 	RepMan = new(server.ReplicationManager)
@@ -350,6 +358,9 @@ func init() {
 
 	rootClientCmd.AddCommand(statusCmd)
 	initStatusFlags(statusCmd)
+
+	rootClientCmd.AddCommand(splitDumpCmd)
+	initStatusFlagsDumpSplit(splitDumpCmd)
 
 	rootClientCmd.AddCommand(bootstrapCmd)
 	initBootstrapFlags(bootstrapCmd)
