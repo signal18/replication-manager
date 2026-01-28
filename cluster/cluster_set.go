@@ -567,7 +567,11 @@ func (cluster *Cluster) SetBackupResticPurgeGroupBy(value string) error {
 }
 
 func (cluster *Cluster) SetBackupResticPurgeKeepTag(value string) error {
-	cluster.Conf.BackupResticPurgeKeepTag = strings.TrimSpace(value)
+	normalized := strings.TrimSpace(value)
+	if err := validateResticKeepTagTemplatesStrict(normalized); err != nil {
+		return err
+	}
+	cluster.Conf.BackupResticPurgeKeepTag = normalized
 	return nil
 }
 

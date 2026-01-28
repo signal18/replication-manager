@@ -189,7 +189,7 @@ func (cluster *Cluster) ResticPurgeRepo(now bool) error {
 			groupBy = "none"
 		}
 
-		keepTemplates := parseResticKeepTagTemplates(cluster.Conf.BackupResticPurgeKeepTag)
+		keepTemplates := parseResticKeepTagTemplates(cluster.Conf.BackupResticPurgeKeepTag, cluster)
 		keepValues := map[string]string{
 			"tenant":  cluster.Conf.Cloud18GitUser,
 			"cluster": cluster.Name,
@@ -369,12 +369,15 @@ func parseResticTagTemplates(value string) []string {
 	return templates
 }
 
-func parseResticKeepTagTemplates(value string) []string {
+func parseResticKeepTagTemplates(value string, cluster *Cluster) []string {
 	if strings.TrimSpace(value) == "" {
 		return nil
 	}
 
-	parts := splitResticKeepTagTemplates(value)
+	parts, hadUnmatched := splitResticKeepTagTemplates(value)
+	if hadUnmatched && cluster != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Ignoring restic keep-tag with unmatched quotes in %q", value)
+	}
 	templates := make([]string, 0, len(parts))
 	seen := make(map[string]struct{})
 	for _, part := range parts {
@@ -435,11 +438,12 @@ func splitResticTagTemplates(value string) []string {
 	return parts
 }
 
-func splitResticKeepTagTemplates(value string) []string {
-	var parts []string
+func splitResticKeepTagTemplates(value string) ([]string, bool) {
+	parts := make([]string, 0)
 	var current strings.Builder
 	var quote rune
 	escaped := false
+	hadUnmatched := false
 
 	for _, r := range value {
 		if quote != 0 {
@@ -474,11 +478,25 @@ func splitResticKeepTagTemplates(value string) []string {
 		}
 	}
 
-	if current.Len() > 0 {
+	if quote != 0 {
+		hadUnmatched = true
+	} else if current.Len() > 0 {
 		parts = append(parts, current.String())
 	}
 
-	return parts
+	return parts, hadUnmatched
+}
+
+func validateResticKeepTagTemplatesStrict(value string) error {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+
+	_, hadUnmatched := splitResticKeepTagTemplates(value)
+	if hadUnmatched {
+		return fmt.Errorf("restic keep-tag has unmatched quotes")
+	}
+	return nil
 }
 
 func isQuotedResticTagLiteral(value string) bool {

@@ -76,6 +76,8 @@ Examples:
   are rejected. Quote a tag to keep it literal.
 - Separate keep-tag filters with spaces (commas are also accepted for legacy configs).
   Quote a tag to include commas for AND semantics in restic.
+- Unmatched quotes are handled strictly in API updates (request is rejected) and leniently
+  when loading config (the unmatched token is dropped with a warning).
 
 ### Reseed Jobs
 - Physical reseeds can be driven by restic payloads (restore or mount) with optional
