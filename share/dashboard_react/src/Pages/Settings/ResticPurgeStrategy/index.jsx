@@ -8,12 +8,15 @@ import { setSetting } from '../../../redux/settingsSlice'
 import RMIconButton from '../../../components/RMIconButton'
 import { HiQuestionMarkCircle, HiTrash } from 'react-icons/hi'
 import CommonModal from '../../../components/Modals/CommonModal'
+import modalStyles from '../../../components/Modals/styles.module.scss'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { purgeResticByPolicy } from '../../../redux/clusterSlice'
 
 function ResticPurgeStrategy({ clusterName, config }) {
   const dispatch = useDispatch()
+
+  const joinClasses = (...classes) => classes.filter(Boolean).join(' ')
 
   const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
   const [action, setAction] = useState({
@@ -54,7 +57,10 @@ Leave blank to use restic defaults.`
 
   const ResticKeepTagTooltip = `
 Restic keep-tag protects snapshots from purge when they include specific tags.  
-Provide comma-separated tags, e.g. "line:adhoc".  
+Provide space-separated tags, e.g. "line:adhoc env:prod".  
+Commas inside a tag mean AND in restic (use quotes if needed).  
+You can use {cluster} or {tenant} placeholders (for example: "cluster:{cluster}").  
+Wrap a literal tag in quotes to prevent placeholder processing.  
 Leave empty to disable.
 `
 
@@ -70,7 +76,7 @@ Leave empty to disable.
     setAction({
       title: modalTitle,
       body: (
-        <Box className={styles.infoTooltip}>
+        <Box className={joinClasses(modalStyles.infoTooltip, styles.infoTooltip)}>
           <Markdown remarkPlugins={[remarkGfm]}>{tooltip}</Markdown>
         </Box>
       )
@@ -81,6 +87,68 @@ Leave empty to disable.
   const toInt = (value) => {
     const parsed = Number(value)
     return Number.isFinite(parsed) ? parsed : 0
+  }
+
+  const splitKeepTagTemplates = (value) => {
+    const parts = []
+    let current = ''
+    let quote = null
+    let escaped = false
+
+    for (let i = 0; i < value.length; i += 1) {
+      const ch = value[i]
+      if (quote) {
+        if (quote === '"' && !escaped && ch === '\\') {
+          escaped = true
+          current += ch
+          continue
+        }
+        if (quote === '"' && escaped) {
+          current += ch
+          escaped = false
+          continue
+        }
+        if (ch === quote) {
+          quote = null
+        }
+        current += ch
+        continue
+      }
+
+      if (ch === '"' || ch === "'") {
+        quote = ch
+        current += ch
+        continue
+      }
+
+      if (ch === ',' || ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
+        if (current.trim()) {
+          parts.push(current)
+        }
+        current = ''
+        continue
+      }
+
+      current += ch
+    }
+
+    if (current.trim()) {
+      parts.push(current)
+    }
+
+    return parts
+  }
+
+  const unquoteKeepTagLiteral = (value) => {
+    if (value.length < 2) {
+      return value
+    }
+    const first = value[0]
+    const last = value[value.length - 1]
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return value.slice(1, -1)
+    }
+    return value
   }
 
   const buildForgetCommand = () => {
@@ -125,9 +193,12 @@ Leave empty to disable.
     })
 
     const keepTagValue = config?.backupResticPurgeKeepTag || ''
-    keepTagValue.split(',').map((tag) => tag.trim()).filter(Boolean).forEach((tag) => {
-      args.push('--keep-tag', tag)
-    })
+    splitKeepTagTemplates(keepTagValue)
+      .map((tag) => unquoteKeepTagLiteral(tag.trim()))
+      .filter(Boolean)
+      .forEach((tag) => {
+        args.push('--keep-tag', tag)
+      })
 
     return args.join(' ')
   }
@@ -239,7 +310,7 @@ Leave empty to disable.
             onSave={(v) => { handleSave('backup-restic-purge-keep-tag', v) }}
           />
           <Text className={styles.helperText}>
-            Comma-separated tags, e.g. line:adhoc.
+            Space-separated tags, e.g. line:adhoc env:prod. Quote tags with commas.
           </Text>
         </GridItem>
       </Grid>
@@ -298,9 +369,9 @@ Leave empty to disable.
           size='lg'
           title={title}
           body={body}
-          contentClassName={styles.infoModalContent}
-          headerClassName={styles.infoModalHeader}
-          bodyClassName={styles.infoModalBody}
+          contentClassName={joinClasses(modalStyles.infoModalContent, styles.infoModalContent)}
+          headerClassName={joinClasses(modalStyles.infoModalHeader, styles.infoModalHeader)}
+          bodyClassName={joinClasses(modalStyles.infoModalBody, styles.infoModalBody)}
           closeModal={() => {
             closeCommonModal()
           }}

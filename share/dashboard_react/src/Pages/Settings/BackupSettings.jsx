@@ -11,6 +11,7 @@ import Dropdown from '../../components/Dropdown'
 import { convertObjectToArrayForDropdown, formatBytes } from '../../utility/common'
 import TextForm from '../../components/TextForm'
 import CommonModal from '../../components/Modals/CommonModal'
+import modalStyles from '../../components/Modals/styles.module.scss'
 import Markdown from 'react-markdown'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
@@ -33,6 +34,7 @@ const sizeGenerator = () => {
 
 function BackupSettings({ selectedCluster, user }) {
   const dispatch = useDispatch()
+  const joinClasses = (...classes) => classes.filter(Boolean).join(' ')
   const [logicalBackupOptions, setLogicalBackupOptions] = useState([])
   const [physicalBackupOptions, setPhysicalBackupOptions] = useState([])
   const [binlogBackupOptions, setBinlogBackupOptions] = useState([])
@@ -81,13 +83,28 @@ The script will be executed with the following parameters:
 4. Backup Path
 `
 
-  const ResticTagsHelp = `backup-restic-tags controls the tag templates passed to restic backups.  
-Templates can be plain keys or use {placeholders}:
-- {tenant}, {cluster}, {engine}, {version}, {backup-type}, {backup-tool}, {line}
-Shorthand is supported: "cluster" becomes "cluster:{cluster}".  
-You can also add literal tags like "env:prod" or "team:{tenant}".  
-The line tag emits "line:default" or "line:adhoc" automatically.  
-Example: tenant,cluster,backup-type,line,env:prod`
+  const ResticTagsHelp = `backup-restic-tags defines the tag templates sent to restic backups.
+Enter a comma-separated list. Whitespace is ignored.
+
+Supported {placeholders}:
+- {tenant}: tenant/organization identifier.
+- {cluster}: cluster name.
+- {engine}: database engine (e.g. MariaDB/MySQL).
+- {version}: engine version.
+- {backup-type}: logical/physical/binlog or other backup type label.
+- {backup-tool}: tool used to run the backup.
+- {line}: emits "line:default" or "line:adhoc" automatically.
+
+Shorthand is supported: "cluster" expands to "cluster:{cluster}".
+You can also add literal tags like "env:prod" or mixed tags like "team:{tenant}".
+Wrap a literal tag in quotes to prevent shorthand expansion. Commas inside quoted tags are allowed.
+
+Examples:
+- tenant,cluster,backup-type,line,env:prod
+- cluster,engine,version,team:{tenant}
+- env:staging,backup-tool:{backup-tool}
+- "cluster",env:prod
+- "role:primary,critical",cluster`
 
   const ResticHostHelp = `backup-restic-host overrides the restic --host value used for snapshots.  
 Set a value to use a consistent alias across backups.  
@@ -100,6 +117,12 @@ Leave it empty to use restic's default hostname (no alias).`
   const closeCommonModal = () => {
     setIsCommonModalOpen(false)
   }
+
+  const renderInfoModalBody = (content) => (
+    <Box className={joinClasses(modalStyles.infoTooltip, styles.infoTooltip)}>
+      <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
+    </Box>
+  )
 
   useEffect(() => {
     if (selectedCluster?.config?.binlogCopyMode) {
@@ -149,7 +172,7 @@ Leave it empty to use restic's default hostname (no alias).`
               )
             }
           />
-          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Custom Backup Save Script', type: '', body: <Box><Markdown remarkPlugins={[remarkGfm]}>{BackupSaveScriptRequirement}</Markdown></Box> }); openCommonModal() }} />
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Custom Backup Save Script', type: '', body: renderInfoModalBody(BackupSaveScriptRequirement) }); openCommonModal() }} />
         </HStack>
       )
     },
@@ -176,7 +199,7 @@ Leave it empty to use restic's default hostname (no alias).`
               )
             }
           />
-          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Custom Backup Load Script', type: '', body: <Box><Markdown remarkPlugins={[remarkGfm]}>{BackupLoadScriptRequirement}</Markdown></Box> }); openCommonModal() }} />
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Custom Backup Load Script', type: '', body: renderInfoModalBody(BackupLoadScriptRequirement) }); openCommonModal() }} />
         </HStack>
       )
     },
@@ -226,7 +249,7 @@ Leave it empty to use restic's default hostname (no alias).`
               )
             }
           />
-          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Backup Logical Post-Script', type: '', body: <Box><Markdown remarkPlugins={[remarkGfm]}>{BackupPostScriptRequirement}</Markdown></Box> }); openCommonModal() }} />
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Backup Logical Post-Script', type: '', body: renderInfoModalBody(BackupPostScriptRequirement) }); openCommonModal() }} />
         </HStack>
       )
     },
@@ -397,7 +420,7 @@ Leave it empty to use restic's default hostname (no alias).`
               )
             }
           />
-          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Backup Physical Post-Script', type: '', body: <Box><Markdown remarkPlugins={[remarkGfm]}>{BackupPostScriptRequirement}</Markdown></Box> }); openCommonModal() }} />
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Backup Physical Post-Script', type: '', body: renderInfoModalBody(BackupPostScriptRequirement) }); openCommonModal() }} />
         </HStack>
       )
     },
@@ -892,11 +915,7 @@ Leave it empty to use restic's default hostname (no alias).`
                   setAction({
                     title: 'Restic Host Override',
                     type: '',
-                    body: (
-                      <Box>
-                        <Markdown remarkPlugins={[remarkGfm]}>{ResticHostHelp}</Markdown>
-                      </Box>
-                    )
+                    body: renderInfoModalBody(ResticHostHelp)
                   })
                   openCommonModal()
                 }}
@@ -929,11 +948,7 @@ Leave it empty to use restic's default hostname (no alias).`
                   setAction({
                     title: 'Restic Tag Templates',
                     type: '',
-                    body: (
-                      <Box>
-                        <Markdown remarkPlugins={[remarkGfm]}>{ResticTagsHelp}</Markdown>
-                      </Box>
-                    )
+                    body: renderInfoModalBody(ResticTagsHelp)
                   })
                   openCommonModal()
                 }}
@@ -1072,6 +1087,9 @@ Leave it empty to use restic's default hostname (no alias).`
           size='lg'
           title={title}
           body={action.body}
+          contentClassName={joinClasses(modalStyles.infoModalContent, styles.infoModalContent)}
+          headerClassName={joinClasses(modalStyles.infoModalHeader, styles.infoModalHeader)}
+          bodyClassName={joinClasses(modalStyles.infoModalBody, styles.infoModalBody)}
           closeModal={() => {
             closeCommonModal()
           }}

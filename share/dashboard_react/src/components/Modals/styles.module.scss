@@ -157,3 +157,89 @@
   gap: 0.5rem;
   flex-grow: 1;
 }
+
+.infoTooltip {
+  display: flex;
+  flex-direction: column;
+  gap: rem(8);
+  padding: var(--info-tooltip-padding, #{rem(10)} #{rem(12)});
+  border-radius: var(--info-tooltip-radius, #{rem(10)});
+  border: 1px solid var(--info-tooltip-border, var(--tertiary-color));
+  background: var(
+    --info-tooltip-bg,
+    linear-gradient(180deg, var(--white-color) 0%, var(--secondary-gray-color) 100%)
+  );
+  box-shadow: var(--info-tooltip-shadow, 0 #{rem(6)} #{rem(16)} rgba(0, 0, 0, 0.08));
+  color: var(--text-color);
+  font-size: rem(14);
+  line-height: 1.45;
+  max-height: var(--info-tooltip-max-height, #{rem(360)});
+  overflow: auto;
+
+  p,
+  ul,
+  ol {
+    margin: 0;
+  }
+
+  p + p {
+    margin-top: rem(6);
+  }
+
+  ul,
+  ol {
+    padding-left: rem(18);
+  }
+
+  li {
+    margin-bottom: rem(4);
+  }
+
+  code {
+    padding: 0 rem(4);
+    border-radius: rem(4);
+    border: 1px solid var(--info-tooltip-code-border, var(--tertiary-color));
+    background-color: var(--info-tooltip-code-bg, var(--quaternary-color));
+    font-size: rem(12);
+  }
+
+  strong {
+    color: var(--primary-color);
+  }
+
+  a {
+    color: var(--primary-color);
+    text-decoration: underline;
+    text-decoration-color: rgba(0, 0, 0, 0.2);
+  }
+
+  a:hover {
+    color: var(--secondary-color);
+    text-decoration-color: var(--secondary-color);
+  }
+}
+
+.infoModalContent {
+  border: 1px solid var(--info-modal-border, var(--tertiary-color));
+  border-radius: var(--info-modal-radius, #{rem(12)});
+  box-shadow: var(--info-modal-shadow, 0 #{rem(18)} #{rem(40)} rgba(0, 0, 0, 0.12));
+  background: var(
+    --info-modal-bg,
+    linear-gradient(180deg, var(--quaternary-color) 0%, var(--white-color) 40%, var(--secondary-gray-color) 100%)
+  ) !important;
+}
+
+.infoModalHeader {
+  padding: var(--info-modal-header-padding, #{rem(12)} #{rem(16)});
+  border-bottom: var(--info-modal-header-border, 1px solid var(--tertiary-color));
+  background-color: transparent;
+  color: var(--info-modal-header-color, var(--primary-color));
+  font-weight: 600;
+}
+
+.infoModalBody {
+  padding: var(--info-modal-body-padding, #{rem(12)} #{rem(16)} #{rem(16)});
+  display: flex;
+  flex-direction: column;
+  gap: var(--info-modal-body-gap, #{rem(8)});
+}
