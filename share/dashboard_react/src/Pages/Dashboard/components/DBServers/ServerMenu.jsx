@@ -1,6 +1,7 @@
 import { useDispatch } from 'react-redux'
 import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
+import AdvancedReseedModal from '../../../../components/Modals/AdvancedReseedModal'
 import {
   dropServer,
   flushLogs,
@@ -93,9 +94,16 @@ function ServerMenu({
   showTerminal = false
 }) {
   const dispatch = useDispatch()
+  
+  // State for basic ConfirmModal (used for all non-reseed operations)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
+  
+  // State for AdvancedReseedModal (used for reseed operations)
+  const [isReseedModalOpen, setIsReseedModalOpen] = useState(false)
+  const [reseedOperationType, setReseedOperationType] = useState('')
+  
   const [serverName, setServerName] = useState('')
 
   const getHref = useHref('/').replace(/\/+$/, '');
@@ -111,6 +119,7 @@ function ServerMenu({
     }
   }, [row])
 
+  // Handlers for basic ConfirmModal
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true)
   }
@@ -118,6 +127,33 @@ function ServerMenu({
     setIsConfirmModalOpen(false)
     setConfirmHandler(null)
     setConfirmTitle('')
+  }
+
+  // Handlers for AdvancedReseedModal
+  const openReseedModal = (operationType) => {
+    setReseedOperationType(operationType)
+    setIsReseedModalOpen(true)
+  }
+  const closeReseedModal = () => {
+    setIsReseedModalOpen(false)
+    setReseedOperationType('')
+  }
+
+  const handleReseedConfirm = () => {
+    switch (reseedOperationType) {
+      case 'logical-backup':
+        dispatch(reseedLogicalFromBackup({ clusterName, serverId: row.id }))
+        break
+      case 'logical-master':
+        dispatch(reseedLogicalFromMaster({ clusterName, serverId: row.id }))
+        break
+      case 'physical-backup':
+        dispatch(reseedPhysicalFromBackup({ clusterName, serverId: row.id }))
+        break
+      default:
+        break
+    }
+    closeReseedModal()
   }
 
   return (
@@ -240,37 +276,15 @@ function ServerMenu({
                   ? [
                     {
                       name: 'Reseed Logical From Backup',
-                      onClick: () => {
-                        openConfirmModal()
-                        setConfirmTitle(
-                          `Confirm reseed with logical backup (${backupLogicalType}) for ${serverName}?`
-                        )
-                        setConfirmHandler(
-                          () => () => dispatch(reseedLogicalFromBackup({ clusterName, serverId: row.id }))
-                        )
-                      }
+                      onClick: () => openReseedModal('logical-backup')
                     },
                     {
                       name: 'Reseed Logical From Master',
-                      onClick: () => {
-                        openConfirmModal()
-                        setConfirmTitle(`Confirm reseed with ${backupLogicalType} for ${serverName}?`)
-                        setConfirmHandler(
-                          () => () => dispatch(reseedLogicalFromMaster({ clusterName, serverId: row.id }))
-                        )
-                      }
+                      onClick: () => openReseedModal('logical-master')
                     },
                     {
                       name: 'Reseed Physical From Backup',
-                      onClick: () => {
-                        openConfirmModal()
-                        setConfirmTitle(
-                          `Confirm reseed with physical backup (${backupPhysicalType}) for ${serverName}?`
-                        )
-                        setConfirmHandler(
-                          () => () => dispatch(reseedPhysicalFromBackup({ clusterName, serverId: row.id }))
-                        )
-                      }
+                      onClick: () => openReseedModal('physical-backup')
                     }
                   ]
                   : []),
@@ -501,6 +515,8 @@ function ServerMenu({
           }
         ]}
       />
+      
+      {/* Basic ConfirmModal for all non-reseed operations */}
       {isConfirmModalOpen && (
         <ConfirmModal
           isOpen={isConfirmModalOpen}
@@ -510,6 +526,22 @@ function ServerMenu({
             confirmHandler()
             closeConfirmModal()
           }}
+        />
+      )}
+
+      {/* AdvancedReseedModal for reseed operations */}
+      {isReseedModalOpen && (
+        <AdvancedReseedModal
+          isOpen={isReseedModalOpen}
+          closeModal={closeReseedModal}
+          onConfirm={handleReseedConfirm}
+          operationType={reseedOperationType}
+          serverInfo={{
+            id: row.id,
+            host: row.host,
+            port: row.port
+          }}
+          backupType={reseedOperationType.includes('physical') ? backupPhysicalType : backupLogicalType}
         />
       )}
     </>

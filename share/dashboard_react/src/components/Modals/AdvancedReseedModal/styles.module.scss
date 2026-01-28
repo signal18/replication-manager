@@ -1,0 +1,41 @@
+.modalContent {
+  max-width: 90%;
+  @include breakpoint('md', 'lg') {
+    max-width: 70%;
+  }
+  @include breakpoint('lg') {
+    max-width: 50%;
+  }
+  
+  .modalHeader {
+    font-size: rem(18);
+    padding-top: rem(20);
+    padding-bottom: rem(16);
+  }
+
+  .modalBody {
+    padding-top: rem(8);
+    padding-bottom: rem(20);
+  }
+}
+
+.infoSection {
+  padding: rem(8);
+  border-radius: rem(6);
+  background-color: rgba(0, 0, 0, 0.02);
+  
+  [data-theme='dark'] & {
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+}
+
+.descriptionSection {
+  padding: rem(12);
+  border-left: rem(3) solid var(--chakra-colors-blue-400);
+  background-color: rgba(66, 153, 225, 0.05);
+  border-radius: rem(4);
+  
+  [data-theme='dark'] & {
+    background-color: rgba(66, 153, 225, 0.1);
+  }
+}
