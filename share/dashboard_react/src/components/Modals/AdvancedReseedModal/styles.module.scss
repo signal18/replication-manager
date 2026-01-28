@@ -39,3 +39,12 @@
     background-color: rgba(66, 153, 225, 0.1);
   }
 }
+
+.snapshotSelect {
+  margin-top: rem(8);
+  
+  select {
+    font-family: monospace;
+    font-size: rem(13);
+  }
+}

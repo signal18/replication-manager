@@ -38,6 +38,7 @@ function DBServerGrid({
   clusterName,
   backupPhysicalType,
   backupLogicalType,
+  backupRestic,
   orchestrator,
   user,
   showTableView,
@@ -167,6 +168,7 @@ function DBServerGrid({
                   clusterName={clusterName}
                   backupLogicalType={backupLogicalType}
                   backupPhysicalType={backupPhysicalType}
+                  backupRestic={backupRestic}
                   orchestrator={orchestrator}
                   isDesktop={isDesktop}
                   user={user}

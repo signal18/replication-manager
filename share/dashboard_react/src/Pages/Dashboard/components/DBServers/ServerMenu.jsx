@@ -57,6 +57,7 @@ const JOBS_CONTAINER_RID = 'container#jobs'
  * @param {string} props.clusterMasterId - ID of the master server in the cluster
  * @param {string} props.backupPhysicalType - Physical backup type (e.g., 'xtrabackup', 'mariabackup')
  * @param {string} props.backupLogicalType - Logical backup type (e.g., 'mysqldump', 'mydumper')
+ * @param {boolean} props.backupRestic - Whether restic backup is enabled
  * @param {string} props.orchestrator - Orchestrator type (e.g., 'opensvc', 'kubernetes')
  * @param {Object} props.row - Server data object
  * @param {string} props.row.id - Server ID
@@ -82,6 +83,7 @@ function ServerMenu({
   clusterMasterId,
   backupPhysicalType,
   backupLogicalType,
+  backupRestic = false,
   orchestrator,
   row,
   user,
@@ -139,16 +141,20 @@ function ServerMenu({
     setReseedOperationType('')
   }
 
-  const handleReseedConfirm = () => {
+  const handleReseedConfirm = (selectedSnapshot) => {
+    // TODO: Once backend API supports snapshot selection, pass selectedSnapshot to the actions
+    // For now, the snapshot selection is captured but not yet utilized by the backend
     switch (reseedOperationType) {
       case 'logical-backup':
         dispatch(reseedLogicalFromBackup({ clusterName, serverId: row.id }))
+        // Future: dispatch(reseedLogicalFromBackup({ clusterName, serverId: row.id, snapshotId: selectedSnapshot }))
         break
       case 'logical-master':
         dispatch(reseedLogicalFromMaster({ clusterName, serverId: row.id }))
         break
       case 'physical-backup':
         dispatch(reseedPhysicalFromBackup({ clusterName, serverId: row.id }))
+        // Future: dispatch(reseedPhysicalFromBackup({ clusterName, serverId: row.id, snapshotId: selectedSnapshot }))
         break
       default:
         break
@@ -276,15 +282,35 @@ function ServerMenu({
                   ? [
                     {
                       name: 'Reseed Logical From Backup',
-                      onClick: () => openReseedModal('logical-backup')
+                      onClick: () => {
+                        if (backupRestic) {
+                          openReseedModal('logical-backup')
+                        } else {
+                          openConfirmModal()
+                          setConfirmTitle(`Confirm reseed with logical backup (${backupLogicalType}) for ${serverName}?`)
+                          setConfirmHandler(() => () => dispatch(reseedLogicalFromBackup({ clusterName, serverId: row.id })))
+                        }
+                      }
                     },
                     {
                       name: 'Reseed Logical From Master',
-                      onClick: () => openReseedModal('logical-master')
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm reseed with ${backupLogicalType} for ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(reseedLogicalFromMaster({ clusterName, serverId: row.id })))
+                      }
                     },
                     {
                       name: 'Reseed Physical From Backup',
-                      onClick: () => openReseedModal('physical-backup')
+                      onClick: () => {
+                        if (backupRestic) {
+                          openReseedModal('physical-backup')
+                        } else {
+                          openConfirmModal()
+                          setConfirmTitle(`Confirm reseed with physical backup (${backupPhysicalType}) for ${serverName}?`)
+                          setConfirmHandler(() => () => dispatch(reseedPhysicalFromBackup({ clusterName, serverId: row.id })))
+                        }
+                      }
                     }
                   ]
                   : []),
@@ -529,13 +555,14 @@ function ServerMenu({
         />
       )}
 
-      {/* AdvancedReseedModal for reseed operations */}
-      {isReseedModalOpen && (
+      {/* AdvancedReseedModal for reseed operations (only when restic is enabled) */}
+      {isReseedModalOpen && backupRestic && (
         <AdvancedReseedModal
           isOpen={isReseedModalOpen}
           closeModal={closeReseedModal}
           onConfirm={handleReseedConfirm}
           operationType={reseedOperationType}
+          clusterName={clusterName}
           serverInfo={{
             id: row.id,
             host: row.host,

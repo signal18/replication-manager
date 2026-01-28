@@ -47,6 +47,7 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
                 clusterMasterId={clusterMaster?.id}
                 backupLogicalType={clusterData?.config?.backupLogicalType}
                 backupPhysicalType={clusterData?.config?.backupPhysicalType}
+                backupRestic={clusterData?.config?.backupRestic}
                 orchestrator={clusterData?.config?.provOrchestrator}
                 row={selectedDBServer}
                 user={user}
