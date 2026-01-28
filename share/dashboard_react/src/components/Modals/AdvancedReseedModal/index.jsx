@@ -18,6 +18,7 @@ import {
   Select,
   FormControl,
   FormLabel,
+  Checkbox,
   Spinner,
   Badge,
   Wrap,
@@ -30,6 +31,100 @@ import styles from './styles.module.scss'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
 import { getResticSnapshot } from '../../../redux/clusterSlice'
+
+const LATEST_SESSION_FILTER = 'latest-per-session'
+
+const OPERATION_METHOD_MAP = {
+  'logical-backup': 'logical',
+  'logical-master': 'logical',
+  'physical-backup': 'physical'
+}
+
+const getSnapshotMetadataByMethod = (snapshot, method) => {
+  if (!snapshot?.metadata || !method) {
+    return null
+  }
+  const normalized = method.toLowerCase()
+  return snapshot.metadata.find((meta) => meta?.backupMethod?.toLowerCase() === normalized) || null
+}
+
+const getPreferredMetadata = (snapshot, operationType) => {
+  const preferredMethod = OPERATION_METHOD_MAP[operationType] || 'logical'
+  const fallbackMethod = preferredMethod === 'logical' ? 'physical' : 'logical'
+  return (
+    getSnapshotMetadataByMethod(snapshot, preferredMethod) ||
+    getSnapshotMetadataByMethod(snapshot, fallbackMethod)
+  )
+}
+
+const formatMetadataTimestamp = (meta, formatter) => {
+  if (!meta) {
+    return null
+  }
+  if (meta.startTime) {
+    return formatter(meta.startTime)
+  }
+  if (meta.endTime) {
+    return formatter(meta.endTime)
+  }
+  return null
+}
+
+const parseSnapshotTags = (tags = []) => {
+  const meta = {
+    sessionId: null,
+    backupType: null,
+    backupTool: null,
+    status: 'legacy',
+    isLatestView: false
+  }
+
+  tags.forEach((tagRaw) => {
+    if (typeof tagRaw !== 'string') {
+      return
+    }
+    const tag = tagRaw.trim()
+    const normalized = tag.toLowerCase()
+
+    if (tag.startsWith('session:')) {
+      meta.sessionId = tag.substring('session:'.length)
+      meta.isLatestView = true
+    } else if (tag.startsWith('backup-type:')) {
+      meta.backupType = tag.substring('backup-type:'.length)
+    } else if (tag.startsWith('backup-tool:')) {
+      meta.backupTool = tag.substring('backup-tool:'.length)
+    }
+
+    if (normalized === 'status:orphaned' || normalized === 'state:orphaned' || normalized === 'orphaned') {
+      meta.status = 'orphaned'
+    }
+  })
+
+  if (meta.status !== 'orphaned' && meta.sessionId) {
+    meta.status = 'available'
+  }
+
+  return meta
+}
+
+const renderStatusBadge = (status) => {
+  switch (status) {
+    case 'available':
+      return (
+        <Badge colorScheme="green" fontSize="0.65rem" variant="subtle">
+          Available
+        </Badge>
+      )
+    case 'orphaned':
+      return (
+        <Badge colorScheme="yellow" fontSize="0.65rem" variant="subtle">
+          Orphaned
+        </Badge>
+      )
+    default:
+      return null
+  }
+}
 
 function AdvancedReseedModal({
   isOpen,
@@ -45,6 +140,7 @@ function AdvancedReseedModal({
   
   const [selectedSnapshot, setSelectedSnapshot] = useState('')
   const [isLoadingSnapshots, setIsLoadingSnapshots] = useState(false)
+  const [useResticSnapshot, setUseResticSnapshot] = useState(false)
   
   const snapshots = useSelector((state) => state.cluster.restic.snapshots)
 
@@ -176,33 +272,87 @@ function AdvancedReseedModal({
     }
   }
 
+  const MetadataSummary = ({ label, metadata, theme }) => {
+    if (!metadata) {
+      return null
+    }
+    return (
+      <Box
+        borderWidth="1px"
+        borderRadius="md"
+        p={3}
+        bg={theme === 'light' ? 'white' : 'gray.800'}
+        width="100%"
+      >
+        <Text fontWeight="bold" fontSize="sm" mb={2}>{label}</Text>
+        <VStack align="stretch" spacing={1} fontSize="sm">
+          <HStack>
+            <Text fontWeight="semibold" minW="100px">Start:</Text>
+            <Text>{formatMetadataTimestamp(metadata, formatLocalDateTime) || 'N/A'}</Text>
+          </HStack>
+          {metadata.endTime && (
+            <HStack>
+              <Text fontWeight="semibold" minW="100px">End:</Text>
+              <Text>{formatLocalDateTime(metadata.endTime)}</Text>
+            </HStack>
+          )}
+          {metadata.backupTool && (
+            <HStack>
+              <Text fontWeight="semibold" minW="100px">Tool:</Text>
+              <Text fontFamily="monospace">{metadata.backupTool}</Text>
+            </HStack>
+          )}
+          {metadata.backupSessionID && (
+            <HStack align="flex-start">
+              <Text fontWeight="semibold" minW="100px">Session:</Text>
+              <Text fontSize="xs" fontFamily="monospace" wordBreak="break-all">{metadata.backupSessionID}</Text>
+            </HStack>
+          )}
+        </VStack>
+      </Box>
+    )
+  }
+
   const getSelectedSnapshotObject = () => {
     if (!selectedSnapshot || !snapshots) return null
     return snapshots.find(snapshot => snapshot.id === selectedSnapshot)
   }
 
   useEffect(() => {
-    if (isOpen && clusterName && (operationType === 'logical-backup' || operationType === 'physical-backup')) {
+    if (!isOpen) {
+      return
+    }
+    if (!useResticSnapshot) {
+      return
+    }
+    if (clusterName && (operationType === 'logical-backup' || operationType === 'physical-backup')) {
       setIsLoadingSnapshots(true)
-      dispatch(getResticSnapshot({ clusterName }))
+      dispatch(getResticSnapshot({ clusterName, filter: LATEST_SESSION_FILTER }))
         .finally(() => setIsLoadingSnapshots(false))
     }
-  }, [isOpen, clusterName, operationType, dispatch])
+  }, [isOpen, clusterName, operationType, useResticSnapshot, dispatch])
 
   useEffect(() => {
+    if (!useResticSnapshot) {
+      return
+    }
     if (snapshots && snapshots.length > 0 && !selectedSnapshot) {
       setSelectedSnapshot(snapshots[0].id)
     }
-  }, [snapshots, selectedSnapshot])
+  }, [snapshots, selectedSnapshot, useResticSnapshot])
 
   useEffect(() => {
     if (!isOpen) {
       setSelectedSnapshot('')
+      setUseResticSnapshot(false)
     }
   }, [isOpen])
 
   const handleConfirm = () => {
-    onConfirm(selectedSnapshot)
+    onConfirm({
+      useRestic: useResticSnapshot,
+      snapshotId: selectedSnapshot
+    })
   }
 
   const getOperationDetails = () => {
@@ -244,6 +394,22 @@ function AdvancedReseedModal({
 
   const details = getOperationDetails()
   const selectedSnapshotObj = getSelectedSnapshotObject()
+  const selectedSnapshotTags = selectedSnapshotObj ? parseSnapshotTags(selectedSnapshotObj.tags || []) : null
+  const selectedSnapshotStatusBadge = selectedSnapshotTags ? renderStatusBadge(selectedSnapshotTags.status) : null
+  const selectedSnapshotPrimaryPath = selectedSnapshotObj?.paths?.[0] || ''
+  const selectedSnapshotPathInfo = selectedSnapshotObj
+    ? extractServerInfoFromPath(selectedSnapshotPrimaryPath, selectedSnapshotObj.tags || [])
+    : null
+  const resolvedBackupTool = selectedSnapshotTags?.backupTool || selectedSnapshotPathInfo?.backupTool || backupType || null
+  const preferredMetadata = selectedSnapshotObj ? getPreferredMetadata(selectedSnapshotObj, operationType) : null
+  const logicalMetadata = selectedSnapshotObj ? getSnapshotMetadataByMethod(selectedSnapshotObj, 'logical') : null
+  const physicalMetadata = selectedSnapshotObj ? getSnapshotMetadataByMethod(selectedSnapshotObj, 'physical') : null
+  const resolvedMethod = selectedSnapshotTags?.backupType || preferredMetadata?.backupMethod || (operationType === 'physical-backup' ? 'physical' : 'logical')
+  const resolvedCreatedTime = preferredMetadata ? formatMetadataTimestamp(preferredMetadata, formatLocalDateTime) : (selectedSnapshotObj ? formatLocalDateTime(selectedSnapshotObj.time) : null)
+  const selectedMetadataReady = selectedSnapshotObj?.metadataReady ?? false
+  const selectedMetadataStatus = selectedSnapshotObj?.metadataStatus || 'unknown'
+  const selectedMetadataError = selectedSnapshotObj?.metadataError || ''
+  const isMetadataLoading = useResticSnapshot && Boolean(selectedSnapshotObj) && !selectedMetadataReady
 
   return (
     <Modal isOpen={isOpen} onClose={closeModal} size="xl">
@@ -314,15 +480,36 @@ function AdvancedReseedModal({
               <>
                 <Divider />
                 <Box className={styles.infoSection}>
-                  <FormControl isRequired>
+                  <FormControl mb={3}>
+                    <Checkbox
+                      isChecked={useResticSnapshot}
+                      onChange={(e) => setUseResticSnapshot(e.target.checked)}
+                    >
+                      Use restic snapshot
+                    </Checkbox>
+                  </FormControl>
+                  <FormControl isRequired={useResticSnapshot}>
                     <FormLabel fontWeight="bold">Select Backup Snapshot:</FormLabel>
-                    {isLoadingSnapshots ? (
+                    {!useResticSnapshot ? (
+                      <Alert status="info" borderRadius="md" size="sm">
+                        <AlertIcon />
+                        <AlertDescription fontSize="sm">
+                          Restic snapshot selection is disabled. Restore will use the current backup configuration.
+                        </AlertDescription>
+                      </Alert>
+                    ) : isLoadingSnapshots ? (
                       <HStack spacing={2} p={2}>
                         <Spinner size="sm" />
                         <Text fontSize="sm">Loading snapshots...</Text>
                       </HStack>
                     ) : snapshots && snapshots.length > 0 ? (
                       <>
+                        <HStack spacing={2} mb={2}>
+                          <Badge colorScheme="green" variant="subtle" fontSize="0.65rem">latest</Badge>
+                          <Text fontSize="xs" color={theme === 'light' ? 'gray.600' : 'gray.300'}>
+                            Showing the most recent snapshot per backup session ({LATEST_SESSION_FILTER})
+                          </Text>
+                        </HStack>
                         <Select
                           value={selectedSnapshot}
                           onChange={(e) => setSelectedSnapshot(e.target.value)}
@@ -330,16 +517,28 @@ function AdvancedReseedModal({
                           mb={3}
                         >
                           {snapshots.map((snapshot) => {
-                            const formattedTime = formatLocalDateTime(snapshot.time)
+                            const preferredMeta = getPreferredMetadata(snapshot, operationType)
+                            const formattedTime = formatMetadataTimestamp(preferredMeta, formatLocalDateTime) || formatLocalDateTime(snapshot.time)
                             const primaryPath = snapshot.paths?.[0] || ''
-                            const { clusterName, serverHost, serverPort, isAdhoc, backupTool } = 
+                            const { clusterName, serverHost, serverPort, isAdhoc, backupTool } =
                               extractServerInfoFromPath(primaryPath, snapshot.tags || [])
-                            
+                            const tagMeta = parseSnapshotTags(snapshot.tags || [])
                             let displayText = `${snapshot.short_id} - ${formattedTime} - ${clusterName} - ${serverHost}:${serverPort}`
                             if (isAdhoc && backupTool) {
                               displayText += ` (adhoc:${backupTool})`
                             }
-                            
+                            if (preferredMeta?.backupMethod && preferredMeta?.backupMethod !== tagMeta.backupType) {
+                              displayText += ` (${preferredMeta.backupMethod})`
+                            }
+                            if (tagMeta.status === 'available') {
+                              displayText += ' [latest]'
+                            } else if (tagMeta.status === 'orphaned') {
+                              displayText += ' [orphaned]'
+                            }
+                            if (!snapshot.metadataReady) {
+                              displayText += ' [metadata pending]'
+                            }
+
                             return (
                               <option key={snapshot.id} value={snapshot.id}>
                                 {displayText}
@@ -348,7 +547,7 @@ function AdvancedReseedModal({
                           })}
                         </Select>
 
-                        {selectedSnapshotObj && (
+                        {useResticSnapshot && selectedSnapshotObj && (
                           <Box 
                             borderWidth="1px" 
                             borderRadius="md" 
@@ -373,35 +572,74 @@ function AdvancedReseedModal({
 
                               <HStack>
                                 <Text fontWeight="semibold" fontSize="sm" minW="130px">Created:</Text>
-                                <Text fontSize="sm">{formatLocalDateTime(selectedSnapshotObj.time)}</Text>
+                                <Text fontSize="sm">{resolvedCreatedTime || 'N/A'}</Text>
                               </HStack>
 
-                              {(() => {
-                                const primaryPath = selectedSnapshotObj.paths?.[0] || ''
-                                const { isAdhoc, backupTool, epoch } = 
-                                  extractServerInfoFromPath(primaryPath, selectedSnapshotObj.tags || [])
-                                
-                                if (isAdhoc && backupTool) {
-                                  return (
-                                    <>
-                                      <HStack>
-                                        <Text fontWeight="semibold" fontSize="sm" minW="130px">Backup Tool:</Text>
-                                        <HStack spacing={2}>
-                                          <Text fontSize="sm" fontFamily="monospace">{backupTool}</Text>
-                                          <Badge colorScheme="purple" fontSize="xs">adhoc</Badge>
-                                        </HStack>
-                                      </HStack>
-                                      {epoch && (
-                                        <HStack>
-                                          <Text fontWeight="semibold" fontSize="sm" minW="130px">Backup Timestamp:</Text>
-                                          <Text fontSize="sm">{formatEpochDateTime(epoch)}</Text>
-                                        </HStack>
-                                      )}
-                                    </>
-                                  )
-                                }
-                                return null
-                              })()}
+                              {selectedSnapshotStatusBadge && (
+                                <HStack>
+                                  <Text fontWeight="semibold" fontSize="sm" minW="130px">Status:</Text>
+                                  {selectedSnapshotStatusBadge}
+                                  {selectedSnapshotTags?.isLatestView && (
+                                    <Badge colorScheme="green" variant="outline" fontSize="0.6rem" ml={1}>
+                                      latest
+                                    </Badge>
+                                  )}
+                                </HStack>
+                              )}
+
+                              {selectedSnapshotTags?.sessionId && (
+                                <HStack align="flex-start">
+                                  <Text fontWeight="semibold" fontSize="sm" minW="130px">Session ID:</Text>
+                                  <Text fontSize="xs" fontFamily="monospace" wordBreak="break-all">
+                                    {selectedSnapshotTags.sessionId}
+                                  </Text>
+                                </HStack>
+                              )}
+
+                              <HStack>
+                                <Text fontWeight="semibold" fontSize="sm" minW="130px">Metadata:</Text>
+                                <Badge colorScheme={selectedMetadataReady ? 'green' : 'orange'} fontSize="xs">
+                                  {selectedMetadataStatus}
+                                </Badge>
+                              </HStack>
+                              {selectedMetadataError && (
+                                <Text fontSize="xs" color="red.400" pl={selectedMetadataReady ? 0 : 0}>
+                                  {selectedMetadataError}
+                                </Text>
+                              )}
+
+                              {resolvedBackupTool && (
+                                <HStack>
+                                  <Text fontWeight="semibold" fontSize="sm" minW="130px">Backup Tool:</Text>
+                                  <HStack spacing={2}>
+                                    <Text fontSize="sm" fontFamily="monospace">{resolvedBackupTool}</Text>
+                                    {selectedSnapshotPathInfo?.isAdhoc && (
+                                      <Badge colorScheme="purple" fontSize="xs">adhoc</Badge>
+                                    )}
+                                  </HStack>
+                                </HStack>
+                              )}
+
+                              {resolvedMethod && (
+                                <HStack>
+                                  <Text fontWeight="semibold" fontSize="sm" minW="130px">Method:</Text>
+                                  <Text fontSize="sm" fontFamily="monospace">{resolvedMethod}</Text>
+                                </HStack>
+                              )}
+
+                              {selectedSnapshotPathInfo?.epoch && (
+                                <HStack>
+                                  <Text fontWeight="semibold" fontSize="sm" minW="130px">Backup Timestamp:</Text>
+                                  <Text fontSize="sm">{formatEpochDateTime(selectedSnapshotPathInfo.epoch)}</Text>
+                                </HStack>
+                              )}
+
+                              {(logicalMetadata || physicalMetadata) && (
+                                <VStack align="stretch" spacing={2} mt={2}>
+                                  <MetadataSummary label="Logical backup" metadata={logicalMetadata} theme={theme} />
+                                  <MetadataSummary label="Physical backup" metadata={physicalMetadata} theme={theme} />
+                                </VStack>
+                              )}
 
                               {selectedSnapshotObj.tags && selectedSnapshotObj.tags.length > 0 && (
                                 <HStack align="flex-start">
@@ -467,22 +705,30 @@ function AdvancedReseedModal({
           </VStack>
         </ModalBody>
 
-        <ModalFooter gap={3}>
-          <RMButton variant='outline' colorScheme='white' size='medium' onClick={closeModal}>
-            Cancel
-          </RMButton>
-          <RMButton 
-            colorScheme='red' 
-            size='medium' 
-            onClick={handleConfirm}
-            isDisabled={
-              (operationType === 'logical-backup' || operationType === 'physical-backup') 
-              && (!selectedSnapshot || isLoadingSnapshots)
-            }
-          >
-            Confirm Reseed
-          </RMButton>
-        </ModalFooter>
+            {isMetadataLoading && useResticSnapshot && (
+              <Alert status="info" borderRadius="md" fontSize="sm">
+                <AlertIcon />
+                Snapshot metadata is still loading. Please wait until metadata is ready to proceed.
+              </Alert>
+            )}
+
+            <ModalFooter gap={3}>
+              <RMButton variant='outline' colorScheme='white' size='medium' onClick={closeModal}>
+                Cancel
+              </RMButton>
+              <RMButton 
+                colorScheme='red' 
+                size='medium' 
+                onClick={handleConfirm}
+                isDisabled={
+                  (operationType === 'logical-backup' || operationType === 'physical-backup') 
+                  && useResticSnapshot
+                  && (!selectedSnapshot || isLoadingSnapshots || isMetadataLoading)
+                }
+              >
+                Confirm Reseed
+              </RMButton>
+            </ModalFooter>
       </ModalContent>
     </Modal>
   )

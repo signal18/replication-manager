@@ -30,6 +30,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dockerhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -106,6 +107,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/backups/stats", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupStat)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/backups/reconcile", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupReconcile)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/terminals", negroni.New(
@@ -1934,6 +1940,14 @@ func (repman *ReplicationManager) handlerMuxClusterBackups(w http.ResponseWriter
 	}
 }
 
+type resticSnapshotResponse struct {
+	backupmgr.BackupSnapshot
+	Metadata       []*cluster.SnapshotMetadataSummary `json:"metadata,omitempty"`
+	MetadataReady  bool                               `json:"metadataReady"`
+	MetadataStatus string                             `json:"metadataStatus"`
+	MetadataError  string                             `json:"metadataError,omitempty"`
+}
+
 // handlerMuxClusterBackupStat handles the retrieval of backup stats for a given cluster.
 // @Summary Retrieve backup stats for a specific cluster
 // @Description This endpoint retrieves the backup stats for the specified cluster.
@@ -1964,6 +1978,46 @@ func (repman *ReplicationManager) handlerMuxClusterBackupStat(w http.ResponseWri
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
+	}
+}
+
+// handlerMuxClusterBackupReconcile handles the manual reconciliation of backup metadata with restic snapshots.
+// @Summary Reconcile backup metadata with restic snapshots
+// @Description This endpoint triggers a manual reconciliation check to detect drift between backup metadata files and restic snapshots.
+// @Tags ClusterBackup
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} cluster.ReconciliationReport "Reconciliation report with orphaned and missing metadata"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "Cluster not found"
+// @Failure 500 {string} string "Reconciliation failed"
+// @Router /api/clusters/{clusterName}/backups/reconcile [post]
+func (repman *ReplicationManager) handlerMuxClusterBackupReconcile(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster not found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	report, err := mycluster.ReconcileSnapshotMetadata()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	err = e.Encode(report)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API encoding error %s", err)
 	}
 }
 
@@ -6801,9 +6855,34 @@ func (repman *ReplicationManager) handlerMuxClusterSnapshots(w http.ResponseWrit
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
+
+		// Get all snapshots
+		snapshots := mycluster.GetSnapshots()
+
+		// Check for filter query parameter
+		filterParam := r.URL.Query().Get("filter")
+		if filterParam == "latest-per-session" {
+			// Apply session-based deduplication filter
+			snapshots = cluster.FilterMostRecentSnapshotsPerSession(mycluster, snapshots)
+		}
+
+		responses := make([]resticSnapshotResponse, 0, len(snapshots))
+		for i := range snapshots {
+			snap := snapshots[i]
+			statusString := mycluster.GetSnapshotMetadataStatusString(snap.Id)
+			metadataReady := mycluster.IsSnapshotMetadataReady(snap.Id)
+			responses = append(responses, resticSnapshotResponse{
+				BackupSnapshot: snap,
+				Metadata:       mycluster.SummarizeSnapshotMetadata(&snap),
+				MetadataReady:  metadataReady,
+				MetadataStatus: statusString,
+				MetadataError:  mycluster.GetSnapshotMetadataError(snap.Id),
+			})
+		}
+
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetSnapshots())
+		err := e.Encode(responses)
 		if err != nil {
 			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return

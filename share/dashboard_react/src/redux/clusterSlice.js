@@ -261,10 +261,10 @@ export const getBackupStats = createGuardedAsyncThunk('cluster/getBackupStats', 
   }
 })
 
-export const getResticSnapshot = createGuardedAsyncThunk('cluster/getResticSnapshot', async ({ clusterName }, thunkAPI) => {
+export const getResticSnapshot = createGuardedAsyncThunk('cluster/getResticSnapshot', async ({ clusterName, filter = 'latest-per-session' }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await clusterService.getResticSnapshot(clusterName, baseURL)
+    const { data, status } = await clusterService.getResticSnapshot(clusterName, baseURL, filter)
     return { data, status }
   } catch (error) {
     return handleError(error, thunkAPI)
@@ -923,6 +923,33 @@ export const reseedPhysicalFromBackup = createGuardedAsyncThunk(
       return { data, status }
     } catch (error) {
       showErrorBanner('Reseed physical from backup failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const reseedFromResticSnapshot = createGuardedAsyncThunk(
+  'cluster/reseedFromResticSnapshot',
+  async ({ clusterName, serverId, snapshotId, method }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const payload = {
+        clusterName,
+        serverId,
+        snapshotId,
+        method: method || 'logical'
+      }
+      const { data, status } = await clusterService.reseedFromResticSnapshot(
+        payload.clusterName,
+        payload.serverId,
+        payload.snapshotId,
+        payload.method,
+        baseURL
+      )
+      showSuccessBanner('Restic reseed initiated!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Restic reseed failed!', error, thunkAPI)
       return handleError(error, thunkAPI)
     }
   }
@@ -2155,12 +2182,13 @@ export const clusterSlice = createSlice({
         setMaintenanceMode.pending,
         promoteToLeader.pending,
         setAsUnrated.pending,
-        setAsPreferred.pending,
-        setAsIgnored.pending,
-        reseedLogicalFromBackup.pending,
-        reseedLogicalFromMaster.pending,
-        reseedPhysicalFromBackup.pending,
-        flushLogs.pending,
+         setAsPreferred.pending,
+         setAsIgnored.pending,
+         reseedLogicalFromBackup.pending,
+         reseedLogicalFromMaster.pending,
+         reseedPhysicalFromBackup.pending,
+         reseedFromResticSnapshot.pending,
+         flushLogs.pending,
         physicalBackupMaster.pending,
         logicalBackup.pending,
         stopDatabase.pending,
@@ -2229,12 +2257,13 @@ export const clusterSlice = createSlice({
         setMaintenanceMode.fulfilled,
         promoteToLeader.fulfilled,
         setAsUnrated.fulfilled,
-        setAsPreferred.fulfilled,
-        setAsIgnored.fulfilled,
-        reseedLogicalFromBackup.fulfilled,
-        reseedLogicalFromMaster.fulfilled,
-        reseedPhysicalFromBackup.fulfilled,
-        flushLogs.fulfilled,
+         setAsPreferred.fulfilled,
+         setAsIgnored.fulfilled,
+         reseedLogicalFromBackup.fulfilled,
+         reseedLogicalFromMaster.fulfilled,
+         reseedPhysicalFromBackup.fulfilled,
+         reseedFromResticSnapshot.fulfilled,
+         flushLogs.fulfilled,
         physicalBackupMaster.fulfilled,
         logicalBackup.fulfilled,
         stopDatabase.fulfilled,
@@ -2304,12 +2333,13 @@ export const clusterSlice = createSlice({
         setMaintenanceMode.rejected,
         promoteToLeader.rejected,
         setAsUnrated.rejected,
-        setAsPreferred.rejected,
-        setAsIgnored.rejected,
-        reseedLogicalFromBackup.rejected,
-        reseedLogicalFromMaster.rejected,
-        reseedPhysicalFromBackup.rejected,
-        flushLogs.rejected,
+         setAsPreferred.rejected,
+         setAsIgnored.rejected,
+         reseedLogicalFromBackup.rejected,
+         reseedLogicalFromMaster.rejected,
+         reseedPhysicalFromBackup.rejected,
+         reseedFromResticSnapshot.rejected,
+         flushLogs.rejected,
         physicalBackupMaster.rejected,
         logicalBackup.rejected,
         stopDatabase.rejected,

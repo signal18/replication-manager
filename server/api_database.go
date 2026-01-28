@@ -355,6 +355,10 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseed)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed-restic", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseedRestic)),
+	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/pitr", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -5204,3 +5208,83 @@ func (repman *ReplicationManager) handlerMuxServersPortConfigDummySender(w http.
 }
 
 // handlerMuxServerProvision handles the HTTP request to provision a server within a cluster.
+// handlerMuxServerReseedRestic handles reseeding using a specific restic snapshot.
+// @Summary Reseed a server from restic snapshot
+// @Description Reseeds a specified server using the provided restic snapshot ID and method.
+// @Tags DatabaseBackup
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param body body ResticReseedRequest true "Reseed request"
+// @Success 200 {string} string "Reseed initiated successfully"
+// @Failure 400 {string} string "Invalid request"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "Cluster or Server Not Found"
+// @Failure 409 {string} string "Metadata not ready"
+// @Failure 500 {string} string "Reseed failed"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/reseed-restic [post]
+func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	clusterName := vars["clusterName"]
+	serverName := vars["serverName"]
+	if clusterName == "" || serverName == "" {
+		http.Error(w, "Invalid cluster or server name", http.StatusBadRequest)
+		return
+	}
+	mycluster := repman.getClusterByName(clusterName)
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	node := mycluster.GetServerFromName(serverName)
+	if node == nil {
+		http.Error(w, "Server Not Found", http.StatusNotFound)
+		return
+	}
+	var req ResticReseedRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.SnapshotID) == "" {
+		http.Error(w, "snapshotId is required", http.StatusBadRequest)
+		return
+	}
+	method := strings.ToLower(strings.TrimSpace(req.Method))
+	if method == "" {
+		method = "logical"
+	}
+	if err := mycluster.RequireSnapshotMetadataReady(req.SnapshotID); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	switch method {
+	case "logical":
+		if err := node.JobReseedLogicalBackup("default"); err != nil {
+			http.Error(w, "Error reseed logical backup", http.StatusInternalServerError)
+			return
+		}
+	case "physical":
+		if err := node.JobReseedPhysicalBackup("default"); err != nil {
+			http.Error(w, "Error reseed physical backup", http.StatusInternalServerError)
+			return
+		}
+	default:
+		http.Error(w, "Invalid method", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ApiResponse{Success: true, Data: "Reseed initiated successfully"})
+}
+
+// ResticReseedRequest represents the JSON payload for reseeding from restic.
+type ResticReseedRequest struct {
+	SnapshotID string `json:"snapshotId"`
+	Method     string `json:"method"`
+}

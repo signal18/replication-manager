@@ -1,5 +1,6 @@
-import React, { lazy, Suspense } from 'react'
+import { Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import PropTypes from 'prop-types'
 import './App.css'
 import ToastManager from './components/ToastManager'
 import Login from './Pages/Login'
@@ -78,10 +79,14 @@ function App() {
   )
 }
 
-export default App
-
 const PrivateRoute = ({ children }) => {
   // Add your own authentication on the below line.
   const isLoggedIn = localStorage.getItem('user_token') !== null
   return isLoggedIn ? <Suspense fallback={<div>Loading...</div>}>{children}</Suspense> : <Navigate to='/login' />
 }
+
+PrivateRoute.propTypes = {
+  children: PropTypes.node.isRequired
+}
+
+export default App

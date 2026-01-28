@@ -73,6 +73,7 @@ export const clusterService = {
   reseedLogicalFromBackup,
   reseedLogicalFromMaster,
   reseedPhysicalFromBackup,
+  reseedFromResticSnapshot,
   flushLogs,
   physicalBackupMaster,
   logicalBackup,
@@ -204,8 +205,13 @@ function getBackupStats(clusterName, baseURL) {
 }
 
 
-function getResticSnapshot(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/restic/snapshots`)
+function getResticSnapshot(clusterName, baseURL, filter) {
+  const params = new URLSearchParams()
+  if (filter) {
+    params.append('filter', filter)
+  }
+  const query = params.toString() ? `?${params.toString()}` : ''
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/snapshots${query}`)
 }
 
 function getResticStats(clusterName, baseURL) {
@@ -405,6 +411,13 @@ function reseedLogicalFromMaster(clusterName, serverId, baseURL) {
 
 function reseedPhysicalFromBackup(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/reseed/physicalbackup`)
+}
+
+function reseedFromResticSnapshot(clusterName, serverId, snapshotId, method, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/reseed-restic`, {
+    snapshotId,
+    method
+  })
 }
 
 function flushLogs(clusterName, serverId, baseURL) {

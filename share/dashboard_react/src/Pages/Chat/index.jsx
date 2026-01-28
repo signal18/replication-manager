@@ -1,12 +1,12 @@
 import { Divider, Flex } from "@chakra-ui/react";
-import React, { useState } from "react";
+import { useState } from "react";
 import ChatHeader from "../../components/ChatBox/Header";
 import ChatMessages from "../../components/ChatBox/Messages";
 import ChatFooter from "../../components/ChatBox/Footer";
 import ChatChannels from "../../components/ChatBox/Channels";
 
 const Chat = () => {
-    const [channels, setChannels] = useState([
+    const [channels] = useState([
         {
             id: "string",
             create_at: 0,
@@ -24,7 +24,7 @@ const Chat = () => {
             creator_id: "string"
         }
     ])
-    const [messages, setMessages] = useState([
+    const [messages] = useState([
         {
             "id": "string",
             "create_at": 0,
@@ -107,7 +107,6 @@ const Chat = () => {
         if (!inputMessage.trim().length) {
             return;
         }
-        const data = inputMessage;
         // Send to mattermost
         //
 

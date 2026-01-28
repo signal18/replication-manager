@@ -61,6 +61,7 @@ type BackupMetadata struct {
 	ResticEnabled     bool           `json:"resticEnabled,omitempty"`
 	ResticSnapshotID  string         `json:"resticSnapshotID"`
 	ResticFilePath    string         `json:"resticFilePath"`
+	BackupSessionID   string         `json:"backupSessionID,omitempty"`
 }
 
 type PointInTimeMeta struct {

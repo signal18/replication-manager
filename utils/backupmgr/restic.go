@@ -233,6 +233,7 @@ type ResticManager struct {
 	FileMode          os.FileMode   // File permission mode (default: 0600)
 	OperationTimeout  time.Duration // Timeout for long-running operations (default: 2 hours)
 	MountDisabled     bool          // If true, mount operations are disabled (e.g., FUSE unavailable)
+	OnPurgeComplete   func(ResticPurgeOption)
 }
 
 // NewResticRepo initializes the repository manager
@@ -862,6 +863,10 @@ func (repo *ResticManager) restoreSnapshot(snapshotID, targetDir string, paths [
 }
 
 func (repo *ResticManager) ListSnapshot(snapshotID string, paths []string, recursive bool) ([]ResticLsEntry, error) {
+	return repo.ListSnapshotWithLogLevel(snapshotID, paths, recursive, logrus.InfoLevel)
+}
+
+func (repo *ResticManager) ListSnapshotWithLogLevel(snapshotID string, paths []string, recursive bool, level logrus.Level) ([]ResticLsEntry, error) {
 	if snapshotID == "" {
 		return nil, fmt.Errorf("snapshot ID is empty")
 	}
@@ -897,7 +902,7 @@ func (repo *ResticManager) ListSnapshot(snapshotID string, paths []string, recur
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	stdout, stderr, err := repo.RunCommandWithContext(ctx, args, logrus.InfoLevel, true)
+	stdout, stderr, err := repo.RunCommandWithContext(ctx, args, level, true)
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			return nil, fmt.Errorf("list operation timeout after %v: %w", timeout, err)
@@ -930,6 +935,10 @@ func (repo *ResticManager) ListSnapshot(snapshotID string, paths []string, recur
 }
 
 func (repo *ResticManager) DumpSnapshot(snapshotID, filePath string, writer io.Writer) error {
+	return repo.DumpSnapshotWithLogLevel(snapshotID, filePath, writer, logrus.InfoLevel)
+}
+
+func (repo *ResticManager) DumpSnapshotWithLogLevel(snapshotID, filePath string, writer io.Writer, level logrus.Level) error {
 	if snapshotID == "" {
 		return fmt.Errorf("snapshot ID is empty")
 	}
@@ -970,7 +979,7 @@ func (repo *ResticManager) DumpSnapshot(snapshotID, filePath string, writer io.W
 		return fmt.Errorf("failed to get stderr pipe: %w", err)
 	}
 
-	repo.Printf(logrus.InfoLevel, "Starting command with timeout: %s %v", repo.BinaryPath, args)
+	repo.Printf(level, "Starting command with timeout: %s %v", repo.BinaryPath, args)
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("error starting command: %w", err)
@@ -1008,7 +1017,7 @@ func (repo *ResticManager) DumpSnapshot(snapshotID, filePath string, writer io.W
 		return fmt.Errorf("command execution failed: %w, stderr: %s", err, stderrBuf.Bytes())
 	}
 
-	repo.Printf(logrus.InfoLevel, "Command completed successfully: %s %v", repo.BinaryPath, args)
+	repo.Printf(level, "Command completed successfully: %s %v", repo.BinaryPath, args)
 	return nil
 }
 
@@ -1950,6 +1959,10 @@ func (repo *ResticManager) PurgeRepo(opt ResticPurgeOption) error {
 		if err != nil {
 			return err
 		}
+	}
+
+	if repo.OnPurgeComplete != nil && !opt.DryRun {
+		go repo.OnPurgeComplete(opt)
 	}
 
 	return nil

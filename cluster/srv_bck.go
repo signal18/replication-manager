@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -95,6 +96,15 @@ func (server *ServerMonitor) ReadLastMetadata(method string) (*backupmgr.BackupM
 	if err != nil {
 		return nil, err
 	}
+	var methodType backupmgr.BackupMethod = backupmgr.BackupMethodLogical
+	switch strings.ToLower(strings.TrimSpace(method)) {
+	case "physical", config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
+		methodType = backupmgr.BackupMethodPhysical
+	default:
+		methodType = backupmgr.BackupMethodLogical
+	}
+	meta.BackupMethod = methodType
+	server.ensureBackupSessionID(meta, methodType, meta.StartTime, meta.BackupLine)
 
 	return meta, nil
 }

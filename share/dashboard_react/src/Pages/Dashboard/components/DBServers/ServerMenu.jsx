@@ -14,6 +14,7 @@ import {
   reseedLogicalFromBackup,
   reseedLogicalFromMaster,
   reseedPhysicalFromBackup,
+  reseedFromResticSnapshot,
   resetMaster,
   resetSlaveAll,
   runRemoteJobs,
@@ -141,20 +142,30 @@ function ServerMenu({
     setReseedOperationType('')
   }
 
-  const handleReseedConfirm = (selectedSnapshot) => {
-    // TODO: Once backend API supports snapshot selection, pass selectedSnapshot to the actions
-    // For now, the snapshot selection is captured but not yet utilized by the backend
+  const handleReseedConfirm = ({ useRestic, snapshotId } = {}) => {
     switch (reseedOperationType) {
       case 'logical-backup':
-        dispatch(reseedLogicalFromBackup({ clusterName, serverId: row.id }))
-        // Future: dispatch(reseedLogicalFromBackup({ clusterName, serverId: row.id, snapshotId: selectedSnapshot }))
+      case 'physical-backup':
+        if (useRestic) {
+          if (!snapshotId) {
+            return
+          }
+          dispatch(
+            reseedFromResticSnapshot({
+              clusterName,
+              serverId: row.id,
+              snapshotId,
+              method: reseedOperationType === 'physical-backup' ? 'physical' : 'logical'
+            })
+          )
+        } else if (reseedOperationType === 'physical-backup') {
+          dispatch(reseedPhysicalFromBackup({ clusterName, serverId: row.id }))
+        } else {
+          dispatch(reseedLogicalFromBackup({ clusterName, serverId: row.id }))
+        }
         break
       case 'logical-master':
         dispatch(reseedLogicalFromMaster({ clusterName, serverId: row.id }))
-        break
-      case 'physical-backup':
-        dispatch(reseedPhysicalFromBackup({ clusterName, serverId: row.id }))
-        // Future: dispatch(reseedPhysicalFromBackup({ clusterName, serverId: row.id, snapshotId: selectedSnapshot }))
         break
       default:
         break

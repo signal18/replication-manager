@@ -480,6 +480,7 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 		RetentionDuration: strings.TrimSpace(opts.RetentionDuration),
 		ResticEnabled:     resticEnabled,
 	}
+	server.ensureBackupSessionID(server.LastBackupMeta.Physical, backupmgr.BackupMethodPhysical, now, backupLine)
 
 	cluster.BackupMetaMap.Set(server.LastBackupMeta.Physical.Id, server.LastBackupMeta.Physical)
 
@@ -2445,6 +2446,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(opts BackupRunOptions) 
 		RetentionDuration: strings.TrimSpace(opts.RetentionDuration),
 		ResticEnabled:     resticEnabled,
 	}
+	server.ensureBackupSessionID(server.LastBackupMeta.Logical, backupmgr.BackupMethodLogical, start, backupLine)
 
 	cluster.BackupMetaMap.Set(server.LastBackupMeta.Logical.Id, server.LastBackupMeta.Logical)
 
@@ -2642,7 +2644,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(opts BackupRunOptions) 
 			resticPath = server.LastBackupMeta.Logical.Dest
 		}
 		// Note: BackupRestic handles its own error logging and flag clearing if prerequisites fail
-		server.BackupRestic(backupmgr.BackupMethodLogical, true, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupLogicalType, backupLine)...)
+		server.BackupRestic(backupmgr.BackupMethodLogical, true, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupLogicalType, backupLine, server.LastBackupMeta.Logical)...)
 	}
 
 	return nil
@@ -3034,7 +3036,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 		// Backup to restic when no error (defer to prevent unfinished physical copy)
 		backtype := "binlog"
 		// Use BackupMethodLogical for binlogs (metadata won't be updated, just snapshot created)
-		defer server.BackupRestic(backupmgr.BackupMethodLogical, false, server.GetMyBackupDirectory(), server.BuildResticTags(backtype, "", backupmgr.BackupLineDefault)...)
+		defer server.BackupRestic(backupmgr.BackupMethodLogical, false, server.GetMyBackupDirectory(), server.BuildResticTags(backtype, "", backupmgr.BackupLineDefault, nil)...)
 	}
 
 	return nil
@@ -3291,7 +3293,7 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 		// Backup to restic when no error (defer to prevent unfinished physical copy)
 		backtype := "binlog"
 		// Use BackupMethodLogical for binlogs (metadata won't be updated, just snapshot created)
-		defer server.BackupRestic(backupmgr.BackupMethodLogical, false, server.GetMyBackupDirectory(), server.BuildResticTags(backtype, "", backupmgr.BackupLineDefault)...)
+		defer server.BackupRestic(backupmgr.BackupMethodLogical, false, server.GetMyBackupDirectory(), server.BuildResticTags(backtype, "", backupmgr.BackupLineDefault, nil)...)
 	}
 	return nil
 }
@@ -3604,6 +3606,11 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Wrong backup type for metadata in %s", server.URL)
 		return
 	}
+	if lastmeta == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "No metadata available to write for %s", server.URL)
+		return
+	}
+	server.ensureBackupSessionID(lastmeta, backtype, lastmeta.StartTime, lastmeta.BackupLine)
 
 	if _, err := os.Stat(lastmeta.Dest); err == nil {
 		lastmeta.GetSizeAndFileCount()
@@ -3797,7 +3804,7 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 
 			// Create restic snapshot asynchronously and update metadata when complete
 			// Note: BackupRestic handles its own error logging and flag clearing if prerequisites fail
-			server.BackupRestic(backupmgr.BackupMethodPhysical, true, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupPhysicalType, backupLine)...)
+			server.BackupRestic(backupmgr.BackupMethodPhysical, true, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupPhysicalType, backupLine, server.LastBackupMeta.Physical)...)
 		}
 
 		// Now safe to clear traditional backup flag

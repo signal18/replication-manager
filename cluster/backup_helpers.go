@@ -104,6 +104,104 @@ func (server *ServerMonitor) shouldRunRestic(opts BackupRunOptions) bool {
 	return *opts.ResticEnabled
 }
 
+func sanitizeSessionComponent(value string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" {
+		return "na"
+	}
+	var b strings.Builder
+	for _, r := range trimmed {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('-')
+		}
+	}
+	cleaned := strings.Trim(b.String(), "-")
+	if cleaned == "" {
+		return "na"
+	}
+	return cleaned
+}
+
+func (server *ServerMonitor) generateBackupSessionID(method backupmgr.BackupMethod, line string, ts time.Time) string {
+	clusterName := "cluster"
+	if server.ClusterGroup != nil && strings.TrimSpace(server.ClusterGroup.Name) != "" {
+		clusterName = server.ClusterGroup.Name
+	}
+	host := server.Host
+	if host == "" {
+		host = server.Name
+	}
+	port := server.Port
+	if port == "" {
+		if parts := strings.Split(server.URL, ":"); len(parts) >= 2 {
+			host = parts[0]
+			port = parts[len(parts)-1]
+		}
+	}
+	line = normalizeBackupLine(line)
+	if line == "" {
+		line = backupmgr.BackupLineDefault
+	}
+	if ts.IsZero() {
+		ts = time.Now()
+	}
+	methodLabel := "custom"
+	switch method {
+	case backupmgr.BackupMethodLogical:
+		methodLabel = "logical"
+	case backupmgr.BackupMethodPhysical:
+		methodLabel = "physical"
+	}
+	return fmt.Sprintf("%s-%s-%s-%s-%d-%s",
+		sanitizeSessionComponent(clusterName),
+		sanitizeSessionComponent(host),
+		sanitizeSessionComponent(port),
+		sanitizeSessionComponent(methodLabel),
+		ts.Unix(),
+		sanitizeSessionComponent(line),
+	)
+}
+
+func (server *ServerMonitor) ensureBackupSessionID(meta *backupmgr.BackupMetadata, method backupmgr.BackupMethod, ts time.Time, line string) string {
+	if server == nil || meta == nil {
+		return ""
+	}
+	if method == 0 && meta.BackupMethod != 0 {
+		method = meta.BackupMethod
+	}
+	if strings.TrimSpace(line) == "" {
+		line = meta.BackupLine
+	}
+	if ts.IsZero() {
+		if !meta.StartTime.IsZero() {
+			ts = meta.StartTime
+		} else if meta.Id > 0 {
+			ts = time.Unix(meta.Id, 0)
+		}
+	}
+	if meta.BackupSessionID == "" {
+		meta.BackupSessionID = server.generateBackupSessionID(method, line, ts)
+	}
+	return meta.BackupSessionID
+}
+
+func inferBackupMethod(meta *backupmgr.BackupMetadata) backupmgr.BackupMethod {
+	if meta == nil {
+		return backupmgr.BackupMethodLogical
+	}
+	if meta.BackupMethod == backupmgr.BackupMethodLogical || meta.BackupMethod == backupmgr.BackupMethodPhysical {
+		return meta.BackupMethod
+	}
+	switch meta.BackupTool {
+	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
+		return backupmgr.BackupMethodPhysical
+	default:
+		return backupmgr.BackupMethodLogical
+	}
+}
+
 func (server *ServerMonitor) buildBackupMetaFileName(backupTool string, backupID int64, line string) string {
 	if backupTool == "" {
 		return ""
@@ -237,6 +335,9 @@ func (server *ServerMonitor) LoadAdhocBackupMetadata() ([]*backupmgr.BackupMetad
 		if meta.Source == "" {
 			meta.Source = server.URL
 		}
+		method := inferBackupMethod(meta)
+		meta.BackupMethod = method
+		server.ensureBackupSessionID(meta, method, meta.StartTime, meta.BackupLine)
 
 		if cluster != nil {
 			cluster.BackupMetaMap.Set(meta.Id, meta)
