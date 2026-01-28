@@ -279,7 +279,7 @@ func initStatusFlags(cmd *cobra.Command) {
 }
 
 func initStatusFlagsDumpSplit(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&cliOuputDir, "outputdir", "./", "Directory to store files")
+	cmd.Flags().StringVar(&cliOutputDir, "outputdir", "./", "Directory to store files")
 	cmd.Flags().StringVar(&cliInputFile, "inputfile", "", "SQL file in text or gzip instead of stdin")
 	viper.BindPFlags(cmd.Flags())
 }

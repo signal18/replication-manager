@@ -51,7 +51,7 @@ var splitDumpCmd = &cobra.Command{
 			CurrentLine: make(chan string),
 		}
 
-		fmt.Sprintf("outputing all tables to %s\n", cliOuputDir)
+		fmt.Sprintf("outputing all tables to %s\n", cliOutputDir)
 
 		start := time.Now()
 		if cliInputFile != "" {
