@@ -197,7 +197,11 @@ func (cluster *Cluster) ResticPurgeRepo(now bool) error {
 		keepTags := make([]string, 0, len(keepTemplates))
 		for _, template := range keepTemplates {
 			rendered, ok := renderResticKeepTagTemplate(template, keepValues, cluster)
-			if !ok || strings.TrimSpace(rendered) == "" {
+			if !ok {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to render restic keep-tag template %q", template)
+				continue
+			}
+			if strings.TrimSpace(rendered) == "" {
 				continue
 			}
 			keepTags = append(keepTags, rendered)
@@ -461,14 +465,16 @@ func splitResticKeepTagTemplates(value string) []string {
 			quote = r
 			current.WriteRune(r)
 		case ',', ' ', '\t', '\n', '\r':
-			parts = append(parts, current.String())
-			current.Reset()
+			if current.Len() > 0 {
+				parts = append(parts, current.String())
+				current.Reset()
+			}
 		default:
 			current.WriteRune(r)
 		}
 	}
 
-	if current.Len() > 0 || strings.HasSuffix(value, ",") {
+	if current.Len() > 0 {
 		parts = append(parts, current.String())
 	}
 
@@ -492,6 +498,7 @@ func unquoteResticTagLiteral(value string) (string, bool) {
 	quote := value[0]
 	raw := value[1 : len(value)-1]
 	if quote == '\'' {
+		// Single quotes preserve content literally (no escape processing).
 		return raw, true
 	}
 
@@ -513,6 +520,7 @@ func unquoteResticTagLiteral(value string) (string, bool) {
 	if escaped {
 		b.WriteRune('\\')
 	}
+	// Double quotes allow \\ and \" escapes (backslash only affects the next rune).
 	return b.String(), true
 }
 
