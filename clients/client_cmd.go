@@ -79,7 +79,7 @@ var (
 	cliShowObjects               string
 	cliConfirm                   string
 	cliLogDir                    string
-	cliOuputDir                  string
+	cliOutputDir                 string
 	cliInputFile                 string
 	cfgGroup                     string
 	memprofile                   string
