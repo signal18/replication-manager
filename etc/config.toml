@@ -188,7 +188,7 @@ include = "/etc/replication-manager/cluster.d"
 # backup-restic-purge-group-by = "host,paths" # default = host+paths grouping, "default" = restic default grouping, "none" = single group
 # Protect snapshots matching these tags from purge.
 # Space and comma separated (comma = AND). Quote tags with commas: "role:primary,critical"
-# backup-restic-purge-keep-tag = "line:adhoc env:prod"
+# backup-restic-purge-keep-tag = "line:adhoc"
 # haproxy-binary-path =  "/usr/sbin/haproxy"
 # maxscale-binary-path =  "/usr/sbin/maxscale"
 
