@@ -228,6 +228,7 @@ type ServerMonitor struct {
 	jobMutex                    sync.Mutex // protects IsRunningJobs flag
 	configGenMutex              sync.Mutex // protects config generation operations
 	backupMetaMutex             sync.Mutex // protects LastBackupMeta from concurrent Restic callback updates
+	reseedMutex                 sync.Mutex // protects IsReseeding state from concurrent reseed operations
 }
 
 type ServerBackupMeta struct {

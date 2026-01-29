@@ -203,6 +203,30 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testRunSysbenchTPCPerMinuteIncreaseThreads" {
 			res = regtest.TestRunSysbenchTPCPerMinuteIncreaseThreads(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testResticReseedRestore" {
+			res = regtest.TestResticReseedRestore(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testResticReseedDump" {
+			res = regtest.TestResticReseedDump(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testResticReseedMount" {
+			res = regtest.TestResticReseedMount(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testResticReseedFallback" {
+			res = regtest.TestResticReseedFallback(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testResticReseedMysqldump" {
+			res = regtest.TestResticReseedMysqldump(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testResticReseedMydumper" {
+			res = regtest.TestResticReseedMydumper(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testResticReseedXtrabackup" {
+			res = regtest.TestResticReseedXtrabackup(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testResticReseedMariabackup" {
+			res = regtest.TestResticReseedMariabackup(cl, test.ConfigFile, &test)
+		}
 
 		test.Result = regtest.GetTestResultLabel(res)
 		if testExp == "SUITE" {

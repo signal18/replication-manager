@@ -466,7 +466,24 @@ func (server *ServerMonitor) SetInRefreshBinlogMeta(value bool) {
 }
 
 func (server *ServerMonitor) SetInReseedBackup(value string) {
+	server.reseedMutex.Lock()
+	defer server.reseedMutex.Unlock()
 	server.IsReseeding = value
+}
+
+// TrySetInReseedBackup atomically checks if the server is already in a reseeding state
+// and sets it to the new task if not. Returns true if the state was successfully set,
+// false if the server is already reseeding. This prevents concurrent reseed operations.
+func (server *ServerMonitor) TrySetInReseedBackup(task string) (bool, string) {
+	server.reseedMutex.Lock()
+	defer server.reseedMutex.Unlock()
+
+	if server.IsReseeding != "" {
+		return false, server.IsReseeding
+	}
+
+	server.IsReseeding = task
+	return true, ""
 }
 
 func (server *ServerMonitor) SetNeedRefreshJobs(value bool) {

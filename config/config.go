@@ -753,6 +753,10 @@ type Config struct {
 	BackupResticFileMode                      int                    `mapstructure:"backup-restic-file-mode" toml:"backup-restic-file-mode" json:"backupResticFileMode"`
 	BackupResticPurgeOldestOnDiskSpace        bool                   `mapstructure:"backup-restic-purge-oldest-on-disk-space" toml:"backup-restic-purge-oldest-on-disk-space" json:"backupResticPurgeOldestOnDiskSpace"`
 	BackupResticPurgeOldestOnDiskThreshold    int                    `mapstructure:"backup-restic-purge-oldest-on-disk-threshold" toml:"backup-restic-purge-oldest-on-disk-treshold" json:"backupResticPurgeOldestOnDiskTreshold"`
+	BackupResticReseedStrategy                string                 `mapstructure:"backup-restic-reseed-strategy" toml:"backup-restic-reseed-strategy" json:"backupResticReseedStrategy"`
+	BackupResticReseedTempDir                 string                 `mapstructure:"backup-restic-reseed-temp-dir" toml:"backup-restic-reseed-temp-dir" json:"backupResticReseedTempDir"`
+	BackupResticReseedCleanup                 bool                   `mapstructure:"backup-restic-reseed-cleanup" toml:"backup-restic-reseed-cleanup" json:"backupResticReseedCleanup"`
+	BackupResticReseedTimeout                 int                    `mapstructure:"backup-restic-reseed-timeout" toml:"backup-restic-reseed-timeout" json:"backupResticReseedTimeout"`
 	BackupReconcileInterval                   int                    `mapstructure:"backup-reconcile-interval" toml:"backup-reconcile-interval" json:"backupReconcileInterval"`
 	BackupReconcileAutoCleanup                bool                   `mapstructure:"backup-reconcile-auto-cleanup" toml:"backup-reconcile-auto-cleanup" json:"backupReconcileAutoCleanup"`
 	BackupStreaming                           bool                   `mapstructure:"backup-streaming" toml:"backup-streaming" json:"backupStreaming"`

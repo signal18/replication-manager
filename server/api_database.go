@@ -5264,19 +5264,17 @@ func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWr
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	switch method {
-	case "logical":
-		if err := node.JobReseedLogicalBackup("default"); err != nil {
-			http.Error(w, "Error reseed logical backup", http.StatusInternalServerError)
-			return
-		}
-	case "physical":
-		if err := node.JobReseedPhysicalBackup("default"); err != nil {
-			http.Error(w, "Error reseed physical backup", http.StatusInternalServerError)
-			return
-		}
-	default:
+	if method != "logical" && method != "physical" {
 		http.Error(w, "Invalid method", http.StatusBadRequest)
+		return
+	}
+	opts := cluster.ResticReseedOptions{
+		TempDir:   req.TempDir,
+		Cleanup:   req.Cleanup,
+		Overwrite: "if-newer",
+	}
+	if err := node.JobReseedFromRestic(req.SnapshotID, method, req.Strategy, opts); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -5287,4 +5285,7 @@ func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWr
 type ResticReseedRequest struct {
 	SnapshotID string `json:"snapshotId"`
 	Method     string `json:"method"`
+	Strategy   string `json:"strategy,omitempty"`
+	TempDir    string `json:"tempDir,omitempty"`
+	Cleanup    *bool  `json:"cleanup,omitempty"`
 }

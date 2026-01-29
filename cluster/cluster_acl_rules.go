@@ -62,6 +62,7 @@ var databaseACLRules = []ACLRule{
 
 	// Restore actions
 	{"/actions/reseed/", nil, []string{config.GrantDBRestore}},
+	{"/actions/reseed-restic", nil, []string{config.GrantDBRestore}},
 	{"/actions/pitr", nil, []string{config.GrantDBRestore}},
 	{"/actions/reseed-cancel", nil, []string{config.GrantDBRestore, config.GrantClusterProcess}},
 

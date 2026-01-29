@@ -42,17 +42,17 @@ const JOBS_CONTAINER_RID = 'container#jobs'
 
 /**
  * ServerMenu - Context menu for database server operations
- * 
- * Provides a hierarchical menu of database operations organized by category (Maintenance, 
+ *
+ * Provides a hierarchical menu of database operations organized by category (Maintenance,
  * Backup, Provision, DB Utils). All operations are permission-based and require user confirmation
  * for destructive actions.
- * 
+ *
  * Configuration-Based Database Management:
  * - Uses configuration files (01_preserved.cnf, 02_delta.cnf, 03_agreed.cnf) for database startup
  * - 01_preserved.cnf: User-accepted differences (highest precedence)
  * - 02_delta.cnf: Detected differences between deployed and config
  * - 03_agreed.cnf: Variables that should match between systems
- * 
+ *
  * @param {Object} props - Component properties
  * @param {string} props.clusterName - Name of the database cluster
  * @param {string} props.clusterMasterId - ID of the master server in the cluster
@@ -76,7 +76,7 @@ const JOBS_CONTAINER_RID = 'container#jobs'
  * @param {string} [props.className] - Additional CSS classes
  * @param {boolean} [props.showCompareWithOption=true] - Whether to show compare option
  * @param {boolean} [props.showTerminal=false] - Whether to show terminal options
- * 
+ *
  * @returns {JSX.Element} ServerMenu component with context menu and confirmation modal
  */
 function ServerMenu({
@@ -97,24 +97,29 @@ function ServerMenu({
   showTerminal = false
 }) {
   const dispatch = useDispatch()
-  
+
   // State for basic ConfirmModal (used for all non-reseed operations)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
-  
+
   // State for AdvancedReseedModal (used for reseed operations)
   const [isReseedModalOpen, setIsReseedModalOpen] = useState(false)
   const [reseedOperationType, setReseedOperationType] = useState('')
-  
+
   const [serverName, setServerName] = useState('')
 
-  const getHref = useHref('/').replace(/\/+$/, '');
+  const getHref = useHref('/').replace(/\/+$/, '')
 
-  const openTerminalPage = useCallback((clusterName, srvId, commandType = '') => {
-    const terminalURL = getHref.concat(`/terminal/clusters/${clusterName}/servers/${srvId}/${commandType}`).replace(/\/+$/, '')
-    window.open(terminalURL, '_blank')
-  }, [getHref])
+  const openTerminalPage = useCallback(
+    (clusterName, srvId, commandType = '') => {
+      const terminalURL = getHref
+        .concat(`/terminal/clusters/${clusterName}/servers/${srvId}/${commandType}`)
+        .replace(/\/+$/, '')
+      window.open(terminalURL, '_blank')
+    },
+    [getHref]
+  )
 
   useEffect(() => {
     if (row?.id) {
@@ -142,7 +147,7 @@ function ServerMenu({
     setReseedOperationType('')
   }
 
-  const handleReseedConfirm = ({ useRestic, snapshotId } = {}) => {
+  const handleReseedConfirm = ({ useRestic, snapshotId, strategy, cleanup, tempDir } = {}) => {
     switch (reseedOperationType) {
       case 'logical-backup':
       case 'physical-backup':
@@ -155,7 +160,10 @@ function ServerMenu({
               clusterName,
               serverId: row.id,
               snapshotId,
-              method: reseedOperationType === 'physical-backup' ? 'physical' : 'logical'
+              method: reseedOperationType === 'physical-backup' ? 'physical' : 'logical',
+              strategy,
+              cleanup,
+              tempDir
             })
           )
         } else if (reseedOperationType === 'physical-backup') {
@@ -183,11 +191,11 @@ function ServerMenu({
         options={[
           ...(showCompareWithOption
             ? [
-              {
-                name: 'Compare With',
-                onClick: () => openCompareModal(row)
-              }
-            ]
+                {
+                  name: 'Compare With',
+                  onClick: () => openCompareModal(row)
+                }
+              ]
             : []),
           {
             name: 'Maintenance Mode',
@@ -197,73 +205,77 @@ function ServerMenu({
               setConfirmHandler(() => () => dispatch(setMaintenanceMode({ clusterName, serverId: row.id })))
             }
           },
-          ...(user?.grants['terminal-db'] && showTerminal ? [
-            {
-              name: 'Web Terminal',
-              subMenu: [
+          ...(user?.grants['terminal-db'] && showTerminal
+            ? [
                 {
-                  name: 'MySQL Terminal',
-                  onClick: () => openTerminalPage(clusterName, row.id, 'mysql')
-                },
-                {
-                  name: 'MyTop Terminal',
-                  onClick: () => openTerminalPage(clusterName, row.id, 'mytop')
-                },
-                ...(user?.grants['terminal-global'] ? [
-                  {
-                    name: 'Shell Terminal',
-                    onClick: () => openTerminalPage(clusterName, row.id)
-                  }
-                ] : []),
+                  name: 'Web Terminal',
+                  subMenu: [
+                    {
+                      name: 'MySQL Terminal',
+                      onClick: () => openTerminalPage(clusterName, row.id, 'mysql')
+                    },
+                    {
+                      name: 'MyTop Terminal',
+                      onClick: () => openTerminalPage(clusterName, row.id, 'mytop')
+                    },
+                    ...(user?.grants['terminal-global']
+                      ? [
+                          {
+                            name: 'Shell Terminal',
+                            onClick: () => openTerminalPage(clusterName, row.id)
+                          }
+                        ]
+                      : [])
+                  ]
+                }
               ]
-            }
-          ] : []),
+            : []),
           ...(user?.grants['cluster-switchover'] && row.isSlave
             ? [
-              {
-                name: 'Promote To Leader',
-                onClick: () => {
-                  openConfirmModal()
-                  setConfirmTitle(`Confirm promotion for ${serverName}?`)
-                  setConfirmHandler(() => () => dispatch(promoteToLeader({ clusterName, serverId: row.id })))
+                {
+                  name: 'Promote To Leader',
+                  onClick: () => {
+                    openConfirmModal()
+                    setConfirmTitle(`Confirm promotion for ${serverName}?`)
+                    setConfirmHandler(() => () => dispatch(promoteToLeader({ clusterName, serverId: row.id })))
+                  }
                 }
-              }
-            ]
+              ]
             : []),
           {
             name: 'Failover Candidate',
             subMenu: [
               ...(user?.grants['cluster-failover'] && !row.prefered && !row.ignored
                 ? [
-                  {
-                    name: 'Set as Preferred',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm set as preferred for ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(setAsPreferred({ clusterName, serverId: row.id })))
+                    {
+                      name: 'Set as Preferred',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm set as preferred for ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(setAsPreferred({ clusterName, serverId: row.id })))
+                      }
+                    },
+                    {
+                      name: 'Set as Ignored',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm set as ignored for ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(setAsIgnored({ clusterName, serverId: row.id })))
+                      }
                     }
-                  },
-                  {
-                    name: 'Set as Ignored',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm set as ignored for ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(setAsIgnored({ clusterName, serverId: row.id })))
-                    }
-                  }
-                ]
+                  ]
                 : []),
               ...(user?.grants['cluster-failover'] && (row.prefered || row.ignored)
                 ? [
-                  {
-                    name: 'Set as unrated',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm set as unrated for ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(setAsUnrated({ clusterName, serverId: row.id })))
+                    {
+                      name: 'Set as unrated',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm set as unrated for ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(setAsUnrated({ clusterName, serverId: row.id })))
+                      }
                     }
-                  }
-                ]
+                  ]
                 : [])
             ]
           },
@@ -272,70 +284,80 @@ function ServerMenu({
             subMenu: [
               ...(clusterMasterId === row.id && user?.grants['db-backup']
                 ? [
-                  {
-                    name: 'Physical Backup',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm master physical (${backupPhysicalType}) backup?`)
-                      setConfirmHandler(() => () => dispatch(physicalBackupMaster({ clusterName, serverId: row.id })))
-                    }
-                  },
-                  {
-                    name: 'Logical Backup',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm sending logical backup (${backupLogicalType}) for ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(logicalBackup({ clusterName, serverId: row.id })))
-                    }
-                  }
-                ]
-                : user?.grants['db-restore']
-                  ? [
                     {
-                      name: 'Reseed Logical From Backup',
-                      onClick: () => {
-                        if (backupRestic) {
-                          openReseedModal('logical-backup')
-                        } else {
-                          openConfirmModal()
-                          setConfirmTitle(`Confirm reseed with logical backup (${backupLogicalType}) for ${serverName}?`)
-                          setConfirmHandler(() => () => dispatch(reseedLogicalFromBackup({ clusterName, serverId: row.id })))
-                        }
-                      }
-                    },
-                    {
-                      name: 'Reseed Logical From Master',
+                      name: 'Physical Backup',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm reseed with ${backupLogicalType} for ${serverName}?`)
-                        setConfirmHandler(() => () => dispatch(reseedLogicalFromMaster({ clusterName, serverId: row.id })))
+                        setConfirmTitle(`Confirm master physical (${backupPhysicalType}) backup?`)
+                        setConfirmHandler(() => () => dispatch(physicalBackupMaster({ clusterName, serverId: row.id })))
                       }
                     },
                     {
-                      name: 'Reseed Physical From Backup',
+                      name: 'Logical Backup',
                       onClick: () => {
-                        if (backupRestic) {
-                          openReseedModal('physical-backup')
-                        } else {
-                          openConfirmModal()
-                          setConfirmTitle(`Confirm reseed with physical backup (${backupPhysicalType}) for ${serverName}?`)
-                          setConfirmHandler(() => () => dispatch(reseedPhysicalFromBackup({ clusterName, serverId: row.id })))
-                        }
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm sending logical backup (${backupLogicalType}) for ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(logicalBackup({ clusterName, serverId: row.id })))
                       }
                     }
                   ]
+                : user?.grants['db-restore']
+                  ? [
+                      {
+                        name: 'Reseed Logical From Backup',
+                        onClick: () => {
+                          if (backupRestic) {
+                            openReseedModal('logical-backup')
+                          } else {
+                            openConfirmModal()
+                            setConfirmTitle(
+                              `Confirm reseed with logical backup (${backupLogicalType}) for ${serverName}?`
+                            )
+                            setConfirmHandler(
+                              () => () => dispatch(reseedLogicalFromBackup({ clusterName, serverId: row.id }))
+                            )
+                          }
+                        }
+                      },
+                      {
+                        name: 'Reseed Logical From Master',
+                        onClick: () => {
+                          openConfirmModal()
+                          setConfirmTitle(`Confirm reseed with ${backupLogicalType} for ${serverName}?`)
+                          setConfirmHandler(
+                            () => () => dispatch(reseedLogicalFromMaster({ clusterName, serverId: row.id }))
+                          )
+                        }
+                      },
+                      {
+                        name: 'Reseed Physical From Backup',
+                        onClick: () => {
+                          if (backupRestic) {
+                            openReseedModal('physical-backup')
+                          } else {
+                            openConfirmModal()
+                            setConfirmTitle(
+                              `Confirm reseed with physical backup (${backupPhysicalType}) for ${serverName}?`
+                            )
+                            setConfirmHandler(
+                              () => () => dispatch(reseedPhysicalFromBackup({ clusterName, serverId: row.id }))
+                            )
+                          }
+                        }
+                      }
+                    ]
                   : []),
               ...(user?.grants['db-backup']
                 ? [
-                  {
-                    name: 'Flush logs',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm flush logs for ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(flushLogs({ clusterName, serverId: row.id })))
+                    {
+                      name: 'Flush logs',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm flush logs for ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(flushLogs({ clusterName, serverId: row.id })))
+                      }
                     }
-                  }
-                ]
+                  ]
                 : []),
               {
                 name: 'Run Remote Jobs',
@@ -352,85 +374,92 @@ function ServerMenu({
             subMenu: [
               ...(user?.grants['db-maintenance']
                 ? [
-                  {
-                    name: 'Jobs Upgrade',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm jobs upgrade for ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(jobsUpgrade({ clusterName, serverId: row.id })))
+                    {
+                      name: 'Jobs Upgrade',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm jobs upgrade for ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(jobsUpgrade({ clusterName, serverId: row.id })))
+                      }
                     }
-                  }
-                ]
+                  ]
                 : []),
               ...(user?.grants['db-stop']
                 ? [
-                  {
-                    name: 'Stop Database',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm stop for ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(stopDatabase({ clusterName, serverId: row.id })))
+                    {
+                      name: 'Stop Database',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm stop for ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(stopDatabase({ clusterName, serverId: row.id })))
+                      }
                     }
-                  }
-                ]
+                  ]
                 : []),
               ...(user?.grants['db-start']
                 ? [
-                  {
-                    name: 'Start Database',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm start for ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(startDatabase({ clusterName, serverId: row.id })))
-                    }
-                  },
-                  ...(orchestrator === 'opensvc' ? [
                     {
-                      name: 'Restart Jobs Container',
+                      name: 'Start Database',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm restart jobs container for ${serverName}?`)
-                        setConfirmHandler(() => () => dispatch(restartDatabase({ clusterName, serverId: row.id, rid: JOBS_CONTAINER_RID })))
+                        setConfirmTitle(`Confirm start for ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(startDatabase({ clusterName, serverId: row.id })))
                       }
-                    }
-                  ] : [])
-                ]
+                    },
+                    ...(orchestrator === 'opensvc'
+                      ? [
+                          {
+                            name: 'Restart Jobs Container',
+                            onClick: () => {
+                              openConfirmModal()
+                              setConfirmTitle(`Confirm restart jobs container for ${serverName}?`)
+                              setConfirmHandler(
+                                () => () =>
+                                  dispatch(restartDatabase({ clusterName, serverId: row.id, rid: JOBS_CONTAINER_RID }))
+                              )
+                            }
+                          }
+                        ]
+                      : [])
+                  ]
                 : []),
               ...(user?.grants['prov-db-provision']
                 ? [
-                  {
-                    name: 'Provision Database',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm provision ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(provisionDatabase({ clusterName, serverId: row.id })))
+                    {
+                      name: 'Provision Database',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm provision ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(provisionDatabase({ clusterName, serverId: row.id })))
+                      }
                     }
-                  }
-                ]
+                  ]
                 : []),
               ...(user?.grants['prov-db-unprovision']
                 ? [
-                  {
-                    name: 'Unprovision Database',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm unprovision for ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(unprovisionDatabase({ clusterName, serverId: row.id })))
+                    {
+                      name: 'Unprovision Database',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm unprovision for ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(unprovisionDatabase({ clusterName, serverId: row.id })))
+                      }
                     }
-                  },
-                ]
+                  ]
                 : []),
               ...(user?.grants['db-config-flag']
                 ? [
-                  {
-                    name: 'Refresh Variables and Generate Config',
-                    onClick: () => {
-                      setConfirmTitle(`Confirm generate db config for ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(generateConfig({ clusterName, host: row.host, port: row.port })))
-                      openConfirmModal()
+                    {
+                      name: 'Refresh Variables and Generate Config',
+                      onClick: () => {
+                        setConfirmTitle(`Confirm generate db config for ${serverName}?`)
+                        setConfirmHandler(
+                          () => () => dispatch(generateConfig({ clusterName, host: row.host, port: row.port }))
+                        )
+                        openConfirmModal()
+                      }
                     }
-                  }
-                ]
+                  ]
                 : []),
               {
                 name: 'Remove Monitor',
@@ -439,7 +468,7 @@ function ServerMenu({
                   setConfirmTitle(`Confirm removing monitor for ${serverName}?`)
                   setConfirmHandler(() => () => dispatch(dropServer({ clusterName, host: row.host, port: row.port })))
                 }
-              },
+              }
             ]
           },
           {
@@ -447,112 +476,110 @@ function ServerMenu({
             subMenu: [
               ...(user?.grants['db-optimize']
                 ? [
-                  {
-                    name: 'Optimize',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm optimize for ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(optimizeServer({ clusterName, serverId: row.id })))
+                    {
+                      name: 'Optimize',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm optimize for ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(optimizeServer({ clusterName, serverId: row.id })))
+                      }
                     }
-                  }
-                ]
+                  ]
                 : []),
               ...(user?.grants['db-replication']
                 ? [
-                  {
-                    name: 'Skip 1 Replication Event',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm skip replication event for ${serverName}?`)
-                      setConfirmHandler(
-                        () => () => dispatch(skipReplicationEvent({ clusterName, serverId: row.id }))
-                      )
+                    {
+                      name: 'Skip 1 Replication Event',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm skip replication event for ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(skipReplicationEvent({ clusterName, serverId: row.id })))
+                      }
                     }
-                  }
-                ]
+                  ]
                 : []),
               ...(user?.grants['db-logs']
                 ? [
-                  {
-                    name: 'Toggle InnoDB Monitor',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm toggle innodb monitor ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(toggleInnodbMonitor({ clusterName, serverId: row.id })))
+                    {
+                      name: 'Toggle InnoDB Monitor',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm toggle innodb monitor ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(toggleInnodbMonitor({ clusterName, serverId: row.id })))
+                      }
                     }
-                  }
-                ]
+                  ]
                 : []),
 
               ...(user?.grants['db-capture']
                 ? [
-                  {
-                    name: 'Toggle Slow Query Capture',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm toggle slow query capture ${serverName}?`)
-                      setConfirmHandler(
-                        () => () => dispatch(toggleSlowQueryCapture({ clusterName, serverId: row.id }))
-                      )
+                    {
+                      name: 'Toggle Slow Query Capture',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm toggle slow query capture ${serverName}?`)
+                        setConfirmHandler(
+                          () => () => dispatch(toggleSlowQueryCapture({ clusterName, serverId: row.id }))
+                        )
+                      }
                     }
-                  }
-                ]
+                  ]
                 : []),
               ...(user?.grants['db-replication']
                 ? [
-                  {
-                    name: 'Start Slave',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm start slave on ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(startSlave({ clusterName, serverId: row.id })))
+                    {
+                      name: 'Start Slave',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm start slave on ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(startSlave({ clusterName, serverId: row.id })))
+                      }
+                    },
+                    {
+                      name: 'Stop Slave',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm stop slave on ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(stopSlave({ clusterName, serverId: row.id })))
+                      }
+                    },
+                    {
+                      name: 'Reset Master',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(
+                          `Confirm reset master this may break replication when done on master, ${serverName}?`
+                        )
+                        setConfirmHandler(() => () => dispatch(resetMaster({ clusterName, serverId: row.id })))
+                      }
+                    },
+                    {
+                      name: 'Reset Slave',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm reset slave this will break replication on, ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(resetSlaveAll({ clusterName, serverId: row.id })))
+                      }
                     }
-                  },
-                  {
-                    name: 'Stop Slave',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm stop slave on ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(stopSlave({ clusterName, serverId: row.id })))
-                    }
-                  },
-                  {
-                    name: 'Reset Master',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(
-                        `Confirm reset master this may break replication when done on master, ${serverName}?`
-                      )
-                      setConfirmHandler(() => () => dispatch(resetMaster({ clusterName, serverId: row.id })))
-                    }
-                  },
-                  {
-                    name: 'Reset Slave',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm reset slave this will break replication on, ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(resetSlaveAll({ clusterName, serverId: row.id })))
-                    }
-                  }
-                ]
+                  ]
                 : []),
               ...(user?.grants['db-readonly']
                 ? [
-                  {
-                    name: 'Toggle Readonly',
-                    onClick: () => {
-                      openConfirmModal()
-                      setConfirmTitle(`Confirm toggle read only on ${serverName}?`)
-                      setConfirmHandler(() => () => dispatch(toggleReadOnly({ clusterName, serverId: row.id })))
+                    {
+                      name: 'Toggle Readonly',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm toggle read only on ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(toggleReadOnly({ clusterName, serverId: row.id })))
+                      }
                     }
-                  }
-                ]
+                  ]
                 : [])
             ]
           }
         ]}
       />
-      
+
       {/* Basic ConfirmModal for all non-reseed operations */}
       {isConfirmModalOpen && (
         <ConfirmModal
