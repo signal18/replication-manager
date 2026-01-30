@@ -86,9 +86,6 @@ func splitDumpOpenReader(f *os.File) *bufio.Reader {
 	return buf
 }
 func splitDumpOpenFile(path string) (*os.File, error) {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return nil, fmt.Errorf("the file '%s' does not exist", path)
-	}
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -115,11 +112,13 @@ func SplitDumpLineReader(bus SplitDumpChannelBus) {
 			fmt.Println(err)
 			os.Exit(1)
 		}
+		defer file.Close()
 		r = splitDumpOpenReader(file)
 	}
 	for line, err := r.ReadString('\n'); err == nil; line, err = r.ReadString('\n') {
 		bus.CurrentLine <- line
 	}
+
 	close(bus.CurrentLine)
 }
 
@@ -157,6 +156,8 @@ func SplitDumpLineParser(bus SplitDumpChannelBus, outputDir string /*, combineFi
 			f, err := os.Create(tablePath)
 			if err != nil {
 				fmt.Printf("Error creating file %s %s\n", tablePath, err)
+				bus.Finished <- true
+				return
 			}
 			tableFile = gzip.NewWriter(f)
 			streamSize = 0
@@ -189,7 +190,12 @@ func SplitDumpLineParser(bus SplitDumpChannelBus, outputDir string /*, combineFi
 				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Table structure for table ", "", 1), "`", "", -1)) + "-schema"
 				fmt.Printf("Processing table schema %s\n", tableName)
 				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
-				f, _ = os.Create(tablePath)
+				f, err := os.Create(tablePath)
+				if err != nil {
+					fmt.Printf("Error creating file %s %s\n", tablePath, err)
+					bus.Finished <- true
+					return
+				}
 				tableFile = gzip.NewWriter(f)
 				pastHeader = true
 			} else if strings.HasPrefix(line, "LOCK TABLES `") {
@@ -205,6 +211,8 @@ func SplitDumpLineParser(bus SplitDumpChannelBus, outputDir string /*, combineFi
 					f, err := os.Create(tablePath)
 					if err != nil {
 						fmt.Printf("Error creating file %s %s\n", tablePath, err)
+						bus.Finished <- true
+						return
 					}
 					tableFile = gzip.NewWriter(f)
 					tableFile.Write([]byte("\n--\n" + line))
@@ -221,6 +229,8 @@ func SplitDumpLineParser(bus SplitDumpChannelBus, outputDir string /*, combineFi
 				f, err := os.Create(tablePath)
 				if err != nil {
 					fmt.Printf("Error creating file %s %s\n", tablePath, err)
+					bus.Finished <- true
+					return
 				}
 				tableFile = gzip.NewWriter(f)
 
@@ -244,6 +254,8 @@ func SplitDumpLineParser(bus SplitDumpChannelBus, outputDir string /*, combineFi
 				f, err := os.Create(tablePath)
 				if err != nil {
 					fmt.Printf("Error creating file %s %s\n", tablePath, err)
+					bus.Finished <- true
+					return
 				}
 				tableFile = gzip.NewWriter(f)
 				//-- Dumping routines
@@ -259,6 +271,8 @@ func SplitDumpLineParser(bus SplitDumpChannelBus, outputDir string /*, combineFi
 				f, err := os.Create(tablePath)
 				if err != nil {
 					fmt.Printf("Error creating file %s %s\n", tablePath, err)
+					bus.Finished <- true
+					return
 				}
 				tableFile = gzip.NewWriter(f)
 			}
@@ -292,6 +306,8 @@ func SplitDumpLineParser(bus SplitDumpChannelBus, outputDir string /*, combineFi
 	f, err := os.Create(tablePath)
 	if err != nil {
 		fmt.Printf("Error creating file %s %s\n", tablePath, err)
+		bus.Finished <- true
+		return
 	}
 	line := fmt.Sprintf("[source]\n# Channel_Name = ''\nFile = %s\nPosition = %s\nExecuted_Gtid_Set = %s\n\n", bfile, bpos, bgtid)
 	f.Write([]byte(line))
