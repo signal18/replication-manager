@@ -134,10 +134,7 @@ func SplitDumpLineParser(bus SplitDumpChannelBus, outputDir string /*, combineFi
 			shardpad = fmt.Sprintf(".%05d", shard)
 			tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1)) + shardpad
 			fmt.Printf("Processing table data %s ", tableName)
-
-			tablePath := filepath.Join(outputDir, tableName+".sql.gz")
-			tablePath = sanitizefilename.Sanitize(tablePath)
-
+			tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
 			f, _ = os.Create(tablePath)
 			tableFile = gzip.NewWriter(f)
 			streamSize = 0
@@ -169,8 +166,7 @@ func SplitDumpLineParser(bus SplitDumpChannelBus, outputDir string /*, combineFi
 				onTableScheme, onTableData = true, false
 				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Table structure for table ", "", 1), "`", "", -1)) + "-schema"
 				fmt.Printf("Processing table schema %s\n", tableName)
-				tablePath := filepath.Join(outputDir, tableName+".sql.gz")
-				tablePath = sanitizefilename.Sanitize(tablePath)
+				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
 				f, _ = os.Create(tablePath)
 				tableFile = gzip.NewWriter(f)
 				pastHeader = true
@@ -183,8 +179,7 @@ func SplitDumpLineParser(bus SplitDumpChannelBus, outputDir string /*, combineFi
 					tableFile.Close()
 					tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table", "", 1), "`", "", -1)) + "-schema"
 					fmt.Printf("Processing table schema %s\n", tableName)
-					tablePath := filepath.Join(outputDir, tableName+".sql.gz")
-					tablePath = sanitizefilename.Sanitize(tablePath)
+					tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
 					f, _ = os.Create(tablePath)
 					tableFile = gzip.NewWriter(f)
 					tableFile.Write([]byte("\n--\n" + line))
@@ -197,8 +192,7 @@ func SplitDumpLineParser(bus SplitDumpChannelBus, outputDir string /*, combineFi
 				shardpad = fmt.Sprintf(".%05d", shard)
 				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1)) + shardpad
 				fmt.Printf("Processing table data %s\n", tableName)
-				tablePath := filepath.Join(outputDir, tableName+".sql.gz")
-				tablePath = sanitizefilename.Sanitize(tablePath)
+				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
 				f, _ = os.Create(tablePath)
 				tableFile = gzip.NewWriter(f)
 
@@ -218,8 +212,7 @@ func SplitDumpLineParser(bus SplitDumpChannelBus, outputDir string /*, combineFi
 				f.Close()
 				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Final view structure for view ", "", 1), "`", "", -1)) + "-schema-view"
 				fmt.Printf("Processing view schema %s\n", tableName)
-				tablePath := filepath.Join(outputDir, tableName+".sql.gz")
-				tablePath = sanitizefilename.Sanitize(tablePath)
+				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
 				f, _ = os.Create(tablePath)
 				tableFile = gzip.NewWriter(f)
 				//-- Dumping routines
@@ -231,8 +224,7 @@ func SplitDumpLineParser(bus SplitDumpChannelBus, outputDir string /*, combineFi
 				f.Close()
 				tableName := "mysql.system-all"
 				fmt.Printf("Processing view schema %s\n", tableName)
-				tablePath := filepath.Join(outputDir, tableName+".sql.gz")
-				tablePath = sanitizefilename.Sanitize(tablePath)
+				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
 				f, _ = os.Create(tablePath)
 				tableFile = gzip.NewWriter(f)
 			}
@@ -263,7 +255,7 @@ func SplitDumpLineParser(bus SplitDumpChannelBus, outputDir string /*, combineFi
 	tableFile.Close()
 	f.Close()
 	tablePath := filepath.Join(outputDir, "metadata")
-	tablePath = sanitizefilename.Sanitize(tablePath)
+	tablePath = tablePath
 	f, _ = os.Create(tablePath)
 	line := fmt.Sprintf("[source]\n# Channel_Name = ''\nFile = %s\nPosition = %s\nExecuted_Gtid_Set = %s\n\n", bfile, bpos, bgtid)
 	f.Write([]byte(line))
