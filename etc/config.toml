@@ -177,6 +177,18 @@ include = "/etc/replication-manager/cluster.d"
 # backup-mydumper-path = "/usr/bin/mydumper"
 # backup-myloader-path = "/usr/bin/myloader"
 # backup-restic-binary-path = "/usr/bin/restic"
+# backup-restic-timeout = 7200
+# backup-restic-dir-mode = 700
+# backup-restic-file-mode = 600
+# backup-restic-tags = "tenant,cluster,engine,version,backup-type,backup-tool,line"
+# Quote a tag to keep it literal (e.g. 'tenant,"cluster",env:prod').
+#   Templates: {tenant},{cluster},{engine},{version},{backup-type},{backup-tool},{line}
+#   You can also add literal tags like env:prod or team:{tenant}.
+# backup-restic-host = "" # Override restic --host (empty = restic default host, no alias)
+# backup-restic-purge-group-by = "host,paths" # default = host+paths grouping, "default" = restic default grouping, "none" = single group
+# Protect snapshots matching these tags from purge.
+# Space and comma separated (comma = AND). Quote tags with commas: "role:primary,critical"
+# backup-restic-purge-keep-tag = "line:adhoc"
 # haproxy-binary-path =  "/usr/sbin/haproxy"
 # maxscale-binary-path =  "/usr/sbin/maxscale"
 

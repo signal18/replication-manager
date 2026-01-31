@@ -9,7 +9,6 @@ package cluster
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"time"
 
@@ -162,7 +161,12 @@ func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 	svc := cluster.OpenSVCConnect()
 	err := svc.CreateSecret(cluster.Name, "env", agent)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create secret: %s ", err)
+		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && cluster.Conf.ProvObjectAllowOverwrite {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Secret object exists. Reuse secret env on cluster to avoid truncation of keys")
+			err = nil
+		} else {
+			return err
+		}
 	}
 
 	errs := make(map[string]error)
@@ -185,7 +189,12 @@ func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 
 	err = svc.CreateConfig(cluster.Name, "env", agent)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create config: %s ", err)
+		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && cluster.Conf.ProvObjectAllowOverwrite {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Config object exists. Reuse config env on cluster to avoid truncation of keys")
+			err = nil
+		} else {
+			return err
+		}
 	}
 
 	errs = make(map[string]error)
@@ -205,6 +214,7 @@ func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %v", errs)
 	}
 
+	return nil
 	return nil
 }
 
@@ -310,6 +320,10 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 	var fs string
 	fs = ""
 	disk = ""
+	podpool := pod
+	if collector.ProvFSPool == "lvm" || collector.ProvFSPool == "zpool" {
+		podpool = "10" + pod
+	}
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", collector.ProvFSMode)
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", collector.ProvFSPool)
 	if collector.ProvFSMode == "loopback" {
@@ -330,9 +344,7 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 			disk = disk + "pvs = {disk#01.file}\n"
 			disk = disk + "standby = true\n"
 			disk = disk + "\n"
-
-		}
-		if collector.ProvFSPool == "zpool" {
+		} else if collector.ProvFSPool == "zpool" {
 			disk = disk + "\n"
 			disk = disk + "[disk#1001]\n"
 			disk = disk + "name = zp{namespace}-{svcname}\n"
@@ -340,7 +352,6 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 			disk = disk + "vdev  = {disk#01.file}\n"
 			disk = disk + "standby = true\n"
 			disk = disk + "\n"
-
 		}
 	}
 
@@ -353,18 +364,10 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 		fs = fs + "\n"
 		fs = fs + "\n"
 	} else {
-		podpool := pod
-		if collector.ProvFSPool == "lvm" || collector.ProvFSPool == "zpool" {
-			podpool = "10" + pod
-		}
 		fs = fs + "\n"
 		fs = fs + "[fs#01]\n"
 		fs = fs + "type = " + collector.ProvFSType + "\n"
 		if collector.ProvFSPool == "lvm" {
-			re := regexp.MustCompile("[0-9]+")
-			strlvsize := re.FindAllString(collector.ProvDisk, 1)
-			lvsize, _ := strconv.Atoi(strlvsize[0])
-			lvsize--
 			fs = fs + "dev = /dev/{namespace}-{svcname}\n"
 			fs = fs + "vg = {namespace}-{svcname}\n"
 			fs = fs + "size = 100%FREE\n"
@@ -382,7 +385,7 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 		}
 		fs = fs + "mnt = {env.base_dir}\n"
 		fs = fs + "standby = true\n"
-	} // not a directory
+	}
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", disk+fs)
 	return disk + fs
 }

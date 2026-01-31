@@ -61,7 +61,7 @@ func (cluster *Cluster) OnPremiseConnectProxy(server DatabaseProxy) (*sshclient.
 	if password != "" {
 		client, err := sshcli.DialWithPasswd(misc.Unbracket(server.GetHost())+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, password)
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("OnPremise Provisioning via SSH %s %s", err.Error(), key))
+			return nil, fmt.Errorf("OnPremise Provisioning via SSH %s %s", err.Error(), key)
 		}
 		return client, nil
 	} else {
@@ -89,6 +89,7 @@ func (cluster *Cluster) OnPremiseProvisionProxyService(pri DatabaseProxy) error 
 		}
 		srv.ClusterGroup = cluster
 		cluster.OnPremiseProvisionDatabaseService(srv)
+		err = srv.Refresh()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Bootstrap MariaDB Sharding Cluster Failed")
 			cluster.errorChan <- err

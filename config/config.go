@@ -528,6 +528,7 @@ type Config struct {
 	ProvCodeApp                               string                 `mapstructure:"opensvc-codeapp" toml:"opensvc-codeapp" json:"opensvcCodeapp"`
 	ProvSerialized                            bool                   `mapstructure:"prov-serialized" toml:"prov-serialized" json:"provSerialized"`
 	ProvUseIpv6                               bool                   `mapstructure:"prov-use-ipv6" toml:"prov-use-ipv6" json:"provUseIpv6"`
+	ProvObjectAllowOverwrite                  bool                   `mapstructure:"prov-object-allow-overwrite" toml:"prov-object-allow-overwrite" json:"provObjectAllowOverwrite"`
 	ProvOrchestrator                          string                 `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`
 	ProvOrchestratorEnable                    string                 `mapstructure:"prov-orchestrator-enable" toml:"prov-orchestrator-enable" json:"provOrchestratorEnable"`
 	ProvOrchestratorCluster                   string                 `mapstructure:"prov-orchestrator-cluster" toml:"prov-orchestrator-cluster" json:"provOrchestratorCluster"`
@@ -698,6 +699,8 @@ type Config struct {
 	BackupLogicalPostScript                   string                 `mapstructure:"backup-logical-post-script" toml:"backup-logical-post-script" json:"backupLogicalPostScript"`
 	BackupPhysicalPostScript                  string                 `mapstructure:"backup-physical-post-script" toml:"backup-physical-post-script" json:"backupPhysicalPostScript"`
 	CompressBackups                           bool                   `mapstructure:"compress-backups" toml:"compress-backups" json:"compressBackups"`
+	CompressBackupsCompressionLevel           int                    `mapstructure:"compress-backups-compression-level" toml:"compress-backups-compression-level" json:"compressBackupsCompressionLevel"`
+	CompressBackupsParallelBlocks             int                    `mapstructure:"compress-backups-parallel-blocks" toml:"compress-backups-parallel-blocks" json:"compressBackupsParallelBlocks"`
 	BackupSplitMysqlUser                      bool                   `mapstructure:"backup-split-mysql-user" toml:"backup-split-mysql-user" json:"backupSplitMysqlUser"`
 	BackupRestoreMysqlUser                    bool                   `mapstructure:"backup-restore-mysql-user" toml:"backup-restore-mysql-user" json:"backupRestoreMysqlUser"`
 	BackupCheckFreeSpace                      bool                   `mapstructure:"backup-check-free-space" toml:"backup-check-free-space" json:"backupCheckFreeSpace"`
@@ -735,6 +738,10 @@ type Config struct {
 	BackupKeepWithinWeekly                    string                 `mapstructure:"backup-keep-within-weekly" toml:"backup-keep-within-weekly" json:"backupKeepWithinWeekly"`
 	BackupKeepWithinMonthly                   string                 `mapstructure:"backup-keep-within-monthly" toml:"backup-keep-within-monthly" json:"backupKeepWithinMonthly"`
 	BackupKeepWithinYearly                    string                 `mapstructure:"backup-keep-within-yearly" toml:"backup-keep-within-yearly" json:"backupKeepWithinYearly"`
+	BackupResticTags                          string                 `mapstructure:"backup-restic-tags" toml:"backup-restic-tags" json:"backupResticTags"`
+	BackupResticHost                          string                 `mapstructure:"backup-restic-host" toml:"backup-restic-host" json:"backupResticHost"`
+	BackupResticPurgeGroupBy                  string                 `mapstructure:"backup-restic-purge-group-by" toml:"backup-restic-purge-group-by" json:"backupResticPurgeGroupBy"`
+	BackupResticPurgeKeepTag                  string                 `mapstructure:"backup-restic-purge-keep-tag" toml:"backup-restic-purge-keep-tag" json:"backupResticPurgeKeepTag"`
 	BackupRestic                              bool                   `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`
 	BackupResticBinaryPath                    string                 `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
 	BackupResticLocalRepository               string                 `mapstructure:"backup-restic-local-repository" toml:"backup-restic-local-repository" json:"backupResticLocalRepository"`
@@ -744,6 +751,8 @@ type Config struct {
 	BackupResticPassword                      string                 `mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
 	BackupResticAws                           bool                   `mapstructure:"backup-restic-aws"  toml:"backup-restic-aws" json:"backupResticAws"`
 	BackupResticTimeout                       int                    `mapstructure:"backup-restic-timeout"  toml:"backup-restic-timeout" json:"backupResticTimeout"`
+	BackupResticDirMode                       int                    `mapstructure:"backup-restic-dir-mode" toml:"backup-restic-dir-mode" json:"backupResticDirMode"`
+	BackupResticFileMode                      int                    `mapstructure:"backup-restic-file-mode" toml:"backup-restic-file-mode" json:"backupResticFileMode"`
 	BackupResticPurgeOldestOnDiskSpace        bool                   `mapstructure:"backup-restic-purge-oldest-on-disk-space" toml:"backup-restic-purge-oldest-on-disk-space" json:"backupResticPurgeOldestOnDiskSpace"`
 	BackupResticPurgeOldestOnDiskThreshold    int                    `mapstructure:"backup-restic-purge-oldest-on-disk-threshold" toml:"backup-restic-purge-oldest-on-disk-treshold" json:"backupResticPurgeOldestOnDiskTreshold"`
 	BackupStreaming                           bool                   `mapstructure:"backup-streaming" toml:"backup-streaming" json:"backupStreaming"`
@@ -1703,61 +1712,67 @@ func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
 			return err
 		}
 
-		newdir := "/home/repman/.config/replication-manager/etc"
-		newpath := newdir + "/.replication-manager.key"
+		fallbackDir := conf.ConfDirExtra
+		if fallbackDir == "" {
+			if homeDir, homeErr := os.UserHomeDir(); homeErr == nil {
+				fallbackDir = filepath.Join(homeDir, ".config", "replication-manager")
+			}
+		}
+		fallbackPath := ""
+		if fallbackDir != "" {
+			fallbackPath = filepath.Join(fallbackDir, ".replication-manager.key")
+			Logger.Debugf("Key not found. Checking in extra path : %s", fallbackPath)
 
-		Logger.Debugf("Key not found. Checking in extra path : %s", newpath)
-
-		_, err = os.Stat(newpath)
-		if err == nil {
-			Logger.Debugf("Repman discovered key in alternative path. Using existing key on %s", newpath)
-			conf.MonitoringKeyPath = newpath
-			return nil
-		} else {
-
-			Logger.Debugf("Key not found. Generating : %s", conf.MonitoringKeyPath)
-
-			if err = misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && conf.WithEmbed == "OFF" {
-				newdir := "/home/repman/.config/replication-manager/etc"
-				newpath := newdir + "/.replication-manager.key"
-
-				Logger.Infof("File %s is not accessible. Try using alternative path: %s", conf.MonitoringKeyPath, newpath)
-
-				_, err := os.Stat(newpath)
-				if err == nil {
-					Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", newpath)
-					return nil
-				}
-
-				_, err = os.Stat(newdir)
-				if err != nil {
-					if !os.IsNotExist(err) {
-						Logger.Errorf("Can't access %s : %v", newdir, err)
-						return err
-					} else {
-						err = os.MkdirAll(newdir, 0755)
-						if err != nil {
-							Logger.Errorf("Can't create directory %s : %v", newdir, err)
-							return err
-						}
-					}
-				}
-
-				if err := misc.TryOpenFile(newpath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
-					Logger.Errorf("Can't write keys in %s : %v", newdir, err)
-					return err
-				}
-
-				// New path is writable
-				conf.MonitoringKeyPath = newpath
-				Logger.Infof("Path writable. Flag 'monitoring-key-path' set to: %s.", newpath)
-				Logger.Infof("Generating key on: %s", conf.MonitoringKeyPath)
-
+			_, err = os.Stat(fallbackPath)
+			if err == nil {
+				Logger.Debugf("Repman discovered key in alternative path. Using existing key on %s", fallbackPath)
+				conf.MonitoringKeyPath = fallbackPath
+				return nil
 			}
 		}
 
+		Logger.Debugf("Key not found. Generating : %s", conf.MonitoringKeyPath)
+
+		if err = misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && conf.WithEmbed == "OFF" {
+			if fallbackPath == "" {
+				Logger.Errorf("File %s is not accessible and no fallback path is available", conf.MonitoringKeyPath)
+				return err
+			}
+
+			Logger.Debugf("File %s is not accessible. Try using alternative path: %s", conf.MonitoringKeyPath, fallbackPath)
+
+			_, err := os.Stat(fallbackPath)
+			if err == nil {
+				Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", fallbackPath)
+				conf.MonitoringKeyPath = fallbackPath
+				return nil
+			}
+
+			_, err = os.Stat(fallbackDir)
+			if err != nil {
+				if !os.IsNotExist(err) {
+					Logger.Errorf("Can't access %s : %v", fallbackDir, err)
+					return err
+				}
+				err = os.MkdirAll(fallbackDir, 0755)
+				if err != nil {
+					Logger.Errorf("Can't create directory %s : %v", fallbackDir, err)
+					return err
+				}
+			}
+
+			if err := misc.TryOpenFile(fallbackPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
+				Logger.Errorf("Can't write keys in %s : %v", fallbackDir, err)
+				return err
+			}
+
+			// New path is writable
+			conf.MonitoringKeyPath = fallbackPath
+			Logger.Debugf("Path writable. Flag 'monitoring-key-path' set to: %s.", fallbackPath)
+			Logger.Debugf("Generating key on: %s", conf.MonitoringKeyPath)
+		}
+
 		p := crypto.Password{}
-		var err error
 		p.Key, err = crypto.Keygen()
 		if err != nil {
 			Logger.Errorf("Error when generating key for encryption: %v", err)
@@ -3164,22 +3179,29 @@ func IsScope(toml string, scope string) bool {
 	return false
 }
 
-func (conf *Config) ReadCloud18Config(viper *viper.Viper, path string) {
-	viper = viper.Sub("default")
-	viper.SetConfigType("toml")
-
+func (conf *Config) ReadCloud18Config(v *viper.Viper, path string) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return
 	}
+	if v == nil {
+		return
+	}
+
+	subViper := v.Sub("default")
+	if subViper == nil {
+		subViper = viper.New()
+	}
+	subViper.SetConfigType("toml")
+
 	fmt.Printf("Parsing saved config from working directory %s ", path)
 
-	viper.SetConfigFile(path)
-	err := viper.MergeInConfig()
+	subViper.SetConfigFile(path)
+	err := subViper.MergeInConfig()
 	if err != nil {
 		log.Error("Config error in " + path + ":" + err.Error())
 	}
 
-	viper.Unmarshal(&conf)
+	subViper.Unmarshal(&conf)
 
 }
 
@@ -3353,15 +3375,16 @@ type JobResult struct {
 }
 
 type Task struct {
-	Id     int64  `json:"id" db:"id"`
-	Task   string `json:"task" db:"task"`
-	Port   int    `json:"port" db:"port"`
-	Server string `json:"server" db:"server"`
-	Done   int    `json:"done" db:"done"`
-	State  int    `json:"state" db:"state"`
-	Result string `json:"result,omitempty" db:"result"`
-	Start  int64  `json:"start" db:"utc_start"`
-	End    int64  `json:"end,omitempty" db:"utc_end"`
+	Id      int64  `json:"id" db:"id"`
+	Task    string `json:"task" db:"task"`
+	Port    int    `json:"port" db:"port"`
+	Server  string `json:"server" db:"server"`
+	Done    int    `json:"done" db:"done"`
+	State   int    `json:"state" db:"state"`
+	Result  string `json:"result,omitempty" db:"result"`
+	Payload string `json:"payload,omitempty" db:"payload"`
+	Start   int64  `json:"start" db:"utc_start"`
+	End     int64  `json:"end,omitempty" db:"utc_end"`
 }
 
 func (t *Task) Set(nt Task) {
@@ -3372,6 +3395,7 @@ func (t *Task) Set(nt Task) {
 	t.Done = nt.Done
 	t.State = nt.State
 	t.Result = nt.Result
+	t.Payload = nt.Payload
 	t.Start = nt.Start
 	t.End = nt.End
 }
@@ -3772,6 +3796,58 @@ func (conf *Config) CheckKeepWithin() error {
 	}
 
 	return nil
+}
+
+func isValidResticMode(value int) bool {
+	if value == 0 {
+		return true
+	}
+	if value < 600 || value > 777 {
+		return false
+	}
+	_, err := strconv.ParseUint(strconv.Itoa(value), 8, 32)
+	return err == nil
+}
+
+func parseResticMode(value int, defaultMode os.FileMode) os.FileMode {
+	if value <= 0 {
+		return defaultMode
+	}
+	if !isValidResticMode(value) {
+		return defaultMode
+	}
+
+	parsed, err := strconv.ParseUint(strconv.Itoa(value), 8, 32)
+	if err != nil {
+		return defaultMode
+	}
+
+	return os.FileMode(parsed)
+}
+
+func (conf *Config) ValidateResticPermissions() error {
+	if !isValidResticMode(conf.BackupResticDirMode) {
+		return NewValidationError("backup-restic-dir-mode", conf.BackupResticDirMode, "expected octal value in 6xx/7xx range, like 700")
+	}
+	if !isValidResticMode(conf.BackupResticFileMode) {
+		return NewValidationError("backup-restic-file-mode", conf.BackupResticFileMode, "expected octal value in 6xx/7xx range, like 600")
+	}
+	return nil
+}
+
+func (conf *Config) GetResticDirMode() os.FileMode {
+	return parseResticMode(conf.BackupResticDirMode, 0700)
+}
+
+func (conf *Config) GetResticFileMode() os.FileMode {
+	return parseResticMode(conf.BackupResticFileMode, 0600)
+}
+
+func (conf *Config) GetResticTimeout() time.Duration {
+	if conf.BackupResticTimeout <= 0 {
+		return 2 * time.Hour
+	}
+	return time.Duration(conf.BackupResticTimeout) * time.Second
 }
 
 type MeasurementConfig struct {

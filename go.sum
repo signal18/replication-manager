@@ -496,6 +496,8 @@ github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/iu0v1/gelada v1.2.2 h1:WH0vmDBPPvtb5F4ml/9dq1PAymJUsHblPwvdrHv+bis=
 github.com/iu0v1/gelada v1.2.2/go.mod h1:iU0D1s3teiLgoZZP25l2x0pgwh2KLux9wMfwnNYQW/Q=
+github.com/jacoblockett/sanitizefilename v1.0.1 h1:HhPMoPp05U5aKjhht+d7lsqhyF4trKSBme0FE6S/1C4=
+github.com/jacoblockett/sanitizefilename v1.0.1/go.mod h1:/cQHSz2fHeR1iDKpHTSW/MIyONa+Uqj0eszbvPuIxNs=
 github.com/jacobsa/fuse v0.0.0-20211125163655-ffd6c474e806 h1:DiUk5AzBZMGRMljnsHBvI4uc+rm4UCfgv5nTpAvFLi8=
 github.com/jacobsa/fuse v0.0.0-20211125163655-ffd6c474e806/go.mod h1:xtZnnLxHY6QniCrfIpTwr5h8mH8zr+jsOFj0y9cfyp4=
 github.com/jacobsa/oglematchers v0.0.0-20150720000706-141901ea67cd/go.mod h1:TlmyIZDpGmwRoTWiakdr+HA1Tukze6C6XbRVidYq02M=

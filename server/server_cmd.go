@@ -51,7 +51,6 @@ var (
 	GoOS          string = "linux"
 	GoArch        string = "amd64"
 	conf          config.Config
-	overwriteConf config.Config
 )
 
 var rootCmd = &cobra.Command{

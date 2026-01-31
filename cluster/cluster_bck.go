@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/shirou/gopsutil/disk"
 	"github.com/signal18/replication-manager/config"
@@ -101,7 +103,14 @@ func (cluster *Cluster) StartResticManager() error {
 		return nil
 	}
 
-	cluster.ResticManager = backupmgr.NewResticRepo(cluster.Conf.BackupResticBinaryPath, cluster.MessageChan, config.ConstLogModRestic)
+	resticManager := backupmgr.NewResticRepo(cluster.Conf.BackupResticBinaryPath, cluster.MessageChan, config.ConstLogModRestic)
+	if err := cluster.Conf.ValidateResticPermissions(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Invalid restic permission config: %s", err)
+	}
+	resticManager.SetPermissions(cluster.Conf.GetResticDirMode(), cluster.Conf.GetResticFileMode())
+	resticManager.SetOperationTimeout(cluster.Conf.GetResticTimeout())
+	resticManager.AutoDetectAndDisableMount()
+	cluster.ResticManager = resticManager
 	cluster.ReloadResticEnv()
 	go cluster.ResticFetchRepo()
 	return nil
@@ -155,6 +164,48 @@ func (cluster *Cluster) ResticPurgeRepo(now bool) error {
 			cluster.StartResticManager()
 		}
 
+		hasKeepN := cluster.Conf.BackupKeepLast > 0 ||
+			cluster.Conf.BackupKeepHourly > 0 ||
+			cluster.Conf.BackupKeepDaily > 0 ||
+			cluster.Conf.BackupKeepWeekly > 0 ||
+			cluster.Conf.BackupKeepMonthly > 0 ||
+			cluster.Conf.BackupKeepYearly > 0
+		hasKeepWithin := strings.TrimSpace(cluster.Conf.BackupKeepWithin) != "" ||
+			strings.TrimSpace(cluster.Conf.BackupKeepWithinHourly) != "" ||
+			strings.TrimSpace(cluster.Conf.BackupKeepWithinDaily) != "" ||
+			strings.TrimSpace(cluster.Conf.BackupKeepWithinWeekly) != "" ||
+			strings.TrimSpace(cluster.Conf.BackupKeepWithinMonthly) != "" ||
+			strings.TrimSpace(cluster.Conf.BackupKeepWithinYearly) != ""
+		if !hasKeepN && !hasKeepWithin {
+			err := fmt.Errorf("restic purge skipped: no keep-last/keep-within policy configured")
+			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
+			return err
+		}
+
+		groupBy := strings.TrimSpace(cluster.Conf.BackupResticPurgeGroupBy)
+		if groupBy == "" || strings.EqualFold(groupBy, "default") {
+			groupBy = ""
+		} else if strings.EqualFold(groupBy, "none") {
+			groupBy = "none"
+		}
+
+		keepTemplates := parseResticKeepTagTemplates(cluster.Conf.BackupResticPurgeKeepTag, cluster)
+		keepValues := map[string]string{
+			"tenant":  cluster.Conf.Cloud18GitUser,
+			"cluster": cluster.Name,
+		}
+		keepTags := make([]string, 0, len(keepTemplates))
+		for _, template := range keepTemplates {
+			rendered, ok := renderResticKeepTagTemplate(template, keepValues, cluster)
+			if !ok {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to render restic keep-tag template %q", template)
+				continue
+			}
+			if strings.TrimSpace(rendered) == "" {
+				continue
+			}
+			keepTags = append(keepTags, rendered)
+		}
 		cluster.ResticManager.AddPurgeTask(backupmgr.ResticPurgeOption{
 			KeepLast:          cluster.Conf.BackupKeepLast,
 			KeepHourly:        cluster.Conf.BackupKeepHourly,
@@ -168,6 +219,8 @@ func (cluster *Cluster) ResticPurgeRepo(now bool) error {
 			KeepWithinWeekly:  cluster.Conf.BackupKeepWithinWeekly,
 			KeepWithinMonthly: cluster.Conf.BackupKeepWithinMonthly,
 			KeepWithinYearly:  cluster.Conf.BackupKeepWithinYearly,
+			GroupBy:           groupBy,
+			KeepTag:           keepTags,
 		}, now)
 	}
 	return nil
@@ -268,6 +321,365 @@ func (cluster *Cluster) ResticGetQueue() ([]*backupmgr.ResticTask, error) {
 	}
 
 	return cluster.ResticManager.TaskQueue, nil
+}
+
+var resticTagTemplateKeySet = map[string]struct{}{
+	"tenant":      {},
+	"cluster":     {},
+	"engine":      {},
+	"version":     {},
+	"backup-type": {},
+	"backup-tool": {},
+	"line":        {},
+}
+
+var resticKeepTagTemplateKeySet = map[string]struct{}{
+	"tenant":  {},
+	"cluster": {},
+}
+
+var resticTagTemplatePattern = regexp.MustCompile(`\{([^}]+)\}`)
+
+func normalizeResticTagCategory(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "_", "-")
+	normalized = strings.ReplaceAll(normalized, " ", "-")
+	return normalized
+}
+
+func parseResticTagTemplates(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+
+	parts := splitResticTagTemplates(value)
+	templates := make([]string, 0, len(parts))
+	seen := make(map[string]struct{})
+	for _, part := range parts {
+		template := strings.TrimSpace(part)
+		if template == "" {
+			continue
+		}
+		if _, ok := seen[template]; ok {
+			continue
+		}
+		seen[template] = struct{}{}
+		templates = append(templates, template)
+	}
+	return templates
+}
+
+func parseResticKeepTagTemplates(value string, cluster *Cluster) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+
+	parts, hadUnmatched := splitResticKeepTagTemplates(value)
+	if hadUnmatched && cluster != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Ignoring restic keep-tag with unmatched quotes in %q", value)
+	}
+	templates := make([]string, 0, len(parts))
+	seen := make(map[string]struct{})
+	for _, part := range parts {
+		template := strings.TrimSpace(part)
+		if template == "" {
+			continue
+		}
+		if _, ok := seen[template]; ok {
+			continue
+		}
+		seen[template] = struct{}{}
+		templates = append(templates, template)
+	}
+	return templates
+}
+
+func splitResticTagTemplates(value string) []string {
+	var parts []string
+	var current strings.Builder
+	var quote rune
+	escaped := false
+
+	for _, r := range value {
+		if quote != 0 {
+			if quote == '"' && !escaped && r == '\\' {
+				escaped = true
+				current.WriteRune(r)
+				continue
+			}
+			if quote == '"' && escaped {
+				current.WriteRune(r)
+				escaped = false
+				continue
+			}
+			if r == quote {
+				quote = 0
+			}
+			current.WriteRune(r)
+			continue
+		}
+
+		switch r {
+		case '"', '\'':
+			quote = r
+			current.WriteRune(r)
+		case ',':
+			parts = append(parts, current.String())
+			current.Reset()
+		default:
+			current.WriteRune(r)
+		}
+	}
+
+	if current.Len() > 0 || strings.HasSuffix(value, ",") {
+		parts = append(parts, current.String())
+	}
+
+	return parts
+}
+
+func splitResticKeepTagTemplates(value string) ([]string, bool) {
+	parts := make([]string, 0)
+	var current strings.Builder
+	var quote rune
+	escaped := false
+	hadUnmatched := false
+
+	for _, r := range value {
+		if quote != 0 {
+			if quote == '"' && !escaped && r == '\\' {
+				escaped = true
+				current.WriteRune(r)
+				continue
+			}
+			if quote == '"' && escaped {
+				current.WriteRune(r)
+				escaped = false
+				continue
+			}
+			if r == quote {
+				quote = 0
+			}
+			current.WriteRune(r)
+			continue
+		}
+
+		switch r {
+		case '"', '\'':
+			quote = r
+			current.WriteRune(r)
+		case ',', ' ', '\t', '\n', '\r':
+			if current.Len() > 0 {
+				parts = append(parts, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteRune(r)
+		}
+	}
+
+	if quote != 0 {
+		hadUnmatched = true
+	} else if current.Len() > 0 {
+		parts = append(parts, current.String())
+	}
+
+	return parts, hadUnmatched
+}
+
+func validateResticKeepTagTemplatesStrict(value string) error {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+
+	_, hadUnmatched := splitResticKeepTagTemplates(value)
+	if hadUnmatched {
+		return fmt.Errorf("restic keep-tag has unmatched quotes")
+	}
+	return nil
+}
+
+func isQuotedResticTagLiteral(value string) bool {
+	if len(value) < 2 {
+		return false
+	}
+	first := value[0]
+	last := value[len(value)-1]
+	return (first == '"' && last == '"') || (first == '\'' && last == '\'')
+}
+
+func unquoteResticTagLiteral(value string) (string, bool) {
+	if !isQuotedResticTagLiteral(value) {
+		return value, false
+	}
+
+	quote := value[0]
+	raw := value[1 : len(value)-1]
+	if quote == '\'' {
+		// Single quotes preserve content literally (no escape processing).
+		return raw, true
+	}
+
+	var b strings.Builder
+	b.Grow(len(raw))
+	escaped := false
+	for _, r := range raw {
+		if escaped {
+			b.WriteRune(r)
+			escaped = false
+			continue
+		}
+		if r == '\\' {
+			escaped = true
+			continue
+		}
+		b.WriteRune(r)
+	}
+	if escaped {
+		b.WriteRune('\\')
+	}
+	// Double quotes allow \\ and \" escapes (backslash only affects the next rune).
+	return b.String(), true
+}
+
+func renderResticTagTemplate(template string, values map[string]string, cluster *Cluster) (string, bool) {
+	trimmed := strings.TrimSpace(template)
+	if trimmed == "" {
+		return "", false
+	}
+
+	if literal, ok := unquoteResticTagLiteral(trimmed); ok {
+		literal = strings.TrimSpace(literal)
+		if literal == "" {
+			return "", false
+		}
+		return literal, true
+	}
+
+	matches := resticTagTemplatePattern.FindAllStringSubmatch(trimmed, -1)
+	if len(matches) == 0 {
+		if strings.Contains(trimmed, ":") {
+			return trimmed, true
+		}
+		key := normalizeResticTagCategory(trimmed)
+		if _, ok := resticTagTemplateKeySet[key]; ok {
+			value := strings.TrimSpace(values[key])
+			if value == "" {
+				return "", false
+			}
+			return fmt.Sprintf("%s:%s", key, value), true
+		}
+		if cluster != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Unknown restic tag template %q", trimmed)
+		}
+		return trimmed, true
+	}
+
+	rendered := trimmed
+	for _, match := range matches {
+		raw := match[1]
+		key := normalizeResticTagCategory(raw)
+		if key == "" {
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Invalid restic tag template %q", template)
+			}
+			return "", false
+		}
+		if _, ok := resticTagTemplateKeySet[key]; !ok {
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Unknown restic tag template key %q in %q", raw, template)
+			}
+			return "", false
+		}
+		value := strings.TrimSpace(values[key])
+		if value == "" {
+			return "", false
+		}
+		rendered = strings.ReplaceAll(rendered, "{"+raw+"}", value)
+	}
+
+	rendered = strings.TrimSpace(rendered)
+	if rendered == "" {
+		return "", false
+	}
+	return rendered, true
+}
+
+func renderResticKeepTagTemplate(template string, values map[string]string, cluster *Cluster) (string, bool) {
+	trimmed := strings.TrimSpace(template)
+	if trimmed == "" {
+		return "", false
+	}
+
+	if literal, ok := unquoteResticTagLiteral(trimmed); ok {
+		literal = strings.TrimSpace(literal)
+		if literal == "" {
+			return "", false
+		}
+		return literal, true
+	}
+
+	matches := resticTagTemplatePattern.FindAllStringSubmatch(trimmed, -1)
+	if len(matches) == 0 {
+		return trimmed, true
+	}
+
+	rendered := trimmed
+	for _, match := range matches {
+		raw := match[1]
+		key := normalizeResticTagCategory(raw)
+		if key == "" {
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Invalid restic keep-tag template %q", template)
+			}
+			return "", false
+		}
+		if _, ok := resticKeepTagTemplateKeySet[key]; !ok {
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Unsupported restic keep-tag template key %q in %q", raw, template)
+			}
+			return "", false
+		}
+		value := strings.TrimSpace(values[key])
+		if value == "" {
+			return "", false
+		}
+		rendered = strings.ReplaceAll(rendered, "{"+raw+"}", value)
+	}
+
+	rendered = strings.TrimSpace(rendered)
+	if rendered == "" {
+		return "", false
+	}
+	return rendered, true
+}
+
+func (server *ServerMonitor) BuildResticTags(backupType, backupTool, backupLine string) []string {
+	cluster := server.ClusterGroup
+	lineValue := normalizeBackupLine(backupLine)
+	if lineValue == "" {
+		lineValue = backupmgr.BackupLineDefault
+	}
+	tagValues := map[string]string{
+		"tenant":      cluster.Conf.Cloud18GitUser,
+		"cluster":     cluster.Name,
+		"engine":      server.DBVersion.Flavor,
+		"version":     server.DBVersion.ToString(),
+		"backup-type": backupType,
+		"backup-tool": backupTool,
+		"line":        lineValue,
+	}
+
+	templates := parseResticTagTemplates(cluster.Conf.BackupResticTags)
+	tags := make([]string, 0, len(templates))
+	for _, template := range templates {
+		rendered, ok := renderResticTagTemplate(template, tagValues, cluster)
+		if !ok || strings.TrimSpace(rendered) == "" {
+			continue
+		}
+		tags = append(tags, rendered)
+	}
+	return tags
 }
 
 func (cluster *Cluster) ResticModifyQueue(moveType string, taskID, cmpID int) error {
@@ -487,7 +899,7 @@ func (cluster *Cluster) CheckLogicalBackupToolVersion(server *ServerMonitor) err
 			backupv, _ := version.NewVersionFromString(logical.BackupTool, logical.BackupToolVersion)
 			if v.ToInt(2) != backupv.ToInt(2) { // Major and minor version must match
 				cluster.SetState("WARN0156", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0156"], v.ToString(), logical.BackupToolVersion), ErrFrom: "CHECK", ServerUrl: server.URL})
-				return fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
+				return fmt.Errorf("Node %s backup tool version is not compatible with restore version", server.URL)
 			} else if cluster.IsInErrorState("WARN0156", server.URL) {
 				// Remove state if version is now correct
 				cluster.GetStateMachine().DeleteState(fmt.Sprintf("WARN0156@%s", server.URL))
@@ -509,7 +921,7 @@ func (cluster *Cluster) CheckPhysicalBackupToolVersion(server *ServerMonitor) er
 			backupv, _ := version.NewVersionFromString(physical.BackupTool, physical.BackupToolVersion)
 			if v.ToInt(2) != backupv.ToInt(2) { // Major and minor version must match
 				cluster.SetState("WARN0157", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0157"], v.ToString(), physical.BackupToolVersion), ErrFrom: "CHECK", ServerUrl: server.URL})
-				return fmt.Errorf("Node %s backup tool version is not same with restore version.", server.URL)
+				return fmt.Errorf("Node %s backup tool version is not same with restore version", server.URL)
 			} else if cluster.IsInErrorState("WARN0157", server.URL) {
 				// Remove state if version is now correct
 				cluster.GetStateMachine().DeleteState(fmt.Sprintf("WARN0157@%s", server.URL))
@@ -517,4 +929,32 @@ func (cluster *Cluster) CheckPhysicalBackupToolVersion(server *ServerMonitor) er
 		}
 	}
 	return nil
+}
+
+// getSanitizedCompressionLevel validates and returns a safe compression level (1-9).
+// If the configured value is out of range, it logs a warning and returns the default (6).
+func (cluster *Cluster) getSanitizedCompressionLevel(logModule int) int {
+	level := cluster.Conf.CompressBackupsCompressionLevel
+	if level < 1 || level > 9 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, logModule, config.LvlWarn,
+			"compress-backups-compression-level value %d is out of range (1-9), using default 6", level)
+		return 6 // Default to standard compression
+	}
+	return level
+}
+
+// getSanitizedParallelBlocks validates and returns safe parallel blocks (1-32).
+// If the configured value is <= 0, it returns the default (16) for performance.
+// If the configured value is > 32, it logs a warning and caps to 32.
+func (cluster *Cluster) getSanitizedParallelBlocks(logModule int) int {
+	blocks := cluster.Conf.CompressBackupsParallelBlocks
+	if blocks <= 0 {
+		return 16 // Default for SST/restore performance
+	}
+	if blocks > 32 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, logModule, config.LvlWarn,
+			"compress-backups-parallel-blocks value %d exceeds maximum 32, capping to 32", blocks)
+		return 32 // Cap at maximum safe value
+	}
+	return blocks
 }

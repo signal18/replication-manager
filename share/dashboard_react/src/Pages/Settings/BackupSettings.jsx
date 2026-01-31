@@ -11,6 +11,7 @@ import Dropdown from '../../components/Dropdown'
 import { convertObjectToArrayForDropdown, formatBytes } from '../../utility/common'
 import TextForm from '../../components/TextForm'
 import CommonModal from '../../components/Modals/CommonModal'
+import modalStyles from '../../components/Modals/styles.module.scss'
 import Markdown from 'react-markdown'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
@@ -33,6 +34,7 @@ const sizeGenerator = () => {
 
 function BackupSettings({ selectedCluster, user }) {
   const dispatch = useDispatch()
+  const joinClasses = (...classes) => classes.filter(Boolean).join(' ')
   const [logicalBackupOptions, setLogicalBackupOptions] = useState([])
   const [physicalBackupOptions, setPhysicalBackupOptions] = useState([])
   const [binlogBackupOptions, setBinlogBackupOptions] = useState([])
@@ -81,6 +83,33 @@ The script will be executed with the following parameters:
 4. Backup Path
 `
 
+  const ResticTagsHelp = `backup-restic-tags defines the tag templates sent to restic backups.
+Enter a comma-separated list. Whitespace is ignored.
+
+Supported {placeholders}:
+- {tenant}: tenant/organization identifier.
+- {cluster}: cluster name.
+- {engine}: database engine (e.g. MariaDB/MySQL).
+- {version}: engine version.
+- {backup-type}: logical/physical/binlog or other backup type label.
+- {backup-tool}: tool used to run the backup.
+- {line}: emits "line:default" or "line:adhoc" automatically.
+
+Shorthand is supported: "cluster" expands to "cluster:{cluster}".
+You can also add literal tags like "env:prod" or mixed tags like "team:{tenant}".
+Wrap a literal tag in quotes to prevent shorthand expansion. Commas inside quoted tags are allowed.
+
+Examples:
+- tenant,cluster,backup-type,line,env:prod
+- cluster,engine,version,team:{tenant}
+- env:staging,backup-tool:{backup-tool}
+- "cluster",env:prod
+- "role:primary,critical",cluster`
+
+  const ResticHostHelp = `backup-restic-host overrides the restic --host value used for snapshots.  
+Set a value to use a consistent alias across backups.  
+Leave it empty to use restic's default hostname (no alias).`
+
   const openCommonModal = () => {
     setIsCommonModalOpen(true)
   }
@@ -88,6 +117,12 @@ The script will be executed with the following parameters:
   const closeCommonModal = () => {
     setIsCommonModalOpen(false)
   }
+
+  const renderInfoModalBody = (content) => (
+    <Box className={joinClasses(modalStyles.infoTooltip, styles.infoTooltip)}>
+      <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
+    </Box>
+  )
 
   useEffect(() => {
     if (selectedCluster?.config?.binlogCopyMode) {
@@ -137,7 +172,7 @@ The script will be executed with the following parameters:
               )
             }
           />
-          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Custom Backup Save Script', type: '', body: <Box><Markdown remarkPlugins={[remarkGfm]}>{BackupSaveScriptRequirement}</Markdown></Box> }); openCommonModal() }} />
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Custom Backup Save Script', type: '', body: renderInfoModalBody(BackupSaveScriptRequirement) }); openCommonModal() }} />
         </HStack>
       )
     },
@@ -164,7 +199,7 @@ The script will be executed with the following parameters:
               )
             }
           />
-          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Custom Backup Load Script', type: '', body: <Box><Markdown remarkPlugins={[remarkGfm]}>{BackupLoadScriptRequirement}</Markdown></Box> }); openCommonModal() }} />
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Custom Backup Load Script', type: '', body: renderInfoModalBody(BackupLoadScriptRequirement) }); openCommonModal() }} />
         </HStack>
       )
     },
@@ -214,7 +249,7 @@ The script will be executed with the following parameters:
               )
             }
           />
-          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Backup Logical Post-Script', type: '', body: <Box><Markdown remarkPlugins={[remarkGfm]}>{BackupPostScriptRequirement}</Markdown></Box> }); openCommonModal() }} />
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Backup Logical Post-Script', type: '', body: renderInfoModalBody(BackupPostScriptRequirement) }); openCommonModal() }} />
         </HStack>
       )
     },
@@ -385,7 +420,7 @@ The script will be executed with the following parameters:
               )
             }
           />
-          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Backup Physical Post-Script', type: '', body: <Box><Markdown remarkPlugins={[remarkGfm]}>{BackupPostScriptRequirement}</Markdown></Box> }); openCommonModal() }} />
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Backup Physical Post-Script', type: '', body: renderInfoModalBody(BackupPostScriptRequirement) }); openCommonModal() }} />
         </HStack>
       )
     },
@@ -475,6 +510,62 @@ The script will be executed with the following parameters:
         />
       )
     },
+    ...(selectedCluster?.config?.compressBackups
+      ? [
+          {
+            key: (
+              <Stack>
+                <Text>Compression Level (1=fastest, 9=best)</Text>
+              </Stack>
+            ),
+            value: (
+              <NumberInput
+                min={1}
+                max={9}
+                value={selectedCluster?.config?.compressBackupsCompressionLevel}
+                showEditButton={true}
+                showConfirmModal={true}
+                confirmTitle={`Confirm change compression level to: `}
+                onConfirm={(value) =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'compress-backups-compression-level',
+                      value: value
+                    })
+                  )
+                }
+              />
+            )
+          },
+          {
+            key: (
+              <Stack>
+                <Text>Parallel Blocks (higher=faster restore)</Text>
+              </Stack>
+            ),
+            value: (
+              <NumberInput
+                min={1}
+                max={32}
+                value={selectedCluster?.config?.compressBackupsParallelBlocks}
+                showEditButton={true}
+                showConfirmModal={true}
+                confirmTitle={`Confirm change parallel blocks to: `}
+                onConfirm={(value) =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'compress-backups-parallel-blocks',
+                      value: value
+                    })
+                  )
+                }
+              />
+            )
+          }
+        ]
+      : []),
     {
       key: 'Backup Buffer Size',
       value: (
@@ -800,6 +891,72 @@ The script will be executed with the following parameters:
           )
         },
         {
+          key: 'Backup restic host override',
+          value: (
+            <HStack width={'100%'}>
+              <TextForm
+                value={selectedCluster?.config?.backupResticHost}
+                confirmTitle={`Confirm backup-restic-host to `}
+                className={styles.textbox}
+                placeholder="(empty = restic default host)"
+                onSave={(value) =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'backup-restic-host',
+                      value: value
+                    })
+                  )
+                }
+              />
+              <RMIconButton
+                icon={HiQuestionMarkCircle}
+                onClick={() => {
+                  setAction({
+                    title: 'Restic Host Override',
+                    type: '',
+                    body: renderInfoModalBody(ResticHostHelp)
+                  })
+                  openCommonModal()
+                }}
+              />
+            </HStack>
+          )
+        },
+        {
+          key: 'Backup restic tags',
+          value: (
+            <HStack width={'100%'}>
+              <TextForm
+                value={selectedCluster?.config?.backupResticTags}
+                confirmTitle={`Confirm backup-restic-tags to `}
+                className={styles.textbox}
+                placeholder="tenant,cluster,engine,version,backup-type,backup-tool,line"
+                onSave={(value) =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'backup-restic-tags',
+                      value: value
+                    })
+                  )
+                }
+              />
+              <RMIconButton
+                icon={HiQuestionMarkCircle}
+                onClick={() => {
+                  setAction({
+                    title: 'Restic Tag Templates',
+                    type: '',
+                    body: renderInfoModalBody(ResticTagsHelp)
+                  })
+                  openCommonModal()
+                }}
+              />
+            </HStack>
+          )
+        },
+        {
           key: 'Restic Purge Strategy',
           value: (
             <ResticPurgeStrategy clusterName={selectedCluster?.name} config={selectedCluster?.config} />
@@ -930,6 +1087,9 @@ The script will be executed with the following parameters:
           size='lg'
           title={title}
           body={action.body}
+          contentClassName={joinClasses(modalStyles.infoModalContent, styles.infoModalContent)}
+          headerClassName={joinClasses(modalStyles.infoModalHeader, styles.infoModalHeader)}
+          bodyClassName={joinClasses(modalStyles.infoModalBody, styles.infoModalBody)}
           closeModal={() => {
             closeCommonModal()
           }}

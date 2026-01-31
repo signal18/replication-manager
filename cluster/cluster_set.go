@@ -62,7 +62,7 @@ func (cluster *Cluster) SetStatus() {
 
 func (cluster *Cluster) SetCertificate(svc opensvc.Collector) {
 	var err error
-	if cluster.Conf.Enterprise == false {
+	if !cluster.Conf.Enterprise {
 		return
 	}
 	if cluster.Conf.ProvSSLCa != "" {
@@ -344,7 +344,7 @@ func (cluster *Cluster) SetPrefMaster(PrefMasterURL string) {
 		} else {
 			if strings.Contains(PrefMasterURL, srv.URL) {
 				srv.SetPrefered(true)
-				prefmasterlist = append(prefmasterlist, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
+				prefmasterlist = append(prefmasterlist, strings.ReplaceAll(srv.URL, srv.Domain+":3306", ""))
 			} else {
 				srv.SetPrefered(false)
 			}
@@ -383,8 +383,8 @@ func (cluster *Cluster) RemoveIgnoreSrv(node *ServerMonitor) error {
 		cluster.SetIgnoreSrv("")
 	} else {
 		//Remove the prefered from list
-		newIgnoredHost := strings.Replace(savedIgnoredHost, node.URL+",", "", -1)
-		newIgnoredHost = strings.Replace(newIgnoredHost, ","+node.URL, "", -1)
+		newIgnoredHost := strings.ReplaceAll(savedIgnoredHost, node.URL+",", "")
+		newIgnoredHost = strings.ReplaceAll(newIgnoredHost, ","+node.URL, "")
 		cluster.SetIgnoreSrv(newIgnoredHost)
 	}
 
@@ -402,7 +402,7 @@ func (cluster *Cluster) SetIgnoreSrv(IgnoredHostURL string) {
 			// Only add to config if node is in main cluster
 			if strings.Contains(IgnoredHostURL, srv.URL) {
 				srv.SetIgnored(true)
-				ignoresrvlist = append(ignoresrvlist, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
+				ignoresrvlist = append(ignoresrvlist, strings.ReplaceAll(srv.URL, srv.Domain+":3306", ""))
 			} else {
 				srv.SetIgnored(false)
 			}
@@ -423,7 +423,7 @@ func (cluster *Cluster) SetIgnoreRO(IgnoredReadOnlyHostURL string) {
 			// Only add to config if node is in main cluster
 			if strings.Contains(IgnoredReadOnlyHostURL, srv.URL) {
 				srv.SetIgnoredReadonly(true)
-				ignoreROList = append(ignoreROList, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
+				ignoreROList = append(ignoreROList, strings.ReplaceAll(srv.URL, srv.Domain+":3306", ""))
 			} else {
 				srv.SetIgnoredReadonly(false)
 			}
@@ -545,6 +545,34 @@ func (cluster *Cluster) SetBackupResticPurgeOldestOnDiskSpace(check bool) {
 
 func (cluster *Cluster) SetBackupResticPurgeOldestOnDiskTreshold(threshold int) {
 	cluster.Conf.BackupResticPurgeOldestOnDiskThreshold = threshold
+}
+
+func (cluster *Cluster) SetBackupResticTags(value string) error {
+	cluster.Conf.BackupResticTags = strings.Join(parseResticTagTemplates(value), ",")
+	return nil
+}
+
+func (cluster *Cluster) SetBackupResticHost(value string) error {
+	normalized := strings.TrimSpace(value)
+	if strings.EqualFold(normalized, "default") || strings.EqualFold(normalized, "none") {
+		normalized = ""
+	}
+	cluster.Conf.BackupResticHost = normalized
+	return nil
+}
+
+func (cluster *Cluster) SetBackupResticPurgeGroupBy(value string) error {
+	cluster.Conf.BackupResticPurgeGroupBy = strings.TrimSpace(value)
+	return nil
+}
+
+func (cluster *Cluster) SetBackupResticPurgeKeepTag(value string) error {
+	normalized := strings.TrimSpace(value)
+	if err := validateResticKeepTagTemplatesStrict(normalized); err != nil {
+		return err
+	}
+	cluster.Conf.BackupResticPurgeKeepTag = normalized
+	return nil
 }
 
 func (cluster *Cluster) SetMasterReadOnly() {
@@ -1996,8 +2024,22 @@ func (cluster *Cluster) SetInBinlogBackupState(value bool) {
 	cluster.InBinlogBackup = value
 }
 
+func (cluster *Cluster) SetInResticLogicalBackupState(value bool) {
+	cluster.InResticLogicalBackup = value
+	cluster.InResticBackup = cluster.InResticLogicalBackup || cluster.InResticPhysicalBackup
+}
+
+func (cluster *Cluster) SetInResticPhysicalBackupState(value bool) {
+	cluster.InResticPhysicalBackup = value
+	cluster.InResticBackup = cluster.InResticLogicalBackup || cluster.InResticPhysicalBackup
+}
+
 func (cluster *Cluster) SetInResticBackupState(value bool) {
 	cluster.InResticBackup = value
+	if !value {
+		cluster.InResticLogicalBackup = false
+		cluster.InResticPhysicalBackup = false
+	}
 }
 
 func (cluster *Cluster) SetGraphiteWhitelistTemplate(value string) {

@@ -343,6 +343,10 @@ func (server *ServerMonitor) SetRestartCookie() error {
 	return server.createCookie("cookie_restart")
 }
 
+func (server *ServerMonitor) SetRestartContainerCookie() error {
+	return server.createCookie("cookie_restart_container")
+}
+
 func (server *ServerMonitor) SetWaitStartCookie() error {
 	return server.createCookie("cookie_waitstart")
 }
@@ -537,7 +541,7 @@ func (server *ServerMonitor) SetDBCredentials(user, password string) error {
 		if u.User == user {
 			found = true
 			logs, err := dbhelper.SetUserPassword(conn, server.DBVersion, u.Host, u.User, password)
-			cluster.LogSQL(strings.Replace(logs, password, "*.*", -1), err, server.URL, "Security", config.LvlErr, "Alter user : %s", err)
+			cluster.LogSQL(strings.ReplaceAll(logs, password, "*.*"), err, server.URL, "Security", config.LvlErr, "Alter user : %s", err)
 			if err != nil {
 				return err
 			}

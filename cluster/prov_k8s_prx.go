@@ -67,7 +67,6 @@ func (cluster *Cluster) K8SProvisionProxyService(prx DatabaseProxy) {
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created deployment %q.\n", result.GetObjectMeta().GetName())
 	cluster.errorChan <- nil
-	return
 }
 
 func (cluster *Cluster) K8SUnprovisionProxyService(prx DatabaseProxy) {

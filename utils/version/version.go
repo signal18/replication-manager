@@ -16,6 +16,88 @@ import (
 	"strings"
 )
 
+// ExtractVersionFromOutput extracts the version string from command output,
+// removing paths and other noise that might confuse version parsing.
+// It looks for common version markers like "Ver", "version", "from", etc.
+//
+// This function is useful when parsing output from commands like:
+//   - mysql --version
+//   - mysqldump --version
+//   - mydumper --version
+//   - restic version
+//
+// It handles cases where the output includes file paths like:
+//
+//	/usr/local/mysql-8.0.32/bin/mysql Ver 8.0.28
+//
+// And extracts the clean version string: 8.0.28
+//
+// Processing steps:
+//  1. Take only the first line of multi-line output
+//  2. Remove Unix-style file paths from the beginning
+//  3. Look for version markers and extract from that point
+//  4. Remove tool names if no version marker was found
+func ExtractVersionFromOutput(output string) string {
+	// Remove leading/trailing whitespace and newlines
+	output = strings.TrimSpace(output)
+
+	// For outputs with multiple lines, take only the first line
+	// strings.Split always returns at least one element, so check for multiple lines
+	if idx := strings.Index(output, "\n"); idx != -1 {
+		output = output[:idx]
+		output = strings.TrimSpace(output)
+	}
+
+	// Remove any Unix-style file paths from the beginning (e.g., /usr/bin/mysql Ver 8.0.28...)
+	// Pattern matches: /path/to/binary followed by whitespace
+	// Note: This is Unix-specific. Windows paths (C:\path\to\binary) are not handled
+	// as MySQL/MariaDB deployments are typically on Unix systems.
+	pathRegex := regexp.MustCompile(`^[/\w\-\.]+/[\w\-]+\s+`)
+	output = pathRegex.ReplaceAllString(output, "")
+
+	// Look for version markers and extract from that point onwards
+	// These markers indicate where the actual version information starts
+	// If a marker is found, we extract everything after it and skip tool name removal
+	versionMarkers := []struct {
+		marker      string
+		stripMarker bool
+	}{
+		{"Ver ", true},
+		{"version ", true},
+		{"from ", true},
+		{"v", true},
+	}
+
+	foundMarker := false
+	for _, m := range versionMarkers {
+		if idx := strings.Index(output, m.marker); idx != -1 {
+			// Extract from the marker onwards
+			if m.stripMarker {
+				output = output[idx+len(m.marker):]
+			} else {
+				output = output[idx:]
+			}
+			foundMarker = true
+			break
+		}
+	}
+
+	// If no version marker was found, try removing common tool names from the beginning
+	// This handles outputs like "mydumper 0.11.5" or "restic 0.15.0"
+	// We only do this if no version marker was found, to avoid double-processing
+	if !foundMarker {
+		toolNames := []string{"mydumper ", "restic ", "mysql ", "mysqldump ", "mysqlbinlog "}
+		for _, tool := range toolNames {
+			if strings.HasPrefix(output, tool) {
+				output = strings.TrimPrefix(output, tool)
+				break
+			}
+		}
+	}
+
+	return strings.TrimSpace(output)
+}
+
 type Version struct {
 	Flavor      string   `json:"flavor"`
 	Major       int      `json:"major"`
@@ -86,7 +168,7 @@ func ParseDBFlavor(version string) string {
 
 func NewFullVersionFromString(flavor, vstring string) (*Version, int, int) {
 	// Updated regex to capture numeric version and optional suffix without including dash
-	versionRegex := `([0-9]{1,3}\.(?:[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z-]+))?`
+	versionRegex := `([0-9]{1,3}(?:\.[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z-]+))?`
 	re := regexp.MustCompile(versionRegex)
 	// Find all matches and capture numeric version with optional suffix
 	matches := re.FindAllStringSubmatch(vstring, 2)
@@ -100,7 +182,7 @@ func NewFullVersionFromString(flavor, vstring string) (*Version, int, int) {
 	for i, match := range matches {
 		// If i == 0 then main version else will be distribution version
 		if i == 0 {
-			tokens := strings.Split(re.FindString(match[1]), ".")
+			tokens := strings.Split(match[1], ".")
 			length[i] = len(tokens)
 			ver.Major, _ = strconv.Atoi(tokens[0])
 			if len(tokens) >= 2 {
@@ -109,10 +191,12 @@ func NewFullVersionFromString(flavor, vstring string) (*Version, int, int) {
 					ver.Release, _ = strconv.Atoi(tokens[2])
 				}
 			}
-			ver.Suffix = match[2]
+			if len(match) > 2 {
+				ver.Suffix = match[2]
+			}
 		} else {
 			ver.DistVersion = new(Version)
-			tokens := strings.Split(re.FindString(match[1]), ".")
+			tokens := strings.Split(match[1], ".")
 			length[i] = len(tokens)
 			ver.DistVersion.Major, _ = strconv.Atoi(tokens[0])
 			if len(tokens) >= 2 {
@@ -121,7 +205,9 @@ func NewFullVersionFromString(flavor, vstring string) (*Version, int, int) {
 					ver.DistVersion.Release, _ = strconv.Atoi(tokens[2])
 				}
 			}
-			ver.DistVersion.Suffix = match[2]
+			if len(match) > 2 {
+				ver.DistVersion.Suffix = match[2]
+			}
 		}
 
 	}
@@ -131,16 +217,22 @@ func NewFullVersionFromString(flavor, vstring string) (*Version, int, int) {
 
 func NewVersionFromString(flavor, vstring string) (*Version, int) {
 	// Updated regex to capture numeric version and optional suffix without including dash
-	versionRegex := `([0-9]{1,3}\.(?:[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z]+))?`
+	versionRegex := `([0-9]{1,3}(?:\.[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z]+))?`
 	re := regexp.MustCompile(versionRegex)
 	// Find all matches and capture numeric version with optional suffix
 	match := re.FindStringSubmatch(vstring)
 
 	ver := new(Version)
 	ver.Flavor = flavor
+
+	// Handle no match case
+	if len(match) == 0 {
+		return ver, 0
+	}
+
 	// Get the matched version
 	// match[1] contains the numeric version part, match[2] contains the suffix without dash
-	tokens := strings.Split(re.FindString(match[1]), ".")
+	tokens := strings.Split(match[1], ".")
 	ver.Major, _ = strconv.Atoi(tokens[0])
 	if len(tokens) >= 2 {
 		ver.Minor, _ = strconv.Atoi(tokens[1])
@@ -148,7 +240,9 @@ func NewVersionFromString(flavor, vstring string) (*Version, int) {
 			ver.Release, _ = strconv.Atoi(tokens[2])
 		}
 	}
-	ver.Suffix = match[2]
+	if len(match) > 2 {
+		ver.Suffix = match[2]
+	}
 
 	return ver, len(tokens)
 }

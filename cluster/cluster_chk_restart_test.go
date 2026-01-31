@@ -13,18 +13,18 @@ import (
 	"testing"
 )
 
-// TestCheckRestartCookies_NoCookies tests when no cookies exist
-func TestCheckRestartCookies_NoCookies(t *testing.T) {
+// TestCheckRestartContainerCookies_NoCookies tests when no cookies exist
+func TestCheckRestartContainerCookies_NoCookies(t *testing.T) {
 	cluster := setupTestCluster(t, 3)
 	defer cleanupTestCluster(t, cluster)
 
 	// Test: Check when no cookies exist
-	cluster.CheckRestartCookies()
+	cluster.CheckRestartContainerCookies()
 
 	// Verify: Should complete without error
 	// All servers should still have no cookies
 	for i, srv := range cluster.Servers {
-		if srv != nil && srv.HasRestartCookie() {
+		if srv != nil && srv.HasRestartContainerCookie() {
 			t.Errorf("Server %d should not have cookie", i)
 		}
 	}
@@ -32,8 +32,8 @@ func TestCheckRestartCookies_NoCookies(t *testing.T) {
 	t.Log("No-cookie scenario handled correctly")
 }
 
-// TestCheckRestartCookies_WithCookie tests processing when cookie exists
-func TestCheckRestartCookies_WithCookie(t *testing.T) {
+// TestCheckRestartContainerCookies_WithCookie tests processing when cookie exists
+func TestCheckRestartContainerCookies_WithCookie(t *testing.T) {
 	tempDir := t.TempDir()
 	systemDir := filepath.Join(tempDir, ".system")
 	os.MkdirAll(systemDir, 0755)
@@ -47,13 +47,13 @@ func TestCheckRestartCookies_WithCookie(t *testing.T) {
 	// Test: Set parameters and cookie
 	server.RestartNode = "node1"
 	server.RestartRid = "container#jobs"
-	err := server.SetRestartCookie()
+	err := server.SetRestartContainerCookie()
 	if err != nil {
 		t.Fatalf("Failed to create cookie: %v", err)
 	}
 
 	// Verify: Cookie exists
-	if !server.HasRestartCookie() {
+	if !server.HasRestartContainerCookie() {
 		t.Error("Cookie should exist")
 	}
 
@@ -66,12 +66,12 @@ func TestCheckRestartCookies_WithCookie(t *testing.T) {
 	}
 
 	// Test: Delete cookie manually
-	server.DelRestartCookie()
+	server.DelRestartContainerCookie()
 	server.RestartNode = ""
 	server.RestartRid = ""
 
 	// Verify: Cookie deleted and parameters cleared
-	if server.HasRestartCookie() {
+	if server.HasRestartContainerCookie() {
 		t.Error("Cookie should be deleted")
 	}
 	if server.RestartNode != "" || server.RestartRid != "" {
@@ -81,8 +81,8 @@ func TestCheckRestartCookies_WithCookie(t *testing.T) {
 	t.Log("Cookie processing test completed")
 }
 
-// TestCheckRestartCookies_ConcurrentCalls tests concurrent calls to checker
-func TestCheckRestartCookies_ConcurrentCalls(t *testing.T) {
+// TestCheckRestartContainerCookies_ConcurrentCalls tests concurrent calls to checker
+func TestCheckRestartContainerCookies_ConcurrentCalls(t *testing.T) {
 	cluster := setupTestCluster(t, 3)
 	defer cleanupTestCluster(t, cluster)
 
@@ -98,7 +98,7 @@ func TestCheckRestartCookies_ConcurrentCalls(t *testing.T) {
 				}
 				done <- true
 			}()
-			cluster.CheckRestartCookies()
+			cluster.CheckRestartContainerCookies()
 		}()
 	}
 
@@ -135,13 +135,13 @@ func TestRestartParameterStorage(t *testing.T) {
 	}
 
 	// Test: Create cookie
-	err := server.SetRestartCookie()
+	err := server.SetRestartContainerCookie()
 	if err != nil {
 		t.Fatalf("Failed to create cookie: %v", err)
 	}
 
 	// Verify: Cookie exists
-	if !server.HasRestartCookie() {
+	if !server.HasRestartContainerCookie() {
 		t.Error("Cookie should exist")
 	}
 
@@ -161,7 +161,7 @@ func TestRestartParameterStorage(t *testing.T) {
 }
 
 // Benchmark restart cookie checking
-func BenchmarkCheckRestartCookies_NoCookies(b *testing.B) {
+func BenchmarkCheckRestartContainerCookies_NoCookies(b *testing.B) {
 	cluster := &Cluster{
 		Servers: make([]*ServerMonitor, 10),
 	}
@@ -180,11 +180,11 @@ func BenchmarkCheckRestartCookies_NoCookies(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		cluster.CheckRestartCookies()
+		cluster.CheckRestartContainerCookies()
 	}
 }
 
-func BenchmarkCheckRestartCookies_WithCookies(b *testing.B) {
+func BenchmarkCheckRestartContainerCookies_WithCookies(b *testing.B) {
 	cluster := &Cluster{
 		Servers: make([]*ServerMonitor, 10),
 	}
@@ -207,11 +207,11 @@ func BenchmarkCheckRestartCookies_WithCookies(b *testing.B) {
 		for _, srv := range cluster.Servers {
 			srv.RestartNode = "node1"
 			srv.RestartRid = ""
-			srv.SetRestartCookie()
+			srv.SetRestartContainerCookie()
 		}
 
 		// Process
-		cluster.CheckRestartCookies()
+		cluster.CheckRestartContainerCookies()
 	}
 }
 
@@ -226,7 +226,7 @@ func TestCleanupRestartCookies(t *testing.T) {
 		if i%2 == 0 { // Set cookies on even-indexed servers
 			srv.RestartNode = fmt.Sprintf("node-%d", i)
 			srv.RestartRid = fmt.Sprintf("rid-%d", i)
-			err := srv.SetRestartCookie()
+			err := srv.SetRestartContainerCookie()
 			if err != nil {
 				t.Fatalf("Failed to set restart cookie for server %d: %v", i, err)
 			}
@@ -240,13 +240,13 @@ func TestCleanupRestartCookies(t *testing.T) {
 	cookieCount := 0
 	paramCount := 0
 	for i, srv := range cluster.Servers {
-		if srv.HasRestartCookie() {
+		if srv.HasRestartContainerCookie() {
 			cookieCount++
 		}
 		if srv.RestartNode != "" || srv.RestartRid != "" {
 			paramCount++
 		}
-		if i%2 == 0 && !srv.HasRestartCookie() {
+		if i%2 == 0 && !srv.HasRestartContainerCookie() {
 			t.Errorf("Expected cookie for server %d", i)
 		}
 	}
@@ -265,7 +265,7 @@ func TestCleanupRestartCookies(t *testing.T) {
 
 	// Verify all cookies and parameters are cleaned up
 	for i, srv := range cluster.Servers {
-		if srv.HasRestartCookie() {
+		if srv.HasRestartContainerCookie() {
 			t.Errorf("Server %d still has restart cookie after cleanup", i)
 		}
 		if srv.RestartNode != "" {
@@ -284,8 +284,8 @@ func TestCleanupRestartCookies_EmptyCluster(t *testing.T) {
 
 	// Ensure no cookies exist
 	for _, srv := range cluster.Servers {
-		if srv.HasRestartCookie() {
-			srv.DelRestartCookie()
+		if srv.HasRestartContainerCookie() {
+			srv.DelRestartContainerCookie()
 		}
 		srv.RestartNode = ""
 		srv.RestartRid = ""
@@ -296,7 +296,7 @@ func TestCleanupRestartCookies_EmptyCluster(t *testing.T) {
 
 	// Verify state unchanged
 	for i, srv := range cluster.Servers {
-		if srv.HasRestartCookie() {
+		if srv.HasRestartContainerCookie() {
 			t.Errorf("Server %d unexpectedly has restart cookie", i)
 		}
 		if srv.RestartNode != "" || srv.RestartRid != "" {
@@ -317,7 +317,7 @@ func TestCleanupRestartCookies_NilServers(t *testing.T) {
 	if len(cluster.Servers) > 0 && cluster.Servers[0] != nil {
 		cluster.Servers[0].RestartNode = "test-node"
 		cluster.Servers[0].RestartRid = "test-rid"
-		err := cluster.Servers[0].SetRestartCookie()
+		err := cluster.Servers[0].SetRestartContainerCookie()
 		if err != nil {
 			t.Fatalf("Failed to set cookie: %v", err)
 		}
@@ -329,7 +329,7 @@ func TestCleanupRestartCookies_NilServers(t *testing.T) {
 	// Verify cleanup worked on non-nil servers
 	for i, srv := range cluster.Servers {
 		if srv != nil {
-			if srv.HasRestartCookie() {
+			if srv.HasRestartContainerCookie() {
 				t.Errorf("Server %d still has cookie after cleanup", i)
 			}
 			if srv.RestartNode != "" || srv.RestartRid != "" {

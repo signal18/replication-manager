@@ -147,6 +147,10 @@ func (server *ServerMonitor) HasRestartCookie() bool {
 	return server.hasCookie("cookie_restart")
 }
 
+func (server *ServerMonitor) HasRestartContainerCookie() bool {
+	return server.hasCookie("cookie_restart_container")
+}
+
 func (server *ServerMonitor) HasProvisionCookie() bool {
 	return server.hasCookie("cookie_prov")
 }
@@ -345,7 +349,7 @@ func (server *ServerMonitor) HasLogMutex() bool {
 	if !server.HasLogPFS() {
 		return false
 	}
-	if !(server.IsMariaDB() || server.DBVersion.IsMySQLOrPercona()) {
+	if !server.IsMariaDB() && !server.DBVersion.IsMySQLOrPercona() {
 		return false
 	}
 	//if !server.GetCluster().Conf.MonitorPFSInstruments{
@@ -361,7 +365,7 @@ func (server *ServerMonitor) HasLogLatch() bool {
 	if !server.HasLogPFS() {
 		return false
 	}
-	if !(server.IsMariaDB() || server.DBVersion.IsMySQLOrPercona()) {
+	if !server.IsMariaDB() && !server.DBVersion.IsMySQLOrPercona() {
 		return false
 	}
 	// if !server.GetCluster().Conf.MonitorPFSInstruments{
@@ -403,7 +407,7 @@ func (server *ServerMonitor) HasUserStats() bool {
 
 func (server *ServerMonitor) HasMySQLGTID() bool {
 
-	if !(server.DBVersion.IsMySQL() || server.DBVersion.IsPercona()) {
+	if !server.DBVersion.IsMySQL() && !server.DBVersion.IsPercona() {
 		return false
 	}
 	if server.GetClusterConfig().ForceSlaveNoGtid {
@@ -617,7 +621,7 @@ func (server *ServerMonitor) IsInStateFailed() bool {
 }
 
 func (server *ServerMonitor) IsReplicationBroken() bool {
-	if server.IsSQLThreadRunning() == false || server.IsIOThreadRunning() == false {
+	if !server.IsSQLThreadRunning() || !server.IsIOThreadRunning() {
 		return true
 	}
 	return false
@@ -627,7 +631,7 @@ func (server *ServerMonitor) HasGTIDReplication() bool {
 	if server.GetClusterConfig().ForceSlaveNoGtid {
 		return false
 	}
-	if server.DBVersion.IsMySQLOrPercona() && server.HaveMySQLGTID == false {
+	if server.DBVersion.IsMySQLOrPercona() && !server.HaveMySQLGTID {
 		return false
 	} else if server.DBVersion.IsMariaDB() && server.DBVersion.Major == 5 {
 		return false
@@ -637,7 +641,7 @@ func (server *ServerMonitor) HasGTIDReplication() bool {
 
 func (server *ServerMonitor) HasReplicationIssue() bool {
 	ret := server.CheckReplication()
-	if ret == "Running OK" || ((ret == "NOT OK, IO Connecting" || server.IsIOThreadRunning() == false) && server.ClusterGroup.GetMaster() == nil) {
+	if ret == "Running OK" || ((ret == "NOT OK, IO Connecting" || !server.IsIOThreadRunning()) && server.ClusterGroup.GetMaster() == nil) {
 		return false
 	}
 	return true

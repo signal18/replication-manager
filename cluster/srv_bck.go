@@ -75,8 +75,8 @@ func (server *ServerMonitor) AppendLastMetadata(method string, latest *int64) {
 }
 
 func (server *ServerMonitor) ReadLastMetadata(method string) (*backupmgr.BackupMetadata, error) {
-	var filename string = method
-	var ext string = ".meta.json"
+	var filename = method
+	var ext = ".meta.json"
 
 	filename = server.GetMyBackupDirectory() + filename + ext
 	_, err := os.Stat(filename)
@@ -225,4 +225,61 @@ func (server *ServerMonitor) InjectViaBinlogs(meta backupmgr.PointInTimeMeta) er
 
 func (server *ServerMonitor) InjectViaReplication(meta backupmgr.PointInTimeMeta) error {
 	return nil
+}
+
+// UpdateBackupMetadataWithRestic updates the backup metadata with restic snapshot information
+func (server *ServerMonitor) UpdateBackupMetadataWithRestic(backtype backupmgr.BackupMethod, snapshotID string) {
+	// Protect metadata from concurrent restic callbacks.
+	server.backupMetaMutex.Lock()
+	defer server.backupMetaMutex.Unlock()
+
+	cluster := server.ClusterGroup
+	var lastmeta *backupmgr.BackupMetadata
+
+	switch backtype {
+	case backupmgr.BackupMethodLogical:
+		lastmeta = server.LastBackupMeta.Logical
+	case backupmgr.BackupMethodPhysical:
+		lastmeta = server.LastBackupMeta.Physical
+	default:
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Wrong backup type for restic metadata update in %s", server.URL)
+		return
+	}
+
+	if lastmeta == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "No backup metadata found for restic update in %s", server.URL)
+		return
+	}
+
+	lastmeta.ResticSnapshotID = snapshotID
+	lastmeta.ResticFilePath = cluster.ResticManager.GetRepoPath()
+
+	snapshotLabel := snapshotID
+	if len(snapshotLabel) > 8 {
+		snapshotLabel = snapshotLabel[:8]
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Updated backup metadata with restic snapshot %s for %s", snapshotLabel, server.URL)
+
+	bjson, err := json.MarshalIndent(lastmeta, "", "\t")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to marshall restic metadata for backup in %s: %s", server.URL, err.Error())
+		return
+	}
+
+	metaPath := server.backupMetaFilePath(lastmeta)
+	if metaPath == "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to resolve metadata path for restic update in %s", server.URL)
+		return
+	}
+	if lastmeta.MetaFile == "" {
+		lastmeta.MetaFile = metaPath
+	}
+
+	err = os.WriteFile(metaPath, bjson, 0644)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to write restic metadata for backup in %s: %s", server.URL, err.Error())
+		return
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Restic metadata written successfully for %s", server.URL)
 }

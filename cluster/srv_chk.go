@@ -86,7 +86,9 @@ func (server *ServerMonitor) CheckDBConfigPath() {
 				changed = true
 			}
 
-			server.DelConfigPathCookie()
+			if !changed {
+				server.DelConfigPathCookie()
+			}
 		}
 
 		if value != nil && v.Config != nil {
@@ -135,28 +137,28 @@ func (server *ServerMonitor) CheckDisks() {
 func (server *ServerMonitor) checkStoppedReplication(ss *dbhelper.SlaveStatus) string {
 	//	log.Printf("replicationCheck %s %s", server.SQLThread, server.IOThread)
 	if ss.SlaveSQLRunning.String == "Yes" && ss.SlaveIORunning.String == "No" {
-		if server.IsRelay == false && server.IsMaxscale == false {
+		if !server.IsRelay && !server.IsMaxscale {
 			server.SetState(stateSlaveErr)
 		} else if server.IsRelay {
 			server.SetState(stateRelayErr)
 		}
 		return fmt.Sprintf("NOT OK, IO Stopped (%s)", ss.LastIOErrno.String)
 	} else if ss.SlaveSQLRunning.String == "No" && ss.SlaveIORunning.String == "Yes" {
-		if server.IsRelay == false && server.IsMaxscale == false {
+		if !server.IsRelay && !server.IsMaxscale {
 			server.SetState(stateSlaveErr)
 		} else if server.IsRelay {
 			server.SetState(stateRelayErr)
 		}
 		return fmt.Sprintf("NOT OK, SQL Stopped (%s)", ss.LastSQLErrno.String)
 	} else if ss.SlaveSQLRunning.String == "No" && ss.SlaveIORunning.String == "No" {
-		if server.IsRelay == false && server.IsMaxscale == false {
+		if !server.IsRelay && !server.IsMaxscale {
 			server.SetState(stateSlaveErr)
 		} else if server.IsRelay {
 			server.SetState(stateRelayErr)
 		}
 		return "NOT OK, ALL Stopped"
 	} else if ss.SlaveSQLRunning.String == "Connecting" {
-		if server.IsRelay == false && server.IsMaxscale == false {
+		if !server.IsRelay && !server.IsMaxscale {
 			server.SetState(stateSlave)
 		} else if server.IsRelay {
 			server.SetState(stateRelay)
@@ -164,7 +166,7 @@ func (server *ServerMonitor) checkStoppedReplication(ss *dbhelper.SlaveStatus) s
 		return "NOT OK, IO Connecting"
 	}
 
-	if server.IsRelay == false && server.IsMaxscale == false {
+	if !server.IsRelay && !server.IsMaxscale {
 		server.SetState(stateSlave)
 	} else if server.IsRelay {
 		server.SetState(stateRelay)
@@ -173,15 +175,15 @@ func (server *ServerMonitor) checkStoppedReplication(ss *dbhelper.SlaveStatus) s
 }
 
 func (server *ServerMonitor) checkLateReplication(ss *dbhelper.SlaveStatus) string {
-	if ss.SecondsBehindMaster.Int64 > server.ClusterGroup.Conf.FailMaxDelay && server.ClusterGroup.Conf.RplChecks == true {
-		if server.IsRelay == false && server.IsMaxscale == false {
+	if ss.SecondsBehindMaster.Int64 > server.ClusterGroup.Conf.FailMaxDelay && server.ClusterGroup.Conf.RplChecks {
+		if !server.IsRelay && !server.IsMaxscale {
 			server.SetState(stateSlaveLate)
 		} else if server.IsRelay {
 			server.SetState(stateRelayLate)
 		}
 
 	} else {
-		if server.IsRelay == false && server.IsMaxscale == false {
+		if !server.IsRelay && !server.IsMaxscale {
 			server.SetState(stateSlave)
 		} else if server.IsRelay {
 			server.SetState(stateRelay)
@@ -212,7 +214,7 @@ func (server *ServerMonitor) CheckReplication() string {
 	if cluster.StateMachine.IsInFailover() {
 		return "In Failover"
 	}
-	if (server.IsDown()) && server.IsSlave == false {
+	if (server.IsDown()) && !server.IsSlave {
 		return "Master OK"
 	}
 
@@ -236,7 +238,7 @@ func (server *ServerMonitor) CheckReplication() string {
 	if err != nil {
 		return "Not a slave"
 	}
-	if ss.SecondsBehindMaster.Valid == false {
+	if !ss.SecondsBehindMaster.Valid {
 		return server.checkStoppedReplication(ss)
 	}
 
@@ -244,7 +246,7 @@ func (server *ServerMonitor) CheckReplication() string {
 		return server.checkLateReplication(ss)
 	}
 
-	if server.IsRelay == false && server.IsMaxscale == false {
+	if !server.IsRelay && !server.IsMaxscale {
 		server.SetState(stateSlave)
 	} else if server.IsRelay {
 		server.SetState(stateRelay)
@@ -264,22 +266,22 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	sl := server
 	cluster := server.ClusterGroup
 	master := cluster.GetMaster()
-	if cluster.Conf.ForceSlaveSemisync && sl.HaveSemiSync == false && cluster.GetTopology() != config.TopoMultiMasterWsrep {
+	if cluster.Conf.ForceSlaveSemisync && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "DEBUG", "Enforce semisync on slave %s", sl.URL)
 		dbhelper.InstallSemiSync(sl.Conn, server.DBVersion)
-	} else if sl.IsIgnored() == false && sl.HaveSemiSync == false && cluster.GetTopology() != config.TopoMultiMasterWsrep {
+	} else if !sl.IsIgnored() && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep {
 		cluster.SetState("WARN0048", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0048"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 
-	if cluster.Conf.ForceBinlogRow && sl.HaveBinlogRow == false {
+	if cluster.Conf.ForceBinlogRow && !sl.HaveBinlogRow {
 		// In non-multimaster mode, enforce read-only flag if the option is set
 		dbhelper.SetBinlogFormat(sl.Conn, "ROW")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce binlog format ROW on slave %s", sl.URL)
-	} else if sl.IsIgnored() == false && sl.HaveBinlogRow == false && (cluster.Conf.AutorejoinFlashback == true || cluster.GetTopology() == config.TopoMultiMasterWsrep) {
+	} else if !sl.IsIgnored() && !sl.HaveBinlogRow && (cluster.Conf.AutorejoinFlashback || cluster.GetTopology() == config.TopoMultiMasterWsrep) {
 		//galera or binlog flashback need row based binlog
 		cluster.SetState("WARN0049", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0049"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
-	if cluster.Conf.ActivePassive == false && cluster.Conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" && !server.IsIgnoredReadonly() && !cluster.IsMultiMaster() && !server.IsMaster() {
+	if !cluster.Conf.ActivePassive && cluster.Conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" && !server.IsIgnoredReadonly() && !cluster.IsMultiMaster() && !server.IsMaster() {
 		// In non-multimaster mode, enforce read-only flag if the option is set
 		sl.SetReadOnly()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce read only on slave %s, ReadOnly:%s, InIgnored:%t MultiMaster:%t", sl.URL, sl.ReadOnly, server.IsIgnoredReadonly(), cluster.IsMultiMaster())
@@ -287,7 +289,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	if cluster.Conf.ForceSlaveHeartbeat && sl.GetReplicationHearbeatPeriod() > 1 {
 		dbhelper.SetSlaveHeartbeat(sl.Conn, "1", cluster.Conf.MasterConn, server.DBVersion)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce heartbeat to 1s on slave %s", sl.URL)
-	} else if sl.IsIgnored() == false && sl.GetReplicationHearbeatPeriod() > 1 {
+	} else if !sl.IsIgnored() && sl.GetReplicationHearbeatPeriod() > 1 {
 		cluster.SetState("WARN0050", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0050"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 	if cluster.Conf.ForceSlaveGtid && sl.GetReplicationUsingGtid() == "No" {
@@ -310,7 +312,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 
 		// If master is in GTID mode ON or ON_PERMISSIVE, and slave has GTID mode ON_PERMISSIVE
 		if !cluster.StateMachine.IsInStateList("ERR00099@"+sl.URL, "ERR00098") && !hasErr {
-			if !(sl.DBVersion.IsMySQLOrPercona() && sl.DBVersion.GreaterEqual("5.7.6") && sl.SlaveStatus.AutoPosition == 1) {
+			if !sl.DBVersion.IsMySQLOrPercona() || !sl.DBVersion.GreaterEqual("5.7.6") || sl.SlaveStatus.AutoPosition != 1 {
 				dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos", cluster.Conf.MasterConn, server.DBVersion)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce GTID replication on slave %s", sl.URL)
 			}
@@ -323,7 +325,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 				}
 			}
 		}
-	} else if sl.IsIgnored() == false && sl.GetReplicationUsingGtid() == "No" && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
+	} else if !sl.IsIgnored() && sl.GetReplicationUsingGtid() == "No" && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
 		cluster.SetState("WARN0051", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0051"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 	if cluster.Conf.ForceSlaveGtidStrict && !sl.IsReplicationUsingGtidStrict() && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
@@ -365,42 +367,42 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		dbhelper.SetSlaveParallelMode(sl.Conn, "CONSERVATIVE", cluster.Conf.MasterConn, server.DBVersion)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce replication parallel mode conservative on slave %s", sl.URL)
 	}
-	if cluster.Conf.ForceSyncInnoDB && sl.HaveInnodbTrxCommit == false {
+	if cluster.Conf.ForceSyncInnoDB && !sl.HaveInnodbTrxCommit {
 		dbhelper.SetSyncInnodb(sl.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce InnoDB durability on slave %s", sl.URL)
-	} else if sl.IsIgnored() == false && sl.HaveInnodbTrxCommit == false {
+	} else if !sl.IsIgnored() && !sl.HaveInnodbTrxCommit {
 		cluster.SetState("WARN0052", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0052"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
-	if cluster.Conf.ForceBinlogChecksum && sl.HaveChecksum == false {
+	if cluster.Conf.ForceBinlogChecksum && !sl.HaveChecksum {
 		dbhelper.SetBinlogChecksum(sl.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce checksum on slave %s", sl.URL)
-	} else if sl.IsIgnored() == false && sl.HaveChecksum == false {
+	} else if !sl.IsIgnored() && !sl.HaveChecksum {
 		cluster.SetState("WARN0053", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0053"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
-	if cluster.Conf.ForceBinlogSlowqueries && sl.HaveBinlogSlowqueries == false {
+	if cluster.Conf.ForceBinlogSlowqueries && !sl.HaveBinlogSlowqueries {
 		dbhelper.SetBinlogSlowqueries(sl.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce log slow queries of replication on slave %s", sl.URL)
-	} else if sl.IsIgnored() == false && sl.HaveBinlogSlowqueries == false {
+	} else if !sl.IsIgnored() && !sl.HaveBinlogSlowqueries {
 		cluster.SetState("WARN0054", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0054"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
-	if cluster.Conf.ForceBinlogAnnotate && sl.HaveBinlogAnnotate == false && server.IsMariaDB() {
+	if cluster.Conf.ForceBinlogAnnotate && !sl.HaveBinlogAnnotate && server.IsMariaDB() {
 		dbhelper.SetBinlogAnnotate(sl.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce annotate on slave %s", sl.URL)
-	} else if sl.IsIgnored() == false && sl.HaveBinlogAnnotate == false && server.IsMariaDB() {
+	} else if !sl.IsIgnored() && !sl.HaveBinlogAnnotate && server.IsMariaDB() {
 		cluster.SetState("WARN0055", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0055"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 
-	if cluster.Conf.ForceBinlogCompress && sl.HaveBinlogCompress == false && sl.DBVersion.IsMariaDB() && sl.DBVersion.Major >= 10 && sl.DBVersion.Minor >= 2 {
+	if cluster.Conf.ForceBinlogCompress && !sl.HaveBinlogCompress && sl.DBVersion.IsMariaDB() && sl.DBVersion.Major >= 10 && sl.DBVersion.Minor >= 2 {
 		dbhelper.SetBinlogCompress(sl.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce binlog compression on slave %s", sl.URL)
-	} else if sl.IsIgnored() == false && sl.HaveBinlogCompress == false && sl.DBVersion.IsMariaDB() && sl.DBVersion.Major >= 10 && sl.DBVersion.Minor >= 2 {
+	} else if !sl.IsIgnored() && !sl.HaveBinlogCompress && sl.DBVersion.IsMariaDB() && sl.DBVersion.Major >= 10 && sl.DBVersion.Minor >= 2 {
 		cluster.SetState("WARN0056", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0056"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
-	if sl.IsIgnored() == false && sl.HaveBinlogSlaveUpdates == false {
+	if !sl.IsIgnored() && !sl.HaveBinlogSlaveUpdates {
 		cluster.SetState("WARN0057", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0057"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 
-	if server.IsAcid() == false && cluster.IsDiscovered() {
+	if !server.IsAcid() && cluster.IsDiscovered() {
 		cluster.SetState("WARN0007", state.State{ErrType: config.LvlWarn, ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF", ServerUrl: sl.URL})
 	}
 
@@ -412,55 +414,55 @@ func (server *ServerMonitor) CheckMasterSettings() {
 		return
 	}
 	cluster := server.ClusterGroup
-	if cluster.Conf.ForceSlaveSemisync && server.HaveSemiSync == false {
+	if cluster.Conf.ForceSlaveSemisync && !server.HaveSemiSync {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce semisync on Master %s", server.URL)
 		dbhelper.InstallSemiSync(server.Conn, server.DBVersion)
-	} else if server.HaveSemiSync == false && cluster.GetTopology() != config.TopoMultiMasterWsrep && cluster.GetTopology() != config.TopoMultiMasterGrouprep {
+	} else if !server.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep && cluster.GetTopology() != config.TopoMultiMasterGrouprep {
 		cluster.SetState("WARN0060", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0060"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if cluster.Conf.ForceBinlogRow && server.HaveBinlogRow == false {
+	if cluster.Conf.ForceBinlogRow && !server.HaveBinlogRow {
 		dbhelper.SetBinlogFormat(server.Conn, "ROW")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce binlog format ROW on Master %s", server.URL)
-	} else if server.HaveBinlogRow == false && cluster.Conf.AutorejoinFlashback == true {
+	} else if !server.HaveBinlogRow && cluster.Conf.AutorejoinFlashback {
 		cluster.SetState("WARN0061", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0061"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if cluster.Conf.ForceSyncBinlog && server.HaveBinlogSync == false {
+	if cluster.Conf.ForceSyncBinlog && !server.HaveBinlogSync {
 		dbhelper.SetSyncBinlog(server.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce sync binlog on Master %s", server.URL)
-	} else if server.HaveBinlogSync == false {
+	} else if !server.HaveBinlogSync {
 		cluster.SetState("WARN0062", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0062"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if cluster.Conf.ForceSyncInnoDB && server.HaveBinlogSync == false {
+	if cluster.Conf.ForceSyncInnoDB && !server.HaveBinlogSync {
 		dbhelper.SetSyncInnodb(server.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce innodb durability on Master %s", server.URL)
-	} else if server.HaveBinlogSync == false {
+	} else if !server.HaveBinlogSync {
 		cluster.SetState("WARN0064", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0064"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if cluster.Conf.ForceBinlogAnnotate && server.HaveBinlogAnnotate == false && server.IsMariaDB() {
+	if cluster.Conf.ForceBinlogAnnotate && !server.HaveBinlogAnnotate && server.IsMariaDB() {
 		dbhelper.SetBinlogAnnotate(server.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce binlog annotate on master %s", server.URL)
-	} else if server.HaveBinlogAnnotate == false && server.IsMariaDB() {
+	} else if !server.HaveBinlogAnnotate && server.IsMariaDB() {
 		cluster.SetState("WARN0067", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0067"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if cluster.Conf.ForceBinlogChecksum && server.HaveChecksum == false {
+	if cluster.Conf.ForceBinlogChecksum && !server.HaveChecksum {
 		dbhelper.SetBinlogChecksum(server.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce ckecksum annotate on master %s", server.URL)
-	} else if server.HaveChecksum == false {
+	} else if !server.HaveChecksum {
 		cluster.SetState("WARN0065", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0065"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if cluster.Conf.ForceBinlogCompress && server.HaveBinlogCompress == false && server.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 2 {
+	if cluster.Conf.ForceBinlogCompress && !server.HaveBinlogCompress && server.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 2 {
 		dbhelper.SetBinlogCompress(server.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce binlog compression on master %s", server.URL)
-	} else if server.HaveBinlogCompress == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 2 {
+	} else if !server.HaveBinlogCompress && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 2 {
 		cluster.SetState("WARN0068", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0068"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if server.HaveBinlogSlaveUpdates == false {
+	if !server.HaveBinlogSlaveUpdates {
 		cluster.SetState("WARN0069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0069"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if server.HaveGtidStrictMode == false && server.DBVersion.Flavor == "MariaDB" && cluster.GetTopology() != config.TopoMultiMasterWsrep && cluster.GetTopology() != config.TopoMultiMasterGrouprep {
+	if !server.HaveGtidStrictMode && server.DBVersion.Flavor == "MariaDB" && cluster.GetTopology() != config.TopoMultiMasterWsrep && cluster.GetTopology() != config.TopoMultiMasterGrouprep {
 		cluster.SetState("WARN0070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0070"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if server.IsAcid() == false && cluster.IsDiscovered() {
+	if !server.IsAcid() && cluster.IsDiscovered() {
 		cluster.SetState("WARN0007", state.State{ErrType: "WARNING", ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF", ServerUrl: server.URL})
 	}
 }
@@ -468,7 +470,7 @@ func (server *ServerMonitor) CheckMasterSettings() {
 // CheckSlaveSameMasterGrants check same serers grants as the master
 func (server *ServerMonitor) CheckSlaveSameMasterGrants() bool {
 	cluster := server.ClusterGroup
-	if cluster.GetMaster() == nil || server.IsIgnored() || cluster.Conf.CheckGrants == false {
+	if cluster.GetMaster() == nil || server.IsIgnored() || !cluster.Conf.CheckGrants {
 		return true
 	}
 	for _, user := range cluster.GetMaster().Users.ToNewMap() {
@@ -489,7 +491,7 @@ func (server *ServerMonitor) CheckPrivileges() {
 	// if cluster.Conf.LogLevel > 2 {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Privilege check on %s", server.URL)
 	// }
-	if server.State != "" && !server.IsDown() && server.IsRelay == false {
+	if server.State != "" && !server.IsDown() && !server.IsRelay {
 		myhost, logs, err := dbhelper.GetHostFromConnection(server.Conn, cluster.GetDbUser(), server.DBVersion)
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Check Privileges can't get hostname from server %s connection on %s: %s", server.State, server.URL, err)
 		myip, err := misc.GetIPSafe(misc.Unbracket(myhost))
@@ -516,7 +518,7 @@ func (server *ServerMonitor) CheckPrivileges() {
 		}
 		// Check replication user has correct privs.
 		for _, sv2 := range cluster.Servers {
-			if sv2.URL != server.URL && sv2.IsRelay == false && !sv2.IsDown() {
+			if sv2.URL != server.URL && !sv2.IsRelay && !sv2.IsDown() {
 				rplhost, _ := misc.GetIPSafe(misc.Unbracket(sv2.Host))
 				rpriv, logs, err := dbhelper.GetPrivileges(server.Conn, cluster.GetDbUser(), sv2.Host, rplhost, server.DBVersion)
 				cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, clusterError["ERR00015"], cluster.GetRplUser(), sv2.URL, err)

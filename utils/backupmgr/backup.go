@@ -3,6 +3,8 @@ package backupmgr
 import (
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +26,11 @@ const (
 	BackupStrategyDifferential = 3
 )
 
+const (
+	BackupLineDefault = "default"
+	BackupLineAdhoc   = "adhoc"
+)
+
 type BackupMetadata struct {
 	Id                int64          `json:"id"`
 	StartTime         time.Time      `json:"startTime"`
@@ -42,12 +49,18 @@ type BackupMetadata struct {
 	EncryptionKey     string         `json:"encryptionKey"`
 	Checksum          string         `json:"checksum"`
 	RetentionDays     int            `json:"retentionDays"`
+	RetentionDuration string         `json:"retentionDuration,omitempty"`
+	BackupLine        string         `json:"backupLine,omitempty"`
+	MetaFile          string         `json:"metaFile,omitempty"`
 	BinLogFileName    string         `json:"binLogFileName"`
 	BinLogFilePos     uint64         `json:"binLogFilePos"`
 	BinLogGtid        string         `json:"binLogUuid"`
 	Completed         bool           `json:"completed"`
 	SplitUser         bool           `json:"splitUser"`
 	Previous          int64          `json:"previous"`
+	ResticEnabled     bool           `json:"resticEnabled,omitempty"`
+	ResticSnapshotID  string         `json:"resticSnapshotID"`
+	ResticFilePath    string         `json:"resticFilePath"`
 }
 
 type PointInTimeMeta struct {
@@ -55,6 +68,8 @@ type PointInTimeMeta struct {
 	UseBinlog   bool
 	Backup      int64
 	RestoreTime int64
+	UseRestic   bool
+	ResticMode  string
 }
 
 func (bm *BackupMetadata) GetSizeAndFileCount() error {
@@ -70,6 +85,66 @@ func (bm *BackupMetadata) GetSizeAndFileCount() error {
 	bm.Size = size
 	bm.FileCount = fileCount
 	return err
+}
+
+func (bm *BackupMetadata) IsAdhoc() bool {
+	if bm == nil {
+		return false
+	}
+	if bm.BackupLine == BackupLineAdhoc {
+		return true
+	}
+	if strings.TrimSpace(bm.RetentionDuration) != "" {
+		return true
+	}
+	return bm.RetentionDays > 0
+}
+
+func (bm *BackupMetadata) RetentionWindow() (time.Duration, bool) {
+	if bm == nil {
+		return 0, false
+	}
+	if d, ok := ParseRetentionDuration(bm.RetentionDuration); ok {
+		return d, true
+	}
+	if bm.RetentionDays > 0 {
+		return time.Duration(bm.RetentionDays) * 24 * time.Hour, true
+	}
+	return 0, false
+}
+
+func ParseRetentionDuration(value string) (time.Duration, bool) {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" {
+		return 0, false
+	}
+	if d, err := time.ParseDuration(trimmed); err == nil && d > 0 {
+		return d, true
+	}
+	type suffixSpec struct {
+		suffix string
+		mult   time.Duration
+	}
+	suffixes := []suffixSpec{
+		{"y", 365 * 24 * time.Hour},
+		{"mo", 30 * 24 * time.Hour},
+		{"w", 7 * 24 * time.Hour},
+		{"d", 24 * time.Hour},
+	}
+	for _, spec := range suffixes {
+		if strings.HasSuffix(trimmed, spec.suffix) {
+			num := strings.TrimSpace(strings.TrimSuffix(trimmed, spec.suffix))
+			if num == "" {
+				return 0, false
+			}
+			valueInt, err := strconv.ParseInt(num, 10, 64)
+			if err != nil || valueInt <= 0 {
+				return 0, false
+			}
+			return time.Duration(valueInt) * spec.mult, true
+		}
+	}
+	return 0, false
 }
 
 type ReadBinaryLogsBoundary struct {
@@ -207,6 +282,9 @@ func (b *BackupMetaMap) GetPreviousBackup(backupTool string, source string) *Bac
 	var result *BackupMetadata
 	b.Map.Range(func(key, value interface{}) bool {
 		if backup, ok := value.(*BackupMetadata); ok {
+			if backup.IsAdhoc() {
+				return true
+			}
 			if backup.BackupTool == backupTool && backup.Source == source {
 				result = backup
 				return false

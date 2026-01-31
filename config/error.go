@@ -238,6 +238,7 @@ var ClusterError = map[string]string{
 	"WARN0162":  "Working orchestrator agent is different than configured agent on proxy %s. Configured: %s Working: %s",
 	"WARN0163":  "Cluster %s is flagged for schema monitoring",
 	"WARN0164":  "Cluster %s has schema differences between master and slaves: %v",
+	"WARN0165":  "Restart container cookie deferred on %s: %s",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",

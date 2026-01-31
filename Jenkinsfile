@@ -18,6 +18,18 @@ pipeline {
                 }
             }
         }
+        stage('Build OSC Rootless') {
+            when { buildingTag() }
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
+                        def Image = docker.build("signal18/replication-manager:${env.TAG_NAME}-rootless", '-f docker/Dockerfile_rootless .')
+                        Image.push('latest-rootless')
+                        Image.push(env.TAG_NAME+'-rootless')
+                    }
+                }
+            }
+        }
         stage('Build PRO') {
             when { buildingTag() }
             steps {
@@ -25,6 +37,18 @@ pipeline {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
                         def Image = docker.build("signal18/replication-manager:${env.TAG_NAME}-pro", '-f docker/Dockerfile.pro .')
                         Image.push(env.TAG_NAME+'-pro')
+                    }
+                }
+            }
+        }
+        stage('Build PRO Rootless') {
+            when { buildingTag() }
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
+                        def Image = docker.build("signal18/replication-manager:pro-rootless", '-f docker/Dockerfile.pro_rootless .')
+                        Image.push('pro-rootless')
+                        Image.push(env.TAG_NAME+'-pro-rootless')
                     }
                 }
             }
@@ -38,7 +62,17 @@ pipeline {
                     }
                 }
             }
-        }        
+        }
+        stage('Build nightly rootless') {
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
+                        def Image = docker.build('signal18/replication-manager:nightly-rootless', '-f docker/Dockerfile.pro_rootless .')
+                        Image.push('nightly-rootless')
+                    }
+                }
+            }
+        }
         stage('Build DEV') {
             steps {
                 script {
@@ -47,6 +81,19 @@ pipeline {
                         Image.push('dev')
                         if (env.TAG_NAME) {
                             Image.push(env.TAG_NAME+'-dev')
+                        }
+                    }
+                }
+            }
+        }
+        stage('Build DEV Rootless') {
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
+                        def Image = docker.build('signal18/replication-manager:dev-rootless', '-f docker/Dockerfile.dev_rootless .')
+                        Image.push('dev-rootless')
+                        if (env.TAG_NAME) {
+                            Image.push(env.TAG_NAME+'-dev-rootless')
                         }
                     }
                 }

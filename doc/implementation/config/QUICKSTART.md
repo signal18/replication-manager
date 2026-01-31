@@ -246,12 +246,14 @@ fmt.Println(config.MergePrecedenceDoc())
 // 2. include - Include directory files (cluster.d/*.toml)
 // 3. saved - Saved dynamic configuration (working-dir/cluster/cluster.toml)
 // 4. git - Git repository pulled configuration
-// 5. environment - Environment variables (REPMGR_*)
+// 5. environment - Environment variables (REPLICATION_MANAGER_DEFAULT_* or REPLICATION_MANAGER_<CLUSTER>_*)
 // 6. command-line - Command-line flags (--flag=value)
 //
 // Higher priority sources override lower priority sources.
 // Fields marked with scope:"server" cannot be overridden by cluster configs.
 ```
+
+Only prefixed environment variables are read; unprefixed keys are ignored.
 
 ## Testing Your Configuration
 

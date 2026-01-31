@@ -28,14 +28,14 @@ func (regtest *RegTest) TestRestartCookieBasic(cluster *cluster.Cluster, conf st
 	server.SetRestartRid("container#jobs")
 
 	// Create cookie
-	err := server.SetRestartCookie()
+	err := server.SetRestartContainerCookie()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to create restart cookie: %s", err)
 		return false
 	}
 
 	// Verify cookie exists
-	if !server.HasRestartCookie() {
+	if !server.HasRestartContainerCookie() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Restart cookie was not created")
 		return false
 	}
@@ -54,14 +54,14 @@ func (regtest *RegTest) TestRestartCookieBasic(cluster *cluster.Cluster, conf st
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Restart cookie and parameters verified")
 
 	// Delete cookie
-	err = server.DelRestartCookie()
+	err = server.DelRestartContainerCookie()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to delete restart cookie: %s", err)
 		return false
 	}
 
 	// Verify cookie deleted
-	if server.HasRestartCookie() {
+	if server.HasRestartContainerCookie() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Restart cookie was not deleted")
 		return false
 	}
@@ -87,16 +87,16 @@ func (regtest *RegTest) TestRestartCookieLifecycle(cluster *cluster.Cluster, con
 	// Step 1: Set parameters and cookie
 	server.SetRestartNode("slave")
 	server.SetRestartRid("container#jobs")
-	err := server.SetRestartCookie()
+	err := server.SetRestartContainerCookie()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cookie creation failed: %s", err)
 		return false
 	}
 
-	// Step 2: Verify CheckRestartCookies can find it
+	// Step 2: Verify CheckRestartContainerCookies can find it
 	foundCookie := false
 	for _, srv := range cluster.GetServers() {
-		if srv.HasRestartCookie() {
+		if srv.HasRestartContainerCookie() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Monitor found restart cookie for server %s", srv.Id)
 			foundCookie = true
 
@@ -121,7 +121,7 @@ func (regtest *RegTest) TestRestartCookieLifecycle(cluster *cluster.Cluster, con
 	}
 
 	// Step 3: Clean up
-	server.DelRestartCookie()
+	server.DelRestartContainerCookie()
 	server.SetRestartNode("")
 	server.SetRestartRid("")
 
@@ -142,7 +142,7 @@ func (regtest *RegTest) TestRestartCookieMultipleServers(cluster *cluster.Cluste
 	// Set cookies on first two servers
 	servers[0].SetRestartNode("master")
 	servers[0].SetRestartRid("container#jobs")
-	err := servers[0].SetRestartCookie()
+	err := servers[0].SetRestartContainerCookie()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to create cookie on server 0: %s", err)
 		return false
@@ -150,7 +150,7 @@ func (regtest *RegTest) TestRestartCookieMultipleServers(cluster *cluster.Cluste
 
 	servers[1].SetRestartNode("slave")
 	servers[1].SetRestartRid("")
-	err = servers[1].SetRestartCookie()
+	err = servers[1].SetRestartContainerCookie()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to create cookie on server 1: %s", err)
 		return false
@@ -159,7 +159,7 @@ func (regtest *RegTest) TestRestartCookieMultipleServers(cluster *cluster.Cluste
 	// Verify both cookies exist
 	cookieCount := 0
 	for _, srv := range servers {
-		if srv.HasRestartCookie() {
+		if srv.HasRestartContainerCookie() {
 			cookieCount++
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Found restart cookie on server %s (node: %s, rid: %s)",
 				srv.Id, srv.RestartNode, srv.RestartRid)
@@ -168,17 +168,17 @@ func (regtest *RegTest) TestRestartCookieMultipleServers(cluster *cluster.Cluste
 
 	if cookieCount != 2 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Expected 2 cookies, found %d", cookieCount)
-		servers[0].DelRestartCookie()
-		servers[1].DelRestartCookie()
+		servers[0].DelRestartContainerCookie()
+		servers[1].DelRestartContainerCookie()
 		return false
 	}
 
 	// Clean up
-	servers[0].DelRestartCookie()
+	servers[0].DelRestartContainerCookie()
 	servers[0].SetRestartNode("")
 	servers[0].SetRestartRid("")
 
-	servers[1].DelRestartCookie()
+	servers[1].DelRestartContainerCookie()
 	servers[1].SetRestartNode("")
 	servers[1].SetRestartRid("")
 
@@ -199,7 +199,7 @@ func (regtest *RegTest) TestRestartCookieParameters(cluster *cluster.Cluster, co
 	// Test 1: Both parameters set
 	server.SetRestartNode("master")
 	server.SetRestartRid("container#jobs")
-	err := server.SetRestartCookie()
+	err := server.SetRestartContainerCookie()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Test 1 failed: %s", err)
 		return false
@@ -207,17 +207,17 @@ func (regtest *RegTest) TestRestartCookieParameters(cluster *cluster.Cluster, co
 
 	if server.RestartNode != "master" || server.RestartRid != "container#jobs" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Test 1: Parameters not set correctly")
-		server.DelRestartCookie()
+		server.DelRestartContainerCookie()
 		return false
 	}
 
-	server.DelRestartCookie()
+	server.DelRestartContainerCookie()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Test 1 passed: Both parameters")
 
 	// Test 2: Only node parameter
 	server.SetRestartNode("slave")
 	server.SetRestartRid("")
-	err = server.SetRestartCookie()
+	err = server.SetRestartContainerCookie()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Test 2 failed: %s", err)
 		return false
@@ -225,17 +225,17 @@ func (regtest *RegTest) TestRestartCookieParameters(cluster *cluster.Cluster, co
 
 	if server.RestartNode != "slave" || server.RestartRid != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Test 2: Parameters not set correctly")
-		server.DelRestartCookie()
+		server.DelRestartContainerCookie()
 		return false
 	}
 
-	server.DelRestartCookie()
+	server.DelRestartContainerCookie()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Test 2 passed: Node parameter only")
 
 	// Test 3: Empty parameters (default restart)
 	server.SetRestartNode("")
 	server.SetRestartRid("")
-	err = server.SetRestartCookie()
+	err = server.SetRestartContainerCookie()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Test 3 failed: %s", err)
 		return false
@@ -243,11 +243,11 @@ func (regtest *RegTest) TestRestartCookieParameters(cluster *cluster.Cluster, co
 
 	if server.RestartNode != "" || server.RestartRid != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Test 3: Parameters should be empty")
-		server.DelRestartCookie()
+		server.DelRestartContainerCookie()
 		return false
 	}
 
-	server.DelRestartCookie()
+	server.DelRestartContainerCookie()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Test 3 passed: Empty parameters")
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Restart cookie parameters test passed")
@@ -267,7 +267,7 @@ func (regtest *RegTest) TestRestartCookieCleanup(cluster *cluster.Cluster, conf 
 	for i, srv := range cluster.GetServers() {
 		srv.SetRestartNode("node-" + srv.Id)
 		srv.SetRestartRid("rid-" + srv.Id)
-		err := srv.SetRestartCookie()
+		err := srv.SetRestartContainerCookie()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to create test cookie on server %d: %s", i, err)
 			return false
@@ -277,7 +277,7 @@ func (regtest *RegTest) TestRestartCookieCleanup(cluster *cluster.Cluster, conf 
 	// Verify cookies were created
 	cookieCountBefore := 0
 	for _, srv := range cluster.GetServers() {
-		if srv.HasRestartCookie() {
+		if srv.HasRestartContainerCookie() {
 			cookieCountBefore++
 		}
 	}
@@ -296,7 +296,7 @@ func (regtest *RegTest) TestRestartCookieCleanup(cluster *cluster.Cluster, conf 
 	cookieCountAfter := 0
 	paramCountAfter := 0
 	for _, srv := range cluster.GetServers() {
-		if srv.HasRestartCookie() {
+		if srv.HasRestartContainerCookie() {
 			cookieCountAfter++
 		}
 		if srv.RestartNode != "" || srv.RestartRid != "" {
@@ -339,7 +339,7 @@ func (regtest *RegTest) TestRestartCookieTiming(cluster *cluster.Cluster, conf s
 	server.SetRestartRid("container#jobs")
 
 	startTime := time.Now()
-	err := server.SetRestartCookie()
+	err := server.SetRestartContainerCookie()
 	createDuration := time.Since(startTime)
 
 	if err != nil {
@@ -352,7 +352,7 @@ func (regtest *RegTest) TestRestartCookieTiming(cluster *cluster.Cluster, conf s
 
 	// Verify cookie can be detected quickly
 	startTime = time.Now()
-	exists := server.HasRestartCookie()
+	exists := server.HasRestartContainerCookie()
 	checkDuration := time.Since(startTime)
 
 	if !exists {
@@ -365,7 +365,7 @@ func (regtest *RegTest) TestRestartCookieTiming(cluster *cluster.Cluster, conf s
 
 	// Delete cookie
 	startTime = time.Now()
-	err = server.DelRestartCookie()
+	err = server.DelRestartContainerCookie()
 	deleteDuration := time.Since(startTime)
 
 	if err != nil {
@@ -421,7 +421,7 @@ func (regtest *RegTest) TestRestartCookieConcurrent(cluster *cluster.Cluster, co
 			srv := servers[index]
 			srv.SetRestartNode("node-" + srv.Id)
 			srv.SetRestartRid("rid-" + srv.Id)
-			err := srv.SetRestartCookie()
+			err := srv.SetRestartContainerCookie()
 			if err != nil {
 				errors <- err
 			} else {
@@ -453,7 +453,7 @@ func (regtest *RegTest) TestRestartCookieConcurrent(cluster *cluster.Cluster, co
 			"Concurrent operations had %d errors", errorCount)
 		// Clean up
 		for _, srv := range servers {
-			srv.DelRestartCookie()
+			srv.DelRestartContainerCookie()
 			srv.SetRestartNode("")
 			srv.SetRestartRid("")
 		}
@@ -463,7 +463,7 @@ func (regtest *RegTest) TestRestartCookieConcurrent(cluster *cluster.Cluster, co
 	// Verify all cookies were created
 	cookieCount := 0
 	for _, srv := range servers {
-		if srv.HasRestartCookie() {
+		if srv.HasRestartContainerCookie() {
 			cookieCount++
 		}
 	}
@@ -473,7 +473,7 @@ func (regtest *RegTest) TestRestartCookieConcurrent(cluster *cluster.Cluster, co
 			"Expected %d cookies, found %d", len(servers), cookieCount)
 		// Clean up
 		for _, srv := range servers {
-			srv.DelRestartCookie()
+			srv.DelRestartContainerCookie()
 			srv.SetRestartNode("")
 			srv.SetRestartRid("")
 		}
@@ -485,7 +485,7 @@ func (regtest *RegTest) TestRestartCookieConcurrent(cluster *cluster.Cluster, co
 
 	// Clean up all cookies
 	for _, srv := range servers {
-		srv.DelRestartCookie()
+		srv.DelRestartContainerCookie()
 		srv.SetRestartNode("")
 		srv.SetRestartRid("")
 	}

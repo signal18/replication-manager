@@ -17,7 +17,7 @@ import (
 
 func (app *App) GetMonitoringStatus() string {
 	routes := app.GetAppConfig().Deployment.Routes
-	var primaryStatus string = stateAppRunning
+	var primaryStatus = stateAppRunning
 	if len(routes) == 0 {
 		return stateFailed
 	}
@@ -25,7 +25,8 @@ func (app *App) GetMonitoringStatus() string {
 	routeStatuses := make([]config.RouteStatus, 0, len(routes))
 	for _, route := range routes {
 		routeStatus := config.RouteStatus{Route: route, Status: stateAppRunning}
-		if route.Protocol == "https" {
+		switch route.Protocol {
+		case "https":
 			httpStatus, _, err := app.GetAppHTTPStatus(route, false)
 			if err != nil {
 				routeStatus.Status = stateAppWarning
@@ -52,7 +53,7 @@ func (app *App) GetMonitoringStatus() string {
 					}
 				}
 			}
-		} else if route.Protocol == "tcp" {
+		case "tcp":
 			// For TCP routes, we assume the app is running if it can connect
 			err := app.GetAppTCPStatus(route)
 			if err != nil {
@@ -69,7 +70,7 @@ func (app *App) GetMonitoringStatus() string {
 					}
 				}
 			}
-		} else {
+		default:
 			app.ClusterGroup.SetState("APPERR004", state.State{ErrType: "WARN", ErrKey: "APPERR004", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR004"], app.GetId(), route.Protocol), ServerUrl: app.Host})
 			routeStatus.Status = stateFailed
 

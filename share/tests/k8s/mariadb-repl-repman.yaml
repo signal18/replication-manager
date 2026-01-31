@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mariadb-root
+type: Opaque
+stringData:
+  password: "mariadb"
+  credential: "root:mariadb"
+---
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: MariaDB
+metadata:
+  name: mariadb-repl
+spec:
+  replicas: 2
+  rootPasswordSecretKeyRef:
+    name: mariadb-root
+    key: password
+  replication:
+    enabled: true
+    primary:
+      autoFailover: true
+  storage:
+    size: 5Gi
+  myCnf: |
+    [mariadb]
+    bind-address=0.0.0.0
+    default_storage_engine=InnoDB
+    binlog_format=row
+    innodb_autoinc_lock_mode=2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: replication-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: replication-manager
+  template:
+    metadata:
+      labels:
+        app: replication-manager
+    spec:
+      containers:
+        - name: replication-manager
+          image: signal18/replication-manager:nightly
+          args:
+            - "--cluster=cluster1"
+            - "monitor"
+          ports:
+            - name: http
+              containerPort: 10001
+          env:
+            - name: REPLICATION_MANAGER_DEFAULT_HTTP_SERVER
+              value: "true"
+            - name: REPLICATION_MANAGER_DEFAULT_HTTP_BIND_ADDRESS
+              value: "0.0.0.0"
+            - name: REPLICATION_MANAGER_DEFAULT_HTTP_PORT
+              value: "10001"
+            - name: REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_HOSTS
+              value: "mariadb-repl-0.mariadb-repl,mariadb-repl-1.mariadb-repl"
+            - name: REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_PREFERED_MASTER
+              value: "mariadb-repl-0.mariadb-repl"
+            - name: REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_CREDENTIAL
+              valueFrom:
+                secretKeyRef:
+                  name: mariadb-root
+                  key: credential
+            - name: REPLICATION_MANAGER_CLUSTER1_REPLICATION_CREDENTIAL
+              valueFrom:
+                secretKeyRef:
+                  name: mariadb-root
+                  key: credential
+            - name: REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_CONNECT_TIMEOUT
+              value: "1"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: replication-manager
+spec:
+  type: ClusterIP
+  selector:
+    app: replication-manager
+  ports:
+    - name: http
+      port: 10001
+      targetPort: http

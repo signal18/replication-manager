@@ -233,6 +233,8 @@ type Cluster struct {
 	InPhysicalBackup       bool                        `json:"inPhysicalBackup" groups:"web"`
 	InLogicalBackup        bool                        `json:"inLogicalBackup" groups:"web"`
 	InBinlogBackup         bool                        `json:"inBinlogBackup" groups:"web"`
+	InResticLogicalBackup  bool                        `json:"inResticLogicalBackup" groups:"web"`
+	InResticPhysicalBackup bool                        `json:"inResticPhysicalBackup" groups:"web"`
 	InResticBackup         bool                        `json:"inResticBackup" groups:"web"`
 	InRollingRestart       bool                        `json:"inRollingRestart" groups:"web"`
 	failLoadP12Cert        bool                        `json:"-"`
@@ -335,13 +337,6 @@ type VariableDiff struct {
 	DiffValues   []Diff `json:"diffValues"`
 }
 
-const (
-	stateClusterStart string = "Running starting"
-	stateClusterDown  string = "Running cluster down"
-	stateClusterErr   string = "Running with errors"
-	stateClusterWarn  string = "Running with warnings"
-	stateClusterRun   string = "Running"
-)
 const (
 	ConstJobCreateFile string = "JOB_O_CREATE_FILE"
 	ConstJobAppendFile string = "JOB_O_APPEND_FILE"
@@ -764,7 +759,7 @@ func (cluster *Cluster) Run() {
 						go cluster.refreshApps(wg)
 						cluster.CheckWaitRunJobSSH()
 						cluster.CheckDummyConfigSendCookies()
-						cluster.CheckRestartCookies()
+						cluster.CheckRestartContainerCookies()
 
 						// Monitor schema when shardproxy is used
 						if cluster.Conf.MdbsProxyOn && cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() {
@@ -898,23 +893,7 @@ func (cluster *Cluster) StateProcessing() {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing reseed for %s: %s", servertoreseed.URL, err)
 				}
 			}
-			if s.ErrKey == "WARN0075" {
-				/*
-					This action is inactive due to direct function from Job
-				*/
-				// //Only mysqldump exists in the script
-				// task := "reseed" + cluster.Conf.BackupLogicalType
-				// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master logical backup to reseed %s", s.ServerUrl)
-				// if master != nil {
-				// 	if mybcksrv != nil {
-				// 		go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
-				// 	} else {
-				// 		go cluster.SSTRunSender(master.GetMasterBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
-				// 	}
-				// } else {
-				// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master cancel backup reseeding %s", s.ServerUrl)
-				// }
-			}
+
 			if s.ErrKey == "WARN0076" && servertoreseed != nil {
 				task := "flashback" + cluster.Conf.BackupPhysicalType
 				err := servertoreseed.ProcessFlashbackPhysical(task)
@@ -926,31 +905,7 @@ func (cluster *Cluster) StateProcessing() {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing flashback for %s: %s", servertoreseed.URL, err)
 				}
 			}
-			if s.ErrKey == "WARN0077" {
-				/*
-					This action is inactive due to direct function from rejoin
-				*/
-				// //Only mysqldump exists in the script
-				// task := "flashback" + cluster.Conf.BackupLogicalType
-				// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending logical backup to flashback reseed %s", s.ServerUrl)
-				// if mybcksrv != nil {
-				// 	go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
-				// } else {
-				// 	go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
-				// }
-			}
-			/*
-				// Unused, will be split to logical and physical backup. For rejoin will still use the same ReseedMasterSST
-					if s.ErrKey == "WARN0101" {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have backup")
-						for _, srv := range cluster.Servers {
-							if srv.HasWaitBackupCookie() {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for backup", srv.URL)
-								go srv.ReseedMasterSST()
-							}
-						}
-					}
-			*/
+
 			if s.ErrKey == "WARN0111" {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have logical backup")
 				for _, srv := range cluster.Servers {
@@ -1250,7 +1205,7 @@ func (cluster *Cluster) SaveImmutableConfig() (bool, error) {
 
 	// Get Sorted Keys
 	keys := make([]string, 0)
-	for key, _ := range cluster.Conf.ImmuableFlagMap {
+	for key := range cluster.Conf.ImmuableFlagMap {
 		keys = append(keys, key)
 	}
 
@@ -1313,7 +1268,7 @@ func (cluster *Cluster) SaveCacheConfig() error {
 	defer file.Close()
 
 	keys := make([]string, 0)
-	for key, _ := range cluster.Conf.ImmuableFlagMap {
+	for key := range cluster.Conf.ImmuableFlagMap {
 		keys = append(keys, key)
 	}
 
@@ -1702,7 +1657,7 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		myvalues = append(myvalues, mastervalue)
 		for _, s := range cluster.slaves {
 			slaveVariables := s.Variables.ToNewMap()
-			if slaveVariables[k] != v && exceptVariables[k] != true {
+			if slaveVariables[k] != v && !exceptVariables[k] {
 				var slavevalue Diff
 				slavevalue.Server = s.URL
 				slavevalue.VariableValue = slaveVariables[k]
@@ -1791,9 +1746,9 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 					if m != nil {
 						cltbldef, _ := m.GetTableFromDict(t.TableSchema + "." + t.TableName)
 						if cltbldef.TableName == t.TableName {
-							duplicates = append(duplicates, cl.GetMaster())
+							duplicates = append(duplicates, m)
 							tableCluster = append(tableCluster, cl.GetName())
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Found duplicate table %s in %s", t.TableSchema+"."+t.TableName, cl.GetMaster().URL)
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Found duplicate table %s in %s", t.TableSchema+"."+t.TableName, m.URL)
 						}
 					}
 				}
@@ -1804,7 +1759,11 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 			if haschanged {
 				for _, pri := range cluster.Proxies {
 					if prx, ok := pri.(*MariadbShardProxy); ok {
-						if !(t.TableSchema == "replication_manager_schema" || strings.Contains(t.TableName, "_copy") == true || strings.Contains(t.TableName, "_back") == true || strings.Contains(t.TableName, "_old") == true || strings.Contains(t.TableName, "_reshard") == true) {
+						if t.TableSchema != "replication_manager_schema" &&
+							!strings.Contains(t.TableName, "_copy") &&
+							!strings.Contains(t.TableName, "_back") &&
+							!strings.Contains(t.TableName, "_old") &&
+							!strings.Contains(t.TableName, "_reshard") {
 							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "blabla table %s %s %s", duplicates, t.TableSchema, t.TableName)
 							cluster.ShardProxyCreateVTable(prx, t.TableSchema, t.TableName, duplicates, false)
 						}
@@ -1885,7 +1844,7 @@ func (cluster *Cluster) CompareSchemaBetweenMasterAndSlave(sl *ServerMonitor) ([
 		}
 	}
 
-	for tblname, _ := range slTables {
+	for tblname := range slTables {
 		_, ok := masterTables[tblname]
 		if !ok {
 			if cluster.IsInSchemaIgnore(tblname) {
@@ -1964,16 +1923,27 @@ func (cluster *Cluster) MonitorQueryRules() {
 				var myRule config.QueryRule
 				if clrule, ok := cluster.QueryRules[rule.Id]; ok {
 					myRule = clrule
-					duplicates := strings.Split(clrule.Proxies, ",")
+
+					// Handle existing proxies list
+					var proxyIds []string
+					if clrule.Proxies != "" {
+						proxyIds = strings.Split(clrule.Proxies, ",")
+					}
+
+					// Check if current proxy already tracked
 					found := false
-					for _, prxid := range duplicates {
+					for _, prxid := range proxyIds {
 						if prx.Id == prxid {
 							found = true
+							break
 						}
 					}
+
 					if !found {
-						duplicates = append(duplicates, prx.Id)
+						proxyIds = append(proxyIds, prx.Id)
 					}
+
+					myRule.Proxies = strings.Join(proxyIds, ",")
 				} else {
 					myRule.Id = rule.Id
 					myRule.UserName = rule.UserName
@@ -2000,16 +1970,21 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Can't found elected master from server list on lost arbitration")
 		return
 	}
+	master := cluster.GetMaster()
+	if master == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Can't found failed master on lost arbitration")
+		return
+	}
 	if cluster.Conf.ArbitrationFailedMasterScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Calling abitration failed for master script")
-		out, err := exec.Command(cluster.Conf.ArbitrationFailedMasterScript, cluster.GetMaster().Host, cluster.GetMaster().Port).CombinedOutput()
+		out, err := exec.Command(cluster.Conf.ArbitrationFailedMasterScript, master.Host, master.Port).CombinedOutput()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitration failed master script complete: %s", string(out))
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitration failed attaching failed master %s to electected master :%s", cluster.GetMaster().URL, realmaster.URL)
-		logs, err := cluster.GetMaster().SetReplicationGTIDCurrentPosFromServer(realmaster)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitration failed attaching failed master %s to electected master :%s", master.URL, realmaster.URL)
+		logs, err := master.SetReplicationGTIDCurrentPosFromServer(realmaster)
 		cluster.LogSQL(logs, err, realmaster.URL, "Arbitration", config.LvlErr, "Failed in GTID rejoin lost master to winner master %s", err)
 
 	}

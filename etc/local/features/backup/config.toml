@@ -71,6 +71,9 @@ backup-physical-type = "mariabackup"
 backup-restic-aws-access-secret = "xxxx"
 backup-restic-password = "xxxx"
 backup-restic-binary-path = "/usr/local/bin/restic"
+backup-restic-timeout = 7200
+backup-restic-dir-mode = 700
+backup-restic-file-mode = 600
 
 monitoring-scheduler = true
 scheduler-db-servers-logical-backup  = true

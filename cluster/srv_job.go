@@ -101,6 +101,7 @@ WHERE table_schema = 'replication_manager_schema'
    OR (column_name='done'   AND column_type='tinyint(4)'   AND is_nullable='NO' AND column_default='0')
    OR (column_name='state'  AND column_type='tinyint(4)'   AND is_nullable='NO' AND column_default='0')
    OR (column_name='result' AND column_type='mediumtext'   AND is_nullable='YES')
+   OR (column_name='payload' AND column_type='mediumtext'  AND is_nullable='YES')
    OR (column_name='start'  AND column_type='datetime'     AND is_nullable='YES')
    OR (column_name='end'    AND column_type='datetime'     AND is_nullable='YES')
   );`
@@ -111,7 +112,7 @@ WHERE table_schema = 'replication_manager_schema'
 		return fmt.Errorf("Failed to check jobs table: %v", err)
 	}
 
-	if exist != 9 {
+	if exist != 10 {
 		err = server.jobsCreateTable()
 		if err != nil {
 			return fmt.Errorf("Failed to recreate jobs table: %v", err)
@@ -148,7 +149,8 @@ func (server *ServerMonitor) jobsCreateTable() error {
 	}
 	defer Conn.Close()
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
+	master := cluster.GetMaster()
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
 	}
@@ -158,7 +160,7 @@ func (server *ServerMonitor) jobsCreateTable() error {
 		return fmt.Errorf("Failed to create replication_manager_schema: %v", err)
 	}
 
-	createquery := `CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result MEDIUMTEXT, start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb`
+	createquery := `CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result MEDIUMTEXT, payload MEDIUMTEXT, start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb`
 	_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, createquery)
 	if err != nil {
 		return fmt.Errorf("Failed to create jobs table: %v", err)
@@ -197,12 +199,19 @@ func (server *ServerMonitor) jobsCreateTable() error {
 			return fmt.Errorf("Failed to modify column result to MEDIUMTEXT on jobs table: %v", err)
 		}
 	}
+	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'payload'")
+	if exist == 0 {
+		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, "ALTER TABLE replication_manager_schema.jobs ADD COLUMN payload MEDIUMTEXT DEFAULT NULL AFTER result")
+		if err != nil {
+			return fmt.Errorf("Failed to add column payload on jobs table: %v", err)
+		}
+	}
 
 	return nil
 }
 
 func (server *ServerMonitor) JobsUpdateEntries(Conn *sqlx.Conn) error {
-	query := "SELECT id, task, port, server, done, state, result, floor(UNIX_TIMESTAMP(start)) start, floor(UNIX_TIMESTAMP(end)) end FROM replication_manager_schema.jobs"
+	query := "SELECT id, task, port, server, done, state, result, payload, floor(UNIX_TIMESTAMP(start)) start, floor(UNIX_TIMESTAMP(end)) end FROM replication_manager_schema.jobs"
 
 	ctx, cancel := context.WithTimeout(context.Background(), JobTimeout)
 	rows, err := Conn.QueryContext(ctx, query)
@@ -226,12 +235,14 @@ func (server *ServerMonitor) JobsUpdateEntries(Conn *sqlx.Conn) error {
 	for rows.Next() {
 		var t config.Task
 		var res sql.NullString
+		var payload sql.NullString
 		var end sql.NullInt64
-		err := rows.Scan(&t.Id, &t.Task, &t.Port, &t.Server, &t.Done, &t.State, &res, &t.Start, &end)
+		err := rows.Scan(&t.Id, &t.Task, &t.Port, &t.Server, &t.Done, &t.State, &res, &payload, &t.Start, &end)
 		if err != nil {
 			return fmt.Errorf("Failed to scan row values on jobs table: %v. Row: %v", err, t)
 		}
 		t.Result = res.String
+		t.Payload = payload.String
 		t.End = end.Int64
 		if v, exists := server.JobResults.LoadOrStore(t.Task, &t); exists {
 			v.Set(t)
@@ -244,6 +255,14 @@ func (server *ServerMonitor) JobsUpdateEntries(Conn *sqlx.Conn) error {
 }
 
 func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost string) (int64, error) {
+	return server.jobInsertTask(task, port, repmanhost, nil)
+}
+
+func (server *ServerMonitor) JobInsertTaskWithPayload(task string, port string, repmanhost string, payload string) (int64, error) {
+	return server.jobInsertTask(task, port, repmanhost, &payload)
+}
+
+func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost string, payload *string) (int64, error) {
 	cluster := server.ClusterGroup
 	if cluster.InRollingRestart {
 		return 0, errors.New("In rolling restart")
@@ -253,7 +272,8 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 		return 0, errors.New("In failover")
 	}
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
+	master := cluster.GetMaster()
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return 0, errors.New("In super read-only")
 	}
@@ -307,16 +327,56 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 	}
 
 	//Reuse the same id
-	res, err := server.ConnExecQueryWithTimeout(conn, JobTimeout, fmt.Sprintf("INSERT INTO replication_manager_schema.jobs(id, task, port,server,start) VALUES(%d,'%s',%s,'%s', NOW())", t.Id, task, port, repmanhost))
+	var res sql.Result
+	if payload == nil {
+		res, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "INSERT INTO replication_manager_schema.jobs(id, task, port, server, start) VALUES(?, ?, ?, ?, NOW())", t.Id, task, port, repmanhost)
+	} else {
+		res, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "INSERT INTO replication_manager_schema.jobs(id, task, port, server, payload, start) VALUES(?, ?, ?, ?, ?, NOW())", t.Id, task, port, repmanhost, *payload)
+	}
 	if err != nil {
 		return 0, fmt.Errorf("Failed to insert row on jobs table for %s: %v", t.Task, err)
+	}
+
+	if payload != nil {
+		t.Payload = *payload
 	}
 
 	server.SetNeedRefreshJobs(true)
 	return res.LastInsertId()
 }
 
+func (server *ServerMonitor) HasRunningDBJobs() (bool, error) {
+	if server.Conn == nil {
+		return false, errors.New("no pool connection")
+	}
+
+	conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return false, err
+	}
+	if conn == nil {
+		return false, errors.New("no connection established")
+	}
+	defer conn.Close()
+
+	query := "SELECT COUNT(*) FROM replication_manager_schema.jobs WHERE done=0 AND state IN (?, ?)"
+	var count int
+	err = server.ConnGetQueryWithTimeout(conn, JobTimeout, &count, query, JobStateRunning, JobStateHalted)
+	if err != nil {
+		if isTableMissingError(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
 func (server *ServerMonitor) JobBackupPhysical() error {
+	return server.JobBackupPhysicalWithOptions(BackupRunOptions{})
+}
+
+func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions) error {
 	//server can be nil as no dicovered master
 	if server == nil {
 		return nil
@@ -327,15 +387,22 @@ func (server *ServerMonitor) JobBackupPhysical() error {
 	}
 
 	cluster := server.ClusterGroup
+	backupLine := server.resolveBackupLine(opts)
+	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
+	resticEnabled := server.shouldRunRestic(opts)
 
 	if cluster.IsInBackup() {
 		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Physical", cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		time.Sleep(1 * time.Second)
 
-		return server.JobBackupPhysical()
+		return server.JobBackupPhysicalWithOptions(opts)
 	}
 
 	cluster.SetInPhysicalBackupState(true)
+
+	// CRITICAL FIX: For physical backups, Restic transition happens in JobFinishReceiveFile
+	// We DON'T set InResticPhysicalBackup here because the backup hasn't completed yet
+	// The flag will be set atomically in AfterJobProcess when the backup file is received
 
 	// Prevent backing up with incompatible tools
 	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.1") && cluster.Conf.BackupPhysicalType == "xtrabackup" {
@@ -343,23 +410,28 @@ func (server *ServerMonitor) JobBackupPhysical() error {
 		cluster.Conf.BackupPhysicalType = config.ConstBackupPhysicalTypeMariaBackup
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive physical backup %s (%s line) request for server: %s", cluster.Conf.BackupPhysicalType, backupLine, server.URL)
 
+	now := time.Now()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Physical backup %s started at %s for: %s", cluster.Conf.BackupPhysicalType, now.Format(time.RFC3339), server.URL)
 	var port string
 	var err error
 	var backupext string = ".xbtream"
 	var dest string = server.GetMyBackupDirectory() + cluster.Conf.BackupPhysicalType
+	if isAdhoc {
+		dest = fmt.Sprintf("%s.%d", dest, now.Unix())
+	}
 	if cluster.Conf.CompressBackups {
 		backupext = backupext + ".gz"
 		dest = dest + backupext
-		if cluster.Conf.BackupKeepUntilValid {
+		if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
 			exec.Command("mv", dest, dest+".old").Run()
 		}
 		port, err = cluster.SSTRunReceiverToGZip(server, dest, ConstJobCreateFile, cluster.Conf.BackupPhysicalType)
 	} else {
 		dest = dest + backupext
-		if cluster.Conf.BackupKeepUntilValid {
+		if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
 			exec.Command("mv", dest, dest+".old").Run()
 		}
@@ -371,12 +443,13 @@ func (server *ServerMonitor) JobBackupPhysical() error {
 		return nil
 	}
 
-	now := time.Now()
 	// Reset last backup meta
 	var prevId int64
-	prev := cluster.BackupMetaMap.GetPreviousBackup(cluster.Conf.BackupPhysicalType, server.URL)
-	if prev != nil {
-		prevId = prev.Id
+	if !isAdhoc {
+		prev := cluster.BackupMetaMap.GetPreviousBackup(cluster.Conf.BackupPhysicalType, server.URL)
+		if prev != nil {
+			prevId = prev.Id
+		}
 	}
 
 	// Check for previous backup size
@@ -388,20 +461,24 @@ func (server *ServerMonitor) JobBackupPhysical() error {
 	}
 
 	// Remove from backup list, since the file will be replaced
-	if !cluster.Conf.BackupKeepUntilValid {
+	if !cluster.Conf.BackupKeepUntilValid && !isAdhoc {
 		cluster.BackupMetaMap.Delete(prevId)
 	}
 
 	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
-		Id:             now.Unix(),
-		StartTime:      now,
-		BackupMethod:   backupmgr.BackupMethodPhysical,
-		BackupStrategy: backupmgr.BackupStrategyFull,
-		BackupTool:     cluster.Conf.BackupPhysicalType,
-		Source:         server.URL,
-		Dest:           dest,
-		Compressed:     cluster.Conf.CompressBackups,
-		Previous:       prevId,
+		Id:                now.Unix(),
+		StartTime:         now,
+		BackupMethod:      backupmgr.BackupMethodPhysical,
+		BackupStrategy:    backupmgr.BackupStrategyFull,
+		BackupTool:        cluster.Conf.BackupPhysicalType,
+		Source:            server.URL,
+		Dest:              dest,
+		Compressed:        cluster.Conf.CompressBackups,
+		Previous:          prevId,
+		BackupLine:        backupLine,
+		RetentionDays:     opts.RetentionDays,
+		RetentionDuration: strings.TrimSpace(opts.RetentionDuration),
+		ResticEnabled:     resticEnabled,
 	}
 
 	cluster.BackupMetaMap.Set(server.LastBackupMeta.Physical.Id, server.LastBackupMeta.Physical)
@@ -1081,6 +1158,9 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 
 // ErrorLogWatcher monitor the tail of the log and populate ring buffer
 func (server *ServerMonitor) ErrorLogWatcher() {
+	if server.ErrorLogTailer == nil {
+		return
+	}
 	cluster := server.ClusterGroup
 	for line := range server.ErrorLogTailer.Lines {
 		var log s18log.HttpMessage
@@ -1150,6 +1230,9 @@ func (server *ServerMonitor) SqlErrorLogWatcher() {
 }
 
 func (server *ServerMonitor) SlowLogWatcher() {
+	if server.SlowLogTailer == nil {
+		return
+	}
 	cluster := server.ClusterGroup
 	log := s18log.NewSlowMessage()
 	preline := ""
@@ -1195,6 +1278,8 @@ func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 
 func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser bool) error {
 	cluster := server.ClusterGroup
+	start := time.Now()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (myloader) started at %s for: %s", start.Format(time.RFC3339), server.URL)
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalLoadThreads)
 
 	if restoreUser {
@@ -1231,7 +1316,7 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 	}
 
 	myargs := cluster.GetMyLoaderCompatibleOptions()
-	if server.URL == cluster.GetMaster().URL {
+	if server.URL == master.URL {
 		myargs = append(myargs, "--enable-binlog")
 	}
 
@@ -1258,7 +1343,8 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 	if err := dumpCmd.Wait(); err != nil {
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical restaure %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
+	elapsed := time.Since(start).Round(time.Second)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical restore (myloader) in %s (started at %s) for: %s", elapsed, start.Format(time.RFC3339), server.URL)
 	server.Refresh()
 
 	return nil
@@ -1269,6 +1355,8 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	var err error
 	defer server.SetInReseedBackup("")
 
+	start := time.Now()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (mysqldump) started at %s for: %s", start.Format(time.RFC3339), server.URL)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Sending logical backup to reseed %s", server.URL)
 
 	server.StopSlave()
@@ -1278,7 +1366,10 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 		return fmt.Errorf("[%s] Failed opening backup file in backup server for reseed:  %s ", server.URL, err)
 	}
 
-	fz, err := gzip.NewReaderN(gzfile, cluster.Conf.SSTSendBuffer, 16)
+	// Use configurable parallel blocks for better performance
+	// For restore operations, use higher default (16) for speed, matching original behavior
+	parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
+	fz, err := gzip.NewReaderN(gzfile, cluster.Conf.SSTSendBuffer, parallelBlocks)
 	if err != nil {
 		return fmt.Errorf("[%s] Failed to unzip backup file in backup server for reseed:  %s ", server.URL, err)
 	}
@@ -1296,7 +1387,11 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 		resetmaster = "RESET BINARY LOGS AND GTIDS;"
 	}
 
-	if server.URL == cluster.GetMaster().URL {
+	master := cluster.GetMaster()
+	if master == nil {
+		return fmt.Errorf("No master found. Cancel backup reseeding %s", server.URL)
+	}
+	if server.URL == master.URL {
 		sql_log_bin = 1
 		resetmaster = ""
 	}
@@ -1341,6 +1436,8 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 		return fmt.Errorf("Error waiting reseed %s at %s", server.URL, err)
 	}
 
+	elapsed := time.Since(start).Round(time.Second)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical restore (mysqldump) in %s (started at %s) for: %s", elapsed, start.Format(time.RFC3339), server.URL)
 	return nil
 }
 
@@ -1365,7 +1462,10 @@ func (server *ServerMonitor) ReadMysqldumpUser(backupfile string) (io.Reader, er
 		return nil, fmt.Errorf("[%s] Failed opening backup file in backup server for reseed:  %s ", server.URL, err)
 	}
 
-	fz, err := gzip.NewReaderN(gzfile, cluster.Conf.SSTSendBuffer, 16)
+	// Use configurable parallel blocks for better performance
+	// For restore operations, use higher default (16) for speed, matching original behavior
+	parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
+	fz, err := gzip.NewReaderN(gzfile, cluster.Conf.SSTSendBuffer, parallelBlocks)
 	if err != nil {
 		return nil, fmt.Errorf("[%s] Failed to unzip backup file in backup server for reseed:  %s ", server.URL, err)
 	}
@@ -1385,8 +1485,15 @@ func (server *ServerMonitor) ReadMysqldumpUser(backupfile string) (io.Reader, er
 func (server *ServerMonitor) JobReseedBackupScript() {
 	cluster := server.ClusterGroup
 	defer server.SetInReseedBackup("")
+	start := time.Now()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (script) started at %s for: %s", start.Format(time.RFC3339), server.URL)
 
-	cmd := exec.Command(cluster.Conf.BackupLoadScript, misc.Unbracket(server.Host), misc.Unbracket(cluster.master.Host), server.Port, server.GetCluster().GetMaster().Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name)
+	master := cluster.GetMaster()
+	if master == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "No master found. Cancel backup reseeding %s", server.URL)
+		return
+	}
+	cmd := exec.Command(cluster.Conf.BackupLoadScript, misc.Unbracket(server.Host), misc.Unbracket(master.Host), server.Port, master.Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command backup load script: %s", strings.Replace(cmd.String(), "="+cluster.GetDbPass(), "=XXXX", 1))
 
@@ -1408,7 +1515,8 @@ func (server *ServerMonitor) JobReseedBackupScript() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "My reload script: %s", err)
 		return
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical restaure from load script on %s ", server.URL)
+	elapsed := time.Since(start).Round(time.Second)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical restore (script) in %s (started at %s) for: %s", elapsed, start.Format(time.RFC3339), server.URL)
 
 }
 
@@ -1557,7 +1665,8 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 	var canCancel bool = true
 	cluster := server.ClusterGroup
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
+	master := cluster.GetMaster()
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
 	}
@@ -1685,7 +1794,8 @@ func (server *ServerMonitor) JobsCheckStates() error {
 	}
 	defer conn.Close()
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
+	master := cluster.GetMaster()
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
 	}
@@ -1706,7 +1816,8 @@ func (server *ServerMonitor) JobsCheckFinished(conn *sqlx.Conn) error {
 	var err error
 	cluster := server.ClusterGroup
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
+	master := cluster.GetMaster()
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
 	}
@@ -1748,8 +1859,12 @@ func (server *ServerMonitor) AfterJobProcess(conn *sqlx.Conn, task DBTask) error
 
 	switch task.task {
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
-		server.SetBackupPhysicalCookie(task.task)
-		server.LastBackupMeta.Physical.Completed = true
+		if server.LastBackupMeta.Physical != nil && !server.LastBackupMeta.Physical.IsAdhoc() {
+			server.SetBackupPhysicalCookie(task.task)
+		}
+		if server.LastBackupMeta.Physical != nil {
+			server.LastBackupMeta.Physical.Completed = true
+		}
 		errStr = "Backup completed"
 	case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
 		if server.HasReseedingState(task.task) {
@@ -1771,45 +1886,9 @@ func (server *ServerMonitor) AfterJobProcess(conn *sqlx.Conn, task DBTask) error
 	return nil
 }
 
-func (server *ServerMonitor) JobHandler(JobId int64) error {
-	exitloop := 0
-	ticker := time.NewTicker(time.Second * 3600)
-
-	for exitloop < 8 {
-		select {
-		case <-ticker.C:
-
-			exitloop++
-
-			if true == true {
-				exitloop = 8
-			}
-		default:
-		}
-
-	}
-
-	return nil
-}
-
 func (server *ServerMonitor) GetMyBackupDirectory() string {
 	cluster := server.ClusterGroup
 	s3dir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + cluster.Name + "/" + server.Host + "_" + server.Port
-
-	if _, err := os.Stat(s3dir); os.IsNotExist(err) {
-		err := os.MkdirAll(s3dir, os.ModePerm)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Create backup path failed: %s", s3dir, err)
-		}
-	}
-
-	return s3dir + "/"
-
-}
-
-func (server *ServerMonitor) GetMasterBackupDirectory() string {
-	cluster := server.ClusterGroup
-	s3dir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + cluster.Name + "/" + cluster.master.Host + "_" + cluster.master.Port
 
 	if _, err := os.Stat(s3dir); os.IsNotExist(err) {
 		err := os.MkdirAll(s3dir, os.ModePerm)
@@ -1831,13 +1910,18 @@ func (server *ServerMonitor) GetMasterBackupDirectory() string {
 // 5. DB User
 // 6. DB Password
 // 7. Cluster Name
-func (server *ServerMonitor) JobBackupScript() error {
+// 8. Destination File Path
+func (server *ServerMonitor) JobBackupScript(destination string) error {
 	var err error
 	cluster := server.ClusterGroup
 
 	defer cluster.SetInLogicalBackupState(false)
 
-	scriptCmd := exec.Command(cluster.Conf.BackupSaveScript, server.Host, server.GetCluster().GetMaster().Host, server.Port, server.GetCluster().GetMaster().Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name)
+	master := cluster.GetMaster()
+	if master == nil {
+		return fmt.Errorf("No master found. Cancel backup script on %s", server.URL)
+	}
+	scriptCmd := exec.Command(cluster.Conf.BackupSaveScript, server.Host, master.Host, server.Port, master.Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name, destination)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 	stdoutIn, _ := scriptCmd.StdoutPipe()
 	stderrIn, _ := scriptCmd.StderrPipe()
@@ -1923,7 +2007,13 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 	}
 	defer f.Close()
 
-	gw := gzip.NewWriter(f)
+	// Use configurable compression level for better performance/size tradeoff
+	compressionLevel := cluster.getSanitizedCompressionLevel(config.ConstLogModTask)
+	gw, err := gzip.NewWriterLevel(f, compressionLevel)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error creating gzip writer: %s", err.Error())
+		return err
+	}
 	defer func() {
 		if err := gw.Flush(); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flushing gzip: %s", err.Error())
@@ -2054,7 +2144,13 @@ func (server *ServerMonitor) JobBackupMysqldumpUser() error {
 		return err
 	}
 
-	gw := gzip.NewWriter(f)
+	// Use configurable compression level for better performance/size tradeoff
+	compressionLevel := cluster.getSanitizedCompressionLevel(config.ConstLogModTask)
+	gw, err := gzip.NewWriterLevel(f, compressionLevel)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error creating gzip writer: %s", err.Error())
+		return err
+	}
 
 	// Buffer before gzip to improve compression
 	bw := bufio.NewWriterSize(gw, 64*1024) // 64KB buffer
@@ -2260,6 +2356,10 @@ func (server *ServerMonitor) JobBackupRiver() error {
 }
 
 func (server *ServerMonitor) JobBackupLogical() error {
+	return server.JobBackupLogicalWithOptions(BackupRunOptions{})
+}
+
+func (server *ServerMonitor) JobBackupLogicalWithOptions(opts BackupRunOptions) error {
 	var err error
 	//server can be nil as no dicovered master
 	if server == nil {
@@ -2267,7 +2367,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	}
 
 	cluster := server.ClusterGroup
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Request logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
+	backupLine := server.resolveBackupLine(opts)
+	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
+	resticEnabled := server.shouldRunRestic(opts)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Request logical backup %s (%s line) for: %s", cluster.Conf.BackupLogicalType, backupLine, server.URL)
 	if server.IsDown() {
 		return errors.New("Can't backup when server down")
 	}
@@ -2290,17 +2393,30 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Logical", cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		time.Sleep(1 * time.Second)
 
-		return server.JobBackupLogical()
+		return server.JobBackupLogicalWithOptions(opts)
 	}
 
 	cluster.SetInLogicalBackupState(true)
+
+	// Defer always clears traditional flag; Restic flag cleared by async goroutine
 	defer cluster.SetInLogicalBackupState(false)
 
+	// CRITICAL FIX: Set Restic flag AFTER validation passes to prevent orphaned flags
+	// The defer clears InLogicalBackup immediately on return, but Restic backup
+	// runs async. We must set InResticLogicalBackup NOW to maintain lock continuity.
+	if resticEnabled {
+		// Set Restic flag now to ensure atomic transition (no gap where IsInBackup() = false)
+		cluster.SetInResticLogicalBackupState(true)
+	}
+
 	start := time.Now()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical backup %s started at %s for: %s", cluster.Conf.BackupLogicalType, start.Format(time.RFC3339), server.URL)
 	var prevId int64
-	prev := cluster.BackupMetaMap.GetPreviousBackup(cluster.Conf.BackupLogicalType, server.URL)
-	if prev != nil {
-		prevId = prev.Id
+	if !isAdhoc {
+		prev := cluster.BackupMetaMap.GetPreviousBackup(cluster.Conf.BackupLogicalType, server.URL)
+		if prev != nil {
+			prevId = prev.Id
+		}
 	}
 
 	// Check for previous backup size
@@ -2312,24 +2428,30 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	}
 
 	// Remove from backup list, since the file will be replaced
-	if !cluster.Conf.BackupKeepUntilValid {
+	if !cluster.Conf.BackupKeepUntilValid && !isAdhoc {
 		cluster.BackupMetaMap.Delete(prevId)
 	}
 
 	server.LastBackupMeta.Logical = &backupmgr.BackupMetadata{
-		Id:             start.Unix(),
-		StartTime:      start,
-		BackupMethod:   backupmgr.BackupMethodLogical,
-		BackupTool:     cluster.Conf.BackupLogicalType,
-		BackupStrategy: backupmgr.BackupStrategyFull,
-		Source:         server.URL,
-		Previous:       prevId,
+		Id:                start.Unix(),
+		StartTime:         start,
+		BackupMethod:      backupmgr.BackupMethodLogical,
+		BackupTool:        cluster.Conf.BackupLogicalType,
+		BackupStrategy:    backupmgr.BackupStrategyFull,
+		Source:            server.URL,
+		Previous:          prevId,
+		BackupLine:        backupLine,
+		RetentionDays:     opts.RetentionDays,
+		RetentionDuration: strings.TrimSpace(opts.RetentionDuration),
+		ResticEnabled:     resticEnabled,
 	}
 
 	cluster.BackupMetaMap.Set(server.LastBackupMeta.Logical.Id, server.LastBackupMeta.Logical)
 
 	// Removing previous valid backup state and start
-	server.DelBackupLogicalCookie()
+	if !isAdhoc {
+		server.DelBackupLogicalCookie()
+	}
 
 	if cluster.Conf.BackupSplitMysqlUser {
 		server.LastBackupMeta.Logical.SplitUser = true
@@ -2344,6 +2466,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	if cluster.Conf.BackupSaveScript != "" {
 		task := "script"
 		filename := server.GetMyBackupDirectory() + "mysqldump.sql.gz"
+		if isAdhoc {
+			filename = fmt.Sprintf("%smysqldump.%d.sql.gz", server.GetMyBackupDirectory(), start.Unix())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Ad-hoc backup with backup-save-script using unique destination %s", filename)
+		}
 
 		// Override backup tool and destination
 		server.LastBackupMeta.Logical.BackupTool = task
@@ -2352,11 +2478,13 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		// Record task for metadata check
 		server.JobsUpdateState(task, "", 1, 0)
 
-		err = server.JobBackupScript()
+		err = server.JobBackupScript(filename)
 		if err == nil {
 			server.JobsUpdateState(task, "Backup completed", 3, 1)
 			server.LastBackupMeta.Logical.Completed = true
-			server.SetBackupLogicalCookie(task)
+			if !isAdhoc {
+				server.SetBackupLogicalCookie(task)
+			}
 		} else {
 			server.JobsUpdateState(task, err.Error(), 5, 1)
 		}
@@ -2373,13 +2501,16 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		switch cluster.Conf.BackupLogicalType {
 		case config.ConstBackupLogicalTypeMysqldump:
 			filename := server.GetMyBackupDirectory() + "mysqldump.sql.gz"
+			if isAdhoc {
+				filename = fmt.Sprintf("%smysqldump.%d.sql.gz", server.GetMyBackupDirectory(), start.Unix())
+			}
 			oldV, _ := cluster.GetToolsVersion("client-dump")
 			if oldV != nil {
 				server.LastBackupMeta.Logical.BackupToolVersion = oldV.ToString()
 			}
 			server.LastBackupMeta.Logical.Dest = filename
 			server.LastBackupMeta.Logical.Compressed = true
-			if cluster.Conf.BackupKeepUntilValid {
+			if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
 				exec.Command("mv", filename, filename+".old").Run()
 			}
@@ -2398,17 +2529,22 @@ func (server *ServerMonitor) JobBackupLogical() error {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
 					server.LastBackupMeta.Logical.GetSizeAndFileCount()
 					server.LastBackupMeta.Logical.Completed = true
-					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeMysqldump)
+					if !isAdhoc {
+						server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeMysqldump)
+					}
 				}
 			}
 		case config.ConstBackupLogicalTypeDumpling:
 			outputdir := server.GetMyBackupDirectory() + "dumpling"
+			if isAdhoc {
+				outputdir = fmt.Sprintf("%sdumpling.%d", server.GetMyBackupDirectory(), start.Unix())
+			}
 			oldV, _ := cluster.GetToolsVersion("dumpling")
 			if oldV != nil {
 				server.LastBackupMeta.Logical.BackupToolVersion = oldV.ToString()
 			}
 			server.LastBackupMeta.Logical.Dest = outputdir
-			if cluster.Conf.BackupKeepUntilValid {
+			if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
 				exec.Command("mv", outputdir, outputdir+".old").Run()
 			}
@@ -2427,18 +2563,23 @@ func (server *ServerMonitor) JobBackupLogical() error {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
 					server.LastBackupMeta.Logical.GetSizeAndFileCount()
 					server.LastBackupMeta.Logical.Completed = true
-					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeDumpling)
+					if !isAdhoc {
+						server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeDumpling)
+					}
 				}
 			}
 		case config.ConstBackupLogicalTypeMydumper:
 			outputdir := server.GetMyBackupDirectory() + "mydumper"
+			if isAdhoc {
+				outputdir = fmt.Sprintf("%smydumper.%d", server.GetMyBackupDirectory(), start.Unix())
+			}
 			oldV, _ := cluster.GetToolsVersion("mydumper")
 			if oldV != nil {
 				server.LastBackupMeta.Logical.BackupToolVersion = oldV.ToString()
 			}
 			server.LastBackupMeta.Logical.Dest = outputdir
 			server.LastBackupMeta.Logical.Compressed = true
-			if cluster.Conf.BackupKeepUntilValid {
+			if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
 				exec.Command("mv", outputdir, outputdir+".old").Run()
 			}
@@ -2457,7 +2598,9 @@ func (server *ServerMonitor) JobBackupLogical() error {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
 					server.LastBackupMeta.Logical.GetSizeAndFileCount()
 					server.LastBackupMeta.Logical.Completed = true
-					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeDumpling)
+					if !isAdhoc {
+						server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeMydumper)
+					}
 				}
 			}
 		case config.ConstBackupLogicalTypeRiver:
@@ -2481,9 +2624,27 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "[ERROR] Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
 	}
+	elapsed := time.Since(start).Round(time.Second)
+	backupLogLevel := config.LvlInfo
+	if err != nil {
+		backupLogLevel = config.LvlWarn
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, backupLogLevel, "Logical backup %s completed in %s (started at %s) for: %s", cluster.Conf.BackupLogicalType, elapsed, start.Format(time.RFC3339), server.URL)
 
+	// Create restic snapshot asynchronously and update metadata when complete
 	backtype := "logical"
-	server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupLogicalType)
+
+	// NOTE: InResticLogicalBackup flag already set at function start for atomic transition
+	// No need to set it again here - it's already protecting the async operation
+	if resticEnabled {
+		resticPath := server.GetMyBackupDirectory()
+		if isAdhoc && server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.Dest != "" {
+			resticPath = server.LastBackupMeta.Logical.Dest
+		}
+		// Note: BackupRestic handles its own error logging and flag clearing if prerequisites fail
+		server.BackupRestic(backupmgr.BackupMethodLogical, true, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupLogicalType, backupLine)...)
+	}
+
 	return nil
 }
 
@@ -2567,10 +2728,50 @@ func (server *ServerMonitor) myDumperCopyLogs(r io.Reader, module int, level str
 	return valid
 }
 
-func (server *ServerMonitor) BackupRestic(tags ...string) {
+func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, updateMetadata bool, backupPath string, tags ...string) {
 	cluster := server.ClusterGroup
+
+	// Defensive checks - clear flag and return early if prerequisites not met
 	if !cluster.Conf.BackupRestic {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Restic backup called but disabled for %s", server.URL)
+		// Clear the flag that might have been set by caller
+		switch backupMethod {
+		case backupmgr.BackupMethodLogical:
+			cluster.SetInResticLogicalBackupState(false)
+		case backupmgr.BackupMethodPhysical:
+			cluster.SetInResticPhysicalBackupState(false)
+		}
 		return
+	}
+
+	if cluster.ResticManager == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic manager not initialized for %s, cannot backup", server.URL)
+		// Clear the flag that might have been set by caller
+		switch backupMethod {
+		case backupmgr.BackupMethodLogical:
+			cluster.SetInResticLogicalBackupState(false)
+		case backupmgr.BackupMethodPhysical:
+			cluster.SetInResticPhysicalBackupState(false)
+		}
+		return
+	}
+
+	if strings.TrimSpace(backupPath) == "" {
+		backupPath = server.GetMyBackupDirectory()
+	}
+
+	// Check if Restic backup is already in progress for this backup method
+	// Note: The flag might already be set by the caller for atomic transition
+	if cluster.IsInResticBackupForMethod(backupMethod) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Restic backup flag already set for %s, proceeding with queue", server.URL)
+	} else {
+		// Set flag if not already set (for binlog backups, etc.)
+		switch backupMethod {
+		case backupmgr.BackupMethodLogical:
+			cluster.SetInResticLogicalBackupState(true)
+		case backupmgr.BackupMethodPhysical:
+			cluster.SetInResticPhysicalBackupState(true)
+		}
 	}
 
 	var needpurge bool
@@ -2605,7 +2806,39 @@ func (server *ServerMonitor) BackupRestic(tags ...string) {
 		}
 	}
 
-	cluster.ResticManager.AddBackupTask(server.GetMyBackupDirectory(), tags)
+	resticHost := strings.TrimSpace(cluster.Conf.BackupResticHost)
+	if strings.EqualFold(resticHost, "default") || strings.EqualFold(resticHost, "none") {
+		resticHost = ""
+	}
+
+	// Add backup task asynchronously with callback to update metadata
+	resultCh := cluster.ResticManager.AddBackupTaskWithCallback(backupPath, tags, resticHost)
+
+	// Launch goroutine to wait for result and update metadata
+	go func() {
+		// Ensure flag is cleared when goroutine exits
+		defer func() {
+			switch backupMethod {
+			case backupmgr.BackupMethodLogical:
+				cluster.SetInResticLogicalBackupState(false)
+			case backupmgr.BackupMethodPhysical:
+				cluster.SetInResticPhysicalBackupState(false)
+			}
+		}()
+
+		result := <-resultCh
+		if result.Error != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic backup failed for %s: %s", server.URL, result.Error)
+			return
+		}
+
+		if result.SnapshotID != "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Restic backup completed for %s: snapshot %s", server.URL, result.SnapshotID[:8])
+			if updateMetadata {
+				server.UpdateBackupMetadataWithRestic(backupMethod, result.SnapshotID)
+			}
+		}
+	}()
 }
 
 func (server *ServerMonitor) copyAndCapture(w io.Writer, r io.Reader) ([]byte, error) {
@@ -2694,7 +2927,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 
 	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Running database jobs via SSH script: %s with env: %v", scriptpath, server.GetSshEnv())
 
-	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
+	if err = client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Database jobs run via SSH: %s", stderr.String())
 	}
 	out := stdout.String()
@@ -2800,7 +3033,8 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 		server.WriteBackupBinlogMetadata()
 		// Backup to restic when no error (defer to prevent unfinished physical copy)
 		backtype := "binlog"
-		defer server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype)
+		// Use BackupMethodLogical for binlogs (metadata won't be updated, just snapshot created)
+		defer server.BackupRestic(backupmgr.BackupMethodLogical, false, server.GetMyBackupDirectory(), server.BuildResticTags(backtype, "", backupmgr.BackupLineDefault)...)
 	}
 
 	return nil
@@ -3056,7 +3290,8 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 
 		// Backup to restic when no error (defer to prevent unfinished physical copy)
 		backtype := "binlog"
-		defer server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype)
+		// Use BackupMethodLogical for binlogs (metadata won't be updated, just snapshot created)
+		defer server.BackupRestic(backupmgr.BackupMethodLogical, false, server.GetMyBackupDirectory(), server.BuildResticTags(backtype, "", backupmgr.BackupLineDefault)...)
 	}
 	return nil
 }
@@ -3104,11 +3339,16 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncomp
 	if count > 0 {
 		server.JobsUpdateState(task, "processing", 1, 0)
 		go func() {
+			sendStart := time.Now()
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST send for %s started at %s (file: %s)", task, sendStart.Format(time.RFC3339), filename)
 			err := cluster.SSTRunSender(filename, server, uncompress)
+			elapsed := time.Since(sendStart).Round(time.Second)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, err.Error())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST send for %s failed after %s: %s", task, elapsed, err.Error())
 				server.JobsUpdateState(task, err.Error(), 5, 0)
+				return
 			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST send for %s completed in %s (started at %s)", task, elapsed, sendStart.Format(time.RFC3339))
 		}()
 		return nil
 	} else {
@@ -3136,7 +3376,7 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 		return errors.New("No master found")
 	}
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return errors.New("Slave is in super read-only")
 	}
@@ -3197,7 +3437,7 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 		return errors.New("No master found")
 	}
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return errors.New("Slave is in super read-only")
 	}
@@ -3344,6 +3584,10 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 }
 
 func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod) {
+	// CRITICAL FIX: Lock to prevent concurrent metadata updates from async Restic callbacks
+	server.backupMetaMutex.Lock()
+	defer server.backupMetaMutex.Unlock()
+
 	cluster := server.ClusterGroup
 	var lastmeta *backupmgr.BackupMetadata
 
@@ -3393,7 +3637,16 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to marshall metadata for backup in %s: %s", server.URL, err.Error())
 	}
 
-	err = os.WriteFile(server.GetMyBackupDirectory()+lastmeta.BackupTool+".meta.json", bjson, 0644)
+	metaPath := server.backupMetaFilePath(lastmeta)
+	if metaPath == "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to resolve metadata path for backup in %s", server.URL)
+		return
+	}
+	if lastmeta.MetaFile == "" {
+		lastmeta.MetaFile = metaPath
+	}
+
+	err = os.WriteFile(metaPath, bjson, 0644)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to write metadata for backup in %s: %s", server.URL, err.Error())
 	} else {
@@ -3401,7 +3654,7 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 	}
 
 	//Don't change river
-	if cluster.Conf.BackupKeepUntilValid && lastmeta.BackupTool != config.ConstBackupLogicalTypeRiver {
+	if cluster.Conf.BackupKeepUntilValid && lastmeta.BackupTool != config.ConstBackupLogicalTypeRiver && !lastmeta.IsAdhoc() {
 		if lastmeta.Completed {
 			// Delete previous meta with same type
 			cluster.BackupMetaMap.Delete(lastmeta.Previous)
@@ -3417,9 +3670,9 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 			cluster.BackupMetaMap.Delete(lastmeta.Id)
 			switch backtype {
 			case backupmgr.BackupMethodLogical:
-				_, server.LastBackupMeta.Logical = server.GetLatestMeta("logical")
+				_, server.LastBackupMeta.Logical = server.GetLatestMetaForLine("logical", backupmgr.BackupLineDefault)
 			case backupmgr.BackupMethodPhysical:
-				_, server.LastBackupMeta.Physical = server.GetLatestMeta("physical")
+				_, server.LastBackupMeta.Physical = server.GetLatestMetaForLine("physical", backupmgr.BackupLineDefault)
 			}
 		}
 	}
@@ -3470,6 +3723,40 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 	return err
 }
 
+func (server *ServerMonitor) JobsUpdatePayload(task, payload string) error {
+	cluster := server.ClusterGroup
+	if t, exists := server.JobResults.LoadOrStore(task, &config.Task{
+		Task: task,
+	}); exists {
+		t.Payload = payload
+	} else {
+		t.Payload = payload
+	}
+
+	if !cluster.Conf.MonitorScheduler {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Monitoring scheduler is inactive, payload only updated in runtime")
+		return nil
+	}
+
+	if server.Conn == nil {
+		return errors.New("No connection pool")
+	}
+
+	conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return fmt.Errorf("Error connecting to %s: %s", server.URL, err)
+	}
+	defer conn.Close()
+
+	_, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "UPDATE replication_manager_schema.jobs SET payload=? WHERE task =?;", payload, task)
+	if err != nil {
+		return err
+	}
+
+	server.SetNeedRefreshJobs(true)
+	return nil
+}
+
 func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	cluster := server.ClusterGroup
 
@@ -3485,7 +3772,35 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		backtype := "physical"
 		server.WriteBackupMetadata(backupmgr.BackupMethodPhysical)
-		server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupPhysicalType)
+		if server.LastBackupMeta.Physical != nil && !server.LastBackupMeta.Physical.StartTime.IsZero() {
+			backupTool := server.LastBackupMeta.Physical.BackupTool
+			if backupTool == "" {
+				backupTool = cluster.Conf.BackupPhysicalType
+			}
+			elapsed := time.Since(server.LastBackupMeta.Physical.StartTime).Round(time.Second)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Physical backup %s completed in %s (started at %s) for: %s", backupTool, elapsed, server.LastBackupMeta.Physical.StartTime.Format(time.RFC3339), server.URL)
+		}
+
+		// CRITICAL: Transition from traditional backup lock to Restic lock atomically
+		// Set Restic flag BEFORE clearing physical backup flag
+		resticEnabled := server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.ResticEnabled
+		backupLine := backupmgr.BackupLineDefault
+		if server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.BackupLine != "" {
+			backupLine = server.LastBackupMeta.Physical.BackupLine
+		}
+		if resticEnabled {
+			cluster.SetInResticPhysicalBackupState(true)
+			resticPath := server.GetMyBackupDirectory()
+			if server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.IsAdhoc() && server.LastBackupMeta.Physical.Dest != "" {
+				resticPath = server.LastBackupMeta.Physical.Dest
+			}
+
+			// Create restic snapshot asynchronously and update metadata when complete
+			// Note: BackupRestic handles its own error logging and flag clearing if prerequisites fail
+			server.BackupRestic(backupmgr.BackupMethodPhysical, true, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupPhysicalType, backupLine)...)
+		}
+
+		// Now safe to clear traditional backup flag
 		cluster.SetInPhysicalBackupState(false)
 	case "printdefault-current":
 		filename := filepath.Join(server.Datadir, "current.cnf")
