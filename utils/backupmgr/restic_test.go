@@ -1340,3 +1340,462 @@ func TestMountDisabledWorkflow(t *testing.T) {
 		t.Errorf("MountRepo should not fail with 'disabled' error when enabled, got: %v", err)
 	}
 }
+
+// TestNewResticMountOption tests the helper function for creating mount options
+func TestNewResticMountOption(t *testing.T) {
+	targetDir := "/mnt/test"
+	opt := NewResticMountOption(targetDir)
+
+	if opt.TargetDir != targetDir {
+		t.Errorf("expected TargetDir %s, got %s", targetDir, opt.TargetDir)
+	}
+	if !opt.NoLock {
+		t.Error("expected NoLock to be true by default")
+	}
+	if opt.AllowOther {
+		t.Error("expected AllowOther to be false by default")
+	}
+	if opt.Verbose != 0 {
+		t.Error("expected Verbose to be 0 by default")
+	}
+	if opt.Quiet {
+		t.Error("expected Quiet to be false by default")
+	}
+}
+
+// TestResticMountOptionValidate tests the validation method
+func TestResticMountOptionValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		opt     ResticMountOption
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "empty target directory",
+			opt:     ResticMountOption{},
+			wantErr: true,
+			errMsg:  "required",
+		},
+		{
+			name: "valid basic options",
+			opt: ResticMountOption{
+				TargetDir: "/mnt/test",
+			},
+			wantErr: false,
+		},
+		{
+			name: "verbose level too high",
+			opt: ResticMountOption{
+				TargetDir: "/mnt/test",
+				Verbose:   4,
+			},
+			wantErr: true,
+			errMsg:  "verbose level must be 0-3",
+		},
+		{
+			name: "verbose level negative",
+			opt: ResticMountOption{
+				TargetDir: "/mnt/test",
+				Verbose:   -1,
+			},
+			wantErr: true,
+			errMsg:  "verbose level must be 0-3",
+		},
+		{
+			name: "quiet and verbose together",
+			opt: ResticMountOption{
+				TargetDir: "/mnt/test",
+				Verbose:   1,
+				Quiet:     true,
+			},
+			wantErr: true,
+			errMsg:  "cannot use both --quiet and --verbose",
+		},
+		{
+			name: "relative path filter",
+			opt: ResticMountOption{
+				TargetDir: "/mnt/test",
+				Path:      []string{"relative/path"},
+			},
+			wantErr: true,
+			errMsg:  "path filter must be absolute",
+		},
+		{
+			name: "absolute path filter",
+			opt: ResticMountOption{
+				TargetDir: "/mnt/test",
+				Path:      []string{"/absolute/path"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "multiple path filters",
+			opt: ResticMountOption{
+				TargetDir: "/mnt/test",
+				Path:      []string{"/path1", "/path2"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "all valid options",
+			opt: ResticMountOption{
+				TargetDir:            "/mnt/test",
+				Host:                 []string{"host1", "host2"},
+				Tag:                  []string{"tag1", "tag2"},
+				Path:                 []string{"/data"},
+				PathTemplate:         []string{"ids/%i", "hosts/%h/%T"},
+				TimeTemplate:         "2006-01-02_15-04-05",
+				AllowOther:           true,
+				NoDefaultPermissions: true,
+				OwnerRoot:            true,
+				NoLock:               true,
+				Verbose:              2,
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.opt.Validate()
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Validate() expected error containing %q, got nil", tt.errMsg)
+				} else if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("Validate() expected error containing %q, got %q", tt.errMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Validate() expected no error, got %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestBuildMountArgs tests the command argument builder
+func TestBuildMountArgs(t *testing.T) {
+	repo := newPausedRepo(t)
+
+	tests := []struct {
+		name        string
+		opt         ResticMountOption
+		contains    []string
+		notContains []string
+	}{
+		{
+			name: "basic mount",
+			opt: ResticMountOption{
+				TargetDir: "/mnt/test",
+				NoLock:    true,
+			},
+			contains: []string{"mount", "--no-lock", "/mnt/test"},
+		},
+		{
+			name: "with verbose level 1",
+			opt: ResticMountOption{
+				TargetDir: "/mnt/test",
+				Verbose:   1,
+			},
+			contains: []string{"mount", "-v", "/mnt/test"},
+		},
+		{
+			name: "with verbose level 2",
+			opt: ResticMountOption{
+				TargetDir: "/mnt/test",
+				Verbose:   2,
+			},
+			contains: []string{"mount", "--verbose=2", "/mnt/test"},
+		},
+		{
+			name: "with quiet",
+			opt: ResticMountOption{
+				TargetDir: "/mnt/test",
+				Quiet:     true,
+			},
+			contains: []string{"mount", "--quiet", "/mnt/test"},
+		},
+		{
+			name: "with host filters",
+			opt: ResticMountOption{
+				TargetDir: "/mnt/test",
+				Host:      []string{"host1", "host2"},
+			},
+			contains: []string{"mount", "--host", "host1", "--host", "host2", "/mnt/test"},
+		},
+		{
+			name: "with tag filters",
+			opt: ResticMountOption{
+				TargetDir: "/mnt/test",
+				Tag:       []string{"tag1", "tag2"},
+			},
+			contains: []string{"mount", "--tag", "tag1", "--tag", "tag2", "/mnt/test"},
+		},
+		{
+			name: "with path filters",
+			opt: ResticMountOption{
+				TargetDir: "/mnt/test",
+				Path:      []string{"/data", "/var"},
+			},
+			contains: []string{"mount", "--path", "/data", "--path", "/var", "/mnt/test"},
+		},
+		{
+			name: "with path templates",
+			opt: ResticMountOption{
+				TargetDir:    "/mnt/test",
+				PathTemplate: []string{"ids/%i", "hosts/%h/%T"},
+			},
+			contains: []string{"mount", "--path-template", "ids/%i", "--path-template", "hosts/%h/%T", "/mnt/test"},
+		},
+		{
+			name: "with time template",
+			opt: ResticMountOption{
+				TargetDir:    "/mnt/test",
+				TimeTemplate: "2006-01-02_15-04-05",
+			},
+			contains: []string{"mount", "--time-template", "2006-01-02_15-04-05", "/mnt/test"},
+		},
+		{
+			name: "with permission options",
+			opt: ResticMountOption{
+				TargetDir:            "/mnt/test",
+				AllowOther:           true,
+				NoDefaultPermissions: true,
+				OwnerRoot:            true,
+			},
+			contains: []string{"mount", "--allow-other", "--no-default-permissions", "--owner-root", "/mnt/test"},
+		},
+		{
+			name: "without no-lock",
+			opt: ResticMountOption{
+				TargetDir: "/mnt/test",
+				NoLock:    false,
+			},
+			contains:    []string{"mount", "/mnt/test"},
+			notContains: []string{"--no-lock"},
+		},
+		{
+			name: "all options combined",
+			opt: ResticMountOption{
+				TargetDir:            "/mnt/test",
+				Host:                 []string{"host1"},
+				Tag:                  []string{"tag1"},
+				Path:                 []string{"/data"},
+				PathTemplate:         []string{"ids/%i"},
+				TimeTemplate:         "2006-01-02_15-04-05",
+				AllowOther:           true,
+				NoDefaultPermissions: true,
+				OwnerRoot:            true,
+				NoLock:               true,
+				Verbose:              2,
+			},
+			contains: []string{
+				"mount",
+				"--no-lock",
+				"--verbose=2",
+				"--host", "host1",
+				"--tag", "tag1",
+				"--path", "/data",
+				"--path-template", "ids/%i",
+				"--time-template", "2006-01-02_15-04-05",
+				"--allow-other",
+				"--no-default-permissions",
+				"--owner-root",
+				"/mnt/test",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args := repo.buildMountArgs(tt.opt)
+			argsStr := strings.Join(args, " ")
+
+			for _, want := range tt.contains {
+				if !strings.Contains(argsStr, want) {
+					t.Errorf("buildMountArgs() missing expected arg %q, got: %v", want, args)
+				}
+			}
+
+			for _, notWant := range tt.notContains {
+				if strings.Contains(argsStr, notWant) {
+					t.Errorf("buildMountArgs() contains unexpected arg %q, got: %v", notWant, args)
+				}
+			}
+
+			// Verify target directory is last
+			if len(args) > 0 && args[len(args)-1] != tt.opt.TargetDir {
+				t.Errorf("buildMountArgs() target directory should be last, got: %v", args)
+			}
+		})
+	}
+}
+
+// TestMountRepoWithOptions tests mounting with various options
+func TestMountRepoWithOptions(t *testing.T) {
+	repo, _, _, _ := newResticRepo(t, true)
+
+	mountDir := filepath.Join(getTestingDirs(t))
+	mountDir = filepath.Join(mountDir, "mount-options-test")
+	if err := os.RemoveAll(mountDir); err != nil {
+		t.Fatalf("remove mount dir: %v", err)
+	}
+
+	// Test with empty target directory (should fail)
+	opt := ResticMountOption{}
+	err := repo.MountRepoWithOptions(opt)
+	if err == nil {
+		t.Fatal("MountRepoWithOptions should fail with empty TargetDir")
+	}
+	if !strings.Contains(err.Error(), "required") {
+		t.Errorf("error should mention required, got: %v", err)
+	}
+
+	// Test with basic options
+	opt = NewResticMountOption(mountDir)
+	err = repo.MountRepoWithOptions(opt)
+	if err != nil {
+		if strings.Contains(err.Error(), "fuse") || strings.Contains(err.Error(), "operation not permitted") {
+			t.Logf("mount failed (fuse): err=%s", err.Error())
+			return
+		}
+		t.Fatalf("MountRepoWithOptions failed: %v", err)
+	}
+
+	waitForMountReady(t, repo, mountDir, 5*time.Second)
+
+	// Verify mount is active
+	if !repo.IsMounted() {
+		t.Fatal("expected mount to be active")
+	}
+	if repo.GetMountPath() != mountDir {
+		t.Errorf("expected mount path %s, got %s", mountDir, repo.GetMountPath())
+	}
+
+	// Cleanup
+	if err := repo.UnmountRepo(); err != nil {
+		if strings.Contains(err.Error(), "signal") || strings.Contains(err.Error(), "terminated") {
+			return
+		}
+		t.Fatalf("unmount repo: %v", err)
+	}
+}
+
+// TestMountRepoWithFilters tests mounting with host/tag/path filters
+func TestMountRepoWithFilters(t *testing.T) {
+	repo, _, _, dataDir := newResticRepo(t, false)
+
+	// Create multiple backups with different tags and hosts
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("mkdir data: %v", err)
+	}
+
+	// Backup 1: host=server1, tag=production
+	if err := os.WriteFile(filepath.Join(dataDir, "file1.txt"), []byte("data1"), 0644); err != nil {
+		t.Fatalf("write file1: %v", err)
+	}
+	opt1 := ResticBackupOption{
+		DirPath: dataDir,
+		Tags:    []string{"production"},
+		Host:    "server1",
+	}
+	if _, err := repo.BackupWithOptions(opt1); err != nil {
+		t.Fatalf("backup 1: %v", err)
+	}
+
+	// Backup 2: host=server2, tag=development
+	if err := os.WriteFile(filepath.Join(dataDir, "file2.txt"), []byte("data2"), 0644); err != nil {
+		t.Fatalf("write file2: %v", err)
+	}
+	opt2 := ResticBackupOption{
+		DirPath: dataDir,
+		Tags:    []string{"development"},
+		Host:    "server2",
+	}
+	if _, err := repo.BackupWithOptions(opt2); err != nil {
+		t.Fatalf("backup 2: %v", err)
+	}
+
+	if err := repo.FetchRepo(); err != nil {
+		t.Fatalf("fetch repo: %v", err)
+	}
+
+	if len(repo.Backups) < 2 {
+		t.Fatalf("expected at least 2 backups, got %d", len(repo.Backups))
+	}
+
+	// Test mount with host filter
+	mountDir := filepath.Join(getTestingDirs(t))
+	mountDir = filepath.Join(mountDir, "mount-filter-test")
+	if err := os.RemoveAll(mountDir); err != nil {
+		t.Fatalf("remove mount dir: %v", err)
+	}
+
+	mountOpt := ResticMountOption{
+		TargetDir: mountDir,
+		Host:      []string{"server1"},
+		Tag:       []string{"production"},
+		NoLock:    true,
+	}
+
+	err := repo.MountRepoWithOptions(mountOpt)
+	if err != nil {
+		if strings.Contains(err.Error(), "fuse") || strings.Contains(err.Error(), "operation not permitted") {
+			t.Logf("mount with filters failed (fuse): err=%s", err.Error())
+			return
+		}
+		t.Fatalf("MountRepoWithOptions with filters failed: %v", err)
+	}
+
+	waitForMountReady(t, repo, mountDir, 5*time.Second)
+
+	// Verify mount is active
+	if !repo.IsMounted() {
+		t.Fatal("expected mount to be active")
+	}
+
+	// Cleanup
+	if err := repo.UnmountRepo(); err != nil {
+		if strings.Contains(err.Error(), "signal") || strings.Contains(err.Error(), "terminated") {
+			return
+		}
+		t.Fatalf("unmount repo: %v", err)
+	}
+}
+
+// TestMountRepoBackwardCompatibility tests that old MountRepo still works
+func TestMountRepoBackwardCompatibility(t *testing.T) {
+	repo, _, _, _ := newResticRepo(t, true)
+
+	mountDir := filepath.Join(getTestingDirs(t))
+	mountDir = filepath.Join(mountDir, "mount-compat-test")
+	if err := os.RemoveAll(mountDir); err != nil {
+		t.Fatalf("remove mount dir: %v", err)
+	}
+
+	// Use old MountRepo method (should internally call MountRepoWithOptions)
+	err := repo.MountRepo(mountDir)
+	if err != nil {
+		if strings.Contains(err.Error(), "fuse") || strings.Contains(err.Error(), "operation not permitted") {
+			t.Logf("mount failed (fuse): err=%s", err.Error())
+			return
+		}
+		t.Fatalf("MountRepo failed: %v", err)
+	}
+
+	waitForMountReady(t, repo, mountDir, 5*time.Second)
+
+	// Verify mount is active
+	if !repo.IsMounted() {
+		t.Fatal("expected mount to be active")
+	}
+
+	// Cleanup
+	if err := repo.UnmountRepo(); err != nil {
+		if strings.Contains(err.Error(), "signal") || strings.Contains(err.Error(), "terminated") {
+			return
+		}
+		t.Fatalf("unmount repo: %v", err)
+	}
+}

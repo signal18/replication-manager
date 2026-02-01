@@ -50,7 +50,7 @@ const createGuardedAsyncThunk = (typePrefix, payloadCreator, options = {}) => {
 }
 
 const buildClusterStateSignature = (items) =>
-  items?.map((item) => `${item.state}-${item.isVirtualMaster}`).join(',') || ''
+  Array.isArray(items) ? items.map((item) => `${item?.state}-${item?.isVirtualMaster}`).join(',') : ''
 
 const buildProxyStagingList = (proxies) =>
   proxies

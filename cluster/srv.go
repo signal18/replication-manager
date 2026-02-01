@@ -229,6 +229,10 @@ type ServerMonitor struct {
 	configGenMutex              sync.Mutex // protects config generation operations
 	backupMetaMutex             sync.Mutex // protects LastBackupMeta from concurrent Restic callback updates
 	reseedMutex                 sync.Mutex // protects IsReseeding state from concurrent reseed operations
+	resticReseedMutex           sync.Mutex // protects pendingResticReseed
+	pendingResticReseed         *ResticReseedRequest
+	resticReseedCleanupMutex    sync.Mutex // protects resticReseedCleanup
+	resticReseedCleanup         map[string]*ResticReseedCleanupEntry
 }
 
 type ServerBackupMeta struct {

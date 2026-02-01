@@ -1450,6 +1450,7 @@ type SnapshotMetadataSummary struct {
 	EndTime          time.Time `json:"endTime"`
 	BackupSessionID  string    `json:"backupSessionID,omitempty"`
 	ResticSnapshotID string    `json:"resticSnapshotID,omitempty"`
+	ResticBasePath   string    `json:"resticBasePath,omitempty"`
 }
 
 type snapshotMetadataCandidate struct {
@@ -1478,7 +1479,7 @@ func backupMethodToString(method backupmgr.BackupMethod) string {
 	}
 }
 
-func buildSnapshotMetadataSummary(meta *backupmgr.BackupMetadata, method backupmgr.BackupMethod) *SnapshotMetadataSummary {
+func buildSnapshotMetadataSummary(meta *backupmgr.BackupMetadata, method backupmgr.BackupMethod, basepath string) *SnapshotMetadataSummary {
 	if meta == nil {
 		return nil
 	}
@@ -1490,6 +1491,7 @@ func buildSnapshotMetadataSummary(meta *backupmgr.BackupMetadata, method backupm
 		EndTime:          meta.EndTime,
 		BackupSessionID:  meta.BackupSessionID,
 		ResticSnapshotID: meta.ResticSnapshotID,
+		ResticBasePath:   strings.TrimSpace(basepath),
 	}
 }
 
@@ -1547,7 +1549,7 @@ func (cluster *Cluster) SummarizeSnapshotMetadata(snapshot *backupmgr.BackupSnap
 			if strings.HasPrefix(dest, base) {
 				method := inferBackupMethod(meta)
 				key := fmt.Sprintf("%d|%s", method, strings.ToLower(strings.TrimSpace(meta.BackupLine)))
-				summary := buildSnapshotMetadataSummary(meta, method)
+				summary := buildSnapshotMetadataSummary(meta, method, base)
 				if summary == nil {
 					break
 				}
@@ -1796,7 +1798,7 @@ func (cluster *Cluster) extractMetadataFromResticSnapshot(snapshot *backupmgr.Ba
 			if strings.TrimSpace(meta.BackupLine) == "" {
 				meta.BackupLine = backupmgr.BackupLineDefault
 			}
-			summary := buildSnapshotMetadataSummary(&meta, candidate.Method)
+			summary := buildSnapshotMetadataSummary(&meta, candidate.Method, base)
 			if summary == nil {
 				continue
 			}

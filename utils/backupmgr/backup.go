@@ -7,8 +7,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"google.golang.org/protobuf/runtime/protoimpl"
 )
 
 type BackupMethod int
@@ -167,10 +165,6 @@ type BackupStat struct {
 }
 
 type BackupSnapshot struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
 	Id       string   `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	ShortId  string   `protobuf:"bytes,2,opt,name=short_id,proto3" json:"short_id,omitempty"`
 	Time     string   `protobuf:"bytes,3,opt,name=time,proto3" json:"time,omitempty"`
@@ -181,6 +175,15 @@ type BackupSnapshot struct {
 	Uid      int64    `protobuf:"varint,8,opt,name=uid,proto3" json:"uid,omitempty"`
 	Gid      int64    `protobuf:"varint,9,opt,name=gid,proto3" json:"gid,omitempty"`
 	Tags     []string `protobuf:"bytes,10,rep,name=tags,proto3" json:"tags,omitempty"`
+}
+
+func (bs *BackupSnapshot) GetMountSubdir() string {
+	// bs.Time is string RFC3339Nano but we need to return RFC3339
+	bsTime, err := time.Parse(time.RFC3339Nano, bs.Time)
+	if err != nil {
+		return ""
+	}
+	return bsTime.Format(time.RFC3339)
 }
 
 type BackupMetaMap struct {

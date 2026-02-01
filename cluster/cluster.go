@@ -974,6 +974,33 @@ func (cluster *Cluster) StateProcessing() {
 		}
 
 		for _, s := range cluster.StateMachine.GetLastOpenedStates() {
+			if s.ErrKey == "WARN0166" {
+				server := cluster.GetServerFromURL(s.ServerUrl)
+				if server == nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+						"Restic reseed queued but server not found: %s", s.ServerUrl)
+				} else {
+					req, ok := server.DequeueResticReseed()
+					if !ok {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+							"Restic reseed queued but no pending request for %s", server.URL)
+						return
+					}
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+						"Dequeued restic reseed request for %s snapshot=%s method=%s strategy=%s",
+						server.URL, req.SnapshotID, req.Method, req.Strategy)
+					go func(srv *ServerMonitor, request ResticReseedRequest) {
+						err := srv.JobReseedFromRestic(request.SnapshotID, request.Method, request.Strategy, request.Options)
+						if err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlErr,
+								"Restic reseed failed for %s snapshot=%s: %s", srv.URL, request.SnapshotID, err)
+							return
+						}
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+							"Restic reseed completed for %s snapshot=%s", srv.URL, request.SnapshotID)
+					}(server, req)
+				}
+			}
 
 			cluster.CheckAlert(s, false)
 			cluster.BashScriptOpenSate(s)

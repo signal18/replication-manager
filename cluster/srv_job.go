@@ -254,6 +254,45 @@ func (server *ServerMonitor) JobsUpdateEntries(Conn *sqlx.Conn) error {
 	return nil
 }
 
+func (server *ServerMonitor) JobsHasEntries() bool {
+	hasEntries := false
+	server.JobResults.Range(func(k, v any) bool {
+		hasEntries = true
+		return false
+	})
+	return hasEntries
+}
+
+func (server *ServerMonitor) JobsRefreshEntries() error {
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return nil
+	}
+	if cluster.IsInFailover() || cluster.InRollingRestart {
+		return nil
+	}
+	if server.IsDown() {
+		return nil
+	}
+	if server.Conn == nil {
+		return fmt.Errorf("No connection pool on %s", server.URL)
+	}
+	if server.IsLoadingJobList {
+		return errors.New("Waiting for previous update")
+	}
+
+	server.SetLoadingJobList(true)
+	defer server.SetLoadingJobList(false)
+
+	conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return fmt.Errorf("Error connecting to %s: %s", server.URL, err)
+	}
+	defer conn.Close()
+
+	return server.JobsUpdateEntries(conn)
+}
+
 func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost string) (int64, error) {
 	return server.jobInsertTask(task, port, repmanhost, nil)
 }
@@ -603,7 +642,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 	return nil
 }
 
-func (server *ServerMonitor) JobReseedPhysicalBackupFromPath(backtype, backupPath string) error {
+func (server *ServerMonitor) JobReseedPhysicalBackupWithPayload(backtype, backupPath string, extraPayload map[string]string) error {
 	cluster := server.ClusterGroup
 	if backtype == "default" {
 		backtype = cluster.Conf.BackupPhysicalType
@@ -661,7 +700,28 @@ func (server *ServerMonitor) JobReseedPhysicalBackupFromPath(backtype, backupPat
 		cluster.Conf.BackupPhysicalType = backtype
 	}
 
-	_, err = server.JobInsertTask(task, server.SSTPort, cluster.Conf.MonitorAddress)
+	// Build comprehensive payload with backup metadata
+	payload := map[string]string{
+		"backup_path": backupfile,
+		"backup_type": backtype,
+		"server_url":  server.URL,
+		"is_pitr":     fmt.Sprintf("%t", server.PointInTimeMeta.IsInPITR),
+	}
+
+	// Merge extra payload if provided
+	for k, v := range extraPayload {
+		payload[k] = v
+	}
+
+	payloadData, err := json.Marshal(payload)
+	if err != nil {
+		if server.HasReseedingState(task) {
+			server.SetInReseedBackup("")
+		}
+		return fmt.Errorf("Failed to marshal payload: %v", err)
+	}
+
+	_, err = server.JobInsertTaskWithPayload(task, server.SSTPort, cluster.Conf.MonitorAddress, string(payloadData))
 	if err != nil {
 		if server.HasReseedingState(task) {
 			server.SetInReseedBackup("")
@@ -687,6 +747,11 @@ func (server *ServerMonitor) JobReseedPhysicalBackupFromPath(backtype, backupPat
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed physical backup %s from path %s request for server: %s", backtype, backupfile, server.URL)
 
 	return nil
+}
+
+// JobReseedPhysicalBackupFromPath maintains backward compatibility by calling the new payload-aware function
+func (server *ServerMonitor) JobReseedPhysicalBackupFromPath(backtype, backupPath string) error {
+	return server.JobReseedPhysicalBackupWithPayload(backtype, backupPath, nil)
 }
 
 func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
@@ -1874,6 +1939,7 @@ func (server *ServerMonitor) JobsCheckErrors(Conn *sqlx.Conn) error {
 		p = append(p, "'"+task.String+"'")
 		switch task.String {
 		case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
+			server.cleanupResticReseedForTask(task.String, "job-error")
 			if server.HasReseedingState(task.String) {
 				defer server.SetInReseedBackup("")
 			}
@@ -1895,6 +1961,17 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 	var err error
 	var canCancel bool = true
 	cluster := server.ClusterGroup
+	cleanupRequested := false
+	cleanupCanceled := func() {
+		for _, task := range tasks {
+			server.cleanupResticReseedForTask(task, "job-canceled")
+		}
+	}
+	defer func() {
+		if cleanupRequested {
+			cleanupCanceled()
+		}
+	}()
 
 	master := cluster.GetMaster()
 	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
@@ -1925,12 +2002,14 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 				server.SetInReseedBackup("")
 			}
 		}
+		cleanupRequested = true
 	}
 
 	if server.IsDown() {
 		if canCancel || force {
 			server.SetInReseedBackup("")
 			server.SetNeedRefreshJobs(true)
+			cleanupRequested = true
 		}
 		return nil
 	}
@@ -1981,6 +2060,7 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 					server.SetInReseedBackup("")
 				}
 			}
+			cleanupRequested = true
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Task cancelled successfully on %s", server.URL)
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel task on %s. No rows found or task already started", server.URL)
@@ -2098,6 +2178,7 @@ func (server *ServerMonitor) AfterJobProcess(conn *sqlx.Conn, task DBTask) error
 		}
 		errStr = "Backup completed"
 	case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
+		defer server.cleanupResticReseedForTask(task.task, "job-finished")
 		if server.HasReseedingState(task.task) {
 			defer server.SetInReseedBackup("")
 		}
@@ -3545,7 +3626,6 @@ func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string, isPurge 
 
 func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncompress bool, loop int) error {
 	cluster := server.ClusterGroup
-	var err error
 
 	if !server.HasReseedingState(task) {
 		return fmt.Errorf("Server is not in reseeding state on %s", server.URL)
@@ -3555,38 +3635,121 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncomp
 		return fmt.Errorf("No connection pool on %s", server.URL)
 	}
 
-	conn, err := server.GetConnNoBinlog(server.Conn)
-	if err != nil {
-		return fmt.Errorf("Error connecting to %s: %s", server.URL, err)
-	}
-	defer conn.Close()
+	// Use iterative loop instead of recursion to avoid stack buildup
+	maxLoop := cluster.Conf.SSTWaitMaxLoop
+	retryDelay := time.Second * time.Duration(cluster.Conf.SSTWaitRetryDelay)
 
-	count, err := server.GetJobCount(conn, task, 2)
-	if err != nil {
-		return fmt.Errorf("Error getting task on %s: %s", server.URL, err)
+	for attempt := loop; attempt < maxLoop; attempt++ {
+		conn, err := server.GetConnNoBinlog(server.Conn)
+		if err != nil {
+			return fmt.Errorf("Error connecting to %s: %s", server.URL, err)
+		}
+
+		count, err := server.GetJobCount(conn, task, 2)
+		conn.Close()
+		if err != nil {
+			return fmt.Errorf("Error getting task on %s: %s", server.URL, err)
+		}
+
+		// Check if job is ready (state=2 means JobStateHalted, waiting for SST)
+		if count > 0 {
+			server.JobsUpdateState(task, "processing", 1, 0)
+			go func() {
+				sendStart := time.Now()
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST send for %s started at %s (file: %s)", task, sendStart.Format(time.RFC3339), filename)
+				err := cluster.SSTRunSender(filename, server, uncompress)
+				elapsed := time.Since(sendStart).Round(time.Second)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST send for %s failed after %s: %s", task, elapsed, err.Error())
+					server.JobsUpdateState(task, err.Error(), 5, 0)
+					return
+				}
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST send for %s completed in %s (started at %s)", task, elapsed, sendStart.Format(time.RFC3339))
+			}()
+			return nil
+		}
+
+		// Wait before retrying (not last iteration)
+		if attempt < maxLoop-1 {
+			time.Sleep(retryDelay)
+		}
 	}
 
-	time.Sleep(time.Second * 15)
-	//Check if id exists
-	if count > 0 {
-		server.JobsUpdateState(task, "processing", 1, 0)
-		go func() {
-			sendStart := time.Now()
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST send for %s started at %s (file: %s)", task, sendStart.Format(time.RFC3339), filename)
-			err := cluster.SSTRunSender(filename, server, uncompress)
-			elapsed := time.Since(sendStart).Round(time.Second)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST send for %s failed after %s: %s", task, elapsed, err.Error())
-				server.JobsUpdateState(task, err.Error(), 5, 0)
-				return
-			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST send for %s completed in %s (started at %s)", task, elapsed, sendStart.Format(time.RFC3339))
-		}()
-		return nil
-	} else {
-		if loop < 10 {
-			loop++
-			return server.WaitAndSendSST(task, filename, uncompress, loop)
+	server.JobsUpdateState(task, "Waiting more than max loop", 5, 0)
+	server.SetNeedRefreshJobs(true)
+	return errors.New("Error: waiting for " + task + " more than max loop.")
+}
+
+func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task string, sourceName string, uncompress bool, loop int, opener SSTStreamOpener) error {
+	cluster := server.ClusterGroup
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if opener == nil {
+		return fmt.Errorf("SST stream opener is nil")
+	}
+
+	if !server.HasReseedingState(task) {
+		return fmt.Errorf("Server is not in reseeding state on %s", server.URL)
+	}
+
+	if server.Conn == nil {
+		return fmt.Errorf("No connection pool on %s", server.URL)
+	}
+
+	// Use iterative loop instead of recursion to avoid stack buildup
+	// and ensure responsive context cancellation
+	maxLoop := cluster.Conf.SSTWaitMaxLoop
+	retryDelay := time.Second * time.Duration(cluster.Conf.SSTWaitRetryDelay)
+
+	for attempt := loop; attempt < maxLoop; attempt++ {
+		// Check context cancellation at start of each iteration
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("SST stream canceled: %w", err)
+		}
+
+		conn, err := server.GetConnNoBinlog(server.Conn)
+		if err != nil {
+			return fmt.Errorf("Error connecting to %s: %s", server.URL, err)
+		}
+
+		count, err := server.GetJobCount(conn, task, 2)
+		conn.Close()
+		if err != nil {
+			return fmt.Errorf("Error getting task on %s: %s", server.URL, err)
+		}
+
+		// Check if job is ready (state=2 means JobStateHalted, waiting for SST)
+		if count > 0 {
+			server.JobsUpdateState(task, "processing", 1, 0)
+			go func() {
+				sendStart := time.Now()
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST stream send for %s started at %s (source: %s)", task, sendStart.Format(time.RFC3339), sourceName)
+				if err := ctx.Err(); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST stream for %s canceled before start: %s", task, err)
+					server.JobsUpdateState(task, err.Error(), 5, 0)
+					return
+				}
+				err = cluster.SSTRunSenderStream(sourceName, opener, server, uncompress)
+				elapsed := time.Since(sendStart).Round(time.Second)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST stream send for %s failed after %s: %s", task, elapsed, err.Error())
+					server.JobsUpdateState(task, err.Error(), 5, 0)
+					return
+				}
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST stream send for %s completed in %s (started at %s)", task, elapsed, sendStart.Format(time.RFC3339))
+			}()
+			return nil
+		}
+
+		// Wait before retrying, but allow context cancellation during wait
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("SST stream canceled: %w", ctx.Err())
+		case <-time.After(retryDelay):
+			// Continue to next iteration
 		}
 	}
 
@@ -3601,7 +3764,7 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 
 	//Prevent multiple reseed
 	if !server.HasReseedingState(task) {
-		return errors.New("Server is not in flashback physical state")
+		return fmt.Errorf("Server is not in %s state", task)
 	}
 
 	if master == nil {
@@ -3613,31 +3776,110 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 		return errors.New("Slave is in super read-only")
 	}
 
+	backupType := cluster.Conf.BackupPhysicalType
+	payloadBackupPath := ""
+	resticSnapshotID := ""
+	resticSourcePath := ""
+	if taskInfo := server.JobResults.Get(task); taskInfo != nil && taskInfo.Payload != "" {
+		payload := make(map[string]string)
+		if err := json.Unmarshal([]byte(taskInfo.Payload), &payload); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Invalid payload for %s on %s: %s", task, server.URL, err)
+		} else {
+			if v := strings.TrimSpace(payload["backup_type"]); v != "" {
+				if v != backupType {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Using payload backup type %s for %s (was %s)", v, task, backupType)
+				}
+				backupType = v
+			}
+			if v := strings.TrimSpace(payload["backup_path"]); v != "" {
+				payloadBackupPath = filepath.Clean(v)
+			}
+			if v := strings.TrimSpace(payload["restic_snapshot_id"]); v != "" {
+				resticSnapshotID = v
+			}
+			if v := strings.TrimSpace(payload["restic_source_path"]); v != "" {
+				resticSourcePath = v
+			}
+		}
+	}
+
 	useMaster := true
 	backupext := ".xbtream"
 	if cluster.Conf.CompressBackups {
 		backupext = backupext + ".gz"
 	}
 
-	file := cluster.Conf.BackupPhysicalType + backupext
+	file := backupType + backupext
 	backupfile := master.GetMyBackupDirectory() + file
 
-	bckserver := cluster.GetBackupServer()
-	if bckserver != nil && bckserver.HasBackupTypeCookie(cluster.Conf.BackupPhysicalType) {
-		if _, err := os.Stat(bckserver.GetMyBackupDirectory() + file); err == nil {
-			backupfile = bckserver.GetMyBackupDirectory() + file
-			useMaster = false
-		} else {
-			//Remove false cookie
-			bckserver.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
-		}
-	}
+	if payloadBackupPath != "" {
+		if strings.EqualFold(payloadBackupPath, "STREAM") {
+			if cluster.ResticManager == nil {
+				return fmt.Errorf("Cancelling reseed. Restic manager not available for %s", task)
+			}
+			if resticSnapshotID == "" || resticSourcePath == "" {
+				return fmt.Errorf("Cancelling reseed. Missing restic snapshot metadata for %s", task)
+			}
 
-	if useMaster {
+			ctx := context.Background()
+			var expectedSize int64 = -1
+			if sizeBytes, ok := getSnapshotSizeBytes(cluster, resticSnapshotID); ok {
+				expectedSize = int64(sizeBytes)
+			}
+
+			streamOpener := func() (io.ReadCloser, int64, error) {
+				pr, pw := io.Pipe()
+				go func() {
+					dumpErr := cluster.ResticManager.DumpSnapshot(resticSnapshotID, resticSourcePath, pw)
+					if dumpErr != nil {
+						_ = pw.CloseWithError(dumpErr)
+						return
+					}
+					_ = pw.Close()
+				}()
+				return pr, expectedSize, nil
+			}
+
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlInfo,
+				"Streaming snapshot %s using dump strategy to SST (file: %s)",
+				resticLogSnapshotID(cluster, resticSnapshotID), resticSourcePath)
+
+			go func() {
+				err := server.WaitAndSendSSTStream(ctx, task, resticSourcePath, true, 0, streamOpener)
+				if err != nil {
+					if server.HasReseedingState(task) {
+						server.SetInReseedBackup("")
+					}
+				}
+			}()
+			return nil
+		}
+
+		backupfile = payloadBackupPath
 		if _, err := os.Stat(backupfile); err != nil {
-			//Remove false cookie
-			master.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
-			return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", cluster.Conf.BackupPhysicalType)
+			return fmt.Errorf("Cancelling reseed. Payload backup path not found for %s: %s", task, err)
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Using payload backup path %s for %s", backupfile, task)
+	} else {
+		bckserver := cluster.GetBackupServer()
+		if bckserver != nil && bckserver.HasBackupTypeCookie(backupType) {
+			if _, err := os.Stat(bckserver.GetMyBackupDirectory() + file); err == nil {
+				backupfile = bckserver.GetMyBackupDirectory() + file
+				useMaster = false
+			} else {
+				//Remove false cookie
+				bckserver.DelBackupTypeCookie(backupType)
+			}
+		}
+
+		if useMaster {
+			if _, err := os.Stat(backupfile); err != nil {
+				//Remove false cookie
+				master.DelBackupTypeCookie(backupType)
+				return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", backupType)
+			}
 		}
 	}
 

@@ -11,7 +11,6 @@ package cluster
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -19,12 +18,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/klauspost/pgzip"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/misc"
 )
 
 // ResticReseedPaths tracks paths and temporary locations used during a restic reseed.
@@ -35,7 +35,9 @@ type ResticReseedPaths struct {
 	BackupType string
 	// IsDirectory reports whether the backup is directory-based (true for mydumper).
 	IsDirectory bool
-	// SourcePaths lists the paths inside the restic snapshot to restore.
+	// SourceBasePath is the base path inside the restic snapshot for the backup. If empty, paths are relative to root.
+	SourceBasePath string
+	// SourcePaths lists the paths inside the restic snapshot to restore (from SourceBasePath).
 	SourcePaths []string
 	// TempDir is the local temporary directory used for extracted files.
 	TempDir string
@@ -51,6 +53,9 @@ type ResticReseedPaths struct {
 type ResticReseedOptions struct {
 	// TempDir overrides the temporary directory used during restore.
 	TempDir string
+	// UseTempDir overrides temp dir usage; nil means use default selection.
+	// Set to false to restore directly into the target directory.
+	UseTempDir *bool
 	// Cleanup overrides cleanup behavior; nil means use the configuration default.
 	Cleanup *bool
 	// Timeout is the reseed timeout in seconds; 0 means use the configuration default.
@@ -59,88 +64,165 @@ type ResticReseedOptions struct {
 	Overwrite string
 }
 
-// resolveStrategyChain determines the ordered list of restic reseed strategies to attempt.
+// ResticReseedCleanupEntry tracks deferred cleanup work for async reseed tasks.
+type ResticReseedCleanupEntry struct {
+	Paths *ResticReseedPaths
+}
+
+// ResticReseedRequest captures a queued restic reseed request for asynchronous processing.
+type ResticReseedRequest struct {
+	SnapshotID string
+	Method     string
+	Strategy   string
+	Options    ResticReseedOptions
+}
+
+func resticLogSnapshotID(cluster *Cluster, snapshotID string) string {
+	trimmed := strings.TrimSpace(snapshotID)
+	if trimmed == "" {
+		return ""
+	}
+	if trimmed == "latest" {
+		return trimmed
+	}
+	if cluster != nil && cluster.ResticManager != nil {
+		snap := cluster.ResticManager.GetSnapshot(trimmed)
+		if snap != nil {
+			shortID := strings.TrimSpace(snap.ShortId)
+			if shortID != "" {
+				return shortID
+			}
+		}
+	}
+	if len(trimmed) > 8 {
+		return trimmed[:8]
+	}
+	return trimmed
+}
+
+// QueueResticReseed stores a pending restic reseed request for later processing.
+func (server *ServerMonitor) QueueResticReseed(req ResticReseedRequest) error {
+	if strings.TrimSpace(req.SnapshotID) == "" {
+		return fmt.Errorf("snapshot ID is required")
+	}
+	server.resticReseedMutex.Lock()
+	defer server.resticReseedMutex.Unlock()
+	if server.pendingResticReseed != nil {
+		return fmt.Errorf("restic reseed already queued")
+	}
+	copyReq := req
+	server.pendingResticReseed = &copyReq
+	return nil
+}
+
+// DequeueResticReseed retrieves and clears the pending restic reseed request.
+func (server *ServerMonitor) DequeueResticReseed() (ResticReseedRequest, bool) {
+	server.resticReseedMutex.Lock()
+	defer server.resticReseedMutex.Unlock()
+	if server.pendingResticReseed == nil {
+		return ResticReseedRequest{}, false
+	}
+	request := *server.pendingResticReseed
+	server.pendingResticReseed = nil
+	return request, true
+}
+
+// resolveResticReseedStrategy determines the single best restic reseed strategy to use.
 //
-// It honors explicit user requests (with minimal fallbacks) and otherwise auto-selects
-// the safest strategy based on snapshot metadata, reseed method, and FUSE availability.
+// It honors explicit user requests and otherwise auto-selects the optimal strategy
+// based on snapshot metadata, reseed method, and FUSE availability. The auto
+// selection now prefers mount whenever FUSE is available to avoid directory
+// extraction, with a special-case for mysqldump single-file streams that can use
+// dump efficiently.
 // Any unknown or missing inputs fall back to the conservative "restore" strategy.
-func resolveStrategyChain(requestedStrategy, method, snapshotID string, cluster *Cluster) []string {
+//
+// This function returns a single strategy (no fallback chain) to avoid partial state
+// corruption, resource leaks, and misleading error messages that can occur when
+// multiple strategies are attempted sequentially.
+func resolveResticReseedStrategy(requestedStrategy, method, snapshotID string, cluster *Cluster) string {
 	normalizedRequested := strings.ToLower(strings.TrimSpace(requestedStrategy))
 	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
 
 	// Determine FUSE availability early for mount-based strategies.
 	fuseAvailable := cluster != nil && cluster.ResticManager != nil && !cluster.ResticManager.IsMountDisabled()
 
-	var strategies []string
+	var strategy string
 
-	// Honor explicit user requests first; only "dump" and "mount" receive a restore fallback.
+	// Honor explicit user requests first (no fallback).
 	switch normalizedRequested {
 	case "restore":
-		strategies = []string{"restore"}
+		strategy = "restore"
 	case "dump":
-		strategies = []string{"dump", "restore"}
+		strategy = "dump"
 	case "mount":
 		if fuseAvailable {
-			strategies = []string{"mount", "restore"}
+			strategy = "mount"
 		} else {
-			strategies = []string{"restore"}
+			// Mount requested but FUSE unavailable - fall back to restore
+			// rather than failing, since this is still an explicit user request.
+			strategy = "restore"
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlWarn,
+					"Mount strategy requested but FUSE unavailable, using restore instead")
+			}
 		}
 	case "", "auto":
 		// Continue to auto-selection below.
 	default:
 		// Unknown strategy name; fall back to auto-selection instead of failing.
+		if cluster != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlWarn,
+				"Unknown strategy '%s', using auto-selection", normalizedRequested)
+		}
 	}
 
-	if len(strategies) == 0 {
+	// Auto-select optimal strategy based on snapshot metadata.
+	if strategy == "" {
 		metadata := getSnapshotMetadata(cluster, snapshotID)
 		if metadata == nil {
-			// Without metadata we only choose the safest option.
-			strategies = []string{"restore"}
+			// Without metadata we choose the safest option.
+			strategy = "restore"
 		} else {
 			backupTool := strings.ToLower(strings.TrimSpace(metadata.BackupTool))
 			backupMethod := strings.ToLower(strings.TrimSpace(metadata.BackupMethod))
 
-			// Physical backups can only be handled via direct restore.
-			switch backupTool {
-			case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
-				strategies = []string{"restore"}
-			}
-
-			// Directory-based logical backups benefit from mount when FUSE is available.
-			switch backupTool {
-			case config.ConstBackupLogicalTypeMydumper, config.ConstBackupLogicalTypeDumpling:
-				if fuseAvailable {
-					strategies = []string{"mount", "restore"}
-				} else {
-					strategies = []string{"restore"}
+			// Prefer mysqldump streaming when it is a logical, single-file snapshot.
+			if backupTool == config.ConstBackupLogicalTypeMysqldump {
+				if normalizedMethod == "logical" || (normalizedMethod == "" && backupMethod == "logical") {
+					strategy = "dump"
 				}
 			}
 
-			// Single-file logical backups can be streamed when using the logical method.
-			if backupTool == config.ConstBackupLogicalTypeMysqldump {
-				if normalizedMethod == "logical" || (normalizedMethod == "" && backupMethod == "logical") {
-					strategies = []string{"dump", "restore"}
+			// Prefer mount for all backup types when FUSE is available to avoid extraction.
+			if strategy == "" {
+				if fuseAvailable {
+					strategy = "mount"
 				} else {
-					strategies = []string{"restore"}
+					strategy = "restore"
 				}
 			}
 
 			// Unknown or unsupported tool; default to the safest strategy.
-			if len(strategies) == 0 {
-				strategies = []string{"restore"}
+			if strategy == "" {
+				strategy = "restore"
 			}
 		}
 	}
 
 	if cluster != nil {
+		logSnapshotID := resticLogSnapshotID(cluster, snapshotID)
 		cluster.LogModulePrintf(cluster.Conf.Verbose,
 			config.ConstLogModRestic,
 			config.LvlInfo,
-			"Resolved restic reseed strategies: requested=%s method=%s snapshot=%s strategies=%v",
-			normalizedRequested, normalizedMethod, snapshotID, strategies)
+			"Resolved restic reseed strategy: requested=%s method=%s snapshot=%s strategy=%s",
+			normalizedRequested, normalizedMethod, logSnapshotID, strategy)
 	}
 
-	return strategies
+	return strategy
 }
 
 // getSnapshotMetadata selects the best available metadata summary for a restic snapshot.
@@ -192,6 +274,66 @@ func getSnapshotMetadata(cluster *Cluster, snapshotID string) *SnapshotMetadataS
 		}
 	}
 	// Fall back to best-effort summaries derived from backup metadata.
+	snapshots := cluster.GetSnapshots()
+	for i := range snapshots {
+		if snapshots[i].Id == snapshotID {
+			return selectBestSummary(cluster.SummarizeSnapshotMetadata(&snapshots[i]))
+		}
+	}
+	return nil
+}
+
+func getSnapshotMetadataForMethod(cluster *Cluster, snapshotID, method string) *SnapshotMetadataSummary {
+	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
+	if normalizedMethod == "" {
+		return getSnapshotMetadata(cluster, snapshotID)
+	}
+	if cluster == nil || strings.TrimSpace(snapshotID) == "" {
+		return nil
+	}
+	selectBestSummary := func(candidates []*SnapshotMetadataSummary) *SnapshotMetadataSummary {
+		var selected *SnapshotMetadataSummary
+		for _, candidate := range candidates {
+			if candidate == nil {
+				continue
+			}
+			if strings.ToLower(strings.TrimSpace(candidate.BackupMethod)) != normalizedMethod {
+				continue
+			}
+			resticID := strings.TrimSpace(candidate.ResticSnapshotID)
+			if resticID != "" && resticID == snapshotID {
+				return candidate
+			}
+			if selected == nil {
+				selected = candidate
+				continue
+			}
+			if selected.EndTime.IsZero() && !candidate.EndTime.IsZero() {
+				selected = candidate
+				continue
+			}
+			if candidate.EndTime.After(selected.EndTime) {
+				selected = candidate
+				continue
+			}
+			if candidate.EndTime.Equal(selected.EndTime) && candidate.StartTime.After(selected.StartTime) {
+				selected = candidate
+			}
+		}
+		return selected
+	}
+	if entry, ok := cluster.getSnapshotMetadataCacheEntry(snapshotID); ok && entry != nil {
+		candidates := make([]*SnapshotMetadataSummary, 0, len(entry.Summaries))
+		for _, summary := range entry.Summaries {
+			if summary == nil {
+				continue
+			}
+			candidates = append(candidates, summary)
+		}
+		if selected := selectBestSummary(candidates); selected != nil {
+			return selected
+		}
+	}
 	snapshots := cluster.GetSnapshots()
 	for i := range snapshots {
 		if snapshots[i].Id == snapshotID {
@@ -287,9 +429,9 @@ func (server *ServerMonitor) prepareResticReseedPaths(snapshotID, method string)
 	if cluster == nil {
 		return nil, fmt.Errorf("cluster not available")
 	}
-	metadata := getSnapshotMetadata(cluster, snapshotID)
+	metadata := getSnapshotMetadataForMethod(cluster, snapshotID, method)
 	if metadata == nil {
-		return nil, fmt.Errorf("snapshot metadata not available for %s", snapshotID)
+		return nil, fmt.Errorf("snapshot metadata not available for %s (method %s)", snapshotID, strings.ToLower(strings.TrimSpace(method)))
 	}
 	backupTool := strings.ToLower(strings.TrimSpace(metadata.BackupTool))
 	if backupTool == "" {
@@ -341,6 +483,7 @@ func (server *ServerMonitor) prepareResticReseedPaths(snapshotID, method string)
 		SnapshotID:      snapshotID,
 		BackupType:      backupTool,
 		IsDirectory:     isDirectory,
+		SourceBasePath:  strings.TrimSpace(metadata.ResticBasePath),
 		SourcePaths:     sourcePaths,
 		TempDir:         "",
 		TargetPaths:     []string{},
@@ -352,11 +495,12 @@ func (server *ServerMonitor) prepareResticReseedPaths(snapshotID, method string)
 	if len(sourcePaths) == 1 {
 		logSource = sourcePaths[0]
 	}
+	logSnapshotID := resticLogSnapshotID(cluster, snapshotID)
 	cluster.LogModulePrintf(cluster.Conf.Verbose,
 		config.ConstLogModRestic,
 		config.LvlInfo,
 		"Prepared restic reseed paths: snapshot=%s tool=%s isDir=%t sources=%d source=%s compressed=%t (%s)",
-		snapshotID, backupTool, isDirectory, len(sourcePaths), logSource, compressed, compressionSource)
+		logSnapshotID, backupTool, isDirectory, len(sourcePaths), logSource, compressed, compressionSource)
 
 	return paths, nil
 }
@@ -391,7 +535,7 @@ func (server *ServerMonitor) verifyRestoredBackup(paths *ResticReseedPaths) erro
 
 	if paths.IsDirectory {
 		for _, targetPath := range paths.TargetPaths {
-			isEmpty, err := isDirEmpty(targetPath)
+			isEmpty, err := misc.IsDirEmpty(targetPath)
 			if err != nil {
 				return fmt.Errorf("failed to check directory %s: %w", targetPath, err)
 			}
@@ -412,35 +556,14 @@ func (server *ServerMonitor) verifyRestoredBackup(paths *ResticReseedPaths) erro
 	}
 
 	if cluster := server.ClusterGroup; cluster != nil {
+		logSnapshotID := resticLogSnapshotID(cluster, paths.SnapshotID)
 		cluster.LogModulePrintf(cluster.Conf.Verbose,
 			config.ConstLogModRestic,
 			config.LvlInfo,
 			"Verified restored backup: snapshot=%s targets=%d dir=%t",
-			paths.SnapshotID, len(paths.TargetPaths), paths.IsDirectory)
+			logSnapshotID, len(paths.TargetPaths), paths.IsDirectory)
 	}
 
-	return nil
-}
-
-// isDirEmpty reports whether a directory contains no entries.
-func isDirEmpty(path string) (bool, error) {
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return false, err
-	}
-	return len(entries) == 0, nil
-}
-
-// checkDiskSpace validates that path has at least requiredBytes available.
-func checkDiskSpace(path string, requiredBytes uint64) error {
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(path, &stat); err != nil {
-		return fmt.Errorf("statfs failed for %s: %w", path, err)
-	}
-	available := stat.Bavail * uint64(stat.Bsize)
-	if available < requiredBytes {
-		return fmt.Errorf("insufficient disk space at %s: required=%s available=%s", path, humanize.Bytes(requiredBytes), humanize.Bytes(available))
-	}
 	return nil
 }
 
@@ -479,33 +602,16 @@ func (server *ServerMonitor) cleanupResticReseed(paths *ResticReseedPaths) error
 		return fmt.Errorf("cluster not available for cleanup")
 	}
 
-	// Unmount restic FUSE filesystem if mounted.
+	// NOTE: We no longer automatically unmount here because mounts are now persistent
+	// and managed via ON/OFF toggle API. Mount references are released by the defer
+	// in reseedFromResticMount(), which allows unmount to proceed when requested.
+	// The IsMounted flag now just indicates that the reseed used a mount strategy,
+	// but cleanup no longer unmounts automatically.
 	if paths.IsMounted {
 		cluster.LogModulePrintf(cluster.Conf.Verbose,
 			config.ConstLogModRestic,
 			config.LvlInfo,
-			"Unmounting restic repo for cleanup")
-
-		unmounter := cluster.resticUnmounter
-		if unmounter == nil {
-			unmounter = cluster.ResticManager
-		}
-		if unmounter == nil {
-			return fmt.Errorf("restic manager not available for cleanup")
-		}
-
-		if err := unmounter.UnmountRepo(); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose,
-				config.ConstLogModRestic,
-				config.LvlWarn,
-				"Failed to unmount restic repo: %s", err)
-			// Don't return error, continue with other cleanup.
-		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose,
-				config.ConstLogModRestic,
-				config.LvlInfo,
-				"Successfully unmounted restic repo")
-		}
+			"Reseed used mount strategy - mount reference has been released but mount remains active for reuse")
 	}
 
 	// Remove temporary directory if it exists.
@@ -515,7 +621,7 @@ func (server *ServerMonitor) cleanupResticReseed(paths *ResticReseedPaths) error
 			config.LvlInfo,
 			"Cleaning up temp directory: %s", paths.TempDir)
 
-		if err := resticRemoveAll(paths.TempDir); err != nil {
+		if err := os.RemoveAll(paths.TempDir); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose,
 				config.ConstLogModRestic,
 				config.LvlWarn,
@@ -532,9 +638,101 @@ func (server *ServerMonitor) cleanupResticReseed(paths *ResticReseedPaths) error
 	return nil
 }
 
-var resticMkdirTemp = os.MkdirTemp
-var resticRemoveAll = os.RemoveAll
-var resticCheckDiskSpace = checkDiskSpace
+func resolveResticReseedCleanup(opts ResticReseedOptions, conf *config.Config) bool {
+	if opts.Cleanup != nil {
+		return *opts.Cleanup
+	}
+	if conf != nil {
+		return conf.BackupResticReseedCleanup
+	}
+	return true
+}
+
+func (server *ServerMonitor) runResticReseedCleanup(paths *ResticReseedPaths, shouldCleanup bool, reason string) {
+	cluster := server.ClusterGroup
+	if !shouldCleanup {
+		if cluster != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlInfo,
+				"Cleanup disabled for restic reseed (%s)", reason)
+		}
+		return
+	}
+
+	paths.RequiresCleanup = true
+	if cluster != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlInfo,
+			"Running restic reseed cleanup (%s)", reason)
+	}
+
+	if err := server.cleanupResticReseed(paths); err != nil {
+		if cluster != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlWarn,
+				"Cleanup failed: %s", err)
+		}
+	}
+}
+
+func (server *ServerMonitor) registerResticReseedCleanup(task string, paths *ResticReseedPaths, shouldCleanup bool) {
+	if strings.TrimSpace(task) == "" || paths == nil {
+		return
+	}
+	cluster := server.ClusterGroup
+	if !shouldCleanup {
+		if cluster != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlInfo,
+				"Cleanup disabled for async restic reseed task %s", task)
+		}
+		return
+	}
+	paths.RequiresCleanup = true
+	server.resticReseedCleanupMutex.Lock()
+	if server.resticReseedCleanup == nil {
+		server.resticReseedCleanup = make(map[string]*ResticReseedCleanupEntry)
+	}
+	server.resticReseedCleanup[task] = &ResticReseedCleanupEntry{Paths: paths}
+	server.resticReseedCleanupMutex.Unlock()
+	if cluster != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlInfo,
+			"Registered restic reseed cleanup for task %s", task)
+	}
+}
+
+func (server *ServerMonitor) cleanupResticReseedForTask(task, reason string) {
+	if strings.TrimSpace(task) == "" {
+		return
+	}
+	var entry *ResticReseedCleanupEntry
+	server.resticReseedCleanupMutex.Lock()
+	if server.resticReseedCleanup != nil {
+		entry = server.resticReseedCleanup[task]
+		if entry != nil {
+			delete(server.resticReseedCleanup, task)
+		}
+	}
+	server.resticReseedCleanupMutex.Unlock()
+	if entry == nil || entry.Paths == nil {
+		return
+	}
+	cluster := server.ClusterGroup
+	if cluster != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlInfo,
+			"Cleaning up restic reseed resources for task %s (%s)", task, reason)
+	}
+	server.runResticReseedCleanup(entry.Paths, true, reason)
+}
+
 var resticReseedTimeout = func(opts ResticReseedOptions, conf *config.Config) time.Duration {
 	if opts.Timeout > 0 {
 		return time.Duration(opts.Timeout) * time.Second
@@ -543,12 +741,6 @@ var resticReseedTimeout = func(opts ResticReseedOptions, conf *config.Config) ti
 		return time.Duration(conf.BackupResticReseedTimeout) * time.Second
 	}
 	return 1 * time.Hour
-}
-var resticRestoreSnapshot = func(ctx context.Context, manager *backupmgr.ResticManager, snapshotID, targetDir string, sourcePaths []string, overwrite string) error {
-	return manager.RestoreSnapshot(snapshotID, targetDir, sourcePaths, overwrite)
-}
-var resticMountRepo = func(ctx context.Context, manager *backupmgr.ResticManager, mountDir string) error {
-	return manager.MountRepo(mountDir)
 }
 
 // JobReseedFromRestic orchestrates a restic reseed workflow with strategy fallback and timeout handling.
@@ -566,6 +758,10 @@ func (server *ServerMonitor) JobReseedFromRestic(snapshotID, method, strategy st
 		return fmt.Errorf("cluster not available")
 	}
 
+	if cluster.ResticManager == nil {
+		return fmt.Errorf("restic manager not available")
+	}
+
 	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
 	if normalizedMethod != "logical" && normalizedMethod != "physical" {
 		return fmt.Errorf("invalid method: %s (must be logical or physical)", method)
@@ -580,9 +776,6 @@ func (server *ServerMonitor) JobReseedFromRestic(snapshotID, method, strategy st
 	}
 
 	if normalizedStrategy == "mount" {
-		if cluster.ResticManager == nil {
-			return fmt.Errorf("restic manager not available")
-		}
 		if cluster.ResticManager.IsMountDisabled() {
 			return fmt.Errorf("mount operations are disabled (FUSE not available)")
 		}
@@ -606,69 +799,54 @@ func (server *ServerMonitor) JobReseedFromRestic(snapshotID, method, strategy st
 		return fmt.Errorf("snapshot metadata not ready: %w", err)
 	}
 
-	strategies := resolveStrategyChain(strategy, normalizedMethod, snapshotID, cluster)
+	selectedStrategy := resolveResticReseedStrategy(strategy, normalizedMethod, snapshotID, cluster)
+	logSnapshotID := resticLogSnapshotID(cluster, snapshotID)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose,
 		config.ConstLogModRestic,
 		config.LvlInfo,
-		"Starting restic reseed: snapshot=%s, method=%s, strategies=%v",
-		snapshotID, normalizedMethod, strategies)
+		"Starting restic reseed: snapshot=%s, method=%s, strategy=%s",
+		logSnapshotID, normalizedMethod, selectedStrategy)
 
 	timeout := resticReseedTimeout(opts, cluster.Conf)
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	var lastErr error
-	for i, strat := range strategies {
-		cluster.LogModulePrintf(cluster.Conf.Verbose,
-			config.ConstLogModRestic,
-			config.LvlInfo,
-			"Attempting reseed with strategy: %s (attempt %d/%d)",
-			strat, i+1, len(strategies))
-
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("restic reseed timeout after %v", timeout)
-		default:
-		}
-
-		var err error
-		switch strat {
-		case "restore":
-			err = server.reseedFromResticRestore(ctx, snapshotID, normalizedMethod, opts)
-		case "dump":
-			err = server.reseedFromResticDump(ctx, snapshotID, normalizedMethod, opts)
-		case "mount":
-			err = server.reseedFromResticMount(ctx, snapshotID, normalizedMethod, opts)
-		default:
-			err = fmt.Errorf("unknown strategy: %s", strat)
-		}
-
-		if err == nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose,
-				config.ConstLogModRestic,
-				config.LvlInfo,
-				"Successfully completed restic reseed using strategy: %s",
-				strat)
-			return nil
-		}
-
-		lastErr = err
-		cluster.LogModulePrintf(cluster.Conf.Verbose,
-			config.ConstLogModRestic,
-			config.LvlWarn,
-			"Strategy %s failed: %s%s",
-			strat, err,
-			func() string {
-				if i < len(strategies)-1 {
-					return fmt.Sprintf(", trying next strategy: %s", strategies[i+1])
-				}
-				return ""
-			}())
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("restic reseed timeout after %v", timeout)
+	default:
 	}
 
-	return fmt.Errorf("all reseed strategies failed (%v), last error: %w", strategies, lastErr)
+	var err error
+	switch selectedStrategy {
+	case "restore":
+		err = server.reseedFromResticRestore(ctx, snapshotID, normalizedMethod, opts)
+	case "dump":
+		err = server.reseedFromResticDump(ctx, snapshotID, normalizedMethod)
+	case "mount":
+		err = server.reseedFromResticMount(ctx, snapshotID, normalizedMethod)
+	default:
+		return fmt.Errorf("unknown strategy: %s", selectedStrategy)
+	}
+
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlErr,
+			"Restic reseed failed with strategy %s: %s",
+			selectedStrategy, err)
+		return fmt.Errorf("reseed strategy %s failed: %w", selectedStrategy, err)
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose,
+		config.ConstLogModRestic,
+		config.LvlInfo,
+		"Successfully completed restic reseed using strategy: %s",
+		selectedStrategy)
+
+	return nil
 }
 
 func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapshotID, method string, opts ResticReseedOptions) error {
@@ -684,6 +862,14 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 		return fmt.Errorf("restic manager not available")
 	}
 
+	snap := cluster.ResticManager.GetSnapshot(snapshotID)
+	if snap == nil {
+		return fmt.Errorf("restic snapshot %s not found", snapshotID)
+	}
+
+	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
+	shortID := strings.TrimSpace(snap.ShortId)
+
 	paths, err := server.prepareResticReseedPaths(snapshotID, method)
 	if err != nil {
 		return fmt.Errorf("failed to prepare paths: %w", err)
@@ -695,51 +881,115 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 	default:
 	}
 
-	tempDir := opts.TempDir
-	if tempDir == "" {
+	tempBaseDir := opts.TempDir
+	if tempBaseDir == "" {
 		if cluster.Conf.BackupResticReseedTempDir != "" {
-			tempDir = cluster.Conf.BackupResticReseedTempDir
+			tempBaseDir = cluster.Conf.BackupResticReseedTempDir
 		} else {
-			tempDir = os.TempDir()
+			tempBaseDir = filepath.Join(cluster.WorkingDir, "backup", "restic_temp")
 		}
 	}
 
-	extractDir, err := resticMkdirTemp(tempDir, "restic-reseed-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temp dir: %w", err)
+	os.MkdirAll(tempBaseDir, os.ModePerm)
+
+	restoreBaseDir := strings.TrimSpace(server.GetMyBackupDirectory())
+	if restoreBaseDir == "" {
+		return fmt.Errorf("restore base directory is empty")
 	}
 
-	// Register cleanup immediately after resource allocation to prevent leaks
-	paths.TempDir = extractDir
-	paths.RequiresCleanup = true
-	defer func() {
-		shouldCleanup := true
-		if opts.Cleanup != nil {
-			shouldCleanup = *opts.Cleanup
-		} else if cluster.Conf != nil {
-			shouldCleanup = cluster.Conf.BackupResticReseedCleanup
-		}
-		if shouldCleanup {
-			paths.RequiresCleanup = true
-			if err := server.cleanupResticReseed(paths); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose,
-					config.ConstLogModRestic,
-					config.LvlWarn,
-					"Cleanup failed: %s", err)
-			}
+	useTempDir := true
+	if opts.UseTempDir != nil {
+		if !*opts.UseTempDir {
+			useTempDir = false
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlInfo,
+				"Temp dir disabled by request; restoring directly to %s",
+				restoreBaseDir)
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose,
 				config.ConstLogModRestic,
 				config.LvlInfo,
-				"Cleanup disabled for restic restore reseed")
+				"Temp dir explicitly requested; checking disk space for temp restore")
 		}
-	}()
+	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose,
-		config.ConstLogModRestic,
-		config.LvlInfo,
-		"Created restic restore temp dir: %s",
-		extractDir)
+	requiredBytes, ok := getSnapshotSizeBytes(cluster, snapshotID)
+	if !useTempDir {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlInfo,
+			"Skipping temp dir disk space check for snapshot %s (temp dir disabled)",
+			shortID)
+	} else if !ok {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlWarn,
+			"Skipping disk space check for snapshot %s: size metadata unavailable",
+			shortID)
+	} else {
+		requiredWithMargin := requiredBytes + (requiredBytes / 10)
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlInfo,
+			"Checking disk space for snapshot %s temp restore: required=%s (includes 10%% safety margin)",
+			shortID, humanize.Bytes(requiredWithMargin))
+		if err := misc.CheckDiskSpace(tempBaseDir, requiredWithMargin); err != nil {
+			if misc.IsInsufficientDiskSpaceError(err) {
+				useTempDir = false
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlWarn,
+					"Insufficient disk space for temp dir %s (%s); restoring directly to %s",
+					tempBaseDir, err, restoreBaseDir)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlWarn,
+					"Disk space check failed for snapshot %s: %s", shortID, err)
+				return err
+			}
+		}
+	}
+
+	var extractDir string
+	if useTempDir {
+		extractDir, err = os.MkdirTemp(tempBaseDir, snap.ShortId)
+		if err != nil {
+			return fmt.Errorf("failed to create temp dir: %w", err)
+		}
+		paths.TempDir = extractDir
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlInfo,
+			"Created restic restore temp dir: %s",
+			extractDir)
+	} else {
+		extractDir = restoreBaseDir
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlInfo,
+			"Using direct restore target directory: %s",
+			extractDir)
+	}
+
+	// Register cleanup immediately after resource allocation to prevent leaks
+	shouldCleanup := resolveResticReseedCleanup(opts, cluster.Conf)
+	if !useTempDir {
+		shouldCleanup = false
+	}
+	paths.RequiresCleanup = shouldCleanup
+	cleanupOnExit := false
+	if normalizedMethod == "logical" {
+		defer server.runResticReseedCleanup(paths, shouldCleanup, "restic restore reseed")
+	} else if normalizedMethod == "physical" {
+		cleanupOnExit = true
+		defer func() {
+			if cleanupOnExit {
+				server.runResticReseedCleanup(paths, shouldCleanup, "restic restore reseed aborted")
+			}
+		}()
+	}
 
 	select {
 	case <-ctx.Done():
@@ -747,34 +997,11 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 	default:
 	}
 
-	requiredBytes, ok := getSnapshotSizeBytes(cluster, snapshotID)
-	if !ok {
-		cluster.LogModulePrintf(cluster.Conf.Verbose,
-			config.ConstLogModRestic,
-			config.LvlWarn,
-			"Skipping disk space check for snapshot %s: size metadata unavailable",
-			snapshotID)
-	} else {
-		requiredWithMargin := requiredBytes + (requiredBytes / 10)
-		cluster.LogModulePrintf(cluster.Conf.Verbose,
-			config.ConstLogModRestic,
-			config.LvlInfo,
-			"Checking disk space for snapshot %s restore: required=%s (includes 10%% safety margin)",
-			snapshotID, humanize.Bytes(requiredWithMargin))
-		if err := resticCheckDiskSpace(extractDir, requiredWithMargin); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose,
-				config.ConstLogModRestic,
-				config.LvlWarn,
-				"Disk space check failed for snapshot %s: %s", snapshotID, err)
-			return err
-		}
-	}
-
 	cluster.LogModulePrintf(cluster.Conf.Verbose,
 		config.ConstLogModRestic,
 		config.LvlInfo,
 		"Extracting snapshot %s to %s using restore strategy",
-		snapshotID, extractDir)
+		resticLogSnapshotID(cluster, snapshotID), extractDir)
 
 	overwrite := opts.Overwrite
 	if overwrite == "" {
@@ -785,9 +1012,9 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 		config.ConstLogModRestic,
 		config.LvlInfo,
 		"Restoring snapshot %s with overwrite policy %s (sources=%d)",
-		snapshotID, overwrite, len(paths.SourcePaths))
+		resticLogSnapshotID(cluster, snapshotID), overwrite, len(paths.SourcePaths))
 
-	if err := resticRestoreSnapshot(ctx, cluster.ResticManager, snapshotID, extractDir, paths.SourcePaths, overwrite); err != nil {
+	if err := cluster.ResticManager.RestoreSnapshotSync(snapshotID, extractDir, paths.SourcePaths, overwrite); err != nil {
 		return fmt.Errorf("failed to restore from restic: %w", err)
 	}
 
@@ -817,23 +1044,28 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 		config.ConstLogModRestic,
 		config.LvlInfo,
 		"Successfully extracted and verified snapshot %s",
-		snapshotID)
+		resticLogSnapshotID(cluster, snapshotID))
 	if len(paths.TargetPaths) == 0 {
 		return fmt.Errorf("no target paths available for reseed")
 	}
 
-	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
 	switch normalizedMethod {
 	case "logical":
 		return server.JobReseedLogicalBackupFromPath(paths.BackupType, paths.TargetPaths[0])
 	case "physical":
-		return server.JobReseedPhysicalBackupFromPath(paths.BackupType, paths.TargetPaths[0])
+		err := server.JobReseedPhysicalBackupFromPath(paths.BackupType, paths.TargetPaths[0])
+		if err != nil {
+			return err
+		}
+		cleanupOnExit = false
+		server.registerResticReseedCleanup("reseed"+paths.BackupType, paths, shouldCleanup)
+		return nil
 	default:
 		return fmt.Errorf("invalid reseed method: %s", method)
 	}
 }
 
-func (server *ServerMonitor) reseedFromResticDump(ctx context.Context, snapshotID, method string, opts ResticReseedOptions) error {
+func (server *ServerMonitor) reseedFromResticDump(ctx context.Context, snapshotID, method string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -851,6 +1083,10 @@ func (server *ServerMonitor) reseedFromResticDump(ctx context.Context, snapshotI
 	if cluster.ResticManager == nil {
 		return fmt.Errorf("restic manager not available")
 	}
+	snap := cluster.ResticManager.GetSnapshot(snapshotID)
+	if snap == nil {
+		return fmt.Errorf("restic snapshot %s not found", snapshotID)
+	}
 
 	paths, err := server.prepareResticReseedPaths(snapshotID, method)
 	if err != nil {
@@ -865,29 +1101,49 @@ func (server *ServerMonitor) reseedFromResticDump(ctx context.Context, snapshotI
 		return fmt.Errorf("dump strategy requires exactly one file, got %d", len(paths.SourcePaths))
 	}
 
-	sourceFile := paths.SourcePaths[0]
+	sourceFile := filepath.Join(paths.SourceBasePath, paths.SourcePaths[0])
 	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
 	if normalizedMethod == "logical" && paths.BackupType == config.ConstBackupLogicalTypeMysqldump {
-		// Supported
-	} else if normalizedMethod == "physical" {
-		return fmt.Errorf("dump strategy not supported for physical backups (use restore strategy)")
-	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlInfo,
+			"Dump strategy supported for backup type %s; starting stream",
+			paths.BackupType)
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlInfo,
+			"Streaming snapshot %s using dump strategy (file: %s)",
+			snap.ShortId, sourceFile)
+
+		return server.reseedMysqldumpFromResticStream(ctx, snapshotID, sourceFile)
+	}
+	if normalizedMethod != "physical" {
 		return fmt.Errorf("dump strategy not supported for backup type: %s", paths.BackupType)
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose,
 		config.ConstLogModRestic,
 		config.LvlInfo,
-		"Dump strategy supported for backup type %s; starting stream",
+		"Dump strategy supported for physical backup %s; preparing SST stream",
 		paths.BackupType)
+
+	payload := map[string]string{
+		"restic_snapshot_id":      snapshotID,
+		"restic_source_base_path": paths.SourceBasePath,
+		"restic_source_path":      sourceFile,
+	}
+	if err := server.JobReseedPhysicalBackupWithPayload(paths.BackupType, "STREAM", payload); err != nil {
+		return err
+	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose,
 		config.ConstLogModRestic,
 		config.LvlInfo,
-		"Streaming snapshot %s using dump strategy (file: %s)",
-		snapshotID, sourceFile)
+		"Queued SST stream for snapshot %s (file: %s)",
+		resticLogSnapshotID(cluster, snapshotID), sourceFile)
 
-	return server.reseedMysqldumpFromResticStream(ctx, snapshotID, sourceFile)
+	return nil
 }
 
 func (server *ServerMonitor) executeMysqlRestore(reader io.Reader) error {
@@ -965,11 +1221,17 @@ func (server *ServerMonitor) reseedMysqldumpFromResticStream(ctx context.Context
 	default:
 	}
 
+	snap := cluster.ResticManager.GetSnapshot(snapshotID)
+	if snap == nil {
+		return fmt.Errorf("snapshot %s not found in restic manager", snapshotID)
+	}
+
+	logSnapshotID := snap.ShortId
 	cluster.LogModulePrintf(cluster.Conf.Verbose,
 		config.ConstLogModRestic,
 		config.LvlInfo,
 		"Starting mysqldump stream from restic: snapshot=%s file=%s",
-		snapshotID, filePath)
+		logSnapshotID, filePath)
 
 	pr, pw := io.Pipe()
 	errCh := make(chan error, 1)
@@ -1003,7 +1265,7 @@ func (server *ServerMonitor) reseedMysqldumpFromResticStream(ctx context.Context
 	}()
 
 	var reader io.Reader = pr
-	var gzReader *gzip.Reader
+	var gzReader *pgzip.Reader
 	if strings.HasSuffix(strings.ToLower(filePath), ".gz") {
 		cluster.LogModulePrintf(cluster.Conf.Verbose,
 			config.ConstLogModRestic,
@@ -1011,7 +1273,7 @@ func (server *ServerMonitor) reseedMysqldumpFromResticStream(ctx context.Context
 			"Detected gzip-compressed mysqldump stream: %s",
 			filePath)
 		var err error
-		gzReader, err = gzip.NewReader(pr)
+		gzReader, err = pgzip.NewReaderN(pr, cluster.Conf.SSTSendBuffer, cluster.Conf.CompressBackupsParallelBlocks)
 		if err != nil {
 			_ = pr.CloseWithError(err)
 			return fmt.Errorf("failed to create gzip reader: %w", err)
@@ -1065,12 +1327,12 @@ func (server *ServerMonitor) reseedMysqldumpFromResticStream(ctx context.Context
 	cluster.LogModulePrintf(cluster.Conf.Verbose,
 		config.ConstLogModRestic,
 		config.LvlInfo,
-		"Completed mysqldump stream from restic: snapshot=%s", snapshotID)
+		"Completed mysqldump stream from restic: snapshot=%s", logSnapshotID)
 
 	return nil
 }
 
-func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshotID, method string, opts ResticReseedOptions) error {
+func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshotID, method string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -1086,6 +1348,13 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 		return fmt.Errorf("mount operations are disabled (FUSE not available)")
 	}
 
+	snap := cluster.ResticManager.GetSnapshot(snapshotID)
+	if snap == nil {
+		return fmt.Errorf("snapshot %s not found in restic manager", resticLogSnapshotID(cluster, snapshotID))
+	}
+
+	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
+
 	paths, err := server.prepareResticReseedPaths(snapshotID, method)
 	if err != nil {
 		return fmt.Errorf("failed to prepare paths: %w", err)
@@ -1097,46 +1366,22 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 	default:
 	}
 
-	tempDir := opts.TempDir
-	if tempDir == "" {
-		if cluster.Conf.BackupResticReseedTempDir != "" {
-			tempDir = cluster.Conf.BackupResticReseedTempDir
-		} else {
-			tempDir = os.TempDir()
-		}
+	clusterName := strings.TrimSpace(cluster.GetClusterName())
+	if clusterName == "" {
+		return fmt.Errorf("cluster name is empty")
 	}
 
-	mountDir, err := resticMkdirTemp(tempDir, "restic-mount-*")
-	if err != nil {
+	mountDir := filepath.Join("/mnt/restic", clusterName)
+	if cluster.Conf.BackupResticMountDir != "" {
+		mountDir = cluster.Conf.BackupResticMountDir
+	}
+	if err := os.MkdirAll(mountDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create mount dir: %w", err)
 	}
 
 	// Register cleanup immediately after resource allocation to prevent leaks
 	paths.TempDir = mountDir
-	paths.RequiresCleanup = true
 	paths.IsMounted = true
-	defer func() {
-		shouldCleanup := true
-		if opts.Cleanup != nil {
-			shouldCleanup = *opts.Cleanup
-		} else if cluster.Conf != nil {
-			shouldCleanup = cluster.Conf.BackupResticReseedCleanup
-		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose,
-			config.ConstLogModRestic,
-			config.LvlInfo,
-			"Cleanup after restic mount reseed: enabled=%t",
-			shouldCleanup)
-		if shouldCleanup {
-			paths.RequiresCleanup = true
-			if err := server.cleanupResticReseed(paths); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose,
-					config.ConstLogModRestic,
-					config.LvlWarn,
-					"Cleanup failed: %s", err)
-			}
-		}
-	}()
 
 	select {
 	case <-ctx.Done():
@@ -1144,13 +1389,20 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 	default:
 	}
 
+	shortID := snap.ShortId
+	// Generate unique user ID for this reseed operation
+	userID := fmt.Sprintf("reseed-%s-%s-%d", server.Id, shortID, time.Now().UnixNano())
+
+	mountOpt := backupmgr.NewResticMountOption(mountDir)
+	mountOpt.PathTemplate = []string{"ids/%i"}
 	cluster.LogModulePrintf(cluster.Conf.Verbose,
 		config.ConstLogModRestic,
 		config.LvlInfo,
-		"Mounting restic repo at %s",
-		mountDir)
+		"Mounting restic repo with short-id path template 'ids/%i' (shortID: %s, userID: %s)",
+		shortID, userID)
 
-	if err := resticMountRepo(ctx, cluster.ResticManager, mountDir); err != nil {
+	// Mount the repo (will reuse existing mount if already mounted at same path)
+	if err := cluster.ResticManager.MountRepoWithOptions(mountOpt); err != nil {
 		return fmt.Errorf("failed to mount restic repo: %w", err)
 	}
 
@@ -1160,23 +1412,36 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 		"Successfully mounted restic repo at %s",
 		mountDir)
 
+	// Acquire mount reference to prevent unmount while we're using it
+	if err := cluster.ResticManager.AcquireMountRef(userID); err != nil {
+		return fmt.Errorf("failed to acquire mount reference: %w", err)
+	}
+
+	// Ensure mount reference is released when we're done
+	defer func() {
+		cluster.ResticManager.ReleaseMountRef(userID)
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlDbg,
+			"Released mount reference for userID: %s", userID)
+	}()
+
 	select {
 	case <-ctx.Done():
 		return fmt.Errorf("restic mount reseed canceled: %w", ctx.Err())
 	default:
 	}
 
-	snapshotPath := filepath.Join(mountDir, "snapshots", snapshotID)
-	paths.TargetPaths = make([]string, len(paths.SourcePaths))
-	for i, sourcePath := range paths.SourcePaths {
-		paths.TargetPaths[i] = filepath.Join(snapshotPath, sourcePath)
+	snapshotPath := filepath.Join(mountDir, fmt.Sprintf("ids/%s", shortID))
+	if err := waitForResticSnapshotPath(ctx, snapshotPath); err != nil {
+		return fmt.Errorf("snapshot path not ready: %w", err)
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose,
-		config.ConstLogModRestic,
-		config.LvlInfo,
-		"Using mounted snapshot path: %s (sources=%d)",
-		snapshotPath, len(paths.SourcePaths))
+	if len(paths.SourcePaths) == 0 {
+		return fmt.Errorf("no source paths available in snapshot %s", resticLogSnapshotID(cluster, shortID))
+	}
+
+	paths.TargetPaths = append(paths.TargetPaths, filepath.Join(snapshotPath, paths.SourceBasePath, paths.SourcePaths[0]))
 
 	if err := server.verifyRestoredBackup(paths); err != nil {
 		return fmt.Errorf("backup verification failed: %w", err)
@@ -1186,7 +1451,7 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 		config.ConstLogModRestic,
 		config.LvlInfo,
 		"Successfully verified mounted snapshot %s",
-		snapshotID)
+		shortID)
 	if len(paths.TargetPaths) == 0 {
 		return fmt.Errorf("no target paths available for reseed")
 	}
@@ -1197,7 +1462,6 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 	default:
 	}
 
-	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
 	switch normalizedMethod {
 	case "logical":
 		return server.JobReseedLogicalBackupFromPath(paths.BackupType, paths.TargetPaths[0])
@@ -1205,5 +1469,29 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 		return server.JobReseedPhysicalBackupFromPath(paths.BackupType, paths.TargetPaths[0])
 	default:
 		return fmt.Errorf("invalid reseed method: %s", method)
+	}
+}
+
+func waitForResticSnapshotPath(ctx context.Context, snapshotPath string) error {
+	if snapshotPath == "" {
+		return fmt.Errorf("snapshot path is empty")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, err := os.Stat(snapshotPath); err == nil {
+		return nil
+	}
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if _, err := os.Stat(snapshotPath); err == nil {
+				return nil
+			}
+		}
 	}
 }

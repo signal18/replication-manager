@@ -710,6 +710,9 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReseedFromParent)),
 	))
+
+	// Register restic-specific routes
+	repman.RegisterResticRoutes(router)
 }
 
 // @Summary Retrieve servers for a specific cluster

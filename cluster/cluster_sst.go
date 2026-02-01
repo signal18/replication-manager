@@ -33,6 +33,8 @@ type SST struct {
 	cluster           *Cluster
 }
 
+type SSTStreamOpener func() (io.ReadCloser, int64, error)
+
 type ProtectedSSTconnections struct {
 	SSTconnections map[int]*SST
 	sync.Mutex
@@ -450,6 +452,106 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, uncom
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Backup has been sent, closing connection!")
 	}
+	return nil
+}
+
+func (cluster *Cluster) SSTRunSenderStream(sourceName string, opener SSTStreamOpener, sv *ServerMonitor, uncompress bool) error {
+	var err error
+	port, _ := strconv.Atoi(sv.SSTPort)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlWarn, "SST Reseed stream to port %s server %s", sv.SSTPort, sv.Host)
+
+	if cluster.Conf.SchedulerReceiverUseSSL {
+		return cluster.SSTRunSenderStreamSSL(sourceName, opener, sv, uncompress)
+	}
+
+	client, err := net.Dial("tcp", net.JoinHostPort(sv.Host, fmt.Sprintf("%d", port)))
+	if err != nil {
+		return fmt.Errorf("SST Reseed stream failed connection to port %s server %s %s ", sv.SSTPort, sv.Host, err)
+	}
+	defer client.Close()
+
+	if err = cluster.sstSendStream(client, sourceName, opener, sv, uncompress); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Backup stream failed to send, closing connection!")
+		return fmt.Errorf("Error sending SST stream to server %s: %s ", sv.Host, err)
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Backup stream has been sent, closing connection!")
+	return nil
+}
+
+func (cluster *Cluster) SSTRunSenderStreamSSL(sourceName string, opener SSTStreamOpener, sv *ServerMonitor, uncompress bool) error {
+	var (
+		client *tls.Conn
+		err    error
+	)
+	port, _ := strconv.Atoi(sv.SSTPort)
+
+	tlsconfig := &tls.Config{InsecureSkipVerify: true}
+	if client, err = tls.Dial("tcp", fmt.Sprintf("%s:%d", sv.Host, port), tlsconfig); err != nil {
+		return fmt.Errorf("SST Reseed stream failed connection via SSL to port %s server %s %s ", sv.SSTPort, sv.Host, err)
+	}
+	defer client.Close()
+
+	if err = cluster.sstSendStream(client, sourceName, opener, sv, uncompress); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Backup stream failed to send via SSL, closing connection!")
+		return fmt.Errorf("Error sending SST stream to server %s: %s ", sv.Host, err)
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Backup stream has been sent via SSL, closing connection!")
+	return nil
+}
+
+func (cluster *Cluster) sstSendStream(client net.Conn, sourceName string, opener SSTStreamOpener, sv *ServerMonitor, uncompress bool) error {
+	reader, expectedSize, err := opener()
+	if err != nil {
+		return fmt.Errorf("SST stream for %s failed to open source: %s", sourceName, err)
+	}
+
+	if reader == nil {
+		return fmt.Errorf("SST stream failed: reader is nil")
+	}
+
+	if rc, ok := reader.(io.ReadCloser); ok {
+		defer rc.Close()
+	}
+
+	streamReader := reader
+	if uncompress && strings.HasSuffix(strings.ToLower(sourceName), ".gz") {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST stream decompressing gzip source: %s", sourceName)
+		gzReader, err := gzip.NewReader(reader)
+		if err != nil {
+			return fmt.Errorf("SST stream failed to init gzip reader for %s: %w", sourceName, err)
+		}
+		defer gzReader.Close()
+		streamReader = gzReader
+	}
+
+	bufSize := cluster.Conf.SSTSendBuffer
+	if bufSize <= 0 {
+		bufSize = 16384
+	}
+	buffer := make([]byte, bufSize)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST streaming source: %s to node: %s port: %s", sourceName, sv.Host, sv.SSTPort)
+	bytesSent, err := io.CopyBuffer(client, streamReader, buffer)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST stream failed to write: %s", err)
+		return err
+	}
+
+	if expectedSize > 0 {
+		if uncompress {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST stream completed for %s: sent=%d (source expected=%d)", sourceName, bytesSent, expectedSize)
+		} else if int64(bytesSent) != expectedSize {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlWarn, "SST stream size mismatch for %s: sent=%d expected=%d", sourceName, bytesSent, expectedSize)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST stream completed for %s: sent=%d expected=%d", sourceName, bytesSent, expectedSize)
+		}
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST stream completed for %s: sent=%d", sourceName, bytesSent)
+	}
+
 	return nil
 }
 

@@ -108,6 +108,14 @@ func (cluster *Cluster) JobsGetEntries() (config.JobEntries, error) {
 	}
 
 	for _, s := range cluster.Servers {
+		if s == nil {
+			continue
+		}
+		if !s.JobsHasEntries() {
+			if err := s.JobsRefreshEntries(); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Jobs refresh skipped for %s: %s", s.URL, err)
+			}
+		}
 		entries.Servers[s.Id] = s.JobsGetEntries()
 	}
 
