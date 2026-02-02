@@ -418,6 +418,47 @@ func getSnapshotSizeBytes(cluster *Cluster, snapshotID string) (uint64, bool) {
 	return uint64(selected.Size), true
 }
 
+// getSnapshotLogicalSplitUser returns split-user flag from backup metadata when available.
+// Returns (splitUser, true) when matching metadata is found.
+func getSnapshotLogicalSplitUser(cluster *Cluster, snapshotID string) (bool, bool) {
+	if cluster == nil || cluster.BackupMetaMap == nil || strings.TrimSpace(snapshotID) == "" {
+		return false, false
+	}
+	var selected *backupmgr.BackupMetadata
+	cluster.BackupMetaMap.Range(func(_, value any) bool {
+		meta, ok := value.(*backupmgr.BackupMetadata)
+		if !ok || meta == nil {
+			return true
+		}
+		if strings.TrimSpace(meta.ResticSnapshotID) != snapshotID {
+			return true
+		}
+		if meta.BackupMethod != backupmgr.BackupMethodLogical {
+			return true
+		}
+		if selected == nil {
+			selected = meta
+			return true
+		}
+		if selected.EndTime.IsZero() && !meta.EndTime.IsZero() {
+			selected = meta
+			return true
+		}
+		if meta.EndTime.After(selected.EndTime) {
+			selected = meta
+			return true
+		}
+		if meta.EndTime.Equal(selected.EndTime) && meta.StartTime.After(selected.StartTime) {
+			selected = meta
+		}
+		return true
+	})
+	if selected == nil {
+		return false, false
+	}
+	return selected.SplitUser, true
+}
+
 // prepareResticReseedPaths builds the list of snapshot paths to restore for a restic reseed.
 // It inspects snapshot metadata to determine backup tool, layout (file vs directory), and
 // compression, then returns a populated ResticReseedPaths descriptor for later stages.
@@ -861,6 +902,14 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 	if cluster.ResticManager == nil {
 		return fmt.Errorf("restic manager not available")
 	}
+	resticVersion, found := cluster.GetToolsVersion("restic")
+	if !found {
+		return fmt.Errorf("restic version not found")
+	}
+
+	if resticVersion.Lower("0.17") && opts.Overwrite != "" {
+		return fmt.Errorf("restic overwrite option requires restic version 0.17 or higher")
+	}
 
 	snap := cluster.ResticManager.GetSnapshot(snapshotID)
 	if snap == nil {
@@ -1051,9 +1100,36 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 
 	switch normalizedMethod {
 	case "logical":
-		return server.JobReseedLogicalBackupFromPath(paths.BackupType, paths.TargetPaths[0])
+		logicalOpts := JobReseedLogicalOptions{}
+		if splitUser, ok := getSnapshotLogicalSplitUser(cluster, snapshotID); ok {
+			logicalOpts.SplitUser = &splitUser
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlInfo,
+				"Using restic metadata split-user=%t for snapshot %s",
+				splitUser, resticLogSnapshotID(cluster, snapshotID))
+		}
+		return server.JobReseedLogicalBackupFromPathWithOptions(paths.BackupType, paths.TargetPaths[0], logicalOpts)
 	case "physical":
-		err := server.JobReseedPhysicalBackupFromPath(paths.BackupType, paths.TargetPaths[0])
+		payload := map[string]string{
+			"restic_snapshot_id": snapshotID,
+		}
+		sourceBase := strings.TrimSpace(paths.SourceBasePath)
+		if sourceBase != "" {
+			payload["restic_source_base_path"] = sourceBase
+		}
+		if len(paths.SourcePaths) > 0 {
+			sourcePath := filepath.Join(sourceBase, paths.SourcePaths[0])
+			if strings.TrimSpace(sourcePath) != "" {
+				payload["restic_source_path"] = sourcePath
+			}
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlInfo,
+			"Including restic metadata for physical reseed: snapshot=%s source=%s",
+			resticLogSnapshotID(cluster, snapshotID), payload["restic_source_path"])
+		err := server.JobReseedPhysicalBackupWithPayload(paths.BackupType, paths.TargetPaths[0], payload)
 		if err != nil {
 			return err
 		}

@@ -1010,7 +1010,15 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 	return err
 }
 
+type JobReseedLogicalOptions struct {
+	SplitUser *bool
+}
+
 func (server *ServerMonitor) JobReseedLogicalBackupFromPath(backtype, backupPath string) error {
+	return server.JobReseedLogicalBackupFromPathWithOptions(backtype, backupPath, JobReseedLogicalOptions{})
+}
+
+func (server *ServerMonitor) JobReseedLogicalBackupFromPathWithOptions(backtype, backupPath string, opts JobReseedLogicalOptions) error {
 	var err error
 	cluster := server.ClusterGroup
 	if backtype == "default" {
@@ -1106,6 +1114,11 @@ func (server *ServerMonitor) JobReseedLogicalBackupFromPath(backtype, backupPath
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s from path %s request for server: %s", backtype, backupfile, server.URL)
 	if backtype == config.ConstBackupLogicalTypeMysqldump {
 		splitUser := master.LastBackupMeta.Logical != nil && master.LastBackupMeta.Logical.SplitUser
+		if opts.SplitUser != nil {
+			splitUser = *opts.SplitUser
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+				"Using split-user override=%t for reseed logical backup from path %s on %s", splitUser, backupfile, server.URL)
+		}
 		err = server.JobReseedMysqldump(backupfile, cluster.Conf.BackupRestoreMysqlUser && splitUser)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())

@@ -121,6 +121,9 @@ func (repman *ReplicationManager) handlerMuxResticMountToggle(w http.ResponseWri
 			if !mountOpt.NoLock {
 				mountOpt.NoLock = true
 			}
+			if !mountOpt.AllowOther {
+				mountOpt.AllowOther = true
+			}
 		} else {
 			// Use default options if not provided
 			mountOpt = backupmgr.NewResticMountOption(mountDir)

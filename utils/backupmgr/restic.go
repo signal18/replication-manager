@@ -256,8 +256,9 @@ type ResticMountOption struct {
 // NewResticMountOption creates a ResticMountOption with sensible defaults
 func NewResticMountOption(targetDir string) ResticMountOption {
 	return ResticMountOption{
-		TargetDir: targetDir,
-		NoLock:    true, // Default to no-lock for better concurrency
+		TargetDir:  targetDir,
+		NoLock:     true, // Default to no-lock for better concurrency
+		AllowOther: true, // Default to allow other users
 	}
 }
 
@@ -1544,7 +1545,7 @@ func (repo *ResticManager) MountRepoWithOptions(opt ResticMountOption) error {
 			}
 			if strings.Contains(msg, "fuse") {
 				lines := strings.Split(msg, "\n")
-				return fmt.Errorf("restic mount failed (fuse): exit=%d, err=%s", exitCode, lines[0])
+				return fmt.Errorf("restic mount failed (fuse): exit=%d, err=%v", exitCode, lines)
 			}
 
 			return fmt.Errorf("restic mount failed: exit=%d, err=%w", exitCode, err)

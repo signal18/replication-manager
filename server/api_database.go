@@ -5286,7 +5286,7 @@ func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWr
 		TempDir:    req.TempDir,
 		UseTempDir: req.UseTempDir,
 		Cleanup:    req.Cleanup,
-		Overwrite:  "if-newer",
+		Overwrite:  req.Overwrite,
 	}
 	queueReq := cluster.ResticReseedRequest{
 		SnapshotID: req.SnapshotID,
@@ -5327,4 +5327,5 @@ type ResticReseedRequest struct {
 	TempDir    string `json:"tempDir,omitempty"`
 	UseTempDir *bool  `json:"useTempDir,omitempty"`
 	Cleanup    *bool  `json:"cleanup,omitempty"`
+	Overwrite  string `json:"overwrite,omitempty"`
 }
