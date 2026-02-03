@@ -1443,6 +1443,7 @@ type ReconciliationReport struct {
 
 // SnapshotMetadataSummary captures lightweight backup metadata associated with a restic snapshot.
 type SnapshotMetadataSummary struct {
+	Dest             string    `json:"dest,omitempty"`
 	BackupMethod     string    `json:"backupMethod"`
 	BackupTool       string    `json:"backupTool"`
 	BackupLine       string    `json:"backupLine"`
@@ -1484,6 +1485,7 @@ func buildSnapshotMetadataSummary(meta *backupmgr.BackupMetadata, method backupm
 		return nil
 	}
 	return &SnapshotMetadataSummary{
+		Dest:             strings.TrimSpace(meta.Dest),
 		BackupMethod:     backupMethodToString(method),
 		BackupTool:       meta.BackupTool,
 		BackupLine:       meta.BackupLine,
