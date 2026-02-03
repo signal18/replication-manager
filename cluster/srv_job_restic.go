@@ -525,7 +525,7 @@ func (server *ServerMonitor) prepareResticReseedPaths(snapshotID, method string)
 	}
 
 	sourceBasePath := strings.TrimSpace(metadata.ResticBasePath)
-	if override := resolveResticSourcePaths(metadata, sourceBasePath, sourcePaths); len(override) > 0 {
+	if override := resolveResticSourcePaths(metadata, &sourceBasePath, sourcePaths); len(override) > 0 {
 		sourcePaths = override
 	}
 
@@ -559,6 +559,9 @@ func resolveResticReseedCompression(cluster *Cluster, metadata *SnapshotMetadata
 	if cluster == nil {
 		return false, "default"
 	}
+	if compressed, ok := compressionFromSummary(metadata); ok {
+		return compressed, "snapshot-metadata"
+	}
 	if metaCompressed, ok := getSnapshotCompression(cluster, snapshotID); ok {
 		return metaCompressed, "snapshot-metadata"
 	}
@@ -580,15 +583,23 @@ func backupMethodFromSummary(metadata *SnapshotMetadataSummary) backupmgr.Backup
 	}
 }
 
-func resolveResticSourcePaths(metadata *SnapshotMetadataSummary, sourceBasePath string, defaultPaths []string) []string {
-	if metadata == nil {
+func resolveResticSourcePaths(metadata *SnapshotMetadataSummary, sourceBasePath *string, defaultPaths []string) []string {
+	if metadata == nil || sourceBasePath == nil {
 		return defaultPaths
 	}
-	base := strings.TrimSpace(sourceBasePath)
+	base := strings.TrimSpace(*sourceBasePath)
+	dest := strings.TrimSpace(metadata.Dest)
+	if dest == "" {
+		return defaultPaths
+	}
 	if base == "" {
+		if filepath.IsAbs(dest) {
+			*sourceBasePath = filepath.Dir(dest)
+			return []string{filepath.Base(dest)}
+		}
 		return defaultPaths
 	}
-	resolvedPath, ok := resolveSnapshotDestPath(base, metadata.Dest)
+	resolvedPath, ok := resolveSnapshotDestPath(base, dest)
 	if !ok {
 		return defaultPaths
 	}
@@ -600,6 +611,19 @@ func resolveResticSourcePaths(metadata *SnapshotMetadataSummary, sourceBasePath 
 		return defaultPaths
 	}
 	return []string{rel}
+}
+
+func compressionFromSummary(metadata *SnapshotMetadataSummary) (bool, bool) {
+	if metadata == nil {
+		return false, false
+	}
+	if isCompressedDest(metadata.Dest) {
+		return true, true
+	}
+	if metadata.Compressed {
+		return true, true
+	}
+	return false, false
 }
 
 // verifyRestoredBackup confirms the restic restore produced the expected files or directories.
@@ -618,6 +642,17 @@ func (server *ServerMonitor) verifyRestoredBackup(paths *ResticReseedPaths) erro
 		info, err := os.Stat(targetPath)
 		if err != nil {
 			if os.IsNotExist(err) {
+				if !paths.IsDirectory {
+					if altPath := alternateCompressionPath(targetPath); altPath != "" {
+						if _, altErr := os.Stat(altPath); altErr == nil {
+							paths.TargetPaths[i] = altPath
+							if len(paths.SourcePaths) > i {
+								paths.SourcePaths[i] = filepath.Base(altPath)
+							}
+							continue
+						}
+					}
+				}
 				return fmt.Errorf("backup file/dir not found: %s", targetPath)
 			}
 			return fmt.Errorf("failed to stat %s: %w", targetPath, err)
@@ -662,6 +697,18 @@ func (server *ServerMonitor) verifyRestoredBackup(paths *ResticReseedPaths) erro
 	}
 
 	return nil
+}
+
+func alternateCompressionPath(path string) string {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return ""
+	}
+	lower := strings.ToLower(trimmed)
+	if strings.HasSuffix(lower, ".gz") {
+		return strings.TrimSuffix(trimmed, filepath.Ext(trimmed))
+	}
+	return trimmed + ".gz"
 }
 
 type resticUnmounter interface {

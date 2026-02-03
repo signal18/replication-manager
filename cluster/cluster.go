@@ -1020,6 +1020,9 @@ func (cluster *Cluster) Stop() {
 	cluster.Lock()
 	defer cluster.Unlock()
 	if cluster.ResticManager != nil {
+		if err := cluster.ResticManager.UnmountRepo(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Restic unmount on shutdown failed: %s", err)
+		}
 		cluster.ResticManager.ShutdownWorker()
 	}
 	cluster.CloseRefreshTemplateMD5Worker()

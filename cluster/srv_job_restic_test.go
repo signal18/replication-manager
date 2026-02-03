@@ -2,6 +2,8 @@ package cluster
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -104,5 +106,29 @@ func TestUpdateResticReseedJobErrorUsesMetadataTool(t *testing.T) {
 		}
 	} else {
 		t.Fatalf("expected reseedxtrabackup job to be updated")
+	}
+}
+
+func TestVerifyRestoredBackupUsesAlternateCompressionPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseFile := filepath.Join(tmpDir, "mariabackup.xbtream")
+	if err := os.WriteFile(baseFile, []byte("payload"), 0644); err != nil {
+		t.Fatalf("failed to write base file: %v", err)
+	}
+	paths := &ResticReseedPaths{
+		SnapshotID:  "snap-1",
+		IsDirectory: false,
+		SourcePaths: []string{"mariabackup.xbtream.gz"},
+		TargetPaths: []string{baseFile + ".gz"},
+	}
+	server := &ServerMonitor{}
+	if err := server.verifyRestoredBackup(paths); err != nil {
+		t.Fatalf("expected fallback to alternate path, got %v", err)
+	}
+	if paths.TargetPaths[0] != baseFile {
+		t.Fatalf("expected target path to update to %q, got %q", baseFile, paths.TargetPaths[0])
+	}
+	if paths.SourcePaths[0] != filepath.Base(baseFile) {
+		t.Fatalf("expected source path to update to %q, got %q", filepath.Base(baseFile), paths.SourcePaths[0])
 	}
 }

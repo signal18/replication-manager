@@ -519,9 +519,13 @@ func (cluster *Cluster) StartResticManager() error {
 	resticManager.OnPurgeComplete = cluster.handleResticPurgeComplete
 	resticManager.SetPermissions(cluster.Conf.GetResticDirMode(), cluster.Conf.GetResticFileMode())
 	resticManager.SetOperationTimeout(cluster.Conf.GetResticTimeout())
+	resticManager.AllowUnsafeMount = cluster.Conf.BackupResticAllowUnsafeMount
 	resticManager.AutoDetectAndDisableMount()
 	cluster.ResticManager = resticManager
 	cluster.ReloadResticEnv()
+	if cluster.ResticManager.RecoverMountState() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Recovered restic mount state on startup")
+	}
 	go cluster.ResticFetchRepo()
 	return nil
 }
@@ -1496,6 +1500,7 @@ type SnapshotMetadataSummary struct {
 	BackupLine       string    `json:"backupLine"`
 	StartTime        time.Time `json:"startTime"`
 	EndTime          time.Time `json:"endTime"`
+	Compressed       bool      `json:"compressed,omitempty"`
 	BackupSessionID  string    `json:"backupSessionID,omitempty"`
 	ResticSnapshotID string    `json:"resticSnapshotID,omitempty"`
 	ResticBasePath   string    `json:"resticBasePath,omitempty"`
@@ -1531,6 +1536,10 @@ func buildSnapshotMetadataSummary(meta *backupmgr.BackupMetadata, method backupm
 	if meta == nil {
 		return nil
 	}
+	compressed := meta.Compressed
+	if !compressed && isCompressedDest(meta.Dest) {
+		compressed = true
+	}
 	return &SnapshotMetadataSummary{
 		Dest:             strings.TrimSpace(meta.Dest),
 		BackupMethod:     backupMethodToString(method),
@@ -1538,10 +1547,25 @@ func buildSnapshotMetadataSummary(meta *backupmgr.BackupMetadata, method backupm
 		BackupLine:       meta.BackupLine,
 		StartTime:        meta.StartTime,
 		EndTime:          meta.EndTime,
+		Compressed:       compressed,
 		BackupSessionID:  meta.BackupSessionID,
 		ResticSnapshotID: meta.ResticSnapshotID,
 		ResticBasePath:   strings.TrimSpace(basepath),
 	}
+}
+
+func isCompressedDest(dest string) bool {
+	lower := strings.ToLower(strings.TrimSpace(dest))
+	if lower == "" {
+		return false
+	}
+	suffixes := []string{".gz", ".tgz", ".zst", ".xz", ".bz2", ".lz4", ".zip"}
+	for _, suffix := range suffixes {
+		if strings.HasSuffix(lower, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 // SummarizeSnapshotMetadata returns lightweight metadata associated with the given snapshot paths.

@@ -1474,6 +1474,30 @@ func TestResticMountOptionValidate(t *testing.T) {
 	}
 }
 
+func TestResticMountStatePersistence(t *testing.T) {
+	repo := NewResticRepo("", testMsgChan, 0)
+	cacheDir := t.TempDir()
+	repo.UpdateEnvKey("RESTIC_CACHE_DIR", cacheDir)
+	statePath := repo.mountStatePath()
+	if statePath == "" {
+		t.Fatalf("expected mount state path to be set")
+	}
+	if err := repo.writeMountState("/mnt/restic/test", 1234); err != nil {
+		t.Fatalf("writeMountState failed: %v", err)
+	}
+	state, err := repo.loadMountState()
+	if err != nil {
+		t.Fatalf("loadMountState failed: %v", err)
+	}
+	if state.Path != "/mnt/restic/test" || state.PID != 1234 {
+		t.Fatalf("unexpected mount state: %+v", state)
+	}
+	repo.clearMountState()
+	if _, err := os.Stat(statePath); !os.IsNotExist(err) {
+		t.Fatalf("expected mount state file removed, got %v", err)
+	}
+}
+
 // TestBuildMountArgs tests the command argument builder
 func TestBuildMountArgs(t *testing.T) {
 	repo := newPausedRepo(t)

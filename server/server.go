@@ -812,6 +812,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupResticMountDir, "backup-restic-mount-dir", "", "Base directory for restic FUSE mounts. Empty uses /mnt/restic/<clustername>.")
 	flags.BoolVar(&conf.BackupResticReseedCleanup, "backup-restic-reseed-cleanup", true, "Automatically cleanup temporary files after restic reseed")
 	flags.IntVar(&conf.BackupResticReseedTimeout, "backup-restic-reseed-timeout", 3600, "Timeout in seconds for restic reseed operations")
+	flags.BoolVar(&conf.BackupResticAllowUnsafeMount, "backup-restic-allow-unsafe-mount", false, "Allow using a restic mount created by another process (unsafe)")
 	flags.BoolVar(&conf.BackupStreaming, "backup-streaming", false, "Backup streaming to cloud ")
 	flags.BoolVar(&conf.BackupStreamingDebug, "backup-streaming-debug", false, "Debug mode for streaming to cloud ")
 	flags.StringVar(&conf.BackupStreamingAwsAccessKeyId, "backup-streaming-aws-access-key-id", "admin", "Backup AWS key id")
