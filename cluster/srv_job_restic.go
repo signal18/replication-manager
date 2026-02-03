@@ -934,6 +934,7 @@ func (server *ServerMonitor) JobReseedFromRestic(snapshotID, method, strategy st
 			config.LvlErr,
 			"Restic reseed failed with strategy %s: %s",
 			selectedStrategy, err)
+		server.updateResticReseedJobError(snapshotID, normalizedMethod, err)
 		return fmt.Errorf("reseed strategy %s failed: %w", selectedStrategy, err)
 	}
 
@@ -944,6 +945,42 @@ func (server *ServerMonitor) JobReseedFromRestic(snapshotID, method, strategy st
 		selectedStrategy)
 
 	return nil
+}
+
+func (server *ServerMonitor) updateResticReseedJobError(snapshotID, method string, err error) {
+	if server == nil || err == nil {
+		return
+	}
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return
+	}
+	backupTool := ""
+	if summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil); summary != nil {
+		backupTool = strings.TrimSpace(summary.BackupTool)
+	}
+	if backupTool == "" {
+		normalizedMethod := strings.ToLower(strings.TrimSpace(method))
+		switch normalizedMethod {
+		case "physical":
+			backupTool = cluster.Conf.BackupPhysicalType
+		case "logical":
+			backupTool = cluster.Conf.BackupLogicalType
+		}
+	}
+	if strings.TrimSpace(backupTool) == "" {
+		return
+	}
+	task := "reseed" + backupTool
+	if err := server.JobsUpdateState(task, err.Error(), 5, 1); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlWarn,
+			"Failed to update restic reseed job state for %s: %s", task, err)
+	}
+	if server.HasReseedingState(task) {
+		server.SetInReseedBackup("")
+	}
 }
 
 func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapshotID, method string, opts ResticReseedOptions) error {
