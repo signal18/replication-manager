@@ -2414,6 +2414,16 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		if mycluster.ResticManager != nil {
 			mycluster.ResticManager.AllowUnsafeMount = mycluster.Conf.BackupResticAllowUnsafeMount
 		}
+	case "backup-restic-mount-allow-other":
+		mycluster.Conf.BackupResticMountAllowOther = !mycluster.Conf.BackupResticMountAllowOther
+	case "backup-restic-mount-no-default-permissions":
+		mycluster.Conf.BackupResticMountNoDefaultPermissions = !mycluster.Conf.BackupResticMountNoDefaultPermissions
+	case "backup-restic-mount-owner-root":
+		mycluster.Conf.BackupResticMountOwnerRoot = !mycluster.Conf.BackupResticMountOwnerRoot
+	case "backup-restic-mount-no-lock":
+		mycluster.Conf.BackupResticMountNoLock = !mycluster.Conf.BackupResticMountNoLock
+	case "backup-restic-mount-quiet":
+		mycluster.Conf.BackupResticMountQuiet = !mycluster.Conf.BackupResticMountQuiet
 	case "backup-binlogs":
 		mycluster.SwitchBackupBinlogs()
 	case "compress-backups":
@@ -2916,6 +2926,37 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if mycluster.ResticManager != nil {
 			mycluster.ResticManager.AllowUnsafeMount = mycluster.Conf.BackupResticAllowUnsafeMount
 		}
+	case "backup-restic-mount-target-dir":
+		mycluster.Conf.BackupResticMountTargetDir = strings.TrimSpace(value)
+	case "backup-restic-mount-host":
+		mycluster.Conf.BackupResticMountHost = strings.TrimSpace(value)
+	case "backup-restic-mount-tag":
+		mycluster.Conf.BackupResticMountTag = strings.TrimSpace(value)
+	case "backup-restic-mount-path":
+		mycluster.Conf.BackupResticMountPath = strings.TrimSpace(value)
+	case "backup-restic-mount-path-template":
+		mycluster.Conf.BackupResticMountPathTemplate = strings.TrimSpace(value)
+	case "backup-restic-mount-time-template":
+		mycluster.Conf.BackupResticMountTimeTemplate = strings.TrimSpace(value)
+	case "backup-restic-mount-allow-other":
+		mycluster.Conf.BackupResticMountAllowOther = applyIsActive(mycluster.Conf.BackupResticMountAllowOther, isactive)
+	case "backup-restic-mount-no-default-permissions":
+		mycluster.Conf.BackupResticMountNoDefaultPermissions = applyIsActive(mycluster.Conf.BackupResticMountNoDefaultPermissions, isactive)
+	case "backup-restic-mount-owner-root":
+		mycluster.Conf.BackupResticMountOwnerRoot = applyIsActive(mycluster.Conf.BackupResticMountOwnerRoot, isactive)
+	case "backup-restic-mount-no-lock":
+		mycluster.Conf.BackupResticMountNoLock = applyIsActive(mycluster.Conf.BackupResticMountNoLock, isactive)
+	case "backup-restic-mount-verbose":
+		val, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for backup-restic-mount-verbose: %q", value)
+		}
+		if val < 0 || val > 3 {
+			return fmt.Errorf("backup-restic-mount-verbose must be between 0 and 3, got %d", val)
+		}
+		mycluster.Conf.BackupResticMountVerbose = val
+	case "backup-restic-mount-quiet":
+		mycluster.Conf.BackupResticMountQuiet = applyIsActive(mycluster.Conf.BackupResticMountQuiet, isactive)
 	case "backup-restic-purge-oldest-on-disk-threshold":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.BackupResticPurgeOldestOnDiskThreshold = val

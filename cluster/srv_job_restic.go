@@ -239,12 +239,11 @@ func resolveResticReseedStrategy(requestedStrategy, method, snapshotID string, c
 	}
 
 	if cluster != nil {
-		logSnapshotID := resticLogSnapshotID(cluster, snapshotID)
 		cluster.LogModulePrintf(cluster.Conf.Verbose,
 			config.ConstLogModRestic,
 			config.LvlInfo,
 			"Resolved restic reseed strategy: requested=%s method=%s snapshot=%s strategy=%s",
-			normalizedRequested, normalizedMethod, logSnapshotID, strategy)
+			normalizedRequested, normalizedMethod, resticLogSnapshotID(cluster, snapshotID), strategy)
 	}
 
 	return strategy
@@ -570,12 +569,11 @@ func (server *ServerMonitor) prepareResticReseedPaths(snapshotID, method string)
 	if len(sourcePaths) == 1 {
 		logSource = sourcePaths[0]
 	}
-	logSnapshotID := resticLogSnapshotID(cluster, snapshotID)
 	cluster.LogModulePrintf(cluster.Conf.Verbose,
 		config.ConstLogModRestic,
 		config.LvlInfo,
 		"Prepared restic reseed paths: snapshot=%s tool=%s isDir=%t sources=%d source=%s compressed=%t (%s)",
-		logSnapshotID, backupTool, isDirectory, len(sourcePaths), logSource, compressed, compressionSource)
+		resticLogSnapshotID(cluster, snapshotID), backupTool, isDirectory, len(sourcePaths), logSource, compressed, compressionSource)
 
 	return paths, nil
 }
@@ -677,6 +675,11 @@ func (server *ServerMonitor) verifyRestoredBackup(paths *ResticReseedPaths) erro
 							continue
 						}
 					}
+				} else {
+					// Try to create the directory if missing.
+					if mkErr := os.MkdirAll(targetPath, 0o755); mkErr == nil {
+						continue
+					}
 				}
 				return fmt.Errorf("backup file/dir not found: %s", targetPath)
 			}
@@ -713,12 +716,11 @@ func (server *ServerMonitor) verifyRestoredBackup(paths *ResticReseedPaths) erro
 	}
 
 	if cluster := server.ClusterGroup; cluster != nil {
-		logSnapshotID := resticLogSnapshotID(cluster, paths.SnapshotID)
 		cluster.LogModulePrintf(cluster.Conf.Verbose,
 			config.ConstLogModRestic,
 			config.LvlInfo,
 			"Verified restored backup: snapshot=%s targets=%d dir=%t",
-			logSnapshotID, len(paths.TargetPaths), paths.IsDirectory)
+			resticLogSnapshotID(cluster, paths.SnapshotID), len(paths.TargetPaths), paths.IsDirectory)
 	}
 
 	return nil
@@ -734,10 +736,6 @@ func alternateCompressionPath(path string) string {
 		return strings.TrimSuffix(trimmed, filepath.Ext(trimmed))
 	}
 	return trimmed + ".gz"
-}
-
-type resticUnmounter interface {
-	UnmountRepo() error
 }
 
 // cleanupResticReseed safely removes temporary resources created during a restic reseed operation.
@@ -1115,6 +1113,9 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 		return fmt.Errorf("restic overwrite option requires restic version 0.17 or higher")
 	}
 
+	// Use snapshotID:/path style for restic >= 0.16
+	useSubfolder := resticVersion.GreaterEqual("0.16")
+
 	snap := cluster.ResticManager.GetSnapshot(snapshotID)
 	if snap == nil {
 		return fmt.Errorf("restic snapshot %s not found", snapshotID)
@@ -1126,6 +1127,111 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 	paths, err := server.prepareResticReseedPaths(snapshotID, method)
 	if err != nil {
 		return fmt.Errorf("failed to prepare paths: %w", err)
+	}
+
+	logSnapshotID := resticLogSnapshotID(cluster, snapshotID)
+	metadataPathMatches := func(path string) (bool, error) {
+		summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil)
+		if summary == nil {
+			return false, fmt.Errorf("snapshot metadata not available")
+		}
+		path = filepath.Clean(strings.TrimSpace(path))
+		dest := strings.TrimSpace(summary.Dest)
+		if dest == "" {
+			return false, fmt.Errorf("snapshot metadata missing dest path")
+		}
+		base := strings.TrimSpace(summary.ResticBasePath)
+		if base == "" {
+			return filepath.Clean(dest) == path, nil
+		}
+		resolved, ok := resolveSnapshotDestPath(base, dest)
+		if !ok {
+			return false, fmt.Errorf("failed to resolve snapshot dest path from metadata")
+		}
+		return filepath.Clean(resolved) == path, nil
+	}
+	checkSnapshotPath := func(path string) (bool, error) {
+		if cluster.ResticManager != nil {
+			exists, err := cluster.snapshotPathExists(snapshotID, path)
+			if err == nil {
+				return exists, nil
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlWarn,
+				"Failed to list restic snapshot %s for path %s: %s; falling back to metadata",
+				logSnapshotID, path, err)
+		}
+		return metadataPathMatches(path)
+	}
+
+	for i, sourcePath := range paths.SourcePaths {
+		trimmed := strings.TrimSpace(sourcePath)
+		if trimmed == "" {
+			return fmt.Errorf("source path %d is empty", i)
+		}
+		fullPath := filepath.Join(paths.SourceBasePath, trimmed)
+		exists, err := checkSnapshotPath(fullPath)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlErr,
+				"Restic snapshot path check failed: snapshot=%s path=%s err=%s",
+				logSnapshotID, fullPath, err)
+			return fmt.Errorf("failed to verify restic snapshot path %s: %w", fullPath, err)
+		}
+		if !exists && !paths.IsDirectory {
+			alt := alternateCompressionPath(trimmed)
+			if alt != "" && alt != trimmed {
+				altPath := filepath.Join(paths.SourceBasePath, alt)
+				altExists, altErr := checkSnapshotPath(altPath)
+				if altErr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose,
+						config.ConstLogModRestic,
+						config.LvlErr,
+						"Restic snapshot alternate path check failed: snapshot=%s path=%s err=%s",
+						logSnapshotID, altPath, altErr)
+					return fmt.Errorf("failed to verify restic snapshot alternate path %s: %w", altPath, altErr)
+				}
+				if altExists {
+					cluster.LogModulePrintf(cluster.Conf.Verbose,
+						config.ConstLogModRestic,
+						config.LvlWarn,
+						"Restic snapshot path %s not found; using alternate %s",
+						fullPath, altPath)
+					paths.SourcePaths[i] = alt
+					exists = true
+				}
+			}
+		}
+		if !exists {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlErr,
+				"Restic snapshot missing path: snapshot=%s path=%s",
+				logSnapshotID, fullPath)
+			return fmt.Errorf("restic snapshot %s missing path %s", logSnapshotID, fullPath)
+		}
+	}
+
+	restorePaths := paths.SourcePaths
+	// For restic < 0.16, we need to provide full paths (base + source) due to lack of subfolder support.
+	if !useSubfolder {
+		restorePaths = make([]string, len(paths.SourcePaths))
+		for i, sourcePath := range paths.SourcePaths {
+			restorePaths[i] = filepath.Join(paths.SourceBasePath, sourcePath)
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlInfo,
+			"Restic version %s uses full restore paths (base + source)",
+			resticVersion.ToFullString())
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlInfo,
+			"Restic version %s uses relative restore paths",
+			resticVersion.ToFullString())
 	}
 
 	select {
@@ -1236,7 +1342,6 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 	if normalizedMethod == "logical" {
 		defer server.runResticReseedCleanup(paths, shouldCleanup, "restic restore reseed", "")
 	} else if normalizedMethod == "physical" {
-		cleanupOnExit = true
 		defer func() {
 			if cleanupOnExit {
 				server.runResticReseedCleanup(paths, shouldCleanup, "restic restore reseed aborted", "")
@@ -1254,20 +1359,21 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 		config.ConstLogModRestic,
 		config.LvlInfo,
 		"Extracting snapshot %s to %s using restore strategy",
-		resticLogSnapshotID(cluster, snapshotID), extractDir)
+		logSnapshotID, extractDir)
 
 	overwrite := opts.Overwrite
-	if overwrite == "" {
-		overwrite = "if-newer"
-	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose,
 		config.ConstLogModRestic,
 		config.LvlInfo,
 		"Restoring snapshot %s with overwrite policy %s (sources=%d)",
-		resticLogSnapshotID(cluster, snapshotID), overwrite, len(paths.SourcePaths))
+		logSnapshotID, overwrite, len(paths.SourcePaths))
 
-	if err := server.restoreSnapshotWithFallback(cluster, snapshotID, extractDir, paths, overwrite); err != nil {
+	if useSubfolder {
+		snapshotID = fmt.Sprintf("%s:%s", snapshotID, paths.SourceBasePath)
+	}
+
+	if err := server.restoreSnapshotWithFallback(cluster, snapshotID, extractDir, paths, restorePaths, overwrite); err != nil {
 		return err
 	}
 
@@ -1280,6 +1386,18 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 	paths.TargetPaths = make([]string, len(paths.SourcePaths))
 	for i, sourcePath := range paths.SourcePaths {
 		paths.TargetPaths[i] = filepath.Join(extractDir, sourcePath)
+
+		if !useSubfolder {
+			oldPath := filepath.Join(extractDir, paths.SourceBasePath, sourcePath)
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlInfo,
+				"Moving restored path from temp to final target with restic before 0.16: %s -> %s",
+				oldPath, paths.TargetPaths[i])
+			if err := os.Rename(oldPath, paths.TargetPaths[i]); err != nil {
+				return fmt.Errorf("failed to move restored path to final target %s: %w", paths.TargetPaths[i], err)
+			}
+		}
 	}
 	if len(paths.TargetPaths) > 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose,
@@ -1297,7 +1415,7 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 		config.ConstLogModRestic,
 		config.LvlInfo,
 		"Successfully extracted and verified snapshot %s",
-		resticLogSnapshotID(cluster, snapshotID))
+		logSnapshotID)
 	if len(paths.TargetPaths) == 0 {
 		return fmt.Errorf("no target paths available for reseed")
 	}
@@ -1311,7 +1429,7 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 				config.ConstLogModRestic,
 				config.LvlInfo,
 				"Using restic metadata split-user=%t for snapshot %s",
-				splitUser, resticLogSnapshotID(cluster, snapshotID))
+				splitUser, logSnapshotID)
 		}
 		return server.JobReseedLogicalBackupFromPathWithOptions(paths.BackupType, paths.TargetPaths[0], logicalOpts)
 	case "physical":
@@ -1332,12 +1450,13 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 			config.ConstLogModRestic,
 			config.LvlInfo,
 			"Including restic metadata for physical reseed: snapshot=%s source=%s",
-			resticLogSnapshotID(cluster, snapshotID), payload["restic_source_path"])
+			logSnapshotID, payload["restic_source_path"])
+		cleanupOnExit = false
 		err := server.JobReseedPhysicalBackupWithPayload(paths.BackupType, paths.TargetPaths[0], payload)
 		if err != nil {
+			server.runResticReseedCleanup(paths, shouldCleanup, "restic restore reseed aborted", "")
 			return err
 		}
-		cleanupOnExit = false
 		server.registerResticReseedCleanup("reseed"+paths.BackupType, paths, shouldCleanup, "")
 		return nil
 	default:
@@ -1345,25 +1464,35 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 	}
 }
 
-func (server *ServerMonitor) restoreSnapshotWithFallback(cluster *Cluster, snapshotID, extractDir string, paths *ResticReseedPaths, overwrite string) error {
+func (server *ServerMonitor) restoreSnapshotWithFallback(cluster *Cluster, snapshotID, extractDir string, paths *ResticReseedPaths, restorePaths []string, overwrite string) error {
 	if cluster == nil || cluster.ResticManager == nil {
 		return fmt.Errorf("restic manager not available")
 	}
-	if paths == nil || len(paths.SourcePaths) == 0 {
+	if paths == nil || len(restorePaths) == 0 {
 		return fmt.Errorf("no source paths available for restore")
 	}
-	if err := cluster.ResticManager.RestoreSnapshotSync(snapshotID, extractDir, paths.SourcePaths, overwrite); err == nil {
+	if err := cluster.ResticManager.RestoreSnapshotSync(snapshotID, extractDir, restorePaths, overwrite); err == nil {
 		return nil
-	} else if len(paths.SourcePaths) == 1 {
-		alt := alternateCompressionPath(paths.SourcePaths[0])
-		if alt != "" && alt != paths.SourcePaths[0] {
+	} else if len(restorePaths) == 1 {
+		alt := alternateCompressionPath(restorePaths[0])
+		if alt != "" && alt != restorePaths[0] {
 			cluster.LogModulePrintf(cluster.Conf.Verbose,
 				config.ConstLogModRestic,
 				config.LvlWarn,
 				"Restore failed for %s; retrying with alternate path %s",
-				paths.SourcePaths[0], alt)
+				restorePaths[0], alt)
 			if err := cluster.ResticManager.RestoreSnapshotSync(snapshotID, extractDir, []string{alt}, overwrite); err == nil {
-				paths.SourcePaths = []string{alt}
+				if !filepath.IsAbs(alt) {
+					paths.SourcePaths = []string{alt}
+					return nil
+				}
+				if strings.TrimSpace(paths.SourceBasePath) != "" {
+					if rel, relErr := filepath.Rel(paths.SourceBasePath, alt); relErr == nil && rel != "." && rel != "" && !strings.HasPrefix(rel, "..") {
+						paths.SourcePaths = []string{rel}
+						return nil
+					}
+				}
+				paths.SourcePaths = []string{filepath.Base(alt)}
 				return nil
 			}
 		}
@@ -1410,6 +1539,85 @@ func (server *ServerMonitor) reseedFromResticDump(ctx context.Context, snapshotI
 	}
 
 	sourceFile := filepath.Join(paths.SourceBasePath, paths.SourcePaths[0])
+	logSnapshotID := resticLogSnapshotID(cluster, snapshotID)
+	metadataPathMatches := func(path string) (bool, error) {
+		summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil)
+		if summary == nil {
+			return false, fmt.Errorf("snapshot metadata not available")
+		}
+		path = filepath.Clean(strings.TrimSpace(path))
+		dest := strings.TrimSpace(summary.Dest)
+		if dest == "" {
+			return false, fmt.Errorf("snapshot metadata missing dest path")
+		}
+		base := strings.TrimSpace(summary.ResticBasePath)
+		if base == "" {
+			return filepath.Clean(dest) == path, nil
+		}
+		resolved, ok := resolveSnapshotDestPath(base, dest)
+		if !ok {
+			return false, fmt.Errorf("failed to resolve snapshot dest path from metadata")
+		}
+		return filepath.Clean(resolved) == path, nil
+	}
+	checkSnapshotPath := func(path string) (bool, error) {
+		if cluster.ResticManager != nil {
+			exists, err := cluster.snapshotPathExists(snapshotID, path)
+			if err == nil {
+				return exists, nil
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlWarn,
+				"Failed to list restic snapshot %s for file %s: %s; falling back to metadata",
+				logSnapshotID, path, err)
+		}
+		return metadataPathMatches(path)
+	}
+
+	sourceExists, err := checkSnapshotPath(sourceFile)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlErr,
+			"Restic snapshot file check failed: snapshot=%s file=%s err=%s",
+			logSnapshotID, sourceFile, err)
+		return fmt.Errorf("failed to verify restic snapshot file %s: %w", sourceFile, err)
+	}
+	if !sourceExists {
+		alt := alternateCompressionPath(paths.SourcePaths[0])
+		if alt != "" && alt != paths.SourcePaths[0] {
+			altSource := filepath.Join(paths.SourceBasePath, alt)
+			altExists, altErr := checkSnapshotPath(altSource)
+			if altErr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlErr,
+					"Restic snapshot alternate file check failed: snapshot=%s file=%s err=%s",
+					logSnapshotID, altSource, altErr)
+				return fmt.Errorf("failed to verify restic snapshot alternate file %s: %w", altSource, altErr)
+			}
+			if altExists {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlWarn,
+					"Restic snapshot file %s not found; using alternate %s",
+					sourceFile, altSource)
+				paths.SourcePaths[0] = alt
+				sourceFile = altSource
+				sourceExists = true
+			}
+		}
+	}
+	if !sourceExists {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlErr,
+			"Restic snapshot missing file: snapshot=%s file=%s",
+			logSnapshotID, sourceFile)
+		return fmt.Errorf("restic snapshot %s missing file %s", logSnapshotID, sourceFile)
+	}
+
 	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
 	if normalizedMethod == "logical" && paths.BackupType == config.ConstBackupLogicalTypeMysqldump {
 		cluster.LogModulePrintf(cluster.Conf.Verbose,
@@ -1490,15 +1698,9 @@ func (server *ServerMonitor) executeMysqlRestore(reader io.Reader) error {
 		return fmt.Errorf("mysql client not found at %s: %w", mysqlPath, err)
 	}
 
-	args := []string{
-		fmt.Sprintf("--host=%s", server.Host),
-		fmt.Sprintf("--port=%s", server.Port),
-		fmt.Sprintf("--user=%s", cluster.GetDbUser()),
-		fmt.Sprintf("--password=%s", cluster.GetDbPass()),
-		"--force",
-	}
-
-	cmd := exec.Command(mysqlPath, args...)
+	cliParams := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client")...)
+	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)
+	cmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 	cmd.Stdin = reader
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

@@ -760,6 +760,19 @@ type Config struct {
 	BackupResticPurgeOldestOnDiskThreshold    int    `mapstructure:"backup-restic-purge-oldest-on-disk-threshold" toml:"backup-restic-purge-oldest-on-disk-treshold" json:"backupResticPurgeOldestOnDiskTreshold"`
 	BackupResticReseedStrategy                string `mapstructure:"backup-restic-reseed-strategy" toml:"backup-restic-reseed-strategy" json:"backupResticReseedStrategy"`
 	BackupResticReseedTempDir                 string `mapstructure:"backup-restic-reseed-temp-dir" toml:"backup-restic-reseed-temp-dir" json:"backupResticReseedTempDir"`
+	// Restic mount settings (used for manual mount operations).
+	BackupResticMountTargetDir            string `mapstructure:"backup-restic-mount-target-dir" toml:"backup-restic-mount-target-dir" json:"backupResticMountTargetDir"`
+	BackupResticMountHost                 string `mapstructure:"backup-restic-mount-host" toml:"backup-restic-mount-host" json:"backupResticMountHost"`
+	BackupResticMountTag                  string `mapstructure:"backup-restic-mount-tag" toml:"backup-restic-mount-tag" json:"backupResticMountTag"`
+	BackupResticMountPath                 string `mapstructure:"backup-restic-mount-path" toml:"backup-restic-mount-path" json:"backupResticMountPath"`
+	BackupResticMountPathTemplate         string `mapstructure:"backup-restic-mount-path-template" toml:"backup-restic-mount-path-template" json:"backupResticMountPathTemplate"`
+	BackupResticMountTimeTemplate         string `mapstructure:"backup-restic-mount-time-template" toml:"backup-restic-mount-time-template" json:"backupResticMountTimeTemplate"`
+	BackupResticMountAllowOther           bool   `mapstructure:"backup-restic-mount-allow-other" toml:"backup-restic-mount-allow-other" json:"backupResticMountAllowOther"`
+	BackupResticMountNoDefaultPermissions bool   `mapstructure:"backup-restic-mount-no-default-permissions" toml:"backup-restic-mount-no-default-permissions" json:"backupResticMountNoDefaultPermissions"`
+	BackupResticMountOwnerRoot            bool   `mapstructure:"backup-restic-mount-owner-root" toml:"backup-restic-mount-owner-root" json:"backupResticMountOwnerRoot"`
+	BackupResticMountNoLock               bool   `mapstructure:"backup-restic-mount-no-lock" toml:"backup-restic-mount-no-lock" json:"backupResticMountNoLock"`
+	BackupResticMountVerbose              int    `mapstructure:"backup-restic-mount-verbose" toml:"backup-restic-mount-verbose" json:"backupResticMountVerbose"`
+	BackupResticMountQuiet                bool   `mapstructure:"backup-restic-mount-quiet" toml:"backup-restic-mount-quiet" json:"backupResticMountQuiet"`
 	// BackupResticMountDir defines the base directory for restic FUSE mounts.
 	BackupResticMountDir                   string                 `scope:"server" mapstructure:"backup-restic-mount-dir" toml:"backup-restic-mount-dir" json:"backupResticMountDir"`
 	BackupResticReseedCleanup              bool                   `mapstructure:"backup-restic-reseed-cleanup" toml:"backup-restic-reseed-cleanup" json:"backupResticReseedCleanup"`

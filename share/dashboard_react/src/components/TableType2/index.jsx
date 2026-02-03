@@ -32,16 +32,35 @@ function TableType2({
           )}
           {Array.isArray(item.value) &&
             item.value.map((subItem, subIndex) => {
+              const isFullWidth = subItem.fullWidth
+
               return (
                 <React.Fragment key={subIndex}>
-                  <GridItem className={`${styles.row} ${rowClassName}`}>
-                    <Box className={`${styles.label} ${styles.subLabel}`} pl={3}>
-                      {subItem.key}
-                    </Box>
-                  </GridItem>
-                  <GridItem className={`${styles.row} ${rowClassName}`}>
-                    <Box className={`${styles.value} ${valueClassName}`}>{subItem.value}</Box>
-                  </GridItem>
+                  {isFullWidth ? (
+                    <>
+                      {subItem.key && (
+                        <GridItem colSpan={2} className={`${styles.row} ${rowClassName}`}>
+                          <Box className={`${styles.label} ${styles.subLabel}`} pl={3}>
+                            {subItem.key}
+                          </Box>
+                        </GridItem>
+                      )}
+                      <GridItem colSpan={2} className={`${styles.row} ${rowClassName}`}>
+                        <Box className={`${styles.value} ${valueClassName}`}>{subItem.value}</Box>
+                      </GridItem>
+                    </>
+                  ) : (
+                    <>
+                      <GridItem className={`${styles.row} ${rowClassName}`}>
+                        <Box className={`${styles.label} ${styles.subLabel}`} pl={3}>
+                          {subItem.key}
+                        </Box>
+                      </GridItem>
+                      <GridItem className={`${styles.row} ${rowClassName}`}>
+                        <Box className={`${styles.value} ${valueClassName}`}>{subItem.value}</Box>
+                      </GridItem>
+                    </>
+                  )}
                   {rowDivider && subIndex < item.value.length - 1 && (
                     <GridItem colSpan={2} className={styles.dividerRow}>
                       <Box className={styles.divider} />

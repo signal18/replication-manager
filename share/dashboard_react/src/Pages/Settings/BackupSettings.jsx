@@ -18,6 +18,7 @@ import RMIconButton from '../../components/RMIconButton'
 import remarkGfm from 'remark-gfm'
 import ResticPurgeStrategy from './ResticPurgeStrategy'
 import NumberInput from '../../components/NumberInput'
+import ResticMountSettings from './ResticMountSettings'
 
 const sizeGenerator = () => {
   const result = []
@@ -75,7 +76,7 @@ The script will be executed with the following parameters:
 7. Cluster Name
 `
 
-const BackupPostScriptRequirement = `Post-backup script will execute a script.  
+  const BackupPostScriptRequirement = `Post-backup script will execute a script.  
 The script will be executed with the following parameters:  
 1. Cluster name
 2. DB Server Host
@@ -525,59 +526,59 @@ Leave it empty to use restic's default hostname (no alias).`
     },
     ...(selectedCluster?.config?.compressBackups
       ? [
-          {
-            key: (
-              <Stack>
-                <Text>Compression Level (1=fastest, 9=best)</Text>
-              </Stack>
-            ),
-            value: (
-              <NumberInput
-                min={1}
-                max={9}
-                value={selectedCluster?.config?.compressBackupsCompressionLevel}
-                showEditButton={true}
-                showConfirmModal={true}
-                confirmTitle={`Confirm change compression level to: `}
-                onConfirm={(value) =>
-                  dispatch(
-                    setSetting({
-                      clusterName: selectedCluster?.name,
-                      setting: 'compress-backups-compression-level',
-                      value: value
-                    })
-                  )
-                }
-              />
-            )
-          },
-          {
-            key: (
-              <Stack>
-                <Text>Parallel Blocks (higher=faster restore)</Text>
-              </Stack>
-            ),
-            value: (
-              <NumberInput
-                min={1}
-                max={32}
-                value={selectedCluster?.config?.compressBackupsParallelBlocks}
-                showEditButton={true}
-                showConfirmModal={true}
-                confirmTitle={`Confirm change parallel blocks to: `}
-                onConfirm={(value) =>
-                  dispatch(
-                    setSetting({
-                      clusterName: selectedCluster?.name,
-                      setting: 'compress-backups-parallel-blocks',
-                      value: value
-                    })
-                  )
-                }
-              />
-            )
-          }
-        ]
+        {
+          key: (
+            <Stack>
+              <Text>Compression Level (1=fastest, 9=best)</Text>
+            </Stack>
+          ),
+          value: (
+            <NumberInput
+              min={1}
+              max={9}
+              value={selectedCluster?.config?.compressBackupsCompressionLevel}
+              showEditButton={true}
+              showConfirmModal={true}
+              confirmTitle={`Confirm change compression level to: `}
+              onConfirm={(value) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'compress-backups-compression-level',
+                    value: value
+                  })
+                )
+              }
+            />
+          )
+        },
+        {
+          key: (
+            <Stack>
+              <Text>Parallel Blocks (higher=faster restore)</Text>
+            </Stack>
+          ),
+          value: (
+            <NumberInput
+              min={1}
+              max={32}
+              value={selectedCluster?.config?.compressBackupsParallelBlocks}
+              showEditButton={true}
+              showConfirmModal={true}
+              confirmTitle={`Confirm change parallel blocks to: `}
+              onConfirm={(value) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'compress-backups-parallel-blocks',
+                    value: value
+                  })
+                )
+              }
+            />
+          )
+        }
+      ]
       : []),
     {
       key: 'Backup Buffer Size',
@@ -970,22 +971,21 @@ Leave it empty to use restic's default hostname (no alias).`
           )
         },
         {
-          key: 'Allow unsafe restic mount (reuse external mount)',
-          value: (
-            <RMSwitch
-              isChecked={selectedCluster?.config?.backupResticAllowUnsafeMount}
-              isDisabled={user?.grants['cluster-settings'] == false}
-              confirmTitle={'Confirm switch settings for backup-restic-allow-unsafe-mount?'}
-              onChange={() =>
-                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-restic-allow-unsafe-mount' }))
-              }
-            />
-          )
-        },
-        {
           key: 'Restic Purge Strategy',
           value: (
             <ResticPurgeStrategy clusterName={selectedCluster?.name} config={selectedCluster?.config} />
+          )
+        },
+        {
+          key: 'Restic Mount Settings',
+          value: (
+            <Box width="100%">
+              <ResticMountSettings
+                clusterName={selectedCluster?.name}
+                config={selectedCluster?.config}
+                user={user}
+              />
+            </Box>
           )
         }
       ]
