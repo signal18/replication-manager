@@ -66,7 +66,8 @@ type ResticReseedOptions struct {
 
 // ResticReseedCleanupEntry tracks deferred cleanup work for async reseed tasks.
 type ResticReseedCleanupEntry struct {
-	Paths *ResticReseedPaths
+	Paths       *ResticReseedPaths
+	MountUserID string
 }
 
 // ResticReseedRequest captures a queued restic reseed request for asynchronous processing.
@@ -75,6 +76,30 @@ type ResticReseedRequest struct {
 	Method     string
 	Strategy   string
 	Options    ResticReseedOptions
+}
+
+func (server *ServerMonitor) buildResticReseedPayload(summary *SnapshotMetadataSummary, sourceBase, strategy string) map[string]string {
+	payload := map[string]string{}
+	if summary == nil {
+		return payload
+	}
+	if strings.TrimSpace(summary.ResticSnapshotID) != "" {
+		payload["restic_snapshot_id"] = strings.TrimSpace(summary.ResticSnapshotID)
+	}
+	if strings.TrimSpace(strategy) != "" {
+		payload["restic_reseed_strategy"] = strings.TrimSpace(strategy)
+	}
+	base := strings.TrimSpace(sourceBase)
+	if base == "" {
+		base = strings.TrimSpace(summary.ResticBasePath)
+	}
+	if base != "" {
+		payload["restic_source_base_path"] = base
+	}
+	if strings.TrimSpace(summary.Dest) != "" {
+		payload["restic_source_path"] = strings.TrimSpace(summary.Dest)
+	}
+	return payload
 }
 
 func resticLogSnapshotID(cluster *Cluster, snapshotID string) string {
@@ -725,12 +750,21 @@ type resticUnmounter interface {
 //   - Never panics
 //
 // The function respects the RequiresCleanup flag in paths to skip unnecessary cleanup operations.
-func (server *ServerMonitor) cleanupResticReseed(paths *ResticReseedPaths) error {
+func (server *ServerMonitor) cleanupResticReseed(paths *ResticReseedPaths, mountUserID string) error {
 	if paths == nil {
 		return fmt.Errorf("restic reseed paths are nil")
 	}
 
 	cluster := server.ClusterGroup
+	if paths.IsMounted {
+		if strings.TrimSpace(mountUserID) != "" && cluster != nil && cluster.ResticManager != nil {
+			cluster.ResticManager.ReleaseMountRef(mountUserID)
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlDbg,
+				"Released mount reference for userID: %s", mountUserID)
+		}
+	}
 
 	// Skip cleanup if not required.
 	if !paths.RequiresCleanup {
@@ -746,16 +780,12 @@ func (server *ServerMonitor) cleanupResticReseed(paths *ResticReseedPaths) error
 		return fmt.Errorf("cluster not available for cleanup")
 	}
 
-	// NOTE: We no longer automatically unmount here because mounts are now persistent
-	// and managed via ON/OFF toggle API. Mount references are released by the defer
-	// in reseedFromResticMount(), which allows unmount to proceed when requested.
-	// The IsMounted flag now just indicates that the reseed used a mount strategy,
-	// but cleanup no longer unmounts automatically.
 	if paths.IsMounted {
 		cluster.LogModulePrintf(cluster.Conf.Verbose,
 			config.ConstLogModRestic,
 			config.LvlInfo,
-			"Reseed used mount strategy - mount reference has been released but mount remains active for reuse")
+			"Reseed used mount strategy - mount reference released; mount remains active for reuse")
+		return nil
 	}
 
 	// Remove temporary directory if it exists.
@@ -792,8 +822,15 @@ func resolveResticReseedCleanup(opts ResticReseedOptions, conf *config.Config) b
 	return true
 }
 
-func (server *ServerMonitor) runResticReseedCleanup(paths *ResticReseedPaths, shouldCleanup bool, reason string) {
+func (server *ServerMonitor) runResticReseedCleanup(paths *ResticReseedPaths, shouldCleanup bool, reason string, mountUserID string) {
 	cluster := server.ClusterGroup
+	if server.HasWaitResticReseedCookie() {
+		if err := server.DelWaitResticReseedCookie(); err != nil {
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to clear restic reseed cookie: %s", err)
+			}
+		}
+	}
 	if !shouldCleanup {
 		if cluster != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose,
@@ -812,7 +849,7 @@ func (server *ServerMonitor) runResticReseedCleanup(paths *ResticReseedPaths, sh
 			"Running restic reseed cleanup (%s)", reason)
 	}
 
-	if err := server.cleanupResticReseed(paths); err != nil {
+	if err := server.cleanupResticReseed(paths, mountUserID); err != nil {
 		if cluster != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose,
 				config.ConstLogModRestic,
@@ -822,12 +859,12 @@ func (server *ServerMonitor) runResticReseedCleanup(paths *ResticReseedPaths, sh
 	}
 }
 
-func (server *ServerMonitor) registerResticReseedCleanup(task string, paths *ResticReseedPaths, shouldCleanup bool) {
+func (server *ServerMonitor) registerResticReseedCleanup(task string, paths *ResticReseedPaths, shouldCleanup bool, mountUserID string) {
 	if strings.TrimSpace(task) == "" || paths == nil {
 		return
 	}
 	cluster := server.ClusterGroup
-	if !shouldCleanup {
+	if !shouldCleanup && strings.TrimSpace(mountUserID) == "" {
 		if cluster != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose,
 				config.ConstLogModRestic,
@@ -841,7 +878,8 @@ func (server *ServerMonitor) registerResticReseedCleanup(task string, paths *Res
 	if server.resticReseedCleanup == nil {
 		server.resticReseedCleanup = make(map[string]*ResticReseedCleanupEntry)
 	}
-	server.resticReseedCleanup[task] = &ResticReseedCleanupEntry{Paths: paths}
+	paths.RequiresCleanup = shouldCleanup
+	server.resticReseedCleanup[task] = &ResticReseedCleanupEntry{Paths: paths, MountUserID: strings.TrimSpace(mountUserID)}
 	server.resticReseedCleanupMutex.Unlock()
 	if cluster != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose,
@@ -864,6 +902,12 @@ func (server *ServerMonitor) cleanupResticReseedForTask(task, reason string) {
 		}
 	}
 	server.resticReseedCleanupMutex.Unlock()
+	if err := server.DelWaitResticReseedCookie(); err != nil {
+		cluster := server.ClusterGroup
+		if cluster != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to clear restic reseed cookie: %s", err)
+		}
+	}
 	if entry == nil || entry.Paths == nil {
 		return
 	}
@@ -874,7 +918,7 @@ func (server *ServerMonitor) cleanupResticReseedForTask(task, reason string) {
 			config.LvlInfo,
 			"Cleaning up restic reseed resources for task %s (%s)", task, reason)
 	}
-	server.runResticReseedCleanup(entry.Paths, true, reason)
+	server.runResticReseedCleanup(entry.Paths, true, reason, entry.MountUserID)
 }
 
 var resticReseedTimeout = func(opts ResticReseedOptions, conf *config.Config) time.Duration {
@@ -905,6 +949,23 @@ func (server *ServerMonitor) JobReseedFromRestic(snapshotID, method, strategy st
 	if cluster.ResticManager == nil {
 		return fmt.Errorf("restic manager not available")
 	}
+	if server.HasWaitResticReseedCookie() {
+		return fmt.Errorf("restic reseed already in progress")
+	}
+	if err := server.SetWaitResticReseedCookie(); err != nil {
+		return fmt.Errorf("failed to set restic reseed cookie: %w", err)
+	}
+	handoffToJob := false
+	defer func() {
+		if handoffToJob {
+			return
+		}
+		if server.HasWaitResticReseedCookie() {
+			if err := server.DelWaitResticReseedCookie(); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to clear restic reseed cookie: %s", err)
+			}
+		}
+	}()
 
 	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
 	if normalizedMethod != "logical" && normalizedMethod != "physical" {
@@ -983,6 +1044,9 @@ func (server *ServerMonitor) JobReseedFromRestic(snapshotID, method, strategy st
 			selectedStrategy, err)
 		server.updateResticReseedJobError(snapshotID, normalizedMethod, err)
 		return fmt.Errorf("reseed strategy %s failed: %w", selectedStrategy, err)
+	}
+	if normalizedMethod == "physical" {
+		handoffToJob = true
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose,
@@ -1170,12 +1234,12 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 	paths.RequiresCleanup = shouldCleanup
 	cleanupOnExit := false
 	if normalizedMethod == "logical" {
-		defer server.runResticReseedCleanup(paths, shouldCleanup, "restic restore reseed")
+		defer server.runResticReseedCleanup(paths, shouldCleanup, "restic restore reseed", "")
 	} else if normalizedMethod == "physical" {
 		cleanupOnExit = true
 		defer func() {
 			if cleanupOnExit {
-				server.runResticReseedCleanup(paths, shouldCleanup, "restic restore reseed aborted")
+				server.runResticReseedCleanup(paths, shouldCleanup, "restic restore reseed aborted", "")
 			}
 		}()
 	}
@@ -1203,8 +1267,8 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 		"Restoring snapshot %s with overwrite policy %s (sources=%d)",
 		resticLogSnapshotID(cluster, snapshotID), overwrite, len(paths.SourcePaths))
 
-	if err := cluster.ResticManager.RestoreSnapshotSync(snapshotID, extractDir, paths.SourcePaths, overwrite); err != nil {
-		return fmt.Errorf("failed to restore from restic: %w", err)
+	if err := server.restoreSnapshotWithFallback(cluster, snapshotID, extractDir, paths, overwrite); err != nil {
+		return err
 	}
 
 	select {
@@ -1274,10 +1338,38 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 			return err
 		}
 		cleanupOnExit = false
-		server.registerResticReseedCleanup("reseed"+paths.BackupType, paths, shouldCleanup)
+		server.registerResticReseedCleanup("reseed"+paths.BackupType, paths, shouldCleanup, "")
 		return nil
 	default:
 		return fmt.Errorf("invalid reseed method: %s", method)
+	}
+}
+
+func (server *ServerMonitor) restoreSnapshotWithFallback(cluster *Cluster, snapshotID, extractDir string, paths *ResticReseedPaths, overwrite string) error {
+	if cluster == nil || cluster.ResticManager == nil {
+		return fmt.Errorf("restic manager not available")
+	}
+	if paths == nil || len(paths.SourcePaths) == 0 {
+		return fmt.Errorf("no source paths available for restore")
+	}
+	if err := cluster.ResticManager.RestoreSnapshotSync(snapshotID, extractDir, paths.SourcePaths, overwrite); err == nil {
+		return nil
+	} else if len(paths.SourcePaths) == 1 {
+		alt := alternateCompressionPath(paths.SourcePaths[0])
+		if alt != "" && alt != paths.SourcePaths[0] {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlWarn,
+				"Restore failed for %s; retrying with alternate path %s",
+				paths.SourcePaths[0], alt)
+			if err := cluster.ResticManager.RestoreSnapshotSync(snapshotID, extractDir, []string{alt}, overwrite); err == nil {
+				paths.SourcePaths = []string{alt}
+				return nil
+			}
+		}
+		return fmt.Errorf("failed to restore from restic: %w", err)
+	} else {
+		return fmt.Errorf("failed to restore from restic: %w", err)
 	}
 }
 
@@ -1344,12 +1436,26 @@ func (server *ServerMonitor) reseedFromResticDump(ctx context.Context, snapshotI
 		"Dump strategy supported for physical backup %s; preparing SST stream",
 		paths.BackupType)
 
-	payload := map[string]string{
+	if err := server.JobReseedPhysicalBackupWithPayload(paths.BackupType, "STREAM", map[string]string{
 		"restic_snapshot_id":      snapshotID,
 		"restic_source_base_path": paths.SourceBasePath,
 		"restic_source_path":      sourceFile,
-	}
-	if err := server.JobReseedPhysicalBackupWithPayload(paths.BackupType, "STREAM", payload); err != nil {
+	}); err != nil {
+		if len(paths.SourcePaths) == 1 {
+			alt := alternateCompressionPath(paths.SourcePaths[0])
+			if alt != "" && alt != paths.SourcePaths[0] {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlWarn,
+					"Dump reseed failed for %s; retrying with alternate path %s",
+					paths.SourcePaths[0], alt)
+				return server.JobReseedPhysicalBackupWithPayload(paths.BackupType, "STREAM", map[string]string{
+					"restic_snapshot_id":      snapshotID,
+					"restic_source_base_path": paths.SourceBasePath,
+					"restic_source_path":      filepath.Join(paths.SourceBasePath, alt),
+				})
+			}
+		}
 		return err
 	}
 
@@ -1591,9 +1697,6 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 	if cluster.Conf.BackupResticMountDir != "" {
 		mountDir = cluster.Conf.BackupResticMountDir
 	}
-	if err := os.MkdirAll(mountDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create mount dir: %w", err)
-	}
 
 	// Register cleanup immediately after resource allocation to prevent leaks
 	paths.TempDir = mountDir
@@ -1632,15 +1735,20 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 	if err := cluster.ResticManager.AcquireMountRef(userID); err != nil {
 		return fmt.Errorf("failed to acquire mount reference: %w", err)
 	}
+	refOwned := true
 
-	// Ensure mount reference is released when we're done
-	defer func() {
-		cluster.ResticManager.ReleaseMountRef(userID)
-		cluster.LogModulePrintf(cluster.Conf.Verbose,
-			config.ConstLogModRestic,
-			config.LvlDbg,
-			"Released mount reference for userID: %s", userID)
-	}()
+	// Release mount reference immediately only for logical reseed (physical job continues async)
+	if normalizedMethod != "physical" {
+		defer func() {
+			if refOwned {
+				cluster.ResticManager.ReleaseMountRef(userID)
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlDbg,
+				"Released mount reference for userID: %s", userID)
+		}()
+	}
 
 	select {
 	case <-ctx.Done():
@@ -1650,6 +1758,10 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 
 	snapshotPath := filepath.Join(mountDir, fmt.Sprintf("ids/%s", shortID))
 	if err := waitForResticSnapshotPath(ctx, snapshotPath); err != nil {
+		if normalizedMethod == "physical" && refOwned {
+			cluster.ResticManager.ReleaseMountRef(userID)
+			refOwned = false
+		}
 		return fmt.Errorf("snapshot path not ready: %w", err)
 	}
 
@@ -1660,6 +1772,10 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 	paths.TargetPaths = append(paths.TargetPaths, filepath.Join(snapshotPath, paths.SourceBasePath, paths.SourcePaths[0]))
 
 	if err := server.verifyRestoredBackup(paths); err != nil {
+		if normalizedMethod == "physical" && refOwned {
+			cluster.ResticManager.ReleaseMountRef(userID)
+			refOwned = false
+		}
 		return fmt.Errorf("backup verification failed: %w", err)
 	}
 
@@ -1682,7 +1798,50 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 	case "logical":
 		return server.JobReseedLogicalBackupFromPath(paths.BackupType, paths.TargetPaths[0])
 	case "physical":
-		return server.JobReseedPhysicalBackupFromPath(paths.BackupType, paths.TargetPaths[0])
+		task := "reseed" + paths.BackupType
+		if summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil); summary != nil {
+			payload := server.buildResticReseedPayload(summary, paths.SourceBasePath, "mount")
+			server.registerResticReseedCleanup(task, paths, true, userID)
+			if err := server.JobReseedPhysicalBackupWithPayload(paths.BackupType, paths.TargetPaths[0], payload); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlErr,
+					"Failed to enqueue physical reseed from mount for snapshot %s: %s",
+					resticLogSnapshotID(cluster, snapshotID), err)
+				if cluster.ResticManager != nil {
+					cluster.ResticManager.ReleaseMountRef(userID)
+					refOwned = false
+					cluster.LogModulePrintf(cluster.Conf.Verbose,
+						config.ConstLogModRestic,
+						config.LvlDbg,
+						"Released mount reference for userID: %s", userID)
+				}
+				server.cleanupResticReseedForTask(task, "mount reseed enqueue failure")
+				return err
+			}
+			refOwned = false
+			return nil
+		}
+		server.registerResticReseedCleanup(task, paths, true, userID)
+		if err := server.JobReseedPhysicalBackupFromPath(paths.BackupType, paths.TargetPaths[0]); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlErr,
+				"Failed to enqueue physical reseed from mount for snapshot %s: %s",
+				resticLogSnapshotID(cluster, snapshotID), err)
+			if cluster.ResticManager != nil {
+				cluster.ResticManager.ReleaseMountRef(userID)
+				refOwned = false
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlDbg,
+					"Released mount reference for userID: %s", userID)
+			}
+			server.cleanupResticReseedForTask(task, "mount reseed enqueue failure")
+			return err
+		}
+		refOwned = false
+		return nil
 	default:
 		return fmt.Errorf("invalid reseed method: %s", method)
 	}

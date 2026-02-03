@@ -1498,6 +1498,16 @@ func TestResticMountStatePersistence(t *testing.T) {
 	}
 }
 
+func TestEnsureResticMountDirRejectsNonEmpty(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "data.txt"), []byte("data"), 0644); err != nil {
+		t.Fatalf("failed to write file: %v", err)
+	}
+	if err := ensureResticMountDir(dir, 0700); err == nil {
+		t.Fatalf("expected non-empty mount dir to be rejected")
+	}
+}
+
 // TestBuildMountArgs tests the command argument builder
 func TestBuildMountArgs(t *testing.T) {
 	repo := newPausedRepo(t)

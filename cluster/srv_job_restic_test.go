@@ -132,3 +132,34 @@ func TestVerifyRestoredBackupUsesAlternateCompressionPath(t *testing.T) {
 		t.Fatalf("expected source path to update to %q, got %q", filepath.Base(baseFile), paths.SourcePaths[0])
 	}
 }
+
+func TestBuildResticReseedPayload(t *testing.T) {
+	server := &ServerMonitor{}
+	summary := &SnapshotMetadataSummary{
+		Dest:             "/backups/cluster1/mariabackup.xbtream.gz",
+		ResticSnapshotID: "snap-1",
+		ResticBasePath:   "/backups/cluster1",
+	}
+	payload := server.buildResticReseedPayload(summary, "/base", "mount")
+	if payload["restic_snapshot_id"] != "snap-1" {
+		t.Fatalf("expected restic snapshot id")
+	}
+	if payload["restic_reseed_strategy"] != "mount" {
+		t.Fatalf("expected restic reseed strategy")
+	}
+	if payload["restic_source_base_path"] != "/base" {
+		t.Fatalf("expected source base path override")
+	}
+	if payload["restic_source_path"] != "/backups/cluster1/mariabackup.xbtream.gz" {
+		t.Fatalf("expected source path from dest")
+	}
+}
+
+func TestAlternateCompressionPathSwap(t *testing.T) {
+	if alt := alternateCompressionPath("/tmp/mariabackup.xbtream.gz"); alt != "/tmp/mariabackup.xbtream" {
+		t.Fatalf("expected alternate without .gz, got %q", alt)
+	}
+	if alt := alternateCompressionPath("/tmp/mariabackup.xbtream"); alt != "/tmp/mariabackup.xbtream.gz" {
+		t.Fatalf("expected alternate with .gz, got %q", alt)
+	}
+}

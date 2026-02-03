@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/signal18/replication-manager/utils/misc"
 	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
 	"github.com/sirupsen/logrus"
 )
@@ -1453,10 +1454,21 @@ func (repo *ResticManager) MountRepoWithOptions(opt ResticMountOption) error {
 	}
 
 	dirMode, _ := repo.GetPermissions()
-	if err := os.MkdirAll(opt.TargetDir, dirMode); err != nil {
+	repo.RecoverMountState()
+	if isMountReady(opt.TargetDir) && repo.AllowUnsafeMount {
+		repo.Printf(logrus.WarnLevel, "Restic mountpoint already mounted at %s; reusing due to unsafe flag", opt.TargetDir)
+		repo.mountMutex.Lock()
+		repo.mountPath = opt.TargetDir
+		repo.mountPid = 0
+		repo.mountMutex.Unlock()
+		if err := repo.writeMountState(opt.TargetDir, 0); err != nil {
+			repo.Printf(logrus.WarnLevel, "Failed to persist restic mount state: %v", err)
+		}
+		return nil
+	}
+	if err := ensureResticMountDir(opt.TargetDir, dirMode); err != nil {
 		return fmt.Errorf("failed to create mount dir: %w", err)
 	}
-	repo.RecoverMountState()
 
 	repo.mountMutex.Lock()
 	if repo.mountCmd != nil && repo.mountCmd.Process != nil {
@@ -1494,6 +1506,9 @@ func (repo *ResticManager) MountRepoWithOptions(opt ResticMountOption) error {
 		return fmt.Errorf("restic mount already running at %s (requested: %s)", existingPath, opt.TargetDir)
 	}
 	repo.mountMutex.Unlock()
+	if isMountReady(opt.TargetDir) {
+		return fmt.Errorf("restic mountpoint already mounted at %s", opt.TargetDir)
+	}
 
 	// Build command arguments
 	args := repo.buildMountArgs(opt)
@@ -1736,6 +1751,44 @@ func (repo *ResticManager) RecoverMountState() bool {
 	return true
 }
 
+func ensureResticMountDir(targetDir string, mode os.FileMode) error {
+	if strings.TrimSpace(targetDir) == "" {
+		return fmt.Errorf("mount directory is empty")
+	}
+	if err := os.MkdirAll(targetDir, mode); err != nil && !os.IsExist(err) {
+		return err
+	}
+	info, statErr := os.Stat(targetDir)
+	if statErr != nil {
+		if errors.Is(statErr, syscall.ENOTCONN) {
+			_ = exec.Command("fusermount", "-u", targetDir).Run()
+			_ = syscall.Unmount(targetDir, syscall.MNT_DETACH)
+			if err := os.MkdirAll(targetDir, mode); err != nil && !os.IsExist(err) {
+				return err
+			}
+			info, statErr = os.Stat(targetDir)
+			if statErr == nil {
+				// recovered
+				goto validateDir
+			}
+		}
+		return statErr
+	}
+
+validateDir:
+	if !info.IsDir() {
+		return fmt.Errorf("mount path exists and is not a directory")
+	}
+	empty, emptyErr := misc.IsDirEmpty(targetDir)
+	if emptyErr != nil {
+		return emptyErr
+	}
+	if !empty {
+		return fmt.Errorf("mount directory exists and is not empty")
+	}
+	return nil
+}
+
 func isResticMountProcess(pid int, mountPath string) bool {
 	if pid <= 0 {
 		return false
@@ -1895,8 +1948,10 @@ func (repo *ResticManager) AcquireMountRef(userID string) error {
 
 	// Check if mount is actually active
 	repo.mountMutex.Lock()
-	isMounted := repo.mountCmd != nil && repo.mountCmd.Process != nil
+	cmdMounted := repo.mountCmd != nil && repo.mountCmd.Process != nil
+	mountPath := repo.mountPath
 	repo.mountMutex.Unlock()
+	isMounted := cmdMounted || (repo.AllowUnsafeMount && mountPath != "" && isMountReady(mountPath))
 
 	if !isMounted {
 		return fmt.Errorf("cannot acquire mount ref: mount is not active")
@@ -1947,7 +2002,10 @@ func (repo *ResticManager) CanUnmount() bool {
 func (repo *ResticManager) IsMounted() bool {
 	repo.mountMutex.Lock()
 	defer repo.mountMutex.Unlock()
-	return repo.mountCmd != nil && repo.mountCmd.Process != nil
+	if repo.mountCmd != nil && repo.mountCmd.Process != nil {
+		return true
+	}
+	return repo.AllowUnsafeMount && repo.mountPath != "" && isMountReady(repo.mountPath)
 }
 
 // GetMountPath returns the current mount path (empty if not mounted)
@@ -1955,6 +2013,9 @@ func (repo *ResticManager) GetMountPath() string {
 	repo.mountMutex.Lock()
 	defer repo.mountMutex.Unlock()
 	if repo.mountCmd != nil && repo.mountCmd.Process != nil {
+		return repo.mountPath
+	}
+	if repo.AllowUnsafeMount && repo.mountPath != "" && isMountReady(repo.mountPath) {
 		return repo.mountPath
 	}
 	return ""

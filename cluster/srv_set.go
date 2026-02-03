@@ -393,6 +393,10 @@ func (server *ServerMonitor) SetWaitPhysicalBackupCookie() error {
 	return server.createCookie("cookie_waitphysicalbackup")
 }
 
+func (server *ServerMonitor) SetWaitResticReseedCookie() error {
+	return server.createCookie("cookie_waitresticreseed")
+}
+
 func (server *ServerMonitor) SetBackupPhysicalCookie(tool string) error {
 	switch tool {
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:

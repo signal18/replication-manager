@@ -69,6 +69,27 @@ func TestDelWaitDummyConfigSendCookie(t *testing.T) {
 	t.Log("Cookie deleted successfully")
 }
 
+func TestWaitResticReseedCookieLifecycle(t *testing.T) {
+	server := setupTestServer(t)
+	defer cleanupTestServer(t, server)
+
+	if server.HasWaitResticReseedCookie() {
+		t.Fatalf("expected no restic reseed cookie at start")
+	}
+	if err := server.SetWaitResticReseedCookie(); err != nil {
+		t.Fatalf("SetWaitResticReseedCookie() failed: %v", err)
+	}
+	if !server.HasWaitResticReseedCookie() {
+		t.Fatalf("expected restic reseed cookie to be present")
+	}
+	if err := server.DelWaitResticReseedCookie(); err != nil {
+		t.Fatalf("DelWaitResticReseedCookie() failed: %v", err)
+	}
+	if server.HasWaitResticReseedCookie() {
+		t.Fatalf("expected restic reseed cookie to be removed")
+	}
+}
+
 // TestHasWaitDummyConfigSendCookie tests cookie existence check
 func TestHasWaitDummyConfigSendCookie(t *testing.T) {
 	server := setupTestServer(t)

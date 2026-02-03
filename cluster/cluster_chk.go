@@ -1261,6 +1261,20 @@ func (cluster *Cluster) CleanupRestartCookies() {
 		srv.RestartRid = ""
 	}
 
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+		if srv.HasWaitResticReseedCookie() {
+			if cluster.Conf != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+					"Cleaning up lingering restic reseed cookie for server %s", srv.URL)
+			}
+			srv.DelWaitResticReseedCookie()
+			cleanedCount++
+		}
+	}
+
 	if cleanedCount > 0 && cluster.Conf != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"Cleaned up %d restart container cookie(s) at cluster startup", cleanedCount)

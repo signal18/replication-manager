@@ -510,6 +510,19 @@ Leave it empty to use restic's default hostname (no alias).`
         />
       )
     },
+    {
+      key: 'Reseed: decompress on target (send compressed stream)',
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.backupReseedRemoteDecompress}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for backup-reseed-remote-decompress?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-reseed-remote-decompress' }))
+          }
+        />
+      )
+    },
     ...(selectedCluster?.config?.compressBackups
       ? [
           {
@@ -954,6 +967,19 @@ Leave it empty to use restic's default hostname (no alias).`
                 }}
               />
             </HStack>
+          )
+        },
+        {
+          key: 'Allow unsafe restic mount (reuse external mount)',
+          value: (
+            <RMSwitch
+              isChecked={selectedCluster?.config?.backupResticAllowUnsafeMount}
+              isDisabled={user?.grants['cluster-settings'] == false}
+              confirmTitle={'Confirm switch settings for backup-restic-allow-unsafe-mount?'}
+              onChange={() =>
+                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-restic-allow-unsafe-mount' }))
+              }
+            />
           )
         },
         {

@@ -2411,6 +2411,9 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupRestic()
 	case "backup-restic-allow-unsafe-mount":
 		mycluster.Conf.BackupResticAllowUnsafeMount = !mycluster.Conf.BackupResticAllowUnsafeMount
+		if mycluster.ResticManager != nil {
+			mycluster.ResticManager.AllowUnsafeMount = mycluster.Conf.BackupResticAllowUnsafeMount
+		}
 	case "backup-binlogs":
 		mycluster.SwitchBackupBinlogs()
 	case "compress-backups":
@@ -2910,6 +2913,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupResticPurgeOldestOnDiskSpace = applyIsActive(mycluster.Conf.BackupResticPurgeOldestOnDiskSpace, isactive)
 	case "backup-restic-allow-unsafe-mount":
 		mycluster.Conf.BackupResticAllowUnsafeMount = applyIsActive(mycluster.Conf.BackupResticAllowUnsafeMount, isactive)
+		if mycluster.ResticManager != nil {
+			mycluster.ResticManager.AllowUnsafeMount = mycluster.Conf.BackupResticAllowUnsafeMount
+		}
 	case "backup-restic-purge-oldest-on-disk-threshold":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.BackupResticPurgeOldestOnDiskThreshold = val
