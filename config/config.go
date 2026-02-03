@@ -701,6 +701,9 @@ type Config struct {
 	CompressBackups                           bool   `mapstructure:"compress-backups" toml:"compress-backups" json:"compressBackups"`
 	CompressBackupsCompressionLevel           int    `mapstructure:"compress-backups-compression-level" toml:"compress-backups-compression-level" json:"compressBackupsCompressionLevel"`
 	CompressBackupsParallelBlocks             int    `mapstructure:"compress-backups-parallel-blocks" toml:"compress-backups-parallel-blocks" json:"compressBackupsParallelBlocks"`
+	CompressBackupsLogical                    string `mapstructure:"compress-backups-logical" toml:"compress-backups-logical" json:"compressBackupsLogical"`
+	CompressBackupsPhysical                   string `mapstructure:"compress-backups-physical" toml:"compress-backups-physical" json:"compressBackupsPhysical"`
+	BackupReseedRemoteDecompress              bool   `mapstructure:"backup-reseed-remote-decompress" toml:"backup-reseed-remote-decompress" json:"backupReseedRemoteDecompress"`
 	BackupSplitMysqlUser                      bool   `mapstructure:"backup-split-mysql-user" toml:"backup-split-mysql-user" json:"backupSplitMysqlUser"`
 	BackupRestoreMysqlUser                    bool   `mapstructure:"backup-restore-mysql-user" toml:"backup-restore-mysql-user" json:"backupRestoreMysqlUser"`
 	BackupCheckFreeSpace                      bool   `mapstructure:"backup-check-free-space" toml:"backup-check-free-space" json:"backupCheckFreeSpace"`
@@ -777,6 +780,9 @@ type Config struct {
 	BackupMyLoaderOptions                  string                 `mapstructure:"backup-myloader-options" toml:"backup-myloader-options" json:"backupMyLoaderOptions"`
 	BackupMyDumperOptions                  string                 `mapstructure:"backup-mydumper-options" toml:"backup-mydumper-options" json:"backupMyDumperOptions"`
 	BackupMyDumperRegex                    string                 `mapstructure:"backup-mydumper-regex" toml:"backup-mydumper-regex" json:"backupMyDumperRegex"`
+	BackupMyDumperStream                   bool                   `mapstructure:"backup-mydumper-stream" toml:"backup-mydumper-stream" json:"backupMyDumperStream"`
+	BackupMyDumperStreamFormat             string                 `mapstructure:"backup-mydumper-stream-format" toml:"backup-mydumper-stream-format" json:"backupMyDumperStreamFormat"`
+	BackupMyDumperStreamFile               string                 `mapstructure:"backup-mydumper-stream-file" toml:"backup-mydumper-stream-file" json:"backupMyDumperStreamFile"`
 	BackupMysqlbinlogPath                  string                 `mapstructure:"backup-mysqlbinlog-path" toml:"backup-mysqlbinlog-path" json:"backupMysqlbinlogPath"`
 	BackupMysqlclientPath                  string                 `mapstructure:"backup-mysqlclient-path" toml:"backup-mysqlclient-path" json:"backupMysqlclientPath"`
 	BackupMysqlclientOptions               string                 `mapstructure:"backup-mysqlclient-options" toml:"backup-mysqlclient-options" json:"backupMysqlclientOptions"`

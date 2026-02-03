@@ -3859,8 +3859,9 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 				"Streaming snapshot %s using dump strategy to SST (file: %s)",
 				resticLogSnapshotID(cluster, resticSnapshotID), resticSourcePath)
 
+			uncompress := cluster.shouldUncompressOnSenderForReseed()
 			go func() {
-				err := server.WaitAndSendSSTStream(ctx, task, resticSourcePath, true, 0, streamOpener)
+				err := server.WaitAndSendSSTStream(ctx, task, resticSourcePath, uncompress, 0, streamOpener)
 				if err != nil {
 					if server.HasReseedingState(task) {
 						server.SetInReseedBackup("")
@@ -3898,8 +3899,9 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", server.URL)
 
+	uncompress := cluster.shouldUncompressOnSenderForReseed()
 	go func() {
-		err := server.WaitAndSendSST(task, backupfile, true, 0)
+		err := server.WaitAndSendSST(task, backupfile, uncompress, 0)
 		if err != nil {
 			if server.HasReseedingState(task) {
 				server.SetInReseedBackup("")
@@ -3959,8 +3961,9 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending physical backup to flashback %s", server.URL)
 
+	uncompress := cluster.shouldUncompressOnSenderForReseed()
 	go func() {
-		err := server.WaitAndSendSST(task, backupfile, true, 0)
+		err := server.WaitAndSendSST(task, backupfile, uncompress, 0)
 		if err != nil {
 			if server.HasReseedingState(task) {
 				server.SetInReseedBackup("")
@@ -4100,6 +4103,14 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 	if _, err := os.Stat(lastmeta.Dest); err == nil {
 		lastmeta.GetSizeAndFileCount()
 		lastmeta.EndTime = time.Now()
+	}
+	if strings.TrimSpace(lastmeta.Dest) != "" {
+		compressed, err := backupmgr.DetectCompressionFromDest(lastmeta.Dest)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to detect compression for %s: %s", lastmeta.Dest, err)
+		} else {
+			lastmeta.Compressed = compressed
+		}
 	}
 
 	task := server.JobResults.Get(lastmeta.BackupTool)

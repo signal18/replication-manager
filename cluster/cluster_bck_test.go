@@ -1,7 +1,10 @@
 package cluster
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -51,6 +54,45 @@ func TestValidateResticKeepTagTemplatesStrict(t *testing.T) {
 	}
 	if err := validateResticKeepTagTemplatesStrict(`line:adhoc env:prod`); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestBuildSnapshotMetadataIndexFromCache(t *testing.T) {
+	cluster := &Cluster{
+		Conf:                  &config.Config{},
+		BackupMetaMap:         backupmgr.NewBackupMetaMap(),
+		snapshotMetadataCache: newSnapshotMetadataCache(),
+	}
+	key := fmt.Sprintf("%d|%s", backupmgr.BackupMethodLogical, backupmgr.BackupLineDefault)
+	summary := &SnapshotMetadataSummary{
+		BackupMethod:     "logical",
+		BackupLine:       backupmgr.BackupLineDefault,
+		StartTime:        time.Now(),
+		BackupSessionID:  "session-1",
+		ResticSnapshotID: "snap-1",
+	}
+	cluster.snapshotMetadataCache.Update("snap-1", func(entry *snapshotMetadataCacheEntry) {
+		entry.Status = snapshotMetadataStatusReady
+		entry.Summaries = map[string]*SnapshotMetadataSummary{key: summary}
+	})
+
+	snapshots := []backupmgr.BackupSnapshot{
+		{
+			Id:    "snap-1",
+			Time:  time.Now().Format(time.RFC3339Nano),
+			Paths: []string{"/backup"},
+		},
+	}
+	index := cluster.BuildSnapshotMetadataIndex(snapshots)
+	if len(index) != 1 {
+		t.Fatalf("expected index size 1, got %d", len(index))
+	}
+	entries := index["snap-1"]
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 summary, got %d", len(entries))
+	}
+	if entries[0].BackupSessionID != "session-1" {
+		t.Fatalf("expected session id session-1, got %q", entries[0].BackupSessionID)
 	}
 }
 
@@ -218,6 +260,185 @@ func TestFilterMostRecentSnapshotsPerSession(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestFilterMostRecentSnapshotsPerSessionWithIndex(t *testing.T) {
+	baseTime := time.Now()
+	snapshots := []backupmgr.BackupSnapshot{
+		{Id: "snap-1", Time: baseTime.Format(time.RFC3339)},
+		{Id: "snap-2", Time: baseTime.Add(2 * time.Hour).Format(time.RFC3339)},
+		{Id: "snap-3", Time: baseTime.Add(1 * time.Hour).Format(time.RFC3339)},
+	}
+	index := SnapshotMetadataIndex{
+		"snap-1": {{BackupSessionID: "session-a"}},
+		"snap-2": {{BackupSessionID: "session-a"}},
+		"snap-3": {{BackupSessionID: "session-b"}},
+	}
+	filtered := FilterMostRecentSnapshotsPerSessionWithIndex(nil, snapshots, index)
+	if len(filtered) != 2 {
+		t.Fatalf("expected 2 snapshots, got %d", len(filtered))
+	}
+	ids := map[string]struct{}{}
+	for _, snap := range filtered {
+		ids[snap.Id] = struct{}{}
+	}
+	if _, ok := ids["snap-2"]; !ok {
+		t.Fatalf("expected snap-2 to be retained")
+	}
+	if _, ok := ids["snap-3"]; !ok {
+		t.Fatalf("expected snap-3 to be retained")
+	}
+}
+
+func TestIsSnapshotMetadataCandidatePath(t *testing.T) {
+	allowed := map[string]bool{config.ConstBackupLogicalTypeMysqldump: true}
+	if !isSnapshotMetadataCandidatePath("/backups/mysqldump.meta.json", allowed) {
+		t.Fatalf("expected mysqldump metadata file to match allowed tool")
+	}
+	if isSnapshotMetadataCandidatePath("/backups/mydumper.meta.json", allowed) {
+		t.Fatalf("did not expect mydumper metadata file to match allowed tool")
+	}
+	if isSnapshotMetadataCandidatePath("/backups/somefile.sql", allowed) {
+		t.Fatalf("did not expect non-metadata file to match")
+	}
+}
+
+func TestResolveSnapshotDestPath(t *testing.T) {
+	base := "/var/backups/cluster1"
+	path, ok := resolveSnapshotDestPath(base, "/var/backups/cluster1/mysqldump.sql.gz")
+	if !ok {
+		t.Fatalf("expected absolute dest under base to resolve")
+	}
+	if path != "/var/backups/cluster1/mysqldump.sql.gz" {
+		t.Fatalf("unexpected path %q", path)
+	}
+	path, ok = resolveSnapshotDestPath(base, "mysqldump.sql.gz")
+	if !ok {
+		t.Fatalf("expected relative dest to resolve")
+	}
+	if path != "/var/backups/cluster1/mysqldump.sql.gz" {
+		t.Fatalf("unexpected path %q", path)
+	}
+	_, ok = resolveSnapshotDestPath(base, "/other/path/mysqldump.sql.gz")
+	if ok {
+		t.Fatalf("expected unrelated absolute path to be rejected")
+	}
+}
+
+func TestReconcileSnapshotMetadataUsesCacheAndResticEnabled(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backup")
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		t.Fatalf("failed to create backup dir: %v", err)
+	}
+	cluster := &Cluster{
+		Conf:                  &config.Config{WorkingDir: tmpDir},
+		WorkingDir:            tmpDir,
+		snapshotMetadataCache: newSnapshotMetadataCache(),
+		ResticManager: &backupmgr.ResticManager{Backups: []backupmgr.BackupSnapshot{
+			{Id: "snap-1", ShortId: "snap-1", Time: time.Now().Format(time.RFC3339Nano)},
+			{Id: "snap-2", ShortId: "snap-2", Time: time.Now().Add(1 * time.Hour).Format(time.RFC3339Nano)},
+		}},
+	}
+	meta := backupmgr.BackupMetadata{
+		BackupTool:       config.ConstBackupLogicalTypeMysqldump,
+		ResticEnabled:    true,
+		ResticSnapshotID: "snap-1",
+	}
+	data, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatalf("failed to marshal metadata: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(backupDir, "mysqldump.meta.json"), data, 0644); err != nil {
+		t.Fatalf("failed to write metadata file: %v", err)
+	}
+	cluster.snapshotMetadataCache.Update("snap-2", func(entry *snapshotMetadataCacheEntry) {
+		entry.Status = snapshotMetadataStatusReady
+		entry.Summaries = map[string]*SnapshotMetadataSummary{
+			"1|default": {ResticSnapshotID: "snap-2", BackupSessionID: "session-2"},
+		}
+	})
+	report, err := cluster.ReconcileSnapshotMetadata()
+	if err != nil {
+		t.Fatalf("unexpected reconcile error: %v", err)
+	}
+	if len(report.MissingMetadata) != 0 {
+		t.Fatalf("expected no missing metadata, got %v", report.MissingMetadata)
+	}
+	if len(report.OrphanedMetadata) != 0 {
+		t.Fatalf("expected no orphaned metadata, got %v", report.OrphanedMetadata)
+	}
+}
+
+func TestMarkSnapshotMetadataPending(t *testing.T) {
+	cluster := &Cluster{
+		Conf:                  &config.Config{},
+		snapshotMetadataCache: newSnapshotMetadataCache(),
+	}
+	entry, started := cluster.markSnapshotMetadataPending("snap-1")
+	if !started {
+		t.Fatalf("expected pending transition to start")
+	}
+	if entry == nil || entry.Status != snapshotMetadataStatusPending {
+		t.Fatalf("expected pending status, got %v", entry)
+	}
+	entry, started = cluster.markSnapshotMetadataPending("snap-1")
+	if started {
+		t.Fatalf("expected no start when already pending")
+	}
+	cluster.snapshotMetadataCache.Update("snap-2", func(entry *snapshotMetadataCacheEntry) {
+		entry.Status = snapshotMetadataStatusFailed
+		entry.LastAttempt = time.Now()
+	})
+	_, started = cluster.markSnapshotMetadataPending("snap-2")
+	if started {
+		t.Fatalf("expected retry to be throttled")
+	}
+	cluster.snapshotMetadataCache.Update("snap-3", func(entry *snapshotMetadataCacheEntry) {
+		entry.Status = snapshotMetadataStatusFailed
+		entry.LastAttempt = time.Now().Add(-snapshotMetadataExtractionRetryInterval * 2)
+	})
+	entry, started = cluster.markSnapshotMetadataPending("snap-3")
+	if !started {
+		t.Fatalf("expected retry to start after interval")
+	}
+	if entry.Status != snapshotMetadataStatusPending {
+		t.Fatalf("expected pending status after retry, got %v", entry.Status)
+	}
+}
+
+func TestSummarizeSnapshotMetadataFromBackupMetaMap(t *testing.T) {
+	cluster := &Cluster{
+		Conf:          &config.Config{},
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
+	}
+	start := time.Now().Add(-1 * time.Hour)
+	meta := &backupmgr.BackupMetadata{
+		Id:               1,
+		StartTime:        start,
+		EndTime:          time.Now(),
+		BackupTool:       config.ConstBackupLogicalTypeMysqldump,
+		BackupLine:       backupmgr.BackupLineDefault,
+		BackupMethod:     backupmgr.BackupMethodLogical,
+		Dest:             filepath.Join("/backups", "snap-1", "mysqldump.sql.gz"),
+		ResticSnapshotID: "snap-1",
+	}
+	cluster.BackupMetaMap.Set(meta.Id, meta)
+	snapshot := &backupmgr.BackupSnapshot{
+		Id:    "snap-1",
+		Time:  time.Now().Format(time.RFC3339Nano),
+		Paths: []string{filepath.Join("/backups", "snap-1")},
+	}
+	summaries := cluster.SummarizeSnapshotMetadata(snapshot)
+	if len(summaries) != 1 {
+		t.Fatalf("expected 1 summary, got %d", len(summaries))
+	}
+	if summaries[0].BackupTool != config.ConstBackupLogicalTypeMysqldump {
+		t.Fatalf("unexpected backup tool %q", summaries[0].BackupTool)
+	}
+	if summaries[0].ResticBasePath != filepath.Join("/backups", "snap-1") {
+		t.Fatalf("unexpected base path %q", summaries[0].ResticBasePath)
 	}
 }
 

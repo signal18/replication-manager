@@ -2413,6 +2413,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupBinlogs()
 	case "compress-backups":
 		mycluster.SwitchCompressBackups()
+	case "backup-reseed-remote-decompress":
+		mycluster.Conf.BackupReseedRemoteDecompress = !mycluster.Conf.BackupReseedRemoteDecompress
 	case "backup-split-mysql-user":
 		mycluster.Conf.BackupSplitMysqlUser = !mycluster.Conf.BackupSplitMysqlUser
 	case "backup-restore-mysql-user":
@@ -2749,6 +2751,21 @@ func applyIsActive(oldValue bool, isactive *bool) bool {
 	return *isactive
 }
 
+func normalizeCompressionOverride(value string) (string, error) {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" || trimmed == "auto" {
+		return "auto", nil
+	}
+	switch trimmed {
+	case "1", "true", "yes", "y", "on":
+		return "true", nil
+	case "0", "false", "no", "n", "off":
+		return "false", nil
+	default:
+		return "", fmt.Errorf("invalid compression override: %q", value)
+	}
+}
+
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
 	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
@@ -2864,6 +2881,20 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return fmt.Errorf("compress-backups-parallel-blocks must be between 1 and 32, got %d", val)
 		}
 		mycluster.Conf.CompressBackupsParallelBlocks = val
+	case "backup-reseed-remote-decompress":
+		mycluster.Conf.BackupReseedRemoteDecompress = applyIsActive(mycluster.Conf.BackupReseedRemoteDecompress, isactive)
+	case "compress-backups-logical":
+		normalized, err := normalizeCompressionOverride(value)
+		if err != nil {
+			return err
+		}
+		mycluster.Conf.CompressBackupsLogical = normalized
+	case "compress-backups-physical":
+		normalized, err := normalizeCompressionOverride(value)
+		if err != nil {
+			return err
+		}
+		mycluster.Conf.CompressBackupsPhysical = normalized
 	case "compress-backups-compression-level":
 		val, err := strconv.Atoi(value)
 		if err != nil {
@@ -6861,12 +6892,13 @@ func (repman *ReplicationManager) handlerMuxClusterSnapshots(w http.ResponseWrit
 
 		// Get all snapshots
 		snapshots := mycluster.GetSnapshots()
+		metadataIndex := mycluster.BuildSnapshotMetadataIndex(snapshots)
 
 		// Check for filter query parameter
 		filterParam := r.URL.Query().Get("filter")
 		if filterParam == "latest-per-session" {
 			// Apply session-based deduplication filter
-			snapshots = cluster.FilterMostRecentSnapshotsPerSession(mycluster, snapshots)
+			snapshots = cluster.FilterMostRecentSnapshotsPerSessionWithIndex(mycluster, snapshots, metadataIndex)
 		}
 
 		responses := make([]resticSnapshotResponse, 0, len(snapshots))
@@ -6874,9 +6906,13 @@ func (repman *ReplicationManager) handlerMuxClusterSnapshots(w http.ResponseWrit
 			snap := snapshots[i]
 			statusString := mycluster.GetSnapshotMetadataStatusString(snap.Id)
 			metadataReady := mycluster.IsSnapshotMetadataReady(snap.Id)
+			metadata := metadataIndex[snap.Id]
+			if metadata == nil {
+				metadata = mycluster.SummarizeSnapshotMetadata(&snap)
+			}
 			responses = append(responses, resticSnapshotResponse{
 				BackupSnapshot: snap,
-				Metadata:       mycluster.SummarizeSnapshotMetadata(&snap),
+				Metadata:       metadata,
 				MetadataReady:  metadataReady,
 				MetadataStatus: statusString,
 				MetadataError:  mycluster.GetSnapshotMetadataError(snap.Id),

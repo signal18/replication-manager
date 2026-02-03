@@ -182,7 +182,7 @@ func resolveResticReseedStrategy(requestedStrategy, method, snapshotID string, c
 
 	// Auto-select optimal strategy based on snapshot metadata.
 	if strategy == "" {
-		metadata := getSnapshotMetadata(cluster, snapshotID)
+		metadata := getSnapshotMetadata(cluster, snapshotID, nil)
 		if metadata == nil {
 			// Without metadata we choose the safest option.
 			strategy = "restore"
@@ -228,7 +228,7 @@ func resolveResticReseedStrategy(requestedStrategy, method, snapshotID string, c
 // getSnapshotMetadata selects the best available metadata summary for a restic snapshot.
 // It prefers cached metadata derived from snapshot metadata files, with a fallback to
 // backup metadata summaries when no extracted metadata is available.
-func getSnapshotMetadata(cluster *Cluster, snapshotID string) *SnapshotMetadataSummary {
+func getSnapshotMetadata(cluster *Cluster, snapshotID string, index SnapshotMetadataIndex) *SnapshotMetadataSummary {
 	if cluster == nil || strings.TrimSpace(snapshotID) == "" {
 		return nil
 	}
@@ -260,6 +260,11 @@ func getSnapshotMetadata(cluster *Cluster, snapshotID string) *SnapshotMetadataS
 		}
 		return selected
 	}
+	if len(index) > 0 {
+		if selected := selectBestSummary(index[snapshotID]); selected != nil {
+			return selected
+		}
+	}
 	// Prefer the cached metadata extracted from the snapshot itself.
 	if entry, ok := cluster.getSnapshotMetadataCacheEntry(snapshotID); ok && entry != nil {
 		candidates := make([]*SnapshotMetadataSummary, 0, len(entry.Summaries))
@@ -283,10 +288,10 @@ func getSnapshotMetadata(cluster *Cluster, snapshotID string) *SnapshotMetadataS
 	return nil
 }
 
-func getSnapshotMetadataForMethod(cluster *Cluster, snapshotID, method string) *SnapshotMetadataSummary {
+func getSnapshotMetadataForMethod(cluster *Cluster, snapshotID, method string, index SnapshotMetadataIndex) *SnapshotMetadataSummary {
 	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
 	if normalizedMethod == "" {
-		return getSnapshotMetadata(cluster, snapshotID)
+		return getSnapshotMetadata(cluster, snapshotID, index)
 	}
 	if cluster == nil || strings.TrimSpace(snapshotID) == "" {
 		return nil
@@ -321,6 +326,11 @@ func getSnapshotMetadataForMethod(cluster *Cluster, snapshotID, method string) *
 			}
 		}
 		return selected
+	}
+	if len(index) > 0 {
+		if selected := selectBestSummary(index[snapshotID]); selected != nil {
+			return selected
+		}
 	}
 	if entry, ok := cluster.getSnapshotMetadataCacheEntry(snapshotID); ok && entry != nil {
 		candidates := make([]*SnapshotMetadataSummary, 0, len(entry.Summaries))
@@ -470,7 +480,7 @@ func (server *ServerMonitor) prepareResticReseedPaths(snapshotID, method string)
 	if cluster == nil {
 		return nil, fmt.Errorf("cluster not available")
 	}
-	metadata := getSnapshotMetadataForMethod(cluster, snapshotID, method)
+	metadata := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil)
 	if metadata == nil {
 		return nil, fmt.Errorf("snapshot metadata not available for %s (method %s)", snapshotID, strings.ToLower(strings.TrimSpace(method)))
 	}
@@ -480,13 +490,7 @@ func (server *ServerMonitor) prepareResticReseedPaths(snapshotID, method string)
 	}
 	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
 
-	compressed := cluster.Conf.CompressBackups
-	compressionSource := "config"
-	// Prefer metadata-derived compression flags when available to handle historical snapshots.
-	if metaCompressed, ok := getSnapshotCompression(cluster, snapshotID); ok {
-		compressed = metaCompressed
-		compressionSource = "snapshot-metadata"
-	}
+	compressed, compressionSource := resolveResticReseedCompression(cluster, metadata, snapshotID)
 
 	isDirectory := false
 	var sourcePaths []string
@@ -520,11 +524,16 @@ func (server *ServerMonitor) prepareResticReseedPaths(snapshotID, method string)
 		return nil, fmt.Errorf("unsupported backup tool %s for snapshot %s (method %s)", backupTool, snapshotID, normalizedMethod)
 	}
 
+	sourceBasePath := strings.TrimSpace(metadata.ResticBasePath)
+	if override := resolveResticSourcePaths(metadata, sourceBasePath, sourcePaths); len(override) > 0 {
+		sourcePaths = override
+	}
+
 	paths := &ResticReseedPaths{
 		SnapshotID:      snapshotID,
 		BackupType:      backupTool,
 		IsDirectory:     isDirectory,
-		SourceBasePath:  strings.TrimSpace(metadata.ResticBasePath),
+		SourceBasePath:  sourceBasePath,
 		SourcePaths:     sourcePaths,
 		TempDir:         "",
 		TargetPaths:     []string{},
@@ -544,6 +553,53 @@ func (server *ServerMonitor) prepareResticReseedPaths(snapshotID, method string)
 		logSnapshotID, backupTool, isDirectory, len(sourcePaths), logSource, compressed, compressionSource)
 
 	return paths, nil
+}
+
+func resolveResticReseedCompression(cluster *Cluster, metadata *SnapshotMetadataSummary, snapshotID string) (bool, string) {
+	if cluster == nil {
+		return false, "default"
+	}
+	if metaCompressed, ok := getSnapshotCompression(cluster, snapshotID); ok {
+		return metaCompressed, "snapshot-metadata"
+	}
+	method := backupMethodFromSummary(metadata)
+	return cluster.resolveBackupCompression(method, metadata.BackupTool), "config"
+}
+
+func backupMethodFromSummary(metadata *SnapshotMetadataSummary) backupmgr.BackupMethod {
+	if metadata == nil {
+		return backupmgr.BackupMethodLogical
+	}
+	switch strings.ToLower(strings.TrimSpace(metadata.BackupMethod)) {
+	case "physical":
+		return backupmgr.BackupMethodPhysical
+	case "logical":
+		return backupmgr.BackupMethodLogical
+	default:
+		return backupmgr.BackupMethodLogical
+	}
+}
+
+func resolveResticSourcePaths(metadata *SnapshotMetadataSummary, sourceBasePath string, defaultPaths []string) []string {
+	if metadata == nil {
+		return defaultPaths
+	}
+	base := strings.TrimSpace(sourceBasePath)
+	if base == "" {
+		return defaultPaths
+	}
+	resolvedPath, ok := resolveSnapshotDestPath(base, metadata.Dest)
+	if !ok {
+		return defaultPaths
+	}
+	rel, err := filepath.Rel(base, resolvedPath)
+	if err != nil {
+		return defaultPaths
+	}
+	if rel == "." || strings.HasPrefix(rel, "..") || rel == "" {
+		return defaultPaths
+	}
+	return []string{rel}
 }
 
 // verifyRestoredBackup confirms the restic restore produced the expected files or directories.

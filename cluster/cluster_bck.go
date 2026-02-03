@@ -124,6 +124,22 @@ func (c *snapshotMetadataCache) Delete(snapshotID string) {
 	delete(c.entries, snapshotID)
 }
 
+func (c *snapshotMetadataCache) SnapshotIDs() []string {
+	if c == nil {
+		return nil
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	ids := make([]string, 0, len(c.entries))
+	for id := range c.entries {
+		if id == "" {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 func (entry *snapshotMetadataCacheEntry) clone() *snapshotMetadataCacheEntry {
 	if entry == nil {
 		return nil
@@ -339,12 +355,15 @@ func (cluster *Cluster) getResticSnapshotLs(snapshotID string) (map[string]bool,
 	if err != nil {
 		return nil, err
 	}
-	paths := make(map[string]bool, len(entries))
+	paths := make(map[string]bool)
 	for _, entry := range entries {
 		if strings.TrimSpace(entry.Path) == "" {
 			continue
 		}
 		if strings.EqualFold(entry.Type, "file") {
+			if !isSnapshotMetadataCandidatePath(entry.Path, nil) {
+				continue
+			}
 			paths[entry.Path] = true
 		}
 	}
@@ -355,6 +374,25 @@ func (cluster *Cluster) getResticSnapshotLs(snapshotID string) (map[string]bool,
 	cluster.resticSnapshotLsCache[snapshotID] = paths
 	cluster.resticSnapshotLsCacheMu.Unlock()
 	return paths, nil
+}
+
+func isSnapshotMetadataCandidatePath(path string, allowedTools map[string]bool) bool {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return false
+	}
+	base := strings.ToLower(filepath.Base(trimmed))
+	for _, candidate := range snapshotMetadataCandidates {
+		if len(allowedTools) > 0 {
+			if _, ok := allowedTools[strings.ToLower(candidate.Tool)]; !ok {
+				continue
+			}
+		}
+		if base == strings.ToLower(candidate.File) {
+			return true
+		}
+	}
+	return false
 }
 
 func (cluster *Cluster) clearResticSnapshotLsCache(snapshotID string) {
@@ -1097,6 +1135,10 @@ func getSnapshotSessionIDFromMetadata(cluster *Cluster, snapshot *backupmgr.Back
 // FilterMostRecentSnapshotsPerSession returns only the newest snapshot per backup session.
 // Snapshots without session IDs are treated as individual sessions (no grouping).
 func FilterMostRecentSnapshotsPerSession(cluster *Cluster, snapshots []backupmgr.BackupSnapshot) []backupmgr.BackupSnapshot {
+	return FilterMostRecentSnapshotsPerSessionWithIndex(cluster, snapshots, nil)
+}
+
+func FilterMostRecentSnapshotsPerSessionWithIndex(cluster *Cluster, snapshots []backupmgr.BackupSnapshot, index SnapshotMetadataIndex) []backupmgr.BackupSnapshot {
 	if len(snapshots) == 0 {
 		return snapshots
 	}
@@ -1105,7 +1147,12 @@ func FilterMostRecentSnapshotsPerSession(cluster *Cluster, snapshots []backupmgr
 
 	for i := range snapshots {
 		snapshot := &snapshots[i]
-		sessionID := getSnapshotSessionIDFromMetadata(cluster, snapshot)
+		var sessionID string
+		if len(index) > 0 {
+			sessionID = getSnapshotSessionIDFromIndex(index, snapshot.Id)
+		} else {
+			sessionID = getSnapshotSessionIDFromMetadata(cluster, snapshot)
+		}
 
 		if sessionID == "" {
 			// Snapshot without metadata session: Use snapshot ID as unique key (no grouping)
@@ -1503,6 +1550,8 @@ type metadataSelection struct {
 	fallback *SnapshotMetadataSummary
 }
 
+type SnapshotMetadataIndex map[string][]*SnapshotMetadataSummary
+
 func isBetterFallback(candidate, current *SnapshotMetadataSummary, snapshotTime time.Time) bool {
 	if candidate == nil {
 		return false
@@ -1621,6 +1670,35 @@ func (cluster *Cluster) SummarizeSnapshotMetadata(snapshot *backupmgr.BackupSnap
 	return summaries
 }
 
+func (cluster *Cluster) BuildSnapshotMetadataIndex(snapshots []backupmgr.BackupSnapshot) SnapshotMetadataIndex {
+	index := make(SnapshotMetadataIndex)
+	if cluster == nil || len(snapshots) == 0 {
+		return index
+	}
+	for i := range snapshots {
+		snapshot := &snapshots[i]
+		if snapshot == nil || snapshot.Id == "" {
+			continue
+		}
+		if summaries := cluster.SummarizeSnapshotMetadata(snapshot); len(summaries) > 0 {
+			index[snapshot.Id] = summaries
+		}
+	}
+	return index
+}
+
+func getSnapshotSessionIDFromIndex(index SnapshotMetadataIndex, snapshotID string) string {
+	if len(index) == 0 || strings.TrimSpace(snapshotID) == "" {
+		return ""
+	}
+	for _, summary := range index[snapshotID] {
+		if summary != nil && strings.TrimSpace(summary.BackupSessionID) != "" {
+			return strings.TrimSpace(summary.BackupSessionID)
+		}
+	}
+	return ""
+}
+
 func (cluster *Cluster) getSnapshotMetadataCacheEntry(snapshotID string) (*snapshotMetadataCacheEntry, bool) {
 	if cluster == nil || cluster.snapshotMetadataCache == nil || strings.TrimSpace(snapshotID) == "" {
 		return nil, false
@@ -1679,30 +1757,39 @@ func (cluster *Cluster) scheduleSnapshotMetadataExtraction(snapshot *backupmgr.B
 	if !cluster.Conf.BackupRestic || cluster.ResticManager == nil || cluster.snapshotMetadataCache == nil {
 		return
 	}
-	entry := cluster.snapshotMetadataCache.Update(snapshot.Id, nil)
-	if entry == nil {
+	updatedEntry, shouldStart := cluster.markSnapshotMetadataPending(snapshot.Id)
+	if !shouldStart {
 		return
 	}
-	now := time.Now()
-	switch entry.Status {
-	case snapshotMetadataStatusPending, snapshotMetadataStatusReady:
-		return
-	case snapshotMetadataStatusFailed:
-		if now.Sub(entry.LastAttempt) < snapshotMetadataExtractionRetryInterval {
-			return
-		}
-	}
-	updatedEntry := cluster.snapshotMetadataCache.Update(snapshot.Id, func(entry *snapshotMetadataCacheEntry) {
-		entry.Status = snapshotMetadataStatusPending
-		entry.LastAttempt = now
-		entry.LastError = ""
-	})
 	if updatedEntry != nil {
 		if err := cluster.persistSnapshotMetadataEntry(snapshot.Id, updatedEntry); err != nil {
 			cluster.logSnapshotMetadataPersistenceError(snapshot, "pending", err)
 		}
 	}
 	go cluster.runSnapshotMetadataExtraction(snapshot)
+}
+
+func (cluster *Cluster) markSnapshotMetadataPending(snapshotID string) (*snapshotMetadataCacheEntry, bool) {
+	if cluster == nil || cluster.snapshotMetadataCache == nil || strings.TrimSpace(snapshotID) == "" {
+		return nil, false
+	}
+	now := time.Now()
+	shouldStart := false
+	entry := cluster.snapshotMetadataCache.Update(snapshotID, func(entry *snapshotMetadataCacheEntry) {
+		switch entry.Status {
+		case snapshotMetadataStatusPending, snapshotMetadataStatusReady:
+			return
+		case snapshotMetadataStatusFailed:
+			if now.Sub(entry.LastAttempt) < snapshotMetadataExtractionRetryInterval {
+				return
+			}
+		}
+		entry.Status = snapshotMetadataStatusPending
+		entry.LastAttempt = now
+		entry.LastError = ""
+		shouldStart = true
+	})
+	return entry, shouldStart
 }
 
 func (cluster *Cluster) runSnapshotMetadataExtraction(snapshot *backupmgr.BackupSnapshot) {
@@ -1752,6 +1839,7 @@ func (cluster *Cluster) extractMetadataFromResticSnapshot(snapshot *backupmgr.Ba
 		return nil, fmt.Errorf("restic manager not initialized")
 	}
 	results := make(map[string]*SnapshotMetadataSummary)
+	destExistsCache := make(map[string]bool)
 	var lastErr error
 	lsCache, lsErr := cluster.getResticSnapshotLs(snapshot.Id)
 	if lsErr != nil {
@@ -1800,6 +1888,22 @@ func (cluster *Cluster) extractMetadataFromResticSnapshot(snapshot *backupmgr.Ba
 			if strings.TrimSpace(meta.BackupLine) == "" {
 				meta.BackupLine = backupmgr.BackupLineDefault
 			}
+			if destPath, ok := resolveSnapshotDestPath(base, meta.Dest); ok {
+				exists, ok := destExistsCache[destPath]
+				if !ok {
+					var err error
+					exists, err = cluster.snapshotPathExists(snapshot.Id, destPath)
+					if err != nil {
+						lastErr = err
+						continue
+					}
+					destExistsCache[destPath] = exists
+				}
+				if !exists {
+					lastErr = fmt.Errorf("metadata dest not found in snapshot %s: %s", snapshot.ShortId, destPath)
+					continue
+				}
+			}
 			summary := buildSnapshotMetadataSummary(&meta, candidate.Method, base)
 			if summary == nil {
 				continue
@@ -1825,6 +1929,40 @@ func (cluster *Cluster) extractMetadataFromResticSnapshot(snapshot *backupmgr.Ba
 		return nil, fmt.Errorf("no metadata files found in snapshot %s", snapshot.ShortId)
 	}
 	return results, nil
+}
+
+func resolveSnapshotDestPath(base, dest string) (string, bool) {
+	base = strings.TrimSpace(base)
+	dest = strings.TrimSpace(dest)
+	if base == "" || dest == "" {
+		return "", false
+	}
+	if strings.HasPrefix(dest, base) {
+		return dest, true
+	}
+	if filepath.IsAbs(dest) {
+		return "", false
+	}
+	candidate := filepath.Join(base, dest)
+	if !isPathWithinBase(base, candidate) {
+		return "", false
+	}
+	return candidate, true
+}
+
+func (cluster *Cluster) snapshotPathExists(snapshotID, path string) (bool, error) {
+	if cluster == nil || cluster.ResticManager == nil {
+		return false, fmt.Errorf("restic manager not initialized")
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false, nil
+	}
+	entries, err := cluster.ResticManager.ListSnapshotWithLogLevel(snapshotID, []string{path}, true, logrus.DebugLevel)
+	if err != nil {
+		return false, err
+	}
+	return len(entries) > 0, nil
 }
 
 func snapshotAllowedTools(snapshot *backupmgr.BackupSnapshot) map[string]bool {
@@ -1883,6 +2021,32 @@ func (cluster *Cluster) ReconcileSnapshotMetadata() (*ReconciliationReport, erro
 
 	// Track metadata snapshot IDs to detect missing metadata later
 	metadataSnapshotIDs := make(map[string]bool)
+	if cluster.snapshotMetadataCache != nil {
+		for _, snapshotID := range cluster.snapshotMetadataCache.SnapshotIDs() {
+			if snapshotID == "" {
+				continue
+			}
+			metadataSnapshotIDs[snapshotID] = true
+			if !snapshotIDs[snapshotID] {
+				cluster.snapshotMetadataCache.Delete(snapshotID)
+				cluster.clearResticSnapshotLsCache(snapshotID)
+			}
+		}
+	}
+	var persisted map[string]*snapshotMetadataCacheEntry
+	if cluster.resticMetadataDir != "" {
+		persisted, err = cluster.loadSnapshotMetadataEntriesFromDisk()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to scan persisted snapshot metadata: %v", err)
+		} else {
+			for snapshotID := range persisted {
+				if snapshotID == "" {
+					continue
+				}
+				metadataSnapshotIDs[snapshotID] = true
+			}
+		}
+	}
 
 	// Check for orphaned metadata
 	for _, metaFile := range metadataFiles {
@@ -1898,27 +2062,27 @@ func (cluster *Cluster) ReconcileSnapshotMetadata() (*ReconciliationReport, erro
 			continue
 		}
 
-		// Only check restic-based backups
-		if meta.BackupTool != "restic" {
+		if !meta.ResticEnabled && strings.TrimSpace(meta.ResticSnapshotID) == "" {
 			continue
 		}
+		if strings.TrimSpace(meta.ResticSnapshotID) == "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Metadata missing restic snapshot ID: %s", filepath.Base(metaFile))
+			continue
+		}
+		metadataSnapshotIDs[meta.ResticSnapshotID] = true
 
-		if meta.ResticSnapshotID != "" {
-			metadataSnapshotIDs[meta.ResticSnapshotID] = true
+		// Check if snapshot exists
+		if !snapshotIDs[meta.ResticSnapshotID] {
+			report.OrphanedMetadata = append(report.OrphanedMetadata, metaFile)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Orphaned metadata: %s references deleted snapshot %s", filepath.Base(metaFile), meta.ResticSnapshotID)
 
-			// Check if snapshot exists
-			if !snapshotIDs[meta.ResticSnapshotID] {
-				report.OrphanedMetadata = append(report.OrphanedMetadata, metaFile)
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Orphaned metadata: %s references deleted snapshot %s", filepath.Base(metaFile), meta.ResticSnapshotID)
-
-				// Auto-cleanup if enabled
-				if cluster.Conf.BackupReconcileAutoCleanup {
-					if err := os.Remove(metaFile); err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlErr, "Failed to cleanup orphaned metadata %s: %v", metaFile, err)
-					} else {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Cleaned up orphaned metadata: %s", filepath.Base(metaFile))
-						report.CleanedUp = true
-					}
+			// Auto-cleanup if enabled
+			if cluster.Conf.BackupReconcileAutoCleanup {
+				if err := os.Remove(metaFile); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlErr, "Failed to cleanup orphaned metadata %s: %v", metaFile, err)
+				} else {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Cleaned up orphaned metadata: %s", filepath.Base(metaFile))
+					report.CleanedUp = true
 				}
 			}
 		}
@@ -1932,27 +2096,22 @@ func (cluster *Cluster) ReconcileSnapshotMetadata() (*ReconciliationReport, erro
 		}
 	}
 
-	if cluster.resticMetadataDir != "" {
-		persisted, err := cluster.loadSnapshotMetadataEntriesFromDisk()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to scan persisted snapshot metadata: %v", err)
-		} else {
-			for snapshotID := range persisted {
-				if snapshotID == "" {
-					continue
-				}
-				if snapshotIDs[snapshotID] {
-					continue
-				}
-				cluster.snapshotMetadataCache.Delete(snapshotID)
-				cluster.clearResticSnapshotLsCache(snapshotID)
-				if cluster.Conf.BackupReconcileAutoCleanup {
-					if err := cluster.deleteSnapshotMetadataEntry(snapshotID); err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to delete persisted snapshot metadata %s: %v", snapshotID, err)
-					} else {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Removed persisted snapshot metadata for pruned snapshot %s", snapshotID)
-						report.CleanedUp = true
-					}
+	if cluster.resticMetadataDir != "" && len(persisted) > 0 {
+		for snapshotID := range persisted {
+			if snapshotID == "" {
+				continue
+			}
+			if snapshotIDs[snapshotID] {
+				continue
+			}
+			cluster.snapshotMetadataCache.Delete(snapshotID)
+			cluster.clearResticSnapshotLsCache(snapshotID)
+			if cluster.Conf.BackupReconcileAutoCleanup {
+				if err := cluster.deleteSnapshotMetadataEntry(snapshotID); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to delete persisted snapshot metadata %s: %v", snapshotID, err)
+				} else {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Removed persisted snapshot metadata for pruned snapshot %s", snapshotID)
+					report.CleanedUp = true
 				}
 			}
 		}

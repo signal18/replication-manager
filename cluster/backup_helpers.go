@@ -224,17 +224,28 @@ func (server *ServerMonitor) backupMetaFilePath(meta *backupmgr.BackupMetadata) 
 	if meta == nil {
 		return ""
 	}
-	if meta.MetaFile != "" {
-		if filepath.IsAbs(meta.MetaFile) {
-			return meta.MetaFile
-		}
-		return filepath.Join(server.GetMyBackupDirectory(), meta.MetaFile)
-	}
 	line := meta.BackupLine
 	if line == "" && hasRetentionPolicy(meta) {
 		line = backupmgr.BackupLineAdhoc
 	}
-	return server.buildBackupMetaFileName(meta.BackupTool, meta.Id, line)
+	defaultPath := server.buildBackupMetaFileName(meta.BackupTool, meta.Id, line)
+	if meta.MetaFile != "" {
+		metaFile := meta.MetaFile
+		if normalizeBackupLine(line) != backupmgr.BackupLineAdhoc {
+			defaultBase := filepath.Base(defaultPath)
+			if defaultBase != "" && filepath.Base(metaFile) != defaultBase {
+				if cluster := server.ClusterGroup; cluster != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Ignoring custom metadata filename %s for non-adhoc backup", metaFile)
+				}
+				return defaultPath
+			}
+		}
+		if filepath.IsAbs(metaFile) {
+			return metaFile
+		}
+		return filepath.Join(server.GetMyBackupDirectory(), metaFile)
+	}
+	return defaultPath
 }
 
 func parseAdhocMetaFileID(name string) (int64, bool) {
@@ -276,7 +287,53 @@ func readBackupMetadataFile(path string) (*backupmgr.BackupMetadata, error) {
 	if err := json.NewDecoder(file).Decode(meta); err != nil {
 		return nil, err
 	}
+	if meta != nil && strings.TrimSpace(meta.Dest) != "" {
+		if compressed, err := backupmgr.DetectCompressionFromDest(meta.Dest); err == nil {
+			meta.Compressed = compressed
+		}
+	}
 	return meta, nil
+}
+
+func parseCompressionOverride(value string) (bool, bool) {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" || trimmed == "auto" {
+		return false, false
+	}
+	switch trimmed {
+	case "1", "true", "yes", "y", "on":
+		return true, true
+	case "0", "false", "no", "n", "off":
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+func (cluster *Cluster) resolveBackupCompression(method backupmgr.BackupMethod, tool string) bool {
+	if cluster == nil || cluster.Conf == nil {
+		return false
+	}
+	_ = tool
+	conf := cluster.Conf
+	switch method {
+	case backupmgr.BackupMethodLogical:
+		if val, ok := parseCompressionOverride(conf.CompressBackupsLogical); ok {
+			return val
+		}
+	case backupmgr.BackupMethodPhysical:
+		if val, ok := parseCompressionOverride(conf.CompressBackupsPhysical); ok {
+			return val
+		}
+	}
+	return conf.CompressBackups
+}
+
+func (cluster *Cluster) shouldUncompressOnSenderForReseed() bool {
+	if cluster == nil || cluster.Conf == nil {
+		return true
+	}
+	return !cluster.Conf.BackupReseedRemoteDecompress
 }
 
 func (server *ServerMonitor) LoadAdhocBackupMetadata() ([]*backupmgr.BackupMetadata, error) {
