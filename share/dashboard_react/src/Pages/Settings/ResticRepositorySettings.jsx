@@ -63,10 +63,10 @@ function ResticRepositorySettings({
     }
   }
   const [isConnectionOpen, setIsConnectionOpen] = useState(() =>
-    readStoredState('connection-credentials', true)
+    readStoredState('connection-credentials', false)
   )
-  const [isStorageOpen, setIsStorageOpen] = useState(() => readStoredState('storage', true))
-  const [isTaggingOpen, setIsTaggingOpen] = useState(() => readStoredState('tagging', true))
+  const [isStorageOpen, setIsStorageOpen] = useState(() => readStoredState('storage', false))
+  const [isTaggingOpen, setIsTaggingOpen] = useState(() => readStoredState('tagging', false))
   const areAllSectionsOpen = isConnectionOpen && isStorageOpen && isTaggingOpen
 
   const handleSettingChange = (setting, value, encodeValue = false) =>

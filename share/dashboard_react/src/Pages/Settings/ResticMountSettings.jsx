@@ -48,17 +48,17 @@ function ResticMountSettings({ clusterName, config, user }) {
   }
   const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
   const [isMountDestinationOpen, setIsMountDestinationOpen] = useState(() =>
-    readStoredState('mount-destination', true)
+    readStoredState('mount-destination', false)
   )
   const [isSnapshotFiltersOpen, setIsSnapshotFiltersOpen] = useState(() =>
-    readStoredState('snapshot-filters', true)
+    readStoredState('snapshot-filters', false)
   )
   const [isMountTemplatesOpen, setIsMountTemplatesOpen] = useState(() =>
-    readStoredState('mount-templates', true)
+    readStoredState('mount-templates', false)
   )
-  const [isPermissionsOpen, setIsPermissionsOpen] = useState(() => readStoredState('permissions', true))
+  const [isPermissionsOpen, setIsPermissionsOpen] = useState(() => readStoredState('permissions', false))
   const [isRuntimeBehaviorOpen, setIsRuntimeBehaviorOpen] = useState(() =>
-    readStoredState('runtime-behavior', true)
+    readStoredState('runtime-behavior', false)
   )
   const areAllSectionsOpen =
     isMountDestinationOpen &&

@@ -34,12 +34,12 @@ function ResticPurgeStrategy({ clusterName, config }) {
   })
   const { title, body } = action
   const [openPanels, setOpenPanels] = useState({
-    grouping: true,
-    filters: true,
-    pruneOptions: true,
+    grouping: false,
+    filters: false,
+    pruneOptions: false,
     retention: true,
-    preview: true,
-    purge: true
+    preview: false,
+    purge: false
   })
 
   const ResticKeepLastNTooltip = `
