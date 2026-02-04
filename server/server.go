@@ -794,7 +794,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupResticTags, "backup-restic-tags", "tenant,cluster,engine,version,backup-type,backup-tool,line", "Comma-separated restic tags or templates (e.g. cluster,backup-type,line,env:prod). Quote a tag to keep it literal.")
 	flags.StringVar(&conf.BackupResticHost, "backup-restic-host", "", "Restic backup --host override. Empty uses restic default hostname (no alias).")
 	flags.StringVar(&conf.BackupResticPurgeGroupBy, "backup-restic-purge-group-by", "host,paths", "Restic forget --group-by value (e.g. host,paths). Use 'default' for restic defaults, 'none' for no grouping.")
-	flags.StringVar(&conf.BackupResticPurgeKeepTag, "backup-restic-purge-keep-tag", "line:adhoc", "Space-separated restic tags to keep during purge (e.g. line:adhoc env:prod). Quotes allow spaces; commas are preserved.")
+	flags.StringVar(&conf.BackupResticPurgeKeepTag, "backup-restic-purge-keep-tag", "line:adhoc adhoc", "Space-separated restic tags to keep during purge (e.g. line:adhoc adhoc env:prod). Quotes allow spaces; commas are preserved.")
 	flags.StringVar(&conf.BackupResticPurgeHost, "backup-restic-purge-host", "", "Restic forget --host filter (comma/space separated).")
 	flags.StringVar(&conf.BackupResticPurgeTag, "backup-restic-purge-tag", "", "Restic forget --tag filter (space-separated; commas preserved inside tags).")
 	flags.StringVar(&conf.BackupResticPurgePath, "backup-restic-purge-path", "", "Restic forget --path filter (comma/space separated absolute paths).")

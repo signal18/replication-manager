@@ -1106,6 +1106,7 @@ func snapshotAllowedTools(snapshot *backupmgr.BackupSnapshot) map[string]bool {
 }
 
 func getSnapshotTagValue(tags []string, key string) string {
+	key = strings.TrimSpace(key)
 	if key == "" {
 		return ""
 	}
@@ -1116,7 +1117,71 @@ func getSnapshotTagValue(tags []string, key string) string {
 			return strings.TrimSpace(tag[len(prefix):])
 		}
 	}
-	return ""
+	return getSnapshotTagFallbackValue(tags, key)
+}
+
+func getSnapshotTagFallbackValue(tags []string, key string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "line":
+		return getSnapshotTagLegacyLine(tags)
+	case "backup-tool":
+		return getSnapshotTagLegacyTool(tags)
+	default:
+		return ""
+	}
+}
+
+func getSnapshotTagLegacyLine(tags []string) string {
+	var line string
+	for _, tag := range tags {
+		normalized := normalizeBackupLine(tag)
+		if normalized == "" {
+			continue
+		}
+		if line == "" {
+			line = normalized
+			continue
+		}
+		if line != normalized {
+			return ""
+		}
+	}
+	return line
+}
+
+func getSnapshotTagLegacyTool(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	toolSet := make(map[string]bool, len(snapshotMetadataCandidates))
+	for _, candidate := range snapshotMetadataCandidates {
+		tool := strings.ToLower(strings.TrimSpace(candidate.Tool))
+		if tool == "" {
+			continue
+		}
+		toolSet[tool] = true
+	}
+	var tool string
+	for _, tag := range tags {
+		trimmed := strings.ToLower(strings.TrimSpace(tag))
+		if trimmed == "" {
+			continue
+		}
+		if !toolSet[trimmed] {
+			continue
+		}
+		if tool == "" {
+			tool = trimmed
+			continue
+		}
+		if tool != trimmed {
+			return ""
+		}
+	}
+	return tool
 }
 
 // ReconcileSnapshotMetadata detects drift between metadata files and restic snapshots

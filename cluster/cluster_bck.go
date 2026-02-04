@@ -698,7 +698,7 @@ func renderResticTagTemplate(template string, values map[string]string, cluster 
 			if value == "" {
 				return "", false
 			}
-			return fmt.Sprintf("%s:%s", key, value), true
+			return value, true
 		}
 		if cluster != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Unknown restic tag template %q", trimmed)
