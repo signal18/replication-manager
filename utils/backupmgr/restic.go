@@ -149,34 +149,36 @@ type ResticResult struct {
 
 // ResticPurgeOption holds the configuration for purge
 type ResticPurgeOption struct {
-	SnapshotID        string   `json:"snapshot_id,omitempty"`
-	GroupBy           string   `json:"group_by,omitempty"`
-	KeepLast          int      `json:"keep_last,omitempty"`
-	KeepHourly        int      `json:"keep_hourly,omitempty"`
-	KeepDaily         int      `json:"keep_daily,omitempty"`
-	KeepWeekly        int      `json:"keep_weekly,omitempty"`
-	KeepMonthly       int      `json:"keep_monthly,omitempty"`
-	KeepYearly        int      `json:"keep_yearly,omitempty"`
-	KeepWithin        string   `json:"keep_within,omitempty"`
-	KeepWithinHourly  string   `json:"keep_within_hourly,omitempty"`
-	KeepWithinDaily   string   `json:"keep_within_daily,omitempty"`
-	KeepWithinWeekly  string   `json:"keep_within_weekly,omitempty"`
-	KeepWithinMonthly string   `json:"keep_within_monthly,omitempty"`
-	KeepWithinYearly  string   `json:"keep_within_yearly,omitempty"`
-	KeepTag           []string `json:"keep_tag,omitempty"`
-	Host              []string `json:"host,omitempty"`
-	Tag               []string `json:"tag,omitempty"`
-	Path              []string `json:"path,omitempty"`
-	Prune             bool     `json:"prune"` // When true, runs prune after forget to reclaim space (defaults to true via NewResticPurgeOption)
-	DryRun            bool     `json:"dry_run,omitempty"`
+	SnapshotID        string            `json:"snapshot_id,omitempty"`
+	GroupBy           string            `json:"group_by,omitempty"`
+	KeepLast          int               `json:"keep_last,omitempty"`
+	KeepHourly        int               `json:"keep_hourly,omitempty"`
+	KeepDaily         int               `json:"keep_daily,omitempty"`
+	KeepWeekly        int               `json:"keep_weekly,omitempty"`
+	KeepMonthly       int               `json:"keep_monthly,omitempty"`
+	KeepYearly        int               `json:"keep_yearly,omitempty"`
+	KeepWithin        string            `json:"keep_within,omitempty"`
+	KeepWithinHourly  string            `json:"keep_within_hourly,omitempty"`
+	KeepWithinDaily   string            `json:"keep_within_daily,omitempty"`
+	KeepWithinWeekly  string            `json:"keep_within_weekly,omitempty"`
+	KeepWithinMonthly string            `json:"keep_within_monthly,omitempty"`
+	KeepWithinYearly  string            `json:"keep_within_yearly,omitempty"`
+	KeepTag           []string          `json:"keep_tag,omitempty"`
+	Host              []string          `json:"host,omitempty"`
+	Tag               []string          `json:"tag,omitempty"`
+	Path              []string          `json:"path,omitempty"`
+	Compact           bool              `json:"compact,omitempty"` // Enable compact output during forget
+	Prune             bool              `json:"prune"`             // When true, runs prune after forget to reclaim space (defaults to true via NewResticPurgeOption)
+	PruneOption       ResticPruneOption `json:"prune_option"`
+	DryRun            bool              `json:"dry_run,omitempty"`
 }
 
-// NewResticPurgeOption creates a new ResticPurgeOption with sensible defaults.
-// By default, Prune is set to true since purging should reclaim space.
-func NewResticPurgeOption() ResticPurgeOption {
-	return ResticPurgeOption{
-		Prune: true,
-	}
+type ResticPruneOption struct {
+	MaxUnused           string `json:"max_unused"`            // e.g., "500M", "5G". Empty means omit.
+	MaxRepackSize       string `json:"max_repack_size"`       // e.g., "500M", "5G". Empty means omit.
+	RepackCacheableOnly bool   `json:"repack_cacheable_only"` // Only repack cacheable blobs
+	RepackSmall         bool   `json:"repack_small"`          // Repack small blobs
+	RepackUncompressed  bool   `json:"repack_uncompressed"`   // Repack uncompressed blobs
 }
 
 // ResticRestoreOption holds the configuration for restore
@@ -3057,6 +3059,26 @@ func GetKeepN(keepLast int, keepHourly int, keepDaily int, keepWeekly int, keepM
 	return keep, useKeep
 }
 
+func GetPruneOptions(prune bool, opt ResticPruneOption) []string {
+	var args []string
+	if opt.MaxRepackSize != "" {
+		args = append(args, "--max-repack-size", opt.MaxRepackSize)
+	}
+	if opt.MaxUnused != "" {
+		args = append(args, "--max-unused", opt.MaxUnused)
+	}
+	if opt.RepackCacheableOnly {
+		args = append(args, "--repack-cacheable-only")
+	}
+	if opt.RepackSmall {
+		args = append(args, "--repack-small")
+	}
+	if opt.RepackUncompressed {
+		args = append(args, "--repack-uncompressed")
+	}
+	return args
+}
+
 func (repo *ResticManager) purgeSingleSnapshot(opt ResticPurgeOption) error {
 	repo.Printf(logrus.InfoLevel, "Purging single snapshot ID: %s", repo.shortSnapshotID(opt.SnapshotID))
 
@@ -3064,6 +3086,8 @@ func (repo *ResticManager) purgeSingleSnapshot(opt ResticPurgeOption) error {
 
 	if opt.Prune {
 		args = append(args, "--prune")
+		// Add --prune flag to reclaim disk space after forgetting snapshots
+		args = append(args, GetPruneOptions(opt.Prune, opt.PruneOption)...)
 	}
 
 	if opt.DryRun {
@@ -3103,6 +3127,9 @@ func buildForgetArgs(opt ResticPurgeOption) []string {
 	// Add --prune flag to reclaim disk space after forgetting snapshots
 	if opt.Prune {
 		args = append(args, "--prune")
+
+		// Add --prune flag to reclaim disk space after forgetting snapshots
+		args = append(args, GetPruneOptions(opt.Prune, opt.PruneOption)...)
 	}
 
 	groupBy := strings.TrimSpace(opt.GroupBy)

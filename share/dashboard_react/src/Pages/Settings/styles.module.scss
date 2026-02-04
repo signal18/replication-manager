@@ -142,3 +142,146 @@ div.settingsContainer {
     border-radius: $border-radius-sm;
   }
 }
+
+.resticMountHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: rem(8);
+  padding: rem(8) rem(12);
+  border: 1px solid var(--gray-color);
+  border-radius: rem(8);
+  background-color: var(--secondary-gray-color);
+  flex-wrap: wrap;
+}
+
+.resticMountHeaderInfo {
+  display: flex;
+  align-items: center;
+  gap: rem(6);
+}
+
+.resticMountHeaderTitle {
+  font-size: rem(12);
+  font-weight: 700;
+  color: var(--secondary-color);
+  letter-spacing: rem(0.4);
+  text-transform: uppercase;
+}
+
+.resticMountHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: rem(8);
+  flex-wrap: wrap;
+}
+
+.resticMountActionButton {
+  padding: rem(4) rem(10);
+  border-radius: rem(6);
+  border: 1px solid var(--tertiary-color);
+  background-color: var(--secondary-gray-color);
+  color: var(--text-color);
+  font-size: rem(12);
+  font-weight: 600;
+  letter-spacing: rem(0.3);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.resticMountGrid {
+  font-size: rem(14);
+  width: 100%;
+
+  .rowLabel {
+    display: flex;
+    align-items: center;
+    padding: rem(4) rem(6);
+    border: 1px solid var(--quaternary-color);
+    border-radius: rem(6);
+    background-color: var(--quaternary-color);
+    font-weight: 600;
+    text-align: left;
+  }
+
+  .valueCell {
+    display: flex;
+    flex-direction: column;
+    gap: rem(4);
+    padding: rem(4) rem(6);
+    border: 1px solid var(--tertiary-color);
+    border-radius: rem(6);
+    background-color: transparent;
+    text-align: left;
+  }
+
+  .marginCenter {
+    margin: 0 auto;
+  }
+}
+
+.helperText {
+  font-size: rem(12);
+  color: var(--darkgray-color);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: rem(8);
+  padding: rem(8);
+  border: 1px solid var(--gray-color);
+  border-radius: rem(8);
+  background-color: var(--secondary-gray-color);
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: rem(8) rem(12);
+  border: 1px solid var(--tertiary-color);
+  border-radius: rem(6);
+  background-color: var(--quaternary-color);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  gap: rem(8);
+}
+
+.panelHeaderContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: rem(2);
+  text-align: left;
+}
+
+.panelTitle {
+  font-size: rem(15);
+  color: var(--text-color);
+}
+
+.panelDescription {
+  font-size: rem(12);
+  color: var(--darkgray-color);
+  font-weight: 500;
+}
+
+.panelChevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: rem(26);
+  height: rem(26);
+  border-radius: rem(6);
+  border: 1px solid var(--gray-color);
+  background-color: var(--secondary-gray-color);
+  color: var(--text-color);
+  font-size: rem(18);
+}
+
+.panelBody {
+  padding: rem(4);
+}

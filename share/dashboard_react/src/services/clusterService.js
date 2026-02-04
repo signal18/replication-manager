@@ -739,8 +739,14 @@ function purgeResticSnapshot(clusterName, snapshotId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/purge/${snapshotId}`)
 }
 
-function purgeResticByPolicy(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/restic/purge/policy`)
+function purgeResticByPolicy(clusterName, baseURL, options = {}) {
+  const params = new URLSearchParams()
+  if (options.dryRun) {
+    params.set('dry_run', '1')
+  }
+  const query = params.toString()
+  const suffix = query ? `?${query}` : ''
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/purge/policy${suffix}`)
 }
 
 function getResticQueue(clusterName, baseURL) {

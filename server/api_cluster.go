@@ -2409,6 +2409,16 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupResticAws()
 	case "backup-restic":
 		mycluster.SwitchBackupRestic()
+	case "backup-restic-purge-prune":
+		mycluster.Conf.BackupResticPurgePrune = !mycluster.Conf.BackupResticPurgePrune
+	case "backup-restic-purge-prune-compact":
+		mycluster.Conf.BackupResticPurgePruneCompact = !mycluster.Conf.BackupResticPurgePruneCompact
+	case "backup-restic-purge-prune-repack-cacheable-only":
+		mycluster.Conf.BackupResticPurgePruneRepackCacheableOnly = !mycluster.Conf.BackupResticPurgePruneRepackCacheableOnly
+	case "backup-restic-purge-prune-repack-small":
+		mycluster.Conf.BackupResticPurgePruneRepackSmall = !mycluster.Conf.BackupResticPurgePruneRepackSmall
+	case "backup-restic-purge-prune-repack-uncompressed":
+		mycluster.Conf.BackupResticPurgePruneRepackUncompressed = !mycluster.Conf.BackupResticPurgePruneRepackUncompressed
 	case "backup-restic-allow-unsafe-mount":
 		mycluster.Conf.BackupResticAllowUnsafeMount = !mycluster.Conf.BackupResticAllowUnsafeMount
 		if mycluster.ResticManager != nil {
@@ -2781,6 +2791,46 @@ func normalizeCompressionOverride(value string) (string, error) {
 	}
 }
 
+var resticSizePattern = regexp.MustCompile(`^[0-9]+([kKmMgGtTpPeE][bB]?)?$`)
+
+func splitResticList(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return strings.FieldsFunc(value, func(r rune) bool {
+		switch r {
+		case ',', ' ', '\t', '\n', '\r':
+			return true
+		default:
+			return false
+		}
+	})
+}
+
+func validateResticPurgePathList(value string) error {
+	for _, item := range splitResticList(value) {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		if !filepath.IsAbs(trimmed) {
+			return fmt.Errorf("backup-restic-purge-path must be absolute: %s", trimmed)
+		}
+	}
+	return nil
+}
+
+func validateResticSizeValue(value, setting string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	if !resticSizePattern.MatchString(trimmed) {
+		return fmt.Errorf("invalid value for %s: %q", setting, value)
+	}
+	return nil
+}
+
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
 	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
@@ -2931,7 +2981,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-restic-mount-host":
 		mycluster.Conf.BackupResticMountHost = strings.TrimSpace(value)
 	case "backup-restic-mount-tag":
-		mycluster.Conf.BackupResticMountTag = strings.TrimSpace(value)
+		err = mycluster.SetBackupResticMountTag(value)
+		if err != nil {
+			return err
+		}
 	case "backup-restic-mount-path":
 		mycluster.Conf.BackupResticMountPath = strings.TrimSpace(value)
 	case "backup-restic-mount-path-template":
@@ -2980,6 +3033,28 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return err
 		}
+	case "backup-restic-purge-host":
+		mycluster.Conf.BackupResticPurgeHost = strings.TrimSpace(value)
+	case "backup-restic-purge-tag":
+		err = mycluster.SetBackupResticPurgeTag(value)
+		if err != nil {
+			return err
+		}
+	case "backup-restic-purge-path":
+		if err := validateResticPurgePathList(value); err != nil {
+			return err
+		}
+		mycluster.Conf.BackupResticPurgePath = strings.TrimSpace(value)
+	case "backup-restic-purge-prune-max-unused":
+		if err := validateResticSizeValue(value, "backup-restic-purge-prune-max-unused"); err != nil {
+			return err
+		}
+		mycluster.Conf.BackupResticPurgePruneMaxUnused = strings.TrimSpace(value)
+	case "backup-restic-purge-prune-max-repack-size":
+		if err := validateResticSizeValue(value, "backup-restic-purge-prune-max-repack-size"); err != nil {
+			return err
+		}
+		mycluster.Conf.BackupResticPurgePruneMaxRepackSize = strings.TrimSpace(value)
 	case "backup-restic-timeout":
 		val, err := strconv.Atoi(value)
 		if err != nil {
@@ -3749,6 +3824,16 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			mycluster.Conf.BackupRestic = newValue
 			mycluster.CheckResticInstallation()
 		}
+	case "backup-restic-purge-prune":
+		mycluster.Conf.BackupResticPurgePrune = applyIsActive(mycluster.Conf.BackupResticPurgePrune, isactive)
+	case "backup-restic-purge-prune-compact":
+		mycluster.Conf.BackupResticPurgePruneCompact = applyIsActive(mycluster.Conf.BackupResticPurgePruneCompact, isactive)
+	case "backup-restic-purge-prune-repack-cacheable-only":
+		mycluster.Conf.BackupResticPurgePruneRepackCacheableOnly = applyIsActive(mycluster.Conf.BackupResticPurgePruneRepackCacheableOnly, isactive)
+	case "backup-restic-purge-prune-repack-small":
+		mycluster.Conf.BackupResticPurgePruneRepackSmall = applyIsActive(mycluster.Conf.BackupResticPurgePruneRepackSmall, isactive)
+	case "backup-restic-purge-prune-repack-uncompressed":
+		mycluster.Conf.BackupResticPurgePruneRepackUncompressed = applyIsActive(mycluster.Conf.BackupResticPurgePruneRepackUncompressed, isactive)
 	case "backup-binlogs":
 		oldValue := mycluster.Conf.BackupBinlogs
 		newValue := applyIsActive(oldValue, isactive)
@@ -7121,25 +7206,35 @@ func (repman *ReplicationManager) handlerMuxResticFetch(w http.ResponseWriter, r
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param snapshotID path string true "Snapshot ID"
+// @Param dry_run query bool false "Dry run restic purge"
 // @Success 200 {string} string "Restic repository purged"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/restic/purge/{snapshotID} [post]
 func (repman *ReplicationManager) handlerMuxResticPurge(w http.ResponseWriter, r *http.Request) {
 	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
+		dryRun := false
+		if value := strings.TrimSpace(r.URL.Query().Get("dry_run")); value != "" {
+			parsed, err := strconv.ParseBool(value)
+			if err != nil {
+				http.Error(w, "Invalid dry_run value: "+value, http.StatusBadRequest)
+				return
+			}
+			dryRun = parsed
+		}
 
 		if vars["snapshotID"] == "" {
 			http.Error(w, "No snapshot ID provided, please provide one or use 'policy' to purge according to policy", http.StatusInternalServerError)
 			return
 		}
 		if vars["snapshotID"] == "policy" {
-			err := mycluster.ResticPurgeRepo(true)
+			err := mycluster.ResticPurgeRepoWithOptions(true, dryRun)
 			if err != nil {
 				http.Error(w, "Error purging restic repo: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 		} else {
-			err := mycluster.AddPurgeTask(vars["snapshotID"])
+			err := mycluster.ResticPurgeSnapshotWithOptions(vars["snapshotID"], true, dryRun)
 			if err != nil {
 				http.Error(w, "Error adding purge task: "+err.Error(), http.StatusInternalServerError)
 				return

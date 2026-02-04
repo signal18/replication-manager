@@ -141,6 +141,14 @@ func (cluster *Cluster) ResticInitRepo(force bool) error {
 }
 
 func (cluster *Cluster) AddPurgeTask(snapshotID string) error {
+	return cluster.ResticPurgeSnapshotWithOptions(snapshotID, true, false)
+}
+
+func (cluster *Cluster) ResticPurgeSnapshot(snapshotID string, now bool) error {
+	return cluster.ResticPurgeSnapshotWithOptions(snapshotID, now, false)
+}
+
+func (cluster *Cluster) ResticPurgeSnapshotWithOptions(snapshotID string, now bool, dryRun bool) error {
 	if !cluster.Conf.BackupRestic {
 		return fmt.Errorf("Restic backup is not enabled")
 	}
@@ -149,17 +157,32 @@ func (cluster *Cluster) AddPurgeTask(snapshotID string) error {
 		cluster.StartResticManager()
 	}
 
-	if snapshotID == "" {
+	trimmed := strings.TrimSpace(snapshotID)
+	if trimmed == "" {
 		return fmt.Errorf("Unable to purge single snapshot: snapshot ID is empty")
 	}
 
 	cluster.ResticManager.AddPurgeTask(backupmgr.ResticPurgeOption{
-		SnapshotID: snapshotID,
-	}, true)
+		SnapshotID: trimmed,
+		Compact:    cluster.Conf.BackupResticPurgePruneCompact,
+		Prune:      cluster.Conf.BackupResticPurgePrune,
+		PruneOption: backupmgr.ResticPruneOption{
+			MaxUnused:           cluster.Conf.BackupResticPurgePruneMaxUnused,
+			MaxRepackSize:       cluster.Conf.BackupResticPurgePruneMaxRepackSize,
+			RepackCacheableOnly: cluster.Conf.BackupResticPurgePruneRepackCacheableOnly,
+			RepackSmall:         cluster.Conf.BackupResticPurgePruneRepackSmall,
+			RepackUncompressed:  cluster.Conf.BackupResticPurgePruneRepackUncompressed,
+		},
+		DryRun: dryRun,
+	}, now)
 	return nil
 }
 
 func (cluster *Cluster) ResticPurgeRepo(now bool) error {
+	return cluster.ResticPurgeRepoWithOptions(now, false)
+}
+
+func (cluster *Cluster) ResticPurgeRepoWithOptions(now bool, dryRun bool) error {
 	if cluster.Conf.BackupRestic {
 		err := cluster.Conf.CheckKeepWithin() // Check if backup-keep-within is valid
 		if err != nil {
@@ -213,6 +236,10 @@ func (cluster *Cluster) ResticPurgeRepo(now bool) error {
 			}
 			keepTags = append(keepTags, rendered)
 		}
+
+		purgeHosts := splitResticPurgeFilterValues(cluster.Conf.BackupResticPurgeHost)
+		purgeTags := parseResticTagFilterValues(cluster.Conf.BackupResticPurgeTag, cluster, "purge")
+		purgePaths := filterResticAbsolutePaths(splitResticPurgeFilterValues(cluster.Conf.BackupResticPurgePath), cluster)
 		cluster.ResticManager.AddPurgeTask(backupmgr.ResticPurgeOption{
 			KeepLast:          cluster.Conf.BackupKeepLast,
 			KeepHourly:        cluster.Conf.BackupKeepHourly,
@@ -228,6 +255,19 @@ func (cluster *Cluster) ResticPurgeRepo(now bool) error {
 			KeepWithinYearly:  cluster.Conf.BackupKeepWithinYearly,
 			GroupBy:           groupBy,
 			KeepTag:           keepTags,
+			Host:              purgeHosts,
+			Tag:               purgeTags,
+			Path:              purgePaths,
+			Compact:           cluster.Conf.BackupResticPurgePruneCompact,
+			Prune:             cluster.Conf.BackupResticPurgePrune,
+			PruneOption: backupmgr.ResticPruneOption{
+				MaxUnused:           cluster.Conf.BackupResticPurgePruneMaxUnused,
+				MaxRepackSize:       cluster.Conf.BackupResticPurgePruneMaxRepackSize,
+				RepackCacheableOnly: cluster.Conf.BackupResticPurgePruneRepackCacheableOnly,
+				RepackSmall:         cluster.Conf.BackupResticPurgePruneRepackSmall,
+				RepackUncompressed:  cluster.Conf.BackupResticPurgePruneRepackUncompressed,
+			},
+			DryRun: dryRun,
 		}, now)
 	}
 	return nil
@@ -402,6 +442,38 @@ func parseResticKeepTagTemplates(value string, cluster *Cluster) []string {
 	return templates
 }
 
+func parseResticTagFilterValues(value string, cluster *Cluster, scope string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+
+	parts, hadUnmatched := splitResticTagFilterValues(value)
+	if hadUnmatched && cluster != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"Ignoring restic %s tag filter with unmatched quotes in %q", scope, value)
+	}
+	values := make([]string, 0, len(parts))
+	seen := make(map[string]struct{})
+	for _, part := range parts {
+		candidate := strings.TrimSpace(part)
+		if candidate == "" {
+			continue
+		}
+		if literal, ok := unquoteResticTagLiteral(candidate); ok {
+			candidate = strings.TrimSpace(literal)
+		}
+		if candidate == "" {
+			continue
+		}
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		values = append(values, candidate)
+	}
+	return values
+}
+
 func splitResticTagTemplates(value string) []string {
 	var parts []string
 	var current strings.Builder
@@ -447,6 +519,14 @@ func splitResticTagTemplates(value string) []string {
 }
 
 func splitResticKeepTagTemplates(value string) ([]string, bool) {
+	return splitResticSpaceSeparatedValues(value)
+}
+
+func splitResticTagFilterValues(value string) ([]string, bool) {
+	return splitResticSpaceSeparatedValues(value)
+}
+
+func splitResticSpaceSeparatedValues(value string) ([]string, bool) {
 	parts := make([]string, 0)
 	var current strings.Builder
 	var quote rune
@@ -476,7 +556,7 @@ func splitResticKeepTagTemplates(value string) ([]string, bool) {
 		case '"', '\'':
 			quote = r
 			current.WriteRune(r)
-		case ',', ' ', '\t', '\n', '\r':
+		case ' ', '\t', '\n', '\r':
 			if current.Len() > 0 {
 				parts = append(parts, current.String())
 				current.Reset()
@@ -493,6 +573,49 @@ func splitResticKeepTagTemplates(value string) ([]string, bool) {
 	}
 
 	return parts, hadUnmatched
+}
+
+// splitResticPurgeFilterValues splits host/path filters on commas and whitespace.
+func splitResticPurgeFilterValues(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		switch r {
+		case ',', ' ', '\t', '\n', '\r':
+			return true
+		default:
+			return false
+		}
+	})
+	if len(parts) == 0 {
+		return nil
+	}
+	return parts
+}
+
+func filterResticAbsolutePaths(values []string, cluster *Cluster) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	filtered := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if !filepath.IsAbs(trimmed) {
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Ignoring restic purge path (not absolute): %s", trimmed)
+			}
+			continue
+		}
+		filtered = append(filtered, trimmed)
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
 }
 
 func validateResticKeepTagTemplatesStrict(value string) error {

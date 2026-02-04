@@ -745,6 +745,16 @@ type Config struct {
 	BackupResticHost                          string `mapstructure:"backup-restic-host" toml:"backup-restic-host" json:"backupResticHost"`
 	BackupResticPurgeGroupBy                  string `mapstructure:"backup-restic-purge-group-by" toml:"backup-restic-purge-group-by" json:"backupResticPurgeGroupBy"`
 	BackupResticPurgeKeepTag                  string `mapstructure:"backup-restic-purge-keep-tag" toml:"backup-restic-purge-keep-tag" json:"backupResticPurgeKeepTag"`
+	BackupResticPurgeHost                     string `mapstructure:"backup-restic-purge-host" toml:"backup-restic-purge-host" json:"backupResticPurgeHost"`
+	BackupResticPurgeTag                      string `mapstructure:"backup-restic-purge-tag" toml:"backup-restic-purge-tag" json:"backupResticPurgeTag"`
+	BackupResticPurgePath                     string `mapstructure:"backup-restic-purge-path" toml:"backup-restic-purge-path" json:"backupResticPurgePath"`
+	BackupResticPurgePrune                    bool   `mapstructure:"backup-restic-purge-prune" toml:"backup-restic-purge-prune" json:"backupResticPurgePrune"`
+	BackupResticPurgePruneCompact             bool   `mapstructure:"backup-restic-purge-prune-compact" toml:"backup-restic-purge-prune-compact" json:"backupResticPurgePruneCompact"`
+	BackupResticPurgePruneMaxUnused           string `mapstructure:"backup-restic-purge-prune-max-unused" toml:"backup-restic-purge-prune-max-unused" json:"backupResticPurgePruneMaxUnused"`
+	BackupResticPurgePruneMaxRepackSize       string `mapstructure:"backup-restic-purge-prune-max-repack-size" toml:"backup-restic-purge-prune-max-repack-size" json:"backupResticPurgePruneMaxRepackSize"`
+	BackupResticPurgePruneRepackCacheableOnly bool   `mapstructure:"backup-restic-purge-prune-repack-cacheable-only" toml:"backup-restic-purge-prune-repack-cacheable-only" json:"backupResticPurgePruneRepackCacheableOnly"`
+	BackupResticPurgePruneRepackSmall         bool   `mapstructure:"backup-restic-purge-prune-repack-small" toml:"backup-restic-purge-prune-repack-small" json:"backupResticPurgePruneRepackSmall"`
+	BackupResticPurgePruneRepackUncompressed  bool   `mapstructure:"backup-restic-purge-prune-repack-uncompressed" toml:"backup-restic-purge-prune-repack-uncompressed" json:"backupResticPurgePruneRepackUncompressed"`
 	BackupRestic                              bool   `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`
 	BackupResticBinaryPath                    string `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
 	BackupResticLocalRepository               string `mapstructure:"backup-restic-local-repository" toml:"backup-restic-local-repository" json:"backupResticLocalRepository"`
@@ -911,6 +921,19 @@ type Config struct {
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
+}
+
+func init() {
+	viper.SetDefault("backup-restic-purge-host", "")
+	viper.SetDefault("backup-restic-purge-tag", "")
+	viper.SetDefault("backup-restic-purge-path", "")
+	viper.SetDefault("backup-restic-purge-prune", true)
+	viper.SetDefault("backup-restic-purge-prune-compact", false)
+	viper.SetDefault("backup-restic-purge-prune-max-unused", "")
+	viper.SetDefault("backup-restic-purge-prune-max-repack-size", "")
+	viper.SetDefault("backup-restic-purge-prune-repack-cacheable-only", false)
+	viper.SetDefault("backup-restic-purge-prune-repack-small", false)
+	viper.SetDefault("backup-restic-purge-prune-repack-uncompressed", false)
 }
 
 type AppConfig struct {

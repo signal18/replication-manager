@@ -24,7 +24,8 @@ function ConfirmModal({
   closeOnOverlayClick = true,
   closeOnEsc = true,
   cancelButtonText = 'Cancel',
-  confirmButtonText = 'Confirm'
+  confirmButtonText = 'Confirm',
+  confirmButtonProps = {}
 }) {
   const { theme } = useTheme()
 
@@ -44,7 +45,7 @@ function ConfirmModal({
             </RMButton>
           )}
           {showConfirmButton && (
-            <RMButton colorScheme='blue' size='medium' onClick={onConfirmClick}>
+            <RMButton colorScheme='blue' size='medium' onClick={onConfirmClick} {...confirmButtonProps}>
               {confirmButtonText}
             </RMButton>
           )}

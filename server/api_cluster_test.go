@@ -40,3 +40,65 @@ func TestNormalizeCompressionOverride(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateResticPurgePathList(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{"Empty", "", false},
+		{"Whitespace", "  \t\n ", false},
+		{"SingleAbsolute", "/var/lib/mysql", false},
+		{"MultipleAbsolute", "/var/lib/mysql, /data /srv", false},
+		{"Relative", "data", true},
+		{"Mixed", "/var/lib/mysql, data", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateResticPurgePathList(tt.value)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for %q", tt.value)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error for %q: %v", tt.value, err)
+			}
+		})
+	}
+}
+
+func TestValidateResticSizeValue(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{"Empty", "", false},
+		{"NumberOnly", "1024", false},
+		{"UpperSuffix", "1G", false},
+		{"LowerSuffix", "500m", false},
+		{"SuffixWithB", "2TB", false},
+		{"InvalidSuffix", "1Z", true},
+		{"InvalidFormat", "1.5G", true},
+		{"Whitespace", " 1G ", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateResticSizeValue(tt.value, "backup-restic-purge-prune-max-unused")
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for %q", tt.value)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error for %q: %v", tt.value, err)
+			}
+		})
+	}
+}

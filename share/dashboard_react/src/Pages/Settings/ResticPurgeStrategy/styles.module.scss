@@ -84,6 +84,103 @@
   color: var(--darkgray-color);
 }
 
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: rem(8);
+  padding: rem(8);
+  border: 1px solid var(--gray-color);
+  border-radius: rem(8);
+  background-color: var(--secondary-gray-color);
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: rem(8) rem(12);
+  border: 1px solid var(--tertiary-color);
+  border-radius: rem(6);
+  background-color: var(--quaternary-color);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  gap: rem(8);
+}
+
+.panelTitle {
+  font-size: rem(15);
+  color: var(--text-color);
+}
+
+.panelTitleRow {
+  align-items: center;
+}
+
+.panelChevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: rem(26);
+  height: rem(26);
+  border-radius: rem(6);
+  border: 1px solid var(--gray-color);
+  background-color: var(--secondary-gray-color);
+  color: var(--text-color);
+  font-size: rem(18);
+}
+
+.panelBody {
+  padding: rem(4);
+}
+
+.purgeSelectionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: rem(8);
+  padding: rem(8) rem(12);
+  border: 1px solid var(--gray-color);
+  border-radius: rem(8);
+  background-color: var(--secondary-gray-color);
+  flex-wrap: wrap;
+}
+
+.purgeSelectionInfo {
+  display: flex;
+  align-items: center;
+  gap: rem(6);
+}
+
+.purgeSelectionTitle {
+  font-size: rem(12);
+  font-weight: 700;
+  color: var(--secondary-color);
+  letter-spacing: rem(0.4);
+  text-transform: uppercase;
+}
+
+.purgeSelectionActions {
+  display: flex;
+  align-items: center;
+  gap: rem(8);
+  flex-wrap: wrap;
+}
+
+.panelActionButton {
+  padding: rem(4) rem(10);
+  border-radius: rem(6);
+  border: 1px solid var(--tertiary-color);
+  background-color: var(--secondary-gray-color);
+  color: var(--text-color);
+  font-size: rem(12);
+  font-weight: 600;
+  letter-spacing: rem(0.3);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
 
 .infoBox {
   display: flex;
@@ -116,6 +213,29 @@
 }
 
 .commandHint {
+  font-size: rem(12);
+  color: var(--darkgray-color);
+}
+
+.purgeModalBody {
+  display: flex;
+  flex-direction: column;
+  gap: rem(8);
+}
+
+.purgeModalIntro {
+  font-size: rem(13);
+}
+
+.purgeChecklist {
+  align-items: flex-start;
+}
+
+.purgeChecklistItem {
+  font-size: rem(13);
+}
+
+.purgeModalNote {
   font-size: rem(12);
   color: var(--darkgray-color);
 }

@@ -315,10 +315,10 @@ export const purgeResticSnapshot = createGuardedAsyncThunk(
 
 export const purgeResticByPolicy = createGuardedAsyncThunk(
   'cluster/purgeResticByPolicy',
-  async ({ clusterName }, thunkAPI) => {
+  async ({ clusterName, dryRun }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.purgeResticByPolicy(clusterName, baseURL)
+      const { data, status } = await clusterService.purgeResticByPolicy(clusterName, baseURL, { dryRun })
       return { data, status }
     } catch (error) {
       return handleError(error, thunkAPI)

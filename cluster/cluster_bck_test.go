@@ -21,7 +21,7 @@ func TestSplitResticKeepTagTemplates(t *testing.T) {
 		{``, []string{}},
 		{`   `, []string{}},
 		{`"role:primary,critical" "env:prod"`, []string{`"role:primary,critical"`, `"env:prod"`}},
-		{`cluster,"env:prod,team:dev"`, []string{`cluster`, `"env:prod,team:dev"`}},
+		{`cluster "env:prod,team:dev"`, []string{`cluster`, `"env:prod,team:dev"`}},
 		{`  tag1   tag2  `, []string{`tag1`, `tag2`}},
 	}
 
@@ -54,6 +54,108 @@ func TestValidateResticKeepTagTemplatesStrict(t *testing.T) {
 	}
 	if err := validateResticKeepTagTemplatesStrict(`line:adhoc env:prod`); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestResticPurgeRepoBuildsOptions(t *testing.T) {
+	conf := &config.Config{
+		BackupRestic:                              true,
+		BackupKeepLast:                            1,
+		BackupResticPurgeKeepTag:                  `"role:primary"`,
+		BackupResticPurgeHost:                     "host1 host2",
+		BackupResticPurgeTag:                      "tag1 tag2",
+		BackupResticPurgePath:                     "/data/one /data/two relative",
+		BackupResticPurgePrune:                    true,
+		BackupResticPurgePruneCompact:             true,
+		BackupResticPurgePruneMaxUnused:           "1G",
+		BackupResticPurgePruneMaxRepackSize:       "2G",
+		BackupResticPurgePruneRepackSmall:         true,
+		BackupResticPurgePruneRepackUncompressed:  true,
+		BackupResticPurgePruneRepackCacheableOnly: true,
+	}
+	cluster := &Cluster{
+		Name:          "cluster1",
+		Conf:          conf,
+		ResticManager: backupmgr.NewResticRepo("", nil, config.ConstLogModRestic),
+	}
+
+	if err := cluster.ResticPurgeRepoWithOptions(true, true); err != nil {
+		t.Fatalf("unexpected purge error: %v", err)
+	}
+	if !cluster.ResticManager.NeedPurgeNow {
+		t.Fatalf("expected purge-now to be scheduled")
+	}
+	opt := cluster.ResticManager.PurgeNowOption
+	if opt.KeepLast != 1 {
+		t.Fatalf("expected keep-last 1, got %d", opt.KeepLast)
+	}
+	if !reflect.DeepEqual(opt.KeepTag, []string{"role:primary"}) {
+		t.Fatalf("unexpected keep-tags: %v", opt.KeepTag)
+	}
+	if !reflect.DeepEqual(opt.Host, []string{"host1", "host2"}) {
+		t.Fatalf("unexpected hosts: %v", opt.Host)
+	}
+	if !reflect.DeepEqual(opt.Tag, []string{"tag1", "tag2"}) {
+		t.Fatalf("unexpected tags: %v", opt.Tag)
+	}
+	if !reflect.DeepEqual(opt.Path, []string{"/data/one", "/data/two"}) {
+		t.Fatalf("unexpected paths: %v", opt.Path)
+	}
+	if !opt.DryRun {
+		t.Fatalf("expected dry-run to be enabled")
+	}
+	if !opt.Prune {
+		t.Fatalf("expected prune to remain enabled in dry-run")
+	}
+	if opt.SnapshotID != "" {
+		t.Fatalf("expected snapshot id to be empty, got %q", opt.SnapshotID)
+	}
+	if !opt.Compact {
+		t.Fatalf("expected prune compact to be enabled")
+	}
+	if opt.PruneOption.MaxUnused != "1G" {
+		t.Fatalf("expected max-unused 1G, got %q", opt.PruneOption.MaxUnused)
+	}
+	if opt.PruneOption.MaxRepackSize != "2G" {
+		t.Fatalf("expected max-repack-size 2G, got %q", opt.PruneOption.MaxRepackSize)
+	}
+	if !opt.PruneOption.RepackCacheableOnly {
+		t.Fatalf("expected repack-cacheable-only to be enabled")
+	}
+	if !opt.PruneOption.RepackSmall {
+		t.Fatalf("expected repack-small to be enabled")
+	}
+	if !opt.PruneOption.RepackUncompressed {
+		t.Fatalf("expected repack-uncompressed to be enabled")
+	}
+}
+
+func TestResticPurgeSnapshotUsesSnapshotID(t *testing.T) {
+	conf := &config.Config{
+		BackupRestic:           true,
+		BackupResticPurgePrune: true,
+	}
+	cluster := &Cluster{
+		Name:          "cluster1",
+		Conf:          conf,
+		ResticManager: backupmgr.NewResticRepo("", nil, config.ConstLogModRestic),
+	}
+
+	if err := cluster.ResticPurgeSnapshotWithOptions(" snap-1 ", true, true); err != nil {
+		t.Fatalf("unexpected purge snapshot error: %v", err)
+	}
+	if !cluster.ResticManager.NeedPurgeNow {
+		t.Fatalf("expected purge-now to be scheduled")
+	}
+	opt := cluster.ResticManager.PurgeNowOption
+	if opt.SnapshotID != "snap-1" {
+		t.Fatalf("expected snapshot id snap-1, got %q", opt.SnapshotID)
+	}
+	if !opt.Prune {
+		t.Fatalf("expected prune to remain enabled")
+	}
+	if !opt.DryRun {
+		t.Fatalf("expected dry-run to be enabled")
 	}
 }
 
