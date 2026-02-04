@@ -9,6 +9,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -82,10 +83,26 @@ func (repman *ReplicationManager) handlerMuxResticMountToggle(w http.ResponseWri
 	}
 
 	// Parse request body
+	body, readErr := io.ReadAll(r.Body)
+	if readErr != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", readErr), http.StatusBadRequest)
+		return
+	}
+
 	var req ResticMountToggleRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
+	}
+
+	var optionsPresence map[string]json.RawMessage
+	if len(body) > 0 {
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(body, &raw); err == nil {
+			if rawOptions, ok := raw["options"]; ok {
+				_ = json.Unmarshal(rawOptions, &optionsPresence)
+			}
+		}
 	}
 
 	action := strings.ToLower(strings.TrimSpace(req.Action))
@@ -111,22 +128,24 @@ func (repman *ReplicationManager) handlerMuxResticMountToggle(w http.ResponseWri
 	case "mount":
 		// Prepare mount options
 		var mountOpt backupmgr.ResticMountOption
+		allowOtherDefault := mycluster.Conf.BackupResticMountAllowOther
 		if req.Options != nil {
 			mountOpt = *req.Options
 			// Ensure TargetDir is set
 			if mountOpt.TargetDir == "" {
 				mountOpt.TargetDir = mountDir
 			}
-			// Default NoLock to true if not explicitly set
-			if !mountOpt.NoLock {
+			// Apply defaults only when not provided
+			if _, ok := optionsPresence["no_lock"]; !ok {
 				mountOpt.NoLock = true
 			}
-			if !mountOpt.AllowOther {
-				mountOpt.AllowOther = true
+			if _, ok := optionsPresence["allow_other"]; !ok {
+				mountOpt.AllowOther = allowOtherDefault
 			}
 		} else {
 			// Use default options if not provided
 			mountOpt = backupmgr.NewResticMountOption(mountDir)
+			mountOpt.AllowOther = allowOtherDefault
 		}
 
 		// Check if already mounted

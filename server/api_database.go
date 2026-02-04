@@ -5245,6 +5245,11 @@ func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWr
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
+	if mycluster.ResticManager == nil {
+		http.Error(w, "Restic not configured for this cluster", http.StatusInternalServerError)
+		return
+	}
+
 	node := mycluster.GetServerFromName(serverName)
 	if node == nil {
 		http.Error(w, "Server Not Found", http.StatusNotFound)
@@ -5305,15 +5310,15 @@ func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWr
 		http.Error(w, message, http.StatusConflict)
 		return
 	}
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModRestic, "INFO",
+		"Queued restic reseed for %s snapshot=%s method=%s strategy=%s",
+		node.URL, snap.ShortId, method, strategy)
 	mycluster.SetState("WARN0166", state.State{
 		ErrType:   "WARNING",
 		ErrDesc:   fmt.Sprintf(mycluster.GetErrorList()["WARN0166"], node.URL, snap.ShortId, method, strategy),
 		ErrFrom:   "API",
 		ServerUrl: node.URL,
 	})
-	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModRestic, "INFO",
-		"Queued restic reseed for %s snapshot=%s method=%s strategy=%s",
-		node.URL, snap.ShortId, method, strategy)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(ApiResponse{Success: true, Data: "Reseed queued successfully"})

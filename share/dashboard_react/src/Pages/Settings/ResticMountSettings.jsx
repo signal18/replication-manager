@@ -71,6 +71,7 @@ function ResticMountSettings({ clusterName, config, user }) {
     body: <></>
   })
   const { title, body } = action
+  const allowOtherEnabled = Boolean(config?.backupResticMountAllowOther)
 
   const ResticMountFiltersHelp = `Controls which snapshots appear in the mount.  
 Filters are AND across host/tag/path; multiple values within a field are OR.  
@@ -444,13 +445,15 @@ Time template uses Go layout (e.g. 2006-01-02T15:04:05Z07:00); empty = RFC3339.`
                     </GridItem>
                     <GridItem className={styles.valueCell}>
                       <RMSwitch
-                        isChecked={config?.backupResticMountAllowOther}
+                        isChecked={allowOtherEnabled}
                         isDisabled={user?.grants['cluster-settings'] == false}
                         confirmTitle={'Confirm switch settings for backup-restic-mount-allow-other?'}
                         onChange={() => handleSwitchChange('backup-restic-mount-allow-other')}
                       />
                       <Text className={styles.helperText}>
-                        Requires FUSE user_allow_other; allows all local users to access the mount.
+                        {allowOtherEnabled
+                          ? 'Warning: enable user_allow_other in /etc/fuse.conf; all local users can access the mount.'
+                          : 'Enabling requires FUSE user_allow_other; all local users can access the mount.'}
                       </Text>
                     </GridItem>
                   </Grid>

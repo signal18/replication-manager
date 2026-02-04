@@ -1204,10 +1204,14 @@ func (cluster *Cluster) ReconcileSnapshotMetadata() (*ReconciliationReport, erro
 	}
 
 	// Get all metadata files
-	backupDir := cluster.WorkingDir + "/backup"
-	metadataFiles, err := filepath.Glob(backupDir + "/*.json")
-	if err != nil {
-		return report, fmt.Errorf("failed to list metadata files: %w", err)
+	var err error
+	metadataFiles := []string{}
+	if manager != nil && manager.resticMetadataDir != "" {
+		pattern := filepath.Join(manager.resticMetadataDir, "*"+snapshotMetadataFileExtension)
+		metadataFiles, err = filepath.Glob(pattern)
+		if err != nil {
+			return report, fmt.Errorf("failed to list restic metadata files: %w", err)
+		}
 	}
 
 	// Track metadata snapshot IDs to detect missing metadata later
@@ -1240,38 +1244,31 @@ func (cluster *Cluster) ReconcileSnapshotMetadata() (*ReconciliationReport, erro
 
 	// Check for orphaned metadata
 	for _, metaFile := range metadataFiles {
-		data, err := os.ReadFile(metaFile)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to read metadata %s: %v", metaFile, err)
+		base := filepath.Base(metaFile)
+		if !strings.HasSuffix(base, snapshotMetadataFileExtension) {
 			continue
 		}
-
-		var meta backupmgr.BackupMetadata
-		if err := json.Unmarshal(data, &meta); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to parse metadata %s: %v", metaFile, err)
+		snapshotID := strings.TrimSuffix(base, snapshotMetadataFileExtension)
+		if snapshotID == "" {
 			continue
 		}
-
-		if !meta.ResticEnabled && strings.TrimSpace(meta.ResticSnapshotID) == "" {
+		if !snapshotMetadataIDPattern.MatchString(snapshotID) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Invalid restic metadata filename: %s", base)
 			continue
 		}
-		if strings.TrimSpace(meta.ResticSnapshotID) == "" {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Metadata missing restic snapshot ID: %s", filepath.Base(metaFile))
-			continue
-		}
-		metadataSnapshotIDs[meta.ResticSnapshotID] = true
+		metadataSnapshotIDs[snapshotID] = true
 
 		// Check if snapshot exists
-		if !snapshotIDs[meta.ResticSnapshotID] {
+		if !snapshotIDs[snapshotID] {
 			report.OrphanedMetadata = append(report.OrphanedMetadata, metaFile)
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Orphaned metadata: %s references deleted snapshot %s", filepath.Base(metaFile), meta.ResticSnapshotID)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Orphaned metadata: %s references deleted snapshot %s", base, snapshotID)
 
 			// Auto-cleanup if enabled
 			if cluster.Conf.BackupReconcileAutoCleanup {
 				if err := os.Remove(metaFile); err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlErr, "Failed to cleanup orphaned metadata %s: %v", metaFile, err)
 				} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Cleaned up orphaned metadata: %s", filepath.Base(metaFile))
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Cleaned up orphaned metadata: %s", base)
 					report.CleanedUp = true
 				}
 			}
