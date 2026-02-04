@@ -163,3 +163,83 @@ func TestAlternateCompressionPathSwap(t *testing.T) {
 		t.Fatalf("expected alternate with .gz, got %q", alt)
 	}
 }
+
+func TestExpandResticMountTemplateReplacesTokens(t *testing.T) {
+	path, idUsed, ok := expandResticMountTemplate(
+		"hosts/%h/%T",
+		"shortid",
+		"fullid",
+		"repman",
+		"db1",
+		"tag1,tag2",
+		"2026-02-01_10-00-00",
+	)
+	if !ok {
+		t.Fatalf("expected template expansion to succeed")
+	}
+	if idUsed != "" {
+		t.Fatalf("expected empty idUsed, got %q", idUsed)
+	}
+	if path != filepath.Join("hosts", "db1", "2026-02-01_10-00-00") {
+		t.Fatalf("unexpected expanded path %q", path)
+	}
+}
+
+func TestExpandResticMountTemplateRejectsUnknownTokens(t *testing.T) {
+	if _, _, ok := expandResticMountTemplate(
+		"ids/%x",
+		"shortid",
+		"fullid",
+		"repman",
+		"db1",
+		"tag1",
+		"2026-02-01_10-00-00",
+	); ok {
+		t.Fatalf("expected template expansion to fail for unknown token")
+	}
+}
+
+func TestBuildResticMountSnapshotCandidatesNoSwap(t *testing.T) {
+	mountDir := "/mnt/restic/cluster1"
+	seen := make(map[string]struct{})
+	candidates := buildResticMountSnapshotCandidates(
+		mountDir,
+		[]string{"ids/%I"},
+		"shortid",
+		"fullid",
+		"repman",
+		"db1",
+		"tag1",
+		"2026-02-01_10-00-00",
+		"configured",
+		seen,
+	)
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(candidates))
+	}
+	if candidates[0].Path != filepath.Join(mountDir, "ids", "fullid") {
+		t.Fatalf("unexpected candidate path %q", candidates[0].Path)
+	}
+}
+
+func TestBuildResticMountSnapshotCandidatesTimeTemplate(t *testing.T) {
+	mountDir := "/mnt/restic/cluster1"
+	candidates := buildResticMountSnapshotCandidates(
+		mountDir,
+		[]string{"snapshots/%T"},
+		"shortid",
+		"fullid",
+		"repman",
+		"db1",
+		"tag1",
+		"2026-02-01_10-00-00",
+		"configured",
+		make(map[string]struct{}),
+	)
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(candidates))
+	}
+	if candidates[0].Path != filepath.Join(mountDir, "snapshots", "2026-02-01_10-00-00") {
+		t.Fatalf("unexpected candidate path %q", candidates[0].Path)
+	}
+}

@@ -81,13 +81,14 @@ function ResticMountSettings({ clusterName, config, user }) {
   })
   const { title, body } = action
 
-  const ResticMountFiltersHelp = `backup-restic-mount-host, backup-restic-mount-tag, and backup-restic-mount-path filter which snapshots appear in the mount.  
-Enter a comma-separated list. Empty values mean no filter.  
-Path filters must be absolute paths (e.g. /var/lib/mysql).`
+  const ResticMountFiltersHelp = `backup-restic-mount-host, backup-restic-mount-tag, and backup-restic-mount-path control which snapshots appear in the mount.  
+Filters are ANDed across host/tag/path; within each field, comma-separated values are OR.  
+Empty values mean no filter. Path filters must be absolute (e.g. /var/lib/mysql).`
 
-  const ResticMountTemplatesHelp = `backup-restic-mount-path-template controls the virtual layout in the mount (multiple templates allowed).  
-backup-restic-mount-time-template uses Go time layout (e.g. 2006-01-02T15:04:05Z07:00).  
-Leave empty to use restic defaults.`
+  const ResticMountTemplatesHelp = `backup-restic-mount-path-template controls the virtual layout in the mount (comma-separated).  
+Defaults: ids/%i (replication-manager); common restic layouts: snapshots/%T, hosts/%h/%T, tags/%t/%T, ids/%i.  
+Tokens: %i=short ID, %I=full ID, %u=user, %h=host, %t=tags, %T=time.  
+backup-restic-mount-time-template uses Go time layout (e.g. 2006-01-02T15:04:05Z07:00). Leave empty for RFC3339.`
 
   const openCommonModal = () => {
     setIsCommonModalOpen(true)
@@ -443,7 +444,7 @@ Leave empty to use restic defaults.`
                       <Stack spacing={1}>
                         <Text fontWeight='semibold'>Restic mount allow other users</Text>
                         <Text fontSize='sm' color={mutedText}>
-                          Allow access for non-root users on the host.
+                          Requires FUSE user_allow_other; allows all local users to access the mount.
                         </Text>
                       </Stack>
                       <Flex width='100%' align='center'>
@@ -460,7 +461,7 @@ Leave empty to use restic defaults.`
                       <Stack spacing={1}>
                         <Text fontWeight='semibold'>Restic mount ignore default permissions</Text>
                         <Text fontSize='sm' color={mutedText}>
-                          Ignore system umask defaults when mounting.
+                          Disables kernel permission checks (default_permissions) and ignores Unix mode bits.
                         </Text>
                       </Stack>
                       <Flex width='100%' align='center'>
@@ -477,7 +478,7 @@ Leave empty to use restic defaults.`
                       <Stack spacing={1}>
                         <Text fontWeight='semibold'>Restic mount owner root</Text>
                         <Text fontSize='sm' color={mutedText}>
-                          Force root ownership for mounted files.
+                          Show mounted files as owned by root.
                         </Text>
                       </Stack>
                       <Flex width='100%' align='center'>
@@ -542,7 +543,7 @@ Leave empty to use restic defaults.`
                       <Stack spacing={1}>
                         <Text fontWeight='semibold'>Restic mount verbose level (0-3)</Text>
                         <Text fontSize='sm' color={mutedText}>
-                          Higher values increase log verbosity.
+                          Range 0-3; 0 is default, 1-3 increase detail (quiet requires 0).
                         </Text>
                       </Stack>
                       <Box width='100%'>

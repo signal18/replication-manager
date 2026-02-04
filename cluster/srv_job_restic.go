@@ -12,6 +12,7 @@ package cluster
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -723,6 +724,49 @@ func (server *ServerMonitor) verifyRestoredBackup(paths *ResticReseedPaths) erro
 			resticLogSnapshotID(cluster, paths.SnapshotID), len(paths.TargetPaths), paths.IsDirectory)
 	}
 
+	return nil
+}
+
+func verifyMountedSnapshotPaths(cluster *Cluster, snapshotRoot string, targetPaths []string) error {
+	trimmedRoot := strings.TrimSpace(snapshotRoot)
+	if trimmedRoot == "" {
+		return fmt.Errorf("snapshot root is empty")
+	}
+	if len(targetPaths) == 0 {
+		return fmt.Errorf("no target paths to verify")
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(trimmedRoot)
+	if err != nil {
+		return fmt.Errorf("failed to resolve snapshot root %s: %w", trimmedRoot, err)
+	}
+	for i, targetPath := range targetPaths {
+		trimmedTarget := strings.TrimSpace(targetPath)
+		if trimmedTarget == "" {
+			return fmt.Errorf("target path %d is empty", i)
+		}
+		info, err := os.Lstat(trimmedTarget)
+		if err != nil {
+			return fmt.Errorf("failed to lstat mounted path %s: %w", trimmedTarget, err)
+		}
+		resolvedTarget, err := filepath.EvalSymlinks(trimmedTarget)
+		if err != nil {
+			return fmt.Errorf("failed to resolve symlinks for mounted path %s: %w", trimmedTarget, err)
+		}
+		rel, err := filepath.Rel(resolvedRoot, resolvedTarget)
+		if err != nil {
+			return fmt.Errorf("failed to resolve mount path %s under %s: %w", resolvedTarget, resolvedRoot, err)
+		}
+		if rel == "" || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("mounted path %s escapes snapshot root %s", resolvedTarget, resolvedRoot)
+		}
+		if info.Mode()&os.ModeSymlink != 0 && cluster != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlDbg,
+				"Mounted path %s is symlink resolved to %s",
+				trimmedTarget, resolvedTarget)
+		}
+	}
 	return nil
 }
 
@@ -1898,14 +1942,73 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 	default:
 	}
 
+	hasDotDotComponent := func(path string) bool {
+		for _, part := range strings.FieldsFunc(path, func(r rune) bool {
+			return r == '/' || r == '\\'
+		}) {
+			if part == ".." {
+				return true
+			}
+		}
+		return false
+	}
+
+	sanitizeMountDir := func(label, raw string) (string, error) {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			return "", fmt.Errorf("%s mount dir is empty", label)
+		}
+		if hasDotDotComponent(trimmed) {
+			return "", fmt.Errorf("%s mount dir contains '..' component: %s", label, trimmed)
+		}
+		cleaned := filepath.Clean(trimmed)
+		if !filepath.IsAbs(cleaned) {
+			return "", fmt.Errorf("%s mount dir must be absolute: %s", label, cleaned)
+		}
+		if cleaned != trimmed {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlWarn,
+				"Sanitized restic mount dir (%s): %s -> %s", label, trimmed, cleaned)
+		}
+		return cleaned, nil
+	}
+
 	clusterName := strings.TrimSpace(cluster.GetClusterName())
 	if clusterName == "" {
 		return fmt.Errorf("cluster name is empty")
 	}
 
-	mountDir := filepath.Join("/mnt/restic", clusterName)
-	if cluster.Conf.BackupResticMountDir != "" {
+	defaultMountBase := "/mnt/restic"
+	mountDir := filepath.Join(defaultMountBase, clusterName)
+	mountDirSource := "default"
+	if strings.TrimSpace(cluster.Conf.BackupResticMountDir) != "" {
 		mountDir = cluster.Conf.BackupResticMountDir
+		mountDirSource = "config"
+	}
+
+	mountDir, err = sanitizeMountDir(mountDirSource, mountDir)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlErr,
+			"Invalid restic mount dir (%s): %s", mountDirSource, err)
+		return err
+	}
+	if mountDirSource == "default" {
+		base := filepath.Clean(defaultMountBase)
+		rel, relErr := filepath.Rel(base, mountDir)
+		if relErr != nil || rel == "" || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			mountErr := fmt.Errorf("default mount dir %s escapes base %s", mountDir, base)
+			if relErr != nil {
+				mountErr = fmt.Errorf("failed to resolve default mount dir %s under base %s: %w", mountDir, base, relErr)
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlErr,
+				"Invalid restic mount dir (%s): %s", mountDirSource, mountErr)
+			return mountErr
+		}
 	}
 
 	// Register cleanup immediately after resource allocation to prevent leaks
@@ -1919,16 +2022,85 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 	}
 
 	shortID := snap.ShortId
+	fullID := strings.TrimSpace(snap.Id)
+	if shortID == "" {
+		shortID = fullID
+		if len(shortID) > 8 {
+			shortID = shortID[:8]
+		}
+	}
 	// Generate unique user ID for this reseed operation
 	userID := fmt.Sprintf("reseed-%s-%s-%d", server.Id, shortID, time.Now().UnixNano())
 
 	mountOpt := backupmgr.NewResticMountOption(mountDir)
-	mountOpt.PathTemplate = []string{"ids/%i"}
+	allowOther := true
+	allowOtherSource := "default"
+	noDefaultPermissions := false
+	ownerRoot := false
+	noLock := true
+	if cluster.Conf != nil {
+		allowOther = cluster.Conf.BackupResticMountAllowOther
+		noDefaultPermissions = cluster.Conf.BackupResticMountNoDefaultPermissions
+		ownerRoot = cluster.Conf.BackupResticMountOwnerRoot
+		noLock = cluster.Conf.BackupResticMountNoLock
+		allowOtherSource = "config"
+	}
+	mountOpt.AllowOther = allowOther
+	mountOpt.NoDefaultPermissions = noDefaultPermissions
+	mountOpt.OwnerRoot = ownerRoot
+	mountOpt.NoLock = noLock
+	parseMountTemplates := func(raw string) []string {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			return nil
+		}
+		parts := strings.Split(trimmed, ",")
+		templates := make([]string, 0, len(parts))
+		for _, part := range parts {
+			candidate := strings.TrimSpace(part)
+			if candidate == "" {
+				continue
+			}
+			templates = append(templates, candidate)
+		}
+		return templates
+	}
+	pathTemplates := parseMountTemplates(cluster.Conf.BackupResticMountPathTemplate)
+	if len(pathTemplates) == 0 {
+		pathTemplates = []string{"ids/%i"}
+	}
+	mountOpt.PathTemplate = pathTemplates
+	if strings.TrimSpace(cluster.Conf.BackupResticMountTimeTemplate) != "" {
+		mountOpt.TimeTemplate = strings.TrimSpace(cluster.Conf.BackupResticMountTimeTemplate)
+	}
+	if mountOpt.AllowOther {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlWarn,
+			"Restic mount allow-other enabled (%s, default=true): requires user_allow_other in /etc/fuse.conf; any local user can access mounted snapshot data",
+			allowOtherSource)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlInfo,
+			"Restic mount allow-other disabled (%s): mount access restricted to the mounting user",
+			allowOtherSource)
+	}
+	if mountOpt.NoDefaultPermissions {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlWarn,
+			"Restic mount no-default-permissions enabled: bypasses Unix permission checks and can expose data; use only if necessary")
+	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose,
 		config.ConstLogModRestic,
 		config.LvlInfo,
-		"Mounting restic repo with short-id path template 'ids/%i' (shortID: %s, userID: %s)",
-		shortID, userID)
+		"Mounting restic repo with path templates %v (shortID: %s, userID: %s)",
+		mountOpt.PathTemplate, shortID, userID)
+
+	mountPathBefore := strings.TrimSpace(cluster.ResticManager.GetMountPath())
+	mountWasActive := cluster.ResticManager.IsMounted()
+	mountWasActiveAtPath := mountWasActive && mountPathBefore != "" && filepath.Clean(mountPathBefore) == filepath.Clean(mountDir)
 
 	// Mount the repo (will reuse existing mount if already mounted at same path)
 	if err := cluster.ResticManager.MountRepoWithOptions(mountOpt); err != nil {
@@ -1943,6 +2115,19 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 
 	// Acquire mount reference to prevent unmount while we're using it
 	if err := cluster.ResticManager.AcquireMountRef(userID); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlWarn,
+			"Failed to acquire mount reference for userID %s: %s", userID, err)
+		if !mountWasActiveAtPath {
+			if unmountErr := cluster.ResticManager.UnmountRepo(); unmountErr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlWarn,
+					"Failed to rollback restic mount at %s after ref acquisition error: %s",
+					mountDir, unmountErr)
+			}
+		}
 		return fmt.Errorf("failed to acquire mount reference: %w", err)
 	}
 	refOwned := true
@@ -1973,8 +2158,54 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 	default:
 	}
 
-	snapshotPath := filepath.Join(mountDir, fmt.Sprintf("ids/%s", shortID))
-	if err := waitForResticSnapshotPath(ctx, snapshotPath); err != nil {
+	timeValue := ""
+	if snap != nil {
+		snapTime, parseErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(snap.Time))
+		if parseErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlWarn,
+				"Failed to parse restic snapshot time %s: %s", snap.Time, parseErr)
+		} else if mountOpt.TimeTemplate != "" {
+			timeValue = snapTime.Format(mountOpt.TimeTemplate)
+		} else {
+			timeValue = snapTime.Format(time.RFC3339)
+		}
+	}
+	username := ""
+	hostname := ""
+	tagValue := ""
+	if snap != nil {
+		username = strings.TrimSpace(snap.Username)
+		hostname = strings.TrimSpace(snap.Hostname)
+		if len(snap.Tags) > 0 {
+			tagValue = strings.Join(snap.Tags, ",")
+		}
+	}
+
+	seenCandidates := make(map[string]struct{})
+	candidates := buildResticMountSnapshotCandidates(mountDir, mountOpt.PathTemplate, shortID, fullID, username, hostname, tagValue, timeValue, "configured", seenCandidates)
+	fallbackTemplates := []string{"ids/%i", "ids/%I", "snapshots/%T", "hosts/%h/%T", "tags/%t/%T"}
+	candidates = append(candidates, buildResticMountSnapshotCandidates(mountDir, fallbackTemplates, shortID, fullID, username, hostname, tagValue, timeValue, "fallback", seenCandidates)...)
+	if len(candidates) == 0 {
+		err := fmt.Errorf("no usable restic mount path templates available")
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlErr,
+			"Restic mount path resolution failed: %s", err)
+		logResticMountTopLevel(cluster, mountDir)
+		return err
+	}
+
+	candidate, err := waitForResticSnapshotPaths(ctx, candidates)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlWarn,
+				"Restic mount snapshot paths not found before timeout; logging mount directory layout")
+			logResticMountTopLevel(cluster, mountDir)
+		}
 		if normalizedMethod == "physical" && refOwned {
 			if relErr := cluster.ResticManager.ReleaseMountRef(userID); relErr != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose,
@@ -1991,12 +2222,115 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 		}
 		return fmt.Errorf("snapshot path not ready: %w", err)
 	}
+	snapshotPath := candidate.Path
+	if candidate.Source != "configured" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlWarn,
+			"Restic mount path template mismatch detected; using path %s (template=%s, id=%s, source=%s)",
+			snapshotPath, candidate.Template, candidate.ID, candidate.Source)
+	}
 
 	if len(paths.SourcePaths) == 0 {
 		return fmt.Errorf("no source paths available in snapshot %s", resticLogSnapshotID(cluster, shortID))
 	}
 
-	paths.TargetPaths = append(paths.TargetPaths, filepath.Join(snapshotPath, paths.SourceBasePath, paths.SourcePaths[0]))
+	normalizeRelPath := func(label, value string, allowEmpty bool) (string, error) {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			if allowEmpty {
+				return "", nil
+			}
+			return "", fmt.Errorf("%s is empty", label)
+		}
+		if hasDotDotComponent(trimmed) {
+			return "", fmt.Errorf("%s contains '..' component: %s", label, trimmed)
+		}
+		cleaned := filepath.Clean(trimmed)
+		if filepath.IsAbs(cleaned) {
+			cleaned = strings.TrimLeft(cleaned, string(filepath.Separator))
+		}
+		if cleaned == "." || cleaned == "" {
+			if allowEmpty {
+				return "", nil
+			}
+			return "", fmt.Errorf("%s resolves to empty path", label)
+		}
+		if filepath.IsAbs(cleaned) {
+			return "", fmt.Errorf("%s resolves to absolute path %s", label, cleaned)
+		}
+		if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) || hasDotDotComponent(cleaned) {
+			return "", fmt.Errorf("%s resolves outside mount root: %s", label, cleaned)
+		}
+		return cleaned, nil
+	}
+
+	normalizedBase, err := normalizeRelPath("source base path", paths.SourceBasePath, true)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlErr,
+			"Invalid restic mount base path: %s", err)
+		return err
+	}
+	paths.SourceBasePath = normalizedBase
+
+	normalizedSources := make([]string, len(paths.SourcePaths))
+	for i, sourcePath := range paths.SourcePaths {
+		normalizedSource, err := normalizeRelPath(fmt.Sprintf("source path %d", i), sourcePath, false)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlErr,
+				"Invalid restic mount source path: %s", err)
+			return err
+		}
+		normalizedSources[i] = normalizedSource
+	}
+	paths.SourcePaths = normalizedSources
+
+	joinParts := []string{snapshotPath}
+	if paths.SourceBasePath != "" {
+		joinParts = append(joinParts, paths.SourceBasePath)
+	}
+	joinParts = append(joinParts, paths.SourcePaths[0])
+	resolvedTarget := filepath.Join(joinParts...)
+	relTarget, relErr := filepath.Rel(snapshotPath, resolvedTarget)
+	if relErr != nil || relTarget == "" || relTarget == "." || relTarget == ".." || strings.HasPrefix(relTarget, ".."+string(filepath.Separator)) {
+		err := fmt.Errorf("resolved mount path %s escapes snapshot root %s", resolvedTarget, snapshotPath)
+		if relErr != nil {
+			err = fmt.Errorf("failed to resolve mount path %s under %s: %w", resolvedTarget, snapshotPath, relErr)
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlErr,
+			"Invalid restic mount target: %s", err)
+		return err
+	}
+
+	paths.TargetPaths = append(paths.TargetPaths, resolvedTarget)
+	if err := verifyMountedSnapshotPaths(cluster, snapshotPath, paths.TargetPaths); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlErr,
+			"Mounted snapshot path verification failed: %s",
+			err)
+		if normalizedMethod == "physical" && refOwned {
+			if relErr := cluster.ResticManager.ReleaseMountRef(userID); relErr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlWarn,
+					"Failed to release mount reference for userID %s: %s", userID, relErr)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlDbg,
+					"Released mount reference for userID: %s", userID)
+			}
+			refOwned = false
+		}
+		return fmt.Errorf("mounted snapshot path verification failed: %w", err)
+	}
 
 	if err := server.verifyRestoredBackup(paths); err != nil {
 		if normalizedMethod == "physical" && refOwned {
@@ -2115,6 +2449,219 @@ func waitForResticSnapshotPath(ctx context.Context, snapshotPath string) error {
 		case <-ticker.C:
 			if _, err := os.Stat(snapshotPath); err == nil {
 				return nil
+			}
+		}
+	}
+}
+
+type resticSnapshotPathCandidate struct {
+	Path     string
+	Template string
+	ID       string
+	Source   string
+}
+
+func logResticMountTopLevel(cluster *Cluster, mountDir string) {
+	if cluster == nil {
+		return
+	}
+	trimmed := strings.TrimSpace(mountDir)
+	if trimmed == "" {
+		return
+	}
+	entries, err := os.ReadDir(trimmed)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlWarn,
+			"Failed to read restic mount dir %s: %s", trimmed, err)
+		return
+	}
+	if len(entries) == 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlInfo,
+			"Restic mount dir %s is empty", trimmed)
+		return
+	}
+	const maxTopEntries = 50
+	const maxChildEntries = 20
+	cluster.LogModulePrintf(cluster.Conf.Verbose,
+		config.ConstLogModRestic,
+		config.LvlInfo,
+		"Restic mount dir %s top-level entries: %d", trimmed, len(entries))
+	for i, entry := range entries {
+		if i >= maxTopEntries {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlInfo,
+				"Restic mount dir %s listing truncated at %d entries", trimmed, maxTopEntries)
+			break
+		}
+		name := entry.Name()
+		if !entry.IsDir() {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlInfo,
+				"Restic mount entry: %s", name)
+			continue
+		}
+		childPath := filepath.Join(trimmed, name)
+		children, childErr := os.ReadDir(childPath)
+		if childErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlWarn,
+				"Failed to read restic mount entry %s: %s", childPath, childErr)
+			continue
+		}
+		childNames := make([]string, 0, len(children))
+		for j, child := range children {
+			if j >= maxChildEntries {
+				remaining := len(children) - maxChildEntries
+				if remaining > 0 {
+					childNames = append(childNames, fmt.Sprintf("...%d more", remaining))
+				}
+				break
+			}
+			childNames = append(childNames, child.Name())
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlInfo,
+			"Restic mount entry %s/ children=%d [%s]", name, len(children), strings.Join(childNames, ", "))
+	}
+}
+
+func buildResticMountSnapshotCandidates(mountDir string, templates []string, shortID, fullID, username, hostname, tagValue, timeValue, source string, seen map[string]struct{}) []resticSnapshotPathCandidate {
+	if mountDir == "" {
+		return nil
+	}
+	candidates := make([]resticSnapshotPathCandidate, 0, len(templates))
+	for _, template := range templates {
+		trimmed := strings.TrimSpace(template)
+		if trimmed == "" {
+			continue
+		}
+		if relPath, idUsed, ok := expandResticMountTemplate(trimmed, shortID, fullID, username, hostname, tagValue, timeValue); ok {
+			path := filepath.Join(mountDir, relPath)
+			if seen != nil {
+				if _, ok := seen[path]; !ok {
+					seen[path] = struct{}{}
+					candidates = append(candidates, resticSnapshotPathCandidate{
+						Path:     path,
+						Template: trimmed,
+						ID:       idUsed,
+						Source:   source,
+					})
+				}
+			} else {
+				candidates = append(candidates, resticSnapshotPathCandidate{
+					Path:     path,
+					Template: trimmed,
+					ID:       idUsed,
+					Source:   source,
+				})
+			}
+		}
+	}
+	return candidates
+}
+
+func expandResticMountTemplate(template, shortID, fullID, username, hostname, tagValue, timeValue string) (string, string, bool) {
+	trimmed := strings.TrimSpace(template)
+	if trimmed == "" {
+		return "", "", false
+	}
+	hasShort := strings.Contains(trimmed, "%i")
+	hasFull := strings.Contains(trimmed, "%I")
+	hasUser := strings.Contains(trimmed, "%u")
+	hasHost := strings.Contains(trimmed, "%h")
+	hasTags := strings.Contains(trimmed, "%t")
+	hasTime := strings.Contains(trimmed, "%T")
+	if !hasShort && !hasFull && !hasUser && !hasHost && !hasTags && !hasTime {
+		if strings.Contains(trimmed, "%") {
+			return "", "", false
+		}
+	}
+	if hasShort && strings.TrimSpace(shortID) == "" {
+		return "", "", false
+	}
+	if hasFull && strings.TrimSpace(fullID) == "" {
+		return "", "", false
+	}
+	if hasUser && strings.TrimSpace(username) == "" {
+		return "", "", false
+	}
+	if hasHost && strings.TrimSpace(hostname) == "" {
+		return "", "", false
+	}
+	if hasTags && strings.TrimSpace(tagValue) == "" {
+		return "", "", false
+	}
+	if hasTime && strings.TrimSpace(timeValue) == "" {
+		return "", "", false
+	}
+	replaced := strings.ReplaceAll(trimmed, "%i", shortID)
+	replaced = strings.ReplaceAll(replaced, "%I", fullID)
+	replaced = strings.ReplaceAll(replaced, "%u", username)
+	replaced = strings.ReplaceAll(replaced, "%h", hostname)
+	replaced = strings.ReplaceAll(replaced, "%t", tagValue)
+	replaced = strings.ReplaceAll(replaced, "%T", timeValue)
+	if strings.Contains(replaced, "%") {
+		return "", "", false
+	}
+	cleaned := filepath.Clean(replaced)
+	if filepath.IsAbs(cleaned) {
+		return "", "", false
+	}
+	if cleaned == "." || cleaned == "" || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return "", "", false
+	}
+	idUsed := ""
+	if hasShort && hasFull {
+		idUsed = "mixed"
+	} else if hasShort {
+		idUsed = shortID
+	} else if hasFull {
+		idUsed = fullID
+	}
+	return cleaned, idUsed, true
+}
+
+func waitForResticSnapshotPaths(ctx context.Context, candidates []resticSnapshotPathCandidate) (resticSnapshotPathCandidate, error) {
+	if len(candidates) == 0 {
+		return resticSnapshotPathCandidate{}, fmt.Errorf("no snapshot path candidates")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	checkPaths := func() (resticSnapshotPathCandidate, bool) {
+		for _, candidate := range candidates {
+			if candidate.Path == "" {
+				continue
+			}
+			if _, err := os.Stat(candidate.Path); err == nil {
+				return candidate, true
+			}
+		}
+		return resticSnapshotPathCandidate{}, false
+	}
+	if candidate, ok := checkPaths(); ok {
+		return candidate, nil
+	}
+	if ctx.Err() != nil {
+		return resticSnapshotPathCandidate{}, ctx.Err()
+	}
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return resticSnapshotPathCandidate{}, ctx.Err()
+		case <-ticker.C:
+			if candidate, ok := checkPaths(); ok {
+				return candidate, nil
 			}
 		}
 	}
