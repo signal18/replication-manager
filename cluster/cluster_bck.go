@@ -687,6 +687,19 @@ func renderResticTagTemplate(template string, values map[string]string, cluster 
 		return literal, true
 	}
 
+	if prefix, suffix, ok := strings.Cut(trimmed, ":"); ok && strings.TrimSpace(suffix) == "" {
+		key := normalizeResticTagCategory(prefix)
+		if key != "" {
+			if _, ok := resticTagTemplateKeySet[key]; ok {
+				value := strings.TrimSpace(values[key])
+				if value == "" {
+					return "", false
+				}
+				return key + ":" + value, true
+			}
+		}
+	}
+
 	matches := resticTagTemplatePattern.FindAllStringSubmatch(trimmed, -1)
 	if len(matches) == 0 {
 		if strings.Contains(trimmed, ":") {
@@ -748,6 +761,19 @@ func renderResticKeepTagTemplate(template string, values map[string]string, clus
 			return "", false
 		}
 		return literal, true
+	}
+
+	if prefix, suffix, ok := strings.Cut(trimmed, ":"); ok && strings.TrimSpace(suffix) == "" {
+		key := normalizeResticTagCategory(prefix)
+		if key != "" {
+			if _, ok := resticKeepTagTemplateKeySet[key]; ok {
+				value := strings.TrimSpace(values[key])
+				if value == "" {
+					return "", false
+				}
+				return key + ":" + value, true
+			}
+		}
 	}
 
 	matches := resticTagTemplatePattern.FindAllStringSubmatch(trimmed, -1)

@@ -899,7 +899,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	flags.BoolVar(&conf.BackupBinlogs, "backup-binlogs", false, "Archive binlogs")
 	flags.IntVar(&conf.BackupBinlogsKeep, "backup-binlogs-keep", 10, "Number of master binlog to keep")
-	flags.IntVar(&conf.BackupReconcileInterval, "backup-reconcile-interval", 600, "Backup metadata reconciliation interval in seconds (0=disabled)")
+	flags.IntVar(&conf.BackupReconcileInterval, "backup-reconcile-interval", 600, "Backup metadata reconciliation ticker interval (0=disabled)")
 	flags.BoolVar(&conf.BackupReconcileAutoCleanup, "backup-reconcile-auto-cleanup", false, "Automatically cleanup orphaned metadata during reconciliation")
 
 	//Using mysqlbinlog for PRO since it's using opensvc and k8s

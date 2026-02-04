@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -1304,4 +1305,24 @@ func (cluster *Cluster) ReconcileSnapshotMetadata() (*ReconciliationReport, erro
 	}
 
 	return report, nil
+}
+
+func (cluster *Cluster) ReconcileSnapshotMetadataAsync() {
+	if cluster == nil {
+		return
+	}
+	if !atomic.CompareAndSwapInt32(&cluster.reconcileSnapshotMetadataInProgress, 0, 1) {
+		return
+	}
+	go func() {
+		defer atomic.StoreInt32(&cluster.reconcileSnapshotMetadataInProgress, 0)
+		report, err := cluster.ReconcileSnapshotMetadata()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Reconciliation failed: %s", err)
+			return
+		}
+		if len(report.OrphanedMetadata) > 0 || len(report.MissingMetadata) > 0 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Reconciliation drift detected: %d orphaned, %d missing metadata", len(report.OrphanedMetadata), len(report.MissingMetadata))
+		}
+	}()
 }
