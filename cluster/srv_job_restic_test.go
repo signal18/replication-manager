@@ -13,10 +13,10 @@ import (
 
 func TestPrepareResticReseedPathsUsesMetadataDest(t *testing.T) {
 	cluster := &Cluster{
-		Conf:                  &config.Config{},
-		BackupMetaMap:         backupmgr.NewBackupMetaMap(),
-		snapshotMetadataCache: newSnapshotMetadataCache(),
+		Conf:          &config.Config{},
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
 	}
+	manager := cluster.getSnapshotMetadataManager()
 	summary := &SnapshotMetadataSummary{
 		Dest:             "/backups/cluster1/mysqldump.sql.gz",
 		BackupMethod:     "logical",
@@ -27,7 +27,7 @@ func TestPrepareResticReseedPathsUsesMetadataDest(t *testing.T) {
 		ResticBasePath:   "/backups/cluster1",
 	}
 	key := "1|default"
-	cluster.snapshotMetadataCache.Update("snap-1", func(entry *snapshotMetadataCacheEntry) {
+	manager.cache.Update("snap-1", func(entry *snapshotMetadataCacheEntry) {
 		entry.Status = snapshotMetadataStatusReady
 		entry.Summaries = map[string]*SnapshotMetadataSummary{key: summary}
 	})
@@ -46,10 +46,10 @@ func TestPrepareResticReseedPathsUsesMetadataDest(t *testing.T) {
 
 func TestPrepareResticReseedPathsUsesMetadataDir(t *testing.T) {
 	cluster := &Cluster{
-		Conf:                  &config.Config{},
-		BackupMetaMap:         backupmgr.NewBackupMetaMap(),
-		snapshotMetadataCache: newSnapshotMetadataCache(),
+		Conf:          &config.Config{},
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
 	}
+	manager := cluster.getSnapshotMetadataManager()
 	summary := &SnapshotMetadataSummary{
 		Dest:             "/backups/cluster1/custom_dir",
 		BackupMethod:     "logical",
@@ -60,7 +60,7 @@ func TestPrepareResticReseedPathsUsesMetadataDir(t *testing.T) {
 		ResticBasePath:   "/backups/cluster1",
 	}
 	key := "1|default"
-	cluster.snapshotMetadataCache.Update("snap-2", func(entry *snapshotMetadataCacheEntry) {
+	manager.cache.Update("snap-2", func(entry *snapshotMetadataCacheEntry) {
 		entry.Status = snapshotMetadataStatusReady
 		entry.Summaries = map[string]*SnapshotMetadataSummary{key: summary}
 	})
@@ -82,17 +82,17 @@ func TestPrepareResticReseedPathsUsesMetadataDir(t *testing.T) {
 
 func TestUpdateResticReseedJobErrorUsesMetadataTool(t *testing.T) {
 	cluster := &Cluster{
-		Conf:                  &config.Config{BackupLogicalType: "mysqldump", BackupPhysicalType: "xtrabackup"},
-		BackupMetaMap:         backupmgr.NewBackupMetaMap(),
-		snapshotMetadataCache: newSnapshotMetadataCache(),
+		Conf:          &config.Config{BackupLogicalType: "mysqldump", BackupPhysicalType: "xtrabackup"},
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
 	}
+	manager := cluster.getSnapshotMetadataManager()
 	summary := &SnapshotMetadataSummary{
 		BackupMethod:     "physical",
 		BackupTool:       config.ConstBackupPhysicalTypeXtrabackup,
 		BackupLine:       backupmgr.BackupLineDefault,
 		ResticSnapshotID: "snap-1",
 	}
-	cluster.snapshotMetadataCache.Update("snap-1", func(entry *snapshotMetadataCacheEntry) {
+	manager.cache.Update("snap-1", func(entry *snapshotMetadataCacheEntry) {
 		entry.Status = snapshotMetadataStatusReady
 		entry.Summaries = map[string]*SnapshotMetadataSummary{
 			"2|default": summary,

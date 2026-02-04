@@ -228,11 +228,17 @@ type ServerMonitor struct {
 	jobMutex                    sync.Mutex // protects IsRunningJobs flag
 	configGenMutex              sync.Mutex // protects config generation operations
 	backupMetaMutex             sync.Mutex // protects LastBackupMeta from concurrent Restic callback updates
-	reseedMutex                 sync.Mutex // protects IsReseeding state from concurrent reseed operations
-	resticReseedMutex           sync.Mutex // protects pendingResticReseed
-	pendingResticReseed         *ResticReseedRequest
-	resticReseedCleanupMutex    sync.Mutex // protects resticReseedCleanup
-	resticReseedCleanup         map[string]*ResticReseedCleanupEntry
+	// Lock ordering (to prevent deadlocks):
+	// 1. Cluster.stateMutex (highest)
+	// 2. ServerMonitor.stateMutex
+	// 3. ServerMonitor.reseedMutex (lowest - leaf lock)
+	//
+	// NEVER hold reseedMutex while calling external functions; copy values under lock then release.
+	reseedMutex              sync.Mutex // protects IsReseeding state from concurrent reseed operations
+	resticReseedMutex        sync.Mutex // protects pendingResticReseed
+	pendingResticReseed      *ResticReseedRequest
+	resticReseedCleanupMutex sync.Mutex // protects resticReseedCleanup
+	resticReseedCleanup      map[string]*ResticReseedCleanupEntry
 }
 
 type ServerBackupMeta struct {

@@ -308,72 +308,73 @@ type TaskStatus struct {
 
 // ResticManager manages the queue and execution
 type ResticManager struct {
-	BinaryPath        string
-	Env               []string
-	Backups           []BackupSnapshot
-	BackupMap         map[string]*BackupSnapshot
-	BackupStat        BackupStat
-	TaskQueue         []*ResticTask
-	TaskErrors        map[TaskType]error
-	errorMutex        *sync.Mutex
-	ResultChan        chan ResticResult
-	LogModule         int
-	MessageChan       chan sharedlog.Message
-	Shutdown          bool
-	Mutex             *sync.Mutex
-	cond              *sync.Cond    // Condition variable for waiting and notifying tasks
-	stopCh            chan struct{} // Stop channel to signal the goroutine to stop
-	CanFetch          bool
-	CanInitRepo       bool
-	NeedPurgeNow      bool
-	PurgeNowOption    ResticPurgeOption
-	isPaused          bool
-	isPausedByDisk    bool
-	HasLocks          bool
-	taskID            int
-	CurrentID         int
-	mountMutex        *sync.Mutex
-	mountCmd          *exec.Cmd
-	mountPath         string
-	mountDone         chan error
-	mountPid          int
-	unmountRequested  bool                // Set to true when intentional unmount is requested
-	mountRefCount     int                 // Number of active users of the mount
-	mountRefMutex     *sync.Mutex         // Protects mountRefCount and mountUsers
-	mountUsers        map[string]struct{} // Track which operations are using mount (for debugging)
-	BackupCount       int                 // Number of backups since last check
-	LastCheckTime     time.Time           // Last time repository check was run
-	LastFullCheckTime time.Time           // Last time full data check was run
-	DirMode           os.FileMode         // Directory permission mode (default: 0700)
-	FileMode          os.FileMode         // File permission mode (default: 0600)
-	OperationTimeout  time.Duration       // Timeout for long-running operations (default: 2 hours)
-	MountDisabled     bool                // If true, mount operations are disabled (e.g., FUSE unavailable)
-	AllowUnsafeMount  bool                // If true, allow using mount created by other process
-	OnPurgeComplete   func(ResticPurgeOption)
+	BinaryPath           string
+	Env                  []string
+	Backups              []BackupSnapshot
+	BackupMap            map[string]*BackupSnapshot
+	BackupStat           BackupStat
+	TaskQueue            []*ResticTask
+	TaskErrors           map[TaskType]error
+	errorMutex           *sync.Mutex
+	ResultChan           chan ResticResult
+	LogModule            int
+	MessageChan          chan sharedlog.Message
+	Shutdown             bool
+	Mutex                *sync.Mutex
+	cond                 *sync.Cond    // Condition variable for waiting and notifying tasks
+	stopCh               chan struct{} // Stop channel to signal the goroutine to stop
+	CanFetch             bool
+	CanInitRepo          bool
+	NeedPurgeNow         bool
+	PurgeNowOption       ResticPurgeOption
+	isPaused             bool
+	isPausedByDisk       bool
+	HasLocks             bool
+	taskID               int
+	CurrentID            int
+	mountCmd             *exec.Cmd
+	mountPath            string
+	mountDone            chan error
+	mountPid             int
+	unmountRequested     bool                // Set to true when intentional unmount is requested
+	mountRefCount        int                 // Number of active users of the mount
+	mountRefMutex        *sync.Mutex         // Protects mount state (cmd/path/pid/done/unmountRequested) and mount users
+	mountUsers           map[string]struct{} // Track which operations are using mount (for debugging)
+	BackupCount          int                 // Number of backups since last check
+	LastCheckTime        time.Time           // Last time repository check was run
+	LastFullCheckTime    time.Time           // Last time full data check was run
+	DirMode              os.FileMode         // Directory permission mode (default: 0700)
+	FileMode             os.FileMode         // File permission mode (default: 0600)
+	OperationTimeout     time.Duration       // Timeout for long-running operations (default: 2 hours)
+	DumpTimeout          time.Duration       // Timeout for restic dump operations (default: OperationTimeout)
+	MountDisabled        bool                // If true, mount operations are disabled (e.g., FUSE unavailable)
+	AllowUnsafeMount     bool                // If true, allow using mount created by other process
+	MountRecoveryEnabled bool                // If true, recover/cleanup stale mounts on startup
+	OnPurgeComplete      func(ResticPurgeOption)
 }
 
 // NewResticRepo initializes the repository manager
 func NewResticRepo(binaryPath string, msgChan chan sharedlog.Message, logmodule int) *ResticManager {
 	repo := &ResticManager{
-		BinaryPath:       binaryPath,
-		Backups:          make([]BackupSnapshot, 0),
-		BackupMap:        make(map[string]*BackupSnapshot),
-		MessageChan:      msgChan,
-		LogModule:        logmodule,
-		TaskQueue:        make([]*ResticTask, 0),
-		Mutex:            &sync.Mutex{},
-		mountMutex:       &sync.Mutex{},
-		mountRefMutex:    &sync.Mutex{},
-		mountUsers:       make(map[string]struct{}),
-		TaskErrors:       make(map[TaskType]error),
-		errorMutex:       &sync.Mutex{},
-		ResultChan:       make(chan ResticResult, 10),
-		stopCh:           make(chan struct{}),
-		CanFetch:         true,
-		CanInitRepo:      true,
-		DirMode:          0700,          // Secure default: owner-only directories
-		FileMode:         0600,          // Secure default: owner-only files
-		OperationTimeout: 2 * time.Hour, // Default: 2 hours for long operations
+		BinaryPath:           binaryPath,
+		Backups:              make([]BackupSnapshot, 0),
+		BackupMap:            make(map[string]*BackupSnapshot),
+		MessageChan:          msgChan,
+		LogModule:            logmodule,
+		TaskQueue:            make([]*ResticTask, 0),
+		Mutex:                &sync.Mutex{},
+		mountRefMutex:        &sync.Mutex{},
+		mountUsers:           make(map[string]struct{}),
+		TaskErrors:           make(map[TaskType]error),
+		errorMutex:           &sync.Mutex{},
+		ResultChan:           make(chan ResticResult, 10),
+		stopCh:               make(chan struct{}),
+		CanFetch:             true,
+		CanInitRepo:          true,
+		DirMode:              0700,          // Secure default: owner-only directories
+		FileMode:             0600,          // Secure default: owner-only files
+		OperationTimeout:     2 * time.Hour, // Default: 2 hours for long operations
+		MountRecoveryEnabled: true,
 	}
 
 	repo.cond = sync.NewCond(repo.Mutex)
@@ -610,6 +611,26 @@ func (repo *ResticManager) GetOperationTimeout() time.Duration {
 		return 2 * time.Hour // Default: 2 hours
 	}
 	return repo.OperationTimeout
+}
+
+// SetDumpTimeout sets the timeout for restic dump operations
+// timeout: Duration (e.g., 30*time.Minute). Zero uses OperationTimeout.
+func (repo *ResticManager) SetDumpTimeout(timeout time.Duration) {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+	repo.DumpTimeout = timeout
+	repo.Printf(logrus.DebugLevel, "Set restic dump timeout: %v", timeout)
+}
+
+// GetDumpTimeout returns the timeout for restic dump operations
+func (repo *ResticManager) GetDumpTimeout() time.Duration {
+	repo.Mutex.Lock()
+	dumpTimeout := repo.DumpTimeout
+	repo.Mutex.Unlock()
+	if dumpTimeout > 0 {
+		return dumpTimeout
+	}
+	return repo.GetOperationTimeout()
 }
 
 // SetMountDisabled enables or disables mount operations
@@ -1280,7 +1301,7 @@ func (repo *ResticManager) DumpSnapshotWithOptions(opt ResticDumpOption, writer 
 	}
 
 	// Add timeout context for long-running dump operations
-	timeout := repo.GetOperationTimeout()
+	timeout := repo.GetDumpTimeout()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -1436,6 +1457,30 @@ func (repo *ResticManager) buildMountArgs(opt ResticMountOption) []string {
 	return args
 }
 
+type resticMountSnapshot struct {
+	cmd              *exec.Cmd
+	done             chan error
+	path             string
+	pid              int
+	unmountRequested bool
+}
+
+func (repo *ResticManager) mountSnapshotUnsafe() resticMountSnapshot {
+	return resticMountSnapshot{
+		cmd:              repo.mountCmd,
+		done:             repo.mountDone,
+		path:             repo.mountPath,
+		pid:              repo.mountPid,
+		unmountRequested: repo.unmountRequested,
+	}
+}
+
+func (repo *ResticManager) mountSnapshot() resticMountSnapshot {
+	repo.mountRefMutex.Lock()
+	defer repo.mountRefMutex.Unlock()
+	return repo.mountSnapshotUnsafe()
+}
+
 // MountRepo mounts the repository at targetDir with default options (backward compatible)
 func (repo *ResticManager) MountRepo(targetDir string) error {
 	return repo.MountRepoWithOptions(NewResticMountOption(targetDir))
@@ -1457,10 +1502,10 @@ func (repo *ResticManager) MountRepoWithOptions(opt ResticMountOption) error {
 	repo.RecoverMountState()
 	if isMountReady(opt.TargetDir) && repo.AllowUnsafeMount {
 		repo.Printf(logrus.WarnLevel, "Restic mountpoint already mounted at %s; reusing due to unsafe flag", opt.TargetDir)
-		repo.mountMutex.Lock()
+		repo.mountRefMutex.Lock()
 		repo.mountPath = opt.TargetDir
 		repo.mountPid = 0
-		repo.mountMutex.Unlock()
+		repo.mountRefMutex.Unlock()
 		if err := repo.writeMountState(opt.TargetDir, 0); err != nil {
 			repo.Printf(logrus.WarnLevel, "Failed to persist restic mount state: %v", err)
 		}
@@ -1470,11 +1515,10 @@ func (repo *ResticManager) MountRepoWithOptions(opt ResticMountOption) error {
 		return fmt.Errorf("failed to create mount dir: %w", err)
 	}
 
-	repo.mountMutex.Lock()
-	if repo.mountCmd != nil && repo.mountCmd.Process != nil {
-		existingPath := repo.mountPath
-		existingPid := repo.mountCmd.Process.Pid
-		repo.mountMutex.Unlock()
+	snapshot := repo.mountSnapshot()
+	if snapshot.cmd != nil && snapshot.cmd.Process != nil {
+		existingPath := snapshot.path
+		existingPid := snapshot.cmd.Process.Pid
 
 		// Mount already exists - check if it's the same path
 		if existingPath == opt.TargetDir {
@@ -1488,10 +1532,9 @@ func (repo *ResticManager) MountRepoWithOptions(opt ResticMountOption) error {
 		// Different path requested - this is an error
 		return fmt.Errorf("restic mount already running at %s (requested: %s)", existingPath, opt.TargetDir)
 	}
-	if repo.mountPath != "" && isMountReady(repo.mountPath) {
-		existingPath := repo.mountPath
-		existingPid := repo.mountPid
-		repo.mountMutex.Unlock()
+	if snapshot.path != "" && isMountReady(snapshot.path) {
+		existingPath := snapshot.path
+		existingPid := snapshot.pid
 		if existingPath == opt.TargetDir {
 			if existingPid > 0 && isResticMountProcess(existingPid, existingPath) {
 				repo.Printf(logrus.DebugLevel, "Restic mount already active at %s (recovered), reusing existing mount", existingPath)
@@ -1505,7 +1548,6 @@ func (repo *ResticManager) MountRepoWithOptions(opt ResticMountOption) error {
 		}
 		return fmt.Errorf("restic mount already running at %s (requested: %s)", existingPath, opt.TargetDir)
 	}
-	repo.mountMutex.Unlock()
 	if isMountReady(opt.TargetDir) {
 		return fmt.Errorf("restic mountpoint already mounted at %s", opt.TargetDir)
 	}
@@ -1523,13 +1565,16 @@ func (repo *ResticManager) MountRepoWithOptions(opt ResticMountOption) error {
 
 	var stderrBuf bytes.Buffer
 
-	repo.mountMutex.Lock()
+	repo.mountRefMutex.Lock()
 	repo.mountCmd = cmd
 	repo.mountPath = opt.TargetDir
 	repo.mountPid = cmd.Process.Pid
 	repo.mountDone = make(chan error, 1)
 	done := repo.mountDone
-	repo.mountMutex.Unlock()
+	repo.mountRefMutex.Unlock()
+	if err := repo.writeMountPidFile(cmd.Process.Pid); err != nil {
+		repo.Printf(logrus.WarnLevel, "Failed to persist restic mount pid: %v", err)
+	}
 
 	go repo.streamMountOutput(ptyFile, "[OUT] ", &stderrBuf)
 
@@ -1537,10 +1582,9 @@ func (repo *ResticManager) MountRepoWithOptions(opt ResticMountOption) error {
 		err := cmd.Wait()
 		_ = ptyFile.Close()
 
-		// Check if this was an intentional unmount
-		repo.mountMutex.Lock()
+		repo.mountRefMutex.Lock()
 		wasIntentional := repo.unmountRequested
-		repo.mountMutex.Unlock()
+		repo.mountRefMutex.Unlock()
 
 		if err != nil {
 			// Only log as error if this was not an intentional unmount
@@ -1563,21 +1607,23 @@ func (repo *ResticManager) MountRepoWithOptions(opt ResticMountOption) error {
 			}
 		}
 
-		repo.mountMutex.Lock()
+		repo.mountRefMutex.Lock()
+		done := repo.mountDone
 		repo.mountCmd = nil
 		repo.mountPath = ""
 		repo.mountPid = 0
 		repo.unmountRequested = false // Reset the flag
+		repo.mountDone = nil
+		repo.mountRefMutex.Unlock()
+
 		repo.clearMountState()
-		if repo.mountDone != nil {
+		if done != nil {
 			select {
-			case repo.mountDone <- err:
+			case done <- err:
 			default:
 			}
-			close(repo.mountDone)
-			repo.mountDone = nil
+			close(done)
 		}
-		repo.mountMutex.Unlock()
 	}()
 
 	// Wait a bit for mount to be ready or fail early
@@ -1613,12 +1659,10 @@ func (repo *ResticManager) MountRepoWithOptions(opt ResticMountOption) error {
 
 		case <-timeout:
 			// Timeout waiting for mount to be ready
-			repo.mountMutex.Lock()
-			if repo.mountCmd != nil && repo.mountCmd.Process != nil {
-				_ = repo.mountCmd.Process.Kill()
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
 				time.Sleep(100 * time.Millisecond) // Allow cleanup
 			}
-			repo.mountMutex.Unlock()
 			msg := strings.TrimSpace(stderrBuf.String())
 			if msg == "" {
 				msg = "mount timeout"
@@ -1679,6 +1723,14 @@ func (repo *ResticManager) mountStatePath() string {
 	return filepath.Join(cacheDir, "restic_mount_state.json")
 }
 
+func (repo *ResticManager) mountPidPath() string {
+	cacheDir := strings.TrimSpace(repo.GetCacheDirPath())
+	if cacheDir == "" {
+		return ""
+	}
+	return filepath.Join(cacheDir, "restic_mount.pid")
+}
+
 func (repo *ResticManager) writeMountState(path string, pid int) error {
 	statePath := repo.mountStatePath()
 	if statePath == "" {
@@ -1699,7 +1751,53 @@ func (repo *ResticManager) writeMountState(path string, pid int) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(statePath, data, 0o644)
+	if err := os.WriteFile(statePath, data, 0o644); err != nil {
+		return err
+	}
+	return repo.writeMountPidFile(pid)
+}
+
+func (repo *ResticManager) writeMountPidFile(pid int) error {
+	pidPath := repo.mountPidPath()
+	if pidPath == "" {
+		return nil
+	}
+	if pid <= 0 {
+		_ = os.Remove(pidPath)
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(pidPath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(pidPath, []byte(strconv.Itoa(pid)), 0o644)
+}
+
+func (repo *ResticManager) readMountPidFile() (int, error) {
+	pidPath := repo.mountPidPath()
+	if pidPath == "" {
+		return 0, fmt.Errorf("mount pid path is empty")
+	}
+	data, err := os.ReadFile(pidPath)
+	if err != nil {
+		return 0, err
+	}
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" {
+		return 0, fmt.Errorf("mount pid file is empty")
+	}
+	pid, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return 0, err
+	}
+	return pid, nil
+}
+
+func (repo *ResticManager) clearMountPidFile() {
+	pidPath := repo.mountPidPath()
+	if pidPath == "" {
+		return
+	}
+	_ = os.Remove(pidPath)
 }
 
 func (repo *ResticManager) loadMountState() (*resticMountState, error) {
@@ -1724,6 +1822,7 @@ func (repo *ResticManager) clearMountState() {
 		return
 	}
 	_ = os.Remove(statePath)
+	repo.clearMountPidFile()
 }
 
 func (repo *ResticManager) RecoverMountState() bool {
@@ -1739,16 +1838,121 @@ func (repo *ResticManager) RecoverMountState() bool {
 	if state.PID > 0 {
 		validPid = isResticMountProcess(state.PID, state.Path)
 	}
-	repo.mountMutex.Lock()
+	repo.mountRefMutex.Lock()
 	repo.mountPath = state.Path
 	if validPid {
 		repo.mountPid = state.PID
 	} else {
 		repo.mountPid = 0
 	}
-	repo.mountMutex.Unlock()
-	repo.Printf(logrus.InfoLevel, "Recovered restic mount state at %s (pid=%d)", state.Path, repo.mountPid)
+	pid := repo.mountPid
+	repo.mountRefMutex.Unlock()
+	repo.Printf(logrus.InfoLevel, "Recovered restic mount state at %s (pid=%d)", state.Path, pid)
 	return true
+}
+
+// RecoverMountStateOnStartup performs stale mount cleanup then recovers active mounts.
+func (repo *ResticManager) RecoverMountStateOnStartup() bool {
+	if !repo.MountRecoveryEnabled {
+		return repo.RecoverMountState()
+	}
+	recovered, err := repo.recoverMountStateOnStartup()
+	if err != nil {
+		repo.Printf(logrus.WarnLevel, "Restic mount recovery encountered issues: %v", err)
+	}
+	return recovered
+}
+
+func (repo *ResticManager) recoverMountStateOnStartup() (bool, error) {
+	state, stateErr := repo.loadMountState()
+	pidFromFile, pidErr := repo.readMountPidFile()
+	if (stateErr != nil || state == nil) && pidErr != nil {
+		return false, nil
+	}
+
+	mountPath := ""
+	pid := 0
+	if state != nil {
+		mountPath = strings.TrimSpace(state.Path)
+		pid = state.PID
+	}
+	if pid <= 0 && pidFromFile > 0 {
+		pid = pidFromFile
+	}
+
+	pidMountPath, pidIsRestic := resticMountPathFromPID(pid)
+	if mountPath == "" && pidMountPath != "" {
+		mountPath = pidMountPath
+	}
+	if mountPath != "" && pidMountPath != "" && mountPath != pidMountPath {
+		repo.Printf(logrus.WarnLevel, "Restic mount state path mismatch (state=%s pid=%s)", mountPath, pidMountPath)
+		mountPath = pidMountPath
+	}
+	if mountPath == "" && pid <= 0 {
+		repo.clearMountState()
+		return false, nil
+	}
+
+	mountReady := mountPath != "" && isMountReady(mountPath)
+	pidValid := pid > 0 && mountPath != "" && isResticMountProcess(pid, mountPath)
+	if mountReady && pidValid {
+		repo.mountRefMutex.Lock()
+		repo.mountPath = mountPath
+		repo.mountPid = pid
+		repo.mountRefMutex.Unlock()
+		if err := repo.writeMountState(mountPath, pid); err != nil {
+			repo.Printf(logrus.WarnLevel, "Failed to persist restic mount state: %v", err)
+		}
+		repo.Printf(logrus.InfoLevel, "Recovered restic mount state at %s (pid=%d)", mountPath, pid)
+		return true, nil
+	}
+
+	return false, repo.cleanupStaleMount(mountPath, pid, mountReady, pidIsRestic, pidMountPath)
+}
+
+func (repo *ResticManager) cleanupStaleMount(mountPath string, pid int, mountReady bool, pidIsRestic bool, pidMountPath string) error {
+	var errs []string
+	if pid > 0 {
+		if pidIsRestic {
+			if mountPath != "" && pidMountPath != "" && mountPath != pidMountPath {
+				repo.Printf(logrus.WarnLevel, "Restic mount pid %d path mismatch (state=%s pid=%s); skipping process kill", pid, mountPath, pidMountPath)
+			} else {
+				repo.Printf(logrus.WarnLevel, "Stopping stale restic mount process pid=%d", pid)
+				if err := repo.stopResticMountProcess(pid); err != nil {
+					errs = append(errs, fmt.Sprintf("failed to stop restic mount pid %d: %v", pid, err))
+				}
+			}
+		} else if isProcessRunning(pid) {
+			repo.Printf(logrus.WarnLevel, "Mount pid %d does not match restic mount process; leaving it running", pid)
+		}
+	}
+
+	if mountReady && mountPath != "" {
+		repo.Printf(logrus.WarnLevel, "Unmounting stale restic mount at %s", mountPath)
+		if err := unmountResticPath(mountPath); err != nil {
+			errs = append(errs, fmt.Sprintf("failed to unmount %s: %v", mountPath, err))
+		} else {
+			repo.Printf(logrus.InfoLevel, "Unmounted stale restic mount at %s", mountPath)
+		}
+	}
+
+	repo.clearMountState()
+	repo.resetMountTracking()
+
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+func (repo *ResticManager) resetMountTracking() {
+	repo.mountRefMutex.Lock()
+	repo.mountCmd = nil
+	repo.mountDone = nil
+	repo.mountPath = ""
+	repo.mountPid = 0
+	repo.unmountRequested = false
+	repo.mountRefMutex.Unlock()
 }
 
 func ensureResticMountDir(targetDir string, mode os.FileMode) error {
@@ -1789,6 +1993,140 @@ validateDir:
 	return nil
 }
 
+func readProcessCmdlineArgs(pid int) ([]string, error) {
+	if pid <= 0 {
+		return nil, fmt.Errorf("invalid pid")
+	}
+	cmdline, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "cmdline"))
+	if err != nil {
+		return nil, err
+	}
+	parts := strings.Split(string(cmdline), "\x00")
+	args := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		args = append(args, part)
+	}
+	if len(args) == 0 {
+		return nil, fmt.Errorf("empty cmdline")
+	}
+	return args, nil
+}
+
+func isResticMountArgs(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	hasMount := false
+	for _, arg := range args {
+		if arg == "mount" {
+			hasMount = true
+			break
+		}
+	}
+	if !hasMount {
+		return false
+	}
+	base := filepath.Base(args[0])
+	return strings.Contains(base, "restic")
+}
+
+func resticMountPathFromArgs(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	idx := -1
+	for i, arg := range args {
+		if arg == "mount" {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 || len(args) <= idx+1 {
+		return ""
+	}
+	path := args[len(args)-1]
+	if strings.HasPrefix(path, "-") {
+		return ""
+	}
+	return path
+}
+
+func resticMountPathFromPID(pid int) (string, bool) {
+	if pid <= 0 {
+		return "", false
+	}
+	args, err := readProcessCmdlineArgs(pid)
+	if err != nil {
+		return "", false
+	}
+	if !isResticMountArgs(args) {
+		return "", false
+	}
+	return resticMountPathFromArgs(args), true
+}
+
+func isProcessRunning(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	_, err := os.Stat(filepath.Join("/proc", strconv.Itoa(pid)))
+	return err == nil
+}
+
+func (repo *ResticManager) stopResticMountProcess(pid int) error {
+	if pid <= 0 {
+		return nil
+	}
+	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return err
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if !isProcessRunning(pid) {
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return err
+	}
+	return nil
+}
+
+func unmountResticPath(targetDir string) error {
+	path := strings.TrimSpace(targetDir)
+	if path == "" {
+		return fmt.Errorf("mount path is empty")
+	}
+	var errs []string
+	if bin, err := exec.LookPath("fusermount3"); err == nil {
+		if err := exec.Command(bin, "-u", path).Run(); err == nil {
+			return nil
+		} else {
+			errs = append(errs, fmt.Sprintf("fusermount3: %v", err))
+		}
+	}
+	if bin, err := exec.LookPath("fusermount"); err == nil {
+		if err := exec.Command(bin, "-u", path).Run(); err == nil {
+			return nil
+		} else {
+			errs = append(errs, fmt.Sprintf("fusermount: %v", err))
+		}
+	}
+	if err := syscall.Unmount(path, syscall.MNT_DETACH); err != nil && !errors.Is(err, syscall.EINVAL) {
+		errs = append(errs, fmt.Sprintf("unmount: %v", err))
+	} else {
+		return nil
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
 func isResticMountProcess(pid int, mountPath string) bool {
 	if pid <= 0 {
 		return false
@@ -1803,33 +2141,33 @@ func isResticMountProcess(pid int, mountPath string) bool {
 
 func (repo *ResticManager) UnmountRepo() error {
 	// First check if mount exists
-	repo.mountMutex.Lock()
-	cmd := repo.mountCmd
-	done := repo.mountDone
-	mountPath := repo.mountPath
-	pid := repo.mountPid
-	repo.mountMutex.Unlock()
+	snapshot := repo.mountSnapshot()
+	cmd := snapshot.cmd
+	done := snapshot.done
+	mountPath := snapshot.path
+	pid := snapshot.pid
 	if cmd == nil || cmd.Process == nil {
 		if mountPath == "" {
 			repo.RecoverMountState()
-			repo.mountMutex.Lock()
-			mountPath = repo.mountPath
-			pid = repo.mountPid
-			repo.mountMutex.Unlock()
+			snapshot = repo.mountSnapshot()
+			mountPath = snapshot.path
+			pid = snapshot.pid
 		}
 		if mountPath == "" {
 			return fmt.Errorf("no restic mount is running")
 		}
 		if !isMountReady(mountPath) {
 			repo.clearMountState()
-			repo.mountMutex.Lock()
+			repo.mountRefMutex.Lock()
 			repo.mountPath = ""
 			repo.mountPid = 0
-			repo.mountMutex.Unlock()
+			repo.mountRefMutex.Unlock()
 			return fmt.Errorf("no restic mount is running")
 		}
 		if pid > 0 && isResticMountProcess(pid, mountPath) {
+			repo.mountRefMutex.Lock()
 			repo.unmountRequested = true
+			repo.mountRefMutex.Unlock()
 			if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
 				return fmt.Errorf("failed to stop restic mount: %w", err)
 			}
@@ -1837,10 +2175,10 @@ func (repo *ResticManager) UnmountRepo() error {
 			for time.Now().Before(deadline) {
 				if !isMountReady(mountPath) {
 					repo.clearMountState()
-					repo.mountMutex.Lock()
+					repo.mountRefMutex.Lock()
 					repo.mountPath = ""
 					repo.mountPid = 0
-					repo.mountMutex.Unlock()
+					repo.mountRefMutex.Unlock()
 					repo.Printf(logrus.InfoLevel, "Restic mount stopped at %s", mountPath)
 					return nil
 				}
@@ -1884,9 +2222,9 @@ func (repo *ResticManager) UnmountRepo() error {
 	}
 
 	// Now mark that we're intentionally unmounting
-	repo.mountMutex.Lock()
+	repo.mountRefMutex.Lock()
 	repo.unmountRequested = true
-	repo.mountMutex.Unlock()
+	repo.mountRefMutex.Unlock()
 
 	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		return fmt.Errorf("failed to stop restic mount: %w", err)
@@ -1923,72 +2261,110 @@ func (repo *ResticManager) UnmountRepo() error {
 			}
 		}
 	case <-time.After(10 * time.Second):
-		repo.mountMutex.Lock()
-		if repo.mountCmd != nil && repo.mountCmd.Process != nil {
-			_ = repo.mountCmd.Process.Kill()
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
 		}
-		repo.mountMutex.Unlock()
 		return fmt.Errorf("restic mount shutdown timeout")
 	}
 
 	repo.Printf(logrus.InfoLevel, "Restic mount stopped at %s", mountPath)
 	repo.clearMountState()
-	repo.mountMutex.Lock()
+	repo.mountRefMutex.Lock()
 	repo.mountPath = ""
 	repo.mountPid = 0
-	repo.mountMutex.Unlock()
+	repo.mountRefMutex.Unlock()
 	return nil
+}
+
+func (repo *ResticManager) acquireMountRefUnsafe(userID string) (int, error) {
+	if repo.mountUsers == nil {
+		repo.mountUsers = make(map[string]struct{})
+	}
+	if _, exists := repo.mountUsers[userID]; exists {
+		return repo.mountRefCount, fmt.Errorf("mount reference already held for user %s", userID)
+	}
+	repo.mountRefCount++
+	repo.mountUsers[userID] = struct{}{}
+	return repo.mountRefCount, nil
+}
+
+func (repo *ResticManager) releaseMountRefUnsafe(userID string) (int, error) {
+	if repo.mountUsers == nil {
+		return repo.mountRefCount, fmt.Errorf("mount reference map is uninitialized")
+	}
+	if _, exists := repo.mountUsers[userID]; !exists {
+		return repo.mountRefCount, fmt.Errorf("mount reference not found for user %s", userID)
+	}
+	delete(repo.mountUsers, userID)
+	repo.mountRefCount--
+	if repo.mountRefCount < 0 {
+		repo.mountRefCount = 0
+		return repo.mountRefCount, fmt.Errorf("mount ref count went negative while releasing %s", userID)
+	}
+	return repo.mountRefCount, nil
 }
 
 // AcquireMountRef registers an active user of the mount
 // Returns error if mount is not currently active
 func (repo *ResticManager) AcquireMountRef(userID string) error {
-	repo.mountRefMutex.Lock()
-	defer repo.mountRefMutex.Unlock()
+	trimmed := strings.TrimSpace(userID)
+	if trimmed == "" {
+		return fmt.Errorf("cannot acquire mount ref: userID is empty")
+	}
 
-	// Check if mount is actually active
-	repo.mountMutex.Lock()
+	repo.mountRefMutex.Lock()
+	if repo.mountUsers == nil {
+		repo.mountUsers = make(map[string]struct{})
+	}
+	if _, exists := repo.mountUsers[trimmed]; exists {
+		repo.mountRefMutex.Unlock()
+		return fmt.Errorf("mount reference already held for user %s", trimmed)
+	}
 	cmdMounted := repo.mountCmd != nil && repo.mountCmd.Process != nil
 	mountPath := repo.mountPath
-	repo.mountMutex.Unlock()
-	isMounted := cmdMounted || (repo.AllowUnsafeMount && mountPath != "" && isMountReady(mountPath))
+	repo.mountRefMutex.Unlock()
 
+	isMounted := cmdMounted
+	if !isMounted && repo.AllowUnsafeMount && mountPath != "" {
+		isMounted = isMountReady(mountPath)
+	}
 	if !isMounted {
 		return fmt.Errorf("cannot acquire mount ref: mount is not active")
 	}
 
-	if userID == "" {
-		return fmt.Errorf("cannot acquire mount ref: userID is empty")
+	repo.mountRefMutex.Lock()
+	if _, exists := repo.mountUsers[trimmed]; exists {
+		repo.mountRefMutex.Unlock()
+		return fmt.Errorf("mount reference already held for user %s", trimmed)
 	}
-
-	repo.mountRefCount++
-	repo.mountUsers[userID] = struct{}{}
-	repo.Printf(logrus.DebugLevel, "Acquired mount ref for user %s (refCount=%d)", userID, repo.mountRefCount)
+	if repo.mountCmd == nil && repo.mountPath == "" {
+		repo.mountRefMutex.Unlock()
+		return fmt.Errorf("cannot acquire mount ref: mount is not active")
+	}
+	refCount, err := repo.acquireMountRefUnsafe(trimmed)
+	repo.mountRefMutex.Unlock()
+	if err != nil {
+		return err
+	}
+	repo.Printf(logrus.DebugLevel, "Acquired mount ref for user %s (refCount=%d)", trimmed, refCount)
 	return nil
 }
 
 // ReleaseMountRef unregisters an active user of the mount
-func (repo *ResticManager) ReleaseMountRef(userID string) {
+func (repo *ResticManager) ReleaseMountRef(userID string) error {
+	trimmed := strings.TrimSpace(userID)
+	if trimmed == "" {
+		return fmt.Errorf("cannot release mount ref: userID is empty")
+	}
+
 	repo.mountRefMutex.Lock()
-	defer repo.mountRefMutex.Unlock()
-
-	if userID == "" {
-		repo.Printf(logrus.WarnLevel, "Attempted to release mount ref with empty userID")
-		return
+	refCount, err := repo.releaseMountRefUnsafe(trimmed)
+	repo.mountRefMutex.Unlock()
+	if err != nil {
+		return err
 	}
-
-	if _, exists := repo.mountUsers[userID]; !exists {
-		repo.Printf(logrus.WarnLevel, "Attempted to release mount ref for unknown user %s", userID)
-		return
-	}
-
-	delete(repo.mountUsers, userID)
-	repo.mountRefCount--
-	if repo.mountRefCount < 0 {
-		repo.Printf(logrus.ErrorLevel, "Mount ref count went negative! Resetting to 0")
-		repo.mountRefCount = 0
-	}
-	repo.Printf(logrus.DebugLevel, "Released mount ref for user %s (refCount=%d)", userID, repo.mountRefCount)
+	repo.Printf(logrus.DebugLevel, "Released mount ref for user %s (refCount=%d)", trimmed, refCount)
+	return nil
 }
 
 // CanUnmount returns true if no active users are using the mount
@@ -2000,23 +2376,21 @@ func (repo *ResticManager) CanUnmount() bool {
 
 // IsMounted returns true if mount is currently active
 func (repo *ResticManager) IsMounted() bool {
-	repo.mountMutex.Lock()
-	defer repo.mountMutex.Unlock()
-	if repo.mountCmd != nil && repo.mountCmd.Process != nil {
+	snapshot := repo.mountSnapshot()
+	if snapshot.cmd != nil && snapshot.cmd.Process != nil {
 		return true
 	}
-	return repo.AllowUnsafeMount && repo.mountPath != "" && isMountReady(repo.mountPath)
+	return repo.AllowUnsafeMount && snapshot.path != "" && isMountReady(snapshot.path)
 }
 
 // GetMountPath returns the current mount path (empty if not mounted)
 func (repo *ResticManager) GetMountPath() string {
-	repo.mountMutex.Lock()
-	defer repo.mountMutex.Unlock()
-	if repo.mountCmd != nil && repo.mountCmd.Process != nil {
-		return repo.mountPath
+	snapshot := repo.mountSnapshot()
+	if snapshot.cmd != nil && snapshot.cmd.Process != nil {
+		return snapshot.path
 	}
-	if repo.AllowUnsafeMount && repo.mountPath != "" && isMountReady(repo.mountPath) {
-		return repo.mountPath
+	if repo.AllowUnsafeMount && snapshot.path != "" && isMountReady(snapshot.path) {
+		return snapshot.path
 	}
 	return ""
 }
@@ -2046,13 +2420,13 @@ func (repo *ResticManager) streamMountOutput(pipe io.ReadCloser, prefix string, 
 		if buffer != nil {
 			buffer.WriteString(line + "\n")
 		}
-		repo.Printf(logrus.DebugLevel, "%s: %s", prefix, line)
+		repo.Printf(logrus.DebugLevel, "%s%s", prefix, line)
 	}
 	if err := scanner.Err(); err != nil {
 		// Check if unmount was requested
-		repo.mountMutex.Lock()
+		repo.mountRefMutex.Lock()
 		wasIntentional := repo.unmountRequested
-		repo.mountMutex.Unlock()
+		repo.mountRefMutex.Unlock()
 
 		// PTY read errors are expected when mount process is terminated
 		// Only log as error if this wasn't an intentional unmount

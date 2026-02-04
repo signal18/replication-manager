@@ -804,24 +804,27 @@ func (server *ServerMonitor) HasMdevIssue() bool {
 /* Check agains listed MDEV issues, lower severity will include higher severity */
 func (server *ServerMonitor) HasReseedingState(tool string) bool {
 	server.reseedMutex.Lock()
-	defer server.reseedMutex.Unlock()
-	return server.IsReseeding == tool
+	current := server.IsReseeding
+	server.reseedMutex.Unlock()
+	return current == tool
 }
 
 /* Check agains listed MDEV issues, lower severity will include higher severity */
 func (server *ServerMonitor) HasAnyReseedingState() bool {
 	server.reseedMutex.Lock()
-	defer server.reseedMutex.Unlock()
-	return server.IsReseeding != ""
+	current := server.IsReseeding
+	server.reseedMutex.Unlock()
+	return current != ""
 }
 
 func (server *ServerMonitor) GetReseedingState() (bool, string) {
 	server.reseedMutex.Lock()
-	defer server.reseedMutex.Unlock()
-	if server.IsReseeding == "" {
+	current := server.IsReseeding
+	server.reseedMutex.Unlock()
+	if current == "" {
 		return false, ""
 	}
-	return true, server.IsReseeding
+	return true, current
 }
 
 func (server *ServerMonitor) IsSlaveError() bool {

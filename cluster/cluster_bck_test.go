@@ -59,10 +59,10 @@ func TestValidateResticKeepTagTemplatesStrict(t *testing.T) {
 
 func TestBuildSnapshotMetadataIndexFromCache(t *testing.T) {
 	cluster := &Cluster{
-		Conf:                  &config.Config{},
-		BackupMetaMap:         backupmgr.NewBackupMetaMap(),
-		snapshotMetadataCache: newSnapshotMetadataCache(),
+		Conf:          &config.Config{},
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
 	}
+	manager := cluster.getSnapshotMetadataManager()
 	key := fmt.Sprintf("%d|%s", backupmgr.BackupMethodLogical, backupmgr.BackupLineDefault)
 	summary := &SnapshotMetadataSummary{
 		BackupMethod:     "logical",
@@ -71,7 +71,7 @@ func TestBuildSnapshotMetadataIndexFromCache(t *testing.T) {
 		BackupSessionID:  "session-1",
 		ResticSnapshotID: "snap-1",
 	}
-	cluster.snapshotMetadataCache.Update("snap-1", func(entry *snapshotMetadataCacheEntry) {
+	manager.cache.Update("snap-1", func(entry *snapshotMetadataCacheEntry) {
 		entry.Status = snapshotMetadataStatusReady
 		entry.Summaries = map[string]*SnapshotMetadataSummary{key: summary}
 	})
@@ -98,10 +98,10 @@ func TestBuildSnapshotMetadataIndexFromCache(t *testing.T) {
 
 func newTestClusterWithSessionMap(sessionMap map[string]string) *Cluster {
 	cluster := &Cluster{
-		Conf:                  &config.Config{},
-		BackupMetaMap:         backupmgr.NewBackupMetaMap(),
-		snapshotMetadataCache: newSnapshotMetadataCache(),
+		Conf:          &config.Config{},
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
 	}
+	manager := cluster.getSnapshotMetadataManager()
 	for snapshotID, sessionID := range sessionMap {
 		if snapshotID == "" || sessionID == "" {
 			continue
@@ -114,7 +114,7 @@ func newTestClusterWithSessionMap(sessionMap map[string]string) *Cluster {
 			BackupSessionID:  sessionID,
 			ResticSnapshotID: snapshotID,
 		}
-		cluster.snapshotMetadataCache.Update(snapshotID, func(entry *snapshotMetadataCacheEntry) {
+		manager.cache.Update(snapshotID, func(entry *snapshotMetadataCacheEntry) {
 			entry.Status = snapshotMetadataStatusReady
 			entry.Summaries = map[string]*SnapshotMetadataSummary{key: summary}
 		})
@@ -333,14 +333,14 @@ func TestReconcileSnapshotMetadataUsesCacheAndResticEnabled(t *testing.T) {
 		t.Fatalf("failed to create backup dir: %v", err)
 	}
 	cluster := &Cluster{
-		Conf:                  &config.Config{WorkingDir: tmpDir},
-		WorkingDir:            tmpDir,
-		snapshotMetadataCache: newSnapshotMetadataCache(),
+		Conf:       &config.Config{WorkingDir: tmpDir},
+		WorkingDir: tmpDir,
 		ResticManager: &backupmgr.ResticManager{Backups: []backupmgr.BackupSnapshot{
 			{Id: "snap-1", ShortId: "snap-1", Time: time.Now().Format(time.RFC3339Nano)},
 			{Id: "snap-2", ShortId: "snap-2", Time: time.Now().Add(1 * time.Hour).Format(time.RFC3339Nano)},
 		}},
 	}
+	manager := cluster.getSnapshotMetadataManager()
 	meta := backupmgr.BackupMetadata{
 		BackupTool:       config.ConstBackupLogicalTypeMysqldump,
 		ResticEnabled:    true,
@@ -353,7 +353,7 @@ func TestReconcileSnapshotMetadataUsesCacheAndResticEnabled(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(backupDir, "mysqldump.meta.json"), data, 0644); err != nil {
 		t.Fatalf("failed to write metadata file: %v", err)
 	}
-	cluster.snapshotMetadataCache.Update("snap-2", func(entry *snapshotMetadataCacheEntry) {
+	manager.cache.Update("snap-2", func(entry *snapshotMetadataCacheEntry) {
 		entry.Status = snapshotMetadataStatusReady
 		entry.Summaries = map[string]*SnapshotMetadataSummary{
 			"1|default": {ResticSnapshotID: "snap-2", BackupSessionID: "session-2"},
@@ -373,9 +373,9 @@ func TestReconcileSnapshotMetadataUsesCacheAndResticEnabled(t *testing.T) {
 
 func TestMarkSnapshotMetadataPending(t *testing.T) {
 	cluster := &Cluster{
-		Conf:                  &config.Config{},
-		snapshotMetadataCache: newSnapshotMetadataCache(),
+		Conf: &config.Config{},
 	}
+	manager := cluster.getSnapshotMetadataManager()
 	entry, started := cluster.markSnapshotMetadataPending("snap-1")
 	if !started {
 		t.Fatalf("expected pending transition to start")
@@ -387,7 +387,7 @@ func TestMarkSnapshotMetadataPending(t *testing.T) {
 	if started {
 		t.Fatalf("expected no start when already pending")
 	}
-	cluster.snapshotMetadataCache.Update("snap-2", func(entry *snapshotMetadataCacheEntry) {
+	manager.cache.Update("snap-2", func(entry *snapshotMetadataCacheEntry) {
 		entry.Status = snapshotMetadataStatusFailed
 		entry.LastAttempt = time.Now()
 	})
@@ -395,7 +395,7 @@ func TestMarkSnapshotMetadataPending(t *testing.T) {
 	if started {
 		t.Fatalf("expected retry to be throttled")
 	}
-	cluster.snapshotMetadataCache.Update("snap-3", func(entry *snapshotMetadataCacheEntry) {
+	manager.cache.Update("snap-3", func(entry *snapshotMetadataCacheEntry) {
 		entry.Status = snapshotMetadataStatusFailed
 		entry.LastAttempt = time.Now().Add(-snapshotMetadataExtractionRetryInterval * 2)
 	})

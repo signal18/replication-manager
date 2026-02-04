@@ -754,12 +754,14 @@ type Config struct {
 	BackupResticPassword                      string `mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
 	BackupResticAws                           bool   `mapstructure:"backup-restic-aws"  toml:"backup-restic-aws" json:"backupResticAws"`
 	BackupResticTimeout                       int    `mapstructure:"backup-restic-timeout"  toml:"backup-restic-timeout" json:"backupResticTimeout"`
+	BackupResticDumpTimeout                   int    `mapstructure:"backup-restic-dump-timeout" toml:"backup-restic-dump-timeout" json:"backupResticDumpTimeout"`
 	BackupResticDirMode                       int    `mapstructure:"backup-restic-dir-mode" toml:"backup-restic-dir-mode" json:"backupResticDirMode"`
 	BackupResticFileMode                      int    `mapstructure:"backup-restic-file-mode" toml:"backup-restic-file-mode" json:"backupResticFileMode"`
 	BackupResticPurgeOldestOnDiskSpace        bool   `mapstructure:"backup-restic-purge-oldest-on-disk-space" toml:"backup-restic-purge-oldest-on-disk-space" json:"backupResticPurgeOldestOnDiskSpace"`
 	BackupResticPurgeOldestOnDiskThreshold    int    `mapstructure:"backup-restic-purge-oldest-on-disk-threshold" toml:"backup-restic-purge-oldest-on-disk-treshold" json:"backupResticPurgeOldestOnDiskTreshold"`
 	BackupResticReseedStrategy                string `mapstructure:"backup-restic-reseed-strategy" toml:"backup-restic-reseed-strategy" json:"backupResticReseedStrategy"`
 	BackupResticReseedTempDir                 string `mapstructure:"backup-restic-reseed-temp-dir" toml:"backup-restic-reseed-temp-dir" json:"backupResticReseedTempDir"`
+	BackupResticMetadataExtractorConcurrency  int    `mapstructure:"backup-restic-metadata-extractor-concurrency" toml:"backup-restic-metadata-extractor-concurrency" json:"backupResticMetadataExtractorConcurrency"`
 	// Restic mount settings (used for manual mount operations).
 	BackupResticMountTargetDir            string `mapstructure:"backup-restic-mount-target-dir" toml:"backup-restic-mount-target-dir" json:"backupResticMountTargetDir"`
 	BackupResticMountHost                 string `mapstructure:"backup-restic-mount-host" toml:"backup-restic-mount-host" json:"backupResticMountHost"`
@@ -773,6 +775,8 @@ type Config struct {
 	BackupResticMountNoLock               bool   `mapstructure:"backup-restic-mount-no-lock" toml:"backup-restic-mount-no-lock" json:"backupResticMountNoLock"`
 	BackupResticMountVerbose              int    `mapstructure:"backup-restic-mount-verbose" toml:"backup-restic-mount-verbose" json:"backupResticMountVerbose"`
 	BackupResticMountQuiet                bool   `mapstructure:"backup-restic-mount-quiet" toml:"backup-restic-mount-quiet" json:"backupResticMountQuiet"`
+	// BackupResticMountRecoveryEnabled controls cleanup of stale restic mounts on startup.
+	BackupResticMountRecoveryEnabled bool `mapstructure:"backup-restic-mount-recovery-enabled" toml:"backup-restic-mount-recovery-enabled" json:"backupResticMountRecoveryEnabled"`
 	// BackupResticMountDir defines the base directory for restic FUSE mounts.
 	BackupResticMountDir                   string                 `scope:"server" mapstructure:"backup-restic-mount-dir" toml:"backup-restic-mount-dir" json:"backupResticMountDir"`
 	BackupResticReseedCleanup              bool                   `mapstructure:"backup-restic-reseed-cleanup" toml:"backup-restic-reseed-cleanup" json:"backupResticReseedCleanup"`
@@ -3875,6 +3879,13 @@ func (conf *Config) GetResticTimeout() time.Duration {
 		return 2 * time.Hour
 	}
 	return time.Duration(conf.BackupResticTimeout) * time.Second
+}
+
+func (conf *Config) GetResticDumpTimeout() time.Duration {
+	if conf.BackupResticDumpTimeout <= 0 {
+		return conf.GetResticTimeout()
+	}
+	return time.Duration(conf.BackupResticDumpTimeout) * time.Second
 }
 
 type MeasurementConfig struct {

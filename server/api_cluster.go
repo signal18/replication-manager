@@ -2989,6 +2989,15 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if mycluster.ResticManager != nil {
 			mycluster.ResticManager.SetOperationTimeout(mycluster.Conf.GetResticTimeout())
 		}
+	case "backup-restic-dump-timeout":
+		val, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for backup-restic-dump-timeout: %q", value)
+		}
+		mycluster.Conf.BackupResticDumpTimeout = val
+		if mycluster.ResticManager != nil {
+			mycluster.ResticManager.SetDumpTimeout(mycluster.Conf.GetResticDumpTimeout())
+		}
 	case "backup-restic-dir-mode":
 		val, err := strconv.Atoi(value)
 		if err != nil {

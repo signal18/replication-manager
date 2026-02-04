@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	snapshotMetadataExtractorConcurrency    = 2
+	snapshotMetadataExtractorConcurrency    = 2 // Default; configurable via backup-restic-metadata-extractor-concurrency.
 	snapshotMetadataExtractionRetryInterval = 5 * time.Minute
 	snapshotMetadataFileExtension           = ".json"
 )
@@ -82,6 +82,36 @@ func cloneSnapshotMetadataMap(src map[string]*SnapshotMetadataSummary) map[strin
 	return dst
 }
 
+func snapshotMetadataKey(method backupmgr.BackupMethod, line string) string {
+	return fmt.Sprintf("%d|%s", method, strings.ToLower(strings.TrimSpace(line)))
+}
+
+func (cluster *Cluster) snapshotMetadataCacheForID(snapshotID string) (*snapshotMetadataCache, string, bool) {
+	if cluster == nil {
+		return nil, "", false
+	}
+	manager := cluster.getSnapshotMetadataManager()
+	if manager == nil || manager.cache == nil {
+		return nil, "", false
+	}
+	id := strings.TrimSpace(snapshotID)
+	if id == "" {
+		return nil, "", false
+	}
+	return manager.cache, id, true
+}
+
+func (cluster *Cluster) dropSnapshotMetadataCaches(snapshotID string) {
+	manager := cluster.getSnapshotMetadataManager()
+	if cluster == nil || manager == nil {
+		return
+	}
+	if manager.cache != nil {
+		manager.cache.Delete(snapshotID)
+	}
+	cluster.clearResticSnapshotLsCache(snapshotID)
+}
+
 func (c *snapshotMetadataCache) Get(snapshotID string) (*snapshotMetadataCacheEntry, bool) {
 	if c == nil || snapshotID == "" {
 		return nil, false
@@ -93,6 +123,19 @@ func (c *snapshotMetadataCache) Get(snapshotID string) (*snapshotMetadataCacheEn
 		return nil, false
 	}
 	return entry.clone(), true
+}
+
+func (c *snapshotMetadataCache) GetSummaries(snapshotID string) map[string]*SnapshotMetadataSummary {
+	if c == nil || snapshotID == "" {
+		return nil
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	entry, ok := c.entries[snapshotID]
+	if !ok || entry == nil || len(entry.Summaries) == 0 {
+		return nil
+	}
+	return cloneSnapshotMetadataMap(entry.Summaries)
 }
 
 func (c *snapshotMetadataCache) Update(snapshotID string, fn func(entry *snapshotMetadataCacheEntry)) *snapshotMetadataCacheEntry {
@@ -157,19 +200,23 @@ func (cluster *Cluster) initSnapshotMetadataPersistence() {
 	if cluster == nil {
 		return
 	}
-	if cluster.resticSnapshotLsCache == nil {
-		cluster.resticSnapshotLsCache = make(map[string]map[string]bool)
-	}
-	cluster.resticMetadataDir = filepath.Join(cluster.WorkingDir, "backup", "restic_metadata")
-	if cluster.resticMetadataDir == "" {
+	manager := cluster.getSnapshotMetadataManager()
+	if manager == nil {
 		return
 	}
-	if err := os.MkdirAll(cluster.resticMetadataDir, os.ModePerm); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to prepare restic metadata directory %s: %v", cluster.resticMetadataDir, err)
+	if manager.resticSnapshotLsCache == nil {
+		manager.resticSnapshotLsCache = make(map[string]map[string]bool)
+	}
+	manager.resticMetadataDir = filepath.Join(cluster.WorkingDir, "backup", "restic_metadata")
+	if manager.resticMetadataDir == "" {
 		return
 	}
-	if cluster.snapshotMetadataCache == nil {
-		cluster.snapshotMetadataCache = newSnapshotMetadataCache()
+	if err := os.MkdirAll(manager.resticMetadataDir, os.ModePerm); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to prepare restic metadata directory %s: %v", manager.resticMetadataDir, err)
+		return
+	}
+	if manager.cache == nil {
+		manager.cache = newSnapshotMetadataCache()
 	}
 	entries, err := cluster.loadSnapshotMetadataEntriesFromDisk()
 	if err != nil {
@@ -183,7 +230,7 @@ func (cluster *Cluster) initSnapshotMetadataPersistence() {
 		if persisted == nil {
 			continue
 		}
-		cluster.snapshotMetadataCache.Update(snapshotID, func(entry *snapshotMetadataCacheEntry) {
+		manager.cache.Update(snapshotID, func(entry *snapshotMetadataCacheEntry) {
 			entry.Status = persisted.Status
 			entry.LastAttempt = persisted.LastAttempt
 			entry.LastError = persisted.LastError
@@ -205,14 +252,15 @@ func sanitizeSnapshotMetadataID(snapshotID string) (string, error) {
 }
 
 func (cluster *Cluster) snapshotMetadataFilePath(snapshotID string) (string, error) {
-	if cluster == nil || cluster.resticMetadataDir == "" {
+	manager := cluster.getSnapshotMetadataManager()
+	if cluster == nil || manager == nil || manager.resticMetadataDir == "" {
 		return "", fmt.Errorf("restic metadata directory is not initialized")
 	}
 	sanitized, err := sanitizeSnapshotMetadataID(snapshotID)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(cluster.resticMetadataDir, sanitized+snapshotMetadataFileExtension), nil
+	return filepath.Join(manager.resticMetadataDir, sanitized+snapshotMetadataFileExtension), nil
 }
 
 func (cluster *Cluster) persistSnapshotMetadataEntry(snapshotID string, entry *snapshotMetadataCacheEntry) error {
@@ -249,10 +297,11 @@ func (cluster *Cluster) persistSnapshotMetadataEntry(snapshotID string, entry *s
 
 func (cluster *Cluster) loadSnapshotMetadataEntriesFromDisk() (map[string]*snapshotMetadataCacheEntry, error) {
 	results := make(map[string]*snapshotMetadataCacheEntry)
-	if cluster == nil || cluster.resticMetadataDir == "" {
+	manager := cluster.getSnapshotMetadataManager()
+	if cluster == nil || manager == nil || manager.resticMetadataDir == "" {
 		return results, nil
 	}
-	pattern := filepath.Join(cluster.resticMetadataDir, "*"+snapshotMetadataFileExtension)
+	pattern := filepath.Join(manager.resticMetadataDir, "*"+snapshotMetadataFileExtension)
 	files, err := filepath.Glob(pattern)
 	if err != nil {
 		return nil, err
@@ -299,7 +348,8 @@ func (cluster *Cluster) loadSnapshotMetadataFromDisk(snapshotID string) (*snapsh
 }
 
 func (cluster *Cluster) deleteSnapshotMetadataEntry(snapshotID string) error {
-	if cluster == nil || cluster.resticMetadataDir == "" {
+	manager := cluster.getSnapshotMetadataManager()
+	if cluster == nil || manager == nil || manager.resticMetadataDir == "" {
 		return nil
 	}
 	path, err := cluster.snapshotMetadataFilePath(snapshotID)
@@ -334,22 +384,23 @@ func (cluster *Cluster) logSnapshotMetadataPersistenceError(snapshot *backupmgr.
 }
 
 func (cluster *Cluster) getResticSnapshotLs(snapshotID string) (map[string]bool, error) {
-	if cluster == nil || cluster.ResticManager == nil {
+	manager := cluster.getSnapshotMetadataManager()
+	if cluster == nil || manager == nil || cluster.ResticManager == nil {
 		return nil, fmt.Errorf("restic manager not initialized")
 	}
 	snapshotID = strings.TrimSpace(snapshotID)
 	if snapshotID == "" {
 		return nil, fmt.Errorf("snapshot id is empty")
 	}
-	cluster.resticSnapshotLsCacheMu.Lock()
-	if cluster.resticSnapshotLsCache == nil {
-		cluster.resticSnapshotLsCache = make(map[string]map[string]bool)
+	manager.resticSnapshotLsCacheMu.Lock()
+	if manager.resticSnapshotLsCache == nil {
+		manager.resticSnapshotLsCache = make(map[string]map[string]bool)
 	}
-	if cached, ok := cluster.resticSnapshotLsCache[snapshotID]; ok {
-		cluster.resticSnapshotLsCacheMu.Unlock()
+	if cached, ok := manager.resticSnapshotLsCache[snapshotID]; ok {
+		manager.resticSnapshotLsCacheMu.Unlock()
 		return cached, nil
 	}
-	cluster.resticSnapshotLsCacheMu.Unlock()
+	manager.resticSnapshotLsCacheMu.Unlock()
 
 	entries, err := cluster.ResticManager.ListSnapshotWithLogLevel(snapshotID, nil, true, logrus.DebugLevel)
 	if err != nil {
@@ -367,12 +418,12 @@ func (cluster *Cluster) getResticSnapshotLs(snapshotID string) (map[string]bool,
 			paths[entry.Path] = true
 		}
 	}
-	cluster.resticSnapshotLsCacheMu.Lock()
-	if cluster.resticSnapshotLsCache == nil {
-		cluster.resticSnapshotLsCache = make(map[string]map[string]bool)
+	manager.resticSnapshotLsCacheMu.Lock()
+	if manager.resticSnapshotLsCache == nil {
+		manager.resticSnapshotLsCache = make(map[string]map[string]bool)
 	}
-	cluster.resticSnapshotLsCache[snapshotID] = paths
-	cluster.resticSnapshotLsCacheMu.Unlock()
+	manager.resticSnapshotLsCache[snapshotID] = paths
+	manager.resticSnapshotLsCacheMu.Unlock()
 	return paths, nil
 }
 
@@ -396,15 +447,16 @@ func isSnapshotMetadataCandidatePath(path string, allowedTools map[string]bool) 
 }
 
 func (cluster *Cluster) clearResticSnapshotLsCache(snapshotID string) {
-	if cluster == nil || strings.TrimSpace(snapshotID) == "" {
+	manager := cluster.getSnapshotMetadataManager()
+	if cluster == nil || manager == nil || strings.TrimSpace(snapshotID) == "" {
 		return
 	}
-	cluster.resticSnapshotLsCacheMu.Lock()
-	defer cluster.resticSnapshotLsCacheMu.Unlock()
-	if cluster.resticSnapshotLsCache == nil {
+	manager.resticSnapshotLsCacheMu.Lock()
+	defer manager.resticSnapshotLsCacheMu.Unlock()
+	if manager.resticSnapshotLsCache == nil {
 		return
 	}
-	delete(cluster.resticSnapshotLsCache, snapshotID)
+	delete(manager.resticSnapshotLsCache, snapshotID)
 }
 
 func (cluster *Cluster) handleResticPurgeComplete(opt backupmgr.ResticPurgeOption) {
@@ -416,8 +468,7 @@ func (cluster *Cluster) handleResticPurgeComplete(opt backupmgr.ResticPurgeOptio
 	}
 	if strings.TrimSpace(opt.SnapshotID) != "" {
 		snapshotID := strings.TrimSpace(opt.SnapshotID)
-		cluster.snapshotMetadataCache.Delete(snapshotID)
-		cluster.clearResticSnapshotLsCache(snapshotID)
+		cluster.dropSnapshotMetadataCaches(snapshotID)
 		if err := cluster.deleteSnapshotMetadataEntry(snapshotID); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to delete persisted metadata for snapshot %s: %v", snapshotID, err)
 		} else {
@@ -519,11 +570,13 @@ func (cluster *Cluster) StartResticManager() error {
 	resticManager.OnPurgeComplete = cluster.handleResticPurgeComplete
 	resticManager.SetPermissions(cluster.Conf.GetResticDirMode(), cluster.Conf.GetResticFileMode())
 	resticManager.SetOperationTimeout(cluster.Conf.GetResticTimeout())
+	resticManager.SetDumpTimeout(cluster.Conf.GetResticDumpTimeout())
 	resticManager.AllowUnsafeMount = cluster.Conf.BackupResticAllowUnsafeMount
+	resticManager.MountRecoveryEnabled = cluster.Conf.BackupResticMountRecoveryEnabled
 	resticManager.AutoDetectAndDisableMount()
 	cluster.ResticManager = resticManager
 	cluster.ReloadResticEnv()
-	if cluster.ResticManager.RecoverMountState() {
+	if cluster.ResticManager.RecoverMountStateOnStartup() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Recovered restic mount state on startup")
 	}
 	go cluster.ResticFetchRepo()
@@ -1118,12 +1171,10 @@ func getSnapshotSessionIDFromMetadata(cluster *Cluster, snapshot *backupmgr.Back
 	if cluster == nil || snapshot == nil {
 		return ""
 	}
-	if cluster.snapshotMetadataCache != nil {
-		if entry, ok := cluster.snapshotMetadataCache.Get(snapshot.Id); ok && entry != nil {
-			for _, summary := range entry.Summaries {
-				if summary != nil && strings.TrimSpace(summary.BackupSessionID) != "" {
-					return strings.TrimSpace(summary.BackupSessionID)
-				}
+	if summaries := cluster.getSnapshotMetadataSummaries(snapshot.Id); len(summaries) > 0 {
+		for _, summary := range summaries {
+			if summary != nil && strings.TrimSpace(summary.BackupSessionID) != "" {
+				return strings.TrimSpace(summary.BackupSessionID)
 			}
 		}
 	}
@@ -1623,7 +1674,7 @@ func (cluster *Cluster) SummarizeSnapshotMetadata(snapshot *backupmgr.BackupSnap
 			}
 			if strings.HasPrefix(dest, base) {
 				method := inferBackupMethod(meta)
-				key := fmt.Sprintf("%d|%s", method, strings.ToLower(strings.TrimSpace(meta.BackupLine)))
+				key := snapshotMetadataKey(method, meta.BackupLine)
 				summary := buildSnapshotMetadataSummary(meta, method, base)
 				if summary == nil {
 					break
@@ -1645,12 +1696,8 @@ func (cluster *Cluster) SummarizeSnapshotMetadata(snapshot *backupmgr.BackupSnap
 		}
 		return true
 	})
-	var cacheEntry *snapshotMetadataCacheEntry
-	if cluster.snapshotMetadataCache != nil {
-		cacheEntry, _ = cluster.snapshotMetadataCache.Get(snapshot.Id)
-	}
-	if cacheEntry != nil && len(cacheEntry.Summaries) > 0 {
-		for key, summary := range cacheEntry.Summaries {
+	if cacheSummaries := cluster.getSnapshotMetadataSummaries(snapshot.Id); len(cacheSummaries) > 0 {
+		for key, summary := range cacheSummaries {
 			if summary == nil {
 				continue
 			}
@@ -1724,10 +1771,19 @@ func getSnapshotSessionIDFromIndex(index SnapshotMetadataIndex, snapshotID strin
 }
 
 func (cluster *Cluster) getSnapshotMetadataCacheEntry(snapshotID string) (*snapshotMetadataCacheEntry, bool) {
-	if cluster == nil || cluster.snapshotMetadataCache == nil || strings.TrimSpace(snapshotID) == "" {
+	cache, id, ok := cluster.snapshotMetadataCacheForID(snapshotID)
+	if !ok {
 		return nil, false
 	}
-	return cluster.snapshotMetadataCache.Get(snapshotID)
+	return cache.Get(id)
+}
+
+func (cluster *Cluster) getSnapshotMetadataSummaries(snapshotID string) map[string]*SnapshotMetadataSummary {
+	cache, id, ok := cluster.snapshotMetadataCacheForID(snapshotID)
+	if !ok {
+		return nil
+	}
+	return cache.GetSummaries(id)
 }
 
 func (cluster *Cluster) GetSnapshotMetadataStatus(snapshotID string) snapshotMetadataStatus {
@@ -1778,7 +1834,8 @@ func (cluster *Cluster) scheduleSnapshotMetadataExtraction(snapshot *backupmgr.B
 	if cluster == nil || snapshot == nil || snapshot.Id == "" || len(snapshot.Paths) == 0 {
 		return
 	}
-	if !cluster.Conf.BackupRestic || cluster.ResticManager == nil || cluster.snapshotMetadataCache == nil {
+	manager := cluster.getSnapshotMetadataManager()
+	if !cluster.Conf.BackupRestic || cluster.ResticManager == nil || manager == nil || manager.cache == nil {
 		return
 	}
 	updatedEntry, shouldStart := cluster.markSnapshotMetadataPending(snapshot.Id)
@@ -1794,12 +1851,13 @@ func (cluster *Cluster) scheduleSnapshotMetadataExtraction(snapshot *backupmgr.B
 }
 
 func (cluster *Cluster) markSnapshotMetadataPending(snapshotID string) (*snapshotMetadataCacheEntry, bool) {
-	if cluster == nil || cluster.snapshotMetadataCache == nil || strings.TrimSpace(snapshotID) == "" {
+	cache, id, ok := cluster.snapshotMetadataCacheForID(snapshotID)
+	if !ok {
 		return nil, false
 	}
 	now := time.Now()
 	shouldStart := false
-	entry := cluster.snapshotMetadataCache.Update(snapshotID, func(entry *snapshotMetadataCacheEntry) {
+	entry := cache.Update(id, func(entry *snapshotMetadataCacheEntry) {
 		switch entry.Status {
 		case snapshotMetadataStatusPending, snapshotMetadataStatusReady:
 			return
@@ -1820,15 +1878,25 @@ func (cluster *Cluster) runSnapshotMetadataExtraction(snapshot *backupmgr.Backup
 	if cluster == nil || snapshot == nil || snapshot.Id == "" {
 		return
 	}
-	sem := cluster.snapshotMetadataExtractorSem
+	var sem chan struct{}
+	manager := cluster.getSnapshotMetadataManager()
+	if manager == nil {
+		return
+	}
+	manager.extractorSemMu.Lock()
+	sem = manager.extractorSem
+	manager.extractorSemMu.Unlock()
 	if sem != nil {
 		sem <- struct{}{}
-		defer func() { <-sem }()
+		defer func() {
+			<-sem
+			cluster.tryApplySnapshotMetadataExtractorConcurrency()
+		}()
 	}
 	summaries, err := cluster.extractMetadataFromResticSnapshot(snapshot)
 	now := time.Now()
 	if err != nil {
-		updatedEntry := cluster.snapshotMetadataCache.Update(snapshot.Id, func(entry *snapshotMetadataCacheEntry) {
+		updatedEntry := manager.cache.Update(snapshot.Id, func(entry *snapshotMetadataCacheEntry) {
 			entry.Status = snapshotMetadataStatusFailed
 			entry.LastError = err.Error()
 			entry.LastAttempt = now
@@ -1841,7 +1909,7 @@ func (cluster *Cluster) runSnapshotMetadataExtraction(snapshot *backupmgr.Backup
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to extract metadata for snapshot %s: %v", snapshot.ShortId, err)
 		return
 	}
-	updatedEntry := cluster.snapshotMetadataCache.Update(snapshot.Id, func(entry *snapshotMetadataCacheEntry) {
+	updatedEntry := manager.cache.Update(snapshot.Id, func(entry *snapshotMetadataCacheEntry) {
 		entry.Status = snapshotMetadataStatusReady
 		entry.LastError = ""
 		entry.LastAttempt = now
@@ -1932,7 +2000,7 @@ func (cluster *Cluster) extractMetadataFromResticSnapshot(snapshot *backupmgr.Ba
 			if summary == nil {
 				continue
 			}
-			key := fmt.Sprintf("%d|%s", candidate.Method, strings.ToLower(strings.TrimSpace(meta.BackupLine)))
+			key := snapshotMetadataKey(candidate.Method, meta.BackupLine)
 			if existing, ok := results[key]; ok {
 				if summary.StartTime.After(existing.StartTime) {
 					results[key] = summary
@@ -2026,6 +2094,7 @@ func (cluster *Cluster) ReconcileSnapshotMetadata() (*ReconciliationReport, erro
 		Timestamp:        time.Now(),
 		CleanedUp:        false,
 	}
+	manager := cluster.getSnapshotMetadataManager()
 
 	// Get all restic snapshots
 	snapshots := cluster.GetSnapshots()
@@ -2045,20 +2114,19 @@ func (cluster *Cluster) ReconcileSnapshotMetadata() (*ReconciliationReport, erro
 
 	// Track metadata snapshot IDs to detect missing metadata later
 	metadataSnapshotIDs := make(map[string]bool)
-	if cluster.snapshotMetadataCache != nil {
-		for _, snapshotID := range cluster.snapshotMetadataCache.SnapshotIDs() {
+	if manager != nil && manager.cache != nil {
+		for _, snapshotID := range manager.cache.SnapshotIDs() {
 			if snapshotID == "" {
 				continue
 			}
 			metadataSnapshotIDs[snapshotID] = true
 			if !snapshotIDs[snapshotID] {
-				cluster.snapshotMetadataCache.Delete(snapshotID)
-				cluster.clearResticSnapshotLsCache(snapshotID)
+				cluster.dropSnapshotMetadataCaches(snapshotID)
 			}
 		}
 	}
 	var persisted map[string]*snapshotMetadataCacheEntry
-	if cluster.resticMetadataDir != "" {
+	if manager != nil && manager.resticMetadataDir != "" {
 		persisted, err = cluster.loadSnapshotMetadataEntriesFromDisk()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to scan persisted snapshot metadata: %v", err)
@@ -2120,7 +2188,7 @@ func (cluster *Cluster) ReconcileSnapshotMetadata() (*ReconciliationReport, erro
 		}
 	}
 
-	if cluster.resticMetadataDir != "" && len(persisted) > 0 {
+	if manager != nil && manager.resticMetadataDir != "" && len(persisted) > 0 {
 		for snapshotID := range persisted {
 			if snapshotID == "" {
 				continue
@@ -2128,8 +2196,7 @@ func (cluster *Cluster) ReconcileSnapshotMetadata() (*ReconciliationReport, erro
 			if snapshotIDs[snapshotID] {
 				continue
 			}
-			cluster.snapshotMetadataCache.Delete(snapshotID)
-			cluster.clearResticSnapshotLsCache(snapshotID)
+			cluster.dropSnapshotMetadataCaches(snapshotID)
 			if cluster.Conf.BackupReconcileAutoCleanup {
 				if err := cluster.deleteSnapshotMetadataEntry(snapshotID); err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to delete persisted snapshot metadata %s: %v", snapshotID, err)

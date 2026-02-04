@@ -756,11 +756,17 @@ func (server *ServerMonitor) cleanupResticReseed(paths *ResticReseedPaths, mount
 	cluster := server.ClusterGroup
 	if paths.IsMounted {
 		if strings.TrimSpace(mountUserID) != "" && cluster != nil && cluster.ResticManager != nil {
-			cluster.ResticManager.ReleaseMountRef(mountUserID)
-			cluster.LogModulePrintf(cluster.Conf.Verbose,
-				config.ConstLogModRestic,
-				config.LvlDbg,
-				"Released mount reference for userID: %s", mountUserID)
+			if err := cluster.ResticManager.ReleaseMountRef(mountUserID); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlWarn,
+					"Failed to release mount reference for userID %s: %s", mountUserID, err)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlDbg,
+					"Released mount reference for userID: %s", mountUserID)
+			}
 		}
 	}
 
@@ -900,10 +906,12 @@ func (server *ServerMonitor) cleanupResticReseedForTask(task, reason string) {
 		}
 	}
 	server.resticReseedCleanupMutex.Unlock()
-	if err := server.DelWaitResticReseedCookie(); err != nil {
-		cluster := server.ClusterGroup
-		if cluster != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to clear restic reseed cookie: %s", err)
+	if server.HasWaitResticReseedCookie() {
+		if err := server.DelWaitResticReseedCookie(); err != nil {
+			cluster := server.ClusterGroup
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Failed to clear restic reseed cookie: %s", err)
+			}
 		}
 	}
 	if entry == nil || entry.Paths == nil {
@@ -1943,12 +1951,19 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 	if normalizedMethod != "physical" {
 		defer func() {
 			if refOwned {
-				cluster.ResticManager.ReleaseMountRef(userID)
+				if err := cluster.ResticManager.ReleaseMountRef(userID); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose,
+						config.ConstLogModRestic,
+						config.LvlWarn,
+						"Failed to release mount reference for userID %s: %s", userID, err)
+				} else {
+					cluster.LogModulePrintf(cluster.Conf.Verbose,
+						config.ConstLogModRestic,
+						config.LvlDbg,
+						"Released mount reference for userID: %s", userID)
+				}
+				refOwned = false
 			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose,
-				config.ConstLogModRestic,
-				config.LvlDbg,
-				"Released mount reference for userID: %s", userID)
 		}()
 	}
 
@@ -1961,7 +1976,17 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 	snapshotPath := filepath.Join(mountDir, fmt.Sprintf("ids/%s", shortID))
 	if err := waitForResticSnapshotPath(ctx, snapshotPath); err != nil {
 		if normalizedMethod == "physical" && refOwned {
-			cluster.ResticManager.ReleaseMountRef(userID)
+			if relErr := cluster.ResticManager.ReleaseMountRef(userID); relErr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlWarn,
+					"Failed to release mount reference for userID %s: %s", userID, relErr)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlDbg,
+					"Released mount reference for userID: %s", userID)
+			}
 			refOwned = false
 		}
 		return fmt.Errorf("snapshot path not ready: %w", err)
@@ -1975,7 +2000,17 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 
 	if err := server.verifyRestoredBackup(paths); err != nil {
 		if normalizedMethod == "physical" && refOwned {
-			cluster.ResticManager.ReleaseMountRef(userID)
+			if relErr := cluster.ResticManager.ReleaseMountRef(userID); relErr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlWarn,
+					"Failed to release mount reference for userID %s: %s", userID, relErr)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlDbg,
+					"Released mount reference for userID: %s", userID)
+			}
 			refOwned = false
 		}
 		return fmt.Errorf("backup verification failed: %w", err)
@@ -2011,12 +2046,18 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 					"Failed to enqueue physical reseed from mount for snapshot %s: %s",
 					resticLogSnapshotID(cluster, snapshotID), err)
 				if cluster.ResticManager != nil {
-					cluster.ResticManager.ReleaseMountRef(userID)
+					if relErr := cluster.ResticManager.ReleaseMountRef(userID); relErr != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose,
+							config.ConstLogModRestic,
+							config.LvlWarn,
+							"Failed to release mount reference for userID %s: %s", userID, relErr)
+					} else {
+						cluster.LogModulePrintf(cluster.Conf.Verbose,
+							config.ConstLogModRestic,
+							config.LvlDbg,
+							"Released mount reference for userID: %s", userID)
+					}
 					refOwned = false
-					cluster.LogModulePrintf(cluster.Conf.Verbose,
-						config.ConstLogModRestic,
-						config.LvlDbg,
-						"Released mount reference for userID: %s", userID)
 				}
 				server.cleanupResticReseedForTask(task, "mount reseed enqueue failure")
 				return err
@@ -2032,12 +2073,18 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 				"Failed to enqueue physical reseed from mount for snapshot %s: %s",
 				resticLogSnapshotID(cluster, snapshotID), err)
 			if cluster.ResticManager != nil {
-				cluster.ResticManager.ReleaseMountRef(userID)
+				if relErr := cluster.ResticManager.ReleaseMountRef(userID); relErr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose,
+						config.ConstLogModRestic,
+						config.LvlWarn,
+						"Failed to release mount reference for userID %s: %s", userID, relErr)
+				} else {
+					cluster.LogModulePrintf(cluster.Conf.Verbose,
+						config.ConstLogModRestic,
+						config.LvlDbg,
+						"Released mount reference for userID: %s", userID)
+				}
 				refOwned = false
-				cluster.LogModulePrintf(cluster.Conf.Verbose,
-					config.ConstLogModRestic,
-					config.LvlDbg,
-					"Released mount reference for userID: %s", userID)
 			}
 			server.cleanupResticReseedForTask(task, "mount reseed enqueue failure")
 			return err

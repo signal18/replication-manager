@@ -157,10 +157,9 @@ func waitForMountReady(t *testing.T, repo *ResticManager, mountDir string, timeo
 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		repo.mountMutex.Lock()
-		mountCmd := repo.mountCmd
-		mountDone := repo.mountDone
-		repo.mountMutex.Unlock()
+		snapshot := repo.mountSnapshot()
+		mountCmd := snapshot.cmd
+		mountDone := snapshot.done
 
 		if mountCmd == nil && mountDone == nil {
 			t.Fatalf("mount exited before readiness; check logs for details")
@@ -1126,8 +1125,8 @@ func TestMountReady(t *testing.T) {
 	}
 	defer os.RemoveAll(emptyDir)
 
-	if !isMountReady(emptyDir) {
-		t.Error("isMountReady should return true for empty directory")
+	if isMountReady(emptyDir) {
+		t.Error("isMountReady should return false for empty directory without mount")
 	}
 
 	// Test with directory containing files
@@ -1142,8 +1141,8 @@ func TestMountReady(t *testing.T) {
 		t.Fatalf("failed to write test file: %v", err)
 	}
 
-	if !isMountReady(fullDir) {
-		t.Error("isMountReady should return true for directory with files")
+	if isMountReady(fullDir) {
+		t.Error("isMountReady should return false for directory with files without mount")
 	}
 
 	// Test with non-existent path
@@ -1352,8 +1351,8 @@ func TestNewResticMountOption(t *testing.T) {
 	if !opt.NoLock {
 		t.Error("expected NoLock to be true by default")
 	}
-	if opt.AllowOther {
-		t.Error("expected AllowOther to be false by default")
+	if !opt.AllowOther {
+		t.Error("expected AllowOther to be true by default")
 	}
 	if opt.Verbose != 0 {
 		t.Error("expected Verbose to be 0 by default")

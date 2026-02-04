@@ -1952,6 +1952,12 @@ func (server *ServerMonitor) JobsCheckErrors(Conn *sqlx.Conn) error {
 		p = append(p, "'"+task.String+"'")
 		switch task.String {
 		case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
+			if server.HasWaitResticReseedCookie() {
+				if err := server.DelWaitResticReseedCookie(); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+						"Failed to clear restic reseed cookie after job error for %s: %s", task.String, err)
+				}
+			}
 			server.cleanupResticReseedForTask(task.String, "job-error")
 			if server.HasReseedingState(task.String) {
 				defer server.SetInReseedBackup("")
@@ -2177,6 +2183,7 @@ func (server *ServerMonitor) AfterJobProcess(conn *sqlx.Conn, task DBTask) error
 	//Still use done=1 and state=3 to prevent unwanted changes
 	query := "UPDATE replication_manager_schema.jobs SET result=CONCAT(result,'%s'), state=%d WHERE id=%d AND done=1 AND state=3"
 	errStr := ""
+	cluster := server.ClusterGroup
 	if task.task == "" {
 		return errors.New("Cannot check task. Task name is empty!")
 	}
@@ -2191,6 +2198,14 @@ func (server *ServerMonitor) AfterJobProcess(conn *sqlx.Conn, task DBTask) error
 		}
 		errStr = "Backup completed"
 	case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
+		if server.HasWaitResticReseedCookie() {
+			if err := server.DelWaitResticReseedCookie(); err != nil {
+				if cluster != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+						"Failed to clear restic reseed cookie after job completion for %s: %s", task.task, err)
+				}
+			}
+		}
 		defer server.cleanupResticReseedForTask(task.task, "job-finished")
 		if server.HasReseedingState(task.task) {
 			defer server.SetInReseedBackup("")
