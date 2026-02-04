@@ -771,8 +771,56 @@ func (cluster *Cluster) SummarizeSnapshotMetadata(snapshot *backupmgr.BackupSnap
 	})
 	if !exactFound {
 		cluster.scheduleSnapshotMetadataExtraction(snapshot)
+	} else {
+		cluster.markSnapshotMetadataReadyFromSummary(snapshot, summaryMap)
 	}
 	return summaries
+}
+
+func (cluster *Cluster) markSnapshotMetadataReadyFromSummary(snapshot *backupmgr.BackupSnapshot, summaryMap map[string]*metadataSelection) {
+	if cluster == nil || snapshot == nil || snapshot.Id == "" || len(summaryMap) == 0 {
+		return
+	}
+	cache, id, ok := cluster.snapshotMetadataCacheForID(snapshot.Id)
+	if !ok {
+		return
+	}
+	summaries := make(map[string]*SnapshotMetadataSummary, len(summaryMap))
+	for key, selection := range summaryMap {
+		if selection == nil {
+			continue
+		}
+		if selection.exact != nil {
+			summaries[key] = selection.exact
+		} else if selection.fallback != nil {
+			summaries[key] = selection.fallback
+		}
+	}
+	if len(summaries) == 0 {
+		return
+	}
+	now := time.Now()
+	shouldPersist := false
+	updatedEntry := cache.Update(id, func(entry *snapshotMetadataCacheEntry) {
+		switch entry.Status {
+		case snapshotMetadataStatusPending, snapshotMetadataStatusFailed:
+			return
+		case snapshotMetadataStatusReady:
+			if len(entry.Summaries) > 0 {
+				return
+			}
+		}
+		entry.Status = snapshotMetadataStatusReady
+		entry.LastAttempt = now
+		entry.LastError = ""
+		entry.Summaries = cloneSnapshotMetadataMap(summaries)
+		shouldPersist = true
+	})
+	if shouldPersist && updatedEntry != nil {
+		if err := cluster.persistSnapshotMetadataEntry(id, updatedEntry); err != nil {
+			cluster.logSnapshotMetadataPersistenceError(snapshot, "ready", err)
+		}
+	}
 }
 
 func (cluster *Cluster) BuildSnapshotMetadataIndex(snapshots []backupmgr.BackupSnapshot) SnapshotMetadataIndex {

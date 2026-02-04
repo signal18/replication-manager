@@ -118,7 +118,7 @@ func (repman *ReplicationManager) handlerMuxResticMountToggle(w http.ResponseWri
 	}
 
 	// Construct mount directory path
-	resticMountBaseDir := "/var/lib/replication-manager/restic-mounts"
+	resticMountBaseDir := "/mnt/restic"
 	mountDir := filepath.Join(resticMountBaseDir, clusterName)
 	if mycluster.Conf.BackupResticMountDir != "" {
 		mountDir = mycluster.Conf.BackupResticMountDir

@@ -133,6 +133,9 @@ func (server *ServerMonitor) QueueResticReseed(req ResticReseedRequest) error {
 	}
 	server.resticReseedMutex.Lock()
 	defer server.resticReseedMutex.Unlock()
+	if server.HasWaitResticReseedCookie() {
+		return fmt.Errorf("restic reseed already in progress")
+	}
 	if server.pendingResticReseed != nil {
 		return fmt.Errorf("restic reseed already queued")
 	}
@@ -968,7 +971,7 @@ func (server *ServerMonitor) cleanupResticReseedForTask(task, reason string) {
 			config.LvlInfo,
 			"Cleaning up restic reseed resources for task %s (%s)", task, reason)
 	}
-	server.runResticReseedCleanup(entry.Paths, true, reason, entry.MountUserID)
+	server.runResticReseedCleanup(entry.Paths, entry.Paths.RequiresCleanup, reason, entry.MountUserID)
 }
 
 var resticReseedTimeout = func(opts ResticReseedOptions, conf *config.Config) time.Duration {
