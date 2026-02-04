@@ -285,3 +285,21 @@ div.settingsContainer {
 .panelBody {
   padding: rem(4);
 }
+
+.sectionHeader {
+  align-items: center;
+  gap: rem(8);
+}
+
+.sectionToggle {
+  padding: rem(3) rem(8);
+  border-radius: rem(6);
+  border: 1px solid var(--tertiary-color);
+  background-color: var(--secondary-gray-color);
+  color: var(--text-color);
+  font-size: rem(11);
+  font-weight: 600;
+  letter-spacing: rem(0.3);
+  text-transform: uppercase;
+  cursor: pointer;
+}

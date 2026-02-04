@@ -1,5 +1,5 @@
 import { Box, Flex, HStack, Spinner, Stack, Text } from '@chakra-ui/react'
-import React, { useState, useEffect } from 'react'
+import React, { useRef, useState, useEffect } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
 
@@ -16,9 +16,8 @@ import Markdown from 'react-markdown'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
 import remarkGfm from 'remark-gfm'
-import ResticPurgeStrategy from './ResticPurgeStrategy'
+import BackupSnapshotsSettings from './BackupSnapshotsSettings'
 import NumberInput from '../../components/NumberInput'
-import ResticMountSettings from './ResticMountSettings'
 
 const sizeGenerator = () => {
   const result = []
@@ -42,6 +41,9 @@ function BackupSettings({ selectedCluster, user }) {
   const [binlogParseOptions, setBinlogParseOptions] = useState([])
   const [sizeOptions, setSizeOptions] = useState(sizeGenerator())
   const [selectedBinlogBackupType, setselectedBinlogBackupType] = useState('')
+  const [isBackupSnapshotsOpen, setIsBackupSnapshotsOpen] = useState(true)
+  const [isResticRepoConfigOpen, setIsResticRepoConfigOpen] = useState(true)
+  const backupSnapshotsToggleRef = useRef(null)
   const [action, setAction] = useState({
     title: '',
     type: '',
@@ -84,33 +86,6 @@ The script will be executed with the following parameters:
 4. Backup Path
 `
 
-  const ResticTagsHelp = `backup-restic-tags defines the tag templates sent to restic backups.
-Enter a comma-separated list. Whitespace is ignored.
-
-Supported {placeholders}:
-- {tenant}: tenant/organization identifier.
-- {cluster}: cluster name.
-- {engine}: database engine (e.g. MariaDB/MySQL).
-- {version}: engine version.
-- {backup-type}: logical/physical/binlog or other backup type label.
-- {backup-tool}: tool used to run the backup.
-- {line}: emits "line:default" or "line:adhoc" automatically.
-
-Shorthand is supported: "cluster" expands to "cluster:{cluster}".
-You can also add literal tags like "env:prod" or mixed tags like "team:{tenant}".
-Wrap a literal tag in quotes to prevent shorthand expansion. Commas inside quoted tags are allowed.
-
-Examples:
-- tenant,cluster,backup-type,line,env:prod
-- cluster,engine,version,team:{tenant}
-- env:staging,backup-tool:{backup-tool}
-- "cluster",env:prod
-- "role:primary,critical",cluster`
-
-  const ResticHostHelp = `backup-restic-host overrides the restic --host value used for snapshots.  
-Set a value to use a consistent alias across backups.  
-Leave it empty to use restic's default hostname (no alias).`
-
   const openCommonModal = () => {
     setIsCommonModalOpen(true)
   }
@@ -124,6 +99,29 @@ Leave it empty to use restic's default hostname (no alias).`
       <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
     </Box>
   )
+
+  const openInfoModal = (titleText, content) => {
+    setAction({
+      title: titleText,
+      type: '',
+      body: renderInfoModalBody(content)
+    })
+    openCommonModal()
+  }
+
+  const handleBackupSnapshotsToggle = () => {
+    setIsBackupSnapshotsOpen((prev) => !prev)
+    requestAnimationFrame(() => {
+      backupSnapshotsToggleRef.current?.scrollIntoView({
+        block: 'center',
+        behavior: 'smooth'
+      })
+    })
+  }
+
+  const handleResticRepoToggle = () => {
+    setIsResticRepoConfigOpen((prev) => !prev)
+  }
 
   useEffect(() => {
     if (selectedCluster?.config?.binlogCopyMode) {
@@ -764,231 +762,31 @@ Leave it empty to use restic's default hostname (no alias).`
       )
     },
     {
-      key: 'Backup snapshots',
-      value: [
-        {
-          key: 'Use Restic For Backup',
-          value: (
-            <RMSwitch
-              isChecked={selectedCluster?.config?.backupRestic}
-              isDisabled={user?.grants['cluster-settings'] == false}
-              confirmTitle={'Confirm switch settings for backup-restic?'}
-              onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-restic' }))}
-            />
-          )
-        },
-        {
-          key: 'Backup restic binary path',
-          value: (
-            <TextForm
-              value={selectedCluster?.config?.backupResticBinaryPath}
-              confirmTitle={`Confirm backup-restic-binary-path to `}
-              className={styles.textbox}
-              onSave={(value) =>
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'backup-restic-binary-path',
-                    value: value
-                  })
-                )
-              }
-            />
-          )
-        },
-        {
-          key: 'Backup restic local repository',
-          value: (
-            <TextForm
-              value={selectedCluster?.config?.backupResticLocalRepository}
-              confirmTitle={`Confirm backup-restic-local-repository to `}
-              className={styles.textbox}
-              onSave={(value) =>
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'backup-restic-local-repository',
-                    value: btoa(value)
-                  })
-                )
-              }
-            />
-          )
-        },
-        {
-          key: 'Backup restic password',
-          value: (
-            <TextForm
-              value={selectedCluster?.config?.backupResticPassword}
-              confirmTitle={`Confirm backup-restic-password to `}
-              className={styles.textbox}
-              onSave={(value) =>
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'backup-restic-password',
-                    value: btoa(value)
-                  })
-                )
-              }
-            />
-          )
-        },
-        {
-          key: 'Backup restic aws',
-          value: (
-            <RMSwitch
-              isChecked={selectedCluster?.config?.backupResticAws}
-              isDisabled={user?.grants['cluster-settings'] == false}
-              confirmTitle={'Confirm switch settings for backup-restic-aws?'}
-              onChange={() =>
-                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-restic-aws' }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Backup restic access key id',
-          value: (
-            <TextForm
-              value={selectedCluster?.config?.backupResticAwsAccessKeyId}
-              confirmTitle={`Confirm backup-restic-aws-access-key-id to `}
-              className={styles.textbox}
-              onSave={(value) =>
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'backup-restic-aws-access-key-id',
-                    value: value
-                  })
-                )
-              }
-            />
-          )
-        },
-        {
-          key: 'Backup restic aws access secret',
-          value: (
-            <TextForm
-              value={selectedCluster?.config?.backupResticAwsAccessSecret}
-              confirmTitle={`Confirm backup-restic-aws-access-secret to `}
-              className={styles.textbox}
-              onSave={(value) =>
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'backup-restic-aws-access-secret',
-                    value: btoa(value)
-                  })
-                )
-              }
-            />
-          )
-        },
-        {
-          key: 'Backup restic aws bucket',
-          value: (
-            <TextForm
-              value={selectedCluster?.config?.backupResticRepository}
-              confirmTitle={`Confirm backup-restic-repository to `}
-              className={styles.textbox}
-              onSave={(value) =>
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'backup-restic-repository',
-                    value: btoa(value)
-                  })
-                )
-              }
-            />
-          )
-        },
-        {
-          key: 'Backup restic host override',
-          value: (
-            <HStack width={'100%'}>
-              <TextForm
-                value={selectedCluster?.config?.backupResticHost}
-                confirmTitle={`Confirm backup-restic-host to `}
-                className={styles.textbox}
-                placeholder="(empty = restic default host)"
-                onSave={(value) =>
-                  dispatch(
-                    setSetting({
-                      clusterName: selectedCluster?.name,
-                      setting: 'backup-restic-host',
-                      value: value
-                    })
-                  )
-                }
-              />
-              <RMIconButton
-                icon={HiQuestionMarkCircle}
-                onClick={() => {
-                  setAction({
-                    title: 'Restic Host Override',
-                    type: '',
-                    body: renderInfoModalBody(ResticHostHelp)
-                  })
-                  openCommonModal()
-                }}
-              />
-            </HStack>
-          )
-        },
-        {
-          key: 'Backup restic tags',
-          value: (
-            <HStack width={'100%'}>
-              <TextForm
-                value={selectedCluster?.config?.backupResticTags}
-                confirmTitle={`Confirm backup-restic-tags to `}
-                className={styles.textbox}
-                placeholder="tenant,cluster,engine,version,backup-type,backup-tool,line"
-                onSave={(value) =>
-                  dispatch(
-                    setSetting({
-                      clusterName: selectedCluster?.name,
-                      setting: 'backup-restic-tags',
-                      value: value
-                    })
-                  )
-                }
-              />
-              <RMIconButton
-                icon={HiQuestionMarkCircle}
-                onClick={() => {
-                  setAction({
-                    title: 'Restic Tag Templates',
-                    type: '',
-                    body: renderInfoModalBody(ResticTagsHelp)
-                  })
-                  openCommonModal()
-                }}
-              />
-            </HStack>
-          )
-        },
-        {
-          key: 'Restic Purge Strategy',
-          value: (
-            <ResticPurgeStrategy clusterName={selectedCluster?.name} config={selectedCluster?.config} />
-          )
-        },
-        {
-          key: 'Restic Mount Settings',
-          value: (
-            <Box width="100%">
-              <ResticMountSettings
-                clusterName={selectedCluster?.name}
-                config={selectedCluster?.config}
-                user={user}
-              />
-            </Box>
-          )
-        }
-      ]
+      key: (
+        <HStack spacing={2} className={styles.sectionHeader}>
+          <Text>Backup snapshots</Text>
+          <Box
+            as="button"
+            type="button"
+            ref={backupSnapshotsToggleRef}
+            className={styles.sectionToggle}
+            aria-expanded={isBackupSnapshotsOpen}
+            onClick={handleBackupSnapshotsToggle}
+          >
+            {isBackupSnapshotsOpen ? 'Hide' : 'Show'}
+          </Box>
+        </HStack>
+      ),
+      value: isBackupSnapshotsOpen
+        ? BackupSnapshotsSettings({
+          selectedCluster,
+          user,
+          dispatch,
+          onOpenInfoModal: openInfoModal,
+          isResticRepoConfigOpen,
+          onToggleResticRepoConfig: handleResticRepoToggle
+        })
+        : null
     },
     {
       key: 'Check free space',
