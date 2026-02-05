@@ -821,7 +821,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupResticReseedStrategy, "backup-restic-reseed-strategy", "auto", "Restic reseed strategy: auto (prefer mount when FUSE is available; mysqldump may stream via dump), restore (extract to disk), dump (stream single file), mount (FUSE filesystem)")
 	flags.StringVar(&conf.BackupResticReseedTempDir, "backup-restic-reseed-temp-dir", "", "Temporary directory for restic reseed operations (empty = cluster datadir/backup/restic_temp/<snapshot_id>)")
 	flags.IntVar(&conf.BackupResticMetadataExtractorConcurrency, "backup-restic-metadata-extractor-concurrency", 2, "Number of concurrent restic snapshot metadata extractions")
-	flags.StringVar(&conf.BackupResticMountDir, "backup-restic-mount-dir", "", "Base directory for restic FUSE mounts. Empty uses /mnt/restic/<clustername>.")
+	flags.StringVar(&conf.BackupResticMountDir, "backup-restic-mount-dir", "", "Base directory for restic FUSE mounts. Empty uses <working-dir>/<cluster>/mount to avoid permission issues. Relative paths resolve under <working-dir>/<cluster>/mount.")
 	flags.StringVar(&conf.BackupResticMountTargetDir, "backup-restic-mount-target-dir", "", "Restic mount target directory. Empty uses default mount path.")
 	flags.StringVar(&conf.BackupResticMountHost, "backup-restic-mount-host", "", "Restic mount host filter (comma-separated).")
 	flags.StringVar(&conf.BackupResticMountTag, "backup-restic-mount-tag", "", "Restic mount tag filter (space-separated; commas preserved inside tags).")

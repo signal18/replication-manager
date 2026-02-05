@@ -1481,14 +1481,14 @@ func TestResticMountStatePersistence(t *testing.T) {
 	if statePath == "" {
 		t.Fatalf("expected mount state path to be set")
 	}
-	if err := repo.writeMountState("/mnt/restic/test", 1234); err != nil {
+	if err := repo.writeMountState("/var/lib/replication-manager/cluster1/mount/test", 1234); err != nil {
 		t.Fatalf("writeMountState failed: %v", err)
 	}
 	state, err := repo.loadMountState()
 	if err != nil {
 		t.Fatalf("loadMountState failed: %v", err)
 	}
-	if state.Path != "/mnt/restic/test" || state.PID != 1234 {
+	if state.Path != "/var/lib/replication-manager/cluster1/mount/test" || state.PID != 1234 {
 		t.Fatalf("unexpected mount state: %+v", state)
 	}
 	repo.clearMountState()

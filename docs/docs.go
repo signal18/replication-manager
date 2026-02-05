@@ -22556,7 +22556,7 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "backupResticMountDir": {
-                    "description": "BackupResticMountDir defines the base directory for restic FUSE mounts.",
+				"description": "BackupResticMountDir defines the base directory for restic FUSE mounts. Default base is <working-dir>/<cluster>/mount to avoid permission issues; relative paths resolve under that base.",
                     "type": "string"
                 },
                 "backupResticMountHost": {
