@@ -71,6 +71,14 @@ var tests = []string{
 	"testRestartCookieCleanup",
 	"testRestartCookieTiming",
 	"testRestartCookieConcurrent",
+	"testResticReseedRestore",
+	"testResticReseedDump",
+	"testResticReseedMount",
+	"testResticReseedFallback",
+	"testResticReseedMysqldump",
+	"testResticReseedMydumper",
+	"testResticReseedXtrabackup",
+	"testResticReseedMariabackup",
 }
 
 const recoverTime = 8

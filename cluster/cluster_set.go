@@ -575,6 +575,89 @@ func (cluster *Cluster) SetBackupResticPurgeKeepTag(value string) error {
 	return nil
 }
 
+func (cluster *Cluster) SetBackupResticPurgeHost(value string) error {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		cluster.Conf.BackupResticPurgeHost = ""
+		return nil
+	}
+	values := splitResticPurgeFilterValues(normalized)
+	cluster.Conf.BackupResticPurgeHost = strings.Join(values, ",")
+	return nil
+}
+
+func (cluster *Cluster) SetBackupResticPurgeTag(value string) error {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		cluster.Conf.BackupResticPurgeTag = ""
+		return nil
+	}
+	values, hadUnmatched := splitResticTagFilterValues(normalized)
+	if hadUnmatched {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"Ignoring restic purge tag filter with unmatched quotes in %q", normalized)
+	}
+	cluster.Conf.BackupResticPurgeTag = strings.Join(values, " ")
+	return nil
+}
+
+func (cluster *Cluster) SetBackupResticMountTag(value string) error {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		cluster.Conf.BackupResticMountTag = ""
+		return nil
+	}
+	values, hadUnmatched := splitResticTagFilterValues(normalized)
+	if hadUnmatched {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"Ignoring restic mount tag filter with unmatched quotes in %q", normalized)
+	}
+	cluster.Conf.BackupResticMountTag = strings.Join(values, " ")
+	return nil
+}
+
+func (cluster *Cluster) SetBackupResticPurgePath(value string) error {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		cluster.Conf.BackupResticPurgePath = ""
+		return nil
+	}
+	values := splitResticPurgeFilterValues(normalized)
+	values = filterResticAbsolutePaths(values, cluster)
+	cluster.Conf.BackupResticPurgePath = strings.Join(values, ",")
+	return nil
+}
+
+func (cluster *Cluster) SetBackupResticPurgePrune(check bool) {
+	cluster.Conf.BackupResticPurgePrune = check
+}
+
+func (cluster *Cluster) SetBackupResticPurgePruneCompact(check bool) {
+	cluster.Conf.BackupResticPurgePruneCompact = check
+}
+
+func (cluster *Cluster) SetBackupResticPurgePruneMaxUnused(value string) error {
+	cluster.Conf.BackupResticPurgePruneMaxUnused = strings.TrimSpace(value)
+	return nil
+}
+
+func (cluster *Cluster) SetBackupResticPurgePruneMaxRepackSize(value string) error {
+	cluster.Conf.BackupResticPurgePruneMaxRepackSize = strings.TrimSpace(value)
+	return nil
+}
+
+func (cluster *Cluster) SetBackupResticPurgePruneRepackCacheableOnly(check bool) {
+	cluster.Conf.BackupResticPurgePruneRepackCacheableOnly = check
+}
+
+func (cluster *Cluster) SetBackupResticPurgePruneRepackSmall(check bool) {
+	cluster.Conf.BackupResticPurgePruneRepackSmall = check
+}
+
+func (cluster *Cluster) SetBackupResticPurgePruneRepackUncompressed(check bool) {
+	cluster.Conf.BackupResticPurgePruneRepackUncompressed = check
+}
+
 func (cluster *Cluster) SetMasterReadOnly() {
 	if cluster.GetMaster() != nil {
 		logs, err := cluster.GetMaster().SetReadOnly()

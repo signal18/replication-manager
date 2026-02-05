@@ -11,6 +11,7 @@ import ConfirmModal from "../../../../components/Modals/ConfirmModal";
 import Routes from "./Routes";
 import PathSection from "./Paths";
 import Variables from "./Variables";
+import PropTypes from "prop-types";
 
 const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, user }) => {
     const dispatch = useDispatch();
@@ -81,16 +82,16 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
           dispatch(deploymentFieldIndexDrop({ clusterName, appId, field, index }));
           handleCloseConfirm();
         }
-      }, [clusterName, appId, field, index, dispatch]);
+      }, [clusterName, appId, field, index, dispatch, handleCloseConfirm]);
 
-    const routes = deployment?.routes || []
-    const gitClones = deployment?.storages?.gitClones || []
-    const paths = deployment?.paths || [];
-    const variables = deployment?.variables || [];
-    const dockerImage = appConfig?.provAppDockerImg || '';
-    const agentList = appConfig?.provAppAgents || [];
-    const gateway = config?.cloud18GatewayDomainName || '';
-    const storages = deployment?.storages || {};
+    const routes = useMemo(() => deployment?.routes || [], [deployment]);
+    const storages = useMemo(() => deployment?.storages || {}, [deployment]);
+    const gitClones = useMemo(() => storages?.gitClones || [], [storages]);
+    const paths = useMemo(() => deployment?.paths || [], [deployment]);
+    const variables = useMemo(() => deployment?.variables || [], [deployment]);
+    const dockerImage = useMemo(() => appConfig?.provAppDockerImg || '', [appConfig]);
+    const agentList = useMemo(() => appConfig?.provAppAgents || [], [appConfig]);
+    const gateway = useMemo(() => config?.cloud18GatewayDomainName || '', [config]);
 
     const routeComponent = useMemo(() => {
         return <Routes rows={routes} fieldName={'routes'} user={user} gateway={gateway} {...actionProps} />
@@ -148,6 +149,23 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
             </Flex>
         </Flex>
     );
+};
+
+Overview.propTypes = {
+    clusterName: PropTypes.string.isRequired,
+    config: PropTypes.shape({
+        cloud18GatewayDomainName: PropTypes.string,
+    }).isRequired,
+    appId: PropTypes.string.isRequired,
+    appName: PropTypes.string,
+    appHost: PropTypes.string,
+    appConfig: PropTypes.shape({
+        provAppDockerImg: PropTypes.string,
+        provAppAgents: PropTypes.oneOfType([PropTypes.arrayOf(PropTypes.string), PropTypes.string]),
+    }).isRequired,
+    user: PropTypes.shape({
+        grants: PropTypes.object,
+    }),
 };
 
 export default Overview;

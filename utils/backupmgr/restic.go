@@ -11,11 +11,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/creack/pty"
+	"github.com/signal18/replication-manager/utils/misc"
 	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
 	"github.com/sirupsen/logrus"
 )
@@ -146,47 +149,155 @@ type ResticResult struct {
 
 // ResticPurgeOption holds the configuration for purge
 type ResticPurgeOption struct {
-	SnapshotID        string   `json:"snapshot_id,omitempty"`
-	GroupBy           string   `json:"group_by,omitempty"`
-	KeepLast          int      `json:"keep_last,omitempty"`
-	KeepHourly        int      `json:"keep_hourly,omitempty"`
-	KeepDaily         int      `json:"keep_daily,omitempty"`
-	KeepWeekly        int      `json:"keep_weekly,omitempty"`
-	KeepMonthly       int      `json:"keep_monthly,omitempty"`
-	KeepYearly        int      `json:"keep_yearly,omitempty"`
-	KeepWithin        string   `json:"keep_within,omitempty"`
-	KeepWithinHourly  string   `json:"keep_within_hourly,omitempty"`
-	KeepWithinDaily   string   `json:"keep_within_daily,omitempty"`
-	KeepWithinWeekly  string   `json:"keep_within_weekly,omitempty"`
-	KeepWithinMonthly string   `json:"keep_within_monthly,omitempty"`
-	KeepWithinYearly  string   `json:"keep_within_yearly,omitempty"`
-	KeepTag           []string `json:"keep_tag,omitempty"`
-	Host              []string `json:"host,omitempty"`
-	Tag               []string `json:"tag,omitempty"`
-	Path              []string `json:"path,omitempty"`
-	Prune             bool     `json:"prune"` // When true, runs prune after forget to reclaim space (defaults to true via NewResticPurgeOption)
-	DryRun            bool     `json:"dry_run,omitempty"`
+	SnapshotID        string            `json:"snapshot_id,omitempty"`
+	GroupBy           string            `json:"group_by,omitempty"`
+	KeepLast          int               `json:"keep_last,omitempty"`
+	KeepHourly        int               `json:"keep_hourly,omitempty"`
+	KeepDaily         int               `json:"keep_daily,omitempty"`
+	KeepWeekly        int               `json:"keep_weekly,omitempty"`
+	KeepMonthly       int               `json:"keep_monthly,omitempty"`
+	KeepYearly        int               `json:"keep_yearly,omitempty"`
+	KeepWithin        string            `json:"keep_within,omitempty"`
+	KeepWithinHourly  string            `json:"keep_within_hourly,omitempty"`
+	KeepWithinDaily   string            `json:"keep_within_daily,omitempty"`
+	KeepWithinWeekly  string            `json:"keep_within_weekly,omitempty"`
+	KeepWithinMonthly string            `json:"keep_within_monthly,omitempty"`
+	KeepWithinYearly  string            `json:"keep_within_yearly,omitempty"`
+	KeepTag           []string          `json:"keep_tag,omitempty"`
+	Host              []string          `json:"host,omitempty"`
+	Tag               []string          `json:"tag,omitempty"`
+	Path              []string          `json:"path,omitempty"`
+	Compact           bool              `json:"compact,omitempty"` // Enable compact output during forget
+	Prune             bool              `json:"prune"`             // When true, runs prune after forget to reclaim space (defaults to true via NewResticPurgeOption)
+	PruneOption       ResticPruneOption `json:"prune_option"`
+	DryRun            bool              `json:"dry_run,omitempty"`
 }
 
-// NewResticPurgeOption creates a new ResticPurgeOption with sensible defaults.
-// By default, Prune is set to true since purging should reclaim space.
-func NewResticPurgeOption() ResticPurgeOption {
-	return ResticPurgeOption{
-		Prune: true,
-	}
+type ResticPruneOption struct {
+	MaxUnused           string `json:"max_unused"`            // e.g., "500M", "5G". Empty means omit.
+	MaxRepackSize       string `json:"max_repack_size"`       // e.g., "500M", "5G". Empty means omit.
+	RepackCacheableOnly bool   `json:"repack_cacheable_only"` // Only repack cacheable blobs
+	RepackSmall         bool   `json:"repack_small"`          // Repack small blobs
+	RepackUncompressed  bool   `json:"repack_uncompressed"`   // Repack uncompressed blobs
 }
 
 // ResticRestoreOption holds the configuration for restore
 type ResticRestoreOption struct {
-	SnapshotID string   `json:"snapshot_id,omitempty"`
-	TargetDir  string   `json:"target_dir,omitempty"` // Target directory for restore
-	Include    []string `json:"include,omitempty"`    // Include patterns
-	Exclude    []string `json:"exclude,omitempty"`    // Exclude patterns
-	Overwrite  string   `json:"overwrite,omitempty"`  // Overwrite policy (non-standard, custom implementation)
-	Verify     bool     `json:"verify,omitempty"`     // Verify restored files content
-	Host       []string `json:"host,omitempty"`       // Filter by host for "latest" snapshot
-	Path       []string `json:"path,omitempty"`       // Filter by path for "latest" snapshot
-	Tag        []string `json:"tag,omitempty"`        // Filter by tag for "latest" snapshot
+	SnapshotID string              `json:"snapshot_id,omitempty"`
+	TargetDir  string              `json:"target_dir,omitempty"` // Target directory for restore
+	Include    []string            `json:"include,omitempty"`    // Include patterns
+	Exclude    []string            `json:"exclude,omitempty"`    // Exclude patterns
+	IInclude   []string            `json:"iinclude,omitempty"`   // Case-insensitive include patterns
+	IExclude   []string            `json:"iexclude,omitempty"`   // Case-insensitive exclude patterns
+	Overwrite  string              `json:"overwrite,omitempty"`  // Overwrite policy (non-standard, custom implementation)
+	Verify     bool                `json:"verify,omitempty"`     // Verify restored files content
+	Host       []string            `json:"host,omitempty"`       // Filter by host for "latest" snapshot
+	Path       []string            `json:"path,omitempty"`       // Filter by path for "latest" snapshot
+	Tag        []string            `json:"tag,omitempty"`        // Filter by tag for "latest" snapshot
+	Global     *ResticGlobalOption `json:"global_opt,omitempty"` // Global restic flags
+}
+
+// ResticDumpOption holds the configuration for dump
+type ResticDumpOption struct {
+	SnapshotID string              `json:"snapshot_id,omitempty"`
+	FilePath   string              `json:"file_path,omitempty"`
+	Archive    string              `json:"archive,omitempty"`    // tar|zip
+	Host       []string            `json:"host,omitempty"`       // Filter by host for "latest" snapshot
+	Path       []string            `json:"path,omitempty"`       // Filter by path for "latest" snapshot
+	Tag        []string            `json:"tag,omitempty"`        // Filter by tag for "latest" snapshot
+	Global     *ResticGlobalOption `json:"global_opt,omitempty"` // Global restic flags
+}
+
+// ResticGlobalOption holds global restic flags applied to commands
+type ResticGlobalOption struct {
+	CACert          string   `json:"ca_cert,omitempty"`
+	CacheDir        string   `json:"cache_dir,omitempty"`
+	CleanupCache    bool     `json:"cleanup_cache,omitempty"`
+	Compression     string   `json:"compression,omitempty"`
+	InsecureTLS     bool     `json:"insecure_tls,omitempty"`
+	JSON            bool     `json:"json,omitempty"`
+	KeyHint         string   `json:"key_hint,omitempty"`
+	LimitDownload   int      `json:"limit_download,omitempty"`
+	LimitUpload     int      `json:"limit_upload,omitempty"`
+	NoCache         bool     `json:"no_cache,omitempty"`
+	NoLock          bool     `json:"no_lock,omitempty"`
+	Option          []string `json:"option,omitempty"`
+	PackSize        uint     `json:"pack_size,omitempty"`
+	PasswordCommand string   `json:"password_command,omitempty"`
+	PasswordFile    string   `json:"password_file,omitempty"`
+	Quiet           bool     `json:"quiet,omitempty"`
+	Repo            string   `json:"repo,omitempty"`
+	RepositoryFile  string   `json:"repository_file,omitempty"`
+	TLSClientCert   string   `json:"tls_client_cert,omitempty"`
+	Verbose         int      `json:"verbose,omitempty"`
+}
+
+// ResticMountOption holds configuration for mount operation
+type ResticMountOption struct {
+	// Required
+	TargetDir string `json:"target_dir"` // Mount point directory (required)
+
+	// Snapshot Filters
+	Host []string `json:"host,omitempty"` // Filter by host(s) (-H, --host)
+	Tag  []string `json:"tag,omitempty"`  // Filter by tag(s) (--tag)
+	Path []string `json:"path,omitempty"` // Filter by path(s) (--path)
+
+	// Path/Time Templates
+	PathTemplate []string `json:"path_template,omitempty"` // Template for path names (--path-template, can be multiple)
+	TimeTemplate string   `json:"time_template,omitempty"` // Template for times (--time-template, default: "2006-01-02T15:04:05Z07:00")
+
+	// Permission Options
+	AllowOther           bool `json:"allow_other,omitempty"`            // Allow other users to access (--allow-other)
+	NoDefaultPermissions bool `json:"no_default_permissions,omitempty"` // Ignore Unix permissions (--no-default-permissions)
+	OwnerRoot            bool `json:"owner_root,omitempty"`             // Use root as owner (--owner-root)
+
+	// Repository Options
+	NoLock  bool `json:"no_lock,omitempty"` // Don't lock repository (--no-lock, default: true)
+	Verbose int  `json:"verbose,omitempty"` // Verbosity level (-v, --verbose, 0-3)
+	Quiet   bool `json:"quiet,omitempty"`   // Quiet mode (-q, --quiet)
+}
+
+type resticMountState struct {
+	Path      string    `json:"path"`
+	PID       int       `json:"pid"`
+	Hostname  string    `json:"hostname"`
+	RepoPath  string    `json:"repoPath"`
+	StartedAt time.Time `json:"startedAt"`
+}
+
+// NewResticMountOption creates a ResticMountOption with sensible defaults
+func NewResticMountOption(targetDir string) ResticMountOption {
+	return ResticMountOption{
+		TargetDir:  targetDir,
+		NoLock:     true, // Default to no-lock for better concurrency
+		AllowOther: true, // Default to allow other users
+	}
+}
+
+// Validate validates mount options for common issues
+func (opt *ResticMountOption) Validate() error {
+	if opt.TargetDir == "" {
+		return fmt.Errorf("target directory is required")
+	}
+
+	if opt.Verbose < 0 || opt.Verbose > 3 {
+		return fmt.Errorf("verbose level must be 0-3, got %d", opt.Verbose)
+	}
+
+	if opt.Quiet && opt.Verbose > 0 {
+		return fmt.Errorf("cannot use both --quiet and --verbose")
+	}
+
+	// Validate paths are absolute if specified
+	for _, path := range opt.Path {
+		if trimmed := strings.TrimSpace(path); trimmed != "" {
+			if !filepath.IsAbs(trimmed) {
+				return fmt.Errorf("path filter must be absolute: %s", trimmed)
+			}
+		}
+	}
+
+	return nil
 }
 
 // TaskStatus represents the task state information stored in the JSON flag file
@@ -199,66 +310,110 @@ type TaskStatus struct {
 
 // ResticManager manages the queue and execution
 type ResticManager struct {
-	BinaryPath        string
-	Env               []string
-	Backups           []BackupSnapshot
-	BackupStat        BackupStat
-	TaskQueue         []*ResticTask
-	TaskErrors        map[TaskType]error
-	errorMutex        *sync.Mutex
-	ResultChan        chan ResticResult
-	LogModule         int
-	MessageChan       chan sharedlog.Message
-	Shutdown          bool
-	Mutex             *sync.Mutex
-	cond              *sync.Cond    // Condition variable for waiting and notifying tasks
-	stopCh            chan struct{} // Stop channel to signal the goroutine to stop
-	CanFetch          bool
-	CanInitRepo       bool
-	NeedPurgeNow      bool
-	PurgeNowOption    ResticPurgeOption
-	isPaused          bool
-	isPausedByDisk    bool
-	HasLocks          bool
-	taskID            int
-	CurrentID         int
-	mountMutex        *sync.Mutex
-	mountCmd          *exec.Cmd
-	mountPath         string
-	mountDone         chan error
-	BackupCount       int           // Number of backups since last check
-	LastCheckTime     time.Time     // Last time repository check was run
-	LastFullCheckTime time.Time     // Last time full data check was run
-	DirMode           os.FileMode   // Directory permission mode (default: 0700)
-	FileMode          os.FileMode   // File permission mode (default: 0600)
-	OperationTimeout  time.Duration // Timeout for long-running operations (default: 2 hours)
-	MountDisabled     bool          // If true, mount operations are disabled (e.g., FUSE unavailable)
+	BinaryPath           string
+	Env                  []string
+	Backups              []BackupSnapshot
+	BackupMap            map[string]*BackupSnapshot
+	BackupStat           BackupStat
+	TaskQueue            []*ResticTask
+	TaskErrors           map[TaskType]error
+	errorMutex           *sync.Mutex
+	ResultChan           chan ResticResult
+	LogModule            int
+	MessageChan          chan sharedlog.Message
+	Shutdown             bool
+	Mutex                *sync.Mutex
+	cond                 *sync.Cond    // Condition variable for waiting and notifying tasks
+	stopCh               chan struct{} // Stop channel to signal the goroutine to stop
+	CanFetch             bool
+	CanInitRepo          bool
+	NeedPurgeNow         bool
+	PurgeNowOption       ResticPurgeOption
+	isPaused             bool
+	isPausedByDisk       bool
+	HasLocks             bool
+	taskID               int
+	CurrentID            int
+	mountCmd             *exec.Cmd
+	mountPath            string
+	mountDone            chan error
+	mountPid             int
+	unmountRequested     bool                // Set to true when intentional unmount is requested
+	mountPinned          bool                // True when mount should remain active until explicitly unpinned
+	unmountWhenIdle      bool                // True when mount should auto-unmount after last ref
+	unmountInProgress    bool                // True when auto-unmount goroutine is running
+	mountRefCount        int                 // Number of active users of the mount
+	mountRefMutex        *sync.Mutex         // Protects mount state (cmd/path/pid/done/unmountRequested) and mount users
+	mountUsers           map[string]struct{} // Track which operations are using mount (for debugging)
+	BackupCount          int                 // Number of backups since last check
+	LastCheckTime        time.Time           // Last time repository check was run
+	LastFullCheckTime    time.Time           // Last time full data check was run
+	DirMode              os.FileMode         // Directory permission mode (default: 0700)
+	FileMode             os.FileMode         // File permission mode (default: 0600)
+	OperationTimeout     time.Duration       // Timeout for long-running operations (default: 2 hours)
+	DumpTimeout          time.Duration       // Timeout for restic dump operations (default: OperationTimeout)
+	MountDisabled        bool                // If true, mount operations are disabled (e.g., FUSE unavailable)
+	AllowUnsafeMount     bool                // If true, allow using mount created by other process
+	MountRecoveryEnabled bool                // If true, recover/cleanup stale mounts on startup
+	OnPurgeComplete      func(ResticPurgeOption)
 }
 
 // NewResticRepo initializes the repository manager
 func NewResticRepo(binaryPath string, msgChan chan sharedlog.Message, logmodule int) *ResticManager {
 	repo := &ResticManager{
-		BinaryPath:       binaryPath,
-		Backups:          make([]BackupSnapshot, 0),
-		MessageChan:      msgChan,
-		LogModule:        logmodule,
-		TaskQueue:        make([]*ResticTask, 0),
-		Mutex:            &sync.Mutex{},
-		mountMutex:       &sync.Mutex{},
-		TaskErrors:       make(map[TaskType]error),
-		errorMutex:       &sync.Mutex{},
-		ResultChan:       make(chan ResticResult, 10),
-		stopCh:           make(chan struct{}),
-		CanFetch:         true,
-		CanInitRepo:      true,
-		DirMode:          0700,          // Secure default: owner-only directories
-		FileMode:         0600,          // Secure default: owner-only files
-		OperationTimeout: 2 * time.Hour, // Default: 2 hours for long operations
+		BinaryPath:           binaryPath,
+		Backups:              make([]BackupSnapshot, 0),
+		BackupMap:            make(map[string]*BackupSnapshot),
+		MessageChan:          msgChan,
+		LogModule:            logmodule,
+		TaskQueue:            make([]*ResticTask, 0),
+		Mutex:                &sync.Mutex{},
+		mountRefMutex:        &sync.Mutex{},
+		mountUsers:           make(map[string]struct{}),
+		TaskErrors:           make(map[TaskType]error),
+		errorMutex:           &sync.Mutex{},
+		ResultChan:           make(chan ResticResult, 10),
+		stopCh:               make(chan struct{}),
+		CanFetch:             true,
+		CanInitRepo:          true,
+		DirMode:              0700,          // Secure default: owner-only directories
+		FileMode:             0600,          // Secure default: owner-only files
+		OperationTimeout:     2 * time.Hour, // Default: 2 hours for long operations
+		MountRecoveryEnabled: true,
 	}
 
 	repo.cond = sync.NewCond(repo.Mutex)
 	go repo.worker() // Start the worker
 	return repo
+}
+
+func (repo *ResticManager) UpdateSnapshotList(snapshots []BackupSnapshot) {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+
+	repo.Backups = snapshots
+
+	for _, snap := range repo.Backups {
+		repo.BackupMap[snap.Id] = &snap
+	}
+}
+
+func (repo *ResticManager) GetSnapshot(snapshotId string) *BackupSnapshot {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+
+	if len(repo.Backups) == 0 {
+		return nil
+	}
+
+	for i := range repo.Backups {
+		snap := &repo.Backups[i]
+		if snap.Id == snapshotId || snap.ShortId == snapshotId {
+			return snap
+		}
+	}
+
+	return nil
 }
 
 func (repo *ResticManager) GetOldestSnapshot() (*BackupSnapshot, time.Time, error) {
@@ -463,6 +618,26 @@ func (repo *ResticManager) GetOperationTimeout() time.Duration {
 	return repo.OperationTimeout
 }
 
+// SetDumpTimeout sets the timeout for restic dump operations
+// timeout: Duration (e.g., 30*time.Minute). Zero uses OperationTimeout.
+func (repo *ResticManager) SetDumpTimeout(timeout time.Duration) {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+	repo.DumpTimeout = timeout
+	repo.Printf(logrus.DebugLevel, "Set restic dump timeout: %v", timeout)
+}
+
+// GetDumpTimeout returns the timeout for restic dump operations
+func (repo *ResticManager) GetDumpTimeout() time.Duration {
+	repo.Mutex.Lock()
+	dumpTimeout := repo.DumpTimeout
+	repo.Mutex.Unlock()
+	if dumpTimeout > 0 {
+		return dumpTimeout
+	}
+	return repo.GetOperationTimeout()
+}
+
 // SetMountDisabled enables or disables mount operations
 // Set to true to disable mount operations when FUSE is unavailable
 func (repo *ResticManager) SetMountDisabled(disabled bool) {
@@ -629,11 +804,7 @@ func (repo *ResticManager) worker() {
 		case RestoreTask:
 			var err error
 			if task.RestoreOpt != nil {
-				snapshotID := task.RestoreOpt.SnapshotID
-				targetDir := task.RestoreOpt.TargetDir
-				overwrite := task.RestoreOpt.Overwrite
-				paths := task.RestoreOpt.Include
-				err = repo.restoreSnapshot(snapshotID, targetDir, paths, overwrite)
+				err = repo.restoreSnapshotWithOptions(*task.RestoreOpt)
 			} else {
 				err = errors.New("RestoreTask requires RestoreOpt to be set")
 			}
@@ -766,7 +937,12 @@ func (repo *ResticManager) RestoreSnapshot(snapshotID, targetDir string, paths [
 	repo.Mutex.Unlock()
 
 	if paused || shutdown {
-		return repo.restoreSnapshot(snapshotID, targetDir, paths, overwrite)
+		return repo.restoreSnapshotWithOptions(ResticRestoreOption{
+			SnapshotID: snapshotID,
+			TargetDir:  targetDir,
+			Include:    paths,
+			Overwrite:  overwrite,
+		})
 	}
 
 	repo.AddRestoreTask(snapshotID, targetDir, paths, overwrite)
@@ -775,7 +951,17 @@ func (repo *ResticManager) RestoreSnapshot(snapshotID, targetDir string, paths [
 }
 
 func (repo *ResticManager) RestoreSnapshotSync(snapshotID, targetDir string, paths []string, overwrite string) error {
-	return repo.restoreSnapshot(snapshotID, targetDir, paths, overwrite)
+	return repo.restoreSnapshotWithOptions(ResticRestoreOption{
+		SnapshotID: snapshotID,
+		TargetDir:  targetDir,
+		Include:    paths,
+		Overwrite:  overwrite,
+	})
+}
+
+// RestoreSnapshotSyncWithOptions restores a snapshot using full restore options.
+func (repo *ResticManager) RestoreSnapshotSyncWithOptions(opt ResticRestoreOption) error {
+	return repo.restoreSnapshotWithOptions(opt)
 }
 
 var resticRestoreOverwriteModes = map[string]struct{}{
@@ -796,7 +982,126 @@ func normalizeResticRestoreOverwrite(value string) (string, error) {
 	return trimmed, nil
 }
 
-func (repo *ResticManager) restoreSnapshot(snapshotID, targetDir string, paths []string, overwrite string) error {
+func trimResticValues(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	trimmed := make([]string, 0, len(values))
+	for _, value := range values {
+		item := strings.TrimSpace(value)
+		if item == "" {
+			continue
+		}
+		trimmed = append(trimmed, item)
+	}
+	if len(trimmed) == 0 {
+		return nil
+	}
+	return trimmed
+}
+
+func (repo *ResticManager) shortSnapshotID(snapshotID string) string {
+	trimmed := strings.TrimSpace(snapshotID)
+	if trimmed == "" {
+		return ""
+	}
+	if trimmed == "latest" {
+		return trimmed
+	}
+	if repo != nil {
+		snap := repo.GetSnapshot(trimmed)
+		if snap != nil {
+			shortID := strings.TrimSpace(snap.ShortId)
+			if shortID != "" {
+				return shortID
+			}
+		}
+	}
+	if len(trimmed) > 8 {
+		return trimmed[:8]
+	}
+	return trimmed
+}
+
+func appendResticArgs(args []string, flag string, values []string) []string {
+	for _, value := range trimResticValues(values) {
+		args = append(args, flag, value)
+	}
+	return args
+}
+
+func (repo *ResticManager) buildResticGlobalArgs(opt ResticGlobalOption) []string {
+	args := []string{}
+	if strings.TrimSpace(opt.CACert) != "" {
+		args = append(args, "--cacert", strings.TrimSpace(opt.CACert))
+	}
+	if strings.TrimSpace(opt.CacheDir) != "" {
+		args = append(args, "--cache-dir", strings.TrimSpace(opt.CacheDir))
+	}
+	if opt.CleanupCache {
+		args = append(args, "--cleanup-cache")
+	}
+	if strings.TrimSpace(opt.Compression) != "" {
+		args = append(args, "--compression", strings.TrimSpace(opt.Compression))
+	}
+	if opt.InsecureTLS {
+		args = append(args, "--insecure-tls")
+	}
+	if opt.JSON {
+		args = append(args, "--json")
+	}
+	if strings.TrimSpace(opt.KeyHint) != "" {
+		args = append(args, "--key-hint", strings.TrimSpace(opt.KeyHint))
+	}
+	if opt.LimitDownload > 0 {
+		args = append(args, "--limit-download", fmt.Sprintf("%d", opt.LimitDownload))
+	}
+	if opt.LimitUpload > 0 {
+		args = append(args, "--limit-upload", fmt.Sprintf("%d", opt.LimitUpload))
+	}
+	if opt.NoCache {
+		args = append(args, "--no-cache")
+	}
+	if opt.NoLock {
+		args = append(args, "--no-lock")
+	}
+	args = appendResticArgs(args, "--option", opt.Option)
+	if opt.PackSize > 0 {
+		args = append(args, "--pack-size", fmt.Sprintf("%d", opt.PackSize))
+	}
+	if strings.TrimSpace(opt.PasswordCommand) != "" {
+		args = append(args, "--password-command", strings.TrimSpace(opt.PasswordCommand))
+	}
+	if strings.TrimSpace(opt.PasswordFile) != "" {
+		args = append(args, "--password-file", strings.TrimSpace(opt.PasswordFile))
+	}
+	if opt.Quiet {
+		args = append(args, "--quiet")
+	}
+	if strings.TrimSpace(opt.Repo) != "" {
+		args = append(args, "--repo", strings.TrimSpace(opt.Repo))
+	}
+	if strings.TrimSpace(opt.RepositoryFile) != "" {
+		args = append(args, "--repository-file", strings.TrimSpace(opt.RepositoryFile))
+	}
+	if strings.TrimSpace(opt.TLSClientCert) != "" {
+		args = append(args, "--tls-client-cert", strings.TrimSpace(opt.TLSClientCert))
+	}
+	if opt.Verbose > 0 {
+		if opt.Quiet {
+			repo.Printf(logrus.WarnLevel, "Ignoring restic verbose flag because quiet is enabled")
+		} else if opt.Verbose > 3 {
+			repo.Printf(logrus.WarnLevel, "Restic verbose level must be 0-3, got %d", opt.Verbose)
+		} else {
+			args = append(args, fmt.Sprintf("--verbose=%d", opt.Verbose))
+		}
+	}
+	return args
+}
+
+func (repo *ResticManager) restoreSnapshotWithOptions(opt ResticRestoreOption) error {
+	snapshotID := strings.TrimSpace(opt.SnapshotID)
+	targetDir := strings.TrimSpace(opt.TargetDir)
 	if snapshotID == "" {
 		return fmt.Errorf("snapshot ID is empty")
 	}
@@ -811,7 +1116,7 @@ func (repo *ResticManager) restoreSnapshot(snapshotID, targetDir string, paths [
 
 	if !repo.GetCanFetch() {
 		time.Sleep(time.Second)
-		return repo.restoreSnapshot(snapshotID, targetDir, paths, overwrite)
+		return repo.restoreSnapshotWithOptions(opt)
 	}
 
 	repo.SetCanFetch(false)
@@ -821,24 +1126,41 @@ func (repo *ResticManager) restoreSnapshot(snapshotID, targetDir string, paths [
 		return err
 	}
 
-	if err := repo.CheckResticLocks(); err != nil {
-		return err
+	var globalOpt ResticGlobalOption
+	if opt.Global != nil {
+		globalOpt = *opt.Global
 	}
 
-	overwritePolicy, err := normalizeResticRestoreOverwrite(overwrite)
+	if !globalOpt.NoLock {
+		if err := repo.CheckResticLocks(); err != nil {
+			return err
+		}
+	}
+
+	overwritePolicy, err := normalizeResticRestoreOverwrite(opt.Overwrite)
 	if err != nil {
 		return err
 	}
 
-	args := []string{"restore", snapshotID, "--target", targetDir}
+	args := repo.buildResticGlobalArgs(globalOpt)
+	args = append(args, "restore", snapshotID, "--target", targetDir)
 	if overwritePolicy != "" {
 		args = append(args, "--overwrite", overwritePolicy)
 	}
-	for _, path := range paths {
-		if strings.TrimSpace(path) != "" {
-			args = append(args, "--include", strings.TrimSpace(path))
-		}
+	if opt.Verify {
+		args = append(args, "--verify")
 	}
+
+	if snapshotID == "latest" {
+		args = appendResticArgs(args, "--host", opt.Host)
+		args = appendResticArgs(args, "--path", opt.Path)
+		args = appendResticArgs(args, "--tag", opt.Tag)
+	}
+
+	args = appendResticArgs(args, "--include", opt.Include)
+	args = appendResticArgs(args, "--exclude", opt.Exclude)
+	args = appendResticArgs(args, "--iinclude", opt.IInclude)
+	args = appendResticArgs(args, "--iexclude", opt.IExclude)
 
 	// Add timeout context for long-running restore operations
 	timeout := repo.GetOperationTimeout()
@@ -862,6 +1184,10 @@ func (repo *ResticManager) restoreSnapshot(snapshotID, targetDir string, paths [
 }
 
 func (repo *ResticManager) ListSnapshot(snapshotID string, paths []string, recursive bool) ([]ResticLsEntry, error) {
+	return repo.ListSnapshotWithLogLevel(snapshotID, paths, recursive, logrus.InfoLevel)
+}
+
+func (repo *ResticManager) ListSnapshotWithLogLevel(snapshotID string, paths []string, recursive bool, level logrus.Level) ([]ResticLsEntry, error) {
 	if snapshotID == "" {
 		return nil, fmt.Errorf("snapshot ID is empty")
 	}
@@ -897,7 +1223,7 @@ func (repo *ResticManager) ListSnapshot(snapshotID string, paths []string, recur
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	stdout, stderr, err := repo.RunCommandWithContext(ctx, args, logrus.InfoLevel, true)
+	stdout, stderr, err := repo.RunCommandWithContext(ctx, args, level, true)
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			return nil, fmt.Errorf("list operation timeout after %v: %w", timeout, err)
@@ -930,6 +1256,23 @@ func (repo *ResticManager) ListSnapshot(snapshotID string, paths []string, recur
 }
 
 func (repo *ResticManager) DumpSnapshot(snapshotID, filePath string, writer io.Writer) error {
+	return repo.DumpSnapshotWithOptions(ResticDumpOption{
+		SnapshotID: snapshotID,
+		FilePath:   filePath,
+	}, writer, logrus.InfoLevel)
+}
+
+func (repo *ResticManager) DumpSnapshotWithLogLevel(snapshotID, filePath string, writer io.Writer, level logrus.Level) error {
+	return repo.DumpSnapshotWithOptions(ResticDumpOption{
+		SnapshotID: snapshotID,
+		FilePath:   filePath,
+	}, writer, level)
+}
+
+// DumpSnapshotWithOptions dumps a file from a snapshot with full options support.
+func (repo *ResticManager) DumpSnapshotWithOptions(opt ResticDumpOption, writer io.Writer, level logrus.Level) error {
+	snapshotID := strings.TrimSpace(opt.SnapshotID)
+	filePath := strings.TrimSpace(opt.FilePath)
 	if snapshotID == "" {
 		return fmt.Errorf("snapshot ID is empty")
 	}
@@ -940,9 +1283,14 @@ func (repo *ResticManager) DumpSnapshot(snapshotID, filePath string, writer io.W
 		return fmt.Errorf("output writer is nil")
 	}
 
+	archive := strings.ToLower(strings.TrimSpace(opt.Archive))
+	if archive != "" && archive != "tar" && archive != "zip" {
+		return fmt.Errorf("invalid archive format: %s (must be tar or zip)", opt.Archive)
+	}
+
 	if !repo.GetCanFetch() {
 		time.Sleep(time.Second)
-		return repo.DumpSnapshot(snapshotID, filePath, writer)
+		return repo.DumpSnapshotWithOptions(opt, writer, level)
 	}
 
 	repo.SetCanFetch(false)
@@ -952,12 +1300,28 @@ func (repo *ResticManager) DumpSnapshot(snapshotID, filePath string, writer io.W
 		return err
 	}
 
+	var globalOpt ResticGlobalOption
+	if opt.Global != nil {
+		globalOpt = *opt.Global
+	}
+
 	// Add timeout context for long-running dump operations
-	timeout := repo.GetOperationTimeout()
+	timeout := repo.GetDumpTimeout()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	args := []string{"dump", snapshotID, filePath}
+	args := repo.buildResticGlobalArgs(globalOpt)
+	args = append(args, "dump")
+	if archive != "" {
+		args = append(args, "--archive", archive)
+	}
+	if snapshotID == "latest" {
+		args = appendResticArgs(args, "--host", opt.Host)
+		args = appendResticArgs(args, "--path", opt.Path)
+		args = appendResticArgs(args, "--tag", opt.Tag)
+	}
+	args = append(args, snapshotID, filePath)
+
 	cmd := exec.CommandContext(ctx, repo.BinaryPath, args...)
 	cmd.Env = append(os.Environ(), repo.Env...)
 
@@ -970,7 +1334,7 @@ func (repo *ResticManager) DumpSnapshot(snapshotID, filePath string, writer io.W
 		return fmt.Errorf("failed to get stderr pipe: %w", err)
 	}
 
-	repo.Printf(logrus.InfoLevel, "Starting command with timeout: %s %v", repo.BinaryPath, args)
+	repo.Printf(level, "Starting command with timeout: %s %v", repo.BinaryPath, args)
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("error starting command: %w", err)
@@ -1008,81 +1372,258 @@ func (repo *ResticManager) DumpSnapshot(snapshotID, filePath string, writer io.W
 		return fmt.Errorf("command execution failed: %w, stderr: %s", err, stderrBuf.Bytes())
 	}
 
-	repo.Printf(logrus.InfoLevel, "Command completed successfully: %s %v", repo.BinaryPath, args)
+	repo.Printf(level, "Command completed successfully: %s %v", repo.BinaryPath, args)
 	return nil
 }
 
-func (repo *ResticManager) MountRepo(targetDir string) error {
+// DumpSnapshotSyncWithOptions dumps a snapshot using options with default log level.
+func (repo *ResticManager) DumpSnapshotSyncWithOptions(opt ResticDumpOption, writer io.Writer) error {
+	return repo.DumpSnapshotWithOptions(opt, writer, logrus.InfoLevel)
+}
+
+// buildMountArgs constructs restic mount command arguments from options
+func (repo *ResticManager) buildMountArgs(opt ResticMountOption) []string {
+	args := []string{"mount"}
+
+	// Repository locking
+	if opt.NoLock {
+		args = append(args, "--no-lock")
+	}
+
+	// Verbosity
+	if opt.Verbose > 0 {
+		// Add multiple -v flags or use --verbose=n
+		if opt.Verbose == 1 {
+			args = append(args, "-v")
+		} else {
+			args = append(args, fmt.Sprintf("--verbose=%d", opt.Verbose))
+		}
+	}
+
+	// Quiet mode
+	if opt.Quiet {
+		args = append(args, "--quiet")
+	}
+
+	// Host filters (can be specified multiple times)
+	for _, host := range opt.Host {
+		if trimmed := strings.TrimSpace(host); trimmed != "" {
+			args = append(args, "--host", trimmed)
+		}
+	}
+
+	// Tag filters (can be specified multiple times)
+	for _, tag := range opt.Tag {
+		if trimmed := strings.TrimSpace(tag); trimmed != "" {
+			args = append(args, "--tag", trimmed)
+		}
+	}
+
+	// Path filters (can be specified multiple times)
+	for _, path := range opt.Path {
+		if trimmed := strings.TrimSpace(path); trimmed != "" {
+			args = append(args, "--path", trimmed)
+		}
+	}
+
+	// Path templates (can be specified multiple times)
+	for _, pathTemplate := range opt.PathTemplate {
+		if trimmed := strings.TrimSpace(pathTemplate); trimmed != "" {
+			args = append(args, "--path-template", trimmed)
+		}
+	}
+
+	// Time template
+	if opt.TimeTemplate != "" {
+		args = append(args, "--time-template", strings.TrimSpace(opt.TimeTemplate))
+	}
+
+	// Permission options
+	if opt.AllowOther {
+		args = append(args, "--allow-other")
+		repo.Printf(logrus.WarnLevel, "Mount using --allow-other: other users can access mounted data (security consideration)")
+	}
+
+	if opt.NoDefaultPermissions {
+		args = append(args, "--no-default-permissions")
+		if !opt.AllowOther {
+			repo.Printf(logrus.WarnLevel, "--no-default-permissions is typically used with --allow-other")
+		}
+	}
+
+	if opt.OwnerRoot {
+		args = append(args, "--owner-root")
+		repo.Printf(logrus.InfoLevel, "Mount using --owner-root: all files/dirs will appear owned by root")
+	}
+
+	// Target directory must be last
+	args = append(args, opt.TargetDir)
+
+	return args
+}
+
+type resticMountSnapshot struct {
+	cmd              *exec.Cmd
+	done             chan error
+	path             string
+	pid              int
+	unmountRequested bool
+}
+
+func (repo *ResticManager) mountSnapshotUnsafe() resticMountSnapshot {
+	return resticMountSnapshot{
+		cmd:              repo.mountCmd,
+		done:             repo.mountDone,
+		path:             repo.mountPath,
+		pid:              repo.mountPid,
+		unmountRequested: repo.unmountRequested,
+	}
+}
+
+func (repo *ResticManager) mountSnapshot() resticMountSnapshot {
+	repo.mountRefMutex.Lock()
+	defer repo.mountRefMutex.Unlock()
+	return repo.mountSnapshotUnsafe()
+}
+
+// MountRepoWithOptions mounts the repository with full control over mount options
+func (repo *ResticManager) MountRepoWithOptions(opt ResticMountOption) error {
+	// Validate options
+	if err := opt.Validate(); err != nil {
+		return fmt.Errorf("invalid mount options: %w", err)
+	}
+
 	// Check if mount operations are disabled
 	if repo.IsMountDisabled() {
 		return fmt.Errorf("mount operations are disabled (FUSE not available)")
 	}
 
-	if targetDir == "" {
-		return fmt.Errorf("mount target is empty")
-	}
-
 	dirMode, _ := repo.GetPermissions()
-	if err := os.MkdirAll(targetDir, dirMode); err != nil {
+	repo.RecoverMountState()
+	if isMountReady(opt.TargetDir) && repo.AllowUnsafeMount {
+		repo.Printf(logrus.WarnLevel, "Restic mountpoint already mounted at %s; reusing due to unsafe flag", opt.TargetDir)
+		repo.mountRefMutex.Lock()
+		repo.mountPath = opt.TargetDir
+		repo.mountPid = 0
+		repo.mountRefMutex.Unlock()
+		if err := repo.writeMountState(opt.TargetDir, 0); err != nil {
+			repo.Printf(logrus.WarnLevel, "Failed to persist restic mount state: %v", err)
+		}
+		return nil
+	}
+	if err := ensureResticMountDir(opt.TargetDir, dirMode); err != nil {
 		return fmt.Errorf("failed to create mount dir: %w", err)
 	}
 
-	repo.mountMutex.Lock()
-	if repo.mountCmd != nil && repo.mountCmd.Process != nil {
-		repo.mountMutex.Unlock()
-		return fmt.Errorf("restic mount already running at %s", repo.mountPath)
-	}
-	repo.mountMutex.Unlock()
+	snapshot := repo.mountSnapshot()
+	if snapshot.cmd != nil && snapshot.cmd.Process != nil {
+		existingPath := snapshot.path
+		existingPid := snapshot.cmd.Process.Pid
 
-	args := []string{"mount", targetDir}
+		// Mount already exists - check if it's the same path
+		if existingPath == opt.TargetDir {
+			repo.Printf(logrus.DebugLevel, "Restic mount already active at %s, reusing existing mount", existingPath)
+			if err := repo.writeMountState(existingPath, existingPid); err != nil {
+				repo.Printf(logrus.WarnLevel, "Failed to persist restic mount state: %v", err)
+			}
+			return nil
+		}
+
+		// Different path requested - this is an error
+		return fmt.Errorf("restic mount already running at %s (requested: %s)", existingPath, opt.TargetDir)
+	}
+	if snapshot.path != "" && isMountReady(snapshot.path) {
+		existingPath := snapshot.path
+		existingPid := snapshot.pid
+		if existingPath == opt.TargetDir {
+			if existingPid > 0 && isResticMountProcess(existingPid, existingPath) {
+				repo.Printf(logrus.DebugLevel, "Restic mount already active at %s (recovered), reusing existing mount", existingPath)
+				return nil
+			}
+			if repo.AllowUnsafeMount {
+				repo.Printf(logrus.WarnLevel, "Restic mount at %s not owned by replication-manager; reusing due to unsafe flag", existingPath)
+				return nil
+			}
+			return fmt.Errorf("restic mount already running at %s (not owned by replication-manager)", existingPath)
+		}
+		return fmt.Errorf("restic mount already running at %s (requested: %s)", existingPath, opt.TargetDir)
+	}
+	if isMountReady(opt.TargetDir) {
+		return fmt.Errorf("restic mountpoint already mounted at %s", opt.TargetDir)
+	}
+
+	// Build command arguments
+	args := repo.buildMountArgs(opt)
 	cmd := exec.Command(repo.BinaryPath, args...)
 	cmd.Env = append(os.Environ(), repo.Env...)
 
-	stdoutPipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("failed to get stdout pipe: %w", err)
-	}
-	stderrPipe, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("failed to get stderr pipe: %w", err)
-	}
-
 	repo.Printf(logrus.InfoLevel, "Starting command: %s %v", repo.BinaryPath, args)
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("error starting command: %w", err)
+	ptyFile, err := pty.Start(cmd)
+	if err != nil {
+		return fmt.Errorf("error starting command with pty: %w", err)
 	}
 
-	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
 
-	repo.mountMutex.Lock()
+	repo.mountRefMutex.Lock()
 	repo.mountCmd = cmd
-	repo.mountPath = targetDir
+	repo.mountPath = opt.TargetDir
+	repo.mountPid = cmd.Process.Pid
 	repo.mountDone = make(chan error, 1)
 	done := repo.mountDone
-	repo.mountMutex.Unlock()
+	repo.mountRefMutex.Unlock()
+	if err := repo.writeMountPidFile(cmd.Process.Pid); err != nil {
+		repo.Printf(logrus.WarnLevel, "Failed to persist restic mount pid: %v", err)
+	}
 
-	go repo.streamMountOutput(stdoutPipe, "[OUT] ", &stdoutBuf)
-	go repo.streamMountOutput(stderrPipe, "[ERR] ", &stderrBuf)
+	go repo.streamMountOutput(ptyFile, "[OUT] ", &stderrBuf)
 
 	go func() {
 		err := cmd.Wait()
+		_ = ptyFile.Close()
+
+		repo.mountRefMutex.Lock()
+		wasIntentional := repo.unmountRequested
+		repo.mountRefMutex.Unlock()
+
 		if err != nil {
-			repo.Printf(logrus.ErrorLevel, "Restic mount exited: %v", err)
+			// Only log as error if this was not an intentional unmount
+			if wasIntentional {
+				// Check if it's the expected termination signal
+				isExpectedSignal := false
+				if exitErr, ok := err.(*exec.ExitError); ok {
+					if exitErr.String() == "signal: terminated" {
+						isExpectedSignal = true
+					}
+				}
+				if isExpectedSignal {
+					repo.Printf(logrus.DebugLevel, "Restic mount terminated as expected")
+				} else {
+					repo.Printf(logrus.WarnLevel, "Restic mount exited during unmount: %v", err)
+				}
+			} else {
+				// Unexpected exit (not during intentional unmount)
+				repo.Printf(logrus.ErrorLevel, "Restic mount exited unexpectedly: %v", err)
+			}
 		}
-		repo.mountMutex.Lock()
+
+		repo.mountRefMutex.Lock()
+		done := repo.mountDone
 		repo.mountCmd = nil
 		repo.mountPath = ""
-		if repo.mountDone != nil {
+		repo.mountPid = 0
+		repo.unmountRequested = false // Reset the flag
+		repo.mountDone = nil
+		repo.mountRefMutex.Unlock()
+
+		repo.clearMountState()
+		if done != nil {
 			select {
-			case repo.mountDone <- err:
+			case done <- err:
 			default:
 			}
-			close(repo.mountDone)
-			repo.mountDone = nil
+			close(done)
 		}
-		repo.mountMutex.Unlock()
 	}()
 
 	// Wait a bit for mount to be ready or fail early
@@ -1101,26 +1642,27 @@ func (repo *ResticManager) MountRepo(targetDir string) error {
 			}
 			if strings.Contains(msg, "fuse") {
 				lines := strings.Split(msg, "\n")
-				return fmt.Errorf("restic mount failed (fuse): exit=%d, err=%s", exitCode, lines[0])
+				return fmt.Errorf("restic mount failed (fuse): exit=%d, err=%v", exitCode, lines)
 			}
 
 			return fmt.Errorf("restic mount failed: exit=%d, err=%w", exitCode, err)
 
 		case <-ticker.C:
 			// Check if mount point is ready
-			if isMountReady(targetDir) {
-				repo.Printf(logrus.InfoLevel, "Restic mount started at %s", targetDir)
+			if isMountReady(opt.TargetDir) {
+				repo.Printf(logrus.InfoLevel, "Restic mount started at %s", opt.TargetDir)
+				if err := repo.writeMountState(opt.TargetDir, cmd.Process.Pid); err != nil {
+					repo.Printf(logrus.WarnLevel, "Failed to persist restic mount state: %v", err)
+				}
 				return nil
 			}
 
 		case <-timeout:
 			// Timeout waiting for mount to be ready
-			repo.mountMutex.Lock()
-			if repo.mountCmd != nil && repo.mountCmd.Process != nil {
-				_ = repo.mountCmd.Process.Kill()
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
 				time.Sleep(100 * time.Millisecond) // Allow cleanup
 			}
-			repo.mountMutex.Unlock()
 			msg := strings.TrimSpace(stderrBuf.String())
 			if msg == "" {
 				msg = "mount timeout"
@@ -1133,23 +1675,556 @@ func (repo *ResticManager) MountRepo(targetDir string) error {
 func isMountReady(mountPath string) bool {
 	// Check if mount point is accessible
 	stat, err := os.Stat(mountPath)
+	if err != nil || !stat.IsDir() {
+		return false
+	}
+	// Ensure mount point is an actual mount (device differs from parent)
+	parentPath := filepath.Dir(mountPath)
+	if parentPath == mountPath {
+		return false
+	}
+	parentStat, err := os.Stat(parentPath)
 	if err != nil {
 		return false
 	}
-	// Mount is ready if it's a valid directory (even if empty)
-	return stat.IsDir()
+	mountSys, ok := stat.Sys().(*syscall.Stat_t)
+	if !ok {
+		return false
+	}
+	parentSys, ok := parentStat.Sys().(*syscall.Stat_t)
+	if !ok {
+		return false
+	}
+	if mountSys.Dev != parentSys.Dev {
+		return true
+	}
+	// Fallback: check mountinfo entries for the mount path
+	data, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) > 4 && fields[4] == mountPath {
+			return true
+		}
+	}
+	return false
+}
+
+func (repo *ResticManager) mountStatePath() string {
+	cacheDir := strings.TrimSpace(repo.GetCacheDirPath())
+	if cacheDir == "" {
+		return ""
+	}
+	return filepath.Join(cacheDir, "restic_mount_state.json")
+}
+
+func (repo *ResticManager) mountPidPath() string {
+	cacheDir := strings.TrimSpace(repo.GetCacheDirPath())
+	if cacheDir == "" {
+		return ""
+	}
+	return filepath.Join(cacheDir, "restic_mount.pid")
+}
+
+func (repo *ResticManager) writeMountState(path string, pid int) error {
+	statePath := repo.mountStatePath()
+	if statePath == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		return err
+	}
+	hostname, _ := os.Hostname()
+	state := resticMountState{
+		Path:      path,
+		PID:       pid,
+		Hostname:  hostname,
+		RepoPath:  repo.GetRepoPath(),
+		StartedAt: time.Now(),
+	}
+	data, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(statePath, data, 0o644); err != nil {
+		return err
+	}
+	return repo.writeMountPidFile(pid)
+}
+
+func (repo *ResticManager) writeMountPidFile(pid int) error {
+	pidPath := repo.mountPidPath()
+	if pidPath == "" {
+		return nil
+	}
+	if pid <= 0 {
+		_ = os.Remove(pidPath)
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(pidPath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(pidPath, []byte(strconv.Itoa(pid)), 0o644)
+}
+
+func (repo *ResticManager) readMountPidFile() (int, error) {
+	pidPath := repo.mountPidPath()
+	if pidPath == "" {
+		return 0, fmt.Errorf("mount pid path is empty")
+	}
+	data, err := os.ReadFile(pidPath)
+	if err != nil {
+		return 0, err
+	}
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" {
+		return 0, fmt.Errorf("mount pid file is empty")
+	}
+	pid, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return 0, err
+	}
+	return pid, nil
+}
+
+func (repo *ResticManager) clearMountPidFile() {
+	pidPath := repo.mountPidPath()
+	if pidPath == "" {
+		return
+	}
+	_ = os.Remove(pidPath)
+}
+
+func (repo *ResticManager) loadMountState() (*resticMountState, error) {
+	statePath := repo.mountStatePath()
+	if statePath == "" {
+		return nil, fmt.Errorf("mount state path is empty")
+	}
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		return nil, err
+	}
+	var state resticMountState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, err
+	}
+	return &state, nil
+}
+
+func (repo *ResticManager) clearMountState() {
+	statePath := repo.mountStatePath()
+	if statePath == "" {
+		return
+	}
+	_ = os.Remove(statePath)
+	repo.clearMountPidFile()
+}
+
+func (repo *ResticManager) RecoverMountState() bool {
+	state, err := repo.loadMountState()
+	if err != nil || state == nil || strings.TrimSpace(state.Path) == "" {
+		return false
+	}
+	if !isMountReady(state.Path) {
+		repo.clearMountState()
+		return false
+	}
+	validPid := false
+	if state.PID > 0 {
+		validPid = isResticMountProcess(state.PID, state.Path)
+	}
+	repo.mountRefMutex.Lock()
+	repo.mountPath = state.Path
+	if validPid {
+		repo.mountPid = state.PID
+	} else {
+		repo.mountPid = 0
+	}
+	pid := repo.mountPid
+	repo.mountRefMutex.Unlock()
+	repo.Printf(logrus.InfoLevel, "Recovered restic mount state at %s (pid=%d)", state.Path, pid)
+	return true
+}
+
+// RecoverMountStateOnStartup performs stale mount cleanup then recovers active mounts.
+func (repo *ResticManager) RecoverMountStateOnStartup() bool {
+	if !repo.MountRecoveryEnabled {
+		return repo.RecoverMountState()
+	}
+	recovered, err := repo.recoverMountStateOnStartup()
+	if err != nil {
+		repo.Printf(logrus.WarnLevel, "Restic mount recovery encountered issues: %v", err)
+	}
+	return recovered
+}
+
+func (repo *ResticManager) recoverMountStateOnStartup() (bool, error) {
+	state, stateErr := repo.loadMountState()
+	pidFromFile, pidErr := repo.readMountPidFile()
+	if (stateErr != nil || state == nil) && pidErr != nil {
+		return false, nil
+	}
+
+	mountPath := ""
+	pid := 0
+	if state != nil {
+		mountPath = strings.TrimSpace(state.Path)
+		pid = state.PID
+	}
+	if pid <= 0 && pidFromFile > 0 {
+		pid = pidFromFile
+	}
+
+	pidMountPath, pidIsRestic := resticMountPathFromPID(pid)
+	if mountPath == "" && pidMountPath != "" {
+		mountPath = pidMountPath
+	}
+	if mountPath != "" && pidMountPath != "" && mountPath != pidMountPath {
+		repo.Printf(logrus.WarnLevel, "Restic mount state path mismatch (state=%s pid=%s)", mountPath, pidMountPath)
+		mountPath = pidMountPath
+	}
+	if mountPath == "" && pid <= 0 {
+		repo.clearMountState()
+		return false, nil
+	}
+
+	mountReady := mountPath != "" && isMountReady(mountPath)
+	pidValid := pid > 0 && mountPath != "" && isResticMountProcess(pid, mountPath)
+	if mountReady && pidValid {
+		repo.mountRefMutex.Lock()
+		repo.mountPath = mountPath
+		repo.mountPid = pid
+		repo.mountRefMutex.Unlock()
+		if err := repo.writeMountState(mountPath, pid); err != nil {
+			repo.Printf(logrus.WarnLevel, "Failed to persist restic mount state: %v", err)
+		}
+		repo.Printf(logrus.InfoLevel, "Recovered restic mount state at %s (pid=%d)", mountPath, pid)
+		return true, nil
+	}
+
+	return false, repo.cleanupStaleMount(mountPath, pid, mountReady, pidIsRestic, pidMountPath)
+}
+
+func (repo *ResticManager) cleanupStaleMount(mountPath string, pid int, mountReady bool, pidIsRestic bool, pidMountPath string) error {
+	var errs []string
+	if pid > 0 {
+		if pidIsRestic {
+			if mountPath != "" && pidMountPath != "" && mountPath != pidMountPath {
+				repo.Printf(logrus.WarnLevel, "Restic mount pid %d path mismatch (state=%s pid=%s); skipping process kill", pid, mountPath, pidMountPath)
+			} else {
+				repo.Printf(logrus.WarnLevel, "Stopping stale restic mount process pid=%d", pid)
+				if err := repo.stopResticMountProcess(pid); err != nil {
+					errs = append(errs, fmt.Sprintf("failed to stop restic mount pid %d: %v", pid, err))
+				}
+			}
+		} else if isProcessRunning(pid) {
+			repo.Printf(logrus.WarnLevel, "Mount pid %d does not match restic mount process; leaving it running", pid)
+		}
+	}
+
+	if mountReady && mountPath != "" {
+		repo.Printf(logrus.WarnLevel, "Unmounting stale restic mount at %s", mountPath)
+		if err := unmountResticPath(mountPath); err != nil {
+			errs = append(errs, fmt.Sprintf("failed to unmount %s: %v", mountPath, err))
+		} else {
+			repo.Printf(logrus.InfoLevel, "Unmounted stale restic mount at %s", mountPath)
+		}
+	}
+
+	repo.clearMountState()
+	repo.resetMountTracking()
+
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+func (repo *ResticManager) resetMountTracking() {
+	repo.mountRefMutex.Lock()
+	repo.mountCmd = nil
+	repo.mountDone = nil
+	repo.mountPath = ""
+	repo.mountPid = 0
+	repo.unmountRequested = false
+	repo.mountRefMutex.Unlock()
+}
+
+func ensureResticMountDir(targetDir string, mode os.FileMode) error {
+	if strings.TrimSpace(targetDir) == "" {
+		return fmt.Errorf("mount directory is empty")
+	}
+	if err := os.MkdirAll(targetDir, mode); err != nil && !os.IsExist(err) {
+		return err
+	}
+	info, statErr := os.Stat(targetDir)
+	if statErr != nil {
+		if errors.Is(statErr, syscall.ENOTCONN) {
+			_ = exec.Command("fusermount", "-u", targetDir).Run()
+			_ = syscall.Unmount(targetDir, syscall.MNT_DETACH)
+			if err := os.MkdirAll(targetDir, mode); err != nil && !os.IsExist(err) {
+				return err
+			}
+			info, statErr = os.Stat(targetDir)
+			if statErr == nil {
+				// recovered
+				goto validateDir
+			}
+		}
+		return statErr
+	}
+
+validateDir:
+	if !info.IsDir() {
+		return fmt.Errorf("mount path exists and is not a directory")
+	}
+	empty, emptyErr := misc.IsDirEmpty(targetDir)
+	if emptyErr != nil {
+		return emptyErr
+	}
+	if !empty {
+		return fmt.Errorf("mount directory exists and is not empty")
+	}
+	return nil
+}
+
+func readProcessCmdlineArgs(pid int) ([]string, error) {
+	if pid <= 0 {
+		return nil, fmt.Errorf("invalid pid")
+	}
+	cmdline, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "cmdline"))
+	if err != nil {
+		return nil, err
+	}
+	parts := strings.Split(string(cmdline), "\x00")
+	args := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		args = append(args, part)
+	}
+	if len(args) == 0 {
+		return nil, fmt.Errorf("empty cmdline")
+	}
+	return args, nil
+}
+
+func isResticMountArgs(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	hasMount := false
+	for _, arg := range args {
+		if arg == "mount" {
+			hasMount = true
+			break
+		}
+	}
+	if !hasMount {
+		return false
+	}
+	base := filepath.Base(args[0])
+	return strings.Contains(base, "restic")
+}
+
+func resticMountPathFromArgs(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	idx := -1
+	for i, arg := range args {
+		if arg == "mount" {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 || len(args) <= idx+1 {
+		return ""
+	}
+	path := args[len(args)-1]
+	if strings.HasPrefix(path, "-") {
+		return ""
+	}
+	return path
+}
+
+func resticMountPathFromPID(pid int) (string, bool) {
+	if pid <= 0 {
+		return "", false
+	}
+	args, err := readProcessCmdlineArgs(pid)
+	if err != nil {
+		return "", false
+	}
+	if !isResticMountArgs(args) {
+		return "", false
+	}
+	return resticMountPathFromArgs(args), true
+}
+
+func isProcessRunning(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	_, err := os.Stat(filepath.Join("/proc", strconv.Itoa(pid)))
+	return err == nil
+}
+
+func (repo *ResticManager) stopResticMountProcess(pid int) error {
+	if pid <= 0 {
+		return nil
+	}
+	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return err
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if !isProcessRunning(pid) {
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return err
+	}
+	return nil
+}
+
+func unmountResticPath(targetDir string) error {
+	path := strings.TrimSpace(targetDir)
+	if path == "" {
+		return fmt.Errorf("mount path is empty")
+	}
+	var errs []string
+	if bin, err := exec.LookPath("fusermount3"); err == nil {
+		if err := exec.Command(bin, "-u", path).Run(); err == nil {
+			return nil
+		} else {
+			errs = append(errs, fmt.Sprintf("fusermount3: %v", err))
+		}
+	}
+	if bin, err := exec.LookPath("fusermount"); err == nil {
+		if err := exec.Command(bin, "-u", path).Run(); err == nil {
+			return nil
+		} else {
+			errs = append(errs, fmt.Sprintf("fusermount: %v", err))
+		}
+	}
+	if err := syscall.Unmount(path, syscall.MNT_DETACH); err != nil && !errors.Is(err, syscall.EINVAL) {
+		errs = append(errs, fmt.Sprintf("unmount: %v", err))
+	} else {
+		return nil
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+func isResticMountProcess(pid int, mountPath string) bool {
+	if pid <= 0 {
+		return false
+	}
+	cmdline, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "cmdline"))
+	if err != nil {
+		return false
+	}
+	cmd := string(cmdline)
+	return strings.Contains(cmd, "restic") && strings.Contains(cmd, "mount") && strings.Contains(cmd, mountPath)
 }
 
 func (repo *ResticManager) UnmountRepo() error {
-	repo.mountMutex.Lock()
-	cmd := repo.mountCmd
-	done := repo.mountDone
-	mountPath := repo.mountPath
-	repo.mountMutex.Unlock()
-
+	// First check if mount exists
+	snapshot := repo.mountSnapshot()
+	cmd := snapshot.cmd
+	done := snapshot.done
+	mountPath := snapshot.path
+	pid := snapshot.pid
 	if cmd == nil || cmd.Process == nil {
-		return fmt.Errorf("no restic mount is running")
+		if mountPath == "" {
+			repo.RecoverMountState()
+			snapshot = repo.mountSnapshot()
+			mountPath = snapshot.path
+			pid = snapshot.pid
+		}
+		if mountPath == "" {
+			return fmt.Errorf("no restic mount is running")
+		}
+		if !isMountReady(mountPath) {
+			repo.clearMountState()
+			repo.mountRefMutex.Lock()
+			repo.mountPath = ""
+			repo.mountPid = 0
+			repo.mountRefMutex.Unlock()
+			return fmt.Errorf("no restic mount is running")
+		}
+		if pid > 0 && isResticMountProcess(pid, mountPath) {
+			repo.mountRefMutex.Lock()
+			repo.unmountRequested = true
+			repo.mountRefMutex.Unlock()
+			if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+				return fmt.Errorf("failed to stop restic mount: %w", err)
+			}
+			deadline := time.Now().Add(10 * time.Second)
+			for time.Now().Before(deadline) {
+				if !isMountReady(mountPath) {
+					repo.clearMountState()
+					repo.mountRefMutex.Lock()
+					repo.mountPath = ""
+					repo.mountPid = 0
+					repo.mountRefMutex.Unlock()
+					repo.Printf(logrus.InfoLevel, "Restic mount stopped at %s", mountPath)
+					return nil
+				}
+				time.Sleep(200 * time.Millisecond)
+			}
+			return fmt.Errorf("restic mount shutdown timeout")
+		}
+		if repo.AllowUnsafeMount {
+			repo.Printf(logrus.WarnLevel, "Restic mount active but not owned by replication-manager; leaving mount intact")
+			return nil
+		}
+		return fmt.Errorf("restic mount active but not owned by replication-manager")
 	}
+
+	// Wait for all active mount users to finish
+	timeout := 5 * time.Minute
+	deadline := time.Now().Add(timeout)
+
+	repo.Printf(logrus.InfoLevel, "Waiting for active mount users to finish before unmounting...")
+
+	for {
+		if repo.CanUnmount() {
+			repo.Printf(logrus.DebugLevel, "All mount users finished, proceeding with unmount")
+			break
+		}
+
+		if time.Now().After(deadline) {
+			users := repo.GetMountUsers()
+			refCount := repo.GetMountRefCount()
+			return fmt.Errorf("unmount timeout: %d active users still using mount: %v", refCount, users)
+		}
+
+		// Log active users every 10 seconds
+		if time.Now().Unix()%10 == 0 {
+			users := repo.GetMountUsers()
+			refCount := repo.GetMountRefCount()
+			repo.Printf(logrus.InfoLevel, "Waiting for %d active mount users: %v", refCount, users)
+		}
+
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// Now mark that we're intentionally unmounting
+	repo.mountRefMutex.Lock()
+	repo.unmountRequested = true
+	repo.mountRefMutex.Unlock()
 
 	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		return fmt.Errorf("failed to stop restic mount: %w", err)
@@ -1167,20 +2242,232 @@ func (repo *ResticManager) UnmountRepo() error {
 			return nil
 		}
 		if err != nil {
-			repo.Printf(logrus.ErrorLevel, "Restic mount exited with error: %v", err)
-			return fmt.Errorf("restic mount exited with error: %w", err)
+			// Check if this is an expected termination (SIGTERM signal)
+			isExpectedTermination := false
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				// Check if process was terminated by signal (SIGTERM)
+				if exitErr.String() == "signal: terminated" {
+					isExpectedTermination = true
+				}
+			}
+
+			if isExpectedTermination {
+				// This is expected when we intentionally unmount
+				repo.Printf(logrus.DebugLevel, "Restic mount terminated as expected at %s", mountPath)
+			} else {
+				// Unexpected error during unmount
+				repo.Printf(logrus.WarnLevel, "Restic mount exited with unexpected error: %v", err)
+				return fmt.Errorf("restic mount exited with error: %w", err)
+			}
 		}
 	case <-time.After(10 * time.Second):
-		repo.mountMutex.Lock()
-		if repo.mountCmd != nil && repo.mountCmd.Process != nil {
-			_ = repo.mountCmd.Process.Kill()
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
 		}
-		repo.mountMutex.Unlock()
 		return fmt.Errorf("restic mount shutdown timeout")
 	}
 
 	repo.Printf(logrus.InfoLevel, "Restic mount stopped at %s", mountPath)
+	repo.clearMountState()
+	repo.mountRefMutex.Lock()
+	repo.mountPath = ""
+	repo.mountPid = 0
+	repo.mountRefMutex.Unlock()
 	return nil
+}
+
+func (repo *ResticManager) acquireMountRefUnsafe(userID string) (int, error) {
+	if repo.mountUsers == nil {
+		repo.mountUsers = make(map[string]struct{})
+	}
+	if _, exists := repo.mountUsers[userID]; exists {
+		return repo.mountRefCount, fmt.Errorf("mount reference already held for user %s", userID)
+	}
+	repo.mountRefCount++
+	repo.mountUsers[userID] = struct{}{}
+	return repo.mountRefCount, nil
+}
+
+func (repo *ResticManager) releaseMountRefUnsafe(userID string) (int, error) {
+	if repo.mountUsers == nil {
+		return repo.mountRefCount, fmt.Errorf("mount reference map is uninitialized")
+	}
+	if _, exists := repo.mountUsers[userID]; !exists {
+		return repo.mountRefCount, fmt.Errorf("mount reference not found for user %s", userID)
+	}
+	delete(repo.mountUsers, userID)
+	repo.mountRefCount--
+	if repo.mountRefCount < 0 {
+		repo.mountRefCount = 0
+		return repo.mountRefCount, fmt.Errorf("mount ref count went negative while releasing %s", userID)
+	}
+	return repo.mountRefCount, nil
+}
+
+// AcquireMountRef registers an active user of the mount
+// Returns error if mount is not currently active
+func (repo *ResticManager) AcquireMountRef(userID string) error {
+	trimmed := strings.TrimSpace(userID)
+	if trimmed == "" {
+		return fmt.Errorf("cannot acquire mount ref: userID is empty")
+	}
+
+	repo.mountRefMutex.Lock()
+	if repo.mountUsers == nil {
+		repo.mountUsers = make(map[string]struct{})
+	}
+	if _, exists := repo.mountUsers[trimmed]; exists {
+		repo.mountRefMutex.Unlock()
+		return fmt.Errorf("mount reference already held for user %s", trimmed)
+	}
+	cmdMounted := repo.mountCmd != nil && repo.mountCmd.Process != nil
+	mountPath := repo.mountPath
+	repo.mountRefMutex.Unlock()
+
+	isMounted := cmdMounted
+	if !isMounted && repo.AllowUnsafeMount && mountPath != "" {
+		isMounted = isMountReady(mountPath)
+	}
+	if !isMounted {
+		return fmt.Errorf("cannot acquire mount ref: mount is not active")
+	}
+
+	repo.mountRefMutex.Lock()
+	if _, exists := repo.mountUsers[trimmed]; exists {
+		repo.mountRefMutex.Unlock()
+		return fmt.Errorf("mount reference already held for user %s", trimmed)
+	}
+	if repo.mountCmd == nil && repo.mountPath == "" {
+		repo.mountRefMutex.Unlock()
+		return fmt.Errorf("cannot acquire mount ref: mount is not active")
+	}
+	refCount, err := repo.acquireMountRefUnsafe(trimmed)
+	repo.mountRefMutex.Unlock()
+	if err != nil {
+		return err
+	}
+	repo.Printf(logrus.DebugLevel, "Acquired mount ref for user %s (refCount=%d)", trimmed, refCount)
+	return nil
+}
+
+// ReleaseMountRef unregisters an active user of the mount
+func (repo *ResticManager) ReleaseMountRef(userID string) error {
+	trimmed := strings.TrimSpace(userID)
+	if trimmed == "" {
+		return fmt.Errorf("cannot release mount ref: userID is empty")
+	}
+
+	repo.mountRefMutex.Lock()
+	refCount, err := repo.releaseMountRefUnsafe(trimmed)
+	repo.mountRefMutex.Unlock()
+	if err != nil {
+		return err
+	}
+	repo.Printf(logrus.DebugLevel, "Released mount ref for user %s (refCount=%d)", trimmed, refCount)
+	repo.tryUnmountWhenIdle()
+	return nil
+}
+
+// SetMountPinned sets whether the mount should remain active until explicitly unpinned.
+func (repo *ResticManager) SetMountPinned(pinned bool) {
+	repo.mountRefMutex.Lock()
+	repo.mountPinned = pinned
+	if pinned {
+		repo.unmountWhenIdle = false
+	}
+	repo.mountRefMutex.Unlock()
+}
+
+// IsMountPinned reports whether the mount is pinned.
+func (repo *ResticManager) IsMountPinned() bool {
+	repo.mountRefMutex.Lock()
+	defer repo.mountRefMutex.Unlock()
+	return repo.mountPinned
+}
+
+// RequestUnmountWhenIdle schedules an unmount when no active users remain.
+func (repo *ResticManager) RequestUnmountWhenIdle() {
+	repo.mountRefMutex.Lock()
+	repo.unmountWhenIdle = true
+	shouldUnmount := repo.mountRefCount == 0 && !repo.mountPinned && !repo.unmountInProgress
+	if shouldUnmount {
+		repo.unmountInProgress = true
+	}
+	repo.mountRefMutex.Unlock()
+	if shouldUnmount {
+		go repo.unmountWhenIdleAsync()
+	}
+}
+
+func (repo *ResticManager) tryUnmountWhenIdle() {
+	repo.mountRefMutex.Lock()
+	shouldUnmount := repo.unmountWhenIdle && repo.mountRefCount == 0 && !repo.mountPinned && !repo.unmountInProgress
+	if shouldUnmount {
+		repo.unmountInProgress = true
+	}
+	repo.mountRefMutex.Unlock()
+	if shouldUnmount {
+		go repo.unmountWhenIdleAsync()
+	}
+}
+
+func (repo *ResticManager) unmountWhenIdleAsync() {
+	err := repo.UnmountRepo()
+	repo.mountRefMutex.Lock()
+	if err == nil {
+		repo.unmountWhenIdle = false
+	}
+	repo.unmountInProgress = false
+	repo.mountRefMutex.Unlock()
+	if err != nil {
+		repo.Printf(logrus.WarnLevel, "Auto-unmount failed: %v", err)
+	}
+}
+
+// CanUnmount returns true if no active users are using the mount
+func (repo *ResticManager) CanUnmount() bool {
+	repo.mountRefMutex.Lock()
+	defer repo.mountRefMutex.Unlock()
+	return repo.mountRefCount == 0
+}
+
+// IsMounted returns true if mount is currently active
+func (repo *ResticManager) IsMounted() bool {
+	snapshot := repo.mountSnapshot()
+	if snapshot.cmd != nil && snapshot.cmd.Process != nil {
+		return true
+	}
+	return repo.AllowUnsafeMount && snapshot.path != "" && isMountReady(snapshot.path)
+}
+
+// GetMountPath returns the current mount path (empty if not mounted)
+func (repo *ResticManager) GetMountPath() string {
+	snapshot := repo.mountSnapshot()
+	if snapshot.cmd != nil && snapshot.cmd.Process != nil {
+		return snapshot.path
+	}
+	if repo.AllowUnsafeMount && snapshot.path != "" && isMountReady(snapshot.path) {
+		return snapshot.path
+	}
+	return ""
+}
+
+// GetMountRefCount returns the current number of active mount users (for debugging/monitoring)
+func (repo *ResticManager) GetMountRefCount() int {
+	repo.mountRefMutex.Lock()
+	defer repo.mountRefMutex.Unlock()
+	return repo.mountRefCount
+}
+
+// GetMountUsers returns a copy of active mount users (for debugging/monitoring)
+func (repo *ResticManager) GetMountUsers() []string {
+	repo.mountRefMutex.Lock()
+	defer repo.mountRefMutex.Unlock()
+	users := make([]string, 0, len(repo.mountUsers))
+	for user := range repo.mountUsers {
+		users = append(users, user)
+	}
+	return users
 }
 
 func (repo *ResticManager) streamMountOutput(pipe io.ReadCloser, prefix string, buffer *bytes.Buffer) {
@@ -1190,10 +2477,23 @@ func (repo *ResticManager) streamMountOutput(pipe io.ReadCloser, prefix string, 
 		if buffer != nil {
 			buffer.WriteString(line + "\n")
 		}
-		repo.Printf(logrus.DebugLevel, "%s: %s", prefix, line)
+		repo.Printf(logrus.DebugLevel, "%s%s", prefix, line)
 	}
 	if err := scanner.Err(); err != nil {
-		repo.Printf(logrus.ErrorLevel, prefix+"Error reading output: %v", err)
+		// Check if unmount was requested
+		repo.mountRefMutex.Lock()
+		wasIntentional := repo.unmountRequested
+		repo.mountRefMutex.Unlock()
+
+		// PTY read errors are expected when mount process is terminated
+		// Only log as error if this wasn't an intentional unmount
+		if wasIntentional {
+			// Expected error during intentional unmount (PTY closed)
+			repo.Printf(logrus.DebugLevel, "%sOutput stream closed (expected during unmount)", prefix)
+		} else {
+			// Unexpected error reading output
+			repo.Printf(logrus.ErrorLevel, prefix+"Error reading output: %v", err)
+		}
 	}
 }
 
@@ -1246,16 +2546,22 @@ func (repo *ResticManager) AddUnlockTask() {
 }
 
 func (repo *ResticManager) AddRestoreTask(snapshotID, targetDir string, paths []string, overwrite string) {
+	opt := ResticRestoreOption{
+		SnapshotID: snapshotID,
+		TargetDir:  targetDir,
+		Include:    paths,
+		Overwrite:  overwrite,
+	}
+	repo.AddRestoreTaskWithOptions(opt)
+}
+
+// AddRestoreTaskWithOptions queues a restore task using a full option struct.
+func (repo *ResticManager) AddRestoreTaskWithOptions(opt ResticRestoreOption) {
 	task := &ResticTask{
-		ID:   repo.GenerateTaskID(),
-		Type: RestoreTask,
-		RestoreOpt: &ResticRestoreOption{
-			SnapshotID: snapshotID,
-			TargetDir:  targetDir,
-			Include:    paths,
-			Overwrite:  overwrite,
-		},
-		resultCh: make(chan ResticResult, 1),
+		ID:         repo.GenerateTaskID(),
+		Type:       RestoreTask,
+		RestoreOpt: &opt,
+		resultCh:   make(chan ResticResult, 1),
 	}
 
 	repo.prependTask(task)
@@ -1692,7 +2998,7 @@ func (repo *ResticManager) fetchRepoSnapshots() error {
 	}
 
 	// Update the Backups field with the fetched backups
-	repo.Backups = backups
+	repo.UpdateSnapshotList(backups)
 
 	return nil // Success
 }
@@ -1808,13 +3114,35 @@ func GetKeepN(keepLast int, keepHourly int, keepDaily int, keepWeekly int, keepM
 	return keep, useKeep
 }
 
+func GetPruneOptions(prune bool, opt ResticPruneOption) []string {
+	var args []string
+	if opt.MaxRepackSize != "" {
+		args = append(args, "--max-repack-size", opt.MaxRepackSize)
+	}
+	if opt.MaxUnused != "" {
+		args = append(args, "--max-unused", opt.MaxUnused)
+	}
+	if opt.RepackCacheableOnly {
+		args = append(args, "--repack-cacheable-only")
+	}
+	if opt.RepackSmall {
+		args = append(args, "--repack-small")
+	}
+	if opt.RepackUncompressed {
+		args = append(args, "--repack-uncompressed")
+	}
+	return args
+}
+
 func (repo *ResticManager) purgeSingleSnapshot(opt ResticPurgeOption) error {
-	repo.Printf(logrus.InfoLevel, "Purging single snapshot ID: %s", opt.SnapshotID)
+	repo.Printf(logrus.InfoLevel, "Purging single snapshot ID: %s", repo.shortSnapshotID(opt.SnapshotID))
 
 	args := []string{"forget"}
 
 	if opt.Prune {
 		args = append(args, "--prune")
+		// Add --prune flag to reclaim disk space after forgetting snapshots
+		args = append(args, GetPruneOptions(opt.Prune, opt.PruneOption)...)
 	}
 
 	if opt.DryRun {
@@ -1854,6 +3182,9 @@ func buildForgetArgs(opt ResticPurgeOption) []string {
 	// Add --prune flag to reclaim disk space after forgetting snapshots
 	if opt.Prune {
 		args = append(args, "--prune")
+
+		// Add --prune flag to reclaim disk space after forgetting snapshots
+		args = append(args, GetPruneOptions(opt.Prune, opt.PruneOption)...)
 	}
 
 	groupBy := strings.TrimSpace(opt.GroupBy)
@@ -1950,6 +3281,10 @@ func (repo *ResticManager) PurgeRepo(opt ResticPurgeOption) error {
 		if err != nil {
 			return err
 		}
+	}
+
+	if repo.OnPurgeComplete != nil && !opt.DryRun {
+		go repo.OnPurgeComplete(opt)
 	}
 
 	return nil
@@ -2175,7 +3510,7 @@ func (repo *ResticManager) parseBackupSummary(summaryLine []byte) string {
 	}
 
 	if summary.MessageType == "summary" && summary.SnapshotID != "" {
-		repo.Printf(logrus.InfoLevel, "Backup completed: snapshot %s created", summary.SnapshotID[:8])
+		repo.Printf(logrus.InfoLevel, "Backup completed: snapshot %s created", repo.shortSnapshotID(summary.SnapshotID))
 		return summary.SnapshotID
 	}
 

@@ -1237,7 +1237,8 @@ func (cluster *Cluster) CheckRestartContainerCookies() {
 // CleanupRestartCookies removes any lingering restart container cookies and clears parameters at cluster startup
 // This prevents unwanted restarts from old cookies that may have been left from previous runs
 func (cluster *Cluster) CleanupRestartCookies() {
-	cleanedCount := 0
+	restartCleanedCount := 0
+	resticCleanedCount := 0
 	for _, srv := range cluster.Servers {
 		if srv == nil {
 			continue
@@ -1253,7 +1254,7 @@ func (cluster *Cluster) CleanupRestartCookies() {
 
 			// Delete the cookie
 			srv.DelRestartContainerCookie()
-			cleanedCount++
+			restartCleanedCount++
 		}
 
 		// Clear any stored parameters (whether cookie existed or not)
@@ -1261,8 +1262,26 @@ func (cluster *Cluster) CleanupRestartCookies() {
 		srv.RestartRid = ""
 	}
 
-	if cleanedCount > 0 && cluster.Conf != nil {
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+		if srv.HasWaitResticReseedCookie() {
+			if cluster.Conf != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+					"Cleaning up lingering restic reseed cookie for server %s", srv.URL)
+			}
+			srv.DelWaitResticReseedCookie()
+			resticCleanedCount++
+		}
+	}
+
+	if restartCleanedCount > 0 && cluster.Conf != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"Cleaned up %d restart container cookie(s) at cluster startup", cleanedCount)
+			"Cleaned up %d restart container cookie(s) at cluster startup", restartCleanedCount)
+	}
+	if resticCleanedCount > 0 && cluster.Conf != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+			"Cleaned up %d restic reseed cookie(s) at cluster startup", resticCleanedCount)
 	}
 }

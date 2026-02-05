@@ -1,14 +1,13 @@
 package backupmgr
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"google.golang.org/protobuf/runtime/protoimpl"
 )
 
 type BackupMethod int
@@ -39,9 +38,9 @@ type BackupMetadata struct {
 	BackupTool        string         `json:"backupTool"`
 	BackupToolVersion string         `json:"backupToolVersion"`
 	BackupStrategy    BackupStrategy `json:"backupStrategy"`
-	Source            string         `json:"source"`
-	Dest              string         `json:"dest"`
-	Size              int64          `json:"size"`
+	Source            string         `json:"source"` // server URL
+	Dest              string         `json:"dest"`   // backup destination path
+	Size              int64          `json:"size"`   // in bytes
 	FileCount         int64          `json:"fileCount"`
 	Compressed        bool           `json:"compressed"`
 	Encrypted         bool           `json:"encrypted"`
@@ -61,6 +60,7 @@ type BackupMetadata struct {
 	ResticEnabled     bool           `json:"resticEnabled,omitempty"`
 	ResticSnapshotID  string         `json:"resticSnapshotID"`
 	ResticFilePath    string         `json:"resticFilePath"`
+	BackupSessionID   string         `json:"backupSessionID,omitempty"`
 }
 
 type PointInTimeMeta struct {
@@ -147,6 +147,94 @@ func ParseRetentionDuration(value string) (time.Duration, bool) {
 	return 0, false
 }
 
+func DetectCompressionFromDest(dest string) (bool, error) {
+	trimmed := strings.TrimSpace(dest)
+	if trimmed == "" {
+		return false, nil
+	}
+	info, err := os.Stat(trimmed)
+	if err != nil {
+		return false, err
+	}
+	path := trimmed
+	if info.IsDir() {
+		path, err = findFirstRegularFile(trimmed)
+		if err != nil {
+			return false, err
+		}
+	}
+	if isCompressedExtension(path) {
+		return true, nil
+	}
+	return hasCompressionMagic(path)
+}
+
+func findFirstRegularFile(dir string) (string, error) {
+	var found string
+	walkErr := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		found = path
+		return io.EOF
+	})
+	if walkErr != nil && walkErr != io.EOF {
+		return "", walkErr
+	}
+	if found == "" {
+		return "", os.ErrNotExist
+	}
+	return found, nil
+}
+
+func isCompressedExtension(path string) bool {
+	lower := strings.ToLower(path)
+	suffixes := []string{".gz", ".tgz", ".zst", ".xz", ".bz2", ".lz4", ".zip"}
+	for _, suffix := range suffixes {
+		if strings.HasSuffix(lower, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasCompressionMagic(path string) (bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+
+	buf := make([]byte, 8)
+	read, err := io.ReadFull(file, buf)
+	if err != nil && err != io.ErrUnexpectedEOF {
+		return false, err
+	}
+	buf = buf[:read]
+	if len(buf) >= 2 && buf[0] == 0x1f && buf[1] == 0x8b {
+		return true, nil
+	}
+	if len(buf) >= 4 && buf[0] == 0x28 && buf[1] == 0xb5 && buf[2] == 0x2f && buf[3] == 0xfd {
+		return true, nil
+	}
+	if len(buf) >= 6 && buf[0] == 0xfd && buf[1] == 0x37 && buf[2] == 0x7a && buf[3] == 0x58 && buf[4] == 0x5a && buf[5] == 0x00 {
+		return true, nil
+	}
+	if len(buf) >= 3 && buf[0] == 0x42 && buf[1] == 0x5a && buf[2] == 0x68 {
+		return true, nil
+	}
+	if len(buf) >= 4 && buf[0] == 0x04 && buf[1] == 0x22 && buf[2] == 0x4d && buf[3] == 0x18 {
+		return true, nil
+	}
+	if len(buf) >= 4 && buf[0] == 0x50 && buf[1] == 0x4b && (buf[2] == 0x03 || buf[2] == 0x05 || buf[2] == 0x07) {
+		return true, nil
+	}
+	return false, nil
+}
+
 type ReadBinaryLogsBoundary struct {
 	UseTimestamp bool
 	Filename     string
@@ -166,10 +254,6 @@ type BackupStat struct {
 }
 
 type BackupSnapshot struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
 	Id       string   `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	ShortId  string   `protobuf:"bytes,2,opt,name=short_id,proto3" json:"short_id,omitempty"`
 	Time     string   `protobuf:"bytes,3,opt,name=time,proto3" json:"time,omitempty"`
@@ -180,6 +264,15 @@ type BackupSnapshot struct {
 	Uid      int64    `protobuf:"varint,8,opt,name=uid,proto3" json:"uid,omitempty"`
 	Gid      int64    `protobuf:"varint,9,opt,name=gid,proto3" json:"gid,omitempty"`
 	Tags     []string `protobuf:"bytes,10,rep,name=tags,proto3" json:"tags,omitempty"`
+}
+
+func (bs *BackupSnapshot) GetMountSubdir() string {
+	// bs.Time is string RFC3339Nano but we need to return RFC3339
+	bsTime, err := time.Parse(time.RFC3339Nano, bs.Time)
+	if err != nil {
+		return ""
+	}
+	return bsTime.Format(time.RFC3339)
 }
 
 type BackupMetaMap struct {

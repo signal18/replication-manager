@@ -20,7 +20,7 @@ This document summarizes the security and reliability fixes implemented in `feat
 - Added configurable `DirMode` field to `ResticManager` struct (default: `0700`)
 - Added `SetPermissions()` and `GetPermissions()` methods
 - Updated `restoreSnapshot()` to use `dirMode` from `GetPermissions()` (line 761)
-- Updated `MountRepo()` to use `dirMode` from `GetPermissions()` (line 966)
+- Updated `MountRepoWithOptions()` to use `dirMode` from `GetPermissions()` (line 966)
 
 **Security Impact:** Backup directories now default to owner-only (700), preventing unauthorized access.
 
@@ -272,7 +272,7 @@ Integration points:
 
 ### Complexity
 - **New functions:** 4 (SetPermissions, GetPermissions, SetOperationTimeout, GetOperationTimeout, setRestorePermissions, RunCommandWithContext)
-- **Modified functions:** 5 (restoreSnapshot, ListSnapshot, DumpSnapshot, MountRepo, isMountReady)
+- **Modified functions:** 5 (restoreSnapshot, ListSnapshot, DumpSnapshot, MountRepoWithOptions, isMountReady)
 - **Cyclomatic complexity:** Minimal increase (linear permission walks, simple context checks)
 
 ---

@@ -278,6 +278,53 @@ func TestBuildBackupMetaFileName(t *testing.T) {
 	}
 }
 
+func TestBackupMetaFilePathRespectsDefaultNaming(t *testing.T) {
+	cluster := &Cluster{
+		Name:   "test-cluster",
+		Conf:   &config.Config{WorkingDir: t.TempDir()},
+		Logrus: logrus.New(),
+	}
+	server := &ServerMonitor{
+		Host:         "127.0.0.1",
+		Port:         "3306",
+		ClusterGroup: cluster,
+	}
+	backupDir := server.GetMyBackupDirectory()
+
+	defaultMeta := &backupmgr.BackupMetadata{
+		BackupTool: "mysqldump",
+		BackupLine: backupmgr.BackupLineDefault,
+		MetaFile:   "custom.meta.json",
+	}
+	defaultPath := server.backupMetaFilePath(defaultMeta)
+	defaultExpected := filepath.Join(backupDir, "mysqldump.meta.json")
+	if defaultPath != defaultExpected {
+		t.Fatalf("default metadata path = %q, want %q", defaultPath, defaultExpected)
+	}
+
+	adhocMeta := &backupmgr.BackupMetadata{
+		BackupTool: "mysqldump",
+		BackupLine: backupmgr.BackupLineAdhoc,
+		MetaFile:   "custom.meta.json",
+	}
+	adhocPath := server.backupMetaFilePath(adhocMeta)
+	adhocExpected := filepath.Join(backupDir, "custom.meta.json")
+	if adhocPath != adhocExpected {
+		t.Fatalf("adhoc metadata path = %q, want %q", adhocPath, adhocExpected)
+	}
+}
+
+func TestShouldUncompressOnSenderForReseed(t *testing.T) {
+	cluster := &Cluster{Conf: &config.Config{}}
+	if !cluster.shouldUncompressOnSenderForReseed() {
+		t.Fatalf("expected default to uncompress on sender")
+	}
+	cluster.Conf.BackupReseedRemoteDecompress = true
+	if cluster.shouldUncompressOnSenderForReseed() {
+		t.Fatalf("expected remote decompress to disable sender uncompress")
+	}
+}
+
 func newBackupLineCluster(t *testing.T) (*Cluster, *ServerMonitor, *ServerMonitor, *ServerMonitor) {
 	t.Helper()
 

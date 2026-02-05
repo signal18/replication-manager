@@ -1,10 +1,11 @@
 import { createColumnHelper } from '@tanstack/react-table'
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import PropTypes from 'prop-types'
 import { DataTable } from '../../components/DataTable'
 import AccordionComponent from '../../components/AccordionComponent'
 import styles from './styles.module.scss'
 
-function Agents({ selectedCluster, user }) {
+function Agents({ selectedCluster }) {
   const [data, setData] = useState([])
   const columnHelper = createColumnHelper()
 
@@ -47,7 +48,7 @@ function Agents({ selectedCluster, user }) {
         id: 'osKernel'
       })
     ],
-    []
+    [columnHelper]
   )
   return (
     <AccordionComponent
@@ -61,3 +62,18 @@ function Agents({ selectedCluster, user }) {
 }
 
 export default Agents
+
+Agents.propTypes = {
+  selectedCluster: PropTypes.shape({
+    agents: PropTypes.arrayOf(
+      PropTypes.shape({
+        hostName: PropTypes.string,
+        cpuCores: PropTypes.number,
+        cpuFreq: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+        memBytes: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+        osName: PropTypes.string,
+        osKernel: PropTypes.string
+      })
+    )
+  })
+}

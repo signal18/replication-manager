@@ -21,45 +21,6 @@ function DatabaseJobs({ clusterName }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [taskToCancel, setTaskToCancel] = useState(null)
 
-  const columnHelper = createColumnHelper()
-
-  const columns = useMemo(
-    () => [
-      columnHelper.accessor((row) => row.task, {
-        header: 'Task'
-      }),
-      columnHelper.accessor((row) => row.state, {
-        header: 'State',
-        cell: (info) => getJobState(info.getValue())
-      }),
-      columnHelper.accessor((row) => row.result, {
-        header: 'Desc'
-      }),
-      columnHelper.accessor((row) => (row.start ? formatDate(new Date(row.start * 1000)) : ''), {
-        header: 'Start'
-      }),
-      columnHelper.accessor((row) => (row.end ? formatDate(new Date(row.end * 1000)) : ''), {
-        header: 'End'
-      }),
-      columnHelper.accessor((row) => row, {
-        header: 'Cancel Task',
-        cell: (info) =>
-          canCancelJob(info.getValue()) ? (
-            <RMIconButton
-              className={styles.btnCancelTask}
-              tooltip={'Cancel task'}
-              icon={FaTrash}
-              iconFontsize='1rem'
-              onClick={() => {
-                openConfirmModal(info.getValue())
-              }}
-            />
-          ) : null
-      })
-    ],
-    []
-  )
-
   const openConfirmModal = (taskData) => {
     setIsConfirmModalOpen(true)
     setTaskToCancel(taskData)
@@ -93,6 +54,48 @@ function DatabaseJobs({ clusterName }) {
     }
   }
 
+  const columnHelper = createColumnHelper()
+
+  const columns = useMemo(
+    () => [
+      columnHelper.accessor('task', {
+        header: 'Task'
+      }),
+      columnHelper.accessor('state', {
+        header: 'State',
+        cell: (info) => getJobState(info.getValue())
+      }),
+      columnHelper.accessor('result', {
+        header: 'Desc'
+      }),
+      columnHelper.accessor((row) => (row.start ? formatDate(new Date(row.start * 1000)) : ''), {
+        id: 'start',
+        header: 'Start'
+      }),
+      columnHelper.accessor((row) => (row.end ? formatDate(new Date(row.end * 1000)) : ''), {
+        id: 'end',
+        header: 'End'
+      }),
+      columnHelper.display({
+        id: 'cancelTask',
+        header: 'Cancel Task',
+        cell: (info) =>
+          canCancelJob(info.row.original) ? (
+            <RMIconButton
+              className={styles.btnCancelTask}
+              tooltip={'Cancel task'}
+              icon={FaTrash}
+              iconFontsize='1rem'
+              onClick={() => {
+                openConfirmModal(info.row.original)
+              }}
+            />
+          ) : null
+      })
+    ],
+    []
+  )
+
   return (
     <VStack className={styles.jobsContainer}>
       {jobs?.servers &&
@@ -110,6 +113,7 @@ function DatabaseJobs({ clusterName }) {
 
           return (
             <AccordionComponent
+              key={dbId}
               className={styles.accordion}
               headerClassName={styles.accordionHeader}
               heading={
@@ -118,7 +122,7 @@ function DatabaseJobs({ clusterName }) {
                   <ServerStatus state={serverStatus} isVirtualMaster={dbServer?.isVirtualMaster} isBlinking={true} />
                 </HStack>
               }
-              body={<DataTable key="jobs" data={updatedTasks} columns={columns} className={styles.table} />}
+              body={<DataTable data={updatedTasks} columns={columns} className={styles.table} />}
             />
           )
         })}

@@ -274,6 +274,11 @@ func (server *ServerMonitor) ProcessDummyConfigSendCookie() error {
 		return nil
 	}
 
+	if cluster == nil || cluster.Conf == nil {
+		server.DelWaitDummyConfigSendCookie()
+		return fmt.Errorf("dummy config send requires initialized cluster")
+	}
+
 	// Lock to prevent concurrent config generation AND protect the config.tar.gz file
 	// during the send operation. The lock will be held until the entire operation completes
 	// (including the wait and send) to prevent another goroutine from regenerating the

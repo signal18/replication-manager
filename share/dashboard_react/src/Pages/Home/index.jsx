@@ -193,7 +193,7 @@ function Home() {
         dispatch(getClusterCertificates({ clusterName: selectedClusterNameRef.current }))
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Maintenance') {
-        dispatch(getResticSnapshot({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getResticSnapshot({ clusterName: selectedClusterNameRef.current, filter: 'latest-per-session' }))
         dispatch(getResticStats({ clusterName: selectedClusterNameRef.current }))
         dispatch(getBackups({ clusterName: selectedClusterNameRef.current }))
         dispatch(getBackupStats({ clusterName: selectedClusterNameRef.current }))

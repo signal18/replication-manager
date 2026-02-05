@@ -277,6 +277,31 @@ func TestCleanupRestartCookies(t *testing.T) {
 	}
 }
 
+func TestCleanupResticReseedCookies(t *testing.T) {
+	cluster := setupTestCluster(t, 3)
+	defer cleanupTestCluster(t, cluster)
+
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+		if err := srv.SetWaitResticReseedCookie(); err != nil {
+			t.Fatalf("failed to set restic reseed cookie: %v", err)
+		}
+	}
+
+	cluster.CleanupRestartCookies()
+
+	for i, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+		if srv.HasWaitResticReseedCookie() {
+			t.Fatalf("server %d still has restic reseed cookie", i)
+		}
+	}
+}
+
 // TestCleanupRestartCookies_EmptyCluster tests cleanup with no cookies present
 func TestCleanupRestartCookies_EmptyCluster(t *testing.T) {
 	cluster := setupTestCluster(t, 3)
