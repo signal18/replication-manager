@@ -397,7 +397,7 @@ type resticMountDirResolveOptions struct {
 	logSanitize        bool
 }
 
-const resticDefaultMountBase = "/mnt/restic"
+const resticDefaultMountSubdir = "mount"
 
 type resticMountOptionMeta struct {
 	mountDirSource  string
@@ -445,11 +445,21 @@ func (cluster *Cluster) resolveResticMountDirFromConfig(opts resticMountDirResol
 		return "", "", fmt.Errorf("cluster name is empty")
 	}
 
-	mountDir := filepath.Join(resticDefaultMountBase, clusterName)
+	baseDir := filepath.Join(cluster.WorkingDir, resticDefaultMountSubdir)
+	mountDir := baseDir
 	mountDirSource := "default"
 	if trimmed := strings.TrimSpace(cluster.Conf.BackupResticMountDir); trimmed != "" {
-		mountDir = trimmed
 		mountDirSource = "config"
+		if filepath.IsAbs(trimmed) {
+			mountDir = trimmed
+		} else {
+			baseDir := filepath.Join(cluster.WorkingDir, resticDefaultMountSubdir)
+			mountDir = filepath.Join(baseDir, trimmed)
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlInfo,
+				"Resolved relative restic mount dir from config: %s -> %s (base %s)", trimmed, mountDir, baseDir)
+		}
 	}
 
 	var err error
@@ -458,7 +468,7 @@ func (cluster *Cluster) resolveResticMountDirFromConfig(opts resticMountDirResol
 		return "", mountDirSource, err
 	}
 	if opts.enforceDefaultBase && mountDirSource == "default" {
-		base := filepath.Clean(resticDefaultMountBase)
+		base := filepath.Clean(filepath.Join(cluster.WorkingDir, resticDefaultMountSubdir))
 		rel, relErr := filepath.Rel(base, mountDir)
 		if relErr != nil || rel == "" || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			mountErr := fmt.Errorf("default mount dir %s escapes base %s", mountDir, base)
@@ -599,7 +609,7 @@ func (cluster *Cluster) sanitizeAndValidateResticMountOptions(mountOpt *backupmg
 		return fmt.Errorf("restic mount target dir must be absolute: %s", mountOpt.TargetDir)
 	}
 	if meta.targetDirSource == "default" && meta.mountDirSource == "default" {
-		base := filepath.Clean(resticDefaultMountBase)
+		base := filepath.Clean(filepath.Join(cluster.WorkingDir, resticDefaultMountSubdir))
 		rel, relErr := filepath.Rel(base, mountOpt.TargetDir)
 		if relErr != nil || rel == "" || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			mountErr := fmt.Errorf("default restic mount dir %s escapes base %s", mountOpt.TargetDir, base)

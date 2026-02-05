@@ -118,10 +118,19 @@ func (repman *ReplicationManager) handlerMuxResticMountToggle(w http.ResponseWri
 	}
 
 	// Construct mount directory path
-	resticMountBaseDir := "/mnt/restic"
-	mountDir := filepath.Join(resticMountBaseDir, clusterName)
-	if mycluster.Conf.BackupResticMountDir != "" {
-		mountDir = mycluster.Conf.BackupResticMountDir
+	resticMountBaseDir := filepath.Join(mycluster.WorkingDir, "mount")
+	mountDir := resticMountBaseDir
+	if trimmed := strings.TrimSpace(mycluster.Conf.BackupResticMountDir); trimmed != "" {
+		if filepath.IsAbs(trimmed) {
+			mountDir = trimmed
+		} else {
+			baseDir := filepath.Join(mycluster.WorkingDir, "mount")
+			mountDir = filepath.Join(baseDir, trimmed)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlInfo,
+				"Resolved relative restic mount dir from config: %s -> %s (base %s)", trimmed, mountDir, baseDir)
+		}
 	}
 
 	var err error
