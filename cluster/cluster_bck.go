@@ -440,12 +440,8 @@ func (cluster *Cluster) resolveResticMountDirFromConfig(opts resticMountDirResol
 	if cluster == nil || cluster.Conf == nil {
 		return "", "", fmt.Errorf("cluster config is nil")
 	}
-	clusterName := strings.TrimSpace(cluster.GetClusterName())
-	if clusterName == "" {
-		return "", "", fmt.Errorf("cluster name is empty")
-	}
 
-	baseDir := filepath.Join(cluster.WorkingDir, resticDefaultMountSubdir)
+	baseDir := filepath.Join(cluster.WorkingDir, resticDefaultMountSubdir) // cluster.WorkingDir already has cluster name
 	mountDir := baseDir
 	mountDirSource := "default"
 	if trimmed := strings.TrimSpace(cluster.Conf.BackupResticMountDir); trimmed != "" {
