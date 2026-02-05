@@ -37,7 +37,7 @@ function Dropdown({
 
   const handleChange = (option) => {
     setSelectedOption(option)
-    if (confirmTitle && option.value !== 'script') {
+    if (confirmTitle) {
       openConfirmModal()
     } else {
       onChange(option)

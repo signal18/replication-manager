@@ -1,7 +1,15 @@
 import { HStack, Input, useNumberInput } from '@chakra-ui/react'
 import React, { useRef, useState, useEffect } from 'react'
 import RMIconButton from '../RMIconButton'
-import { HiCheck, HiOutlineMinusCircle, HiOutlinePlusCircle, HiPencilAlt, HiX } from 'react-icons/hi'
+import {
+  HiCheck,
+  HiChevronDoubleDown,
+  HiChevronDoubleUp,
+  HiOutlineMinusCircle,
+  HiOutlinePlusCircle,
+  HiPencilAlt,
+  HiX
+} from 'react-icons/hi'
 import styles from './styles.module.scss'
 import ConfirmModal from '../Modals/ConfirmModal'
 
@@ -9,6 +17,7 @@ function NumberInput({
   min = 2,
   max = 120,
   step = 1,
+  secondaryStep = 0,
   inputWidth ='75px',
   defaultValue,
   value,
@@ -49,6 +58,20 @@ function NumberInput({
   const dec = getDecrementButtonProps()
   const input = getInputProps()
 
+  const clampValue = (nextValue) => Math.min(max, Math.max(min, nextValue))
+
+  const applyStepChange = (stepValue) => {
+    const baseValue = Number.isFinite(currentValue) ? currentValue : 0
+    const nextValue = clampValue(baseValue + stepValue)
+
+    if (onChange) {
+      onChange(String(nextValue), nextValue)
+      return
+    }
+
+    setCurrentValue(nextValue)
+  }
+
   const handleChange = (valueAsString, valueAsNumber) => {
     if (valueAsString) {
       setCurrentValue(valueAsNumber)
@@ -61,9 +84,25 @@ function NumberInput({
     <>
       <HStack className={`${styles.container} ${containerClassName}`}>
         <HStack spacing='3' className={isReadOnly ? styles.readonly : ''}>
-          <RMIconButton {...dec} icon={HiOutlineMinusCircle} aria-label='Decrement' />
+          {secondaryStep > 0 ? (
+            <RMIconButton
+              icon={HiChevronDoubleDown}
+              aria-label='Secondary decrement'
+              tooltip={`-${secondaryStep}`}
+              onClick={() => applyStepChange(-secondaryStep)}
+            />
+          ) : null}
+          <RMIconButton {...dec} icon={HiOutlineMinusCircle} aria-label='Decrement' tooltip={`-${step}`} />
           <Input {...input} width={inputWidth} size='sm' ref={inputRef} readOnly={isReadOnly} />
-          <RMIconButton {...inc} icon={HiOutlinePlusCircle} aria-label='Increment' />
+          <RMIconButton {...inc} icon={HiOutlinePlusCircle} aria-label='Increment' tooltip={`+${step}`} />
+          {secondaryStep > 0 ? (
+            <RMIconButton
+              icon={HiChevronDoubleUp}
+              aria-label='Secondary increment'
+              tooltip={`+${secondaryStep}`}
+              onClick={() => applyStepChange(secondaryStep)}
+            />
+          ) : null}
         </HStack>
         {showEditButton && !isDisabled ? (
           isReadOnly ? (

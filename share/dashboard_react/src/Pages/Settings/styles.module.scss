@@ -286,6 +286,19 @@ div.settingsContainer {
   padding: rem(4);
 }
 
+.tabItemsBorder {
+  width: 100%;
+  border: 1px solid var(--gray-color);
+  border-radius: rem(10);
+  padding: rem(6);
+  background-color: var(--secondary-gray-color);
+}
+
+.tabItemsFullWidth {
+  width: 100%;
+  display: block;
+}
+
 .sectionHeader {
   align-items: center;
   gap: rem(8);

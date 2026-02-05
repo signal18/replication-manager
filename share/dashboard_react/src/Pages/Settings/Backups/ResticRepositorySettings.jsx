@@ -1,12 +1,12 @@
 import { Box, Flex, Grid, GridItem, HStack, Stack, Text, VStack } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import { HiChevronDown, HiChevronUp, HiQuestionMarkCircle } from 'react-icons/hi'
-import RMIconButton from '../../components/RMIconButton'
-import RMSwitch from '../../components/RMSwitch'
-import TextForm from '../../components/TextForm'
-import { setSetting, switchSetting } from '../../redux/settingsSlice'
-import styles from './styles.module.scss'
-import tableStyles from '../../components/TableType2/styles.module.scss'
+import RMIconButton from '../../../components/RMIconButton'
+import RMSwitch from '../../../components/RMSwitch'
+import TextForm from '../../../components/TextForm'
+import { setSetting, switchSetting } from '../../../redux/settingsSlice'
+import styles from '../styles.module.scss'
+import tableStyles from '../../../components/TableType2/styles.module.scss'
 
 const ResticTagsHelp = `backup-restic-tags defines the tag templates sent to restic backups.
 Enter a comma-separated list. Whitespace around items is trimmed.

@@ -7,7 +7,7 @@ import styles from './styles.module.scss'
 import { Box, HStack, useDisclosure, VStack } from '@chakra-ui/react'
 import TableType3 from '../../components/TableType3'
 import { useDispatch, useSelector } from 'react-redux'
-import BackupSettings from '../Settings/BackupSettings'
+import { BackupSettings } from '../Settings/Backups'
 import SchedulerSettings from '../Settings/SchedulerSettings'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
@@ -472,15 +472,7 @@ function Maintenance({ selectedCluster, user }) {
         panelClassName={styles.accordionPanel}
         body={<SchedulerSettings selectedCluster={selectedCluster} user={user} />}
       />
-      <AccordionComponent
-        heading={'Backups Settings'}
-        isOpen={isBackupSettingsOpen}
-        onToggle={onBackupSettingsToggle}
-        className={styles.accordion}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<BackupSettings selectedCluster={selectedCluster} user={user} />}
-      />
+      <BackupSettings selectedCluster={selectedCluster} user={user} />
       <AccordionComponent
         heading={'Current Backups'}
         isOpen={isBackupsOpen}
