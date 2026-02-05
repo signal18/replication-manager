@@ -30,6 +30,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dockerhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -106,6 +107,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/backups/stats", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupStat)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/backups/reconcile", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupReconcile)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/terminals", negroni.New(
@@ -704,6 +710,9 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReseedFromParent)),
 	))
+
+	// Register restic-specific routes
+	repman.RegisterResticRoutes(router)
 }
 
 // @Summary Retrieve servers for a specific cluster
@@ -1934,6 +1943,14 @@ func (repman *ReplicationManager) handlerMuxClusterBackups(w http.ResponseWriter
 	}
 }
 
+type resticSnapshotResponse struct {
+	backupmgr.BackupSnapshot
+	Metadata       []*cluster.SnapshotMetadataSummary `json:"metadata,omitempty"`
+	MetadataReady  bool                               `json:"metadataReady"`
+	MetadataStatus string                             `json:"metadataStatus"`
+	MetadataError  string                             `json:"metadataError,omitempty"`
+}
+
 // handlerMuxClusterBackupStat handles the retrieval of backup stats for a given cluster.
 // @Summary Retrieve backup stats for a specific cluster
 // @Description This endpoint retrieves the backup stats for the specified cluster.
@@ -1964,6 +1981,46 @@ func (repman *ReplicationManager) handlerMuxClusterBackupStat(w http.ResponseWri
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
+	}
+}
+
+// handlerMuxClusterBackupReconcile handles the manual reconciliation of backup metadata with restic snapshots.
+// @Summary Reconcile backup metadata with restic snapshots
+// @Description This endpoint triggers a manual reconciliation check to detect drift between backup metadata files and restic snapshots.
+// @Tags ClusterBackup
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} cluster.ReconciliationReport "Reconciliation report with orphaned and missing metadata"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "Cluster not found"
+// @Failure 500 {string} string "Reconciliation failed"
+// @Router /api/clusters/{clusterName}/backups/reconcile [post]
+func (repman *ReplicationManager) handlerMuxClusterBackupReconcile(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster not found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	report, err := mycluster.ReconcileSnapshotMetadata()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	err = e.Encode(report)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API encoding error %s", err)
 	}
 }
 
@@ -2352,10 +2409,37 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupResticAws()
 	case "backup-restic":
 		mycluster.SwitchBackupRestic()
+	case "backup-restic-purge-prune":
+		mycluster.Conf.BackupResticPurgePrune = !mycluster.Conf.BackupResticPurgePrune
+	case "backup-restic-purge-prune-compact":
+		mycluster.Conf.BackupResticPurgePruneCompact = !mycluster.Conf.BackupResticPurgePruneCompact
+	case "backup-restic-purge-prune-repack-cacheable-only":
+		mycluster.Conf.BackupResticPurgePruneRepackCacheableOnly = !mycluster.Conf.BackupResticPurgePruneRepackCacheableOnly
+	case "backup-restic-purge-prune-repack-small":
+		mycluster.Conf.BackupResticPurgePruneRepackSmall = !mycluster.Conf.BackupResticPurgePruneRepackSmall
+	case "backup-restic-purge-prune-repack-uncompressed":
+		mycluster.Conf.BackupResticPurgePruneRepackUncompressed = !mycluster.Conf.BackupResticPurgePruneRepackUncompressed
+	case "backup-restic-allow-unsafe-mount":
+		mycluster.Conf.BackupResticAllowUnsafeMount = !mycluster.Conf.BackupResticAllowUnsafeMount
+		if mycluster.ResticManager != nil {
+			mycluster.ResticManager.AllowUnsafeMount = mycluster.Conf.BackupResticAllowUnsafeMount
+		}
+	case "backup-restic-mount-allow-other":
+		mycluster.Conf.BackupResticMountAllowOther = !mycluster.Conf.BackupResticMountAllowOther
+	case "backup-restic-mount-no-default-permissions":
+		mycluster.Conf.BackupResticMountNoDefaultPermissions = !mycluster.Conf.BackupResticMountNoDefaultPermissions
+	case "backup-restic-mount-owner-root":
+		mycluster.Conf.BackupResticMountOwnerRoot = !mycluster.Conf.BackupResticMountOwnerRoot
+	case "backup-restic-mount-no-lock":
+		mycluster.Conf.BackupResticMountNoLock = !mycluster.Conf.BackupResticMountNoLock
+	case "backup-restic-mount-quiet":
+		mycluster.Conf.BackupResticMountQuiet = !mycluster.Conf.BackupResticMountQuiet
 	case "backup-binlogs":
 		mycluster.SwitchBackupBinlogs()
 	case "compress-backups":
 		mycluster.SwitchCompressBackups()
+	case "backup-reseed-remote-decompress":
+		mycluster.Conf.BackupReseedRemoteDecompress = !mycluster.Conf.BackupReseedRemoteDecompress
 	case "backup-split-mysql-user":
 		mycluster.Conf.BackupSplitMysqlUser = !mycluster.Conf.BackupSplitMysqlUser
 	case "backup-restore-mysql-user":
@@ -2692,6 +2776,61 @@ func applyIsActive(oldValue bool, isactive *bool) bool {
 	return *isactive
 }
 
+func normalizeCompressionOverride(value string) (string, error) {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" || trimmed == "auto" {
+		return "auto", nil
+	}
+	switch trimmed {
+	case "1", "true", "yes", "y", "on":
+		return "true", nil
+	case "0", "false", "no", "n", "off":
+		return "false", nil
+	default:
+		return "", fmt.Errorf("invalid compression override: %q", value)
+	}
+}
+
+var resticSizePattern = regexp.MustCompile(`^[0-9]+([kKmMgGtTpPeE][bB]?)?$`)
+
+func splitResticList(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return strings.FieldsFunc(value, func(r rune) bool {
+		switch r {
+		case ',', ' ', '\t', '\n', '\r':
+			return true
+		default:
+			return false
+		}
+	})
+}
+
+func validateResticPurgePathList(value string) error {
+	for _, item := range splitResticList(value) {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		if !filepath.IsAbs(trimmed) {
+			return fmt.Errorf("backup-restic-purge-path must be absolute: %s", trimmed)
+		}
+	}
+	return nil
+}
+
+func validateResticSizeValue(value, setting string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	if !resticSizePattern.MatchString(trimmed) {
+		return fmt.Errorf("invalid value for %s: %q", setting, value)
+	}
+	return nil
+}
+
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
 	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
@@ -2807,6 +2946,20 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return fmt.Errorf("compress-backups-parallel-blocks must be between 1 and 32, got %d", val)
 		}
 		mycluster.Conf.CompressBackupsParallelBlocks = val
+	case "backup-reseed-remote-decompress":
+		mycluster.Conf.BackupReseedRemoteDecompress = applyIsActive(mycluster.Conf.BackupReseedRemoteDecompress, isactive)
+	case "compress-backups-logical":
+		normalized, err := normalizeCompressionOverride(value)
+		if err != nil {
+			return err
+		}
+		mycluster.Conf.CompressBackupsLogical = normalized
+	case "compress-backups-physical":
+		normalized, err := normalizeCompressionOverride(value)
+		if err != nil {
+			return err
+		}
+		mycluster.Conf.CompressBackupsPhysical = normalized
 	case "compress-backups-compression-level":
 		val, err := strconv.Atoi(value)
 		if err != nil {
@@ -2818,6 +2971,45 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.CompressBackupsCompressionLevel = val
 	case "backup-restic-purge-oldest-on-disk-space":
 		mycluster.Conf.BackupResticPurgeOldestOnDiskSpace = applyIsActive(mycluster.Conf.BackupResticPurgeOldestOnDiskSpace, isactive)
+	case "backup-restic-allow-unsafe-mount":
+		mycluster.Conf.BackupResticAllowUnsafeMount = applyIsActive(mycluster.Conf.BackupResticAllowUnsafeMount, isactive)
+		if mycluster.ResticManager != nil {
+			mycluster.ResticManager.AllowUnsafeMount = mycluster.Conf.BackupResticAllowUnsafeMount
+		}
+	case "backup-restic-mount-target-dir":
+		mycluster.Conf.BackupResticMountTargetDir = strings.TrimSpace(value)
+	case "backup-restic-mount-host":
+		mycluster.Conf.BackupResticMountHost = strings.TrimSpace(value)
+	case "backup-restic-mount-tag":
+		err = mycluster.SetBackupResticMountTag(value)
+		if err != nil {
+			return err
+		}
+	case "backup-restic-mount-path":
+		mycluster.Conf.BackupResticMountPath = strings.TrimSpace(value)
+	case "backup-restic-mount-path-template":
+		mycluster.Conf.BackupResticMountPathTemplate = strings.TrimSpace(value)
+	case "backup-restic-mount-time-template":
+		mycluster.Conf.BackupResticMountTimeTemplate = strings.TrimSpace(value)
+	case "backup-restic-mount-allow-other":
+		mycluster.Conf.BackupResticMountAllowOther = applyIsActive(mycluster.Conf.BackupResticMountAllowOther, isactive)
+	case "backup-restic-mount-no-default-permissions":
+		mycluster.Conf.BackupResticMountNoDefaultPermissions = applyIsActive(mycluster.Conf.BackupResticMountNoDefaultPermissions, isactive)
+	case "backup-restic-mount-owner-root":
+		mycluster.Conf.BackupResticMountOwnerRoot = applyIsActive(mycluster.Conf.BackupResticMountOwnerRoot, isactive)
+	case "backup-restic-mount-no-lock":
+		mycluster.Conf.BackupResticMountNoLock = applyIsActive(mycluster.Conf.BackupResticMountNoLock, isactive)
+	case "backup-restic-mount-verbose":
+		val, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for backup-restic-mount-verbose: %q", value)
+		}
+		if val < 0 || val > 3 {
+			return fmt.Errorf("backup-restic-mount-verbose must be between 0 and 3, got %d", val)
+		}
+		mycluster.Conf.BackupResticMountVerbose = val
+	case "backup-restic-mount-quiet":
+		mycluster.Conf.BackupResticMountQuiet = applyIsActive(mycluster.Conf.BackupResticMountQuiet, isactive)
 	case "backup-restic-purge-oldest-on-disk-threshold":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.BackupResticPurgeOldestOnDiskThreshold = val
@@ -2841,6 +3033,28 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return err
 		}
+	case "backup-restic-purge-host":
+		mycluster.Conf.BackupResticPurgeHost = strings.TrimSpace(value)
+	case "backup-restic-purge-tag":
+		err = mycluster.SetBackupResticPurgeTag(value)
+		if err != nil {
+			return err
+		}
+	case "backup-restic-purge-path":
+		if err := validateResticPurgePathList(value); err != nil {
+			return err
+		}
+		mycluster.Conf.BackupResticPurgePath = strings.TrimSpace(value)
+	case "backup-restic-purge-prune-max-unused":
+		if err := validateResticSizeValue(value, "backup-restic-purge-prune-max-unused"); err != nil {
+			return err
+		}
+		mycluster.Conf.BackupResticPurgePruneMaxUnused = strings.TrimSpace(value)
+	case "backup-restic-purge-prune-max-repack-size":
+		if err := validateResticSizeValue(value, "backup-restic-purge-prune-max-repack-size"); err != nil {
+			return err
+		}
+		mycluster.Conf.BackupResticPurgePruneMaxRepackSize = strings.TrimSpace(value)
 	case "backup-restic-timeout":
 		val, err := strconv.Atoi(value)
 		if err != nil {
@@ -2849,6 +3063,15 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupResticTimeout = val
 		if mycluster.ResticManager != nil {
 			mycluster.ResticManager.SetOperationTimeout(mycluster.Conf.GetResticTimeout())
+		}
+	case "backup-restic-dump-timeout":
+		val, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for backup-restic-dump-timeout: %q", value)
+		}
+		mycluster.Conf.BackupResticDumpTimeout = val
+		if mycluster.ResticManager != nil {
+			mycluster.ResticManager.SetDumpTimeout(mycluster.Conf.GetResticDumpTimeout())
 		}
 	case "backup-restic-dir-mode":
 		val, err := strconv.Atoi(value)
@@ -3601,6 +3824,16 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			mycluster.Conf.BackupRestic = newValue
 			mycluster.CheckResticInstallation()
 		}
+	case "backup-restic-purge-prune":
+		mycluster.Conf.BackupResticPurgePrune = applyIsActive(mycluster.Conf.BackupResticPurgePrune, isactive)
+	case "backup-restic-purge-prune-compact":
+		mycluster.Conf.BackupResticPurgePruneCompact = applyIsActive(mycluster.Conf.BackupResticPurgePruneCompact, isactive)
+	case "backup-restic-purge-prune-repack-cacheable-only":
+		mycluster.Conf.BackupResticPurgePruneRepackCacheableOnly = applyIsActive(mycluster.Conf.BackupResticPurgePruneRepackCacheableOnly, isactive)
+	case "backup-restic-purge-prune-repack-small":
+		mycluster.Conf.BackupResticPurgePruneRepackSmall = applyIsActive(mycluster.Conf.BackupResticPurgePruneRepackSmall, isactive)
+	case "backup-restic-purge-prune-repack-uncompressed":
+		mycluster.Conf.BackupResticPurgePruneRepackUncompressed = applyIsActive(mycluster.Conf.BackupResticPurgePruneRepackUncompressed, isactive)
 	case "backup-binlogs":
 		oldValue := mycluster.Conf.BackupBinlogs
 		newValue := applyIsActive(oldValue, isactive)
@@ -6801,9 +7034,39 @@ func (repman *ReplicationManager) handlerMuxClusterSnapshots(w http.ResponseWrit
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
+
+		// Get all snapshots
+		snapshots := mycluster.GetSnapshots()
+		metadataIndex := mycluster.BuildSnapshotMetadataIndex(snapshots)
+
+		// Check for filter query parameter
+		filterParam := r.URL.Query().Get("filter")
+		if filterParam == "latest-per-session" {
+			// Apply session-based deduplication filter
+			snapshots = cluster.FilterMostRecentSnapshotsPerSessionWithIndex(mycluster, snapshots, metadataIndex)
+		}
+
+		responses := make([]resticSnapshotResponse, 0, len(snapshots))
+		for i := range snapshots {
+			snap := snapshots[i]
+			statusString := mycluster.GetSnapshotMetadataStatusString(snap.Id)
+			metadataReady := mycluster.IsSnapshotMetadataReady(snap.Id)
+			metadata := metadataIndex[snap.Id]
+			if metadata == nil {
+				metadata = mycluster.SummarizeSnapshotMetadata(&snap)
+			}
+			responses = append(responses, resticSnapshotResponse{
+				BackupSnapshot: snap,
+				Metadata:       metadata,
+				MetadataReady:  metadataReady,
+				MetadataStatus: statusString,
+				MetadataError:  mycluster.GetSnapshotMetadataError(snap.Id),
+			})
+		}
+
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetSnapshots())
+		err := e.Encode(responses)
 		if err != nil {
 			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
@@ -6943,25 +7206,35 @@ func (repman *ReplicationManager) handlerMuxResticFetch(w http.ResponseWriter, r
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param snapshotID path string true "Snapshot ID"
+// @Param dry_run query bool false "Dry run restic purge"
 // @Success 200 {string} string "Restic repository purged"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/restic/purge/{snapshotID} [post]
 func (repman *ReplicationManager) handlerMuxResticPurge(w http.ResponseWriter, r *http.Request) {
 	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
+		dryRun := false
+		if value := strings.TrimSpace(r.URL.Query().Get("dry_run")); value != "" {
+			parsed, err := strconv.ParseBool(value)
+			if err != nil {
+				http.Error(w, "Invalid dry_run value: "+value, http.StatusBadRequest)
+				return
+			}
+			dryRun = parsed
+		}
 
 		if vars["snapshotID"] == "" {
 			http.Error(w, "No snapshot ID provided, please provide one or use 'policy' to purge according to policy", http.StatusInternalServerError)
 			return
 		}
 		if vars["snapshotID"] == "policy" {
-			err := mycluster.ResticPurgeRepo(true)
+			err := mycluster.ResticPurgeRepoWithOptions(true, dryRun)
 			if err != nil {
 				http.Error(w, "Error purging restic repo: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 		} else {
-			err := mycluster.AddPurgeTask(vars["snapshotID"])
+			err := mycluster.ResticPurgeSnapshotWithOptions(vars["snapshotID"], true, dryRun)
 			if err != nil {
 				http.Error(w, "Error adding purge task: "+err.Error(), http.StatusInternalServerError)
 				return

@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import styles from '../styles.module.scss'
-import { Flex, HStack, Text, VStack } from '@chakra-ui/react'
+import { Flex, Text, VStack } from '@chakra-ui/react'
 import { useDispatch } from 'react-redux'
 import Gauge from '../../../../../components/Gauge'
 import { convertSize } from '../../../../../utility/common'
@@ -9,6 +9,7 @@ import TableType2 from '../../../../../components/TableType2'
 import ConfirmModal from '../../../../../components/Modals/ConfirmModal'
 import NumberInput from '../../../../../components/NumberInput'
 import { showErrorToast } from '../../../../../redux/toastSlice'
+import PropTypes from 'prop-types'
 
 function AppCredit({ clusterName, appId, config, appConfig, user }) {
     const dispatch = useDispatch()
@@ -149,3 +150,22 @@ function AppCredit({ clusterName, appId, config, appConfig, user }) {
 }
 
 export default AppCredit
+
+AppCredit.propTypes = {
+  clusterName: PropTypes.string.isRequired,
+  appId: PropTypes.string.isRequired,
+  config: PropTypes.shape({
+    cloud18ApplicationCredits: PropTypes.number,
+    cloud18ApplicationCreditsUsed: PropTypes.number
+  }),
+  appConfig: PropTypes.shape({
+    provAppAgents: PropTypes.string,
+    provAppMemory: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    provAppDiskSize: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    provAppCpuCores: PropTypes.number,
+    provAppCreditPlanned: PropTypes.number
+  }),
+  user: PropTypes.shape({
+    grants: PropTypes.object
+  })
+}

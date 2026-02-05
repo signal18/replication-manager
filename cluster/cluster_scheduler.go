@@ -72,7 +72,7 @@ func (cluster *Cluster) GetDbJobsSshFunction() func() {
 			if s == nil {
 				continue
 			}
-			s.JobRunViaSSH()
+			go s.JobRunViaSSH()
 		}
 	}
 }

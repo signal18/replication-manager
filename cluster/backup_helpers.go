@@ -104,6 +104,104 @@ func (server *ServerMonitor) shouldRunRestic(opts BackupRunOptions) bool {
 	return *opts.ResticEnabled
 }
 
+func sanitizeSessionComponent(value string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" {
+		return "na"
+	}
+	var b strings.Builder
+	for _, r := range trimmed {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('-')
+		}
+	}
+	cleaned := strings.Trim(b.String(), "-")
+	if cleaned == "" {
+		return "na"
+	}
+	return cleaned
+}
+
+func (server *ServerMonitor) generateBackupSessionID(method backupmgr.BackupMethod, line string, ts time.Time) string {
+	clusterName := "cluster"
+	if server.ClusterGroup != nil && strings.TrimSpace(server.ClusterGroup.Name) != "" {
+		clusterName = server.ClusterGroup.Name
+	}
+	host := server.Host
+	if host == "" {
+		host = server.Name
+	}
+	port := server.Port
+	if port == "" {
+		if parts := strings.Split(server.URL, ":"); len(parts) >= 2 {
+			host = parts[0]
+			port = parts[len(parts)-1]
+		}
+	}
+	line = normalizeBackupLine(line)
+	if line == "" {
+		line = backupmgr.BackupLineDefault
+	}
+	if ts.IsZero() {
+		ts = time.Now()
+	}
+	methodLabel := "custom"
+	switch method {
+	case backupmgr.BackupMethodLogical:
+		methodLabel = "logical"
+	case backupmgr.BackupMethodPhysical:
+		methodLabel = "physical"
+	}
+	return fmt.Sprintf("%s-%s-%s-%s-%d-%s",
+		sanitizeSessionComponent(clusterName),
+		sanitizeSessionComponent(host),
+		sanitizeSessionComponent(port),
+		sanitizeSessionComponent(methodLabel),
+		ts.Unix(),
+		sanitizeSessionComponent(line),
+	)
+}
+
+func (server *ServerMonitor) ensureBackupSessionID(meta *backupmgr.BackupMetadata, method backupmgr.BackupMethod, ts time.Time, line string) string {
+	if server == nil || meta == nil {
+		return ""
+	}
+	if method == 0 && meta.BackupMethod != 0 {
+		method = meta.BackupMethod
+	}
+	if strings.TrimSpace(line) == "" {
+		line = meta.BackupLine
+	}
+	if ts.IsZero() {
+		if !meta.StartTime.IsZero() {
+			ts = meta.StartTime
+		} else if meta.Id > 0 {
+			ts = time.Unix(meta.Id, 0)
+		}
+	}
+	if meta.BackupSessionID == "" {
+		meta.BackupSessionID = server.generateBackupSessionID(method, line, ts)
+	}
+	return meta.BackupSessionID
+}
+
+func inferBackupMethod(meta *backupmgr.BackupMetadata) backupmgr.BackupMethod {
+	if meta == nil {
+		return backupmgr.BackupMethodLogical
+	}
+	if meta.BackupMethod == backupmgr.BackupMethodLogical || meta.BackupMethod == backupmgr.BackupMethodPhysical {
+		return meta.BackupMethod
+	}
+	switch meta.BackupTool {
+	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
+		return backupmgr.BackupMethodPhysical
+	default:
+		return backupmgr.BackupMethodLogical
+	}
+}
+
 func (server *ServerMonitor) buildBackupMetaFileName(backupTool string, backupID int64, line string) string {
 	if backupTool == "" {
 		return ""
@@ -126,17 +224,28 @@ func (server *ServerMonitor) backupMetaFilePath(meta *backupmgr.BackupMetadata) 
 	if meta == nil {
 		return ""
 	}
-	if meta.MetaFile != "" {
-		if filepath.IsAbs(meta.MetaFile) {
-			return meta.MetaFile
-		}
-		return filepath.Join(server.GetMyBackupDirectory(), meta.MetaFile)
-	}
 	line := meta.BackupLine
 	if line == "" && hasRetentionPolicy(meta) {
 		line = backupmgr.BackupLineAdhoc
 	}
-	return server.buildBackupMetaFileName(meta.BackupTool, meta.Id, line)
+	defaultPath := server.buildBackupMetaFileName(meta.BackupTool, meta.Id, line)
+	if meta.MetaFile != "" {
+		metaFile := meta.MetaFile
+		if normalizeBackupLine(line) != backupmgr.BackupLineAdhoc {
+			defaultBase := filepath.Base(defaultPath)
+			if defaultBase != "" && filepath.Base(metaFile) != defaultBase {
+				if cluster := server.ClusterGroup; cluster != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Ignoring custom metadata filename %s for non-adhoc backup", metaFile)
+				}
+				return defaultPath
+			}
+		}
+		if filepath.IsAbs(metaFile) {
+			return metaFile
+		}
+		return filepath.Join(server.GetMyBackupDirectory(), metaFile)
+	}
+	return defaultPath
 }
 
 func parseAdhocMetaFileID(name string) (int64, bool) {
@@ -178,7 +287,53 @@ func readBackupMetadataFile(path string) (*backupmgr.BackupMetadata, error) {
 	if err := json.NewDecoder(file).Decode(meta); err != nil {
 		return nil, err
 	}
+	if meta != nil && strings.TrimSpace(meta.Dest) != "" {
+		if compressed, err := backupmgr.DetectCompressionFromDest(meta.Dest); err == nil {
+			meta.Compressed = compressed
+		}
+	}
 	return meta, nil
+}
+
+func parseCompressionOverride(value string) (bool, bool) {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" || trimmed == "auto" {
+		return false, false
+	}
+	switch trimmed {
+	case "1", "true", "yes", "y", "on":
+		return true, true
+	case "0", "false", "no", "n", "off":
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+func (cluster *Cluster) resolveBackupCompression(method backupmgr.BackupMethod, tool string) bool {
+	if cluster == nil || cluster.Conf == nil {
+		return false
+	}
+	_ = tool
+	conf := cluster.Conf
+	switch method {
+	case backupmgr.BackupMethodLogical:
+		if val, ok := parseCompressionOverride(conf.CompressBackupsLogical); ok {
+			return val
+		}
+	case backupmgr.BackupMethodPhysical:
+		if val, ok := parseCompressionOverride(conf.CompressBackupsPhysical); ok {
+			return val
+		}
+	}
+	return conf.CompressBackups
+}
+
+func (cluster *Cluster) shouldUncompressOnSenderForReseed() bool {
+	if cluster == nil || cluster.Conf == nil {
+		return true
+	}
+	return !cluster.Conf.BackupReseedRemoteDecompress
 }
 
 func (server *ServerMonitor) LoadAdhocBackupMetadata() ([]*backupmgr.BackupMetadata, error) {
@@ -237,6 +392,9 @@ func (server *ServerMonitor) LoadAdhocBackupMetadata() ([]*backupmgr.BackupMetad
 		if meta.Source == "" {
 			meta.Source = server.URL
 		}
+		method := inferBackupMethod(meta)
+		meta.BackupMethod = method
+		server.ensureBackupSessionID(meta, method, meta.StartTime, meta.BackupLine)
 
 		if cluster != nil {
 			cluster.BackupMetaMap.Set(meta.Id, meta)

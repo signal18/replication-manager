@@ -3,8 +3,12 @@ definitions:
     type: object
   backupmgr.BackupMetadata:
     properties:
+      backupLine:
+        type: string
       backupMethod:
         type: integer
+      backupSessionID:
+        type: string
       backupStrategy:
         type: integer
       backupTool:
@@ -24,6 +28,7 @@ definitions:
       compressed:
         type: boolean
       dest:
+        description: backup destination path
         type: string
       encrypted:
         type: boolean
@@ -37,13 +42,25 @@ definitions:
         type: integer
       id:
         type: integer
+      metaFile:
+        type: string
       previous:
         type: integer
+      resticEnabled:
+        type: boolean
+      resticFilePath:
+        type: string
+      resticSnapshotID:
+        type: string
       retentionDays:
         type: integer
+      retentionDuration:
+        type: string
       size:
+        description: in bytes
         type: integer
       source:
+        description: server URL
         type: string
       splitUser:
         type: boolean
@@ -66,14 +83,229 @@ definitions:
         type: integer
       isInPITR:
         type: boolean
+      resticMode:
+        type: string
       restoreTime:
         format: int64
         type: integer
       useBinlog:
         type: boolean
+      useRestic:
+        type: boolean
+    type: object
+  backupmgr.ResticBackupOption:
+    properties:
+      dir_path:
+        type: string
+      dry_run:
+        description: Don't upload, just show what would be done
+        type: boolean
+      exclude:
+        description: Exclude patterns
+        items:
+          type: string
+        type: array
+      exclude_caches:
+        description: Exclude cache directories
+        type: boolean
+      exclude_file:
+        description: Files containing exclude patterns
+        items:
+          type: string
+        type: array
+      exclude_if_present:
+        description: Exclude dirs containing these files
+        items:
+          type: string
+        type: array
+      exclude_larger_than:
+        description: Max file size (e.g., "100M")
+        type: string
+      files_from:
+        description: Read files to backup from file
+        items:
+          type: string
+        type: array
+      host:
+        description: Override hostname
+        type: string
+      ignore_ctime:
+        description: Ignore ctime changes
+        type: boolean
+      ignore_inode:
+        description: Ignore inode changes
+        type: boolean
+      one_file_system:
+        description: Don't cross filesystem boundaries
+        type: boolean
+      parent:
+        description: Parent snapshot for incremental
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      time:
+        description: Backup timestamp (e.g., '2012-11-01 22:08:41')
+        type: string
+    type: object
+  backupmgr.ResticChangePassOption:
+    type: object
+  backupmgr.ResticCheckOption:
+    properties:
+      check_unused:
+        description: Check for unused blobs (removed in newer versions)
+        type: boolean
+      read_data:
+        description: Read all data blobs (slow, comprehensive)
+        type: boolean
+      read_data_subset:
+        description: Read subset of data (e.g., "10%", "5G", "1/5")
+        type: string
+      with_cache:
+        description: 'Use cache (default: false for check)'
+        type: boolean
+    type: object
+  backupmgr.ResticFetchOption:
+    properties:
+      skip_stats:
+        type: boolean
+    type: object
+  backupmgr.ResticGlobalOption:
+    properties:
+      ca_cert:
+        type: string
+      cache_dir:
+        type: string
+      cleanup_cache:
+        type: boolean
+      compression:
+        type: string
+      insecure_tls:
+        type: boolean
+      json:
+        type: boolean
+      key_hint:
+        type: string
+      limit_download:
+        type: integer
+      limit_upload:
+        type: integer
+      no_cache:
+        type: boolean
+      no_lock:
+        type: boolean
+      option:
+        items:
+          type: string
+        type: array
+      pack_size:
+        type: integer
+      password_command:
+        type: string
+      password_file:
+        type: string
+      quiet:
+        type: boolean
+      repo:
+        type: string
+      repository_file:
+        type: string
+      tls_client_cert:
+        type: string
+      verbose:
+        type: integer
+    type: object
+  backupmgr.ResticInitOption:
+    properties:
+      copy_chunker_params:
+        type: boolean
+      force:
+        type: boolean
+      from_repo:
+        type: string
+      repository_version:
+        description: e.g., "stable", "latest", "1", "2"
+        type: string
+    type: object
+  backupmgr.ResticMountOption:
+    properties:
+      allow_other:
+        description: Permission Options
+        type: boolean
+      host:
+        description: Snapshot Filters
+        items:
+          type: string
+        type: array
+      no_default_permissions:
+        description: Ignore Unix permissions (--no-default-permissions)
+        type: boolean
+      no_lock:
+        description: Repository Options
+        type: boolean
+      owner_root:
+        description: Use root as owner (--owner-root)
+        type: boolean
+      path:
+        description: Filter by path(s) (--path)
+        items:
+          type: string
+        type: array
+      path_template:
+        description: Path/Time Templates
+        items:
+          type: string
+        type: array
+      quiet:
+        description: Quiet mode (-q, --quiet)
+        type: boolean
+      tag:
+        description: Filter by tag(s) (--tag)
+        items:
+          type: string
+        type: array
+      target_dir:
+        description: Required
+        type: string
+      time_template:
+        description: 'Template for times (--time-template, default: "2006-01-02T15:04:05Z07:00")'
+        type: string
+      verbose:
+        description: Verbosity level (-v, --verbose, 0-3)
+        type: integer
+    type: object
+  backupmgr.ResticPruneOption:
+    properties:
+      max_repack_size:
+        description: e.g., "500M", "5G". Empty means omit.
+        type: string
+      max_unused:
+        description: e.g., "500M", "5G". Empty means omit.
+        type: string
+      repack_cacheable_only:
+        description: Only repack cacheable blobs
+        type: boolean
+      repack_small:
+        description: Repack small blobs
+        type: boolean
+      repack_uncompressed:
+        description: Repack uncompressed blobs
+        type: boolean
     type: object
   backupmgr.ResticPurgeOption:
     properties:
+      compact:
+        description: Enable compact output during forget
+        type: boolean
+      dry_run:
+        type: boolean
+      group_by:
+        type: string
+      host:
+        items:
+          type: string
+        type: array
       keep_daily:
         type: integer
       keep_hourly:
@@ -82,6 +314,10 @@ definitions:
         type: integer
       keep_monthly:
         type: integer
+      keep_tag:
+        items:
+          type: string
+        type: array
       keep_weekly:
         type: integer
       keep_within:
@@ -98,23 +334,120 @@ definitions:
         type: string
       keep_yearly:
         type: integer
-      snapshot_id:
-        type: string
-    type: object
-  backupmgr.ResticTask:
-    properties:
-      dir_path:
-        type: string
-      opt:
-        $ref: '#/definitions/backupmgr.ResticPurgeOption'
-      tags:
+      path:
         items:
           type: string
         type: array
+      prune:
+        description: When true, runs prune after forget to reclaim space (defaults
+          to true via NewResticPurgeOption)
+        type: boolean
+      prune_option:
+        $ref: '#/definitions/backupmgr.ResticPruneOption'
+      snapshot_id:
+        type: string
+      tag:
+        items:
+          type: string
+        type: array
+    type: object
+  backupmgr.ResticRestoreOption:
+    properties:
+      exclude:
+        description: Exclude patterns
+        items:
+          type: string
+        type: array
+      global_opt:
+        allOf:
+        - $ref: '#/definitions/backupmgr.ResticGlobalOption'
+        description: Global restic flags
+      host:
+        description: Filter by host for "latest" snapshot
+        items:
+          type: string
+        type: array
+      iexclude:
+        description: Case-insensitive exclude patterns
+        items:
+          type: string
+        type: array
+      iinclude:
+        description: Case-insensitive include patterns
+        items:
+          type: string
+        type: array
+      include:
+        description: Include patterns
+        items:
+          type: string
+        type: array
+      overwrite:
+        description: Overwrite policy (non-standard, custom implementation)
+        type: string
+      path:
+        description: Filter by path for "latest" snapshot
+        items:
+          type: string
+        type: array
+      snapshot_id:
+        type: string
+      tag:
+        description: Filter by tag for "latest" snapshot
+        items:
+          type: string
+        type: array
+      target_dir:
+        description: Target directory for restore
+        type: string
+      verify:
+        description: Verify restored files content
+        type: boolean
+    type: object
+  backupmgr.ResticTask:
+    properties:
+      backup_opt:
+        allOf:
+        - $ref: '#/definitions/backupmgr.ResticBackupOption'
+        description: Options for BackupTask
+      changepass_opt:
+        allOf:
+        - $ref: '#/definitions/backupmgr.ResticChangePassOption'
+        description: Options for ChangePassTask
+      check_opt:
+        allOf:
+        - $ref: '#/definitions/backupmgr.ResticCheckOption'
+        description: Options for CheckTask
+      fetch_opt:
+        allOf:
+        - $ref: '#/definitions/backupmgr.ResticFetchOption'
+        description: Options for FetchTask
+      init_opt:
+        allOf:
+        - $ref: '#/definitions/backupmgr.ResticInitOption'
+        description: Options for InitTask
+      purge_opt:
+        allOf:
+        - $ref: '#/definitions/backupmgr.ResticPurgeOption'
+        description: Options for PurgeTask
+      restore_opt:
+        allOf:
+        - $ref: '#/definitions/backupmgr.ResticRestoreOption'
+        description: Options for RestoreTask
       task_id:
         type: integer
       task_type:
         $ref: '#/definitions/backupmgr.TaskType'
+      unlock_opt:
+        allOf:
+        - $ref: '#/definitions/backupmgr.ResticUnlockOption'
+        description: Options for UnlockTask
+    type: object
+  backupmgr.ResticUnlockOption:
+    properties:
+      remove_all:
+        description: Remove all locks, including from other hosts
+        type: boolean
     type: object
   backupmgr.TaskType:
     enum:
@@ -124,6 +457,8 @@ definitions:
     - 3
     - 4
     - 5
+    - 6
+    - 7
     type: integer
     x-enum-varnames:
     - InitTask
@@ -132,6 +467,8 @@ definitions:
     - PurgeTask
     - UnlockTask
     - ChangePassTask
+    - RestoreTask
+    - CheckTask
   cluster.APIUser:
     properties:
       grants:
@@ -347,6 +684,10 @@ definitions:
       inPhysicalBackup:
         type: boolean
       inResticBackup:
+        type: boolean
+      inResticLogicalBackup:
+        type: boolean
+      inResticPhysicalBackup:
         type: boolean
       inRollingRestart:
         type: boolean
@@ -655,6 +996,23 @@ definitions:
         type: integer
       writerHostGroup:
         type: integer
+    type: object
+  cluster.ReconciliationReport:
+    properties:
+      cleanedUp:
+        type: boolean
+      missingMetadata:
+        description: Snapshots without metadata files
+        items:
+          type: string
+        type: array
+      orphanedMetadata:
+        description: Metadata files referencing deleted snapshots
+        items:
+          type: string
+        type: array
+      timestamp:
+        type: string
     type: object
   cluster.ServerBackupMeta:
     properties:
@@ -965,12 +1323,12 @@ definitions:
           $ref: '#/definitions/dbhelper.SlaveStatus'
         type: array
       restartNode:
-        description: RestartNode stores node parameter for restart cookie (owned by
-          cookie mechanism, single writer assumption)
+        description: RestartNode stores node parameter for restart container cookie
+          (owned by cookie mechanism, single writer assumption)
         type: string
       restartRid:
-        description: RestartRid stores rid parameter for restart cookie (owned by
-          cookie mechanism, single writer assumption)
+        description: RestartRid stores rid parameter for restart container cookie
+          (owned by cookie mechanism, single writer assumption)
         type: string
       semiSyncMasterStatus:
         type: boolean
@@ -1460,6 +1818,8 @@ definitions:
         type: integer
       id:
         type: integer
+      payload:
+        type: string
       port:
         type: integer
       result:
@@ -1849,6 +2209,12 @@ definitions:
         type: string
       backupMyDumperRegex:
         type: string
+      backupMyDumperStream:
+        type: boolean
+      backupMyDumperStreamFile:
+        type: string
+      backupMyDumperStreamFormat:
+        type: string
       backupMyLoaderOptions:
         type: string
       backupMydumperPath:
@@ -1871,7 +2237,15 @@ definitions:
         type: string
       backupPhysicalType:
         type: string
+      backupReconcileAutoCleanup:
+        type: boolean
+      backupReconcileInterval:
+        type: integer
+      backupReseedRemoteDecompress:
+        type: boolean
       backupRestic:
+        type: boolean
+      backupResticAllowUnsafeMount:
         type: boolean
       backupResticAws:
         type: boolean
@@ -1879,13 +2253,90 @@ definitions:
         type: string
       backupResticBinaryPath:
         type: string
+      backupResticDirMode:
+        type: integer
+      backupResticDumpTimeout:
+        type: integer
+      backupResticFileMode:
+        type: integer
+      backupResticHost:
+        type: string
       backupResticLocalRepository:
+        type: string
+      backupResticMetadataExtractorConcurrency:
+        type: integer
+      backupResticMountAllowOther:
+        type: boolean
+      backupResticMountDir:
+        description: BackupResticMountDir defines the base directory for restic FUSE
+          mounts.
+        type: string
+      backupResticMountHost:
+        type: string
+      backupResticMountNoDefaultPermissions:
+        type: boolean
+      backupResticMountNoLock:
+        type: boolean
+      backupResticMountOwnerRoot:
+        type: boolean
+      backupResticMountPath:
+        type: string
+      backupResticMountPathTemplate:
+        type: string
+      backupResticMountQuiet:
+        type: boolean
+      backupResticMountRecoveryEnabled:
+        description: BackupResticMountRecoveryEnabled controls cleanup of stale restic
+          mounts on startup.
+        type: boolean
+      backupResticMountTag:
+        type: string
+      backupResticMountTargetDir:
+        description: Restic mount settings (used for manual mount operations).
+        type: string
+      backupResticMountTimeTemplate:
+        type: string
+      backupResticMountVerbose:
+        type: integer
+      backupResticPurgeGroupBy:
+        type: string
+      backupResticPurgeHost:
+        type: string
+      backupResticPurgeKeepTag:
         type: string
       backupResticPurgeOldestOnDiskSpace:
         type: boolean
       backupResticPurgeOldestOnDiskTreshold:
         type: integer
+      backupResticPurgePath:
+        type: string
+      backupResticPurgePrune:
+        type: boolean
+      backupResticPurgePruneCompact:
+        type: boolean
+      backupResticPurgePruneMaxRepackSize:
+        type: string
+      backupResticPurgePruneMaxUnused:
+        type: string
+      backupResticPurgePruneRepackCacheableOnly:
+        type: boolean
+      backupResticPurgePruneRepackSmall:
+        type: boolean
+      backupResticPurgePruneRepackUncompressed:
+        type: boolean
+      backupResticPurgeTag:
+        type: string
       backupResticRepository:
+        type: string
+      backupResticReseedCleanup:
+        type: boolean
+      backupResticReseedStrategy:
+        type: string
+      backupResticReseedTempDir:
+        type: string
+      backupResticReseedTimeout:
+        type: integer
+      backupResticTags:
         type: string
       backupResticTimeout:
         type: integer
@@ -2047,6 +2498,14 @@ definitions:
         type: string
       compressBackups:
         type: boolean
+      compressBackupsCompressionLevel:
+        type: integer
+      compressBackupsLogical:
+        type: string
+      compressBackupsParallelBlocks:
+        type: integer
+      compressBackupsPhysical:
+        type: string
       dbServersBackupHosts:
         type: string
       dbServersBindAddress:
@@ -2808,6 +3267,8 @@ definitions:
         type: string
       provNetDockerRunArgs:
         type: string
+      provObjectAllowOverwrite:
+        type: boolean
       provOrchestrator:
         type: string
       provOrchestratorCluster:
@@ -3159,6 +3620,10 @@ definitions:
       sphinxSqlPort:
         type: string
       sstSendBuffer:
+        type: integer
+      sstWaitMaxLoop:
+        type: integer
+      sstWaitRetryDelay:
         type: integer
       stagingProxyHosts:
         type: string
@@ -3942,6 +4407,46 @@ definitions:
         type: string
       version:
         type: string
+    type: object
+  server.ResticMountStatusResponse:
+    properties:
+      active_users:
+        items:
+          type: string
+        type: array
+      is_mounted:
+        type: boolean
+      mount_path:
+        type: string
+      ref_count:
+        type: integer
+    type: object
+  server.ResticMountToggleRequest:
+    properties:
+      action:
+        description: '"mount" or "unmount"'
+        type: string
+      options:
+        allOf:
+        - $ref: '#/definitions/backupmgr.ResticMountOption'
+        description: Mount options (only for "mount" action)
+    type: object
+  server.ResticReseedRequest:
+    properties:
+      cleanup:
+        type: boolean
+      method:
+        type: string
+      overwrite:
+        type: string
+      snapshotId:
+        type: string
+      strategy:
+        type: string
+      tempDir:
+        type: string
+      useTempDir:
+        type: boolean
     type: object
   server.token:
     properties:
@@ -4898,6 +5403,57 @@ paths:
       summary: Reset SLA for a specific cluster
       tags:
       - ClusterActions
+  /api/clusters/{clusterName}/actions/restic-mount-toggle:
+    post:
+      consumes:
+      - application/json
+      description: Mounts or unmounts the restic repository for the cluster. Mount
+        is persistent until explicitly unmounted. Supports filtering by host, tag,
+        path and various mount options.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Mount toggle request with optional mount options
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.ResticMountToggleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Mount status after operation
+          schema:
+            $ref: '#/definitions/server.ResticMountStatusResponse'
+        "400":
+          description: Invalid request
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: Mount already active at different path
+          schema:
+            type: string
+        "500":
+          description: Operation failed
+          schema:
+            type: string
+      summary: Toggle restic mount on/off
+      tags:
+      - Restic
   /api/clusters/{clusterName}/actions/rolling:
     post:
       consumes:
@@ -6739,6 +7295,44 @@ paths:
       summary: Retrieve backups for a specific cluster
       tags:
       - ClusterBackups
+  /api/clusters/{clusterName}/backups/reconcile:
+    post:
+      description: This endpoint triggers a manual reconciliation check to detect
+        drift between backup metadata files and restic snapshots.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Reconciliation report with orphaned and missing metadata
+          schema:
+            $ref: '#/definitions/cluster.ReconciliationReport'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: Cluster not found
+          schema:
+            type: string
+        "500":
+          description: Reconciliation failed
+          schema:
+            type: string
+      summary: Reconcile backup metadata with restic snapshots
+      tags:
+      - ClusterBackup
   /api/clusters/{clusterName}/backups/stats:
     get:
       description: This endpoint retrieves the backup stats for the specified cluster.
@@ -7886,6 +8480,44 @@ paths:
       summary: Init Restic Repository
       tags:
       - ClusterRestic
+  /api/clusters/{clusterName}/restic/mount-status:
+    get:
+      description: Returns the current mount status including path, ref count, and
+        active users
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Current mount status
+          schema:
+            $ref: '#/definitions/server.ResticMountStatusResponse'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: Cluster not found
+          schema:
+            type: string
+        "500":
+          description: Restic manager not available
+          schema:
+            type: string
+      summary: Get restic mount status
+      tags:
+      - Restic
   /api/clusters/{clusterName}/restic/purge/{snapshotID}:
     post:
       description: Purges the restic backup for the specified cluster.
@@ -7906,6 +8538,10 @@ paths:
         name: snapshotID
         required: true
         type: string
+      - description: Dry run restic purge
+        in: query
+        name: dry_run
+        type: boolean
       produces:
       - application/json
       responses:
@@ -10635,6 +11271,67 @@ paths:
       summary: Cancel a reseed task on a server
       tags:
       - DatabaseBackup
+  /api/clusters/{clusterName}/servers/{serverName}/actions/reseed-restic:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Reseeds a specified server using the provided restic snapshot ID and method.
+        Method accepts logical or physical. Strategy accepts auto, restore, dump, or mount.
+        The dump strategy is supported for logical mysqldump and single-file physical backups.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Reseed request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.ResticReseedRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Reseed queued successfully
+          schema:
+            type: string
+        "400":
+          description: Invalid request
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: Cluster or Server Not Found
+          schema:
+            type: string
+        "409":
+          description: Metadata not ready or reseed already queued
+          schema:
+            type: string
+        "500":
+          description: Reseed failed
+          schema:
+            type: string
+      summary: Reseed a server from restic snapshot
+      tags:
+      - DatabaseBackup
   /api/clusters/{clusterName}/servers/{serverName}/actions/reseed/{backupMethod}:
     get:
       description: Reseeds a specified server within a cluster using the specified
@@ -10664,8 +11361,8 @@ paths:
       produces:
       - application/json
       responses:
-        "200":
-          description: Reseed initiated successfully
+        "202":
+          description: Reseed queued successfully
           schema:
             type: string
         "403":

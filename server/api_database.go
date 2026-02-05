@@ -24,6 +24,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/crypto"
+	"github.com/signal18/replication-manager/utils/state"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -354,6 +355,10 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed/{backupMethod}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseed)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed-restic", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseedRestic)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/pitr", negroni.New(
@@ -1231,7 +1236,7 @@ func (repman *ReplicationManager) handlerMuxServerOptimize(w http.ResponseWriter
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
 // @Param backupMethod path string true "Backup Method"
-// @Success 200 {string} string "Reseed initiated successfully"
+// @Success 202 {string} string "Reseed queued successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error reseed logical backup" or "Error reseed physical backup"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/actions/reseed/{backupMethod} [get]
@@ -5204,3 +5209,128 @@ func (repman *ReplicationManager) handlerMuxServersPortConfigDummySender(w http.
 }
 
 // handlerMuxServerProvision handles the HTTP request to provision a server within a cluster.
+// handlerMuxServerReseedRestic handles reseeding using a specific restic snapshot.
+// @Summary Reseed a server from restic snapshot
+// @Description Reseeds a specified server using the provided restic snapshot ID and method.
+// @Description Method accepts logical or physical. Strategy accepts auto, restore, dump, or mount.
+// @Description The dump strategy is supported for logical mysqldump and single-file physical backups.
+// @Tags DatabaseBackup
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param body body ResticReseedRequest true "Reseed request"
+// @Success 202 {string} string "Reseed queued successfully"
+// @Failure 400 {string} string "Invalid request"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "Cluster or Server Not Found"
+// @Failure 409 {string} string "Metadata not ready or reseed already queued"
+// @Failure 500 {string} string "Reseed failed"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/reseed-restic [post]
+func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	clusterName := vars["clusterName"]
+	serverName := vars["serverName"]
+	if clusterName == "" || serverName == "" {
+		http.Error(w, "Invalid cluster or server name", http.StatusBadRequest)
+		return
+	}
+	mycluster := repman.getClusterByName(clusterName)
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if mycluster.ResticManager == nil {
+		http.Error(w, "Restic not configured for this cluster", http.StatusInternalServerError)
+		return
+	}
+
+	node := mycluster.GetServerFromName(serverName)
+	if node == nil {
+		http.Error(w, "Server Not Found", http.StatusNotFound)
+		return
+	}
+	var req ResticReseedRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.SnapshotID) == "" {
+		http.Error(w, "snapshotId is required", http.StatusBadRequest)
+		return
+	}
+
+	snap := mycluster.ResticManager.GetSnapshot(req.SnapshotID)
+	if snap == nil {
+		http.Error(w, "Snapshot with given ID not found", http.StatusBadRequest)
+		return
+	}
+
+	method := strings.ToLower(strings.TrimSpace(req.Method))
+	if method == "" {
+		method = "logical"
+	}
+	strategy := strings.ToLower(strings.TrimSpace(req.Strategy))
+	if strategy == "" {
+		strategy = "auto"
+	}
+	if err := mycluster.RequireSnapshotMetadataReady(req.SnapshotID); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if method != "logical" && method != "physical" {
+		http.Error(w, "Invalid method", http.StatusBadRequest)
+		return
+	}
+	opts := cluster.ResticReseedOptions{
+		TempDir:    req.TempDir,
+		UseTempDir: req.UseTempDir,
+		Cleanup:    req.Cleanup,
+		Overwrite:  req.Overwrite,
+	}
+	queueReq := cluster.ResticReseedRequest{
+		SnapshotID: req.SnapshotID,
+		Method:     method,
+		Strategy:   strategy,
+		Options:    opts,
+	}
+	if err := node.QueueResticReseed(queueReq); err != nil {
+		message := fmt.Sprintf("Restic reseed already queued for server %s", node.URL)
+		if err.Error() != "restic reseed already queued" {
+			message = err.Error()
+		}
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModRestic, "WARN",
+			"Restic reseed queue conflict on %s snapshot=%s method=%s strategy=%s: %s",
+			node.URL, req.SnapshotID, method, strategy, message)
+		http.Error(w, message, http.StatusConflict)
+		return
+	}
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModRestic, "INFO",
+		"Queued restic reseed for %s snapshot=%s method=%s strategy=%s",
+		node.URL, snap.ShortId, method, strategy)
+	mycluster.SetState("WARN0166", state.State{
+		ErrType:   "WARNING",
+		ErrDesc:   fmt.Sprintf(mycluster.GetErrorList()["WARN0166"], node.URL, snap.ShortId, method, strategy),
+		ErrFrom:   "API",
+		ServerUrl: node.URL,
+	})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(ApiResponse{Success: true, Data: "Reseed queued successfully"})
+}
+
+// ResticReseedRequest represents the JSON payload for reseeding from restic.
+type ResticReseedRequest struct {
+	SnapshotID string `json:"snapshotId"`
+	Method     string `json:"method"`
+	Strategy   string `json:"strategy,omitempty"`
+	TempDir    string `json:"tempDir,omitempty"`
+	UseTempDir *bool  `json:"useTempDir,omitempty"`
+	Cleanup    *bool  `json:"cleanup,omitempty"`
+	Overwrite  string `json:"overwrite,omitempty"`
+}

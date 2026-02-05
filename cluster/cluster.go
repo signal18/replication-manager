@@ -175,81 +175,83 @@ type Cluster struct {
 	//rplPass                   string                      `json:"-"`
 	//proxysqlUser              string                      `json:"-"`
 	//proxysqlPass              string                      `json:"-"`
-	StateMachine           *state.StateMachine         `json:"stateMachine" groups:"web"`
-	runOnceAfterTopology   bool                        `json:"-"`
-	logPtr                 *os.File                    `json:"-"`
-	termlength             int                         `json:"-"`
-	runUUID                string                      `json:"-"`
-	cfgGroupDisplay        string                      `json:"-"`
-	RepMgrVersion          string                      `json:"-"`
-	RepMgrHostname         string                      `json:"-"`
-	exitMsg                string                      `json:"-"`
-	exit                   bool                        `json:"-"`
-	canFlashBack           bool                        `json:"-"`
-	canResticFetchRepo     bool                        `json:"-"`
-	failoverCond           *nbc.NonBlockingChan        `json:"-"`
-	switchoverCond         *nbc.NonBlockingChan        `json:"-"`
-	rejoinCond             *nbc.NonBlockingChan        `json:"-"`
-	bootstrapCond          *nbc.NonBlockingChan        `json:"-"`
-	altertableCond         *nbc.NonBlockingChan        `json:"-"`
-	addtableCond           *nbc.NonBlockingChan        `json:"-"`
-	statecloseChan         chan state.State            `json:"-"`
-	switchoverChan         chan bool                   `json:"-"`
-	errorChan              chan error                  `json:"-"`
-	testStopCluster        bool                        `json:"-"`
-	testStartCluster       bool                        `json:"-"`
-	lastmaster             *ServerMonitor              `json:"-"`
-	benchmarkType          string                      `json:"-"`
-	HaveDBTLSCert          bool                        `json:"haveDBTLSCert" groups:"web"`
-	HaveDBTLSOldCert       bool                        `json:"haveDBTLSOldCert" groups:"web"`
-	tlsconf                *tls.Config                 `json:"-"`
-	tlsoldconf             *tls.Config                 `json:"-"`
-	tunnel                 *ssh.Client                 `json:"-"`
-	QueryRules             map[uint32]config.QueryRule `json:"-"`
-	Backups                []v3.Backup                 `json:"-"`
-	BackupStat             v3.BackupStat               `json:"backupStat" groups:"web"`
-	BackupMetaMap          *backupmgr.BackupMetaMap    `json:"backupList" groups:"web"`
-	SLAHistory             []state.Sla                 `json:"slaHistory" groups:"web"`
-	APIUsers               map[string]APIUser          `json:"apiUsers" groups:"web"`
-	Schedule               map[string]cron.Entry       `json:"-"`
-	scheduler              *cron.Cron                  `json:"-"`
-	debugLineMap           map[string]int              `json:"-"`
-	WaitingRejoin          int                         `json:"waitingRejoin" groups:"web"`
-	WaitingSwitchover      int                         `json:"waitingSwitchover" groups:"web"`
-	WaitingFailover        int                         `json:"waitingFailover" groups:"web"`
-	Configurator           configurator.Configurator   `json:"configurator" groups:"web"`
-	DiffVariables          []VariableDiff              `json:"diffVariables" groups:"web"`
-	inInitNodes            bool                        `json:"-"`
-	inOptimizeTables       bool                        `json:"inOptimizeTables" groups:"web"`
-	inAnalyzeTables        bool                        `json:"inAnalyzeTables" groups:"web"`
-	inConnectVault         bool                        `json:"-"`
-	CanInitNodes           bool                        `json:"canInitNodes" groups:"web"`
-	errorInitNodes         error                       `json:"-"`
-	CanConnectVault        bool                        `json:"canConnectVault"`
-	errorConnectVault      error                       `json:"-"`
-	SqlErrorLog            *logsql.Logger              `json:"-"`
-	SqlGeneralLog          *logsql.Logger              `json:"-"`
-	SstAvailablePorts      map[string]string           `json:"sstAvailablePorts" groups:"web"`
-	InPhysicalBackup       bool                        `json:"inPhysicalBackup" groups:"web"`
-	InLogicalBackup        bool                        `json:"inLogicalBackup" groups:"web"`
-	InBinlogBackup         bool                        `json:"inBinlogBackup" groups:"web"`
-	InResticLogicalBackup  bool                        `json:"inResticLogicalBackup" groups:"web"`
-	InResticPhysicalBackup bool                        `json:"inResticPhysicalBackup" groups:"web"`
-	InResticBackup         bool                        `json:"inResticBackup" groups:"web"`
-	InRollingRestart       bool                        `json:"inRollingRestart" groups:"web"`
-	failLoadP12Cert        bool                        `json:"-"`
-	Mailer                 *mailer.Mailer              `json:"-"`
-	ResticManager          *backupmgr.ResticManager    `json:"-"`
-	MessageChan            chan sharedlog.Message      `json:"-"`
-	ErrorConfigs           config.ErrorConfigs         `json:"-"` //To store error config
-	Partner                *config.Partner             `json:"partner" groups:"web"`
-	ConfigManager          *manager.ConfigManager      `json:"-"`
-	failSendCount          int                         `json:"-"`
-	MeetUserID             string                      `json:"-"` //To store meet user id
-	ServiceTemplates       []string                    `json:"-"` //To store application templates
-	DiskStatManager        *misc.DiskStatManager       `json:"diskStat" groups:"web"`
-	RefreshTemplateMD5Chan chan *App                   `json:"-"`
-	LastDelayStatPrint     time.Time
+	StateMachine                        *state.StateMachine         `json:"stateMachine" groups:"web"`
+	runOnceAfterTopology                bool                        `json:"-"`
+	logPtr                              *os.File                    `json:"-"`
+	termlength                          int                         `json:"-"`
+	runUUID                             string                      `json:"-"`
+	cfgGroupDisplay                     string                      `json:"-"`
+	RepMgrVersion                       string                      `json:"-"`
+	RepMgrHostname                      string                      `json:"-"`
+	exitMsg                             string                      `json:"-"`
+	exit                                bool                        `json:"-"`
+	canFlashBack                        bool                        `json:"-"`
+	canResticFetchRepo                  bool                        `json:"-"`
+	failoverCond                        *nbc.NonBlockingChan        `json:"-"`
+	switchoverCond                      *nbc.NonBlockingChan        `json:"-"`
+	rejoinCond                          *nbc.NonBlockingChan        `json:"-"`
+	bootstrapCond                       *nbc.NonBlockingChan        `json:"-"`
+	altertableCond                      *nbc.NonBlockingChan        `json:"-"`
+	addtableCond                        *nbc.NonBlockingChan        `json:"-"`
+	statecloseChan                      chan state.State            `json:"-"`
+	switchoverChan                      chan bool                   `json:"-"`
+	errorChan                           chan error                  `json:"-"`
+	testStopCluster                     bool                        `json:"-"`
+	testStartCluster                    bool                        `json:"-"`
+	lastmaster                          *ServerMonitor              `json:"-"`
+	benchmarkType                       string                      `json:"-"`
+	HaveDBTLSCert                       bool                        `json:"haveDBTLSCert" groups:"web"`
+	HaveDBTLSOldCert                    bool                        `json:"haveDBTLSOldCert" groups:"web"`
+	tlsconf                             *tls.Config                 `json:"-"`
+	tlsoldconf                          *tls.Config                 `json:"-"`
+	tunnel                              *ssh.Client                 `json:"-"`
+	QueryRules                          map[uint32]config.QueryRule `json:"-"`
+	Backups                             []v3.Backup                 `json:"-"`
+	BackupStat                          v3.BackupStat               `json:"backupStat" groups:"web"`
+	BackupMetaMap                       *backupmgr.BackupMetaMap    `json:"backupList" groups:"web"`
+	snapshotMetadata                    *snapshotMetadataManager    `json:"-"`
+	reconcileSnapshotMetadataInProgress int32                       `json:"-"`
+	SLAHistory                          []state.Sla                 `json:"slaHistory" groups:"web"`
+	APIUsers                            map[string]APIUser          `json:"apiUsers" groups:"web"`
+	Schedule                            map[string]cron.Entry       `json:"-"`
+	scheduler                           *cron.Cron                  `json:"-"`
+	debugLineMap                        map[string]int              `json:"-"`
+	WaitingRejoin                       int                         `json:"waitingRejoin" groups:"web"`
+	WaitingSwitchover                   int                         `json:"waitingSwitchover" groups:"web"`
+	WaitingFailover                     int                         `json:"waitingFailover" groups:"web"`
+	Configurator                        configurator.Configurator   `json:"configurator" groups:"web"`
+	DiffVariables                       []VariableDiff              `json:"diffVariables" groups:"web"`
+	inInitNodes                         bool                        `json:"-"`
+	inOptimizeTables                    bool                        `json:"inOptimizeTables" groups:"web"`
+	inAnalyzeTables                     bool                        `json:"inAnalyzeTables" groups:"web"`
+	inConnectVault                      bool                        `json:"-"`
+	CanInitNodes                        bool                        `json:"canInitNodes" groups:"web"`
+	errorInitNodes                      error                       `json:"-"`
+	CanConnectVault                     bool                        `json:"canConnectVault"`
+	errorConnectVault                   error                       `json:"-"`
+	SqlErrorLog                         *logsql.Logger              `json:"-"`
+	SqlGeneralLog                       *logsql.Logger              `json:"-"`
+	SstAvailablePorts                   map[string]string           `json:"sstAvailablePorts" groups:"web"`
+	InPhysicalBackup                    bool                        `json:"inPhysicalBackup" groups:"web"`
+	InLogicalBackup                     bool                        `json:"inLogicalBackup" groups:"web"`
+	InBinlogBackup                      bool                        `json:"inBinlogBackup" groups:"web"`
+	InResticLogicalBackup               bool                        `json:"inResticLogicalBackup" groups:"web"`
+	InResticPhysicalBackup              bool                        `json:"inResticPhysicalBackup" groups:"web"`
+	InResticBackup                      bool                        `json:"inResticBackup" groups:"web"`
+	InRollingRestart                    bool                        `json:"inRollingRestart" groups:"web"`
+	failLoadP12Cert                     bool                        `json:"-"`
+	Mailer                              *mailer.Mailer              `json:"-"`
+	ResticManager                       *backupmgr.ResticManager    `json:"-"`
+	MessageChan                         chan sharedlog.Message      `json:"-"`
+	ErrorConfigs                        config.ErrorConfigs         `json:"-"` //To store error config
+	Partner                             *config.Partner             `json:"partner" groups:"web"`
+	ConfigManager                       *manager.ConfigManager      `json:"-"`
+	failSendCount                       int                         `json:"-"`
+	MeetUserID                          string                      `json:"-"` //To store meet user id
+	ServiceTemplates                    []string                    `json:"-"` //To store application templates
+	DiskStatManager                     *misc.DiskStatManager       `json:"diskStat" groups:"web"`
+	RefreshTemplateMD5Chan              chan *App                   `json:"-"`
+	LastDelayStatPrint                  time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
 	SlavesOldestMasterFile SlavesOldestMasterFile
@@ -394,6 +396,8 @@ func (cluster *Cluster) InitFromConf() {
 	// should use buffered channels or it will block
 	cluster.statecloseChan = make(chan state.State, 100)
 	cluster.errorChan = make(chan error)
+	cluster.snapshotMetadata = newSnapshotMetadataManager(cluster)
+	cluster.configureSnapshotMetadataExtractorConcurrency(cluster.Conf.BackupResticMetadataExtractorConcurrency)
 	cluster.failoverCond = nbc.New()
 	cluster.switchoverCond = nbc.New()
 	cluster.rejoinCond = nbc.New()
@@ -459,6 +463,7 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Creating directory  %s", cluster.WorkingDir)
 		os.MkdirAll(cluster.WorkingDir, os.ModePerm)
 	}
+	cluster.initSnapshotMetadataPersistence()
 
 	cluster.SetClusterCredentialsFromConfig()
 	cluster.LoadAPIUsers()
@@ -808,6 +813,10 @@ func (cluster *Cluster) Run() {
 							// Preserve tools if not installed or has problem
 							cluster.StateMachine.PreserveState(pstates3600...)
 						}
+						// Reconciliation: Check for drift between metadata and snapshots
+						if cluster.Conf.BackupReconcileInterval > 0 && cluster.StateMachine.GetHeartbeats()%int64(cluster.Conf.BackupReconcileInterval) == 0 {
+							cluster.ReconcileSnapshotMetadataAsync()
+						}
 						if cluster.SlavesOldestMasterFile.Suffix == 0 {
 							go cluster.CheckSlavesReplicationsPurge()
 						}
@@ -956,6 +965,42 @@ func (cluster *Cluster) StateProcessing() {
 		}
 
 		for _, s := range cluster.StateMachine.GetLastOpenedStates() {
+			if s.ErrKey == "WARN0166" {
+				server := cluster.GetServerFromURL(s.ServerUrl)
+				if server == nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+						"Restic reseed queued but server not found: %s", s.ServerUrl)
+				} else {
+					req, ok := server.DequeueResticReseed()
+					if !ok {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+							"Restic reseed queued but no pending request for %s", server.URL)
+						continue
+					}
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+						"Dequeued restic reseed request for %s snapshot=%s method=%s strategy=%s",
+						server.URL, req.SnapshotID, req.Method, req.Strategy)
+					go func(srv *ServerMonitor, request ResticReseedRequest) {
+						err := srv.JobReseedFromRestic(request.SnapshotID, request.Method, request.Strategy, request.Options)
+						if err != nil {
+							if srv.HasAnyReseedingState() {
+								srv.SetInReseedBackup("")
+							}
+							if srv.HasWaitResticReseedCookie() {
+								if err := srv.DelWaitResticReseedCookie(); err != nil {
+									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+										"Failed to clear restic reseed cookie after error for %s snapshot=%s: %s", srv.URL, request.SnapshotID, err)
+								}
+							}
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlErr,
+								"Restic reseed failed for %s snapshot=%s: %s", srv.URL, request.SnapshotID, err)
+							return
+						}
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+							"Restic reseed completed for %s snapshot=%s", srv.URL, request.SnapshotID)
+					}(server, req)
+				}
+			}
 
 			cluster.CheckAlert(s, false)
 			cluster.BashScriptOpenSate(s)
@@ -975,6 +1020,9 @@ func (cluster *Cluster) Stop() {
 	cluster.Lock()
 	defer cluster.Unlock()
 	if cluster.ResticManager != nil {
+		if err := cluster.ResticManager.UnmountRepo(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Restic unmount on shutdown failed: %s", err)
+		}
 		cluster.ResticManager.ShutdownWorker()
 	}
 	cluster.CloseRefreshTemplateMD5Worker()
@@ -1432,6 +1480,94 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 	}
 }
 
+func (cluster *Cluster) configureSnapshotMetadataExtractorConcurrency(concurrency int) {
+	manager := cluster.getSnapshotMetadataManager()
+	if manager == nil {
+		return
+	}
+	if concurrency <= 0 {
+		concurrency = snapshotMetadataExtractorConcurrency
+	}
+	var logDeferred bool
+	var logApplied bool
+	var inFlight int
+	var previous int
+	manager.extractorSemMu.Lock()
+	if manager.extractorSem == nil {
+		manager.extractorSem = make(chan struct{}, concurrency)
+		manager.extractorSemCap = concurrency
+		manager.extractorSemPending = 0
+		manager.extractorSemMu.Unlock()
+		return
+	}
+	previous = manager.extractorSemCap
+	if previous == concurrency {
+		manager.extractorSemPending = 0
+		manager.extractorSemMu.Unlock()
+		return
+	}
+	inFlight = len(manager.extractorSem)
+	if inFlight > 0 {
+		manager.extractorSemPending = concurrency
+		logDeferred = true
+		manager.extractorSemMu.Unlock()
+	} else {
+		manager.extractorSem = make(chan struct{}, concurrency)
+		manager.extractorSemCap = concurrency
+		manager.extractorSemPending = 0
+		logApplied = true
+		manager.extractorSemMu.Unlock()
+	}
+	if logDeferred {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+			"Deferring snapshot metadata extractor concurrency update (in-flight=%d): current=%d requested=%d",
+			inFlight, previous, concurrency)
+	}
+	if logApplied {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+			"Snapshot metadata extractor concurrency set to %d (previous %d)", concurrency, previous)
+	}
+}
+
+func (cluster *Cluster) tryApplySnapshotMetadataExtractorConcurrency() {
+	manager := cluster.getSnapshotMetadataManager()
+	if manager == nil {
+		return
+	}
+	var pending int
+	var previous int
+	manager.extractorSemMu.Lock()
+	pending = manager.extractorSemPending
+	if pending == 0 {
+		manager.extractorSemMu.Unlock()
+		return
+	}
+	if manager.extractorSem != nil && len(manager.extractorSem) > 0 {
+		manager.extractorSemMu.Unlock()
+		return
+	}
+	previous = manager.extractorSemCap
+	manager.extractorSem = make(chan struct{}, pending)
+	manager.extractorSemCap = pending
+	manager.extractorSemPending = 0
+	manager.extractorSemMu.Unlock()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+		"Snapshot metadata extractor concurrency updated to %d (previous %d)", pending, previous)
+}
+
+func (cluster *Cluster) getSnapshotMetadataManager() *snapshotMetadataManager {
+	if cluster == nil {
+		return nil
+	}
+	if cluster.snapshotMetadata == nil {
+		cluster.snapshotMetadata = newSnapshotMetadataManager(cluster)
+	}
+	if cluster.snapshotMetadata.cache == nil {
+		cluster.snapshotMetadata.cache = newSnapshotMetadataCache()
+	}
+	return cluster.snapshotMetadata
+}
+
 func (cluster *Cluster) InitAgent(conf config.Config) {
 	*cluster.Conf = conf
 	cluster.agentFlagCheck()
@@ -1736,17 +1872,17 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 		// If shardproxy is enabled, check for duplicates in child clusters
 		if cluster.Conf.MdbsProxyOn {
 			for _, cl := range cluster.clusterList {
-					if cl.Conf.MdbsProxyOn && cl.Conf.ClusterHead == cluster.Name {
-						m := cl.GetMaster()
-						if m != nil {
-							cltbldef, _ := m.GetTableFromDict(t.TableSchema + "." + t.TableName)
-							if cltbldef.TableName == t.TableName {
-								duplicates = append(duplicates, m)
-								tableCluster = append(tableCluster, cl.GetName())
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Found duplicate table %s in %s", t.TableSchema+"."+t.TableName, m.URL)
-							}
+				if cl.Conf.MdbsProxyOn && cl.Conf.ClusterHead == cluster.Name {
+					m := cl.GetMaster()
+					if m != nil {
+						cltbldef, _ := m.GetTableFromDict(t.TableSchema + "." + t.TableName)
+						if cltbldef.TableName == t.TableName {
+							duplicates = append(duplicates, m)
+							tableCluster = append(tableCluster, cl.GetName())
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Found duplicate table %s in %s", t.TableSchema+"."+t.TableName, m.URL)
 						}
 					}
+				}
 			}
 			t.TableClusters = strings.Join(tableCluster, ",")
 			tables[t.TableSchema+"."+t.TableName] = t

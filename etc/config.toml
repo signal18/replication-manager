@@ -178,8 +178,12 @@ include = "/etc/replication-manager/cluster.d"
 # backup-myloader-path = "/usr/bin/myloader"
 # backup-restic-binary-path = "/usr/bin/restic"
 # backup-restic-timeout = 7200
+# backup-restic-dump-timeout = 0 # 0 uses backup-restic-timeout
 # backup-restic-dir-mode = 700
 # backup-restic-file-mode = 600
+# backup-restic-metadata-extractor-concurrency = 2
+# Enable cleanup of stale restic mounts on startup.
+# backup-restic-mount-recovery-enabled = true
 # backup-restic-tags = "tenant,cluster,engine,version,backup-type,backup-tool,line"
 # Quote a tag to keep it literal (e.g. 'tenant,"cluster",env:prod').
 #   Templates: {tenant},{cluster},{engine},{version},{backup-type},{backup-tool},{line}

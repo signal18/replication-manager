@@ -51,11 +51,13 @@ Behavior notes:
 - Template entries without `{}` are treated as:
   - a literal tag if they contain `:`
   - a shorthand for `{key}` when the entry matches a supported key
+  - a `key:` shorthand to emit `key:value` when the entry ends with `:`
 - Template entries wrapped in single or double quotes are treated as literal tags
   (quotes are stripped). Commas inside quoted entries are allowed.
 - Default configured tag set:
   `tenant,cluster,engine,version,backup-type,backup-tool,line`
-- The `line` tag is always emitted as `line:default` or `line:adhoc`.
+- The `line` tag is emitted as the plain value (`default` or `adhoc`) unless the
+  template uses `line:` (shorthand) or `line:{line}` (explicit key:value).
 - Older snapshots without a `line` tag are treated like `line:default` by purge policies (they are not protected by `line:adhoc` keep-tag).
 
 ### Restic Purge Grouping
@@ -71,7 +73,8 @@ Examples:
 
 ### Restic Purge Keep Tags
 - `backup-restic-purge-keep-tag` sets `forget --keep-tag` values.
-- Use this to protect ad-hoc snapshots from global purge policies (default: `line:adhoc`).
+- Use this to protect ad-hoc snapshots from global purge policies (default: `line:adhoc adhoc`,
+  covering both key:value and legacy plain tags).
 - Keep-tag templates only support `{cluster}` and `{tenant}` placeholders; other placeholders
   are rejected. Quote a tag to keep it literal.
 - Separate keep-tag filters with spaces (commas are also accepted for legacy configs).

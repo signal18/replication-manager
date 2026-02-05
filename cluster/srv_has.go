@@ -139,6 +139,10 @@ func (server *ServerMonitor) HasWaitPhysicalBackupCookie() bool {
 	return server.hasCookie("cookie_waitphysicalbackup")
 }
 
+func (server *ServerMonitor) HasWaitResticReseedCookie() bool {
+	return server.hasCookie("cookie_waitresticreseed")
+}
+
 func (server *ServerMonitor) HasWaitStopCookie() bool {
 	return server.hasCookie("cookie_waitstop")
 }
@@ -799,12 +803,28 @@ func (server *ServerMonitor) HasMdevIssue() bool {
 
 /* Check agains listed MDEV issues, lower severity will include higher severity */
 func (server *ServerMonitor) HasReseedingState(tool string) bool {
-	return server.IsReseeding == tool
+	server.reseedMutex.Lock()
+	current := server.IsReseeding
+	server.reseedMutex.Unlock()
+	return current == tool
 }
 
 /* Check agains listed MDEV issues, lower severity will include higher severity */
 func (server *ServerMonitor) HasAnyReseedingState() bool {
-	return server.IsReseeding != ""
+	server.reseedMutex.Lock()
+	current := server.IsReseeding
+	server.reseedMutex.Unlock()
+	return current != ""
+}
+
+func (server *ServerMonitor) GetReseedingState() (bool, string) {
+	server.reseedMutex.Lock()
+	current := server.IsReseeding
+	server.reseedMutex.Unlock()
+	if current == "" {
+		return false, ""
+	}
+	return true, current
 }
 
 func (server *ServerMonitor) IsSlaveError() bool {

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import PropTypes from 'prop-types'
 import styles from './styles.module.scss'
 import { Flex, HStack, VStack } from '@chakra-ui/react'
 import AppMenu from '../../../Dashboard/components/Apps/AppMenu'
@@ -13,16 +14,6 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
   const appConfig = selectedApp?.config
   const appName = selectedApp?.name
   const appHost = selectedApp?.host
-
-  if (!selectedApp) {
-    return (
-        <Flex className={styles.actions}>
-          <HStack>
-            <ServerName className={styles.appName} name="Loading selected app" />
-          </HStack>
-        </Flex>
-    )
-  }
 
   const overviewComponent = useMemo(() => {
     return (
@@ -60,10 +51,19 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
   }, [clusterName, appId, user])
 
 
-
   useEffect(() => {
     setCurrentTab(tab)
   }, [tab])
+
+  if (!selectedApp) {
+    return (
+      <Flex className={styles.actions}>
+        <HStack>
+          <ServerName className={styles.appName} name="Loading selected app" />
+        </HStack>
+      </Flex>
+    )
+  }
 
   return (
     <VStack className={styles.contentContainer}>
@@ -91,3 +91,19 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
 }
 
 export default ClusterAppTabContent
+
+ClusterAppTabContent.propTypes = {
+  appId: PropTypes.string.isRequired,
+  tab: PropTypes.string.isRequired,
+  clusterName: PropTypes.string.isRequired,
+  user: PropTypes.shape({
+    grants: PropTypes.object
+  }),
+  selectedApp: PropTypes.shape({
+    config: PropTypes.object,
+    name: PropTypes.string,
+    host: PropTypes.string,
+    state: PropTypes.string
+  }),
+  config: PropTypes.object
+}

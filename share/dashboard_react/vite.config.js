@@ -10,13 +10,15 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'https://172.18.0.10:10005/',
-        secure: false
+        secure: false,
+        ws: true,
+        rewriteWsOrigin: true,
       },
       '/graphite': {
         target: 'https://172.18.0.10:10005/',
         secure: false
       }
-    }
+    },
   },
   plugins: [react(), viteCompression({ algorithm: 'gzip' }), basicSSL()],
   css: {

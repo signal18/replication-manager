@@ -26,17 +26,16 @@ func TestSetWaitDummyConfigSendCookie(t *testing.T) {
 	}
 
 	// Verify: Cookie file exists
-	cookiePattern := filepath.Join(server.Datadir, ".system", "job-receiver-dummy-config-send-cookie-*")
-	matches, err := filepath.Glob(cookiePattern)
-	if err != nil {
-		t.Fatalf("Failed to glob cookie files: %v", err)
+	cookiePath := filepath.Join(server.Datadir, "@cookie_wait_dummy_send")
+	if _, err := os.Stat(cookiePath); err != nil {
+		t.Fatalf("Cookie file was not created at %s: %v", cookiePath, err)
 	}
 
-	if len(matches) == 0 {
-		t.Error("Cookie file was not created")
+	if !server.HasWaitDummyConfigSendCookie() {
+		t.Error("Cookie should be detected after creation")
 	}
 
-	t.Logf("Cookie created: %v", matches)
+	t.Logf("Cookie created: %s", cookiePath)
 }
 
 // TestDelWaitDummyConfigSendCookie tests cookie deletion
@@ -68,6 +67,27 @@ func TestDelWaitDummyConfigSendCookie(t *testing.T) {
 	}
 
 	t.Log("Cookie deleted successfully")
+}
+
+func TestWaitResticReseedCookieLifecycle(t *testing.T) {
+	server := setupTestServer(t)
+	defer cleanupTestServer(t, server)
+
+	if server.HasWaitResticReseedCookie() {
+		t.Fatalf("expected no restic reseed cookie at start")
+	}
+	if err := server.SetWaitResticReseedCookie(); err != nil {
+		t.Fatalf("SetWaitResticReseedCookie() failed: %v", err)
+	}
+	if !server.HasWaitResticReseedCookie() {
+		t.Fatalf("expected restic reseed cookie to be present")
+	}
+	if err := server.DelWaitResticReseedCookie(); err != nil {
+		t.Fatalf("DelWaitResticReseedCookie() failed: %v", err)
+	}
+	if server.HasWaitResticReseedCookie() {
+		t.Fatalf("expected restic reseed cookie to be removed")
+	}
 }
 
 // TestHasWaitDummyConfigSendCookie tests cookie existence check

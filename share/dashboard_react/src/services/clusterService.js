@@ -16,7 +16,7 @@ export const clusterService = {
   getJobs,
   getShardSchema,
   getQueryRules,
-  
+
   // Restic management APIs
   getResticSnapshot,
   getResticStats,
@@ -28,6 +28,8 @@ export const clusterService = {
   resticQueueMove,
   resticQueueCancel,
   resticQueueReset,
+  resticMountToggle,
+  getResticMountStatus,
 
   // Cluster management APIs
   checksumAllTables,
@@ -73,6 +75,7 @@ export const clusterService = {
   reseedLogicalFromBackup,
   reseedLogicalFromMaster,
   reseedPhysicalFromBackup,
+  reseedFromResticSnapshot,
   flushLogs,
   physicalBackupMaster,
   logicalBackup,
@@ -203,9 +206,13 @@ function getBackupStats(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/backups/stats`)
 }
 
-
-function getResticSnapshot(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/restic/snapshots`)
+function getResticSnapshot(clusterName, baseURL, filter) {
+  const params = new URLSearchParams()
+  if (filter) {
+    params.append('filter', filter)
+  }
+  const query = params.toString() ? `?${params.toString()}` : ''
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/snapshots${query}`)
 }
 
 function getResticStats(clusterName, baseURL) {
@@ -260,7 +267,9 @@ function toggleTrafficStaging(clusterName, baseURL) {
 
 function addServer(clusterName, host, port, monitorType, tag, dockerRegistry = {}, baseURL) {
   if (monitorType === 'app') {
-    return getApi(baseURL).post(`clusters/${clusterName}/actions/addserver/${host}/${port}/${monitorType}/${tag}`, { ...dockerRegistry })
+    return getApi(baseURL).post(`clusters/${clusterName}/actions/addserver/${host}/${port}/${monitorType}/${tag}`, {
+      ...dockerRegistry
+    })
   } else if (!monitorType) {
     return getApi(baseURL).get(`clusters/${clusterName}/actions/addserver/${host}/${port}`)
   } else if (!tag) {
@@ -407,6 +416,16 @@ function reseedPhysicalFromBackup(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/reseed/physicalbackup`)
 }
 
+function reseedFromResticSnapshot(clusterName, serverId, snapshotId, method, strategy, cleanup, tempDir, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/reseed-restic`, {
+    snapshotId,
+    method,
+    strategy,
+    cleanup,
+    tempDir
+  })
+}
+
 function flushLogs(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/flush-logs`)
 }
@@ -510,28 +529,32 @@ function stagingProxy(clusterName, proxyId, isStaging, baseURL) {
 //#region Database service APIs
 function getDatabaseService(clusterName, serviceName, dbId, baseURL, queryParams = {}) {
   let path = `clusters/${clusterName}/servers/${dbId}/${serviceName}`
-  
+
   // Build query string from queryParams object
   const queryString = Object.keys(queryParams)
-    .filter(key => queryParams[key] !== undefined && queryParams[key] !== null && queryParams[key] !== '')
-    .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(queryParams[key])}`)
+    .filter((key) => queryParams[key] !== undefined && queryParams[key] !== null && queryParams[key] !== '')
+    .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(queryParams[key])}`)
     .join('&')
-  
+
   if (queryString) {
     path += `?${queryString}`
-    }
-  
+  }
+
   return getApi(baseURL).get(path)
 }
 
 function preserveVariable(clusterName, dbId, variableName, action, baseURL) {
   // action can be 'preserve', 'accept', or 'clear'
-  return getApi(baseURL).post(`clusters/${clusterName}/servers/${dbId}/variables-${action}?variableName=${variableName}`)
+  return getApi(baseURL).post(
+    `clusters/${clusterName}/servers/${dbId}/variables-${action}?variableName=${variableName}`
+  )
 }
 
 function setCustomVariableValue(clusterName, dbId, variableName, customValue, baseURL) {
   // Set a custom preserved value for a variable
-  return getApi(baseURL).post(`clusters/${clusterName}/servers/${dbId}/variables-set-custom?variableName=${encodeURIComponent(variableName)}&customValue=${encodeURIComponent(customValue)}`)
+  return getApi(baseURL).post(
+    `clusters/${clusterName}/servers/${dbId}/variables-set-custom?variableName=${encodeURIComponent(variableName)}&customValue=${encodeURIComponent(customValue)}`
+  )
 }
 
 function updateLongQueryTime(clusterName, dbId, time, baseURL) {
@@ -684,7 +707,10 @@ function dropDeployment(clusterName, appId, deployName, baseURL) {
 }
 
 function deploymentFieldChange(clusterName, appId, field, index, key, value, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployment/${field}/index/${index}/${key}/modify`, { value })
+  return getApi(baseURL).post(
+    `clusters/${clusterName}/apps/${appId}/deployment/${field}/index/${index}/${key}/modify`,
+    { value }
+  )
 }
 function deploymentFieldIndexAdd(clusterName, appId, field, value, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployment/${field}/add`, value)
@@ -694,7 +720,9 @@ function deploymentFieldIndexDrop(clusterName, appId, field, index, baseURL) {
 }
 
 function storageFieldChange(clusterName, appId, field, index, key, value, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/storages/${field}/index/${index}/${key}/modify`, { value })
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/storages/${field}/index/${index}/${key}/modify`, {
+    value
+  })
 }
 function storageFieldIndexAdd(clusterName, appId, field, value, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/storages/${field}/add`, value)
@@ -708,14 +736,19 @@ function connectDockerRegistry(clusterName, dockerRegistry = {}, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/actions/docker/actions/registry-connect`, { ...dockerRegistry })
 }
 
-
 // Restic functions
 function purgeResticSnapshot(clusterName, snapshotId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/purge/${snapshotId}`)
 }
 
-function purgeResticByPolicy(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/restic/purge/policy`)
+function purgeResticByPolicy(clusterName, baseURL, options = {}) {
+  const params = new URLSearchParams()
+  if (options.dryRun) {
+    params.set('dry_run', '1')
+  }
+  const query = params.toString()
+  const suffix = query ? `?${query}` : ''
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/purge/policy${suffix}`)
 }
 
 function getResticQueue(clusterName, baseURL) {
@@ -731,19 +764,30 @@ function resticQueuePause(clusterName, baseURL) {
 }
 
 function resticQueueMove(clusterName, moveType, taskID, afterID, baseURL) {
-  if (moveType == "after") {
+  if (moveType == 'after') {
     return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/move/${moveType}/${taskID}/${afterID}`)
   } else {
     return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/move/${moveType}/${taskID}`)
   }
 }
 
-function resticQueueCancel(clusterName, taskID,  baseURL) {
+function resticQueueCancel(clusterName, taskID, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/cancel/${taskID}`)
 }
 
 function resticQueueReset(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/reset`)
+}
+
+function resticMountToggle(clusterName, action, options, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/restic-mount-toggle`, {
+    action,
+    ...(options ? { options } : {})
+  })
+}
+
+function getResticMountStatus(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/mount-status`)
 }
 
 // Utility functions

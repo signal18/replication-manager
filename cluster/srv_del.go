@@ -94,6 +94,10 @@ func (server *ServerMonitor) DelWaitPhysicalBackupCookie() error {
 	return server.delCookie("cookie_waitphysicalbackup")
 }
 
+func (server *ServerMonitor) DelWaitResticReseedCookie() error {
+	return server.delCookie("cookie_waitresticreseed")
+}
+
 func (server *ServerMonitor) DelBackupLogicalCookie() error {
 	return server.delCookie("cookie_logicalbackup")
 }

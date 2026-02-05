@@ -11,8 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/signal18/replication-manager/share"
 )
@@ -474,4 +476,33 @@ func NewDiskUsageStat(u *disk.UsageStat) *DiskUsageStat {
 	d.LastUpdate = time.Now()
 
 	return d
+}
+
+// isDirEmpty reports whether a directory contains no entries.
+func IsDirEmpty(path string) (bool, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return false, err
+	}
+	return len(entries) == 0, nil
+}
+
+// checkDiskSpace validates that path has at least requiredBytes available.
+func CheckDiskSpace(path string, requiredBytes uint64) error {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(path, &stat); err != nil {
+		return fmt.Errorf("statfs failed for %s: %w", path, err)
+	}
+	available := stat.Bavail * uint64(stat.Bsize)
+	if available < requiredBytes {
+		return fmt.Errorf("insufficient disk space at %s: required=%s available=%s", path, humanize.Bytes(requiredBytes), humanize.Bytes(available))
+	}
+	return nil
+}
+
+func IsInsufficientDiskSpaceError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "insufficient disk space")
 }
