@@ -1093,7 +1093,7 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	// Use configurable parallel blocks for better performance
 	// For restore operations, use higher default (16) for speed, matching original behavior
 	parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
-	fz, err := gzip.NewReaderN(gzfile, cluster.Conf.SSTSendBuffer, parallelBlocks)
+	fz, err := gzip.NewReaderN(gzfile, cluster.getCompressBackupsBufferSize(config.ConstLogModTask), parallelBlocks)
 	if err != nil {
 		return fmt.Errorf("[%s] Failed to unzip backup file in backup server for reseed:  %s ", server.URL, err)
 	}
@@ -1189,7 +1189,7 @@ func (server *ServerMonitor) ReadMysqldumpUser(backupfile string) (io.Reader, er
 	// Use configurable parallel blocks for better performance
 	// For restore operations, use higher default (16) for speed, matching original behavior
 	parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
-	fz, err := gzip.NewReaderN(gzfile, cluster.Conf.SSTSendBuffer, parallelBlocks)
+	fz, err := gzip.NewReaderN(gzfile, cluster.getCompressBackupsBufferSize(config.ConstLogModTask), parallelBlocks)
 	if err != nil {
 		return nil, fmt.Errorf("[%s] Failed to unzip backup file in backup server for reseed:  %s ", server.URL, err)
 	}

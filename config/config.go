@@ -701,6 +701,7 @@ type Config struct {
 	CompressBackups                           bool   `mapstructure:"compress-backups" toml:"compress-backups" json:"compressBackups"`
 	CompressBackupsCompressionLevel           int    `mapstructure:"compress-backups-compression-level" toml:"compress-backups-compression-level" json:"compressBackupsCompressionLevel"`
 	CompressBackupsParallelBlocks             int    `mapstructure:"compress-backups-parallel-blocks" toml:"compress-backups-parallel-blocks" json:"compressBackupsParallelBlocks"`
+	CompressBackupsBufferSize                 int    `mapstructure:"compress-backups-buffer-size" toml:"compress-backups-buffer-size" json:"compressBackupsBufferSize"`
 	CompressBackupsLogical                    string `mapstructure:"compress-backups-logical" toml:"compress-backups-logical" json:"compressBackupsLogical"`
 	CompressBackupsPhysical                   string `mapstructure:"compress-backups-physical" toml:"compress-backups-physical" json:"compressBackupsPhysical"`
 	BackupReseedRemoteDecompress              bool   `mapstructure:"backup-reseed-remote-decompress" toml:"backup-reseed-remote-decompress" json:"backupReseedRemoteDecompress"`

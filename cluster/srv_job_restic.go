@@ -1792,7 +1792,7 @@ func (server *ServerMonitor) reseedMysqldumpFromResticStream(ctx context.Context
 			"Detected gzip-compressed mysqldump stream: %s",
 			filePath)
 		var err error
-		gzReader, err = pgzip.NewReaderN(pr, cluster.Conf.SSTSendBuffer, cluster.Conf.CompressBackupsParallelBlocks)
+		gzReader, err = pgzip.NewReaderN(pr, cluster.getCompressBackupsBufferSize(config.ConstLogModRestic), cluster.Conf.CompressBackupsParallelBlocks)
 		if err != nil {
 			_ = pr.CloseWithError(err)
 			return fmt.Errorf("failed to create gzip reader: %w", err)

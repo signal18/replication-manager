@@ -870,6 +870,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.CompressBackupsPhysical, "compress-backups-physical", "auto", "Compression for physical backups: auto|true|false (auto uses compress-backups)")
 	flags.IntVar(&conf.CompressBackupsCompressionLevel, "compress-backups-compression-level", 6, "Compression level for pgzip (1=fastest, 9=best compression, 6=default)")
 	flags.IntVar(&conf.CompressBackupsParallelBlocks, "compress-backups-parallel-blocks", 4, "Number of parallel blocks for pgzip decompression (higher=faster but more memory)")
+	flags.IntVar(&conf.CompressBackupsBufferSize, "compress-backups-buffer-size", 0, "pgzip reader buffer size for backups (0 uses sst-send-buffer)")
 	flags.BoolVar(&conf.BackupReseedRemoteDecompress, "backup-reseed-remote-decompress", false, "Decompress backup on remote server during reseed (send compressed stream)")
 	flags.BoolVar(&conf.BackupSplitMysqlUser, "backup-split-mysql-user", false, "To split mysql user in backup")
 	flags.BoolVar(&conf.BackupRestoreMysqlUser, "backup-restore-mysql-user", true, "Restore mysql user alongside with backup")

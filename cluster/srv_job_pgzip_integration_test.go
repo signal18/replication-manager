@@ -26,6 +26,7 @@ func TestPgzipEndToEndCompression(t *testing.T) {
 		CompressBackupsCompressionLevel: 6,
 		CompressBackupsParallelBlocks:   4,
 		SSTSendBuffer:                   16384,
+		CompressBackupsBufferSize:       16384,
 	}
 
 	// Create test data
@@ -134,7 +135,7 @@ func TestPgzipEndToEndCompression(t *testing.T) {
 			}
 			defer f.Close()
 
-			gr, err := pgzip.NewReaderN(f, conf.SSTSendBuffer, parallelBlocks)
+			gr, err := pgzip.NewReaderN(f, conf.CompressBackupsBufferSize, parallelBlocks)
 			if err != nil {
 				if !tc.expectedSuccess {
 					t.Logf("Expected failure occurred during decompression: %v", err)
@@ -312,6 +313,7 @@ func TestPgzipLargeFileHandling(t *testing.T) {
 		CompressBackupsCompressionLevel: 6,
 		CompressBackupsParallelBlocks:   8,
 		SSTSendBuffer:                   32768,
+		CompressBackupsBufferSize:       32768,
 	}
 
 	// Compress
@@ -357,7 +359,7 @@ func TestPgzipLargeFileHandling(t *testing.T) {
 	}
 	defer f.Close()
 
-	gr, err := pgzip.NewReaderN(f, conf.SSTSendBuffer, conf.CompressBackupsParallelBlocks)
+	gr, err := pgzip.NewReaderN(f, conf.CompressBackupsBufferSize, conf.CompressBackupsParallelBlocks)
 	if err != nil {
 		t.Fatalf("Failed to create reader: %v", err)
 	}

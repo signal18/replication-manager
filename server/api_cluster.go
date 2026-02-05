@@ -2946,6 +2946,15 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return fmt.Errorf("compress-backups-parallel-blocks must be between 1 and 32, got %d", val)
 		}
 		mycluster.Conf.CompressBackupsParallelBlocks = val
+	case "compress-backups-buffer-size":
+		val, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for compress-backups-buffer-size: %q", value)
+		}
+		if val < 0 {
+			return fmt.Errorf("compress-backups-buffer-size must be >= 0, got %d", val)
+		}
+		mycluster.SetCompressBackupsBufferSize(val)
 	case "backup-reseed-remote-decompress":
 		mycluster.Conf.BackupReseedRemoteDecompress = applyIsActive(mycluster.Conf.BackupReseedRemoteDecompress, isactive)
 	case "compress-backups-logical":

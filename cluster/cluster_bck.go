@@ -1406,3 +1406,26 @@ func (cluster *Cluster) getSanitizedParallelBlocks(logModule int) int {
 	}
 	return blocks
 }
+
+// getCompressBackupsBufferSize returns the pgzip reader buffer size.
+// Falls back to sst-send-buffer when compress-backups-buffer-size is not set.
+// Defaults to 16384 if both values are invalid.
+func (cluster *Cluster) getCompressBackupsBufferSize(logModule int) int {
+	bufSize := cluster.Conf.CompressBackupsBufferSize
+	if bufSize > 0 {
+		return bufSize
+	}
+	if bufSize < 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, logModule, config.LvlWarn,
+			"compress-backups-buffer-size value %d is invalid, falling back to sst-send-buffer", bufSize)
+	}
+	bufSize = cluster.Conf.SSTSendBuffer
+	if bufSize > 0 {
+		return bufSize
+	}
+	if bufSize < 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, logModule, config.LvlWarn,
+			"sst-send-buffer value %d is invalid for pgzip, using default 16384", bufSize)
+	}
+	return 16384
+}

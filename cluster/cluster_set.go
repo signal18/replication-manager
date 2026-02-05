@@ -2159,6 +2159,10 @@ func (cluster *Cluster) SetSSTBufferSize(value int) {
 	cluster.Conf.SSTSendBuffer = value
 }
 
+func (cluster *Cluster) SetCompressBackupsBufferSize(value int) {
+	cluster.Conf.CompressBackupsBufferSize = value
+}
+
 func (cluster *Cluster) SetAlertPushoverAppToken(value string) {
 	cluster.Conf.PushoverAppToken = value
 }

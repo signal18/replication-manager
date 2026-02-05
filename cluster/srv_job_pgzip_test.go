@@ -292,6 +292,7 @@ func TestPgzipConfigDefaults(t *testing.T) {
 	// Simulate default values from flags
 	conf.CompressBackupsCompressionLevel = 6
 	conf.CompressBackupsParallelBlocks = 4
+	conf.CompressBackupsBufferSize = 0
 
 	if conf.CompressBackupsCompressionLevel != 6 {
 		t.Errorf("Default compression level should be 6, got %d", conf.CompressBackupsCompressionLevel)
@@ -299,6 +300,34 @@ func TestPgzipConfigDefaults(t *testing.T) {
 
 	if conf.CompressBackupsParallelBlocks != 4 {
 		t.Errorf("Default parallel blocks should be 4, got %d", conf.CompressBackupsParallelBlocks)
+	}
+
+	if conf.CompressBackupsBufferSize != 0 {
+		t.Errorf("Default compress backup buffer size should be 0, got %d", conf.CompressBackupsBufferSize)
+	}
+}
+
+func TestPgzipBufferSizeFallback(t *testing.T) {
+	cluster := &Cluster{
+		Conf: &config.Config{
+			SSTSendBuffer:             32768,
+			CompressBackupsBufferSize: 0,
+		},
+	}
+
+	if got := cluster.getCompressBackupsBufferSize(config.ConstLogModTask); got != 32768 {
+		t.Fatalf("expected pgzip buffer size to fallback to sst-send-buffer (32768), got %d", got)
+	}
+
+	cluster.Conf.CompressBackupsBufferSize = 8192
+	if got := cluster.getCompressBackupsBufferSize(config.ConstLogModTask); got != 8192 {
+		t.Fatalf("expected pgzip buffer size to use configured value (8192), got %d", got)
+	}
+
+	cluster.Conf.CompressBackupsBufferSize = 0
+	cluster.Conf.SSTSendBuffer = 0
+	if got := cluster.getCompressBackupsBufferSize(config.ConstLogModTask); got != 16384 {
+		t.Fatalf("expected pgzip buffer size to fallback to default (16384), got %d", got)
 	}
 }
 
