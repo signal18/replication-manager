@@ -9,27 +9,32 @@ import styles from './styles.module.scss'
 import tableStyles from '../../components/TableType2/styles.module.scss'
 
 const ResticTagsHelp = `backup-restic-tags defines the tag templates sent to restic backups.
-Enter a comma-separated list. Whitespace is ignored.
+Enter a comma-separated list. Whitespace around items is trimmed.
 
-Supported {placeholders}:
+Supported keys/placeholders:
 - {tenant}: tenant/organization identifier.
 - {cluster}: cluster name.
 - {engine}: database engine (e.g. MariaDB/MySQL).
 - {version}: engine version.
 - {backup-type}: logical/physical/binlog or other backup type label.
 - {backup-tool}: tool used to run the backup.
-- {line}: emits "line:default" or "line:adhoc" automatically.
+- {line}: "default" or "adhoc".
+- {method}: same value as backup-type.
 
-Shorthand is supported: "cluster" expands to "cluster:{cluster}".
-You can also add literal tags like "env:prod" or mixed tags like "team:{tenant}".
-Wrap a literal tag in quotes to prevent shorthand expansion. Commas inside quoted tags are allowed.
+Template forms:
+- Bare key (cluster) emits the value only (e.g. "mycluster").
+- Key with empty value (cluster:) emits key:value (e.g. "cluster:mycluster").
+- Use {key} placeholders in mixed tags (team:{tenant}, env:{cluster}).
+- Tags that already contain ":" and no placeholders are used as-is (env:prod).
+
+Quote an item to keep it literal and skip template expansion. Single quotes are literal; double quotes allow backslash escapes.
 
 Examples:
-- tenant,cluster,backup-type,line,env:prod
-- cluster,engine,version,team:{tenant}
-- env:staging,backup-tool:{backup-tool}
-- "cluster",env:prod
-- "role:primary,critical",cluster`
+- tenant,cluster,engine,version,backup-type,backup-tool,line
+- cluster:,backup-type:,line:
+- team:{tenant},env:{cluster}
+- env:prod,role:primary
+- "cluster", "role:primary,critical"`
 
 const ResticHostHelp = `backup-restic-host overrides the restic --host value used for snapshots.  
 Set a value to use a consistent alias across backups.  

@@ -8,7 +8,7 @@ import {
   VStack,
   Text
 } from '@chakra-ui/react'
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import TextForm from '../../components/TextForm'
 import RMSwitch from '../../components/RMSwitch'
@@ -20,6 +20,7 @@ import CommonModal from '../../components/Modals/CommonModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { clusterService } from '../../services/clusterService'
 import styles from './styles.module.scss'
 import tableStyles from '../../components/TableType2/styles.module.scss'
 
@@ -50,6 +51,9 @@ function ResticMountSettings({ clusterName, config, user }) {
   const [isMountDestinationOpen, setIsMountDestinationOpen] = useState(() =>
     readStoredState('mount-destination', false)
   )
+  const [isMountControlOpen, setIsMountControlOpen] = useState(() =>
+    readStoredState('mount-control', true)
+  )
   const [isSnapshotFiltersOpen, setIsSnapshotFiltersOpen] = useState(() =>
     readStoredState('snapshot-filters', false)
   )
@@ -61,6 +65,7 @@ function ResticMountSettings({ clusterName, config, user }) {
     readStoredState('runtime-behavior', false)
   )
   const areAllSectionsOpen =
+    isMountControlOpen &&
     isMountDestinationOpen &&
     isSnapshotFiltersOpen &&
     isMountTemplatesOpen &&
@@ -72,18 +77,34 @@ function ResticMountSettings({ clusterName, config, user }) {
   })
   const { title, body } = action
   const allowOtherEnabled = Boolean(config?.backupResticMountAllowOther)
+  const [mountStatus, setMountStatus] = useState(null)
+  const [mountStatusError, setMountStatusError] = useState('')
+  const [isMountStatusLoading, setIsMountStatusLoading] = useState(false)
+  const [isMountActionLoading, setIsMountActionLoading] = useState(false)
+  const isMounted = Boolean(mountStatus?.is_mounted)
+  const mountPath = mountStatus?.mount_path || ''
+  const refCount = Number(mountStatus?.ref_count ?? 0)
+  const activeUsers = Array.isArray(mountStatus?.active_users) ? mountStatus.active_users : []
+  const mountActionDisabled =
+    isMountActionLoading || isMountStatusLoading || !clusterName || user?.grants['cluster-settings'] == false
 
   const ResticMountFiltersHelp = `Controls which snapshots appear in the mount.  
 Filters are AND across host/tag/path; multiple values within a field are OR.  
 Host/path filters accept comma or space separated lists.  
-Tag filters are space separated; commas inside a tag mean AND.  
-Leave empty to match all. Path filters must be absolute (e.g. /var/lib/mysql).`
+Tag filters are space-separated taglists (each entry maps to restic --tag).  
+Commas inside a taglist are preserved and mean ALL tags must match (e.g. tenant:acme,cluster:prod).  
+Use quotes to keep a taglist with spaces together. Leave empty to match all.  
+Path filters must be absolute (e.g. /var/lib/mysql).`
 
   const ResticMountTemplatesHelp = `Controls the virtual layout and timestamp formatting in the mount.  
 Path template is comma-separated; defaults: ids/%i (replication-manager).  
 Common layouts: snapshots/%T, hosts/%h/%T, tags/%t/%T, ids/%i.  
 Tokens: %i=short ID, %I=full ID, %u=user, %h=host, %t=tags, %T=time.  
 Time template uses Go layout (e.g. 2006-01-02T15:04:05Z07:00); empty = RFC3339.`
+
+  const ResticMountControlHelp = `Manual mounts are *pinned* and stay active until you click Unmount or the manager shuts down.  
+Reseed mounts are *not pinned*; they auto-unmount once all reseed jobs release their mount reference.  
+If a reseed is running, Unmount will wait until the job finishes before stopping the mount.`
 
   const openCommonModal = () => {
     setIsCommonModalOpen(true)
@@ -131,6 +152,8 @@ Time template uses Go layout (e.g. 2006-01-02T15:04:05Z07:00); empty = RFC3339.`
   }
 
   const setAllSectionsState = (nextState) => {
+    setIsMountControlOpen(nextState)
+    persistStoredState('mount-control', nextState)
     setIsMountDestinationOpen(nextState)
     persistStoredState('mount-destination', nextState)
     setIsSnapshotFiltersOpen(nextState)
@@ -142,6 +165,46 @@ Time template uses Go layout (e.g. 2006-01-02T15:04:05Z07:00); empty = RFC3339.`
     setIsRuntimeBehaviorOpen(nextState)
     persistStoredState('runtime-behavior', nextState)
   }
+
+  const fetchMountStatus = async () => {
+    if (!clusterName) return
+    setIsMountStatusLoading(true)
+    setMountStatusError('')
+    try {
+      const { data, status } = await clusterService.getResticMountStatus(clusterName)
+      if (status >= 200 && status < 300) {
+        setMountStatus(data)
+      } else {
+        setMountStatusError(`Failed to fetch mount status (status ${status})`)
+      }
+    } catch (error) {
+      setMountStatusError(error?.message || 'Failed to fetch mount status')
+    } finally {
+      setIsMountStatusLoading(false)
+    }
+  }
+
+  const handleMountToggle = async (nextAction) => {
+    if (!clusterName) return
+    setIsMountActionLoading(true)
+    setMountStatusError('')
+    try {
+      const { data, status } = await clusterService.resticMountToggle(clusterName, nextAction)
+      if (status >= 200 && status < 300) {
+        setMountStatus(data)
+      } else {
+        setMountStatusError(`Failed to ${nextAction} restic mount (status ${status})`)
+      }
+    } catch (error) {
+      setMountStatusError(error?.message || `Failed to ${nextAction} restic mount`)
+    } finally {
+      setIsMountActionLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchMountStatus()
+  }, [clusterName])
 
   const renderPanel = ({
     sectionKey,
@@ -207,7 +270,7 @@ Time template uses Go layout (e.g. 2006-01-02T15:04:05Z07:00); empty = RFC3339.`
                 type='button'
                 className={styles.resticMountActionButton}
                 aria-expanded={areAllSectionsOpen}
-                aria-controls='restic-mount-destination-content restic-snapshot-filters-content restic-mount-templates-content restic-permissions-content restic-runtime-behavior-content'
+                aria-controls='restic-mount-control-content restic-mount-destination-content restic-snapshot-filters-content restic-mount-templates-content restic-permissions-content restic-runtime-behavior-content'
                 aria-label={
                   areAllSectionsOpen
                     ? 'Hide all restic mount settings sections'
@@ -219,6 +282,122 @@ Time template uses Go layout (e.g. 2006-01-02T15:04:05Z07:00); empty = RFC3339.`
               </Box>
             </HStack>
           </Flex>
+          {renderPanel({
+            sectionKey: 'mount-control',
+            isOpen: isMountControlOpen,
+            setOpen: setIsMountControlOpen,
+            title: (
+              <HStack spacing={2} align='center'>
+                <Text className={styles.panelTitle}>Mount control</Text>
+                <RMIconButton
+                  icon={HiQuestionMarkCircle}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    openInfoModal('Restic Mount Control', ResticMountControlHelp)
+                  }}
+                />
+              </HStack>
+            ),
+            description: 'Manually mount or unmount the restic repository using current settings.',
+            controlsId: 'restic-mount-control-content',
+            content: (
+              <Stack spacing={{ base: 1, md: 2 }}>
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
+                  <GridItem className={styles.rowLabel}>
+                    <Text>Mount status</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <Text>{isMountStatusLoading ? 'Loading…' : isMounted ? 'Mounted' : 'Not mounted'}</Text>
+                    {mountStatusError && <Text className={styles.helperText}>{mountStatusError}</Text>}
+                  </GridItem>
+                </Grid>
+
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
+                  <GridItem className={styles.rowLabel}>
+                    <Text>Mount path</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <Text>{mountPath || '(none)'}</Text>
+                    {isMounted && refCount > 0 && (
+                      <Text className={styles.helperText}>
+                        In use by {refCount} job{refCount === 1 ? '' : 's'}. Unmount waits for active users.
+                      </Text>
+                    )}
+                  </GridItem>
+                </Grid>
+
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
+                  <GridItem className={styles.rowLabel}>
+                    <Text>Active users</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <Text>{activeUsers.length > 0 ? activeUsers.join(', ') : '(none)'}</Text>
+                  </GridItem>
+                </Grid>
+
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
+                  <GridItem className={styles.rowLabel}>
+                    <Text>Actions</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <HStack spacing={2} flexWrap='wrap'>
+                      <Box
+                        as='button'
+                        type='button'
+                        className={styles.resticMountActionButton}
+                        onClick={() => fetchMountStatus()}
+                        disabled={isMountStatusLoading}
+                      >
+                        Refresh
+                      </Box>
+                      <Box
+                        as='button'
+                        type='button'
+                        className={styles.resticMountActionButton}
+                        onClick={() => handleMountToggle('mount')}
+                        disabled={mountActionDisabled || isMounted}
+                      >
+                        Mount
+                      </Box>
+                      <Box
+                        as='button'
+                        type='button'
+                        className={styles.resticMountActionButton}
+                        onClick={() => handleMountToggle('unmount')}
+                        disabled={mountActionDisabled || !isMounted}
+                      >
+                        Unmount
+                      </Box>
+                    </HStack>
+                  </GridItem>
+                </Grid>
+              </Stack>
+            )
+          })}
           {renderPanel({
             sectionKey: 'mount-destination',
             isOpen: isMountDestinationOpen,

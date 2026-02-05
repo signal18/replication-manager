@@ -893,7 +893,7 @@ func TestRestoreDumpMountUnmount(t *testing.T) {
 	if err := os.RemoveAll(mountDir); err != nil {
 		t.Fatalf("remove mount dir: %v", err)
 	}
-	err := repo.MountRepo(mountDir)
+	err := repo.MountRepoWithOptions(NewResticMountOption(mountDir))
 	if err != nil {
 		if strings.Contains(err.Error(), "fuse") || strings.Contains(err.Error(), "operation not permitted") {
 			t.Logf("mount failed (fuse): err=%s", err.Error())
@@ -1226,7 +1226,7 @@ func TestMountDisabledConfiguration(t *testing.T) {
 	}
 }
 
-// TestMountRepoWhenDisabled tests that MountRepo returns error when disabled
+// TestMountRepoWhenDisabled tests that MountRepoWithOptions returns error when disabled
 func TestMountRepoWhenDisabled(t *testing.T) {
 	repo := newPausedRepo(t)
 
@@ -1241,9 +1241,9 @@ func TestMountRepoWhenDisabled(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Try to mount - should fail with clear error
-	err = repo.MountRepo(tempDir)
+	err = repo.MountRepoWithOptions(NewResticMountOption(tempDir))
 	if err == nil {
-		t.Error("MountRepo should fail when mount is disabled")
+		t.Error("MountRepoWithOptions should fail when mount is disabled")
 	}
 
 	expectedMsg := "mount operations are disabled"
@@ -1313,9 +1313,9 @@ func TestMountDisabledWorkflow(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Verify mount operations fail gracefully
-	err = repo.MountRepo(tempDir)
+	err = repo.MountRepoWithOptions(NewResticMountOption(tempDir))
 	if err == nil {
-		t.Fatal("MountRepo should fail when disabled")
+		t.Fatal("MountRepoWithOptions should fail when disabled")
 	}
 	if !strings.Contains(err.Error(), "disabled") {
 		t.Errorf("error should mention disabled, got: %v", err)
@@ -1333,10 +1333,10 @@ func TestMountDisabledWorkflow(t *testing.T) {
 
 	// Mount should be allowed now (even if it fails due to missing FUSE/restic binary)
 	// We just verify it doesn't fail with "disabled" error
-	err = repo.MountRepo(tempDir)
+	err = repo.MountRepoWithOptions(NewResticMountOption(tempDir))
 	// Error is expected (no restic binary), but shouldn't be "disabled" error
 	if err != nil && strings.Contains(err.Error(), "operations are disabled") {
-		t.Errorf("MountRepo should not fail with 'disabled' error when enabled, got: %v", err)
+		t.Errorf("MountRepoWithOptions should not fail with 'disabled' error when enabled, got: %v", err)
 	}
 }
 
@@ -1797,7 +1797,7 @@ func TestMountRepoWithFilters(t *testing.T) {
 	}
 }
 
-// TestMountRepoBackwardCompatibility tests that old MountRepo still works
+// TestMountRepoBackwardCompatibility tests that MountRepoWithOptions behaves consistently
 func TestMountRepoBackwardCompatibility(t *testing.T) {
 	repo, _, _, _ := newResticRepo(t, true)
 
@@ -1807,14 +1807,14 @@ func TestMountRepoBackwardCompatibility(t *testing.T) {
 		t.Fatalf("remove mount dir: %v", err)
 	}
 
-	// Use old MountRepo method (should internally call MountRepoWithOptions)
-	err := repo.MountRepo(mountDir)
+	// Use MountRepoWithOptions (same defaults as MountRepo)
+	err := repo.MountRepoWithOptions(NewResticMountOption(mountDir))
 	if err != nil {
 		if strings.Contains(err.Error(), "fuse") || strings.Contains(err.Error(), "operation not permitted") {
 			t.Logf("mount failed (fuse): err=%s", err.Error())
 			return
 		}
-		t.Fatalf("MountRepo failed: %v", err)
+		t.Fatalf("MountRepoWithOptions failed: %v", err)
 	}
 
 	waitForMountReady(t, repo, mountDir, 5*time.Second)

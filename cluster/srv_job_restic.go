@@ -103,29 +103,6 @@ func (server *ServerMonitor) buildResticReseedPayload(summary *SnapshotMetadataS
 	return payload
 }
 
-func resticLogSnapshotID(cluster *Cluster, snapshotID string) string {
-	trimmed := strings.TrimSpace(snapshotID)
-	if trimmed == "" {
-		return ""
-	}
-	if trimmed == "latest" {
-		return trimmed
-	}
-	if cluster != nil && cluster.ResticManager != nil {
-		snap := cluster.ResticManager.GetSnapshot(trimmed)
-		if snap != nil {
-			shortID := strings.TrimSpace(snap.ShortId)
-			if shortID != "" {
-				return shortID
-			}
-		}
-	}
-	if len(trimmed) > 8 {
-		return trimmed[:8]
-	}
-	return trimmed
-}
-
 // QueueResticReseed stores a pending restic reseed request for later processing.
 func (server *ServerMonitor) QueueResticReseed(req ResticReseedRequest) error {
 	if strings.TrimSpace(req.SnapshotID) == "" {
@@ -417,43 +394,6 @@ func getSnapshotCompression(cluster *Cluster, snapshotID string) (bool, bool) {
 		return false, false
 	}
 	return selected.Compressed, true
-}
-
-// getSnapshotSizeBytes returns the snapshot size (in bytes) when backup metadata is available.
-func getSnapshotSizeBytes(cluster *Cluster, snapshotID string) (uint64, bool) {
-	if cluster == nil || cluster.BackupMetaMap == nil || strings.TrimSpace(snapshotID) == "" {
-		return 0, false
-	}
-	var selected *backupmgr.BackupMetadata
-	cluster.BackupMetaMap.Range(func(_, value any) bool {
-		meta, ok := value.(*backupmgr.BackupMetadata)
-		if !ok || meta == nil {
-			return true
-		}
-		if strings.TrimSpace(meta.ResticSnapshotID) != snapshotID {
-			return true
-		}
-		if selected == nil {
-			selected = meta
-			return true
-		}
-		if selected.EndTime.IsZero() && !meta.EndTime.IsZero() {
-			selected = meta
-			return true
-		}
-		if meta.EndTime.After(selected.EndTime) {
-			selected = meta
-			return true
-		}
-		if meta.EndTime.Equal(selected.EndTime) && meta.StartTime.After(selected.StartTime) {
-			selected = meta
-		}
-		return true
-	})
-	if selected == nil || selected.Size <= 0 {
-		return 0, false
-	}
-	return uint64(selected.Size), true
 }
 
 // getSnapshotLogicalSplitUser returns split-user flag from backup metadata when available.
@@ -1945,74 +1885,14 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 	default:
 	}
 
-	hasDotDotComponent := func(path string) bool {
-		for _, part := range strings.FieldsFunc(path, func(r rune) bool {
-			return r == '/' || r == '\\'
-		}) {
-			if part == ".." {
-				return true
-			}
-		}
-		return false
-	}
-
-	sanitizeMountDir := func(label, raw string) (string, error) {
-		trimmed := strings.TrimSpace(raw)
-		if trimmed == "" {
-			return "", fmt.Errorf("%s mount dir is empty", label)
-		}
-		if hasDotDotComponent(trimmed) {
-			return "", fmt.Errorf("%s mount dir contains '..' component: %s", label, trimmed)
-		}
-		cleaned := filepath.Clean(trimmed)
-		if !filepath.IsAbs(cleaned) {
-			return "", fmt.Errorf("%s mount dir must be absolute: %s", label, cleaned)
-		}
-		if cleaned != trimmed {
-			cluster.LogModulePrintf(cluster.Conf.Verbose,
-				config.ConstLogModRestic,
-				config.LvlWarn,
-				"Sanitized restic mount dir (%s): %s -> %s", label, trimmed, cleaned)
-		}
-		return cleaned, nil
-	}
-
-	clusterName := strings.TrimSpace(cluster.GetClusterName())
-	if clusterName == "" {
-		return fmt.Errorf("cluster name is empty")
-	}
-
-	defaultMountBase := "/mnt/restic"
-	mountDir := filepath.Join(defaultMountBase, clusterName)
-	mountDirSource := "default"
-	if strings.TrimSpace(cluster.Conf.BackupResticMountDir) != "" {
-		mountDir = cluster.Conf.BackupResticMountDir
-		mountDirSource = "config"
-	}
-
-	mountDir, err = sanitizeMountDir(mountDirSource, mountDir)
+	mountOpt, meta, err := cluster.parseResticMountOptionsFromConfig()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose,
-			config.ConstLogModRestic,
-			config.LvlErr,
-			"Invalid restic mount dir (%s): %s", mountDirSource, err)
 		return err
 	}
-	if mountDirSource == "default" {
-		base := filepath.Clean(defaultMountBase)
-		rel, relErr := filepath.Rel(base, mountDir)
-		if relErr != nil || rel == "" || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			mountErr := fmt.Errorf("default mount dir %s escapes base %s", mountDir, base)
-			if relErr != nil {
-				mountErr = fmt.Errorf("failed to resolve default mount dir %s under base %s: %w", mountDir, base, relErr)
-			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose,
-				config.ConstLogModRestic,
-				config.LvlErr,
-				"Invalid restic mount dir (%s): %s", mountDirSource, mountErr)
-			return mountErr
-		}
+	if err := cluster.sanitizeAndValidateResticMountOptions(&mountOpt, meta); err != nil {
+		return err
 	}
+	mountDir := strings.TrimSpace(mountOpt.TargetDir)
 
 	// Register cleanup immediately after resource allocation to prevent leaks
 	paths.TempDir = mountDir
@@ -2034,48 +1914,7 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 	}
 	// Generate unique user ID for this reseed operation
 	userID := fmt.Sprintf("reseed-%s-%s-%d", server.Id, shortID, time.Now().UnixNano())
-
-	mountOpt := backupmgr.NewResticMountOption(mountDir)
-	allowOther := true
-	allowOtherSource := "default"
-	noDefaultPermissions := false
-	ownerRoot := false
-	noLock := true
-	if cluster.Conf != nil {
-		allowOther = cluster.Conf.BackupResticMountAllowOther
-		noDefaultPermissions = cluster.Conf.BackupResticMountNoDefaultPermissions
-		ownerRoot = cluster.Conf.BackupResticMountOwnerRoot
-		noLock = cluster.Conf.BackupResticMountNoLock
-		allowOtherSource = "config"
-	}
-	mountOpt.AllowOther = allowOther
-	mountOpt.NoDefaultPermissions = noDefaultPermissions
-	mountOpt.OwnerRoot = ownerRoot
-	mountOpt.NoLock = noLock
-	parseMountTemplates := func(raw string) []string {
-		trimmed := strings.TrimSpace(raw)
-		if trimmed == "" {
-			return nil
-		}
-		parts := strings.Split(trimmed, ",")
-		templates := make([]string, 0, len(parts))
-		for _, part := range parts {
-			candidate := strings.TrimSpace(part)
-			if candidate == "" {
-				continue
-			}
-			templates = append(templates, candidate)
-		}
-		return templates
-	}
-	pathTemplates := parseMountTemplates(cluster.Conf.BackupResticMountPathTemplate)
-	if len(pathTemplates) == 0 {
-		pathTemplates = []string{"ids/%i"}
-	}
-	mountOpt.PathTemplate = pathTemplates
-	if strings.TrimSpace(cluster.Conf.BackupResticMountTimeTemplate) != "" {
-		mountOpt.TimeTemplate = strings.TrimSpace(cluster.Conf.BackupResticMountTimeTemplate)
-	}
+	allowOtherSource := "config"
 	if mountOpt.AllowOther {
 		cluster.LogModulePrintf(cluster.Conf.Verbose,
 			config.ConstLogModRestic,
@@ -2133,6 +1972,7 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 		}
 		return fmt.Errorf("failed to acquire mount reference: %w", err)
 	}
+	cluster.ResticManager.RequestUnmountWhenIdle()
 	refOwned := true
 
 	// Release mount reference immediately only for logical reseed (physical job continues async)
@@ -2208,6 +2048,13 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 				config.LvlWarn,
 				"Restic mount snapshot paths not found before timeout; logging mount directory layout")
 			logResticMountTopLevel(cluster, mountDir)
+		}
+		if len(mountOpt.Host) > 0 || len(mountOpt.Tag) > 0 || len(mountOpt.Path) > 0 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlInfo,
+				"Restic mount filters may hide the snapshot (host=%v tag=%v path=%v)",
+				mountOpt.Host, mountOpt.Tag, mountOpt.Path)
 		}
 		if normalizedMethod == "physical" && refOwned {
 			if relErr := cluster.ResticManager.ReleaseMountRef(userID); relErr != nil {

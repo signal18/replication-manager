@@ -339,6 +339,9 @@ type ResticManager struct {
 	mountDone            chan error
 	mountPid             int
 	unmountRequested     bool                // Set to true when intentional unmount is requested
+	mountPinned          bool                // True when mount should remain active until explicitly unpinned
+	unmountWhenIdle      bool                // True when mount should auto-unmount after last ref
+	unmountInProgress    bool                // True when auto-unmount goroutine is running
 	mountRefCount        int                 // Number of active users of the mount
 	mountRefMutex        *sync.Mutex         // Protects mount state (cmd/path/pid/done/unmountRequested) and mount users
 	mountUsers           map[string]struct{} // Track which operations are using mount (for debugging)
@@ -1483,11 +1486,6 @@ func (repo *ResticManager) mountSnapshot() resticMountSnapshot {
 	return repo.mountSnapshotUnsafe()
 }
 
-// MountRepo mounts the repository at targetDir with default options (backward compatible)
-func (repo *ResticManager) MountRepo(targetDir string) error {
-	return repo.MountRepoWithOptions(NewResticMountOption(targetDir))
-}
-
 // MountRepoWithOptions mounts the repository with full control over mount options
 func (repo *ResticManager) MountRepoWithOptions(opt ResticMountOption) error {
 	// Validate options
@@ -2366,7 +2364,64 @@ func (repo *ResticManager) ReleaseMountRef(userID string) error {
 		return err
 	}
 	repo.Printf(logrus.DebugLevel, "Released mount ref for user %s (refCount=%d)", trimmed, refCount)
+	repo.tryUnmountWhenIdle()
 	return nil
+}
+
+// SetMountPinned sets whether the mount should remain active until explicitly unpinned.
+func (repo *ResticManager) SetMountPinned(pinned bool) {
+	repo.mountRefMutex.Lock()
+	repo.mountPinned = pinned
+	if pinned {
+		repo.unmountWhenIdle = false
+	}
+	repo.mountRefMutex.Unlock()
+}
+
+// IsMountPinned reports whether the mount is pinned.
+func (repo *ResticManager) IsMountPinned() bool {
+	repo.mountRefMutex.Lock()
+	defer repo.mountRefMutex.Unlock()
+	return repo.mountPinned
+}
+
+// RequestUnmountWhenIdle schedules an unmount when no active users remain.
+func (repo *ResticManager) RequestUnmountWhenIdle() {
+	repo.mountRefMutex.Lock()
+	repo.unmountWhenIdle = true
+	shouldUnmount := repo.mountRefCount == 0 && !repo.mountPinned && !repo.unmountInProgress
+	if shouldUnmount {
+		repo.unmountInProgress = true
+	}
+	repo.mountRefMutex.Unlock()
+	if shouldUnmount {
+		go repo.unmountWhenIdleAsync()
+	}
+}
+
+func (repo *ResticManager) tryUnmountWhenIdle() {
+	repo.mountRefMutex.Lock()
+	shouldUnmount := repo.unmountWhenIdle && repo.mountRefCount == 0 && !repo.mountPinned && !repo.unmountInProgress
+	if shouldUnmount {
+		repo.unmountInProgress = true
+	}
+	repo.mountRefMutex.Unlock()
+	if shouldUnmount {
+		go repo.unmountWhenIdleAsync()
+	}
+}
+
+func (repo *ResticManager) unmountWhenIdleAsync() {
+	err := repo.UnmountRepo()
+	repo.mountRefMutex.Lock()
+	if err == nil {
+		repo.unmountWhenIdle = false
+	}
+	repo.unmountInProgress = false
+	repo.mountRefMutex.Unlock()
+	if err != nil {
+		repo.Printf(logrus.WarnLevel, "Auto-unmount failed: %v", err)
+	}
 }
 
 // CanUnmount returns true if no active users are using the mount

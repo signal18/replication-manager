@@ -134,6 +134,7 @@ var clusterACLRules = []ACLRule{
 	// Process and Jobs
 	{"/jobs", nil, []string{config.GrantClusterProcess}},
 	{"/top", nil, []string{config.GrantClusterProcess}},
+	{"/actions/restic-mount-toggle", nil, []string{config.GrantClusterSettings}},
 	{"/restic", nil, []string{config.GrantClusterProcess}},
 
 	// Backups

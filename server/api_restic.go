@@ -159,6 +159,7 @@ func (repman *ReplicationManager) handlerMuxResticMountToggle(w http.ResponseWri
 					config.ConstLogModRestic,
 					config.LvlInfo,
 					"Restic mount already active at %s", existingPath)
+				mycluster.ResticManager.SetMountPinned(true)
 			} else {
 				http.Error(w, fmt.Sprintf("Restic mount already active at different path: %s (requested: %s)", existingPath, mountOpt.TargetDir), http.StatusConflict)
 				return
@@ -181,6 +182,7 @@ func (repman *ReplicationManager) handlerMuxResticMountToggle(w http.ResponseWri
 				http.Error(w, fmt.Sprintf("Failed to mount: %v", err), http.StatusInternalServerError)
 				return
 			}
+			mycluster.ResticManager.SetMountPinned(true)
 
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose,
 				config.ConstLogModRestic,
@@ -205,26 +207,14 @@ func (repman *ReplicationManager) handlerMuxResticMountToggle(w http.ResponseWri
 				"Unmount requested but %d active users: %v - will wait for them to finish", refCount, users)
 		}
 
-		// Perform unmount (will wait for active users to finish)
+		mycluster.ResticManager.SetMountPinned(false)
+		mycluster.ResticManager.RequestUnmountWhenIdle()
+
+		// Request unmount (will wait for active users to finish)
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose,
 			config.ConstLogModRestic,
 			config.LvlInfo,
 			"Unmounting restic repository")
-
-		err = mycluster.ResticManager.UnmountRepo()
-		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose,
-				config.ConstLogModRestic,
-				config.LvlErr,
-				"Failed to unmount restic repository: %v", err)
-			http.Error(w, fmt.Sprintf("Failed to unmount: %v", err), http.StatusInternalServerError)
-			return
-		}
-
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose,
-			config.ConstLogModRestic,
-			config.LvlInfo,
-			"Successfully unmounted restic repository")
 	}
 
 	// Build response with current status

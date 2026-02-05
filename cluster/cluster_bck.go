@@ -370,6 +370,254 @@ func (cluster *Cluster) ResticGetQueue() ([]*backupmgr.ResticTask, error) {
 	return cluster.ResticManager.TaskQueue, nil
 }
 
+func parseResticMountPathTemplates(value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	parts := strings.Split(trimmed, ",")
+	templates := make([]string, 0, len(parts))
+	for _, part := range parts {
+		candidate := strings.TrimSpace(part)
+		if candidate == "" {
+			continue
+		}
+		templates = append(templates, candidate)
+	}
+	if len(templates) == 0 {
+		return nil
+	}
+	return templates
+}
+
+type resticMountDirResolveOptions struct {
+	requireAbs         bool
+	rejectDotDot       bool
+	enforceDefaultBase bool
+	logSanitize        bool
+}
+
+const resticDefaultMountBase = "/mnt/restic"
+
+type resticMountOptionMeta struct {
+	mountDirSource  string
+	targetDirSource string
+}
+
+func hasDotDotComponent(path string) bool {
+	for _, part := range strings.FieldsFunc(path, func(r rune) bool {
+		return r == '/' || r == '\\'
+	}) {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+func (cluster *Cluster) sanitizeResticMountDir(label, raw string, opts resticMountDirResolveOptions) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", fmt.Errorf("%s mount dir is empty", label)
+	}
+	if opts.rejectDotDot && hasDotDotComponent(trimmed) {
+		return "", fmt.Errorf("%s mount dir contains '..' component: %s", label, trimmed)
+	}
+	cleaned := filepath.Clean(trimmed)
+	if opts.requireAbs && !filepath.IsAbs(cleaned) {
+		return "", fmt.Errorf("%s mount dir must be absolute: %s", label, cleaned)
+	}
+	if cleaned != trimmed && opts.logSanitize && cluster != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlWarn,
+			"Sanitized restic mount dir (%s): %s -> %s", label, trimmed, cleaned)
+	}
+	return cleaned, nil
+}
+
+func (cluster *Cluster) resolveResticMountDirFromConfig(opts resticMountDirResolveOptions) (string, string, error) {
+	if cluster == nil || cluster.Conf == nil {
+		return "", "", fmt.Errorf("cluster config is nil")
+	}
+	clusterName := strings.TrimSpace(cluster.GetClusterName())
+	if clusterName == "" {
+		return "", "", fmt.Errorf("cluster name is empty")
+	}
+
+	mountDir := filepath.Join(resticDefaultMountBase, clusterName)
+	mountDirSource := "default"
+	if trimmed := strings.TrimSpace(cluster.Conf.BackupResticMountDir); trimmed != "" {
+		mountDir = trimmed
+		mountDirSource = "config"
+	}
+
+	var err error
+	mountDir, err = cluster.sanitizeResticMountDir(mountDirSource, mountDir, opts)
+	if err != nil {
+		return "", mountDirSource, err
+	}
+	if opts.enforceDefaultBase && mountDirSource == "default" {
+		base := filepath.Clean(resticDefaultMountBase)
+		rel, relErr := filepath.Rel(base, mountDir)
+		if relErr != nil || rel == "" || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			mountErr := fmt.Errorf("default mount dir %s escapes base %s", mountDir, base)
+			if relErr != nil {
+				mountErr = fmt.Errorf("failed to resolve default mount dir %s under base %s: %w", mountDir, base, relErr)
+			}
+			return "", mountDirSource, mountErr
+		}
+	}
+
+	return mountDir, mountDirSource, nil
+}
+
+func resticLogSnapshotID(cluster *Cluster, snapshotID string) string {
+	trimmed := strings.TrimSpace(snapshotID)
+	if trimmed == "" {
+		return ""
+	}
+	if trimmed == "latest" {
+		return trimmed
+	}
+	if cluster != nil && cluster.ResticManager != nil {
+		snap := cluster.ResticManager.GetSnapshot(trimmed)
+		if snap != nil {
+			shortID := strings.TrimSpace(snap.ShortId)
+			if shortID != "" {
+				return shortID
+			}
+		}
+	}
+	if len(trimmed) > 8 {
+		return trimmed[:8]
+	}
+	return trimmed
+}
+
+// getSnapshotSizeBytes returns the snapshot size (in bytes) when backup metadata is available.
+func getSnapshotSizeBytes(cluster *Cluster, snapshotID string) (uint64, bool) {
+	if cluster == nil || cluster.BackupMetaMap == nil || strings.TrimSpace(snapshotID) == "" {
+		return 0, false
+	}
+	var selected *backupmgr.BackupMetadata
+	cluster.BackupMetaMap.Range(func(_, value any) bool {
+		meta, ok := value.(*backupmgr.BackupMetadata)
+		if !ok || meta == nil {
+			return true
+		}
+		if strings.TrimSpace(meta.ResticSnapshotID) != snapshotID {
+			return true
+		}
+		if selected == nil {
+			selected = meta
+			return true
+		}
+		if selected.EndTime.IsZero() && !meta.EndTime.IsZero() {
+			selected = meta
+			return true
+		}
+		if meta.EndTime.After(selected.EndTime) {
+			selected = meta
+			return true
+		}
+		if meta.EndTime.Equal(selected.EndTime) && meta.StartTime.After(selected.StartTime) {
+			selected = meta
+		}
+		return true
+	})
+	if selected == nil || selected.Size <= 0 {
+		return 0, false
+	}
+	return uint64(selected.Size), true
+}
+
+func (cluster *Cluster) parseResticMountOptionsFromConfig() (backupmgr.ResticMountOption, resticMountOptionMeta, error) {
+	var mountOpt backupmgr.ResticMountOption
+	var meta resticMountOptionMeta
+	if cluster == nil || cluster.Conf == nil {
+		return mountOpt, meta, fmt.Errorf("cluster config is nil")
+	}
+
+	mountDir, mountDirSource, err := cluster.resolveResticMountDirFromConfig(resticMountDirResolveOptions{
+		requireAbs:         false,
+		rejectDotDot:       false,
+		enforceDefaultBase: false,
+		logSanitize:        false,
+	})
+	if err != nil {
+		return mountOpt, meta, err
+	}
+	meta.mountDirSource = mountDirSource
+
+	targetDir := strings.TrimSpace(cluster.Conf.BackupResticMountTargetDir)
+	targetDirSource := "default"
+	if targetDir == "" {
+		targetDir = mountDir
+	} else {
+		targetDirSource = "config"
+	}
+	meta.targetDirSource = targetDirSource
+
+	mountOpt = backupmgr.NewResticMountOption(targetDir)
+	mountOpt.AllowOther = cluster.Conf.BackupResticMountAllowOther
+	mountOpt.NoDefaultPermissions = cluster.Conf.BackupResticMountNoDefaultPermissions
+	mountOpt.OwnerRoot = cluster.Conf.BackupResticMountOwnerRoot
+	mountOpt.NoLock = cluster.Conf.BackupResticMountNoLock
+	mountOpt.Verbose = cluster.Conf.BackupResticMountVerbose
+	mountOpt.Quiet = cluster.Conf.BackupResticMountQuiet
+	mountOpt.Host = splitResticPurgeFilterValues(cluster.Conf.BackupResticMountHost)
+	mountOpt.Tag = parseResticTagFilterValues(cluster.Conf.BackupResticMountTag, cluster, "mount")
+	mountOpt.Path = filterResticAbsolutePaths(splitResticPurgeFilterValues(cluster.Conf.BackupResticMountPath), cluster)
+	if templates := parseResticMountPathTemplates(cluster.Conf.BackupResticMountPathTemplate); len(templates) > 0 {
+		mountOpt.PathTemplate = templates
+	}
+	if timeTemplate := strings.TrimSpace(cluster.Conf.BackupResticMountTimeTemplate); timeTemplate != "" {
+		mountOpt.TimeTemplate = timeTemplate
+	}
+
+	return mountOpt, meta, nil
+}
+
+func (cluster *Cluster) sanitizeAndValidateResticMountOptions(mountOpt *backupmgr.ResticMountOption, meta resticMountOptionMeta) error {
+	if cluster == nil || mountOpt == nil {
+		return fmt.Errorf("restic mount options are nil")
+	}
+	if mountOpt.TargetDir == "" {
+		return fmt.Errorf("restic mount target dir is empty")
+	}
+
+	cleaned := filepath.Clean(mountOpt.TargetDir)
+	if cleaned != mountOpt.TargetDir {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlWarn,
+			"Sanitized restic mount target dir (%s): %s -> %s", meta.targetDirSource, mountOpt.TargetDir, cleaned)
+		mountOpt.TargetDir = cleaned
+	}
+	if !filepath.IsAbs(mountOpt.TargetDir) {
+		return fmt.Errorf("restic mount target dir must be absolute: %s", mountOpt.TargetDir)
+	}
+	if meta.targetDirSource == "default" && meta.mountDirSource == "default" {
+		base := filepath.Clean(resticDefaultMountBase)
+		rel, relErr := filepath.Rel(base, mountOpt.TargetDir)
+		if relErr != nil || rel == "" || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			mountErr := fmt.Errorf("default restic mount dir %s escapes base %s", mountOpt.TargetDir, base)
+			if relErr != nil {
+				mountErr = fmt.Errorf("failed to resolve default restic mount dir %s under base %s: %w", mountOpt.TargetDir, base, relErr)
+			}
+			return mountErr
+		}
+	}
+
+	if err := mountOpt.Validate(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlErr, "Invalid restic mount options: %s", err)
+		return err
+	}
+
+	return nil
+}
+
 var resticTagTemplateKeySet = map[string]struct{}{
 	"tenant":      {},
 	"cluster":     {},
