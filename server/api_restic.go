@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"path/filepath"
 	"strings"
 
 	"github.com/codegangsta/negroni"
@@ -118,22 +117,12 @@ func (repman *ReplicationManager) handlerMuxResticMountToggle(w http.ResponseWri
 	}
 
 	// Construct mount directory path
-	resticMountBaseDir := filepath.Join(mycluster.WorkingDir, "mount")
-	mountDir := resticMountBaseDir
-	if trimmed := strings.TrimSpace(mycluster.Conf.BackupResticMountDir); trimmed != "" {
-		if filepath.IsAbs(trimmed) {
-			mountDir = trimmed
-		} else {
-			baseDir := filepath.Join(mycluster.WorkingDir, "mount")
-			mountDir = filepath.Join(baseDir, trimmed)
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose,
-				config.ConstLogModRestic,
-				config.LvlInfo,
-				"Resolved relative restic mount dir from config: %s -> %s (base %s)", trimmed, mountDir, baseDir)
-		}
+	mountDir, _, err := mycluster.ResolveResticMountDirFromConfigStrict()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid restic mount dir: %v", err), http.StatusBadRequest)
+		return
 	}
 
-	var err error
 	var response ResticMountStatusResponse
 
 	switch action {

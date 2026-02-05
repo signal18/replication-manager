@@ -453,7 +453,6 @@ func (cluster *Cluster) resolveResticMountDirFromConfig(opts resticMountDirResol
 		if filepath.IsAbs(trimmed) {
 			mountDir = trimmed
 		} else {
-			baseDir := filepath.Join(cluster.WorkingDir, resticDefaultMountSubdir)
 			mountDir = filepath.Join(baseDir, trimmed)
 			cluster.LogModulePrintf(cluster.Conf.Verbose,
 				config.ConstLogModRestic,
@@ -469,6 +468,7 @@ func (cluster *Cluster) resolveResticMountDirFromConfig(opts resticMountDirResol
 	}
 	if opts.enforceDefaultBase && mountDirSource == "default" {
 		base := filepath.Clean(filepath.Join(cluster.WorkingDir, resticDefaultMountSubdir))
+		// filepath.Rel does not resolve symlinks; callers should avoid untrusted bases.
 		rel, relErr := filepath.Rel(base, mountDir)
 		if relErr != nil || rel == "" || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			mountErr := fmt.Errorf("default mount dir %s escapes base %s", mountDir, base)
@@ -480,6 +480,26 @@ func (cluster *Cluster) resolveResticMountDirFromConfig(opts resticMountDirResol
 	}
 
 	return mountDir, mountDirSource, nil
+}
+
+// ResolveResticMountDirFromConfig returns the configured restic mount directory and source.
+func (cluster *Cluster) ResolveResticMountDirFromConfig() (string, string, error) {
+	return cluster.resolveResticMountDirFromConfig(resticMountDirResolveOptions{
+		requireAbs:         false,
+		rejectDotDot:       false,
+		enforceDefaultBase: false,
+		logSanitize:        false,
+	})
+}
+
+// ResolveResticMountDirFromConfigStrict enforces extra safety for API usage.
+func (cluster *Cluster) ResolveResticMountDirFromConfigStrict() (string, string, error) {
+	return cluster.resolveResticMountDirFromConfig(resticMountDirResolveOptions{
+		requireAbs:         false,
+		rejectDotDot:       true,
+		enforceDefaultBase: true,
+		logSanitize:        true,
+	})
 }
 
 func resticLogSnapshotID(cluster *Cluster, snapshotID string) string {

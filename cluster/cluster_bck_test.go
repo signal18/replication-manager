@@ -159,6 +159,40 @@ func TestResticPurgeSnapshotUsesSnapshotID(t *testing.T) {
 	}
 }
 
+func TestResolveResticMountDirFromConfigStrictRejectsDotDot(t *testing.T) {
+	tmpDir := t.TempDir()
+	cluster := &Cluster{
+		Name:       "cluster1",
+		WorkingDir: tmpDir,
+		Conf: &config.Config{
+			BackupResticMountDir: "../etc",
+		},
+	}
+	if _, _, err := cluster.ResolveResticMountDirFromConfigStrict(); err == nil {
+		t.Fatalf("expected error for mount dir containing '..'")
+	}
+}
+
+func TestResolveResticMountDirFromConfigStrictCleansPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	raw := tmpDir + string(filepath.Separator) + string(filepath.Separator) + "restic"
+	cluster := &Cluster{
+		Name:       "cluster1",
+		WorkingDir: tmpDir,
+		Conf: &config.Config{
+			BackupResticMountDir: raw,
+		},
+	}
+	mountDir, _, err := cluster.ResolveResticMountDirFromConfigStrict()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := filepath.Join(tmpDir, "restic")
+	if mountDir != expected {
+		t.Fatalf("expected mount dir %q, got %q", expected, mountDir)
+	}
+}
+
 func TestBuildSnapshotMetadataIndexFromCache(t *testing.T) {
 	cluster := &Cluster{
 		Conf:          &config.Config{},
