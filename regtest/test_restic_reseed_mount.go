@@ -50,7 +50,7 @@ func (regtest *RegTest) TestResticReseedMount(cl *clusterpkg.Cluster, conf strin
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "StartResticManager failed: %s", err)
 		return false
 	}
-	if err := cl.ResticInitRepo(true); err != nil {
+	if err := cl.ResticInitRepo(false); err != nil {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ResticInitRepo failed: %s", err)
 		return false
 	}
