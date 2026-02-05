@@ -200,7 +200,7 @@ func TestExpandResticMountTemplateRejectsUnknownTokens(t *testing.T) {
 }
 
 func TestBuildResticMountSnapshotCandidatesNoSwap(t *testing.T) {
-	mountDir := "/mnt/restic/cluster1"
+	mountDir := "/var/lib/replication-manager/cluster1/mount"
 	seen := make(map[string]struct{})
 	candidates := buildResticMountSnapshotCandidates(
 		mountDir,
@@ -223,7 +223,7 @@ func TestBuildResticMountSnapshotCandidatesNoSwap(t *testing.T) {
 }
 
 func TestBuildResticMountSnapshotCandidatesTimeTemplate(t *testing.T) {
-	mountDir := "/mnt/restic/cluster1"
+	mountDir := "/var/lib/replication-manager/cluster1/mount"
 	candidates := buildResticMountSnapshotCandidates(
 		mountDir,
 		[]string{"snapshots/%T"},

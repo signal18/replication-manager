@@ -106,6 +106,11 @@ Time template uses Go layout (e.g. 2006-01-02T15:04:05Z07:00); empty = RFC3339.`
 Reseed mounts are *not pinned*; they auto-unmount once all reseed jobs release their mount reference.  
 If a reseed is running, Unmount will wait until the job finishes before stopping the mount.`
 
+  const ResticMountDestinationHelp = `backup-restic-mount-dir sets the base directory for restic FUSE mounts.  
+Empty uses \\`<working-dir>/<cluster>/mount\\` to avoid permission issues.  
+Relative values resolve under \\`<working-dir>/<cluster>/mount\\` (e.g. snapshots -> \\`/var/lib/replication-manager/<cluster>/mount/snapshots\\`).  
+backup-restic-mount-target-dir overrides the final mount target when set.`
+
   const openCommonModal = () => {
     setIsCommonModalOpen(true)
   }
@@ -402,7 +407,18 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
             sectionKey: 'mount-destination',
             isOpen: isMountDestinationOpen,
             setOpen: setIsMountDestinationOpen,
-            title: 'Mount destination',
+            title: (
+              <HStack spacing={2} align='center'>
+                <Text className={styles.panelTitle}>Mount destination</Text>
+                <RMIconButton
+                  icon={HiQuestionMarkCircle}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    openInfoModal('Restic Mount Destination', ResticMountDestinationHelp)
+                  }}
+                />
+              </HStack>
+            ),
             description: 'Choose where restic mounts snapshots for inspection or restore.',
             controlsId: 'restic-mount-destination-content',
             content: (
