@@ -509,19 +509,22 @@ The script will be executed with the following parameters:
         />
       )
     },
-    {
-      key: 'Reseed: decompress on target (send compressed stream)',
-      value: (
-        <RMSwitch
-          isChecked={selectedCluster?.config?.backupReseedRemoteDecompress}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          confirmTitle={'Confirm switch settings for backup-reseed-remote-decompress?'}
-          onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-reseed-remote-decompress' }))
-          }
-        />
-      )
-    },
+    // Not yet implemented in db job restore process
+    // This feature is intended to offload decompression to the target server during reseed operations
+    // so that the data is sent in compressed form over the network. Which can save bandwidth and speed up the network process.
+    // {
+    //   key: 'Reseed: decompress on target (send compressed stream)',
+    //   value: (
+    //     <RMSwitch
+    //       isChecked={selectedCluster?.config?.backupReseedRemoteDecompress}
+    //       isDisabled={user?.grants['cluster-settings'] == false}
+    //       confirmTitle={'Confirm switch settings for backup-reseed-remote-decompress?'}
+    //       onChange={() =>
+    //         dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-reseed-remote-decompress' }))
+    //       }
+    //     />
+    //   )
+    // },
     ...(selectedCluster?.config?.compressBackups
       ? [
         {
