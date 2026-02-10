@@ -52,6 +52,7 @@ require (
 	github.com/hydrogen18/stalecucumber v0.0.0-20161215203336-0a94983f3e27
 	github.com/improbable-eng/grpc-web v0.14.0
 	github.com/iu0v1/gelada v1.2.2
+	github.com/jacoblockett/sanitizefilename v1.0.1
 	github.com/jacobsa/fuse v0.0.0-20211125163655-ffd6c474e806
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/jordan-wright/email v4.0.1-0.20210109023952-943e75fe5223+incompatible
@@ -66,6 +67,7 @@ require (
 	github.com/mattermost/mattermost/server/public v0.1.21
 	github.com/micro/go-micro v0.27.1
 	github.com/mitchellh/go-homedir v1.1.0
+	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mjibson/go-dsp v0.0.0-20170104183934-49dba8372707
 	github.com/nsf/termbox-go v1.1.1
 	github.com/percona/go-mysql v0.0.0-20190307200310-f5cfaf6a5e55
@@ -169,7 +171,6 @@ require (
 	github.com/hashicorp/hcl v1.0.1-vault-7 // indirect
 	github.com/hashicorp/yamux v0.1.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/jacoblockett/sanitizefilename v1.0.1 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
@@ -188,7 +189,6 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/micro/mdns v0.1.0 // indirect
 	github.com/mitchellh/hashstructure v1.0.0 // indirect
-	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
@@ -278,7 +278,7 @@ require (
 	github.com/fastly/go-utils v0.0.0-20180712184237-d95a45783239 // indirect
 	github.com/ggwhite/go-masker v1.0.9
 	github.com/gin-gonic/gin v1.9.1 // indirect
-	github.com/go-git/go-git/v5 v5.16.3
+	github.com/go-git/go-git/v5 v5.16.5
 	github.com/go-mysql-org/go-mysql v1.7.0
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.0
