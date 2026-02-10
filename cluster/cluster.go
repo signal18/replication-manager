@@ -21,6 +21,7 @@ import (
 	"os/user"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1120,6 +1121,75 @@ func (cluster *Cluster) Save() error {
 	return nil
 }
 
+func parseTomlErrorPosition(message string) (int, int, bool) {
+	if !strings.HasPrefix(message, "(") {
+		return 0, 0, false
+	}
+	closeIdx := strings.Index(message, ")")
+	if closeIdx == -1 {
+		return 0, 0, false
+	}
+	inside := message[1:closeIdx]
+	parts := strings.Split(inside, ",")
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	lineStr := strings.TrimSpace(parts[0])
+	colStr := strings.TrimSpace(parts[1])
+	line, err := strconv.Atoi(lineStr)
+	if err != nil || line < 1 {
+		return 0, 0, false
+	}
+	col, err := strconv.Atoi(colStr)
+	if err != nil || col < 1 {
+		return 0, 0, false
+	}
+	return line, col, true
+}
+
+func formatTomlLoadError(err error, data []byte) string {
+	if err == nil {
+		return ""
+	}
+	errMsg := err.Error()
+	line, col, ok := parseTomlErrorPosition(errMsg)
+	if !ok {
+		return errMsg
+	}
+	lines := strings.Split(string(data), "\n")
+	lineIndex := line - 1
+	if lineIndex < 0 || lineIndex >= len(lines) {
+		return errMsg
+	}
+	start := lineIndex - 1
+	if start < 0 {
+		start = 0
+	}
+	end := lineIndex + 1
+	if end >= len(lines) {
+		end = len(lines) - 1
+	}
+
+	var buf strings.Builder
+	buf.WriteString(errMsg)
+	buf.WriteString("\n")
+	for i := start; i <= end; i++ {
+		lineNo := i + 1
+		lineText := strings.TrimRight(lines[i], "\r")
+		if i == lineIndex {
+			buf.WriteString(fmt.Sprintf("%4d> %s\n", lineNo, lineText))
+			caretCol := col
+			if caretCol < 1 {
+				caretCol = 1
+			}
+			buf.WriteString(fmt.Sprintf("     %s^\n", strings.Repeat(" ", caretCol-1)))
+		} else {
+			buf.WriteString(fmt.Sprintf("%4d| %s\n", lineNo, lineText))
+		}
+	}
+	return strings.TrimRight(buf.String(), "\n")
+}
+
 func (cluster *Cluster) SaveConfigFile() (bool, error) {
 	var has_changed bool
 
@@ -1136,8 +1206,9 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 	// Load TOML and sort keys
 	t, err := toml.LoadBytes(readconf)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error loading toml: %s", err)
-		return false, err
+		errMsg := formatTomlLoadError(err, readconf)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error loading toml: %s", errMsg)
+		return false, fmt.Errorf("error loading toml: %s", errMsg)
 	}
 
 	s := t
