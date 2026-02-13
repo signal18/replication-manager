@@ -179,6 +179,10 @@ func (cluster *Cluster) ResticPurgeSnapshotWithOptions(snapshotID string, now bo
 }
 
 func (cluster *Cluster) ResticPurgeRepo(now bool) error {
+	if !cluster.IsProvisioned() {
+		return fmt.Errorf("cluster is not provisioned")
+	}
+
 	return cluster.ResticPurgeRepoWithOptions(now, false)
 }
 
