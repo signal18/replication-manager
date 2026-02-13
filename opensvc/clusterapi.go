@@ -488,14 +488,14 @@ func (collector *Collector) objectExists(path string, agent string) (bool, error
 func (collector *Collector) CreateSecretV2(namespace string, service string, agent string) error {
 
 	path := fmt.Sprintf("%s/sec/%s", namespace, service)
-	exists, err := collector.objectExists(path, agent)
-	if err != nil {
-		return err
-	}
+	// exists, err := collector.objectExists(path, agent)
+	// if err != nil {
+	// 	return err
+	// }
 
-	if exists {
-		return fmt.Errorf("%w: %s", ErrObjectAlreadyExists, path)
-	}
+	// if exists {
+	// 	return fmt.Errorf("%w: %s", ErrObjectAlreadyExists, path)
+	// }
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
 
@@ -540,14 +540,14 @@ func (collector *Collector) CreateSecretV2(namespace string, service string, age
 func (collector *Collector) CreateConfigV2(namespace string, service string, agent string) error {
 
 	path := fmt.Sprintf("%s/cfg/%s", namespace, service)
-	exists, err := collector.objectExists(path, agent)
-	if err != nil {
-		return err
-	}
+	// exists, err := collector.objectExists(path, agent)
+	// if err != nil {
+	// 	return err
+	// }
 
-	if exists {
-		return fmt.Errorf("%w: %s", ErrObjectAlreadyExists, path)
-	}
+	// if exists {
+	// 	return fmt.Errorf("%w: %s", ErrObjectAlreadyExists, path)
+	// }
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
 	// create only if missing to avoid wiping existing custom values
