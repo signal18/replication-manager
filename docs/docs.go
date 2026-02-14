@@ -5465,68 +5465,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/opensvc/keys-exists": {
-            "get": {
-                "description": "Retrieves raw OpenSVC response for object keys existence.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ClusterGateway"
-                ],
-                "summary": "Get OpenSVC Object Keys (raw)",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "OpenSVC object path",
-                        "name": "path",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OpenSVC response envelope",
-                        "schema": {
-                            "$ref": "#/definitions/server.OpenSVCKeysExistsResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Missing path",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "No cluster\" or \"OpenSVC request failed",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/api/clusters/{clusterName}/proxies/{proxyName}": {
             "get": {
                 "description": "Shows the proxies for that specific named cluster",
@@ -25610,17 +25548,6 @@ const docTemplate = `{
                 },
                 "message": {
                     "type": "string"
-                }
-            }
-        },
-        "server.OpenSVCKeysExistsResponse": {
-            "type": "object",
-            "properties": {
-                "body": {
-                    "type": "string"
-                },
-                "status_code": {
-                    "type": "integer"
                 }
             }
         },
