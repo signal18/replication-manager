@@ -7,6 +7,7 @@
 package server
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -81,6 +82,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/opensvc-stats", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterOpenSVCDaemonStatus)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/opensvc/keys-exists", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterOpenSVCKeysExists)),
 	))
 
 	//PROTECTED ENDPOINTS FOR CLUSTERS ACTIONS
@@ -8021,6 +8027,100 @@ func (repman *ReplicationManager) handlerMuxClusterOpenSVCDaemonStatus(w http.Re
 		}
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+}
+
+// OpenSVCKeysExistsResponse represents the OpenSVC response envelope.
+type OpenSVCKeysExistsResponse struct {
+	StatusCode int    `json:"status_code"`
+	Body       string `json:"body"`
+}
+
+// handlerMuxClusterOpenSVCKeysExists handles the HTTP request to check OpenSVC keys for a given path.
+// @Summary Get OpenSVC Object Keys (raw)
+// @Description Retrieves raw OpenSVC response for object keys existence.
+// @Tags ClusterGateway
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param path query string true "OpenSVC object path"
+// @Success 200 {object} OpenSVCKeysExistsResponse "OpenSVC response envelope"
+// @Failure 400 {string} string "Missing path"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster" or "OpenSVC request failed"
+// @Router /api/clusters/{clusterName}/opensvc/keys-exists [get]
+func (repman *ReplicationManager) handlerMuxClusterOpenSVCKeysExists(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	objectPath := strings.TrimSpace(r.URL.Query().Get("path"))
+	if objectPath == "" {
+		http.Error(w, "Missing path", http.StatusBadRequest)
+		return
+	}
+
+	svc := mycluster.OpenSVCConnect()
+	urlget := fmt.Sprintf("https://%s:%s/object_keys?path=%s", svc.Host, svc.Port, url.QueryEscape(objectPath))
+	req, err := http.NewRequest("GET", urlget, nil)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error building OpenSVC request: ", err)
+		http.Error(w, "Error building OpenSVC request: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", "ANY")
+	if svc.UseCollectorAPI {
+		req.SetBasicAuth(svc.RplMgrUser, svc.RplMgrPassword)
+	}
+
+	ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	client := svc.GetHttpClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error executing OpenSVC request: ", err)
+		http.Error(w, "Error executing OpenSVC request: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading OpenSVC response: ", err)
+		http.Error(w, "Error reading OpenSVC response: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := OpenSVCKeysExistsResponse{
+		StatusCode: resp.StatusCode,
+		Body:       string(body),
+	}
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error encoding JSON: ", err)
+		http.Error(w, "Error encoding JSON: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if _, err = w.Write(responseJSON); err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
+		http.Error(w, "Error writing response: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
