@@ -18,6 +18,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
+	"gopkg.in/ini.v1"
 )
 
 func (server *ServerMonitor) GetEnv() map[string]string {
@@ -627,13 +628,100 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype
 	}
 
 	// Read the file
-	err = server.VariablesMap.LoadFromConfigFile(srcpath, cnftype)
+	section, err := config.LoadMySQLConfigSection(srcpath)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
+		return err
+	}
+
+	redactedSection := formatIniSectionRedacted(section)
+	if redactedSection != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg,
+			"Redacted mysqld section (%s) from %s:\n%s", cnftype, srcpath, redactedSection)
+	}
+
+	err = server.VariablesMap.LoadFromSection(section, cnftype)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
 		return err
 	}
 
 	return nil
+}
+
+func formatIniSectionRedacted(section *ini.Section) string {
+	if section == nil {
+		return ""
+	}
+
+	var builder strings.Builder
+	builder.WriteString("[")
+	builder.WriteString(section.Name())
+	builder.WriteString("]\n")
+
+	for _, key := range section.Keys() {
+		// Use shadow values to reflect last-wins behavior in logs.
+		shadowValues := key.ValueWithShadows()
+		selectedValue := key.Value()
+		if len(shadowValues) > 0 {
+			selectedValue = shadowValues[len(shadowValues)-1]
+		}
+		redactedValue := redactIniValue(key.Name(), selectedValue)
+		redactedShadows := make([]string, len(shadowValues))
+		for i, value := range shadowValues {
+			redactedShadows[i] = redactIniValue(key.Name(), value)
+		}
+
+		builder.WriteString(key.Name())
+		builder.WriteString(" = ")
+		builder.WriteString(redactedValue)
+		builder.WriteString(" (shadows: ")
+		if len(redactedShadows) == 0 {
+			builder.WriteString("none")
+		} else {
+			builder.WriteString(strings.Join(redactedShadows, ", "))
+		}
+		builder.WriteString(")\n")
+	}
+
+	return strings.TrimRight(builder.String(), "\n")
+}
+
+func redactIniValue(keyName string, value string) string {
+	if shouldRedactIniKey(keyName) {
+		return "<redacted>"
+	}
+	return value
+}
+
+func shouldRedactIniKey(keyName string) bool {
+	normalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(keyName), "-", "_"))
+	sensitiveTokens := []string{
+		"password",
+		"passwd",
+		"secret",
+		"token",
+		"ssl_key",
+		"ssl_cert",
+		"ssl_ca",
+		"private_key",
+		"access_key",
+		"secret_key",
+		"api_key",
+	}
+
+	for _, token := range sensitiveTokens {
+		if strings.Contains(normalized, token) {
+			return true
+		}
+	}
+
+	// MySQL/MariaDB auth keys often end with "_auth" (e.g., wsrep_sst_auth).
+	if normalized == "wsrep_sst_auth" || strings.HasSuffix(normalized, "_auth") {
+		return true
+	}
+
+	return false
 }
 
 func (server *ServerMonitor) ReadPreservedVariables() error {
