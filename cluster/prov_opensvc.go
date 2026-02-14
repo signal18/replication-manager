@@ -151,7 +151,6 @@ func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 	if err != nil {
 		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && cluster.Conf.ProvObjectAllowOverwrite {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Config object exists. Reuse config env on cluster to avoid truncation of keys")
-			err = nil
 		} else {
 			return err
 		}
