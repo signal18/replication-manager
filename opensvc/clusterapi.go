@@ -432,6 +432,7 @@ type CreateRequest struct {
 }
 
 var ErrObjectAlreadyExists = errors.New("opensvc object already exists")
+var ErrUnknownService = errors.New("unknown service")
 
 func (collector *Collector) KeysExists(path string, agent string) (bool, error) {
 	urlget := fmt.Sprintf("https://%s:%s/object_keys?path=%s", collector.Host, collector.Port, url.QueryEscape(path))
@@ -473,7 +474,18 @@ func (collector *Collector) KeysExists(path string, agent string) (bool, error) 
 		return false, fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	data := gjson.GetBytes(body, "nodes.@values.0.data")
+	errbody := gjson.GetBytes(body, "error")
+	if errbody.Exists() {
+		return false, errors.New(errbody.String()) // Return the error message from the response if it exists
+	}
+
+	var data gjson.Result
+	data = gjson.GetBytes(body, "data")
+	// handle multiple nodes response
+	if gjson.GetBytes(body, "nodes").Exists() {
+		data = gjson.GetBytes(body, "nodes.@values.0.data")
+	}
+
 	if !data.Exists() { // If error
 		return false, fmt.Errorf("failed to get keys for path %s: %s", path, string(body))
 	} else if len(data.Array()) == 0 {
@@ -487,11 +499,9 @@ func (collector *Collector) CreateSecretV2(namespace string, service string, age
 
 	path := fmt.Sprintf("%s/sec/%s", namespace, service)
 	exists, err := collector.KeysExists(path, agent)
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrUnknownService) {
 		return err
-	}
-
-	if exists {
+	} else if exists {
 		return fmt.Errorf("%w: %s", ErrObjectAlreadyExists, path)
 	}
 
@@ -539,11 +549,9 @@ func (collector *Collector) CreateConfigV2(namespace string, service string, age
 
 	path := fmt.Sprintf("%s/cfg/%s", namespace, service)
 	exists, err := collector.KeysExists(path, agent)
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrUnknownService) {
 		return err
-	}
-
-	if exists {
+	} else if exists {
 		return fmt.Errorf("%w: %s", ErrObjectAlreadyExists, path)
 	}
 
