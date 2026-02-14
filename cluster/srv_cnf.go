@@ -715,6 +715,10 @@ func shouldRedactIniKey(keyName string) bool {
 		}
 	}
 
+	if normalized == "wsrep_sst_auth" || strings.HasSuffix(normalized, "_auth") {
+		return true
+	}
+
 	return false
 }
 

@@ -865,7 +865,7 @@ func (cm *ConfigManager) ShallowClone(conf *config.Config) error {
 func (cm *ConfigManager) RotateGitAccessToken(conf *config.Config) error {
 	acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
 	if err != nil {
-		cm.logger.Errorf("none", config.ConstLogModGit, "%s\n", err.Error()+conf.GetDecryptedValue("cloud18-gitlab-password"))
+		cm.logger.Errorf("none", config.ConstLogModGit, "Error getting GitLab token: %v", err)
 		conf.Cloud18 = false
 		return err
 	}

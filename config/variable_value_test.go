@@ -426,6 +426,31 @@ test_var = test_value
 	}
 }
 
+func TestVariablesMapLoadFromConfigFileBooleanKey(t *testing.T) {
+	tmpDir := t.TempDir()
+	content := `[mysqld]
+skip_name_resolve
+`
+	path := filepath.Join(tmpDir, "bool.cnf")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	vm := NewVariablesMap()
+	if err := vm.LoadFromConfigFile(path, "config"); err != nil {
+		t.Fatalf("Failed to load config with boolean key: %v", err)
+	}
+
+	state := vm.Get("skip_name_resolve")
+	if state == nil || state.Config == nil {
+		t.Fatal("skip_name_resolve not loaded")
+	}
+
+	if state.Config.String() != "true" {
+		t.Errorf("Expected boolean key value 'true', got '%s'", state.Config.String())
+	}
+}
+
 // TestVariablesMapINIShadows tests that INI shadows (duplicate keys) are handled
 func TestVariablesMapINIShadows(t *testing.T) {
 	tmpDir := t.TempDir()
