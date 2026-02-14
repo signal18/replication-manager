@@ -22545,7 +22545,7 @@
                     "type": "boolean"
                 },
                 "backupResticMountDir": {
-                    "description": "BackupResticMountDir defines the base directory for restic FUSE mounts. Default base is <working-dir>/<cluster>/mount to avoid permission issues; relative paths resolve under that base.",
+                    "description": "BackupResticMountDir defines the base directory for restic FUSE mounts.\nDefault base is \u003cworking-dir\u003e/\u003ccluster\u003e/mount. Relative paths resolve under that base.",
                     "type": "string"
                 },
                 "backupResticMountHost": {

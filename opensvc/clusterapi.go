@@ -432,9 +432,10 @@ type CreateRequest struct {
 }
 
 var ErrObjectAlreadyExists = errors.New("opensvc object already exists")
+var ErrUnknownService = errors.New("unknown service")
 
-func (collector *Collector) objectExists(path string, agent string) (bool, error) {
-	urlget := fmt.Sprintf("https://%s:%s/object_status?path=%s", collector.Host, collector.Port, url.QueryEscape(path))
+func (collector *Collector) KeysExists(path string, agent string) (bool, error) {
+	urlget := fmt.Sprintf("https://%s:%s/object_keys?path=%s", collector.Host, collector.Port, url.QueryEscape(path))
 
 	client := collector.GetHttpClient()
 	req, err := http.NewRequest("GET", urlget, nil)
@@ -473,13 +474,23 @@ func (collector *Collector) objectExists(path string, agent string) (bool, error
 		return false, fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	status := gjson.GetBytes(body, "status")
-	if status.Exists() && status.Int() != 0 {
-		lowerBody := bytes.ToLower(body)
-		if bytes.Contains(lowerBody, []byte("not found")) || bytes.Contains(lowerBody, []byte("not exist")) {
-			return false, nil
-		}
-		return false, fmt.Errorf("OpenSVC object_status error: %s", string(body))
+	errbody := gjson.GetBytes(body, "error")
+	if errbody.Exists() {
+		// Return the error message from the response if it exists. It might return ErrUnknownService which is handled by caller to decide if it should be considered as an error or not
+		return false, errors.New(errbody.String())
+	}
+
+	var data gjson.Result
+	data = gjson.GetBytes(body, "data")
+	// handle multiple nodes response
+	if gjson.GetBytes(body, "nodes").Exists() {
+		data = gjson.GetBytes(body, "nodes.@values.0.data")
+	}
+
+	if !data.Exists() { // If error field is not set but data is missing, consider it as an error
+		return false, fmt.Errorf("failed to get keys for path %s: %s", path, string(body))
+	} else if len(data.Array()) == 0 { // If data exists but is empty, it means the keys do not exist. Safe to overwrite.
+		return false, nil
 	}
 
 	return true, nil
@@ -488,14 +499,12 @@ func (collector *Collector) objectExists(path string, agent string) (bool, error
 func (collector *Collector) CreateSecretV2(namespace string, service string, agent string) error {
 
 	path := fmt.Sprintf("%s/sec/%s", namespace, service)
-	// exists, err := collector.objectExists(path, agent)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// if exists {
-	// 	return fmt.Errorf("%w: %s", ErrObjectAlreadyExists, path)
-	// }
+	exists, err := collector.KeysExists(path, agent)
+	if err != nil && !errors.Is(err, ErrUnknownService) {
+		return err
+	} else if exists {
+		return fmt.Errorf("%w: %s", ErrObjectAlreadyExists, path)
+	}
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
 
@@ -540,14 +549,12 @@ func (collector *Collector) CreateSecretV2(namespace string, service string, age
 func (collector *Collector) CreateConfigV2(namespace string, service string, agent string) error {
 
 	path := fmt.Sprintf("%s/cfg/%s", namespace, service)
-	// exists, err := collector.objectExists(path, agent)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// if exists {
-	// 	return fmt.Errorf("%w: %s", ErrObjectAlreadyExists, path)
-	// }
+	exists, err := collector.KeysExists(path, agent)
+	if err != nil && !errors.Is(err, ErrUnknownService) {
+		return err
+	} else if exists {
+		return fmt.Errorf("%w: %s", ErrObjectAlreadyExists, path)
+	}
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
 	// create only if missing to avoid wiping existing custom values

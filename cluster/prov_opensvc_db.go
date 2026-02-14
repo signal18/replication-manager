@@ -106,7 +106,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	} else {
 		err := cluster.OpenSVCCreateMaps(s.Agent)
 		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && !cluster.Conf.ProvObjectAllowOverwrite {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC service/volume exists and prov-object-allow-overwrite is disabled, skipping provisioning")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Error creating OpenSVC maps: %s", err)
 			cluster.errorChan <- err
 			return
 		}

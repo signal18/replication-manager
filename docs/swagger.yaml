@@ -2268,8 +2268,9 @@ definitions:
       backupResticMountAllowOther:
         type: boolean
       backupResticMountDir:
-        description: BackupResticMountDir defines the base directory for restic FUSE
-          mounts.
+        description: |-
+          BackupResticMountDir defines the base directory for restic FUSE mounts.
+          Default base is <working-dir>/<cluster>/mount. Relative paths resolve under that base.
         type: string
       backupResticMountHost:
         type: string
