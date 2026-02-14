@@ -432,9 +432,11 @@ func TestVariablesMapINIShadows(t *testing.T) {
 
 	// Create config with duplicate keys (INI shadows)
 	content := `[mysqld]
-replicate_do_db = db1
-replicate_do_db = db2
-replicate_do_db = db3
+	replicate_do_db = db1
+	replicate_do_db = db2
+	replicate_do_db = db3
+	max_connections = 100
+	max_connections = 200
 `
 	path := filepath.Join(tmpDir, "shadows.cnf")
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -451,7 +453,7 @@ replicate_do_db = db3
 		t.Fatal("replicate_do_db not loaded")
 	}
 
-	// Should be a SliceValue with all three values
+	// Should be a SliceValue with all three values in order
 	slice, ok := state.Config.(*SliceValue)
 	if !ok {
 		t.Fatal("replicate_do_db should be SliceValue")
@@ -459,6 +461,17 @@ replicate_do_db = db3
 
 	if len(*slice) != 3 {
 		t.Errorf("Expected 3 values, got %d", len(*slice))
+	}
+	if (*slice)[0] != "db1" || (*slice)[1] != "db2" || (*slice)[2] != "db3" {
+		t.Errorf("Expected ordered values [db1 db2 db3], got %v", *slice)
+	}
+
+	maxConnections := vm.Get("max_connections")
+	if maxConnections == nil || maxConnections.Config == nil {
+		t.Fatal("max_connections not loaded")
+	}
+	if maxConnections.Config.String() != "200" {
+		t.Errorf("Expected last value 200 for max_connections, got %s", maxConnections.Config.String())
 	}
 }
 

@@ -574,7 +574,7 @@ func (cm *ConfigManager) AddPullToGitignore(conf *config.Config) {
 		// If .gitignore doesn't exist, create it and write the line
 		err := os.WriteFile(gitignoreFile, []byte(lineToAdd+"\n"), 0644)
 		if err != nil {
-			cm.logger.Errorf("none", config.ConstLogModGit, "Error creating .gitignore:", err)
+			cm.logger.Errorf("none", config.ConstLogModGit, "Error creating .gitignore: %v", err)
 		}
 		return
 	}
@@ -582,7 +582,7 @@ func (cm *ConfigManager) AddPullToGitignore(conf *config.Config) {
 	// Open .gitignore for reading and appending
 	file, err := os.OpenFile(gitignoreFile, os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
-		cm.logger.Errorf("none", config.ConstLogModGit, "Error opening .gitignore:", err)
+		cm.logger.Errorf("none", config.ConstLogModGit, "Error opening .gitignore: %v", err)
 		return
 	}
 	defer file.Close()
@@ -598,7 +598,7 @@ func (cm *ConfigManager) AddPullToGitignore(conf *config.Config) {
 	}
 
 	if scanner.Err() != nil {
-		cm.logger.Errorf("none", config.ConstLogModGit, "Error reading .gitignore:", scanner.Err())
+		cm.logger.Errorf("none", config.ConstLogModGit, "Error reading .gitignore: %v", scanner.Err())
 		return
 	}
 
@@ -606,7 +606,7 @@ func (cm *ConfigManager) AddPullToGitignore(conf *config.Config) {
 	if !lineExists {
 		_, err := file.WriteString(lineToAdd + "\n")
 		if err != nil {
-			cm.logger.Errorf("none", config.ConstLogModGit, "Error appending to .gitignore:", err)
+			cm.logger.Errorf("none", config.ConstLogModGit, "Error appending to .gitignore: %v", err)
 		}
 	}
 }
@@ -621,7 +621,7 @@ func (cm *ConfigManager) AddTempDirToGitignore(conf *config.Config) {
 		// If .gitignore doesn't exist, create it and write the line
 		err := os.WriteFile(gitignoreFile, []byte(lineToAdd+"\n"), 0644)
 		if err != nil {
-			cm.logger.Errorf("none", config.ConstLogModGit, "Error creating .gitignore:", err)
+			cm.logger.Errorf("none", config.ConstLogModGit, "Error creating .gitignore: %v", err)
 		}
 		return
 	}
@@ -629,7 +629,7 @@ func (cm *ConfigManager) AddTempDirToGitignore(conf *config.Config) {
 	// Open .gitignore for reading and appending
 	file, err := os.OpenFile(gitignoreFile, os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
-		cm.logger.Errorf("none", config.ConstLogModGit, "Error opening .gitignore:", err)
+		cm.logger.Errorf("none", config.ConstLogModGit, "Error opening .gitignore: %v", err)
 		return
 	}
 	defer file.Close()
@@ -645,7 +645,7 @@ func (cm *ConfigManager) AddTempDirToGitignore(conf *config.Config) {
 	}
 
 	if scanner.Err() != nil {
-		cm.logger.Errorf("none", config.ConstLogModGit, "Error reading .gitignore:", scanner.Err())
+		cm.logger.Errorf("none", config.ConstLogModGit, "Error reading .gitignore: %v", scanner.Err())
 		return
 	}
 
@@ -653,7 +653,7 @@ func (cm *ConfigManager) AddTempDirToGitignore(conf *config.Config) {
 	if !lineExists {
 		_, err := file.WriteString(lineToAdd + "\n")
 		if err != nil {
-			cm.logger.Errorf("none", config.ConstLogModGit, "Error appending to .gitignore:", err)
+			cm.logger.Errorf("none", config.ConstLogModGit, "Error appending to .gitignore: %v", err)
 		}
 	}
 }
@@ -865,7 +865,7 @@ func (cm *ConfigManager) ShallowClone(conf *config.Config) error {
 func (cm *ConfigManager) RotateGitAccessToken(conf *config.Config) error {
 	acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
 	if err != nil {
-		cm.logger.Errorf("none", config.ConstLogModGit, err.Error()+conf.GetDecryptedValue("cloud18-gitlab-password")+"\n")
+		cm.logger.Errorf("none", config.ConstLogModGit, "%s\n", err.Error()+conf.GetDecryptedValue("cloud18-gitlab-password"))
 		conf.Cloud18 = false
 		return err
 	}

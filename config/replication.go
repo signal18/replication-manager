@@ -9,10 +9,10 @@ package config
 // ReplicationConfig contains all replication-related configuration
 type ReplicationConfig struct {
 	// Basic Replication Settings
-	Credential       string `mapstructure:"replication-credential" toml:"replication-credential" json:"replicationCredential"`
-	SourceName       string `mapstructure:"replication-source-name" toml:"replication-source-name" json:"replicationSourceName"`
-	UseSSL           bool   `mapstructure:"replication-use-ssl" toml:"replication-use-ssl" json:"replicationUseSsl"`
-	ErrorScript      string `mapstructure:"replication-error-script" toml:"replication-error-script" json:"replicationErrorScript"`
+	Credential             string `mapstructure:"replication-credential" toml:"replication-credential" json:"replicationCredential"`
+	SourceName             string `mapstructure:"replication-source-name" toml:"replication-source-name" json:"replicationSourceName"`
+	UseSSL                 bool   `mapstructure:"replication-use-ssl" toml:"replication-use-ssl" json:"replicationUseSsl"`
+	ErrorScript            string `mapstructure:"replication-error-script" toml:"replication-error-script" json:"replicationErrorScript"`
 	RestartOnSQLErrorMatch string `mapstructure:"replication-restart-on-sqlerror-match" toml:"replication-restart-on-sqlerror-match" json:"replicationRestartOnSqlLErrorMatch"`
 
 	// Master Connection
@@ -23,19 +23,19 @@ type ReplicationConfig struct {
 	MultisourceHeadClusters string `mapstructure:"replication-multisource-head-clusters" toml:"replication-multisource-head-clusters" json:"replicationMultisourceHeadClusters"`
 
 	// Topology Types
-	ActivePassive       bool   `mapstructure:"replication-active-passive" toml:"replication-active-passive" json:"replicationActivePassive"`
-	DynamicTopology     bool   `mapstructure:"replication-dynamic-topology" toml:"replication-dynamic-topology" json:"replicationDynamicTopology"`
-	MultiMaster         bool   `mapstructure:"replication-multi-master" toml:"replication-multi-master" json:"replicationMultiMaster"`
+	ActivePassive              bool `mapstructure:"replication-active-passive" toml:"replication-active-passive" json:"replicationActivePassive"`
+	DynamicTopology            bool `mapstructure:"replication-dynamic-topology" toml:"replication-dynamic-topology" json:"replicationDynamicTopology"`
+	MultiMaster                bool `mapstructure:"replication-multi-master" toml:"replication-multi-master" json:"replicationMultiMaster"`
 	MultiMasterConcurrentWrite bool `mapstructure:"replication-multi-master-concurrent-write" toml:"replication-multi-master-concurrent-write" json:"replicationMultiMasterConcurrentWrite"`
-	MultiMasterRing     bool   `mapstructure:"replication-multi-master-ring" toml:"replication-multi-master-ring" json:"replicationMultiMasterRing"`
-	MultiMasterRingUnsafe bool `mapstructure:"replication-multi-master-ring-unsafe" toml:"replication-multi-master-ring-unsafe" json:"replicationMultiMasterRingUnsafe"`
-	MultiTierSlave      bool   `mapstructure:"replication-multi-tier-slave" toml:"replication-multi-tier-slave" json:"replicationMultiTierSlave"`
-	NoRelay             bool   `mapstructure:"replication-master-slave-never-relay" toml:"replication-master-slave-never-relay" json:"replicationMasterSlaveNeverRelay"`
+	MultiMasterRing            bool `mapstructure:"replication-multi-master-ring" toml:"replication-multi-master-ring" json:"replicationMultiMasterRing"`
+	MultiMasterRingUnsafe      bool `mapstructure:"replication-multi-master-ring-unsafe" toml:"replication-multi-master-ring-unsafe" json:"replicationMultiMasterRingUnsafe"`
+	MultiTierSlave             bool `mapstructure:"replication-multi-tier-slave" toml:"replication-multi-tier-slave" json:"replicationMultiTierSlave"`
+	NoRelay                    bool `mapstructure:"replication-master-slave-never-relay" toml:"replication-master-slave-never-relay" json:"replicationMasterSlaveNeverRelay"`
 
 	// Multi-Master Wsrep (Galera)
-	MultiMasterWsrep      bool   `mapstructure:"replication-multi-master-wsrep" toml:"replication-multi-master-wsrep" json:"replicationMultiMasterWsrep"`
+	MultiMasterWsrep          bool   `mapstructure:"replication-multi-master-wsrep" toml:"replication-multi-master-wsrep" json:"replicationMultiMasterWsrep"`
 	MultiMasterWsrepSSTMethod string `mapstructure:"replication-multi-master-wsrep-sst-method" toml:"replication-multi-master-wsrep-sst-method" json:"replicationMultiMasterWsrepSSTMethod" validate:"omitempty,oneof=mariabackup xtrabackup-v2 rsync mysqldump"`
-	MultiMasterWsrepPort  int    `mapstructure:"replication-multi-master-wsrep-port" toml:"replication-multi-master-wsrep-port" json:"replicationMultiMasterWsrepPort" validate:"omitempty,min=1024,max=65535"`
+	MultiMasterWsrepPort      int    `mapstructure:"replication-multi-master-wsrep-port" toml:"replication-multi-master-wsrep-port" json:"replicationMultiMasterWsrepPort" validate:"omitempty,min=1024,max=65535"`
 
 	// Group Replication
 	MultiMasterGrouprep     bool `mapstructure:"replication-multi-master-grouprep" toml:"replication-multi-master-grouprep" json:"replicationMultiMasterGrouprep"`
@@ -65,10 +65,10 @@ func (r *ReplicationConfig) Validate() error {
 	// Validate SST method
 	if r.MultiMasterWsrep && r.MultiMasterWsrepSSTMethod != "" {
 		validMethods := map[string]bool{
-			"mariabackup":    true,
-			"xtrabackup-v2":  true,
-			"rsync":          true,
-			"mysqldump":      true,
+			"mariabackup":   true,
+			"xtrabackup-v2": true,
+			"rsync":         true,
+			"mysqldump":     true,
 		}
 		if !validMethods[r.MultiMasterWsrepSSTMethod] {
 			return NewValidationError("replication-multi-master-wsrep-sst-method", r.MultiMasterWsrepSSTMethod, "must be one of: mariabackup, xtrabackup-v2, rsync, mysqldump")
@@ -77,21 +77,35 @@ func (r *ReplicationConfig) Validate() error {
 
 	// Validate topology conflicts
 	topologyCount := 0
-	if r.ActivePassive { topologyCount++ }
-	if r.MultiMaster { topologyCount++ }
-	if r.MultiMasterRing { topologyCount++ }
-	if r.MultiMasterWsrep { topologyCount++ }
-	if r.MultiMasterGrouprep { topologyCount++ }
-	if r.MasterSlavePgStream { topologyCount++ }
-	if r.MasterSlavePgLogical { topologyCount++ }
-
-	if topologyCount > 1 {
-		return NewValidationError("replication-topology", topologyCount, "multiple replication topologies selected - only one topology can be active")
+	if r.ActivePassive {
+		topologyCount++
+	}
+	if r.MultiMaster {
+		topologyCount++
+	}
+	if r.MultiMasterRing {
+		topologyCount++
+	}
+	if r.MultiMasterWsrep {
+		topologyCount++
+	}
+	if r.MultiMasterGrouprep {
+		topologyCount++
+	}
+	if r.MasterSlavePgStream {
+		topologyCount++
+	}
+	if r.MasterSlavePgLogical {
+		topologyCount++
 	}
 
 	// PostgreSQL topologies are mutually exclusive
 	if r.MasterSlavePgStream && r.MasterSlavePgLogical {
 		return NewValidationError("replication-postgresql", "both", "PostgreSQL streaming and logical replication cannot both be enabled")
+	}
+
+	if topologyCount > 1 {
+		return NewValidationError("replication-topology", topologyCount, "multiple replication topologies selected - only one topology can be active")
 	}
 
 	return nil

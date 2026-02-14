@@ -1207,13 +1207,16 @@ func (m *VariablesMap) loadFromSection(section *ini.Section, cnftype string) {
 
 		for _, key := range section.Keys() {
 			varname := normalizeConfigVarName(key.Name())
+			values := key.ValueWithShadows()
+			if len(values) == 0 {
+				continue
+			}
 			if slices.Contains(RepeatOptions, varname) {
-				values := key.ValueWithShadows()
 				for _, v := range values {
 					setValue(varname, v)
 				}
 			} else {
-				setValue(varname, key.Value())
+				setValue(varname, values[len(values)-1])
 			}
 		}
 	}
