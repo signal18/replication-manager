@@ -215,6 +215,7 @@ var clusterACLRules = []ACLRule{
 	{"/services/actions/unprovision", nil, []string{config.GrantProvClusterUnprovision}},
 	{"/api/clusters/actions/add", nil, []string{config.GrantProvCluster, config.GrantClusterCreate}},
 	{"/opensvc-gateway", nil, []string{config.GrantProvCluster}},
+	{"/opensvc/keys-exists", nil, []string{config.GrantProvCluster}},
 
 	// Staging
 	{"/actions/staging-refresh", nil, []string{config.GrantClusterStaging}},
