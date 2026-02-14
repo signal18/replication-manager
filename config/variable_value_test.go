@@ -428,6 +428,7 @@ test_var = test_value
 
 func TestVariablesMapLoadFromConfigFileBooleanKey(t *testing.T) {
 	tmpDir := t.TempDir()
+	// Bare keys should parse as true when AllowBooleanKeys is enabled.
 	content := `[mysqld]
 skip_name_resolve
 `

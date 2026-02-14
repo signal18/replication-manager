@@ -1207,6 +1207,7 @@ func (m *VariablesMap) loadFromSection(section *ini.Section, cnftype string) {
 
 		for _, key := range section.Keys() {
 			varname := normalizeConfigVarName(key.Name())
+			// Use INI shadows to honor MySQL last-wins behavior for non-repeat options.
 			values := key.ValueWithShadows()
 			if len(values) == 0 {
 				continue
@@ -1216,6 +1217,7 @@ func (m *VariablesMap) loadFromSection(section *ini.Section, cnftype string) {
 					setValue(varname, v)
 				}
 			} else {
+				// Non-repeat option: last occurrence wins.
 				setValue(varname, values[len(values)-1])
 			}
 		}

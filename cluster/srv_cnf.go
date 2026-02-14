@@ -660,6 +660,7 @@ func formatIniSectionRedacted(section *ini.Section) string {
 	builder.WriteString("]\n")
 
 	for _, key := range section.Keys() {
+		// Use shadow values to reflect last-wins behavior in logs.
 		shadowValues := key.ValueWithShadows()
 		selectedValue := key.Value()
 		if len(shadowValues) > 0 {
@@ -715,6 +716,7 @@ func shouldRedactIniKey(keyName string) bool {
 		}
 	}
 
+	// MySQL/MariaDB auth keys often end with "_auth" (e.g., wsrep_sst_auth).
 	if normalized == "wsrep_sst_auth" || strings.HasSuffix(normalized, "_auth") {
 		return true
 	}
