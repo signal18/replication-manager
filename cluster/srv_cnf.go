@@ -660,8 +660,12 @@ func formatIniSectionRedacted(section *ini.Section) string {
 	builder.WriteString("]\n")
 
 	for _, key := range section.Keys() {
-		selectedValue := redactIniValue(key.Name(), key.Value())
 		shadowValues := key.ValueWithShadows()
+		selectedValue := key.Value()
+		if len(shadowValues) > 0 {
+			selectedValue = shadowValues[len(shadowValues)-1]
+		}
+		redactedValue := redactIniValue(key.Name(), selectedValue)
 		redactedShadows := make([]string, len(shadowValues))
 		for i, value := range shadowValues {
 			redactedShadows[i] = redactIniValue(key.Name(), value)
@@ -669,7 +673,7 @@ func formatIniSectionRedacted(section *ini.Section) string {
 
 		builder.WriteString(key.Name())
 		builder.WriteString(" = ")
-		builder.WriteString(selectedValue)
+		builder.WriteString(redactedValue)
 		builder.WriteString(" (shadows: ")
 		if len(redactedShadows) == 0 {
 			builder.WriteString("none")
