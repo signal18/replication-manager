@@ -2268,8 +2268,9 @@ definitions:
       backupResticMountAllowOther:
         type: boolean
       backupResticMountDir:
-        description: BackupResticMountDir defines the base directory for restic FUSE
-          mounts.
+        description: |-
+          BackupResticMountDir defines the base directory for restic FUSE mounts.
+          Default base is <working-dir>/<cluster>/mount. Relative paths resolve under that base.
         type: string
       backupResticMountHost:
         type: string
@@ -4265,6 +4266,13 @@ definitions:
         $ref: '#/definitions/logrus.Fields'
       message:
         type: string
+    type: object
+  server.OpenSVCKeysExistsResponse:
+    properties:
+      body:
+        type: string
+      status_code:
+        type: integer
     type: object
   server.PreservedVarsCnfRequest:
     properties:
@@ -8011,6 +8019,48 @@ paths:
           schema:
             type: string
       summary: Get OpenSVC Daemon Status
+      tags:
+      - ClusterGateway
+  /api/clusters/{clusterName}/opensvc/keys-exists:
+    get:
+      description: Retrieves raw OpenSVC response for object keys existence.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: OpenSVC object path
+        in: query
+        name: path
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OpenSVC response envelope
+          schema:
+            $ref: '#/definitions/server.OpenSVCKeysExistsResponse'
+        "400":
+          description: Missing path
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster" or "OpenSVC request failed
+          schema:
+            type: string
+      summary: Get OpenSVC Object Keys (raw)
       tags:
       - ClusterGateway
   /api/clusters/{clusterName}/proxies/{proxyName}:
