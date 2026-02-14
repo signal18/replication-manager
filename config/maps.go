@@ -1173,38 +1173,47 @@ func (m *VariablesMap) HasDifferences() bool {
 	return hasDiff
 }
 
-func (m *VariablesMap) LoadFromConfigFile(path string, cnftype string) error {
+func validateVariablesConfigType(cnftype string) error {
 	if cnftype != "config" && cnftype != "deployed" && cnftype != "preserved" {
 		return fmt.Errorf("invalid config type: %s", cnftype)
 	}
+	return nil
+}
 
+func normalizeConfigVarName(name string) string {
+	return strings.TrimSpace(strings.TrimPrefix(strings.ReplaceAll(name, "-", "_"), "loose_"))
+}
+
+func LoadMySQLConfigSection(path string) (*ini.Section, error) {
 	// Allow shadows to handle multiple same options
 	cfgFile, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, AllowBooleanKeys: true}, path)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	return cfgFile.Section("mysqld"), nil
+}
 
-	section := cfgFile.Section("mysqld")
-	for _, key := range section.Keys() {
-		varname := strings.TrimSpace(strings.TrimPrefix(strings.ReplaceAll(key.Name(), "-", "_"), "loose_"))
-		if slices.Contains(RepeatOptions, varname) {
-			values := key.ValueWithShadows()
-			for _, v := range values {
-				if cnftype == "config" {
-					m.SetConfigValue(varname, v)
-				} else if cnftype == "deployed" {
-					m.SetDeployedValue(varname, v)
-				} else if cnftype == "preserved" {
-					m.SetPreservedValue(varname, v)
+func (m *VariablesMap) loadFromSection(section *ini.Section, cnftype string) {
+	if section != nil {
+		var setValue func(string, string)
+		switch cnftype {
+		case "config":
+			setValue = m.SetConfigValue
+		case "deployed":
+			setValue = m.SetDeployedValue
+		case "preserved":
+			setValue = m.SetPreservedValue
+		}
+
+		for _, key := range section.Keys() {
+			varname := normalizeConfigVarName(key.Name())
+			if slices.Contains(RepeatOptions, varname) {
+				values := key.ValueWithShadows()
+				for _, v := range values {
+					setValue(varname, v)
 				}
-			}
-		} else {
-			if cnftype == "config" {
-				m.SetConfigValue(varname, key.Value())
-			} else if cnftype == "deployed" {
-				m.SetDeployedValue(varname, key.Value())
-			} else if cnftype == "preserved" {
-				m.SetPreservedValue(varname, key.Value())
+			} else {
+				setValue(varname, key.Value())
 			}
 		}
 	}
@@ -1213,6 +1222,26 @@ func (m *VariablesMap) LoadFromConfigFile(path string, cnftype string) error {
 	if cnftype == "deployed" {
 		m.MarkDeployedChanged()
 	}
+}
 
+func (m *VariablesMap) LoadFromSection(section *ini.Section, cnftype string) error {
+	if err := validateVariablesConfigType(cnftype); err != nil {
+		return err
+	}
+	m.loadFromSection(section, cnftype)
+	return nil
+}
+
+func (m *VariablesMap) LoadFromConfigFile(path string, cnftype string) error {
+	if err := validateVariablesConfigType(cnftype); err != nil {
+		return err
+	}
+
+	section, err := LoadMySQLConfigSection(path)
+	if err != nil {
+		return err
+	}
+
+	m.loadFromSection(section, cnftype)
 	return nil
 }
