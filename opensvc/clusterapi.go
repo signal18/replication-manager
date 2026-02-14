@@ -476,7 +476,8 @@ func (collector *Collector) KeysExists(path string, agent string) (bool, error) 
 
 	errbody := gjson.GetBytes(body, "error")
 	if errbody.Exists() {
-		return false, errors.New(errbody.String()) // Return the error message from the response if it exists
+		// Return the error message from the response if it exists. It might return ErrUnknownService which is handled by caller to decide if it should be considered as an error or not
+		return false, errors.New(errbody.String())
 	}
 
 	var data gjson.Result
@@ -486,9 +487,9 @@ func (collector *Collector) KeysExists(path string, agent string) (bool, error) 
 		data = gjson.GetBytes(body, "nodes.@values.0.data")
 	}
 
-	if !data.Exists() { // If error
+	if !data.Exists() { // If error field is not set but data is missing, consider it as an error
 		return false, fmt.Errorf("failed to get keys for path %s: %s", path, string(body))
-	} else if len(data.Array()) == 0 {
+	} else if len(data.Array()) == 0 { // If data exists but is empty, it means the keys do not exist. Safe to overwrite.
 		return false, nil
 	}
 
