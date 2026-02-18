@@ -231,6 +231,18 @@ function GlobalSettings({ config }) {
         </HStack>
       )
     },
+    {
+      key: 'Enable Terminal Access',
+      value: (
+        <HStack>
+          <RMSwitch
+            confirmTitle={'Confirm switch global settings for terminal access?'}
+            onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'terminal-session-enabled', setRefresh }))}
+            isChecked={config?.terminalSessionManager}
+          />
+        </HStack>
+      )
+    },
   ]
 
   return (

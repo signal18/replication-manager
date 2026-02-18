@@ -363,7 +363,11 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 
 	// Terminal ACL - special handling
 	if strings.HasPrefix(URL, "/api/terminal") {
-		if cluster.matchACLRules(strUser, URL, terminalACLRules) {
+		if strings.Contains(URL, "/servers") && cluster.matchACLRules(strUser, URL, dbTerminalACLRules) {
+			return true
+		} else if strings.Contains(URL, "/proxies") && cluster.matchACLRules(strUser, URL, prxTerminalACLRules) {
+			return true
+		} else if cluster.matchACLRules(strUser, URL, terminalACLRules) {
 			return true
 		}
 	}

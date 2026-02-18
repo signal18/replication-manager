@@ -268,8 +268,18 @@ var globalSettingsACLRules = []ACLRule{
 var terminalACLRules = []ACLRule{
 	{"/api/terminal/connect", nil, []string{config.GrantTerminalGlobal}},
 	{"/api/terminal/list", nil, []string{config.GrantTerminalGlobal}},
-	{"/servers", nil, []string{config.GrantTerminalDatabase}},
-	{"/proxies", nil, []string{config.GrantTerminalProxy}},
+}
+
+var dbTerminalACLRules = []ACLRule{
+	{"/mysql", nil, []string{config.GrantTerminalDatabase}},
+	{"/mytop", nil, []string{config.GrantTerminalDatabase}},
+	{"/", []string{config.GrantTerminalDatabase, config.GrantTerminalSsh}, nil}, // Ssh access to servers (on-premise or via proxy) also requires terminal-db grant
+}
+
+var prxTerminalACLRules = []ACLRule{
+	{"/mysql", nil, []string{config.GrantTerminalProxy}},
+	{"/mytop", nil, []string{config.GrantTerminalProxy}},
+	{"/", []string{config.GrantTerminalProxy, config.GrantTerminalSsh}, nil}, // Ssh access to servers (on-premise or via proxy) also requires terminal-proxy grant
 }
 
 // checkACLRule checks if a user has the required grants for a specific rule

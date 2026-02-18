@@ -818,9 +818,27 @@ func TestIsURLPassACLTerminalAccess(t *testing.T) {
 		User:   "terminal_db",
 		Grants: map[string]bool{config.GrantTerminalDatabase: true},
 	}
+	cluster.APIUsers["terminal_db_ssh"] = APIUser{
+		User: "terminal_db_ssh",
+		Grants: map[string]bool{
+			config.GrantTerminalDatabase: true,
+			config.GrantTerminalSsh:      true,
+		},
+	}
 	cluster.APIUsers["terminal_proxy"] = APIUser{
 		User:   "terminal_proxy",
 		Grants: map[string]bool{config.GrantTerminalProxy: true},
+	}
+	cluster.APIUsers["terminal_proxy_ssh"] = APIUser{
+		User: "terminal_proxy_ssh",
+		Grants: map[string]bool{
+			config.GrantTerminalProxy: true,
+			config.GrantTerminalSsh:   true,
+		},
+	}
+	cluster.APIUsers["terminal_ssh_only"] = APIUser{
+		User:   "terminal_ssh_only",
+		Grants: map[string]bool{config.GrantTerminalSsh: true},
 	}
 	cluster.APIUsers["no_terminal"] = APIUser{
 		User:   "no_terminal",
@@ -837,17 +855,25 @@ func TestIsURLPassACLTerminalAccess(t *testing.T) {
 		{"Terminal - global connect", "terminal_global", "/api/terminal/connect", true},
 		{"Terminal - global list", "terminal_global", "/api/terminal/list", true},
 
-		// Database terminal access
-		{"Terminal - db servers", "terminal_db", "/api/terminal/servers/server1", true},
-		{"Terminal - db denied to proxy user", "terminal_proxy", "/api/terminal/servers/server1", false},
+		// Terminal connect (SSH) access
+		{"Terminal - db ssh denied without ssh grant", "terminal_db", "/api/terminal/connect/clusters/test/servers/server1", false},
+		{"Terminal - db ssh allowed with ssh grant", "terminal_db_ssh", "/api/terminal/connect/clusters/test/servers/server1", true},
+		{"Terminal - proxy ssh denied without ssh grant", "terminal_proxy", "/api/terminal/connect/clusters/test/proxies/proxy1", false},
+		{"Terminal - proxy ssh allowed with ssh grant", "terminal_proxy_ssh", "/api/terminal/connect/clusters/test/proxies/proxy1", true},
+		{"Terminal - ssh only denied without scope", "terminal_ssh_only", "/api/terminal/connect/clusters/test/servers/server1", false},
+		{"Terminal - ssh only denied without scope proxy", "terminal_ssh_only", "/api/terminal/connect/clusters/test/proxies/proxy1", false},
+
+		// Non-SSH terminal access
+		{"Terminal - db mysql", "terminal_db", "/api/terminal/connect/clusters/test/servers/server1/mysql", true},
+		{"Terminal - db mysql denied to proxy user", "terminal_proxy", "/api/terminal/connect/clusters/test/servers/server1/mysql", false},
 
 		// Proxy terminal access
-		{"Terminal - proxy", "terminal_proxy", "/api/terminal/proxies/proxy1", true},
-		{"Terminal - proxy denied to db user", "terminal_db", "/api/terminal/proxies/proxy1", false},
+		{"Terminal - proxy mysql", "terminal_proxy", "/api/terminal/connect/clusters/test/proxies/proxy1/mysql", true},
+		{"Terminal - proxy mysql denied to db user", "terminal_db", "/api/terminal/connect/clusters/test/proxies/proxy1/mysql", false},
 
 		// No terminal access
 		{"Terminal - denied without grant", "no_terminal", "/api/terminal/connect", false},
-		{"Terminal - denied without grant servers", "no_terminal", "/api/terminal/servers/server1", false},
+		{"Terminal - denied without grant servers", "no_terminal", "/api/terminal/connect/clusters/test/servers/server1", false},
 	}
 
 	for _, tt := range tests {
