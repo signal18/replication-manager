@@ -2443,6 +2443,8 @@ func GetGrantType() map[string]string {
 		GrantProvDBProvision:           GrantProvDBProvision,
 		GrantProvProxyProvision:        GrantProvProxyProvision,
 		GrantProvProxyUnprovision:      GrantProvProxyUnprovision,
+		GrantProvAppProvision:          GrantProvAppProvision,
+		GrantProvAppUnprovision:        GrantProvAppUnprovision,
 		GrantAppConfig:                 GrantAppConfig,
 		GrantAppDocker:                 GrantAppDocker,
 		GrantAppDeployment:             GrantAppDeployment,
@@ -2577,6 +2579,8 @@ func GetGrantProvision() []string {
 		GrantProvDBProvision,
 		GrantProvProxyProvision,
 		GrantProvProxyUnprovision,
+		GrantProvAppProvision,
+		GrantProvAppUnprovision,
 	}
 }
 
