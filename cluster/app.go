@@ -21,35 +21,42 @@ import (
 	"github.com/spf13/pflag"
 )
 
+const (
+	ErrAppConnectFailed    = "APPERR001"
+	ErrAppUnexpectedStatus = "APPERR002"
+	ErrAppTCPConnectFailed = "APPERR003"
+	ErrAppUnsupportedProto = "APPERR004"
+)
+
 // App defines a app
 type App struct {
-	Id                   string                  `json:"id" groups:"apps"`
-	Name                 string                  `json:"name" groups:"apps"`
-	Type                 string                  `json:"type" groups:"apps"`
-	Host                 string                  `json:"host" groups:"apps"`
-	HostIPV6             string                  `json:"hostIPV6"`
-	Port                 string                  `json:"port" groups:"apps"`
-	User                 string                  `json:"-"`
-	Pass                 string                  `json:"-"`
-	Version              string                  `json:"version" groups:"apps"`
-	Datadir              string                  `json:"datadir"`
-	State                string                  `json:"state"`
-	PrevState            string                  `json:"prevState"`
-	SlapOSDatadir        string                  `json:"slaposDatadir"`
-	ServiceName          string                  `json:"serviceName"`
-	Agent                string                  `json:"agent"`
-	Weight               string                  `json:"weight"`
-	FailCount            int                     `json:"failCount"`
-	ErrState             map[string]*state.State `json:"-"`
-	ClusterGroup         *Cluster                `json:"-"`
-	Process              *os.Process             `json:"process"`
-	RouteStatus          []config.RouteStatus    `json:"routeStatus"`
-	Variables            map[string]string       `json:"-"`
-	AppConfig            *config.AppConfig       `json:"config" groups:"apps"`
-	AppClusterSubstitute string                  `json:"appClusterSubstitute"`
-	TemplateMD5Prov      string                  `json:"templateMD5Prov"`
-	TemplateMD5          string                  `json:"templateMD5"`
-	IsHashingTemplate    bool                    `json:"isHashingTemplate"`
+	Id                   string                 `json:"id" groups:"apps"`
+	Name                 string                 `json:"name" groups:"apps"`
+	Type                 string                 `json:"type" groups:"apps"`
+	Host                 string                 `json:"host" groups:"apps"`
+	HostIPV6             string                 `json:"hostIPV6"`
+	Port                 string                 `json:"port" groups:"apps"`
+	User                 string                 `json:"-"`
+	Pass                 string                 `json:"-"`
+	Version              string                 `json:"version" groups:"apps"`
+	Datadir              string                 `json:"datadir"`
+	State                string                 `json:"state"`
+	PrevState            string                 `json:"prevState"`
+	SlapOSDatadir        string                 `json:"slaposDatadir"`
+	ServiceName          string                 `json:"serviceName"`
+	Agent                string                 `json:"agent"`
+	Weight               string                 `json:"weight"`
+	FailCount            int                    `json:"failCount"`
+	ErrState             map[string]state.State `json:"-"`
+	ClusterGroup         *Cluster               `json:"-"`
+	Process              *os.Process            `json:"process"`
+	RouteStatus          []config.RouteStatus   `json:"routeStatus"`
+	Variables            map[string]string      `json:"-"`
+	AppConfig            *config.AppConfig      `json:"config" groups:"apps"`
+	AppClusterSubstitute string                 `json:"appClusterSubstitute"`
+	TemplateMD5Prov      string                 `json:"templateMD5Prov"`
+	TemplateMD5          string                 `json:"templateMD5"`
+	IsHashingTemplate    bool                   `json:"isHashingTemplate"`
 	*sync.Mutex          `json:"-"`
 }
 
@@ -100,7 +107,7 @@ func NewApp(placement int, cluster *Cluster, appHost string) *App {
 	}
 
 	app.RouteStatus = make([]config.RouteStatus, 0)
-	app.ErrState = make(map[string]*state.State)
+	app.ErrState = make(map[string]state.State)
 	app.CheckPrimaryRoute()
 	return app
 }
@@ -109,10 +116,10 @@ func (app *App) RecordAppError(key string, st state.State) {
 	app.Lock()
 	defer app.Unlock()
 	if app.ErrState == nil {
-		app.ErrState = make(map[string]*state.State)
+		app.ErrState = make(map[string]state.State)
 	}
 
-	app.ErrState[key] = &st
+	app.ErrState[key] = st
 }
 
 func (app *App) ResetAppError(keys ...string) {
@@ -130,7 +137,7 @@ func (app *App) ClearAppError() {
 	app.Lock()
 	defer app.Unlock()
 
-	app.ErrState = make(map[string]*state.State)
+	app.ErrState = make(map[string]state.State)
 }
 
 func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {

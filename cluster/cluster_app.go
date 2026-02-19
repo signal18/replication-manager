@@ -514,15 +514,11 @@ func (cluster *Cluster) EmitAppErrors() {
 		}
 		app.Lock()
 		for key, st := range app.ErrState {
-			if st == nil {
-				continue
-			}
-
 			if st.ErrKey == "" {
 				st.ErrKey = key
 			}
 
-			cluster.SetState(key, *st)
+			cluster.SetState(key, st)
 		}
 		app.Unlock()
 	}
