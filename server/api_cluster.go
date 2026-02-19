@@ -4497,6 +4497,7 @@ func shouldDownloadFromQuery(values url.Values) bool {
 // @Summary Reload cluster plans
 // @Description This endpoint reloads the cluster plans for all clusters.
 // @Tags ClusterActions
+// @Param download query bool false "Redownload plan repository before reload" default(true)
 // @Success 200 {string} string "Successfully reloaded plans"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
@@ -4525,6 +4526,8 @@ func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r
 					cl.SetServicePlan(cl.Conf.ProvServicePlan)
 				}
 			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("Successfully reloaded plans"))
 		} else {
 			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", r.URL.Path), http.StatusForbidden)
 			return
@@ -4539,6 +4542,7 @@ func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r
 // @Summary Reload cluster plan information (all clusters)
 // @Description This endpoint reloads the cluster plan information for all clusters without reapplying plans.
 // @Tags ClusterActions
+// @Param download query bool false "Redownload plan repository before reload" default(true)
 // @Success 200 {string} string "Successfully reloaded plan information"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
@@ -4567,6 +4571,8 @@ func (repman *ReplicationManager) handlerMuxReloadPlansInfo(w http.ResponseWrite
 					cl.SetServicePlanInfos(cl.Conf.ProvServicePlan)
 				}
 			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("Successfully reloaded plan information"))
 		} else {
 			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", r.URL.Path), http.StatusForbidden)
 			return
@@ -4579,7 +4585,7 @@ func (repman *ReplicationManager) handlerMuxReloadPlansInfo(w http.ResponseWrite
 
 // handlerMuxReloadPlanInfo handles the reloading of cluster plan information.
 // @Summary Reload cluster plan information
-// @Description This endpoint reloads the cluster plan information for all clusters.
+// @Description This endpoint reloads the cluster plan information for the specified cluster.
 // @Tags ClusterActions
 // @Accept json
 // @Produce json
@@ -4598,7 +4604,10 @@ func (repman *ReplicationManager) handlerMuxReloadPlanInfo(w http.ResponseWriter
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
+		// Intentionally skip download toggle here to avoid global plan repo reload side effects.
 		mycluster.SetServicePlanInfos(mycluster.Conf.ProvServicePlan)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Successfully reloaded plan information"))
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return

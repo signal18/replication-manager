@@ -14734,7 +14734,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: This endpoint reloads the cluster plan information for all clusters.
+      description: This endpoint reloads the cluster plan information for the specified
+        cluster.
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -16310,6 +16311,12 @@ paths:
     post:
       description: This endpoint reloads the cluster plan information for all clusters
         without reapplying plans.
+      parameters:
+      - default: true
+        description: Redownload plan repository before reload
+        in: query
+        name: download
+        type: boolean
       responses:
         "200":
           description: Successfully reloaded plan information
@@ -16329,6 +16336,12 @@ paths:
   /api/clusters/settings/actions/reload-clusters-plans:
     post:
       description: This endpoint reloads the cluster plans for all clusters.
+      parameters:
+      - default: true
+        description: Redownload plan repository before reload
+        in: query
+        name: download
+        type: boolean
       responses:
         "200":
           description: Successfully reloaded plans

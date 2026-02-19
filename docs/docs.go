@@ -314,6 +314,15 @@ const docTemplate = `{
                     "ClusterActions"
                 ],
                 "summary": "Reload cluster plan information (all clusters)",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Redownload plan repository before reload",
+                        "name": "download",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Successfully reloaded plan information",
@@ -343,6 +352,15 @@ const docTemplate = `{
                     "ClusterActions"
                 ],
                 "summary": "Reload cluster plans",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Redownload plan repository before reload",
+                        "name": "download",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Successfully reloaded plans",
@@ -15214,7 +15232,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/settings/actions/reload-plan-info": {
             "post": {
-                "description": "This endpoint reloads the cluster plan information for all clusters.",
+                "description": "This endpoint reloads the cluster plan information for the specified cluster.",
                 "consumes": [
                     "application/json"
                 ],
