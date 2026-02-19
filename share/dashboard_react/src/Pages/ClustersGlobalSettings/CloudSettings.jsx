@@ -1,13 +1,13 @@
-import { Box, Flex, HStack, Link } from '@chakra-ui/react'
+import { Box, Checkbox, Flex, HStack, Link } from '@chakra-ui/react'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
-import { switchGlobalSetting, setGlobalSetting, reloadClustersPlan } from '../../redux/globalClustersSlice'
+import { switchGlobalSetting, setGlobalSetting, reloadClustersPlan, reloadClustersPlanInfo } from '../../redux/globalClustersSlice'
 import TextForm from '../../components/TextForm'
 import RMIconButton from '../../components/RMIconButton'
-import { HiQuestionMarkCircle, HiRefresh } from 'react-icons/hi'
+import { HiOutlineInformationCircle, HiQuestionMarkCircle, HiRefresh } from 'react-icons/hi'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import TagPill from '../../components/TagPill'
 import RMButton from '../../components/RMButton'
@@ -27,6 +27,7 @@ function CloudSettings({ config }) {
   const {title,type} = action
   const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
+  const [shouldRedownloadPlans, setShouldRedownloadPlans] = useState(true)
   const errInvalidGrant = (err) => { if (err?.message?.includes("invalid_grant")) err.message = <>{err.message}. <Link href="https://gitlab.signal18.io/users/sign_up" target='_blank'><u>Click here to Sign Up</u></Link></>; return err }
 
   const benefits = `Registered Replication Manager to Cloud18 benefit many advantages  
@@ -62,9 +63,11 @@ Start create an account in https://gitlab.signal18.io
     } else if (type === 'cloud18-disconnect') {
       dispatch(setGlobalSetting({ setting: 'cloud18', value: "false", errMsgFunc: errInvalidGrant }))
     } else if (type === 'reload-clusters-plan') {
-      dispatch(reloadClustersPlan({}))
+      dispatch(reloadClustersPlan({ download: shouldRedownloadPlans }))
+    } else if (type === 'reload-clusters-plan-info') {
+      dispatch(reloadClustersPlanInfo({ download: shouldRedownloadPlans }))
     }
-  }, [type])
+  }, [type, shouldRedownloadPlans])
 
   const disableConnect = useMemo(() => (config?.cloud18GitUser === "" || config?.cloud18Domain === "" || config?.cloud18SubDomain === "" || config?.cloud18SubDomainZone === ""),[config?.cloud18GitUser, config?.cloud18Domain, config?.cloud18SubDomain, config?.cloud18SubDomainZone])
 
@@ -158,7 +161,28 @@ Start create an account in https://gitlab.signal18.io
     {
       key: 'Reload All Clusters Plans',
       value: (
-        <RMIconButton icon={HiRefresh} onClick={() => { setAction({title:'Confirm reload all clusters plans?', type: 'reload-clusters-plan'}); openConfirmModal() }} />
+        <HStack>
+          <RMIconButton
+            icon={HiRefresh}
+            tooltip='Reload plans (reapply)'
+            aria-label='Reload all clusters plans'
+            onClick={() => {
+              setShouldRedownloadPlans(true)
+              setAction({ title: 'Confirm reload all clusters plans?', type: 'reload-clusters-plan' })
+              openConfirmModal()
+            }}
+          />
+          <RMIconButton
+            icon={HiOutlineInformationCircle}
+            tooltip='Reload plan info only'
+            aria-label='Reload all clusters plan info'
+            onClick={() => {
+              setShouldRedownloadPlans(true)
+              setAction({ title: 'Confirm reload all clusters plan info?', type: 'reload-clusters-plan-info' })
+              openConfirmModal()
+            }}
+          />
+        </HStack>
       )
     },
   ]
@@ -173,6 +197,16 @@ Start create an account in https://gitlab.signal18.io
             closeConfirmModal()
           }}
           title={title}
+          body={
+            (type === 'reload-clusters-plan' || type === 'reload-clusters-plan-info') && (
+              <Checkbox
+                isChecked={shouldRedownloadPlans}
+                onChange={(event) => setShouldRedownloadPlans(event.target.checked)}
+              >
+                Redownload plan repository before reload
+              </Checkbox>
+            )
+          }
           onConfirmClick={() => {
             actionHandler()
             closeConfirmModal()
