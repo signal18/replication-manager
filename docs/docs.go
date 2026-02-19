@@ -316,11 +316,19 @@ const docTemplate = `{
                 "summary": "Reload cluster plan information (all clusters)",
                 "parameters": [
                     {
-                        "type": "boolean",
-                        "default": true,
-                        "description": "Redownload plan repository before reload",
-                        "name": "download",
-                        "in": "query"
+                        "description": "Reload plan repository options",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "download": {
+                                    "type": "boolean",
+                                    "default": true,
+                                    "description": "Redownload plan repository before reload"
+                                }
+                            }
+                        }
                     }
                 ],
                 "responses": {
@@ -354,11 +362,19 @@ const docTemplate = `{
                 "summary": "Reload cluster plans",
                 "parameters": [
                     {
-                        "type": "boolean",
-                        "default": true,
-                        "description": "Redownload plan repository before reload",
-                        "name": "download",
-                        "in": "query"
+                        "description": "Reload plan repository options",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "download": {
+                                    "type": "boolean",
+                                    "default": true,
+                                    "description": "Redownload plan repository before reload"
+                                }
+                            }
+                        }
                     }
                 ],
                 "responses": {

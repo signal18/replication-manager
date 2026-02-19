@@ -62,11 +62,11 @@ function renameCluster(clusterName, newClusterName) {
 }
 
 function reloadClustersPlan(download = true) {
-  return getApi().get(`clusters/settings/actions/reload-clusters-plans`, { download })
+  return getApi().post(`clusters/settings/actions/reload-clusters-plans`, { download })
 }
 
 function reloadClustersPlanInfo(download = true) {
-  return getApi().get(`clusters/settings/actions/reload-clusters-plan-info`, { download })
+  return getApi().post(`clusters/settings/actions/reload-clusters-plan-info`, { download })
 }
 
 function refreshAppTemplateRepo(clusterName, baseURL) {

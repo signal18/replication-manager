@@ -4488,23 +4488,39 @@ func (repman *ReplicationManager) switchServerSetting(user string, URL string, n
 	return nil
 }
 
-func shouldDownloadFromQuery(values url.Values) bool {
-	download := values.Get("download")
-	return !(download == "false" || download == "0" || download == "no")
+type ReloadPlanRequest struct {
+	Download *bool `json:"download"`
+}
+
+func shouldDownloadFromRequest(r *http.Request) bool {
+	if r == nil || r.Body == nil {
+		return true
+	}
+	var payload ReloadPlanRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		if errors.Is(err, io.EOF) {
+			return true
+		}
+		return true
+	}
+	if payload.Download == nil {
+		return true
+	}
+	return *payload.Download
 }
 
 // handlerMuxReloadPlans handles the reloading of cluster plans.
 // @Summary Reload cluster plans
 // @Description This endpoint reloads the cluster plans for all clusters.
 // @Tags ClusterActions
-// @Param download query bool false "Redownload plan repository before reload" default(true)
+// @Param body body ReloadPlanRequest false "Reload plan repository options"
 // @Success 200 {string} string "Successfully reloaded plans"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/settings/actions/reload-clusters-plans [post]
 func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	shouldDownload := shouldDownloadFromQuery(r.URL.Query())
+	shouldDownload := shouldDownloadFromRequest(r)
 
 	var mycluster *cluster.Cluster
 	for _, v := range repman.Clusters {
@@ -4542,14 +4558,14 @@ func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r
 // @Summary Reload cluster plan information (all clusters)
 // @Description This endpoint reloads the cluster plan information for all clusters without reapplying plans.
 // @Tags ClusterActions
-// @Param download query bool false "Redownload plan repository before reload" default(true)
+// @Param body body ReloadPlanRequest false "Reload plan repository options"
 // @Success 200 {string} string "Successfully reloaded plan information"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/settings/actions/reload-clusters-plan-info [post]
 func (repman *ReplicationManager) handlerMuxReloadPlansInfo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	shouldDownload := shouldDownloadFromQuery(r.URL.Query())
+	shouldDownload := shouldDownloadFromRequest(r)
 
 	var mycluster *cluster.Cluster
 	for _, v := range repman.Clusters {

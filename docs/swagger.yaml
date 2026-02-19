@@ -16312,11 +16312,16 @@ paths:
       description: This endpoint reloads the cluster plan information for all clusters
         without reapplying plans.
       parameters:
-      - default: true
-        description: Redownload plan repository before reload
-        in: query
-        name: download
-        type: boolean
+      - description: Reload plan repository options
+        in: body
+        name: body
+        schema:
+          properties:
+            download:
+              default: true
+              description: Redownload plan repository before reload
+              type: boolean
+          type: object
       responses:
         "200":
           description: Successfully reloaded plan information
@@ -16337,11 +16342,16 @@ paths:
     post:
       description: This endpoint reloads the cluster plans for all clusters.
       parameters:
-      - default: true
-        description: Redownload plan repository before reload
-        in: query
-        name: download
-        type: boolean
+      - description: Reload plan repository options
+        in: body
+        name: body
+        schema:
+          properties:
+            download:
+              default: true
+              description: Redownload plan repository before reload
+              type: boolean
+          type: object
       responses:
         "200":
           description: Successfully reloaded plans

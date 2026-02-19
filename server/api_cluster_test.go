@@ -1,7 +1,8 @@
 package server
 
 import (
-	"net/url"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -106,29 +107,24 @@ func TestValidateResticSizeValue(t *testing.T) {
 	}
 }
 
-func TestShouldDownloadFromQuery(t *testing.T) {
+func TestShouldDownloadFromRequest(t *testing.T) {
 	tests := []struct {
-		name  string
-		value string
-		want  bool
+		name string
+		body string
+		want bool
 	}{
 		{"Empty", "", true},
-		{"False", "false", false},
-		{"Zero", "0", false},
-		{"No", "no", false},
-		{"True", "true", true},
-		{"Yes", "yes", true},
-		{"Other", "maybe", true},
+		{"False", `{"download":false}`, false},
+		{"True", `{"download":true}`, true},
+		{"InvalidJSON", "{", true},
+		{"MissingField", `{"other":true}`, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			values := url.Values{}
-			if tt.value != "" {
-				values.Set("download", tt.value)
-			}
-			if got := shouldDownloadFromQuery(values); got != tt.want {
-				t.Fatalf("shouldDownloadFromQuery(%q) = %v, want %v", tt.value, got, tt.want)
+			req := httptest.NewRequest("POST", "/", strings.NewReader(tt.body))
+			if got := shouldDownloadFromRequest(req); got != tt.want {
+				t.Fatalf("shouldDownloadFromRequest(%q) = %v, want %v", tt.body, got, tt.want)
 			}
 		})
 	}
