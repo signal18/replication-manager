@@ -1,34 +1,47 @@
+---
+# Secret: MariaDB credentials
 apiVersion: v1
 kind: Secret
 metadata:
-  name: mariadb-root
+  name: repman-credentials
 type: Opaque
 stringData:
-  password: "mariadb"
-  credential: "root:mariadb"
+  db-credential: "root:mariadb"
 ---
-apiVersion: k8s.mariadb.com/v1alpha1
-kind: MariaDB
+# ServiceAccount for repman to access K8s API
+apiVersion: v1
+kind: ServiceAccount
 metadata:
-  name: mariadb-repl
-spec:
-  replicas: 2
-  rootPasswordSecretKeyRef:
-    name: mariadb-root
-    key: password
-  replication:
-    enabled: true
-    primary:
-      autoFailover: true
-  storage:
-    size: 5Gi
-  myCnf: |
-    [mariadb]
-    bind-address=0.0.0.0
-    default_storage_engine=InnoDB
-    binlog_format=row
-    innodb_autoinc_lock_mode=2
+  name: repman
 ---
+# ClusterRole: permissions required by repman to provision MariaDB pods
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: repman-orchestrator
+rules:
+  - apiGroups: [""]
+    resources: [pods, services, namespaces, persistentvolumeclaims, configmaps, nodes]
+    verbs: [get, list, create, delete, update, watch]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets]
+    verbs: [get, list, create, delete, update, watch]
+---
+# ClusterRoleBinding: bind repman ServiceAccount to the ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: repman-orchestrator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: repman-orchestrator
+subjects:
+  - kind: ServiceAccount
+    name: repman
+    namespace: default
+---
+# Deployment: replication-manager as native K8s orchestrator
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -43,36 +56,60 @@ spec:
       labels:
         app: replication-manager
     spec:
+      serviceAccountName: repman
       containers:
         - name: replication-manager
-          image: signal18/replication-manager:envtest
+          image: signal18/replication-manager:latest
           ports:
             - name: http
               containerPort: 10001
           env:
+            # Global settings
             - name: REPLICATION_MANAGER_DEFAULT_HTTP_SERVER
               value: "true"
             - name: REPLICATION_MANAGER_DEFAULT_HTTP_BIND_ADDRESS
               value: "0.0.0.0"
             - name: REPLICATION_MANAGER_DEFAULT_HTTP_PORT
               value: "10001"
+            - name: REPLICATION_MANAGER_DEFAULT_HTTP_BOOTSTRAP_BUTTON
+              value: "true"
+            - name: REPLICATION_MANAGER_DEFAULT_PROV_ORCHESTRATOR
+              value: "kube"
+            - name: REPLICATION_MANAGER_DEFAULT_PROV_NET_CNI
+              value: "true"
+            - name: REPLICATION_MANAGER_DEFAULT_PROV_NET_CNI_CLUSTER
+              value: "cluster.local"
+            # Cluster settings
+            - name: REPLICATION_MANAGER_CLUSTER1_TITLE
+              value: "cluster1"
             - name: REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_HOSTS
-              value: "mariadb-repl-0.mariadb-repl-internal,mariadb-repl-1.mariadb-repl-internal"
+              value: "db1,db2"
             - name: REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_PREFERED_MASTER
-              value: "mariadb-repl-0.mariadb-repl-internal"
+              value: "db1"
             - name: REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_CREDENTIAL
               valueFrom:
                 secretKeyRef:
-                  name: mariadb-root
-                  key: credential
+                  name: repman-credentials
+                  key: db-credential
             - name: REPLICATION_MANAGER_CLUSTER1_REPLICATION_CREDENTIAL
               valueFrom:
                 secretKeyRef:
-                  name: mariadb-root
-                  key: credential
+                  name: repman-credentials
+                  key: db-credential
             - name: REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_CONNECT_TIMEOUT
               value: "1"
+            - name: REPLICATION_MANAGER_CLUSTER1_PROV_DB_SERVICE_TYPE
+              value: "docker"
+            - name: REPLICATION_MANAGER_CLUSTER1_PROV_DB_DOCKER_IMG
+              value: "mariadb:10.11"
+            - name: REPLICATION_MANAGER_CLUSTER1_PROV_DB_TAGS
+              value: "semisync,innodb,noquerycache,logslow"
+            # Set to your K8s node names, comma-separated.
+            # Run: kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{","}{end}'
+            - name: REPLICATION_MANAGER_CLUSTER1_PROV_DB_AGENTS
+              value: "node1,node2"
 ---
+# Service: NodePort to expose the repman dashboard
 apiVersion: v1
 kind: Service
 metadata:

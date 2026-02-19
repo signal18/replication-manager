@@ -8,14 +8,21 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 func int32Ptr(i int32) *int32 { return &i }
 
 func (cluster *Cluster) K8SConnectAPI() (*kubernetes.Clientset, error) {
+	var kconfig *rest.Config
+	var err error
 
-	kconfig, err := clientcmd.BuildConfigFromFlags("", cluster.Conf.KubeConfig)
+	if cluster.Conf.KubeConfig != "" {
+		kconfig, err = clientcmd.BuildConfigFromFlags("", cluster.Conf.KubeConfig)
+	} else {
+		kconfig, err = rest.InClusterConfig()
+	}
 
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot load Kubernetes cluster config %s %s ", cluster.Conf.KubeConfig, err)
