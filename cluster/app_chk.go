@@ -18,8 +18,16 @@ import (
 func (app *App) GetMonitoringStatus() string {
 	routes := app.GetAppConfig().Deployment.Routes
 	var primaryStatus = stateAppRunning
+	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto}
 	if len(routes) == 0 {
+		app.RecordAppError(ErrAppConnectFailed, state.State{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), "no routes defined"), ServerUrl: app.Host})
+		app.ResetAppError(ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto)
 		return stateFailed
+	}
+
+	errStates := make(map[string]state.State)
+	setErrState := func(key string, desc string) {
+		errStates[key] = state.State{ErrType: "WARN", ErrKey: key, ErrDesc: desc, ServerUrl: app.Host}
 	}
 
 	routeStatuses := make([]config.RouteStatus, 0, len(routes))
@@ -32,17 +40,17 @@ func (app *App) GetMonitoringStatus() string {
 				routeStatus.Status = stateAppWarning
 				primaryStatus = stateAppWarning
 				if strings.HasPrefix(err.Error(), "unexpected status code") {
-					app.ClusterGroup.SetState("APPERR002", state.State{ErrType: "WARN", ErrKey: "APPERR002", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR002"], app.GetId(), httpStatus), ServerUrl: app.Host})
+					setErrState(ErrAppUnexpectedStatus, fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), httpStatus))
 				} else {
-					app.ClusterGroup.SetState("APPERR001", state.State{ErrType: "WARN", ErrKey: "APPERR001", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR001"], app.GetId(), err), ServerUrl: app.Host})
+					setErrState(ErrAppConnectFailed, fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err))
 				}
 
 				httpStatus, _, err := app.GetAppLocalHTTPStatus(route, false)
 				if err != nil {
 					if strings.HasPrefix(err.Error(), "unexpected status code") {
-						app.ClusterGroup.SetState("APPERR002", state.State{ErrType: "WARN", ErrKey: "APPERR002", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR002"], app.GetId(), httpStatus), ServerUrl: app.Host})
+						setErrState(ErrAppUnexpectedStatus, fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), httpStatus))
 					} else {
-						app.ClusterGroup.SetState("APPERR001", state.State{ErrType: "WARN", ErrKey: "APPERR001", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR001"], app.GetId(), err), ServerUrl: app.Host})
+						setErrState(ErrAppConnectFailed, fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err))
 					}
 
 					routeStatus.Status = stateFailed
@@ -60,10 +68,10 @@ func (app *App) GetMonitoringStatus() string {
 				routeStatus.Status = stateAppWarning
 				primaryStatus = stateAppWarning
 
-				app.ClusterGroup.SetState("APPERR003", state.State{ErrType: "WARN", ErrKey: "APPERR003", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR003"], app.GetId(), err), ServerUrl: app.Host})
+				setErrState(ErrAppTCPConnectFailed, fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), err))
 
 				if err := app.GetAppLocalTCPStatus(route); err != nil {
-					app.ClusterGroup.SetState("APPERR003", state.State{ErrType: "WARN", ErrKey: "APPERR003", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR003"], app.GetId(), err), ServerUrl: app.Host})
+					setErrState(ErrAppTCPConnectFailed, fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), err))
 					routeStatus.Status = stateFailed
 					if route.Primary {
 						primaryStatus = stateFailed
@@ -71,7 +79,7 @@ func (app *App) GetMonitoringStatus() string {
 				}
 			}
 		default:
-			app.ClusterGroup.SetState("APPERR004", state.State{ErrType: "WARN", ErrKey: "APPERR004", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR004"], app.GetId(), route.Protocol), ServerUrl: app.Host})
+			setErrState(ErrAppUnsupportedProto, fmt.Sprintf(config.ClusterError[ErrAppUnsupportedProto], app.GetId(), route.Protocol))
 			routeStatus.Status = stateFailed
 
 			if route.Primary {
@@ -84,9 +92,15 @@ func (app *App) GetMonitoringStatus() string {
 		routeStatuses = append(routeStatuses, routeStatus)
 	}
 
-	app.Lock()
-	defer app.Unlock()
-	app.RouteStatus = routeStatuses
+	for _, key := range appErrKeys {
+		if st, ok := errStates[key]; ok {
+			app.RecordAppError(key, st)
+		} else {
+			app.ResetAppError(key)
+		}
+	}
+
+	app.SetRouteStatuses(routeStatuses)
 
 	return primaryStatus
 }

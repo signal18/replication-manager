@@ -758,6 +758,7 @@ func (cluster *Cluster) Run() {
 						wg.Add(1)
 						go cluster.refreshProxies(wg)
 						go cluster.refreshApps(wg)
+						cluster.CheckAppsCredit()
 						cluster.CheckWaitRunJobSSH()
 						cluster.CheckDummyConfigSendCookies()
 						cluster.CheckRestartContainerCookies()
@@ -834,6 +835,8 @@ func (cluster *Cluster) Run() {
 
 					wg.Wait()
 				}
+
+				cluster.EmitAppErrors()
 
 				if cluster.HasDiscoverTopologyMismatchTarget() {
 					cluster.SetState("ERR00092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00092"], cluster.Name, cluster.Topology, cluster.Conf.TopologyTarget), ErrFrom: "TOPO"})

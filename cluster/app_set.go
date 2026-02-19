@@ -264,3 +264,9 @@ func (app *App) ApplyPlannedCredits() {
 		app.AppConfig.ProvAppCreditUsed = app.AppConfig.ProvAppCreditPlanned
 	}
 }
+
+func (app *App) SetRouteStatuses(routeStatuses []config.RouteStatus) {
+	app.Lock()
+	defer app.Unlock()
+	app.RouteStatus = routeStatuses
+}
