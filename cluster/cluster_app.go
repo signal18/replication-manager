@@ -507,6 +507,27 @@ func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {
 	}
 }
 
+func (cluster *Cluster) EmitAppErrors() {
+	for _, app := range cluster.Apps {
+		if app == nil {
+			continue
+		}
+		app.Lock()
+		for key, st := range app.ErrState {
+			if st == nil {
+				continue
+			}
+
+			if st.ErrKey == "" {
+				st.ErrKey = key
+			}
+
+			cluster.SetState(key, *st)
+		}
+		app.Unlock()
+	}
+}
+
 func (cluster *Cluster) GetAppByURL(url string) (*App, int) {
 	var host, port string
 	newURL := strings.TrimSpace(url)
@@ -843,5 +864,13 @@ func (cluster *Cluster) EnqueueRefreshAppTemplateMD5(app *App) {
 		// Enqueued successfully
 	default:
 		// Channel full — drop silently
+	}
+}
+
+func (cluster *Cluster) CheckAppsCredit() {
+	for _, app := range cluster.Apps {
+		if app != nil {
+			app.CheckAppCredits()
+		}
 	}
 }
