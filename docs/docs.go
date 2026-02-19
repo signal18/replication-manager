@@ -320,14 +320,7 @@ const docTemplate = `{
                         "name": "body",
                         "in": "body",
                         "schema": {
-                            "type": "object",
-                            "properties": {
-                                "download": {
-                                    "type": "boolean",
-                                    "default": true,
-                                    "description": "Redownload plan repository before reload"
-                                }
-                            }
+                            "$ref": "#/definitions/server.ReloadPlanRequest"
                         }
                     }
                 ],
@@ -366,14 +359,7 @@ const docTemplate = `{
                         "name": "body",
                         "in": "body",
                         "schema": {
-                            "type": "object",
-                            "properties": {
-                                "download": {
-                                    "type": "boolean",
-                                    "default": true,
-                                    "description": "Redownload plan repository before reload"
-                                }
-                            }
+                            "$ref": "#/definitions/server.ReloadPlanRequest"
                         }
                     }
                 ],
@@ -25671,6 +25657,14 @@ const docTemplate = `{
             "properties": {
                 "content": {
                     "type": "string"
+                }
+            }
+        },
+        "server.ReloadPlanRequest": {
+            "type": "object",
+            "properties": {
+                "download": {
+                    "type": "boolean"
                 }
             }
         },

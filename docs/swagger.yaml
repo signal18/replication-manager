@@ -4272,6 +4272,11 @@ definitions:
       content:
         type: string
     type: object
+  server.ReloadPlanRequest:
+    properties:
+      download:
+        type: boolean
+    type: object
   server.ReplicationManager:
     properties:
       agents:
@@ -16316,12 +16321,7 @@ paths:
         in: body
         name: body
         schema:
-          properties:
-            download:
-              default: true
-              description: Redownload plan repository before reload
-              type: boolean
-          type: object
+          $ref: '#/definitions/server.ReloadPlanRequest'
       responses:
         "200":
           description: Successfully reloaded plan information
@@ -16346,12 +16346,7 @@ paths:
         in: body
         name: body
         schema:
-          properties:
-            download:
-              default: true
-              description: Redownload plan repository before reload
-              type: boolean
-          type: object
+          $ref: '#/definitions/server.ReloadPlanRequest'
       responses:
         "200":
           description: Successfully reloaded plans
