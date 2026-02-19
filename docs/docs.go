@@ -307,6 +307,35 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/settings/actions/reload-clusters-plan-info": {
+            "post": {
+                "description": "This endpoint reloads the cluster plan information for all clusters without reapplying plans.",
+                "tags": [
+                    "ClusterActions"
+                ],
+                "summary": "Reload cluster plan information (all clusters)",
+                "responses": {
+                    "200": {
+                        "description": "Successfully reloaded plan information",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/settings/actions/reload-clusters-plans": {
             "post": {
                 "description": "This endpoint reloads the cluster plans for all clusters.",

@@ -16306,6 +16306,26 @@ paths:
       summary: Retrieve peer clusters for a user
       tags:
       - Cloud18
+  /api/clusters/settings/actions/reload-clusters-plan-info:
+    post:
+      description: This endpoint reloads the cluster plan information for all clusters
+        without reapplying plans.
+      responses:
+        "200":
+          description: Successfully reloaded plan information
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Reload cluster plan information (all clusters)
+      tags:
+      - ClusterActions
   /api/clusters/settings/actions/reload-clusters-plans:
     post:
       description: This endpoint reloads the cluster plans for all clusters.
