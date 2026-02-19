@@ -15172,6 +15172,58 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/settings/actions/reload-plan-info": {
+            "post": {
+                "description": "This endpoint reloads the cluster plan information for all clusters.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterActions"
+                ],
+                "summary": "Reload cluster plan information",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully reloaded plan information",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/settings/actions/reset-graphite-filterlist/{template}": {
             "post": {
                 "description": "This endpoint resets the Graphite filter list for the specified cluster.",

@@ -228,6 +228,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSettingsReload)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/reload-plan-info", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReloadPlanInfo)),
+	))
 	router.Handle("/api/clusters/settings/actions/switch/{settingName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchGlobalSettings)),
@@ -4513,6 +4517,34 @@ func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r
 			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", r.URL.Path), http.StatusForbidden)
 			return
 		}
+	} else {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handlerMuxReloadPlanInfo handles the reloading of cluster plan information.
+// @Summary Reload cluster plan information
+// @Description This endpoint reloads the cluster plan information for all clusters.
+// @Tags ClusterActions
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Successfully reloaded plan information"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/settings/actions/reload-plan-info [post]
+func (repman *ReplicationManager) handlerMuxReloadPlanInfo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+		mycluster.SetServicePlanInfos(mycluster.Conf.ProvServicePlan)
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return

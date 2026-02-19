@@ -14730,6 +14730,41 @@ paths:
       summary: Reload Graphite filter list for a specific cluster
       tags:
       - ClusterGraphite
+  /api/clusters/{clusterName}/settings/actions/reload-plan-info:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint reloads the cluster plan information for all clusters.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully reloaded plan information
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Reload cluster plan information
+      tags:
+      - ClusterActions
   /api/clusters/{clusterName}/settings/actions/reset-graphite-filterlist/{template}:
     post:
       consumes:
