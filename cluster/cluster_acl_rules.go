@@ -262,6 +262,7 @@ var globalSettingsACLRules = []ACLRule{
 	{"/api/clusters/settings/actions/set", nil, []string{config.GrantGlobalSettings}},
 	{"/api/clusters/settings/actions/clear", nil, []string{config.GrantGlobalSettings}},
 	{"/api/clusters/settings/actions/reload-clusters-plans", nil, []string{config.GrantGlobalSettings}},
+	{"/api/clusters/settings/actions/reload-clusters-plan-info", nil, []string{config.GrantGlobalSettings}},
 }
 
 // terminalACLRules defines ACL rules for terminal access
