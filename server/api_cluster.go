@@ -4488,6 +4488,11 @@ func (repman *ReplicationManager) switchServerSetting(user string, URL string, n
 	return nil
 }
 
+func shouldDownloadFromQuery(values url.Values) bool {
+	download := values.Get("download")
+	return !(download == "false" || download == "0" || download == "no")
+}
+
 // handlerMuxReloadPlans handles the reloading of cluster plans.
 // @Summary Reload cluster plans
 // @Description This endpoint reloads the cluster plans for all clusters.
@@ -4498,10 +4503,7 @@ func (repman *ReplicationManager) switchServerSetting(user string, URL string, n
 // @Router /api/clusters/settings/actions/reload-clusters-plans [post]
 func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	shouldDownload := true
-	if download := r.URL.Query().Get("download"); download == "false" || download == "0" || download == "no" {
-		shouldDownload = false
-	}
+	shouldDownload := shouldDownloadFromQuery(r.URL.Query())
 
 	var mycluster *cluster.Cluster
 	for _, v := range repman.Clusters {
@@ -4543,10 +4545,7 @@ func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r
 // @Router /api/clusters/settings/actions/reload-clusters-plan-info [post]
 func (repman *ReplicationManager) handlerMuxReloadPlansInfo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	shouldDownload := true
-	if download := r.URL.Query().Get("download"); download == "false" || download == "0" || download == "no" {
-		shouldDownload = false
-	}
+	shouldDownload := shouldDownloadFromQuery(r.URL.Query())
 
 	var mycluster *cluster.Cluster
 	for _, v := range repman.Clusters {

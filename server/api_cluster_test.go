@@ -1,6 +1,9 @@
 package server
 
-import "testing"
+import (
+	"net/url"
+	"testing"
+)
 
 func TestNormalizeCompressionOverride(t *testing.T) {
 	tests := []struct {
@@ -98,6 +101,34 @@ func TestValidateResticSizeValue(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("unexpected error for %q: %v", tt.value, err)
+			}
+		})
+	}
+}
+
+func TestShouldDownloadFromQuery(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  bool
+	}{
+		{"Empty", "", true},
+		{"False", "false", false},
+		{"Zero", "0", false},
+		{"No", "no", false},
+		{"True", "true", true},
+		{"Yes", "yes", true},
+		{"Other", "maybe", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			values := url.Values{}
+			if tt.value != "" {
+				values.Set("download", tt.value)
+			}
+			if got := shouldDownloadFromQuery(values); got != tt.want {
+				t.Fatalf("shouldDownloadFromQuery(%q) = %v, want %v", tt.value, got, tt.want)
 			}
 		})
 	}
