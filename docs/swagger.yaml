@@ -4272,6 +4272,11 @@ definitions:
       content:
         type: string
     type: object
+  server.ReloadPlanRequest:
+    properties:
+      download:
+        type: boolean
+    type: object
   server.ReplicationManager:
     properties:
       agents:
@@ -14730,6 +14735,42 @@ paths:
       summary: Reload Graphite filter list for a specific cluster
       tags:
       - ClusterGraphite
+  /api/clusters/{clusterName}/settings/actions/reload-plan-info:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint reloads the cluster plan information for the specified
+        cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully reloaded plan information
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Reload cluster plan information
+      tags:
+      - ClusterActions
   /api/clusters/{clusterName}/settings/actions/reset-graphite-filterlist/{template}:
     post:
       consumes:
@@ -16271,9 +16312,41 @@ paths:
       summary: Retrieve peer clusters for a user
       tags:
       - Cloud18
+  /api/clusters/settings/actions/reload-clusters-plan-info:
+    post:
+      description: This endpoint reloads the cluster plan information for all clusters
+        without reapplying plans.
+      parameters:
+      - description: Reload plan repository options
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/server.ReloadPlanRequest'
+      responses:
+        "200":
+          description: Successfully reloaded plan information
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Reload cluster plan information (all clusters)
+      tags:
+      - ClusterActions
   /api/clusters/settings/actions/reload-clusters-plans:
     post:
       description: This endpoint reloads the cluster plans for all clusters.
+      parameters:
+      - description: Reload plan repository options
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/server.ReloadPlanRequest'
       responses:
         "200":
           description: Successfully reloaded plans

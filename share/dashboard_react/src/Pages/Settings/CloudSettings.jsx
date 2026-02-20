@@ -9,13 +9,16 @@ import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import TextForm from '../../components/TextForm'
 import SetCredentialsModal from '../../components/Modals/SetCredentialsModal'
 import RMIconButton from '../../components/RMIconButton'
-import { HiKey } from 'react-icons/hi'
+import { HiKey, HiPlay, HiRefresh } from 'react-icons/hi'
 import { TbDatabaseDollar, TbDatabaseOff, TbDatabaseStar, TbDatabaseX, TbDeviceDesktopDollar, TbDeviceDesktopOff, TbDeviceDesktopStar, TbDeviceDesktopX, TbUserCancel } from 'react-icons/tb'
 import { acceptExternalRole, endExternalRole, quoteExternalRole, refuseExternalRole, subscribeExternalRole } from '../../redux/clusterSlice'
 import TextInputModal from '../../components/Modals/TextInputModal'
 import TermsModal from '../../components/Modals/TermsModal'
 import NumberInputModal from '../../components/Modals/NumberInputModal'
 import { getTermsData } from '../../redux/globalClustersSlice'
+import ConfirmModal from '../../components/Modals/ConfirmModal'
+import { settingsService } from '../../services/settingsService'
+import { showErrorToast, showSuccessToast } from '../../redux/toastSlice'
 
 function CloudSettings({ selectedCluster, user }) {
   const dispatch = useDispatch()
@@ -34,6 +37,8 @@ function CloudSettings({ selectedCluster, user }) {
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(null)
   const [isTextModalOpen, setIsTextModalOpen] = useState(false)
   const [isNumberModalOpen, setIsNumberModalOpen] = useState(false)
+  const [isReloadPlanInfoModalOpen, setIsReloadPlanInfoModalOpen] = useState(false)
+  const [isReloadPlanInfoLoading, setIsReloadPlanInfoLoading] = useState(false)
   const { type, title, roles, payload } = action
 
   const getPlanOptions = (plist = []) => [{ name: "No Plan", value: '' }, ...plist?.map((obj) => ({ name: obj.plan, value: obj.plan }))]
@@ -87,6 +92,41 @@ function CloudSettings({ selectedCluster, user }) {
   const openNumberModal = () => {
     setIsNumberModalOpen(true)
   }
+
+  const closeReloadPlanInfoModal = () => {
+    setIsReloadPlanInfoModalOpen(false)
+  }
+
+  const handleReloadPlanInfo = useCallback(async () => {
+    if (!selectedCluster?.name || isReloadPlanInfoLoading) {
+      return
+    }
+    setIsReloadPlanInfoLoading(true)
+    try {
+      const { data, status } = await settingsService.reloadPlanInfo(selectedCluster.name, baseURL)
+      if (status === 200) {
+        dispatch(
+          showSuccessToast({
+            status: 'success',
+            title: 'Reload plan info requested'
+          })
+        )
+      } else {
+        throw new Error(data)
+      }
+    } catch (error) {
+      dispatch(
+        showErrorToast({
+          status: 'error',
+          title: 'Reload plan info failed',
+          description: error?.message || error
+        })
+      )
+    } finally {
+      setIsReloadPlanInfoLoading(false)
+      closeReloadPlanInfoModal()
+    }
+  }, [selectedCluster?.name, isReloadPlanInfoLoading, baseURL, dispatch])
 
   const handleConfirm = (value) => {
     if (type === 'quote-extdbops') {
@@ -149,7 +189,7 @@ function CloudSettings({ selectedCluster, user }) {
         {
           key: 'Cluster Plan',
           value: (
-            <Flex className={styles.dropdownContainer}>
+            <HStack className={styles.dropdownContainer}>
               <Dropdown
                 options={planOptions}
                 id='plan'
@@ -166,7 +206,33 @@ function CloudSettings({ selectedCluster, user }) {
                   )
                 }}
               />
-            </Flex>
+              <RMIconButton
+                icon={HiPlay}
+                tooltip='Reapply plan'
+                aria-label='Reapply plan'
+                confirm
+                confirmTitle='Confirm reapply plan?'
+                confirmBody={`This will re-apply plan "${selectedCluster?.config?.provServicePlan || 'No Plan'}" to the cluster.`}
+                onClick={() => {
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'prov-service-plan',
+                      value: selectedCluster?.config?.provServicePlan || ''
+                    })
+                  )
+                }}
+                isDisabled={user?.grants['cluster-settings'] == false || !selectedCluster?.name || !selectedCluster?.config?.provServicePlan}
+              />
+              <RMIconButton
+                icon={HiRefresh}
+                tooltip='Reload plan info'
+                aria-label='Reload plan info'
+                onClick={() => setIsReloadPlanInfoModalOpen(true)}
+                isDisabled={isReloadPlanInfoLoading || user?.grants['cluster-settings'] == false || !selectedCluster?.config?.provServicePlan}
+                isLoading={isReloadPlanInfoLoading}
+              />
+            </HStack>
           )
         },
         {
@@ -385,6 +451,16 @@ function CloudSettings({ selectedCluster, user }) {
       {isTermsModalOpen && <TermsModal terms={finalterms} title={title} isOpen={isTermsModalOpen} onConfirmClick={handleConfirm} closeModal={closeTermsModal} />}
       {isTextModalOpen && <TextInputModal isOpen={isTextModalOpen} title={title} fieldname={'Reason'} onSave={handleConfirm} isRequired={true} closeModal={() => { setIsTextModalOpen(false); }} />}
       {isNumberModalOpen && <NumberInputModal isOpen={isNumberModalOpen} title={title} fieldname={'Cost'} onSave={handleConfirm} isRequired={true} closeModal={() => { setIsNumberModalOpen(false); }} />}
+      {isReloadPlanInfoModalOpen && (
+        <ConfirmModal
+          isOpen={isReloadPlanInfoModalOpen}
+          title={'Confirm reload plan info?'}
+          closeModal={closeReloadPlanInfoModal}
+          onConfirmClick={handleReloadPlanInfo}
+          confirmButtonText='Reload'
+          confirmButtonProps={{ isLoading: isReloadPlanInfoLoading, isDisabled: isReloadPlanInfoLoading }}
+        />
+      )}
     </Flex>
   )
 }

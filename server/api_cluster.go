@@ -228,6 +228,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSettingsReload)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/reload-plan-info", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReloadPlanInfo)),
+	))
 	router.Handle("/api/clusters/settings/actions/switch/{settingName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchGlobalSettings)),
@@ -263,6 +267,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/settings/actions/reload-clusters-plans", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReloadPlans)),
+	))
+	router.Handle("/api/clusters/settings/actions/reload-clusters-plan-info", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReloadPlansInfo)),
 	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/set-cron/{settingName}/{settingValue:.*}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -4480,16 +4488,39 @@ func (repman *ReplicationManager) switchServerSetting(user string, URL string, n
 	return nil
 }
 
+type ReloadPlanRequest struct {
+	Download *bool `json:"download"`
+}
+
+func shouldDownloadFromRequest(r *http.Request) bool {
+	if r == nil || r.Body == nil {
+		return true
+	}
+	var payload ReloadPlanRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		if errors.Is(err, io.EOF) {
+			return true
+		}
+		return true
+	}
+	if payload.Download == nil {
+		return true
+	}
+	return *payload.Download
+}
+
 // handlerMuxReloadPlans handles the reloading of cluster plans.
 // @Summary Reload cluster plans
 // @Description This endpoint reloads the cluster plans for all clusters.
 // @Tags ClusterActions
+// @Param body body ReloadPlanRequest false "Reload plan repository options"
 // @Success 200 {string} string "Successfully reloaded plans"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/settings/actions/reload-clusters-plans [post]
 func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	shouldDownload := shouldDownloadFromRequest(r)
 
 	var mycluster *cluster.Cluster
 	for _, v := range repman.Clusters {
@@ -4502,17 +4533,97 @@ func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r
 	if mycluster != nil {
 		valid, apiuser := repman.IsValidClusterACL(r, mycluster)
 		if valid {
-			repman.InitServicePlans()
+			if shouldDownload {
+				repman.InitServicePlans()
+			}
 			for _, cl := range repman.Clusters {
 				//Don't print error with no valid ACL
 				if cl.IsURLPassACL(apiuser, r.URL.Path, false) {
 					cl.SetServicePlan(cl.Conf.ProvServicePlan)
 				}
 			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("Successfully reloaded plans"))
 		} else {
 			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", r.URL.Path), http.StatusForbidden)
 			return
 		}
+	} else {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handlerMuxReloadPlansInfo handles the reloading of cluster plan information.
+// @Summary Reload cluster plan information (all clusters)
+// @Description This endpoint reloads the cluster plan information for all clusters without reapplying plans.
+// @Tags ClusterActions
+// @Param body body ReloadPlanRequest false "Reload plan repository options"
+// @Success 200 {string} string "Successfully reloaded plan information"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/settings/actions/reload-clusters-plan-info [post]
+func (repman *ReplicationManager) handlerMuxReloadPlansInfo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	shouldDownload := shouldDownloadFromRequest(r)
+
+	var mycluster *cluster.Cluster
+	for _, v := range repman.Clusters {
+		if v != nil {
+			mycluster = v
+			break
+		}
+	}
+
+	if mycluster != nil {
+		valid, apiuser := repman.IsValidClusterACL(r, mycluster)
+		if valid {
+			if shouldDownload {
+				repman.InitServicePlans()
+			}
+			for _, cl := range repman.Clusters {
+				//Don't print error with no valid ACL
+				if cl.IsURLPassACL(apiuser, r.URL.Path, false) {
+					cl.SetServicePlanInfos(cl.Conf.ProvServicePlan)
+				}
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("Successfully reloaded plan information"))
+		} else {
+			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", r.URL.Path), http.StatusForbidden)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handlerMuxReloadPlanInfo handles the reloading of cluster plan information.
+// @Summary Reload cluster plan information
+// @Description This endpoint reloads the cluster plan information for the specified cluster.
+// @Tags ClusterActions
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Successfully reloaded plan information"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/settings/actions/reload-plan-info [post]
+func (repman *ReplicationManager) handlerMuxReloadPlanInfo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+		// Intentionally skip download toggle here to avoid global plan repo reload side effects.
+		mycluster.SetServicePlanInfos(mycluster.Conf.ProvServicePlan)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Successfully reloaded plan information"))
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return

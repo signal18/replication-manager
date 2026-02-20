@@ -1596,6 +1596,32 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalDumpThreads)
 	myargs := strings.Split(strings.ReplaceAll(cluster.Conf.BackupMyDumperOptions, "  ", " "), " ")
+
+	// Handle deprecated flags for mydumper >= 0.18.1
+	if dumper.GreaterEqual("0.18.1") {
+		// Replace deprecated flags with --trx-tables
+		var updatedArgs []string
+		for _, arg := range myargs {
+			if arg == "--less-locking" || arg == "--trx-consistency-only" {
+				// Skip deprecated flags
+				continue
+			}
+			updatedArgs = append(updatedArgs, arg)
+		}
+		// Add --trx-tables if not already present
+		hasTrxTables := false
+		for _, arg := range updatedArgs {
+			if arg == "--trx-tables" {
+				hasTrxTables = true
+				break
+			}
+		}
+		if !hasTrxTables {
+			updatedArgs = append(updatedArgs, "--trx-tables")
+		}
+		myargs = updatedArgs
+	}
+
 	if dumper.GreaterEqual("0.15.3") {
 		myargs = append(myargs, "--clear")
 	}

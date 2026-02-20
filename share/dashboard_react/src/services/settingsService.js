@@ -11,7 +11,8 @@ export const settingsService = {
   switchAppSettings,
   clearAppSetting,
   resetAppFromTemplate,
-  saveAppAsTemplate
+  saveAppAsTemplate,
+  reloadPlanInfo
 }
 
 function switchSettings(clusterName, setting, baseURL) {
@@ -68,4 +69,8 @@ function resetAppFromTemplate( clusterName, appId, template, baseURL) {
 
 function saveAppAsTemplate( clusterName, appId, template, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/settings/actions/save-as-template/${template}`)
+}
+
+function reloadPlanInfo(clusterName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/settings/actions/reload-plan-info`)
 }

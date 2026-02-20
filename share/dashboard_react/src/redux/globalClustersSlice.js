@@ -163,14 +163,27 @@ export const setGlobalSetting = createGuardedAsyncThunk(
   }
 )
 
-export const reloadClustersPlan = createGuardedAsyncThunk('globalClusters/reloadClustersPlan', async ({ }, thunkAPI) => {
+export const reloadClustersPlan = createGuardedAsyncThunk('globalClusters/reloadClustersPlan', async ({ download = true }, thunkAPI) => {
   try {
-    const { data, status } = await globalClustersService.reloadClustersPlan()
+    const { data, status } = await globalClustersService.reloadClustersPlan(download)
     showSuccessBanner('All clusters plan reloaded!', status, thunkAPI)
     return { data, status }
   } catch (error) {
     console.log('error::', error)
     showErrorBanner('Failed to reload clusters plans!', error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+}
+)
+
+export const reloadClustersPlanInfo = createGuardedAsyncThunk('globalClusters/reloadClustersPlanInfo', async ({ download = true }, thunkAPI) => {
+  try {
+    const { data, status } = await globalClustersService.reloadClustersPlanInfo(download)
+    showSuccessBanner('All clusters plan info reloaded!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    console.log('error::', error)
+    showErrorBanner('Failed to reload clusters plan info!', error, thunkAPI)
     return handleError(error, thunkAPI)
   }
 }

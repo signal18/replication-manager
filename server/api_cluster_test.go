@@ -1,6 +1,10 @@
 package server
 
-import "testing"
+import (
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
 
 func TestNormalizeCompressionOverride(t *testing.T) {
 	tests := []struct {
@@ -98,6 +102,29 @@ func TestValidateResticSizeValue(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("unexpected error for %q: %v", tt.value, err)
+			}
+		})
+	}
+}
+
+func TestShouldDownloadFromRequest(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"Empty", "", true},
+		{"False", `{"download":false}`, false},
+		{"True", `{"download":true}`, true},
+		{"InvalidJSON", "{", true},
+		{"MissingField", `{"other":true}`, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/", strings.NewReader(tt.body))
+			if got := shouldDownloadFromRequest(req); got != tt.want {
+				t.Fatalf("shouldDownloadFromRequest(%q) = %v, want %v", tt.body, got, tt.want)
 			}
 		})
 	}

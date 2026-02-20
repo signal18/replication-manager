@@ -307,6 +307,45 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/settings/actions/reload-clusters-plan-info": {
+            "post": {
+                "description": "This endpoint reloads the cluster plan information for all clusters without reapplying plans.",
+                "tags": [
+                    "ClusterActions"
+                ],
+                "summary": "Reload cluster plan information (all clusters)",
+                "parameters": [
+                    {
+                        "description": "Reload plan repository options",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/server.ReloadPlanRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully reloaded plan information",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/settings/actions/reload-clusters-plans": {
             "post": {
                 "description": "This endpoint reloads the cluster plans for all clusters.",
@@ -314,6 +353,16 @@ const docTemplate = `{
                     "ClusterActions"
                 ],
                 "summary": "Reload cluster plans",
+                "parameters": [
+                    {
+                        "description": "Reload plan repository options",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/server.ReloadPlanRequest"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Successfully reloaded plans",
@@ -15183,6 +15232,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/settings/actions/reload-plan-info": {
+            "post": {
+                "description": "This endpoint reloads the cluster plan information for the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterActions"
+                ],
+                "summary": "Reload cluster plan information",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully reloaded plan information",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/settings/actions/reset-graphite-filterlist/{template}": {
             "post": {
                 "description": "This endpoint resets the Graphite filter list for the specified cluster.",
@@ -25556,6 +25657,14 @@ const docTemplate = `{
             "properties": {
                 "content": {
                     "type": "string"
+                }
+            }
+        },
+        "server.ReloadPlanRequest": {
+            "type": "object",
+            "properties": {
+                "download": {
+                    "type": "boolean"
                 }
             }
         },

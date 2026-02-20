@@ -13,6 +13,7 @@ export const globalClustersService = {
   dropCluster,
   renameCluster,
   reloadClustersPlan,
+  reloadClustersPlanInfo,
   refreshAppTemplateRepo
 }
 
@@ -60,8 +61,12 @@ function renameCluster(clusterName, newClusterName) {
   return getApi().post(`clusters/actions/rename/${clusterName}/${newClusterName}`)
 }
 
-function reloadClustersPlan() {
-  return getApi().get(`clusters/settings/actions/reload-clusters-plans`)
+function reloadClustersPlan(download = true) {
+  return getApi().post(`clusters/settings/actions/reload-clusters-plans`, { download })
+}
+
+function reloadClustersPlanInfo(download = true) {
+  return getApi().post(`clusters/settings/actions/reload-clusters-plan-info`, { download })
 }
 
 function refreshAppTemplateRepo(clusterName, baseURL) {
