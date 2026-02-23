@@ -1772,18 +1772,32 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(opts BackupRunOptions) 
 		}
 	}
 
+	var waited bool
 	//Wait for previous restic backup
 	if cluster.IsInBackup() {
+		waited = true
 		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Logical", cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		time.Sleep(1 * time.Second)
-
-		return server.JobBackupLogicalWithOptions(opts)
 	}
 
 	cluster.SetInLogicalBackupState(true)
 
 	// Defer always clears traditional flag; Restic flag cleared by async goroutine
 	defer cluster.SetInLogicalBackupState(false)
+
+	if waited {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Resuming logical backup %s after waiting for previous backup to finish for: %s", cluster.Conf.BackupLogicalType, server.URL)
+	}
+
+	waited = false
+	// Wait for logs job to finish to prevent conflicts with backup metadata updates
+	for server.IsInSlowQueryCapture {
+		if !waited {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Waiting for logs job to finish before starting backup on %s", server.URL)
+			waited = true
+		}
+		time.Sleep(1 * time.Second)
+	}
 
 	// CRITICAL FIX: Set Restic flag AFTER validation passes to prevent orphaned flags
 	// The defer clears InLogicalBackup immediately on return, but Restic backup

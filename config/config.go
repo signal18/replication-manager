@@ -1465,6 +1465,8 @@ This is the list of task to be used in Task struct and Task table
 type TaskName string
 
 const (
+	ConstTaskDump               TaskName = "mysqldump"
+	ConstTaskMydumper           TaskName = "mydumper"
 	ConstTaskXB                 TaskName = "xtrabackup"
 	ConstTaskMB                 TaskName = "mariabackup"
 	ConstTaskError              TaskName = "errorlog"
@@ -1475,7 +1477,7 @@ const (
 	ConstTaskOptimize           TaskName = "optimize"
 	ConstTaskReseedXB           TaskName = "reseedxtrabackup"
 	ConstTaskReseedMB           TaskName = "reseedmariabackup"
-	ConstTaskDump               TaskName = "reseedmysqldump"
+	ConstTaskReseedDump         TaskName = "reseedmysqldump"
 	ConstTaskFlashXB            TaskName = "flashbackxtrabackup"
 	ConstTaskFlashMB            TaskName = "flashbackmariadbackup"
 	ConstTaskFlashDump          TaskName = "flashbackmysqldump"
@@ -3578,7 +3580,7 @@ func GetModuleNameForTask(task string) string {
 	// check if input compatible with TaskName type
 
 	switch TaskName(task) {
-	case ConstTaskXB, ConstTaskMB, ConstTaskReseedXB, ConstTaskReseedMB, ConstTaskDump, ConstTaskFlashXB, ConstTaskFlashMB, ConstTaskFlashDump:
+	case ConstTaskDump, ConstTaskXB, ConstTaskMB, ConstTaskReseedXB, ConstTaskReseedMB, ConstTaskReseedDump, ConstTaskFlashXB, ConstTaskFlashMB, ConstTaskFlashDump:
 		return ConstLogNameBackupStream
 	case ConstTaskError:
 		return ConstLogNameDbErrors
