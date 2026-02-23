@@ -5276,6 +5276,8 @@ const docTemplate = `{
                     },
                     {
                         "enum": [
+                            "mysqldump",
+                            "mydumper",
                             "xtrabackup",
                             "mariabackup",
                             "errorlog",
@@ -13549,6 +13551,8 @@ const docTemplate = `{
                     },
                     {
                         "enum": [
+                            "mysqldump",
+                            "mydumper",
                             "xtrabackup",
                             "mariabackup",
                             "errorlog",
@@ -14298,6 +14302,8 @@ const docTemplate = `{
                     },
                     {
                         "enum": [
+                            "mysqldump",
+                            "mydumper",
                             "xtrabackup",
                             "mariabackup",
                             "errorlog",

@@ -1772,12 +1772,12 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(opts BackupRunOptions) 
 		}
 	}
 
+	var waited bool
 	//Wait for previous restic backup
-	if cluster.IsInBackup() {
+	for cluster.IsInBackup() {
+		waited = true
 		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Logical", cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		time.Sleep(1 * time.Second)
-
-		return server.JobBackupLogicalWithOptions(opts)
 	}
 
 	cluster.SetInLogicalBackupState(true)
@@ -1785,12 +1785,32 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(opts BackupRunOptions) 
 	// Defer always clears traditional flag; Restic flag cleared by async goroutine
 	defer cluster.SetInLogicalBackupState(false)
 
+	if waited {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Resuming logical backup %s after waiting for previous backup to finish for: %s", cluster.Conf.BackupLogicalType, server.URL)
+	}
+
+	waited = false
+	// Wait for logs job to finish to prevent conflicts with backup metadata updates
+	for server.IsInSlowQueryCapture {
+		if !waited {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Waiting for logs job to finish before starting backup on %s", server.URL)
+			waited = true
+		}
+		time.Sleep(1 * time.Second)
+	}
+
 	// CRITICAL FIX: Set Restic flag AFTER validation passes to prevent orphaned flags
 	// The defer clears InLogicalBackup immediately on return, but Restic backup
 	// runs async. We must set InResticLogicalBackup NOW to maintain lock continuity.
+	resticScheduled := false
 	if resticEnabled {
 		// Set Restic flag now to ensure atomic transition (no gap where IsInBackup() = false)
 		cluster.SetInResticLogicalBackupState(true)
+		defer func() {
+			if !resticScheduled {
+				cluster.SetInResticLogicalBackupState(false)
+			}
+		}()
 	}
 
 	start := time.Now()
@@ -2021,13 +2041,16 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(opts BackupRunOptions) 
 
 	// NOTE: InResticLogicalBackup flag already set at function start for atomic transition
 	// No need to set it again here - it's already protecting the async operation
-	if resticEnabled {
+	if resticEnabled && err == nil {
 		resticPath := server.GetMyBackupDirectory()
 		if isAdhoc && server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.Dest != "" {
 			resticPath = server.LastBackupMeta.Logical.Dest
 		}
 		// Note: BackupRestic handles its own error logging and flag clearing if prerequisites fail
+		resticScheduled = true
 		server.BackupRestic(backupmgr.BackupMethodLogical, true, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupLogicalType, backupLine, server.LastBackupMeta.Logical)...)
+	} else if resticEnabled && err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Skipping restic backup because logical backup failed for: %s", server.URL)
 	}
 
 	return nil
@@ -3095,11 +3118,12 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		// CRITICAL: Transition from traditional backup lock to Restic lock atomically
 		// Set Restic flag BEFORE clearing physical backup flag
 		resticEnabled := server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.ResticEnabled
+		backupCompleted := server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.Completed
 		backupLine := backupmgr.BackupLineDefault
 		if server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.BackupLine != "" {
 			backupLine = server.LastBackupMeta.Physical.BackupLine
 		}
-		if resticEnabled {
+		if resticEnabled && backupCompleted {
 			cluster.SetInResticPhysicalBackupState(true)
 			resticPath := server.GetMyBackupDirectory()
 			if server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.IsAdhoc() && server.LastBackupMeta.Physical.Dest != "" {
@@ -3109,6 +3133,8 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 			// Create restic snapshot asynchronously and update metadata when complete
 			// Note: BackupRestic handles its own error logging and flag clearing if prerequisites fail
 			server.BackupRestic(backupmgr.BackupMethodPhysical, true, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupPhysicalType, backupLine, server.LastBackupMeta.Physical)...)
+		} else if resticEnabled && !backupCompleted {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Skipping restic backup because physical backup not completed for: %s", server.URL)
 		}
 
 		// Now safe to clear traditional backup flag

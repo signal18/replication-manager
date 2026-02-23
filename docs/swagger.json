@@ -5265,6 +5265,8 @@
                     },
                     {
                         "enum": [
+                            "mysqldump",
+                            "mydumper",
                             "xtrabackup",
                             "mariabackup",
                             "errorlog",
@@ -13538,6 +13540,8 @@
                     },
                     {
                         "enum": [
+                            "mysqldump",
+                            "mydumper",
                             "xtrabackup",
                             "mariabackup",
                             "errorlog",
@@ -14287,6 +14291,8 @@
                     },
                     {
                         "enum": [
+                            "mysqldump",
+                            "mydumper",
                             "xtrabackup",
                             "mariabackup",
                             "errorlog",
