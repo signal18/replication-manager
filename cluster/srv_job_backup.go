@@ -1611,7 +1611,7 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 		// Add --trx-tables if not already present
 		hasTrxTablesArg := false
 		for _, arg := range updatedArgs {
-			if strings.HasPrefix(arg, "--trx-tables") || arg == "--no-trx-tables" { // Check for both --trx-tables and --no-trx-tables to avoid conflicts
+			if arg == "--trx-tables" || strings.HasPrefix(arg, "--trx-tables=") || arg == "--no-trx-tables" { // Check for both --trx-tables and --no-trx-tables to avoid conflicts
 				hasTrxTablesArg = true
 				break
 			}
