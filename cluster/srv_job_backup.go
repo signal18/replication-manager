@@ -1774,7 +1774,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(opts BackupRunOptions) 
 
 	var waited bool
 	//Wait for previous restic backup
-	if cluster.IsInBackup() {
+	for cluster.IsInBackup() {
 		waited = true
 		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Logical", cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		time.Sleep(1 * time.Second)

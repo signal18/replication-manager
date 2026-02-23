@@ -3580,7 +3580,7 @@ func GetModuleNameForTask(task string) string {
 	// check if input compatible with TaskName type
 
 	switch TaskName(task) {
-	case ConstTaskDump, ConstTaskXB, ConstTaskMB, ConstTaskReseedXB, ConstTaskReseedMB, ConstTaskReseedDump, ConstTaskFlashXB, ConstTaskFlashMB, ConstTaskFlashDump:
+	case ConstTaskDump, ConstTaskMydumper, ConstTaskXB, ConstTaskMB, ConstTaskReseedXB, ConstTaskReseedMB, ConstTaskReseedDump, ConstTaskFlashXB, ConstTaskFlashMB, ConstTaskFlashDump:
 		return ConstLogNameBackupStream
 	case ConstTaskError:
 		return ConstLogNameDbErrors
