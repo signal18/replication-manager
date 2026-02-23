@@ -582,6 +582,15 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 	if cluster.IsInFailover() {
 		return nil
 	}
+
+	// Skip if server is in backup state and is backup server
+	if cluster.IsInBackup() {
+		bcksrv := cluster.GetBackupServer()
+		if bcksrv != nil && bcksrv.URL == server.URL {
+			return nil
+		}
+	}
+
 	if !server.HasLogsInSystemTables() {
 		return nil
 	}

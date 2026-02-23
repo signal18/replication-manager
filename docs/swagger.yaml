@@ -7850,6 +7850,8 @@ paths:
         type: string
       - description: Task Name
         enum:
+        - mysqldump
+        - mydumper
         - xtrabackup
         - mariabackup
         - errorlog
@@ -10098,6 +10100,8 @@ paths:
         type: string
       - description: taskname
         enum:
+        - mysqldump
+        - mydumper
         - xtrabackup
         - mariabackup
         - errorlog
@@ -10620,6 +10624,8 @@ paths:
         type: string
       - description: Type of check (e.g., 'config-refresh')
         enum:
+        - mysqldump
+        - mydumper
         - xtrabackup
         - mariabackup
         - errorlog
