@@ -1611,7 +1611,7 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 		// Add --trx-tables if not already present
 		hasTrxTables := false
 		for _, arg := range updatedArgs {
-			if arg == "--trx-tables" {
+			if strings.HasPrefix(arg, "--trx-tables") {
 				hasTrxTables = true
 				break
 			}
@@ -1622,7 +1622,7 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 		myargs = updatedArgs
 	}
 
-	if dumper.GreaterEqual("0.15.3") {
+	if dumper.GreaterEqual("0.15.3") && !slices.Contains(myargs, "--clear") {
 		myargs = append(myargs, "--clear")
 	}
 	myargs = append(myargs, "--outputdir", outputdir, "--threads", threads, "--host", misc.Unbracket(server.Host), "--port", server.Port, "--user", cluster.GetDbUser(), "--password", cluster.GetDbPass())
