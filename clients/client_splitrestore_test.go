@@ -33,6 +33,11 @@ func TestSplitMysqlArgs(t *testing.T) {
 			want:  []string{"--socket=/path with space"},
 		},
 		{
+			name:  "literal backslashes",
+			input: "--socket=C:\\temp\\data",
+			want:  []string{"--socket=C:\\temp\\data"},
+		},
+		{
 			name:  "escaped quotes in double quotes",
 			input: "--arg=\"a \\\"b\\\" c\"",
 			want:  []string{"--arg=a \"b\" c"},
@@ -48,9 +53,9 @@ func TestSplitMysqlArgs(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "trailing escape",
-			input:   "--socket=path\\",
-			wantErr: true,
+			name:  "trailing backslash",
+			input: "--socket=path\\",
+			want:  []string{"--socket=path\\"},
 		},
 	}
 

@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -41,12 +42,35 @@ func TestSplitDumpOpenReaderInvalidGzip(t *testing.T) {
 	}
 	defer file.Close()
 
+	oldStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to capture stderr: %v", err)
+	}
+	os.Stderr = w
+	t.Cleanup(func() {
+		os.Stderr = oldStderr
+	})
+
 	reader := splitDumpOpenReader(file)
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close stderr writer: %v", err)
+	}
+	logged, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("failed to read stderr: %v", err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("failed to close stderr reader: %v", err)
+	}
 	got := make([]byte, len(data))
 	if _, err := io.ReadFull(reader, got); err != nil {
 		t.Fatalf("failed to read input file: %v", err)
 	}
 	if !bytes.Equal(got, data) {
 		t.Fatalf("unexpected input bytes: %v", got)
+	}
+	if !strings.Contains(string(logged), "falling back to raw reader") {
+		t.Fatalf("expected fallback warning in stderr, got: %s", logged)
 	}
 }

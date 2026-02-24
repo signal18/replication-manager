@@ -133,7 +133,9 @@ func splitMysqlArgs(input string) ([]string, error) {
 		argStarted = false
 	}
 
-	for _, r := range trimmed {
+	runes := []rune(trimmed)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
 		if escaped {
 			current.WriteRune(r)
 			escaped = false
@@ -141,10 +143,29 @@ func splitMysqlArgs(input string) ([]string, error) {
 			continue
 		}
 
-		if r == '\\' && quote != '\'' {
-			escaped = true
-			argStarted = true
-			continue
+		if r == '\\' {
+			switch quote {
+			case '\'':
+				current.WriteRune(r)
+				argStarted = true
+				continue
+			case 0:
+				if i+1 < len(runes) {
+					next := runes[i+1]
+					if unicode.IsSpace(next) || next == '\'' || next == '"' {
+						escaped = true
+						argStarted = true
+						continue
+					}
+				}
+				current.WriteRune(r)
+				argStarted = true
+				continue
+			default:
+				escaped = true
+				argStarted = true
+				continue
+			}
 		}
 
 		if r == '\'' || r == '"' {

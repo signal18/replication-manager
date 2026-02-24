@@ -49,6 +49,7 @@ func splitDumpOpenReader(f *os.File) *bufio.Reader {
 	if isGzip(buf) {
 		gbuf, err := gzip.NewReader(buf)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "splitdump: warning: gzip header detected but failed to init gzip reader; falling back to raw reader: %v\n", err)
 			if _, seekErr := f.Seek(0, io.SeekStart); seekErr == nil {
 				return bufio.NewReaderSize(f, pageSize)
 			}
