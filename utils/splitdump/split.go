@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -46,7 +47,13 @@ func splitDumpOpenReader(f *os.File) *bufio.Reader {
 	buf := bufio.NewReaderSize(f, pageSize)
 
 	if isGzip(buf) {
-		gbuf, _ := gzip.NewReader(buf)
+		gbuf, err := gzip.NewReader(buf)
+		if err != nil {
+			if _, seekErr := f.Seek(0, io.SeekStart); seekErr == nil {
+				return bufio.NewReaderSize(f, pageSize)
+			}
+			return buf
+		}
 		return bufio.NewReaderSize(gbuf, pageSize)
 	}
 
@@ -104,6 +111,20 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 	var f *os.File
 	var tableFile *gzip.Writer
 	var bgtid, bfile, bpos string
+	closeTableWriter := func() {
+		if tableFile != nil {
+			_ = tableFile.Flush()
+			_ = tableFile.Close()
+			tableFile = nil
+		}
+	}
+	closeTableFile := func() {
+		closeTableWriter()
+		if f != nil {
+			_ = f.Close()
+			f = nil
+		}
+	}
 
 	streamSize := 0
 	streamSizeMax := 1024 * 1024 * 1024
@@ -112,22 +133,24 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 		streamSize += len([]byte(line))
 
 		if streamSize > streamSizeMax {
-			shard++
-			tableFile.Flush()
-			tableFile.Close()
-			f.Close()
-			shardpad = fmt.Sprintf(".%05d", shard)
-			tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1)) + shardpad
-			fmt.Printf("Processing table data %s ", tableName)
-			tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
-			f, err := os.Create(tablePath)
-			if err != nil {
-				fmt.Printf("Error creating file %s %s\n", tablePath, err)
-				bus.Finished <- true
-				return
+			if tableFile == nil {
+				streamSize = 0
+			} else {
+				shard++
+				closeTableFile()
+				shardpad = fmt.Sprintf(".%05d", shard)
+				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1)) + shardpad
+				fmt.Printf("Processing table data %s ", tableName)
+				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
+				f, err := os.Create(tablePath)
+				if err != nil {
+					fmt.Printf("Error creating file %s %s\n", tablePath, err)
+					bus.Finished <- true
+					return
+				}
+				tableFile = gzip.NewWriter(f)
+				streamSize = 0
 			}
-			tableFile = gzip.NewWriter(f)
-			streamSize = 0
 		}
 		// The beginning of a mysqldump has some flags at the top of the file. Capture them into a variable.
 		if !pastHeader && strings.HasPrefix(line, "/*!40") {
@@ -139,7 +162,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 				onTableData = false
 				onTableScheme = false
 				streamSize = 0
-				tableFile.Close()
+				closeTableWriter()
 			}
 		} else {
 			if strings.HasPrefix(line, "USE ") {
@@ -149,9 +172,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 				if onTableScheme && !onTableData {
 					onTableScheme = false
 					// add headers to each file unless we are combining all of them into 1 file.
-					tableFile.Flush()
-					tableFile.Close()
-					f.Close()
+					closeTableFile()
 				}
 				onTableScheme, onTableData = true, false
 				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Table structure for table ", "", 1), "`", "", -1)) + "-schema"
@@ -170,8 +191,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 			} else if strings.HasPrefix(line, "-- Dumping data for table") {
 				// Case of data without table definition
 				if !onTableScheme {
-					tableFile.Flush()
-					tableFile.Close()
+					closeTableWriter()
 					tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table", "", 1), "`", "", -1)) + "-schema"
 					fmt.Printf("Processing table schema %s\n", tableName)
 					tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
@@ -186,9 +206,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 					pastHeader = true
 
 				}
-				tableFile.Flush()
-				tableFile.Close()
-				f.Close()
+				closeTableFile()
 				shardpad = fmt.Sprintf(".%05d", shard)
 				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1)) + shardpad
 				fmt.Printf("Processing table data %s\n", tableName)
@@ -212,9 +230,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 				onTableData = false
 				onTableScheme = false
 				//	onView = true
-				tableFile.Flush()
-				tableFile.Close()
-				f.Close()
+				closeTableFile()
 				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Final view structure for view ", "", 1), "`", "", -1)) + "-schema-view"
 				fmt.Printf("Processing view schema %s\n", tableName)
 				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
@@ -229,9 +245,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 			} else if strings.HasPrefix(line, "INSTALL PLUGIN") || strings.HasPrefix(line, "CREATE USER") {
 				onTableData = false
 				onTableScheme = false
-				tableFile.Flush()
-				tableFile.Close()
-				f.Close()
+				closeTableFile()
 				tableName := "mysql.system-all"
 				fmt.Printf("Processing view schema %s\n", tableName)
 				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
@@ -266,9 +280,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 		}
 
 	}
-	tableFile.Flush()
-	tableFile.Close()
-	f.Close()
+	closeTableFile()
 	tablePath := filepath.Join(outputDir, "metadata")
 	f, err := os.Create(tablePath)
 	if err != nil {
