@@ -5,6 +5,86 @@ All notable changes to replication-manager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.17] - 2026-02-24
+
+### Added
+- Schema monitoring for table/column/index differences between master and slaves with shardproxy integration (#1305, #1306)
+- Manual database variable override and preservation system with three-tier preserved variables and UI indicators
+- Config drift detection with HasConfigDiff field and visual indicators navigating to Variables tab
+- Restic FUSE mount operations with strict path resolution and auto-disable on unavailability (#1343)
+- Restic reseed with metadata cache, safer API defaults, and UI updates (#1342)
+- Restic SFTP backend support via backup-restic-local-repository configuration
+- Restic backup-restic-host configuration and new configurable options (#1338)
+- Restic keep-tag handling with strict validation and improved error reporting (#1338)
+- Restic permission validation with unit tests (#1332, #1333)
+- Configurable compression level and parallel blocks for backup and SST/restore operations (#1336)
+- `splitdump` CLI command: pipe dump.sql to replication-manager-cli with safe filename sanitization (#1339, #1340, #1341)
+- Docker rootless image variants with fixed UID/GID 10001:10001 for production deployments (#1334)
+- App provision and unprovision grants with enhanced error handling and monitoring status updates (#1348, #1349)
+- Service plan reload for clusters (#1349)
+- Replication master retry count configuration and UI (#1282)
+- `HasRunningDBJobs` method to defer restart container cookies when jobs are active
+- Config fetch cookie checks on server init and on prov-db-start-fetch-config change (#1307)
+- OpenSVC overwrite support for existing config and secret objects
+- OpenSVC certificate loading failure handling
+- ClearOldCookies method to clean up stale cookies during cluster initialization
+- Pushover integration in shared logging mechanism
+- Error 2002 handling in log parsing with level-based error log control (#1290, #1291)
+- Provision check in ResticPurgeRepo to prevent operation on unprovisioned clusters
+- Sample deployment configuration for environment variables
+- GitHub Actions workflow for release binary builds
+- One-liner installation script for embedded binary
+- SQL error log level configuration method for cluster settings
+
+### Fixed
+- MyDumper version-aware flag handling: restore legacy flags for older versions, use --trx-tables for newer (#1351, #1356, #1357)
+- Smart/curly quote replacement in VariablesMap loadFromSection and LoadFromTempConfigFile
+- Restic mount directory uses working-dir/cluster/mount to prevent permission issues (#1343)
+- Restic critical security and reliability issues in core (#1332)
+- Restic worker processing when task queue is empty
+- Restic nil pointer check before accessing paused state
+- OpenSVC config/secret object creation using new KeysExists method (#1346)
+- Proxy tracking in query rules monitoring (#1326)
+- Backup validation and state warning logic (#1324)
+- Schema string delimiter in columnDefQuery function
+- Job version check skipped for non-OpenSVC orchestrators
+- Job scheduler table check includes error details in warning state
+- Job run: script existence check and error propagation in CheckJobsVersion
+- Job run: job check cookie setting for outdated job files
+- JobsCheckFinished extended to include sqlerrorlog and auditlog tasks
+- JobsCreateTable column type check for MEDIUMTEXT
+- User populated from Username (login) field, not Name (display name)
+- MasterSlaveTimeDiff JSON tag casing
+- StaticCheck linting issues: ST1013, S1002, QF1011, and context leaks (#1327)
+- Arbitrator startup failure with missing config backup directory (#1309, #1313)
+- Docker verbosity set to normal for images
+- Docker maxscale repo skip
+- Replication event time display in DBServerGrid
+
+### Changed
+- dbhelper package split from monolithic 4406-line file into organized modules (#1314)
+- dbhelper SQL injection vulnerabilities eliminated via parameterized queries
+- dbhelper database vendor abstraction layer introduced
+- Preserved variables config streamlined with server exclusions and file copying refactor
+- VariablesMap deployed values tracking with mutex protection
+- MasterRetryCount renamed from ReplicationMasterRetryCount for consistency
+- ChangeMaster options streamlined with helper functions
+- Mattermost client upgraded to public model (#1308)
+- Environment config handling and runtime defaults improved (#1316)
+- OpenSVC API response logging changed from Info to Debug level
+- Global clusters slice refactored to use guarded async thunks
+- Ignored server handling improved across Variables and ClusterDBTabContent UI components
+- Version extraction improved: extractVersionFromOutput handles multi-line output and moved to version package
+- Restart cookie management refactored with new naming and state-based logic
+- Bootstrap script cleanup refined to preserve custom configurations
+- Go builders upgraded from 1.23 to 1.24 in Docker images
+
+### Security
+- Backup repository value encoded to base64 in BackupSettings to prevent unsafe values
+- SQL injection prevention in dbhelper parameterized queries
+- File path injection prevented in splitdump using sanitizefilename library
+- Mattermost CVE-2025-12421 account takeover vulnerability fix (#1308)
+
 ## [3.1.16] - 2025-12-03
 
 ### Added
@@ -586,13 +666,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 3.1.x Series
 The 3.1.x series represents significant evolution of replication-manager with major improvements across:
 
-- **Application Management**: Comprehensive provisioning framework with template support, S3 integration, and credit management
-- **Backup & Restore**: Restic task queue management, post-backup scripts, and enhanced backup operations
-- **Database Compatibility**: MySQL 8.4 support, improved version handling, and SSL/TLS enhancements
-- **Monitoring & Logging**: Modular logging system, OpenSVC integration, audit log support
-- **Security**: Credential masking, JWT authentication, password rotation with immutability checks
+- **Application Management**: Comprehensive provisioning framework with template support, S3 integration, credit management, and provision/unprovision grants
+- **Backup & Restore**: Restic task queue management, FUSE mount operations, SFTP backend, reseed with metadata cache, configurable compression, post-backup scripts, and version-aware MyDumper flag handling
+- **Configuration Management**: Manual variable override and preservation system, config drift detection with UI indicators, and three-tier preserved variables
+- **Database Compatibility**: MySQL 8.4 support, improved version handling, SSL/TLS enhancements, and dbhelper refactor with vendor abstraction and SQL injection prevention
+- **Schema Monitoring**: Master-slave table/column/index comparison with shardproxy integration and scheduler support
+- **CLI Tools**: `splitdump` command for streaming dump files with safe filename handling
+- **Monitoring & Logging**: Modular logging system, OpenSVC integration, audit log support, Pushover integration
+- **Security**: Credential masking, JWT authentication, password rotation with immutability checks, parameterized queries in dbhelper
 - **Proxy Integration**: HAProxy logging improvements, enhanced backend management
-- **Topology**: Active-passive topology support, staging server improvements
+- **Topology**: Active-passive topology support, staging server improvements, replication master retry count configuration
+- **Docker**: Rootless image variants with fixed UID/GID 10001:10001 for production deployments
 
 ### 3.0.x Series
 The 3.0.x series established the foundation for modern replication-manager with enterprise-grade features:
@@ -608,6 +692,7 @@ The 3.0.x series established the foundation for modern replication-manager with 
 - **User Management**: Role-based access control with GUI, external operator support, and credential management
 - **Disk Monitoring**: Real-time disk statistics, backup size estimation, and free space validation
 
+[3.1.17]: https://github.com/signal18/replication-manager/releases/tag/v3.1.17
 [3.1.16]: https://github.com/signal18/replication-manager/releases/tag/v3.1.16
 [3.1.15]: https://github.com/signal18/replication-manager/releases/tag/v3.1.15
 [3.1.14]: https://github.com/signal18/replication-manager/releases/tag/v3.1.14
