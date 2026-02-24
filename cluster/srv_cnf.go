@@ -946,7 +946,7 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 
 		// 4-LAYER SAFETY FRAMEWORK FOR RUNTIME FALLBACK
 		// Only use runtime value if deployed is nil and all safety checks pass
-		if v.Deployed == nil && v.Runtime != nil {
+		if v.Deployed == nil && v.Runtime != nil && v.Runtime.String() != v.Config.String() {
 			runtimeStr := v.Runtime.String()
 
 			// Layer 1: Empty value check - never write empty values
@@ -990,9 +990,10 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 				continue
 			}
 		*/
-
-		// Normal case: deployed value exists
-		content.WriteString(v.PrintDeployedDelta() + "\n")
+		if v.Deployed != nil && v.Deployed.String() != v.Config.String() {
+			// Normal case: deployed value exists
+			content.WriteString(v.PrintDeployedDelta() + "\n")
+		}
 	}
 
 	// Write atomically
