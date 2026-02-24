@@ -75,6 +75,34 @@ func TestSplitDumpOpenReaderInvalidGzip(t *testing.T) {
 	}
 }
 
+func TestSplitDumpLineReaderErrorClosesCurrentLine(t *testing.T) {
+	bus := NewSplitDumpChannelBus()
+	inputPath := filepath.Join(t.TempDir(), "missing.sql")
+
+	go SplitDumpLineReader(bus, inputPath)
+
+	select {
+	case err, ok := <-bus.Error:
+		if !ok {
+			t.Fatal("expected error channel to be open for first read")
+		}
+		if err == nil {
+			t.Fatal("expected error from SplitDumpLineReader")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for splitdump error")
+	}
+
+	select {
+	case _, ok := <-bus.CurrentLine:
+		if ok {
+			t.Fatal("expected CurrentLine channel to be closed")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for CurrentLine channel close")
+	}
+}
+
 func TestSplitDumpLineParserMySQLGtidPurgedVariants(t *testing.T) {
 	cases := []struct {
 		name     string

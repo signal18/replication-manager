@@ -18,12 +18,27 @@ func (cluster *Cluster) GetMyDumperCompatibleOptions() []string {
 		return parts
 	}
 
+	var hasSourceData bool
+	var hasReplicaData bool
+
 	for _, param := range parts {
 		if param == "" {
 			continue
 		}
 
+		if param == "--source-data" || strings.HasPrefix(param, "--source-data=") {
+			hasSourceData = true
+		}
+		if param == "--replica-data" || strings.HasPrefix(param, "--replica-data=") {
+			hasReplicaData = true
+		}
+
 		params = append(params, param)
+	}
+
+	if !hasSourceData && !hasReplicaData {
+		params = append(params, "--source-data=2")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Mydumper options missing --source-data/--replica-data; adding --source-data=2 to capture binlog metadata")
 	}
 
 	return params

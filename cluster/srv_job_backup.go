@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -1603,11 +1604,11 @@ type splitDumpPipeline struct {
 type fallbackWriter struct {
 	primary  io.Writer
 	fallback io.Writer
-	failed   bool
+	failed   atomic.Bool
 }
 
 func (w *fallbackWriter) Write(p []byte) (int, error) {
-	if w.failed {
+	if w.failed.Load() {
 		return w.fallback.Write(p)
 	}
 	if w.primary == nil {
@@ -1615,7 +1616,7 @@ func (w *fallbackWriter) Write(p []byte) (int, error) {
 	}
 	n, err := w.primary.Write(p)
 	if err != nil {
-		w.failed = true
+		w.failed.Store(true)
 		return w.fallback.Write(p)
 	}
 	return n, nil
@@ -1959,7 +1960,7 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 	}
 
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalDumpThreads)
-	myargs := strings.Split(strings.ReplaceAll(cluster.Conf.BackupMyDumperOptions, "  ", " "), " ")
+	myargs := cluster.GetMyDumperCompatibleOptions()
 
 	// Handle deprecated flags for mydumper >= 0.18.1
 	if dumper.GreaterEqual("0.18.1") {

@@ -46,8 +46,22 @@ func runSplitdump(inputFile, outputDir string) error {
 	//, conf.Combine, conf.OutputPath, conf.SkipData, conf.SkipTable)
 
 	// wait for the writer to finish.
-	<-bus.Finished
-	fmt.Printf("\n\n--finished in %s", time.Since(start))
-	close(bus.Finished)
-	return nil
+	var readerErr error
+	errorCh := bus.Error
+	for {
+		select {
+		case err, ok := <-errorCh:
+			if !ok {
+				errorCh = nil
+				continue
+			}
+			if err != nil && readerErr == nil {
+				readerErr = err
+			}
+		case <-bus.Finished:
+			fmt.Printf("\n\n--finished in %s", time.Since(start))
+			close(bus.Finished)
+			return readerErr
+		}
+	}
 }

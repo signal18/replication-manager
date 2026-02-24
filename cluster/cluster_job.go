@@ -190,6 +190,9 @@ func (cluster *Cluster) JobParseMyDumperMetaNew(dir string) (config.MyDumperMeta
 	reFile := regexp.MustCompile(`^File\s*=\s*(.*)`)
 	rePos := regexp.MustCompile(`^Position\s*=\s*(\d+)`)
 	reGTID := regexp.MustCompile(`^Executed_Gtid_Set\s*=\s*(.*)`)
+	reSourceFile := regexp.MustCompile(`(?i)^SOURCE_LOG_FILE\s*=\s*"?(.+?)"?$`)
+	reSourcePos := regexp.MustCompile(`(?i)^SOURCE_LOG_POS\s*=\s*(\d+)`)
+	reSourceGTID := regexp.MustCompile(`(?i)^executed_gtid_set\s*=\s*"?(.+?)"?$`)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -197,17 +200,23 @@ func (cluster *Cluster) JobParseMyDumperMetaNew(dir string) (config.MyDumperMeta
 		if binlogFile == "" {
 			if matches := reFile.FindStringSubmatch(line); matches != nil {
 				binlogFile = matches[1]
+			} else if matches := reSourceFile.FindStringSubmatch(line); matches != nil {
+				binlogFile = matches[1]
 			}
 		}
 
 		if position == "" {
 			if matches := rePos.FindStringSubmatch(line); matches != nil {
 				position = matches[1]
+			} else if matches := reSourcePos.FindStringSubmatch(line); matches != nil {
+				position = matches[1]
 			}
 		}
 
 		if gtidSet == "" {
 			if matches := reGTID.FindStringSubmatch(line); matches != nil {
+				gtidSet = matches[1]
+			} else if matches := reSourceGTID.FindStringSubmatch(line); matches != nil {
 				gtidSet = matches[1]
 			}
 		}

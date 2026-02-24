@@ -22,9 +22,10 @@ const (
 var ErrMetadataInvalid = errors.New("splitdump metadata invalid")
 
 type Metadata struct {
-	File     string
-	Position uint64
-	GTID     string
+	File       string
+	Position   uint64
+	GTID       string
+	SourceData int
 }
 
 type RestoreOptions struct {
@@ -55,6 +56,8 @@ func ReadMetadata(backupPath string) (*Metadata, error) {
 	}
 	meta := &Metadata{}
 	positionSet := false
+	sourceDataSet := false
+	positionMissing := false
 	lines := strings.Split(string(data), "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -62,12 +65,24 @@ func ReadMetadata(backupPath string) (*Metadata, error) {
 			continue
 		}
 		switch {
+		case strings.HasPrefix(line, "Source_Data ="):
+			srcStr := strings.TrimSpace(strings.TrimPrefix(line, "Source_Data ="))
+			if srcStr == "" {
+				return nil, fmt.Errorf("%w: missing source data", ErrMetadataInvalid)
+			}
+			src, err := strconv.Atoi(srcStr)
+			if err != nil {
+				return nil, fmt.Errorf("%w: invalid source data %q: %v", ErrMetadataInvalid, srcStr, err)
+			}
+			meta.SourceData = src
+			sourceDataSet = true
 		case strings.HasPrefix(line, "File ="):
 			meta.File = strings.TrimSpace(strings.TrimPrefix(line, "File ="))
 		case strings.HasPrefix(line, "Position ="):
 			posStr := strings.TrimSpace(strings.TrimPrefix(line, "Position ="))
 			if posStr == "" {
-				return nil, fmt.Errorf("%w: missing position", ErrMetadataInvalid)
+				positionMissing = true
+				continue
 			}
 			pos, err := strconv.ParseUint(posStr, 10, 64)
 			if err != nil {
@@ -79,10 +94,13 @@ func ReadMetadata(backupPath string) (*Metadata, error) {
 			meta.GTID = strings.TrimSpace(strings.TrimPrefix(line, "Executed_Gtid_Set ="))
 		}
 	}
+	if sourceDataSet && meta.SourceData == 0 {
+		return meta, nil
+	}
 	if meta.File == "" {
 		return nil, fmt.Errorf("%w: missing binlog file", ErrMetadataInvalid)
 	}
-	if !positionSet {
+	if positionMissing || !positionSet {
 		return nil, fmt.Errorf("%w: missing position", ErrMetadataInvalid)
 	}
 	return meta, nil

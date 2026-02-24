@@ -17,6 +17,7 @@ import (
 // SplitDumpChannelBusChannelBus a struct to hold all channels used by the different go routines
 type SplitDumpChannelBus struct {
 	Finished    chan bool
+	Error       chan error
 	Log         chan string
 	CurrentLine chan string
 	TableName   chan string
@@ -27,6 +28,7 @@ type SplitDumpChannelBus struct {
 func NewSplitDumpChannelBus() *SplitDumpChannelBus {
 	return &SplitDumpChannelBus{
 		Finished:    make(chan bool),
+		Error:       make(chan error, 1),
 		Log:         make(chan string),
 		CurrentLine: make(chan string),
 		TableName:   make(chan string),
@@ -79,13 +81,13 @@ func splitDumpOpenReaderStdin() *bufio.Reader {
 // LineReader reads `file` line-by-line and adds it to the `bus.CurrentLine` channel.
 // Note: This function closes `file`.
 func SplitDumpLineReader(bus *SplitDumpChannelBus, inputFile string) {
-
 	r := splitDumpOpenReaderStdin()
 	if inputFile != "" {
 		file, err := splitDumpOpenFile(inputFile)
 		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
+			bus.Error <- err
+			close(bus.CurrentLine)
+			return
 		}
 		defer file.Close()
 		r = splitDumpOpenReader(file)
@@ -99,6 +101,23 @@ func SplitDumpLineReader(bus *SplitDumpChannelBus, inputFile string) {
 
 // LineParser reads the CurrentLine and figures out which channel to put it in.
 func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineFiles bool, outputDir string, skipData []string, skipTables []string*/) {
+	reportError := func(err error) {
+		if err == nil {
+			return
+		}
+		defer func() {
+			_ = recover()
+		}()
+		select {
+		case bus.Error <- err:
+		default:
+		}
+	}
+	finishWithError := func(err error) {
+		reportError(err)
+		bus.Finished <- true
+	}
+
 	onTableScheme, onTableData, pastHeader := false, false, false
 	shardpad, schema := "", ""
 	shard := 0
@@ -107,11 +126,16 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 	binlogRegexMySQL := regexp.MustCompile(`CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='(.+)', SOURCE_LOG_POS=(\d+)`)
 	gtidRegexMySQL := regexp.MustCompile(`GTID_PURGED\s*=\s*(?:\/\*![^*]*\*\/\s*)?'([^']+)'`)
 	headerMetaData := fmt.Sprintf("-- Generated with replication-manager on %s\n\n", time.Now())
-	os.Mkdir(outputDir, os.ModePerm)
+	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
+		finishWithError(fmt.Errorf("splitdump: create output dir %s: %w", outputDir, err))
+		return
+	}
 	// numTables := 0
 	var f *os.File
+	var err error
 	var tableFile *gzip.Writer
 	var bgtid, bfile, bpos string
+	sourceDataDisabled := false
 	closeTableWriter := func() {
 		if tableFile != nil {
 			_ = tableFile.Flush()
@@ -130,6 +154,15 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 	streamSize := 0
 	streamSizeMax := 1024 * 1024 * 1024
 	for line := range bus.CurrentLine {
+		if !sourceDataDisabled {
+			lowerLine := strings.ToLower(line)
+			if strings.Contains(lowerLine, "source-data=0") {
+				sourceDataDisabled = true
+				bgtid = ""
+				bfile = ""
+				bpos = ""
+			}
+		}
 		//	fmt.Printf("%s %b %b %b", line, onTableScheme, onTableData)
 		streamSize += len([]byte(line))
 
@@ -143,10 +176,9 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1)) + shardpad
 				fmt.Printf("Processing table data %s ", tableName)
 				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
-				f, err := os.Create(tablePath)
+				f, err = os.Create(tablePath)
 				if err != nil {
-					fmt.Printf("Error creating file %s %s\n", tablePath, err)
-					bus.Finished <- true
+					finishWithError(fmt.Errorf("splitdump: create file %s: %w", tablePath, err))
 					return
 				}
 				tableFile = gzip.NewWriter(f)
@@ -179,10 +211,9 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Table structure for table ", "", 1), "`", "", -1)) + "-schema"
 				fmt.Printf("Processing table schema %s\n", tableName)
 				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
-				f, err := os.Create(tablePath)
+				f, err = os.Create(tablePath)
 				if err != nil {
-					fmt.Printf("Error creating file %s %s\n", tablePath, err)
-					bus.Finished <- true
+					finishWithError(fmt.Errorf("splitdump: create file %s: %w", tablePath, err))
 					return
 				}
 				tableFile = gzip.NewWriter(f)
@@ -196,10 +227,9 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 					tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table", "", 1), "`", "", -1)) + "-schema"
 					fmt.Printf("Processing table schema %s\n", tableName)
 					tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
-					f, err := os.Create(tablePath)
+					f, err = os.Create(tablePath)
 					if err != nil {
-						fmt.Printf("Error creating file %s %s\n", tablePath, err)
-						bus.Finished <- true
+						finishWithError(fmt.Errorf("splitdump: create file %s: %w", tablePath, err))
 						return
 					}
 					tableFile = gzip.NewWriter(f)
@@ -212,10 +242,9 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1)) + shardpad
 				fmt.Printf("Processing table data %s\n", tableName)
 				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
-				f, err := os.Create(tablePath)
+				f, err = os.Create(tablePath)
 				if err != nil {
-					fmt.Printf("Error creating file %s %s\n", tablePath, err)
-					bus.Finished <- true
+					finishWithError(fmt.Errorf("splitdump: create file %s: %w", tablePath, err))
 					return
 				}
 				tableFile = gzip.NewWriter(f)
@@ -235,10 +264,9 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Final view structure for view ", "", 1), "`", "", -1)) + "-schema-view"
 				fmt.Printf("Processing view schema %s\n", tableName)
 				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
-				f, err := os.Create(tablePath)
+				f, err = os.Create(tablePath)
 				if err != nil {
-					fmt.Printf("Error creating file %s %s\n", tablePath, err)
-					bus.Finished <- true
+					finishWithError(fmt.Errorf("splitdump: create file %s: %w", tablePath, err))
 					return
 				}
 				tableFile = gzip.NewWriter(f)
@@ -250,27 +278,28 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 				tableName := "mysql.system-all"
 				fmt.Printf("Processing view schema %s\n", tableName)
 				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
-				f, err := os.Create(tablePath)
+				f, err = os.Create(tablePath)
 				if err != nil {
-					fmt.Printf("Error creating file %s %s\n", tablePath, err)
-					bus.Finished <- true
+					finishWithError(fmt.Errorf("splitdump: create file %s: %w", tablePath, err))
 					return
 				}
 				tableFile = gzip.NewWriter(f)
 			}
-			if matches := gtidRegexMariaDB.FindStringSubmatch(line); matches != nil {
-				bgtid = matches[1]
-			}
-			if matches := gtidRegexMySQL.FindStringSubmatch(line); matches != nil {
-				bgtid = matches[1]
-			}
-			if matches := binlogRegexMariaDB.FindStringSubmatch(line); matches != nil {
-				bfile = matches[1]
-				bpos = matches[2]
-			}
-			if matches := binlogRegexMySQL.FindStringSubmatch(line); matches != nil {
-				bfile = matches[1]
-				bpos = matches[2]
+			if !sourceDataDisabled {
+				if matches := gtidRegexMariaDB.FindStringSubmatch(line); matches != nil {
+					bgtid = matches[1]
+				}
+				if matches := gtidRegexMySQL.FindStringSubmatch(line); matches != nil {
+					bgtid = matches[1]
+				}
+				if matches := binlogRegexMariaDB.FindStringSubmatch(line); matches != nil {
+					bfile = matches[1]
+					bpos = matches[2]
+				}
+				if matches := binlogRegexMySQL.FindStringSubmatch(line); matches != nil {
+					bfile = matches[1]
+					bpos = matches[2]
+				}
 			}
 		}
 
@@ -283,14 +312,20 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 	}
 	closeTableFile()
 	tablePath := filepath.Join(outputDir, "metadata")
-	f, err := os.Create(tablePath)
+	f, err = os.Create(tablePath)
 	if err != nil {
-		fmt.Printf("Error creating file %s %s\n", tablePath, err)
-		bus.Finished <- true
+		finishWithError(fmt.Errorf("splitdump: create file %s: %w", tablePath, err))
 		return
 	}
-	line := fmt.Sprintf("[source]\n# Channel_Name = ''\nFile = %s\nPosition = %s\nExecuted_Gtid_Set = %s\n\n", bfile, bpos, bgtid)
-	f.Write([]byte(line))
+	metaLines := []string{"[source]", "# Channel_Name = ''"}
+	if sourceDataDisabled {
+		metaLines = append(metaLines, "Source_Data = 0")
+	}
+	metaLines = append(metaLines, fmt.Sprintf("File = %s", bfile))
+	metaLines = append(metaLines, fmt.Sprintf("Position = %s", bpos))
+	metaLines = append(metaLines, fmt.Sprintf("Executed_Gtid_Set = %s", bgtid), "")
+	line := strings.Join(metaLines, "\n")
+	_, _ = f.Write([]byte(line))
 	f.Close()
 
 	bus.Finished <- true

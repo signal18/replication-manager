@@ -63,6 +63,28 @@ func TestReadMetadataRequiresPosition(t *testing.T) {
 	}
 }
 
+func TestReadMetadataSourceDataZeroSkipsBinlog(t *testing.T) {
+	dir := t.TempDir()
+	content := "[source]\nSource_Data = 0\n"
+	if err := os.WriteFile(filepath.Join(dir, "metadata"), []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write metadata: %v", err)
+	}
+
+	meta, err := ReadMetadata(dir)
+	if err != nil {
+		t.Fatalf("expected metadata to parse, got error: %v", err)
+	}
+	if meta.SourceData != 0 {
+		t.Fatalf("unexpected source data: %d", meta.SourceData)
+	}
+	if meta.File != "" {
+		t.Fatalf("expected empty file, got: %s", meta.File)
+	}
+	if meta.Position != 0 {
+		t.Fatalf("expected zero position, got: %d", meta.Position)
+	}
+}
+
 func TestRestoreIgnoresMalformedMetadata(t *testing.T) {
 	dir := t.TempDir()
 	content := "[source]\nFile = mysql-bin.000123\n"
