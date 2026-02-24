@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/spf13/cobra"
 
@@ -80,7 +81,10 @@ func runSplitrestore(ctx context.Context) error {
 			reader = gzReader
 		}
 
-		args := strings.Fields(cliSplitRestoreMysqlArg)
+		args, err := splitMysqlArgs(cliSplitRestoreMysqlArg)
+		if err != nil {
+			return fmt.Errorf("invalid mysql-args: %w", err)
+		}
 		cmd := exec.CommandContext(ctx, cliSplitRestoreMysql, args...)
 		cmd.Stdin = reader
 		var stderr bytes.Buffer
@@ -107,4 +111,77 @@ func runSplitrestore(ctx context.Context) error {
 
 	fmt.Printf("\n\n--finished in %s", time.Since(start))
 	return nil
+}
+
+func splitMysqlArgs(input string) ([]string, error) {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return nil, nil
+	}
+
+	var (
+		args       []string
+		current    strings.Builder
+		quote      rune
+		escaped    bool
+		argStarted bool
+	)
+
+	flush := func() {
+		args = append(args, current.String())
+		current.Reset()
+		argStarted = false
+	}
+
+	for _, r := range trimmed {
+		if escaped {
+			current.WriteRune(r)
+			escaped = false
+			argStarted = true
+			continue
+		}
+
+		if r == '\\' && quote != '\'' {
+			escaped = true
+			argStarted = true
+			continue
+		}
+
+		if r == '\'' || r == '"' {
+			if quote == 0 {
+				quote = r
+				argStarted = true
+				continue
+			}
+			if quote == r {
+				quote = 0
+				continue
+			}
+			current.WriteRune(r)
+			argStarted = true
+			continue
+		}
+
+		if quote == 0 && unicode.IsSpace(r) {
+			if argStarted {
+				flush()
+			}
+			continue
+		}
+
+		current.WriteRune(r)
+		argStarted = true
+	}
+
+	if escaped {
+		return nil, fmt.Errorf("trailing escape")
+	}
+	if quote != 0 {
+		return nil, fmt.Errorf("unmatched quote")
+	}
+	if argStarted {
+		flush()
+	}
+
+	return args, nil
 }
