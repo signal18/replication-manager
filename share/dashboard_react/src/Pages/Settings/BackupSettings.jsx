@@ -86,6 +86,13 @@ The script will be executed with the following parameters:
 4. Backup Path
 `
 
+  const SplitDumpRequirement = `Splitdump sends mysqldump output through replication-manager-cli splitdump.  
+When enabled, mysqldump output is written to a splitdump directory (uncompressed) instead of a single .sql.gz file.  
+Ensure the CLI is available in PATH or set a custom CLI path below.`
+
+  const ReplicationManagerCliRequirement = `Path to replication-manager-cli used for splitdump processing.  
+Leave empty to use PATH lookup (replication-manager-cli).`
+
   const openCommonModal = () => {
     setIsCommonModalOpen(true)
   }
@@ -286,6 +293,60 @@ The script will be executed with the following parameters:
                 clusterName: selectedCluster?.name,
                 setting: 'backup-mysqldump-options',
                 value: btoa(value)
+              })
+            )
+          }
+        />
+      )
+    },
+    {
+      key: (
+        <HStack spacing={2}>
+          <Text>Mysqldump splitdump output</Text>
+          <RMIconButton
+            icon={HiQuestionMarkCircle}
+            onClick={() => openInfoModal('Mysqldump splitdump', SplitDumpRequirement)}
+          />
+        </HStack>
+      ),
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.backupMysqldumpSplitDump}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for backup-mysqldump-splitdump?'}
+          onChange={() =>
+            dispatch(
+              switchSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'backup-mysqldump-splitdump'
+              })
+            )
+          }
+        />
+      )
+    },
+    {
+      key: (
+        <HStack spacing={2}>
+          <Text>Replication Manager CLI path</Text>
+          <RMIconButton
+            icon={HiQuestionMarkCircle}
+            onClick={() => openInfoModal('Replication Manager CLI path', ReplicationManagerCliRequirement)}
+          />
+        </HStack>
+      ),
+      value: (
+        <TextForm
+          value={selectedCluster?.config?.replicationManagerCliPath}
+          confirmTitle={`Confirm replication-manager-cli-path to `}
+          maxLength={1024}
+          className={styles.textbox}
+          onSave={(value) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'replication-manager-cli-path',
+                value: value
               })
             )
           }
