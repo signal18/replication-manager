@@ -552,6 +552,7 @@ func (server *ServerMonitor) LoadFromTempConfigFile(srcpath, dstpath string) err
 
 		// Remove the -- prefix and trim whitespace
 		line = strings.TrimSpace(strings.TrimPrefix(line, "--"))
+		line = strings.NewReplacer("\u2018", "'", "\u2019", "'").Replace(line)
 		if line == "" {
 			continue
 		}
