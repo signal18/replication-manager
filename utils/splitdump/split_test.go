@@ -74,3 +74,49 @@ func TestSplitDumpOpenReaderInvalidGzip(t *testing.T) {
 		t.Fatalf("expected fallback warning in stderr, got: %s", logged)
 	}
 }
+
+func TestSplitDumpLineParserMySQLGtidPurgedVariants(t *testing.T) {
+	cases := []struct {
+		name     string
+		line     string
+		expected string
+	}{
+		{
+			name:     "plain",
+			line:     "SET @@GLOBAL.GTID_PURGED='01234567-89ab-cdef-0123-456789abcdef:1-10';\n",
+			expected: "01234567-89ab-cdef-0123-456789abcdef:1-10",
+		},
+		{
+			name:     "with-comment",
+			line:     "SET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ '01234567-89ab-cdef-0123-456789abcdef:1-20';\n",
+			expected: "01234567-89ab-cdef-0123-456789abcdef:1-20",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bus := NewSplitDumpChannelBus()
+			outputDir := filepath.Join(t.TempDir(), "splitdump")
+
+			go SplitDumpLineParser(bus, outputDir)
+			bus.CurrentLine <- tc.line
+			close(bus.CurrentLine)
+
+			select {
+			case <-bus.Finished:
+			case <-time.After(2 * time.Second):
+				t.Fatal("timeout waiting for splitdump to finish")
+			}
+
+			metadataPath := filepath.Join(outputDir, "metadata")
+			data, err := os.ReadFile(metadataPath)
+			if err != nil {
+				t.Fatalf("failed to read metadata file: %v", err)
+			}
+			expectedLine := "Executed_Gtid_Set = " + tc.expected
+			if !strings.Contains(string(data), expectedLine) {
+				t.Fatalf("expected metadata to contain %q, got: %s", expectedLine, data)
+			}
+		})
+	}
+}

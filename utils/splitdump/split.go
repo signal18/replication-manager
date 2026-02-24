@@ -105,7 +105,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 	binlogRegexMariaDB := regexp.MustCompile(`CHANGE MASTER TO MASTER_LOG_FILE='(.+)', MASTER_LOG_POS=(\d+)`)
 	gtidRegexMariaDB := regexp.MustCompile(`SET GLOBAL gtid_slave_pos='(.+)'`)
 	binlogRegexMySQL := regexp.MustCompile(`CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='(.+)', SOURCE_LOG_POS=(\d+)`)
-	gtidRegexMySQL := regexp.MustCompile(`GTID_PURGED\s*=(\/\*!.+\*\/)?\s*'(.+)'`)
+	gtidRegexMySQL := regexp.MustCompile(`GTID_PURGED\s*=\s*(?:\/\*![^*]*\*\/\s*)?'([^']+)'`)
 	headerMetaData := fmt.Sprintf("-- Generated with replication-manager on %s\n\n", time.Now())
 	os.Mkdir(outputDir, os.ModePerm)
 	// numTables := 0
