@@ -1672,6 +1672,10 @@ func (server *ServerMonitor) reseedFromResticDump(ctx context.Context, snapshotI
 }
 
 func (server *ServerMonitor) executeMysqlRestore(reader io.Reader) error {
+	return server.executeMysqlRestoreContext(context.Background(), reader)
+}
+
+func (server *ServerMonitor) executeMysqlRestoreContext(ctx context.Context, reader io.Reader) error {
 	if reader == nil {
 		return fmt.Errorf("mysql restore reader is nil")
 	}
@@ -1679,6 +1683,10 @@ func (server *ServerMonitor) executeMysqlRestore(reader io.Reader) error {
 	cluster := server.ClusterGroup
 	if cluster == nil {
 		return fmt.Errorf("cluster not available")
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	mysqlPath := cluster.GetMysqlclientPath()
@@ -1695,7 +1703,7 @@ func (server *ServerMonitor) executeMysqlRestore(reader io.Reader) error {
 
 	cliParams := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client")...)
 	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)
-	cmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
+	cmd := exec.CommandContext(ctx, cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 	cmd.Stdin = reader
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

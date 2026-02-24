@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -430,6 +431,142 @@ func TestResolveBackupLine(t *testing.T) {
 			result := tt.server.resolveBackupLine(tt.opts)
 			if result != tt.expected {
 				t.Errorf("resolveBackupLine() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestResolveMysqldumpDest(t *testing.T) {
+	cluster := &Cluster{
+		Name:   "test-cluster",
+		Conf:   &config.Config{WorkingDir: t.TempDir()},
+		Logrus: logrus.New(),
+	}
+	server := &ServerMonitor{
+		Host:         "127.0.0.1",
+		Port:         "3306",
+		ClusterGroup: cluster,
+	}
+	start := time.Unix(1700000000, 0)
+	dir := server.GetMyBackupDirectory()
+
+	defaultFile := dir + "mysqldump.sql.gz"
+	adhocFile := fmt.Sprintf("%smysqldump.%d.sql.gz", dir, start.Unix())
+	splitDefault := filepath.Join(dir, "splitdump")
+	splitAdhoc := filepath.Join(dir, fmt.Sprintf("splitdump.%d", start.Unix()))
+
+	tests := []struct {
+		name           string
+		isAdhoc        bool
+		splitDump      bool
+		wantFilename   string
+		wantOutputDir  string
+		wantDest       string
+		wantCompressed bool
+	}{
+		{
+			name:           "Default no split",
+			isAdhoc:        false,
+			splitDump:      false,
+			wantFilename:   defaultFile,
+			wantOutputDir:  "",
+			wantDest:       defaultFile,
+			wantCompressed: true,
+		},
+		{
+			name:           "Default splitdump",
+			isAdhoc:        false,
+			splitDump:      true,
+			wantFilename:   defaultFile,
+			wantOutputDir:  splitDefault,
+			wantDest:       splitDefault,
+			wantCompressed: false,
+		},
+		{
+			name:           "Adhoc no split",
+			isAdhoc:        true,
+			splitDump:      false,
+			wantFilename:   adhocFile,
+			wantOutputDir:  "",
+			wantDest:       adhocFile,
+			wantCompressed: true,
+		},
+		{
+			name:           "Adhoc splitdump",
+			isAdhoc:        true,
+			splitDump:      true,
+			wantFilename:   adhocFile,
+			wantOutputDir:  splitAdhoc,
+			wantDest:       splitAdhoc,
+			wantCompressed: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filename, outputdir, dest, compressed := server.resolveMysqldumpDest(tt.isAdhoc, tt.splitDump, start)
+			if filename != tt.wantFilename {
+				t.Fatalf("filename = %q, want %q", filename, tt.wantFilename)
+			}
+			if outputdir != tt.wantOutputDir {
+				t.Fatalf("outputdir = %q, want %q", outputdir, tt.wantOutputDir)
+			}
+			if dest != tt.wantDest {
+				t.Fatalf("dest = %q, want %q", dest, tt.wantDest)
+			}
+			if compressed != tt.wantCompressed {
+				t.Fatalf("compressed = %v, want %v", compressed, tt.wantCompressed)
+			}
+		})
+	}
+}
+
+func TestResolveMysqldumpDestNoSplitdump(t *testing.T) {
+	cluster := &Cluster{
+		Name:   "test-cluster",
+		Conf:   &config.Config{WorkingDir: t.TempDir()},
+		Logrus: logrus.New(),
+	}
+	server := &ServerMonitor{
+		Host:         "127.0.0.1",
+		Port:         "3306",
+		ClusterGroup: cluster,
+	}
+	start := time.Unix(1700000000, 0)
+	backupDir := server.GetMyBackupDirectory()
+
+	checks := []struct {
+		name       string
+		isAdhoc    bool
+		wantSuffix string
+	}{
+		{
+			name:       "Default",
+			isAdhoc:    false,
+			wantSuffix: "mysqldump.sql.gz",
+		},
+		{
+			name:       "Adhoc",
+			isAdhoc:    true,
+			wantSuffix: fmt.Sprintf("mysqldump.%d.sql.gz", start.Unix()),
+		},
+	}
+
+	for _, tt := range checks {
+		t.Run(tt.name, func(t *testing.T) {
+			filename, outputdir, dest, compressed := server.resolveMysqldumpDest(tt.isAdhoc, false, start)
+			wantFile := backupDir + tt.wantSuffix
+			if filename != wantFile {
+				t.Fatalf("filename = %q, want %q", filename, wantFile)
+			}
+			if outputdir != "" {
+				t.Fatalf("outputdir = %q, want empty", outputdir)
+			}
+			if dest != wantFile {
+				t.Fatalf("dest = %q, want %q", dest, wantFile)
+			}
+			if !compressed {
+				t.Fatalf("compressed = %v, want true", compressed)
 			}
 		})
 	}
