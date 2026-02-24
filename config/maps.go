@@ -1214,11 +1214,18 @@ func (m *VariablesMap) loadFromSection(section *ini.Section, cnftype string) {
 			}
 			if slices.Contains(RepeatOptions, varname) {
 				for _, v := range values {
+					if strings.ContainsAny(v, "\u2018\u2019") {
+						v = strings.NewReplacer("\u2018", "'", "\u2019", "'").Replace(v)
+					}
 					setValue(varname, v)
 				}
 			} else {
 				// Non-repeat option: last occurrence wins.
-				setValue(varname, values[len(values)-1])
+				v := values[len(values)-1]
+				if strings.ContainsAny(v, "\u2018\u2019") {
+					v = strings.NewReplacer("\u2018", "'", "\u2019", "'").Replace(v)
+				}
+				setValue(varname, v)
 			}
 		}
 	}
