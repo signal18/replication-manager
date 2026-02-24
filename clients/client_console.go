@@ -179,8 +179,8 @@ func cliDisplayMonitor() {
 	} else {
 		headstr += " |  Mode: Manual "
 	}
-	cliPrintfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, headstr)
-	cliPrintfTb(0, 1, termbox.ColorRed, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, cliConfirm)
+	cliPrintfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, "%s", headstr)
+	cliPrintfTb(0, 1, termbox.ColorRed, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, "%s", cliConfirm)
 	cliPrintfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%1s%15s %6s %15s %10s %12s %20s %20s %30s %6s %3s", " ", "Host", "Port", "Status", "Failures", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
 	cliTlog.Line = 3
 	for i, server := range cliServers {
@@ -249,7 +249,7 @@ func cliDisplayMonitor() {
 	}
 }
 
-//cliLogPrint Used to print Help
+// cliLogPrint Used to print Help
 func cliLogPrint(msg ...interface{}) {
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
 

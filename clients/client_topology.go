@@ -59,8 +59,8 @@ func cliGetTopology() {
 		headstr += fmt.Sprintf("\n%19s %15s %6s %15s %10d %12s %20s %20s %30s %6d %3s %5s", server.Id, server.Host, server.Port, server.State, server.FailCount, server.GetReplicationUsingGtid(), gtidCurr, gtidSlave, "", server.GetReplicationDelay(), server.ReadOnly, boolToChar(server.IsMaintenance))
 
 	}
-	fmt.Printf(headstr)
-	fmt.Printf("\n")
+	fmt.Print(headstr)
+	fmt.Print("\n")
 }
 
 func boolToChar(v bool) string {

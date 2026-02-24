@@ -436,8 +436,8 @@ func cliDisplayConfigurator(configurator *configurator.Configurator) {
 	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
 	headstr := fmt.Sprintf(" Signal18 Replication Manager Configurator")
 
-	cliPrintfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, headstr)
-	cliPrintfTb(0, 1, termbox.ColorRed, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, cliConfirm)
+	cliPrintfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, "%s", headstr)
+	cliPrintfTb(0, 1, termbox.ColorRed, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, "%s", cliConfirm)
 	cliTlog.Line = 3
 	tableau := "─"
 	tags := configurator.GetDBModuleTags()
