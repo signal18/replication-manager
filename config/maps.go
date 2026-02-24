@@ -1205,6 +1205,8 @@ func (m *VariablesMap) loadFromSection(section *ini.Section, cnftype string) {
 			setValue = m.SetPreservedValue
 		}
 
+		quoteTrimmer := strings.NewReplacer("\u2018", "", "\u2019", "")
+
 		for _, key := range section.Keys() {
 			varname := normalizeConfigVarName(key.Name())
 			// Use INI shadows to honor MySQL last-wins behavior for non-repeat options.
@@ -1212,10 +1214,11 @@ func (m *VariablesMap) loadFromSection(section *ini.Section, cnftype string) {
 			if len(values) == 0 {
 				continue
 			}
+
 			if slices.Contains(RepeatOptions, varname) {
 				for _, v := range values {
 					if strings.ContainsAny(v, "\u2018\u2019") {
-						v = strings.NewReplacer("\u2018", "'", "\u2019", "'").Replace(v)
+						v = quoteTrimmer.Replace(v)
 					}
 					setValue(varname, v)
 				}
@@ -1223,7 +1226,7 @@ func (m *VariablesMap) loadFromSection(section *ini.Section, cnftype string) {
 				// Non-repeat option: last occurrence wins.
 				v := values[len(values)-1]
 				if strings.ContainsAny(v, "\u2018\u2019") {
-					v = strings.NewReplacer("\u2018", "'", "\u2019", "'").Replace(v)
+					v = quoteTrimmer.Replace(v)
 				}
 				setValue(varname, v)
 			}
