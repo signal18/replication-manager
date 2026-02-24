@@ -662,10 +662,6 @@ func (mv MapValue) Print(varname string) string {
 func (mv MapValue) PrintWithExclude(varname string, exclude VariableValue) []string {
 	pairs := make([]string, 0)
 
-	if varname == "optimizer_switch" {
-		varname = "loose_optimizer_switch"
-	}
-
 	o, ok := exclude.(MapValue)
 	if !ok {
 		o = make(MapValue)
@@ -739,6 +735,108 @@ var RepeatOptions = []string{
 	"plugin_load_add",
 	"init_connect",
 	"ignore_db_dir",
+}
+
+// NonLooseOptions is a list of MariaDB option names that should NOT be prefixed
+// with "loose-".  These are core/startup/replication/storage/security/logging
+// options that you want mysqld to fail loudly if misspelled or unavailable.
+var NonLooseOptions = []string{
+	// Server identity / startup / filesystem
+	"datadir",
+	"socket",
+	"pid-file",
+	"port",
+	"bind-address",
+	"skip-networking",
+	"user",
+	"tmpdir",
+
+	// Binary logs / replication
+	"log_bin",
+	"log_bin_basename",
+	"log_bin_index",
+	"binlog_format",
+	"binlog_row_image",
+	"sync_binlog",
+	"expire_logs_days",
+	"binlog_expire_logs_seconds",
+	"server_id",
+	"relay_log",
+	"relay_log_index",
+	"log_slave_updates",
+	"read_only",
+	"super_read_only",
+	"gtid_domain_id",
+	"gtid_strict_mode",
+	"gtid_mode",
+
+	// Storage engines & InnoDB
+	"innodb_buffer_pool_size",
+	"innodb_buffer_pool_instances",
+	"innodb_log_file_size",
+	"innodb_log_files_in_group",
+	"innodb_flush_log_at_trx_commit",
+	"innodb_file_per_table",
+	"innodb_flush_method",
+	"innodb_io_capacity",
+	"innodb_io_capacity_max",
+	"innodb_max_dirty_pages_pct",
+	"innodb_lock_wait_timeout",
+
+	// File locations & security
+	"secure_file_priv",
+	"log_error",
+	"slow_query_log_file",
+	"general_log_file",
+	"ssl_cert",
+	"ssl_key",
+	"ssl_ca",
+	"require_secure_transport",
+
+	// Connections / limits / resources
+	"max_connections",
+	"open_files_limit",
+	"table_open_cache",
+	"table_definition_cache",
+	"thread_cache_size",
+	"max_connect_errors",
+	"wait_timeout",
+	"interactive_timeout",
+
+	// Character set / collation / locale
+	"character-set-server",
+	"collation-server",
+	"lc_messages_dir",
+	"lc_messages",
+
+	// Logging / auditing / safety
+	"general_log",
+	"slow_query_log",
+	"log_error_verbosity",
+
+	// Cluster / high-availability (Galera / wsrep) — keep strict if cluster is required
+	"wsrep_provider",
+	"wsrep_cluster_address",
+	"wsrep_node_address",
+	"wsrep_node_name",
+	"wsrep_cluster_name",
+	"wsrep_provider_options",
+}
+
+// NonLooseSet is a fast lookup set derived from NonLooseOptions.
+var NonLooseSet = func() map[string]struct{} {
+	m := make(map[string]struct{}, len(NonLooseOptions))
+	for _, v := range NonLooseOptions {
+		m[v] = struct{}{}
+	}
+	return m
+}()
+
+// IsNonLooseOption returns true if the provided option name is considered
+// a "non-loose" (i.e. must not be prefixed with loose-).
+func IsNonLooseOption(opt string) bool {
+	_, ok := NonLooseSet[opt]
+	return ok
 }
 
 type VariableState struct {
@@ -865,7 +963,12 @@ func (v *VariableState) PrintDeployedDelta() string {
 		return ""
 	}
 
-	return strings.Join(v.Deployed.PrintWithExclude(v.VariableName, v.Config), "\n")
+	varname := v.VariableName
+	if !IsNonLooseOption(varname) {
+		varname = "loose_" + varname
+	}
+
+	return strings.Join(v.Deployed.PrintWithExclude(varname, v.Config), "\n")
 }
 
 func (vs VariableState) MarshalJSON() ([]byte, error) {
