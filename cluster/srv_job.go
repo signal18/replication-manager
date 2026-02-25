@@ -35,6 +35,11 @@ type DBTask struct {
 	id   int64
 }
 
+type jobCancelEntry struct {
+	cancel        context.CancelFunc
+	userRequested bool
+}
+
 /*
   - 0-2	Indicates Job still not done yet
   - 3		Indicate it's finished recently and check if there is post-job task
@@ -581,6 +586,63 @@ func (server *ServerMonitor) JobsCheckErrors(Conn *sqlx.Conn) error {
 	return err
 }
 
+func (server *ServerMonitor) registerJobCancel(task string, cancel context.CancelFunc) {
+	if strings.TrimSpace(task) == "" || cancel == nil {
+		return
+	}
+	server.jobCancelMutex.Lock()
+	if server.jobCancelEntries == nil {
+		server.jobCancelEntries = make(map[string]*jobCancelEntry)
+	}
+	server.jobCancelEntries[task] = &jobCancelEntry{cancel: cancel}
+	server.jobCancelMutex.Unlock()
+}
+
+func (server *ServerMonitor) clearJobCancel(task string) {
+	if strings.TrimSpace(task) == "" {
+		return
+	}
+	server.jobCancelMutex.Lock()
+	if server.jobCancelEntries != nil {
+		if server.jobCancelEntries[task] != nil {
+			delete(server.jobCancelEntries, task)
+		}
+	}
+	server.jobCancelMutex.Unlock()
+}
+
+func (server *ServerMonitor) requestJobCancel(task string) bool {
+	task = strings.TrimSpace(task)
+	if task == "" {
+		return false
+	}
+	var cancel context.CancelFunc
+	server.jobCancelMutex.Lock()
+	entry := server.jobCancelEntries[task]
+	if entry != nil {
+		entry.userRequested = true
+		cancel = entry.cancel
+	}
+	server.jobCancelMutex.Unlock()
+	if cancel != nil {
+		cancel()
+		return true
+	}
+	return entry != nil
+}
+
+func (server *ServerMonitor) isJobCancelRequested(task string) bool {
+	task = strings.TrimSpace(task)
+	if task == "" {
+		return false
+	}
+	server.jobCancelMutex.Lock()
+	entry := server.jobCancelEntries[task]
+	requested := entry != nil && entry.userRequested
+	server.jobCancelMutex.Unlock()
+	return requested
+}
+
 func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error {
 	var err error
 	var canCancel bool = true
@@ -617,6 +679,16 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 
 	if !(canCancel || force) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel tasks. No rows found or tasks already started", server.URL)
+	}
+
+	cancelRequested := false
+	for _, task := range tasks {
+		if server.requestJobCancel(task) {
+			cancelRequested = true
+		}
+	}
+	if cancelRequested {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Cancel requested for running tasks on %s", server.URL)
 	}
 
 	if !cluster.Conf.MonitorScheduler {

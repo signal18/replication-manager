@@ -7,11 +7,16 @@
 package cluster
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/shirou/gopsutil/disk"
 	"github.com/signal18/replication-manager/config"
@@ -20,6 +25,8 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
 )
+
+var splitDumpTimestampRegex = regexp.MustCompile(`^\d+$`)
 
 func (cluster *Cluster) ResticGetEnv() []string {
 	newEnv := append(os.Environ(), "RESTIC_PASSWORD="+cluster.Conf.GetDecryptedValue("backup-restic-password"))
@@ -450,6 +457,9 @@ func (cluster *Cluster) resolveResticMountDirFromConfig(opts resticMountDirResol
 	mountDirSource := "default"
 	if trimmed := strings.TrimSpace(cluster.Conf.BackupResticMountDir); trimmed != "" {
 		mountDirSource = "config"
+		if opts.rejectDotDot && hasDotDotComponent(trimmed) {
+			return "", mountDirSource, fmt.Errorf("%s mount dir contains '..' component: %s", mountDirSource, trimmed)
+		}
 		if filepath.IsAbs(trimmed) {
 			mountDir = trimmed
 		} else {
@@ -1322,6 +1332,200 @@ func (cluster *Cluster) ChangeResticRepoPassword(newpass string) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Restic password changed successfully. New key added and old key removed.")
 
+	return nil
+}
+
+func (cluster *Cluster) normalizeSplitDumpOutputDir(destination *ServerMonitor, outputDir string) (string, error) {
+	if destination == nil {
+		return "", fmt.Errorf("splitdump destination is nil")
+	}
+
+	trimmedOutputDir := strings.TrimSpace(outputDir)
+	if trimmedOutputDir == "" {
+		trimmedOutputDir = filepath.Join(destination.GetMyBackupDirectory(), "splitdump")
+	}
+
+	baseDir := filepath.Clean(destination.GetMyBackupDirectory())
+	baseDirAbs, err := filepath.Abs(baseDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve backup directory %s: %w", baseDir, err)
+	}
+
+	cleanOutputDir := filepath.Clean(trimmedOutputDir)
+	if cleanOutputDir == "." || cleanOutputDir == string(filepath.Separator) {
+		return "", fmt.Errorf("invalid splitdump output dir: %s", outputDir)
+	}
+	if !filepath.IsAbs(cleanOutputDir) {
+		cleanOutputDir = filepath.Join(baseDirAbs, cleanOutputDir)
+	}
+	outputDirAbs, err := filepath.Abs(cleanOutputDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve splitdump output dir %s: %w", cleanOutputDir, err)
+	}
+	if outputDirAbs == baseDirAbs {
+		return "", fmt.Errorf("splitdump output dir must be a subdirectory of %s", baseDirAbs)
+	}
+
+	defaultOutputDir := filepath.Join(baseDirAbs, "splitdump")
+	outputBase := filepath.Base(outputDirAbs)
+	if outputDirAbs != defaultOutputDir {
+		if !strings.HasPrefix(outputBase, "splitdump.") {
+			return "", fmt.Errorf("splitdump output dir must be %s or %s.<timestamp>", defaultOutputDir, defaultOutputDir)
+		}
+		suffix := strings.TrimPrefix(outputBase, "splitdump.")
+		if suffix == "" || !splitDumpTimestampRegex.MatchString(suffix) {
+			return "", fmt.Errorf("splitdump output dir must be %s or %s.<timestamp>", defaultOutputDir, defaultOutputDir)
+		}
+	}
+
+	resolvedBaseDir, err := filepath.EvalSymlinks(baseDirAbs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Allow missing base dir; it may be created later during splitdump.
+			parentDir := filepath.Dir(baseDirAbs)
+			resolvedParentDir, parentErr := filepath.EvalSymlinks(parentDir)
+			if parentErr != nil {
+				return "", fmt.Errorf("failed to resolve backup directory parent %s: %w", parentDir, parentErr)
+			}
+			resolvedBaseDir = filepath.Join(resolvedParentDir, filepath.Base(baseDirAbs))
+		} else {
+			return "", fmt.Errorf("failed to resolve backup directory %s: %w", baseDirAbs, err)
+		}
+	}
+	resolvedOutputDir, err := filepath.EvalSymlinks(outputDirAbs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			parentDir := filepath.Dir(outputDirAbs)
+			resolvedParentDir, parentErr := filepath.EvalSymlinks(parentDir)
+			if parentErr != nil {
+				return "", fmt.Errorf("failed to resolve splitdump output dir parent %s: %w", parentDir, parentErr)
+			}
+			resolvedOutputDir = filepath.Join(resolvedParentDir, filepath.Base(outputDirAbs))
+		} else {
+			return "", fmt.Errorf("failed to resolve splitdump output dir %s: %w", outputDirAbs, err)
+		}
+	}
+	rel, err := filepath.Rel(resolvedBaseDir, resolvedOutputDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve splitdump output dir %s relative to %s: %w", outputDirAbs, baseDirAbs, err)
+	}
+	if rel == "." {
+		return "", fmt.Errorf("splitdump output dir must be a subdirectory of %s", baseDirAbs)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("splitdump output dir %s is outside backup directory %s", outputDirAbs, baseDirAbs)
+	}
+
+	return outputDirAbs, nil
+}
+
+func (cluster *Cluster) SplitDumpWithCli(ctx context.Context, destination *ServerMonitor, outputDir string, allowRotate bool, stdin io.Reader, stdout, stderr io.Writer) error {
+	if cluster == nil || cluster.Conf == nil {
+		return fmt.Errorf("cluster config is nil")
+	}
+	if destination == nil {
+		return fmt.Errorf("splitdump destination is nil")
+	}
+	if stdin == nil {
+		return fmt.Errorf("splitdump stdin is nil")
+	}
+	if stdout == nil {
+		return fmt.Errorf("splitdump stdout is nil")
+	}
+	if stderr == nil {
+		return fmt.Errorf("splitdump stderr is nil")
+	}
+	resolvedOutputDir, err := cluster.normalizeSplitDumpOutputDir(destination, outputDir)
+	if err != nil {
+		return err
+	}
+	outputDir = resolvedOutputDir
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+		"Starting splitdump for server %s to %s", destination.URL, outputDir)
+
+	// Get CLI path and verify it's executable
+	cliPath := cluster.GetReplicationManagerCliPath()
+	if resolvedPath, err := exec.LookPath(cliPath); err == nil {
+		cliPath = resolvedPath
+	}
+	if info, err := os.Stat(cliPath); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+			"replication-manager-cli not found at %s: %v", cliPath, err)
+		return fmt.Errorf("replication-manager-cli not found at %s: %w", cliPath, err)
+	} else if info.Mode().Perm()&0111 == 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+			"replication-manager-cli is not executable: %s", cliPath)
+		return fmt.Errorf("replication-manager-cli is not executable: %s", cliPath)
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg,
+		"Using replication-manager-cli at %s", cliPath)
+
+	info, err := os.Stat(outputDir)
+	switch {
+	case os.IsNotExist(err):
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Creating splitdump output directory %s", outputDir)
+		if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
+			return fmt.Errorf("failed to create splitdump output dir %s: %w", outputDir, err)
+		}
+	case err != nil:
+		return fmt.Errorf("failed to stat splitdump output dir %s: %w", outputDir, err)
+	case !info.IsDir():
+		return fmt.Errorf("splitdump output path is not a directory: %s", outputDir)
+	default:
+		entries, err := os.ReadDir(outputDir)
+		if err != nil {
+			return fmt.Errorf("failed to read splitdump output dir %s: %w", outputDir, err)
+		}
+		if len(entries) > 0 {
+			if allowRotate {
+				rotatedDir := fmt.Sprintf("%s.old.%d", outputDir, time.Now().UnixNano())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+					"Rotating existing splitdump directory to %s", rotatedDir)
+				if err := os.Rename(outputDir, rotatedDir); err != nil {
+					return fmt.Errorf("failed to rotate splitdump output dir %s to %s: %w", outputDir, rotatedDir, err)
+				}
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+					"Removing existing splitdump directory %s before backup", outputDir)
+				if err := os.RemoveAll(outputDir); err != nil {
+					return fmt.Errorf("failed to remove splitdump output dir %s: %w", outputDir, err)
+				}
+			}
+			if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
+				return fmt.Errorf("failed to recreate splitdump output dir %s: %w", outputDir, err)
+			}
+		}
+	}
+
+	// Use parent context for cancellation control
+	// If caller wants a timeout, they should pass context.WithTimeout
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg,
+		"Executing splitdump command: %s splitdump --outputdir %s", cliPath, outputDir)
+
+	cmd := exec.CommandContext(ctx, cliPath, "splitdump", "--outputdir", outputDir)
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := cmd.Run(); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+				"Splitdump cancelled due to timeout or cancellation")
+			return fmt.Errorf("splitdump cancelled: %w", err)
+		} else if errors.Is(err, context.Canceled) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Splitdump cancelled by parent context")
+			return fmt.Errorf("splitdump cancelled: %w", err)
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+			"Splitdump command failed: %v", err)
+		return err
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+		"Splitdump completed successfully for server %s", destination.URL)
 	return nil
 }
 

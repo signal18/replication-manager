@@ -239,6 +239,8 @@ type ServerMonitor struct {
 	pendingResticReseed      *ResticReseedRequest
 	resticReseedCleanupMutex sync.Mutex // protects resticReseedCleanup
 	resticReseedCleanup      map[string]*ResticReseedCleanupEntry
+	jobCancelMutex           sync.Mutex
+	jobCancelEntries         map[string]*jobCancelEntry
 }
 
 type ServerBackupMeta struct {

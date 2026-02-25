@@ -1,14 +1,18 @@
 package cluster
 
-import "github.com/signal18/replication-manager/config"
+import (
+	"context"
+
+	"github.com/signal18/replication-manager/config"
+)
 
 func (cluster *Cluster) GetBackupLogicalFunction() func() {
 	return func() {
 		mysrv := cluster.GetBackupServer()
 		if mysrv != nil {
-			mysrv.JobBackupLogical()
+			mysrv.JobBackupLogical(context.Background())
 		} else if cluster.GetMaster() != nil {
-			cluster.GetMaster().JobBackupLogical()
+			cluster.GetMaster().JobBackupLogical(context.Background())
 		}
 	}
 }

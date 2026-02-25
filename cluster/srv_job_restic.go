@@ -1426,7 +1426,7 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 				"Using restic metadata split-user=%t for snapshot %s",
 				splitUser, logSnapshotID)
 		}
-		return server.JobReseedLogicalBackupFromPathWithOptions(paths.BackupType, paths.TargetPaths[0], logicalOpts)
+		return server.JobReseedLogicalBackupFromPathWithOptions(ctx, paths.BackupType, paths.TargetPaths[0], logicalOpts)
 	case "physical":
 		payload := map[string]string{
 			"restic_snapshot_id": snapshotID,
@@ -1672,6 +1672,10 @@ func (server *ServerMonitor) reseedFromResticDump(ctx context.Context, snapshotI
 }
 
 func (server *ServerMonitor) executeMysqlRestore(reader io.Reader) error {
+	return server.executeMysqlRestoreContext(context.Background(), reader)
+}
+
+func (server *ServerMonitor) executeMysqlRestoreContext(ctx context.Context, reader io.Reader) error {
 	if reader == nil {
 		return fmt.Errorf("mysql restore reader is nil")
 	}
@@ -1679,6 +1683,10 @@ func (server *ServerMonitor) executeMysqlRestore(reader io.Reader) error {
 	cluster := server.ClusterGroup
 	if cluster == nil {
 		return fmt.Errorf("cluster not available")
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	mysqlPath := cluster.GetMysqlclientPath()
@@ -1695,7 +1703,7 @@ func (server *ServerMonitor) executeMysqlRestore(reader io.Reader) error {
 
 	cliParams := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client")...)
 	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)
-	cmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
+	cmd := exec.CommandContext(ctx, cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 	cmd.Stdin = reader
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -2217,7 +2225,7 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 
 	switch normalizedMethod {
 	case "logical":
-		return server.JobReseedLogicalBackupFromPath(paths.BackupType, paths.TargetPaths[0])
+		return server.JobReseedLogicalBackupFromPath(ctx, paths.BackupType, paths.TargetPaths[0])
 	case "physical":
 		task := "reseed" + paths.BackupType
 		if summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil); summary != nil {

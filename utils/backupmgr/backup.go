@@ -56,6 +56,7 @@ type BackupMetadata struct {
 	BinLogGtid        string         `json:"binLogUuid"`
 	Completed         bool           `json:"completed"`
 	SplitUser         bool           `json:"splitUser"`
+	SplitDump         bool           `json:"splitDump"`
 	Previous          int64          `json:"previous"`
 	ResticEnabled     bool           `json:"resticEnabled,omitempty"`
 	ResticSnapshotID  string         `json:"resticSnapshotID"`

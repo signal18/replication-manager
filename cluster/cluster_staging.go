@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -76,7 +77,7 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 		if bcksrv != nil && !bcksrv.HasBackupLogicalCookie() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Current master has no backup. Create logical backup for refresh staging on %s", bcksrv.URL)
 
-			err = bcksrv.JobBackupLogical()
+			err = bcksrv.JobBackupLogical(context.Background())
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Create logical backup for refresh staging on %s failed: %s", bcksrv.URL, err)
 				return err
@@ -240,7 +241,7 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 
 		if cluster == source {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Reseed standalone %s", STG.URL)
-			err = STG.JobReseedLogicalBackup("default")
+			err = STG.JobReseedLogicalBackup(context.Background(), "default")
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Reseed logical for refresh staging on %s failed: %s", STG.URL, err)
 				return err

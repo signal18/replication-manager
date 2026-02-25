@@ -362,6 +362,9 @@ func init() {
 	rootClientCmd.AddCommand(splitDumpCmd)
 	initStatusFlagsDumpSplit(splitDumpCmd)
 
+	rootClientCmd.AddCommand(splitRestoreCmd)
+	initSplitRestoreFlags(splitRestoreCmd)
+
 	rootClientCmd.AddCommand(bootstrapCmd)
 	initBootstrapFlags(bootstrapCmd)
 	initClusterFlags(bootstrapCmd)
@@ -431,7 +434,7 @@ func cliDisplayHelp() {
 
 func cliPrintLog(msg []string) {
 	for _, c := range msg {
-		log.Printf(c)
+		log.Print(c)
 	}
 }
 
