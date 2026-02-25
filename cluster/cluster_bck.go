@@ -26,6 +26,8 @@ import (
 	"github.com/signal18/replication-manager/utils/version"
 )
 
+var splitDumpTimestampRegex = regexp.MustCompile(`^\d+$`)
+
 func (cluster *Cluster) ResticGetEnv() []string {
 	newEnv := append(os.Environ(), "RESTIC_PASSWORD="+cluster.Conf.GetDecryptedValue("backup-restic-password"))
 	newEnv = append(newEnv, "RESTIC_CACHE_DIR="+cluster.Conf.WorkingDir+"/"+cluster.Name+"/.cache/restic")
@@ -1371,7 +1373,7 @@ func (cluster *Cluster) normalizeSplitDumpOutputDir(destination *ServerMonitor, 
 			return "", fmt.Errorf("splitdump output dir must be %s or %s.<timestamp>", defaultOutputDir, defaultOutputDir)
 		}
 		suffix := strings.TrimPrefix(outputBase, "splitdump.")
-		if suffix == "" || !regexp.MustCompile(`^\d+$`).MatchString(suffix) {
+		if suffix == "" || !splitDumpTimestampRegex.MatchString(suffix) {
 			return "", fmt.Errorf("splitdump output dir must be %s or %s.<timestamp>", defaultOutputDir, defaultOutputDir)
 		}
 	}
