@@ -7,6 +7,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1182,7 +1183,7 @@ func (repman *ReplicationManager) handlerMuxServerBackupLogical(w http.ResponseW
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			go node.JobBackupLogical()
+			go node.JobBackupLogical(context.Background())
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return

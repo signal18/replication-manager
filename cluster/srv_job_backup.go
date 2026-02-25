@@ -1688,10 +1688,13 @@ func (server *ServerMonitor) setupSplitDumpPipeline(
 	}
 }
 
-func (server *ServerMonitor) JobBackupMysqldump(filename string, allowRotate bool) error {
+func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, filename string, allowRotate bool) error {
 	cluster := server.ClusterGroup
 	var err error
 	var bckConn *sqlx.DB
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	defer cluster.SetInLogicalBackupState(false)
 
@@ -1720,7 +1723,7 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string, allowRotate boo
 	var bfile, bgtid string
 	var bpos uint64
 
-	dumpCtx, dumpCancel := context.WithCancel(context.Background())
+	dumpCtx, dumpCancel := context.WithCancel(ctx)
 	defer dumpCancel()
 	dumpCmd := exec.CommandContext(dumpCtx, cluster.GetMysqlDumpPath(), cluster.GetMysqlDumpOptions(server, server.JobGetDumpGtidParameter())...)
 
@@ -2122,15 +2125,18 @@ func (server *ServerMonitor) JobBackupRiver() error {
 	return err
 }
 
-func (server *ServerMonitor) JobBackupLogical() error {
-	return server.JobBackupLogicalWithOptions(BackupRunOptions{})
+func (server *ServerMonitor) JobBackupLogical(ctx context.Context) error {
+	return server.JobBackupLogicalWithOptions(ctx, BackupRunOptions{})
 }
 
-func (server *ServerMonitor) JobBackupLogicalWithOptions(opts BackupRunOptions) error {
+func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, opts BackupRunOptions) error {
 	var err error
 	//server can be nil as no dicovered master
 	if server == nil {
 		return errors.New("No server defined")
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	cluster := server.ClusterGroup
@@ -2307,9 +2313,9 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(opts BackupRunOptions) 
 
 			allowRotate := cluster.Conf.BackupKeepUntilValid && !isAdhoc
 			if cluster.Conf.BackupMysqldumpSplitDump {
-				err = server.JobBackupMysqldump(outputdir, allowRotate)
+				err = server.JobBackupMysqldump(ctx, outputdir, allowRotate)
 			} else {
-				err = server.JobBackupMysqldump(filename, allowRotate)
+				err = server.JobBackupMysqldump(ctx, filename, allowRotate)
 			}
 			if err != nil {
 				if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
