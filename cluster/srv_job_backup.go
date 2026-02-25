@@ -999,7 +999,16 @@ func (server *ServerMonitor) restoreSplitdumpFileContext(ctx context.Context, pa
 		reader = gzReader
 	}
 
-	return server.executeMysqlRestoreContext(ctx, reader)
+	sqlLogBin := 0
+	cluster := server.ClusterGroup
+	if cluster != nil {
+		master := cluster.GetMaster()
+		if master != nil && server.URL == master.URL {
+			sqlLogBin = 1
+		}
+	}
+	cmdstring := fmt.Sprintf("SET sql_log_bin=%d;SET long_query_time=10;", sqlLogBin)
+	return server.executeMysqlRestoreContext(ctx, io.MultiReader(bytes.NewBufferString(cmdstring), reader))
 }
 
 func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, backupPath string, restoreUser bool) error {
@@ -1032,8 +1041,14 @@ func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, ba
 	}
 
 	start := time.Now()
+	sqlLogBin := 0
+	if master := cluster.GetMaster(); master != nil && server.URL == master.URL {
+		sqlLogBin = 1
+	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"Logical restore (splitdump+mysql) started at %s for: %s", start.Format(time.RFC3339), server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+		"Splitdump restore sets sql_log_bin=%d for %s", sqlLogBin, server.URL)
 
 	defer server.SetInReseedBackup("")
 
