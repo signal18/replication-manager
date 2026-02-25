@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jacoblockett/sanitizefilename"
@@ -105,6 +106,15 @@ func SplitDumpLineReader(bus *SplitDumpChannelBus, inputFile string) {
 
 // LineParser reads the CurrentLine and figures out which channel to put it in.
 func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineFiles bool, outputDir string, skipData []string, skipTables []string*/) {
+	var drainOnce sync.Once
+	drainCurrentLine := func() {
+		drainOnce.Do(func() {
+			go func() {
+				for range bus.CurrentLine {
+				}
+			}()
+		})
+	}
 	reportError := func(err error) {
 		if err == nil {
 			return
@@ -118,6 +128,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 		}
 	}
 	finishWithError := func(err error) {
+		drainCurrentLine()
 		reportError(err)
 		bus.Finished <- true
 	}

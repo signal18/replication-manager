@@ -4350,7 +4350,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return err
 		}
 		repman.Conf.BackupMyDumperPath = storeValue
-	case "backup-myloader-path ":
+	case "backup-myloader-path":
 		_, storeValue, err := resolveExecutablePath(value, "backup-myloader-path")
 		if err != nil {
 			return err
