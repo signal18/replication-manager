@@ -40,6 +40,8 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+var errJobCanceledByUser = errors.New("job canceled by user")
+
 func (server *ServerMonitor) JobBackupPhysical() error {
 	return server.JobBackupPhysicalWithOptions(BackupRunOptions{})
 }
@@ -1688,7 +1690,7 @@ func (server *ServerMonitor) setupSplitDumpPipeline(
 	}
 }
 
-func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, filename string, allowRotate bool) error {
+func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filename string, allowRotate bool) error {
 	cluster := server.ClusterGroup
 	var err error
 	var bckConn *sqlx.DB
@@ -1725,6 +1727,8 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, filename st
 
 	dumpCtx, dumpCancel := context.WithCancel(ctx)
 	defer dumpCancel()
+	server.registerJobCancel(task, dumpCancel)
+	defer server.clearJobCancel(task)
 	dumpCmd := exec.CommandContext(dumpCtx, cluster.GetMysqlDumpPath(), cluster.GetMysqlDumpOptions(server, server.JobGetDumpGtidParameter())...)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
@@ -1767,6 +1771,9 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, filename st
 	// Start dump command
 	if err := dumpCmd.Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
+		if errors.Is(err, context.Canceled) && server.isJobCancelRequested(task) {
+			return errors.Join(errJobCanceledByUser, err)
+		}
 		return err
 	}
 
@@ -1864,6 +1871,24 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, filename st
 	readErr = drainErrorChannel(errCh)
 	combinedErr := errors.Join(splitDumpErr, readErr)
 	if combinedErr != nil {
+		if errors.Is(combinedErr, context.Canceled) && server.isJobCancelRequested(task) {
+			if cluster.Conf.BackupKeepUntilValid {
+				if _, statErr := os.Stat(filename); statErr == nil {
+					cancelPath := filename + ".canceled"
+					if _, err := os.Stat(cancelPath); err == nil {
+						cancelPath = fmt.Sprintf("%s.%d", cancelPath, time.Now().Unix())
+					}
+					if err := os.Rename(filename, cancelPath); err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to preserve canceled backup %s: %s", filename, err)
+					} else {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Preserved canceled backup at %s", cancelPath)
+					}
+				} else if !os.IsNotExist(statErr) {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to inspect canceled backup %s: %s", filename, statErr)
+				}
+			}
+			return errors.Join(errJobCanceledByUser, combinedErr)
+		}
 		return combinedErr
 	}
 
@@ -2313,12 +2338,16 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 
 			allowRotate := cluster.Conf.BackupKeepUntilValid && !isAdhoc
 			if cluster.Conf.BackupMysqldumpSplitDump {
-				err = server.JobBackupMysqldump(ctx, outputdir, allowRotate)
+				err = server.JobBackupMysqldump(ctx, task, outputdir, allowRotate)
 			} else {
-				err = server.JobBackupMysqldump(ctx, filename, allowRotate)
+				err = server.JobBackupMysqldump(ctx, task, filename, allowRotate)
 			}
 			if err != nil {
-				if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
+				result := err.Error()
+				if errors.Is(err, errJobCanceledByUser) {
+					result = "cancelled by user"
+				}
+				if e2 := server.JobsUpdateState(task, result, 5, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
