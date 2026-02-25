@@ -999,16 +999,33 @@ func (server *ServerMonitor) restoreSplitdumpFileContext(ctx context.Context, pa
 		reader = gzReader
 	}
 
-	sqlLogBin := 0
+	return server.executeMysqlRestoreContext(ctx, reader)
+}
+
+func (server *ServerMonitor) buildLogicalRestorePreamble() (string, int, error) {
 	cluster := server.ClusterGroup
-	if cluster != nil {
-		master := cluster.GetMaster()
-		if master != nil && server.URL == master.URL {
-			sqlLogBin = 1
-		}
+	if cluster == nil {
+		return "", 0, fmt.Errorf("cluster not available")
 	}
-	cmdstring := fmt.Sprintf("SET sql_log_bin=%d;SET long_query_time=10;", sqlLogBin)
-	return server.executeMysqlRestoreContext(ctx, io.MultiReader(bytes.NewBufferString(cmdstring), reader))
+
+	// Align logical restores: reset binlog state, control binlog writes, and normalize slow log behavior.
+	sqlLogBin := 0
+	resetmaster := "RESET MASTER;"
+	if server.DBVersion.IsMySQLOrPerconaGreater84() {
+		resetmaster = "RESET BINARY LOGS AND GTIDS;"
+	}
+
+	master := cluster.GetMaster()
+	if master == nil {
+		return "", 0, fmt.Errorf("No master found. Cancel backup reseeding %s", server.URL)
+	}
+	if server.URL == master.URL {
+		sqlLogBin = 1
+		resetmaster = ""
+	}
+
+	cmdstring := fmt.Sprintf("%sSET sql_log_bin=%d;SET long_query_time=10;", resetmaster, sqlLogBin)
+	return cmdstring, sqlLogBin, nil
 }
 
 func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, backupPath string, restoreUser bool) error {
@@ -1020,8 +1037,13 @@ func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, ba
 		ctx = context.Background()
 	}
 
+	cmdstring, sqlLogBin, err := server.buildLogicalRestorePreamble()
+	if err != nil {
+		return err
+	}
+
 	var meta *splitdump.Metadata
-	meta, err := splitdump.ReadMetadata(backupPath)
+	meta, err = splitdump.ReadMetadata(backupPath)
 	if err != nil {
 		switch {
 		case errors.Is(err, os.ErrNotExist):
@@ -1041,14 +1063,14 @@ func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, ba
 	}
 
 	start := time.Now()
-	sqlLogBin := 0
-	if master := cluster.GetMaster(); master != nil && server.URL == master.URL {
-		sqlLogBin = 1
-	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"Logical restore (splitdump+mysql) started at %s for: %s", start.Format(time.RFC3339), server.URL)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 		"Splitdump restore sets sql_log_bin=%d for %s", sqlLogBin, server.URL)
+	// Apply the same preamble as mysqldump restore once before parallelized splitdump files.
+	if err := server.executeMysqlRestoreContext(ctx, bytes.NewBufferString(cmdstring)); err != nil {
+		return err
+	}
 
 	defer server.SetInReseedBackup("")
 
@@ -1393,26 +1415,10 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
 
-	sql_log_bin := 0
-	resetmaster := "RESET MASTER;"
-	if server.DBVersion.IsMySQLOrPerconaGreater84() {
-		resetmaster = "RESET BINARY LOGS AND GTIDS;"
+	cmdstring, _, err := server.buildLogicalRestorePreamble()
+	if err != nil {
+		return err
 	}
-
-	master := cluster.GetMaster()
-	if master == nil {
-		return fmt.Errorf("No master found. Cancel backup reseeding %s", server.URL)
-	}
-	if server.URL == master.URL {
-		sql_log_bin = 1
-		resetmaster = ""
-	}
-
-	cmdstring := "%sSET sql_log_bin=%d;SET long_query_time=10;"
-	if server.DBVersion.IsMySQLOrPerconaGreater84() {
-		cmdstring = "%sSET sql_log_bin=%d;SET long_query_time=10;"
-	}
-	cmdstring = fmt.Sprintf(cmdstring, resetmaster, sql_log_bin)
 
 	var usergzfile io.Reader
 	if restoreUser {
