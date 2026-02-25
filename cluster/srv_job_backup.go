@@ -507,9 +507,12 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 	return nil
 }
 
-func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
+func (server *ServerMonitor) JobReseedLogicalBackup(ctx context.Context, backtype string) error {
 	var err error
 	cluster := server.ClusterGroup
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if backtype == "default" {
 		backtype = cluster.Conf.BackupLogicalType
 	}
@@ -653,7 +656,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 	server.JobsUpdateState(task, "processing", 1, 0)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backtype, server.URL)
 	if backtype == config.ConstBackupLogicalTypeMysqldump {
-		err = server.reseedMysqldumpWithMetadata(backupfile, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser, source.LastBackupMeta.Logical)
+		err = server.reseedMysqldumpWithMetadata(ctx, backupfile, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser, source.LastBackupMeta.Logical)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())
 			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
@@ -708,13 +711,16 @@ type JobReseedLogicalOptions struct {
 	SplitUser *bool
 }
 
-func (server *ServerMonitor) JobReseedLogicalBackupFromPath(backtype, backupPath string) error {
-	return server.JobReseedLogicalBackupFromPathWithOptions(backtype, backupPath, JobReseedLogicalOptions{})
+func (server *ServerMonitor) JobReseedLogicalBackupFromPath(ctx context.Context, backtype, backupPath string) error {
+	return server.JobReseedLogicalBackupFromPathWithOptions(ctx, backtype, backupPath, JobReseedLogicalOptions{})
 }
 
-func (server *ServerMonitor) JobReseedLogicalBackupFromPathWithOptions(backtype, backupPath string, opts JobReseedLogicalOptions) error {
+func (server *ServerMonitor) JobReseedLogicalBackupFromPathWithOptions(ctx context.Context, backtype, backupPath string, opts JobReseedLogicalOptions) error {
 	var err error
 	cluster := server.ClusterGroup
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if backtype == "default" {
 		backtype = cluster.Conf.BackupLogicalType
 	}
@@ -813,7 +819,7 @@ func (server *ServerMonitor) JobReseedLogicalBackupFromPathWithOptions(backtype,
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 				"Using split-user override=%t for reseed logical backup from path %s on %s", splitUser, backupfile, server.URL)
 		}
-		err = server.reseedMysqldumpWithMetadata(backupfile, cluster.Conf.BackupRestoreMysqlUser && splitUser, master.LastBackupMeta.Logical)
+		err = server.reseedMysqldumpWithMetadata(ctx, backupfile, cluster.Conf.BackupRestoreMysqlUser && splitUser, master.LastBackupMeta.Logical)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())
 			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
@@ -930,7 +936,10 @@ func isSplitDumpDir(path string) (bool, error) {
 	return false, nil
 }
 
-func (server *ServerMonitor) reseedMysqldumpWithSplitdump(backupPath string, restoreUser bool) error {
+func (server *ServerMonitor) reseedMysqldumpWithSplitdump(ctx context.Context, backupPath string, restoreUser bool) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	isSplit, err := isSplitDumpDir(backupPath)
 	if err != nil {
 		return err
@@ -939,12 +948,15 @@ func (server *ServerMonitor) reseedMysqldumpWithSplitdump(backupPath string, res
 		cluster := server.ClusterGroup
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 			"Splitdump detected at %s; restoring with mysql client", backupPath)
-		return server.JobReseedSplitdumpWithMysql(backupPath, restoreUser)
+		return server.JobReseedSplitdumpWithMysql(ctx, backupPath, restoreUser)
 	}
 	return server.JobReseedMysqldump(backupPath, restoreUser)
 }
 
-func (server *ServerMonitor) reseedMysqldumpWithMetadata(backupPath string, restoreUser bool, meta *backupmgr.BackupMetadata) error {
+func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, backupPath string, restoreUser bool, meta *backupmgr.BackupMetadata) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if meta != nil {
 		if meta.Dest != "" {
 			pathsMatch, err := comparePaths(meta.Dest, backupPath)
@@ -959,9 +971,9 @@ func (server *ServerMonitor) reseedMysqldumpWithMetadata(backupPath string, rest
 		cluster := server.ClusterGroup
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 			"Splitdump metadata detected for %s; restoring with mysql client", backupPath)
-		return server.JobReseedSplitdumpWithMysql(backupPath, restoreUser)
+		return server.JobReseedSplitdumpWithMysql(ctx, backupPath, restoreUser)
 	}
-	return server.reseedMysqldumpWithSplitdump(backupPath, restoreUser)
+	return server.reseedMysqldumpWithSplitdump(ctx, backupPath, restoreUser)
 }
 
 func (server *ServerMonitor) restoreSplitdumpFile(path string) error {
@@ -988,10 +1000,13 @@ func (server *ServerMonitor) restoreSplitdumpFileContext(ctx context.Context, pa
 	return server.executeMysqlRestoreContext(ctx, reader)
 }
 
-func (server *ServerMonitor) JobReseedSplitdumpWithMysql(backupPath string, restoreUser bool) error {
+func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, backupPath string, restoreUser bool) error {
 	cluster := server.ClusterGroup
 	if cluster == nil {
 		return fmt.Errorf("cluster not available")
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	start := time.Now()
@@ -1006,7 +1021,7 @@ func (server *ServerMonitor) JobReseedSplitdumpWithMysql(backupPath string, rest
 		Logger: func(level, format string, args ...any) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, level, format, args...)
 		},
-		Context:                context.Background(),
+		Context:                ctx,
 		RestoreFileWithContext: server.restoreSplitdumpFileContext,
 	})
 	if restoreErr != nil {
@@ -1162,7 +1177,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 
 		// Handle mysqldump-based reseed
 	} else if backtype == config.ConstBackupLogicalTypeMysqldump {
-		err := server.reseedMysqldumpWithMetadata(backupfile, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser, source.LastBackupMeta.Logical)
+		err := server.reseedMysqldumpWithMetadata(context.Background(), backupfile, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser, source.LastBackupMeta.Logical)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flashback %s on %s: %s", backtype, server.URL, err.Error())
 			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {

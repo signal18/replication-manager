@@ -1426,7 +1426,7 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 				"Using restic metadata split-user=%t for snapshot %s",
 				splitUser, logSnapshotID)
 		}
-		return server.JobReseedLogicalBackupFromPathWithOptions(paths.BackupType, paths.TargetPaths[0], logicalOpts)
+		return server.JobReseedLogicalBackupFromPathWithOptions(ctx, paths.BackupType, paths.TargetPaths[0], logicalOpts)
 	case "physical":
 		payload := map[string]string{
 			"restic_snapshot_id": snapshotID,
@@ -2225,7 +2225,7 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 
 	switch normalizedMethod {
 	case "logical":
-		return server.JobReseedLogicalBackupFromPath(paths.BackupType, paths.TargetPaths[0])
+		return server.JobReseedLogicalBackupFromPath(ctx, paths.BackupType, paths.TargetPaths[0])
 	case "physical":
 		task := "reseed" + paths.BackupType
 		if summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil); summary != nil {
