@@ -18,22 +18,14 @@ import (
 type SplitDumpChannelBus struct {
 	Finished    chan bool
 	Error       chan error
-	Log         chan string
 	CurrentLine chan string
-	TableName   chan string
-	TableScheme chan string
-	TableData   chan string
 }
 
 func NewSplitDumpChannelBus() *SplitDumpChannelBus {
 	return &SplitDumpChannelBus{
 		Finished:    make(chan bool),
 		Error:       make(chan error, 1),
-		Log:         make(chan string),
 		CurrentLine: make(chan string),
-		TableName:   make(chan string),
-		TableScheme: make(chan string),
-		TableData:   make(chan string),
 	}
 }
 
