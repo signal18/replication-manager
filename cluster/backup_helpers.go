@@ -248,6 +248,25 @@ func (server *ServerMonitor) backupMetaFilePath(meta *backupmgr.BackupMetadata) 
 	return defaultPath
 }
 
+func (server *ServerMonitor) resolveMysqldumpDest(isAdhoc bool, splitDump bool, start time.Time) (string, string, string, bool) {
+	dir := server.GetMyBackupDirectory()
+	filename := dir + "mysqldump.sql.gz"
+	if isAdhoc {
+		filename = fmt.Sprintf("%smysqldump.%d.sql.gz", dir, start.Unix())
+	}
+	outputdir := ""
+	if splitDump {
+		outputdir = filepath.Join(dir, "splitdump")
+		if isAdhoc {
+			outputdir = filepath.Join(dir, fmt.Sprintf("splitdump.%d", start.Unix()))
+		}
+	}
+	if splitDump {
+		return filename, outputdir, outputdir, false
+	}
+	return filename, outputdir, filename, true
+}
+
 func parseAdhocMetaFileID(name string) (int64, bool) {
 	matches := adhocMetaFilePattern.FindStringSubmatch(name)
 	if len(matches) != 2 {

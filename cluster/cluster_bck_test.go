@@ -1,11 +1,11 @@
 package cluster
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 
@@ -190,6 +190,149 @@ func TestResolveResticMountDirFromConfigStrictCleansPath(t *testing.T) {
 	expected := filepath.Join(tmpDir, "restic")
 	if mountDir != expected {
 		t.Fatalf("expected mount dir %q, got %q", expected, mountDir)
+	}
+}
+
+func TestNormalizeSplitDumpOutputDirDefault(t *testing.T) {
+	cluster := &Cluster{
+		Name: "test-cluster",
+		Conf: &config.Config{WorkingDir: t.TempDir()},
+	}
+	server := &ServerMonitor{
+		Host:         "127.0.0.1",
+		Port:         "3306",
+		ClusterGroup: cluster,
+	}
+	baseDirAbs, err := filepath.Abs(filepath.Clean(server.GetMyBackupDirectory()))
+	if err != nil {
+		t.Fatalf("failed to resolve base dir: %v", err)
+	}
+
+	outputDir, err := cluster.normalizeSplitDumpOutputDir(server, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := filepath.Join(baseDirAbs, "splitdump")
+	if outputDir != expected {
+		t.Fatalf("outputdir = %q, want %q", outputDir, expected)
+	}
+}
+
+func TestNormalizeSplitDumpOutputDirTimestamped(t *testing.T) {
+	cluster := &Cluster{
+		Name: "test-cluster",
+		Conf: &config.Config{WorkingDir: t.TempDir()},
+	}
+	server := &ServerMonitor{
+		Host:         "127.0.0.1",
+		Port:         "3306",
+		ClusterGroup: cluster,
+	}
+	baseDirAbs, err := filepath.Abs(filepath.Clean(server.GetMyBackupDirectory()))
+	if err != nil {
+		t.Fatalf("failed to resolve base dir: %v", err)
+	}
+
+	requested := filepath.Join(baseDirAbs, "splitdump.1700000000")
+	outputDir, err := cluster.normalizeSplitDumpOutputDir(server, requested)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if outputDir != requested {
+		t.Fatalf("outputdir = %q, want %q", outputDir, requested)
+	}
+}
+
+func TestNormalizeSplitDumpOutputDirRelative(t *testing.T) {
+	cluster := &Cluster{
+		Name: "test-cluster",
+		Conf: &config.Config{WorkingDir: t.TempDir()},
+	}
+	server := &ServerMonitor{
+		Host:         "127.0.0.1",
+		Port:         "3306",
+		ClusterGroup: cluster,
+	}
+	baseDirAbs, err := filepath.Abs(filepath.Clean(server.GetMyBackupDirectory()))
+	if err != nil {
+		t.Fatalf("failed to resolve base dir: %v", err)
+	}
+
+	outputDir, err := cluster.normalizeSplitDumpOutputDir(server, "splitdump.1700000000")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := filepath.Join(baseDirAbs, "splitdump.1700000000")
+	if outputDir != expected {
+		t.Fatalf("outputdir = %q, want %q", outputDir, expected)
+	}
+}
+
+func TestNormalizeSplitDumpOutputDirRejectsInvalidSuffix(t *testing.T) {
+	cluster := &Cluster{
+		Name: "test-cluster",
+		Conf: &config.Config{WorkingDir: t.TempDir()},
+	}
+	server := &ServerMonitor{
+		Host:         "127.0.0.1",
+		Port:         "3306",
+		ClusterGroup: cluster,
+	}
+	baseDirAbs, err := filepath.Abs(filepath.Clean(server.GetMyBackupDirectory()))
+	if err != nil {
+		t.Fatalf("failed to resolve base dir: %v", err)
+	}
+
+	requested := filepath.Join(baseDirAbs, "splitdump.bad")
+	if _, err := cluster.normalizeSplitDumpOutputDir(server, requested); err == nil {
+		t.Fatalf("expected error for invalid splitdump suffix")
+	}
+}
+
+func TestNormalizeSplitDumpOutputDirRejectsOutsideBase(t *testing.T) {
+	cluster := &Cluster{
+		Name: "test-cluster",
+		Conf: &config.Config{WorkingDir: t.TempDir()},
+	}
+	server := &ServerMonitor{
+		Host:         "127.0.0.1",
+		Port:         "3306",
+		ClusterGroup: cluster,
+	}
+	outsideDir := filepath.Join(t.TempDir(), "splitdump.1700000000")
+	if _, err := cluster.normalizeSplitDumpOutputDir(server, outsideDir); err == nil {
+		t.Fatalf("expected error for splitdump path outside backup directory")
+	}
+}
+
+func TestNormalizeSplitDumpOutputDirRejectsSymlinkEscape(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink test not supported on windows")
+	}
+	cluster := &Cluster{
+		Name: "test-cluster",
+		Conf: &config.Config{WorkingDir: t.TempDir()},
+	}
+	server := &ServerMonitor{
+		Host:         "127.0.0.1",
+		Port:         "3306",
+		ClusterGroup: cluster,
+	}
+	baseDirAbs, err := filepath.Abs(filepath.Clean(server.GetMyBackupDirectory()))
+	if err != nil {
+		t.Fatalf("failed to resolve base dir: %v", err)
+	}
+	outsideDir := filepath.Join(t.TempDir(), "outside")
+	if err := os.MkdirAll(outsideDir, 0755); err != nil {
+		t.Fatalf("failed to create outside dir: %v", err)
+	}
+	linkPath := filepath.Join(baseDirAbs, "splitdump")
+	if err := os.Symlink(outsideDir, linkPath); err != nil {
+		t.Fatalf("failed to create symlink: %v", err)
+	}
+
+	if _, err := cluster.normalizeSplitDumpOutputDir(server, linkPath); err == nil {
+		t.Fatalf("expected error for splitdump symlink escape")
 	}
 }
 
@@ -464,10 +607,6 @@ func TestResolveSnapshotDestPath(t *testing.T) {
 
 func TestReconcileSnapshotMetadataUsesCacheAndResticEnabled(t *testing.T) {
 	tmpDir := t.TempDir()
-	backupDir := filepath.Join(tmpDir, "backup")
-	if err := os.MkdirAll(backupDir, 0755); err != nil {
-		t.Fatalf("failed to create backup dir: %v", err)
-	}
 	cluster := &Cluster{
 		Conf:       &config.Config{WorkingDir: tmpDir},
 		WorkingDir: tmpDir,
@@ -477,18 +616,12 @@ func TestReconcileSnapshotMetadataUsesCacheAndResticEnabled(t *testing.T) {
 		}},
 	}
 	manager := cluster.getSnapshotMetadataManager()
-	meta := backupmgr.BackupMetadata{
-		BackupTool:       config.ConstBackupLogicalTypeMysqldump,
-		ResticEnabled:    true,
-		ResticSnapshotID: "snap-1",
-	}
-	data, err := json.Marshal(meta)
-	if err != nil {
-		t.Fatalf("failed to marshal metadata: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(backupDir, "mysqldump.meta.json"), data, 0644); err != nil {
-		t.Fatalf("failed to write metadata file: %v", err)
-	}
+	manager.cache.Update("snap-1", func(entry *snapshotMetadataCacheEntry) {
+		entry.Status = snapshotMetadataStatusReady
+		entry.Summaries = map[string]*SnapshotMetadataSummary{
+			"1|default": {ResticSnapshotID: "snap-1", BackupSessionID: "session-1"},
+		}
+	})
 	manager.cache.Update("snap-2", func(entry *snapshotMetadataCacheEntry) {
 		entry.Status = snapshotMetadataStatusReady
 		entry.Summaries = map[string]*SnapshotMetadataSummary{

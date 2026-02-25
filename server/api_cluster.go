@@ -7,6 +7,7 @@
 package server
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -15,6 +16,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -2452,6 +2455,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.BackupSplitMysqlUser = !mycluster.Conf.BackupSplitMysqlUser
 	case "backup-restore-mysql-user":
 		mycluster.Conf.BackupRestoreMysqlUser = !mycluster.Conf.BackupRestoreMysqlUser
+	case "backup-mysqldump-splitdump":
+		mycluster.Conf.BackupMysqldumpSplitDump = !mycluster.Conf.BackupMysqldumpSplitDump
 	case "backup-check-free-space":
 		mycluster.Conf.BackupCheckFreeSpace = !mycluster.Conf.BackupCheckFreeSpace
 	case "backup-estimate-size":
@@ -2837,6 +2842,37 @@ func validateResticSizeValue(value, setting string) error {
 		return fmt.Errorf("invalid value for %s: %q", setting, value)
 	}
 	return nil
+}
+
+func resolveExecutablePath(value, setting string) (string, string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", "", nil
+	}
+	resolved := trimmed
+	storeValue := trimmed
+	if strings.ContainsRune(trimmed, filepath.Separator) {
+		abs, err := filepath.Abs(trimmed)
+		if err != nil {
+			return "", "", fmt.Errorf("%s is invalid: %w", setting, err)
+		}
+		resolved = abs
+		storeValue = abs
+	} else {
+		path, err := exec.LookPath(trimmed)
+		if err != nil {
+			return "", "", fmt.Errorf("%s not found in PATH: %s", setting, trimmed)
+		}
+		resolved = path
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return "", "", fmt.Errorf("%s not found at %s: %w", setting, resolved, err)
+	}
+	if info.Mode().Perm()&0111 == 0 {
+		return "", "", fmt.Errorf("%s is not executable: %s", setting, resolved)
+	}
+	return resolved, storeValue, nil
 }
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
@@ -3548,6 +3584,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupMysqlclientOptions = string(val)
+	case "replication-manager-cli-path":
+		_, storeValue, err := resolveExecutablePath(value, "replication-manager-cli-path")
+		if err != nil {
+			return err
+		}
+		mycluster.Conf.ReplicationManagerCliPath = storeValue
 	case "backup-logical-post-script":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
@@ -3859,6 +3901,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupSplitMysqlUser = applyIsActive(mycluster.Conf.BackupSplitMysqlUser, isactive)
 	case "backup-restore-mysql-user":
 		mycluster.Conf.BackupRestoreMysqlUser = applyIsActive(mycluster.Conf.BackupRestoreMysqlUser, isactive)
+	case "backup-mysqldump-splitdump":
+		mycluster.Conf.BackupMysqldumpSplitDump = applyIsActive(mycluster.Conf.BackupMysqldumpSplitDump, isactive)
 	case "backup-check-free-space":
 		mycluster.Conf.BackupCheckFreeSpace = applyIsActive(mycluster.Conf.BackupCheckFreeSpace, isactive)
 	case "backup-estimate-size":
@@ -4295,23 +4339,59 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "prov-service-plan":
 		repman.Conf.ProvServicePlan = value
 	case "sysbench-binary-path":
-		repman.Conf.SysbenchBinaryPath = value
+		_, storeValue, err := resolveExecutablePath(value, "sysbench-binary-path")
+		if err != nil {
+			return err
+		}
+		repman.Conf.SysbenchBinaryPath = storeValue
 	case "backup-mydumper-path":
-		repman.Conf.BackupMyDumperPath = value
-	case "backup-myloader-path ":
-		repman.Conf.BackupMyLoaderPath = value
+		_, storeValue, err := resolveExecutablePath(value, "backup-mydumper-path")
+		if err != nil {
+			return err
+		}
+		repman.Conf.BackupMyDumperPath = storeValue
+	case "backup-myloader-path":
+		_, storeValue, err := resolveExecutablePath(value, "backup-myloader-path")
+		if err != nil {
+			return err
+		}
+		repman.Conf.BackupMyLoaderPath = storeValue
 	case "backup-mysqlbinlog-path":
-		repman.Conf.BackupMysqlbinlogPath = value
+		_, storeValue, err := resolveExecutablePath(value, "backup-mysqlbinlog-path")
+		if err != nil {
+			return err
+		}
+		repman.Conf.BackupMysqlbinlogPath = storeValue
 	case "backup-mysqlclient-path":
-		repman.Conf.BackupMysqlclientPath = value
+		_, storeValue, err := resolveExecutablePath(value, "backup-mysqlclient-path")
+		if err != nil {
+			return err
+		}
+		repman.Conf.BackupMysqlclientPath = storeValue
 	case "backup-mysqldump-path":
-		repman.Conf.BackupMysqldumpPath = value
+		_, storeValue, err := resolveExecutablePath(value, "backup-mysqldump-path")
+		if err != nil {
+			return err
+		}
+		repman.Conf.BackupMysqldumpPath = storeValue
 	case "backup-restic-binary-path":
-		repman.Conf.BackupResticBinaryPath = value
+		_, storeValue, err := resolveExecutablePath(value, "backup-restic-binary-path")
+		if err != nil {
+			return err
+		}
+		repman.Conf.BackupResticBinaryPath = storeValue
 	case "haproxy-binary-path":
-		repman.Conf.HaproxyBinaryPath = value
+		_, storeValue, err := resolveExecutablePath(value, "haproxy-binary-path")
+		if err != nil {
+			return err
+		}
+		repman.Conf.HaproxyBinaryPath = storeValue
 	case "maxscale-binary-path":
-		repman.Conf.MxsBinaryPath = value
+		_, storeValue, err := resolveExecutablePath(value, "maxscale-binary-path")
+		if err != nil {
+			return err
+		}
+		repman.Conf.MxsBinaryPath = storeValue
 	case "log-file-level", "log-level-file":
 		val, _ := strconv.Atoi(value)
 		repman.Conf.LogFileLevel = val
@@ -7737,7 +7817,7 @@ func (repman *ReplicationManager) handlerMuxReseedFromParent(w http.ResponseWrit
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed from parent cluster %s done", pcluster.Name)
 					// Refresh staging is done. Now we can start the backup
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting backup for cluster %s", mycluster.Name)
-					go cmaster.JobBackupLogical()
+					go cmaster.JobBackupLogical(context.Background())
 				} else {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Refresh standalone failed: %s", err)
 				}

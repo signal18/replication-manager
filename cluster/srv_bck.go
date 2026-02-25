@@ -10,6 +10,7 @@
 package cluster
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -175,7 +176,7 @@ func (server *ServerMonitor) ReseedPointInTime(meta backupmgr.PointInTimeMeta) e
 
 	switch backup.BackupTool {
 	case config.ConstBackupLogicalTypeMysqldump, config.ConstBackupLogicalTypeMydumper, config.ConstBackupLogicalTypeRiver, config.ConstBackupLogicalTypeDumpling:
-		err = server.JobReseedLogicalBackup(backup.BackupTool)
+		err = server.JobReseedLogicalBackup(context.Background(), backup.BackupTool)
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		err = server.JobReseedPhysicalBackup(backup.BackupTool)
 	default:

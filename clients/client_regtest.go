@@ -88,11 +88,11 @@ var regTestCmd = &cobra.Command{
 
 				res, err := cliAPICmd(urlpost, params)
 				if err != nil {
-					fmt.Printf(string(data))
+					fmt.Print(string(data))
 					log.Fatal("Error in API call")
 				} else {
 					if res != "" {
-						fmt.Printf(res)
+						fmt.Print(res)
 
 						err = json.Unmarshal([]byte(res), &thistest)
 						if err != nil {
@@ -121,7 +121,7 @@ var regTestCmd = &cobra.Command{
 						}
 
 					} else {
-						fmt.Printf(string(data))
+						fmt.Print(string(data))
 					}
 				}
 			}

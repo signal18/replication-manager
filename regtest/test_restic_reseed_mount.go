@@ -6,6 +6,7 @@
 package regtest
 
 import (
+	"context"
 	"time"
 
 	clusterpkg "github.com/signal18/replication-manager/cluster"
@@ -60,7 +61,7 @@ func (regtest *RegTest) TestResticReseedMount(cl *clusterpkg.Cluster, conf strin
 	}
 
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Trigger logical backup to restic")
-	if err := master.JobBackupLogical(); err != nil {
+	if err := master.JobBackupLogical(context.Background()); err != nil {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "JobBackupLogical failed: %s", err)
 		return false
 	}

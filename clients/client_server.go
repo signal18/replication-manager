@@ -99,7 +99,7 @@ var serverCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "API call error: %s", err)
 			os.Exit(1)
 		}
-		fmt.Printf(res)
+		fmt.Print(res)
 		os.Exit(0)
 	},
 }

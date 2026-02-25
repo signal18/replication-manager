@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -35,8 +36,11 @@ import (
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/misc"
 	river "github.com/signal18/replication-manager/utils/river"
+	"github.com/signal18/replication-manager/utils/splitdump"
 	"github.com/signal18/replication-manager/utils/state"
 )
+
+var errJobCanceledByUser = errors.New("job canceled by user")
 
 func (server *ServerMonitor) JobBackupPhysical() error {
 	return server.JobBackupPhysicalWithOptions(BackupRunOptions{})
@@ -505,9 +509,12 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 	return nil
 }
 
-func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
+func (server *ServerMonitor) JobReseedLogicalBackup(ctx context.Context, backtype string) error {
 	var err error
 	cluster := server.ClusterGroup
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if backtype == "default" {
 		backtype = cluster.Conf.BackupLogicalType
 	}
@@ -534,26 +541,44 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 	useMaster := true
 	source := master
 	var dest string
+	var destCandidates []string
 	switch backtype {
 	case config.ConstBackupLogicalTypeMysqldump, "script":
 		dest = "mysqldump.sql.gz"
+		destCandidates = []string{"mysqldump.sql.gz", "splitdump"}
 	case config.ConstBackupLogicalTypeMydumper:
 		dest = "mydumper"
 	case config.ConstBackupLogicalTypeDumpling:
 		dest = "dumpling"
 	}
+	if len(destCandidates) == 0 {
+		destCandidates = []string{dest}
+	}
 
-	backupfile := master.GetMyBackupDirectory() + dest
-
+	var backupfile string
 	bckserver := cluster.GetBackupServer()
 	if bckserver != nil && bckserver.HasBackupTypeCookie(backtype) {
-		if _, err := os.Stat(bckserver.GetMyBackupDirectory() + dest); err == nil {
-			backupfile = bckserver.GetMyBackupDirectory() + dest
+		if resolved, ok := resolveLogicalBackupPathFromMeta(bckserver, backtype); ok {
+			backupfile = resolved
+			useMaster = false
+			source = bckserver
+		} else if resolved, ok := findExistingBackupPath(bckserver, destCandidates); ok {
+			backupfile = resolved
 			useMaster = false
 			source = bckserver
 		} else {
 			//Remove false cookie
 			bckserver.DelBackupTypeCookie(backtype)
+		}
+	}
+
+	if backupfile == "" {
+		if resolved, ok := resolveLogicalBackupPathFromMeta(master, backtype); ok {
+			backupfile = resolved
+		} else if resolved, ok := findExistingBackupPath(master, destCandidates); ok {
+			backupfile = resolved
+		} else {
+			backupfile = master.GetMyBackupDirectory() + dest
 		}
 	}
 
@@ -633,7 +658,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 	server.JobsUpdateState(task, "processing", 1, 0)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backtype, server.URL)
 	if backtype == config.ConstBackupLogicalTypeMysqldump {
-		err = server.JobReseedMysqldump(backupfile, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser)
+		err = server.reseedMysqldumpWithMetadata(ctx, backupfile, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser, source.LastBackupMeta.Logical)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())
 			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
@@ -688,13 +713,16 @@ type JobReseedLogicalOptions struct {
 	SplitUser *bool
 }
 
-func (server *ServerMonitor) JobReseedLogicalBackupFromPath(backtype, backupPath string) error {
-	return server.JobReseedLogicalBackupFromPathWithOptions(backtype, backupPath, JobReseedLogicalOptions{})
+func (server *ServerMonitor) JobReseedLogicalBackupFromPath(ctx context.Context, backtype, backupPath string) error {
+	return server.JobReseedLogicalBackupFromPathWithOptions(ctx, backtype, backupPath, JobReseedLogicalOptions{})
 }
 
-func (server *ServerMonitor) JobReseedLogicalBackupFromPathWithOptions(backtype, backupPath string, opts JobReseedLogicalOptions) error {
+func (server *ServerMonitor) JobReseedLogicalBackupFromPathWithOptions(ctx context.Context, backtype, backupPath string, opts JobReseedLogicalOptions) error {
 	var err error
 	cluster := server.ClusterGroup
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if backtype == "default" {
 		backtype = cluster.Conf.BackupLogicalType
 	}
@@ -793,7 +821,7 @@ func (server *ServerMonitor) JobReseedLogicalBackupFromPathWithOptions(backtype,
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 				"Using split-user override=%t for reseed logical backup from path %s on %s", splitUser, backupfile, server.URL)
 		}
-		err = server.JobReseedMysqldump(backupfile, cluster.Conf.BackupRestoreMysqlUser && splitUser)
+		err = server.reseedMysqldumpWithMetadata(ctx, backupfile, cluster.Conf.BackupRestoreMysqlUser && splitUser, master.LastBackupMeta.Logical)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())
 			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
@@ -844,6 +872,280 @@ func (server *ServerMonitor) JobReseedLogicalBackupFromPathWithOptions(backtype,
 	return err
 }
 
+func findExistingBackupPath(server *ServerMonitor, candidates []string) (string, bool) {
+	for _, name := range candidates {
+		path := server.GetMyBackupDirectory() + name
+		if _, err := os.Stat(path); err == nil {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+func resolveLogicalBackupPathFromMeta(server *ServerMonitor, backtype string) (string, bool) {
+	if server == nil {
+		return "", false
+	}
+	server.backupMetaMutex.Lock()
+	meta := server.LastBackupMeta.Logical
+	if meta == nil || !meta.Completed || meta.IsAdhoc() {
+		server.backupMetaMutex.Unlock()
+		return "", false
+	}
+	if meta.BackupTool != "" && meta.BackupTool != backtype {
+		server.backupMetaMutex.Unlock()
+		return "", false
+	}
+	dest := strings.TrimSpace(meta.Dest)
+	server.backupMetaMutex.Unlock()
+	if dest == "" {
+		return "", false
+	}
+	if !filepath.IsAbs(dest) {
+		dest = filepath.Join(server.GetMyBackupDirectory(), dest)
+	}
+	if _, err := os.Stat(dest); err != nil {
+		return "", false
+	}
+	return dest, true
+}
+
+func isSplitDumpDir(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	if !info.IsDir() {
+		return false, nil
+	}
+	metadataPath := filepath.Join(path, "metadata")
+	if metaInfo, err := os.Stat(metadataPath); err == nil && !metaInfo.IsDir() {
+		return true, nil
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return false, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasSuffix(name, ".sql") || strings.HasSuffix(name, ".sql.gz") {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (server *ServerMonitor) reseedMysqldumpWithSplitdump(ctx context.Context, backupPath string, restoreUser bool) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	isSplit, err := isSplitDumpDir(backupPath)
+	if err != nil {
+		return err
+	}
+	if isSplit {
+		cluster := server.ClusterGroup
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Splitdump detected at %s; restoring with mysql client", backupPath)
+		return server.JobReseedSplitdumpWithMysql(ctx, backupPath, restoreUser)
+	}
+	return server.JobReseedMysqldump(backupPath, restoreUser)
+}
+
+func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, backupPath string, restoreUser bool, meta *backupmgr.BackupMetadata) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if meta != nil {
+		if meta.Dest != "" {
+			pathsMatch, err := comparePaths(meta.Dest, backupPath)
+			if err != nil {
+				meta = nil
+			} else if !pathsMatch {
+				meta = nil
+			}
+		}
+	}
+	if meta != nil && (meta.SplitDump || isSplitDumpName(meta.Dest)) {
+		cluster := server.ClusterGroup
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Splitdump metadata detected for %s; restoring with mysql client", backupPath)
+		return server.JobReseedSplitdumpWithMysql(ctx, backupPath, restoreUser)
+	}
+	return server.reseedMysqldumpWithSplitdump(ctx, backupPath, restoreUser)
+}
+
+func (server *ServerMonitor) restoreSplitdumpFile(path string) error {
+	return server.restoreSplitdumpFileContext(context.Background(), path)
+}
+
+func (server *ServerMonitor) restoreSplitdumpFileContext(ctx context.Context, path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	var reader io.Reader = file
+	if strings.HasSuffix(strings.ToLower(path), ".gz") {
+		gzReader, err := gzip.NewReader(file)
+		if err != nil {
+			return err
+		}
+		defer gzReader.Close()
+		reader = gzReader
+	}
+
+	return server.executeMysqlRestoreContext(ctx, reader)
+}
+
+func (server *ServerMonitor) buildLogicalRestorePreamble() (string, int, error) {
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return "", 0, fmt.Errorf("cluster not available")
+	}
+
+	// Align logical restores: reset binlog state, control binlog writes, and normalize slow log behavior.
+	sqlLogBin := 0
+	resetmaster := "RESET MASTER;"
+	if server.DBVersion.IsMySQLOrPerconaGreater84() {
+		resetmaster = "RESET BINARY LOGS AND GTIDS;"
+	}
+
+	master := cluster.GetMaster()
+	if master == nil {
+		return "", 0, fmt.Errorf("No master found. Cancel backup reseeding %s", server.URL)
+	}
+	if server.URL == master.URL {
+		sqlLogBin = 1
+		resetmaster = ""
+	}
+
+	cmdstring := fmt.Sprintf("%sSET sql_log_bin=%d;SET long_query_time=10;", resetmaster, sqlLogBin)
+	return cmdstring, sqlLogBin, nil
+}
+
+func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, backupPath string, restoreUser bool) error {
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return fmt.Errorf("cluster not available")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	cmdstring, sqlLogBin, err := server.buildLogicalRestorePreamble()
+	if err != nil {
+		return err
+	}
+
+	var meta *splitdump.Metadata
+	meta, err = splitdump.ReadMetadata(backupPath)
+	if err != nil {
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Splitdump metadata not found; GTID will not be applied (%s)", backupPath)
+		case errors.Is(err, splitdump.ErrMetadataInvalid):
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Splitdump metadata invalid; GTID will not be applied (%s): %v", backupPath, err)
+		default:
+			return err
+		}
+		meta = nil
+	} else if meta.SourceData == 0 && meta.File == "" && meta.Position == 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Splitdump metadata indicates source-data=0; GTID will not be applied (%s)", backupPath)
+		meta = nil
+	}
+
+	start := time.Now()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Logical restore (splitdump+mysql) started at %s for: %s", start.Format(time.RFC3339), server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+		"Splitdump restore sets sql_log_bin=%d for %s", sqlLogBin, server.URL)
+	// Apply the same preamble as mysqldump restore once before parallelized splitdump files.
+	if err := server.executeMysqlRestoreContext(ctx, bytes.NewBufferString(cmdstring)); err != nil {
+		return err
+	}
+
+	defer server.SetInReseedBackup("")
+
+	restoreErr := splitdump.Restore(backupPath, splitdump.RestoreOptions{
+		Parallel:    cluster.Conf.BackupLogicalLoadThreads,
+		RestoreUser: restoreUser,
+		Logger: func(level, format string, args ...any) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, level, format, args...)
+		},
+		Context:                ctx,
+		RestoreFileWithContext: server.restoreSplitdumpFileContext,
+	})
+	if restoreErr != nil {
+		return restoreErr
+	}
+
+	if meta != nil && meta.GTID != "" {
+		gtidValue := strings.ReplaceAll(meta.GTID, "'", "''")
+		switch {
+		case server.IsMariaDB() && server.HaveMariaDBGTID:
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+				"Applying splitdump GTID for MariaDB on %s", server.URL)
+			if err := server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+gtidValue+"'", time.Second); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+					"Failed to apply splitdump GTID for MariaDB on %s: %v", server.URL, err)
+			}
+		case server.HasMySQLGTID() && server.DBVersion.IsMySQLOrPerconaGreater57():
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+				"Applying splitdump GTID for MySQL on %s", server.URL)
+			if err := server.ExecQueryNoBinLog("SET @@GLOBAL.GTID_PURGED='"+gtidValue+"'", time.Second); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+					"Failed to apply splitdump GTID for MySQL on %s: %v", server.URL, err)
+			}
+		}
+	}
+
+	elapsed := time.Since(start).Round(time.Second)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Finish logical restore (splitdump+mysql) in %s (started at %s) for: %s",
+		elapsed, start.Format(time.RFC3339), server.URL)
+	server.Refresh()
+
+	return nil
+}
+
+func comparePaths(left, right string) (bool, error) {
+	// Intentionally use Abs+Clean (no EvalSymlinks) so paths can be compared
+	// even when the target does not exist yet.
+	leftAbs, err := filepath.Abs(left)
+	if err != nil {
+		return false, err
+	}
+	rightAbs, err := filepath.Abs(right)
+	if err != nil {
+		return false, err
+	}
+	return filepath.Clean(leftAbs) == filepath.Clean(rightAbs), nil
+}
+
+func isSplitDumpName(path string) bool {
+	base := filepath.Base(path)
+	if base == "splitdump" {
+		return true
+	}
+	if !strings.HasPrefix(base, "splitdump.") {
+		return false
+	}
+	suffix := strings.TrimPrefix(base, "splitdump.")
+	if suffix == "" {
+		return false
+	}
+	_, err := strconv.ParseInt(suffix, 10, 64)
+	return err == nil
+}
+
 func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 	var dest, backupfile string
 	var err error
@@ -873,25 +1175,33 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 	// Decide on backup filename depending on the backup type
 	useMaster := true
 	source := master
+	var destCandidates []string
 	switch backtype {
 	case config.ConstBackupLogicalTypeMysqldump, "script":
 		dest = "mysqldump.sql.gz"
+		destCandidates = []string{"mysqldump.sql.gz", "splitdump"}
 	case config.ConstBackupLogicalTypeMydumper:
 		dest = "mydumper"
 	case config.ConstBackupLogicalTypeDumpling:
 		dest = "dumpling"
 	}
+	if len(destCandidates) == 0 {
+		destCandidates = []string{dest}
+	}
 
 	// Skip file lookup if using custom script
 	if backtype != "script" {
 		// Construct backup path on master
-		backupfile = master.GetMyBackupDirectory() + dest
+		backupfile, _ = findExistingBackupPath(master, destCandidates)
+		if backupfile == "" {
+			backupfile = master.GetMyBackupDirectory() + dest
+		}
 
 		// If a backup server has a valid backup for this type, use it instead
 		bckserver := cluster.GetBackupServer()
 		if bckserver != nil && bckserver.HasBackupTypeCookie(backtype) {
-			if _, err := os.Stat(bckserver.GetMyBackupDirectory() + dest); err == nil {
-				backupfile = bckserver.GetMyBackupDirectory() + dest
+			if resolved, ok := findExistingBackupPath(bckserver, destCandidates); ok {
+				backupfile = resolved
 				useMaster = false
 				source = bckserver
 			} else {
@@ -946,7 +1256,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 
 		// Handle mysqldump-based reseed
 	} else if backtype == config.ConstBackupLogicalTypeMysqldump {
-		err := server.JobReseedMysqldump(backupfile, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser)
+		err := server.reseedMysqldumpWithMetadata(context.Background(), backupfile, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser, source.LastBackupMeta.Logical)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flashback %s on %s: %s", backtype, server.URL, err.Error())
 			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
@@ -1105,26 +1415,10 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
 
-	sql_log_bin := 0
-	resetmaster := "RESET MASTER;"
-	if server.DBVersion.IsMySQLOrPerconaGreater84() {
-		resetmaster = "RESET BINARY LOGS AND GTIDS;"
+	cmdstring, _, err := server.buildLogicalRestorePreamble()
+	if err != nil {
+		return err
 	}
-
-	master := cluster.GetMaster()
-	if master == nil {
-		return fmt.Errorf("No master found. Cancel backup reseeding %s", server.URL)
-	}
-	if server.URL == master.URL {
-		sql_log_bin = 1
-		resetmaster = ""
-	}
-
-	cmdstring := "%sSET sql_log_bin=%d;SET long_query_time=10;"
-	if server.DBVersion.IsMySQLOrPerconaGreater84() {
-		cmdstring = "%sSET sql_log_bin=%d;SET long_query_time=10;"
-	}
-	cmdstring = fmt.Sprintf(cmdstring, resetmaster, sql_log_bin)
 
 	var usergzfile io.Reader
 	if restoreUser {
@@ -1305,10 +1599,165 @@ func (server *ServerMonitor) JobBackupScript(destination string) error {
 	return err
 }
 
-func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
+// getBackupRegexPatterns returns appropriate regex patterns based on DB version
+func (server *ServerMonitor) getBackupRegexPatterns() (*regexp.Regexp, *regexp.Regexp) {
+	binlogRegex := regexp.MustCompile(`CHANGE MASTER TO MASTER_LOG_FILE='(.+)', MASTER_LOG_POS=(\d+)`)
+	gtidRegex := regexp.MustCompile(`SET GLOBAL gtid_slave_pos='(.+)'`)
+
+	if server.DBVersion.IsMySQLOrPerconaGreater84() {
+		binlogRegex = regexp.MustCompile(`CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='(.+)', SOURCE_LOG_POS=(\d+)`)
+	}
+	if server.DBVersion.IsMySQLOrPerconaGreater57() {
+		gtidRegex = regexp.MustCompile(`GTID_PURGED\s*=\s*(?:/\*![0-9]*\s*'([^']+)'\*/\s*|'([^']+)')`)
+	}
+
+	return binlogRegex, gtidRegex
+}
+
+func (server *ServerMonitor) shouldParseDumpBinlogGTID() (bool, bool) {
+	parseBinlog := true
+	parseGTID := server.IsMariaDB() || server.DBVersion.IsMySQLOrPerconaGreater57()
+	server.backupMetaMutex.Lock()
+	meta := server.LastBackupMeta.Logical
+	hasBinlog := meta != nil && meta.BinLogFileName != ""
+	hasGTID := meta != nil && meta.BinLogGtid != ""
+	server.backupMetaMutex.Unlock()
+	if hasBinlog {
+		parseBinlog = false
+	}
+	if hasGTID {
+		parseGTID = false
+	}
+	return parseBinlog, parseGTID
+}
+
+// createGzipWriter creates a gzip writer with configurable compression
+func (cluster *Cluster) createGzipWriter(filePath string, logModule int) (*os.File, *gzip.Writer, error) {
+	f, err := os.Create(filePath)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, logModule, config.LvlErr,
+			"Error creating file %s: %s", filePath, err.Error())
+		return nil, nil, err
+	}
+
+	compressionLevel := cluster.getSanitizedCompressionLevel(logModule)
+	gw, err := gzip.NewWriterLevel(f, compressionLevel)
+	if err != nil {
+		f.Close()
+		cluster.LogModulePrintf(cluster.Conf.Verbose, logModule, config.LvlErr,
+			"Error creating gzip writer: %s", err.Error())
+		return nil, nil, err
+	}
+
+	return f, gw, nil
+}
+
+// spawnLogCopier spawns a goroutine to copy logs from reader to cluster logs
+func (server *ServerMonitor) spawnLogCopier(wg *sync.WaitGroup, r io.Reader, module int, level string) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		server.copyLogs(r, module, level)
+	}()
+}
+
+// drainErrorChannel drains all errors from a channel and combines them
+func drainErrorChannel(errCh <-chan error) error {
+	var combinedErr error
+	for err := range errCh {
+		if err != nil {
+			combinedErr = errors.Join(combinedErr, err)
+		}
+	}
+	return combinedErr
+}
+
+type splitDumpPipeline struct {
+	teeWriter  io.Writer
+	errCh      chan error
+	pipeWriter *io.PipeWriter
+	wg         *sync.WaitGroup
+}
+
+type fallbackWriter struct {
+	primary  io.Writer
+	fallback io.Writer
+	failed   atomic.Bool
+}
+
+func (w *fallbackWriter) Write(p []byte) (int, error) {
+	if w.failed.Load() {
+		return w.fallback.Write(p)
+	}
+	if w.primary == nil {
+		return w.fallback.Write(p)
+	}
+	n, err := w.primary.Write(p)
+	if err != nil {
+		w.failed.Store(true)
+		return w.fallback.Write(p)
+	}
+	return n, nil
+}
+
+// setupSplitDumpPipeline sets up the splitdump processing pipeline
+func (server *ServerMonitor) setupSplitDumpPipeline(
+	ctx context.Context,
+	outputDir string,
+	allowRotate bool,
+	cancel context.CancelFunc,
+) *splitDumpPipeline {
+	cluster := server.ClusterGroup
+
+	splitDumpReader, splitDumpWriter := io.Pipe()
+	splitDumpErrCh := make(chan error, 1)
+	var splitDumpWG sync.WaitGroup
+	splitDumpWG.Add(1)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+		"Splitdump enabled for mysqldump output: %s", outputDir)
+
+	// Splitdump processor goroutine
+	go func() {
+		defer splitDumpWG.Done()
+		defer close(splitDumpErrCh)
+		defer splitDumpReader.Close()
+		stdoutR, stdoutW := io.Pipe()
+		stderrR, stderrW := io.Pipe()
+
+		var logWG sync.WaitGroup
+		server.spawnLogCopier(&logWG, stdoutR, config.ConstLogModBackupStream, config.LvlDbg)
+		server.spawnLogCopier(&logWG, stderrR, config.ConstLogModBackupStream, config.LvlDbg)
+
+		err := cluster.SplitDumpWithCli(ctx, server, outputDir, allowRotate, splitDumpReader, stdoutW, stderrW)
+		stdoutW.Close()
+		stderrW.Close()
+		logWG.Wait()
+
+		if err != nil {
+			splitDumpErrCh <- err
+			cancel()
+			_ = splitDumpWriter.CloseWithError(err)
+		}
+	}()
+
+	teeWriter := splitDumpWriter
+
+	return &splitDumpPipeline{
+		teeWriter:  teeWriter,
+		errCh:      splitDumpErrCh,
+		pipeWriter: splitDumpWriter,
+		wg:         &splitDumpWG,
+	}
+}
+
+func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filename string, allowRotate bool) error {
 	cluster := server.ClusterGroup
 	var err error
 	var bckConn *sqlx.DB
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	defer cluster.SetInLogicalBackupState(false)
 
@@ -1331,154 +1780,190 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Blocking DDL via BACKUP STAGE")
 	}
 
-	binlogRegex := regexp.MustCompile(`CHANGE MASTER TO MASTER_LOG_FILE='(.+)', MASTER_LOG_POS=(\d+)`)
-	gtidRegex := regexp.MustCompile(`SET GLOBAL gtid_slave_pos='(.+)'`)
-
-	if server.DBVersion.IsMySQLOrPerconaGreater84() {
-		binlogRegex = regexp.MustCompile(`CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='(.+)', SOURCE_LOG_POS=(\d+)`)
-	}
-	if server.DBVersion.IsMySQLOrPerconaGreater57() {
-		gtidRegex = regexp.MustCompile(`GTID_PURGED\s*=(/\*!.+\*/)?\s*'(.+)'`)
-	}
+	// Prepare regex patterns
+	binlogRegex, gtidRegex := server.getBackupRegexPatterns()
 
 	var bfile, bgtid string
 	var bpos uint64
 
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), cluster.GetMysqlDumpOptions(server, server.JobGetDumpGtidParameter())...)
+	dumpCtx, dumpCancel := context.WithCancel(ctx)
+	defer dumpCancel()
+	server.registerJobCancel(task, dumpCancel)
+	defer server.clearJobCancel(task)
+	dumpCmd := exec.CommandContext(dumpCtx, cluster.GetMysqlDumpPath(), cluster.GetMysqlDumpOptions(server, server.JobGetDumpGtidParameter())...)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
 	// Get the stdout pipe from the command
 	stdout, err := dumpCmd.StdoutPipe()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting stdout pipe:", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting stdout pipe: %s", err)
 		fmt.Println()
 		return err
 	}
 
-	// dumpCmd.Stdout = gw
 	stderrIn, _ := dumpCmd.StderrPipe()
 
-	f, err := os.Create(filename)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mysqldump backup request: %s", err.Error())
-		return err
-	}
-	defer f.Close()
+	// Setup output writer (gzip file or splitdump)
+	var teeWriter io.Writer
+	var splitDumpPipeline *splitDumpPipeline
+	var f *os.File
+	var gw *gzip.Writer
 
-	// Use configurable compression level for better performance/size tradeoff
-	compressionLevel := cluster.getSanitizedCompressionLevel(config.ConstLogModTask)
-	gw, err := gzip.NewWriterLevel(f, compressionLevel)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error creating gzip writer: %s", err.Error())
-		return err
-	}
-	defer func() {
-		if err := gw.Flush(); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flushing gzip: %s", err.Error())
+	if cluster.Conf.BackupMysqldumpSplitDump {
+		splitDumpPipeline = server.setupSplitDumpPipeline(dumpCtx, filename, allowRotate, dumpCancel)
+		teeWriter = &fallbackWriter{primary: splitDumpPipeline.teeWriter, fallback: io.Discard}
+	} else {
+		f, gw, err = cluster.createGzipWriter(filename, config.ConstLogModTask)
+		if err != nil {
+			return err
 		}
-		if err := gw.Close(); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error closing gzip: %s", err.Error())
-		}
-	}()
+		defer func() {
+			if err := gw.Flush(); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flushing gzip: %s", err.Error())
+			}
+			if err := gw.Close(); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error closing gzip: %s", err.Error())
+			}
+			f.Close()
+		}()
+		teeWriter = gw
+	}
 
-	teeReader := io.TeeReader(stdout, gw)
-
-	err = dumpCmd.Start()
-	if err != nil {
+	// Start dump command
+	if err := dumpCmd.Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
+		if errors.Is(err, context.Canceled) && server.isJobCancelRequested(task) {
+			return errors.Join(errJobCanceledByUser, err)
+		}
 		return err
 	}
 
-	// Create a buffered reader to read the duplicated stream
+	// Process stdout stream
+	teeReader := io.TeeReader(stdout, teeWriter)
 	reader := bufio.NewReader(teeReader)
-	buffer := make([]byte, cluster.Conf.SSTSendBuffer) // 64 KB buffer
+	buffer := make([]byte, cluster.Conf.SSTSendBuffer)
+	errCh := make(chan error, 4)
 
-	errCh := make(chan error, 2) // Create a channel to send errors
 	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
-	}()
-	go func() {
-		defer wg.Done()
+	server.spawnLogCopier(&wg, stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
 
-		var remainingLine string
+	parseBinlog, parseGTID := server.shouldParseDumpBinlogGTID()
+	parser := newDumpStreamParser(
+		binlogRegex,
+		gtidRegex,
+		parseBinlog,
+		parseGTID,
+		func(file string, pos uint64) {
+			server.backupMetaMutex.Lock()
+			hasBinlog := server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.BinLogFileName != ""
+			server.backupMetaMutex.Unlock()
+			if hasBinlog {
+				return
+			}
+			bfile = file
+			bpos = pos
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+				"Binlog filename:%s, pos: %s", bfile, strconv.FormatUint(bpos, 10))
+		},
+		func(gtid string) {
+			server.backupMetaMutex.Lock()
+			hasGTID := server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.BinLogGtid != ""
+			server.backupMetaMutex.Unlock()
+			if hasGTID {
+				return
+			}
+			bgtid = gtid
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+				"GTID:%s", bgtid)
+		},
+	)
+
+	// Main reading goroutine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(errCh)
+		errSent := false
 
 		for {
 			n, err := reader.Read(buffer)
 			if err != nil && err != io.EOF {
-				errCh <- fmt.Errorf("Error reading buffer: %w", err) // Send the error through the channel with more context
+				if !errSent {
+					errCh <- fmt.Errorf("Error reading buffer: %w", err)
+					errSent = true
+				}
+				break
 			}
 			if n == 0 {
 				break
 			}
-
-			// Process buffer content
-			content := remainingLine + string(buffer[:n])
-			lines := strings.Split(content, "\n")
-			remainingLine = lines[len(lines)-1] // Last element is the remaining part
-
-			for _, line := range lines[:len(lines)-1] {
-				if server.LastBackupMeta.Logical.BinLogFileName == "" {
-					if matches := binlogRegex.FindStringSubmatch(line); matches != nil {
-						bfile = matches[1]
-						bpos, _ = strconv.ParseUint(matches[2], 10, 64)
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Binlog filename:%s, pos: %s", bfile, strconv.FormatUint(bpos, 10))
-					}
-				}
-
-				if server.LastBackupMeta.Logical.BinLogGtid == "" && server.IsMariaDB() {
-					if matches := gtidRegex.FindStringSubmatch(line); matches != nil {
-						bgtid = matches[1]
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "GTID:%s", bgtid)
-					}
-				}
+			if parser.Enabled() {
+				parser.Consume(buffer[:n])
 			}
 		}
 
-		// Process any remaining line data after the loop
-		if remainingLine != "" {
-			if server.LastBackupMeta.Logical.BinLogFileName == "" {
-				if matches := binlogRegex.FindStringSubmatch(remainingLine); matches != nil {
-					bfile = matches[1]
-					bpos, _ = strconv.ParseUint(matches[2], 10, 64)
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Binlog filename:%s, pos: %s", bfile, strconv.FormatUint(bpos, 10))
-				}
-			}
+		parser.Flush()
 
-			if server.LastBackupMeta.Logical.BinLogGtid == "" && server.IsMariaDB() {
-				if matches := gtidRegex.FindStringSubmatch(remainingLine); matches != nil {
-					bgtid = matches[1]
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "GTID:%s", bgtid)
-				}
-			}
+		if splitDumpPipeline != nil {
+			_ = splitDumpPipeline.pipeWriter.Close()
 		}
 
-		err := dumpCmd.Wait()
-
-		if err != nil {
+		if err := dumpCmd.Wait(); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "mysqldump: %s", err)
-			errCh <- fmt.Errorf("Error mysqldump: %w", err) // Send the error through the channel with more context
+			select {
+			case errCh <- fmt.Errorf("mysqldump: %w", err):
+			default:
+			}
 		}
 	}()
 
-	// Wait for goroutines to finish
 	wg.Wait()
 
-	// Check for errors
-	select {
-	case err := <-errCh:
-		// Handle the error here
-		fmt.Println("Error occurred:", err)
-	default:
-		// No errors occurred
-		fmt.Println("No errors occurred")
+	// Collect all errors
+	var splitDumpErr, readErr error
+	if splitDumpPipeline != nil {
+		splitDumpPipeline.wg.Wait()
+		splitDumpErr = drainErrorChannel(splitDumpPipeline.errCh)
+		if splitDumpErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Splitdump error: %s", splitDumpErr)
+		}
 	}
 
-	server.LastBackupMeta.Logical.BinLogGtid = bgtid
-	server.LastBackupMeta.Logical.BinLogFilePos = bpos
-	server.LastBackupMeta.Logical.BinLogFileName = bfile
+	readErr = drainErrorChannel(errCh)
+	combinedErr := errors.Join(splitDumpErr, readErr)
+	if combinedErr != nil {
+		if errors.Is(combinedErr, context.Canceled) && server.isJobCancelRequested(task) {
+			if cluster.Conf.BackupKeepUntilValid {
+				if _, statErr := os.Stat(filename); statErr == nil {
+					cancelPath := filename + ".canceled"
+					if _, err := os.Stat(cancelPath); err == nil {
+						cancelPath = fmt.Sprintf("%s.%d", cancelPath, time.Now().Unix())
+					}
+					if err := os.Rename(filename, cancelPath); err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to preserve canceled backup %s: %s", filename, err)
+					} else {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Preserved canceled backup at %s", cancelPath)
+					}
+				} else if !os.IsNotExist(statErr) {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to inspect canceled backup %s: %s", filename, statErr)
+				}
+			}
+			return errors.Join(errJobCanceledByUser, combinedErr)
+		}
+		return combinedErr
+	}
+
+	server.backupMetaMutex.Lock()
+	if server.LastBackupMeta.Logical != nil {
+		if server.LastBackupMeta.Logical.BinLogGtid == "" && bgtid != "" {
+			server.LastBackupMeta.Logical.BinLogGtid = bgtid
+		}
+		if server.LastBackupMeta.Logical.BinLogFileName == "" && bfile != "" {
+			server.LastBackupMeta.Logical.BinLogFileName = bfile
+			server.LastBackupMeta.Logical.BinLogFilePos = bpos
+		}
+	}
+	server.backupMetaMutex.Unlock()
 
 	return err
 }
@@ -1496,22 +1981,13 @@ func (server *ServerMonitor) JobBackupMysqldumpUser() error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
 
-	f, err := os.Create(userpath)
+	f, gw, err := cluster.createGzipWriter(userpath, config.ConstLogModTask)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mysqldump user backup request: %s", err.Error())
-		return err
-	}
-
-	// Use configurable compression level for better performance/size tradeoff
-	compressionLevel := cluster.getSanitizedCompressionLevel(config.ConstLogModTask)
-	gw, err := gzip.NewWriterLevel(f, compressionLevel)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error creating gzip writer: %s", err.Error())
 		return err
 	}
 
 	// Buffer before gzip to improve compression
-	bw := bufio.NewWriterSize(gw, 64*1024) // 64KB buffer
+	bw := bufio.NewWriterSize(gw, 64*1024)
 	defer func() {
 		if err := bw.Flush(); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flushing buffer: %s", err.Error())
@@ -1525,20 +2001,13 @@ func (server *ServerMonitor) JobBackupMysqldumpUser() error {
 	dumpCmd.Stdout = gw
 	stderrIn, _ := dumpCmd.StderrPipe()
 
-	err = dumpCmd.Start()
-	if err != nil {
+	if err := dumpCmd.Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
 		return err
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
-	}()
-
-	// Wait for print log to finish
+	server.spawnLogCopier(&wg, stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
 	wg.Wait()
 
 	err = dumpCmd.Wait()
@@ -1595,7 +2064,7 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 	}
 
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalDumpThreads)
-	myargs := strings.Split(strings.ReplaceAll(cluster.Conf.BackupMyDumperOptions, "  ", " "), " ")
+	myargs := cluster.GetMyDumperCompatibleOptions()
 
 	// Handle deprecated flags for mydumper >= 0.18.1
 	if dumper.GreaterEqual("0.18.1") {
@@ -1650,13 +2119,16 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 		valid = server.myDumperCopyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 	wg.Wait()
-	if err = dumpCmd.Wait(); err != nil && !valid {
+	if err = dumpCmd.Wait(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mydumper:  %s", err)
 		return err
 	}
+	if !valid {
+		return fmt.Errorf("mydumper reported errors in output")
+	}
 
 	if e2 := cluster.JobParseMyDumperMeta(server.LastBackupMeta.Logical); e2 != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error parsing mydumper metadata: %s", err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error parsing mydumper metadata: %s", e2.Error())
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Success backup data via mydumper. Setting logical cookie")
@@ -1739,22 +2211,25 @@ func (server *ServerMonitor) JobBackupRiver() error {
 	return err
 }
 
-func (server *ServerMonitor) JobBackupLogical() error {
-	return server.JobBackupLogicalWithOptions(BackupRunOptions{})
+func (server *ServerMonitor) JobBackupLogical(ctx context.Context) error {
+	return server.JobBackupLogicalWithOptions(ctx, BackupRunOptions{})
 }
 
-func (server *ServerMonitor) JobBackupLogicalWithOptions(opts BackupRunOptions) error {
+func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, opts BackupRunOptions) error {
 	var err error
 	//server can be nil as no dicovered master
 	if server == nil {
 		return errors.New("No server defined")
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	cluster := server.ClusterGroup
 	backupLine := server.resolveBackupLine(opts)
 	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
 	resticEnabled := server.shouldRunRestic(opts)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Request logical backup %s (%s line) for: %s", cluster.Conf.BackupLogicalType, backupLine, server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Request logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
 	if server.IsDown() {
 		return errors.New("Can't backup when server down")
 	}
@@ -1905,31 +2380,46 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(opts BackupRunOptions) 
 		//Change to switch since we only allow one type of backup (for now)
 		switch cluster.Conf.BackupLogicalType {
 		case config.ConstBackupLogicalTypeMysqldump:
-			filename := server.GetMyBackupDirectory() + "mysqldump.sql.gz"
-			if isAdhoc {
-				filename = fmt.Sprintf("%smysqldump.%d.sql.gz", server.GetMyBackupDirectory(), start.Unix())
-			}
+			filename, outputdir, dest, compressed := server.resolveMysqldumpDest(isAdhoc, cluster.Conf.BackupMysqldumpSplitDump, start)
 			oldV, _ := cluster.GetToolsVersion("client-dump")
 			if oldV != nil {
 				server.LastBackupMeta.Logical.BackupToolVersion = oldV.ToString()
 			}
-			server.LastBackupMeta.Logical.Dest = filename
-			server.LastBackupMeta.Logical.Compressed = true
+			server.LastBackupMeta.Logical.Dest = dest
+			server.LastBackupMeta.Logical.Compressed = compressed
+			server.LastBackupMeta.Logical.SplitDump = cluster.Conf.BackupMysqldumpSplitDump
 			if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
-				exec.Command("mv", filename, filename+".old").Run()
+				if cluster.Conf.BackupMysqldumpSplitDump {
+					exec.Command("mv", outputdir, outputdir+".old").Run()
+				} else {
+					exec.Command("mv", filename, filename+".old").Run()
+				}
 			}
 
-			err = server.JobBackupMysqldump(filename)
+			allowRotate := cluster.Conf.BackupKeepUntilValid && !isAdhoc
+			if cluster.Conf.BackupMysqldumpSplitDump {
+				err = server.JobBackupMysqldump(ctx, task, outputdir, allowRotate)
+			} else {
+				err = server.JobBackupMysqldump(ctx, task, filename, allowRotate)
+			}
 			if err != nil {
-				if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
+				result := err.Error()
+				if errors.Is(err, errJobCanceledByUser) {
+					result = "cancelled by user"
+				}
+				if e2 := server.JobsUpdateState(task, result, 5, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
 				if e2 := server.JobsUpdateState(task, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
-				_, e3 := os.Stat(filename)
+				checkPath := filename
+				if cluster.Conf.BackupMysqldumpSplitDump {
+					checkPath = outputdir
+				}
+				_, e3 := os.Stat(checkPath)
 				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
 					server.LastBackupMeta.Logical.GetSizeAndFileCount()

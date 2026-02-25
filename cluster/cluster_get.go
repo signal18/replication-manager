@@ -245,6 +245,16 @@ func (cluster *Cluster) GetGottyClientPath() string {
 	return cluster.Conf.BackupGottyClientPath
 }
 
+func (cluster *Cluster) GetReplicationManagerCliPath() string {
+	if strings.TrimSpace(cluster.Conf.ReplicationManagerCliPath) == "" {
+		if path, err := exec.LookPath("replication-manager-cli"); err == nil {
+			return path
+		}
+		return "replication-manager-cli"
+	}
+	return cluster.Conf.ReplicationManagerCliPath
+}
+
 func (cluster *Cluster) GetMysqlServerBinaryPath() string {
 	if cluster.Conf.BackupMysqlclientPath == "" {
 		// Return installed mysql client on repman host instead of embedded if exists

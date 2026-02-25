@@ -11,6 +11,7 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -219,7 +220,7 @@ func (server *ServerMonitor) ReseedMasterSST() error {
 		if cluster.Conf.BackupLoadScript != "" {
 			server.JobReseedBackupScript()
 		} else if cluster.Conf.AutorejoinLogicalBackup {
-			err := server.JobReseedLogicalBackup("default")
+			err := server.JobReseedLogicalBackup(context.Background(), "default")
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Reseed logical for rejoin on %s failed: %s", server.URL, err)
 			}
