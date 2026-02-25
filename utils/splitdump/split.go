@@ -268,7 +268,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 				onTableScheme = false
 				closeTableFile()
 				tableName := "mysql.system-all"
-				fmt.Printf("Processing view schema %s\n", tableName)
+				fmt.Printf("Processing system schema %s\n", tableName)
 				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
 				f, err = os.Create(tablePath)
 				if err != nil {
