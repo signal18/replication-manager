@@ -84,8 +84,20 @@ func SplitDumpLineReader(bus *SplitDumpChannelBus, inputFile string) {
 		defer file.Close()
 		r = splitDumpOpenReader(file)
 	}
-	for line, err := r.ReadString('\n'); err == nil; line, err = r.ReadString('\n') {
-		bus.CurrentLine <- line
+	for {
+		line, err := r.ReadString('\n')
+		if err == nil {
+			bus.CurrentLine <- line
+			continue
+		}
+		if err == io.EOF {
+			if line != "" {
+				bus.CurrentLine <- line
+			}
+			break
+		}
+		bus.Error <- err
+		break
 	}
 
 	close(bus.CurrentLine)

@@ -10,6 +10,7 @@ package clients
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/signal18/replication-manager/utils/splitdump"
@@ -41,17 +42,31 @@ func runSplitdump(inputFile, outputDir string) error {
 	}
 
 	// create a pipeline of goroutines
-	go splitdump.SplitDumpLineReader(bus, inputFile)
-	go splitdump.SplitDumpLineParser(bus, outputDir)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		splitdump.SplitDumpLineReader(bus, inputFile)
+	}()
+	go func() {
+		defer wg.Done()
+		splitdump.SplitDumpLineParser(bus, outputDir)
+	}()
 	//, conf.Combine, conf.OutputPath, conf.SkipData, conf.SkipTable)
+	go func() {
+		wg.Wait()
+		close(bus.Error)
+	}()
 
-	// wait for the writer to finish.
+	// wait for the writer to finish and drain late errors.
 	var readerErr error
 	finished := false
-	for !finished {
+	errorsClosed := false
+	for !(finished && errorsClosed) {
 		select {
 		case err, ok := <-bus.Error:
 			if !ok {
+				errorsClosed = true
 				continue
 			}
 			if err != nil && readerErr == nil {
@@ -61,19 +76,6 @@ func runSplitdump(inputFile, outputDir string) error {
 			finished = true
 		}
 	}
-	for {
-		select {
-		case err, ok := <-bus.Error:
-			if !ok {
-				fmt.Printf("\n\n--finished in %s", time.Since(start))
-				return readerErr
-			}
-			if err != nil && readerErr == nil {
-				readerErr = err
-			}
-		default:
-			fmt.Printf("\n\n--finished in %s", time.Since(start))
-			return readerErr
-		}
-	}
+	fmt.Printf("\n\n--finished in %s", time.Since(start))
+	return readerErr
 }
