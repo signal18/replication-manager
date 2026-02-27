@@ -351,19 +351,20 @@ func TestIsGtidSlavePosDataFile(t *testing.T) {
 
 func TestIsMissingTableError(t *testing.T) {
 	tests := []struct {
-		name string
-		want bool
+		name  string
+		input string
+		want  bool
 	}{
-		{name: "ERROR 1146 (42S02) at line 6: Table 'mysql.column_stats' doesn't exist", want: true},
-		{name: "error 1146: Table 'mysql.column_stats' doesn't exist", want: true},
-		{name: "ERROR 1062 (23000): Duplicate entry", want: false},
-		{name: "", want: false},
+		{name: "with 1146 and sqlstate", input: "ERROR 1146 (42S02) at line 6: Table 'mysql.column_stats' doesn't exist", want: true},
+		{name: "with 1146 only", input: "error 1146: Table 'mysql.column_stats' doesn't exist", want: true},
+		{name: "duplicate entry", input: "ERROR 1062 (23000): Duplicate entry", want: false},
+		{name: "empty", input: "", want: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsMissingTableError(tt.name); got != tt.want {
-				t.Fatalf("IsMissingTableError(%q) = %v, want %v", tt.name, got, tt.want)
+			if got := IsMissingTableError(tt.input); got != tt.want {
+				t.Fatalf("IsMissingTableError(%q) = %v, want %v", tt.input, got, tt.want)
 			}
 		})
 	}

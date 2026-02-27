@@ -371,10 +371,10 @@ func TableFromFilename(name string) string {
 
 func IsSchemaFile(name string) bool {
 	base := filepath.Base(name)
-	lower := strings.ToLower(base)
-	if lower == "mysql.system-all.sql.gz" || lower == "mysql.system-all.sql" || lower == "mysql.system-all" {
+	if isMysqlSystemAll(base) {
 		return true
 	}
+	lower := strings.ToLower(base)
 	return strings.HasSuffix(lower, "-schema.sql.gz") ||
 		strings.HasSuffix(lower, "-schema.sql") ||
 		strings.HasSuffix(lower, "-schema-view.sql.gz") ||
@@ -405,10 +405,10 @@ func RestorePreamble(name string) string {
 
 func splitdumpSchemaTable(name string) (string, string) {
 	base := filepath.Base(name)
-	lower := strings.ToLower(base)
-	if lower == "mysql.system-all.sql.gz" || lower == "mysql.system-all.sql" || lower == "mysql.system-all" {
+	if isMysqlSystemAll(base) {
 		return "mysql", ""
 	}
+	lower := strings.ToLower(base)
 	if !strings.HasSuffix(lower, ".sql.gz") && !strings.HasSuffix(lower, ".sql") {
 		return "", ""
 	}
@@ -417,12 +417,7 @@ func splitdumpSchemaTable(name string) (string, string) {
 	trimmed = strings.TrimSuffix(trimmed, ".sql")
 	trimmed = strings.TrimSuffix(trimmed, "-schema-view")
 	trimmed = strings.TrimSuffix(trimmed, "-schema")
-	if len(trimmed) > 6 && trimmed[len(trimmed)-6] == '.' {
-		suffix := trimmed[len(trimmed)-5:]
-		if _, err := strconv.Atoi(suffix); err == nil {
-			trimmed = trimmed[:len(trimmed)-6]
-		}
-	}
+	trimmed, _ = splitdumpDataKey(trimmed)
 	if trimmed == "" {
 		return "", ""
 	}
@@ -431,4 +426,9 @@ func splitdumpSchemaTable(name string) (string, string) {
 		return "", ""
 	}
 	return parts[0], parts[1]
+}
+
+func isMysqlSystemAll(name string) bool {
+	lower := strings.ToLower(name)
+	return lower == "mysql.system-all.sql.gz" || lower == "mysql.system-all.sql" || lower == "mysql.system-all"
 }
