@@ -153,7 +153,8 @@ func TestSplitDumpLineParserMySQLGtidPurgedVariants(t *testing.T) {
 func TestSplitDumpLineParserShardsWithCustomStreamSize(t *testing.T) {
 	bus := NewSplitDumpChannelBus()
 	outputDir := filepath.Join(t.TempDir(), "splitdump")
-	options := SplitDumpOptions{StreamSizeMax: 16 * 1024 * 1024, StreamSizeMaxSet: true}
+	streamSizeMax := int64(16 * 1024 * 1024)
+	options := SplitDumpOptions{StreamSizeMax: &streamSizeMax}
 
 	go SplitDumpLineParser(bus, outputDir, options)
 
@@ -172,7 +173,7 @@ func TestSplitDumpLineParserShardsWithCustomStreamSize(t *testing.T) {
 
 	insertLine := "INSERT INTO `mytable` VALUES (" + strings.Repeat("1,", 50) + "1);\n"
 	insertLen := int64(len(insertLine))
-	count := int((options.StreamSizeMax-baseSize)/insertLen) + 2
+	count := int((streamSizeMax-baseSize)/insertLen) + 2
 	for i := 0; i < count; i++ {
 		bus.CurrentLine <- insertLine
 	}
@@ -222,7 +223,8 @@ func TestSplitDumpLineParserShardsWithCustomStreamSize(t *testing.T) {
 func TestSplitDumpLineParserNoShardingWhenZero(t *testing.T) {
 	bus := NewSplitDumpChannelBus()
 	outputDir := filepath.Join(t.TempDir(), "splitdump")
-	options := SplitDumpOptions{StreamSizeMax: 0, StreamSizeMaxSet: true}
+	streamSizeMax := int64(0)
+	options := SplitDumpOptions{StreamSizeMax: &streamSizeMax}
 
 	go SplitDumpLineParser(bus, outputDir, options)
 

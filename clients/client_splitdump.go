@@ -39,8 +39,8 @@ func runSplitdump(inputFile, outputDir string) error {
 		if err != nil {
 			return fmt.Errorf("invalid stream-size-max: %w", err)
 		}
-		options.StreamSizeMax = value
-		options.StreamSizeMaxSet = true
+		streamSizeMax := value
+		options.StreamSizeMax = &streamSizeMax
 	}
 
 	fmt.Printf("Outputing all tables to %s\n", outputDir)
