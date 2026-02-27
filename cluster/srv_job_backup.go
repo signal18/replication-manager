@@ -1011,6 +1011,7 @@ func (server *ServerMonitor) restoreSplitdumpFileContext(ctx context.Context, pa
 			return nil
 		}
 		if table != "" {
+			// Server path proactively checks information_schema; CLI path reacts to mysql error output instead.
 			exists, err := server.tableExists(schema, table)
 			if err != nil {
 				return err
@@ -1034,17 +1035,35 @@ func (server *ServerMonitor) restoreSplitdumpFileContext(ctx context.Context, pa
 }
 
 func (server *ServerMonitor) tableExists(schema, table string) (bool, error) {
-	if server == nil {
-		return false, fmt.Errorf("server not available")
-	}
 	if server.Conn == nil {
-		return false, fmt.Errorf("server connection not available")
+		cluster := server.ClusterGroup
+		if cluster != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn,
+				"Splitdump restore skipped mysql table check for %s.%s: server connection not available", schema, table)
+		}
+		return false, nil
 	}
+	return tableExistsQuery(func() rowScanner {
+		return server.Conn.QueryRow("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ? AND table_name = ?", schema, table)
+	}, schema, table)
+}
+
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func tableExistsQuery(query func() rowScanner, schema, table string) (bool, error) {
 	if strings.TrimSpace(schema) == "" || strings.TrimSpace(table) == "" {
 		return false, fmt.Errorf("schema and table are required")
 	}
+	if query == nil {
+		return false, fmt.Errorf("query function is required")
+	}
 	var count int
-	row := server.Conn.QueryRow("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ? AND table_name = ?", schema, table)
+	row := query()
+	if row == nil {
+		return false, fmt.Errorf("query returned nil row")
+	}
 	if err := row.Scan(&count); err != nil {
 		return false, fmt.Errorf("table exists query failed: %w", err)
 	}
