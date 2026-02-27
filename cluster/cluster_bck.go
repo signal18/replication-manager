@@ -22,6 +22,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/splitdump"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
 )
@@ -1502,10 +1503,23 @@ func (cluster *Cluster) SplitDumpWithCli(ctx context.Context, destination *Serve
 
 	// Use parent context for cancellation control
 	// If caller wants a timeout, they should pass context.WithTimeout
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg,
-		"Executing splitdump command: %s splitdump --outputdir %s", cliPath, outputDir)
+	args := []string{"splitdump", "--outputdir", outputDir}
+	trimmedFileSize := strings.TrimSpace(cluster.Conf.BackupSplitdumpFileSize)
+	if trimmedFileSize != "" {
+		if sizeBytes, err := splitdump.ParseSizeBytes(trimmedFileSize); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Invalid backup-splitdump-file-size %q, using default sharding: %v", trimmedFileSize, err)
+		} else {
+			args = append(args, "--stream-size-max", trimmedFileSize)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+				"Splitdump file size set to %q (%d bytes)", trimmedFileSize, sizeBytes)
+		}
+	}
 
-	cmd := exec.CommandContext(ctx, cliPath, "splitdump", "--outputdir", outputDir)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg,
+		"Executing splitdump command: %s %s", cliPath, strings.Join(args, " "))
+
+	cmd := exec.CommandContext(ctx, cliPath, args...)
 	cmd.Stdin = stdin
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr

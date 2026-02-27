@@ -173,7 +173,41 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 		return
 	}
 	streamSize := int64(0)
+	pendingSplit := false
+	splitReady := false
+	// mysqldump emits complete statements ending in ';' by default.
+	isStatementEnd := func(line string) bool {
+		trimmed := strings.TrimSpace(line)
+		return strings.HasSuffix(trimmed, ";")
+	}
 	for line := range bus.CurrentLine {
+		lineLen := int64(len([]byte(line)))
+		if splitReady {
+			if strings.HasPrefix(line, "UNLOCK TABLES;") {
+				splitReady = false
+			} else if onTableData && dataTableName != "" {
+				shard++
+				closeTableFile()
+				shardpad = fmt.Sprintf(".%05d", shard)
+				tableName := dataTableName + shardpad
+				fmt.Printf("Processing table data %s\n", tableName)
+				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
+				f, err = os.Create(tablePath)
+				if err != nil {
+					finishWithError(fmt.Errorf("splitdump: create file %s: %w", tablePath, err))
+					return
+				}
+				tableFile = gzip.NewWriter(f)
+				tableFile.Write([]byte(headerMetaData))
+				if schema != "" {
+					tableFile.Write([]byte("USE `" + schema + "`;\n"))
+				}
+				streamSize = 0
+				splitReady = false
+			} else {
+				splitReady = false
+			}
+		}
 		if !sourceDataDisabled {
 			lowerLine := strings.ToLower(line)
 			if strings.Contains(lowerLine, "source-data=0") {
@@ -184,32 +218,13 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 			}
 		}
 		//	fmt.Printf("%s %b %b %b", line, onTableScheme, onTableData)
-		streamSize += int64(len([]byte(line)))
+		streamSize += lineLen
 
 		if streamSizeMax > 0 && streamSize > streamSizeMax {
 			if tableFile == nil {
 				streamSize = 0
-			} else {
-				shard++
-				closeTableFile()
-				shardpad = fmt.Sprintf(".%05d", shard)
-				baseTableName := dataTableName
-				if baseTableName == "" {
-					baseTableName = schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1))
-				}
-				tableName := baseTableName + shardpad
-				fmt.Printf("Processing table data %s ", tableName)
-				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
-				f, err = os.Create(tablePath)
-				if err != nil {
-					finishWithError(fmt.Errorf("splitdump: create file %s: %w", tablePath, err))
-					return
-				}
-				tableFile = gzip.NewWriter(f)
-				tableFile.Write([]byte(headerMetaData))
-				tableFile.Write([]byte("\n--\n" + line))
-				tableFile.Write([]byte("USE " + schema + ";\n"))
-				streamSize = 0
+			} else if onTableData && dataTableName != "" {
+				pendingSplit = true
 			}
 		}
 		// The beginning of a mysqldump has some flags at the top of the file. Capture them into a variable.
@@ -222,6 +237,8 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 				onTableData = false
 				onTableScheme = false
 				dataTableName = ""
+				pendingSplit = false
+				splitReady = false
 				streamSize = 0
 				closeTableWriter()
 			}
@@ -266,6 +283,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 
 				}
 				closeTableFile()
+				shard = 0
 				shardpad = fmt.Sprintf(".%05d", shard)
 				dataTableName = schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1))
 				tableName := dataTableName + shardpad
@@ -338,6 +356,10 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 			if tableFile != nil {
 				tableFile.Write([]byte(line))
 			}
+		}
+		if pendingSplit && onTableData && isStatementEnd(line) {
+			splitReady = true
+			pendingSplit = false
 		}
 
 	}

@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -33,6 +34,18 @@ func newSplitDumpTestServer(t *testing.T) (*Cluster, *ServerMonitor) {
 func writeSplitDumpCliScript(t *testing.T, cluster *Cluster, exitCode int) {
 	cliPath := filepath.Join(t.TempDir(), "replication-manager-cli")
 	script := "#!/bin/sh\nexit " + strconv.Itoa(exitCode) + "\n"
+	if err := os.WriteFile(cliPath, []byte(script), 0755); err != nil {
+		t.Fatalf("failed to write cli script: %v", err)
+	}
+	if err := os.Chmod(cliPath, 0755); err != nil {
+		t.Fatalf("failed to chmod cli script: %v", err)
+	}
+	cluster.Conf.ReplicationManagerCliPath = cliPath
+}
+
+func writeSplitDumpCliScriptWithArgs(t *testing.T, cluster *Cluster, argsPath string, exitCode int) {
+	cliPath := filepath.Join(t.TempDir(), "replication-manager-cli")
+	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$@\" > %q\nexit %d\n", argsPath, exitCode)
 	if err := os.WriteFile(cliPath, []byte(script), 0755); err != nil {
 		t.Fatalf("failed to write cli script: %v", err)
 	}
@@ -157,6 +170,30 @@ func TestSplitDumpWithCliRotatesDirWhenEnabled(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("expected empty splitdump dir after rotation, got %d entries", len(entries))
+	}
+}
+
+func TestSplitDumpWithCliAddsStreamSizeMax(t *testing.T) {
+	skipSplitDumpOnWindows(t)
+
+	cluster, server := newSplitDumpTestServer(t)
+	argsPath := filepath.Join(t.TempDir(), "args.txt")
+	writeSplitDumpCliScriptWithArgs(t, cluster, argsPath, 0)
+	cluster.Conf.BackupSplitdumpFileSize = "16MiB"
+
+	outputDir := prepareSplitDumpOutputDir(t, server)
+	runSplitDumpWithCli(t, cluster, server, outputDir, false)
+
+	data, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatalf("failed to read args file: %v", err)
+	}
+	args := string(data)
+	if !strings.Contains(args, "--stream-size-max") {
+		t.Fatalf("expected stream-size-max arg, got: %s", args)
+	}
+	if !strings.Contains(args, "16MiB") {
+		t.Fatalf("expected stream-size-max value, got: %s", args)
 	}
 }
 
