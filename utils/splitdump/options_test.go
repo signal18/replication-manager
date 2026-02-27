@@ -18,6 +18,7 @@ func TestParseSizeBytes(t *testing.T) {
 		{name: "mega-bytes", input: "16MB", want: 16 * 1000 * 1000},
 		{name: "giga", input: "1G", want: 1 * 1000 * 1000 * 1000},
 		{name: "giga-bytes", input: "1GB", want: 1 * 1000 * 1000 * 1000},
+		{name: "space-before-suffix", input: "16 MB", want: 16 * 1000 * 1000},
 		{name: "kibi", input: "16KiB", want: 16 * 1024},
 		{name: "mebi", input: "16MiB", want: 16 * 1024 * 1024},
 		{name: "gibi", input: "1GiB", want: 1 * 1024 * 1024 * 1024},
