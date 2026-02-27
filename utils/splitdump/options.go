@@ -10,18 +10,17 @@ import (
 const defaultStreamSizeMax = int64(1024 * 1024 * 1024)
 
 type SplitDumpOptions struct {
-	StreamSizeMax    int64
-	StreamSizeMaxSet bool
+	StreamSizeMax *int64
 }
 
-func normalizeSplitDumpOptions(opts SplitDumpOptions) (SplitDumpOptions, error) {
-	if opts.StreamSizeMaxSet && opts.StreamSizeMax < 0 {
-		return opts, fmt.Errorf("splitdump: stream size max must be >= 0")
+func normalizeSplitDumpOptions(opts SplitDumpOptions) (int64, error) {
+	if opts.StreamSizeMax == nil {
+		return defaultStreamSizeMax, nil
 	}
-	if !opts.StreamSizeMaxSet {
-		opts.StreamSizeMax = defaultStreamSizeMax
+	if *opts.StreamSizeMax < 0 {
+		return 0, fmt.Errorf("splitdump: stream size max must be >= 0")
 	}
-	return opts, nil
+	return *opts.StreamSizeMax, nil
 }
 
 func ParseSizeBytes(input string) (int64, error) {
@@ -61,12 +60,16 @@ func ParseSizeBytes(input string) (int64, error) {
 		multiplier = 1000 * 1000
 	case "g", "gb":
 		multiplier = 1000 * 1000 * 1000
+	case "t", "tb":
+		multiplier = 1000 * 1000 * 1000 * 1000
 	case "kib":
 		multiplier = 1024
 	case "mib":
 		multiplier = 1024 * 1024
 	case "gib":
 		multiplier = 1024 * 1024 * 1024
+	case "tib":
+		multiplier = 1024 * 1024 * 1024 * 1024
 	default:
 		return 0, fmt.Errorf("invalid size suffix %q", suffix)
 	}

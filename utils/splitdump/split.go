@@ -167,13 +167,12 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 		}
 	}
 
-	opts, err = normalizeSplitDumpOptions(opts)
+	streamSizeMax, err := normalizeSplitDumpOptions(opts)
 	if err != nil {
 		finishWithError(err)
 		return
 	}
 	streamSize := int64(0)
-	streamSizeMax := opts.StreamSizeMax
 	for line := range bus.CurrentLine {
 		if !sourceDataDisabled {
 			lowerLine := strings.ToLower(line)
