@@ -14,11 +14,14 @@ type SplitDumpOptions struct {
 	StreamSizeMaxSet bool
 }
 
-func normalizeSplitDumpOptions(opts SplitDumpOptions) SplitDumpOptions {
+func normalizeSplitDumpOptions(opts SplitDumpOptions) (SplitDumpOptions, error) {
+	if opts.StreamSizeMaxSet && opts.StreamSizeMax < 0 {
+		return opts, fmt.Errorf("splitdump: stream size max must be >= 0")
+	}
 	if !opts.StreamSizeMaxSet {
 		opts.StreamSizeMax = defaultStreamSizeMax
 	}
-	return opts
+	return opts, nil
 }
 
 func ParseSizeBytes(input string) (int64, error) {
