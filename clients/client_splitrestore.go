@@ -96,7 +96,7 @@ func runSplitrestore(ctx context.Context) error {
 		preamble := splitdump.RestorePreamble(path)
 		// CLI requires an explicit flag to disable binlog per file.
 		if cliSplitRestoreDisableBinlog {
-			preamble = "SET sql_log_bin=0;" + preamble
+			preamble = "SET sql_log_bin=0;\n" + preamble
 		}
 		if preamble != "" {
 			reader = io.MultiReader(bytes.NewBufferString(preamble), reader)

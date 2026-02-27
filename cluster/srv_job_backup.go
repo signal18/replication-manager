@@ -978,15 +978,6 @@ func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, ba
 	return server.reseedMysqldumpWithSplitdump(ctx, backupPath, restoreUser)
 }
 
-func (server *ServerMonitor) restoreSplitdumpFile(path string) error {
-	return server.restoreSplitdumpFileContext(context.Background(), path)
-}
-
-func (server *ServerMonitor) restoreSplitdumpFileContext(ctx context.Context, path string) error {
-	preamble := splitdump.RestorePreamble(path)
-	return server.restoreSplitdumpFileContextWithPreamble(ctx, path, preamble)
-}
-
 func (server *ServerMonitor) restoreSplitdumpFileContextWithPreamble(ctx context.Context, path, preamble string) error {
 	file, err := os.Open(path)
 	if err != nil {
@@ -1103,7 +1094,7 @@ func (server *ServerMonitor) buildLogicalRestorePreamble() (string, int, error) 
 func (server *ServerMonitor) buildSplitdumpRestorePreamble(path string, sqlLogBin int) string {
 	preamble := splitdump.RestorePreamble(path)
 	if sqlLogBin == 0 {
-		return "SET sql_log_bin=0;" + preamble
+		return "SET sql_log_bin=0;\n" + preamble
 	}
 	return preamble
 }
