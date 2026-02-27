@@ -197,6 +197,9 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 					return
 				}
 				tableFile = gzip.NewWriter(f)
+				tableFile.Write([]byte(headerMetaData))
+				tableFile.Write([]byte("\n--\n" + line))
+				tableFile.Write([]byte("USE " + schema + ";\n"))
 				streamSize = 0
 			}
 		}
