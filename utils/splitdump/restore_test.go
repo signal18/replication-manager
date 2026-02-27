@@ -256,3 +256,150 @@ func TestListFilesOrderingAndClassification(t *testing.T) {
 		}
 	}
 }
+
+func TestSchemaFromFilename(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{name: "db.tbl-schema.sql.gz", want: "db"},
+		{name: "db.tbl.sql.gz", want: "db"},
+		{name: "db.tbl.sql", want: "db"},
+		{name: "db.tbl-schema-view.sql.gz", want: "db"},
+		{name: "db.tbl.00001.sql.gz", want: "db"},
+		{name: filepath.Join("dir", "sub", "db.tbl-schema.sql"), want: "db"},
+		{name: "mysql.system-all.sql.gz", want: "mysql"},
+		{name: "mysql.system-all", want: "mysql"},
+		{name: "not-a-splitdump.txt", want: ""},
+		{name: "no-dot.sql.gz", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := SchemaFromFilename(tt.name); got != tt.want {
+				t.Fatalf("SchemaFromFilename(%q) = %q, want %q", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTableFromFilename(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{name: "db.tbl-schema.sql.gz", want: "tbl"},
+		{name: "db.tbl.sql.gz", want: "tbl"},
+		{name: "db.tbl.00001.sql.gz", want: "tbl"},
+		{name: "db.tbl-schema-view.sql", want: "tbl"},
+		{name: "mysql.system-all.sql.gz", want: ""},
+		{name: "no-dot.sql", want: ""},
+		{name: "not-a-splitdump.txt", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := TableFromFilename(tt.name); got != tt.want {
+				t.Fatalf("TableFromFilename(%q) = %q, want %q", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRestorePreamble(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{name: "db.tbl-schema.sql.gz", want: "SET FOREIGN_KEY_CHECKS=0;\nUSE `db`;\n"},
+		{name: "mysql.system-all.sql.gz", want: "SET FOREIGN_KEY_CHECKS=0;\nUSE `mysql`;\n"},
+		{name: "db.tbl.00001.sql.gz", want: "SET FOREIGN_KEY_CHECKS=0;\nUSE `db`;\n"},
+		{name: "db.tbl-schema-view.sql", want: "SET FOREIGN_KEY_CHECKS=0;\nUSE `db`;\n"},
+		{name: "no-dot.sql", want: "SET FOREIGN_KEY_CHECKS=0;\n"},
+		{name: "not-a-splitdump.txt", want: "SET FOREIGN_KEY_CHECKS=0;\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := RestorePreamble(tt.name); got != tt.want {
+				t.Fatalf("RestorePreamble(%q) = %q, want %q", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsGtidSlavePosDataFile(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{name: "mysql.gtid_slave_pos.00000.sql.gz", want: true},
+		{name: "mysql.gtid_slave_pos.sql.gz", want: true},
+		{name: "mysql.gtid_slave_pos-schema.sql.gz", want: false},
+		{name: "db.gtid_slave_pos.00000.sql.gz", want: false},
+		{name: "not-a-splitdump.txt", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsGtidSlavePosDataFile(tt.name); got != tt.want {
+				t.Fatalf("IsGtidSlavePosDataFile(%q) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsMissingTableError(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{name: "with 1146 and sqlstate", input: "ERROR 1146 (42S02) at line 6: Table 'mysql.column_stats' doesn't exist", want: true},
+		{name: "with 1146 only", input: "error 1146: Table 'mysql.column_stats' doesn't exist", want: true},
+		{name: "duplicate entry", input: "ERROR 1062 (23000): Duplicate entry", want: false},
+		{name: "empty", input: "", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsMissingTableError(tt.input); got != tt.want {
+				t.Fatalf("IsMissingTableError(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsSchemaFile(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{name: "db.tbl-schema.sql.gz", want: true},
+		{name: "db.tbl-schema.sql", want: true},
+		{name: "db.tbl-schema-view.sql.gz", want: true},
+		{name: "db.tbl-schema-view.sql", want: true},
+		{name: "mysql.system-all.sql.gz", want: true},
+		{name: "mysql.system-all.sql", want: true},
+		{name: "mysql.system-all", want: true},
+		{name: "db.tbl.sql.gz", want: false},
+		{name: "db.tbl.00001.sql.gz", want: false},
+		{name: "not-a-splitdump.txt", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsSchemaFile(tt.name); got != tt.want {
+				t.Fatalf("IsSchemaFile(%q) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRestorePreambleEscapesSchema(t *testing.T) {
+	name := "db`name.tbl.sql.gz"
+	want := "SET FOREIGN_KEY_CHECKS=0;\nUSE `db``name`;\n"
+	if got := RestorePreamble(name); got != want {
+		t.Fatalf("RestorePreamble(%q) = %q, want %q", name, got, want)
+	}
+}

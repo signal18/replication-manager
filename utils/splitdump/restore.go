@@ -358,3 +358,77 @@ func splitdumpDataKey(name string) (key string, shard int) {
 	}
 	return key, shard
 }
+
+func SchemaFromFilename(name string) string {
+	schema, _ := splitdumpSchemaTable(name)
+	return schema
+}
+
+func TableFromFilename(name string) string {
+	_, table := splitdumpSchemaTable(name)
+	return table
+}
+
+func IsSchemaFile(name string) bool {
+	base := filepath.Base(name)
+	if isMysqlSystemAll(base) {
+		return true
+	}
+	lower := strings.ToLower(base)
+	return strings.HasSuffix(lower, "-schema.sql.gz") ||
+		strings.HasSuffix(lower, "-schema.sql") ||
+		strings.HasSuffix(lower, "-schema-view.sql.gz") ||
+		strings.HasSuffix(lower, "-schema-view.sql")
+}
+
+func IsGtidSlavePosDataFile(name string) bool {
+	schema, table := splitdumpSchemaTable(name)
+	if schema != "mysql" || table != "gtid_slave_pos" {
+		return false
+	}
+	return !IsSchemaFile(name)
+}
+
+func IsMissingTableError(errOutput string) bool {
+	lower := strings.ToLower(errOutput)
+	return strings.Contains(lower, "error 1146") || strings.Contains(lower, "42s02")
+}
+
+func RestorePreamble(name string) string {
+	schema := SchemaFromFilename(name)
+	if schema == "" {
+		return "SET FOREIGN_KEY_CHECKS=0;\n"
+	}
+	escaped := strings.ReplaceAll(schema, "`", "``")
+	return "SET FOREIGN_KEY_CHECKS=0;\nUSE `" + escaped + "`;\n"
+}
+
+func splitdumpSchemaTable(name string) (string, string) {
+	base := filepath.Base(name)
+	if isMysqlSystemAll(base) {
+		return "mysql", ""
+	}
+	lower := strings.ToLower(base)
+	if !strings.HasSuffix(lower, ".sql.gz") && !strings.HasSuffix(lower, ".sql") {
+		return "", ""
+	}
+
+	trimmed := strings.TrimSuffix(base, ".sql.gz")
+	trimmed = strings.TrimSuffix(trimmed, ".sql")
+	trimmed = strings.TrimSuffix(trimmed, "-schema-view")
+	trimmed = strings.TrimSuffix(trimmed, "-schema")
+	trimmed, _ = splitdumpDataKey(trimmed)
+	if trimmed == "" {
+		return "", ""
+	}
+	parts := strings.SplitN(trimmed, ".", 2)
+	if len(parts) < 2 {
+		return "", ""
+	}
+	return parts[0], parts[1]
+}
+
+func isMysqlSystemAll(name string) bool {
+	lower := strings.ToLower(name)
+	return lower == "mysql.system-all.sql.gz" || lower == "mysql.system-all.sql" || lower == "mysql.system-all"
+}
