@@ -978,11 +978,7 @@ func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, ba
 	return server.reseedMysqldumpWithSplitdump(ctx, backupPath, restoreUser)
 }
 
-func (server *ServerMonitor) restoreSplitdumpFile(path string) error {
-	return server.restoreSplitdumpFileContext(context.Background(), path)
-}
-
-func (server *ServerMonitor) restoreSplitdumpFileContext(ctx context.Context, path string) error {
+func (server *ServerMonitor) restoreSplitdumpFileContextWithPreamble(ctx context.Context, path, preamble string) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return err
@@ -1026,7 +1022,6 @@ func (server *ServerMonitor) restoreSplitdumpFileContext(ctx context.Context, pa
 		}
 	}
 
-	preamble := splitdump.RestorePreamble(path)
 	if preamble != "" {
 		reader = io.MultiReader(bytes.NewBufferString(preamble), reader)
 	}
@@ -1096,6 +1091,14 @@ func (server *ServerMonitor) buildLogicalRestorePreamble() (string, int, error) 
 	return cmdstring, sqlLogBin, nil
 }
 
+func (server *ServerMonitor) buildSplitdumpRestorePreamble(path string, sqlLogBin int) string {
+	preamble := splitdump.RestorePreamble(path)
+	if sqlLogBin == 0 {
+		return "SET sql_log_bin=0;\n" + preamble
+	}
+	return preamble
+}
+
 func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, backupPath string, restoreUser bool) error {
 	cluster := server.ClusterGroup
 	if cluster == nil {
@@ -1142,6 +1145,12 @@ func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, ba
 
 	defer server.SetInReseedBackup("")
 
+	// Each splitdump file runs in a new mysql client session, so apply a per-file preamble.
+	restoreFile := func(ctx context.Context, path string) error {
+		preamble := server.buildSplitdumpRestorePreamble(path, sqlLogBin)
+		return server.restoreSplitdumpFileContextWithPreamble(ctx, path, preamble)
+	}
+
 	restoreErr := splitdump.Restore(backupPath, splitdump.RestoreOptions{
 		Parallel:    cluster.Conf.BackupLogicalLoadThreads,
 		RestoreUser: restoreUser,
@@ -1149,7 +1158,7 @@ func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, ba
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, level, format, args...)
 		},
 		Context:                ctx,
-		RestoreFileWithContext: server.restoreSplitdumpFileContext,
+		RestoreFileWithContext: restoreFile,
 	})
 	if restoreErr != nil {
 		return restoreErr
