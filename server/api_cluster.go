@@ -2945,14 +2945,14 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return err
 		}
-	case "backup-splitdump-stream-size-max":
+	case "backup-splitdump-file-size":
 		trimmed := strings.TrimSpace(value)
 		if trimmed != "" {
 			if _, err := splitdump.ParseSizeBytes(trimmed); err != nil {
-				return fmt.Errorf("invalid value for backup-splitdump-stream-size-max: %q", value)
+				return fmt.Errorf("invalid value for backup-splitdump-file-size: %q", value)
 			}
 		}
-		mycluster.Conf.BackupSplitdumpStreamSizeMax = trimmed
+		mycluster.Conf.BackupSplitdumpFileSize = trimmed
 	case "backup-keep-within-hourly":
 		err = mycluster.SetBackupKeepWithinHourly(value)
 		if err != nil {

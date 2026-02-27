@@ -468,11 +468,6 @@ func TestSplitDumpLineParserAlternatingShardSizes(t *testing.T) {
 func TestSplitDumpLineParserNoShardWhenLimitEqualsSize(t *testing.T) {
 	bus := NewSplitDumpChannelBus()
 	outputDir := filepath.Join(t.TempDir(), "splitdump")
-	streamSizeMax := int64(0)
-	options := SplitDumpOptions{StreamSizeMax: &streamSizeMax}
-
-	go SplitDumpLineParser(bus, outputDir, options)
-
 	lines := []string{
 		"USE `mydb`\n",
 		"-- Table structure for table `edge`\n",
@@ -483,12 +478,19 @@ func TestSplitDumpLineParserNoShardWhenLimitEqualsSize(t *testing.T) {
 	baseSize := int64(0)
 	for _, line := range lines {
 		baseSize += int64(len(line))
-		bus.CurrentLine <- line
 	}
 
 	insertLine := "INSERT INTO `edge` VALUES (1);\n"
 	insertLen := int64(len(insertLine))
-	streamSizeMax = baseSize + insertLen
+	streamSizeMax := baseSize + insertLen
+	options := SplitDumpOptions{StreamSizeMax: &streamSizeMax}
+
+	go SplitDumpLineParser(bus, outputDir, options)
+
+	for _, line := range lines {
+		bus.CurrentLine <- line
+	}
+
 	bus.CurrentLine <- insertLine
 	bus.CurrentLine <- "UNLOCK TABLES;\n"
 	close(bus.CurrentLine)
@@ -501,5 +503,75 @@ func TestSplitDumpLineParserNoShardWhenLimitEqualsSize(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(outputDir, "mydb.edge.00001.sql.gz")); err == nil {
 		t.Fatal("expected no shard when stream size equals limit")
+	}
+}
+
+func TestSplitDumpLineParserSplitsAtStatementBoundary(t *testing.T) {
+	bus := NewSplitDumpChannelBus()
+	outputDir := filepath.Join(t.TempDir(), "splitdump")
+
+	lines := []string{
+		"USE `mydb`\n",
+		"-- Table structure for table `edge`\n",
+		"CREATE TABLE `edge` (id int)\n",
+		"-- Dumping data for table `edge`\n",
+		"LOCK TABLES `edge` WRITE;\n",
+		"INSERT INTO `edge` VALUES\n",
+		"(1),(2),(3)\n",
+		"(4),(5),(6);\n",
+		"INSERT INTO `edge` VALUES (7);\n",
+		"UNLOCK TABLES;\n",
+	}
+	baseSize := int64(0)
+	for i := 0; i < 7; i++ {
+		baseSize += int64(len(lines[i]))
+	}
+	streamSizeMax := baseSize - 1
+	options := SplitDumpOptions{StreamSizeMax: &streamSizeMax}
+
+	go SplitDumpLineParser(bus, outputDir, options)
+
+	for _, line := range lines {
+		bus.CurrentLine <- line
+	}
+	close(bus.CurrentLine)
+
+	select {
+	case <-bus.Finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for splitdump to finish")
+	}
+
+	shardPath := filepath.Join(outputDir, "mydb.edge.00001.sql.gz")
+	file, err := os.Open(shardPath)
+	if err != nil {
+		t.Fatalf("failed to open shard file: %v", err)
+	}
+	defer file.Close()
+
+	reader, err := gzip.NewReader(file)
+	if err != nil {
+		t.Fatalf("failed to read shard gzip: %v", err)
+	}
+	defer reader.Close()
+
+	content, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("failed to read shard content: %v", err)
+	}
+	contentStr := string(content)
+	useIndex := strings.Index(contentStr, "USE `mydb`;")
+	if useIndex == -1 {
+		t.Fatalf("expected USE statement in shard")
+	}
+	remaining := contentStr[useIndex+len("USE `mydb`;"):]
+	remaining = strings.TrimLeft(remaining, "\r\n")
+	firstLineEnd := strings.Index(remaining, "\n")
+	firstLine := remaining
+	if firstLineEnd != -1 {
+		firstLine = remaining[:firstLineEnd]
+	}
+	if !strings.HasPrefix(firstLine, "INSERT INTO `edge`") {
+		t.Fatalf("expected shard to start with INSERT statement, got: %s", firstLine)
 	}
 }

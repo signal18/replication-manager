@@ -894,7 +894,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupMysqlclientPath, "backup-mysqlclient-path", "", "Path to mysql client binary")
 	flags.StringVar(&conf.BackupMysqlclientOptions, "backup-mysqlclient-options", "--force --batch", "Extra options")
 	flags.BoolVar(&conf.BackupMysqldumpSplitDump, "backup-mysqldump-splitdump", false, "Split mysqldump output using splitdump")
-	flags.StringVar(&conf.BackupSplitdumpStreamSizeMax, "backup-splitdump-stream-size-max", "1G", "Max stream size before sharding splitdump output (e.g. 16MiB, 1G; 0 disables sharding)")
+	flags.StringVar(&conf.BackupSplitdumpFileSize, "backup-splitdump-file-size", "1G", "Max file size before sharding splitdump output (e.g. 16MiB, 1G; 0 disables sharding)")
 	flags.StringVar(&conf.BackupMytopPath, "backup-mytop-path", "", "Path to mytop binary")
 	flags.StringVar(&conf.BackupGottyClientPath, "backup-gotty-client-path", "", "Path to gotty client binary")
 	flags.StringVar(&conf.ReplicationManagerCliPath, "replication-manager-cli-path", "", "Path to replication-manager-cli binary")
