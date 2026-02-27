@@ -706,6 +706,7 @@ type Config struct {
 	BackupReseedRemoteDecompress              bool   `mapstructure:"backup-reseed-remote-decompress" toml:"backup-reseed-remote-decompress" json:"backupReseedRemoteDecompress"`
 	BackupSplitMysqlUser                      bool   `mapstructure:"backup-split-mysql-user" toml:"backup-split-mysql-user" json:"backupSplitMysqlUser"`
 	BackupRestoreMysqlUser                    bool   `mapstructure:"backup-restore-mysql-user" toml:"backup-restore-mysql-user" json:"backupRestoreMysqlUser"`
+	BackupSplitdumpStreamSizeMax              string `mapstructure:"backup-splitdump-stream-size-max" toml:"backup-splitdump-stream-size-max" json:"backupSplitdumpStreamSizeMax"`
 	BackupCheckFreeSpace                      bool   `mapstructure:"backup-check-free-space" toml:"backup-check-free-space" json:"backupCheckFreeSpace"`
 	BackupDiskTresholdWarn                    int    `mapstructure:"backup-disk-treshold-warn" toml:"backup-disk-treshold-warn" json:"backupDiskTresholdWarn"`
 	BackupDiskTresholdCrit                    int    `mapstructure:"backup-disk-treshold-crit" toml:"backup-disk-treshold-crit" json:"backupDiskTresholdCrit"`
