@@ -65,6 +65,11 @@ func runSplitrestore(ctx context.Context) error {
 	cliSplitRestoreMysql = mysqlPath
 
 	restoreFile := func(ctx context.Context, path string) error {
+		if splitdump.IsGtidSlavePosDataFile(path) {
+			logger(splitdump.LogWarn, "Splitdump restore skipped mysql.gtid_slave_pos data file: %s", path)
+			return nil
+		}
+
 		file, err := os.Open(path)
 		if err != nil {
 			return err
@@ -86,6 +91,10 @@ func runSplitrestore(ctx context.Context) error {
 			return fmt.Errorf("invalid mysql-args: %w", err)
 		}
 		cmd := exec.CommandContext(ctx, cliSplitRestoreMysql, args...)
+		preamble := splitdump.RestorePreamble(path)
+		if preamble != "" {
+			reader = io.MultiReader(bytes.NewBufferString(preamble), reader)
+		}
 		cmd.Stdin = reader
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
@@ -93,6 +102,10 @@ func runSplitrestore(ctx context.Context) error {
 			errOutput := strings.TrimSpace(stderr.String())
 			if errOutput == "" {
 				errOutput = err.Error()
+			}
+			if splitdump.SchemaFromFilename(path) == "mysql" && splitdump.IsMissingTableError(errOutput) {
+				logger(splitdump.LogWarn, "Splitdump restore skipped missing mysql table for %s: %s", path, errOutput)
+				return nil
 			}
 			return fmt.Errorf("mysql restore failed for %s: %s", path, errOutput)
 		}
