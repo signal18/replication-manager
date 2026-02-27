@@ -45,3 +45,10 @@ func TestParseSizeBytes(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeSplitDumpOptionsRejectsNegativeWhenSet(t *testing.T) {
+	_, err := normalizeSplitDumpOptions(SplitDumpOptions{StreamSizeMax: -1, StreamSizeMaxSet: true})
+	if err == nil {
+		t.Fatal("expected error for negative StreamSizeMax when set")
+	}
+}

@@ -167,9 +167,9 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 		}
 	}
 
-	opts = normalizeSplitDumpOptions(opts)
-	if opts.StreamSizeMax < 0 {
-		finishWithError(fmt.Errorf("splitdump: stream size max must be >= 0"))
+	opts, err = normalizeSplitDumpOptions(opts)
+	if err != nil {
+		finishWithError(err)
 		return
 	}
 	streamSize := int64(0)
