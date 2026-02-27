@@ -368,3 +368,37 @@ func TestIsMissingTableError(t *testing.T) {
 		})
 	}
 }
+
+func TestIsSchemaFile(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{name: "db.tbl-schema.sql.gz", want: true},
+		{name: "db.tbl-schema.sql", want: true},
+		{name: "db.tbl-schema-view.sql.gz", want: true},
+		{name: "db.tbl-schema-view.sql", want: true},
+		{name: "mysql.system-all.sql.gz", want: true},
+		{name: "mysql.system-all.sql", want: true},
+		{name: "mysql.system-all", want: true},
+		{name: "db.tbl.sql.gz", want: false},
+		{name: "db.tbl.00001.sql.gz", want: false},
+		{name: "not-a-splitdump.txt", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsSchemaFile(tt.name); got != tt.want {
+				t.Fatalf("IsSchemaFile(%q) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRestorePreambleEscapesSchema(t *testing.T) {
+	name := "db`name.tbl.sql.gz"
+	want := "SET FOREIGN_KEY_CHECKS=0;\nUSE `db``name`;\n"
+	if got := RestorePreamble(name); got != want {
+		t.Fatalf("RestorePreamble(%q) = %q, want %q", name, got, want)
+	}
+}
