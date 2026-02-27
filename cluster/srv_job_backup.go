@@ -1509,8 +1509,9 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 		clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), fz)
 	}
 
-	stderr, _ := clientCmd.StdoutPipe()
-	clientCmd.Stderr = clientCmd.Stdout
+	stdout, _ := clientCmd.StdoutPipe()
+	var stderr bytes.Buffer
+	clientCmd.Stderr = &stderr
 
 	if err := clientCmd.Start(); err != nil {
 		return fmt.Errorf("Can't start mysql client:%s at %s", err, strings.ReplaceAll(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX"))
@@ -1521,14 +1522,21 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderr, config.ConstLogModBackupStream, config.LvlDbg)
+		server.copyLogs(stdout, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 
-	wg.Wait()
-
 	err = clientCmd.Wait()
+	wg.Wait()
 	if err != nil {
-		return fmt.Errorf("Error waiting reseed %s at %s", server.URL, err)
+		errOutput := strings.TrimSpace(stderr.String())
+		formatted := server.formatMysqlRestoreError(errOutput)
+		if formatted == "" {
+			formatted = errOutput
+		}
+		if formatted == "" {
+			formatted = err.Error()
+		}
+		return fmt.Errorf("Error waiting reseed %s: %s: %w", server.URL, formatted, err)
 	}
 
 	elapsed := time.Since(start).Round(time.Second)

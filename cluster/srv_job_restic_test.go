@@ -133,6 +133,38 @@ func TestVerifyRestoredBackupUsesAlternateCompressionPath(t *testing.T) {
 	}
 }
 
+func TestFormatMysqlRestoreError(t *testing.T) {
+	server := &ServerMonitor{}
+	for _, tc := range []struct {
+		name     string
+		stderr   string
+		expected string
+	}{
+		{
+			name:     "mysql error with insert table",
+			stderr:   "mysql: [ERROR] 1046 (3D000) at line 5: No database selected\n-------------- INSERT INTOdb.customer8VALUES (1, 2)\n",
+			expected: "ERROR 1046 (3D000) at line 5: No database selected - TABLE db.customer8",
+		},
+		{
+			name:     "error with alter table and schema",
+			stderr:   "ERROR 1146 (42S02) at line 1: Table 'db.customer8' doesn't exist\n/*!40000 ALTER TABLE`db`.`customer8`DISABLE KEYS */\n",
+			expected: "ERROR 1146 (42S02) at line 1: Table 'db.customer8' doesn't exist - TABLE db.customer8",
+		},
+		{
+			name:     "error without table",
+			stderr:   "ERROR 1234 (HY000) at line 9: Some error without statement\n",
+			expected: "ERROR 1234 (HY000) at line 9: Some error without statement",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := server.formatMysqlRestoreError(tc.stderr)
+			if got != tc.expected {
+				t.Fatalf("unexpected formatted error\nexpected: %s\nactual:   %s", tc.expected, got)
+			}
+		})
+	}
+}
+
 func TestBuildResticReseedPayload(t *testing.T) {
 	server := &ServerMonitor{}
 	summary := &SnapshotMetadataSummary{

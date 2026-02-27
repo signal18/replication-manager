@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -1675,6 +1676,77 @@ func (server *ServerMonitor) executeMysqlRestore(reader io.Reader) error {
 	return server.executeMysqlRestoreContext(context.Background(), reader)
 }
 
+var mysqlRestoreErrorLineRe = regexp.MustCompile(`(?i)^ERROR\s+\d+\s+\([0-9A-Z]+\)(?:\s+at\s+line\s+\d+:|\s*:|\s+at\s+line\s+\d+\s*:)`)
+var mysqlRestoreTableRe = regexp.MustCompile(`(?is)\b(?:ALTER\s+TABLE|INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s*([^\s(;]+)`)
+
+func (server *ServerMonitor) formatMysqlRestoreError(stderr string) string {
+	trimmed := strings.TrimSpace(stderr)
+	if trimmed == "" {
+		return ""
+	}
+
+	var errLine string
+	lines := strings.Split(trimmed, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "mysql:") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, "mysql:"))
+		}
+		if strings.HasPrefix(line, "[ERROR]") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, "[ERROR]"))
+			if !strings.HasPrefix(line, "ERROR ") {
+				line = "ERROR " + line
+			}
+		}
+		if mysqlRestoreErrorLineRe.MatchString(line) {
+			errLine = line
+			break
+		}
+	}
+	if errLine == "" {
+		return ""
+	}
+
+	var table string
+	if match := mysqlRestoreTableRe.FindStringSubmatch(trimmed); len(match) > 1 {
+		table = normalizeMysqlRestoreTable(match[1])
+	}
+	if table == "" {
+		return errLine
+	}
+	return fmt.Sprintf("%s - TABLE %s", errLine, table)
+}
+
+func normalizeMysqlRestoreTable(raw string) string {
+	table := strings.TrimSpace(raw)
+	if table == "" {
+		return ""
+	}
+	for _, prefix := range []string{"(", "`"} {
+		table = strings.TrimPrefix(table, prefix)
+	}
+	for _, suffix := range []string{";", ",", ")", "`"} {
+		table = strings.TrimSuffix(table, suffix)
+	}
+	table = strings.ReplaceAll(table, "`.`", ".")
+	table = strings.ReplaceAll(table, "`", "")
+
+	upper := strings.ToUpper(table)
+	keywords := []string{"DISABLE", "ENABLE", "VALUES", "SET", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "CROSS", "ON", "ADD", "DROP", "ALTER", "RENAME", "KEYS"}
+	for _, keyword := range keywords {
+		if idx := strings.Index(upper, keyword); idx > 0 {
+			table = strings.TrimSpace(table[:idx])
+			upper = strings.ToUpper(table)
+		}
+	}
+
+	table = strings.TrimRight(table, ".")
+	return strings.TrimSpace(table)
+}
+
 func (server *ServerMonitor) executeMysqlRestoreContext(ctx context.Context, reader io.Reader) error {
 	if reader == nil {
 		return fmt.Errorf("mysql restore reader is nil")
@@ -1710,14 +1782,18 @@ func (server *ServerMonitor) executeMysqlRestoreContext(ctx context.Context, rea
 
 	if err := cmd.Run(); err != nil {
 		errOutput := strings.TrimSpace(stderr.String())
-		if errOutput == "" {
-			errOutput = err.Error()
+		formatted := server.formatMysqlRestoreError(errOutput)
+		if formatted == "" {
+			formatted = errOutput
+		}
+		if formatted == "" {
+			formatted = err.Error()
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose,
 			config.ConstLogModRestic,
 			config.LvlErr,
-			"mysql restore failed: %s", errOutput)
-		return fmt.Errorf("mysql restore failed: %s: %w", errOutput, err)
+			"mysql restore failed: %s", formatted)
+		return fmt.Errorf("mysql restore failed: %s: %w", formatted, err)
 	}
 
 	return nil
