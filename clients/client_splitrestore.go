@@ -21,11 +21,12 @@ import (
 )
 
 var (
-	cliSplitRestoreDir      string
-	cliSplitRestoreMysql    string
-	cliSplitRestoreMysqlArg string
-	cliSplitRestoreParallel int
-	cliSplitRestoreUser     bool
+	cliSplitRestoreDir           string
+	cliSplitRestoreMysql         string
+	cliSplitRestoreMysqlArg      string
+	cliSplitRestoreParallel      int
+	cliSplitRestoreUser          bool
+	cliSplitRestoreDisableBinlog bool
 )
 
 var splitRestoreCmd = &cobra.Command{
@@ -46,6 +47,7 @@ func initSplitRestoreFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&cliSplitRestoreMysqlArg, "mysql-args", "--force --batch", "Extra mysql client arguments")
 	cmd.Flags().IntVar(&cliSplitRestoreParallel, "parallel", 1, "Parallel workers for splitdump restore")
 	cmd.Flags().BoolVar(&cliSplitRestoreUser, "restore-user", true, "Restore mysql.system-all file when present")
+	cmd.Flags().BoolVar(&cliSplitRestoreDisableBinlog, "disable-binlog", false, "Disable binary logging for splitdump restore")
 }
 
 func runSplitrestore(ctx context.Context) error {
@@ -92,6 +94,10 @@ func runSplitrestore(ctx context.Context) error {
 		}
 		cmd := exec.CommandContext(ctx, cliSplitRestoreMysql, args...)
 		preamble := splitdump.RestorePreamble(path)
+		// CLI requires an explicit flag to disable binlog per file.
+		if cliSplitRestoreDisableBinlog {
+			preamble = "SET sql_log_bin=0;" + preamble
+		}
 		if preamble != "" {
 			reader = io.MultiReader(bytes.NewBufferString(preamble), reader)
 		}
