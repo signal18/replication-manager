@@ -179,7 +179,7 @@ func TestSplitDumpWithCliAddsStreamSizeMax(t *testing.T) {
 	cluster, server := newSplitDumpTestServer(t)
 	argsPath := filepath.Join(t.TempDir(), "args.txt")
 	writeSplitDumpCliScriptWithArgs(t, cluster, argsPath, 0)
-	cluster.Conf.BackupSplitdumpStreamSizeMax = "16MiB"
+	cluster.Conf.BackupSplitdumpFileSize = "16MiB"
 
 	outputDir := prepareSplitDumpOutputDir(t, server)
 	runSplitDumpWithCli(t, cluster, server, outputDir, false)

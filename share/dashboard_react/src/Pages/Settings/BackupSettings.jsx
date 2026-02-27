@@ -355,13 +355,13 @@ Default: 1G. Select from list; 0 disables sharding.`
         <Dropdown
           options={splitdumpSizeOptions}
           className={styles.dropdownButton}
-          selectedValue={selectedCluster?.config?.backupSplitdumpStreamSizeMax || '1G'}
-          confirmTitle={`Confirm backup-splitdump-stream-size-max to `}
+          selectedValue={selectedCluster?.config?.backupSplitdumpFileSize || '1G'}
+          confirmTitle={`Confirm backup-splitdump-file-size to `}
           onChange={(value) =>
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
-                setting: 'backup-splitdump-stream-size-max',
+                setting: 'backup-splitdump-file-size',
                 value: value
               })
             )

@@ -175,6 +175,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 	streamSize := int64(0)
 	pendingSplit := false
 	splitReady := false
+	// mysqldump emits complete statements ending in ';' by default.
 	isStatementEnd := func(line string) bool {
 		trimmed := strings.TrimSpace(line)
 		return strings.HasSuffix(trimmed, ";")
@@ -189,7 +190,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 				closeTableFile()
 				shardpad = fmt.Sprintf(".%05d", shard)
 				tableName := dataTableName + shardpad
-				fmt.Printf("Processing table data %s ", tableName)
+				fmt.Printf("Processing table data %s\n", tableName)
 				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
 				f, err = os.Create(tablePath)
 				if err != nil {
@@ -202,6 +203,8 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 					tableFile.Write([]byte("USE `" + schema + "`;\n"))
 				}
 				streamSize = 0
+				splitReady = false
+			} else {
 				splitReady = false
 			}
 		}

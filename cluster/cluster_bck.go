@@ -1504,15 +1504,15 @@ func (cluster *Cluster) SplitDumpWithCli(ctx context.Context, destination *Serve
 	// Use parent context for cancellation control
 	// If caller wants a timeout, they should pass context.WithTimeout
 	args := []string{"splitdump", "--outputdir", outputDir}
-	trimmedStreamSize := strings.TrimSpace(cluster.Conf.BackupSplitdumpStreamSizeMax)
-	if trimmedStreamSize != "" {
-		if sizeBytes, err := splitdump.ParseSizeBytes(trimmedStreamSize); err != nil {
+	trimmedFileSize := strings.TrimSpace(cluster.Conf.BackupSplitdumpFileSize)
+	if trimmedFileSize != "" {
+		if sizeBytes, err := splitdump.ParseSizeBytes(trimmedFileSize); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
-				"Invalid backup-splitdump-stream-size-max %q, using default sharding: %v", trimmedStreamSize, err)
+				"Invalid backup-splitdump-file-size %q, using default sharding: %v", trimmedFileSize, err)
 		} else {
-			args = append(args, "--stream-size-max", trimmedStreamSize)
+			args = append(args, "--stream-size-max", trimmedFileSize)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-				"Splitdump stream size max set to %q (%d bytes)", trimmedStreamSize, sizeBytes)
+				"Splitdump file size set to %q (%d bytes)", trimmedFileSize, sizeBytes)
 		}
 	}
 
