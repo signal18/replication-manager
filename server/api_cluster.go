@@ -2944,6 +2944,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return err
 		}
+	case "backup-splitdump-stream-size-max":
+		mycluster.Conf.BackupSplitdumpStreamSizeMax = value
 	case "backup-keep-within-hourly":
 		err = mycluster.SetBackupKeepWithinHourly(value)
 		if err != nil {
