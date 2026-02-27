@@ -105,7 +105,7 @@ func SplitDumpLineReader(bus *SplitDumpChannelBus, inputFile string) {
 }
 
 // LineParser reads the CurrentLine and figures out which channel to put it in.
-func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineFiles bool, outputDir string, skipData []string, skipTables []string*/) {
+func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitDumpOptions /*, combineFiles bool, outputDir string, skipData []string, skipTables []string*/) {
 	var drainOnce sync.Once
 	drainCurrentLine := func() {
 		drainOnce.Do(func() {
@@ -166,8 +166,13 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 		}
 	}
 
-	streamSize := 0
-	streamSizeMax := 1024 * 1024 * 1024
+	opts = normalizeSplitDumpOptions(opts)
+	if opts.StreamSizeMax < 0 {
+		finishWithError(fmt.Errorf("splitdump: stream size max must be >= 0"))
+		return
+	}
+	streamSize := int64(0)
+	streamSizeMax := opts.StreamSizeMax
 	for line := range bus.CurrentLine {
 		if !sourceDataDisabled {
 			lowerLine := strings.ToLower(line)
@@ -179,9 +184,9 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 			}
 		}
 		//	fmt.Printf("%s %b %b %b", line, onTableScheme, onTableData)
-		streamSize += len([]byte(line))
+		streamSize += int64(len([]byte(line)))
 
-		if streamSize > streamSizeMax {
+		if streamSizeMax > 0 && streamSize > streamSizeMax {
 			if tableFile == nil {
 				streamSize = 0
 			} else {
