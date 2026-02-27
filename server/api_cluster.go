@@ -37,6 +37,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dockerhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
+	"github.com/signal18/replication-manager/utils/splitdump"
 )
 
 type LogLevelEnum string
@@ -2945,7 +2946,13 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return err
 		}
 	case "backup-splitdump-stream-size-max":
-		mycluster.Conf.BackupSplitdumpStreamSizeMax = value
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			if _, err := splitdump.ParseSizeBytes(trimmed); err != nil {
+				return fmt.Errorf("invalid value for backup-splitdump-stream-size-max: %q", value)
+			}
+		}
+		mycluster.Conf.BackupSplitdumpStreamSizeMax = trimmed
 	case "backup-keep-within-hourly":
 		err = mycluster.SetBackupKeepWithinHourly(value)
 		if err != nil {
