@@ -93,6 +93,22 @@ Ensure the CLI is available in PATH or set a custom CLI path below.`
   const ReplicationManagerCliRequirement = `Path to replication-manager-cli used for splitdump processing.  
 Leave empty to use PATH lookup (replication-manager-cli).`
 
+  const SplitDumpStreamSizeRequirement = `Splitdump shard size limit for mysqldump splitdump output.  
+Default: 1G. Select from list; 0 disables sharding.`
+
+  const splitdumpSizeOptions = [
+    { name: '16 MiB', value: '16MiB' },
+    { name: '32 MiB', value: '32MiB' },
+    { name: '64 MiB', value: '64MiB' },
+    { name: '128 MiB', value: '128MiB' },
+    { name: '256 MiB', value: '256MiB' },
+    { name: '512 MiB', value: '512MiB' },
+    { name: '1 G', value: '1G' },
+    { name: '2 G', value: '2G' },
+    { name: '4 G', value: '4G' },
+    { name: 'No sharding', value: '0' }
+  ]
+
   const openCommonModal = () => {
     setIsCommonModalOpen(true)
   }
@@ -319,6 +335,34 @@ Leave empty to use PATH lookup (replication-manager-cli).`
               switchSetting({
                 clusterName: selectedCluster?.name,
                 setting: 'backup-mysqldump-splitdump'
+              })
+            )
+          }
+        />
+      )
+    },
+    {
+      key: (
+        <HStack spacing={2}>
+          <Text>Splitdump shard size</Text>
+          <RMIconButton
+            icon={HiQuestionMarkCircle}
+            onClick={() => openInfoModal('Splitdump shard size', SplitDumpStreamSizeRequirement)}
+          />
+        </HStack>
+      ),
+      value: (
+        <Dropdown
+          options={splitdumpSizeOptions}
+          className={styles.dropdownButton}
+          selectedValue={selectedCluster?.config?.backupSplitdumpStreamSizeMax || '1G'}
+          confirmTitle={`Confirm backup-splitdump-stream-size-max to `}
+          onChange={(value) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'backup-splitdump-stream-size-max',
+                value: value
               })
             )
           }
