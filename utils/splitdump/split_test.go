@@ -366,6 +366,26 @@ func TestSplitDumpLineParserShardsWithoutUse(t *testing.T) {
 	if len(matches) == 0 {
 		t.Fatalf("expected shard file for table without USE")
 	}
+	shardPath := matches[0]
+	file, err := os.Open(shardPath)
+	if err != nil {
+		t.Fatalf("failed to open shard file: %v", err)
+	}
+	defer file.Close()
+
+	reader, err := gzip.NewReader(file)
+	if err != nil {
+		t.Fatalf("failed to read shard gzip: %v", err)
+	}
+	defer reader.Close()
+
+	content, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("failed to read shard content: %v", err)
+	}
+	if strings.Contains(string(content), "USE ``;") {
+		t.Fatalf("did not expect empty USE statement in shard")
+	}
 }
 
 func TestSplitDumpLineParserAlternatingShardSizes(t *testing.T) {

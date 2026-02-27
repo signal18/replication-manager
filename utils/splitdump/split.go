@@ -173,22 +173,17 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 		return
 	}
 	streamSize := int64(0)
+	pendingSplit := false
+	splitReady := false
+	isStatementEnd := func(line string) bool {
+		trimmed := strings.TrimSpace(line)
+		return strings.HasSuffix(trimmed, ";")
+	}
 	for line := range bus.CurrentLine {
-		if !sourceDataDisabled {
-			lowerLine := strings.ToLower(line)
-			if strings.Contains(lowerLine, "source-data=0") {
-				sourceDataDisabled = true
-				bgtid = ""
-				bfile = ""
-				bpos = ""
-			}
-		}
-		//	fmt.Printf("%s %b %b %b", line, onTableScheme, onTableData)
-		streamSize += int64(len([]byte(line)))
-
-		if streamSizeMax > 0 && streamSize > streamSizeMax {
-			if tableFile == nil {
-				streamSize = 0
+		lineLen := int64(len([]byte(line)))
+		if splitReady {
+			if strings.HasPrefix(line, "UNLOCK TABLES;") {
+				splitReady = false
 			} else if onTableData && dataTableName != "" {
 				shard++
 				closeTableFile()
@@ -203,10 +198,30 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 				}
 				tableFile = gzip.NewWriter(f)
 				tableFile.Write([]byte(headerMetaData))
-				tableFile.Write([]byte("USE `" + schema + "`;\n"))
-				tableFile.Write([]byte(line))
+				if schema != "" {
+					tableFile.Write([]byte("USE `" + schema + "`;\n"))
+				}
 				streamSize = 0
-				continue
+				splitReady = false
+			}
+		}
+		if !sourceDataDisabled {
+			lowerLine := strings.ToLower(line)
+			if strings.Contains(lowerLine, "source-data=0") {
+				sourceDataDisabled = true
+				bgtid = ""
+				bfile = ""
+				bpos = ""
+			}
+		}
+		//	fmt.Printf("%s %b %b %b", line, onTableScheme, onTableData)
+		streamSize += lineLen
+
+		if streamSizeMax > 0 && streamSize > streamSizeMax {
+			if tableFile == nil {
+				streamSize = 0
+			} else if onTableData && dataTableName != "" {
+				pendingSplit = true
 			}
 		}
 		// The beginning of a mysqldump has some flags at the top of the file. Capture them into a variable.
@@ -219,6 +234,8 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 				onTableData = false
 				onTableScheme = false
 				dataTableName = ""
+				pendingSplit = false
+				splitReady = false
 				streamSize = 0
 				closeTableWriter()
 			}
@@ -336,6 +353,10 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 			if tableFile != nil {
 				tableFile.Write([]byte(line))
 			}
+		}
+		if pendingSplit && onTableData && isStatementEnd(line) {
+			splitReady = true
+			pendingSplit = false
 		}
 
 	}
