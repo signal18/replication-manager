@@ -81,6 +81,7 @@ var (
 	cliLogDir                    string
 	cliOutputDir                 string
 	cliInputFile                 string
+	cliSplitDumpStreamSizeMax    string
 	cfgGroup                     string
 	memprofile                   string
 	cpuprofile                   string
@@ -281,6 +282,7 @@ func initStatusFlags(cmd *cobra.Command) {
 func initStatusFlagsDumpSplit(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&cliOutputDir, "outputdir", "./", "Directory to store files")
 	cmd.Flags().StringVar(&cliInputFile, "inputfile", "", "SQL file in text or gzip instead of stdin")
+	cmd.Flags().StringVar(&cliSplitDumpStreamSizeMax, "stream-size-max", "", "Max stream size before sharding (e.g. 16MiB, 1G; 0 disables sharding)")
 	viper.BindPFlags(cmd.Flags())
 }
 

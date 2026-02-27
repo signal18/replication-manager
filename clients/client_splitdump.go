@@ -10,6 +10,7 @@ package clients
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,6 +34,15 @@ var splitDumpCmd = &cobra.Command{
 
 func runSplitdump(inputFile, outputDir string) error {
 	bus := splitdump.NewSplitDumpChannelBus()
+	var options splitdump.SplitDumpOptions
+	if strings.TrimSpace(cliSplitDumpStreamSizeMax) != "" {
+		value, err := splitdump.ParseSizeBytes(cliSplitDumpStreamSizeMax)
+		if err != nil {
+			return fmt.Errorf("invalid stream-size-max: %w", err)
+		}
+		options.StreamSizeMax = value
+		options.StreamSizeMaxSet = true
+	}
 
 	fmt.Printf("Outputing all tables to %s\n", outputDir)
 
@@ -50,7 +60,7 @@ func runSplitdump(inputFile, outputDir string) error {
 	}()
 	go func() {
 		defer wg.Done()
-		splitdump.SplitDumpLineParser(bus, outputDir)
+		splitdump.SplitDumpLineParser(bus, outputDir, options)
 	}()
 	//, conf.Combine, conf.OutputPath, conf.SkipData, conf.SkipTable)
 	go func() {
