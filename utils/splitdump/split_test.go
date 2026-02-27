@@ -2,6 +2,7 @@ package splitdump
 
 import (
 	"bytes"
+	"compress/gzip"
 	"io"
 	"os"
 	"path/filepath"
@@ -15,7 +16,7 @@ func TestSplitDumpLineParserEmptyInput(t *testing.T) {
 	outputDir := filepath.Join(t.TempDir(), "splitdump")
 	close(bus.CurrentLine)
 
-	go SplitDumpLineParser(bus, outputDir)
+	go SplitDumpLineParser(bus, outputDir, SplitDumpOptions{})
 
 	select {
 	case <-bus.Finished:
@@ -126,7 +127,7 @@ func TestSplitDumpLineParserMySQLGtidPurgedVariants(t *testing.T) {
 			bus := NewSplitDumpChannelBus()
 			outputDir := filepath.Join(t.TempDir(), "splitdump")
 
-			go SplitDumpLineParser(bus, outputDir)
+			go SplitDumpLineParser(bus, outputDir, SplitDumpOptions{})
 			bus.CurrentLine <- tc.line
 			close(bus.CurrentLine)
 
@@ -146,5 +147,116 @@ func TestSplitDumpLineParserMySQLGtidPurgedVariants(t *testing.T) {
 				t.Fatalf("expected metadata to contain %q, got: %s", expectedLine, data)
 			}
 		})
+	}
+}
+
+func TestSplitDumpLineParserShardsWithCustomStreamSize(t *testing.T) {
+	bus := NewSplitDumpChannelBus()
+	outputDir := filepath.Join(t.TempDir(), "splitdump")
+	streamSizeMax := int64(16 * 1024 * 1024)
+	options := SplitDumpOptions{StreamSizeMax: &streamSizeMax}
+
+	go SplitDumpLineParser(bus, outputDir, options)
+
+	lines := []string{
+		"USE `mydb`\n",
+		"-- Table structure for table `mytable`\n",
+		"CREATE TABLE `mytable` (id int)\n",
+		"-- Dumping data for table `mytable`\n",
+		"LOCK TABLES `mytable` WRITE;\n",
+	}
+	baseSize := int64(0)
+	for _, line := range lines {
+		baseSize += int64(len(line))
+		bus.CurrentLine <- line
+	}
+
+	insertLine := "INSERT INTO `mytable` VALUES (" + strings.Repeat("1,", 50) + "1);\n"
+	insertLen := int64(len(insertLine))
+	count := int((streamSizeMax-baseSize)/insertLen) + 2
+	for i := 0; i < count; i++ {
+		bus.CurrentLine <- insertLine
+	}
+	bus.CurrentLine <- "UNLOCK TABLES;\n"
+	close(bus.CurrentLine)
+
+	select {
+	case <-bus.Finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for splitdump to finish")
+	}
+
+	shardPath := filepath.Join(outputDir, "mydb.mytable.00001.sql.gz")
+	if _, err := os.Stat(shardPath); err != nil {
+		t.Fatalf("expected shard file %s: %v", shardPath, err)
+	}
+
+	matches, err := filepath.Glob(filepath.Join(outputDir, "*.00001.sql.gz"))
+	if err != nil {
+		t.Fatalf("failed to glob shard files: %v", err)
+	}
+	if len(matches) == 0 {
+		t.Fatalf("expected shard file with .00001 suffix")
+	}
+
+	file, err := os.Open(shardPath)
+	if err != nil {
+		t.Fatalf("failed to open shard file: %v", err)
+	}
+	defer file.Close()
+
+	reader, err := gzip.NewReader(file)
+	if err != nil {
+		t.Fatalf("failed to read shard gzip: %v", err)
+	}
+	defer reader.Close()
+
+	content, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("failed to read shard content: %v", err)
+	}
+	if !strings.Contains(string(content), "INSERT INTO `mytable`") {
+		t.Fatalf("expected shard content to include INSERTs for mytable")
+	}
+}
+
+func TestSplitDumpLineParserNoShardingWhenZero(t *testing.T) {
+	bus := NewSplitDumpChannelBus()
+	outputDir := filepath.Join(t.TempDir(), "splitdump")
+	streamSizeMax := int64(0)
+	options := SplitDumpOptions{StreamSizeMax: &streamSizeMax}
+
+	go SplitDumpLineParser(bus, outputDir, options)
+
+	lines := []string{
+		"USE `mydb`\n",
+		"-- Table structure for table `mytable`\n",
+		"CREATE TABLE `mytable` (id int)\n",
+		"-- Dumping data for table `mytable`\n",
+		"LOCK TABLES `mytable` WRITE;\n",
+	}
+	for _, line := range lines {
+		bus.CurrentLine <- line
+	}
+
+	insertLine := "INSERT INTO `mytable` VALUES (" + strings.Repeat("1,", 50) + "1);\n"
+	for i := 0; i < 2000; i++ {
+		bus.CurrentLine <- insertLine
+	}
+	bus.CurrentLine <- "UNLOCK TABLES;\n"
+	close(bus.CurrentLine)
+
+	select {
+	case <-bus.Finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for splitdump to finish")
+	}
+
+	matches, err := filepath.Glob(filepath.Join(outputDir, "*.00001.sql.gz"))
+	if err != nil {
+		t.Fatalf("failed to glob shard files: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("expected no shard files when stream-size-max=0")
 	}
 }

@@ -105,7 +105,7 @@ func SplitDumpLineReader(bus *SplitDumpChannelBus, inputFile string) {
 }
 
 // LineParser reads the CurrentLine and figures out which channel to put it in.
-func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineFiles bool, outputDir string, skipData []string, skipTables []string*/) {
+func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitDumpOptions /*, combineFiles bool, outputDir string, skipData []string, skipTables []string*/) {
 	var drainOnce sync.Once
 	drainCurrentLine := func() {
 		drainOnce.Do(func() {
@@ -136,6 +136,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 	onTableScheme, onTableData, pastHeader := false, false, false
 	shardpad, schema := "", ""
 	shard := 0
+	dataTableName := ""
 	binlogRegexMariaDB := regexp.MustCompile(`CHANGE MASTER TO MASTER_LOG_FILE='(.+)', MASTER_LOG_POS=(\d+)`)
 	gtidRegexMariaDB := regexp.MustCompile(`SET GLOBAL gtid_slave_pos='(.+)'`)
 	binlogRegexMySQL := regexp.MustCompile(`CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='(.+)', SOURCE_LOG_POS=(\d+)`)
@@ -166,8 +167,12 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 		}
 	}
 
-	streamSize := 0
-	streamSizeMax := 1024 * 1024 * 1024
+	streamSizeMax, err := normalizeSplitDumpOptions(opts)
+	if err != nil {
+		finishWithError(err)
+		return
+	}
+	streamSize := int64(0)
 	for line := range bus.CurrentLine {
 		if !sourceDataDisabled {
 			lowerLine := strings.ToLower(line)
@@ -179,16 +184,20 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 			}
 		}
 		//	fmt.Printf("%s %b %b %b", line, onTableScheme, onTableData)
-		streamSize += len([]byte(line))
+		streamSize += int64(len([]byte(line)))
 
-		if streamSize > streamSizeMax {
+		if streamSizeMax > 0 && streamSize > streamSizeMax {
 			if tableFile == nil {
 				streamSize = 0
 			} else {
 				shard++
 				closeTableFile()
 				shardpad = fmt.Sprintf(".%05d", shard)
-				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1)) + shardpad
+				baseTableName := dataTableName
+				if baseTableName == "" {
+					baseTableName = schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1))
+				}
+				tableName := baseTableName + shardpad
 				fmt.Printf("Processing table data %s ", tableName)
 				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
 				f, err = os.Create(tablePath)
@@ -212,6 +221,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 			if strings.HasPrefix(line, "UNLOCK TABLES;") {
 				onTableData = false
 				onTableScheme = false
+				dataTableName = ""
 				streamSize = 0
 				closeTableWriter()
 			}
@@ -257,7 +267,8 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 				}
 				closeTableFile()
 				shardpad = fmt.Sprintf(".%05d", shard)
-				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1)) + shardpad
+				dataTableName = schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1))
+				tableName := dataTableName + shardpad
 				fmt.Printf("Processing table data %s\n", tableName)
 				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
 				f, err = os.Create(tablePath)
@@ -277,6 +288,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 			} else if strings.HasPrefix(line, "-- Final view structure for view ") {
 				onTableData = false
 				onTableScheme = false
+				dataTableName = ""
 				//	onView = true
 				closeTableFile()
 				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Final view structure for view ", "", 1), "`", "", -1)) + "-schema-view"
@@ -292,6 +304,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string /*, combineF
 			} else if strings.HasPrefix(line, "INSTALL PLUGIN") || strings.HasPrefix(line, "CREATE USER") {
 				onTableData = false
 				onTableScheme = false
+				dataTableName = ""
 				closeTableFile()
 				tableName := "mysql.system-all"
 				fmt.Printf("Processing system schema %s\n", tableName)
