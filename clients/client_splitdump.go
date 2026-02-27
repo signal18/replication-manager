@@ -10,7 +10,6 @@ package clients
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -35,7 +34,7 @@ var splitDumpCmd = &cobra.Command{
 func runSplitdump(inputFile, outputDir string) error {
 	bus := splitdump.NewSplitDumpChannelBus()
 	var options splitdump.SplitDumpOptions
-	if strings.TrimSpace(cliSplitDumpStreamSizeMax) != "" {
+	if cliSplitDumpStreamSizeMax != "" {
 		value, err := splitdump.ParseSizeBytes(cliSplitDumpStreamSizeMax)
 		if err != nil {
 			return fmt.Errorf("invalid stream-size-max: %w", err)
