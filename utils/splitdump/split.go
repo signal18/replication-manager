@@ -136,6 +136,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 	onTableScheme, onTableData, pastHeader := false, false, false
 	shardpad, schema := "", ""
 	shard := 0
+	dataTableName := ""
 	binlogRegexMariaDB := regexp.MustCompile(`CHANGE MASTER TO MASTER_LOG_FILE='(.+)', MASTER_LOG_POS=(\d+)`)
 	gtidRegexMariaDB := regexp.MustCompile(`SET GLOBAL gtid_slave_pos='(.+)'`)
 	binlogRegexMySQL := regexp.MustCompile(`CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='(.+)', SOURCE_LOG_POS=(\d+)`)
@@ -193,7 +194,11 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 				shard++
 				closeTableFile()
 				shardpad = fmt.Sprintf(".%05d", shard)
-				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1)) + shardpad
+				baseTableName := dataTableName
+				if baseTableName == "" {
+					baseTableName = schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1))
+				}
+				tableName := baseTableName + shardpad
 				fmt.Printf("Processing table data %s ", tableName)
 				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
 				f, err = os.Create(tablePath)
@@ -217,6 +222,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 			if strings.HasPrefix(line, "UNLOCK TABLES;") {
 				onTableData = false
 				onTableScheme = false
+				dataTableName = ""
 				streamSize = 0
 				closeTableWriter()
 			}
@@ -262,7 +268,8 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 				}
 				closeTableFile()
 				shardpad = fmt.Sprintf(".%05d", shard)
-				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1)) + shardpad
+				dataTableName = schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1))
+				tableName := dataTableName + shardpad
 				fmt.Printf("Processing table data %s\n", tableName)
 				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
 				f, err = os.Create(tablePath)
@@ -282,6 +289,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 			} else if strings.HasPrefix(line, "-- Final view structure for view ") {
 				onTableData = false
 				onTableScheme = false
+				dataTableName = ""
 				//	onView = true
 				closeTableFile()
 				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Final view structure for view ", "", 1), "`", "", -1)) + "-schema-view"
@@ -297,6 +305,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 			} else if strings.HasPrefix(line, "INSTALL PLUGIN") || strings.HasPrefix(line, "CREATE USER") {
 				onTableData = false
 				onTableScheme = false
+				dataTableName = ""
 				closeTableFile()
 				tableName := "mysql.system-all"
 				fmt.Printf("Processing system schema %s\n", tableName)

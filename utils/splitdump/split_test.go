@@ -2,6 +2,7 @@ package splitdump
 
 import (
 	"bytes"
+	"compress/gzip"
 	"io"
 	"os"
 	"path/filepath"
@@ -184,12 +185,37 @@ func TestSplitDumpLineParserShardsWithCustomStreamSize(t *testing.T) {
 		t.Fatal("timeout waiting for splitdump to finish")
 	}
 
+	shardPath := filepath.Join(outputDir, "mydb.mytable.00001.sql.gz")
+	if _, err := os.Stat(shardPath); err != nil {
+		t.Fatalf("expected shard file %s: %v", shardPath, err)
+	}
+
 	matches, err := filepath.Glob(filepath.Join(outputDir, "*.00001.sql.gz"))
 	if err != nil {
 		t.Fatalf("failed to glob shard files: %v", err)
 	}
 	if len(matches) == 0 {
 		t.Fatalf("expected shard file with .00001 suffix")
+	}
+
+	file, err := os.Open(shardPath)
+	if err != nil {
+		t.Fatalf("failed to open shard file: %v", err)
+	}
+	defer file.Close()
+
+	reader, err := gzip.NewReader(file)
+	if err != nil {
+		t.Fatalf("failed to read shard gzip: %v", err)
+	}
+	defer reader.Close()
+
+	content, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("failed to read shard content: %v", err)
+	}
+	if !strings.Contains(string(content), "INSERT INTO `mytable`") {
+		t.Fatalf("expected shard content to include INSERTs for mytable")
 	}
 }
 
