@@ -262,7 +262,7 @@ func (cluster *Cluster) GetRepManAbsolutePath() (string, error) {
 		return filepath.Abs(path)
 	}
 
-	truepath, err := os.Readlink(path)
+	truepath, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return "", err
 	}
