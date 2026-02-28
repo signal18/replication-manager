@@ -277,6 +277,10 @@ func (cluster *Cluster) GetReplicationManagerCliPath() string {
 		if dirpath, err := cluster.GetRepManAbsolutePath(); err == nil {
 			return filepath.Join(filepath.Dir(dirpath), "replication-manager-cli")
 		}
+		// Fall back to PATH lookup
+		if path, err := exec.LookPath("replication-manager-cli"); err == nil {
+			return path
+		}
 		return "replication-manager-cli"
 	}
 	return cluster.Conf.ReplicationManagerCliPath
