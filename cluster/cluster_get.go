@@ -14,6 +14,7 @@ import (
 	"hash/crc64"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -245,10 +246,37 @@ func (cluster *Cluster) GetGottyClientPath() string {
 	return cluster.Conf.BackupGottyClientPath
 }
 
+// GetRepManAbsoluteDirPath returns the absolute path of the directory where the replication-manager executable is located.
+// It resolves symlinks if the executable is a symlink.
+func (cluster *Cluster) GetRepManAbsoluteDirPath() (string, error) {
+	path, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+
+	finfo, err := os.Lstat(path)
+	if err != nil {
+		return "", err
+	}
+
+	if finfo.Mode()&os.ModeSymlink == 0 {
+		return filepath.Abs(filepath.Dir(path))
+	}
+
+	truepath, err := os.Readlink(path)
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Abs(filepath.Dir(truepath))
+}
+
+// GetReplicationManagerCliPath returns the path to the replication-manager-cli script.
+// It will return the path defined in the configuration file if set, otherwise it will return the path of the script in the same directory as the executable
 func (cluster *Cluster) GetReplicationManagerCliPath() string {
 	if strings.TrimSpace(cluster.Conf.ReplicationManagerCliPath) == "" {
-		if path, err := exec.LookPath("replication-manager-cli"); err == nil {
-			return path
+		if dirpath, err := cluster.GetRepManAbsoluteDirPath(); err == nil {
+			return filepath.Join(dirpath, "replication-manager-cli")
 		}
 		return "replication-manager-cli"
 	}
