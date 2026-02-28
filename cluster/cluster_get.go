@@ -246,7 +246,7 @@ func (cluster *Cluster) GetGottyClientPath() string {
 	return cluster.Conf.BackupGottyClientPath
 }
 
-// GetRepManAbsoluteDirPath returns the absolute path of the directory where the replication-manager executable is located
+// GetRepManAbsolutePath returns the absolute path of the replication-manager executable, resolving any symlinks if necessary
 func (cluster *Cluster) GetRepManAbsolutePath() (string, error) {
 	path, err := os.Executable()
 	if err != nil {
