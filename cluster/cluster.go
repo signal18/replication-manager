@@ -902,6 +902,30 @@ func (cluster *Cluster) StateProcessing() {
 				}
 			}
 
+			if s.ErrKey == "WARN0075" && servertoreseed != nil {
+				task := "reseed" + cluster.Conf.BackupLogicalType
+				if servertoreseed.JobResults.Get(task) == nil {
+					servertoreseed.JobResults.Callback(func(key string, value *config.Task) bool {
+						switch key {
+						case "reseed" + config.ConstBackupLogicalTypeMysqldump, "reseed" + config.ConstBackupLogicalTypeMydumper:
+							task = key
+							return false
+						default:
+							return true
+						}
+					})
+				}
+
+				err := servertoreseed.ProcessReseedLogical(task)
+				if err != nil {
+					servertoreseed.JobsUpdateState(task, err.Error(), 5, 1)
+					if servertoreseed.HasReseedingState(task) {
+						servertoreseed.SetInReseedBackup("")
+					}
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing logical reseed for %s: %s", servertoreseed.URL, err)
+				}
+			}
+
 			if s.ErrKey == "WARN0076" && servertoreseed != nil {
 				task := "flashback" + cluster.Conf.BackupPhysicalType
 				err := servertoreseed.ProcessFlashbackPhysical(task)
