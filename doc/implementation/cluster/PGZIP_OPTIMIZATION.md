@@ -10,11 +10,11 @@ The klauspost/pgzip library is a parallel implementation of gzip that can signif
 
 - **Compression level**: Default (6) - no way to tune for speed vs. compression ratio
 - **Parallel blocks for decompression**: Hardcoded to 4 or 16 - no way to optimize for different hardware
-- **Block size**: Used `SSTSendBuffer` config (already configurable)
+- **Block size**: Coupled to `SSTSendBuffer` and not configurable for pgzip
 
 ## New Configuration Parameters
 
-Two new configuration parameters have been added to provide fine-grained control:
+Three new configuration parameters have been added to provide fine-grained control:
 
 ### 1. `compress-backups-compression-level`
 
@@ -40,7 +40,7 @@ compress-backups-compression-level = 3  # Fast compression for quick backups
 ### 2. `compress-backups-parallel-blocks`
 
 **Type**: Integer  
-**Default**: 4  
+**Default**: 16  
 **Description**: Number of parallel blocks (goroutines) used for pgzip decompression during restore/reseed operations.
 
 Higher values provide faster decompression but use more memory. The optimal value depends on:
@@ -59,18 +59,34 @@ compress-backups = true
 compress-backups-parallel-blocks = 8  # Good for 8+ core systems
 ```
 
+### 3. `compress-backups-decompress-buffer-size`
+
+**Type**: Integer  
+**Default**: 250000  
+**Description**: Block size (bytes) used by pgzip during decompression. If unset or invalid, it falls back to `sst-send-buffer`, then 250000.
+
+Larger blocks can improve throughput at the cost of memory. Smaller blocks reduce memory pressure but may reduce throughput.
+
+**Configuration example**:
+```toml
+compress-backups = true
+compress-backups-decompress-buffer-size = 250000
+```
+
 ## Files Modified
 
 ### 1. `config/config.go`
-Added two new configuration fields:
+Added three new configuration fields:
 - `CompressBackupsCompressionLevel`
 - `CompressBackupsParallelBlocks`
+- `CompressBackupsDecompressBufferSize`
 
 ### 2. `server/server.go`
 Added command-line flag definitions with defaults:
 ```go
 flags.IntVar(&conf.CompressBackupsCompressionLevel, "compress-backups-compression-level", 6, "...")
-flags.IntVar(&conf.CompressBackupsParallelBlocks, "compress-backups-parallel-blocks", 4, "...")
+flags.IntVar(&conf.CompressBackupsParallelBlocks, "compress-backups-parallel-blocks", 16, "...")
+flags.IntVar(&conf.CompressBackupsDecompressBufferSize, "compress-backups-decompress-buffer-size", 250000, "...")
 ```
 
 ### 3. `cluster/srv_job.go`
@@ -112,9 +128,16 @@ gw, err := gzip.NewWriterLevel(f, compressionLevel)
 ```go
 parallelBlocks := cluster.Conf.CompressBackupsParallelBlocks
 if parallelBlocks <= 0 {
-    parallelBlocks = 4 // Fallback to safe default
+    parallelBlocks = 16 // Fallback to pgzip default
 }
-fz, err := gzip.NewReaderN(file, cluster.Conf.SSTSendBuffer, parallelBlocks)
+blockSize := cluster.Conf.CompressBackupsDecompressBufferSize
+if blockSize <= 0 {
+    blockSize = cluster.Conf.SSTSendBuffer
+}
+if blockSize <= 0 {
+    blockSize = 250000
+}
+fz, err := gzip.NewReaderN(file, blockSize, parallelBlocks)
 ```
 
 ### Error Handling
@@ -136,6 +159,7 @@ if err != nil {
 compress-backups = true
 compress-backups-compression-level = 1
 compress-backups-parallel-blocks = 16
+compress-backups-decompress-buffer-size = 250000
 ```
 
 **Trade-offs**: Larger backup files, much faster compression
@@ -144,7 +168,8 @@ compress-backups-parallel-blocks = 16
 ```toml
 compress-backups = true
 compress-backups-compression-level = 9
-compress-backups-parallel-blocks = 4
+compress-backups-parallel-blocks = 16
+compress-backups-decompress-buffer-size = 250000
 ```
 
 **Trade-offs**: Smaller files, slower compression, moderate decompression speed
@@ -153,7 +178,8 @@ compress-backups-parallel-blocks = 4
 ```toml
 compress-backups = true
 compress-backups-compression-level = 6
-compress-backups-parallel-blocks = 4
+compress-backups-parallel-blocks = 16
+compress-backups-decompress-buffer-size = 250000
 ```
 
 **Trade-offs**: Good balance of size and speed
@@ -163,6 +189,7 @@ compress-backups-parallel-blocks = 4
 compress-backups = true
 compress-backups-compression-level = 6
 compress-backups-parallel-blocks = 16
+compress-backups-decompress-buffer-size = 250000
 ```
 
 **Trade-offs**: Fast decompression for restore, moderate compression
@@ -182,9 +209,9 @@ Typical results (100GB database backup):
 
 ## Backward Compatibility
 
-- Both parameters have sensible defaults matching previous behavior
+- Defaults now align with pgzip defaults (block size 250000, blocks 16)
 - Existing configurations without these parameters will work unchanged
-- Default values provide the same performance characteristics as before
+- Higher defaults may increase memory usage but improve decompression throughput
 
 ## Testing
 
@@ -198,7 +225,8 @@ Configuration validation:
 ```bash
 ./replication-manager-server --compress-backups=true \
   --compress-backups-compression-level=3 \
-  --compress-backups-parallel-blocks=8
+  --compress-backups-parallel-blocks=8 \
+  --compress-backups-decompress-buffer-size=250000
 ```
 
 ## Future Enhancements
@@ -220,6 +248,7 @@ Potential future improvements:
 
 These parameters work in conjunction with:
 - `compress-backups`: Enable/disable backup compression
-- `sst-send-buffer`: Buffer size for streaming (used as block size for pgzip)
+- `compress-backups-decompress-buffer-size`: Block size for pgzip decompression
+- `sst-send-buffer`: Buffer size for streaming (fallback block size for pgzip)
 - `backup-logical-type`: Type of logical backup (mysqldump, mydumper, etc.)
 - `backup-physical-type`: Type of physical backup (xtrabackup, mariabackup)
