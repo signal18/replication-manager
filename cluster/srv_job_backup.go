@@ -509,7 +509,56 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 	return nil
 }
 
+type logicalReseedPlan struct {
+	task              string
+	backtype          string
+	backupfile        string
+	meta              *backupmgr.BackupMetadata
+	splitUser         bool
+	splitUserOverride bool
+	restoreUser       bool
+	skipMetadata      bool
+	isPITR            bool
+	fromPath          bool
+	remote            bool
+}
+
+func buildLogicalReseedPayload(backtype, backupPath string, splitUser, splitUserOverride, skipMetadata, isPITR bool, serverURL string) (string, error) {
+	payload := map[string]string{
+		"backup_type":         strings.TrimSpace(backtype),
+		"backup_path":         strings.TrimSpace(backupPath),
+		"split_user":          fmt.Sprintf("%t", splitUser),
+		"split_user_override": fmt.Sprintf("%t", splitUserOverride),
+		"skip_metadata":       fmt.Sprintf("%t", skipMetadata),
+		"is_pitr":             fmt.Sprintf("%t", isPITR),
+		"server_url":          strings.TrimSpace(serverURL),
+	}
+	payloadData, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("Failed to marshal logical reseed payload: %v", err)
+	}
+	return string(payloadData), nil
+}
+
+func snapshotLogicalBackupMeta(server *ServerMonitor) *backupmgr.BackupMetadata {
+	if server == nil {
+		return nil
+	}
+	server.backupMetaMutex.Lock()
+	defer server.backupMetaMutex.Unlock()
+	if server.LastBackupMeta.Logical == nil {
+		return nil
+	}
+	metaCopy := *server.LastBackupMeta.Logical
+	return &metaCopy
+}
+
 func (server *ServerMonitor) JobReseedLogicalBackup(ctx context.Context, backtype string) error {
+	_, err := server.JobReseedLogicalBackupPrepare(ctx, backtype)
+	return err
+}
+
+func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, backtype string) (*logicalReseedPlan, error) {
 	var err error
 	cluster := server.ClusterGroup
 	if ctx == nil {
@@ -518,24 +567,28 @@ func (server *ServerMonitor) JobReseedLogicalBackup(ctx context.Context, backtyp
 	if backtype == "default" {
 		backtype = cluster.Conf.BackupLogicalType
 	}
+	if backtype == config.ConstBackupLogicalTypeDumpling {
+		return nil, errors.New("Logical reseed with dumpling is not supported")
+	}
 	task := "reseed" + backtype
+	isPITR := server.PointInTimeMeta.IsInPITR
 
 	if !cluster.IsDiscovered() {
-		return errors.New("Cluster not discovered yet")
+		return nil, errors.New("Cluster not discovered yet")
 	}
 
 	master := cluster.GetMaster()
 	if master == nil {
-		return errors.New("No master found")
+		return nil, errors.New("No master found")
 	}
 
 	if _, err := os.Stat(cluster.GetMysqlclientPath()); os.IsNotExist(err) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlclientPath())
-		return err
+		return nil, err
 	}
 
 	if backtype == config.ConstBackupLogicalTypeMydumper && cluster.VersionsMap.Get("mydumper") == nil {
-		return errors.New("No mydumper version found")
+		return nil, errors.New("No mydumper version found")
 	}
 
 	useMaster := true
@@ -586,7 +639,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(ctx context.Context, backtyp
 		if _, err := os.Stat(backupfile); err != nil {
 			//Remove false cookie
 			master.DelBackupTypeCookie(backtype)
-			return fmt.Errorf("No backup file found on master for %s", backtype)
+			return nil, fmt.Errorf("No backup file found on master for %s", backtype)
 		}
 
 		bckserver = master
@@ -595,129 +648,182 @@ func (server *ServerMonitor) JobReseedLogicalBackup(ctx context.Context, backtyp
 	err = cluster.CheckLogicalBackupToolVersion(bckserver)
 	if err != nil && cluster.Conf.BackupRestoreVersionStrict {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s version is not compatible with restore version on %s. Cancelling reseed for data safety.", backtype, server.URL)
-		return fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
+		return nil, fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
 	}
 
 	if ok, currentTask := server.TrySetInReseedBackup(task); !ok {
 		err := fmt.Errorf("Server is in reseeding state by %s", currentTask)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Concurrent reseed blocked: server %s already reseeding with %s, cannot start %s", server.URL, currentTask, task)
-		return err
+		return nil, err
 	}
-	defer func() {
+
+	resetReseed := func() {
 		if server.HasReseedingState(task) {
 			server.SetInReseedBackup("")
 		}
-	}()
+	}
 
 	//Delete wait logical backup cookie
 	server.DelWaitLogicalBackupCookie()
 
 	// If reset failed, better to stop PITR
-	if server.PointInTimeMeta.IsInPITR {
+	if isPITR {
 		server.StopSlave()
 		_, err := server.ResetSlave()
 		if err != nil {
 			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number != 1617 {
-				if server.HasReseedingState(task) {
-					server.SetInReseedBackup("")
-				}
-				return err
+				resetReseed()
+				return nil, err
 			}
 		}
 		server.SetState(stateUnconn)
 	}
 
-	if cluster.Conf.MonitorScheduler {
-		_, err := server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
-		if err != nil {
-			if server.HasReseedingState(task) {
-				server.SetInReseedBackup("")
-			}
-			return err
-		}
+	meta := snapshotLogicalBackupMeta(source)
+	splitUser := meta != nil && meta.SplitUser
+	restoreUser := cluster.Conf.BackupRestoreMysqlUser && splitUser
+	payload, err := buildLogicalReseedPayload(backtype, backupfile, splitUser, false, false, isPITR, server.URL)
+	if err != nil {
+		resetReseed()
+		return nil, err
 	}
 
-	// Set replication master to current master if not PITR
-	if !server.PointInTimeMeta.IsInPITR {
-		logs, err := server.StopSlave()
-		if err != nil {
-			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
-		}
+	server.JobsUpdateState(task, "", 1, 0)
+	server.JobsUpdatePayload(task, payload)
+	cluster.SetState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0075"], backtype, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 
-		if server.DBVersion.IsMySQLOrPercona() {
-			if server.HasMySQLGTID() {
-				cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
-			} else {
-				cluster.pointSlaveToMasterPositional(server)
-			}
-		} else {
-			cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
-		}
+	plan := &logicalReseedPlan{
+		task:         task,
+		backtype:     backtype,
+		backupfile:   backupfile,
+		meta:         meta,
+		splitUser:    splitUser,
+		restoreUser:  restoreUser,
+		skipMetadata: false,
+		isPITR:       isPITR,
+		fromPath:     false,
 	}
 
-	server.JobsUpdateState(task, "processing", 1, 0)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backtype, server.URL)
-	if backtype == config.ConstBackupLogicalTypeMysqldump {
-		err = server.reseedMysqldumpWithMetadata(ctx, backupfile, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser, source.LastBackupMeta.Logical)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())
-			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
-			}
-		} else {
-			if server.IsSlave && !server.PointInTimeMeta.IsInPITR {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", server.URL)
-				server.StartSlave()
-			}
+	return plan, nil
+}
 
-			if e2 := server.JobsUpdateState(task, "Reseed completed", 3, 1); e2 != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
-			}
-		}
-	} else if backtype == config.ConstBackupLogicalTypeMydumper {
-		err = server.JobReseedMyLoader(backupfile, cluster.Conf.BackupRestoreMysqlUser)
-		if err == nil && server.IsSlave && !server.PointInTimeMeta.IsInPITR {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")
-			meta, err2 := cluster.JobMyLoaderParseMeta(backupfile)
-			if err2 != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err2)
-				err = err2
-			} else {
-				// Set GTID position for MariaDB
-				if server.IsMariaDB() && server.HaveMariaDBGTID {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata")
-					server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+meta.BinLogUuid+"'", time.Second)
-				}
-			}
-
-			if err == nil {
-				server.StartSlave()
-			}
-		}
-
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())
-			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
-			}
-		} else {
-			if e2 := server.JobsUpdateState(task, "Reseed completed", 3, 1); e2 != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
-			}
-		}
+func (server *ServerMonitor) JobReseedLogicalBackupProcess(ctx context.Context, plan *logicalReseedPlan) error {
+	if plan == nil {
+		return errors.New("Logical reseed plan is nil")
 	}
-	return err
+	if plan.task == "" {
+		return errors.New("Logical reseed task is empty")
+	}
+	return server.ProcessReseedLogical(plan.task)
 }
 
 type JobReseedLogicalOptions struct {
-	SplitUser *bool
+	SplitUser    *bool
+	SkipMetadata bool
 }
 
-func (server *ServerMonitor) JobReseedLogicalBackupFromPath(ctx context.Context, backtype, backupPath string) error {
-	return server.JobReseedLogicalBackupFromPathWithOptions(ctx, backtype, backupPath, JobReseedLogicalOptions{})
+func formatMysqlRestoreError(stderr string) string {
+	const (
+		maxLines = 6
+		maxBytes = 2048
+	)
+	trimmed := strings.TrimSpace(stderr)
+	if trimmed == "" {
+		return ""
+	}
+	lines := strings.Split(trimmed, "\n")
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+	if len(filtered) == 0 {
+		return ""
+	}
+	var errLines []string
+	for _, line := range filtered {
+		lower := strings.ToLower(line)
+		if strings.Contains(lower, "error") || strings.Contains(lower, "fatal") {
+			errLines = append(errLines, line)
+		}
+	}
+	if len(errLines) == 0 {
+		errLines = filtered
+	}
+	if len(errLines) > maxLines {
+		errLines = errLines[len(errLines)-maxLines:]
+	}
+	msg := strings.Join(errLines, "\n")
+	if len(msg) > maxBytes {
+		msg = msg[:maxBytes-3] + "..."
+	}
+	return strings.TrimSpace(msg)
+}
+
+func (server *ServerMonitor) executeMysqlRestore(reader io.Reader, force bool) error {
+	return server.executeMysqlRestoreContext(context.Background(), reader, force)
+}
+
+func (server *ServerMonitor) executeMysqlRestoreContext(ctx context.Context, reader io.Reader, force bool) error {
+	if reader == nil {
+		return fmt.Errorf("mysql restore reader is nil")
+	}
+
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return fmt.Errorf("cluster not available")
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	mysqlPath := cluster.GetMysqlclientPath()
+	if strings.TrimSpace(mysqlPath) == "" {
+		return fmt.Errorf("mysql client path is empty")
+	}
+	if _, err := os.Stat(mysqlPath); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlErr,
+			"mysql client not found at %s: %s", mysqlPath, err)
+		return fmt.Errorf("mysql client not found at %s: %w", mysqlPath, err)
+	}
+
+	cliParams := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client")...)
+	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)
+	if force && !slices.Contains(cliParams, "--force") {
+		cliParams = append(cliParams, "--force")
+	}
+	cmd := exec.CommandContext(ctx, cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
+	cmd.Stdin = reader
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		errOutput := formatMysqlRestoreError(stderr.String())
+		if errOutput == "" {
+			errOutput = err.Error()
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlErr,
+			"mysql restore failed: %s", errOutput)
+		return fmt.Errorf("mysql restore failed: %s: %w", errOutput, err)
+	}
+
+	return nil
 }
 
 func (server *ServerMonitor) JobReseedLogicalBackupFromPathWithOptions(ctx context.Context, backtype, backupPath string, opts JobReseedLogicalOptions) error {
+	_, err := server.JobReseedLogicalBackupFromPathPrepare(ctx, backtype, backupPath, opts)
+	return err
+}
+
+func (server *ServerMonitor) JobReseedLogicalBackupFromPathPrepare(ctx context.Context, backtype, backupPath string, opts JobReseedLogicalOptions) (*logicalReseedPlan, error) {
 	var err error
 	cluster := server.ClusterGroup
 	if ctx == nil {
@@ -726,150 +832,100 @@ func (server *ServerMonitor) JobReseedLogicalBackupFromPathWithOptions(ctx conte
 	if backtype == "default" {
 		backtype = cluster.Conf.BackupLogicalType
 	}
+	if backtype == config.ConstBackupLogicalTypeDumpling {
+		return nil, errors.New("Logical reseed with dumpling is not supported")
+	}
 	if backupPath == "" {
-		return errors.New("backup path is empty")
+		return nil, errors.New("backup path is empty")
 	}
 	backupfile := backupPath
 	task := "reseed" + backtype
+	isPITR := server.PointInTimeMeta.IsInPITR
 
 	if !cluster.IsDiscovered() {
-		return errors.New("Cluster not discovered yet")
+		return nil, errors.New("Cluster not discovered yet")
 	}
 
 	master := cluster.GetMaster()
 	if master == nil {
-		return errors.New("No master found")
+		return nil, errors.New("No master found")
 	}
 
 	if _, err := os.Stat(cluster.GetMysqlclientPath()); os.IsNotExist(err) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlclientPath())
-		return err
+		return nil, err
 	}
 
 	if backtype == config.ConstBackupLogicalTypeMydumper && cluster.VersionsMap.Get("mydumper") == nil {
-		return errors.New("No mydumper version found")
+		return nil, errors.New("No mydumper version found")
 	}
 
 	if err = cluster.CheckLogicalBackupToolVersion(master); err != nil && cluster.Conf.BackupRestoreVersionStrict {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s version is not compatible with restore version on %s. Cancelling reseed for data safety.", backtype, server.URL)
-		return fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
+		return nil, fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
 	}
 
 	if ok, currentTask := server.TrySetInReseedBackup(task); !ok {
 		err := fmt.Errorf("Server is in reseeding state by %s", currentTask)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Concurrent reseed blocked: server %s already reseeding with %s, cannot start %s", server.URL, currentTask, task)
-		return err
+		return nil, err
 	}
-	defer func() {
+	resetReseed := func() {
 		if server.HasReseedingState(task) {
 			server.SetInReseedBackup("")
 		}
-	}()
+	}
 
 	//Delete wait logical backup cookie
 	server.DelWaitLogicalBackupCookie()
 
 	// If reset failed, better to stop PITR
-	if server.PointInTimeMeta.IsInPITR {
+	if isPITR {
 		server.StopSlave()
 		_, err := server.ResetSlave()
 		if err != nil {
 			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number != 1617 {
-				if server.HasReseedingState(task) {
-					server.SetInReseedBackup("")
-				}
-				return err
+				resetReseed()
+				return nil, err
 			}
 		}
 		server.SetState(stateUnconn)
 	}
 
-	if cluster.Conf.MonitorScheduler {
-		_, err := server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
-		if err != nil {
-			if server.HasReseedingState(task) {
-				server.SetInReseedBackup("")
-			}
-			return err
-		}
+	meta := snapshotLogicalBackupMeta(master)
+	splitUser := meta != nil && meta.SplitUser
+	splitUserOverride := false
+	if opts.SplitUser != nil {
+		splitUser = *opts.SplitUser
+		splitUserOverride = true
+	}
+	restoreUser := cluster.Conf.BackupRestoreMysqlUser && splitUser
+	payload, err := buildLogicalReseedPayload(backtype, backupfile, splitUser, splitUserOverride, opts.SkipMetadata, isPITR, server.URL)
+	if err != nil {
+		resetReseed()
+		return nil, err
 	}
 
-	// Set replication master to current master if not PITR
-	if !server.PointInTimeMeta.IsInPITR {
-		logs, err := server.StopSlave()
-		if err != nil {
-			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
-		}
-
-		if server.DBVersion.IsMySQLOrPercona() {
-			if server.HasMySQLGTID() {
-				cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
-			} else {
-				cluster.pointSlaveToMasterPositional(server)
-			}
-		} else {
-			cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
-		}
+	_, err = server.JobInsertTaskWithPayload(task, "0", cluster.Conf.MonitorAddress, payload)
+	if err != nil {
+		resetReseed()
+		return nil, err
 	}
 
-	server.JobsUpdateState(task, "processing", 1, 0)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s from path %s request for server: %s", backtype, backupfile, server.URL)
-	if backtype == config.ConstBackupLogicalTypeMysqldump {
-		splitUser := master.LastBackupMeta.Logical != nil && master.LastBackupMeta.Logical.SplitUser
-		if opts.SplitUser != nil {
-			splitUser = *opts.SplitUser
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-				"Using split-user override=%t for reseed logical backup from path %s on %s", splitUser, backupfile, server.URL)
-		}
-		err = server.reseedMysqldumpWithMetadata(ctx, backupfile, cluster.Conf.BackupRestoreMysqlUser && splitUser, master.LastBackupMeta.Logical)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())
-			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
-			}
-		} else {
-			if server.IsSlave && !server.PointInTimeMeta.IsInPITR {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", server.URL)
-				server.StartSlave()
-			}
-
-			if e2 := server.JobsUpdateState(task, "Reseed completed", 3, 1); e2 != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
-			}
-		}
-	} else if backtype == config.ConstBackupLogicalTypeMydumper {
-		err = server.JobReseedMyLoader(backupfile, cluster.Conf.BackupRestoreMysqlUser)
-		if err == nil && server.IsSlave && !server.PointInTimeMeta.IsInPITR {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")
-			meta, err2 := cluster.JobMyLoaderParseMeta(backupfile)
-			if err2 != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err2)
-				err = err2
-			} else {
-				// Set GTID position for MariaDB
-				if server.IsMariaDB() && server.HaveMariaDBGTID {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata")
-					server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+meta.BinLogUuid+"'", time.Second)
-				}
-			}
-
-			if err == nil {
-				server.StartSlave()
-			}
-		}
-
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())
-			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
-			}
-		} else {
-			if e2 := server.JobsUpdateState(task, "Reseed completed", 3, 1); e2 != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
-			}
-		}
+	plan := &logicalReseedPlan{
+		task:              task,
+		backtype:          backtype,
+		backupfile:        backupfile,
+		meta:              meta,
+		splitUser:         splitUser,
+		splitUserOverride: splitUserOverride,
+		restoreUser:       restoreUser,
+		skipMetadata:      opts.SkipMetadata,
+		isPITR:            isPITR,
+		fromPath:          true,
 	}
-	return err
+
+	return plan, nil
 }
 
 func findExistingBackupPath(server *ServerMonitor, candidates []string) (string, bool) {
@@ -979,6 +1035,8 @@ func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, ba
 }
 
 func (server *ServerMonitor) restoreSplitdumpFileContextWithPreamble(ctx context.Context, path, preamble string) error {
+	cluster := server.ClusterGroup
+
 	file, err := os.Open(path)
 	if err != nil {
 		return err
@@ -987,7 +1045,9 @@ func (server *ServerMonitor) restoreSplitdumpFileContextWithPreamble(ctx context
 
 	var reader io.Reader = file
 	if strings.HasSuffix(strings.ToLower(path), ".gz") {
-		gzReader, err := gzip.NewReader(file)
+		parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
+		bufferSize := cluster.getSanitizedDecompressBufferSize(config.ConstLogModTask)
+		gzReader, err := gzip.NewReaderN(file, bufferSize, parallelBlocks)
 		if err != nil {
 			return err
 		}
@@ -995,9 +1055,9 @@ func (server *ServerMonitor) restoreSplitdumpFileContextWithPreamble(ctx context
 		reader = gzReader
 	}
 
-	cluster := server.ClusterGroup
 	schema := splitdump.SchemaFromFilename(path)
 	table := splitdump.TableFromFilename(path)
+	var force bool
 	if schema == "mysql" {
 		if splitdump.IsGtidSlavePosDataFile(path) {
 			if cluster != nil {
@@ -1006,6 +1066,12 @@ func (server *ServerMonitor) restoreSplitdumpFileContextWithPreamble(ctx context
 			}
 			return nil
 		}
+
+		// We need force in system-all to prevent failed plugins
+		if splitdump.IsMysqlSystemAll(path) {
+			force = true
+		}
+
 		if table != "" {
 			// Server path proactively checks information_schema; CLI path reacts to mysql error output instead.
 			exists, err := server.tableExists(schema, table)
@@ -1026,7 +1092,7 @@ func (server *ServerMonitor) restoreSplitdumpFileContextWithPreamble(ctx context
 		reader = io.MultiReader(bytes.NewBufferString(preamble), reader)
 	}
 
-	return server.executeMysqlRestoreContext(ctx, reader)
+	return server.executeMysqlRestoreContext(ctx, reader, force)
 }
 
 func (server *ServerMonitor) tableExists(schema, table string) (bool, error) {
@@ -1100,6 +1166,10 @@ func (server *ServerMonitor) buildSplitdumpRestorePreamble(path string, sqlLogBi
 }
 
 func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, backupPath string, restoreUser bool) error {
+	return server.restoreSplitdumpWithMysql(ctx, backupPath, restoreUser)
+}
+
+func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, backupPath string, restoreUser bool) error {
 	cluster := server.ClusterGroup
 	if cluster == nil {
 		return fmt.Errorf("cluster not available")
@@ -1138,14 +1208,12 @@ func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, ba
 		"Logical restore (splitdump+mysql) started at %s for: %s", start.Format(time.RFC3339), server.URL)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 		"Splitdump restore sets sql_log_bin=%d for %s", sqlLogBin, server.URL)
-	// Apply the same preamble as mysqldump restore once before parallelized splitdump files.
-	if err := server.executeMysqlRestoreContext(ctx, bytes.NewBufferString(cmdstring)); err != nil {
+	if err := server.executeMysqlRestoreContext(ctx, bytes.NewBufferString(cmdstring), false); err != nil {
 		return err
 	}
 
 	defer server.SetInReseedBackup("")
 
-	// Each splitdump file runs in a new mysql client session, so apply a per-file preamble.
 	restoreFile := func(ctx context.Context, path string) error {
 		preamble := server.buildSplitdumpRestorePreamble(path, sqlLogBin)
 		return server.restoreSplitdumpFileContextWithPreamble(ctx, path, preamble)
@@ -1329,7 +1397,17 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 	// If a custom script is configured, use it
 	if cluster.Conf.BackupLoadScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Using script from backup-load-script on %s", server.URL)
-		server.JobReseedBackupScript()
+		if err := server.JobReseedBackupScript(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flashback %s on %s: %s", backtype, server.URL, err.Error())
+			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+			}
+			return err
+		}
+		if e2 := server.JobsUpdateState(task, "Flashback completed", 3, 1); e2 != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+		}
+		return nil
 
 		// Handle mysqldump-based reseed
 	} else if backtype == config.ConstBackupLogicalTypeMysqldump {
@@ -1480,7 +1558,8 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	// Use configurable parallel blocks for better performance
 	// For restore operations, use higher default (16) for speed, matching original behavior
 	parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
-	fz, err := gzip.NewReaderN(gzfile, cluster.Conf.SSTSendBuffer, parallelBlocks)
+	bufferSize := cluster.getSanitizedDecompressBufferSize(config.ConstLogModTask)
+	fz, err := gzip.NewReaderN(gzfile, bufferSize, parallelBlocks)
 	if err != nil {
 		return fmt.Errorf("[%s] Failed to unzip backup file in backup server for reseed:  %s ", server.URL, err)
 	}
@@ -1560,7 +1639,8 @@ func (server *ServerMonitor) ReadMysqldumpUser(backupfile string) (io.Reader, er
 	// Use configurable parallel blocks for better performance
 	// For restore operations, use higher default (16) for speed, matching original behavior
 	parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
-	fz, err := gzip.NewReaderN(gzfile, cluster.Conf.SSTSendBuffer, parallelBlocks)
+	bufferSize := cluster.getSanitizedDecompressBufferSize(config.ConstLogModTask)
+	fz, err := gzip.NewReaderN(gzfile, bufferSize, parallelBlocks)
 	if err != nil {
 		return nil, fmt.Errorf("[%s] Failed to unzip backup file in backup server for reseed:  %s ", server.URL, err)
 	}
@@ -1577,7 +1657,7 @@ func (server *ServerMonitor) ReadMysqldumpUser(backupfile string) (io.Reader, er
 // 3. User
 // 4. Password
 // 5. Cluster Name
-func (server *ServerMonitor) JobReseedBackupScript() {
+func (server *ServerMonitor) JobReseedBackupScript() error {
 	cluster := server.ClusterGroup
 	defer server.SetInReseedBackup("")
 	start := time.Now()
@@ -1585,8 +1665,9 @@ func (server *ServerMonitor) JobReseedBackupScript() {
 
 	master := cluster.GetMaster()
 	if master == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "No master found. Cancel backup reseeding %s", server.URL)
-		return
+		err := fmt.Errorf("No master found. Cancel backup reseeding %s", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%v", err)
+		return err
 	}
 	cmd := exec.Command(cluster.Conf.BackupLoadScript, misc.Unbracket(server.Host), misc.Unbracket(master.Host), server.Port, master.Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name)
 
@@ -1594,7 +1675,10 @@ func (server *ServerMonitor) JobReseedBackupScript() {
 
 	stdoutIn, _ := cmd.StdoutPipe()
 	stderrIn, _ := cmd.StderrPipe()
-	cmd.Start()
+	if err := cmd.Start(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "My reload script start failed: %s", err)
+		return err
+	}
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
@@ -1608,11 +1692,11 @@ func (server *ServerMonitor) JobReseedBackupScript() {
 	wg.Wait()
 	if err := cmd.Wait(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "My reload script: %s", err)
-		return
+		return err
 	}
 	elapsed := time.Since(start).Round(time.Second)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical restore (script) in %s (started at %s) for: %s", elapsed, start.Format(time.RFC3339), server.URL)
-
+	return nil
 }
 
 func (server *ServerMonitor) GetMyBackupDirectory() string {
@@ -3329,6 +3413,280 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 	server.JobsUpdateState(task, "Waiting more than max loop", 5, 0)
 	server.SetNeedRefreshJobs(true)
 	return errors.New("Error: waiting for " + task + " more than max loop.")
+}
+
+func (server *ServerMonitor) ProcessReseedLogical(task string) error {
+	cluster := server.ClusterGroup
+	master := cluster.GetMaster()
+
+	//Prevent multiple reseed
+	if !server.HasReseedingState(task) {
+		return fmt.Errorf("Server is not in %s state", task)
+	}
+
+	if master == nil {
+		return errors.New("No master found")
+	}
+
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
+		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
+		return errors.New("Slave is in super read-only")
+	}
+
+	backupType := cluster.Conf.BackupLogicalType
+	payloadBackupPath := ""
+	splitUser := false
+	splitUserSet := false
+	splitUserOverride := false
+	skipMetadata := false
+	isPITR := server.PointInTimeMeta.IsInPITR
+
+	parseBool := func(value string) (bool, bool) {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return false, false
+		}
+		parsed, err := strconv.ParseBool(trimmed)
+		if err != nil {
+			return false, false
+		}
+		return parsed, true
+	}
+
+	if taskInfo := server.JobResults.Get(task); taskInfo != nil && taskInfo.Payload != "" {
+		payload := make(map[string]string)
+		if err := json.Unmarshal([]byte(taskInfo.Payload), &payload); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Invalid payload for %s on %s: %s", task, server.URL, err)
+		} else {
+			if v := strings.TrimSpace(payload["backup_type"]); v != "" {
+				backupType = v
+			}
+			if v := strings.TrimSpace(payload["backup_path"]); v != "" {
+				payloadBackupPath = filepath.Clean(v)
+			}
+			if parsed, ok := parseBool(payload["split_user"]); ok {
+				splitUser = parsed
+				splitUserSet = true
+			}
+			if parsed, ok := parseBool(payload["split_user_override"]); ok {
+				splitUserOverride = parsed
+			}
+			if parsed, ok := parseBool(payload["skip_metadata"]); ok {
+				skipMetadata = parsed
+			}
+			if parsed, ok := parseBool(payload["is_pitr"]); ok {
+				isPITR = parsed
+			}
+		}
+	}
+
+	defer func() {
+		if server.HasReseedingState(task) {
+			server.SetInReseedBackup("")
+		}
+	}()
+
+	if cluster.Conf.BackupLoadScript != "" {
+		if !isPITR {
+			logs, err := server.StopSlave()
+			if err != nil {
+				cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+			}
+
+			if server.DBVersion.IsMySQLOrPercona() {
+				if server.HasMySQLGTID() {
+					cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
+				} else {
+					cluster.pointSlaveToMasterPositional(server)
+				}
+			} else {
+				cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+			}
+		}
+
+		server.JobsUpdateState(task, "processing", 1, 0)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backupType, server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Using script from backup-load-script on %s", server.URL)
+		if err := server.JobReseedBackupScript(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backupType, server.URL, err.Error())
+			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+			}
+			return err
+		}
+		if e2 := server.JobsUpdateState(task, "Reseed completed", 3, 1); e2 != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+		}
+		return nil
+	}
+
+	if backupType == config.ConstBackupLogicalTypeDumpling {
+		return errors.New("Logical reseed with dumpling is not supported")
+	}
+	if backupType == config.ConstBackupLogicalTypeRiver {
+		return errors.New("Logical reseed with internal backup type is not supported")
+	}
+	if backupType != config.ConstBackupLogicalTypeMysqldump && backupType != config.ConstBackupLogicalTypeMydumper {
+		return fmt.Errorf("Logical reseed backup type %s is not supported", backupType)
+	}
+
+	useMaster := true
+	source := master
+	var dest string
+	var destCandidates []string
+	switch backupType {
+	case config.ConstBackupLogicalTypeMysqldump:
+		dest = "mysqldump.sql.gz"
+		destCandidates = []string{"mysqldump.sql.gz", "splitdump"}
+	case config.ConstBackupLogicalTypeMydumper:
+		dest = "mydumper"
+	}
+	if len(destCandidates) == 0 {
+		destCandidates = []string{dest}
+	}
+
+	var backupfile string
+	if payloadBackupPath != "" {
+		if strings.EqualFold(payloadBackupPath, "STREAM") {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Logical reseed payload path indicates STREAM for %s; falling back to discovered backup", task)
+		} else if _, err := os.Stat(payloadBackupPath); err == nil {
+			backupfile = payloadBackupPath
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Using payload backup path %s for %s", backupfile, task)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Payload backup path not found for %s (%s); falling back to discovered backup", task, err)
+		}
+	}
+
+	if backupfile == "" {
+		bckserver := cluster.GetBackupServer()
+		if bckserver != nil && bckserver.HasBackupTypeCookie(backupType) {
+			if resolved, ok := resolveLogicalBackupPathFromMeta(bckserver, backupType); ok {
+				backupfile = resolved
+				useMaster = false
+				source = bckserver
+			} else if resolved, ok := findExistingBackupPath(bckserver, destCandidates); ok {
+				backupfile = resolved
+				useMaster = false
+				source = bckserver
+			} else {
+				//Remove false cookie
+				bckserver.DelBackupTypeCookie(backupType)
+			}
+		}
+
+		if backupfile == "" {
+			if resolved, ok := resolveLogicalBackupPathFromMeta(master, backupType); ok {
+				backupfile = resolved
+			} else if resolved, ok := findExistingBackupPath(master, destCandidates); ok {
+				backupfile = resolved
+			} else {
+				backupfile = master.GetMyBackupDirectory() + dest
+			}
+		}
+
+		if useMaster {
+			if _, err := os.Stat(backupfile); err != nil {
+				//Remove false cookie
+				master.DelBackupTypeCookie(backupType)
+				return fmt.Errorf("No backup file found on master for %s", backupType)
+			}
+		}
+	}
+
+	meta := snapshotLogicalBackupMeta(source)
+	if !splitUserSet && meta != nil {
+		splitUser = meta.SplitUser
+	}
+	restoreUser := cluster.Conf.BackupRestoreMysqlUser && splitUser
+
+	// Set replication master to current master if not PITR
+	if !isPITR {
+		logs, err := server.StopSlave()
+		if err != nil {
+			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+		}
+
+		if server.DBVersion.IsMySQLOrPercona() {
+			if server.HasMySQLGTID() {
+				cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
+			} else {
+				cluster.pointSlaveToMasterPositional(server)
+			}
+		} else {
+			cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+		}
+	}
+
+	ctx := context.Background()
+	server.JobsUpdateState(task, "processing", 1, 0)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backupType, server.URL)
+	if splitUserOverride {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Using split-user override=%t for reseed logical backup from path %s on %s", splitUser, backupfile, server.URL)
+	}
+
+	var err error
+	if backupType == config.ConstBackupLogicalTypeMysqldump {
+		if skipMetadata {
+			err = server.reseedMysqldumpWithSplitdump(ctx, backupfile, restoreUser)
+		} else {
+			err = server.reseedMysqldumpWithMetadata(ctx, backupfile, restoreUser, meta)
+		}
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backupType, server.URL, err.Error())
+			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+			}
+			return err
+		}
+
+		if server.IsSlave && !isPITR {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", server.URL)
+			server.StartSlave()
+		}
+
+		if e2 := server.JobsUpdateState(task, "Reseed completed", 3, 1); e2 != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+		}
+		return nil
+	}
+
+	if backupType == config.ConstBackupLogicalTypeMydumper {
+		err = server.JobReseedMyLoader(backupfile, cluster.Conf.BackupRestoreMysqlUser)
+		if err == nil && server.IsSlave && !isPITR {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")
+			meta, err2 := cluster.JobMyLoaderParseMeta(backupfile)
+			if err2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err2)
+				err = err2
+			} else {
+				// Set GTID position for MariaDB
+				if server.IsMariaDB() && server.HaveMariaDBGTID {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata")
+					server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+meta.BinLogUuid+"'", time.Second)
+				}
+			}
+
+			if err == nil {
+				server.StartSlave()
+			}
+		}
+
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backupType, server.URL, err.Error())
+			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+			}
+			return err
+		}
+
+		if e2 := server.JobsUpdateState(task, "Reseed completed", 3, 1); e2 != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+		}
+		return nil
+	}
+
+	return fmt.Errorf("Logical reseed backup type %s is not supported", backupType)
 }
 
 func (server *ServerMonitor) ProcessReseedPhysical(task string) error {

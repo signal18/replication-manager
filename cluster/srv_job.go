@@ -1107,6 +1107,10 @@ func (server *ServerMonitor) UpgradeJobsScript() error {
 
 	err := cluster.SSTRunSender(filepath.Join(server.Datadir, "init/init", "dbjobs_new"), server, true)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "dbjobs_new file does not exist on %s, retrying later", server.Name)
+			return nil
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error sending dbjobs_new file to %s: %s", server.Name, err.Error())
 		return err
 	}

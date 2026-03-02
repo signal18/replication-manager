@@ -295,11 +295,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 					return
 				}
 				tableFile = gzip.NewWriter(f)
-
-				if !pastHeader {
-					// add the meta data to only the first table.
-					tableFile.Write([]byte(headerMetaData))
-				}
+				tableFile.Write([]byte(headerMetaData))
 				onTableScheme = false
 				onTableData = true
 
