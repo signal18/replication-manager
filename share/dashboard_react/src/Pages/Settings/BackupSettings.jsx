@@ -631,78 +631,58 @@ Default: 1G. Select from list; 0 disables sharding.`
         />
       )
     },
-    // Not yet implemented in db job restore process
-    // This feature is intended to offload decompression to the target server during reseed operations
-    // so that the data is sent in compressed form over the network. Which can save bandwidth and speed up the network process.
-    // {
-    //   key: 'Reseed: decompress on target (send compressed stream)',
-    //   value: (
-    //     <RMSwitch
-    //       isChecked={selectedCluster?.config?.backupReseedRemoteDecompress}
-    //       isDisabled={user?.grants['cluster-settings'] == false}
-    //       confirmTitle={'Confirm switch settings for backup-reseed-remote-decompress?'}
-    //       onChange={() =>
-    //         dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-reseed-remote-decompress' }))
-    //       }
-    //     />
-    //   )
-    // },
-    ...(selectedCluster?.config?.compressBackups
-      ? [
-        {
-          key: (
-            <Stack>
-              <Text>Compression Level (1=fastest, 9=best)</Text>
-            </Stack>
-          ),
-          value: (
-            <NumberInput
-              min={1}
-              max={9}
-              value={selectedCluster?.config?.compressBackupsCompressionLevel}
-              showEditButton={true}
-              showConfirmModal={true}
-              confirmTitle={`Confirm change compression level to: `}
-              onConfirm={(value) =>
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'compress-backups-compression-level',
-                    value: value
-                  })
-                )
-              }
-            />
-          )
-        },
-        {
-          key: (
-            <Stack>
-              <Text>Parallel Blocks (higher=faster restore)</Text>
-            </Stack>
-          ),
-          value: (
-            <NumberInput
-              min={1}
-              max={32}
-              value={selectedCluster?.config?.compressBackupsParallelBlocks}
-              showEditButton={true}
-              showConfirmModal={true}
-              confirmTitle={`Confirm change parallel blocks to: `}
-              onConfirm={(value) =>
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'compress-backups-parallel-blocks',
-                    value: value
-                  })
-                )
-              }
-            />
-          )
-        }
-      ]
-      : []),
+    {
+      key: (
+        <Stack>
+          <Text>Compression Level (1=fastest, 9=best)</Text>
+        </Stack>
+      ),
+      value: (
+        <NumberInput
+          min={1}
+          max={9}
+          value={selectedCluster?.config?.compressBackupsCompressionLevel}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change compression level to: `}
+          onConfirm={(value) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'compress-backups-compression-level',
+                value: value
+              })
+            )
+          }
+        />
+      )
+    },
+    {
+      key: (
+        <Stack>
+          <Text>Parallel Blocks (higher=faster restore)</Text>
+        </Stack>
+      ),
+      value: (
+        <NumberInput
+          min={1}
+          max={32}
+          value={selectedCluster?.config?.compressBackupsParallelBlocks}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change parallel blocks to: `}
+          onConfirm={(value) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'compress-backups-parallel-blocks',
+                value: value
+              })
+            )
+          }
+        />
+      )
+    },
     {
       key: (
         <Stack>
