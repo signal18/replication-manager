@@ -520,7 +520,6 @@ type logicalReseedPlan struct {
 	skipMetadata      bool
 	isPITR            bool
 	fromPath          bool
-	remote            bool
 }
 
 func buildLogicalReseedPayload(backtype, backupPath string, splitUser, splitUserOverride, skipMetadata, isPITR bool, serverURL string) (string, error) {
@@ -787,7 +786,7 @@ func (server *ServerMonitor) executeMysqlRestoreContext(ctx context.Context, rea
 	}
 	if _, err := os.Stat(mysqlPath); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose,
-			config.ConstLogModRestic,
+			config.ConstLogModBackupStream,
 			config.LvlErr,
 			"mysql client not found at %s: %s", mysqlPath, err)
 		return fmt.Errorf("mysql client not found at %s: %w", mysqlPath, err)
@@ -809,7 +808,7 @@ func (server *ServerMonitor) executeMysqlRestoreContext(ctx context.Context, rea
 			errOutput = err.Error()
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose,
-			config.ConstLogModRestic,
+			config.ConstLogModBackupStream,
 			config.LvlErr,
 			"mysql restore failed: %s", errOutput)
 		return fmt.Errorf("mysql restore failed: %s: %w", errOutput, err)
