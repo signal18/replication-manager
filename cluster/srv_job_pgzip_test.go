@@ -114,14 +114,14 @@ func TestPgzipParallelBlocksValidation(t *testing.T) {
 		{
 			name:           "Invalid zero blocks",
 			inputBlocks:    0,
-			expectedBlocks: 4,
-			description:    "0 blocks should default to 4",
+			expectedBlocks: 16,
+			description:    "0 blocks should default to 16",
 		},
 		{
 			name:           "Invalid negative blocks",
 			inputBlocks:    -5,
-			expectedBlocks: 4,
-			description:    "Negative blocks should default to 4",
+			expectedBlocks: 16,
+			description:    "Negative blocks should default to 16",
 		},
 	}
 
@@ -130,7 +130,7 @@ func TestPgzipParallelBlocksValidation(t *testing.T) {
 			// Simulate validation logic from srv_job.go
 			parallelBlocks := tc.inputBlocks
 			if parallelBlocks <= 0 {
-				parallelBlocks = 4
+				parallelBlocks = 16
 			}
 
 			if parallelBlocks != tc.expectedBlocks {
@@ -291,14 +291,19 @@ func TestPgzipConfigDefaults(t *testing.T) {
 
 	// Simulate default values from flags
 	conf.CompressBackupsCompressionLevel = 6
-	conf.CompressBackupsParallelBlocks = 4
+	conf.CompressBackupsParallelBlocks = 16
+	conf.CompressBackupsDecompressBufferSize = 250000
 
 	if conf.CompressBackupsCompressionLevel != 6 {
 		t.Errorf("Default compression level should be 6, got %d", conf.CompressBackupsCompressionLevel)
 	}
 
-	if conf.CompressBackupsParallelBlocks != 4 {
-		t.Errorf("Default parallel blocks should be 4, got %d", conf.CompressBackupsParallelBlocks)
+	if conf.CompressBackupsParallelBlocks != 16 {
+		t.Errorf("Default parallel blocks should be 16, got %d", conf.CompressBackupsParallelBlocks)
+	}
+
+	if conf.CompressBackupsDecompressBufferSize != 250000 {
+		t.Errorf("Default decompress buffer size should be 250000, got %d", conf.CompressBackupsDecompressBufferSize)
 	}
 }
 

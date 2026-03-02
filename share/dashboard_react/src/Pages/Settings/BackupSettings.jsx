@@ -1,5 +1,5 @@
 import { Box, Flex, HStack, Spinner, Stack, Text } from '@chakra-ui/react'
-import React, { useRef, useState, useEffect } from 'react'
+import React, { useRef, useState, useEffect, useMemo } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
 
@@ -32,6 +32,22 @@ const sizeGenerator = () => {
   })
 }
 
+const defaultDecompressBufferSize = 250000
+
+const buildDecompressBufferOptions = (options) => {
+  const updatedOptions = [...options]
+  const defaultOption = {
+    name: formatBytes(defaultDecompressBufferSize, 0),
+    value: defaultDecompressBufferSize
+  }
+
+  if (!updatedOptions.some((option) => option.value === defaultOption.value)) {
+    updatedOptions.push(defaultOption)
+  }
+
+  return updatedOptions.sort((a, b) => a.value - b.value)
+}
+
 function BackupSettings({ selectedCluster, user }) {
   const dispatch = useDispatch()
   const joinClasses = (...classes) => classes.filter(Boolean).join(' ')
@@ -40,6 +56,7 @@ function BackupSettings({ selectedCluster, user }) {
   const [binlogBackupOptions, setBinlogBackupOptions] = useState([])
   const [binlogParseOptions, setBinlogParseOptions] = useState([])
   const [sizeOptions, setSizeOptions] = useState(sizeGenerator())
+  const decompressBufferOptions = useMemo(() => buildDecompressBufferOptions(sizeOptions), [sizeOptions])
   const [selectedBinlogBackupType, setselectedBinlogBackupType] = useState('')
   const [isBackupSnapshotsOpen, setIsBackupSnapshotsOpen] = useState(true)
   const [isResticRepoConfigOpen, setIsResticRepoConfigOpen] = useState(true)
@@ -686,6 +703,29 @@ Default: 1G. Select from list; 0 disables sharding.`
         }
       ]
       : []),
+    {
+      key: (
+        <Stack>
+          <Text>Decompress Buffer Size (pgzip block size)</Text>
+        </Stack>
+      ),
+      value: (
+        <Dropdown
+          options={decompressBufferOptions}
+          selectedValue={selectedCluster?.config?.compressBackupsDecompressBufferSize}
+          confirmTitle={`Confirm change 'compress-backups-decompress-buffer-size' to `}
+          onChange={(size) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'compress-backups-decompress-buffer-size',
+                value: size
+              })
+            )
+          }
+        />
+      )
+    },
     {
       key: 'Backup Buffer Size',
       value: (

@@ -23,9 +23,10 @@ import (
 func TestPgzipEndToEndCompression(t *testing.T) {
 	// Create test configuration
 	conf := &config.Config{
-		CompressBackupsCompressionLevel: 6,
-		CompressBackupsParallelBlocks:   4,
-		SSTSendBuffer:                   16384,
+		CompressBackupsCompressionLevel:     6,
+		CompressBackupsParallelBlocks:       16,
+		CompressBackupsDecompressBufferSize: 250000,
+		SSTSendBuffer:                       16384,
 	}
 
 	// Create test data
@@ -42,7 +43,7 @@ func TestPgzipEndToEndCompression(t *testing.T) {
 		{
 			name:             "Default configuration",
 			compressionLevel: 6,
-			parallelBlocks:   4,
+			parallelBlocks:   16,
 			expectedSuccess:  true,
 			description:      "Should work with default values",
 		},
@@ -56,14 +57,14 @@ func TestPgzipEndToEndCompression(t *testing.T) {
 		{
 			name:             "Maximum compression",
 			compressionLevel: 9,
-			parallelBlocks:   4,
+			parallelBlocks:   16,
 			expectedSuccess:  true,
 			description:      "Should work with maximum compression",
 		},
 		{
 			name:             "Invalid compression level",
 			compressionLevel: 10,
-			parallelBlocks:   4,
+			parallelBlocks:   16,
 			expectedSuccess:  true, // Should fallback to default
 			description:      "Should fallback to default when invalid",
 		},
@@ -90,7 +91,15 @@ func TestPgzipEndToEndCompression(t *testing.T) {
 
 			parallelBlocks := conf.CompressBackupsParallelBlocks
 			if parallelBlocks <= 0 {
-				parallelBlocks = 4
+				parallelBlocks = 16
+			}
+
+			blockSize := conf.CompressBackupsDecompressBufferSize
+			if blockSize <= 0 {
+				blockSize = conf.SSTSendBuffer
+			}
+			if blockSize <= 0 {
+				blockSize = 250000
 			}
 
 			// Compress data
@@ -134,7 +143,7 @@ func TestPgzipEndToEndCompression(t *testing.T) {
 			}
 			defer f.Close()
 
-			gr, err := pgzip.NewReaderN(f, conf.SSTSendBuffer, parallelBlocks)
+			gr, err := pgzip.NewReaderN(f, blockSize, parallelBlocks)
 			if err != nil {
 				if !tc.expectedSuccess {
 					t.Logf("Expected failure occurred during decompression: %v", err)
@@ -163,8 +172,9 @@ func TestPgzipEndToEndCompression(t *testing.T) {
 // TestPgzipConfigurationPersistence tests config value persistence
 func TestPgzipConfigurationPersistence(t *testing.T) {
 	conf := &config.Config{
-		CompressBackupsCompressionLevel: 3,
-		CompressBackupsParallelBlocks:   8,
+		CompressBackupsCompressionLevel:     3,
+		CompressBackupsParallelBlocks:       8,
+		CompressBackupsDecompressBufferSize: 250000,
 	}
 
 	// Verify values are set
@@ -178,9 +188,15 @@ func TestPgzipConfigurationPersistence(t *testing.T) {
 			conf.CompressBackupsParallelBlocks)
 	}
 
+	if conf.CompressBackupsDecompressBufferSize != 250000 {
+		t.Errorf("Decompress buffer size not set correctly: got %d, want 250000",
+			conf.CompressBackupsDecompressBufferSize)
+	}
+
 	// Simulate config update
 	conf.CompressBackupsCompressionLevel = 9
 	conf.CompressBackupsParallelBlocks = 16
+	conf.CompressBackupsDecompressBufferSize = 500000
 
 	// Verify values updated
 	if conf.CompressBackupsCompressionLevel != 9 {
@@ -191,6 +207,11 @@ func TestPgzipConfigurationPersistence(t *testing.T) {
 	if conf.CompressBackupsParallelBlocks != 16 {
 		t.Errorf("Parallel blocks not updated correctly: got %d, want 16",
 			conf.CompressBackupsParallelBlocks)
+	}
+
+	if conf.CompressBackupsDecompressBufferSize != 500000 {
+		t.Errorf("Decompress buffer size not updated correctly: got %d, want 500000",
+			conf.CompressBackupsDecompressBufferSize)
 	}
 }
 
@@ -209,8 +230,8 @@ func TestPgzipPerformanceComparison(t *testing.T) {
 		parallelBlocks   int
 	}{
 		{"Fast (1/16)", 1, 16},
-		{"Balanced (6/4)", 6, 4},
-		{"Best (9/4)", 9, 4},
+		{"Balanced (6/16)", 6, 16},
+		{"Best (9/16)", 9, 16},
 	}
 
 	type result struct {
@@ -260,7 +281,7 @@ func TestPgzipPerformanceComparison(t *testing.T) {
 			}
 			defer f.Close()
 
-			gr, err := pgzip.NewReaderN(f, 16384, cfg.parallelBlocks)
+			gr, err := pgzip.NewReaderN(f, 250000, cfg.parallelBlocks)
 			if err != nil {
 				t.Fatalf("NewReaderN failed: %v", err)
 			}
@@ -309,9 +330,10 @@ func TestPgzipLargeFileHandling(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	conf := &config.Config{
-		CompressBackupsCompressionLevel: 6,
-		CompressBackupsParallelBlocks:   8,
-		SSTSendBuffer:                   32768,
+		CompressBackupsCompressionLevel:     6,
+		CompressBackupsParallelBlocks:       8,
+		CompressBackupsDecompressBufferSize: 250000,
+		SSTSendBuffer:                       32768,
 	}
 
 	// Compress
@@ -357,7 +379,7 @@ func TestPgzipLargeFileHandling(t *testing.T) {
 	}
 	defer f.Close()
 
-	gr, err := pgzip.NewReaderN(f, conf.SSTSendBuffer, conf.CompressBackupsParallelBlocks)
+	gr, err := pgzip.NewReaderN(f, conf.CompressBackupsDecompressBufferSize, conf.CompressBackupsParallelBlocks)
 	if err != nil {
 		t.Fatalf("Failed to create reader: %v", err)
 	}
