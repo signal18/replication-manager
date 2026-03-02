@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -67,7 +68,14 @@ func TestGetReplicationManagerCliPathUsesExecutableDir(t *testing.T) {
 	cluster := &Cluster{Conf: &config.Config{ReplicationManagerCliPath: "  "}}
 
 	got := cluster.GetReplicationManagerCliPath()
-	expected := filepath.Join(filepath.Dir(expectedExecutablePath(t)), "replication-manager-cli")
+	expected := "replication-manager-cli"
+	exeDir := filepath.Dir(expectedExecutablePath(t))
+	localPath := filepath.Join(exeDir, "replication-manager-cli")
+	if _, err := os.Stat(localPath); err == nil {
+		expected = localPath
+	} else if path, err := exec.LookPath("replication-manager-cli"); err == nil {
+		expected = path
+	}
 	if got != expected {
 		t.Fatalf("expected %q, got %q", expected, got)
 	}
