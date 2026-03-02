@@ -571,7 +571,8 @@ func (cluster *Cluster) SSTRunSendGzip(client net.Conn, backupfile string, sv *S
 	// Use configurable parallel blocks for better performance
 	// For SST/reseed operations, use higher default (16) for speed, matching original behavior
 	parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModSST)
-	fz, err := gzip.NewReaderN(file, cluster.Conf.SSTSendBuffer, parallelBlocks)
+	bufferSize := cluster.getSanitizedDecompressBufferSize(config.ConstLogModSST)
+	fz, err := gzip.NewReaderN(file, bufferSize, parallelBlocks)
 	if err != nil {
 		return fmt.Errorf("SST to server %s failed in init gzip reader, err: %s", sv.URL, err)
 	}

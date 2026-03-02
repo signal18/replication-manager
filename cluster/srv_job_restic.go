@@ -10,13 +10,11 @@
 package cluster
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -924,6 +922,30 @@ var resticReseedTimeout = func(opts ResticReseedOptions, conf *config.Config) ti
 	return 1 * time.Hour
 }
 
+func resticReseedTaskName(cluster *Cluster, snapshotID, method string) string {
+	if cluster == nil {
+		return ""
+	}
+	backupTool := ""
+	if summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil); summary != nil {
+		backupTool = strings.TrimSpace(summary.BackupTool)
+	}
+	if backupTool == "" {
+		normalizedMethod := strings.ToLower(strings.TrimSpace(method))
+		switch normalizedMethod {
+		case "physical":
+			backupTool = cluster.Conf.BackupPhysicalType
+		case "logical":
+			backupTool = cluster.Conf.BackupLogicalType
+		}
+	}
+	backupTool = strings.TrimSpace(backupTool)
+	if backupTool == "" {
+		return ""
+	}
+	return "reseed" + backupTool
+}
+
 // JobReseedFromRestic orchestrates a restic reseed workflow with strategy fallback and timeout handling.
 //
 // The function validates inputs, ensures snapshot metadata is ready, resolves the strategy chain,
@@ -1008,13 +1030,26 @@ func (server *ServerMonitor) JobReseedFromRestic(snapshotID, method, strategy st
 
 	timeout := resticReseedTimeout(opts, cluster.Conf)
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if normalizedMethod == "logical" {
+		ctx, cancel = context.WithCancel(context.Background())
+		task := resticReseedTaskName(cluster, snapshotID, normalizedMethod)
+		if task != "" {
+			server.registerJobCancel(task, cancel)
+			defer server.clearJobCancel(task)
+		}
+	} else {
+		ctx, cancel = context.WithTimeout(context.Background(), timeout)
+	}
 	defer cancel()
 
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("restic reseed timeout after %v", timeout)
-	default:
+	if normalizedMethod == "physical" {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("restic reseed timeout after %v", timeout)
+		default:
+		}
 	}
 
 	var err error
@@ -1059,23 +1094,10 @@ func (server *ServerMonitor) updateResticReseedJobError(snapshotID, method strin
 	if cluster == nil {
 		return
 	}
-	backupTool := ""
-	if summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil); summary != nil {
-		backupTool = strings.TrimSpace(summary.BackupTool)
-	}
-	if backupTool == "" {
-		normalizedMethod := strings.ToLower(strings.TrimSpace(method))
-		switch normalizedMethod {
-		case "physical":
-			backupTool = cluster.Conf.BackupPhysicalType
-		case "logical":
-			backupTool = cluster.Conf.BackupLogicalType
-		}
-	}
-	if strings.TrimSpace(backupTool) == "" {
+	task := resticReseedTaskName(cluster, snapshotID, method)
+	if task == "" {
 		return
 	}
-	task := "reseed" + backupTool
 	if err := server.JobsUpdateState(task, err.Error(), 5, 1); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose,
 			config.ConstLogModRestic,
@@ -1426,6 +1448,7 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 				"Using restic metadata split-user=%t for snapshot %s",
 				splitUser, logSnapshotID)
 		}
+		logicalOpts.SkipMetadata = true
 		return server.JobReseedLogicalBackupFromPathWithOptions(ctx, paths.BackupType, paths.TargetPaths[0], logicalOpts)
 	case "physical":
 		payload := map[string]string{
@@ -1671,58 +1694,6 @@ func (server *ServerMonitor) reseedFromResticDump(ctx context.Context, snapshotI
 	return nil
 }
 
-func (server *ServerMonitor) executeMysqlRestore(reader io.Reader) error {
-	return server.executeMysqlRestoreContext(context.Background(), reader)
-}
-
-func (server *ServerMonitor) executeMysqlRestoreContext(ctx context.Context, reader io.Reader) error {
-	if reader == nil {
-		return fmt.Errorf("mysql restore reader is nil")
-	}
-
-	cluster := server.ClusterGroup
-	if cluster == nil {
-		return fmt.Errorf("cluster not available")
-	}
-
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	mysqlPath := cluster.GetMysqlclientPath()
-	if strings.TrimSpace(mysqlPath) == "" {
-		return fmt.Errorf("mysql client path is empty")
-	}
-	if _, err := os.Stat(mysqlPath); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose,
-			config.ConstLogModRestic,
-			config.LvlErr,
-			"mysql client not found at %s: %s", mysqlPath, err)
-		return fmt.Errorf("mysql client not found at %s: %w", mysqlPath, err)
-	}
-
-	cliParams := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client")...)
-	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)
-	cmd := exec.CommandContext(ctx, cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
-	cmd.Stdin = reader
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		errOutput := strings.TrimSpace(stderr.String())
-		if errOutput == "" {
-			errOutput = err.Error()
-		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose,
-			config.ConstLogModRestic,
-			config.LvlErr,
-			"mysql restore failed: %s", errOutput)
-		return fmt.Errorf("mysql restore failed: %s: %w", errOutput, err)
-	}
-
-	return nil
-}
-
 func (server *ServerMonitor) reseedMysqldumpFromResticStream(ctx context.Context, snapshotID, filePath string) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -1800,7 +1771,9 @@ func (server *ServerMonitor) reseedMysqldumpFromResticStream(ctx context.Context
 			"Detected gzip-compressed mysqldump stream: %s",
 			filePath)
 		var err error
-		gzReader, err = pgzip.NewReaderN(pr, cluster.Conf.SSTSendBuffer, cluster.Conf.CompressBackupsParallelBlocks)
+		bufferSize := cluster.getSanitizedDecompressBufferSize(config.ConstLogModRestic)
+		parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModRestic)
+		gzReader, err = pgzip.NewReaderN(pr, bufferSize, parallelBlocks)
 		if err != nil {
 			_ = pr.CloseWithError(err)
 			return fmt.Errorf("failed to create gzip reader: %w", err)
@@ -1809,7 +1782,7 @@ func (server *ServerMonitor) reseedMysqldumpFromResticStream(ctx context.Context
 		reader = gzReader
 	}
 
-	restoreErr := server.executeMysqlRestore(reader)
+	restoreErr := server.executeMysqlRestore(reader, false)
 	if restoreErr != nil {
 		_ = pr.CloseWithError(restoreErr)
 	}
@@ -2225,7 +2198,16 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 
 	switch normalizedMethod {
 	case "logical":
-		return server.JobReseedLogicalBackupFromPath(ctx, paths.BackupType, paths.TargetPaths[0])
+		logicalOpts := JobReseedLogicalOptions{SkipMetadata: true}
+		if splitUser, ok := getSnapshotLogicalSplitUser(cluster, snapshotID); ok {
+			logicalOpts.SplitUser = &splitUser
+			cluster.LogModulePrintf(cluster.Conf.Verbose,
+				config.ConstLogModRestic,
+				config.LvlInfo,
+				"Using restic metadata split-user=%t for snapshot %s",
+				splitUser, resticLogSnapshotID(cluster, snapshotID))
+		}
+		return server.JobReseedLogicalBackupFromPathWithOptions(ctx, paths.BackupType, paths.TargetPaths[0], logicalOpts)
 	case "physical":
 		task := "reseed" + paths.BackupType
 		if summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil); summary != nil {

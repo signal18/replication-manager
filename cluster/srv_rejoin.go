@@ -218,7 +218,9 @@ func (server *ServerMonitor) ReseedMasterSST() error {
 		}
 	} else {
 		if cluster.Conf.BackupLoadScript != "" {
-			server.JobReseedBackupScript()
+			if err := server.JobReseedBackupScript(); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Reseed backup script for rejoin on %s failed: %s", server.URL, err)
+			}
 		} else if cluster.Conf.AutorejoinLogicalBackup {
 			err := server.JobReseedLogicalBackup(context.Background(), "default")
 			if err != nil {

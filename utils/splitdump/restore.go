@@ -371,7 +371,7 @@ func TableFromFilename(name string) string {
 
 func IsSchemaFile(name string) bool {
 	base := filepath.Base(name)
-	if isMysqlSystemAll(base) {
+	if IsMysqlSystemAll(base) {
 		return true
 	}
 	lower := strings.ToLower(base)
@@ -405,7 +405,7 @@ func RestorePreamble(name string) string {
 
 func splitdumpSchemaTable(name string) (string, string) {
 	base := filepath.Base(name)
-	if isMysqlSystemAll(base) {
+	if IsMysqlSystemAll(base) {
 		return "mysql", ""
 	}
 	lower := strings.ToLower(base)
@@ -428,7 +428,7 @@ func splitdumpSchemaTable(name string) (string, string) {
 	return parts[0], parts[1]
 }
 
-func isMysqlSystemAll(name string) bool {
+func IsMysqlSystemAll(name string) bool {
 	lower := strings.ToLower(name)
 	return lower == "mysql.system-all.sql.gz" || lower == "mysql.system-all.sql" || lower == "mysql.system-all"
 }

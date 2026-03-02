@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/codegangsta/negroni"
 	"github.com/iancoleman/strcase"
@@ -2876,13 +2877,79 @@ func resolveExecutablePath(value, setting string) (string, string, error) {
 	return resolved, storeValue, nil
 }
 
+// Only decode logged values for settings that are base64-decoded on input.
+var base64LogValueSettings = map[string]struct{}{
+	"alert-script":                        {},
+	"alert-slack-url":                     {},
+	"alert-teams-proxy-url":               {},
+	"alert-teams-url":                     {},
+	"backup-load-script":                  {},
+	"backup-logical-post-script":          {},
+	"backup-mydumper-options":             {},
+	"backup-mydumper-regex":               {},
+	"backup-myloader-options":             {},
+	"backup-mysqlclient-options":          {},
+	"backup-mysqldump-options":            {},
+	"backup-physical-post-script":         {},
+	"backup-restic-aws-access-secret":     {},
+	"backup-restic-local-repository":      {},
+	"backup-restic-password":              {},
+	"backup-restic-repository":            {},
+	"backup-save-script":                  {},
+	"cloud18-alert-slack-url":             {},
+	"cloud18-dba-user-credentials":        {},
+	"cloud18-gitlab-password":             {},
+	"cloud18-sponsor-user-credentials":    {},
+	"mail-smtp-password":                  {},
+	"topology-staging-post-detach-script": {},
+	"topology-staging-refresh-script":     {},
+}
+
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
 	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
-		return "API receive set setting %s to %s", []interface{}{name, value}
+		logValue := value
+		if _, ok := base64LogValueSettings[name]; ok {
+			if decoded, ok := decodeBase64LogValue(value); ok {
+				logValue = decoded
+			}
+		}
+		return "API receive set setting %s to %s", []interface{}{name, logValue}
 	}
+}
+
+func decodeBase64LogValue(value string) (string, bool) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", false
+	}
+	if len(trimmed)%4 != 0 {
+		return "", false
+	}
+	for i := 0; i < len(trimmed); i++ {
+		switch c := trimmed[i]; {
+		case c >= 'A' && c <= 'Z':
+		case c >= 'a' && c <= 'z':
+		case c >= '0' && c <= '9':
+		case c == '+' || c == '/' || c == '=':
+		default:
+			return "", false
+		}
+	}
+	decoded, err := base64.StdEncoding.DecodeString(trimmed)
+	if err != nil || len(decoded) == 0 {
+		return "", false
+	}
+	if !utf8.Valid(decoded) {
+		return "", false
+	}
+	decodedValue := strings.TrimSpace(string(decoded))
+	if decodedValue == "" {
+		return "", false
+	}
+	return decodedValue, true
 }
 
 func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, name string, value string) error {
@@ -2999,6 +3066,15 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return fmt.Errorf("compress-backups-parallel-blocks must be between 1 and 32, got %d", val)
 		}
 		mycluster.Conf.CompressBackupsParallelBlocks = val
+	case "compress-backups-decompress-buffer-size":
+		val, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for compress-backups-decompress-buffer-size: %q", value)
+		}
+		if val <= 0 {
+			return fmt.Errorf("compress-backups-decompress-buffer-size must be greater than 0, got %d", val)
+		}
+		mycluster.Conf.CompressBackupsDecompressBufferSize = val
 	case "backup-reseed-remote-decompress":
 		mycluster.Conf.BackupReseedRemoteDecompress = applyIsActive(mycluster.Conf.BackupReseedRemoteDecompress, isactive)
 	case "compress-backups-logical":

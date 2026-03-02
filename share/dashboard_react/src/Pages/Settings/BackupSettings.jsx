@@ -1,5 +1,5 @@
 import { Box, Flex, HStack, Spinner, Stack, Text } from '@chakra-ui/react'
-import React, { useRef, useState, useEffect } from 'react'
+import React, { useRef, useState, useEffect, useMemo } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
 
@@ -32,6 +32,22 @@ const sizeGenerator = () => {
   })
 }
 
+const defaultDecompressBufferSize = 250000
+
+const buildDecompressBufferOptions = (options) => {
+  const updatedOptions = [...options]
+  const defaultOption = {
+    name: formatBytes(defaultDecompressBufferSize, 0),
+    value: defaultDecompressBufferSize
+  }
+
+  if (!updatedOptions.some((option) => option.value === defaultOption.value)) {
+    updatedOptions.push(defaultOption)
+  }
+
+  return updatedOptions.sort((a, b) => a.value - b.value)
+}
+
 function BackupSettings({ selectedCluster, user }) {
   const dispatch = useDispatch()
   const joinClasses = (...classes) => classes.filter(Boolean).join(' ')
@@ -40,6 +56,7 @@ function BackupSettings({ selectedCluster, user }) {
   const [binlogBackupOptions, setBinlogBackupOptions] = useState([])
   const [binlogParseOptions, setBinlogParseOptions] = useState([])
   const [sizeOptions, setSizeOptions] = useState(sizeGenerator())
+  const decompressBufferOptions = useMemo(() => buildDecompressBufferOptions(sizeOptions), [sizeOptions])
   const [selectedBinlogBackupType, setselectedBinlogBackupType] = useState('')
   const [isBackupSnapshotsOpen, setIsBackupSnapshotsOpen] = useState(true)
   const [isResticRepoConfigOpen, setIsResticRepoConfigOpen] = useState(true)
@@ -614,78 +631,81 @@ Default: 1G. Select from list; 0 disables sharding.`
         />
       )
     },
-    // Not yet implemented in db job restore process
-    // This feature is intended to offload decompression to the target server during reseed operations
-    // so that the data is sent in compressed form over the network. Which can save bandwidth and speed up the network process.
-    // {
-    //   key: 'Reseed: decompress on target (send compressed stream)',
-    //   value: (
-    //     <RMSwitch
-    //       isChecked={selectedCluster?.config?.backupReseedRemoteDecompress}
-    //       isDisabled={user?.grants['cluster-settings'] == false}
-    //       confirmTitle={'Confirm switch settings for backup-reseed-remote-decompress?'}
-    //       onChange={() =>
-    //         dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-reseed-remote-decompress' }))
-    //       }
-    //     />
-    //   )
-    // },
-    ...(selectedCluster?.config?.compressBackups
-      ? [
-        {
-          key: (
-            <Stack>
-              <Text>Compression Level (1=fastest, 9=best)</Text>
-            </Stack>
-          ),
-          value: (
-            <NumberInput
-              min={1}
-              max={9}
-              value={selectedCluster?.config?.compressBackupsCompressionLevel}
-              showEditButton={true}
-              showConfirmModal={true}
-              confirmTitle={`Confirm change compression level to: `}
-              onConfirm={(value) =>
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'compress-backups-compression-level',
-                    value: value
-                  })
-                )
-              }
-            />
-          )
-        },
-        {
-          key: (
-            <Stack>
-              <Text>Parallel Blocks (higher=faster restore)</Text>
-            </Stack>
-          ),
-          value: (
-            <NumberInput
-              min={1}
-              max={32}
-              value={selectedCluster?.config?.compressBackupsParallelBlocks}
-              showEditButton={true}
-              showConfirmModal={true}
-              confirmTitle={`Confirm change parallel blocks to: `}
-              onConfirm={(value) =>
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'compress-backups-parallel-blocks',
-                    value: value
-                  })
-                )
-              }
-            />
-          )
-        }
-      ]
-      : []),
+    {
+      key: (
+        <Stack>
+          <Text>Compression Level (1=fastest, 9=best)</Text>
+        </Stack>
+      ),
+      value: (
+        <NumberInput
+          min={1}
+          max={9}
+          value={selectedCluster?.config?.compressBackupsCompressionLevel}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change compression level to: `}
+          onConfirm={(value) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'compress-backups-compression-level',
+                value: value
+              })
+            )
+          }
+        />
+      )
+    },
+    {
+      key: (
+        <Stack>
+          <Text>Parallel Blocks (higher=faster restore)</Text>
+        </Stack>
+      ),
+      value: (
+        <NumberInput
+          min={1}
+          max={32}
+          value={selectedCluster?.config?.compressBackupsParallelBlocks}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change parallel blocks to: `}
+          onConfirm={(value) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'compress-backups-parallel-blocks',
+                value: value
+              })
+            )
+          }
+        />
+      )
+    },
+    {
+      key: (
+        <Stack>
+          <Text>Decompress Buffer Size (pgzip block size)</Text>
+        </Stack>
+      ),
+      value: (
+        <Dropdown
+          options={decompressBufferOptions}
+          selectedValue={selectedCluster?.config?.compressBackupsDecompressBufferSize}
+          confirmTitle={`Confirm change 'compress-backups-decompress-buffer-size' to `}
+          onChange={(size) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'compress-backups-decompress-buffer-size',
+                value: size
+              })
+            )
+          }
+        />
+      )
+    },
     {
       key: 'Backup Buffer Size',
       value: (

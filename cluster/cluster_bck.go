@@ -1628,3 +1628,16 @@ func (cluster *Cluster) getSanitizedParallelBlocks(logModule int) int {
 	}
 	return blocks
 }
+
+// getSanitizedDecompressBufferSize returns a safe pgzip decompression block size.
+// If the configured value is <= 0, it falls back to SSTSendBuffer, then 250000.
+func (cluster *Cluster) getSanitizedDecompressBufferSize(logModule int) int {
+	blockSize := cluster.Conf.CompressBackupsDecompressBufferSize
+	if blockSize > 0 {
+		return blockSize
+	}
+	if cluster.Conf.SSTSendBuffer > 0 {
+		return cluster.Conf.SSTSendBuffer
+	}
+	return 250000
+}

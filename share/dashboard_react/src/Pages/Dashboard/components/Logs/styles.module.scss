@@ -38,3 +38,9 @@
     padding: rem(12);
   }
 }
+
+.text {
+  word-break: normal;
+  line-break: auto;
+  word-wrap: normal;
+}
