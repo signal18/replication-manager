@@ -2052,6 +2052,7 @@ func (repman *ReplicationManager) handlerMuxClusterBackupReconcile(w http.Respon
 // @Param backupID path string true "Backup ID"
 // @Success 200 {object} map[string]interface{} "Backup deleted"
 // @Failure 400 {string} string "Invalid request"
+// @Failure 409 {string} string "Backup running"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Delete failed"
 // @Router /api/clusters/{clusterName}/backups/{backupID}/delete [post]
@@ -2081,6 +2082,10 @@ func (repman *ReplicationManager) handlerMuxClusterBackupDelete(w http.ResponseW
 
 	meta, err := mycluster.DeleteBackupByID(backupIDInt)
 	if err != nil {
+		if errors.Is(err, cluster.ErrBackupInProgress) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,6 +34,7 @@ type BackupRunOptions struct {
 }
 
 var adhocMetaFilePattern = regexp.MustCompile(`\.(\d+)\.meta\.json$`)
+var ErrBackupInProgress = errors.New("backup is still running")
 
 func normalizeBackupLine(value string) string {
 	normalized := strings.ToLower(strings.TrimSpace(value))
@@ -481,6 +483,87 @@ func (server *ServerMonitor) GetLatestMetaForLine(method, line string) (int64, *
 	return latest, meta
 }
 
+func isActiveBackupMeta(target, active *backupmgr.BackupMetadata) bool {
+	if target == nil || active == nil {
+		return false
+	}
+	if target.BackupSessionID != "" && active.BackupSessionID != "" {
+		if target.BackupSessionID == active.BackupSessionID {
+			return true
+		}
+	}
+	if target.Id > 0 && active.Id > 0 && target.Id == active.Id {
+		return true
+	}
+	if target.Dest != "" && active.Dest != "" {
+		return filepath.Clean(target.Dest) == filepath.Clean(active.Dest)
+	}
+	return false
+}
+
+func (cluster *Cluster) isBackupMetaInProgress(meta *backupmgr.BackupMetadata, server *ServerMonitor) bool {
+	if cluster == nil || server == nil || meta == nil {
+		return false
+	}
+
+	server.backupMetaMutex.Lock()
+	var logicalCopy *backupmgr.BackupMetadata
+	var physicalCopy *backupmgr.BackupMetadata
+	if server.LastBackupMeta.Logical != nil {
+		metaCopy := *server.LastBackupMeta.Logical
+		logicalCopy = &metaCopy
+	}
+	if server.LastBackupMeta.Physical != nil {
+		metaCopy := *server.LastBackupMeta.Physical
+		physicalCopy = &metaCopy
+	}
+	server.backupMetaMutex.Unlock()
+
+	knownLogical := false
+	knownPhysical := false
+	switch meta.BackupTool {
+	case config.ConstBackupLogicalTypeMysqldump,
+		config.ConstBackupLogicalTypeMydumper,
+		config.ConstBackupLogicalTypeDumpling,
+		"script":
+		knownLogical = true
+	case config.ConstBackupPhysicalTypeXtrabackup,
+		config.ConstBackupPhysicalTypeMariaBackup:
+		knownPhysical = true
+	}
+
+	method := inferBackupMethod(meta)
+	if knownLogical {
+		method = backupmgr.BackupMethodLogical
+	} else if knownPhysical {
+		method = backupmgr.BackupMethodPhysical
+	}
+	if !knownLogical && !knownPhysical {
+		if !cluster.IsInBackup() {
+			return false
+		}
+		return isActiveBackupMeta(meta, logicalCopy) || isActiveBackupMeta(meta, physicalCopy)
+	}
+
+	switch method {
+	case backupmgr.BackupMethodLogical:
+		if !cluster.InLogicalBackup && !cluster.IsInResticBackupForMethod(backupmgr.BackupMethodLogical) {
+			return false
+		}
+		return isActiveBackupMeta(meta, logicalCopy)
+	case backupmgr.BackupMethodPhysical:
+		if !cluster.InPhysicalBackup && !cluster.IsInResticBackupForMethod(backupmgr.BackupMethodPhysical) {
+			return false
+		}
+		return isActiveBackupMeta(meta, physicalCopy)
+	default:
+		if !cluster.IsInBackup() {
+			return false
+		}
+		return isActiveBackupMeta(meta, logicalCopy) || isActiveBackupMeta(meta, physicalCopy)
+	}
+}
+
 func (cluster *Cluster) DeleteBackupByID(backupID int64) (*backupmgr.BackupMetadata, error) {
 	if cluster == nil || cluster.BackupMetaMap == nil {
 		return nil, fmt.Errorf("cluster backups not available")
@@ -501,15 +584,24 @@ func (cluster *Cluster) DeleteBackupByID(backupID int64) (*backupmgr.BackupMetad
 	if server == nil {
 		return nil, fmt.Errorf("source server %s not found", meta.Source)
 	}
+	if cluster.isBackupMetaInProgress(meta, server) {
+		return nil, fmt.Errorf("%w: %d", ErrBackupInProgress, backupID)
+	}
 
 	if meta.Dest != "" {
 		backupDir := server.GetMyBackupDirectory()
 		if !isPathWithinBase(backupDir, meta.Dest) {
 			return nil, fmt.Errorf("backup path %s is outside %s", meta.Dest, backupDir)
 		}
+		if cluster.isBackupMetaInProgress(meta, server) {
+			return nil, fmt.Errorf("%w: %d", ErrBackupInProgress, backupID)
+		}
 		if err := os.RemoveAll(meta.Dest); err != nil {
 			return nil, err
 		}
+	}
+	if cluster.isBackupMetaInProgress(meta, server) {
+		return nil, fmt.Errorf("%w: %d", ErrBackupInProgress, backupID)
 	}
 
 	metaPath := server.backupMetaFilePath(meta)
