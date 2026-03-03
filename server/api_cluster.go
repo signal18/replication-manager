@@ -2082,12 +2082,17 @@ func (repman *ReplicationManager) handlerMuxClusterBackupDelete(w http.ResponseW
 
 	meta, err := mycluster.DeleteBackupByID(backupIDInt)
 	if err != nil {
-		if errors.Is(err, cluster.ErrBackupInProgress) {
+		switch {
+		case errors.Is(err, cluster.ErrBackupInProgress):
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
+		case errors.Is(err, cluster.ErrBackupInvalidID), errors.Is(err, cluster.ErrBackupNotFound):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
