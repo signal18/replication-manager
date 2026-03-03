@@ -13,6 +13,7 @@ export const clusterService = {
   getOpenSVCStats,
   getBackups,
   getBackupStats,
+  deleteBackup,
   getJobs,
   getShardSchema,
   getQueryRules,
@@ -204,6 +205,10 @@ function getBackups(clusterName, baseURL) {
 
 function getBackupStats(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/backups/stats`)
+}
+
+function deleteBackup(clusterName, backupId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/backups/${backupId}/delete`)
 }
 
 function getResticSnapshot(clusterName, baseURL, filter) {

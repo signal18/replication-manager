@@ -481,6 +481,48 @@ func (server *ServerMonitor) GetLatestMetaForLine(method, line string) (int64, *
 	return latest, meta
 }
 
+func (cluster *Cluster) DeleteBackupByID(backupID int64) (*backupmgr.BackupMetadata, error) {
+	if cluster == nil || cluster.BackupMetaMap == nil {
+		return nil, fmt.Errorf("cluster backups not available")
+	}
+	if backupID <= 0 {
+		return nil, fmt.Errorf("invalid backup id %d", backupID)
+	}
+
+	meta := cluster.BackupMetaMap.Get(backupID)
+	if meta == nil {
+		return nil, fmt.Errorf("backup %d not found", backupID)
+	}
+	if meta.Source == "" {
+		return nil, fmt.Errorf("backup %d has no source server", backupID)
+	}
+
+	server := cluster.GetServerFromURL(meta.Source)
+	if server == nil {
+		return nil, fmt.Errorf("source server %s not found", meta.Source)
+	}
+
+	if meta.Dest != "" {
+		backupDir := server.GetMyBackupDirectory()
+		if !isPathWithinBase(backupDir, meta.Dest) {
+			return nil, fmt.Errorf("backup path %s is outside %s", meta.Dest, backupDir)
+		}
+		if err := os.RemoveAll(meta.Dest); err != nil {
+			return nil, err
+		}
+	}
+
+	metaPath := server.backupMetaFilePath(meta)
+	if metaPath != "" {
+		if err := os.Remove(metaPath); err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
+	}
+
+	cluster.BackupMetaMap.Delete(meta.Id)
+	return meta, nil
+}
+
 func (cluster *Cluster) PurgeExpiredAdhocBackups() {
 	if cluster == nil {
 		return

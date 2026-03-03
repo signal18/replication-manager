@@ -277,6 +277,20 @@ export const getBackupStats = createGuardedAsyncThunk('cluster/getBackupStats', 
   }
 })
 
+export const deleteBackup = createGuardedAsyncThunk('cluster/deleteBackup', async ({ clusterName, backupId }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.deleteBackup(clusterName, backupId, baseURL)
+    if (status === 200) {
+      thunkAPI.dispatch(getBackups({ clusterName }))
+      thunkAPI.dispatch(getBackupStats({ clusterName }))
+    }
+    return { data, status }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
 export const getResticSnapshot = createGuardedAsyncThunk(
   'cluster/getResticSnapshot',
   async ({ clusterName, filter = 'latest-per-session' }, thunkAPI) => {

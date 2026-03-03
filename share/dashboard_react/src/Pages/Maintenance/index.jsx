@@ -11,7 +11,7 @@ import BackupSettings from '../Settings/BackupSettings'
 import SchedulerSettings from '../Settings/SchedulerSettings'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
-import { purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
+import { deleteBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { HiPause, HiPlay, HiTrash } from 'react-icons/hi'
@@ -168,6 +168,9 @@ function Maintenance({ selectedCluster, user }) {
   const handleConfirm = () => {
     if (payload && payload.action) {
       switch (payload.action) {
+        case 'backupDelete':
+          dispatch(deleteBackup({ clusterName: selectedCluster.name, backupId: payload.data.backupId }))
+          break
         case 'snapshotPurge':
           dispatch(purgeResticSnapshot({ clusterName: selectedCluster.name, snapshotId: payload.data.snapshotId }))
           break
@@ -371,7 +374,22 @@ function Maintenance({ selectedCluster, user }) {
         cell: (info) => info.getValue(),
         header: 'Completed',
         id: 'completed'
-      })
+      }),
+      columnHelper.accessor(
+        (row) => (
+          <RMIconButton
+            icon={HiTrash}
+            tooltip='Delete backup'
+            onClick={() => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: row.id } })}
+            isDisabled={user?.grants['cluster-settings'] == false}
+          />
+        ),
+        {
+          cell: (info) => info.getValue(),
+          header: 'Actions',
+          id: 'actions'
+        }
+      )
     ]
   )
 
@@ -409,7 +427,7 @@ function Maintenance({ selectedCluster, user }) {
     }),
     // Added Purge action column
     columnHelper.accessor((row) => (
-      <RMIconButton icon={HiTrash} onClick={() => openConfirmModal('Purge Snapshot', { action: 'snapshotPurge', data: { snapshotId: row.id } })} />
+      <RMIconButton icon={HiTrash} onClick={() => openConfirmModal('Do you want to purge this snapshot?', { action: 'snapshotPurge', data: { snapshotId: row.id } })} />
     ), {
       cell: (info) => info.getValue(),
       header: 'Actions',
