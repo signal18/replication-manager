@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -852,6 +853,150 @@ func TestPurgeExpiredAdhocBackupsConcurrent(t *testing.T) {
 			t.Errorf("expected dest dir %s to be removed", entry.destDir)
 		}
 	}
+}
+
+func TestIsActiveBackupMetaSessionMismatch(t *testing.T) {
+	target := &backupmgr.BackupMetadata{
+		Id:              10,
+		Dest:            "/tmp/backup",
+		BackupSessionID: "session-a",
+	}
+	active := &backupmgr.BackupMetadata{
+		Id:              11,
+		Dest:            "/tmp/backup",
+		BackupSessionID: "session-b",
+	}
+	if isActiveBackupMeta(target, active) {
+		t.Fatalf("expected session mismatch to be inactive")
+	}
+}
+
+func TestIsBackupMetaInProgressUnknownTool(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	cluster.InLogicalBackup = true
+
+	active := &backupmgr.BackupMetadata{
+		Id:              101,
+		BackupTool:      config.ConstBackupLogicalTypeMysqldump,
+		Dest:            filepath.Join(server.GetMyBackupDirectory(), "mysqldump.sql.gz"),
+		BackupSessionID: "session-101",
+		Source:          server.URL,
+	}
+	server.backupMetaMutex.Lock()
+	server.LastBackupMeta.Logical = active
+	server.backupMetaMutex.Unlock()
+
+	meta := &backupmgr.BackupMetadata{
+		Id:              101,
+		BackupTool:      "customtool",
+		Dest:            active.Dest,
+		BackupSessionID: "session-101",
+		Source:          server.URL,
+	}
+	if !cluster.isBackupMetaInProgress(meta, server) {
+		t.Fatalf("expected unknown tool backup to be detected as in progress")
+	}
+
+	meta.Dest = filepath.Join(server.GetMyBackupDirectory(), "other.sql.gz")
+	meta.BackupSessionID = "session-102"
+	if cluster.isBackupMetaInProgress(meta, server) {
+		t.Fatalf("expected non-matching backup to be inactive")
+	}
+}
+
+func TestDeleteBackupByIDSuccess(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	backupDir := server.GetMyBackupDirectory()
+	dest := filepath.Join(backupDir, "mysqldump.sql.gz")
+	if err := os.WriteFile(dest, []byte("payload"), 0644); err != nil {
+		t.Fatalf("failed to create backup payload: %v", err)
+	}
+
+	meta := &backupmgr.BackupMetadata{
+		Id:         time.Now().Unix(),
+		BackupTool: config.ConstBackupLogicalTypeMysqldump,
+		BackupLine: backupmgr.BackupLineDefault,
+		Source:     server.URL,
+		Dest:       dest,
+	}
+	cluster.BackupMetaMap.Set(meta.Id, meta)
+
+	metaPath := server.backupMetaFilePath(meta)
+	if err := os.WriteFile(metaPath, []byte("{}"), 0644); err != nil {
+		t.Fatalf("failed to create backup metadata: %v", err)
+	}
+
+	if _, err := cluster.DeleteBackupByID(meta.Id); err != nil {
+		t.Fatalf("unexpected error deleting backup: %v", err)
+	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Fatalf("expected backup payload to be removed")
+	}
+	if _, err := os.Stat(metaPath); !os.IsNotExist(err) {
+		t.Fatalf("expected metadata file to be removed")
+	}
+	if got := cluster.BackupMetaMap.Get(meta.Id); got != nil {
+		t.Fatalf("expected backup metadata to be removed from map")
+	}
+}
+
+func TestDeleteBackupByIDInProgress(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	cluster.InLogicalBackup = true
+	backupDir := server.GetMyBackupDirectory()
+	dest := filepath.Join(backupDir, "mysqldump.sql.gz")
+	if err := os.WriteFile(dest, []byte("payload"), 0644); err != nil {
+		t.Fatalf("failed to create backup payload: %v", err)
+	}
+
+	meta := &backupmgr.BackupMetadata{
+		Id:         123,
+		BackupTool: config.ConstBackupLogicalTypeMysqldump,
+		BackupLine: backupmgr.BackupLineDefault,
+		Source:     server.URL,
+		Dest:       dest,
+	}
+	cluster.BackupMetaMap.Set(meta.Id, meta)
+	server.backupMetaMutex.Lock()
+	server.LastBackupMeta.Logical = meta
+	server.backupMetaMutex.Unlock()
+
+	if _, err := cluster.DeleteBackupByID(meta.Id); !errors.Is(err, ErrBackupInProgress) {
+		t.Fatalf("expected ErrBackupInProgress, got %v", err)
+	}
+	if _, err := os.Stat(dest); err != nil {
+		t.Fatalf("expected backup payload to remain, got %v", err)
+	}
+}
+
+func TestDeleteBackupByIDInvalidOrMissing(t *testing.T) {
+	cluster, _ := newTestClusterServer(t)
+	if _, err := cluster.DeleteBackupByID(0); !errors.Is(err, ErrBackupInvalidID) {
+		t.Fatalf("expected ErrBackupInvalidID, got %v", err)
+	}
+	if _, err := cluster.DeleteBackupByID(999); !errors.Is(err, ErrBackupNotFound) {
+		t.Fatalf("expected ErrBackupNotFound, got %v", err)
+	}
+}
+
+func newTestClusterServer(t *testing.T) (*Cluster, *ServerMonitor) {
+	t.Helper()
+	cluster := &Cluster{
+		Name:          "test-cluster",
+		Conf:          &config.Config{WorkingDir: t.TempDir()},
+		StateMachine:  &state.StateMachine{},
+		Logrus:        logrus.New(),
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
+	}
+	cluster.StateMachine.Init()
+	server := &ServerMonitor{
+		Host:         "127.0.0.1",
+		Port:         "3306",
+		URL:          "127.0.0.1:3306",
+		ClusterGroup: cluster,
+	}
+	cluster.Servers = serverList{server}
+	return cluster, server
 }
 
 // Helper function

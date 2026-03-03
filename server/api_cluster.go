@@ -119,6 +119,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupReconcile)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/backups/{backupID}/delete", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupDelete)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/terminals", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerGetTerminalSessionList)),
 	))
@@ -2034,6 +2039,71 @@ func (repman *ReplicationManager) handlerMuxClusterBackupReconcile(w http.Respon
 	err = e.Encode(report)
 	if err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API encoding error %s", err)
+	}
+}
+
+// handlerMuxClusterBackupDelete handles deletion of a non-restic backup by ID.
+// @Summary Delete a backup by ID
+// @Description Deletes a non-restic backup for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param backupID path string true "Backup ID"
+// @Success 200 {object} map[string]interface{} "Backup deleted"
+// @Failure 400 {string} string "Invalid request"
+// @Failure 409 {string} string "Backup running"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Delete failed"
+// @Router /api/clusters/{clusterName}/backups/{backupID}/delete [post]
+func (repman *ReplicationManager) handlerMuxClusterBackupDelete(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	backupID := strings.TrimSpace(vars["backupID"])
+	if backupID == "" {
+		http.Error(w, "No backup ID", http.StatusBadRequest)
+		return
+	}
+	backupIDInt, err := strconv.ParseInt(backupID, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid backup ID", http.StatusBadRequest)
+		return
+	}
+
+	meta, err := mycluster.DeleteBackupByID(backupIDInt)
+	if err != nil {
+		switch {
+		case errors.Is(err, cluster.ErrBackupInProgress):
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		case errors.Is(err, cluster.ErrBackupInvalidID), errors.Is(err, cluster.ErrBackupNotFound):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	if err := e.Encode(map[string]interface{}{
+		"id":      meta.Id,
+		"message": "Local backup deleted; restic snapshots retained",
+	}); err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+		return
 	}
 }
 

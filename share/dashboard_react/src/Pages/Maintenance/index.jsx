@@ -11,7 +11,7 @@ import BackupSettings from '../Settings/BackupSettings'
 import SchedulerSettings from '../Settings/SchedulerSettings'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
-import { purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
+import { deleteBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { HiPause, HiPlay, HiTrash } from 'react-icons/hi'
@@ -168,6 +168,9 @@ function Maintenance({ selectedCluster, user }) {
   const handleConfirm = () => {
     if (payload && payload.action) {
       switch (payload.action) {
+        case 'backupDelete':
+          dispatch(deleteBackup({ clusterName: selectedCluster.name, backupId: payload.data.backupId }))
+          break
         case 'snapshotPurge':
           dispatch(purgeResticSnapshot({ clusterName: selectedCluster.name, snapshotId: payload.data.snapshotId }))
           break
@@ -371,6 +374,18 @@ function Maintenance({ selectedCluster, user }) {
         cell: (info) => info.getValue(),
         header: 'Completed',
         id: 'completed'
+      }),
+      columnHelper.display({
+        id: 'actions',
+        header: 'Actions',
+        cell: (info) => (
+          <RMIconButton
+            icon={HiTrash}
+            tooltip='Delete backup'
+            onClick={() => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: info.row.original.id } })}
+            isDisabled={user?.grants['cluster-settings'] == false}
+          />
+        )
       })
     ]
   )
@@ -408,12 +423,15 @@ function Maintenance({ selectedCluster, user }) {
       header: 'Tags'
     }),
     // Added Purge action column
-    columnHelper.accessor((row) => (
-      <RMIconButton icon={HiTrash} onClick={() => openConfirmModal('Purge Snapshot', { action: 'snapshotPurge', data: { snapshotId: row.id } })} />
-    ), {
-      cell: (info) => info.getValue(),
-      header: 'Actions',
+    columnHelper.display({
       id: 'actions',
+      header: 'Actions',
+      cell: (info) => (
+        <RMIconButton
+          icon={HiTrash}
+          onClick={() => openConfirmModal('Do you want to purge this snapshot?', { action: 'snapshotPurge', data: { snapshotId: info.row.original.id } })}
+        />
+      )
     })
   ])
 
@@ -452,12 +470,15 @@ function Maintenance({ selectedCluster, user }) {
       minWidth: 200
     }),
     // Added Purge action column
-    columnHelper.accessor((row) => (
-      <RMIconButton icon={HiTrash} onClick={() => openConfirmModal('Cancel Queued Task', { action: 'queueCancel', data: { taskId: row.task_id } })} />
-    ), {
-      cell: (info) => info.getValue(),
-      header: 'Actions',
+    columnHelper.display({
       id: 'actions',
+      header: 'Actions',
+      cell: (info) => (
+        <RMIconButton
+          icon={HiTrash}
+          onClick={() => openConfirmModal('Cancel Queued Task', { action: 'queueCancel', data: { taskId: info.row.original.task_id } })}
+        />
+      )
     })
   ])
 
