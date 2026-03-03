@@ -1310,7 +1310,7 @@ func (cluster *Cluster) ReconcileSnapshotMetadata() (*ReconciliationReport, erro
 		// Check if snapshot exists
 		if !snapshotIDs[snapshotID] {
 			report.OrphanedMetadata = append(report.OrphanedMetadata, metaFile)
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Orphaned metadata: %s references deleted snapshot %s", base, snapshotID)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlDbg, "Orphaned metadata: %s references deleted snapshot %s", base, snapshotID)
 
 			// Auto-cleanup if enabled
 			if cluster.Conf.BackupReconcileAutoCleanup {
