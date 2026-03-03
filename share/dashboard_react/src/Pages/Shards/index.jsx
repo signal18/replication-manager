@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { checksumAllTables, checksumTable, getShardSchema } from '../../redux/clusterSlice'
+import { checksumAllTables, checksumTable, getShardSchema, monitorAllSchemas } from '../../redux/clusterSlice'
 import { createColumnHelper } from '@tanstack/react-table'
 import { DataTable } from '../../components/DataTable'
 import styles from './styles.module.scss'
@@ -11,16 +11,27 @@ import { getTablePct } from '../../utility/common'
 import Gauge from '../../components/Gauge'
 import AccordionComponent from '../../components/AccordionComponent'
 import  { GeneralLogs, TaskLogs } from '../Dashboard/components/Logs'
-import NotFound from '../../components/NotFound'
+import ConfirmModal from '../../components/Modals/ConfirmModal'
 
-function Shards({ selectedCluster }) {
+function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
   const dispatch = useDispatch()
 
   const {
-    cluster: { shardSchema }
+    cluster: { shardSchema },
   } = useSelector((state) => state)
   const [data, setData] = useState(shardSchema || [])
   const prevShardsRef = useRef(shardSchema)
+  const [isChecksumAllRunning, setIsChecksumAllRunning] = useState(false)
+  const [isSchemaConfirmOpen, setIsSchemaConfirmOpen] = useState(false)
+  const [pendingChecksumAll, setPendingChecksumAll] = useState(false)
+  const [checksumTimeout, setChecksumTimeout] = useState(false)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     if (shardSchema?.length > 0) {
@@ -34,10 +45,65 @@ function Shards({ selectedCluster }) {
   const handleChecksum = (schema, table) => {
     dispatch(checksumTable({ clusterName: selectedCluster?.name, schema, table }))
   }
-  const handleChecksumAll = () => {
-    dispatch(checksumAllTables({ clusterName: selectedCluster?.name }))
+  const handleChecksumAll = async () => {
+    if (!selectedCluster?.name || isChecksumAllRunning) {
+      return
+    }
+    if (!shardSchema || shardSchema.length === 0) {
+      setPendingChecksumAll(true)
+      setIsSchemaConfirmOpen(true)
+      return
+    }
+    await runChecksumAllFlow()
   }
 
+  const runChecksumAllFlow = async () => {
+    if (!selectedCluster?.name || isChecksumAllRunning) {
+      return
+    }
+    setChecksumTimeout(false)
+    setIsChecksumAllRunning(true)
+    try {
+      if (!shardSchema || shardSchema.length === 0) {
+        await dispatch(monitorAllSchemas({ clusterName: selectedCluster?.name }))
+        const schemaReady = await waitForSchemaCache()
+        if (!mountedRef.current) {
+          return
+        }
+        if (!schemaReady) {
+          setChecksumTimeout(true)
+          return
+        }
+      }
+      await dispatch(checksumAllTables({ clusterName: selectedCluster?.name }))
+    } finally {
+      if (mountedRef.current) {
+        setIsChecksumAllRunning(false)
+      }
+    }
+  }
+
+  const waitForSchemaCache = async () => {
+    if (!selectedCluster?.name) {
+      return false
+    }
+    const maxAttempts = 12
+    const intervalMs = 15000 // 15 seconds
+    let attempts = 0
+    while (attempts < maxAttempts) {
+      if (!mountedRef.current) {
+        return false
+      }
+      const action = await dispatch(getShardSchema({ clusterName: selectedCluster?.name }))
+      const payload = action?.payload?.data
+      if (Array.isArray(payload) && payload.length > 0) {
+        return true
+      }
+      attempts++
+      await new Promise((resolve) => setTimeout(resolve, intervalMs))
+    }
+    return false
+  }
   const columnHelper = createColumnHelper()
 
   const columns = useMemo(
@@ -96,13 +162,42 @@ function Shards({ selectedCluster }) {
     []
   )
   useEffect(() => {
-    dispatch(getShardSchema({ clusterName: selectedCluster?.name }))
-  }, [])
+    if (selectedCluster?.name) {
+      dispatch(getShardSchema({ clusterName: selectedCluster?.name }))
+    }
+  }, [dispatch, selectedCluster?.name])
   return (
     <VStack className={styles.shardsContainer}>
-      <RMButton className={`${styles.btnChecksumAll}`} onClick={handleChecksumAll}>
-        Checksum All Tables
-      </RMButton>
+      <Flex className={styles.section} direction='column'>
+        <Flex className={styles.sectionHeader} direction='column'>
+          <span className={styles.sectionTitle}>Schema Actions</span>
+          <span className={styles.sectionDescription}>
+            Run one-off checks or refresh schema metadata for the shard list.
+          </span>
+        </Flex>
+        <Flex className={styles.sectionBody} direction='column'>
+          <Flex className={styles.actionsRow}>
+            <RMButton
+              className={styles.btnChecksumAll}
+              onClick={handleChecksumAll}
+              isDisabled={!selectedCluster?.name || isChecksumAllRunning}
+              isLoading={isChecksumAllRunning}>
+              {isChecksumAllRunning ? 'Preparing schema cache...' : 'Checksum All Tables'}
+            </RMButton>
+            <RMButton
+              variant='outline'
+              onClick={onOpenSchedulerSettings}
+              isDisabled={!onOpenSchedulerSettings || user?.grants['cluster-show-backups'] == false}>
+              Open Scheduler Settings
+            </RMButton>
+          </Flex>
+          {checksumTimeout && (
+            <Flex className={styles.timeoutMessage}>
+              <span>Schema monitoring timed out. Check server logs or retry later.</span>
+            </Flex>
+          )}
+        </Flex>
+      </Flex>
       <DataTable key="shards" data={data} columns={columns} className={styles.table} />
       <AccordionComponent
         className={styles.accordion}
@@ -114,6 +209,24 @@ function Shards({ selectedCluster }) {
         heading={'Job Logs'}
         body={<TaskLogs />}
       />
+      {isSchemaConfirmOpen && (
+        <ConfirmModal
+          isOpen={isSchemaConfirmOpen}
+          closeModal={() => {
+            setIsSchemaConfirmOpen(false)
+            setPendingChecksumAll(false)
+          }}
+          title='Schema cache required'
+          body='Schema cache is empty. Run a schema scan now and wait for it to complete before checksumming all tables?'
+          onConfirmClick={async () => {
+            setIsSchemaConfirmOpen(false)
+            if (pendingChecksumAll) {
+              setPendingChecksumAll(false)
+              await runChecksumAllFlow()
+            }
+          }}
+        />
+      )}
     </VStack>
   )
 }

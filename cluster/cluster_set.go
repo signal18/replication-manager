@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -1192,6 +1193,7 @@ func (cluster *Cluster) SetWaitSponsorCredCookie() {
 
 func (cluster *Cluster) SetWaitMonitorSchema() {
 	cluster.SetState("WARN0163", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.ClusterError["WARN0163"], cluster.Name), ErrFrom: "API"})
+	atomic.StoreInt32(&cluster.SchemaMonitorRequested, 1)
 }
 
 func (cluster *Cluster) SetDBDynamicConfig() {

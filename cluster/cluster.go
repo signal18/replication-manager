@@ -127,6 +127,7 @@ type Cluster struct {
 	IsNeedStagingChange           bool                       `json:"isNeedStagingChange" groups:"web"`
 	IsConfigPathChange            bool                       `json:"isConfigPathChange" groups:"web"`
 	IsResticQueuePaused           bool                       `json:"isResticQueuePaused" groups:"web"`
+	SchemaMonitorRequested        int32                      `json:"-"`
 	Conf                          *config.Config             `json:"config" groups:"apps"`
 	Confs                         *config.ConfVersion        `json:"-"`
 	CleanAll                      bool                       `json:"cleanReplication" groups:"web"` //used in testing
@@ -2039,12 +2040,17 @@ func (cluster *Cluster) MonitorTableSchemaDiff() {
 }
 
 func (cluster *Cluster) MonitorSchema() {
-	if !cluster.Conf.MonitorSchemaChange {
+	if !cluster.Conf.MonitorSchemaChange && atomic.LoadInt32(&cluster.SchemaMonitorRequested) == 0 {
 		return
 	}
 
 	if cluster.StateMachine.IsInSchemaMonitor() {
 		return
+	}
+
+	if atomic.LoadInt32(&cluster.SchemaMonitorRequested) == 1 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Schema monitoring requested; bypassing config gate for this run.")
 	}
 
 	loglevel := config.LvlInfo
@@ -2055,7 +2061,10 @@ func (cluster *Cluster) MonitorSchema() {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, loglevel, "Starting schema monitoring")
 
 	cluster.StateMachine.SetMonitorSchemaState()
-	defer cluster.StateMachine.RemoveMonitorSchemaState()
+	defer func() {
+		cluster.StateMachine.RemoveMonitorSchemaState()
+		atomic.StoreInt32(&cluster.SchemaMonitorRequested, 0)
+	}()
 
 	err := cluster.MonitorMasterTableSchema()
 	if err != nil {

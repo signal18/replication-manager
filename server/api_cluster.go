@@ -5779,6 +5779,18 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumAllTable(w http
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
+		master := mycluster.GetMaster()
+		if master == nil || len(master.Tables) == 0 {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Checksum all tables requested; schema cache empty. Triggered schema monitoring; re-run checksum after cache is ready.")
+			mycluster.SetWaitMonitorSchema()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			json.NewEncoder(w).Encode(map[string]string{
+				"message": "schema cache empty; schema monitoring triggered; retry checksum after cache is populated",
+			})
+			return
+		}
 		go mycluster.CheckAllTableChecksum()
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)

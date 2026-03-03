@@ -728,9 +728,10 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 
 	for _, s := range cluster.slaves {
 		if !s.IsFailed() && !s.IsReplicationBroken() {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Wait sync on slave %s", s.URL)
 			for {
 				slaveSeq := s.SlaveGtid.GetSeqServerIdNos(uint64(cluster.master.ServerID))
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Wait sync on slave %s sequence %d", s.URL, slaveSeq)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Wait sync on slave %s sequence %d", s.URL, slaveSeq)
 				if slaveSeq >= masterSeq {
 					break
 				} else {
