@@ -375,21 +375,18 @@ function Maintenance({ selectedCluster, user }) {
         header: 'Completed',
         id: 'completed'
       }),
-      columnHelper.accessor(
-        (row) => (
+      columnHelper.display({
+        id: 'actions',
+        header: 'Actions',
+        cell: (info) => (
           <RMIconButton
             icon={HiTrash}
             tooltip='Delete backup'
-            onClick={() => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: row.id } })}
+            onClick={() => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: info.row.original.id } })}
             isDisabled={user?.grants['cluster-settings'] == false}
           />
-        ),
-        {
-          cell: (info) => info.getValue(),
-          header: 'Actions',
-          id: 'actions'
-        }
-      )
+        )
+      })
     ]
   )
 
@@ -426,12 +423,15 @@ function Maintenance({ selectedCluster, user }) {
       header: 'Tags'
     }),
     // Added Purge action column
-    columnHelper.accessor((row) => (
-      <RMIconButton icon={HiTrash} onClick={() => openConfirmModal('Do you want to purge this snapshot?', { action: 'snapshotPurge', data: { snapshotId: row.id } })} />
-    ), {
-      cell: (info) => info.getValue(),
-      header: 'Actions',
+    columnHelper.display({
       id: 'actions',
+      header: 'Actions',
+      cell: (info) => (
+        <RMIconButton
+          icon={HiTrash}
+          onClick={() => openConfirmModal('Do you want to purge this snapshot?', { action: 'snapshotPurge', data: { snapshotId: info.row.original.id } })}
+        />
+      )
     })
   ])
 
@@ -470,12 +470,15 @@ function Maintenance({ selectedCluster, user }) {
       minWidth: 200
     }),
     // Added Purge action column
-    columnHelper.accessor((row) => (
-      <RMIconButton icon={HiTrash} onClick={() => openConfirmModal('Cancel Queued Task', { action: 'queueCancel', data: { taskId: row.task_id } })} />
-    ), {
-      cell: (info) => info.getValue(),
-      header: 'Actions',
+    columnHelper.display({
       id: 'actions',
+      header: 'Actions',
+      cell: (info) => (
+        <RMIconButton
+          icon={HiTrash}
+          onClick={() => openConfirmModal('Cancel Queued Task', { action: 'queueCancel', data: { taskId: info.row.original.task_id } })}
+        />
+      )
     })
   ])
 
