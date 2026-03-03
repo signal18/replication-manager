@@ -234,6 +234,16 @@ function Home() {
     selectedClusterNameRef.current = cluster.name
     setSelectedTab(1)
   }
+
+  const openMaintenanceScheduler = () => {
+    localStorage.setItem('isSchedulerOpen', JSON.stringify(true))
+    const maintenanceIndex = dashboardTabsRef.current.indexOf('Maintenance')
+    if (maintenanceIndex >= 0) {
+      const tabIndex = maintenanceIndex + 1
+      selectedTabRef.current = tabIndex
+      setSelectedTab(tabIndex)
+    }
+  }
   const openNewClusterModal = (e) => {
     e.stopPropagation()
     setIsNewClusterModalOpen(true)
@@ -283,7 +293,7 @@ function Home() {
                 ...(selectedCluster?.config?.proxysql && user?.grants['cluster-show-agents']
                   ? [<QueryRules selectedCluster={selectedCluster} />]
                   : []),
-                ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} />] : []),
+                ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} user={user} onOpenSchedulerSettings={openMaintenanceScheduler} />] : []),
                 ...(user?.grants['cluster-grant'] ? [<Users selectedCluster={selectedCluster} user={user} />] : [])
               ]
               : globalTabsRef.current.includes('Clusters Peer') // monitor?.config?.cloud18 is false, do not show "Peer Clusters" tab

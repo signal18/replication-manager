@@ -1192,6 +1192,7 @@ func (cluster *Cluster) SetWaitSponsorCredCookie() {
 
 func (cluster *Cluster) SetWaitMonitorSchema() {
 	cluster.SetState("WARN0163", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.ClusterError["WARN0163"], cluster.Name), ErrFrom: "API"})
+	cluster.SchemaMonitorRequested = true
 }
 
 func (cluster *Cluster) SetDBDynamicConfig() {
