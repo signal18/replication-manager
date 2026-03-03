@@ -1,12 +1,41 @@
 .shardsContainer {
   margin-top: rem(8);
   align-items: flex-start;
+  gap: rem(16);
 
   .accordion {
     width: 100%;
   }
-  .btnChecksumAll {
-    margin-right: auto;
+  .section {
+    width: 100%;
+    padding: rem(14);
+    border-radius: rem(12);
+    border: 1px solid var(--gray-color);
+    background-color: var(--secondary-gray-color);
+    gap: rem(12);
+  }
+  .sectionHeader {
+    gap: rem(4);
+  }
+  .sectionTitle {
+    font-size: rem(15);
+    font-weight: 700;
+    color: var(--text-color);
+  }
+  .sectionDescription {
+    font-size: rem(12);
+    color: var(--darkgray-color);
+    font-weight: 500;
+  }
+  .sectionBody {
+    width: 100%;
+  }
+  .actionsRow {
+    gap: rem(12);
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    align-items: center;
   }
   .tablesSchemaCol {
     gap: rem(16);
@@ -16,6 +45,12 @@
     margin: auto;
     div[class*='textOverlay'] {
       bottom: rem(12);
+    }
+  }
+
+  @media (max-width: 768px) {
+    .actionsRow {
+      align-items: flex-start;
     }
   }
 }
