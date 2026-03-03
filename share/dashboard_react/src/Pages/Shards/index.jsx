@@ -24,6 +24,14 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
   const [isChecksumAllRunning, setIsChecksumAllRunning] = useState(false)
   const [isSchemaConfirmOpen, setIsSchemaConfirmOpen] = useState(false)
   const [pendingChecksumAll, setPendingChecksumAll] = useState(false)
+  const [checksumTimeout, setChecksumTimeout] = useState(false)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     if (shardSchema?.length > 0) {
@@ -53,32 +61,48 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
     if (!selectedCluster?.name || isChecksumAllRunning) {
       return
     }
+    setChecksumTimeout(false)
     setIsChecksumAllRunning(true)
     try {
       if (!shardSchema || shardSchema.length === 0) {
         await dispatch(monitorAllSchemas({ clusterName: selectedCluster?.name }))
-        await waitForSchemaCache()
+        const schemaReady = await waitForSchemaCache()
+        if (!mountedRef.current) {
+          return
+        }
+        if (!schemaReady) {
+          setChecksumTimeout(true)
+          return
+        }
       }
       await dispatch(checksumAllTables({ clusterName: selectedCluster?.name }))
     } finally {
-      setIsChecksumAllRunning(false)
+      if (mountedRef.current) {
+        setIsChecksumAllRunning(false)
+      }
     }
   }
 
   const waitForSchemaCache = async () => {
     if (!selectedCluster?.name) {
-      return
+      return false
     }
-    let hasSchema = false
-    while (!hasSchema) {
+    const maxAttempts = 12
+    const intervalMs = 15000 // 15 seconds
+    let attempts = 0
+    while (attempts < maxAttempts) {
+      if (!mountedRef.current) {
+        return false
+      }
       const action = await dispatch(getShardSchema({ clusterName: selectedCluster?.name }))
       const payload = action?.payload?.data
       if (Array.isArray(payload) && payload.length > 0) {
-        hasSchema = true
-        break
+        return true
       }
-      await new Promise((resolve) => setTimeout(resolve, 5000))
+      attempts++
+      await new Promise((resolve) => setTimeout(resolve, intervalMs))
     }
+    return false
   }
   const columnHelper = createColumnHelper()
 
@@ -167,6 +191,11 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
               Open Scheduler Settings
             </RMButton>
           </Flex>
+          {checksumTimeout && (
+            <Flex className={styles.timeoutMessage}>
+              <span>Schema monitoring timed out. Check server logs or retry later.</span>
+            </Flex>
+          )}
         </Flex>
       </Flex>
       <DataTable key="shards" data={data} columns={columns} className={styles.table} />

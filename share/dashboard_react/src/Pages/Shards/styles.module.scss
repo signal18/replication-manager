@@ -37,6 +37,19 @@
     flex-wrap: wrap;
     align-items: center;
   }
+  .timeoutMessage {
+    width: 100%;
+    padding: rem(8) rem(12);
+    margin-top: rem(8);
+    border-radius: rem(6);
+    background-color: rgba(229, 62, 62, 0.1);
+    border: 1px solid #e53e3e;
+    span {
+      font-size: rem(12);
+      color: #e53e3e;
+      font-weight: 500;
+    }
+  }
   .tablesSchemaCol {
     gap: rem(16);
   }
