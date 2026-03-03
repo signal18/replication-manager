@@ -34,7 +34,11 @@ type BackupRunOptions struct {
 }
 
 var adhocMetaFilePattern = regexp.MustCompile(`\.(\d+)\.meta\.json$`)
-var ErrBackupInProgress = errors.New("backup is still running")
+var (
+	ErrBackupInProgress = errors.New("backup is still running")
+	ErrBackupInvalidID  = errors.New("invalid backup id")
+	ErrBackupNotFound   = errors.New("backup not found")
+)
 
 func normalizeBackupLine(value string) string {
 	normalized := strings.ToLower(strings.TrimSpace(value))
@@ -491,6 +495,7 @@ func isActiveBackupMeta(target, active *backupmgr.BackupMetadata) bool {
 		if target.BackupSessionID == active.BackupSessionID {
 			return true
 		}
+		return false
 	}
 	if target.Id > 0 && active.Id > 0 && target.Id == active.Id {
 		return true
@@ -569,12 +574,12 @@ func (cluster *Cluster) DeleteBackupByID(backupID int64) (*backupmgr.BackupMetad
 		return nil, fmt.Errorf("cluster backups not available")
 	}
 	if backupID <= 0 {
-		return nil, fmt.Errorf("invalid backup id %d", backupID)
+		return nil, fmt.Errorf("%w: %d", ErrBackupInvalidID, backupID)
 	}
 
 	meta := cluster.BackupMetaMap.Get(backupID)
 	if meta == nil {
-		return nil, fmt.Errorf("backup %d not found", backupID)
+		return nil, fmt.Errorf("%w: %d", ErrBackupNotFound, backupID)
 	}
 	if meta.Source == "" {
 		return nil, fmt.Errorf("backup %d has no source server", backupID)
@@ -600,10 +605,6 @@ func (cluster *Cluster) DeleteBackupByID(backupID int64) (*backupmgr.BackupMetad
 			return nil, err
 		}
 	}
-	if cluster.isBackupMetaInProgress(meta, server) {
-		return nil, fmt.Errorf("%w: %d", ErrBackupInProgress, backupID)
-	}
-
 	metaPath := server.backupMetaFilePath(meta)
 	if metaPath != "" {
 		if err := os.Remove(metaPath); err != nil && !os.IsNotExist(err) {
