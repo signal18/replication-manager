@@ -327,9 +327,7 @@ type ResticManager struct {
 	cond                 *sync.Cond    // Condition variable for waiting and notifying tasks
 	stopCh               chan struct{} // Stop channel to signal the goroutine to stop
 	CanFetch             atomic.Bool
-	resticOpMutex        *sync.Mutex
-	resticOpCond         *sync.Cond
-	resticOpBusy         bool
+	resticOpSem          chan struct{}
 	resticOpWaitDuration time.Duration
 	CanInitRepo          bool
 	NeedPurgeNow         bool
@@ -388,9 +386,7 @@ func NewResticRepo(binaryPath string, msgChan chan sharedlog.Message, logmodule 
 
 	repo.CanFetch.Store(true)
 
-	repo.resticOpMutex = &sync.Mutex{}
-	repo.resticOpCond = sync.NewCond(repo.resticOpMutex)
-	repo.resticOpBusy = false
+	repo.resticOpSem = make(chan struct{}, 1)
 	repo.resticOpWaitDuration = 30 * time.Second // Log warning after this duration
 
 	repo.cond = sync.NewCond(repo.Mutex)
@@ -585,63 +581,56 @@ func (repo *ResticManager) GetCanFetch() bool {
 }
 
 func (repo *ResticManager) acquireResticOp(ctx context.Context) error {
-	repo.resticOpMutex.Lock()
-	defer repo.resticOpMutex.Unlock()
+	if repo.resticOpSem == nil {
+		return fmt.Errorf("restic operation semaphore not initialized")
+	}
 
-	if !repo.resticOpBusy {
-		repo.resticOpBusy = true
-		return nil
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	startedWaiting := time.Now()
-	warningLogged := false
+	var warningTimer *time.Timer
+	var warningCh <-chan time.Time
 
-	for repo.resticOpBusy {
-		// Wait with context deadline
-		condCtx, cancel := context.WithCancel(ctx)
-		done := make(chan struct{})
-
-		go func() {
-			select {
-			case <-condCtx.Done():
-			case <-done:
+	if repo.resticOpWaitDuration > 0 {
+		warningTimer = time.NewTimer(repo.resticOpWaitDuration)
+		warningCh = warningTimer.C
+		defer func() {
+			if warningTimer == nil {
+				return
+			}
+			if !warningTimer.Stop() {
+				select {
+				case <-warningTimer.C:
+				default:
+				}
 			}
 		}()
-
-		// Wait on condition variable - this blocks until signaled or context cancelled
-		waitCh := make(chan struct{})
-		go func() {
-			repo.resticOpCond.Wait()
-			close(waitCh)
-		}()
-
-		select {
-		case <-waitCh:
-			cancel()
-			close(done)
-		case <-ctx.Done():
-			cancel()
-			close(done)
-			return fmt.Errorf("timeout waiting for restic operation lock: %w", ctx.Err())
-		}
-
-		// Log warning if we've been waiting a while and haven't logged yet
-		if !warningLogged && time.Since(startedWaiting) > repo.resticOpWaitDuration {
-			repo.Printf(logrus.WarnLevel, "Restic operation has been waiting for %v, possible contention", time.Since(startedWaiting))
-			warningLogged = true
-		}
 	}
 
-	repo.resticOpBusy = true
-	return nil
+	for {
+		select {
+		case repo.resticOpSem <- struct{}{}:
+			return nil
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for restic operation lock: %w", ctx.Err())
+		case <-warningCh:
+			repo.Printf(logrus.WarnLevel, "Restic operation has been waiting for %v, possible contention", time.Since(startedWaiting))
+			warningCh = nil
+		}
+	}
 }
 
 func (repo *ResticManager) releaseResticOp() {
-	repo.resticOpMutex.Lock()
-	defer repo.resticOpMutex.Unlock()
+	if repo.resticOpSem == nil {
+		return
+	}
 
-	repo.resticOpBusy = false
-	repo.resticOpCond.Signal()
+	select {
+	case <-repo.resticOpSem:
+	default:
+	}
 }
 
 // SetPermissions sets the permission modes for restic operations

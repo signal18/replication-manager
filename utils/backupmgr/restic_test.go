@@ -2,6 +2,7 @@ package backupmgr
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -277,6 +278,31 @@ func TestGenerateTaskIDAndCanFetch(t *testing.T) {
 	if !repo.GetCanFetch() {
 		t.Fatalf("expected CanFetch true")
 	}
+}
+
+func TestResticOpSemaphoreTimeout(t *testing.T) {
+	repo := newPausedRepo(t)
+
+	ctx := context.Background()
+	if err := repo.acquireResticOp(ctx); err != nil {
+		t.Fatalf("failed to acquire restic op: %v", err)
+	}
+
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := repo.acquireResticOp(timeoutCtx); err == nil {
+		repo.releaseResticOp()
+		t.Fatalf("expected timeout error")
+	}
+
+	repo.releaseResticOp()
+
+	secondCtx, secondCancel := context.WithTimeout(context.Background(), time.Second)
+	defer secondCancel()
+	if err := repo.acquireResticOp(secondCtx); err != nil {
+		t.Fatalf("expected acquire after release, got: %v", err)
+	}
+	repo.releaseResticOp()
 }
 
 func TestPrint(t *testing.T) {
