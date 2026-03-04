@@ -809,7 +809,7 @@ func (repo *ResticManager) worker() {
 		}
 
 		if repo.NeedPurgeNow {
-			// Process purge now without holding the mutex.
+			// Immediate purge intentionally skips FetchRepo; queued PurgeTask refreshes after purge.
 			repo.NeedPurgeNow = false
 			purgeOption := repo.PurgeNowOption
 			repo.Mutex.Unlock()
