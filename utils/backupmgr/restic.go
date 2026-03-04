@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -325,7 +326,7 @@ type ResticManager struct {
 	Mutex                *sync.Mutex
 	cond                 *sync.Cond    // Condition variable for waiting and notifying tasks
 	stopCh               chan struct{} // Stop channel to signal the goroutine to stop
-	CanFetch             bool
+	CanFetch             atomic.Bool
 	CanInitRepo          bool
 	NeedPurgeNow         bool
 	PurgeNowOption       ResticPurgeOption
@@ -374,13 +375,14 @@ func NewResticRepo(binaryPath string, msgChan chan sharedlog.Message, logmodule 
 		errorMutex:           &sync.Mutex{},
 		ResultChan:           make(chan ResticResult, 10),
 		stopCh:               make(chan struct{}),
-		CanFetch:             true,
 		CanInitRepo:          true,
 		DirMode:              0700,          // Secure default: owner-only directories
 		FileMode:             0600,          // Secure default: owner-only files
 		OperationTimeout:     2 * time.Hour, // Default: 2 hours for long operations
 		MountRecoveryEnabled: true,
 	}
+
+	repo.CanFetch.Store(true)
 
 	repo.cond = sync.NewCond(repo.Mutex)
 	go repo.worker() // Start the worker
@@ -565,12 +567,12 @@ func (repo *ResticManager) GenerateTaskID() int {
 
 // SetCanFetch updates CanFetch flag
 func (repo *ResticManager) SetCanFetch(value bool) {
-	repo.CanFetch = value
+	repo.CanFetch.Store(value)
 }
 
 // GetCanFetch returns CanFetch value
 func (repo *ResticManager) GetCanFetch() bool {
-	return repo.CanFetch
+	return repo.CanFetch.Load()
 }
 
 // SetPermissions sets the permission modes for restic operations
