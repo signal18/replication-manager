@@ -738,10 +738,12 @@ func (repo *ResticManager) worker() {
 		}
 
 		if repo.NeedPurgeNow {
-			// Process purge now
+			// Process purge now without holding the mutex.
 			repo.NeedPurgeNow = false
 			purgeOption := repo.PurgeNowOption
+			repo.Mutex.Unlock()
 			repo.PurgeRepo(purgeOption)
+			continue
 		}
 
 		// Check for the stop signal before processing
@@ -909,13 +911,15 @@ func (repo *ResticManager) AddFetchTask() {
 
 func (repo *ResticManager) AddPurgeTask(opt ResticPurgeOption, immediate bool) error {
 	if immediate {
+		repo.Mutex.Lock()
 		if repo.NeedPurgeNow {
+			repo.Mutex.Unlock()
 			return errors.New("a purge-now task is already scheduled")
 		}
 
-		repo.Mutex.Lock()
 		repo.NeedPurgeNow = true
 		repo.PurgeNowOption = opt
+		repo.cond.Signal()
 		repo.Mutex.Unlock()
 	} else {
 		repo.appendPurgeTask(opt)
