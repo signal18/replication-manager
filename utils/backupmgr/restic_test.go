@@ -2,13 +2,16 @@ package backupmgr
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -64,9 +67,7 @@ func resetSharedDirs(t *testing.T) {
 	_, cacheDir, dataDir := getTestingDirs(t)
 	dirs := []string{sharedRepoDir, cacheDir, dataDir}
 	for _, dir := range dirs {
-		if err := os.RemoveAll(dir); err != nil {
-			t.Fatalf("remove dir %s: %v", dir, err)
-		}
+		safeRemoveAll(t, dir)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatalf("mkdir dir %s: %v", dir, err)
 		}
@@ -184,6 +185,80 @@ func waitForMountReady(t *testing.T, repo *ResticManager, mountDir string, timeo
 	t.Fatalf("timeout waiting for mount readiness")
 }
 
+func safeRemoveAll(t *testing.T, targetDir string) {
+	t.Helper()
+
+	if err := os.RemoveAll(targetDir); err == nil {
+		return
+	} else {
+		if cleanupErr := cleanupMountsUnder(targetDir); cleanupErr != nil {
+			t.Logf("cleanup mounts under %s: %v", targetDir, cleanupErr)
+		}
+		if err := os.RemoveAll(targetDir); err == nil {
+			return
+		} else {
+			t.Fatalf("remove dir %s: %v", targetDir, err)
+		}
+	}
+}
+
+func cleanupMountsUnder(baseDir string) error {
+	base := strings.TrimSpace(baseDir)
+	if base == "" {
+		return fmt.Errorf("base directory is empty")
+	}
+	base = filepath.Clean(base)
+
+	data, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		return err
+	}
+	var mountPoints []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) <= 4 {
+			continue
+		}
+		mountPath := unescapeMountPath(fields[4])
+		if mountPath == "" {
+			continue
+		}
+		mountPath = filepath.Clean(mountPath)
+		if mountPath == base || strings.HasPrefix(mountPath, base+string(os.PathSeparator)) {
+			mountPoints = append(mountPoints, mountPath)
+		}
+	}
+	if len(mountPoints) == 0 {
+		return nil
+	}
+	sort.Slice(mountPoints, func(i, j int) bool {
+		return len(mountPoints[i]) > len(mountPoints[j])
+	})
+	var errs []string
+	for _, mountPoint := range mountPoints {
+		if err := unmountResticPath(mountPoint); err != nil && !errors.Is(err, syscall.ENOTCONN) {
+			errs = append(errs, fmt.Sprintf("%s: %v", mountPoint, err))
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+func unescapeMountPath(path string) string {
+	replacer := strings.NewReplacer(
+		`\040`, " ",
+		`\011`, "\t",
+		`\012`, "\n",
+		`\134`, `\\`,
+	)
+	return replacer.Replace(path)
+}
+
 func TestGetOldestSnapshot(t *testing.T) {
 	repo := newPausedRepo(t)
 	if _, _, err := repo.GetOldestSnapshot(); err == nil {
@@ -264,18 +339,74 @@ func TestEnvHelpers(t *testing.T) {
 	}
 }
 
-func TestGenerateTaskIDAndCanFetch(t *testing.T) {
+func TestGenerateTaskID(t *testing.T) {
 	repo := newPausedRepo(t)
 	if repo.GenerateTaskID() != 1 || repo.GenerateTaskID() != 2 {
 		t.Fatalf("unexpected task IDs")
 	}
-	repo.SetCanFetch(false)
-	if repo.GetCanFetch() {
-		t.Fatalf("expected CanFetch false")
+}
+
+func TestResticOpSemaphoreTimeout(t *testing.T) {
+	repo := newPausedRepo(t)
+
+	ctx := context.Background()
+	if err := repo.acquireResticOp(ctx); err != nil {
+		t.Fatalf("failed to acquire restic op: %v", err)
 	}
-	repo.SetCanFetch(true)
-	if !repo.GetCanFetch() {
-		t.Fatalf("expected CanFetch true")
+
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := repo.acquireResticOp(timeoutCtx); err == nil {
+		repo.releaseResticOp()
+		t.Fatalf("expected timeout error")
+	}
+
+	repo.releaseResticOp()
+
+	secondCtx, secondCancel := context.WithTimeout(context.Background(), time.Second)
+	defer secondCancel()
+	if err := repo.acquireResticOp(secondCtx); err != nil {
+		t.Fatalf("expected acquire after release, got: %v", err)
+	}
+	repo.releaseResticOp()
+}
+
+func TestResticOpSemaphoreWarning(t *testing.T) {
+	repo := newPausedRepo(t)
+	msgCh := make(chan sharedlog.Message, 5)
+	repo.MessageChan = msgCh
+	repo.resticOpWaitDuration = 20 * time.Millisecond
+
+	if err := repo.acquireResticOp(context.Background()); err != nil {
+		t.Fatalf("failed to acquire restic op: %v", err)
+	}
+
+	acquireErrCh := make(chan error, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		err := repo.acquireResticOp(ctx)
+		if err == nil {
+			repo.releaseResticOp()
+		}
+		acquireErrCh <- err
+	}()
+
+	select {
+	case msg := <-msgCh:
+		if !strings.Contains(msg.Text, "Restic operation has been waiting") {
+			repo.releaseResticOp()
+			t.Fatalf("unexpected log message: %s", msg.Text)
+		}
+	case <-time.After(500 * time.Millisecond):
+		repo.releaseResticOp()
+		t.Fatalf("timeout waiting for warning log")
+	}
+
+	repo.releaseResticOp()
+
+	if err := <-acquireErrCh; err != nil {
+		t.Fatalf("expected acquire after release, got: %v", err)
 	}
 }
 
@@ -861,6 +992,9 @@ func TestPurgeOldestBackup(t *testing.T) {
 
 func TestRestoreDumpMountUnmount(t *testing.T) {
 	repo, _, _, dataDir := newResticRepo(t, true)
+	if repo.AutoDetectAndDisableMount() {
+		t.Skip("FUSE not available; skipping mount tests")
+	}
 	if len(repo.Backups) == 0 {
 		t.Fatalf("expected snapshot")
 	}
@@ -890,9 +1024,12 @@ func TestRestoreDumpMountUnmount(t *testing.T) {
 	}
 
 	mountDir := filepath.Join(sharedData, "mnt")
-	if err := os.RemoveAll(mountDir); err != nil {
-		t.Fatalf("remove mount dir: %v", err)
-	}
+	safeRemoveAll(t, mountDir)
+	t.Cleanup(func() {
+		_ = repo.UnmountRepo()
+		_ = unmountResticPath(mountDir)
+		_ = os.RemoveAll(mountDir)
+	})
 	err := repo.MountRepoWithOptions(NewResticMountOption(mountDir))
 	if err != nil {
 		if strings.Contains(err.Error(), "fuse") || strings.Contains(err.Error(), "operation not permitted") {
@@ -1668,12 +1805,18 @@ func TestBuildMountArgs(t *testing.T) {
 // TestMountRepoWithOptions tests mounting with various options
 func TestMountRepoWithOptions(t *testing.T) {
 	repo, _, _, _ := newResticRepo(t, true)
+	if repo.AutoDetectAndDisableMount() {
+		t.Skip("FUSE not available; skipping mount tests")
+	}
 
 	mountDir := filepath.Join(getTestingDirs(t))
 	mountDir = filepath.Join(mountDir, "mount-options-test")
-	if err := os.RemoveAll(mountDir); err != nil {
-		t.Fatalf("remove mount dir: %v", err)
-	}
+	safeRemoveAll(t, mountDir)
+	t.Cleanup(func() {
+		_ = repo.UnmountRepo()
+		_ = unmountResticPath(mountDir)
+		_ = os.RemoveAll(mountDir)
+	})
 
 	// Test with empty target directory (should fail)
 	opt := ResticMountOption{}
@@ -1718,6 +1861,9 @@ func TestMountRepoWithOptions(t *testing.T) {
 // TestMountRepoWithFilters tests mounting with host/tag/path filters
 func TestMountRepoWithFilters(t *testing.T) {
 	repo, _, _, dataDir := newResticRepo(t, false)
+	if repo.AutoDetectAndDisableMount() {
+		t.Skip("FUSE not available; skipping mount tests")
+	}
 
 	// Create multiple backups with different tags and hosts
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
@@ -1761,9 +1907,12 @@ func TestMountRepoWithFilters(t *testing.T) {
 	// Test mount with host filter
 	mountDir := filepath.Join(getTestingDirs(t))
 	mountDir = filepath.Join(mountDir, "mount-filter-test")
-	if err := os.RemoveAll(mountDir); err != nil {
-		t.Fatalf("remove mount dir: %v", err)
-	}
+	safeRemoveAll(t, mountDir)
+	t.Cleanup(func() {
+		_ = repo.UnmountRepo()
+		_ = unmountResticPath(mountDir)
+		_ = os.RemoveAll(mountDir)
+	})
 
 	mountOpt := ResticMountOption{
 		TargetDir: mountDir,
@@ -1800,12 +1949,18 @@ func TestMountRepoWithFilters(t *testing.T) {
 // TestMountRepoBackwardCompatibility tests that MountRepoWithOptions behaves consistently
 func TestMountRepoBackwardCompatibility(t *testing.T) {
 	repo, _, _, _ := newResticRepo(t, true)
+	if repo.AutoDetectAndDisableMount() {
+		t.Skip("FUSE not available; skipping mount tests")
+	}
 
 	mountDir := filepath.Join(getTestingDirs(t))
 	mountDir = filepath.Join(mountDir, "mount-compat-test")
-	if err := os.RemoveAll(mountDir); err != nil {
-		t.Fatalf("remove mount dir: %v", err)
-	}
+	safeRemoveAll(t, mountDir)
+	t.Cleanup(func() {
+		_ = repo.UnmountRepo()
+		_ = unmountResticPath(mountDir)
+		_ = os.RemoveAll(mountDir)
+	})
 
 	// Use MountRepoWithOptions (same defaults as MountRepo)
 	err := repo.MountRepoWithOptions(NewResticMountOption(mountDir))

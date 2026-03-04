@@ -310,52 +310,54 @@ type TaskStatus struct {
 
 // ResticManager manages the queue and execution
 type ResticManager struct {
-	BinaryPath           string
-	Env                  []string
-	Backups              []BackupSnapshot
-	BackupMap            map[string]*BackupSnapshot
-	BackupStat           BackupStat
-	TaskQueue            []*ResticTask
-	TaskErrors           map[TaskType]error
-	errorMutex           *sync.Mutex
-	ResultChan           chan ResticResult
-	LogModule            int
-	MessageChan          chan sharedlog.Message
-	Shutdown             bool
-	Mutex                *sync.Mutex
-	cond                 *sync.Cond    // Condition variable for waiting and notifying tasks
-	stopCh               chan struct{} // Stop channel to signal the goroutine to stop
-	CanFetch             bool
-	CanInitRepo          bool
-	NeedPurgeNow         bool
-	PurgeNowOption       ResticPurgeOption
-	isPaused             bool
-	isPausedByDisk       bool
-	HasLocks             bool
-	taskID               int
-	CurrentID            int
-	mountCmd             *exec.Cmd
-	mountPath            string
-	mountDone            chan error
-	mountPid             int
-	unmountRequested     bool                // Set to true when intentional unmount is requested
-	mountPinned          bool                // True when mount should remain active until explicitly unpinned
-	unmountWhenIdle      bool                // True when mount should auto-unmount after last ref
-	unmountInProgress    bool                // True when auto-unmount goroutine is running
-	mountRefCount        int                 // Number of active users of the mount
-	mountRefMutex        *sync.Mutex         // Protects mount state (cmd/path/pid/done/unmountRequested) and mount users
-	mountUsers           map[string]struct{} // Track which operations are using mount (for debugging)
-	BackupCount          int                 // Number of backups since last check
-	LastCheckTime        time.Time           // Last time repository check was run
-	LastFullCheckTime    time.Time           // Last time full data check was run
-	DirMode              os.FileMode         // Directory permission mode (default: 0700)
-	FileMode             os.FileMode         // File permission mode (default: 0600)
-	OperationTimeout     time.Duration       // Timeout for long-running operations (default: 2 hours)
-	DumpTimeout          time.Duration       // Timeout for restic dump operations (default: OperationTimeout)
-	MountDisabled        bool                // If true, mount operations are disabled (e.g., FUSE unavailable)
-	AllowUnsafeMount     bool                // If true, allow using mount created by other process
-	MountRecoveryEnabled bool                // If true, recover/cleanup stale mounts on startup
-	OnPurgeComplete      func(ResticPurgeOption)
+	BinaryPath             string
+	Env                    []string
+	Backups                []BackupSnapshot
+	BackupMap              map[string]*BackupSnapshot
+	BackupStat             BackupStat
+	TaskQueue              []*ResticTask
+	TaskErrors             map[TaskType]error
+	errorMutex             *sync.Mutex
+	ResultChan             chan ResticResult
+	LogModule              int
+	MessageChan            chan sharedlog.Message
+	Shutdown               bool
+	Mutex                  *sync.Mutex
+	cond                   *sync.Cond    // Condition variable for waiting and notifying tasks
+	stopCh                 chan struct{} // Stop channel to signal the goroutine to stop
+	resticOpSem            chan struct{}
+	resticOpWaitDuration   time.Duration // Warn after waiting this long for the restic operation lock
+	resticOpAcquireTimeout time.Duration // Max wait for lock acquisition; operation timeouts are handled separately
+	CanInitRepo            bool
+	NeedPurgeNow           bool
+	PurgeNowOption         ResticPurgeOption
+	isPaused               bool
+	isPausedByDisk         bool
+	HasLocks               bool
+	taskID                 int
+	CurrentID              int
+	mountCmd               *exec.Cmd
+	mountPath              string
+	mountDone              chan error
+	mountPid               int
+	unmountRequested       bool                // Set to true when intentional unmount is requested
+	mountPinned            bool                // True when mount should remain active until explicitly unpinned
+	unmountWhenIdle        bool                // True when mount should auto-unmount after last ref
+	unmountInProgress      bool                // True when auto-unmount goroutine is running
+	mountRefCount          int                 // Number of active users of the mount
+	mountRefMutex          *sync.Mutex         // Protects mount state (cmd/path/pid/done/unmountRequested) and mount users
+	mountUsers             map[string]struct{} // Track which operations are using mount (for debugging)
+	BackupCount            int                 // Number of backups since last check
+	LastCheckTime          time.Time           // Last time repository check was run
+	LastFullCheckTime      time.Time           // Last time full data check was run
+	DirMode                os.FileMode         // Directory permission mode (default: 0700)
+	FileMode               os.FileMode         // File permission mode (default: 0600)
+	OperationTimeout       time.Duration       // Timeout for long-running operations (default: 2 hours)
+	DumpTimeout            time.Duration       // Timeout for restic dump operations (default: OperationTimeout)
+	MountDisabled          bool                // If true, mount operations are disabled (e.g., FUSE unavailable)
+	AllowUnsafeMount       bool                // If true, allow using mount created by other process
+	MountRecoveryEnabled   bool                // If true, recover/cleanup stale mounts on startup
+	OnPurgeComplete        func(ResticPurgeOption)
 }
 
 // NewResticRepo initializes the repository manager
@@ -374,13 +376,16 @@ func NewResticRepo(binaryPath string, msgChan chan sharedlog.Message, logmodule 
 		errorMutex:           &sync.Mutex{},
 		ResultChan:           make(chan ResticResult, 10),
 		stopCh:               make(chan struct{}),
-		CanFetch:             true,
 		CanInitRepo:          true,
 		DirMode:              0700,          // Secure default: owner-only directories
 		FileMode:             0600,          // Secure default: owner-only files
 		OperationTimeout:     2 * time.Hour, // Default: 2 hours for long operations
 		MountRecoveryEnabled: true,
 	}
+
+	repo.resticOpSem = make(chan struct{}, 1)
+	repo.resticOpWaitDuration = 30 * time.Second // Warn after 30s to surface contention well before operation timeouts
+	repo.resticOpAcquireTimeout = 30 * time.Second
 
 	repo.cond = sync.NewCond(repo.Mutex)
 	go repo.worker() // Start the worker
@@ -563,14 +568,57 @@ func (repo *ResticManager) GenerateTaskID() int {
 	return repo.taskID
 }
 
-// SetCanFetch updates CanFetch flag
-func (repo *ResticManager) SetCanFetch(value bool) {
-	repo.CanFetch = value
+func (repo *ResticManager) acquireResticOp(ctx context.Context) error {
+	if repo.resticOpSem == nil {
+		return fmt.Errorf("restic operation semaphore not initialized")
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	startedWaiting := time.Now()
+	var warningTimer *time.Timer
+	var warningCh <-chan time.Time
+
+	if repo.resticOpWaitDuration > 0 {
+		warningTimer = time.NewTimer(repo.resticOpWaitDuration)
+		warningCh = warningTimer.C
+		defer func() {
+			if warningTimer == nil {
+				return
+			}
+			if !warningTimer.Stop() {
+				select {
+				case <-warningTimer.C:
+				default:
+				}
+			}
+		}()
+	}
+
+	for {
+		select {
+		case repo.resticOpSem <- struct{}{}:
+			return nil
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for restic operation lock: %w", ctx.Err())
+		case <-warningCh:
+			repo.Printf(logrus.WarnLevel, "Restic operation has been waiting for %v, possible contention", time.Since(startedWaiting))
+			warningCh = nil
+		}
+	}
 }
 
-// GetCanFetch returns CanFetch value
-func (repo *ResticManager) GetCanFetch() bool {
-	return repo.CanFetch
+func (repo *ResticManager) releaseResticOp() {
+	if repo.resticOpSem == nil {
+		return
+	}
+
+	select {
+	case <-repo.resticOpSem:
+	default:
+	}
 }
 
 // SetPermissions sets the permission modes for restic operations
@@ -738,7 +786,7 @@ func (repo *ResticManager) worker() {
 		}
 
 		if repo.NeedPurgeNow {
-			// Process purge now without holding the mutex.
+			// Immediate purge intentionally skips FetchRepo; queued PurgeTask refreshes after purge.
 			repo.NeedPurgeNow = false
 			purgeOption := repo.PurgeNowOption
 			repo.Mutex.Unlock()
@@ -1118,13 +1166,17 @@ func (repo *ResticManager) restoreSnapshotWithOptions(opt ResticRestoreOption) e
 		return fmt.Errorf("failed to create target dir: %w", err)
 	}
 
-	if !repo.GetCanFetch() {
-		time.Sleep(time.Second)
-		return repo.restoreSnapshotWithOptions(opt)
+	acquireCtx := context.Background()
+	acquireCancel := func() {}
+	if repo.resticOpAcquireTimeout > 0 {
+		acquireCtx, acquireCancel = context.WithTimeout(context.Background(), repo.resticOpAcquireTimeout)
 	}
+	defer acquireCancel()
 
-	repo.SetCanFetch(false)
-	defer repo.SetCanFetch(true)
+	if err := repo.acquireResticOp(acquireCtx); err != nil {
+		return err
+	}
+	defer repo.releaseResticOp()
 
 	if err := repo.CheckRepoFiles(); err != nil {
 		return err
@@ -1166,14 +1218,14 @@ func (repo *ResticManager) restoreSnapshotWithOptions(opt ResticRestoreOption) e
 	args = appendResticArgs(args, "--iinclude", opt.IInclude)
 	args = appendResticArgs(args, "--iexclude", opt.IExclude)
 
-	// Add timeout context for long-running restore operations
+	// Use timeout context for long-running restore operations
 	timeout := repo.GetOperationTimeout()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	restoreCtx, restoreCancel := context.WithTimeout(context.Background(), timeout)
+	defer restoreCancel()
 
-	_, stderr, err := repo.RunCommandWithContext(ctx, args, logrus.InfoLevel, false)
+	_, stderr, err := repo.RunCommandWithContext(restoreCtx, args, logrus.InfoLevel, false)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if restoreCtx.Err() == context.DeadlineExceeded {
 			return fmt.Errorf("restore operation timeout after %v: %w", timeout, err)
 		}
 		return fmt.Errorf("failed to restore snapshot: %v, stderr: %s", err, stderr)
@@ -1196,13 +1248,17 @@ func (repo *ResticManager) ListSnapshotWithLogLevel(snapshotID string, paths []s
 		return nil, fmt.Errorf("snapshot ID is empty")
 	}
 
-	if !repo.GetCanFetch() {
-		time.Sleep(time.Second)
-		return repo.ListSnapshot(snapshotID, paths, recursive)
+	acquireCtx := context.Background()
+	acquireCancel := func() {}
+	if repo.resticOpAcquireTimeout > 0 {
+		acquireCtx, acquireCancel = context.WithTimeout(context.Background(), repo.resticOpAcquireTimeout)
 	}
+	defer acquireCancel()
 
-	repo.SetCanFetch(false)
-	defer repo.SetCanFetch(true)
+	if err := repo.acquireResticOp(acquireCtx); err != nil {
+		return nil, err
+	}
+	defer repo.releaseResticOp()
 
 	if err := repo.CheckRepoFiles(); err != nil {
 		return nil, err
@@ -1224,12 +1280,12 @@ func (repo *ResticManager) ListSnapshotWithLogLevel(snapshotID string, paths []s
 
 	// Add timeout context for long-running list operations
 	timeout := repo.GetOperationTimeout()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	listCtx, listCancel := context.WithTimeout(context.Background(), timeout)
+	defer listCancel()
 
-	stdout, stderr, err := repo.RunCommandWithContext(ctx, args, level, true)
+	stdout, stderr, err := repo.RunCommandWithContext(listCtx, args, level, true)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if listCtx.Err() == context.DeadlineExceeded {
 			return nil, fmt.Errorf("list operation timeout after %v: %w", timeout, err)
 		}
 		return nil, fmt.Errorf("failed to list snapshot: %v, stderr: %s", err, stderr)
@@ -1292,13 +1348,17 @@ func (repo *ResticManager) DumpSnapshotWithOptions(opt ResticDumpOption, writer 
 		return fmt.Errorf("invalid archive format: %s (must be tar or zip)", opt.Archive)
 	}
 
-	if !repo.GetCanFetch() {
-		time.Sleep(time.Second)
-		return repo.DumpSnapshotWithOptions(opt, writer, level)
+	acquireCtx := context.Background()
+	acquireCancel := func() {}
+	if repo.resticOpAcquireTimeout > 0 {
+		acquireCtx, acquireCancel = context.WithTimeout(context.Background(), repo.resticOpAcquireTimeout)
 	}
+	defer acquireCancel()
 
-	repo.SetCanFetch(false)
-	defer repo.SetCanFetch(true)
+	if err := repo.acquireResticOp(acquireCtx); err != nil {
+		return err
+	}
+	defer repo.releaseResticOp()
 
 	if err := repo.CheckRepoFiles(); err != nil {
 		return err
@@ -1311,8 +1371,8 @@ func (repo *ResticManager) DumpSnapshotWithOptions(opt ResticDumpOption, writer 
 
 	// Add timeout context for long-running dump operations
 	timeout := repo.GetDumpTimeout()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	dumpCtx, dumpCancel := context.WithTimeout(context.Background(), timeout)
+	defer dumpCancel()
 
 	args := repo.buildResticGlobalArgs(globalOpt)
 	args = append(args, "dump")
@@ -1326,7 +1386,7 @@ func (repo *ResticManager) DumpSnapshotWithOptions(opt ResticDumpOption, writer 
 	}
 	args = append(args, snapshotID, filePath)
 
-	cmd := exec.CommandContext(ctx, repo.BinaryPath, args...)
+	cmd := exec.CommandContext(dumpCtx, repo.BinaryPath, args...)
 	cmd.Env = append(os.Environ(), repo.Env...)
 
 	stdoutPipe, err := cmd.StdoutPipe()
@@ -1370,8 +1430,8 @@ func (repo *ResticManager) DumpSnapshotWithOptions(opt ResticDumpOption, writer 
 
 	if err := cmd.Wait(); err != nil {
 		// Check if timeout occurred
-		if ctx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("dump operation timeout after %v: %w", timeout, ctx.Err())
+		if dumpCtx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("dump operation timeout after %v: %w", timeout, dumpCtx.Err())
 		}
 		return fmt.Errorf("command execution failed: %w, stderr: %s", err, stderrBuf.Bytes())
 	}
@@ -3009,13 +3069,17 @@ func (repo *ResticManager) fetchRepoSnapshots() error {
 
 // FetchRepo performs the fetch for snapshots and stats
 func (repo *ResticManager) FetchRepo() error {
-	// Check if the repo is able to fetch and initialized
-	if !repo.GetCanFetch() {
-		return nil
+	acquireCtx := context.Background()
+	acquireCancel := func() {}
+	if repo.resticOpAcquireTimeout > 0 {
+		acquireCtx, acquireCancel = context.WithTimeout(context.Background(), repo.resticOpAcquireTimeout)
 	}
+	defer acquireCancel()
 
-	repo.SetCanFetch(false)
-	defer repo.SetCanFetch(true)
+	if err := repo.acquireResticOp(acquireCtx); err != nil {
+		return err
+	}
+	defer repo.releaseResticOp()
 
 	// Check if the repo is initialized
 	if err := repo.CheckRepoFiles(); err != nil {
@@ -3254,14 +3318,17 @@ func buildForgetArgs(opt ResticPurgeOption) []string {
 
 // ResticPurgeRepo performs the actual purging of the repository
 func (repo *ResticManager) PurgeRepo(opt ResticPurgeOption) error {
-	// Check if the repo is able to fetch and initialized
-	if !repo.GetCanFetch() {
-		time.Sleep(time.Second)
-		return repo.PurgeRepo(opt)
+	acquireCtx := context.Background()
+	acquireCancel := func() {}
+	if repo.resticOpAcquireTimeout > 0 {
+		acquireCtx, acquireCancel = context.WithTimeout(context.Background(), repo.resticOpAcquireTimeout)
 	}
+	defer acquireCancel()
 
-	repo.SetCanFetch(false)
-	defer repo.SetCanFetch(true)
+	if err := repo.acquireResticOp(acquireCtx); err != nil {
+		return err
+	}
+	defer repo.releaseResticOp()
 
 	// Check if the repo is initialized
 	if err := repo.CheckRepoFiles(); err != nil {
@@ -3323,13 +3390,17 @@ type ResticBackupSummary struct {
 // BackupWithOptions performs backup with full options support
 // Returns the snapshot ID if successful
 func (repo *ResticManager) BackupWithOptions(opt ResticBackupOption) (string, error) {
-	if !repo.GetCanFetch() {
-		time.Sleep(time.Second)
-		return repo.BackupWithOptions(opt)
+	acquireCtx := context.Background()
+	acquireCancel := func() {}
+	if repo.resticOpAcquireTimeout > 0 {
+		acquireCtx, acquireCancel = context.WithTimeout(context.Background(), repo.resticOpAcquireTimeout)
 	}
+	defer acquireCancel()
 
-	repo.SetCanFetch(false)
-	defer repo.SetCanFetch(true)
+	if err := repo.acquireResticOp(acquireCtx); err != nil {
+		return "", err
+	}
+	defer repo.releaseResticOp()
 
 	// Prepare the arguments for the "backup" command
 	args := []string{"backup", "--json"}
@@ -3556,14 +3627,17 @@ func (repo *ResticManager) CheckResticLocks() error {
 
 // ResticUnlockRepo unlocks the repository
 func (repo *ResticManager) UnlockRepo() error {
-
-	if !repo.GetCanFetch() {
-		time.Sleep(time.Second)
-		return repo.UnlockRepo()
+	acquireCtx := context.Background()
+	acquireCancel := func() {}
+	if repo.resticOpAcquireTimeout > 0 {
+		acquireCtx, acquireCancel = context.WithTimeout(context.Background(), repo.resticOpAcquireTimeout)
 	}
+	defer acquireCancel()
 
-	repo.SetCanFetch(false)
-	defer repo.SetCanFetch(true)
+	if err := repo.acquireResticOp(acquireCtx); err != nil {
+		return err
+	}
+	defer repo.releaseResticOp()
 
 	// Prepare the arguments for the "backup" command
 	args := []string{"unlock"}
@@ -3588,13 +3662,17 @@ func (repo *ResticManager) UnlockRepo() error {
 
 // CheckRepo verifies repository integrity with various check options
 func (repo *ResticManager) CheckRepo(opt ResticCheckOption) error {
-	if !repo.GetCanFetch() {
-		time.Sleep(time.Second)
-		return repo.CheckRepo(opt)
+	acquireCtx := context.Background()
+	acquireCancel := func() {}
+	if repo.resticOpAcquireTimeout > 0 {
+		acquireCtx, acquireCancel = context.WithTimeout(context.Background(), repo.resticOpAcquireTimeout)
 	}
+	defer acquireCancel()
 
-	repo.SetCanFetch(false)
-	defer repo.SetCanFetch(true)
+	if err := repo.acquireResticOp(acquireCtx); err != nil {
+		return err
+	}
+	defer repo.releaseResticOp()
 
 	// Check if the repo is initialized
 	if err := repo.CheckRepoFiles(); err != nil {
@@ -3634,13 +3712,17 @@ func (repo *ResticManager) CheckRepo(opt ResticCheckOption) error {
 
 // ResticChangePassword changes the repository password
 func (repo *ResticManager) AddRepoKey(newpassfile string) error {
-	if !repo.GetCanFetch() {
-		time.Sleep(time.Second)
-		return repo.AddRepoKey(newpassfile)
+	acquireCtx := context.Background()
+	acquireCancel := func() {}
+	if repo.resticOpAcquireTimeout > 0 {
+		acquireCtx, acquireCancel = context.WithTimeout(context.Background(), repo.resticOpAcquireTimeout)
 	}
+	defer acquireCancel()
 
-	repo.SetCanFetch(false)
-	defer repo.SetCanFetch(true)
+	if err := repo.acquireResticOp(acquireCtx); err != nil {
+		return err
+	}
+	defer repo.releaseResticOp()
 
 	// Prepare the arguments for the "backup" command
 	args := []string{"key", "add", "--new-password-file", newpassfile}
@@ -3667,13 +3749,17 @@ type ResticKey struct {
 }
 
 func (repo *ResticManager) GetRepoKeyList() ([]ResticKey, error) {
-	if !repo.GetCanFetch() {
-		time.Sleep(time.Second)
-		return repo.GetRepoKeyList()
+	acquireCtx := context.Background()
+	acquireCancel := func() {}
+	if repo.resticOpAcquireTimeout > 0 {
+		acquireCtx, acquireCancel = context.WithTimeout(context.Background(), repo.resticOpAcquireTimeout)
 	}
+	defer acquireCancel()
 
-	repo.SetCanFetch(false)
-	defer repo.SetCanFetch(true)
+	if err := repo.acquireResticOp(acquireCtx); err != nil {
+		return nil, err
+	}
+	defer repo.releaseResticOp()
 
 	// Prepare the arguments for the "key list" command
 	args := []string{"key", "list", "--json"}
@@ -3697,13 +3783,17 @@ func (repo *ResticManager) GetRepoKeyList() ([]ResticKey, error) {
 }
 
 func (repo *ResticManager) RemoveRepoKey(keyid string) error {
-	if !repo.GetCanFetch() {
-		time.Sleep(time.Second)
-		return repo.RemoveRepoKey(keyid)
+	acquireCtx := context.Background()
+	acquireCancel := func() {}
+	if repo.resticOpAcquireTimeout > 0 {
+		acquireCtx, acquireCancel = context.WithTimeout(context.Background(), repo.resticOpAcquireTimeout)
 	}
+	defer acquireCancel()
 
-	repo.SetCanFetch(false)
-	defer repo.SetCanFetch(true)
+	if err := repo.acquireResticOp(acquireCtx); err != nil {
+		return err
+	}
+	defer repo.releaseResticOp()
 
 	// Prepare the arguments for the "key remove" command
 	args := []string{"key", "remove", keyid}
@@ -3722,13 +3812,17 @@ func (repo *ResticManager) RemoveRepoKey(keyid string) error {
 }
 
 func (repo *ResticManager) TestPassword(newpass string) error {
-	if !repo.GetCanFetch() {
-		time.Sleep(time.Second)
-		return repo.TestPassword(newpass)
+	acquireCtx := context.Background()
+	acquireCancel := func() {}
+	if repo.resticOpAcquireTimeout > 0 {
+		acquireCtx, acquireCancel = context.WithTimeout(context.Background(), repo.resticOpAcquireTimeout)
 	}
+	defer acquireCancel()
 
-	repo.SetCanFetch(false)
-	defer repo.SetCanFetch(true)
+	if err := repo.acquireResticOp(acquireCtx); err != nil {
+		return err
+	}
+	defer repo.releaseResticOp()
 
 	// Temporarily add the new password file to the environment
 	originalEnv := repo.Env
