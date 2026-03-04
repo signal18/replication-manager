@@ -36,7 +36,13 @@ func (cluster *Cluster) ResticGetEnv() []string {
 	if cluster.Conf.BackupResticAws {
 		newEnv = append(newEnv, "AWS_ACCESS_KEY_ID="+cluster.Conf.BackupResticAwsAccessKeyId)
 		newEnv = append(newEnv, "AWS_SECRET_ACCESS_KEY="+cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
+		if cluster.Conf.BackupResticAwsRegion != "" {
+			newEnv = append(newEnv, "AWS_REGION="+cluster.Conf.BackupResticAwsRegion)
+		}
 		newEnv = append(newEnv, "RESTIC_REPOSITORY="+cluster.Conf.BackupResticRepository+"/"+cluster.Name)
+		if cluster.Conf.BackupResticAwsInsecureTLS {
+			newEnv = append(newEnv, "RESTIC_INSECURE_TLS=true")
+		}
 	} else {
 		if _, err := os.Stat(cluster.GetResticLocalDir()); os.IsNotExist(err) {
 			err := os.MkdirAll(cluster.GetResticLocalDir(), os.ModePerm)
@@ -52,6 +58,8 @@ func (cluster *Cluster) ResticGetEnv() []string {
 func (cluster *Cluster) ReloadResticEnv() {
 	if cluster.ResticManager != nil {
 		cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
+		// Clear init error backoff when environment changes (credentials/config may be fixed)
+		cluster.ResticManager.ClearInitErrorBackoffManual()
 	}
 }
 
@@ -142,7 +150,7 @@ func (cluster *Cluster) ResticInitRepo(force bool) error {
 
 	err := cluster.ResticManager.InitRepo(force)
 	if err != nil {
-		cluster.SetState("WARN0092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0092"], err), ErrFrom: "BACKUP"})
+		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
 	}
 
 	return err
