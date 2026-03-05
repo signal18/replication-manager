@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,6 +37,85 @@ func TestSplitResticKeepTagTemplates(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSplitResticAdditionalEnvTokensValid(t *testing.T) {
+	input := `AWS_SESSION_TOKEN="abc",AWS_DEFAULT_REGION=us-east-1 OTHER=value`
+	got, err := splitResticAdditionalEnvTokens(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := []string{`AWS_SESSION_TOKEN="abc"`, `AWS_DEFAULT_REGION=us-east-1`, `OTHER=value`}
+	if !reflect.DeepEqual(got, expected) {
+		t.Fatalf("unexpected split result: got %v, want %v", got, expected)
+	}
+}
+
+func TestSplitResticAdditionalEnvTokensUnmatchedQuotes(t *testing.T) {
+	_, err := splitResticAdditionalEnvTokens(`AWS_SESSION_TOKEN="abc`)
+	if err == nil {
+		t.Fatalf("expected error for unmatched quotes")
+	}
+}
+
+func TestSplitResticAdditionalEnvTokensInvalidTrailingChars(t *testing.T) {
+	_, err := splitResticAdditionalEnvTokens(`KEY='single'extra`)
+	if err == nil {
+		t.Fatalf("expected error for trailing characters after closing quote")
+	}
+}
+
+func TestParseResticAdditionalEnvOverridesValid(t *testing.T) {
+	overrides, allowlist, err := parseResticAdditionalEnvOverrides(`AWS_SESSION_TOKEN="abc" AWS_DEFAULT_REGION=us-east-1 AWS_PROFILE`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if overrides["AWS_SESSION_TOKEN"] != "abc" {
+		t.Fatalf("expected session token override, got %q", overrides["AWS_SESSION_TOKEN"])
+	}
+	if overrides["AWS_DEFAULT_REGION"] != "us-east-1" {
+		t.Fatalf("expected default region override, got %q", overrides["AWS_DEFAULT_REGION"])
+	}
+	if _, ok := allowlist["AWS_PROFILE"]; !ok {
+		t.Fatalf("expected allowlist to include AWS_PROFILE")
+	}
+}
+
+func TestParseResticAdditionalEnvOverridesInvalid(t *testing.T) {
+	_, _, err := parseResticAdditionalEnvOverrides(`KEY='single'extra`)
+	if err == nil {
+		t.Fatalf("expected error for invalid additional env")
+	}
+}
+
+func TestFilterResticEnvSkipsAwsForNonS3(t *testing.T) {
+	baseEnv := []string{
+		"PATH=/bin",
+		"AWS_DEFAULT_REGION=us-west-2",
+		"OTHER=base",
+	}
+	env := filterResticEnv(nil, baseEnv, "/tmp/repo", "pw", "/tmp/cache", "ak", "sk", "", "AWS_PROFILE=dev AWS_DEFAULT_REGION=us-east-1 OTHER=override")
+	if containsEnvPrefix(env, "AWS_PROFILE=") {
+		t.Fatalf("expected AWS_PROFILE to be filtered for non-S3 repo")
+	}
+	if containsEnvPrefix(env, "AWS_DEFAULT_REGION=") {
+		t.Fatalf("expected AWS_DEFAULT_REGION to be filtered for non-S3 repo")
+	}
+	if containsEnvPrefix(env, "AWS_ACCESS_KEY_ID=") || containsEnvPrefix(env, "AWS_SECRET_ACCESS_KEY=") {
+		t.Fatalf("expected AWS credentials to be omitted for non-S3 repo")
+	}
+	if !containsEnvPrefix(env, "OTHER=override") {
+		t.Fatalf("expected override for OTHER to be applied")
+	}
+}
+
+func containsEnvPrefix(env []string, prefix string) bool {
+	for _, item := range env {
+		if strings.HasPrefix(item, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSplitResticKeepTagTemplates_UnmatchedQuotes(t *testing.T) {

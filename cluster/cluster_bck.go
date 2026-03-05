@@ -33,12 +33,15 @@ func isS3ResticRepository(repoPath string) bool {
 	return strings.HasPrefix(strings.TrimSpace(repoPath), "s3:")
 }
 
-func splitResticAdditionalEnvTokens(value string) ([]string, bool) {
+func splitResticAdditionalEnvTokens(value string) ([]string, error) {
 	parts := make([]string, 0)
 	var current strings.Builder
 	var quote rune
 	escaped := false
 	hadUnmatched := false
+	hadInvalid := false
+	seenEquals := false
+	justClosedQuote := false
 
 	for _, r := range value {
 		if quote != 0 {
@@ -54,9 +57,27 @@ func splitResticAdditionalEnvTokens(value string) ([]string, bool) {
 			}
 			if r == quote {
 				quote = 0
+				justClosedQuote = true
 			}
 			current.WriteRune(r)
 			continue
+		}
+
+		if justClosedQuote {
+			switch r {
+			case ',', ' ', '\t', '\n', '\r':
+				// ok: delimiter after quoted token
+			case '=':
+				if seenEquals {
+					hadInvalid = true
+				}
+			default:
+				hadInvalid = true
+			}
+			justClosedQuote = false
+			if hadInvalid {
+				break
+			}
 		}
 
 		switch r {
@@ -67,27 +88,40 @@ func splitResticAdditionalEnvTokens(value string) ([]string, bool) {
 			if current.Len() > 0 {
 				parts = append(parts, current.String())
 				current.Reset()
+				seenEquals = false
 			}
+		case '=':
+			seenEquals = true
+			current.WriteRune(r)
 		default:
 			current.WriteRune(r)
 		}
 	}
 
+	if hadInvalid {
+		return nil, errors.New("restic additional env has invalid characters after quoted value")
+	}
 	if quote != 0 {
 		hadUnmatched = true
+	}
+	if hadUnmatched {
+		return nil, errors.New("restic additional env has unmatched quotes")
 	}
 	if current.Len() > 0 {
 		parts = append(parts, current.String())
 	}
 
-	return parts, hadUnmatched
+	return parts, nil
 }
 
-func parseResticAdditionalEnvOverrides(raw string) (map[string]string, map[string]struct{}) {
+func parseResticAdditionalEnvOverrides(raw string) (map[string]string, map[string]struct{}, error) {
 	overrides := make(map[string]string)
 	allowlist := make(map[string]struct{})
 
-	parts, _ := splitResticAdditionalEnvTokens(raw)
+	parts, err := splitResticAdditionalEnvTokens(raw)
+	if err != nil {
+		return overrides, allowlist, err
+	}
 	for _, part := range parts {
 		trimmed := strings.TrimSpace(part)
 		if trimmed == "" {
@@ -111,14 +145,24 @@ func parseResticAdditionalEnvOverrides(raw string) (map[string]string, map[strin
 		}
 	}
 
-	return overrides, allowlist
+	return overrides, allowlist, nil
 }
 
-func filterResticEnv(baseEnv []string, repoPath, password, cacheDir, awsAccessKey, awsSecretKey, awsRegion, additionalEnv string) []string {
+func filterResticEnv(cluster *Cluster, baseEnv []string, repoPath, password, cacheDir, awsAccessKey, awsSecretKey, awsRegion, additionalEnv string) []string {
 	filtered := make([]string, 0, len(baseEnv)+6)
-	overrides, allowlist := parseResticAdditionalEnvOverrides(additionalEnv)
+	overrides, allowlist, err := parseResticAdditionalEnvOverrides(additionalEnv)
+	if err != nil {
+		if cluster != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Ignoring restic additional env override: %s", err)
+		}
+		overrides = make(map[string]string)
+		allowlist = make(map[string]struct{})
+	}
+	isS3 := isS3ResticRepository(repoPath)
 	defaultRegion := ""
 	optionalAwsEnv := make(map[string]string)
+	// Reserved env vars cannot be overridden via backup-restic-additional-env.
+	// Add any new sensitive env vars here to prevent unintended injection.
 	reserved := map[string]struct{}{
 		"RESTIC_REPOSITORY":     {},
 		"RESTIC_PASSWORD":       {},
@@ -138,12 +182,19 @@ func filterResticEnv(baseEnv []string, repoPath, password, cacheDir, awsAccessKe
 			if _, blocked := reserved[key]; blocked {
 				continue
 			}
+			if strings.HasPrefix(key, "AWS_") && !isS3 {
+				continue
+			}
+			// AWS_DEFAULT_REGION from additional env is ignored for S3 repos; base env is used as fallback.
+			if key == "AWS_DEFAULT_REGION" && isS3 {
+				continue
+			}
 			if override, exists := overrides[key]; exists {
 				optionalAwsEnv[key] = override
 			} else {
 				optionalAwsEnv[key] = val
 			}
-			if key == "AWS_DEFAULT_REGION" {
+			if key == "AWS_DEFAULT_REGION" && !isS3 {
 				defaultRegion = optionalAwsEnv[key]
 			}
 			continue
@@ -158,11 +209,17 @@ func filterResticEnv(baseEnv []string, repoPath, password, cacheDir, awsAccessKe
 		if _, blocked := reserved[key]; blocked {
 			continue
 		}
+		if strings.HasPrefix(key, "AWS_") && !isS3 {
+			continue
+		}
+		if key == "AWS_DEFAULT_REGION" && isS3 {
+			continue
+		}
 		if _, exists := optionalAwsEnv[key]; exists {
 			continue
 		}
 		optionalAwsEnv[key] = override
-		if key == "AWS_DEFAULT_REGION" {
+		if key == "AWS_DEFAULT_REGION" && !isS3 {
 			defaultRegion = override
 		}
 	}
@@ -171,7 +228,7 @@ func filterResticEnv(baseEnv []string, repoPath, password, cacheDir, awsAccessKe
 	filtered = append(filtered, "RESTIC_CACHE_DIR="+cacheDir)
 	filtered = append(filtered, "RESTIC_REPOSITORY="+repoPath)
 
-	if isS3ResticRepository(repoPath) {
+	if isS3 {
 		filtered = append(filtered, "AWS_ACCESS_KEY_ID="+awsAccessKey)
 		filtered = append(filtered, "AWS_SECRET_ACCESS_KEY="+awsSecretKey)
 		region := strings.TrimSpace(awsRegion)
@@ -187,7 +244,7 @@ func filterResticEnv(baseEnv []string, repoPath, password, cacheDir, awsAccessKe
 		if _, blocked := reserved[key]; blocked {
 			continue
 		}
-		if key == "AWS_DEFAULT_REGION" && isS3ResticRepository(repoPath) {
+		if key == "AWS_DEFAULT_REGION" && isS3 {
 			continue
 		}
 		filtered = append(filtered, key+"="+value)
@@ -213,6 +270,7 @@ func (cluster *Cluster) ResticGetEnv() []string {
 	}
 
 	return filterResticEnv(
+		cluster,
 		os.Environ(),
 		repoPath,
 		password,
