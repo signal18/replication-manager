@@ -766,8 +766,8 @@ func (cluster *Cluster) Run() {
 						cluster.CheckRestartContainerCookies()
 
 						// Monitor schema when shardproxy is used
-						if cluster.Conf.MdbsProxyOn && cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() {
-							go cluster.MonitorSchema()
+						if cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() {
+							go cluster.MonitorSchema(cluster.Conf.MdbsProxyOn)
 						}
 
 						if cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
@@ -976,7 +976,7 @@ func (cluster *Cluster) StateProcessing() {
 			}
 
 			if s.ErrKey == "WARN0163" {
-				go cluster.MonitorSchema()
+				go cluster.MonitorSchema(true)
 			}
 
 			//		cluster.statecloseChan <- s
@@ -1843,7 +1843,7 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 	}
 }
 
-func (cluster *Cluster) MonitorMasterTableSchema() error {
+func (cluster *Cluster) MonitorMasterTableSchema(checksum bool) error {
 	cmaster := cluster.GetMaster()
 	if cmaster == nil {
 		return fmt.Errorf("No master found")
@@ -1868,73 +1868,76 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 	cluster.LogSQL(logs, err, cmaster.URL, "Monitor", config.LvlDbg, "Could not fetch master tables %s", err)
 	cmaster.Tables = tablelist
 
-	var tableCluster []string
-	var duplicates []*ServerMonitor
-	var tottablesize, totindexsize int64
-	for _, t := range tables {
-		duplicates = nil
-		tableCluster = nil
-		tottablesize += t.DataLength
-		totindexsize += t.IndexLength
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Lookup for table %s", t.TableSchema+"."+t.TableName)
+	if checksum {
+		var tableCluster []string
+		var duplicates []*ServerMonitor
+		var tottablesize, totindexsize int64
+		for _, t := range tables {
+			duplicates = nil
+			tableCluster = nil
+			tottablesize += t.DataLength
+			totindexsize += t.IndexLength
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Lookup for table %s", t.TableSchema+"."+t.TableName)
 
-		duplicates = append(duplicates, cmaster)
-		tableCluster = append(tableCluster, cluster.GetName())
-		oldtable, err := cmaster.GetTableFromDict(t.TableSchema + "." + t.TableName)
-		haschanged := false
-		if err != nil {
-			if err.Error() == "Empty" {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Init table %s", t.TableSchema+"."+t.TableName)
-				haschanged = true
+			duplicates = append(duplicates, cmaster)
+			tableCluster = append(tableCluster, cluster.GetName())
+			oldtable, err := cmaster.GetTableFromDict(t.TableSchema + "." + t.TableName)
+			haschanged := false
+			if err != nil {
+				if err.Error() == "Empty" {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Init table %s", t.TableSchema+"."+t.TableName)
+					haschanged = true
+				} else {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "New table %s", t.TableSchema+"."+t.TableName)
+					haschanged = true
+				}
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "New table %s", t.TableSchema+"."+t.TableName)
-				haschanged = true
+				if oldtable.TableCrc != t.TableCrc {
+					haschanged = true
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Change table %s", t.TableSchema+"."+t.TableName)
+				}
+				t.TableSync = oldtable.TableSync
 			}
-		} else {
-			if oldtable.TableCrc != t.TableCrc {
-				haschanged = true
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Change table %s", t.TableSchema+"."+t.TableName)
-			}
-			t.TableSync = oldtable.TableSync
-		}
 
-		// If shardproxy is enabled, check for duplicates in child clusters
-		if cluster.Conf.MdbsProxyOn {
-			for _, cl := range cluster.clusterList {
-				if cl.Conf.MdbsProxyOn && cl.Conf.ClusterHead == cluster.Name {
-					m := cl.GetMaster()
-					if m != nil {
-						cltbldef, _ := m.GetTableFromDict(t.TableSchema + "." + t.TableName)
-						if cltbldef.TableName == t.TableName {
-							duplicates = append(duplicates, m)
-							tableCluster = append(tableCluster, cl.GetName())
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Found duplicate table %s in %s", t.TableSchema+"."+t.TableName, m.URL)
+			// If shardproxy is enabled, check for duplicates in child clusters
+			if cluster.Conf.MdbsProxyOn {
+				for _, cl := range cluster.clusterList {
+					if cl.Conf.MdbsProxyOn && cl.Conf.ClusterHead == cluster.Name {
+						m := cl.GetMaster()
+						if m != nil {
+							cltbldef, _ := m.GetTableFromDict(t.TableSchema + "." + t.TableName)
+							if cltbldef.TableName == t.TableName {
+								duplicates = append(duplicates, m)
+								tableCluster = append(tableCluster, cl.GetName())
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Found duplicate table %s in %s", t.TableSchema+"."+t.TableName, m.URL)
+							}
 						}
 					}
 				}
-			}
-			t.TableClusters = strings.Join(tableCluster, ",")
-			tables[t.TableSchema+"."+t.TableName] = t
+				t.TableClusters = strings.Join(tableCluster, ",")
+				tables[t.TableSchema+"."+t.TableName] = t
 
-			if haschanged {
-				for _, pri := range cluster.Proxies {
-					if prx, ok := pri.(*MariadbShardProxy); ok {
-						if t.TableSchema != "replication_manager_schema" &&
-							!strings.Contains(t.TableName, "_copy") &&
-							!strings.Contains(t.TableName, "_back") &&
-							!strings.Contains(t.TableName, "_old") &&
-							!strings.Contains(t.TableName, "_reshard") {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "blabla table %s %s %s", duplicates, t.TableSchema, t.TableName)
-							cluster.ShardProxyCreateVTable(prx, t.TableSchema, t.TableName, duplicates, false)
+				if haschanged {
+					for _, pri := range cluster.Proxies {
+						if prx, ok := pri.(*MariadbShardProxy); ok {
+							if t.TableSchema != "replication_manager_schema" &&
+								!strings.Contains(t.TableName, "_copy") &&
+								!strings.Contains(t.TableName, "_back") &&
+								!strings.Contains(t.TableName, "_old") &&
+								!strings.Contains(t.TableName, "_reshard") {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "blabla table %s %s %s", duplicates, t.TableSchema, t.TableName)
+								cluster.ShardProxyCreateVTable(prx, t.TableSchema, t.TableName, duplicates, false)
+							}
 						}
 					}
 				}
 			}
 		}
+
+		cluster.WorkLoad.DBIndexSize = totindexsize
+		cluster.WorkLoad.DBTableSize = tottablesize
 	}
 
-	cluster.WorkLoad.DBIndexSize = totindexsize
-	cluster.WorkLoad.DBTableSize = tottablesize
 	cmaster.DictTables = dbhelper.FromNormalTablesMap(cmaster.DictTables, tables)
 
 	return nil
@@ -2039,7 +2042,7 @@ func (cluster *Cluster) MonitorTableSchemaDiff() {
 	}
 }
 
-func (cluster *Cluster) MonitorSchema() {
+func (cluster *Cluster) MonitorSchema(checksum bool) {
 	if !cluster.Conf.MonitorSchemaChange && atomic.LoadInt32(&cluster.SchemaMonitorRequested) == 0 {
 		return
 	}
@@ -2066,12 +2069,12 @@ func (cluster *Cluster) MonitorSchema() {
 		atomic.StoreInt32(&cluster.SchemaMonitorRequested, 0)
 	}()
 
-	err := cluster.MonitorMasterTableSchema()
+	err := cluster.MonitorMasterTableSchema(checksum)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error during schema monitoring: %s", err)
 	}
 
-	if cluster.Conf.MonitorSchemaOnReplicas {
+	if checksum && cluster.Conf.MonitorSchemaOnReplicas {
 		cluster.MonitorAllSlavesTableSchema()
 	}
 }
