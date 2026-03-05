@@ -567,7 +567,10 @@ func (repo *ResticManager) UpdateEnvKey(key, value string) {
 func (repo *ResticManager) GetRepoPath() string {
 	for _, env := range repo.Env {
 		if strings.HasPrefix(env, "RESTIC_REPOSITORY") {
-			return strings.Split(env, "=")[1]
+			parts := strings.SplitN(env, "=", 2)
+			if len(parts) == 2 {
+				return parts[1]
+			}
 		}
 	}
 
@@ -577,7 +580,10 @@ func (repo *ResticManager) GetRepoPath() string {
 func (repo *ResticManager) GetCacheDirPath() string {
 	for _, env := range repo.Env {
 		if strings.HasPrefix(env, "RESTIC_CACHE_DIR") {
-			return strings.Split(env, "=")[1]
+			parts := strings.SplitN(env, "=", 2)
+			if len(parts) == 2 {
+				return parts[1]
+			}
 		}
 	}
 

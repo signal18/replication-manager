@@ -262,6 +262,17 @@ func TestEnvHelpers(t *testing.T) {
 	if got := repo.GetCacheDirPath(); got != "/tmp/cache" {
 		t.Fatalf("unexpected cache dir: %s", got)
 	}
+
+	repo.SetEnv([]string{
+		"RESTIC_REPOSITORY=s3:https://example.com/bucket/path?sig=a=b",
+		"RESTIC_CACHE_DIR=/tmp/cache=dir",
+	})
+	if got := repo.GetRepoPath(); got != "s3:https://example.com/bucket/path?sig=a=b" {
+		t.Fatalf("unexpected repo path with equals: %s", got)
+	}
+	if got := repo.GetCacheDirPath(); got != "/tmp/cache=dir" {
+		t.Fatalf("unexpected cache dir with equals: %s", got)
+	}
 }
 
 func TestGenerateTaskIDAndCanFetch(t *testing.T) {
