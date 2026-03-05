@@ -229,8 +229,9 @@ func getTableDDLCRC(db *sqlx.DB, myver *version.Version, schema, table string, c
 		return 0, ""
 	}
 
+	var tbl string
 	var ddl string
-	if err := db.QueryRowx(query).Scan(&ddl); err != nil {
+	if err := db.QueryRowx(query).Scan(&tbl, &ddl); err != nil {
 		return 0, query + "\n"
 	}
 
@@ -309,15 +310,12 @@ func getTableColumns(db *sqlx.DB, myver *version.Version, schema string, tablema
 
 func columnDefQuery(myver *version.Version, schema string) string {
 	if myver.IsPostgreSQL() {
-		return fmt.Sprintf(`SELECT '%s', table_name, column_name, ordinal_position, column_default,
-			is_nullable, data_type, character_maximum_length, numeric_precision, numeric_scale,
-			'' AS character_set_name, '' AS collation_name, udt_name AS column_type,
-			'' AS column_key, '' AS extra
+		return fmt.Sprintf(`SELECT '%s' AS table_schema, table_name, ordinal_position, column_name, udt_name AS column_type,
+			is_nullable, column_default, '' AS extra, '' AS character_set_name, '' AS collation_name
 			FROM information_schema.columns WHERE table_schema = 'public' ORDER BY table_name, ordinal_position`, schema)
 	}
-	return fmt.Sprintf(`SELECT table_schema, table_name, column_name, ordinal_position, column_default,
-		is_nullable, data_type, character_maximum_length, numeric_precision, numeric_scale,
-		character_set_name, collation_name, column_type, column_key, extra
+	return fmt.Sprintf(`SELECT table_schema, table_name, ordinal_position, column_name, column_type,
+		is_nullable, column_default, extra, character_set_name, collation_name
 		FROM information_schema.COLUMNS WHERE table_schema = '%s' ORDER BY table_name, ordinal_position`, schema)
 }
 
@@ -407,8 +405,8 @@ func indexDefQuery(myver *version.Version, schema string) string {
 	if myver.IsPostgreSQL() {
 		return ""
 	}
-	return fmt.Sprintf(`SELECT table_schema, table_name, non_unique, index_name, seq_in_index,
-		column_name, nullable, index_type, sub_part
+	return fmt.Sprintf(`SELECT table_schema, table_name, index_name, non_unique, index_type, seq_in_index,
+		column_name, sub_part
 		FROM information_schema.STATISTICS WHERE table_schema = '%s'
 		ORDER BY table_name, index_name, seq_in_index`, schema)
 }
