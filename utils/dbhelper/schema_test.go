@@ -38,6 +38,17 @@ func TestAnalyzeTable(t *testing.T) {
 			expectedQuery: "ANALYZE TABLE `app`.`users`",
 		},
 		{
+			name:          "unqualified table",
+			flavor:        "MariaDB",
+			versionStr:    "10.5.2-MariaDB",
+			table:         "metrics",
+			nobinlog:      false,
+			persistent:    false,
+			columns:       "",
+			indexes:       "",
+			expectedQuery: "ANALYZE TABLE `metrics`",
+		},
+		{
 			name:          "persistent columns without indexes",
 			flavor:        "MariaDB",
 			versionStr:    "10.4.1-MariaDB",
@@ -60,6 +71,17 @@ func TestAnalyzeTable(t *testing.T) {
 			expectedQuery: "ANALYZE TABLE `app`.`audit` PERSISTENT FOR COLUMNS () INDEXES (idx_audit)",
 		},
 		{
+			name:          "persistent columns and indexes",
+			flavor:        "MariaDB",
+			versionStr:    "10.4.1-MariaDB",
+			table:         "app.audit",
+			nobinlog:      false,
+			persistent:    true,
+			columns:       "col1,col2",
+			indexes:       "idx_audit,idx_more",
+			expectedQuery: "ANALYZE TABLE `app`.`audit` PERSISTENT FOR COLUMNS (col1,col2) INDEXES (idx_audit,idx_more)",
+		},
+		{
 			name:          "persistent all with local",
 			flavor:        "MariaDB",
 			versionStr:    "10.5.2-MariaDB",
@@ -69,6 +91,28 @@ func TestAnalyzeTable(t *testing.T) {
 			columns:       "ALL",
 			indexes:       "",
 			expectedQuery: "ANALYZE LOCAL TABLE `metrics` PERSISTENT FOR ALL",
+		},
+		{
+			name:          "persistent empty lists",
+			flavor:        "MariaDB",
+			versionStr:    "10.4.1-MariaDB",
+			table:         "app.audit",
+			nobinlog:      false,
+			persistent:    true,
+			columns:       "",
+			indexes:       "",
+			expectedQuery: "ANALYZE TABLE `app`.`audit`",
+		},
+		{
+			name:          "persistent ignored on 10.4.0",
+			flavor:        "MariaDB",
+			versionStr:    "10.4.0-MariaDB",
+			table:         "app.audit",
+			nobinlog:      false,
+			persistent:    true,
+			columns:       "col1",
+			indexes:       "idx_audit",
+			expectedQuery: "ANALYZE TABLE `app`.`audit`",
 		},
 	}
 
@@ -120,6 +164,31 @@ func TestAnalyzeTableRejectsMultiDot(t *testing.T) {
 		t.Fatalf("expected error for multi-dot table name")
 	}
 	if !strings.Contains(err.Error(), "too many qualifiers") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestAnalyzeTableRejectsInvalidTableName(t *testing.T) {
+	ver, _ := version.NewVersionFromString("MariaDB", "10.4.1-MariaDB")
+	if ver == nil {
+		t.Fatalf("failed to build version")
+	}
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+	_, err = AnalyzeTable(sqlxdb, ver, "bad;name", false, false, "", "")
+	if err == nil {
+		t.Fatalf("expected error for invalid table name")
+	}
+	if !strings.Contains(err.Error(), "invalid table name") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
