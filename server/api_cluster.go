@@ -7650,7 +7650,7 @@ func (repman *ReplicationManager) handlerMuxResticInitRepo(w http.ResponseWriter
 
 		err := mycluster.ResticInitRepo(force)
 		if err != nil {
-			http.Error(w, "Error unlocking archives :"+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Error initializing restic repository: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
