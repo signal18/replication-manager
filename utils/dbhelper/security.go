@@ -35,6 +35,30 @@ func QuoteMySQLIdentifier(identifier string) string {
 	return "`" + escaped + "`"
 }
 
+// QuoteMySQLTableIdentifier quotes a table identifier with an optional schema qualifier.
+// Accepts "table" or "schema.table" and rejects multi-dot identifiers.
+func QuoteMySQLTableIdentifier(table string) (string, error) {
+	dotCount := strings.Count(table, ".")
+	if dotCount > 1 {
+		return "", fmt.Errorf("invalid table name: too many qualifiers: %s", table)
+	}
+	if dotCount == 1 {
+		parts := strings.SplitN(table, ".", 2)
+		if err := ValidateIdentifier(parts[0]); err != nil {
+			return "", fmt.Errorf("invalid schema name: %w", err)
+		}
+		if err := ValidateIdentifier(parts[1]); err != nil {
+			return "", fmt.Errorf("invalid table name: %w", err)
+		}
+		return QuoteMySQLIdentifier(parts[0]) + "." + QuoteMySQLIdentifier(parts[1]), nil
+	}
+
+	if err := ValidateIdentifier(table); err != nil {
+		return "", fmt.Errorf("invalid table name: %w", err)
+	}
+	return QuoteMySQLIdentifier(table), nil
+}
+
 // QuotePostgreSQLIdentifier quotes an identifier with PostgreSQL double quotes
 func QuotePostgreSQLIdentifier(identifier string) string {
 	// Escape double quotes by doubling them
