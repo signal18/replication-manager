@@ -126,3 +126,53 @@ func TestAnalyzeTableRejectsMultiDot(t *testing.T) {
 		t.Fatalf("unmet sqlmock expectations: %v", err)
 	}
 }
+
+func TestAnalyzeTableRejectsInvalidPersistentColumns(t *testing.T) {
+	ver, _ := version.NewVersionFromString("MariaDB", "10.4.1-MariaDB")
+	if ver == nil {
+		t.Fatalf("failed to build version")
+	}
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+	_, err = AnalyzeTable(sqlxdb, ver, "app.audit", false, true, "col1;DROP", "")
+	if err == nil {
+		t.Fatalf("expected error for invalid column list")
+	}
+	if !strings.Contains(err.Error(), "invalid column") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestAnalyzeTableRejectsInvalidPersistentIndexes(t *testing.T) {
+	ver, _ := version.NewVersionFromString("MariaDB", "10.4.1-MariaDB")
+	if ver == nil {
+		t.Fatalf("failed to build version")
+	}
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+	_, err = AnalyzeTable(sqlxdb, ver, "app.audit", false, true, "col1", "idx;DROP")
+	if err == nil {
+		t.Fatalf("expected error for invalid index list")
+	}
+	if !strings.Contains(err.Error(), "invalid index") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sqlmock expectations: %v", err)
+	}
+}

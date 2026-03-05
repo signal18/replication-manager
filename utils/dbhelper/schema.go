@@ -427,9 +427,15 @@ func AnalyzeTable(db *sqlx.DB, myver *version.Version, table string, nobinlog, p
 	query += "TABLE " + quotedTable
 
 	if myver.Greater("10.4.0") && myver.IsMariaDB() && persistent {
-		if columns == "ALL" {
+		if strings.EqualFold(strings.TrimSpace(columns), "ALL") {
 			query += " PERSISTENT FOR ALL"
 		} else if columns != "" || indexes != "" {
+			if err := validateIdentifierList(columns, true, "column"); err != nil {
+				return "", err
+			}
+			if err := validateIdentifierList(indexes, false, "index"); err != nil {
+				return "", err
+			}
 			query += " PERSISTENT FOR COLUMNS (" + columns + ") INDEXES (" + indexes + ")"
 		}
 	}
