@@ -424,6 +424,31 @@ function ResticRepositorySettings({
                   rowGap={1}
                   w='full'
                 >
+                <GridItem className={styles.rowLabel}>
+                    <Text>Backup restic additional env</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <TextForm
+                      value={config?.backupResticAdditionalEnv}
+                      confirmTitle={`Confirm backup-restic-additional-env to `}
+                      className={styles.textbox}
+                      size='sm'
+                      placeholder='AWS_SESSION_TOKEN, NO_PROXY="host1,host2"'
+                      onSave={(value) => handleSettingChange('backup-restic-additional-env', value)}
+                    />
+                    <Text className={styles.helperText}>
+                      Optional env vars to pass to restic (comma or space separated KEY or KEY=VALUE). Quote values with commas.
+                    </Text>
+                  </GridItem>
+                </Grid>
+
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
                   <GridItem className={styles.rowLabel}>
                     <Text>Backup restic aws bucket</Text>
                   </GridItem>
@@ -560,12 +585,23 @@ function ResticRepositorySettings({
             <Divider />
             <Checkbox
               isChecked={initForce}
+              isDisabled={config?.backupResticAws}
               onChange={(e) => setInitForce(e.target.checked)}
             >
               <Text fontSize='sm'>
                 Force re-initialization (overwrite existing configuration)
               </Text>
             </Checkbox>
+            {config?.backupResticAws && (
+              <>
+                <Text fontSize='sm' color='gray.600'>
+                  Force re-initialization is disabled when backup-restic-aws is enabled (S3/MinIO mode).
+                </Text>
+                <Text fontSize='xs' color='gray.500'>
+                  Local repositories are used when backup-restic-aws is off, regardless of repository URL.
+                </Text>
+              </>
+            )}
             {initForce && (
               <Alert status='warning' size='sm' borderRadius='md'>
                 <AlertIcon />
