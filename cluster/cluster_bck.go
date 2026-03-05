@@ -33,17 +33,138 @@ func isS3ResticRepository(repoPath string) bool {
 	return strings.HasPrefix(strings.TrimSpace(repoPath), "s3:")
 }
 
-func filterResticEnv(baseEnv []string, repoPath, password, cacheDir, awsAccessKey, awsSecretKey, awsRegion string) []string {
-	filtered := make([]string, 0, len(baseEnv)+6)
-	defaultRegion := ""
-	for _, env := range baseEnv {
-		if strings.HasPrefix(env, "AWS_DEFAULT_REGION=") {
-			defaultRegion = strings.TrimPrefix(env, "AWS_DEFAULT_REGION=")
+func splitResticAdditionalEnvTokens(value string) ([]string, bool) {
+	parts := make([]string, 0)
+	var current strings.Builder
+	var quote rune
+	escaped := false
+	hadUnmatched := false
+
+	for _, r := range value {
+		if quote != 0 {
+			if quote == '"' && !escaped && r == '\\' {
+				escaped = true
+				current.WriteRune(r)
+				continue
+			}
+			if quote == '"' && escaped {
+				current.WriteRune(r)
+				escaped = false
+				continue
+			}
+			if r == quote {
+				quote = 0
+			}
+			current.WriteRune(r)
+			continue
 		}
-		if strings.HasPrefix(env, "RESTIC_") || strings.HasPrefix(env, "AWS_") {
+
+		switch r {
+		case '"', '\'':
+			quote = r
+			current.WriteRune(r)
+		case ',', ' ', '\t', '\n', '\r':
+			if current.Len() > 0 {
+				parts = append(parts, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteRune(r)
+		}
+	}
+
+	if quote != 0 {
+		hadUnmatched = true
+	}
+	if current.Len() > 0 {
+		parts = append(parts, current.String())
+	}
+
+	return parts, hadUnmatched
+}
+
+func parseResticAdditionalEnvOverrides(raw string) (map[string]string, map[string]struct{}) {
+	overrides := make(map[string]string)
+	allowlist := make(map[string]struct{})
+
+	parts, _ := splitResticAdditionalEnvTokens(raw)
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		key, value, hasValue := strings.Cut(trimmed, "=")
+		key = strings.TrimSpace(key)
+		if unquotedKey, ok := unquoteResticTagLiteral(key); ok {
+			key = strings.TrimSpace(unquotedKey)
+		}
+		if key == "" {
+			continue
+		}
+		allowlist[key] = struct{}{}
+		if hasValue {
+			value = strings.TrimSpace(value)
+			if unquotedValue, ok := unquoteResticTagLiteral(value); ok {
+				value = unquotedValue
+			}
+			overrides[key] = value
+		}
+	}
+
+	return overrides, allowlist
+}
+
+func filterResticEnv(baseEnv []string, repoPath, password, cacheDir, awsAccessKey, awsSecretKey, awsRegion, additionalEnv string) []string {
+	filtered := make([]string, 0, len(baseEnv)+6)
+	overrides, allowlist := parseResticAdditionalEnvOverrides(additionalEnv)
+	defaultRegion := ""
+	optionalAwsEnv := make(map[string]string)
+	reserved := map[string]struct{}{
+		"RESTIC_REPOSITORY":     {},
+		"RESTIC_PASSWORD":       {},
+		"RESTIC_CACHE_DIR":      {},
+		"AWS_ACCESS_KEY_ID":     {},
+		"AWS_SECRET_ACCESS_KEY": {},
+	}
+	for _, env := range baseEnv {
+		key, val, hasValue := strings.Cut(env, "=")
+		if !hasValue {
+			continue
+		}
+		if key == "AWS_DEFAULT_REGION" {
+			defaultRegion = val
+		}
+		if _, ok := allowlist[key]; ok {
+			if _, blocked := reserved[key]; blocked {
+				continue
+			}
+			if override, exists := overrides[key]; exists {
+				optionalAwsEnv[key] = override
+			} else {
+				optionalAwsEnv[key] = val
+			}
+			if key == "AWS_DEFAULT_REGION" {
+				defaultRegion = optionalAwsEnv[key]
+			}
+			continue
+		}
+		if strings.HasPrefix(key, "RESTIC_") || strings.HasPrefix(key, "AWS_") {
 			continue
 		}
 		filtered = append(filtered, env)
+	}
+
+	for key, override := range overrides {
+		if _, blocked := reserved[key]; blocked {
+			continue
+		}
+		if _, exists := optionalAwsEnv[key]; exists {
+			continue
+		}
+		optionalAwsEnv[key] = override
+		if key == "AWS_DEFAULT_REGION" {
+			defaultRegion = override
+		}
 	}
 
 	filtered = append(filtered, "RESTIC_PASSWORD="+password)
@@ -60,6 +181,16 @@ func filterResticEnv(baseEnv []string, repoPath, password, cacheDir, awsAccessKe
 		if region != "" {
 			filtered = append(filtered, "AWS_DEFAULT_REGION="+region)
 		}
+	}
+
+	for key, value := range optionalAwsEnv {
+		if _, blocked := reserved[key]; blocked {
+			continue
+		}
+		if key == "AWS_DEFAULT_REGION" && isS3ResticRepository(repoPath) {
+			continue
+		}
+		filtered = append(filtered, key+"="+value)
 	}
 
 	return filtered
@@ -89,6 +220,7 @@ func (cluster *Cluster) ResticGetEnv() []string {
 		cluster.Conf.BackupResticAwsAccessKeyId,
 		cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"),
 		cluster.Conf.BackupResticAwsRegion,
+		cluster.Conf.BackupResticAdditionalEnv,
 	)
 }
 

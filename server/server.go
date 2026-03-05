@@ -809,6 +809,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupResticAwsAccessKeyId, "backup-restic-aws-access-key-id", "admin", "Restic backup AWS key id")
 	flags.StringVar(&conf.BackupResticAwsAccessSecret, "backup-restic-aws-access-secret", "secret", "Restic backup AWS key sercret")
 	flags.StringVar(&conf.BackupResticAwsRegion, "backup-restic-aws-region", "", "Restic backup AWS region (empty = AWS SDK default)")
+	flags.StringVar(&conf.BackupResticAdditionalEnv, "backup-restic-additional-env", "", "Optional restic env vars (comma/space separated KEY or KEY=VALUE)")
 	flags.StringVar(&conf.BackupResticLocalRepository, "backup-restic-local-repository", "", "Restic local repository path. Empty by default to use repo per cluster in datadir/backups/archive/<clustername>")
 	flags.StringVar(&conf.BackupResticRepository, "backup-restic-repository", "s3:https://s3.signal18.io/backups", "Restic backend repository")
 	flags.StringVar(&conf.BackupResticPassword, "backup-restic-password", "secret", "Restic backend password")

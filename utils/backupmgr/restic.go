@@ -3207,17 +3207,9 @@ func (repo *ResticManager) CheckRepoFiles() error {
 	}
 
 	repopath := repo.GetRepoPath()
-
-	// Handle S3 repositories
 	if isS3Repository(repopath) {
-		bucket, prefix, endpoint, err := parseS3URL(repopath)
-		if err != nil {
-			repo.CanInitRepo = false
-			err = fmt.Errorf("invalid S3 repository URL: %w", err)
-			repo.SetError(InitTask, err)
-			return err
-		}
-		return repo.checkS3RepoFiles(bucket, prefix, endpoint)
+		// S3 repository file checks are not supported yet.
+		return nil
 	}
 
 	// Existing local filesystem logic
@@ -3412,30 +3404,11 @@ func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 	repopath := repo.GetRepoPath()
 	if opt.Force {
 		if isS3Repository(repopath) {
-			bucket, prefix, endpoint, err := parseS3URL(repopath)
-			if err != nil {
-				repo.CanInitRepo = false
-				err = fmt.Errorf("invalid S3 repository URL: %w", err)
-				repo.SetError(InitTask, err)
-				repo.setInitErrorBackoff(err)
-				return err
-			}
-
-			client, err := repo.createS3Client(endpoint)
-			if err != nil {
-				repo.CanInitRepo = false
-				err = fmt.Errorf("failed to create S3 client: %w", err)
-				repo.SetError(InitTask, err)
-				repo.setInitErrorBackoff(err)
-				return err
-			}
-
-			if err := deleteS3RepoPrefix(client, bucket, prefix); err != nil {
-				repo.CanInitRepo = false
-				repo.SetError(InitTask, err)
-				repo.setInitErrorBackoff(err)
-				return err
-			}
+			err := errors.New("force init is disabled for S3 repositories")
+			repo.CanInitRepo = false
+			repo.SetError(InitTask, err)
+			repo.setInitErrorBackoff(err)
+			return err
 		} else {
 			err := os.RemoveAll(repopath)
 			if err != nil {
