@@ -593,9 +593,14 @@ function ResticRepositorySettings({
               </Text>
             </Checkbox>
             {config?.backupResticAws && (
-              <Text fontSize='sm' color='gray.600'>
-                Force re-initialization is disabled when backup-restic-aws is enabled (S3/MinIO mode).
-              </Text>
+              <>
+                <Text fontSize='sm' color='gray.600'>
+                  Force re-initialization is disabled when backup-restic-aws is enabled (S3/MinIO mode).
+                </Text>
+                <Text fontSize='xs' color='gray.500'>
+                  Local repositories are used when backup-restic-aws is off, regardless of repository URL.
+                </Text>
+              </>
             )}
             {initForce && (
               <Alert status='warning' size='sm' borderRadius='md'>

@@ -262,6 +262,7 @@ func (cluster *Cluster) ResticGetEnv() []string {
 	cacheDir := cluster.Conf.WorkingDir + "/" + cluster.Name + "/.cache/restic"
 	password := cluster.Conf.GetDecryptedValue("backup-restic-password")
 	repoPath := ""
+	// backup-restic-aws controls whether the repo path is remote; otherwise local repo is used.
 	if cluster.Conf.BackupResticAws {
 		repoPath = cluster.Conf.BackupResticRepository + "/" + cluster.Name
 	} else {
