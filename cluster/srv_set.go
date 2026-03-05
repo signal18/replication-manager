@@ -239,9 +239,9 @@ func (server *ServerMonitor) SetDSN() {
 	} else {
 		server.DSN = mydsn()
 		if cluster.HaveDBTLSCert {
-			mysql.RegisterTLSConfig(ConstTLSCurrentConfig, cluster.tlsconf)
+			mysql.RegisterTLSConfig(ConstTLSCurrentConfigName, cluster.tlsconf)
 			if cluster.HaveDBTLSOldCert {
-				mysql.RegisterTLSConfig(ConstTLSOldConfig, cluster.tlsoldconf)
+				mysql.RegisterTLSConfig(ConstTLSOldConfigName, cluster.tlsoldconf)
 			}
 		}
 	}
