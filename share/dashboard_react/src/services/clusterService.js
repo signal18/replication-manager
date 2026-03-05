@@ -31,6 +31,7 @@ export const clusterService = {
   resticQueueReset,
   resticMountToggle,
   getResticMountStatus,
+  resticInitRepo,
 
   // Cluster management APIs
   checksumAllTables,
@@ -793,6 +794,13 @@ function resticMountToggle(clusterName, action, options, baseURL) {
 
 function getResticMountStatus(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/mount-status`)
+}
+
+function resticInitRepo(clusterName, force, baseURL) {
+  const endpoint = force 
+    ? `clusters/${clusterName}/restic/init/force`
+    : `clusters/${clusterName}/restic/init`
+  return getApi(baseURL).post(endpoint)
 }
 
 // Utility functions

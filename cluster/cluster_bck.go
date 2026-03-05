@@ -29,14 +29,48 @@ import (
 
 var splitDumpTimestampRegex = regexp.MustCompile(`^\d+$`)
 
-func (cluster *Cluster) ResticGetEnv() []string {
-	newEnv := append(os.Environ(), "RESTIC_PASSWORD="+cluster.Conf.GetDecryptedValue("backup-restic-password"))
-	newEnv = append(newEnv, "RESTIC_CACHE_DIR="+cluster.Conf.WorkingDir+"/"+cluster.Name+"/.cache/restic")
+func isS3ResticRepository(repoPath string) bool {
+	return strings.HasPrefix(strings.TrimSpace(repoPath), "s3:")
+}
 
+func filterResticEnv(baseEnv []string, repoPath, password, cacheDir, awsAccessKey, awsSecretKey, awsRegion string) []string {
+	filtered := make([]string, 0, len(baseEnv)+6)
+	defaultRegion := ""
+	for _, env := range baseEnv {
+		if strings.HasPrefix(env, "AWS_DEFAULT_REGION=") {
+			defaultRegion = strings.TrimPrefix(env, "AWS_DEFAULT_REGION=")
+		}
+		if strings.HasPrefix(env, "RESTIC_") || strings.HasPrefix(env, "AWS_") {
+			continue
+		}
+		filtered = append(filtered, env)
+	}
+
+	filtered = append(filtered, "RESTIC_PASSWORD="+password)
+	filtered = append(filtered, "RESTIC_CACHE_DIR="+cacheDir)
+	filtered = append(filtered, "RESTIC_REPOSITORY="+repoPath)
+
+	if isS3ResticRepository(repoPath) {
+		filtered = append(filtered, "AWS_ACCESS_KEY_ID="+awsAccessKey)
+		filtered = append(filtered, "AWS_SECRET_ACCESS_KEY="+awsSecretKey)
+		region := strings.TrimSpace(awsRegion)
+		if region == "" {
+			region = strings.TrimSpace(defaultRegion)
+		}
+		if region != "" {
+			filtered = append(filtered, "AWS_DEFAULT_REGION="+region)
+		}
+	}
+
+	return filtered
+}
+
+func (cluster *Cluster) ResticGetEnv() []string {
+	cacheDir := cluster.Conf.WorkingDir + "/" + cluster.Name + "/.cache/restic"
+	password := cluster.Conf.GetDecryptedValue("backup-restic-password")
+	repoPath := ""
 	if cluster.Conf.BackupResticAws {
-		newEnv = append(newEnv, "AWS_ACCESS_KEY_ID="+cluster.Conf.BackupResticAwsAccessKeyId)
-		newEnv = append(newEnv, "AWS_SECRET_ACCESS_KEY="+cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
-		newEnv = append(newEnv, "RESTIC_REPOSITORY="+cluster.Conf.BackupResticRepository+"/"+cluster.Name)
+		repoPath = cluster.Conf.BackupResticRepository + "/" + cluster.Name
 	} else {
 		if _, err := os.Stat(cluster.GetResticLocalDir()); os.IsNotExist(err) {
 			err := os.MkdirAll(cluster.GetResticLocalDir(), os.ModePerm)
@@ -44,14 +78,25 @@ func (cluster *Cluster) ResticGetEnv() []string {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", cluster.GetResticLocalDir(), err)
 			}
 		}
-		newEnv = append(newEnv, "RESTIC_REPOSITORY="+cluster.GetResticLocalDir())
+		repoPath = cluster.GetResticLocalDir()
 	}
-	return newEnv
+
+	return filterResticEnv(
+		os.Environ(),
+		repoPath,
+		password,
+		cacheDir,
+		cluster.Conf.BackupResticAwsAccessKeyId,
+		cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"),
+		cluster.Conf.BackupResticAwsRegion,
+	)
 }
 
 func (cluster *Cluster) ReloadResticEnv() {
 	if cluster.ResticManager != nil {
 		cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
+		// Clear init error backoff when environment changes (credentials/config may be fixed)
+		cluster.ResticManager.ClearInitErrorBackoffManual()
 	}
 }
 
@@ -142,7 +187,7 @@ func (cluster *Cluster) ResticInitRepo(force bool) error {
 
 	err := cluster.ResticManager.InitRepo(force)
 	if err != nil {
-		cluster.SetState("WARN0092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0092"], err), ErrFrom: "BACKUP"})
+		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
 	}
 
 	return err

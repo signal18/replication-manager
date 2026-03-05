@@ -262,6 +262,17 @@ func TestEnvHelpers(t *testing.T) {
 	if got := repo.GetCacheDirPath(); got != "/tmp/cache" {
 		t.Fatalf("unexpected cache dir: %s", got)
 	}
+
+	repo.SetEnv([]string{
+		"RESTIC_REPOSITORY=s3:https://example.com/bucket/path?sig=a=b",
+		"RESTIC_CACHE_DIR=/tmp/cache=dir",
+	})
+	if got := repo.GetRepoPath(); got != "s3:https://example.com/bucket/path?sig=a=b" {
+		t.Fatalf("unexpected repo path with equals: %s", got)
+	}
+	if got := repo.GetCacheDirPath(); got != "/tmp/cache=dir" {
+		t.Fatalf("unexpected cache dir with equals: %s", got)
+	}
 }
 
 func TestGenerateTaskIDAndCanFetch(t *testing.T) {
@@ -1830,5 +1841,219 @@ func TestMountRepoBackwardCompatibility(t *testing.T) {
 			return
 		}
 		t.Fatalf("unmount repo: %v", err)
+	}
+}
+
+// TestParseS3URL tests S3 URL parsing for various formats
+func TestParseS3URL(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		bucket   string
+		prefix   string
+		endpoint string
+		wantErr  bool
+	}{
+		{
+			name:     "MinIO HTTPS with prefix",
+			input:    "s3:https://minio.example.com:9000/my-bucket/restic/cluster1",
+			bucket:   "my-bucket",
+			prefix:   "restic/cluster1",
+			endpoint: "https://minio.example.com:9000",
+			wantErr:  false,
+		},
+		{
+			name:     "MinIO HTTP dev",
+			input:    "s3:http://localhost:9000/backups/db",
+			bucket:   "backups",
+			prefix:   "db",
+			endpoint: "http://localhost:9000",
+			wantErr:  false,
+		},
+		{
+			name:     "MinIO shorthand with port",
+			input:    "s3:minio.local:9000/backups/restic",
+			bucket:   "backups",
+			prefix:   "restic",
+			endpoint: "https://minio.local:9000",
+			wantErr:  false,
+		},
+		{
+			name:     "AWS implicit",
+			input:    "s3:my-bucket/path/to/repo",
+			bucket:   "my-bucket",
+			prefix:   "path/to/repo",
+			endpoint: "",
+			wantErr:  false,
+		},
+		{
+			name:     "AWS explicit endpoint",
+			input:    "s3:https://s3.us-west-2.amazonaws.com/prod-backups/cluster1",
+			bucket:   "prod-backups",
+			prefix:   "cluster1",
+			endpoint: "https://s3.us-west-2.amazonaws.com",
+			wantErr:  false,
+		},
+		{
+			name:     "S3 bucket only",
+			input:    "s3:my-bucket/",
+			bucket:   "my-bucket",
+			prefix:   "",
+			endpoint: "",
+			wantErr:  false,
+		},
+		{
+			name:     "S3 with nested prefix",
+			input:    "s3:bucket/path/to/deep/repo",
+			bucket:   "bucket",
+			prefix:   "path/to/deep/repo",
+			endpoint: "",
+			wantErr:  false,
+		},
+		{
+			name:    "Invalid - no bucket",
+			input:   "s3:https://endpoint/",
+			wantErr: true,
+		},
+		{
+			name:    "Invalid - not S3",
+			input:   "local:/path/to/repo",
+			wantErr: true,
+		},
+		{
+			name:    "Invalid - missing path",
+			input:   "s3:bucket-only",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bucket, prefix, endpoint, err := parseS3URL(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseS3URL() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				if bucket != tt.bucket {
+					t.Errorf("parseS3URL() bucket = %q, want %q", bucket, tt.bucket)
+				}
+				if prefix != tt.prefix {
+					t.Errorf("parseS3URL() prefix = %q, want %q", prefix, tt.prefix)
+				}
+				if endpoint != tt.endpoint {
+					t.Errorf("parseS3URL() endpoint = %q, want %q", endpoint, tt.endpoint)
+				}
+			}
+		})
+	}
+}
+
+// TestIsS3Repository tests S3 repository detection
+func TestIsS3Repository(t *testing.T) {
+	tests := []struct {
+		name     string
+		repoPath string
+		want     bool
+	}{
+		{"S3 HTTPS", "s3:https://minio.local/bucket/path", true},
+		{"S3 HTTP", "s3:http://localhost:9000/bucket", true},
+		{"S3 implicit", "s3:bucket/path", true},
+		{"Local path", "/var/backups/restic", false},
+		{"Local relative", "./backups", false},
+		{"Azure", "azure:container/path", false},
+		{"Empty", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isS3Repository(tt.repoPath); got != tt.want {
+				t.Errorf("isS3Repository(%q) = %v, want %v", tt.repoPath, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestInitErrorBackoff(t *testing.T) {
+	repo := NewResticRepo("/usr/bin/restic", testMsgChan, 0)
+	defer repo.ShutdownWorker()
+
+	testErr := errors.New("S3 authentication failed")
+
+	// First error should set backoff to 10s
+	repo.setInitErrorBackoff(testErr)
+	if repo.initErrorCount != 1 {
+		t.Errorf("initErrorCount = %d, want 1", repo.initErrorCount)
+	}
+	if !repo.shouldSkipInitDueToBackoff() {
+		t.Error("shouldSkipInitDueToBackoff() = false, want true after first error")
+	}
+
+	// Same error should increment count
+	repo.setInitErrorBackoff(testErr)
+	if repo.initErrorCount != 2 {
+		t.Errorf("initErrorCount = %d, want 2", repo.initErrorCount)
+	}
+
+	// Different error should reset count
+	repo.setInitErrorBackoff(errors.New("different error"))
+	if repo.initErrorCount != 1 {
+		t.Errorf("initErrorCount = %d, want 1 after different error", repo.initErrorCount)
+	}
+
+	// Clear should reset everything
+	repo.clearInitErrorBackoff()
+	if repo.initErrorCount != 0 {
+		t.Errorf("initErrorCount = %d, want 0 after clear", repo.initErrorCount)
+	}
+	if repo.shouldSkipInitDueToBackoff() {
+		t.Error("shouldSkipInitDueToBackoff() = true, want false after clear")
+	}
+
+	// Test backoff expiration
+	repo.setInitErrorBackoff(testErr)
+	repo.errorMutex.Lock()
+	repo.initBackoffUntil = time.Now().Add(-1 * time.Second) // Set to past
+	repo.errorMutex.Unlock()
+	if repo.shouldSkipInitDueToBackoff() {
+		t.Error("shouldSkipInitDueToBackoff() = true, want false after backoff expired")
+	}
+}
+
+func TestInitErrorBackoffPreventsFlooding(t *testing.T) {
+	repo := NewResticRepo("/usr/bin/restic", testMsgChan, 0)
+	defer repo.ShutdownWorker()
+
+	// Simulate repeated init failures
+	testErr := errors.New("persistent S3 error")
+
+	// First few errors should be logged, but then backoff kicks in
+	for i := 0; i < 5; i++ {
+		repo.setInitErrorBackoff(testErr)
+	}
+
+	if repo.initErrorCount != 5 {
+		t.Errorf("initErrorCount = %d, want 5", repo.initErrorCount)
+	}
+
+	// Verify backoff is active
+	if !repo.shouldSkipInitDueToBackoff() {
+		t.Error("shouldSkipInitDueToBackoff() should be true after multiple errors")
+	}
+
+	// Verify CheckRepoFiles returns cached error without retrying
+	// (This would normally trigger init, but backoff should prevent it)
+	repo.Env = append(repo.Env, "RESTIC_REPOSITORY=/nonexistent/path")
+	err := repo.CheckRepoFiles()
+	if err == nil {
+		t.Error("CheckRepoFiles() should return error when in backoff")
+	}
+
+	// Error count should not increase when in backoff
+	originalCount := repo.initErrorCount
+	repo.CheckRepoFiles()
+	if repo.initErrorCount != originalCount {
+		t.Errorf("initErrorCount changed during backoff: was %d, now %d",
+			originalCount, repo.initErrorCount)
 	}
 }
