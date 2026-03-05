@@ -91,6 +91,10 @@ func ValidateIdentifier(identifier string) error {
 	return nil
 }
 
+// validateIdentifierList validates a comma-separated list of identifiers for safe SQL use.
+// It permits qualified identifiers with a single dot and optionally allows the literal ALL.
+// When allowAll is true, ALL is accepted as a standalone value and cannot be mixed with other identifiers.
+// This helper is intended for internal SQL-building paths to reduce SQL injection risk.
 func validateIdentifierList(list string, allowAll bool, kind string) error {
 	trimmed := strings.TrimSpace(list)
 	if trimmed == "" {
