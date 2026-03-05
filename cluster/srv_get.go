@@ -698,10 +698,16 @@ func (server *ServerMonitor) GetDictTables() []*dbhelper.Table {
 	if server.IsFailed() {
 		return tables
 	}
+
 	for _, t := range server.DictTables.ToNewMap() {
 		tables = append(tables, t)
-
 	}
+
+	master := server.ClusterGroup.GetMaster()
+	if len(tables) == 0 && master != nil && master.URL == server.URL {
+		server.ClusterGroup.MonitorMasterTableSchema()
+	}
+
 	sort.Sort(dbhelper.TableSizeSorter(tables))
 	return tables
 }
