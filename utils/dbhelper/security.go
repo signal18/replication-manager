@@ -131,6 +131,43 @@ func validateIdentifierList(list string, allowAll bool, kind string) error {
 	return nil
 }
 
+func quoteIdentifierList(list string) (string, error) {
+	trimmed := strings.TrimSpace(list)
+	if trimmed == "" {
+		return "", nil
+	}
+
+	items := strings.Split(trimmed, ",")
+	quoted := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			return "", errors.New("identifier list contains empty identifier")
+		}
+		dotCount := strings.Count(item, ".")
+		if dotCount > 1 {
+			return "", fmt.Errorf("invalid identifier: too many qualifiers: %s", item)
+		}
+		if dotCount == 1 {
+			parts := strings.SplitN(item, ".", 2)
+			if err := ValidateIdentifier(parts[0]); err != nil {
+				return "", err
+			}
+			if err := ValidateIdentifier(parts[1]); err != nil {
+				return "", err
+			}
+			quoted = append(quoted, QuoteMySQLIdentifier(parts[0])+"."+QuoteMySQLIdentifier(parts[1]))
+			continue
+		}
+		if err := ValidateIdentifier(item); err != nil {
+			return "", err
+		}
+		quoted = append(quoted, QuoteMySQLIdentifier(item))
+	}
+
+	return strings.Join(quoted, ","), nil
+}
+
 // ValidateUserHost validates username@host format for MySQL user specifications
 func ValidateUserHost(userHost string) error {
 	parts := strings.Split(userHost, "@")

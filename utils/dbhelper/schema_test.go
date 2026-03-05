@@ -25,6 +25,7 @@ func TestAnalyzeTable(t *testing.T) {
 		columns       string
 		indexes       string
 		expectedQuery string
+		expectedErr   string
 	}{
 		{
 			name:          "qualified table",
@@ -36,6 +37,7 @@ func TestAnalyzeTable(t *testing.T) {
 			columns:       "",
 			indexes:       "",
 			expectedQuery: "ANALYZE TABLE `app`.`users`",
+			expectedErr:   "",
 		},
 		{
 			name:          "unqualified table",
@@ -47,9 +49,10 @@ func TestAnalyzeTable(t *testing.T) {
 			columns:       "",
 			indexes:       "",
 			expectedQuery: "ANALYZE TABLE `metrics`",
+			expectedErr:   "",
 		},
 		{
-			name:          "persistent columns without indexes",
+			name:          "persistent columns without indexes errors",
 			flavor:        "MariaDB",
 			versionStr:    "10.4.1-MariaDB",
 			table:         "app.audit",
@@ -57,10 +60,11 @@ func TestAnalyzeTable(t *testing.T) {
 			persistent:    true,
 			columns:       "col1",
 			indexes:       "",
-			expectedQuery: "ANALYZE TABLE `app`.`audit` PERSISTENT FOR COLUMNS (col1) INDEXES ()",
+			expectedQuery: "",
+			expectedErr:   "persistent requires both columns and indexes",
 		},
 		{
-			name:          "persistent indexes without columns",
+			name:          "persistent indexes without columns errors",
 			flavor:        "MariaDB",
 			versionStr:    "10.4.1-MariaDB",
 			table:         "app.audit",
@@ -68,7 +72,8 @@ func TestAnalyzeTable(t *testing.T) {
 			persistent:    true,
 			columns:       "",
 			indexes:       "idx_audit",
-			expectedQuery: "ANALYZE TABLE `app`.`audit` PERSISTENT FOR COLUMNS () INDEXES (idx_audit)",
+			expectedQuery: "",
+			expectedErr:   "persistent requires both columns and indexes",
 		},
 		{
 			name:          "persistent columns and indexes",
@@ -79,7 +84,8 @@ func TestAnalyzeTable(t *testing.T) {
 			persistent:    true,
 			columns:       "col1,col2",
 			indexes:       "idx_audit,idx_more",
-			expectedQuery: "ANALYZE TABLE `app`.`audit` PERSISTENT FOR COLUMNS (col1,col2) INDEXES (idx_audit,idx_more)",
+			expectedQuery: "ANALYZE TABLE `app`.`audit` PERSISTENT FOR COLUMNS (`col1`,`col2`) INDEXES (`idx_audit`,`idx_more`)",
+			expectedErr:   "",
 		},
 		{
 			name:          "persistent all with local",
@@ -91,6 +97,7 @@ func TestAnalyzeTable(t *testing.T) {
 			columns:       "ALL",
 			indexes:       "",
 			expectedQuery: "ANALYZE LOCAL TABLE `metrics` PERSISTENT FOR ALL",
+			expectedErr:   "",
 		},
 		{
 			name:          "persistent empty lists",
@@ -101,7 +108,8 @@ func TestAnalyzeTable(t *testing.T) {
 			persistent:    true,
 			columns:       "",
 			indexes:       "",
-			expectedQuery: "ANALYZE TABLE `app`.`audit`",
+			expectedQuery: "",
+			expectedErr:   "persistent requires columns and indexes",
 		},
 		{
 			name:          "persistent ignored on 10.4.0",
@@ -113,6 +121,7 @@ func TestAnalyzeTable(t *testing.T) {
 			columns:       "col1",
 			indexes:       "idx_audit",
 			expectedQuery: "ANALYZE TABLE `app`.`audit`",
+			expectedErr:   "",
 		},
 	}
 
@@ -130,14 +139,25 @@ func TestAnalyzeTable(t *testing.T) {
 			defer db.Close()
 
 			sqlxdb := sqlx.NewDb(db, "sqlmock")
-			mock.ExpectExec(regexp.QuoteMeta(tt.expectedQuery)).WillReturnResult(sqlmock.NewResult(0, 1))
+			if tt.expectedErr == "" {
+				mock.ExpectExec(regexp.QuoteMeta(tt.expectedQuery)).WillReturnResult(sqlmock.NewResult(0, 1))
+			}
 
 			query, err := AnalyzeTable(sqlxdb, ver, tt.table, tt.nobinlog, tt.persistent, tt.columns, tt.indexes)
-			if err != nil {
-				t.Fatalf("AnalyzeTable returned error: %v", err)
-			}
-			if query != tt.expectedQuery {
-				t.Fatalf("AnalyzeTable query = %q, want %q", query, tt.expectedQuery)
+			if tt.expectedErr != "" {
+				if err == nil {
+					t.Fatalf("expected error %q", tt.expectedErr)
+				}
+				if !strings.Contains(err.Error(), tt.expectedErr) {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("AnalyzeTable returned error: %v", err)
+				}
+				if query != tt.expectedQuery {
+					t.Fatalf("AnalyzeTable query = %q, want %q", query, tt.expectedQuery)
+				}
 			}
 			if err := mock.ExpectationsWereMet(); err != nil {
 				t.Fatalf("unmet sqlmock expectations: %v", err)
@@ -209,7 +229,7 @@ func TestAnalyzeTableRejectsInvalidPersistentColumns(t *testing.T) {
 	defer db.Close()
 
 	sqlxdb := sqlx.NewDb(db, "sqlmock")
-	_, err = AnalyzeTable(sqlxdb, ver, "app.audit", false, true, "col1;DROP", "")
+	_, err = AnalyzeTable(sqlxdb, ver, "app.audit", false, true, "col1;DROP", "idx_audit")
 	if err == nil {
 		t.Fatalf("expected error for invalid column list")
 	}
