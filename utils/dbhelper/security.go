@@ -91,6 +91,46 @@ func ValidateIdentifier(identifier string) error {
 	return nil
 }
 
+func validateIdentifierList(list string, allowAll bool, kind string) error {
+	trimmed := strings.TrimSpace(list)
+	if trimmed == "" {
+		return nil
+	}
+	if allowAll && strings.EqualFold(trimmed, "ALL") {
+		return nil
+	}
+
+	items := strings.Split(trimmed, ",")
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			return fmt.Errorf("%s list contains empty identifier", kind)
+		}
+		if allowAll && strings.EqualFold(item, "ALL") {
+			return fmt.Errorf("%s list cannot mix ALL with other identifiers", kind)
+		}
+		dotCount := strings.Count(item, ".")
+		if dotCount > 1 {
+			return fmt.Errorf("invalid %s name: too many qualifiers: %s", kind, item)
+		}
+		if dotCount == 1 {
+			parts := strings.SplitN(item, ".", 2)
+			if err := ValidateIdentifier(parts[0]); err != nil {
+				return fmt.Errorf("invalid %s qualifier: %w", kind, err)
+			}
+			if err := ValidateIdentifier(parts[1]); err != nil {
+				return fmt.Errorf("invalid %s name: %w", kind, err)
+			}
+			continue
+		}
+		if err := ValidateIdentifier(item); err != nil {
+			return fmt.Errorf("invalid %s name: %w", kind, err)
+		}
+	}
+
+	return nil
+}
+
 // ValidateUserHost validates username@host format for MySQL user specifications
 func ValidateUserHost(userHost string) error {
 	parts := strings.Split(userHost, "@")
