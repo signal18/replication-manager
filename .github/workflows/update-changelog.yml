@@ -1,0 +1,40 @@
+name: Update Changelog on Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-changelog:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: develop
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Claude to update CHANGELOG
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            A new release has been published: ${{ github.event.release.tag_name }}
+
+            Update CHANGELOG.md for this release by following the exact process defined in .claude/commands/update-changelog.md.
+
+            The version to document is: ${{ github.event.release.tag_name }}
+
+            After updating CHANGELOG.md:
+            1. Stage the file: `git add CHANGELOG.md`
+            2. Commit: `git commit -m "docs(changelog): add ${{ github.event.release.tag_name }} release entry"`
+            3. Push: `git push origin develop`
+          claude_args: >-
+            --allowedTools "Bash(git log:*),Bash(git tag:*),Bash(git pull:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git describe:*),Read,Edit"
+            --max-turns 20
+            --model sonnet
