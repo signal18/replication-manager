@@ -692,7 +692,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	}
 
 	for {
-		query := "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, chunkMinKey , chunkMaxKey," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk limit 1) B on " + predicate
+		query := "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, chunkMinKey , chunkMaxKey," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk limit 1) B on " + predicate + " GROUP BY chunkId, chunkMinKey, chunkMaxKey HAVING chunkId IS NOT NULL"
 		_, err := Conn.Exec(query)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
