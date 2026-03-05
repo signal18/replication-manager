@@ -450,7 +450,7 @@ function ResticRepositorySettings({
                         onClick={() => {
                           onOpenInfoModal(
                             'Re-initialize S3 Repository',
-                            'Re-initialize the S3/MinIO Restic repository. This creates a new repository configuration at the specified S3 bucket/path. Ensure AWS credentials and bucket path are correct before initializing.'
+                            'Re-initialize the S3/MinIO Restic repository. This creates a new repository configuration at the specified S3 bucket/path. Force re-initialization deletes all objects under the configured bucket/prefix. Ensure AWS credentials and bucket path are correct before initializing.'
                           )
                         }}
                       />
@@ -570,7 +570,9 @@ function ResticRepositorySettings({
               <Alert status='warning' size='sm' borderRadius='md'>
                 <AlertIcon />
                 <Text fontSize='sm'>
-                  Warning: This will overwrite the existing repository configuration
+                  {config?.backupResticAws
+                    ? 'Warning: Force re-initialization deletes all objects under the configured S3 bucket/prefix before creating a new repository.'
+                    : 'Warning: This will overwrite the existing repository configuration.'}
                 </Text>
               </Alert>
             )}
