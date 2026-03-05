@@ -706,7 +706,7 @@ func (server *ServerMonitor) GetDictTables() []*dbhelper.Table {
 
 	master := server.ClusterGroup.GetMaster()
 	if len(tables) == 0 && master != nil && master.URL == server.URL {
-		cluster.MonitorMasterTableSchema(cluster.Conf.MdbsProxyOn)
+		cluster.SetWaitMonitorSchema()
 	}
 
 	sort.Sort(dbhelper.TableSizeSorter(tables))
