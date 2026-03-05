@@ -766,7 +766,6 @@ type Config struct {
 	BackupResticRepository                    string `mapstructure:"backup-restic-repository" toml:"backup-restic-repository" json:"backupResticRepository"`
 	BackupResticPassword                      string `mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
 	BackupResticAws                           bool   `mapstructure:"backup-restic-aws"  toml:"backup-restic-aws" json:"backupResticAws"`
-	BackupResticAwsInsecureTLS                bool   `mapstructure:"backup-restic-aws-insecure-tls" toml:"backup-restic-aws-insecure-tls" json:"backupResticAwsInsecureTLS"`
 	BackupResticTimeout                       int    `mapstructure:"backup-restic-timeout"  toml:"backup-restic-timeout" json:"backupResticTimeout"`
 	BackupResticDumpTimeout                   int    `mapstructure:"backup-restic-dump-timeout" toml:"backup-restic-dump-timeout" json:"backupResticDumpTimeout"`
 	BackupResticDirMode                       int    `mapstructure:"backup-restic-dir-mode" toml:"backup-restic-dir-mode" json:"backupResticDirMode"`

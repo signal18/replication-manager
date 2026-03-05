@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -364,10 +363,9 @@ type ResticManager struct {
 	MountRecoveryEnabled bool                // If true, recover/cleanup stale mounts on startup
 	OnPurgeComplete      func(ResticPurgeOption)
 	// Error backoff state to prevent log flooding
-	lastInitError     error     // Last init error encountered
-	lastInitErrorTime time.Time // When the last init error occurred
-	initErrorCount    int       // Number of consecutive init errors
-	initBackoffUntil  time.Time // Don't retry init until this time
+	lastInitError    error     // Last init error encountered
+	initErrorCount   int       // Number of consecutive init errors
+	initBackoffUntil time.Time // Don't retry init until this time
 }
 
 // NewResticRepo initializes the repository manager
@@ -539,7 +537,6 @@ func (repo *ResticManager) ClearInitErrorBackoffManual() {
 	}
 
 	repo.lastInitError = nil
-	repo.lastInitErrorTime = time.Time{}
 	repo.initErrorCount = 0
 	repo.initBackoffUntil = time.Time{}
 }
@@ -2868,16 +2865,6 @@ func parseS3URL(repoPath string) (bucket, prefix, endpoint string, err error) {
 	return bucket, prefix, endpoint, nil
 }
 
-// shouldUseInsecureTLS checks if TLS certificate verification should be skipped
-func (repo *ResticManager) shouldUseInsecureTLS() bool {
-	val := repo.getEnvValue("RESTIC_INSECURE_TLS")
-	if val == "" {
-		return false
-	}
-	val = strings.ToLower(strings.TrimSpace(val))
-	return val == "1" || val == "true" || val == "yes"
-}
-
 // createS3Client creates AWS S3 client with MinIO compatibility
 func (repo *ResticManager) createS3Client(endpoint string) (*s3.S3, error) {
 	// Extract credentials from environment
@@ -2887,11 +2874,6 @@ func (repo *ResticManager) createS3Client(endpoint string) (*s3.S3, error) {
 	region := repo.getEnvValue("AWS_REGION")
 	if region == "" {
 		region = repo.getEnvValue("AWS_DEFAULT_REGION")
-	}
-
-	// Default region (MinIO ignores it)
-	if region == "" {
-		region = "eu-west-1"
 	}
 
 	// Create credentials
@@ -2918,22 +2900,8 @@ func (repo *ResticManager) createS3Client(endpoint string) (*s3.S3, error) {
 		awsConfig.Endpoint = aws.String(endpoint)
 	}
 
-	// Handle insecure TLS for self-signed certificates
-	if repo.shouldUseInsecureTLS() {
-		transport := &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-		}
-		awsConfig.HTTPClient = &http.Client{
-			Transport: transport,
-			Timeout:   30 * time.Second,
-		}
-		repo.Printf(logrus.WarnLevel, "S3 client using insecure TLS (skipping certificate verification)")
-	} else {
-		awsConfig.HTTPClient = &http.Client{
-			Timeout: 30 * time.Second,
-		}
+	awsConfig.HTTPClient = &http.Client{
+		Timeout: 30 * time.Second,
 	}
 
 	// Create session
@@ -3161,8 +3129,6 @@ func (repo *ResticManager) setInitErrorBackoff(err error) {
 	}
 
 	repo.lastInitError = err
-	repo.lastInitErrorTime = now
-
 	// Exponential backoff: 10s, 30s, 1m, 2m, 5m, 10m, 30m (max)
 	var backoff time.Duration
 	switch {
@@ -3204,7 +3170,6 @@ func (repo *ResticManager) clearInitErrorBackoff() {
 	}
 
 	repo.lastInitError = nil
-	repo.lastInitErrorTime = time.Time{}
 	repo.initErrorCount = 0
 	repo.initBackoffUntil = time.Time{}
 }
