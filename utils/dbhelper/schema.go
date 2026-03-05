@@ -415,29 +415,49 @@ func indexDefQuery(myver *version.Version, schema string) string {
 
 // AnalyzeTable performs table analysis
 func AnalyzeTable(db *sqlx.DB, myver *version.Version, table string, nobinlog, persistent bool, columns string, indexes string) (string, error) {
-	// Validate table name to prevent SQL injection
-	if err := ValidateIdentifier(table); err != nil {
-		return "", fmt.Errorf("invalid table name: %w", err)
+	quotedTable, err := QuoteMySQLTableIdentifier(table)
+	if err != nil {
+		return "", err
 	}
 
 	query := "ANALYZE "
 	if nobinlog {
 		query += "LOCAL "
 	}
-	query += "TABLE " + QuoteMySQLIdentifier(table)
+	query += "TABLE " + quotedTable
 
 	if myver.Greater("10.4.0") && myver.IsMariaDB() && persistent {
-		if columns == "ALL" {
+		columnsTrimmed := strings.TrimSpace(columns)
+		indexesTrimmed := strings.TrimSpace(indexes)
+		if strings.EqualFold(columnsTrimmed, "ALL") {
 			query += " PERSISTENT FOR ALL"
 		} else {
-			// Validate column and index lists
-			if columns != "" {
-				query += " PERSISTENT FOR COLUMNS (" + columns + ") INDEXES (" + indexes + ")"
+			// MariaDB 10.4+ requires both COLUMNS and INDEXES for named PERSISTENT FOR.
+			if columnsTrimmed == "" && indexesTrimmed == "" {
+				return "", errors.New("persistent requires columns and indexes")
 			}
+			if columnsTrimmed == "" || indexesTrimmed == "" {
+				return "", errors.New("persistent requires both columns and indexes")
+			}
+			if err := validateIdentifierList(columnsTrimmed, true, "column"); err != nil {
+				return "", err
+			}
+			if err := validateIdentifierList(indexesTrimmed, false, "index"); err != nil {
+				return "", err
+			}
+			quotedColumns, err := quoteIdentifierList(columnsTrimmed)
+			if err != nil {
+				return "", err
+			}
+			quotedIndexes, err := quoteIdentifierList(indexesTrimmed)
+			if err != nil {
+				return "", err
+			}
+			query += " PERSISTENT FOR COLUMNS (" + quotedColumns + ") INDEXES (" + quotedIndexes + ")"
 		}
 	}
 
-	_, err := db.Exec(query)
+	_, err = db.Exec(query)
 	if err != nil {
 		log.Println("ERROR: Could not analyze table", err)
 	}

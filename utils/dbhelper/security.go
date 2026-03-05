@@ -35,6 +35,30 @@ func QuoteMySQLIdentifier(identifier string) string {
 	return "`" + escaped + "`"
 }
 
+// QuoteMySQLTableIdentifier quotes a table identifier with an optional schema qualifier.
+// Accepts "table" or "schema.table" and rejects multi-dot identifiers.
+func QuoteMySQLTableIdentifier(table string) (string, error) {
+	dotCount := strings.Count(table, ".")
+	if dotCount > 1 {
+		return "", fmt.Errorf("invalid table name: too many qualifiers: %s", table)
+	}
+	if dotCount == 1 {
+		parts := strings.SplitN(table, ".", 2)
+		if err := ValidateIdentifier(parts[0]); err != nil {
+			return "", fmt.Errorf("invalid schema name: %w", err)
+		}
+		if err := ValidateIdentifier(parts[1]); err != nil {
+			return "", fmt.Errorf("invalid table name: %w", err)
+		}
+		return QuoteMySQLIdentifier(parts[0]) + "." + QuoteMySQLIdentifier(parts[1]), nil
+	}
+
+	if err := ValidateIdentifier(table); err != nil {
+		return "", fmt.Errorf("invalid table name: %w", err)
+	}
+	return QuoteMySQLIdentifier(table), nil
+}
+
 // QuotePostgreSQLIdentifier quotes an identifier with PostgreSQL double quotes
 func QuotePostgreSQLIdentifier(identifier string) string {
 	// Escape double quotes by doubling them
@@ -65,6 +89,87 @@ func ValidateIdentifier(identifier string) error {
 	}
 
 	return nil
+}
+
+// validateIdentifierList validates a comma-separated list of identifiers for safe SQL use.
+// It permits qualified identifiers with a single dot and optionally allows the literal ALL.
+// When allowAll is true, ALL is accepted as a standalone value and cannot be mixed with other identifiers.
+// This helper is intended for internal SQL-building paths to reduce SQL injection risk.
+func validateIdentifierList(list string, allowAll bool, kind string) error {
+	trimmed := strings.TrimSpace(list)
+	if trimmed == "" {
+		return nil
+	}
+	if allowAll && strings.EqualFold(trimmed, "ALL") {
+		return nil
+	}
+
+	items := strings.Split(trimmed, ",")
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			return fmt.Errorf("%s list contains empty identifier", kind)
+		}
+		if allowAll && strings.EqualFold(item, "ALL") {
+			return fmt.Errorf("%s list cannot mix ALL with other identifiers", kind)
+		}
+		dotCount := strings.Count(item, ".")
+		if dotCount > 1 {
+			return fmt.Errorf("invalid %s name: too many qualifiers: %s", kind, item)
+		}
+		if dotCount == 1 {
+			parts := strings.SplitN(item, ".", 2)
+			if err := ValidateIdentifier(parts[0]); err != nil {
+				return fmt.Errorf("invalid %s qualifier: %w", kind, err)
+			}
+			if err := ValidateIdentifier(parts[1]); err != nil {
+				return fmt.Errorf("invalid %s name: %w", kind, err)
+			}
+			continue
+		}
+		if err := ValidateIdentifier(item); err != nil {
+			return fmt.Errorf("invalid %s name: %w", kind, err)
+		}
+	}
+
+	return nil
+}
+
+func quoteIdentifierList(list string) (string, error) {
+	trimmed := strings.TrimSpace(list)
+	if trimmed == "" {
+		return "", nil
+	}
+
+	items := strings.Split(trimmed, ",")
+	quoted := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			return "", errors.New("identifier list contains empty identifier")
+		}
+		dotCount := strings.Count(item, ".")
+		if dotCount > 1 {
+			return "", fmt.Errorf("invalid identifier: too many qualifiers: %s", item)
+		}
+		if dotCount == 1 {
+			parts := strings.SplitN(item, ".", 2)
+			if err := ValidateIdentifier(parts[0]); err != nil {
+				return "", err
+			}
+			if err := ValidateIdentifier(parts[1]); err != nil {
+				return "", err
+			}
+			quoted = append(quoted, QuoteMySQLIdentifier(parts[0])+"."+QuoteMySQLIdentifier(parts[1]))
+			continue
+		}
+		if err := ValidateIdentifier(item); err != nil {
+			return "", err
+		}
+		quoted = append(quoted, QuoteMySQLIdentifier(item))
+	}
+
+	return strings.Join(quoted, ","), nil
 }
 
 // ValidateUserHost validates username@host format for MySQL user specifications
