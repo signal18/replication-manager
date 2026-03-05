@@ -5,6 +5,25 @@ All notable changes to replication-manager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.19] - 2026-03-05
+
+### Added
+- Restic additional environment variable overrides for S3 and custom backend configuration (#1383)
+
+### Fixed
+- Schema refresh made lightweight to avoid overhead when shardproxy is not in use (#1387)
+- Master schema refresh triggered when dictionary tables are empty to avoid stale state (#1387)
+- Schema query scan field alignment corrected to prevent silent misreads (#1386)
+- Missing tables restored to schema results (#1388, #1389)
+- MariaDB persistent analyze syntax enforced; multi-dot table identifiers rejected; qualified names quoted (#1384)
+- Analyze table identifier validation hardened to prevent SQL injection in persistent analyze statements (#1384)
+- Restic S3 force-init cleanup path corrected; insecure TLS configuration removed (#1380)
+- Restic environment variable parsing hardened; AWS credential gating clarified (#1380, #1383)
+- Config error message wording and spelling corrected
+
+### Changed
+- Dependency upgrades: docker/cli, cloudflare/circl, rollup, minimatch, react-gauge-component, ajv, immutable
+
 ## [3.1.18] - 2026-03-04
 
 ### Added
@@ -693,13 +712,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 3.1.x Series
 The 3.1.x series represents significant evolution of replication-manager with major improvements across:
 
-- **Backup & Restore**: Restic task queue, FUSE mount, SFTP backend, reseed with metadata cache, configurable compression, post-backup scripts, disk reclaim, and splitdump streaming pipeline with configurable shard sizing and GTID-aware restore
-- **Schema & Data Integrity**: Master-replica table/column/index comparison, table checksum scheduling with schema cache, and shardproxy integration
+- **Backup & Restore**: Restic task queue, FUSE mount, SFTP/S3 backend with additional env overrides, reseed with metadata cache, configurable compression, post-backup scripts, disk reclaim, and splitdump streaming pipeline with configurable shard sizing and GTID-aware restore
+- **Schema & Data Integrity**: Master-replica table/column/index comparison, lightweight schema refresh with empty-dict-table recovery, table checksum scheduling with schema cache, and shardproxy integration
 - **Configuration Management**: Manual variable override and preservation, config drift detection with UI indicators, and three-tier preserved variables
 - **Application Management**: Provisioning framework with template support, S3 integration, credit management, and provision/unprovision grants
 - **Database Compatibility**: MySQL 8.4 support, dbhelper refactor with vendor abstraction, parameterized queries, and improved version handling
 - **Monitoring & Logging**: Modular logging system, OpenSVC integration, audit log support, Pushover integration
-- **Security**: Credential masking, JWT authentication, password rotation with immutability checks, and SQL injection prevention
+- **Security**: Credential masking, JWT authentication, password rotation with immutability checks, SQL injection prevention, and hardened identifier validation for analyze table operations
 - **Topology**: Active-passive topology support, staging server improvements, replication master retry count configuration
 - **Proxy Integration**: HAProxy logging improvements, enhanced backend management
 - **Docker**: Rootless image variants with fixed UID/GID for production deployments
@@ -718,6 +737,7 @@ The 3.0.x series established the foundation for modern replication-manager with 
 - **User Management**: Role-based access control with GUI, external operator support, and credential management
 - **Disk Monitoring**: Real-time disk statistics, backup size estimation, and free space validation
 
+[3.1.19]: https://github.com/signal18/replication-manager/releases/tag/v3.1.19
 [3.1.18]: https://github.com/signal18/replication-manager/releases/tag/v3.1.18
 [3.1.17]: https://github.com/signal18/replication-manager/releases/tag/v3.1.17
 [3.1.16]: https://github.com/signal18/replication-manager/releases/tag/v3.1.16
