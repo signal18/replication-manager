@@ -594,7 +594,7 @@ function ResticRepositorySettings({
             </Checkbox>
             {config?.backupResticAws && (
               <Text fontSize='sm' color='gray.600'>
-                Force re-initialization is disabled for S3 repositories.
+                Force re-initialization is disabled when backup-restic-aws is enabled (S3/MinIO mode).
               </Text>
             )}
             {initForce && (
