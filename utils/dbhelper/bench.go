@@ -184,15 +184,15 @@ func (bs *BenchmarkSuite) Run() string {
 
 // ChecksumTable performs CHECKSUM TABLE on the given table
 func ChecksumTable(db *sqlx.DB, table string) (string, error) {
-	// Validate table name to prevent SQL injection
-	if err := ValidateIdentifier(table); err != nil {
-		return "", fmt.Errorf("invalid table name: %w", err)
+	quotedTable, err := QuoteMySQLTableIdentifier(table)
+	if err != nil {
+		return "", err
 	}
 
 	var tableres string
 	var checkres string
-	query := "CHECKSUM TABLE " + QuoteMySQLIdentifier(table) + " EXTENDED"
-	err := db.QueryRowx(query).Scan(&tableres, &checkres)
+	query := "CHECKSUM TABLE " + quotedTable + " EXTENDED"
+	err = db.QueryRowx(query).Scan(&tableres, &checkres)
 	return checkres, err
 }
 
