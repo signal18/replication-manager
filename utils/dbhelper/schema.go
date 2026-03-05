@@ -420,19 +420,31 @@ func AnalyzeTable(db *sqlx.DB, myver *version.Version, table string, nobinlog, p
 		return "", fmt.Errorf("invalid table name: %w", err)
 	}
 
+	quotedTable := QuoteMySQLIdentifier(table)
+	if strings.Count(table, ".") == 1 {
+		parts := strings.SplitN(table, ".", 2)
+		if err := ValidateIdentifier(parts[0]); err != nil {
+			return "", fmt.Errorf("invalid schema name: %w", err)
+		}
+		if err := ValidateIdentifier(parts[1]); err != nil {
+			return "", fmt.Errorf("invalid table name: %w", err)
+		}
+		quotedTable = QuoteMySQLIdentifier(parts[0]) + "." + QuoteMySQLIdentifier(parts[1])
+	}
+
 	query := "ANALYZE "
 	if nobinlog {
 		query += "LOCAL "
 	}
-	query += "TABLE " + QuoteMySQLIdentifier(table)
+	query += "TABLE " + quotedTable
 
 	if myver.Greater("10.4.0") && myver.IsMariaDB() && persistent {
 		if columns == "ALL" {
 			query += " PERSISTENT FOR ALL"
-		} else {
-			// Validate column and index lists
-			if columns != "" {
-				query += " PERSISTENT FOR COLUMNS (" + columns + ") INDEXES (" + indexes + ")"
+		} else if columns != "" {
+			query += " PERSISTENT FOR COLUMNS (" + columns + ")"
+			if indexes != "" {
+				query += " INDEXES (" + indexes + ")"
 			}
 		}
 	}
