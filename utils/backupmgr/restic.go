@@ -3404,7 +3404,8 @@ func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 	repopath := repo.GetRepoPath()
 	if opt.Force {
 		if isS3Repository(repopath) {
-			err := errors.New("force init is disabled for S3 repositories")
+			// Avoid force init on S3 to prevent accidental data loss or conflicts on shared buckets/prefixes.
+			err := errors.New("force init is disabled for S3 repositories to prevent accidental data loss")
 			repo.CanInitRepo = false
 			repo.SetError(InitTask, err)
 			repo.setInitErrorBackoff(err)

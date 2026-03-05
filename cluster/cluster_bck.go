@@ -148,6 +148,11 @@ func parseResticAdditionalEnvOverrides(raw string) (map[string]string, map[strin
 	return overrides, allowlist, nil
 }
 
+func ValidateResticAdditionalEnvOverrides(raw string) error {
+	_, _, err := parseResticAdditionalEnvOverrides(raw)
+	return err
+}
+
 func filterResticEnv(cluster *Cluster, baseEnv []string, repoPath, password, cacheDir, awsAccessKey, awsSecretKey, awsRegion, additionalEnv string) []string {
 	filtered := make([]string, 0, len(baseEnv)+6)
 	overrides, allowlist, err := parseResticAdditionalEnvOverrides(additionalEnv)

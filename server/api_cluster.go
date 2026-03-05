@@ -3674,6 +3674,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupResticAwsRegion = value
 		mycluster.ReloadResticEnv()
 	case "backup-restic-additional-env":
+		if err := cluster.ValidateResticAdditionalEnvOverrides(value); err != nil {
+			return fmt.Errorf("invalid backup-restic-additional-env: %w", err)
+		}
 		mycluster.Conf.BackupResticAdditionalEnv = value
 		mycluster.ReloadResticEnv()
 	case "backup-restic-password":
