@@ -694,6 +694,7 @@ func (server *ServerMonitor) GetVTables() map[string]*dbhelper.Table {
 }
 
 func (server *ServerMonitor) GetDictTables() []*dbhelper.Table {
+	cluster := server.ClusterGroup
 	var tables []*dbhelper.Table
 	if server.IsFailed() {
 		return tables
@@ -705,7 +706,7 @@ func (server *ServerMonitor) GetDictTables() []*dbhelper.Table {
 
 	master := server.ClusterGroup.GetMaster()
 	if len(tables) == 0 && master != nil && master.URL == server.URL {
-		server.ClusterGroup.MonitorMasterTableSchema()
+		cluster.MonitorMasterTableSchema(cluster.Conf.MdbsProxyOn)
 	}
 
 	sort.Sort(dbhelper.TableSizeSorter(tables))
