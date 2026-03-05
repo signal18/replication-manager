@@ -441,11 +441,8 @@ func AnalyzeTable(db *sqlx.DB, myver *version.Version, table string, nobinlog, p
 	if myver.Greater("10.4.0") && myver.IsMariaDB() && persistent {
 		if columns == "ALL" {
 			query += " PERSISTENT FOR ALL"
-		} else if columns != "" {
-			query += " PERSISTENT FOR COLUMNS (" + columns + ")"
-			if indexes != "" {
-				query += " INDEXES (" + indexes + ")"
-			}
+		} else if columns != "" || indexes != "" {
+			query += " PERSISTENT FOR COLUMNS (" + columns + ") INDEXES (" + indexes + ")"
 		}
 	}
 
