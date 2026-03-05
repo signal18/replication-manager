@@ -415,13 +415,9 @@ func indexDefQuery(myver *version.Version, schema string) string {
 
 // AnalyzeTable performs table analysis
 func AnalyzeTable(db *sqlx.DB, myver *version.Version, table string, nobinlog, persistent bool, columns string, indexes string) (string, error) {
-	// Validate table name to prevent SQL injection
-	if err := ValidateIdentifier(table); err != nil {
-		return "", fmt.Errorf("invalid table name: %w", err)
-	}
-
 	quotedTable := QuoteMySQLIdentifier(table)
 	if strings.Count(table, ".") == 1 {
+		// Qualified names are validated per-part to avoid dots bypassing checks.
 		parts := strings.SplitN(table, ".", 2)
 		if err := ValidateIdentifier(parts[0]); err != nil {
 			return "", fmt.Errorf("invalid schema name: %w", err)
@@ -430,6 +426,11 @@ func AnalyzeTable(db *sqlx.DB, myver *version.Version, table string, nobinlog, p
 			return "", fmt.Errorf("invalid table name: %w", err)
 		}
 		quotedTable = QuoteMySQLIdentifier(parts[0]) + "." + QuoteMySQLIdentifier(parts[1])
+	} else {
+		// Validate unqualified table names to prevent SQL injection.
+		if err := ValidateIdentifier(table); err != nil {
+			return "", fmt.Errorf("invalid table name: %w", err)
+		}
 	}
 
 	query := "ANALYZE "
