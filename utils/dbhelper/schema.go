@@ -427,16 +427,33 @@ func AnalyzeTable(db *sqlx.DB, myver *version.Version, table string, nobinlog, p
 	query += "TABLE " + quotedTable
 
 	if myver.Greater("10.4.0") && myver.IsMariaDB() && persistent {
-		if strings.EqualFold(strings.TrimSpace(columns), "ALL") {
+		columnsTrimmed := strings.TrimSpace(columns)
+		indexesTrimmed := strings.TrimSpace(indexes)
+		if strings.EqualFold(columnsTrimmed, "ALL") {
 			query += " PERSISTENT FOR ALL"
-		} else if columns != "" || indexes != "" {
-			if err := validateIdentifierList(columns, true, "column"); err != nil {
+		} else {
+			// MariaDB 10.4+ requires both COLUMNS and INDEXES for named PERSISTENT FOR.
+			if columnsTrimmed == "" && indexesTrimmed == "" {
+				return "", errors.New("persistent requires columns and indexes")
+			}
+			if columnsTrimmed == "" || indexesTrimmed == "" {
+				return "", errors.New("persistent requires both columns and indexes")
+			}
+			if err := validateIdentifierList(columnsTrimmed, true, "column"); err != nil {
 				return "", err
 			}
-			if err := validateIdentifierList(indexes, false, "index"); err != nil {
+			if err := validateIdentifierList(indexesTrimmed, false, "index"); err != nil {
 				return "", err
 			}
-			query += " PERSISTENT FOR COLUMNS (" + columns + ") INDEXES (" + indexes + ")"
+			quotedColumns, err := quoteIdentifierList(columnsTrimmed)
+			if err != nil {
+				return "", err
+			}
+			quotedIndexes, err := quoteIdentifierList(indexesTrimmed)
+			if err != nil {
+				return "", err
+			}
+			query += " PERSISTENT FOR COLUMNS (" + quotedColumns + ") INDEXES (" + quotedIndexes + ")"
 		}
 	}
 
