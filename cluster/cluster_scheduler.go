@@ -91,7 +91,7 @@ func (cluster *Cluster) GetAlertDisableFunction() func() {
 
 func (cluster *Cluster) GetMonitorSchemasFunction() func() {
 	return func() {
-		go cluster.MonitorSchema(true)
+		go cluster.MonitorSchema()
 	}
 }
 
