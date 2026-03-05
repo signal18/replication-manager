@@ -2879,6 +2879,9 @@ func (repo *ResticManager) createS3Client(endpoint string) (*s3.S3, error) {
 	secretKey := repo.getEnvValue("AWS_SECRET_ACCESS_KEY")
 	sessionToken := repo.getEnvValue("AWS_SESSION_TOKEN")
 	region := repo.getEnvValue("AWS_REGION")
+	if region == "" {
+		region = repo.getEnvValue("AWS_DEFAULT_REGION")
+	}
 
 	// Default region (MinIO ignores it)
 	if region == "" {
@@ -2981,6 +2984,82 @@ func listS3Prefix(client *s3.S3, bucket, prefix string) (bool, error) {
 	return len(result.Contents) > 0, nil
 }
 
+// deleteS3RepoPrefix deletes all objects under the given prefix (or entire bucket if prefix is empty)
+func deleteS3RepoPrefix(client *s3.S3, bucket, prefix string) error {
+	var continuation *string
+
+	for {
+		input := &s3.ListObjectsV2Input{
+			Bucket: aws.String(bucket),
+			Prefix: aws.String(prefix),
+		}
+		if continuation != nil {
+			input.ContinuationToken = continuation
+		}
+
+		result, err := client.ListObjectsV2(input)
+		if err != nil {
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				case s3.ErrCodeNoSuchBucket:
+					return fmt.Errorf("S3 bucket not found: %s (create it first or check name)", bucket)
+				case "Forbidden":
+					return fmt.Errorf("access denied to S3 bucket: %s (check credentials/permissions)", bucket)
+				}
+			}
+			return fmt.Errorf("S3 ListObjects failed: %w", err)
+		}
+
+		if len(result.Contents) > 0 {
+			objects := make([]*s3.ObjectIdentifier, 0, len(result.Contents))
+			for _, obj := range result.Contents {
+				if obj == nil || obj.Key == nil {
+					continue
+				}
+				objects = append(objects, &s3.ObjectIdentifier{Key: obj.Key})
+			}
+
+			for start := 0; start < len(objects); start += 1000 {
+				end := start + 1000
+				if end > len(objects) {
+					end = len(objects)
+				}
+
+				deleteInput := &s3.DeleteObjectsInput{
+					Bucket: aws.String(bucket),
+					Delete: &s3.Delete{
+						Objects: objects[start:end],
+						Quiet:   aws.Bool(true),
+					},
+				}
+				deleteResult, delErr := client.DeleteObjects(deleteInput)
+				if delErr != nil {
+					return fmt.Errorf("S3 DeleteObjects failed: %w", delErr)
+				}
+				if deleteResult != nil && len(deleteResult.Errors) > 0 {
+					firstErr := deleteResult.Errors[0]
+					if firstErr != nil {
+						return fmt.Errorf("S3 DeleteObjects error for key %s: %s", aws.StringValue(firstErr.Key), aws.StringValue(firstErr.Message))
+					}
+					return fmt.Errorf("S3 DeleteObjects returned errors")
+				}
+			}
+		}
+
+		if aws.BoolValue(result.IsTruncated) {
+			continuation = result.NextContinuationToken
+			if continuation == nil {
+				return fmt.Errorf("S3 ListObjects truncated without continuation token")
+			}
+			continue
+		}
+
+		break
+	}
+
+	return nil
+}
+
 // checkS3RepoFiles verifies S3 repository structure and initializes if needed
 func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) error {
 	// Create S3 client
@@ -3044,13 +3123,12 @@ func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) err
 			return err
 		}
 
-		// No config, no data - initialize the repo
-		repo.Printf(logrus.InfoLevel, "S3 repository not initialized at %s/%s, initializing now...",
-			bucket, prefix)
-		err = repo.InitRepo(false)
-		if err != nil {
-			return err
-		}
+		// No config, no data - return error to require explicit init
+		repo.CanInitRepo = false
+		err = errors.New(errstr)
+		repo.SetError(InitTask, err)
+		repo.setInitErrorBackoff(err)
+		return err
 	}
 
 	// Config exists or was just initialized
@@ -3188,12 +3266,11 @@ func (repo *ResticManager) CheckRepoFiles() error {
 			err = errors.New(errstr)
 			repo.SetError(InitTask, err)
 			return err
-		} else { // Repo data does not exist (can init)
-			// Initialize the repo
-			err = repo.InitRepo(false)
-			if err != nil {
-				return err
-			}
+		} else { // Repo data does not exist (explicit init required)
+			repo.CanInitRepo = false
+			err = errors.New(errstr)
+			repo.SetError(InitTask, err)
+			return err
 		}
 	} else if err != nil {
 		repo.CanInitRepo = false
@@ -3363,12 +3440,39 @@ func (repo *ResticManager) InitRepo(force bool) error {
 func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 	repopath := repo.GetRepoPath()
 	if opt.Force {
-		err := os.RemoveAll(repopath)
-		if err != nil {
-			return fmt.Errorf("failed to remove repo: %w", err)
-		}
+		if isS3Repository(repopath) {
+			bucket, prefix, endpoint, err := parseS3URL(repopath)
+			if err != nil {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("invalid S3 repository URL: %w", err)
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
 
-		os.MkdirAll(repopath, 0755)
+			client, err := repo.createS3Client(endpoint)
+			if err != nil {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("failed to create S3 client: %w", err)
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
+
+			if err := deleteS3RepoPrefix(client, bucket, prefix); err != nil {
+				repo.CanInitRepo = false
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
+		} else {
+			err := os.RemoveAll(repopath)
+			if err != nil {
+				return fmt.Errorf("failed to remove repo: %w", err)
+			}
+
+			os.MkdirAll(repopath, 0755)
+		}
 	}
 
 	// Prepare the arguments for the "init" command
@@ -3434,9 +3538,6 @@ func (repo *ResticManager) fetchRepoSnapshots() error {
 	args := []string{"snapshots", "--json"}
 	stdout, stderr, err := repo.RunCommand(args, logrus.DebugLevel, true)
 	if err != nil {
-		if strings.Contains(string(stderr), "no such file or directory") {
-			_ = repo.InitRepo(false)
-		}
 		// Handle error (including stderr)
 		return fmt.Errorf("failed to fetch repo: %v, stderr: %s", err, stderr)
 	}
@@ -3975,9 +4076,6 @@ func (repo *ResticManager) CheckResticLocks() error {
 	// Execute the Restic "list locks" command using RunCommand
 	stdout, stderr, err := repo.RunCommand(args, logrus.DebugLevel, true)
 	if err != nil {
-		if strings.Contains(string(stderr), "no such file or directory") {
-			_ = repo.InitRepo(false)
-		}
 		// Handle error (including stderr)
 		return fmt.Errorf("failed to check repo locks: %v, stderr: %s", err, stderr)
 	}
@@ -4017,9 +4115,6 @@ func (repo *ResticManager) UnlockRepo() error {
 	// Execute the Restic "list locks" command using RunCommand
 	stdout, stderr, err := repo.RunCommand(args, logrus.InfoLevel, true)
 	if err != nil {
-		if strings.Contains(string(stderr), "no such file or directory") {
-			_ = repo.InitRepo(false)
-		}
 		// Handle error (including stderr)
 		return fmt.Errorf("failed to check repo locks: %v, stderr: %s", err, stderr)
 	}
@@ -4127,9 +4222,6 @@ func (repo *ResticManager) GetRepoKeyList() ([]ResticKey, error) {
 	// Execute the Restic "key list" command using RunCommand
 	stdout, stderr, err := repo.RunCommand(args, logrus.DebugLevel, true)
 	if err != nil {
-		if strings.Contains(string(stderr), "no such file or directory") {
-			_ = repo.InitRepo(false)
-		}
 		// Handle error (including stderr)
 		return nil, fmt.Errorf("failed to list repo keys: %v, stderr: %s", err, stderr)
 	}
