@@ -370,6 +370,12 @@ type Config struct {
 	HttpPort                                 string                       `scope:"server" mapstructure:"http-port" toml:"http-port" json:"httpPort"`
 	HttpServ                                 bool                         `scope:"server" mapstructure:"http-server" toml:"http-server" json:"httpServer"`
 	ApiServ                                  bool                         `scope:"server" mapstructure:"api-server" toml:"api-server" json:"apiServer"`
+	MCPServ                                  bool                         `scope:"server" mapstructure:"mcp-server" toml:"mcp-server" json:"mcpServer"`
+	MCPTransport                             string                       `scope:"server" mapstructure:"mcp-transport" toml:"mcp-transport" json:"mcpTransport"`
+	MCPPort                                  string                       `scope:"server" mapstructure:"mcp-port" toml:"mcp-port" json:"mcpPort"`
+	MCPBindAddr                              string                       `scope:"server" mapstructure:"mcp-bind-address" toml:"mcp-bind-address" json:"mcpBindAddress"`
+	MCPAdvertiseAddr                         string                       `scope:"server" mapstructure:"mcp-advertise-address" toml:"mcp-advertise-address" json:"mcpAdvertiseAddress"`
+	MCPWriteEnabled                          bool                         `mapstructure:"mcp-write-enabled" toml:"mcp-write-enabled" json:"mcpWriteEnabled"`
 	HttpRoot                                 string                       `scope:"server" mapstructure:"http-root" toml:"http-root" json:"httpRoot"`
 	HttpAuth                                 bool                         `scope:"server" mapstructure:"http-auth" toml:"http-auth" json:"httpAuth"`
 	HttpUseReact                             bool                         `scope:"server" mapstructure:"http-use-react" toml:"http-use-react" json:"http-use-react"`
@@ -757,6 +763,7 @@ type Config struct {
 	ProvAppCpuCores                           string            `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores" groups:"apps"`
 	ProvAppAgents                             string            `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents" groups:"apps"`
 	ProvAppHATopology                         string            `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology" groups:"apps"`
+	ProvAppVolumePools                        string            `mapstructure:"prov-app-volume-pools" toml:"prov-app-volume-pools" json:"provAppVolumePools" groups:"apps"`
 	ProvAppSizingMode                         string            `mapstructure:"prov-app-sizing-mode" toml:"prov-app-sizing-mode" json:"provAppSizingMode" groups:"apps"`
 	ProvAppTemplateRepo                       string            `mapstructure:"prov-app-template-repo" toml:"prov-app-template-repo" json:"provAppTemplateRepo" groups:"apps"`
 	ProvAppTemplateRepoBranch                 string            `mapstructure:"prov-app-template-repo-branch" toml:"prov-app-template-repo-branch" json:"provAppTemplateRepoBranch" groups:"apps"`

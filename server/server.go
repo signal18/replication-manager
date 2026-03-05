@@ -57,6 +57,7 @@ import (
 	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/etc"
 	"github.com/signal18/replication-manager/graphite"
+	repmanmcp "github.com/signal18/replication-manager/mcp"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/regtest"
@@ -167,6 +168,7 @@ type ReplicationManager struct {
 	VersionConfs           map[string]*config.ConfVersion `json:"-"`
 	grpcServer             *grpc.Server                   `json:"-"`
 	grpcWrapped            *grpcweb.WrappedGrpcServer     `json:"-"`
+	mcpServer              *repmanmcp.MCPServer           `json:"-"`
 	httpServer             *http.Server                   `json:"-"`
 	apiServer              *http.Server                   `json:"-"`
 	V3Up                   chan bool                      `json:"-"`
@@ -755,6 +757,12 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.HttpServ, "http-server", true, "Start the HTTP server")
 	flags.BoolVar(&conf.ApiServ, "api-server", true, "Start the API HTTPS server")
 	flags.BoolVar(&conf.ApiSwaggerEnabled, "api-swagger-enabled", true, "Start the API with Swagger")
+	flags.BoolVar(&conf.MCPServ, "mcp-server", false, "Start MCP server for AI assistant integration")
+	flags.StringVar(&conf.MCPTransport, "mcp-transport", "sse", "MCP transport: stdio, sse, or both")
+	flags.StringVar(&conf.MCPPort, "mcp-port", "10007", "MCP server HTTP/SSE listen port")
+	flags.StringVar(&conf.MCPBindAddr, "mcp-bind-address", "localhost", "MCP server bind address")
+	flags.StringVar(&conf.MCPAdvertiseAddr, "mcp-advertise-address", "", "MCP public base URL (e.g. http://repman.example.com:10007); overrides mcp-bind-address for SSE endpoint advertisements (useful behind Docker port mappings or reverse proxies)")
+	flags.BoolVar(&conf.MCPWriteEnabled, "mcp-write-enabled", false, "Enable write/action tools in MCP (Phase 2)")
 
 	flags.StringVar(&conf.BindAddr, "http-bind-address", "localhost", "Bind HTTP monitor to this IP address")
 	flags.StringVar(&conf.HttpPort, "http-port", "10001", "HTTP monitor to listen on this port")
@@ -2846,6 +2854,15 @@ func (repman *ReplicationManager) Run() error {
 	repman.ensureLoginUpgradeInfra()
 
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)
+	if repman.Conf.MCPServ {
+		repman.mcpServer = repmanmcp.NewMCPServer(repman, repman.Conf, repman.Logrus)
+		go func() {
+			if err := repman.mcpServer.Start(context.Background()); err != nil {
+				repman.Logrus.Errorf("MCP server error: %v", err)
+			}
+		}()
+	}
+
 	if repman.Conf.ApiServ {
 		go repman.apiserver()
 	} else {
@@ -4173,6 +4190,11 @@ func (repman *ReplicationManager) Stop() {
 			repman.Logrus.Warn("gRPC graceful stop timed out, forcing stop")
 			repman.grpcServer.Stop()
 		}
+	}
+
+	if repman.mcpServer != nil {
+		repman.Logrus.Info("Stop: stopping MCP server")
+		repman.mcpServer.Stop()
 	}
 
 	if repman.MemProfile != "" {

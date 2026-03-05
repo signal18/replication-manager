@@ -8,6 +8,7 @@ package server
 
 import (
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 )
 
 func (repman *ReplicationManager) HasActiveCluster() bool {
@@ -19,6 +20,42 @@ func (repman *ReplicationManager) HasActiveCluster() bool {
 		}
 	}
 	return false
+}
+
+// RepmanProvider interface implementation for MCPServer.
+
+func (repman *ReplicationManager) GetClusters() map[string]*cluster.Cluster {
+	repman.Lock()
+	defer repman.Unlock()
+	return repman.Clusters
+}
+
+func (repman *ReplicationManager) GetClusterByName(name string) *cluster.Cluster {
+	return repman.getClusterByName(name)
+}
+
+func (repman *ReplicationManager) GetVersion() string {
+	return repman.Version
+}
+
+func (repman *ReplicationManager) GetFullVersion() string {
+	return repman.Fullversion
+}
+
+func (repman *ReplicationManager) GetStatus() string {
+	return repman.Status
+}
+
+func (repman *ReplicationManager) GetConf() *config.Config {
+	return repman.Conf
+}
+
+func (repman *ReplicationManager) SetClusterSetting(cl *cluster.Cluster, key, value string) error {
+	return repman.setClusterSetting(cl, key, value)
+}
+
+func (repman *ReplicationManager) SwitchClusterSetting(cl *cluster.Cluster, key string) error {
+	return repman.switchClusterSettings(cl, key)
 }
 
 func (repman *ReplicationManager) getClusterByName(clname string) *cluster.Cluster {
