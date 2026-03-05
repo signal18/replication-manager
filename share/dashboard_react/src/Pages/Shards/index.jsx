@@ -137,10 +137,13 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
       columnHelper.accessor((row) => row.table_clusters, {
         header: 'Shards'
       }),
+      columnHelper.accessor((row) => row.table_sync, {
+        header: 'Sync'
+      }),
       columnHelper.accessor(
-        (row) => getTablePct(row.data_length, row.index_length, selectedCluster?.workLoad?.dbTableSize),
+        (row) => getTablePct(row.data_length, row.index_length, selectedCluster?.workLoad?.dbTableSize , selectedCluster?.workLoad?.dbIndexSize),
         {
-          header: 'Sync %',
+          header: '% Size',
           cell: (info) => {
             if (isNaN(info.getValue())) {
               return ''
@@ -151,8 +154,8 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
                 minValue={0}
                 maxValue={100}
                 value={info.getValue()}
-                width={210}
-                height={90}
+                width={100}
+                height={50}
               />
             )
           }

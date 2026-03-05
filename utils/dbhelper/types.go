@@ -131,12 +131,12 @@ type Table struct {
 	TableSchema       string             `protobuf:"bytes,1,opt,name=table_schema,json=tableSchema,proto3" json:"table_schema,omitempty"`
 	TableName         string             `protobuf:"bytes,2,opt,name=table_name,json=tableName,proto3" json:"table_name,omitempty"`
 	Engine            string             `protobuf:"bytes,3,opt,name=engine,proto3" json:"engine,omitempty"`
-	TableRows         int64              `protobuf:"varint,4,opt,name=table_rows,json=tableRows,proto3" json:"table_rows,omitempty"`
-	DataLength        int64              `protobuf:"varint,5,opt,name=data_length,json=dataLength,proto3" json:"data_length,omitempty"`
-	IndexLength       int64              `protobuf:"varint,6,opt,name=index_length,json=indexLength,proto3" json:"index_length,omitempty"`
-	TableCrc          uint64             `protobuf:"varint,7,opt,name=table_crc,json=tableCrc,proto3" json:"table_crc,omitempty"`
+	TableRows         int64              `protobuf:"varint,4,opt,name=table_rows,json=tableRows,proto3" json:"table_rows"`
+	DataLength        int64              `protobuf:"varint,5,opt,name=data_length,json=dataLength,proto3" json:"data_length"`
+	IndexLength       int64              `protobuf:"varint,6,opt,name=index_length,json=indexLength,proto3" json:"index_length"`
+	TableCrc          uint64             `protobuf:"varint,7,opt,name=table_crc,json=tableCrc,proto3" json:"table_crc"`
 	TableClusters     string             `protobuf:"bytes,8,opt,name=table_clusters,json=tableClusters,proto3" json:"table_clusters,omitempty"`
-	TableSync         string             `protobuf:"bytes,9,opt,name=table_sync,json=tableSync,proto3" json:"table_sync,omitempty"`
+	TableSync         string             `protobuf:"bytes,9,opt,name=table_sync,json=tableSync,proto3" json:"table_sync"`
 	TableColumns      []Column           `protobuf:"bytes,10,opt,name=table_columns,json=tableColumns,proto3" json:"table_columns,omitempty"`
 	TableIndexes      []Index            `protobuf:"bytes,11,opt,name=table_indexes,json=tableIndexes,proto3" json:"table_indexes,omitempty"`
 	TableColumnsCrc64 uint64             `protobuf:"varint,12,opt,name=table_columns_crc64,json=tableColumnsCrc64,proto3" json:"table_columns_crc64,omitempty"`

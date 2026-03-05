@@ -186,8 +186,8 @@ export const isEqualLongQueryTime = (a, b) => {
   return false
 }
 
-export const getTablePct = (table, index, dbTableSize) => {
-  return (((table + index) / (dbTableSize + dbTableSize + 1)) * 100).toFixed(2)
+export const getTablePct = (table, index, dbTableSize, dbIndexSize) => {
+  return (((table + index) / (dbTableSize + dbIndexSize + 1)) * 100).toFixed(2)
 }
 
 export const canCancelJob = (t) => {
