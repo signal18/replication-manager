@@ -963,6 +963,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.SysbenchScale, "sysbench-scale", 1, "Number of warehouse")
 	flags.IntVar(&conf.SysbenchTables, "sysbench-tables", 1, "Number of tables")
 	flags.BoolVar(&conf.SysbenchV1, "sysbench-v1", false, "v1 get different syntax")
+	flags.BoolVar(&conf.SysbenchForcePK, "sysbench-force-pk", true, "Force primary key in sysbench tables")
 	flags.StringVar(&conf.SysbenchBinaryPath, "sysbench-binary-path", "/usr/bin/sysbench", "Sysbench Wrapper in test mode")
 
 	if WithOpenSVC == "ON" {

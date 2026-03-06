@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { checksumAllTables, checksumTable, getShardSchema, monitorAllSchemas } from '../../redux/clusterSlice'
 import { createColumnHelper } from '@tanstack/react-table'
@@ -42,9 +42,12 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
     }
   }, [shardSchema])
 
-  const handleChecksum = (schema, table) => {
-    dispatch(checksumTable({ clusterName: selectedCluster?.name, schema, table }))
-  }
+  const handleChecksum = useCallback(
+    (schema, table) => {
+      dispatch(checksumTable({ clusterName: selectedCluster?.name, schema, table }))
+    },
+    [dispatch, selectedCluster?.name]
+  )
   const handleChecksumAll = async () => {
     if (!selectedCluster?.name || isChecksumAllRunning) {
       return
@@ -105,17 +108,18 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
     return false
   }
   const columnHelper = createColumnHelper()
-  const compareText = (left, right) => {
+  const compareText = useCallback((left, right) => {
     const a = left == null ? '' : String(left)
     const b = right == null ? '' : String(right)
     if (a === b) {
       return 0
     }
     return a > b ? 1 : -1
-  }
-  const compareTextDesc = (left, right) => compareText(right, left)
+  }, [])
 
-  const sizePctSorting = (rowA, rowB, columnId) => {
+  const compareTextDesc = useCallback((left, right) => compareText(right, left), [compareText])
+
+  const sizePctSorting = useCallback((rowA, rowB, columnId) => {
     const a = Number(rowA.getValue(columnId))
     const b = Number(rowB.getValue(columnId))
     if (a !== b) {
@@ -126,7 +130,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
       return schemaCompare
     }
     return compareTextDesc(rowA.original.table_name, rowB.original.table_name)
-  }
+  }, [compareTextDesc])
 
   const localSizeTotals = useMemo(() => {
     const rows = Array.isArray(data) ? data : []

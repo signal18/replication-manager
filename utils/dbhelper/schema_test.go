@@ -273,6 +273,8 @@ func TestGetTablesQueryAlignment(t *testing.T) {
 	expectedCRC := expectedTable.TableCrc
 
 	tablesSQL := tablesQueryAll(ver)
+	mock.ExpectExec(regexp.QuoteMeta("SET SESSION information_schema_stats_expiry = 0")).
+		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectQuery(regexp.QuoteMeta(tablesSQL)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"table_schema",

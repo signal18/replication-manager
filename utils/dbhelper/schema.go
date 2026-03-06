@@ -50,6 +50,11 @@ type indexRow struct {
 	SubPart     sql.NullInt64
 }
 
+type schemaExecutor interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryxContext(ctx context.Context, query string, args ...any) (*sqlx.Rows, error)
+}
+
 // Short timeout to avoid long metadata lock waits during scans.
 const defaultSchemaScanTimeout = 5 * time.Second
 
@@ -119,8 +124,19 @@ func GetTables(db *sqlx.DB, myver *version.Version, getColumns, getIndexes bool)
 
 	crc64Table := crc64.MakeTable(0xC96C5795D7870F42)
 
+	connCtx, connCancel := scanContext(defaultSchemaScanTimeout)
+	conn, err := db.Connx(connCtx)
+	connCancel()
+	if err != nil {
+		return nil, nil, logBuilder.String(), err
+	}
+	defer conn.Close()
+
+	// Disable information_schema stats expiry to reduce stale size data.
+	appendLog(&logBuilder, applyInformationSchemaStatsExpiry(conn, myver, defaultSchemaScanTimeout))
+
 	// Bulk information_schema scans reduce round trips and metadata lock pressure.
-	tables, qlog, err := getAllTables(db, myver, defaultSchemaScanTimeout)
+	tables, qlog, err := getAllTables(conn, myver, defaultSchemaScanTimeout)
 	appendLog(&logBuilder, qlog)
 	if err != nil {
 		return nil, nil, logBuilder.String(), err
@@ -133,13 +149,13 @@ func GetTables(db *sqlx.DB, myver *version.Version, getColumns, getIndexes bool)
 		tablemap[key] = t
 	}
 
-	qlog, err = loadAllColumns(db, myver, tablemap, defaultSchemaScanTimeout)
+	qlog, err = loadAllColumns(conn, myver, tablemap, defaultSchemaScanTimeout)
 	appendLog(&logBuilder, qlog)
 	if err != nil {
 		return tablemap, tables, logBuilder.String(), err
 	}
 
-	qlog, err = loadAllIndexes(db, myver, tablemap, defaultSchemaScanTimeout)
+	qlog, err = loadAllIndexes(conn, myver, tablemap, defaultSchemaScanTimeout)
 	appendLog(&logBuilder, qlog)
 	if err != nil {
 		return tablemap, tables, logBuilder.String(), err
@@ -190,12 +206,26 @@ func scanContext(timeout time.Duration) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), timeout)
 }
 
-func getAllTables(db *sqlx.DB, myver *version.Version, timeout time.Duration) ([]Table, string, error) {
+func applyInformationSchemaStatsExpiry(ext schemaExecutor, myver *version.Version, timeout time.Duration) string {
+	if myver.IsPostgreSQL() {
+		return ""
+	}
+	query := "SET SESSION information_schema_stats_expiry = 0"
+	ctx, cancel := scanContext(timeout)
+	defer cancel()
+	if _, err := ext.ExecContext(ctx, query); err != nil {
+		log.Printf("schema scan: %s failed: %v", query, err)
+		return fmt.Sprintf("%s -- failed: %v", query, err)
+	}
+	return query
+}
+
+func getAllTables(ext schemaExecutor, myver *version.Version, timeout time.Duration) ([]Table, string, error) {
 	query := tablesQueryAll(myver)
 	ctx, cancel := scanContext(timeout)
 	defer cancel()
 
-	rows, err := db.QueryxContext(ctx, query)
+	rows, err := ext.QueryxContext(ctx, query)
 	if err != nil {
 		return nil, query, errors.New("could not get table list: " + err.Error())
 	}
@@ -245,7 +275,7 @@ func tablesQueryAll(myver *version.Version) string {
 		ORDER BY table_schema, table_name`
 }
 
-func loadAllColumns(db *sqlx.DB, myver *version.Version, tablemap map[string]*Table, timeout time.Duration) (string, error) {
+func loadAllColumns(ext schemaExecutor, myver *version.Version, tablemap map[string]*Table, timeout time.Duration) (string, error) {
 	query := columnDefQueryAll(myver)
 	if query == "" {
 		return "", nil
@@ -254,7 +284,7 @@ func loadAllColumns(db *sqlx.DB, myver *version.Version, tablemap map[string]*Ta
 	ctx, cancel := scanContext(timeout)
 	defer cancel()
 
-	rows, err := db.QueryxContext(ctx, query)
+	rows, err := ext.QueryxContext(ctx, query)
 	if err != nil {
 		return query, err
 	}
@@ -322,7 +352,7 @@ func columnDefQueryAll(myver *version.Version) string {
 		ORDER BY table_schema, table_name, ordinal_position`
 }
 
-func loadAllIndexes(db *sqlx.DB, myver *version.Version, tablemap map[string]*Table, timeout time.Duration) (string, error) {
+func loadAllIndexes(ext schemaExecutor, myver *version.Version, tablemap map[string]*Table, timeout time.Duration) (string, error) {
 	query := indexDefQueryAll(myver)
 	if query == "" {
 		return "", nil
@@ -331,7 +361,7 @@ func loadAllIndexes(db *sqlx.DB, myver *version.Version, tablemap map[string]*Ta
 	ctx, cancel := scanContext(timeout)
 	defer cancel()
 
-	rows, err := db.QueryxContext(ctx, query)
+	rows, err := ext.QueryxContext(ctx, query)
 	if err != nil {
 		return query, err
 	}
