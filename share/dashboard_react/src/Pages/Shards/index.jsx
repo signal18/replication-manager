@@ -105,11 +105,35 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
     return false
   }
   const columnHelper = createColumnHelper()
+  const compareText = (left, right) => {
+    const a = left == null ? '' : String(left)
+    const b = right == null ? '' : String(right)
+    if (a === b) {
+      return 0
+    }
+    return a > b ? 1 : -1
+  }
+  const compareTextDesc = (left, right) => compareText(right, left)
+
+  const sizePctSorting = (rowA, rowB, columnId) => {
+    const a = Number(rowA.getValue(columnId))
+    const b = Number(rowB.getValue(columnId))
+    if (a !== b) {
+      return a > b ? 1 : -1
+    }
+    const schemaCompare = compareTextDesc(rowA.original.table_schema, rowB.original.table_schema)
+    if (schemaCompare !== 0) {
+      return schemaCompare
+    }
+    return compareTextDesc(rowA.original.table_name, rowB.original.table_name)
+  }
 
   const columns = useMemo(
     () => [
       columnHelper.accessor((row) => row.table_schema, {
+        id: 'schema',
         header: 'Schema',
+        enableSorting: true,
         cell: (info) => (
           <Flex className={styles.tablesSchemaCol}>
             <RMButton onClick={() => handleChecksum(info.row.original.table_schema, info.row.original.table_name)}>
@@ -120,7 +144,9 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
         )
       }),
       columnHelper.accessor((row) => row.table_name, {
-        header: 'Name'
+        id: 'tableName',
+        header: 'Name',
+        enableSorting: true
       }),
       columnHelper.accessor((row) => row.engine, {
         header: 'Engine'
@@ -143,7 +169,10 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
       columnHelper.accessor(
         (row) => getTablePct(row.data_length, row.index_length, selectedCluster?.workLoad?.dbTableSize , selectedCluster?.workLoad?.dbIndexSize),
         {
+          id: 'sizePct',
           header: '% Size',
+          enableSorting: true,
+          sortingFn: sizePctSorting,
           cell: (info) => {
             if (isNaN(info.getValue())) {
               return ''
@@ -201,7 +230,17 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
           )}
         </Flex>
       </Flex>
-      <DataTable key="shards" data={data} columns={columns} className={styles.table} />
+      <DataTable
+        key="shards"
+        data={data}
+        columns={columns}
+        className={styles.table}
+        enableSorting={true}
+        lockSorting={true}
+        initialSorting={[
+          { id: 'sizePct', desc: true }
+        ]}
+      />
       <AccordionComponent
         className={styles.accordion}
         heading={'Cluster Logs'}
