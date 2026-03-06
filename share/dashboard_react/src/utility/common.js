@@ -200,6 +200,9 @@ export const getTablePct = (table, index, dbTableSize, dbIndexSize) => {
   const totalSize = toNonNegativeNumber(dbTableSize) + toNonNegativeNumber(dbIndexSize)
 
   if (totalSize === 0) {
+    if (tableSize + indexSize > 0) {
+      return Number.NaN
+    }
     return 0
   }
 

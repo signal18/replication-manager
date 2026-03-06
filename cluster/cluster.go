@@ -759,7 +759,7 @@ func (cluster *Cluster) Run() {
 					if !cluster.IsInFailover() {
 						wg.Add(1)
 						go cluster.refreshProxies(wg)
-						go cluster.refreshApps(wg)
+						cluster.refreshApps(wg)
 						cluster.CheckAppsCredit()
 						cluster.CheckWaitRunJobSSH()
 						cluster.CheckDummyConfigSendCookies()
@@ -1866,6 +1866,9 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 
 	tables, tablelist, logs, err := dbhelper.GetTables(cmaster.Conn, cmaster.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes)
 	cluster.LogSQL(logs, err, cmaster.URL, "Monitor", config.LvlDbg, "Could not fetch master tables %s", err)
+	if err != nil {
+		return err
+	}
 	cmaster.Tables = tablelist
 
 	var tableCluster []string
@@ -1965,6 +1968,9 @@ func (cluster *Cluster) MonitorSlaveTableSchema(sl *ServerMonitor) error {
 	sl.Conn.SetConnMaxLifetime(3595 * time.Second)
 	tables, tablelist, logs, err := dbhelper.GetTables(sl.Conn, sl.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes)
 	cluster.LogSQL(logs, err, sl.URL, "Monitor", config.LvlDbg, "Could not fetch slave tables %s", err)
+	if err != nil {
+		return err
+	}
 	sl.Tables = tablelist
 	sl.DictTables = dbhelper.FromNormalTablesMap(sl.DictTables, tables)
 
@@ -1982,7 +1988,14 @@ func (cluster *Cluster) CompareSchemaBetweenMasterAndSlave(sl *ServerMonitor) ([
 	masterTables := cluster.GetMaster().DictTables.ToNewMap()
 	slTables := sl.DictTables.ToNewMap()
 
-	for tblname, mtbl := range masterTables {
+	masterKeys := make([]string, 0, len(masterTables))
+	for tblname := range masterTables {
+		masterKeys = append(masterKeys, tblname)
+	}
+	slices.Sort(masterKeys)
+
+	for _, tblname := range masterKeys {
+		mtbl := masterTables[tblname]
 		if cluster.IsInSchemaIgnore(tblname) {
 			ignored = append(ignored, tblname)
 			continue
@@ -1992,26 +2005,75 @@ func (cluster *Cluster) CompareSchemaBetweenMasterAndSlave(sl *ServerMonitor) ([
 			diffs = append(diffs, fmt.Sprintf("Table %s missing on slave %s", tblname, sl.URL))
 			continue
 		}
+
+		tbldiffs := make([]string, 0, 3)
 		if mtbl.TableCrc != stbl.TableCrc {
-			tbldiffs := make([]string, 0)
+			metaDiffs := make([]string, 0, 4)
+			if mtbl.Engine != stbl.Engine {
+				metaDiffs = append(metaDiffs, fmt.Sprintf("engine %s -> %s", mtbl.Engine, stbl.Engine))
+			}
+			if mtbl.RowFormat != stbl.RowFormat {
+				metaDiffs = append(metaDiffs, fmt.Sprintf("row_format %s -> %s", mtbl.RowFormat, stbl.RowFormat))
+			}
+			if mtbl.TableCollation != stbl.TableCollation {
+				metaDiffs = append(metaDiffs, fmt.Sprintf("collation %s -> %s", mtbl.TableCollation, stbl.TableCollation))
+			}
+			if mtbl.CreateOptions != stbl.CreateOptions {
+				metaDiffs = append(metaDiffs, fmt.Sprintf("create_options %s -> %s", mtbl.CreateOptions, stbl.CreateOptions))
+			}
+			if len(metaDiffs) > 0 {
+				tbldiffs = append(tbldiffs, "metadata: ("+strings.Join(metaDiffs, ", ")+")")
+			}
+
+			columnsAvailable := mtbl.TableColumnsCrc64 != 0 && stbl.TableColumnsCrc64 != 0 && mtbl.TableColumnMap != nil && stbl.TableColumnMap != nil
+			indexesAvailable := mtbl.TableIndexesCrc64 != 0 && stbl.TableIndexesCrc64 != 0 && mtbl.TableIndexMap != nil && stbl.TableIndexMap != nil
 			if mtbl.TableColumnsCrc64 != stbl.TableColumnsCrc64 {
-				tbldiffs = append(tbldiffs, "columns: (", strings.Join(mtbl.ColumnDiffs(stbl, sl.URL), ", "), ") ")
+				if columnsAvailable {
+					coldiffs := mtbl.ColumnDiffs(stbl, sl.URL)
+					if len(coldiffs) > 0 {
+						tbldiffs = append(tbldiffs, "columns: ("+strings.Join(coldiffs, ", ")+")")
+					}
+				} else {
+					tbldiffs = append(tbldiffs, "columns: diff (details unavailable)")
+				}
 			}
 			if mtbl.TableIndexesCrc64 != stbl.TableIndexesCrc64 {
-				tbldiffs = append(tbldiffs, "indexes: (", strings.Join(mtbl.IndexDiffs(stbl, sl.URL), ", "), ") ")
+				if indexesAvailable {
+					idxdiffs := mtbl.IndexDiffs(stbl, sl.URL)
+					if len(idxdiffs) > 0 {
+						tbldiffs = append(tbldiffs, "indexes: ("+strings.Join(idxdiffs, ", ")+")")
+					}
+				} else {
+					tbldiffs = append(tbldiffs, "indexes: diff (details unavailable)")
+				}
 			}
+			if len(tbldiffs) == 0 {
+				if !columnsAvailable && !indexesAvailable {
+					tbldiffs = append(tbldiffs, "table crc differs; column/index details unavailable")
+				} else {
+					tbldiffs = append(tbldiffs, "table crc differs, no column or index differences found")
+				}
+			}
+		}
+		if len(tbldiffs) > 0 {
 			diffs = append(diffs, fmt.Sprintf("Table %s differs on slave %s -> %s", tblname, sl.URL, strings.Join(tbldiffs, " ")))
 		}
 	}
 
+	slaveKeys := make([]string, 0, len(slTables))
 	for tblname := range slTables {
+		slaveKeys = append(slaveKeys, tblname)
+	}
+	slices.Sort(slaveKeys)
+
+	for _, tblname := range slaveKeys {
 		_, ok := masterTables[tblname]
 		if !ok {
 			if cluster.IsInSchemaIgnore(tblname) {
 				ignored = append(ignored, tblname)
 				continue
 			}
-			ignored = append(ignored, fmt.Sprintf("Extra table %s found on slave %s", tblname, sl.URL))
+			diffs = append(diffs, fmt.Sprintf("Extra table %s found on slave %s", tblname, sl.URL))
 		}
 	}
 

@@ -50,6 +50,9 @@ type indexRow struct {
 	SubPart     sql.NullInt64
 }
 
+// Short timeout to avoid long metadata lock waits during scans.
+const defaultSchemaScanTimeout = 5 * time.Second
+
 // SetEventStatus enables or disables a database event
 func SetEventStatus(db *sqlx.DB, ev Event, status int64) (string, error) {
 	definer := strings.Split(ev.Definer, "@")
@@ -112,49 +115,291 @@ func GetTableChecksumResult(db *sqlx.DB) (map[uint64]chunk, string, error) {
 
 // GetTables retrieves all tables from all schemas (excluding system schemas)
 func GetTables(db *sqlx.DB, myver *version.Version, getColumns, getIndexes bool) (map[string]*Table, []Table, string, error) {
-	var tablemap map[string]*Table = make(map[string]*Table)
-	var tblList []Table
-	logs := ""
+	var logBuilder strings.Builder
 
-	schemas, q, err := getSchemas(db, myver)
-	logs += q
+	crc64Table := crc64.MakeTable(0xC96C5795D7870F42)
+
+	// Bulk information_schema scans reduce round trips and metadata lock pressure.
+	tables, qlog, err := getAllTables(db, myver, defaultSchemaScanTimeout)
+	appendLog(&logBuilder, qlog)
 	if err != nil {
-		return nil, nil, logs, err
+		return nil, nil, logBuilder.String(), err
 	}
 
-	for _, schema := range schemas {
-		crc64Table := crc64.MakeTable(0xC96C5795D7870F42)
-		var qlog string
-		tables, qlog, err := getTablesForSchema(db, myver, schema, crc64Table)
-		logs += qlog
-		if err != nil {
-			return nil, nil, logs, err
-		}
+	tablemap := make(map[string]*Table, len(tables))
+	for i := range tables {
+		t := &tables[i]
+		key := t.TableSchema + "." + t.TableName
+		tablemap[key] = t
+	}
 
-		for _, t := range tables {
-			key := t.TableSchema + "." + t.TableName
-			tblList = append(tblList, t)
-			tablemap[key] = &t
-		}
+	qlog, err = loadAllColumns(db, myver, tablemap, defaultSchemaScanTimeout)
+	appendLog(&logBuilder, qlog)
+	if err != nil {
+		return tablemap, tables, logBuilder.String(), err
+	}
 
-		if getColumns {
-			qlog, err := getTableColumns(db, myver, schema, tablemap, crc64Table)
-			logs += qlog
-			if err != nil {
-				return tablemap, tblList, logs, err
-			}
-		}
+	qlog, err = loadAllIndexes(db, myver, tablemap, defaultSchemaScanTimeout)
+	appendLog(&logBuilder, qlog)
+	if err != nil {
+		return tablemap, tables, logBuilder.String(), err
+	}
 
-		if getIndexes {
-			qlog, err := getTableIndexes(db, myver, schema, tablemap, crc64Table)
-			logs += qlog
-			if err != nil {
-				return tablemap, tblList, logs, err
-			}
+	for i := range tables {
+		t := &tables[i]
+		t.HashColumns(crc64Table)
+		t.HashIndexes(crc64Table)
+		t.HashTableCrc(crc64Table)
+	}
+
+	if !getColumns {
+		for i := range tables {
+			t := &tables[i]
+			t.TableColumns = nil
+			t.TableColumnMap = nil
+			t.TableColumnsCrc64 = 0
 		}
 	}
 
-	return tablemap, tblList, logs, nil
+	if !getIndexes {
+		for i := range tables {
+			t := &tables[i]
+			t.TableIndexes = nil
+			t.TableIndexMap = nil
+			t.TableIndexesCrc64 = 0
+		}
+	}
+
+	return tablemap, tables, logBuilder.String(), nil
+}
+
+func appendLog(builder *strings.Builder, query string) {
+	if query == "" {
+		return
+	}
+	if builder.Len() > 0 {
+		builder.WriteByte('\n')
+	}
+	builder.WriteString(query)
+}
+
+func scanContext(timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout <= 0 {
+		return context.Background(), func() {}
+	}
+	return context.WithTimeout(context.Background(), timeout)
+}
+
+func getAllTables(db *sqlx.DB, myver *version.Version, timeout time.Duration) ([]Table, string, error) {
+	query := tablesQueryAll(myver)
+	ctx, cancel := scanContext(timeout)
+	defer cancel()
+
+	rows, err := db.QueryxContext(ctx, query)
+	if err != nil {
+		return nil, query, errors.New("could not get table list: " + err.Error())
+	}
+	defer rows.Close()
+
+	var tables []Table
+	for rows.Next() {
+		var t Table
+		if err := rows.Scan(
+			&t.TableSchema,
+			&t.TableName,
+			&t.Engine,
+			&t.TableType,
+			&t.RowFormat,
+			&t.TableCollation,
+			&t.CreateOptions,
+			&t.TableComment,
+			&t.AutoIncrement,
+			&t.TableRows,
+			&t.DataLength,
+			&t.IndexLength,
+		); err != nil {
+			return nil, query, err
+		}
+		tables = append(tables, t)
+	}
+
+	return tables, query, nil
+}
+
+func tablesQueryAll(myver *version.Version) string {
+	if myver.IsPostgreSQL() {
+		return `SELECT table_schema, table_name, 'BASE TABLE' AS engine, table_type,
+			'' AS row_format, '' AS table_collation, '' AS create_options, '' AS table_comment,
+			0::bigint AS auto_increment, 0::bigint AS table_rows, 0::bigint AS data_length,
+			0::bigint AS index_length
+			FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+			ORDER BY table_schema, table_name`
+	}
+	return `SELECT table_schema, table_name, engine, table_type,
+		COALESCE(row_format, ''), COALESCE(table_collation, ''), COALESCE(create_options, ''),
+		COALESCE(table_comment, ''), COALESCE(auto_increment, 0),
+		table_rows, data_length, index_length
+		FROM information_schema.TABLES
+		WHERE table_schema NOT IN ('information_schema','mysql','performance_schema','sys')
+		AND table_schema NOT LIKE '#%' AND table_type = 'BASE TABLE'
+		ORDER BY table_schema, table_name`
+}
+
+func loadAllColumns(db *sqlx.DB, myver *version.Version, tablemap map[string]*Table, timeout time.Duration) (string, error) {
+	query := columnDefQueryAll(myver)
+	if query == "" {
+		return "", nil
+	}
+
+	ctx, cancel := scanContext(timeout)
+	defer cancel()
+
+	rows, err := db.QueryxContext(ctx, query)
+	if err != nil {
+		return query, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var r columnRow
+		if err := rows.Scan(
+			&r.TableSchema,
+			&r.TableName,
+			&r.OrdinalPosition,
+			&r.ColumnName,
+			&r.ColumnType,
+			&r.IsNullable,
+			&r.ColumnDefault,
+			&r.Extra,
+			&r.CharacterSetName,
+			&r.CollationName,
+		); err != nil {
+			return query, err
+		}
+
+		key := r.TableSchema + "." + r.TableName
+		t, ok := tablemap[key]
+		if !ok {
+			continue
+		}
+
+		col := Column{
+			Name:     r.ColumnName,
+			Type:     strings.ToLower(r.ColumnType),
+			Nullable: r.IsNullable == "YES",
+			Extra:    normalizeExtraStr(r.Extra),
+		}
+
+		if r.ColumnDefault.Valid {
+			col.Default = normalizeDefaultStr(r.ColumnDefault.String)
+		}
+
+		if r.CharacterSetName.Valid {
+			col.Charset = &r.CharacterSetName.String
+		}
+		if r.CollationName.Valid {
+			col.Collation = &r.CollationName.String
+		}
+
+		t.TableColumns = append(t.TableColumns, col)
+	}
+
+	return query, nil
+}
+
+func columnDefQueryAll(myver *version.Version) string {
+	if myver.IsPostgreSQL() {
+		return `SELECT table_schema, table_name, ordinal_position, column_name, udt_name AS column_type,
+			is_nullable, column_default, '' AS extra, '' AS character_set_name, '' AS collation_name
+			FROM information_schema.columns WHERE table_schema = 'public'
+			ORDER BY table_schema, table_name, ordinal_position`
+	}
+	return `SELECT table_schema, table_name, ordinal_position, column_name, column_type,
+		is_nullable, column_default, extra, character_set_name, collation_name
+		FROM information_schema.COLUMNS
+		WHERE table_schema NOT IN ('information_schema','mysql','performance_schema','sys')
+		AND table_schema NOT LIKE '#%'
+		ORDER BY table_schema, table_name, ordinal_position`
+}
+
+func loadAllIndexes(db *sqlx.DB, myver *version.Version, tablemap map[string]*Table, timeout time.Duration) (string, error) {
+	query := indexDefQueryAll(myver)
+	if query == "" {
+		return "", nil
+	}
+
+	ctx, cancel := scanContext(timeout)
+	defer cancel()
+
+	rows, err := db.QueryxContext(ctx, query)
+	if err != nil {
+		return query, err
+	}
+	defer rows.Close()
+
+	// Per-table index name map avoids O(n^2) scans when assembling indexes.
+	indexPositions := make(map[string]map[string]int)
+
+	for rows.Next() {
+		var r indexRow
+		if err := rows.Scan(
+			&r.TableSchema,
+			&r.TableName,
+			&r.IndexName,
+			&r.NonUnique,
+			&r.IndexType,
+			&r.SeqInIndex,
+			&r.ColumnName,
+			&r.SubPart,
+		); err != nil {
+			return query, err
+		}
+
+		key := r.TableSchema + "." + r.TableName
+		t, ok := tablemap[key]
+		if !ok {
+			continue
+		}
+
+		idxMap, ok := indexPositions[key]
+		if !ok {
+			idxMap = make(map[string]int)
+			indexPositions[key] = idxMap
+		}
+
+		idxPos, ok := idxMap[r.IndexName]
+		if !ok {
+			t.TableIndexes = append(t.TableIndexes, Index{
+				Name:   r.IndexName,
+				Unique: r.NonUnique == 0,
+				Type:   strings.ToUpper(r.IndexType),
+			})
+			idxPos = len(t.TableIndexes) - 1
+			idxMap[r.IndexName] = idxPos
+		}
+
+		idx := &t.TableIndexes[idxPos]
+		col := IndexColumn{Name: r.ColumnName}
+		if r.SubPart.Valid {
+			p := uint16(r.SubPart.Int64)
+			col.Prefix = &p
+		}
+		idx.Columns = append(idx.Columns, col)
+	}
+
+	return query, nil
+}
+
+func indexDefQueryAll(myver *version.Version) string {
+	if myver.IsPostgreSQL() {
+		return ""
+	}
+	return `SELECT table_schema, table_name, index_name, non_unique, index_type, seq_in_index,
+		column_name, sub_part
+		FROM information_schema.STATISTICS
+		WHERE table_schema NOT IN ('information_schema','mysql','performance_schema','sys')
+		AND table_schema NOT LIKE '#%'
+		ORDER BY table_schema, table_name, index_name, seq_in_index`
 }
 
 func getSchemas(db *sqlx.DB, myver *version.Version) ([]string, string, error) {
@@ -201,12 +446,6 @@ func getTablesForSchema(db *sqlx.DB, myver *version.Version, schema string, crc6
 			return nil, logs, err
 		}
 
-		crc, qlog := getTableDDLCRC(db, myver, schema, t.TableName, crc64Table)
-		logs += qlog
-		if crc != 0 {
-			t.TableCrc = crc
-		}
-
 		tables = append(tables, t)
 	}
 
@@ -223,26 +462,27 @@ func tablesQuery(db *sqlx.DB, myver *version.Version, schema string) string {
 		FROM information_schema.TABLES WHERE table_schema = '%s' AND table_type = 'BASE TABLE'`, schema)
 }
 
-func getTableDDLCRC(db *sqlx.DB, myver *version.Version, schema, table string, crc64Table *crc64.Table) (uint64, string) {
-	query := ddlQuery(myver, schema, table)
-	if query == "" {
-		return 0, ""
-	}
-
-	var tbl string
-	var ddl string
-	if err := db.QueryRowx(query).Scan(&tbl, &ddl); err != nil {
-		return 0, query + "\n"
-	}
-
-	return crc64.Checksum([]byte(ddl), crc64Table), query + "\n"
-}
-
 func ddlQuery(myver *version.Version, schema, table string) string {
 	if myver.IsPostgreSQL() {
 		return ""
 	}
 	return fmt.Sprintf("SHOW CREATE TABLE `%s`.`%s`", schema, table)
+}
+
+// LoadDDLForDiff returns the raw DDL for optional debug/diff paths.
+func LoadDDLForDiff(ctx context.Context, db *sqlx.DB, myver *version.Version, schema, table string) (string, string, error) {
+	query := ddlQuery(myver, schema, table)
+	if query == "" {
+		return "", "", nil
+	}
+
+	var tbl string
+	var ddl string
+	if err := db.QueryRowxContext(ctx, query).Scan(&tbl, &ddl); err != nil {
+		return "", query, err
+	}
+
+	return ddl, query, nil
 }
 
 func getTableColumns(db *sqlx.DB, myver *version.Version, schema string, tablemap map[string]*Table, crc64Table *crc64.Table) (string, error) {

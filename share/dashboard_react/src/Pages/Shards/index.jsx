@@ -128,6 +128,31 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
     return compareTextDesc(rowA.original.table_name, rowB.original.table_name)
   }
 
+  const localSizeTotals = useMemo(() => {
+    const rows = Array.isArray(data) ? data : []
+    return rows.reduce(
+      (acc, row) => {
+        acc.table += Number(row?.data_length || 0)
+        acc.index += Number(row?.index_length || 0)
+        return acc
+      },
+      { table: 0, index: 0 }
+    )
+  }, [data])
+
+  const sizeTotalsInfo = useMemo(() => {
+    const workloadTable = Number(selectedCluster?.workLoad?.dbTableSize || 0)
+    const workloadIndex = Number(selectedCluster?.workLoad?.dbIndexSize || 0)
+    const workloadTotal = workloadTable + workloadIndex
+    const localTotal = localSizeTotals.table + localSizeTotals.index
+    const useLocalTotals = (!Number.isFinite(workloadTotal) || workloadTotal === 0) && localTotal > 0
+    return {
+      useLocalTotals,
+      tableTotal: useLocalTotals ? localSizeTotals.table : workloadTable,
+      indexTotal: useLocalTotals ? localSizeTotals.index : workloadIndex
+    }
+  }, [localSizeTotals, selectedCluster?.workLoad?.dbTableSize, selectedCluster?.workLoad?.dbIndexSize])
+
   const columns = useMemo(
     () => [
       columnHelper.accessor((row) => row.table_schema, {
@@ -167,7 +192,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
         header: 'Sync'
       }),
       columnHelper.accessor(
-        (row) => getTablePct(row.data_length, row.index_length, selectedCluster?.workLoad?.dbTableSize , selectedCluster?.workLoad?.dbIndexSize),
+        (row) => getTablePct(row.data_length, row.index_length, sizeTotalsInfo.tableTotal, sizeTotalsInfo.indexTotal),
         {
           id: 'sizePct',
           header: '% Size',
@@ -191,7 +216,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
         }
       )
     ],
-    []
+    [handleChecksum, sizeTotalsInfo, sizePctSorting]
   )
   useEffect(() => {
     if (selectedCluster?.name) {
@@ -226,6 +251,11 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
           {checksumTimeout && (
             <Flex className={styles.timeoutMessage}>
               <span>Schema monitoring timed out. Check server logs or retry later.</span>
+            </Flex>
+          )}
+          {sizeTotalsInfo.useLocalTotals && (
+            <Flex className={styles.timeoutMessage}>
+              <span>Size percentage uses table list totals (cluster totals missing).</span>
             </Flex>
           )}
         </Flex>
