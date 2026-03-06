@@ -187,7 +187,29 @@ export const isEqualLongQueryTime = (a, b) => {
 }
 
 export const getTablePct = (table, index, dbTableSize, dbIndexSize) => {
-  return (((table + index) / (dbTableSize + dbIndexSize + 1)) * 100).toFixed(2)
+  const toNonNegativeNumber = (value) => {
+    const number = Number(value)
+    if (!Number.isFinite(number) || number <= 0) {
+      return 0
+    }
+    return number
+  }
+
+  const tableSize = toNonNegativeNumber(table)
+  const indexSize = toNonNegativeNumber(index)
+  const totalSize = toNonNegativeNumber(dbTableSize) + toNonNegativeNumber(dbIndexSize)
+
+  if (totalSize === 0) {
+    return 0
+  }
+
+  const pct = ((tableSize + indexSize) / (totalSize + 1)) * 100
+  if (!Number.isFinite(pct)) {
+    return 0
+  }
+
+  const clamped = Math.max(0, Math.min(100, pct))
+  return Number(clamped.toFixed(2))
 }
 
 export const canCancelJob = (t) => {
