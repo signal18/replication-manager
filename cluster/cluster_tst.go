@@ -133,11 +133,28 @@ func (cluster *Cluster) NewSysbenchAnalyzer(ignoreInvalidLines bool) SysbenchAna
 	}
 }
 
-func (cluster *Cluster) prepareTpccParams(prx DatabaseProxy, command string) []string {
+func (cluster *Cluster) prepareTpccParams(prx DatabaseProxy, command string, override map[string]string) []string {
 	tables := "--tables=" + strconv.Itoa(cluster.Conf.SysbenchTables)
 	scale := "--scale=" + strconv.Itoa(cluster.Conf.SysbenchScale)
 	time := "--time=" + strconv.Itoa(cluster.Conf.SysbenchTime)
 	threads := "--threads=" + strconv.Itoa(cluster.Conf.SysbenchThreads)
+	tablesize := "--table-size=1000000"
+
+	for k, v := range override {
+		switch k {
+		case "tables":
+			tables = "--tables=" + v
+		case "scale":
+			scale = "--scale=" + v
+		case "time":
+			time = "--time=" + v
+		case "threads":
+			threads = "--threads=" + v
+		case "tablesize":
+			tablesize = "--table-size=" + v
+		}
+	}
+
 	test := "./" + cluster.Conf.SysbenchTest + ".lua"
 	params := []string{test, scale, tables, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user=" + cluster.GetDbUser(), "--mysql-password=" + cluster.GetDbPass(), "--mysql-host=" + prx.GetHost(), "--mysql-port=" + strconv.Itoa(prx.GetWritePort())}
 	if cluster.Conf.SysbenchForcePK {
@@ -146,6 +163,9 @@ func (cluster *Cluster) prepareTpccParams(prx DatabaseProxy, command string) []s
 	if command == "prepare" || command == "run" {
 		params = append(params, time, threads)
 		if command == "run" {
+			if tablesize != "" {
+				params = append(params, tablesize)
+			}
 			params = append(params, "--report-interval=1")
 		}
 	}
@@ -175,7 +195,7 @@ func (cluster *Cluster) PrepareBench() error {
 			cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, threads, "prepare")
 
 			if cluster.Conf.SysbenchTest == "tpcc" {
-				cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, cluster.prepareTpccParams(prx, "prepare")...)
+				cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, cluster.prepareTpccParams(prx, "prepare", nil)...)
 				cmdprep.Dir = cluster.Conf.ShareDir + "/submodule/sysbench-tpcc"
 			}
 		}
@@ -218,7 +238,7 @@ func (cluster *Cluster) CleanupBench() error {
 		var cmdcls *exec.Cmd
 		cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, test, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), "cleanup")
 		if cluster.Conf.SysbenchTest == "tpcc" {
-			cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, cluster.prepareTpccParams(prx, "cleanup")...)
+			cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, cluster.prepareTpccParams(prx, "cleanup", nil)...)
 			cmdcls.Dir = cluster.Conf.ShareDir + "/submodule/sysbench-tpcc"
 		}
 
@@ -278,7 +298,8 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 		time = "--time=" + myTime
 		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, threads, "run")
 		if cluster.Conf.SysbenchTest == "tpcc" {
-			cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, cluster.prepareTpccParams(prx, "run")...)
+			override := map[string]string{"time": myTime, "threads": myThreads, "tablesize": mySize}
+			cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, cluster.prepareTpccParams(prx, "run", override)...)
 			cmdrun.Dir = cluster.Conf.ShareDir + "/submodule/sysbench-tpcc"
 		}
 	}
