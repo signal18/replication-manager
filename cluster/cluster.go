@@ -765,8 +765,8 @@ func (cluster *Cluster) Run() {
 						cluster.CheckDummyConfigSendCookies()
 						cluster.CheckRestartContainerCookies()
 
-						// Monitor schema when shardproxy is used
-						if cluster.Conf.MdbsProxyOn && cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() {
+						// Monitor schema when shardproxy is used else it will be trigger by scheduler
+						if cluster.Conf.MdbsProxyOn {
 							go cluster.MonitorSchema()
 						}
 
@@ -2105,11 +2105,13 @@ func (cluster *Cluster) MonitorSchema() {
 	if !cluster.Conf.MonitorSchemaChange && atomic.LoadInt32(&cluster.SchemaMonitorRequested) == 0 {
 		return
 	}
-
 	if cluster.StateMachine.IsInSchemaMonitor() {
 		return
 	}
-
+	// give workload time
+	if !cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix()
+		return
+	}
 	if atomic.LoadInt32(&cluster.SchemaMonitorRequested) == 1 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"Schema monitoring requested; bypassing config gate for this run.")

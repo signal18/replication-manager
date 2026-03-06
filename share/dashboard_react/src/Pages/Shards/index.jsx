@@ -183,10 +183,10 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
       columnHelper.accessor((row) => row.table_rows, {
         header: 'Rows'
       }),
-      columnHelper.accessor((row) => row.data_length, {
+      columnHelper.accessor((row) => sizeOf(row.data_length), {
         header: 'Data'
       }),
-      columnHelper.accessor((row) => row.index_length, {
+      columnHelper.accessor((row) => sizeOf(row.index_length), {
         header: 'Index'
       }),
       columnHelper.accessor((row) => row.table_clusters, {
