@@ -12,6 +12,7 @@ import Gauge from '../../components/Gauge'
 import AccordionComponent from '../../components/AccordionComponent'
 import  { GeneralLogs, TaskLogs } from '../Dashboard/components/Logs'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
+import { sizeOf } from '../../utility/common'
 
 function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
   const dispatch = useDispatch()
