@@ -2109,7 +2109,7 @@ func (cluster *Cluster) MonitorSchema() {
 		return
 	}
 	// give workload time
-	if !cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix()
+	if !(cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix()) { 
 		return
 	}
 	if atomic.LoadInt32(&cluster.SchemaMonitorRequested) == 1 {
