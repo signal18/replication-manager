@@ -644,7 +644,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	Conn.SetConnMaxLifetime(3595 * time.Second)
 	pk, _ := cluster.master.GetTablePK(schema, table)
 	if pk == "" {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum, no primary key for table %s.%s", schema, table)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Checksum, no primary key for table %s.%s", schema, table)
 		t := cluster.master.DictTables.Get(schema + "." + table)
 		t.TableSync = "NA"
 		cluster.master.DictTables.Set(schema+"."+table, t)
