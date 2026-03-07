@@ -5,6 +5,15 @@ All notable changes to replication-manager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.20] - 2026-03-07
+
+### Fixed
+- Arbitrator startup failures: SQLite driver registration and key path resolution corrected
+- Table checksum shard column ordering fixed for multi-column primary keys
+
+### Changed
+- Docker image layer caching improved by moving apt-get install before COPY instructions
+
 ## [3.1.19] - 2026-03-05
 
 ### Added
@@ -737,6 +746,7 @@ The 3.0.x series established the foundation for modern replication-manager with 
 - **User Management**: Role-based access control with GUI, external operator support, and credential management
 - **Disk Monitoring**: Real-time disk statistics, backup size estimation, and free space validation
 
+[3.1.20]: https://github.com/signal18/replication-manager/releases/tag/v3.1.20
 [3.1.19]: https://github.com/signal18/replication-manager/releases/tag/v3.1.19
 [3.1.18]: https://github.com/signal18/replication-manager/releases/tag/v3.1.18
 [3.1.17]: https://github.com/signal18/replication-manager/releases/tag/v3.1.17
