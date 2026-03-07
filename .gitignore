@@ -32,3 +32,4 @@ share/dashboard/images
 share/dashboard/assets
 share/dashboard/index.html
 share/dashboard/index.html.gz
+.mcp.json
