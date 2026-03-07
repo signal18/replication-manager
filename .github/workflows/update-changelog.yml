@@ -1,8 +1,9 @@
 name: Update Changelog on Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - '*'
 
 jobs:
   update-changelog:
