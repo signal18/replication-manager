@@ -28,7 +28,7 @@ func SetHeartbeatTable(db *sqlx.DB) error {
 		}
 		return nil
 	}
-	if db.DriverName() == "sqlite3" {
+	if db.DriverName() == "sqlite" {
 		stmt := `CREATE TABLE IF NOT EXISTS heartbeat(
 			secret varchar(64),
 			cluster varchar(128),
