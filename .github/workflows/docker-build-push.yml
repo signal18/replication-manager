@@ -120,7 +120,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: docker/Dockerfile_rootless
+          file: docker/Dockerfile.rootless
           push: true
           tags: |
             signal18/replication-manager:${{ steps.tag.outputs.tag }}-rootless
