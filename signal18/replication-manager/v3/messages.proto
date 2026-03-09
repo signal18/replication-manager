@@ -247,6 +247,8 @@ enum ServiceStatus {
   ERRORS = 3;
 }
 
+// Deprecated: Use google.protobuf.Struct instead.
+// See ClusterStatus gRPC method which now returns google.protobuf.Struct.
 message StatusMessage {
   ServiceStatus alive = 1;
 }
@@ -266,12 +268,16 @@ message TopologyRetrieval {
   Retrieval retrieve = 2;
 }
 
+// Deprecated: Use google.protobuf.Struct instead.
+// See GetClientCertificates gRPC method which now returns google.protobuf.Struct.
 message Certificate {
   string client_certificate = 1;
   string client_key = 2;
   string authority = 3;
 }
 
+// Deprecated: Use google.protobuf.Struct instead.
+// See GetBackups gRPC method which now returns stream google.protobuf.Struct.
 message Backup {
   string id = 1;
   string short_id = 2 [json_name="short_id"];
@@ -306,12 +312,16 @@ message Backup {
 //   string version = 10;
 // }
 
+// Deprecated: Use google.protobuf.Struct instead.
+// See GetTags gRPC method which now returns stream google.protobuf.Struct.
 message Tag {
   uint64 id = 1;
   string name = 2;
   string category = 3;
 }
 
+// Deprecated: Use google.protobuf.Struct instead.
+// See GetSchema gRPC method which now returns stream google.protobuf.Struct.
 message Table {
   string table_schema = 1 [json_name="tableSchema"];
 	string table_name = 2 [json_name="tableName"];

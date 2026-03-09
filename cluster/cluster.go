@@ -36,7 +36,6 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/opensvc"
-	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/alert/pushover"
@@ -208,8 +207,6 @@ type Cluster struct {
 	tlsoldconf                          *tls.Config                 `json:"-"`
 	tunnel                              *ssh.Client                 `json:"-"`
 	QueryRules                          map[uint32]config.QueryRule `json:"-"`
-	Backups                             []v3.Backup                 `json:"-"`
-	BackupStat                          v3.BackupStat               `json:"backupStat" groups:"web"`
 	BackupMetaMap                       *backupmgr.BackupMetaMap    `json:"backupList" groups:"web"`
 	snapshotMetadata                    *snapshotMetadataManager    `json:"-"`
 	reconcileSnapshotMetadataInProgress int32                       `json:"-"`

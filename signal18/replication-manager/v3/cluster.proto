@@ -10,7 +10,7 @@ import "messages.proto";
 option go_package = "github.com/signal18/replication-manager;repmanv3";
 
 service ClusterPublicService {
-  rpc ClusterStatus(Cluster) returns (StatusMessage) {
+  rpc ClusterStatus(Cluster) returns (google.protobuf.Struct) {
     // replaces /api/clusters/{clusterName}/status
     option (google.api.http) = {
       get: "/v3/clusters/{name}/status"
@@ -123,21 +123,21 @@ service ClusterService {
     };
   }
 
-  rpc GetClientCertificates(Cluster) returns (Certificate) {
+  rpc GetClientCertificates(Cluster) returns (google.protobuf.Struct) {
     option (google.api.http) = {
       // /api/clusters/{clusterName}/certificates
       get: "/v3/clusters/{name}/certificates"
     };
   }
 
-  rpc GetBackups(Cluster) returns (stream Backup) {
+  rpc GetBackups(Cluster) returns (stream google.protobuf.Struct) {
     option (google.api.http) = {
       // /api/clusters/{clusterName}/backups
       get: "/v3/clusters/{name}/backups"
     };
   }
 
-  rpc GetTags(Cluster) returns (stream Tag) {
+  rpc GetTags(Cluster) returns (stream google.protobuf.Struct) {
     option (google.api.http) = {
       // /api/clusters/{clusterName}/tags
       get: "/v3/clusters/{name}/tags"
@@ -151,7 +151,7 @@ service ClusterService {
     };
   }
 
-  rpc GetSchema(Cluster) returns (stream Table) {
+  rpc GetSchema(Cluster) returns (stream google.protobuf.Struct) {
     option (google.api.http) = {
       // /api/clusters/{clusterName}/schema
       get: "/v3/clusters/{name}/schema"
