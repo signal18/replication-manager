@@ -9,6 +9,7 @@ package cluster
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -705,15 +706,15 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 			return
 		}
 
-		var count int
-		err3 := Conn.QueryRowx("SELECT count(*) FROM replication_manager_schema.table_chunk").Scan(&count)
-		if err3 != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum can't fetch rows remaining", err)
-			return
-		}
-		if count == 0 {
+		var dummy int
+		err3 := Conn.QueryRowx("SELECT 1 FROM replication_manager_schema.table_chunk LIMIT 1").Scan(&dummy)
+		if err3 == sql.ErrNoRows {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Finished checksum table %s.%s", schema, table)
 			break
+		}
+		if err3 != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum error checking remaining chunks: %s", err3)
+			return
 		}
 		/*	slave := cluster.GetFirstWorkingSlave()
 			if slave != nil {
