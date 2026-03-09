@@ -208,7 +208,7 @@ func (cluster *Cluster) PrepareBench() error {
 			return err
 		}
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "sysbench prepare: %s", string(out))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "sysbench prepare: %s", strings.ReplaceAll(string(out), cluster.GetDbPass(), "XXXX"))
 	}
 	if cluster.benchmarkType == "table" {
 		result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
@@ -248,7 +248,7 @@ func (cluster *Cluster) CleanupBench() error {
 			return err
 		}
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "sysbench cleanup %s", string(out))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "sysbench cleanup %s", strings.ReplaceAll(string(out), cluster.GetDbPass(), "XXXX"))
 	}
 	if cluster.benchmarkType == "table" {
 
@@ -315,7 +315,7 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "Analyse Parse %+v %+v", records, viols)
 
 	cluster.ExtractSybenchTPCM(records)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", string(out))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", strings.ReplaceAll(string(out), cluster.GetDbPass(), "XXXX"))
 	return nil
 }
 

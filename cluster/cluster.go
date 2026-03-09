@@ -759,7 +759,7 @@ func (cluster *Cluster) Run() {
 					if !cluster.IsInFailover() {
 						wg.Add(2)
 						go cluster.refreshProxies(wg)
-						cluster.refreshApps(wg)
+						go cluster.refreshApps(wg)
 						cluster.CheckAppsCredit()
 						cluster.CheckWaitRunJobSSH()
 						cluster.CheckDummyConfigSendCookies()
