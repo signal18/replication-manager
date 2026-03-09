@@ -2003,7 +2003,7 @@ func ensureResticMountDir(targetDir string, mode os.FileMode) error {
 	if statErr != nil {
 		if errors.Is(statErr, syscall.ENOTCONN) {
 			_ = exec.Command("fusermount", "-u", targetDir).Run()
-			_ = syscall.Unmount(targetDir, syscall.MNT_DETACH)
+			_ = unmountPath(targetDir)
 			if err := os.MkdirAll(targetDir, mode); err != nil && !os.IsExist(err) {
 				return err
 			}
@@ -2153,7 +2153,7 @@ func unmountResticPath(targetDir string) error {
 			errs = append(errs, fmt.Sprintf("fusermount: %v", err))
 		}
 	}
-	if err := syscall.Unmount(path, syscall.MNT_DETACH); err != nil && !errors.Is(err, syscall.EINVAL) {
+	if err := unmountPath(path); err != nil {
 		errs = append(errs, fmt.Sprintf("unmount: %v", err))
 	} else {
 		return nil
