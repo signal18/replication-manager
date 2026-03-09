@@ -259,6 +259,9 @@ func getAllTables(ext schemaExecutor, myver *version.Version, timeout time.Durat
 		}
 		tables = append(tables, t)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, query, fmt.Errorf("error iterating table rows: %w", err)
+	}
 
 	return tables, query, nil
 }
@@ -339,6 +342,9 @@ func loadAllColumns(ext schemaExecutor, myver *version.Version, tablemap map[str
 		}
 
 		t.TableColumns = append(t.TableColumns, col)
+	}
+	if err := rows.Err(); err != nil {
+		return query, fmt.Errorf("error iterating column rows: %w", err)
 	}
 
 	return query, nil
@@ -422,6 +428,9 @@ func loadAllIndexes(ext schemaExecutor, myver *version.Version, tablemap map[str
 			col.Prefix = &p
 		}
 		idx.Columns = append(idx.Columns, col)
+	}
+	if err := rows.Err(); err != nil {
+		return query, fmt.Errorf("error iterating index rows: %w", err)
 	}
 
 	return query, nil
