@@ -760,6 +760,7 @@ func (server *ServerMonitor) GetTablePK(schema string, table string) (string, er
 	var pk string
 	err := server.Conn.QueryRowx(query).Scan(&pk)
 	if err != nil {
+		// No need to log error as it will be logged in the caller function and it is not a critical error if we can't get PK for a table
 		return "", nil
 	}
 	return pk, nil

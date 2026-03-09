@@ -204,7 +204,7 @@ func (cluster *Cluster) PrepareBench() error {
 
 		out, err := cmdprep.CombinedOutput()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s , %s", string(out), err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s , %s", strings.ReplaceAll(string(out), cluster.GetDbPass(), "XXXX"), err)
 			return err
 		}
 
@@ -244,7 +244,7 @@ func (cluster *Cluster) CleanupBench() error {
 
 		out, err := cmdcls.CombinedOutput()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s , %s", string(out), err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s , %s", strings.ReplaceAll(string(out), cluster.GetDbPass(), "XXXX"), err)
 			return err
 		}
 
@@ -307,7 +307,7 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 
 	out, err := cmdrun.CombinedOutput()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s , %s", string(out), err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s , %s", strings.ReplaceAll(string(out), cluster.GetDbPass(), "XXXX"), err)
 		return err
 	}
 	analyzer := cluster.NewSysbenchAnalyzer(false)

@@ -6,6 +6,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import TextForm from '../../components/TextForm'
+import NumberInput from '../../components/NumberInput'
 
 function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
   const dispatch = useDispatch()
@@ -174,6 +175,31 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
             )
           }
         />
+      )
+    },
+    {
+      key: 'Monitoring Schema Scan Timeout',
+      value: (
+        <Flex className={styles.valueWithInfo}>
+          <Text className={styles.info}>
+            Timeout in seconds for schema metadata scans (TABLES, COLUMNS, STATISTICS queries)
+          </Text>
+          <NumberInput
+            value={selectedCluster?.config?.monitoringSchemaScanTimeout}
+            showEditButton={true}
+            showConfirmModal={true}
+            confirmTitle={`Confirm change 'monitoring-schema-scan-timeout' to: `}
+            onConfirm={(timeoutValue) =>
+              dispatch(
+                setSetting({
+                  clusterName: selectedCluster?.name,
+                  setting: 'monitoring-schema-scan-timeout',
+                  value: timeoutValue.length === 0 ? '30' : timeoutValue
+                })
+              )
+            }
+          />
+        </Flex>
       )
     },
     {

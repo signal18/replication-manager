@@ -119,12 +119,19 @@ func GetTableChecksumResult(db *sqlx.DB) (map[uint64]chunk, string, error) {
 }
 
 // GetTables retrieves all tables from all schemas (excluding system schemas)
-func GetTables(db *sqlx.DB, myver *version.Version, getColumns, getIndexes bool) (map[string]*Table, []Table, string, error) {
+// timeout is specified in seconds. If <= 0, defaultSchemaScanTimeout is used.
+func GetTables(db *sqlx.DB, myver *version.Version, getColumns, getIndexes bool, timeoutSeconds int) (map[string]*Table, []Table, string, error) {
 	var logBuilder strings.Builder
 
 	crc64Table := crc64.MakeTable(0xC96C5795D7870F42)
 
-	connCtx, connCancel := scanContext(defaultSchemaScanTimeout)
+	// Convert timeout from seconds to time.Duration, fallback to default if invalid
+	timeout := defaultSchemaScanTimeout
+	if timeoutSeconds > 0 {
+		timeout = time.Duration(timeoutSeconds) * time.Second
+	}
+
+	connCtx, connCancel := scanContext(timeout)
 	conn, err := db.Connx(connCtx)
 	connCancel()
 	if err != nil {
@@ -133,10 +140,10 @@ func GetTables(db *sqlx.DB, myver *version.Version, getColumns, getIndexes bool)
 	defer conn.Close()
 
 	// Disable information_schema stats expiry to reduce stale size data.
-	appendLog(&logBuilder, applyInformationSchemaStatsExpiry(conn, myver, defaultSchemaScanTimeout))
+	appendLog(&logBuilder, applyInformationSchemaStatsExpiry(conn, myver, timeout))
 
 	// Bulk information_schema scans reduce round trips and metadata lock pressure.
-	tables, qlog, err := getAllTables(conn, myver, defaultSchemaScanTimeout)
+	tables, qlog, err := getAllTables(conn, myver, timeout)
 	appendLog(&logBuilder, qlog)
 	if err != nil {
 		return nil, nil, logBuilder.String(), err
@@ -149,13 +156,13 @@ func GetTables(db *sqlx.DB, myver *version.Version, getColumns, getIndexes bool)
 		tablemap[key] = t
 	}
 
-	qlog, err = loadAllColumns(conn, myver, tablemap, defaultSchemaScanTimeout)
+	qlog, err = loadAllColumns(conn, myver, tablemap, timeout)
 	appendLog(&logBuilder, qlog)
 	if err != nil {
 		return tablemap, tables, logBuilder.String(), err
 	}
 
-	qlog, err = loadAllIndexes(conn, myver, tablemap, defaultSchemaScanTimeout)
+	qlog, err = loadAllIndexes(conn, myver, tablemap, timeout)
 	appendLog(&logBuilder, qlog)
 	if err != nil {
 		return tablemap, tables, logBuilder.String(), err

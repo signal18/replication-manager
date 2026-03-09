@@ -1864,7 +1864,7 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, loglevel, "Monitoring master table schema on %s", cmaster.URL)
 	cmaster.Conn.SetConnMaxLifetime(3595 * time.Second)
 
-	tables, tablelist, logs, err := dbhelper.GetTables(cmaster.Conn, cmaster.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes)
+	tables, tablelist, logs, err := dbhelper.GetTables(cmaster.Conn, cmaster.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes, cluster.Conf.MonitorSchemaScanTimeout)
 	cluster.LogSQL(logs, err, cmaster.URL, "Monitor", config.LvlDbg, "Could not fetch master tables %s", err)
 	if err != nil {
 		return err
@@ -1966,7 +1966,7 @@ func (cluster *Cluster) MonitorSlaveTableSchema(sl *ServerMonitor) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, loglevel, "Monitoring slave table schema on %s", sl.URL)
 
 	sl.Conn.SetConnMaxLifetime(3595 * time.Second)
-	tables, tablelist, logs, err := dbhelper.GetTables(sl.Conn, sl.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes)
+	tables, tablelist, logs, err := dbhelper.GetTables(sl.Conn, sl.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes, cluster.Conf.MonitorSchemaScanTimeout)
 	cluster.LogSQL(logs, err, sl.URL, "Monitor", config.LvlDbg, "Could not fetch slave tables %s", err)
 	if err != nil {
 		return err
@@ -2109,7 +2109,7 @@ func (cluster *Cluster) MonitorSchema() {
 		return
 	}
 	// give workload time
-	if !(cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix()) { 
+	if !(cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix()) {
 		return
 	}
 	if atomic.LoadInt32(&cluster.SchemaMonitorRequested) == 1 {

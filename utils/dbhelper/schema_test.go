@@ -301,7 +301,7 @@ func TestGetTablesQueryAlignment(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"table_schema", "table_name", "index_name", "non_unique", "index_type", "seq_in_index", "column_name", "sub_part"}).
 			AddRow(schema, table, "PRIMARY", 0, "BTREE", 1, "id", nil))
 
-	mapTables, listTables, _, err := GetTables(sqlxdb, ver, true, true)
+	mapTables, listTables, _, err := GetTables(sqlxdb, ver, true, true, 30)
 	if err != nil {
 		t.Fatalf("GetTables returned error: %v", err)
 	}
