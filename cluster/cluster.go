@@ -757,7 +757,7 @@ func (cluster *Cluster) Run() {
 
 					// Preserved server state in proxy during reload config
 					if !cluster.IsInFailover() {
-						wg.Add(1)
+						wg.Add(2)
 						go cluster.refreshProxies(wg)
 						cluster.refreshApps(wg)
 						cluster.CheckAppsCredit()

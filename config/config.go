@@ -645,6 +645,7 @@ type Config struct {
 	AppOn                                     bool   `mapstructure:"app" toml:"app" json:"app"`
 	AppHosts                                  string `mapstructure:"app-hosts" toml:"app-hosts" json:"appHosts"`
 	AppHostsIPV6                              string `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
+	AppRefreshConcurrency                     int    `mapstructure:"app-refresh-concurrency" toml:"app-refresh-concurrency" json:"appRefreshConcurrency"`
 	ProvAppMem                                string `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory" groups:"apps"`
 	ProvAppDisk                               string `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize" groups:"apps"`
 	ProvAppVolumePools                        string `mapstructure:"prov-app-volume-pools" toml:"prov-app-volume-pools" json:"provAppVolumePools" groups:"apps"`
