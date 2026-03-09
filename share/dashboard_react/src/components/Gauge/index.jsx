@@ -1,5 +1,5 @@
 import { Box, Flex, HStack, Text } from '@chakra-ui/react'
-import React, { useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useRef } from 'react'
 import GaugeComponent from 'react-gauge-component'
 import styles from './styles.module.scss'
 import RMButton from '../RMButton'
@@ -22,7 +22,7 @@ function Gauge({
   isDisabled = false,
 }) {
   const svgRef = useRef(null)
-  const updateGaugePosition = () => {
+  const updateGaugePosition = useCallback(() => {
     const svgElement = svgRef.current.querySelector('svg')
     if (svgElement) {
       svgElement.setAttribute('width', width)
@@ -41,23 +41,21 @@ function Gauge({
         }
       })
     }
-  }
+  }, [width, height, isGaugeSizeCustomized])
 
   useEffect(() => {
     if (value >= 0) {
       updateGaugePosition()
     }
-  }, [value, updateGaugePosition, width, height, isGaugeSizeCustomized])
+  }, [value, updateGaugePosition])
 
   useEffect(() => {
-    setTimeout(() => {
-      window.dispatchEvent(new Event('resize'))
-    }, 100)
+    updateGaugePosition()
     window.addEventListener('resize', updateGaugePosition)
     return () => {
       window.removeEventListener('resize', updateGaugePosition)
     }
-  }, [])
+  }, [updateGaugePosition])
 
   const formatValue = (value) => {
     if (typeof value === 'number' && !Number.isInteger(value)) {

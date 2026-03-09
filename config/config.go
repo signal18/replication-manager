@@ -89,6 +89,7 @@ type Config struct {
 	MonitorSchemaIgnoreTables                 string `mapstructure:"monitoring-schema-ignore-tables" toml:"monitoring-schema-ignore-tables" json:"monitoringSchemaIgnoreTables"`
 	MonitorSchemaScheduler                    bool   `mapstructure:"monitoring-schema-scheduler" toml:"monitoring-schema-scheduler" json:"monitoringSchemaScheduler"`
 	MonitorSchemaSchedulerCron                string `mapstructure:"monitoring-schema-scheduler-cron" toml:"monitoring-schema-scheduler-cron" json:"monitoringSchemaSchedulerCron"`
+	MonitorSchemaScanTimeout                  int    `mapstructure:"monitoring-schema-scan-timeout" toml:"monitoring-schema-scan-timeout" json:"monitoringSchemaScanTimeout"`
 	MonitorQueryRules                         bool   `mapstructure:"monitoring-query-rules" toml:"monitoring-query-rules" json:"monitoringQueryRules"`
 	MonitorSchemaChangeScript                 string `mapstructure:"monitoring-schema-change-script" toml:"monitoring-schema-change-script" json:"monitoringSchemaChangeScript"`
 	MonitorCheckGrants                        bool   `mapstructure:"monitoring-check-grants" toml:"monitoring-check-grants" json:"monitoringCheckGrants"`
@@ -490,6 +491,7 @@ type Config struct {
 	SysbenchThreads                           int    `mapstructure:"sysbench-threads" toml:"sysbench-threads" json:"sysbenchThreads"`
 	SysbenchTables                            int    `mapstructure:"sysbench-tables" toml:"sysbench-tables" json:"sysbenchTables"`
 	SysbenchScale                             int    `mapstructure:"sysbench-scale" toml:"sysbench-scale" json:"sysbenchScale"`
+	SysbenchForcePK                           bool   `mapstructure:"sysbench-force-pk" toml:"sysbench-force-pk" json:"sysbenchForcePk"`
 	Arbitration                               bool   `scope:"server" mapstructure:"arbitration-external" toml:"arbitration-external" json:"arbitrationExternal"`
 	ArbitrationSasSecret                      string `scope:"server" mapstructure:"arbitration-external-secret" toml:"arbitration-external-secret" json:"arbitrationExternalSecret"`
 	ArbitrationSasHosts                       string `scope:"server" mapstructure:"arbitration-external-hosts" toml:"arbitration-external-hosts" json:"arbitrationExternalHosts"`

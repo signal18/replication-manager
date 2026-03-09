@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { checksumAllTables, checksumTable, getShardSchema, monitorAllSchemas } from '../../redux/clusterSlice'
 import { createColumnHelper } from '@tanstack/react-table'
@@ -12,6 +12,7 @@ import Gauge from '../../components/Gauge'
 import AccordionComponent from '../../components/AccordionComponent'
 import  { GeneralLogs, TaskLogs } from '../Dashboard/components/Logs'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
+import { sizeOf } from '../../utility/common'
 
 function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
   const dispatch = useDispatch()
@@ -42,9 +43,12 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
     }
   }, [shardSchema])
 
-  const handleChecksum = (schema, table) => {
-    dispatch(checksumTable({ clusterName: selectedCluster?.name, schema, table }))
-  }
+  const handleChecksum = useCallback(
+    (schema, table) => {
+      dispatch(checksumTable({ clusterName: selectedCluster?.name, schema, table }))
+    },
+    [dispatch, selectedCluster?.name]
+  )
   const handleChecksumAll = async () => {
     if (!selectedCluster?.name || isChecksumAllRunning) {
       return
@@ -105,11 +109,61 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
     return false
   }
   const columnHelper = createColumnHelper()
+  const compareText = useCallback((left, right) => {
+    const a = left == null ? '' : String(left)
+    const b = right == null ? '' : String(right)
+    if (a === b) {
+      return 0
+    }
+    return a > b ? 1 : -1
+  }, [])
+
+  const compareTextDesc = useCallback((left, right) => compareText(right, left), [compareText])
+
+  const sizePctSorting = useCallback((rowA, rowB, columnId) => {
+    const a = Number(rowA.getValue(columnId))
+    const b = Number(rowB.getValue(columnId))
+    if (a !== b) {
+      return a > b ? 1 : -1
+    }
+    const schemaCompare = compareTextDesc(rowA.original.table_schema, rowB.original.table_schema)
+    if (schemaCompare !== 0) {
+      return schemaCompare
+    }
+    return compareTextDesc(rowA.original.table_name, rowB.original.table_name)
+  }, [compareTextDesc])
+
+  const localSizeTotals = useMemo(() => {
+    const rows = Array.isArray(data) ? data : []
+    return rows.reduce(
+      (acc, row) => {
+        acc.table += Number(row?.data_length || 0)
+        acc.index += Number(row?.index_length || 0)
+        return acc
+      },
+      { table: 0, index: 0 }
+    )
+  }, [data])
+
+  const sizeTotalsInfo = useMemo(() => {
+    const workloadTable = Number(selectedCluster?.workLoad?.dbTableSize || 0)
+    const workloadIndex = Number(selectedCluster?.workLoad?.dbIndexSize || 0)
+    const workloadTotal = workloadTable + workloadIndex
+    const localTotal = localSizeTotals.table + localSizeTotals.index
+    const useLocalTotals = (!Number.isFinite(workloadTotal) || workloadTotal === 0) && localTotal > 0
+    return {
+      useLocalTotals,
+      tableTotal: useLocalTotals ? localSizeTotals.table : workloadTable,
+      indexTotal: useLocalTotals ? localSizeTotals.index : workloadIndex
+    }
+  }, [localSizeTotals, selectedCluster?.workLoad?.dbTableSize, selectedCluster?.workLoad?.dbIndexSize])
 
   const columns = useMemo(
     () => [
       columnHelper.accessor((row) => row.table_schema, {
+        id: 'schema',
         header: 'Schema',
+        enableSorting: true,
         cell: (info) => (
           <Flex className={styles.tablesSchemaCol}>
             <RMButton onClick={() => handleChecksum(info.row.original.table_schema, info.row.original.table_name)}>
@@ -120,7 +174,9 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
         )
       }),
       columnHelper.accessor((row) => row.table_name, {
-        header: 'Name'
+        id: 'tableName',
+        header: 'Name',
+        enableSorting: true
       }),
       columnHelper.accessor((row) => row.engine, {
         header: 'Engine'
@@ -128,19 +184,25 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
       columnHelper.accessor((row) => row.table_rows, {
         header: 'Rows'
       }),
-      columnHelper.accessor((row) => row.data_length, {
+      columnHelper.accessor((row) => sizeOf(row.data_length), {
         header: 'Data'
       }),
-      columnHelper.accessor((row) => row.index_length, {
+      columnHelper.accessor((row) => sizeOf(row.index_length), {
         header: 'Index'
       }),
       columnHelper.accessor((row) => row.table_clusters, {
         header: 'Shards'
       }),
+      columnHelper.accessor((row) => row.table_sync, {
+        header: 'Sync'
+      }),
       columnHelper.accessor(
-        (row) => getTablePct(row.data_length, row.index_length, selectedCluster?.workLoad?.dbTableSize),
+        (row) => getTablePct(row.data_length, row.index_length, sizeTotalsInfo.tableTotal, sizeTotalsInfo.indexTotal),
         {
-          header: 'Sync %',
+          id: 'sizePct',
+          header: '% Size',
+          enableSorting: true,
+          sortingFn: sizePctSorting,
           cell: (info) => {
             if (isNaN(info.getValue())) {
               return ''
@@ -151,15 +213,15 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
                 minValue={0}
                 maxValue={100}
                 value={info.getValue()}
-                width={210}
-                height={90}
+                width={100}
+                height={50}
               />
             )
           }
         }
       )
     ],
-    []
+    [handleChecksum, sizeTotalsInfo, sizePctSorting]
   )
   useEffect(() => {
     if (selectedCluster?.name) {
@@ -196,9 +258,24 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
               <span>Schema monitoring timed out. Check server logs or retry later.</span>
             </Flex>
           )}
+          {sizeTotalsInfo.useLocalTotals && (
+            <Flex className={styles.timeoutMessage}>
+              <span>Size percentage uses table list totals (cluster totals missing).</span>
+            </Flex>
+          )}
         </Flex>
       </Flex>
-      <DataTable key="shards" data={data} columns={columns} className={styles.table} />
+      <DataTable
+        key="shards"
+        data={data}
+        columns={columns}
+        className={styles.table}
+        enableSorting={true}
+        lockSorting={true}
+        initialSorting={[
+          { id: 'sizePct', desc: true }
+        ]}
+      />
       <AccordionComponent
         className={styles.accordion}
         heading={'Cluster Logs'}

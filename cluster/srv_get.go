@@ -756,13 +756,12 @@ func (server *ServerMonitor) GetDatabaseBasedir() string {
 }
 
 func (server *ServerMonitor) GetTablePK(schema string, table string) (string, error) {
-	cluster := server.ClusterGroup
 	query := "SELECT group_concat(distinct column_name order by ORDINAL_POSITION) from information_schema.KEY_COLUMN_USAGE WHERE CONSTRAINT_NAME='PRIMARY' AND CONSTRAINT_SCHEMA='" + schema + "' AND TABLE_NAME='" + table + "'"
 	var pk string
 	err := server.Conn.QueryRowx(query).Scan(&pk)
+	// No need to log error as it will be logged in the caller function and it is not a critical error if we can't get PK for a table
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed query %s %s", query, err)
-		return "", nil
+		return "", err
 	}
 	return pk, nil
 }
