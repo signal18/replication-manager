@@ -123,7 +123,7 @@ type Index struct {
 	Unique  bool          `protobuf:"varint,2,opt,name=unique,proto3" json:"unique,omitempty"`
 	Type    string        `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
 	Crc64   uint64        `protobuf:"varint,4,opt,name=crc64,proto3" json:"crc64,omitempty"`
-	Columns []IndexColumn `protobuf:"bytes,4,opt,name=columns,proto3" json:"columns,omitempty"`
+	Columns []IndexColumn `protobuf:"bytes,5,opt,name=columns,proto3" json:"columns,omitempty"`
 }
 
 // Table represents a database table with metadata
