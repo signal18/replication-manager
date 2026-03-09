@@ -40,7 +40,7 @@ type Plugin struct {
 }
 
 // chunk represents a table checksum chunk
-type chunk struct {
+type Chunk struct {
 	ChunkId       uint64 `json:"chunkId"`
 	ChunkMinKey   string `json:"chunkMinKey"`
 	ChunkMaxKey   string `json:"chunkMaxKey"`

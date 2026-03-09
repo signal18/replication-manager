@@ -9,7 +9,6 @@ package cluster
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -667,6 +666,28 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
 		return
 	}
+
+	rows, err := Conn.Queryx("SELECT chunkId, chunkMinKey, chunkMaxKey FROM replication_manager_schema.table_chunk")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not load chunks %s", err)
+		return
+	}
+	var chunks []dbhelper.Chunk
+	for rows.Next() {
+		var c dbhelper.Chunk
+		if err := rows.Scan(&c.ChunkId, &c.ChunkMinKey, &c.ChunkMaxKey); err != nil {
+			rows.Close()
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not scan chunk %s", err)
+			return
+		}
+		chunks = append(chunks, c)
+	}
+	rows.Close()
+	if len(chunks) == 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Finished checksum table %s.%s (no chunks)", schema, table)
+		return
+	}
+
 	var md5Sum string
 	err = Conn.QueryRowx("SELECT CONCAT( \"SUM(CRC32(CONCAT(\" , GROUP_CONCAT( CONCAT( \"IFNULL(\" , COLUMN_NAME, \",'N')\")),\")))\") as fields FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA ='" + schema + "' AND TABLE_NAME='" + table + "'").Scan(&md5Sum)
 	if err != nil {
@@ -692,37 +713,21 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		predicate = predicate + " AND A." + p + " >= SUBSTRING_INDEX(SUBSTRING_INDEX(B.chunkMinKey,'/*;*/'," + strconv.Itoa(i+1) + "),'/*;*/',-1) and A." + p + "<= SUBSTRING_INDEX(SUBSTRING_INDEX(B.chunkMaxKey,'/*;*/'," + strconv.Itoa(i+1) + "),'/*;*/',-1)"
 	}
 
-	for {
-		query := "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, chunkMinKey , chunkMaxKey," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk limit 1) B on " + predicate + " GROUP BY chunkId, chunkMinKey, chunkMaxKey HAVING chunkId IS NOT NULL"
-		_, err := Conn.Exec(query)
+	for i, chunk := range chunks {
+		query := "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, chunkMinKey , chunkMaxKey," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (SELECT * FROM replication_manager_schema.table_chunk WHERE chunkId=? AND chunkMinKey=? AND chunkMaxKey=? LIMIT 1) B on " + predicate + " GROUP BY chunkId, chunkMinKey, chunkMaxKey HAVING chunkId IS NOT NULL"
+		_, err := Conn.Exec(query, chunk.ChunkId, chunk.ChunkMinKey, chunk.ChunkMaxKey)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunk %d %s %s", i, query, err)
 			return
 		}
 
-		_, err2 := Conn.Exec("DELETE FROM replication_manager_schema.table_chunk limit 1")
+		_, err2 := Conn.Exec("DELETE FROM replication_manager_schema.table_chunk WHERE chunkId=? AND chunkMinKey=? AND chunkMaxKey=?", chunk.ChunkId, chunk.ChunkMinKey, chunk.ChunkMaxKey)
 		if err2 != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum error deleting chunck %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum error deleting chunk %d %s", i, err)
 			return
 		}
-
-		var dummy int
-		err3 := Conn.QueryRowx("SELECT 1 FROM replication_manager_schema.table_chunk LIMIT 1").Scan(&dummy)
-		if err3 == sql.ErrNoRows {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Finished checksum table %s.%s", schema, table)
-			break
-		}
-		if err3 != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum error checking remaining chunks: %s", err3)
-			return
-		}
-		/*	slave := cluster.GetFirstWorkingSlave()
-			if slave != nil {
-				if slave.GetReplicationDelay() > 5 {
-					time.Sleep(time.Duration(slave.GetReplicationDelay()) * time.Second)
-				}
-			}*/
 	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Finished checksum table %s.%s", schema, table)
 	cluster.master.Refresh()
 	masterSeq := cluster.master.CurrentGtid.GetSeqServerIdNos(uint64(cluster.master.ServerID))
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Wait sync: Master sequence %d", masterSeq)

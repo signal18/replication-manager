@@ -99,8 +99,8 @@ func SetEventStatus(db *sqlx.DB, ev Event, status int64) (string, error) {
 }
 
 // GetTableChecksumResult retrieves table checksum results
-func GetTableChecksumResult(db *sqlx.DB) (map[uint64]chunk, string, error) {
-	vars := make(map[uint64]chunk)
+func GetTableChecksumResult(db *sqlx.DB) (map[uint64]Chunk, string, error) {
+	vars := make(map[uint64]Chunk)
 	query := "SELECT /*replication-manager*/ * FROM replication_manager_schema.table_checksum"
 	rows, err := db.Queryx(query)
 	if err != nil {
@@ -108,7 +108,7 @@ func GetTableChecksumResult(db *sqlx.DB) (map[uint64]chunk, string, error) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var v chunk
+		var v Chunk
 		err = rows.Scan(&v.ChunkId, &v.ChunkMinKey, &v.ChunkMaxKey, &v.ChunkCheckSum)
 		if err != nil {
 			return vars, query, err
