@@ -1,0 +1,597 @@
+name: Docker Build and Push
+
+on:
+  push:
+    branches:
+      - develop
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Force build all images (including tag-only)'
+        required: false
+        type: boolean
+        default: false
+
+# Prevent concurrent builds
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # OSC (Open Source Community) - Only on tags
+  build-osc:
+    name: Build OSC Edition
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract tag name
+        id: tag
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: signal18/replication-manager
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+
+      - name: Build and push OSC
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            signal18/replication-manager:${{ steps.tag.outputs.tag }}
+            signal18/replication-manager:latest
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=osc
+          cache-to: type=gha,mode=max,scope=osc
+
+      - name: Notify failure (Mattermost)
+        if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+            --data "{\"text\":\":x: Docker OSC build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
+            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+
+  # OSC Rootless - Only on tags
+  build-osc-rootless:
+    name: Build OSC Rootless Edition
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract tag name
+        id: tag
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: signal18/replication-manager
+          tags: |
+            type=semver,pattern={{version}}-rootless
+            type=raw,value=latest-rootless
+
+      - name: Build and push OSC Rootless
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.rootless
+          push: true
+          tags: |
+            signal18/replication-manager:${{ steps.tag.outputs.tag }}-rootless
+            signal18/replication-manager:latest-rootless
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=osc-rootless
+          cache-to: type=gha,mode=max,scope=osc-rootless
+
+      - name: Notify failure (Mattermost)
+        if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+            --data "{\"text\":\":x: Docker OSC Rootless build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
+            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+
+  # PRO (Professional with OpenSVC) - Only on tags
+  build-pro:
+    name: Build PRO Edition
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract tag name
+        id: tag
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: signal18/replication-manager
+          tags: |
+            type=semver,pattern={{version}}-pro
+
+      - name: Build and push PRO
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.pro
+          push: true
+          tags: signal18/replication-manager:${{ steps.tag.outputs.tag }}-pro
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=pro
+          cache-to: type=gha,mode=max,scope=pro
+
+      - name: Notify failure (Mattermost)
+        if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+            --data "{\"text\":\":x: Docker PRO build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
+            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+
+  # PRO Rootless - Only on tags
+  build-pro-rootless:
+    name: Build PRO Rootless Edition
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract tag name
+        id: tag
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: signal18/replication-manager
+          tags: |
+            type=semver,pattern={{version}}-pro-rootless
+
+      - name: Build and push PRO Rootless
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.pro_rootless
+          push: true
+          tags: signal18/replication-manager:${{ steps.tag.outputs.tag }}-pro-rootless
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=pro-rootless
+          cache-to: type=gha,mode=max,scope=pro-rootless
+
+      - name: Notify failure (Mattermost)
+        if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+            --data "{\"text\":\":x: Docker PRO Rootless build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
+            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+
+  # Nightly build - Always runs
+  build-nightly:
+    name: Build Nightly
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: signal18/replication-manager
+          tags: |
+            type=raw,value=nightly
+
+      - name: Build and push nightly
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.pro
+          push: true
+          tags: signal18/replication-manager:nightly
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=nightly
+          cache-to: type=gha,mode=max,scope=nightly
+
+      - name: Notify failure (Mattermost)
+        if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+            --data "{\"text\":\":x: Docker Nightly build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
+            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+
+  # Nightly Rootless - Always runs
+  build-nightly-rootless:
+    name: Build Nightly Rootless
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: signal18/replication-manager
+          tags: |
+            type=raw,value=nightly-rootless
+
+      - name: Build and push nightly rootless
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.pro_rootless
+          push: true
+          tags: signal18/replication-manager:nightly-rootless
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=nightly-rootless
+          cache-to: type=gha,mode=max,scope=nightly-rootless
+
+      - name: Notify failure (Mattermost)
+        if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+            --data "{\"text\":\":x: Docker Nightly Rootless build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
+            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+
+  # DEV build - Always runs
+  build-dev:
+    name: Build DEV
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract tag name (if exists)
+        id: tag
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            echo "is_tag=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_tag=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: signal18/replication-manager
+          tags: |
+            type=raw,value=dev
+            type=semver,pattern={{version}}-dev,enable=${{ steps.tag.outputs.is_tag == 'true' }}
+
+      - name: Build tags list
+        id: tags
+        run: |
+          TAGS="signal18/replication-manager:dev"
+          if [[ "${{ steps.tag.outputs.is_tag }}" == "true" ]]; then
+            TAGS="${TAGS},signal18/replication-manager:${{ steps.tag.outputs.tag }}-dev"
+          fi
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+
+      - name: Build and push DEV
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.dev
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=dev
+          cache-to: type=gha,mode=max,scope=dev
+
+      - name: Notify failure (Mattermost)
+        if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+            --data "{\"text\":\":x: Docker DEV build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
+            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+
+  # DEV Rootless - Always runs
+  build-dev-rootless:
+    name: Build DEV Rootless
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract tag name (if exists)
+        id: tag
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            echo "is_tag=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_tag=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: signal18/replication-manager
+          tags: |
+            type=raw,value=dev-rootless
+            type=semver,pattern={{version}}-dev-rootless,enable=${{ steps.tag.outputs.is_tag == 'true' }}
+
+      - name: Build tags list
+        id: tags
+        run: |
+          TAGS="signal18/replication-manager:dev-rootless"
+          if [[ "${{ steps.tag.outputs.is_tag }}" == "true" ]]; then
+            TAGS="${TAGS},signal18/replication-manager:${{ steps.tag.outputs.tag }}-dev-rootless"
+          fi
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+
+      - name: Build and push DEV Rootless
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.dev_rootless
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=dev-rootless
+          cache-to: type=gha,mode=max,scope=dev-rootless
+
+      - name: Notify failure (Mattermost)
+        if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+            --data "{\"text\":\":x: Docker DEV Rootless build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
+            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+
+  # SLIM build - Only on tags
+  build-slim:
+    name: Build SLIM Edition
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract tag name
+        id: tag
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: signal18/replication-manager
+          tags: |
+            type=semver,pattern={{version}}-slim
+
+      - name: Build and push SLIM
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.slim
+          push: true
+          tags: signal18/replication-manager:${{ steps.tag.outputs.tag }}-slim
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=slim
+          cache-to: type=gha,mode=max,scope=slim
+
+      - name: Notify failure (Mattermost)
+        if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+            --data "{\"text\":\":x: Docker SLIM build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
+            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+
+  # SLIM Rootless - Only on tags
+  build-slim-rootless:
+    name: Build SLIM Rootless Edition
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract tag name
+        id: tag
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: signal18/replication-manager
+          tags: |
+            type=semver,pattern={{version}}-slim-rootless
+
+      - name: Build and push SLIM Rootless
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.slim_rootless
+          push: true
+          tags: signal18/replication-manager:${{ steps.tag.outputs.tag }}-slim-rootless
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=slim-rootless
+          cache-to: type=gha,mode=max,scope=slim-rootless
+
+      - name: Notify failure (Mattermost)
+        if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+            --data "{\"text\":\":x: Docker SLIM Rootless build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
+            ${{ vars.MATTERMOST_WEBHOOK_URL }}
