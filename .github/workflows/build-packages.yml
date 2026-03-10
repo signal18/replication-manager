@@ -4,8 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-    branches:
-      - develop
   workflow_dispatch:
 
 # Match Jenkins concurrentBuild: false — queue builds, don't cancel
