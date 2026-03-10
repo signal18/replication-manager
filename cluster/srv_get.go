@@ -766,6 +766,16 @@ func (server *ServerMonitor) GetTablePK(schema string, table string) (string, er
 	return pk, nil
 }
 
+func (server *ServerMonitor) GetTableColumDef(schema string, table string, column string) string {
+	t := server.DictTables.Get(schema + "." + table)
+	for _, c := range t.TableColumns {
+		if c.Name == column {
+			return c.Type
+		}
+	}
+	return ""
+}
+
 func (server *ServerMonitor) GetVersion() *version.Version {
 	return server.DBVersion
 }

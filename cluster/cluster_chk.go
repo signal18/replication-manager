@@ -668,13 +668,6 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	Conn.Exec("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ")
 	Conn.Exec("SET SESSION group_concat_max_len = 1000000")
 
-	Conn.Exec("CREATE OR REPLACE TABLE replication_manager_schema.table_checksum(chunkId BIGINT,chunkMinKey VARCHAR(254),chunkMaxKey VARCHAR(254),chunkCheckSum BIGINT UNSIGNED ) ENGINE=MYISAM")
-	query, err := dbhelper.CreateChunkTable(Conn, schema, table, pks, 2000)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
-		return
-	}
-
 	Conn.Exec("SET SESSION binlog_format = 'STATEMENT'")
 	var md5Sum string
 	err = Conn.QueryRowx("SELECT CONCAT( \"SUM(CRC32(CONCAT(\" , GROUP_CONCAT( CONCAT( \"IFNULL(\" , COLUMN_NAME, \",'N')\")),\")))\") as fields FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA ='" + schema + "' AND TABLE_NAME='" + table + "'").Scan(&md5Sum)
@@ -684,14 +677,44 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	}
 
 	// build predicate iterating over each pk columns
-	predicate := " 1=1"
+	wherePredicate := ""
+	columnDefPredicate := ""
+	columnListPredicate := ""
+	shardListPredicate := ""
+	if len(pks) == 0 {
+		fmt.Errorf("table %s.%s has no primary key, cannot create chunk table", schema, table)
+		return
+	}
+
 	//	var ftype string
-	for i, p := range pks {
-		predicate = predicate + " AND A." + p + " >= SUBSTRING_INDEX(SUBSTRING_INDEX(B.chunkMinKey,'/*;*/'," + strconv.Itoa(i+1) + "),'/*;*/',-1) and A." + p + "<= SUBSTRING_INDEX(SUBSTRING_INDEX(B.chunkMaxKey,'/*;*/'," + strconv.Itoa(i+1) + "),'/*;*/',-1)"
+	for _, p := range pks {
+		if columnDefPredicate != "" {
+			columnDefPredicate = "," + columnDefPredicate
+			wherePredicate = " AND " + wherePredicate
+			columnListPredicate = " , " + columnListPredicate
+			shardListPredicate = " , " + shardListPredicate
+		}
+		columnType := cluster.master.GetTableColumDef(schema, table, p)
+		columnDefPredicate = columnDefPredicate + " Min_" + p + " " + columnType
+		wherePredicate = wherePredicate + " A.Min_" + p + " >= B.Min_" + p + " AND A.Max_" + p + "<= B.Max_" + p + " "
+		columnListPredicate = columnListPredicate + p + " "
+		shardListPredicate = shardListPredicate + " MIN(" + p + ") AS  Min_" + p + " , MAX(" + p + ") AS Max_" + p + " "
+	}
+
+	Conn.Exec("CREATE OR REPLACE TABLE replication_manager_schema.table_checksum(chunkId BIGINT," + columnDefPredicate + ",chunkCheckSum BIGINT UNSIGNED ) ENGINE=MYISAM")
+	chunkSize := 2000
+	query := "CREATE TEMPORARY TABLE replication_manager_schema.table_chunk ENGINE=MYISAM " +
+		"SELECT FLOOR((@rows:=@rows+1/" + fmt.Sprintf("%d", chunkSize) + ")) as chunkId, "
+	query = query + shardListPredicate + " FROM " + schema + "." + table + " , (SELECT @rows:=0 FROM DUAL) A group by chunkId"
+
+	_, err = Conn.Exec(query)
+	if err != nil {
+		fmt.Errorf("Error creating chunk table: %w", err)
+		return
 	}
 
 	for {
-		query := "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, chunkMinKey , chunkMaxKey," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk limit 1) B on " + predicate + " GROUP BY chunkId, chunkMinKey, chunkMaxKey HAVING chunkId IS NOT NULL"
+		query := "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, " + columnListPredicate + " ," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk limit 1) B on " + wherePredicate + " GROUP BY chunkId, " + columnListPredicate + " HAVING chunkId IS NOT NULL"
 		_, err := Conn.Exec(query)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
