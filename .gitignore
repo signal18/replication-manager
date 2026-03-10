@@ -4,7 +4,8 @@ replication-manager*
 *.deb
 copyright.*
 *.tar.gz
-build*
+build/
+buildtar/
 maxscale*.rpm
 .idea
 googleapis/
