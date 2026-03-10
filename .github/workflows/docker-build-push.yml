@@ -13,6 +13,11 @@ on:
         required: false
         type: boolean
         default: false
+      tag:
+        description: 'Tag to build (e.g. v2.3.0). Enables tag-only jobs.'
+        required: false
+        type: string
+        default: ''
 
 # Prevent concurrent builds
 concurrency:
@@ -24,7 +29,7 @@ jobs:
   build-osc:
     name: Build OSC Edition
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build || inputs.tag != ''
     permissions:
       contents: read
       packages: write
@@ -47,7 +52,12 @@ jobs:
 
       - name: Extract tag name
         id: tag
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: |
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Docker metadata
         id: meta
@@ -82,7 +92,7 @@ jobs:
   build-osc-rootless:
     name: Build OSC Rootless Edition
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build || inputs.tag != ''
     permissions:
       contents: read
       packages: write
@@ -105,7 +115,12 @@ jobs:
 
       - name: Extract tag name
         id: tag
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: |
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Docker metadata
         id: meta
@@ -140,7 +155,7 @@ jobs:
   build-pro:
     name: Build PRO Edition
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build || inputs.tag != ''
     permissions:
       contents: read
       packages: write
@@ -163,7 +178,12 @@ jobs:
 
       - name: Extract tag name
         id: tag
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: |
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Docker metadata
         id: meta
@@ -195,7 +215,7 @@ jobs:
   build-pro-rootless:
     name: Build PRO Rootless Edition
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build || inputs.tag != ''
     permissions:
       contents: read
       packages: write
@@ -218,7 +238,12 @@ jobs:
 
       - name: Extract tag name
         id: tag
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: |
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Docker metadata
         id: meta
@@ -373,7 +398,10 @@ jobs:
       - name: Extract tag name (if exists)
         id: tag
         run: |
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            echo "is_tag=true" >> $GITHUB_OUTPUT
+          elif [[ $GITHUB_REF == refs/tags/* ]]; then
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
             echo "is_tag=true" >> $GITHUB_OUTPUT
           else
@@ -443,7 +471,10 @@ jobs:
       - name: Extract tag name (if exists)
         id: tag
         run: |
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            echo "is_tag=true" >> $GITHUB_OUTPUT
+          elif [[ $GITHUB_REF == refs/tags/* ]]; then
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
             echo "is_tag=true" >> $GITHUB_OUTPUT
           else
@@ -490,7 +521,7 @@ jobs:
   build-slim:
     name: Build SLIM Edition
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build || inputs.tag != ''
     permissions:
       contents: read
       packages: write
@@ -513,7 +544,12 @@ jobs:
 
       - name: Extract tag name
         id: tag
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: |
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Docker metadata
         id: meta
@@ -545,7 +581,7 @@ jobs:
   build-slim-rootless:
     name: Build SLIM Rootless Edition
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.force_build || inputs.tag != ''
     permissions:
       contents: read
       packages: write
@@ -568,7 +604,12 @@ jobs:
 
       - name: Extract tag name
         id: tag
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: |
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Docker metadata
         id: meta
