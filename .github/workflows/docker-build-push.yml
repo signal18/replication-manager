@@ -25,6 +25,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Detect relevant file changes for branch pushes
+  detect-changes:
+    name: Detect Changed Files
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            relevant:
+              - '**/*.go'
+              - 'Dockerfile*'
+              - 'docker/Dockerfile*'
+
   # OSC (Open Source Community) - Only on tags
   build-osc:
     name: Build OSC Edition
@@ -271,9 +288,11 @@ jobs:
             --data "{\"text\":\":x: Docker PRO Rootless build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
             ${{ vars.MATTERMOST_WEBHOOK_URL }}
 
-  # Nightly build - Always runs
+  # Nightly build - On tags, or when Go/Dockerfile files changed
   build-nightly:
     name: Build Nightly
+    needs: detect-changes
+    if: startsWith(github.ref, 'refs/tags/v') || needs.detect-changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -321,9 +340,11 @@ jobs:
             --data "{\"text\":\":x: Docker Nightly build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
             ${{ vars.MATTERMOST_WEBHOOK_URL }}
 
-  # Nightly Rootless - Always runs
+  # Nightly Rootless - On tags, or when Go/Dockerfile files changed
   build-nightly-rootless:
     name: Build Nightly Rootless
+    needs: detect-changes
+    if: startsWith(github.ref, 'refs/tags/v') || needs.detect-changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -371,9 +392,11 @@ jobs:
             --data "{\"text\":\":x: Docker Nightly Rootless build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
             ${{ vars.MATTERMOST_WEBHOOK_URL }}
 
-  # DEV build - Always runs
+  # DEV build - On tags, or when Go/Dockerfile files changed
   build-dev:
     name: Build DEV
+    needs: detect-changes
+    if: startsWith(github.ref, 'refs/tags/v') || needs.detect-changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -444,9 +467,11 @@ jobs:
             --data "{\"text\":\":x: Docker DEV build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
             ${{ vars.MATTERMOST_WEBHOOK_URL }}
 
-  # DEV Rootless - Always runs
+  # DEV Rootless - On tags, or when Go/Dockerfile files changed
   build-dev-rootless:
     name: Build DEV Rootless
+    needs: detect-changes
+    if: startsWith(github.ref, 'refs/tags/v') || needs.detect-changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
