@@ -30,6 +30,12 @@ const (
 	DDMMYYYYhhmmss = "2006-01-02 15:04:05"
 )
 
+// chunk represents a table checksum chunk
+type Chunk struct {
+	ChunkId       uint64 `json:"chunkId"`
+	ChunkCheckSum uint64 `json:"chunkCheckSum"`
+}
+
 // Plugin represents a database plugin
 type Plugin struct {
 	Name    string         `json:"name"`
@@ -37,14 +43,6 @@ type Plugin struct {
 	Type    string         `json:"type"`
 	Library sql.NullString `json:"library"`
 	License string         `json:"license"`
-}
-
-// chunk represents a table checksum chunk
-type chunk struct {
-	ChunkId       uint64 `json:"chunkId"`
-	ChunkMinKey   string `json:"chunkMinKey"`
-	ChunkMaxKey   string `json:"chunkMaxKey"`
-	ChunkCheckSum uint64 `json:"chunkCheckSum"`
 }
 
 // MetaDataLock represents metadata lock information
