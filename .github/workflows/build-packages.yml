@@ -25,6 +25,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Checkout latest tag (manual trigger only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          latest_tag=$(git describe --tags --abbrev=0)
+          echo "Checking out $latest_tag"
+          git checkout "$latest_tag"
+
       - name: Set up Go 1.24
         uses: actions/setup-go@v5
         with:
