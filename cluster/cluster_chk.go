@@ -635,12 +635,19 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum master table %s.%s %s", schema, table, cluster.master.URL)
 
-	Conn, err := cluster.master.GetNewDBConn()
+	master := cluster.GetMaster()
+	if master == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum master table %s.%s, master not discovered", schema, table)
+		return
+	}
+
+	Conn, err := master.GetNewDBConn()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error connection in exec query no log %s", err)
 		return
 	}
 	defer Conn.Close()
+
 	Conn.SetConnMaxLifetime(3595 * time.Second)
 	pk, _ := cluster.master.GetTablePK(schema, table)
 	if pk == "" {
@@ -650,22 +657,25 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		cluster.master.DictTables.Set(schema+"."+table, t)
 		return
 	}
-	if strings.Contains(pk, ",") {
+
+	pks := strings.Split(pk, ",")
+	if len(pks) > 1 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum, composit primary key for table %s.%s", schema, table)
 	}
+
 	Conn.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
 	Conn.Exec("USE replication_manager_schema")
 	Conn.Exec("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ")
 	Conn.Exec("SET SESSION group_concat_max_len = 1000000")
 
 	Conn.Exec("CREATE OR REPLACE TABLE replication_manager_schema.table_checksum(chunkId BIGINT,chunkMinKey VARCHAR(254),chunkMaxKey VARCHAR(254),chunkCheckSum BIGINT UNSIGNED ) ENGINE=MYISAM")
-	query := "CREATE TEMPORARY TABLE replication_manager_schema.table_chunk ENGINE=MYISAM SELECT FLOOR((@rows:=@rows+1/2000)) as chunkId, MIN(CONCAT_WS('/*;*/'," + pk + ")) as chunkMinKey, MAX(CONCAT_WS('/*;*/'," + pk + ")) as chunkMaxKey from " + schema + "." + table + " , (SELECT @rows:=0 FROM DUAL) A group by chunkId"
-	_, err = Conn.Exec(query)
-	Conn.Exec("SET SESSION binlog_format = 'STATEMENT'")
+	query, err := dbhelper.CreateChunkTable(Conn, schema, table, pks, 2000)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
 		return
 	}
+
+	Conn.Exec("SET SESSION binlog_format = 'STATEMENT'")
 	var md5Sum string
 	err = Conn.QueryRowx("SELECT CONCAT( \"SUM(CRC32(CONCAT(\" , GROUP_CONCAT( CONCAT( \"IFNULL(\" , COLUMN_NAME, \",'N')\")),\")))\") as fields FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA ='" + schema + "' AND TABLE_NAME='" + table + "'").Scan(&md5Sum)
 	if err != nil {
@@ -675,19 +685,8 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 
 	// build predicate iterating over each pk columns
 	predicate := " 1=1"
-	pks := strings.Split(pk, ",")
 	//	var ftype string
 	for i, p := range pks {
-		/*	query := "SELECT (select COLUMN_TYPE from information_schema.columns C where C.TABLE_NAME=TABLE_NAME AND C.COLUMN_NAME=COLUMN_NAME AND C.TABLE_SCHEMA=TABLE_SCHEMA LIMIT 1) as TYPE   from information_schema.KEY_COLUMN_USAGE WHERE CONSTRAINT_NAME='PRIMARY' AND CONSTRAINT_SCHEMA='" + schema + "' AND TABLE_NAME='" + table + "' AND  ORDINAL_POSITION=" + strconv.Itoa(i+1)
-			err := Conn.QueryRowx(query).Scan(&ftype)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,config.LvlErr, "ERROR: Could not fetch  datatype %s %s", query, err)
-				return
-			}
-			separator := ""
-			if strings.Contains(strings.ToLower(ftype), "char") || strings.Contains(strings.ToLower(ftype), "date") || strings.Contains(strings.ToLower(ftype), "enum") || strings.Contains(strings.ToLower(ftype), "timestamp") {
-				separator = "'"
-			}*/
 		predicate = predicate + " AND A." + p + " >= SUBSTRING_INDEX(SUBSTRING_INDEX(B.chunkMinKey,'/*;*/'," + strconv.Itoa(i+1) + "),'/*;*/',-1) and A." + p + "<= SUBSTRING_INDEX(SUBSTRING_INDEX(B.chunkMaxKey,'/*;*/'," + strconv.Itoa(i+1) + "),'/*;*/',-1)"
 	}
 

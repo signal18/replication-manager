@@ -1063,3 +1063,86 @@ func SetUserGrantsWithGrantOption(ctx context.Context, conn *sqlx.Conn, myver *v
 	}
 	return query, nil
 }
+
+type MaxPKValue struct {
+	Type string
+	Max  string
+}
+
+func CheckPrimaryKeyMaxValues(conn *sqlx.DB, schema, table string, pks []string) (map[string]MaxPKValue, error) {
+	results := make(map[string]MaxPKValue)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	maxPKquery := "SELECT "
+	maxPKValues := make([]interface{}, 0)
+	for _, p := range pks {
+		maxPKquery = maxPKquery + "MAX(" + p + ") as '" + p + "',"
+		maxPKValues = append(maxPKValues, new(interface{}))
+	}
+	maxPKquery = strings.TrimSuffix(maxPKquery, ",") + " FROM " + schema + "." + table
+	err := conn.QueryRowxContext(ctx, maxPKquery).Scan(maxPKValues...)
+	if err != nil {
+		return nil, err
+	}
+
+	for i, v := range maxPKValues {
+		// v is pointer to the value, so we need to dereference it
+		val := *(v.(*interface{}))
+		p := pks[i]
+
+		var maxValue MaxPKValue
+		maxValue.Max = fmt.Sprintf("%v", v)
+		switch val.(type) {
+		case int64, uint64:
+			maxValue.Type = "int"
+		case string:
+			maxValue.Type = "string"
+		default:
+			return nil, fmt.Errorf("unsupported primary key type for column %s", p)
+		}
+		results[p] = maxValue
+	}
+
+	return results, nil
+}
+
+func CreateChunkTable(conn *sqlx.DB, schema, table string, pks []string, chunkSize int) (string, error) {
+	pkQuery := []string{}
+
+	query := "CREATE TEMPORARY TABLE replication_manager_schema.table_chunk ENGINE=MYISAM " +
+		"SELECT FLOOR((@rows:=@rows+1/" + fmt.Sprintf("%d", chunkSize) + ")) as chunkId, "
+
+	if len(pks) == 0 {
+		return "", fmt.Errorf("table %s.%s has no primary key, cannot create chunk table", schema, table)
+	} else if len(pks) == 1 {
+		// Single PK can be used directly without needing to check max values or apply padding
+		pkQuery = append(pkQuery, pks[0])
+	} else {
+		MaxPKValue, err := CheckPrimaryKeyMaxValues(conn, schema, table, pks)
+		if err != nil {
+			return "", fmt.Errorf("error checking primary key max values: %w", err)
+		}
+
+		for p, maxVal := range MaxPKValue {
+			switch maxVal.Type {
+			case "int", "uint":
+				pkQuery = append(pkQuery, fmt.Sprintf("lpad(%s,%d)", p, len(maxVal.Max)))
+			case "string":
+				pkQuery = append(pkQuery, p)
+			}
+		}
+	}
+
+	query = query +
+		"MIN(CONCAT_WS('/*;*/'," + strings.Join(pkQuery, ",") + ")) as chunkMinKey, MAX(CONCAT_WS('/*;*/'," + strings.Join(pkQuery, ",") + ")) as chunkMaxKey from " + schema + "." + table + " , (SELECT @rows:=0 FROM DUAL) A group by chunkId"
+
+	_, err := conn.Exec(query)
+	if err != nil {
+		return query, fmt.Errorf("error creating chunk table: %w", err)
+	}
+
+	_, err = conn.Exec(`ALTER TABLE replication_manager_schema.table_chunk ADD PRIMARY KEY (chunkId)`)
+
+	return query, err
+}
