@@ -65,7 +65,7 @@ jobs:
       # Mattermost: notify on success
       - name: Notify Mattermost (success)
         if: success()
-        uses: mattermost/action-mattermost-notify@v2
+        uses: mattermost/action-mattermost-notify@2.0.0
         with:
           MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
           TEXT: |
@@ -75,7 +75,7 @@ jobs:
       # Mattermost: notify on cancelled (aborted)
       - name: Notify Mattermost (cancelled)
         if: cancelled()
-        uses: mattermost/action-mattermost-notify@v2
+        uses: mattermost/action-mattermost-notify@2.0.0
         with:
           MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
           TEXT: |
