@@ -30,6 +30,17 @@ jobs:
         with:
           go-version: '1.24'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install nfpm
+        run: |
+          if ! command -v nfpm &>/dev/null; then
+            curl -sfL https://install.goreleaser.com/github.com/goreleaser/nfpm.sh | sh -s -- -b /usr/local/bin
+          fi
+
       # Replaces Jenkins ws-cleanup pre-build step
       - name: Clean build artifacts
         run: rm -rf build/
