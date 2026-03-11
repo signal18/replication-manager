@@ -1,10 +1,13 @@
-import { Box, Flex, Grid, GridItem, HStack, Stack, Text, VStack } from '@chakra-ui/react'
+import { Box, Flex, Grid, GridItem, HStack, Stack, Text, VStack, Checkbox, Alert, AlertIcon, Divider, useDisclosure } from '@chakra-ui/react'
 import React, { useState } from 'react'
-import { HiChevronDown, HiChevronUp, HiQuestionMarkCircle } from 'react-icons/hi'
+import { HiChevronDown, HiChevronUp, HiQuestionMarkCircle, HiRefresh } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
+import RMButton from '../../components/RMButton'
 import RMSwitch from '../../components/RMSwitch'
 import TextForm from '../../components/TextForm'
+import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
+import { resticInitRepo } from '../../redux/clusterSlice'
 import styles from './styles.module.scss'
 import tableStyles from '../../components/TableType2/styles.module.scss'
 
@@ -74,6 +77,14 @@ function ResticRepositorySettings({
   const [isTaggingOpen, setIsTaggingOpen] = useState(() => readStoredState('tagging', false))
   const areAllSectionsOpen = isConnectionOpen && isStorageOpen && isTaggingOpen
 
+  // Restic init modal state
+  const { 
+    isOpen: isInitModalOpen, 
+    onOpen: onOpenInitModal, 
+    onClose: onCloseInitModal 
+  } = useDisclosure()
+  const [initForce, setInitForce] = useState(false)
+
   const handleSettingChange = (setting, value, encodeValue = false) =>
     dispatch(
       setSetting({
@@ -90,6 +101,25 @@ function ResticRepositorySettings({
         setting
       })
     )
+
+  const handleResticInit = () => {
+    setInitForce(false) // Reset force flag
+    onOpenInitModal()
+  }
+
+  const handleConfirmInit = async () => {
+    try {
+      await dispatch(resticInitRepo({ 
+        clusterName, 
+        force: initForce
+      })).unwrap()
+      
+      onCloseInitModal()
+    } catch (error) {
+      console.error('Failed to initialize repository:', error)
+      onCloseInitModal()
+    }
+  }
 
   const toggleSection = (section, setter) => {
     setter((prev) => {
@@ -270,13 +300,33 @@ function ResticRepositorySettings({
                     <Text>Backup restic local repository</Text>
                   </GridItem>
                   <GridItem className={styles.valueCell}>
-                    <TextForm
-                      value={config?.backupResticLocalRepository}
-                      confirmTitle={`Confirm backup-restic-local-repository to `}
-                      className={styles.textbox}
-                      size='sm'
-                      onSave={(value) => handleSettingChange('backup-restic-local-repository', value, true)}
-                    />
+                    <HStack width='100%' spacing={2}>
+                      <TextForm
+                        value={config?.backupResticLocalRepository}
+                        confirmTitle={`Confirm backup-restic-local-repository to `}
+                        className={styles.textbox}
+                        size='sm'
+                        onSave={(value) => handleSettingChange('backup-restic-local-repository', value, true)}
+                      />
+                      <RMButton
+                        size='sm'
+                        colorScheme='blue'
+                        onClick={handleResticInit}
+                        isDisabled={user?.grants['cluster-settings'] === false || config?.backupResticAws}
+                        title="Re-initialize local repository"
+                      >
+                        <HiRefresh />
+                      </RMButton>
+                      <RMIconButton
+                        icon={HiQuestionMarkCircle}
+                        onClick={() => {
+                          onOpenInfoModal(
+                            'Re-initialize Local Repository',
+                            'Re-initialize the local Restic repository. This creates a new repository configuration at the specified path. Use with caution - only needed if the repository is corrupted or being set up for the first time.'
+                          )
+                        }}
+                      />
+                    </HStack>
                   </GridItem>
                 </Grid>
               </Stack>
@@ -352,16 +402,84 @@ function ResticRepositorySettings({
                   w='full'
                 >
                   <GridItem className={styles.rowLabel}>
-                    <Text>Backup restic aws bucket</Text>
+                    <Text>Backup restic aws region</Text>
                   </GridItem>
                   <GridItem className={styles.valueCell}>
                     <TextForm
-                      value={config?.backupResticRepository}
-                      confirmTitle={`Confirm backup-restic-repository to `}
+                      value={config?.backupResticAwsRegion}
+                      confirmTitle={`Confirm backup-restic-aws-region to `}
                       className={styles.textbox}
                       size='sm'
-                      onSave={(value) => handleSettingChange('backup-restic-repository', value, true)}
+                      placeholder='us-east-1, eu-west-1, etc.'
+                      onSave={(value) => handleSettingChange('backup-restic-aws-region', value)}
                     />
+                    <Text className={styles.helperText}>Empty uses AWS SDK default region resolution.</Text>
+                  </GridItem>
+                </Grid>
+
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
+                <GridItem className={styles.rowLabel}>
+                    <Text>Backup restic additional env</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <TextForm
+                      value={config?.backupResticAdditionalEnv}
+                      confirmTitle={`Confirm backup-restic-additional-env to `}
+                      className={styles.textbox}
+                      size='sm'
+                      placeholder='AWS_SESSION_TOKEN, NO_PROXY="host1,host2"'
+                      onSave={(value) => handleSettingChange('backup-restic-additional-env', value)}
+                    />
+                    <Text className={styles.helperText}>
+                      Optional env vars to pass to restic (comma or space separated KEY or KEY=VALUE). Quote values with commas.
+                    </Text>
+                  </GridItem>
+                </Grid>
+
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
+                  <GridItem className={styles.rowLabel}>
+                    <Text>Backup restic aws bucket</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <HStack width='100%' spacing={2}>
+                      <TextForm
+                        value={config?.backupResticRepository}
+                        confirmTitle={`Confirm backup-restic-repository to `}
+                        className={styles.textbox}
+                        size='sm'
+                        onSave={(value) => handleSettingChange('backup-restic-repository', value, true)}
+                      />
+                      <RMButton
+                        size='sm'
+                        colorScheme='blue'
+                        onClick={handleResticInit}
+                        isDisabled={user?.grants['cluster-settings'] === false || !config?.backupResticAws}
+                        title="Re-initialize S3 repository"
+                      >
+                        <HiRefresh />
+                      </RMButton>
+                      <RMIconButton
+                        icon={HiQuestionMarkCircle}
+                        onClick={() => {
+                          onOpenInfoModal(
+                            'Re-initialize S3 Repository',
+                            'Re-initialize the S3/MinIO Restic repository. This creates a new repository configuration at the specified S3 bucket/path. Force re-initialization deletes all objects under the configured bucket/prefix. Ensure AWS credentials and bucket path are correct before initializing.'
+                          )
+                        }}
+                      />
+                    </HStack>
                   </GridItem>
                 </Grid>
               </Stack>
@@ -441,6 +559,67 @@ function ResticRepositorySettings({
           )
         })}
       </Stack>
+
+      <ConfirmModal
+        isOpen={isInitModalOpen}
+        closeModal={onCloseInitModal}
+        title="Re-initialize Restic Repository"
+        body={
+          <VStack align='start' spacing={3}>
+            <Text>
+              Re-initialize the {config?.backupResticAws ? 'S3/MinIO' : 'local'} Restic repository:
+            </Text>
+            <Text 
+              fontWeight='bold' 
+              fontSize='sm' 
+              fontFamily='monospace'
+              bg='gray.100' 
+              p={2} 
+              borderRadius='md'
+              wordBreak='break-all'
+            >
+              {config?.backupResticAws 
+                ? config?.backupResticRepository 
+                : config?.backupResticLocalRepository}
+            </Text>
+            <Divider />
+            <Checkbox
+              isChecked={initForce}
+              isDisabled={config?.backupResticAws}
+              onChange={(e) => setInitForce(e.target.checked)}
+            >
+              <Text fontSize='sm'>
+                Force re-initialization (overwrite existing configuration)
+              </Text>
+            </Checkbox>
+            {config?.backupResticAws && (
+              <>
+                <Text fontSize='sm' color='gray.600'>
+                  Force re-initialization is disabled when backup-restic-aws is enabled (S3/MinIO mode).
+                </Text>
+                <Text fontSize='xs' color='gray.500'>
+                  Local repositories are used when backup-restic-aws is off, regardless of repository URL.
+                </Text>
+              </>
+            )}
+            {initForce && (
+              <Alert status='warning' size='sm' borderRadius='md'>
+                <AlertIcon />
+                <Text fontSize='sm'>
+                  {config?.backupResticAws
+                    ? 'Warning: Force re-initialization deletes all objects under the configured S3 bucket/prefix before creating a new repository.'
+                    : 'Warning: This will overwrite the existing repository configuration.'}
+                </Text>
+              </Alert>
+            )}
+          </VStack>
+        }
+        onConfirmClick={handleConfirmInit}
+        confirmButtonText="Initialize"
+        confirmButtonProps={{ 
+          colorScheme: initForce ? 'red' : 'blue' 
+        }}
+      />
     </VStack>
   )
 }

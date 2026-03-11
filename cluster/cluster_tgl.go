@@ -141,10 +141,12 @@ func (cluster *Cluster) SwitchBackupRestic() {
 	if cluster.ResticManager == nil {
 		cluster.StartResticManager()
 	}
+	cluster.ReloadResticEnv()
 }
 
 func (cluster *Cluster) SwitchBackupResticAws() {
 	cluster.Conf.BackupResticAws = !cluster.Conf.BackupResticAws
+	cluster.ReloadResticEnv()
 }
 
 func (cluster *Cluster) SwitchBackupBinlogs() {

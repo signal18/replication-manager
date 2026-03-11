@@ -36,7 +36,6 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/opensvc"
-	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/alert/pushover"
@@ -208,8 +207,6 @@ type Cluster struct {
 	tlsoldconf                          *tls.Config                 `json:"-"`
 	tunnel                              *ssh.Client                 `json:"-"`
 	QueryRules                          map[uint32]config.QueryRule `json:"-"`
-	Backups                             []v3.Backup                 `json:"-"`
-	BackupStat                          v3.BackupStat               `json:"backupStat" groups:"web"`
 	BackupMetaMap                       *backupmgr.BackupMetaMap    `json:"backupList" groups:"web"`
 	snapshotMetadata                    *snapshotMetadataManager    `json:"-"`
 	reconcileSnapshotMetadataInProgress int32                       `json:"-"`
@@ -757,7 +754,7 @@ func (cluster *Cluster) Run() {
 
 					// Preserved server state in proxy during reload config
 					if !cluster.IsInFailover() {
-						wg.Add(1)
+						wg.Add(2)
 						go cluster.refreshProxies(wg)
 						go cluster.refreshApps(wg)
 						cluster.CheckAppsCredit()
@@ -765,8 +762,8 @@ func (cluster *Cluster) Run() {
 						cluster.CheckDummyConfigSendCookies()
 						cluster.CheckRestartContainerCookies()
 
-						// Monitor schema when shardproxy is used
-						if cluster.Conf.MdbsProxyOn && cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() {
+						// Monitor schema when shardproxy is used else it will be trigger by scheduler
+						if cluster.Conf.MdbsProxyOn {
 							go cluster.MonitorSchema()
 						}
 
@@ -1866,8 +1863,11 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, loglevel, "Monitoring master table schema on %s", cmaster.URL)
 	cmaster.Conn.SetConnMaxLifetime(3595 * time.Second)
 
-	tables, tablelist, logs, err := dbhelper.GetTables(cmaster.Conn, cmaster.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes)
+	tables, tablelist, logs, err := dbhelper.GetTables(cmaster.Conn, cmaster.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes, cluster.Conf.MonitorSchemaScanTimeout)
 	cluster.LogSQL(logs, err, cmaster.URL, "Monitor", config.LvlDbg, "Could not fetch master tables %s", err)
+	if err != nil {
+		return err
+	}
 	cmaster.Tables = tablelist
 
 	var tableCluster []string
@@ -1965,8 +1965,11 @@ func (cluster *Cluster) MonitorSlaveTableSchema(sl *ServerMonitor) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, loglevel, "Monitoring slave table schema on %s", sl.URL)
 
 	sl.Conn.SetConnMaxLifetime(3595 * time.Second)
-	tables, tablelist, logs, err := dbhelper.GetTables(sl.Conn, sl.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes)
+	tables, tablelist, logs, err := dbhelper.GetTables(sl.Conn, sl.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes, cluster.Conf.MonitorSchemaScanTimeout)
 	cluster.LogSQL(logs, err, sl.URL, "Monitor", config.LvlDbg, "Could not fetch slave tables %s", err)
+	if err != nil {
+		return err
+	}
 	sl.Tables = tablelist
 	sl.DictTables = dbhelper.FromNormalTablesMap(sl.DictTables, tables)
 
@@ -1984,7 +1987,14 @@ func (cluster *Cluster) CompareSchemaBetweenMasterAndSlave(sl *ServerMonitor) ([
 	masterTables := cluster.GetMaster().DictTables.ToNewMap()
 	slTables := sl.DictTables.ToNewMap()
 
-	for tblname, mtbl := range masterTables {
+	masterKeys := make([]string, 0, len(masterTables))
+	for tblname := range masterTables {
+		masterKeys = append(masterKeys, tblname)
+	}
+	slices.Sort(masterKeys)
+
+	for _, tblname := range masterKeys {
+		mtbl := masterTables[tblname]
 		if cluster.IsInSchemaIgnore(tblname) {
 			ignored = append(ignored, tblname)
 			continue
@@ -1994,26 +2004,75 @@ func (cluster *Cluster) CompareSchemaBetweenMasterAndSlave(sl *ServerMonitor) ([
 			diffs = append(diffs, fmt.Sprintf("Table %s missing on slave %s", tblname, sl.URL))
 			continue
 		}
+
+		tbldiffs := make([]string, 0, 3)
 		if mtbl.TableCrc != stbl.TableCrc {
-			tbldiffs := make([]string, 0)
+			metaDiffs := make([]string, 0, 4)
+			if mtbl.Engine != stbl.Engine {
+				metaDiffs = append(metaDiffs, fmt.Sprintf("engine %s -> %s", mtbl.Engine, stbl.Engine))
+			}
+			if mtbl.RowFormat != stbl.RowFormat {
+				metaDiffs = append(metaDiffs, fmt.Sprintf("row_format %s -> %s", mtbl.RowFormat, stbl.RowFormat))
+			}
+			if mtbl.TableCollation != stbl.TableCollation {
+				metaDiffs = append(metaDiffs, fmt.Sprintf("collation %s -> %s", mtbl.TableCollation, stbl.TableCollation))
+			}
+			if mtbl.CreateOptions != stbl.CreateOptions {
+				metaDiffs = append(metaDiffs, fmt.Sprintf("create_options %s -> %s", mtbl.CreateOptions, stbl.CreateOptions))
+			}
+			if len(metaDiffs) > 0 {
+				tbldiffs = append(tbldiffs, "metadata: ("+strings.Join(metaDiffs, ", ")+")")
+			}
+
+			columnsAvailable := mtbl.TableColumnsCrc64 != 0 && stbl.TableColumnsCrc64 != 0 && mtbl.TableColumnMap != nil && stbl.TableColumnMap != nil
+			indexesAvailable := mtbl.TableIndexesCrc64 != 0 && stbl.TableIndexesCrc64 != 0 && mtbl.TableIndexMap != nil && stbl.TableIndexMap != nil
 			if mtbl.TableColumnsCrc64 != stbl.TableColumnsCrc64 {
-				tbldiffs = append(tbldiffs, "columns: (", strings.Join(mtbl.ColumnDiffs(stbl, sl.URL), ", "), ") ")
+				if columnsAvailable {
+					coldiffs := mtbl.ColumnDiffs(stbl, sl.URL)
+					if len(coldiffs) > 0 {
+						tbldiffs = append(tbldiffs, "columns: ("+strings.Join(coldiffs, ", ")+")")
+					}
+				} else {
+					tbldiffs = append(tbldiffs, "columns: diff (details unavailable)")
+				}
 			}
 			if mtbl.TableIndexesCrc64 != stbl.TableIndexesCrc64 {
-				tbldiffs = append(tbldiffs, "indexes: (", strings.Join(mtbl.IndexDiffs(stbl, sl.URL), ", "), ") ")
+				if indexesAvailable {
+					idxdiffs := mtbl.IndexDiffs(stbl, sl.URL)
+					if len(idxdiffs) > 0 {
+						tbldiffs = append(tbldiffs, "indexes: ("+strings.Join(idxdiffs, ", ")+")")
+					}
+				} else {
+					tbldiffs = append(tbldiffs, "indexes: diff (details unavailable)")
+				}
 			}
+			if len(tbldiffs) == 0 {
+				if !columnsAvailable && !indexesAvailable {
+					tbldiffs = append(tbldiffs, "table crc differs; column/index details unavailable")
+				} else {
+					tbldiffs = append(tbldiffs, "table crc differs, no column or index differences found")
+				}
+			}
+		}
+		if len(tbldiffs) > 0 {
 			diffs = append(diffs, fmt.Sprintf("Table %s differs on slave %s -> %s", tblname, sl.URL, strings.Join(tbldiffs, " ")))
 		}
 	}
 
+	slaveKeys := make([]string, 0, len(slTables))
 	for tblname := range slTables {
+		slaveKeys = append(slaveKeys, tblname)
+	}
+	slices.Sort(slaveKeys)
+
+	for _, tblname := range slaveKeys {
 		_, ok := masterTables[tblname]
 		if !ok {
 			if cluster.IsInSchemaIgnore(tblname) {
 				ignored = append(ignored, tblname)
 				continue
 			}
-			ignored = append(ignored, fmt.Sprintf("Extra table %s found on slave %s", tblname, sl.URL))
+			diffs = append(diffs, fmt.Sprintf("Extra table %s found on slave %s", tblname, sl.URL))
 		}
 	}
 
@@ -2045,11 +2104,13 @@ func (cluster *Cluster) MonitorSchema() {
 	if !cluster.Conf.MonitorSchemaChange && atomic.LoadInt32(&cluster.SchemaMonitorRequested) == 0 {
 		return
 	}
-
 	if cluster.StateMachine.IsInSchemaMonitor() {
 		return
 	}
-
+	// give workload time
+	if !(cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix()) {
+		return
+	}
 	if atomic.LoadInt32(&cluster.SchemaMonitorRequested) == 1 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"Schema monitoring requested; bypassing config gate for this run.")

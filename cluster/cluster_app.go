@@ -486,25 +486,34 @@ func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {
 }
 
 func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {
+	defer wg.Done()
 
-	// if !cluster.Conf.AppOn {
-	// 	return // If the app module is not enabled, do not refresh apps
-	// }
+	var workerWg sync.WaitGroup
+	appChan := make(chan *App)
 
-	// Refresh the apps
+	workerCount := cluster.Conf.AppRefreshConcurrency
+	if workerCount <= 0 {
+		workerCount = 1
+	}
+
+	for range workerCount {
+		workerWg.Add(1)
+		go func() {
+			defer workerWg.Done()
+			for app := range appChan {
+				app.FetchStats()
+			}
+		}()
+	}
+
 	for _, app := range cluster.Apps {
 		if app != nil {
-			wg.Add(1)
-			go func(app *App, wg *sync.WaitGroup) {
-				defer wg.Done()
-				defer cluster.LogPanicToFile("refreshApps")
-				err := app.Refresh()
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "Error refreshing app %s: %s", app.Name, err)
-				}
-			}(app, wg)
+			appChan <- app
 		}
 	}
+	close(appChan)
+
+	workerWg.Wait()
 }
 
 func (cluster *Cluster) EmitAppErrors() {

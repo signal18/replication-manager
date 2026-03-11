@@ -31,7 +31,7 @@ func MySQLConnect(user string, password string, address string, parameters ...st
 
 // SQLiteConnect returns a SQLite connection for the arbitrator
 func SQLiteConnect(path string) (*sqlx.DB, error) {
-	db, err := sqlx.Connect("sqlite3", path+"/arbitrator.db")
+	db, err := sqlx.Connect("sqlite", path+"/arbitrator.db")
 	return db, err
 }
 

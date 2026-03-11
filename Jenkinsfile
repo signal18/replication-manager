@@ -23,7 +23,7 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
-                        def Image = docker.build("signal18/replication-manager:${env.TAG_NAME}-rootless", '-f docker/Dockerfile_rootless .')
+                        def Image = docker.build("signal18/replication-manager:${env.TAG_NAME}-rootless", '-f docker/Dockerfile.rootless .')
                         Image.push('latest-rootless')
                         Image.push(env.TAG_NAME+'-rootless')
                     }

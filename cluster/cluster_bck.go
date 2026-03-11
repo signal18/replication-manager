@@ -29,14 +29,242 @@ import (
 
 var splitDumpTimestampRegex = regexp.MustCompile(`^\d+$`)
 
-func (cluster *Cluster) ResticGetEnv() []string {
-	newEnv := append(os.Environ(), "RESTIC_PASSWORD="+cluster.Conf.GetDecryptedValue("backup-restic-password"))
-	newEnv = append(newEnv, "RESTIC_CACHE_DIR="+cluster.Conf.WorkingDir+"/"+cluster.Name+"/.cache/restic")
+func isS3ResticRepository(repoPath string) bool {
+	return strings.HasPrefix(strings.TrimSpace(repoPath), "s3:")
+}
 
+func splitResticAdditionalEnvTokens(value string) ([]string, error) {
+	parts := make([]string, 0)
+	var current strings.Builder
+	var quote rune
+	escaped := false
+	hadUnmatched := false
+	hadInvalid := false
+	seenEquals := false
+	justClosedQuote := false
+
+	for _, r := range value {
+		if quote != 0 {
+			if quote == '"' && !escaped && r == '\\' {
+				escaped = true
+				current.WriteRune(r)
+				continue
+			}
+			if quote == '"' && escaped {
+				current.WriteRune(r)
+				escaped = false
+				continue
+			}
+			if r == quote {
+				quote = 0
+				justClosedQuote = true
+			}
+			current.WriteRune(r)
+			continue
+		}
+
+		if justClosedQuote {
+			switch r {
+			case ',', ' ', '\t', '\n', '\r':
+				// ok: delimiter after quoted token
+			case '=':
+				if seenEquals {
+					hadInvalid = true
+				}
+			default:
+				hadInvalid = true
+			}
+			justClosedQuote = false
+			if hadInvalid {
+				break
+			}
+		}
+
+		switch r {
+		case '"', '\'':
+			quote = r
+			current.WriteRune(r)
+		case ',', ' ', '\t', '\n', '\r':
+			if current.Len() > 0 {
+				parts = append(parts, current.String())
+				current.Reset()
+				seenEquals = false
+			}
+		case '=':
+			seenEquals = true
+			current.WriteRune(r)
+		default:
+			current.WriteRune(r)
+		}
+	}
+
+	if hadInvalid {
+		return nil, errors.New("restic additional env has invalid characters after quoted value")
+	}
+	if quote != 0 {
+		hadUnmatched = true
+	}
+	if hadUnmatched {
+		return nil, errors.New("restic additional env has unmatched quotes")
+	}
+	if current.Len() > 0 {
+		parts = append(parts, current.String())
+	}
+
+	return parts, nil
+}
+
+func parseResticAdditionalEnvOverrides(raw string) (map[string]string, map[string]struct{}, error) {
+	overrides := make(map[string]string)
+	allowlist := make(map[string]struct{})
+
+	parts, err := splitResticAdditionalEnvTokens(raw)
+	if err != nil {
+		return overrides, allowlist, err
+	}
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		key, value, hasValue := strings.Cut(trimmed, "=")
+		key = strings.TrimSpace(key)
+		if unquotedKey, ok := unquoteResticTagLiteral(key); ok {
+			key = strings.TrimSpace(unquotedKey)
+		}
+		if key == "" {
+			continue
+		}
+		allowlist[key] = struct{}{}
+		if hasValue {
+			value = strings.TrimSpace(value)
+			if unquotedValue, ok := unquoteResticTagLiteral(value); ok {
+				value = unquotedValue
+			}
+			overrides[key] = value
+		}
+	}
+
+	return overrides, allowlist, nil
+}
+
+func ValidateResticAdditionalEnvOverrides(raw string) error {
+	_, _, err := parseResticAdditionalEnvOverrides(raw)
+	return err
+}
+
+func filterResticEnv(cluster *Cluster, baseEnv []string, repoPath, password, cacheDir, awsAccessKey, awsSecretKey, awsRegion, additionalEnv string) []string {
+	filtered := make([]string, 0, len(baseEnv)+6)
+	overrides, allowlist, err := parseResticAdditionalEnvOverrides(additionalEnv)
+	if err != nil {
+		if cluster != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Ignoring restic additional env override: %s", err)
+		}
+		overrides = make(map[string]string)
+		allowlist = make(map[string]struct{})
+	}
+	isS3 := isS3ResticRepository(repoPath)
+	defaultRegion := ""
+	optionalAwsEnv := make(map[string]string)
+	// Reserved env vars cannot be overridden via backup-restic-additional-env.
+	// Add any new sensitive env vars here to prevent unintended injection.
+	reserved := map[string]struct{}{
+		"RESTIC_REPOSITORY":     {},
+		"RESTIC_PASSWORD":       {},
+		"RESTIC_CACHE_DIR":      {},
+		"AWS_ACCESS_KEY_ID":     {},
+		"AWS_SECRET_ACCESS_KEY": {},
+	}
+	for _, env := range baseEnv {
+		key, val, hasValue := strings.Cut(env, "=")
+		if !hasValue {
+			continue
+		}
+		if key == "AWS_DEFAULT_REGION" {
+			defaultRegion = val
+		}
+		if _, ok := allowlist[key]; ok {
+			if _, blocked := reserved[key]; blocked {
+				continue
+			}
+			if strings.HasPrefix(key, "AWS_") && !isS3 {
+				continue
+			}
+			// AWS_DEFAULT_REGION from additional env is ignored for S3 repos; base env is used as fallback.
+			if key == "AWS_DEFAULT_REGION" && isS3 {
+				continue
+			}
+			if override, exists := overrides[key]; exists {
+				optionalAwsEnv[key] = override
+			} else {
+				optionalAwsEnv[key] = val
+			}
+			if key == "AWS_DEFAULT_REGION" && !isS3 {
+				defaultRegion = optionalAwsEnv[key]
+			}
+			continue
+		}
+		if strings.HasPrefix(key, "RESTIC_") || strings.HasPrefix(key, "AWS_") {
+			continue
+		}
+		filtered = append(filtered, env)
+	}
+
+	for key, override := range overrides {
+		if _, blocked := reserved[key]; blocked {
+			continue
+		}
+		if strings.HasPrefix(key, "AWS_") && !isS3 {
+			continue
+		}
+		if key == "AWS_DEFAULT_REGION" && isS3 {
+			continue
+		}
+		if _, exists := optionalAwsEnv[key]; exists {
+			continue
+		}
+		optionalAwsEnv[key] = override
+		if key == "AWS_DEFAULT_REGION" && !isS3 {
+			defaultRegion = override
+		}
+	}
+
+	filtered = append(filtered, "RESTIC_PASSWORD="+password)
+	filtered = append(filtered, "RESTIC_CACHE_DIR="+cacheDir)
+	filtered = append(filtered, "RESTIC_REPOSITORY="+repoPath)
+
+	if isS3 {
+		filtered = append(filtered, "AWS_ACCESS_KEY_ID="+awsAccessKey)
+		filtered = append(filtered, "AWS_SECRET_ACCESS_KEY="+awsSecretKey)
+		region := strings.TrimSpace(awsRegion)
+		if region == "" {
+			region = strings.TrimSpace(defaultRegion)
+		}
+		if region != "" {
+			filtered = append(filtered, "AWS_DEFAULT_REGION="+region)
+		}
+	}
+
+	for key, value := range optionalAwsEnv {
+		if _, blocked := reserved[key]; blocked {
+			continue
+		}
+		if key == "AWS_DEFAULT_REGION" && isS3 {
+			continue
+		}
+		filtered = append(filtered, key+"="+value)
+	}
+
+	return filtered
+}
+
+func (cluster *Cluster) ResticGetEnv() []string {
+	cacheDir := cluster.Conf.WorkingDir + "/" + cluster.Name + "/.cache/restic"
+	password := cluster.Conf.GetDecryptedValue("backup-restic-password")
+	repoPath := ""
+	// backup-restic-aws controls whether the repo path is remote; otherwise local repo is used.
 	if cluster.Conf.BackupResticAws {
-		newEnv = append(newEnv, "AWS_ACCESS_KEY_ID="+cluster.Conf.BackupResticAwsAccessKeyId)
-		newEnv = append(newEnv, "AWS_SECRET_ACCESS_KEY="+cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
-		newEnv = append(newEnv, "RESTIC_REPOSITORY="+cluster.Conf.BackupResticRepository+"/"+cluster.Name)
+		repoPath = cluster.Conf.BackupResticRepository + "/" + cluster.Name
 	} else {
 		if _, err := os.Stat(cluster.GetResticLocalDir()); os.IsNotExist(err) {
 			err := os.MkdirAll(cluster.GetResticLocalDir(), os.ModePerm)
@@ -44,14 +272,27 @@ func (cluster *Cluster) ResticGetEnv() []string {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", cluster.GetResticLocalDir(), err)
 			}
 		}
-		newEnv = append(newEnv, "RESTIC_REPOSITORY="+cluster.GetResticLocalDir())
+		repoPath = cluster.GetResticLocalDir()
 	}
-	return newEnv
+
+	return filterResticEnv(
+		cluster,
+		os.Environ(),
+		repoPath,
+		password,
+		cacheDir,
+		cluster.Conf.BackupResticAwsAccessKeyId,
+		cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"),
+		cluster.Conf.BackupResticAwsRegion,
+		cluster.Conf.BackupResticAdditionalEnv,
+	)
 }
 
 func (cluster *Cluster) ReloadResticEnv() {
 	if cluster.ResticManager != nil {
 		cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
+		// Clear init error backoff when environment changes (credentials/config may be fixed)
+		cluster.ResticManager.ClearInitErrorBackoffManual()
 	}
 }
 
@@ -142,7 +383,7 @@ func (cluster *Cluster) ResticInitRepo(force bool) error {
 
 	err := cluster.ResticManager.InitRepo(force)
 	if err != nil {
-		cluster.SetState("WARN0092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0092"], err), ErrFrom: "BACKUP"})
+		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
 	}
 
 	return err

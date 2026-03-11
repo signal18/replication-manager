@@ -365,36 +365,28 @@ func (s *ReplicationManager) GetCluster(ctx context.Context, in *v3.Cluster) (*s
 	}
 
 	// TODO: note we are not scrubbing the passwords here
-	b, err := json.Marshal(mycluster)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "could not marshal cluster")
-	}
-
-	out := &structpb.Struct{}
-	err = protojson.Unmarshal(b, out)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "could not unmarshal json config to struct")
-	}
-
-	return out, nil
+	return marshalToStruct(mycluster)
 }
 
 // ClusterStatus is a public endpoint so it doesn't need to verify a user
-func (s *ReplicationManager) ClusterStatus(ctx context.Context, in *v3.Cluster) (*v3.StatusMessage, error) {
+func (s *ReplicationManager) ClusterStatus(ctx context.Context, in *v3.Cluster) (*structpb.Struct, error) {
 	mycluster, err := s.getClusterFromFromRequest(in)
 	if err != nil {
 		return nil, err
 	}
 
-	if mycluster.GetStatus() {
-		return &v3.StatusMessage{
-			Alive: v3.ServiceStatus_RUNNING,
-		}, nil
+	statusValue := "RUNNING"
+	if !mycluster.GetStatus() {
+		statusValue = "ERRORS"
 	}
-	return &v3.StatusMessage{
-		Alive: v3.ServiceStatus_ERRORS,
-	}, nil
 
+	// Return generic structure with status data
+	data := map[string]interface{}{
+		"alive": statusValue,
+		"name":  mycluster.Name,
+	}
+
+	return marshalToStruct(data)
 }
 
 // MasterPhysicalBackup is a public endpoint
@@ -408,8 +400,13 @@ func (s *ReplicationManager) MasterPhysicalBackup(ctx context.Context, in *v3.Cl
 	if m == nil {
 		return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrClusterMasterNotSet, "cluster", in.Name).Err()
 	}
+
 	err = m.JobBackupPhysical()
-	return &emptypb.Empty{}, err
+	if err != nil {
+		return nil, err
+	}
+
+	return emptyResponse()
 }
 
 func (s *ReplicationManager) GetSettingsForCluster(ctx context.Context, in *v3.Cluster) (*structpb.Struct, error) {
@@ -421,21 +418,10 @@ func (s *ReplicationManager) GetSettingsForCluster(ctx context.Context, in *v3.C
 		return nil, err
 	}
 
-	b, err := json.Marshal(*mycluster.Conf)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "could not marshal config")
-	}
-
-	out := &structpb.Struct{}
-	err = protojson.Unmarshal(b, out)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "could not unmarshal json config to struct")
-	}
-
-	return out, nil
+	return marshalToStruct(*mycluster.Conf)
 }
 
-func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in *v3.ClusterSetting) (res *emptypb.Empty, err error) {
+func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in *v3.ClusterSetting) (*emptypb.Empty, error) {
 	user, mycluster, err := s.getClusterAndUser(ctx, in)
 	if err != nil {
 		return nil, err
@@ -532,19 +518,19 @@ func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in
 		mycluster.DropDBTag(in.TagValue, false)
 	}
 
-	return res, nil
+	return emptyResponse()
 }
 
-func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.ClusterAction) (res *emptypb.Empty, err error) {
+func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.ClusterAction) (*emptypb.Empty, error) {
 	// WARNING: this one cannot be validated for ACL, as there is no cluster to validate against
 	// special case, the clustername doesn't exist yet
 	if in.Cluster.ClusterShardingName == "" {
 		if in.Action == v3.ClusterAction_ADD {
-			err = s.AddCluster(in.Cluster.Name, "")
+			err := s.AddCluster(in.Cluster.Name, "")
 			if err != nil {
 				return nil, v3.NewError(codes.Unknown, err).Err()
 			}
-			return
+			return emptyResponse()
 		}
 	}
 
@@ -628,7 +614,7 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 		if mycluster.IsInHostList(in.Server.GetURI()) {
 			mycluster.SetPrefMaster(in.Server.GetURI())
 			mycluster.MasterFailover(false)
-			return
+			return emptyResponse()
 		} else {
 			return nil, v3.NewErrorResource(codes.NotFound, v3.ErrServerNotFound, "Server", in.Server.GetURI()).Err()
 		}
@@ -645,7 +631,7 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 		return nil, v3.NewError(codes.Unknown, err).Err()
 	}
 
-	return
+	return emptyResponse()
 }
 
 func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stream v3.ClusterService_RetrieveFromTopologyServer) error {
@@ -776,54 +762,68 @@ func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stre
 	return nil
 }
 
-func marshalAndSend(in interface{}, send func(*structpb.Struct) error) error {
-	type String struct {
-		String string
-	}
+// marshalAndSend converts any value to protobuf Struct and sends it via stream
+// Handles special cases for strings and string slices automatically
+// DRY principle: single source of truth for streaming data conversion
+func marshalAndSend(v interface{}, send func(*structpb.Struct) error) error {
 	var data []byte
 	var err error
-	if s, ok := in.(string); ok {
-		var str String
-		str.String = s
-		data, err = json.Marshal(str)
-		if err != nil {
-			return status.Error(codes.Internal, "could not marshal String to json")
-		}
-	}
 
-	if sl, ok := in.([]string); ok {
-		type Strings struct {
-			Data []string
-		}
-		var strs Strings
-		strs.Data = sl
-		data, err = json.Marshal(strs)
+	// Special case: string → wrap in struct
+	if s, ok := v.(string); ok {
+		data, err = json.Marshal(map[string]interface{}{"String": s})
 		if err != nil {
-			return status.Error(codes.Internal, "could not marshal Strings to json")
+			return status.Error(codes.Internal, "could not marshal string")
 		}
-	}
-
-	if len(data) == 0 {
-		data, err = json.Marshal(in)
+	} else if sl, ok := v.([]string); ok {
+		// Special case: []string → wrap in struct
+		data, err = json.Marshal(map[string]interface{}{"Data": sl})
+		if err != nil {
+			return status.Error(codes.Internal, "could not marshal string slice")
+		}
+	} else {
+		// Default: marshal as-is
+		data, err = json.Marshal(v)
 		if err != nil {
 			return status.Error(codes.Internal, "could not marshal to json")
 		}
 	}
 
+	// Convert JSON to protobuf Struct
 	out := &structpb.Struct{}
-	err = protojson.Unmarshal(data, out)
-	if err != nil {
-		return status.Error(codes.Internal, "could not unmarshal json to struct")
+	if err = protojson.Unmarshal(data, out); err != nil {
+		return status.Error(codes.Internal, "could not unmarshal to protobuf struct")
 	}
 
-	if err := send(out); err != nil {
-		return err
-	}
-
-	return nil
+	// Send via stream
+	return send(out)
 }
 
-func (s *ReplicationManager) GetClientCertificates(ctx context.Context, in *v3.Cluster) (res *v3.Certificate, err error) {
+// marshalToStruct converts any Go value directly to google.protobuf.Struct
+// This is used by all methods that return structured data
+// DRY principle: single source of truth for data → Struct conversion
+func marshalToStruct(v interface{}) (*structpb.Struct, error) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("could not marshal to json: %v", err))
+	}
+
+	out := &structpb.Struct{}
+	if err = protojson.Unmarshal(data, out); err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("could not unmarshal to protobuf struct: %v", err))
+	}
+
+	return out, nil
+}
+
+// emptyResponse returns a standard empty protobuf response
+// Used by action methods that complete successfully but return no data
+// DRY principle: consistent empty response across all action endpoints
+func emptyResponse() (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
+}
+
+func (s *ReplicationManager) GetClientCertificates(ctx context.Context, in *v3.Cluster) (*structpb.Struct, error) {
 	user, mycluster, err := s.getClusterAndUser(ctx, in)
 	if err != nil {
 		return nil, err
@@ -838,13 +838,14 @@ func (s *ReplicationManager) GetClientCertificates(ctx context.Context, in *v3.C
 		return nil, err
 	}
 
-	res = &v3.Certificate{
-		ClientCertificate: certs["clientCert"],
-		ClientKey:         certs["clientKey"],
-		Authority:         certs["caCert"],
+	// Return generic structure with certificate data
+	data := map[string]interface{}{
+		"clientCertificate": certs["clientCert"],
+		"clientKey":         certs["clientKey"],
+		"authority":         certs["caCert"],
 	}
 
-	return
+	return marshalToStruct(data)
 }
 
 func (s *ReplicationManager) GetBackups(in *v3.Cluster, stream v3.ClusterService_GetBackupsServer) error {
@@ -857,8 +858,9 @@ func (s *ReplicationManager) GetBackups(in *v3.Cluster, stream v3.ClusterService
 		return err
 	}
 
+	// Stream backups as generic structures
 	for _, backup := range mycluster.GetBackups() {
-		if err := stream.Send(backup); err != nil {
+		if err := marshalAndSend(backup, stream.Send); err != nil {
 			return err
 		}
 	}
@@ -876,9 +878,10 @@ func (s *ReplicationManager) GetTags(in *v3.Cluster, stream v3.ClusterService_Ge
 		return err
 	}
 
+	// Stream tags as generic structures
 	tags := mycluster.Configurator.GetDBModuleTags()
 	for i := range tags {
-		if err := stream.Send(tags[i]); err != nil {
+		if err := marshalAndSend(tags[i], stream.Send); err != nil {
 			return err
 		}
 	}
@@ -921,8 +924,9 @@ func (s *ReplicationManager) GetSchema(in *v3.Cluster, stream v3.ClusterService_
 		return v3.NewErrorResource(codes.InvalidArgument, v3.ErrClusterMasterNotSet, "cluster", in.Name).Err()
 	}
 
+	// Stream schema tables as generic structures
 	for _, table := range m.GetDictTables() {
-		if err := stream.Send(table); err != nil {
+		if err := marshalAndSend(table, stream.Send); err != nil {
 			return err
 		}
 	}

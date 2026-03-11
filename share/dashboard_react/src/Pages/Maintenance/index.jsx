@@ -1,6 +1,6 @@
 import { createColumnHelper } from '@tanstack/react-table'
 import React, { useEffect, useMemo, useState } from 'react'
-import { convertObjectToArray, formatBytes, formatDate, getBackupMethod, getBackupStrategy } from '../../utility/common'
+import { sizeOf, convertObjectToArray, formatBytes, formatDate, getBackupMethod, getBackupStrategy } from '../../utility/common'
 import AccordionComponent from '../../components/AccordionComponent'
 import { DataTable } from '../../components/DataTable'
 import styles from './styles.module.scss'
@@ -258,7 +258,7 @@ function Maintenance({ selectedCluster, user }) {
   const backupDataStats = [
     {
       key: 'Total Size',
-      value: backupStats?.total_size
+      value: sizeOf(backupStats?.total_size)
     },
     {
       key: 'Total File Count',
@@ -393,7 +393,7 @@ function Maintenance({ selectedCluster, user }) {
   const snapshotDataStats = [
     {
       key: 'Total Size',
-      value: stats?.total_size
+      value: sizeOf(stats?.total_size)
     },
     {
       key: 'Total File Count',

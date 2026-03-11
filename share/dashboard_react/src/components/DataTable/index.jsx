@@ -23,17 +23,19 @@ import Dropdown from '../Dropdown'
 import { getColorFromServerStatus } from '../../utility/common'
 
 /** 
- * @param {{ data: any[], columns: any[], columnVisibility?: import ('@tanstack/react-table').ColumnVisibilityState, initialGrouping: string[], initialExpanded: any, className?: string, fixedColumnIndex?: number, enableSorting?: boolean, cellValueAlign?: 'left' | 'center' | 'right', enablePagination?: boolean, enableGrouping?: boolean, enableExpanding?: boolean }} props
+ * @param {{ data: any[], columns: any[], columnVisibility?: import ('@tanstack/react-table').ColumnVisibilityState, initialSorting?: import ('@tanstack/react-table').SortingState, initialGrouping: string[], initialExpanded: any, className?: string, fixedColumnIndex?: number, enableSorting?: boolean, lockSorting?: boolean, cellValueAlign?: 'left' | 'center' | 'right', enablePagination?: boolean, enableGrouping?: boolean, enableExpanding?: boolean }} props
  **/
 export const DataTable = React.memo(function DataTable({
   data,
   columns,
   columnVisibility = { proxyId: false, groupHeader: false, expansion: false },
+  initialSorting = [],
   initialGrouping = [],
   initialExpanded = {},
   className,
   fixedColumnIndex,
   enableSorting = false,
+  lockSorting = false,
   cellValueAlign = 'center',
   enablePagination = false,
   enableGrouping = false,
@@ -42,7 +44,7 @@ export const DataTable = React.memo(function DataTable({
   accordionMode = false,
   onExpandedChange: handleExpandedChange, // Function to handle expanded state changes
 }) {
-  const [sorting, setSorting] = useState([])
+  const [sorting, setSorting] = useState(initialSorting)
   const [grouping, setGrouping] = useState(initialGrouping)
   const [expanded, setExpanded] = useState(initialExpanded)
 
@@ -63,7 +65,7 @@ export const DataTable = React.memo(function DataTable({
     getExpandedRowModel: getExpandedRowModel(),
     getRowCanExpand: (row) => enableExpandingNoSubRows ? true : row.subRows?.length > 0,
     onGroupingChange: setGrouping,
-    onSortingChange: setSorting,
+    onSortingChange: lockSorting ? undefined : setSorting,
     onExpandedChange: (newExpanded) => {
       if (typeof newExpanded !== 'function') {
         return
@@ -103,6 +105,7 @@ export const DataTable = React.memo(function DataTable({
       columnVisibility: columnVisibility,
       expanded: initialExpanded,
       grouping: initialGrouping,
+      ...(initialSorting?.length ? { sorting: initialSorting } : {})
     },
     state: {
       sorting,
@@ -121,7 +124,7 @@ export const DataTable = React.memo(function DataTable({
               <Tr key={headerGroup.id} className={styles.headerRow}>
                 {headerGroup.headers.map((header, index) => {
                   const meta = header.column.columnDef.meta
-                  const isColumnSortable = header.column.columnDef.enableSorting
+                  const isColumnSortable = enableSorting && !lockSorting && header.column.getCanSort()
                   return (
                     <Th
                       colSpan={header.colSpan}
@@ -131,7 +134,7 @@ export const DataTable = React.memo(function DataTable({
                       textAlign={header.column.columnDef.textAlign}
                       className={`${styles.tableHeader} ${index === fixedColumnIndex && styles.fixedColumn} ${isColumnSortable && styles.sortableColumn} ${header.column.parent && styles.groupedColumn}`}
                       key={header.id}
-                      {...(enableSorting ? { onClick: header.column.getToggleSortingHandler() } : {})}
+                      {...(enableSorting && !lockSorting ? { onClick: header.column.getToggleSortingHandler() } : {})}
                       isNumeric={meta?.isNumeric}>
                       {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
 

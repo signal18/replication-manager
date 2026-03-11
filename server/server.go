@@ -367,6 +367,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.MonitorTenant, "monitoring-tenant", "default", "Can be use to store multi tenant identifier")
 	flags.Int64Var(&conf.MonitorWaitRetry, "monitoring-wait-retry", 60, "Retry this number of time before giving up state transition <999999")
 	flags.IntVar(&conf.MonitoringQueryTimeout, "monitoring-query-timeout", 2000, "Timeout for querying monitor in ms")
+	flags.IntVar(&conf.MonitorSchemaScanTimeout, "monitoring-schema-scan-timeout", 30, "Timeout for schema metadata scans in seconds")
 	flags.StringVar(&conf.MonitoringOpenStateScript, "monitoring-open-state-script", "", "Script trigger on open state")
 	flags.StringVar(&conf.MonitoringCloseStateScript, "monitoring-close-state-script", "", "Script trigger on close state")
 	flags.IntVar(&conf.SSTWaitRetryDelay, "sst-wait-retry-delay", 15, "Wait time in seconds before retrying SST job check")
@@ -808,6 +809,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupResticBinaryPath, "backup-restic-binary-path", "/usr/bin/restic", "Path to restic binary")
 	flags.StringVar(&conf.BackupResticAwsAccessKeyId, "backup-restic-aws-access-key-id", "admin", "Restic backup AWS key id")
 	flags.StringVar(&conf.BackupResticAwsAccessSecret, "backup-restic-aws-access-secret", "secret", "Restic backup AWS key sercret")
+	flags.StringVar(&conf.BackupResticAwsRegion, "backup-restic-aws-region", "", "Restic backup AWS region (empty = AWS SDK default)")
+	flags.StringVar(&conf.BackupResticAdditionalEnv, "backup-restic-additional-env", "", "Optional restic env vars (comma/space separated KEY or KEY=VALUE). AWS_* entries apply only for S3 repos. In double quotes, only \\\\ and \\\" are escapes.")
 	flags.StringVar(&conf.BackupResticLocalRepository, "backup-restic-local-repository", "", "Restic local repository path. Empty by default to use repo per cluster in datadir/backups/archive/<clustername>")
 	flags.StringVar(&conf.BackupResticRepository, "backup-restic-repository", "s3:https://s3.signal18.io/backups", "Restic backend repository")
 	flags.StringVar(&conf.BackupResticPassword, "backup-restic-password", "secret", "Restic backend password")
@@ -963,6 +966,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.SysbenchScale, "sysbench-scale", 1, "Number of warehouse")
 	flags.IntVar(&conf.SysbenchTables, "sysbench-tables", 1, "Number of tables")
 	flags.BoolVar(&conf.SysbenchV1, "sysbench-v1", false, "v1 get different syntax")
+	flags.BoolVar(&conf.SysbenchForcePK, "sysbench-force-pk", true, "Force primary key in sysbench tables")
 	flags.StringVar(&conf.SysbenchBinaryPath, "sysbench-binary-path", "/usr/bin/sysbench", "Sysbench Wrapper in test mode")
 
 	if WithOpenSVC == "ON" {
@@ -1164,6 +1168,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvDockerRegistryCredentials, "prov-docker-registry-credentials", "", "Docker registry credentials for private registry. Format: url:port:user:password")
 
 	flags.BoolVar(&conf.AppOn, "app-on", false, "Enable application mode")
+	flags.IntVar(&conf.AppRefreshConcurrency, "app-refresh-concurrency", 2, "Number of concurrent refresh for deployed apps")
 	flags.IntVar(&conf.LogAppLevel, "app-log-level", 3, "Log level for application")
 	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "App agents for micro services provisionning.")
 	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "4", "Disk in g for micro service VM. When cloud18 credit system is used, this is the base for 1 credit")

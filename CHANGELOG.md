@@ -5,6 +5,61 @@ All notable changes to replication-manager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.20] - 2026-03-07
+
+### Fixed
+- Arbitrator startup failures: SQLite driver registration and key path resolution corrected
+- Table checksum shard column ordering fixed for multi-column primary keys
+
+### Changed
+- Docker image layer caching improved by moving apt-get install before COPY instructions
+
+## [3.1.19] - 2026-03-05
+
+### Added
+- Restic additional environment variable overrides for S3 and custom backend configuration (#1383)
+
+### Fixed
+- Schema refresh made lightweight to avoid overhead when shardproxy is not in use (#1387)
+- Master schema refresh triggered when dictionary tables are empty to avoid stale state (#1387)
+- Schema query scan field alignment corrected to prevent silent misreads (#1386)
+- Missing tables restored to schema results (#1388, #1389)
+- MariaDB persistent analyze syntax enforced; multi-dot table identifiers rejected; qualified names quoted (#1384)
+- Analyze table identifier validation hardened to prevent SQL injection in persistent analyze statements (#1384)
+- Restic S3 force-init cleanup path corrected; insecure TLS configuration removed (#1380)
+- Restic environment variable parsing hardened; AWS credential gating clarified (#1380, #1383)
+- Config error message wording and spelling corrected
+
+### Changed
+- Dependency upgrades: docker/cli, cloudflare/circl, rollup, minimatch, react-gauge-component, ajv, immutable
+
+## [3.1.18] - 2026-03-04
+
+### Added
+- Splitdump backup/restore pipeline integrated into cluster backup workflows (#1358)
+- Configurable splitdump shard size with UI control and per-cluster defaults (#1366, #1367)
+- Splitdump restore: GTID handling, missing table resilience, and binlog suppression (#1363, #1364)
+- Splitdump preamble helpers and schema file identification (#1363)
+- Logical reseed async flow with hardened restore workflows (#1370)
+- pgzip tuning exposure and improved setting logs (#1370)
+- Functions to retrieve absolute path of replication-manager executable and CLI script (#1369)
+- Table checksum scheduling with schema cache requirement and bounded polling (#1371, #1372)
+- Local backup deletion to reclaim disk space (#1373)
+- Backup GUI: display columns for action cells and improved delete guards (#1373)
+
+### Fixed
+- Restic purge handler deadlock (#1374)
+- Backup delete guards hardened to block deletion during active jobs (#1373)
+- Orphaned backup metadata warnings suppressed per-file (#1372)
+- Checksum race condition resolved; explicit HTTP 202 on deferral; reduced log noise (#1371, #1372)
+- Splitdump line parser: statement ending handling, empty USE statement prevention (#1367)
+- Splitdump shard naming stabilized (#1366)
+- Splitdump stream size option validation (#1366)
+- Splitdump CLI path test aligned with lookup fallbacks (#1370)
+- Change log decoding and backup logging limited to avoid noise (#1370)
+- Logical reseed workflows hardened for safer restores (#1370)
+- macOS builds disabled due to syslog dependency (#1358)
+
 ## [3.1.17] - 2026-02-24
 
 ### Added
@@ -666,17 +721,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 3.1.x Series
 The 3.1.x series represents significant evolution of replication-manager with major improvements across:
 
-- **Application Management**: Comprehensive provisioning framework with template support, S3 integration, credit management, and provision/unprovision grants
-- **Backup & Restore**: Restic task queue management, FUSE mount operations, SFTP backend, reseed with metadata cache, configurable compression, post-backup scripts, and version-aware MyDumper flag handling
-- **Configuration Management**: Manual variable override and preservation system, config drift detection with UI indicators, and three-tier preserved variables
-- **Database Compatibility**: MySQL 8.4 support, improved version handling, SSL/TLS enhancements, and dbhelper refactor with vendor abstraction and SQL injection prevention
-- **Schema Monitoring**: Master-slave table/column/index comparison with shardproxy integration and scheduler support
-- **CLI Tools**: `splitdump` command for streaming dump files with safe filename handling
+- **Backup & Restore**: Restic task queue, FUSE mount, SFTP/S3 backend with additional env overrides, reseed with metadata cache, configurable compression, post-backup scripts, disk reclaim, and splitdump streaming pipeline with configurable shard sizing and GTID-aware restore
+- **Schema & Data Integrity**: Master-replica table/column/index comparison, lightweight schema refresh with empty-dict-table recovery, table checksum scheduling with schema cache, and shardproxy integration
+- **Configuration Management**: Manual variable override and preservation, config drift detection with UI indicators, and three-tier preserved variables
+- **Application Management**: Provisioning framework with template support, S3 integration, credit management, and provision/unprovision grants
+- **Database Compatibility**: MySQL 8.4 support, dbhelper refactor with vendor abstraction, parameterized queries, and improved version handling
 - **Monitoring & Logging**: Modular logging system, OpenSVC integration, audit log support, Pushover integration
-- **Security**: Credential masking, JWT authentication, password rotation with immutability checks, parameterized queries in dbhelper
-- **Proxy Integration**: HAProxy logging improvements, enhanced backend management
+- **Security**: Credential masking, JWT authentication, password rotation with immutability checks, SQL injection prevention, and hardened identifier validation for analyze table operations
 - **Topology**: Active-passive topology support, staging server improvements, replication master retry count configuration
-- **Docker**: Rootless image variants with fixed UID/GID 10001:10001 for production deployments
+- **Proxy Integration**: HAProxy logging improvements, enhanced backend management
+- **Docker**: Rootless image variants with fixed UID/GID for production deployments
 
 ### 3.0.x Series
 The 3.0.x series established the foundation for modern replication-manager with enterprise-grade features:
@@ -692,6 +746,9 @@ The 3.0.x series established the foundation for modern replication-manager with 
 - **User Management**: Role-based access control with GUI, external operator support, and credential management
 - **Disk Monitoring**: Real-time disk statistics, backup size estimation, and free space validation
 
+[3.1.20]: https://github.com/signal18/replication-manager/releases/tag/v3.1.20
+[3.1.19]: https://github.com/signal18/replication-manager/releases/tag/v3.1.19
+[3.1.18]: https://github.com/signal18/replication-manager/releases/tag/v3.1.18
 [3.1.17]: https://github.com/signal18/replication-manager/releases/tag/v3.1.17
 [3.1.16]: https://github.com/signal18/replication-manager/releases/tag/v3.1.16
 [3.1.15]: https://github.com/signal18/replication-manager/releases/tag/v3.1.15

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, lazy } from 'react'
+import React, { useCallback, useEffect, useState, lazy } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { whoami } from '../../redux/authSlice'
@@ -18,6 +18,7 @@ function PageContainer({ children }) {
   const isLogged = useSelector((state) => state.auth.isLogged)
   const user = useSelector((state) => state.auth.user)
   const monitor = useSelector((state) => state.globalClusters.monitor)
+  const { isMobile, isTablet, isDesktop } = useSelector((state) => state.common)
 
   const currentBreakpoint = useBreakpointValue({
     base: 'base',
@@ -36,6 +37,21 @@ function PageContainer({ children }) {
     }
   }, [monitor])
 
+  const handleResize = useCallback(() => {
+    const nextIsMobile = currentBreakpoint === 'mobile' || currentBreakpoint === 'base'
+    const nextIsTablet = currentBreakpoint === 'tablet'
+    const nextIsDesktop = currentBreakpoint === 'desktop'
+    if (nextIsMobile !== isMobile) {
+      dispatch(setIsMobile(nextIsMobile))
+    }
+    if (nextIsTablet !== isTablet) {
+      dispatch(setIsTablet(nextIsTablet))
+    }
+    if (nextIsDesktop !== isDesktop) {
+      dispatch(setIsDesktop(nextIsDesktop))
+    }
+  }, [currentBreakpoint, dispatch, isDesktop, isMobile, isTablet])
+
   useEffect(() => {
     if (isAuthorized() && (user === null || user.User === undefined)) {
       dispatch(whoami({}))
@@ -47,22 +63,13 @@ function PageContainer({ children }) {
     return () => {
       window.removeEventListener('resize', handleResize)
     }
-  }, [currentBreakpoint, dispatch])
+  }, [dispatch, handleResize, user])
 
   useEffect(() => {
     if (!isLogged && user === null && !isAuthorized() && location.pathname !== '/login') {
       navigate('/login')
     }
-  }, [isLogged, user])
-
-  const handleResize = () => {
-    const isMobile = currentBreakpoint === 'mobile' || currentBreakpoint === 'base'
-    const isTablet = currentBreakpoint === 'tablet'
-    const isDesktop = currentBreakpoint === 'desktop'
-    dispatch(setIsMobile(isMobile))
-    dispatch(setIsTablet(isTablet))
-    dispatch(setIsDesktop(isDesktop))
-  }
+  }, [isLogged, location.pathname, navigate, user])
 
   return (
     <Box className={styles.container}>

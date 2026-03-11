@@ -186,8 +186,33 @@ export const isEqualLongQueryTime = (a, b) => {
   return false
 }
 
-export const getTablePct = (table, index, dbTableSize) => {
-  return (((table + index) / (dbTableSize + dbTableSize + 1)) * 100).toFixed(2)
+export const getTablePct = (table, index, dbTableSize, dbIndexSize) => {
+  const toNonNegativeNumber = (value) => {
+    const number = Number(value)
+    if (!Number.isFinite(number) || number <= 0) {
+      return 0
+    }
+    return number
+  }
+
+  const tableSize = toNonNegativeNumber(table)
+  const indexSize = toNonNegativeNumber(index)
+  const totalSize = toNonNegativeNumber(dbTableSize) + toNonNegativeNumber(dbIndexSize)
+
+  if (totalSize === 0) {
+    if (tableSize + indexSize > 0) {
+      return Number.NaN
+    }
+    return 0
+  }
+
+  const pct = ((tableSize + indexSize) / (totalSize + 1)) * 100
+  if (!Number.isFinite(pct)) {
+    return 0
+  }
+
+  const clamped = Math.max(0, Math.min(100, pct))
+  return Number(clamped.toFixed(2))
 }
 
 export const canCancelJob = (t) => {
@@ -207,6 +232,12 @@ export const getColorFromServerStatus = (status) => {
       break
   }
   return color
+}
+
+export const sizeOf = function (bytes) {
+  if (bytes == 0) { return "0.00 B"; }
+  var e = Math.floor(Math.log(bytes) / Math.log(1024));
+  return (bytes/Math.pow(1024, e)).toFixed(2)+' '+' KMGTP'.charAt(e)+'B';
 }
 
 export const convertSize = (value, targetUnit = 'B', sourceUnit = 'B') => {

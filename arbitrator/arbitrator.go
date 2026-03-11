@@ -23,6 +23,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	_ "modernc.org/sqlite"
 )
 
 var (

@@ -30,6 +30,12 @@ const (
 	DDMMYYYYhhmmss = "2006-01-02 15:04:05"
 )
 
+// chunk represents a table checksum chunk
+type Chunk struct {
+	ChunkId       uint64 `json:"chunkId"`
+	ChunkCheckSum uint64 `json:"chunkCheckSum"`
+}
+
 // Plugin represents a database plugin
 type Plugin struct {
 	Name    string         `json:"name"`
@@ -37,14 +43,6 @@ type Plugin struct {
 	Type    string         `json:"type"`
 	Library sql.NullString `json:"library"`
 	License string         `json:"license"`
-}
-
-// chunk represents a table checksum chunk
-type chunk struct {
-	ChunkId       uint64 `json:"chunkId"`
-	ChunkMinKey   string `json:"chunkMinKey"`
-	ChunkMaxKey   string `json:"chunkMaxKey"`
-	ChunkCheckSum uint64 `json:"chunkCheckSum"`
 }
 
 // MetaDataLock represents metadata lock information
@@ -123,7 +121,7 @@ type Index struct {
 	Unique  bool          `protobuf:"varint,2,opt,name=unique,proto3" json:"unique,omitempty"`
 	Type    string        `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
 	Crc64   uint64        `protobuf:"varint,4,opt,name=crc64,proto3" json:"crc64,omitempty"`
-	Columns []IndexColumn `protobuf:"bytes,4,opt,name=columns,proto3" json:"columns,omitempty"`
+	Columns []IndexColumn `protobuf:"bytes,5,opt,name=columns,proto3" json:"columns,omitempty"`
 }
 
 // Table represents a database table with metadata
@@ -131,16 +129,22 @@ type Table struct {
 	TableSchema       string             `protobuf:"bytes,1,opt,name=table_schema,json=tableSchema,proto3" json:"table_schema,omitempty"`
 	TableName         string             `protobuf:"bytes,2,opt,name=table_name,json=tableName,proto3" json:"table_name,omitempty"`
 	Engine            string             `protobuf:"bytes,3,opt,name=engine,proto3" json:"engine,omitempty"`
-	TableRows         int64              `protobuf:"varint,4,opt,name=table_rows,json=tableRows,proto3" json:"table_rows,omitempty"`
-	DataLength        int64              `protobuf:"varint,5,opt,name=data_length,json=dataLength,proto3" json:"data_length,omitempty"`
-	IndexLength       int64              `protobuf:"varint,6,opt,name=index_length,json=indexLength,proto3" json:"index_length,omitempty"`
-	TableCrc          uint64             `protobuf:"varint,7,opt,name=table_crc,json=tableCrc,proto3" json:"table_crc,omitempty"`
+	TableRows         int64              `protobuf:"varint,4,opt,name=table_rows,json=tableRows,proto3" json:"table_rows"`
+	DataLength        int64              `protobuf:"varint,5,opt,name=data_length,json=dataLength,proto3" json:"data_length"`
+	IndexLength       int64              `protobuf:"varint,6,opt,name=index_length,json=indexLength,proto3" json:"index_length"`
+	TableCrc          uint64             `protobuf:"varint,7,opt,name=table_crc,json=tableCrc,proto3" json:"table_crc"`
 	TableClusters     string             `protobuf:"bytes,8,opt,name=table_clusters,json=tableClusters,proto3" json:"table_clusters,omitempty"`
-	TableSync         string             `protobuf:"bytes,9,opt,name=table_sync,json=tableSync,proto3" json:"table_sync,omitempty"`
+	TableSync         string             `protobuf:"bytes,9,opt,name=table_sync,json=tableSync,proto3" json:"table_sync"`
 	TableColumns      []Column           `protobuf:"bytes,10,opt,name=table_columns,json=tableColumns,proto3" json:"table_columns,omitempty"`
 	TableIndexes      []Index            `protobuf:"bytes,11,opt,name=table_indexes,json=tableIndexes,proto3" json:"table_indexes,omitempty"`
 	TableColumnsCrc64 uint64             `protobuf:"varint,12,opt,name=table_columns_crc64,json=tableColumnsCrc64,proto3" json:"table_columns_crc64,omitempty"`
 	TableIndexesCrc64 uint64             `protobuf:"varint,13,opt,name=table_indexes_crc64,json=tableIndexesCrc64,proto3" json:"table_indexes_crc64,omitempty"`
+	TableType         string             `protobuf:"bytes,14,opt,name=table_type,json=tableType,proto3" json:"table_type,omitempty"`
+	RowFormat         string             `protobuf:"bytes,15,opt,name=row_format,json=rowFormat,proto3" json:"row_format,omitempty"`
+	TableCollation    string             `protobuf:"bytes,16,opt,name=table_collation,json=tableCollation,proto3" json:"table_collation,omitempty"`
+	CreateOptions     string             `protobuf:"bytes,17,opt,name=create_options,json=createOptions,proto3" json:"create_options,omitempty"`
+	TableComment      string             `protobuf:"bytes,18,opt,name=table_comment,json=tableComment,proto3" json:"table_comment,omitempty"`
+	AutoIncrement     int64              `protobuf:"varint,19,opt,name=auto_increment,json=autoIncrement,proto3" json:"auto_increment"`
 	TableColumnMap    map[string]*Column `protobuf:"-" json:"-"`
 	TableIndexMap     map[string]*Index  `protobuf:"-" json:"-"`
 }
@@ -168,7 +172,6 @@ func (x *Table) CanonicalizeIndexes() {
 
 // BuildColumnMap creates a map of column names to Column pointers
 func (x *Table) BuildColumnMap() {
-	x.CanonicalizeColumns()
 	colMap := make(map[string]*Column, len(x.TableColumns))
 	for i := range x.TableColumns {
 		colMap[x.TableColumns[i].Name] = &x.TableColumns[i]
@@ -178,7 +181,6 @@ func (x *Table) BuildColumnMap() {
 
 // BuildIndexMap creates a map of index names to Index pointers
 func (x *Table) BuildIndexMap() {
-	x.CanonicalizeIndexes()
 	idxMap := make(map[string]*Index, len(x.TableIndexes))
 	for i := range x.TableIndexes {
 		idxMap[x.TableIndexes[i].Name] = &x.TableIndexes[i]
@@ -188,9 +190,9 @@ func (x *Table) BuildIndexMap() {
 
 // HashColumns calculates CRC64 checksum for all columns
 func (x *Table) HashColumns(crc64Table *crc64.Table) {
-	x.BuildColumnMap()
 	var tableData strings.Builder
-	for _, col := range x.TableColumnMap {
+	for i := range x.TableColumns {
+		col := &x.TableColumns[i]
 		if tableData.Len() > 0 {
 			tableData.WriteString("||")
 		}
@@ -222,14 +224,15 @@ func (x *Table) HashColumns(crc64Table *crc64.Table) {
 	}
 
 	x.TableColumnsCrc64 = crc64.Checksum([]byte(tableData.String()), crc64Table)
+	x.BuildColumnMap()
 }
 
 // HashIndexes calculates CRC64 checksum for all indexes
 func (x *Table) HashIndexes(crc64Table *crc64.Table) {
-	x.BuildIndexMap()
 	var tableData strings.Builder
 
-	for _, idx := range x.TableIndexMap {
+	for i := range x.TableIndexes {
+		idx := &x.TableIndexes[i]
 		if tableData.Len() > 0 {
 			tableData.WriteString("||")
 		}
@@ -253,6 +256,30 @@ func (x *Table) HashIndexes(crc64Table *crc64.Table) {
 		idx.Crc64 = crc64.Checksum([]byte(indexData.String()), crc64Table)
 		tableData.WriteString(fmt.Sprintf("%d", idx.Crc64))
 	}
+
+	x.TableIndexesCrc64 = crc64.Checksum([]byte(tableData.String()), crc64Table)
+	x.BuildIndexMap()
+}
+
+// HashTableCrc calculates CRC64 checksum for table metadata and structure.
+func (x *Table) HashTableCrc(crc64Table *crc64.Table) {
+	var tableData strings.Builder
+	tableData.WriteString(x.TableSchema)
+	tableData.WriteString("|")
+	tableData.WriteString(x.TableName)
+	tableData.WriteString("|")
+	tableData.WriteString(x.Engine)
+	tableData.WriteString("|")
+	tableData.WriteString(x.RowFormat)
+	tableData.WriteString("|")
+	tableData.WriteString(x.TableCollation)
+	tableData.WriteString("|")
+	tableData.WriteString(x.CreateOptions)
+	tableData.WriteString("|")
+	tableData.WriteString(strconv.FormatUint(x.TableColumnsCrc64, 10))
+	tableData.WriteString("|")
+	tableData.WriteString(strconv.FormatUint(x.TableIndexesCrc64, 10))
+	x.TableCrc = crc64.Checksum([]byte(tableData.String()), crc64Table)
 }
 
 // ColumnDiffs returns differences between this table's columns and another table

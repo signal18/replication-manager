@@ -3,9 +3,8 @@ FROM golang:1.24-bookworm AS builder
 RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager
 
-COPY . .
-
 RUN apt-get update && apt-get -y install nodejs npm
+COPY . .
 RUN make osc cli
 RUN go install github.com/moul/gotty-client/cmd/gotty-client@v1.10.0
 

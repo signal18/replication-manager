@@ -694,14 +694,21 @@ func (server *ServerMonitor) GetVTables() map[string]*dbhelper.Table {
 }
 
 func (server *ServerMonitor) GetDictTables() []*dbhelper.Table {
+	cluster := server.ClusterGroup
 	var tables []*dbhelper.Table
 	if server.IsFailed() {
 		return tables
 	}
+
 	for _, t := range server.DictTables.ToNewMap() {
 		tables = append(tables, t)
-
 	}
+
+	master := server.ClusterGroup.GetMaster()
+	if len(tables) == 0 && master != nil && master.URL == server.URL {
+		cluster.SetWaitMonitorSchema()
+	}
+
 	sort.Sort(dbhelper.TableSizeSorter(tables))
 	return tables
 }
@@ -749,15 +756,24 @@ func (server *ServerMonitor) GetDatabaseBasedir() string {
 }
 
 func (server *ServerMonitor) GetTablePK(schema string, table string) (string, error) {
-	cluster := server.ClusterGroup
-	query := "SELECT group_concat( distinct column_name) from information_schema.KEY_COLUMN_USAGE WHERE CONSTRAINT_NAME='PRIMARY' AND CONSTRAINT_SCHEMA='" + schema + "' AND TABLE_NAME='" + table + "'"
+	query := "SELECT group_concat(distinct column_name order by ORDINAL_POSITION) from information_schema.KEY_COLUMN_USAGE WHERE CONSTRAINT_NAME='PRIMARY' AND CONSTRAINT_SCHEMA='" + schema + "' AND TABLE_NAME='" + table + "'"
 	var pk string
 	err := server.Conn.QueryRowx(query).Scan(&pk)
+	// No need to log error as it will be logged in the caller function and it is not a critical error if we can't get PK for a table
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed query %s %s", query, err)
-		return "", nil
+		return "", err
 	}
 	return pk, nil
+}
+
+func (server *ServerMonitor) GetTableColumDef(schema string, table string, column string) string {
+	t := server.DictTables.Get(schema + "." + table)
+	for _, c := range t.TableColumns {
+		if c.Name == column {
+			return c.Type
+		}
+	}
+	return ""
 }
 
 func (server *ServerMonitor) GetVersion() *version.Version {

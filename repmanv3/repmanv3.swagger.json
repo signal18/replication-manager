@@ -26,6 +26,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
+              "type": "object",
               "properties": {}
             }
           },
@@ -163,6 +164,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
+              "type": "object",
               "properties": {}
             }
           },
@@ -181,7 +183,7 @@
             "type": "string"
           },
           {
-            "name": "body",
+            "name": "server",
             "in": "body",
             "required": true,
             "schema": {
@@ -253,6 +255,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
+              "type": "object",
               "properties": {}
             }
           },
@@ -390,6 +393,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
+              "type": "object",
               "properties": {}
             }
           },
@@ -527,6 +531,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
+              "type": "object",
               "properties": {}
             }
           },
@@ -664,6 +669,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
+              "type": "object",
               "properties": {}
             }
           },
@@ -800,6 +806,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
+              "type": "object",
               "properties": {}
             }
           },
@@ -936,6 +943,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
+              "type": "object",
               "properties": {}
             }
           },
@@ -1061,6 +1069,7 @@
           },
           {
             "name": "switch.name",
+            "description": " - AUTOREJOIN_FLASHBACK_ON_UNSYNC: ?????",
             "in": "query",
             "required": false,
             "type": "string",
@@ -1141,6 +1150,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
+              "type": "object",
               "properties": {}
             }
           },
@@ -1346,6 +1356,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
+              "type": "object",
               "properties": {}
             }
           },
@@ -1471,6 +1482,7 @@
           },
           {
             "name": "switch.name",
+            "description": " - AUTOREJOIN_FLASHBACK_ON_UNSYNC: ?????",
             "in": "query",
             "required": false,
             "type": "string",
@@ -1551,6 +1563,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
+              "type": "object",
               "properties": {}
             }
           },
@@ -1676,6 +1689,7 @@
           },
           {
             "name": "switch.name",
+            "description": " - AUTOREJOIN_FLASHBACK_ON_UNSYNC: ?????",
             "in": "query",
             "required": false,
             "type": "string",
@@ -1851,6 +1865,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
+              "type": "object",
               "properties": {}
             }
           },
@@ -1889,14 +1904,12 @@
             "schema": {
               "type": "object",
               "properties": {
-                "result": {
-                  "$ref": "#/definitions/v3Backup"
-                },
+                "result": {},
                 "error": {
                   "$ref": "#/definitions/rpcStatus"
                 }
               },
-              "title": "Stream result of v3Backup"
+              "title": "Stream result of protobufStruct"
             }
           },
           "default": {
@@ -1932,7 +1945,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/v3Certificate"
+              "type": "object"
             }
           },
           "default": {
@@ -2013,14 +2026,12 @@
             "schema": {
               "type": "object",
               "properties": {
-                "result": {
-                  "$ref": "#/definitions/v3Table"
-                },
+                "result": {},
                 "error": {
                   "$ref": "#/definitions/rpcStatus"
                 }
               },
-              "title": "Stream result of v3Table"
+              "title": "Stream result of protobufStruct"
             }
           },
           "default": {
@@ -2092,7 +2103,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/v3StatusMessage"
+              "type": "object"
             }
           },
           "default": {
@@ -2130,14 +2141,12 @@
             "schema": {
               "type": "object",
               "properties": {
-                "result": {
-                  "$ref": "#/definitions/v3Tag"
-                },
+                "result": {},
                 "error": {
                   "$ref": "#/definitions/rpcStatus"
                 }
               },
-              "title": "Stream result of v3Tag"
+              "title": "Stream result of protobufStruct"
             }
           },
           "default": {
@@ -2387,7 +2396,8 @@
         "TEST",
         "VERBOSE"
       ],
-      "default": "UNSPECIFIED"
+      "default": "UNSPECIFIED",
+      "title": "- AUTOREJOIN_FLASHBACK_ON_UNSYNC: ?????"
     },
     "TopologyRetrievalRetrieval": {
       "type": "string",
@@ -2406,14 +2416,11 @@
     "protobufAny": {
       "type": "object",
       "properties": {
-        "typeUrl": {
+        "@type": {
           "type": "string"
-        },
-        "value": {
-          "type": "string",
-          "format": "byte"
         }
-      }
+      },
+      "additionalProperties": {}
     },
     "protobufNullValue": {
       "type": "string",
@@ -2436,59 +2443,9 @@
         "details": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/protobufAny"
           }
-        }
-      }
-    },
-    "v3Backup": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "short_id": {
-          "type": "string"
-        },
-        "time": {
-          "type": "string"
-        },
-        "tree": {
-          "type": "string"
-        },
-        "paths": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "hostname": {
-          "type": "string"
-        },
-        "username": {
-          "type": "string"
-        },
-        "uid": {
-          "type": "string",
-          "format": "int64"
-        },
-        "gid": {
-          "type": "string",
-          "format": "int64"
-        }
-      }
-    },
-    "v3Certificate": {
-      "type": "object",
-      "properties": {
-        "clientCertificate": {
-          "type": "string"
-        },
-        "clientKey": {
-          "type": "string"
-        },
-        "authority": {
-          "type": "string"
         }
       }
     },
@@ -2544,75 +2501,6 @@
         "DROP_PROXY_TAG"
       ],
       "default": "UNSPECIFIED"
-    },
-    "v3ServiceStatus": {
-      "type": "string",
-      "enum": [
-        "SERVICESTATUS_UNSPECIFIED",
-        "RUNNING",
-        "STARTING",
-        "ERRORS"
-      ],
-      "default": "SERVICESTATUS_UNSPECIFIED"
-    },
-    "v3StatusMessage": {
-      "type": "object",
-      "properties": {
-        "alive": {
-          "$ref": "#/definitions/v3ServiceStatus"
-        }
-      }
-    },
-    "v3Table": {
-      "type": "object",
-      "properties": {
-        "tableSchema": {
-          "type": "string"
-        },
-        "tableName": {
-          "type": "string"
-        },
-        "engine": {
-          "type": "string"
-        },
-        "tableRows": {
-          "type": "string",
-          "format": "int64"
-        },
-        "dataLength": {
-          "type": "string",
-          "format": "int64"
-        },
-        "indexLength": {
-          "type": "string",
-          "format": "int64"
-        },
-        "tableCrc": {
-          "type": "string",
-          "format": "uint64"
-        },
-        "tableClusters": {
-          "type": "string"
-        },
-        "tableSync": {
-          "type": "string"
-        }
-      }
-    },
-    "v3Tag": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string",
-          "format": "uint64"
-        },
-        "name": {
-          "type": "string"
-        },
-        "category": {
-          "type": "string"
-        }
-      }
     }
   }
 }
