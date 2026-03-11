@@ -273,48 +273,46 @@ func TestResolveResticMountDirFromConfigStrictCleansPath(t *testing.T) {
 	}
 }
 
-func TestResolveResticMountDirFromConfigStrictAllowsConfiguredAbsoluteOutsideDefaultBase(t *testing.T) {
+func TestResolveResticMountDirFromConfigStrictAllowsDefaultBaseDir(t *testing.T) {
 	tmpDir := t.TempDir()
-	adminMountDir := filepath.Join(t.TempDir(), "admin-restic-mount")
-	cluster := &Cluster{
-		Name:       "cluster1",
-		WorkingDir: tmpDir,
-		Conf: &config.Config{
-			BackupResticMountDir: adminMountDir,
-		},
-	}
-
-	mountDir, source, err := cluster.ResolveResticMountDirFromConfigStrict()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if source != "config" {
-		t.Fatalf("expected source config, got %q", source)
-	}
-	if mountDir != adminMountDir {
-		t.Fatalf("expected mount dir %q, got %q", adminMountDir, mountDir)
-	}
-}
-
-func TestSanitizeAndValidateResticMountOptionsAllowsConfiguredMountDirOutsideDefaultBase(t *testing.T) {
-	tmpDir := t.TempDir()
-	adminMountDir := filepath.Join(t.TempDir(), "admin-target")
 	cluster := &Cluster{
 		Name:       "cluster1",
 		WorkingDir: tmpDir,
 		Conf:       &config.Config{},
 	}
 
-	mountOpt := backupmgr.NewResticMountOption(adminMountDir)
+	mountDir, source, err := cluster.ResolveResticMountDirFromConfigStrict()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := filepath.Join(tmpDir, resticDefaultMountSubdir)
+	if source != "default" {
+		t.Fatalf("expected source default, got %q", source)
+	}
+	if mountDir != expected {
+		t.Fatalf("expected mount dir %q, got %q", expected, mountDir)
+	}
+}
+
+func TestSanitizeAndValidateResticMountOptionsAllowsDefaultBaseTargetDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	cluster := &Cluster{
+		Name:       "cluster1",
+		WorkingDir: tmpDir,
+		Conf:       &config.Config{},
+	}
+
+	defaultMountDir := filepath.Join(tmpDir, resticDefaultMountSubdir)
+	mountOpt := backupmgr.NewResticMountOption(defaultMountDir)
 	err := cluster.sanitizeAndValidateResticMountOptions(&mountOpt, resticMountOptionMeta{
-		mountDirSource:  "config",
+		mountDirSource:  "default",
 		targetDirSource: "default",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if mountOpt.TargetDir != adminMountDir {
-		t.Fatalf("expected target dir %q, got %q", adminMountDir, mountOpt.TargetDir)
+	if mountOpt.TargetDir != defaultMountDir {
+		t.Fatalf("expected target dir %q, got %q", defaultMountDir, mountOpt.TargetDir)
 	}
 }
 
