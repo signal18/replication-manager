@@ -33,6 +33,7 @@ const (
 // chunk represents a table checksum chunk
 type Chunk struct {
 	ChunkId       uint64 `json:"chunkId"`
+	ChunkRangeCondition string `json:"chunkRangeCondition"`
 	ChunkCheckSum uint64 `json:"chunkCheckSum"`
 }
 

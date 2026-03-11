@@ -682,6 +682,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	columnListPredicate := ""
 	bColumnListPredicate := ""
 	shardListPredicate := ""
+	rangeCondition := ""
 	if len(pks) == 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,"Table %s.%s has no primary key, cannot create chunk table", schema, table)
 		return
@@ -695,16 +696,18 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 			columnListPredicate += " , "
 			bColumnListPredicate += " , "
 			shardListPredicate += " , "
+			rangeCondition += " , "
 		}
 		columnType := cluster.master.GetTableColumDef(schema, table, p)
 		columnDefPredicate = columnDefPredicate + " Min_" + p + " " + columnType + ", Max_" + p + " " + columnType
 		wherePredicate = wherePredicate + " A." + p + " >= B.Min_" + p + " AND A." + p + "<= B.Max_" + p + " "
 		columnListPredicate = columnListPredicate + p + " "
 		bColumnListPredicate = bColumnListPredicate + " B.Min_" + p +" , B.Max_" + p   
+		rangeCondition =  rangeCondition + "'A." + p + " >=',B.Min_" + p + ",' AND A." + p + "<=', B.Max_" + p 
 		shardListPredicate = shardListPredicate + " MIN(" + p + ") AS  Min_" + p + " , MAX(" + p + ") AS Max_" + p + " "
 	}
 
-	_, err = Conn.Exec("/* replication-manager */ CREATE OR REPLACE TABLE replication_manager_schema.table_checksum(chunkId BIGINT," + columnDefPredicate + ",chunkCheckSum BIGINT UNSIGNED ) ENGINE=INNODB")
+	_, err = Conn.Exec("/* replication-manager */ CREATE OR REPLACE TABLE replication_manager_schema.table_checksum(chunkId BIGINT,chunkRangeCondition varchar(8000) , " + columnDefPredicate + ",chunkCheckSum BIGINT UNSIGNED ) ENGINE=INNODB")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,"Error creating checksum table: %w", err)
 		return
@@ -747,7 +750,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 
 	for _, chunk := range chunks {
 
-		query := "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, " + bColumnListPredicate + " ," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk WHERE chunkId=? ) B on " + wherePredicate + " GROUP BY chunkId HAVING chunkId IS NOT NULL"
+		query := "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, CONCAT(" + rangeCondition+ ") as chunkRangeCondition,"  + bColumnListPredicate + " ," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk WHERE chunkId=? ) B on " + wherePredicate + " GROUP BY chunkId HAVING chunkId IS NOT NULL"
 		_, err := Conn.Exec(query, chunk.ChunkId)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
