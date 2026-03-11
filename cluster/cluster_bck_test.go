@@ -273,6 +273,49 @@ func TestResolveResticMountDirFromConfigStrictCleansPath(t *testing.T) {
 	}
 }
 
+func TestResolveResticMountDirFromConfigStrictAllowsDefaultBaseDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	cluster := &Cluster{
+		Name:       "cluster1",
+		WorkingDir: tmpDir,
+		Conf:       &config.Config{},
+	}
+
+	mountDir, source, err := cluster.ResolveResticMountDirFromConfigStrict()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := filepath.Join(tmpDir, resticDefaultMountSubdir)
+	if source != "default" {
+		t.Fatalf("expected source default, got %q", source)
+	}
+	if mountDir != expected {
+		t.Fatalf("expected mount dir %q, got %q", expected, mountDir)
+	}
+}
+
+func TestSanitizeAndValidateResticMountOptionsAllowsDefaultBaseTargetDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	cluster := &Cluster{
+		Name:       "cluster1",
+		WorkingDir: tmpDir,
+		Conf:       &config.Config{},
+	}
+
+	defaultMountDir := filepath.Join(tmpDir, resticDefaultMountSubdir)
+	mountOpt := backupmgr.NewResticMountOption(defaultMountDir)
+	err := cluster.sanitizeAndValidateResticMountOptions(&mountOpt, resticMountOptionMeta{
+		mountDirSource:  "default",
+		targetDirSource: "default",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mountOpt.TargetDir != defaultMountDir {
+		t.Fatalf("expected target dir %q, got %q", defaultMountDir, mountOpt.TargetDir)
+	}
+}
+
 func TestNormalizeSplitDumpOutputDirDefault(t *testing.T) {
 	cluster := &Cluster{
 		Name: "test-cluster",
