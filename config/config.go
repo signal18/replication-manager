@@ -705,6 +705,8 @@ type Config struct {
 	CompressBackupsLogical                    string `mapstructure:"compress-backups-logical" toml:"compress-backups-logical" json:"compressBackupsLogical"`
 	CompressBackupsPhysical                   string `mapstructure:"compress-backups-physical" toml:"compress-backups-physical" json:"compressBackupsPhysical"`
 	BackupReseedRemoteDecompress              bool   `mapstructure:"backup-reseed-remote-decompress" toml:"backup-reseed-remote-decompress" json:"backupReseedRemoteDecompress"`
+	BackupEncryptionEnabled                   bool   `mapstructure:"backup-encryption-enabled" toml:"backup-encryption-enabled" json:"backupEncryptionEnabled"`
+	BackupEncryptionPassphrase                string `mapstructure:"backup-encryption-passphrase" toml:"backup-encryption-passphrase" json:"-"`
 	BackupSplitMysqlUser                      bool   `mapstructure:"backup-split-mysql-user" toml:"backup-split-mysql-user" json:"backupSplitMysqlUser"`
 	BackupRestoreMysqlUser                    bool   `mapstructure:"backup-restore-mysql-user" toml:"backup-restore-mysql-user" json:"backupRestoreMysqlUser"`
 	BackupSplitdumpFileSize                   string `mapstructure:"backup-splitdump-file-size" toml:"backup-splitdump-file-size" json:"backupSplitdumpFileSize"`
@@ -1545,6 +1547,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		"backup-restic-aws-access-secret":       {"", ""},
 		"backup-streaming-aws-access-secret":    {"", ""},
 		"backup-restic-password":                {"", ""},
+		"backup-encryption-passphrase":          {"", ""},
 		"arbitration-external-secret":           {"", ""},
 		"alert-pushover-user-token":             {"", ""},
 		"alert-pushover-app-token":              {"", ""},

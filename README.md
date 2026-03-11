@@ -35,6 +35,8 @@ The main features are:
 
 ### [Documentation](https://docs.signal18.io)
 
+Implementation notes for in-repo features are under `doc/implementation/`, including CLI backup decryption usage in `doc/implementation/clients/README.md`.
+
 ### License
 
 __replication-manager__ is released under the GPLv3 license. ([complete license text](https://github.com/signal18/replication-manager/blob/master/LICENSE))

@@ -872,6 +872,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.CompressBackupsParallelBlocks, "compress-backups-parallel-blocks", 16, "Number of parallel blocks for pgzip decompression (higher=faster but more memory)")
 	flags.IntVar(&conf.CompressBackupsDecompressBufferSize, "compress-backups-decompress-buffer-size", 250000, "Block size for pgzip decompression")
 	flags.BoolVar(&conf.BackupReseedRemoteDecompress, "backup-reseed-remote-decompress", false, "Decompress backup on remote server during reseed (send compressed stream)")
+	flags.BoolVar(&conf.BackupEncryptionEnabled, "backup-encryption-enabled", false, "Enable OpenSSL AES-256-CBC encryption for single-file backups (directory backups are skipped in phase 1)")
+	flags.StringVar(&conf.BackupEncryptionPassphrase, "backup-encryption-passphrase", "", "Passphrase for backup encryption (env override: REPLICATION_MANAGER_BACKUP_PASSPHRASE)")
 	flags.BoolVar(&conf.BackupSplitMysqlUser, "backup-split-mysql-user", false, "To split mysql user in backup")
 	flags.BoolVar(&conf.BackupRestoreMysqlUser, "backup-restore-mysql-user", true, "Restore mysql user alongside with backup")
 	flags.BoolVar(&conf.BackupCheckFreeSpace, "backup-check-size", true, "To check free space before processing backup")
@@ -3024,6 +3026,8 @@ func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string
 		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
 	case "backup-streaming-aws-access-secret":
 		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-streaming-aws-access-secret"))
+	case "backup-encryption-passphrase":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-encryption-passphrase"))
 	case "arbitration-external-secret":
 		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("arbitration-external-secret"))
 	case "alert-pushover-user-token":

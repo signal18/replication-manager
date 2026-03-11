@@ -2521,6 +2521,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupBinlogs()
 	case "compress-backups":
 		mycluster.SwitchCompressBackups()
+	case "backup-encryption-enabled":
+		mycluster.Conf.BackupEncryptionEnabled = !mycluster.Conf.BackupEncryptionEnabled
 	case "backup-reseed-remote-decompress":
 		mycluster.Conf.BackupReseedRemoteDecompress = !mycluster.Conf.BackupReseedRemoteDecompress
 	case "backup-split-mysql-user":
@@ -2957,6 +2959,7 @@ var base64LogValueSettings = map[string]struct{}{
 	"backup-logical-post-script":          {},
 	"backup-mydumper-options":             {},
 	"backup-mydumper-regex":               {},
+	"backup-encryption-passphrase":        {},
 	"backup-myloader-options":             {},
 	"backup-mysqlclient-options":          {},
 	"backup-mysqldump-options":            {},
@@ -2977,7 +2980,7 @@ var base64LogValueSettings = map[string]struct{}{
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
-	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
+	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "backup-encryption-passphrase", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
 		logValue := value
@@ -3147,6 +3150,14 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.CompressBackupsDecompressBufferSize = val
 	case "backup-reseed-remote-decompress":
 		mycluster.Conf.BackupReseedRemoteDecompress = applyIsActive(mycluster.Conf.BackupReseedRemoteDecompress, isactive)
+	case "backup-encryption-enabled":
+		mycluster.Conf.BackupEncryptionEnabled = applyIsActive(mycluster.Conf.BackupEncryptionEnabled, isactive)
+	case "backup-encryption-passphrase":
+		mycluster.Conf.BackupEncryptionPassphrase = strings.TrimSpace(value)
+		var newSecret config.Secret
+		newSecret.Value = mycluster.Conf.BackupEncryptionPassphrase
+		newSecret.OldValue = mycluster.Conf.GetDecryptedValue("backup-encryption-passphrase")
+		mycluster.Conf.Secrets["backup-encryption-passphrase"] = newSecret
 	case "compress-backups-logical":
 		normalized, err := normalizeCompressionOverride(value)
 		if err != nil {

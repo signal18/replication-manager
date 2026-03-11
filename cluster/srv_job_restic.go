@@ -717,6 +717,12 @@ func alternateCompressionPath(path string) string {
 		return ""
 	}
 	lower := strings.ToLower(trimmed)
+	if strings.HasSuffix(lower, ".gz.enc") {
+		return strings.TrimSuffix(trimmed, ".gz.enc") + ".enc"
+	}
+	if strings.HasSuffix(lower, ".enc") {
+		return strings.TrimSuffix(trimmed, ".enc") + ".gz.enc"
+	}
 	if strings.HasSuffix(lower, ".gz") {
 		return strings.TrimSuffix(trimmed, filepath.Ext(trimmed))
 	}

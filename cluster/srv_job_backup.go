@@ -34,6 +34,7 @@ import (
 	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	rmcrypto "github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/misc"
 	river "github.com/signal18/replication-manager/utils/river"
 	"github.com/signal18/replication-manager/utils/splitdump"
@@ -41,6 +42,49 @@ import (
 )
 
 var errJobCanceledByUser = errors.New("job canceled by user")
+var errBackupEncryptionUnsupported = errors.New("backup encryption supports files only")
+
+func (server *ServerMonitor) resolveBackupEncryptionPassphrase() string {
+	envPassphrase := strings.TrimSpace(os.Getenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE"))
+	if envPassphrase != "" {
+		return envPassphrase
+	}
+	if server != nil && server.ClusterGroup != nil {
+		configPassphrase := strings.TrimSpace(server.ClusterGroup.Conf.BackupEncryptionPassphrase)
+		if configPassphrase != "" {
+			return configPassphrase
+		}
+		adminPassphrase := server.resolveAdminAPIPasswordFromSecret("api-credentials")
+		if adminPassphrase != "" {
+			return adminPassphrase
+		}
+		adminExternalPassphrase := server.resolveAdminAPIPasswordFromSecret("api-credentials-external")
+		if adminExternalPassphrase != "" {
+			return adminExternalPassphrase
+		}
+	}
+	if server == nil {
+		return ""
+	}
+	return strings.TrimSpace(server.Pass)
+}
+
+func (server *ServerMonitor) resolveAdminAPIPasswordFromSecret(secretKey string) string {
+	if server == nil || server.ClusterGroup == nil {
+		return ""
+	}
+	credentials := strings.TrimSpace(server.ClusterGroup.Conf.GetDecryptedValue(secretKey))
+	if credentials == "" {
+		return ""
+	}
+	for _, credential := range strings.Split(credentials, ",") {
+		user, pass := misc.SplitPair(strings.TrimSpace(credential))
+		if user == "admin" {
+			return strings.TrimSpace(pass)
+		}
+	}
+	return ""
+}
 
 func (server *ServerMonitor) JobBackupPhysical() error {
 	return server.JobBackupPhysicalWithOptions(BackupRunOptions{})
@@ -2673,6 +2717,21 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		}
 	}
 
+	if err == nil && cluster.Conf.BackupEncryptionEnabled && server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.Completed {
+		encryptErr := server.encryptBackupMetadataFile(server.LastBackupMeta.Logical, "logical")
+		if encryptErr != nil {
+			if errors.Is(encryptErr, errBackupEncryptionUnsupported) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Skipping backup encryption for %s backup because destination is directory: %s", server.LastBackupMeta.Logical.BackupTool, server.LastBackupMeta.Logical.Dest)
+			} else {
+				err = fmt.Errorf("logical backup encryption failed for %s: %w", server.URL, encryptErr)
+				server.LastBackupMeta.Logical.Completed = false
+				if e2 := server.JobsUpdateState(server.LastBackupMeta.Logical.BackupTool, err.Error(), 5, 1); e2 != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+				}
+			}
+		}
+	}
+
 	server.WriteBackupMetadata(backupmgr.BackupMethodLogical)
 	if err == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[SUCCESS] Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
@@ -4015,6 +4074,84 @@ func (cluster *Cluster) CreateTmpClientConfFile() (string, error) {
 
 }
 
+func (server *ServerMonitor) encryptBackupMetadataFile(meta *backupmgr.BackupMetadata, backupKind string) error {
+	if server == nil {
+		return errors.New("server is nil")
+	}
+	if meta == nil {
+		return errors.New("backup metadata is nil")
+	}
+	sourcePath := strings.TrimSpace(meta.Dest)
+	if sourcePath == "" {
+		return errors.New("backup destination is empty")
+	}
+
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return errBackupEncryptionUnsupported
+	}
+
+	plaintext, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return err
+	}
+	password := server.resolveBackupEncryptionPassphrase()
+	if password == "" {
+		return errors.New("backup encryption passphrase is empty")
+	}
+
+	key := rmcrypto.GetSHA256Hash(password)
+	iv := rmcrypto.GetMD5Hash(password)
+	ciphertext, err := server.EncryptAES256(plaintext, key, iv)
+	if err != nil {
+		return err
+	}
+	if len(ciphertext) == 0 {
+		return errors.New("encrypted backup is empty")
+	}
+
+	tmpPath := sourcePath + ".enc.tmp"
+	encPath := sourcePath + ".enc"
+	mode := info.Mode().Perm()
+	if mode == 0 {
+		mode = 0600
+	}
+
+	if err := os.WriteFile(tmpPath, ciphertext, mode); err != nil {
+		return err
+	}
+	encInfo, err := os.Stat(tmpPath)
+	if err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if encInfo.Size() == 0 {
+		_ = os.Remove(tmpPath)
+		return errors.New("encrypted backup temp file is empty")
+	}
+	if err := os.Rename(tmpPath, encPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Remove(sourcePath); err != nil {
+		return err
+	}
+
+	meta.Dest = encPath
+	meta.Encrypted = true
+	meta.EncryptionAlgo = "aes-256-cbc"
+	if err := meta.GetSizeAndFileCount(); err != nil {
+		if server.ClusterGroup != nil {
+			server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to refresh encrypted %s backup metadata size for %s: %s", backupKind, server.URL, err)
+		}
+	}
+
+	return nil
+}
+
 func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	cluster := server.ClusterGroup
 
@@ -4029,6 +4166,17 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		server.DelWaitSqlErrorlogCookie()
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		backtype := "physical"
+		if cluster.Conf.BackupEncryptionEnabled && server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.Completed {
+			encryptErr := server.encryptBackupMetadataFile(server.LastBackupMeta.Physical, backtype)
+			if encryptErr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Physical backup encryption failed for %s: %s", server.URL, encryptErr)
+				server.LastBackupMeta.Physical.Completed = false
+				if e2 := server.JobsUpdateState(task, encryptErr.Error(), 5, 1); e2 != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+				}
+			}
+		}
+
 		server.WriteBackupMetadata(backupmgr.BackupMethodPhysical)
 		if server.LastBackupMeta.Physical != nil && !server.LastBackupMeta.Physical.StartTime.IsZero() {
 			backupTool := server.LastBackupMeta.Physical.BackupTool
@@ -4036,7 +4184,11 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 				backupTool = cluster.Conf.BackupPhysicalType
 			}
 			elapsed := time.Since(server.LastBackupMeta.Physical.StartTime).Round(time.Second)
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Physical backup %s completed in %s (started at %s) for: %s", backupTool, elapsed, server.LastBackupMeta.Physical.StartTime.Format(time.RFC3339), server.URL)
+			if server.LastBackupMeta.Physical.Completed {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Physical backup %s completed in %s (started at %s) for: %s", backupTool, elapsed, server.LastBackupMeta.Physical.StartTime.Format(time.RFC3339), server.URL)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Physical backup %s failed in %s (started at %s) for: %s", backupTool, elapsed, server.LastBackupMeta.Physical.StartTime.Format(time.RFC3339), server.URL)
+			}
 		}
 
 		// CRITICAL: Transition from traditional backup lock to Restic lock atomically

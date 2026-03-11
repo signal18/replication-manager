@@ -1463,6 +1463,8 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.GetShardUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetShardPass())
 	case "backup-restic-password":
 		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("backup-restic-password"))
+	case "backup-encryption-passphrase":
+		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("backup-encryption-passphrase"))
 	case "haproxy-password":
 		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("haproxy-password"))
 	case "maxscale-pass":

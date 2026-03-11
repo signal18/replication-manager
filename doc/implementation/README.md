@@ -32,6 +32,11 @@ Frontend UI component documentation.
 - **ServerMenu.REVIEW.md** - ServerMenu component review notes
 - **ServerMenu.SUMMARY.md** - ServerMenu component summary
 
+### `/clients/`
+CLI client implementation notes.
+
+- **README.md** - Client command notes, including `decrypt-backup` usage examples
+
 ### `/utils/dbhelper/`
 Database helper utilities documentation.
 
