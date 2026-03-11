@@ -156,40 +156,40 @@ func GetTables(db *sqlx.DB, myver *version.Version, getColumns, getIndexes bool,
 		tablemap[key] = t
 	}
 
-	qlog, err = loadAllColumns(conn, myver, tablemap, timeout)
-	appendLog(&logBuilder, qlog)
-	if err != nil {
-		return tablemap, tables, logBuilder.String(), err
-	}
-
-	qlog, err = loadAllIndexes(conn, myver, tablemap, timeout)
-	appendLog(&logBuilder, qlog)
-	if err != nil {
-		return tablemap, tables, logBuilder.String(), err
-	}
-
-	for i := range tables {
-		t := &tables[i]
-		t.HashColumns(crc64Table)
-		t.HashIndexes(crc64Table)
-		t.HashTableCrc(crc64Table)
-	}
-
-	if !getColumns {
-		for i := range tables {
-			t := &tables[i]
-			t.TableColumns = nil
-			t.TableColumnMap = nil
-			t.TableColumnsCrc64 = 0
+	if getColumns {
+		qlog, err = loadAllColumns(conn, myver, tablemap, timeout)
+		appendLog(&logBuilder, qlog)
+		if err != nil {
+			return tablemap, tables, logBuilder.String(), err
 		}
 	}
 
-	if !getIndexes {
+	if getIndexes {
+		qlog, err = loadAllIndexes(conn, myver, tablemap, timeout)
+		appendLog(&logBuilder, qlog)
+		if err != nil {
+			return tablemap, tables, logBuilder.String(), err
+		}
+	}
+
+	if getColumns || getIndexes {
 		for i := range tables {
 			t := &tables[i]
-			t.TableIndexes = nil
-			t.TableIndexMap = nil
-			t.TableIndexesCrc64 = 0
+			if getColumns {
+				t.HashColumns(crc64Table)
+			} else {
+				t.TableColumns = nil
+				t.TableColumnMap = nil
+				t.TableColumnsCrc64 = 0
+			}
+			if getIndexes {
+				t.HashIndexes(crc64Table)
+			} else {
+				t.TableIndexes = nil
+				t.TableIndexMap = nil
+				t.TableIndexesCrc64 = 0
+			}
+			t.HashTableCrc(crc64Table)
 		}
 	}
 
@@ -365,6 +365,82 @@ func columnDefQueryAll(myver *version.Version) string {
 		ORDER BY table_schema, table_name, ordinal_position`
 }
 
+func columnDefQueryTable(myver *version.Version, schema, table string) string {
+	escSchema := EscapeSingleQuotes(schema)
+	escTable := EscapeSingleQuotes(table)
+	if myver.IsPostgreSQL() {
+		return fmt.Sprintf(`SELECT table_schema, table_name, ordinal_position, column_name, udt_name AS column_type,
+			is_nullable, column_default, '' AS extra, '' AS character_set_name, '' AS collation_name
+			FROM information_schema.columns WHERE table_schema = '%s' AND table_name = '%s'
+			ORDER BY table_schema, table_name, ordinal_position`, escSchema, escTable)
+	}
+	return fmt.Sprintf(`SELECT table_schema, table_name, ordinal_position, column_name, column_type,
+		is_nullable, column_default, extra, character_set_name, collation_name
+		FROM information_schema.COLUMNS
+		WHERE table_schema = '%s' AND table_name = '%s'
+		ORDER BY table_schema, table_name, ordinal_position`, escSchema, escTable)
+}
+
+func LoadTableColumns(ext schemaExecutor, myver *version.Version, schema, table string, timeout time.Duration) ([]Column, string, error) {
+	query := columnDefQueryTable(myver, schema, table)
+	if query == "" {
+		return nil, "", nil
+	}
+
+	ctx, cancel := scanContext(timeout)
+	defer cancel()
+
+	rows, err := ext.QueryxContext(ctx, query)
+	if err != nil {
+		return nil, query, err
+	}
+	defer rows.Close()
+
+	columns := make([]Column, 0)
+	for rows.Next() {
+		var r columnRow
+		if err := rows.Scan(
+			&r.TableSchema,
+			&r.TableName,
+			&r.OrdinalPosition,
+			&r.ColumnName,
+			&r.ColumnType,
+			&r.IsNullable,
+			&r.ColumnDefault,
+			&r.Extra,
+			&r.CharacterSetName,
+			&r.CollationName,
+		); err != nil {
+			return nil, query, err
+		}
+
+		col := Column{
+			Name:     r.ColumnName,
+			Type:     strings.ToLower(r.ColumnType),
+			Nullable: r.IsNullable == "YES",
+			Extra:    normalizeExtraStr(r.Extra),
+		}
+
+		if r.ColumnDefault.Valid {
+			col.Default = normalizeDefaultStr(r.ColumnDefault.String)
+		}
+
+		if r.CharacterSetName.Valid {
+			col.Charset = &r.CharacterSetName.String
+		}
+		if r.CollationName.Valid {
+			col.Collation = &r.CollationName.String
+		}
+
+		columns = append(columns, col)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, query, fmt.Errorf("error iterating column rows: %w", err)
+	}
+
+	return columns, query, nil
+}
+
 func loadAllIndexes(ext schemaExecutor, myver *version.Version, tablemap map[string]*Table, timeout time.Duration) (string, error) {
 	query := indexDefQueryAll(myver)
 	if query == "" {
@@ -446,6 +522,77 @@ func indexDefQueryAll(myver *version.Version) string {
 		WHERE table_schema NOT IN ('information_schema','mysql','performance_schema','sys')
 		AND table_schema NOT LIKE '#%'
 		ORDER BY table_schema, table_name, index_name, seq_in_index`
+}
+
+func indexDefQueryTable(myver *version.Version, schema, table string) string {
+	if myver.IsPostgreSQL() {
+		return ""
+	}
+	escSchema := EscapeSingleQuotes(schema)
+	escTable := EscapeSingleQuotes(table)
+	return fmt.Sprintf(`SELECT table_schema, table_name, index_name, non_unique, index_type, seq_in_index,
+		column_name, sub_part
+		FROM information_schema.STATISTICS
+		WHERE table_schema = '%s' AND table_name = '%s'
+		ORDER BY table_schema, table_name, index_name, seq_in_index`, escSchema, escTable)
+}
+
+func LoadTableIndexes(ext schemaExecutor, myver *version.Version, schema, table string, timeout time.Duration) ([]Index, string, error) {
+	query := indexDefQueryTable(myver, schema, table)
+	if query == "" {
+		return nil, "", nil
+	}
+
+	ctx, cancel := scanContext(timeout)
+	defer cancel()
+
+	rows, err := ext.QueryxContext(ctx, query)
+	if err != nil {
+		return nil, query, err
+	}
+	defer rows.Close()
+
+	indexes := make([]Index, 0)
+	indexPositions := make(map[string]int)
+	for rows.Next() {
+		var r indexRow
+		if err := rows.Scan(
+			&r.TableSchema,
+			&r.TableName,
+			&r.IndexName,
+			&r.NonUnique,
+			&r.IndexType,
+			&r.SeqInIndex,
+			&r.ColumnName,
+			&r.SubPart,
+		); err != nil {
+			return nil, query, err
+		}
+
+		idxPos, ok := indexPositions[r.IndexName]
+		if !ok {
+			indexes = append(indexes, Index{
+				Name:   r.IndexName,
+				Unique: r.NonUnique == 0,
+				Type:   strings.ToUpper(r.IndexType),
+			})
+			idxPos = len(indexes) - 1
+			indexPositions[r.IndexName] = idxPos
+		}
+
+		idx := &indexes[idxPos]
+		col := IndexColumn{Name: r.ColumnName}
+		if r.SubPart.Valid {
+			p := uint16(r.SubPart.Int64)
+			col.Prefix = &p
+		}
+		idx.Columns = append(idx.Columns, col)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, query, fmt.Errorf("error iterating index rows: %w", err)
+	}
+
+	return indexes, query, nil
 }
 
 func ddlQuery(myver *version.Version, schema, table string) string {

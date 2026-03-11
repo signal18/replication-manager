@@ -90,6 +90,7 @@ type Config struct {
 	MonitorSchemaScheduler                    bool   `mapstructure:"monitoring-schema-scheduler" toml:"monitoring-schema-scheduler" json:"monitoringSchemaScheduler"`
 	MonitorSchemaSchedulerCron                string `mapstructure:"monitoring-schema-scheduler-cron" toml:"monitoring-schema-scheduler-cron" json:"monitoringSchemaSchedulerCron"`
 	MonitorSchemaScanTimeout                  int    `mapstructure:"monitoring-schema-scan-timeout" toml:"monitoring-schema-scan-timeout" json:"monitoringSchemaScanTimeout"`
+	MonitorSchemaScanDelayMs                  int    `mapstructure:"monitoring-schema-scan-delay-ms" toml:"monitoring-schema-scan-delay-ms" json:"monitoringSchemaScanDelayMs"`
 	MonitorQueryRules                         bool   `mapstructure:"monitoring-query-rules" toml:"monitoring-query-rules" json:"monitoringQueryRules"`
 	MonitorSchemaChangeScript                 string `mapstructure:"monitoring-schema-change-script" toml:"monitoring-schema-change-script" json:"monitoringSchemaChangeScript"`
 	MonitorCheckGrants                        bool   `mapstructure:"monitoring-check-grants" toml:"monitoring-check-grants" json:"monitoringCheckGrants"`

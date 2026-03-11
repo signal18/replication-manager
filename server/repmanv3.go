@@ -586,7 +586,9 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 	case v3.ClusterAction_CANCEL_ROLLING_RESTART:
 		err = mycluster.CancelRollingRestart()
 	case v3.ClusterAction_CHECKSUM_ALL_TABLES:
-		go mycluster.CheckAllTableChecksum()
+		if !mycluster.StartChecksumAllTables() {
+			return nil, v3.NewError(codes.FailedPrecondition, fmt.Errorf("checksum already running")).Err()
+		}
 	case v3.ClusterAction_FAILOVER:
 		mycluster.MasterFailover(true)
 	case v3.ClusterAction_MASTER_PHYSICAL_BACKUP:
@@ -624,6 +626,25 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 		err = mycluster.WaitDatabaseCanConn()
 	case v3.ClusterAction_REPLICATION_CLEANUP:
 		err = mycluster.BootstrapReplicationCleanup()
+	case v3.ClusterAction_REPAIR_TABLE:
+		if in.GetServer() == nil || in.GetServer().GetHost() == "" {
+			return nil, v3.NewError(codes.InvalidArgument, fmt.Errorf("server.host must be set as schema.table for repair action")).Err()
+		}
+		parts := strings.SplitN(in.GetServer().GetHost(), ".", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return nil, v3.NewError(codes.InvalidArgument, fmt.Errorf("server.host must be set as schema.table for repair action")).Err()
+		}
+		schemaName := parts[0]
+		tableName := parts[1]
+		if err = mycluster.CanRepairTableChecksum(schemaName, tableName); err != nil {
+			return nil, v3.NewError(codes.FailedPrecondition, err).Err()
+		}
+		go func() {
+			if rerr := mycluster.RepairTableChecksum(schemaName, tableName); rerr != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+					"gRPC repair table checksum failed %s.%s: %s", schemaName, tableName, rerr)
+			}
+		}()
 	}
 
 	if err != nil {

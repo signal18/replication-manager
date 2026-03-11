@@ -609,6 +609,7 @@ const (
 	ClusterAction_WAITDATABASES          ClusterAction_Action = 18
 	ClusterAction_REPLICATION_BOOTSTRAP  ClusterAction_Action = 19
 	ClusterAction_REPLICATION_CLEANUP    ClusterAction_Action = 20
+	ClusterAction_REPAIR_TABLE           ClusterAction_Action = 21
 )
 
 // Enum value maps for ClusterAction_Action.
@@ -634,6 +635,7 @@ var (
 		18: "WAITDATABASES",
 		19: "REPLICATION_BOOTSTRAP",
 		20: "REPLICATION_CLEANUP",
+		21: "REPAIR_TABLE",
 	}
 	ClusterAction_Action_value = map[string]int32{
 		"ACTION_UNSPECIFIED":     0,
@@ -656,6 +658,7 @@ var (
 		"WAITDATABASES":          18,
 		"REPLICATION_BOOTSTRAP":  19,
 		"REPLICATION_CLEANUP":    20,
+		"REPAIR_TABLE":           21,
 	}
 )
 
@@ -2062,7 +2065,7 @@ const file_messages_proto_rawDesc = "" +
 	"\x12\x0f\n" +
 	"\vDROP_DB_TAG\x10\v\x12\x11\n" +
 	"\rADD_PROXY_TAG\x10\f\x12\x12\n" +
-	"\x0eDROP_PROXY_TAG\x10\r\"\xee\v\n" +
+	"\x0eDROP_PROXY_TAG\x10\r\"\x80\f\n" +
 	"\rClusterAction\x12B\n" +
 	"\acluster\x18\x01 \x01(\v2(.signal18.replication_manager.v3.ClusterR\acluster\x12M\n" +
 	"\x06action\x18\x03 \x01(\x0e25.signal18.replication_manager.v3.ClusterAction.ActionR\x06action\x12M\n" +
@@ -2095,7 +2098,7 @@ const file_messages_proto_rawDesc = "" +
 	"\aMYPROXY\x10\x05\x12\f\n" +
 	"\bEXTPROXY\x10\x06\x12\n" +
 	"\n" +
-	"\x06SPHINX\x10\a\"\x92\x03\n" +
+	"\x06SPHINX\x10\a\"\xa4\x03\n" +
 	"\x06Action\x12\x16\n" +
 	"\x12ACTION_UNSPECIFIED\x10\x00\x12\a\n" +
 	"\x03ADD\x10\x01\x12\r\n" +
@@ -2119,7 +2122,8 @@ const file_messages_proto_rawDesc = "" +
 	"\bSYSBENCH\x10\x11\x12\x11\n" +
 	"\rWAITDATABASES\x10\x12\x12\x19\n" +
 	"\x15REPLICATION_BOOTSTRAP\x10\x13\x12\x17\n" +
-	"\x13REPLICATION_CLEANUP\x10\x14\"\xc1\x01\n" +
+	"\x13REPLICATION_CLEANUP\x10\x14\x12\x10\n" +
+	"\fREPAIR_TABLE\x10\x15\"\xc1\x01\n" +
 	"\x13ReplicationTopology\x12\x12\n" +
 	"\x0eRT_UNSPECIFIED\x10\x00\x12\x10\n" +
 	"\fMASTER_SLAVE\x10\x01\x12\x18\n" +

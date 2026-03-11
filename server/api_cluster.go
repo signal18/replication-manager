@@ -505,6 +505,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumTable)),
 	))
+	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/repair-table", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaRepairTable)),
+	))
 	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/all/actions/checksum-schema", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterChecksumSchema)),
@@ -5862,7 +5866,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumAllTable(w http
 		if master == nil || len(master.Tables) == 0 {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 				"Checksum all tables requested; schema cache empty. Triggered schema monitoring; re-run checksum after cache is ready.")
-			mycluster.SetWaitMonitorSchema()
+			mycluster.MonitorSchema()
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusAccepted)
 			json.NewEncoder(w).Encode(map[string]string{
@@ -5870,7 +5874,14 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumAllTable(w http
 			})
 			return
 		}
-		go mycluster.CheckAllTableChecksum()
+		if !mycluster.StartChecksumAllTables() {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{
+				"message": "checksum already running",
+			})
+			return
+		}
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
@@ -5930,6 +5941,55 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumTable(w http.Re
 			return
 		}
 		go mycluster.CheckTableChecksum(vars["schemaName"], vars["tableName"])
+	} else {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+	}
+}
+
+// handlerMuxClusterSchemaRepairTable handles checksum repair for a specific table in a given cluster.
+// @Summary Repair checksum for a specific table in a specific cluster
+// @Description This endpoint triggers table checksum repair using stored failed chunk metadata.
+// @Tags ClusterSchema
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param schemaName path string true "Schema Name"
+// @Param tableName path string true "Table Name"
+// @Success 202 {string} string "Successfully triggered table repair"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "No repair metadata"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/repair-table [post]
+func (repman *ReplicationManager) handlerMuxClusterSchemaRepairTable(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+		if err := mycluster.CanRepairTableChecksum(vars["schemaName"], vars["tableName"]); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{
+				"message": err.Error(),
+			})
+			return
+		}
+		go func() {
+			if err := mycluster.RepairTableChecksum(vars["schemaName"], vars["tableName"]); err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+					"Repair table checksum failed %s.%s: %s", vars["schemaName"], vars["tableName"], err)
+			}
+		}()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(map[string]string{
+			"message": "table repair triggered",
+		})
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}

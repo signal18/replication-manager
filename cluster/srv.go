@@ -173,6 +173,10 @@ type ServerMonitor struct {
 	PFSInstruments              *config.StringsMap         `json:"pfsInstruments"`
 	SlowPFSQueries              *dbhelper.PFSQueriesMap    `json:"-"` //PFS queries from slow
 	DictTables                  *dbhelper.TablesMap        `json:"-"`
+	SchemaCacheChecked          bool                       `json:"-"`
+	SchemaCacheLoaded           bool                       `json:"-"`
+	SchemaCacheVersion          string                     `json:"-"`
+	SchemaCacheFlavor           string                     `json:"-"`
 	Tables                      []dbhelper.Table           `json:"-"`
 	Disks                       []dbhelper.Disk            `json:"-"`
 	Plugins                     *dbhelper.PluginsMap       `json:"-"`
@@ -284,11 +288,11 @@ const (
 )
 
 const (
-	ConstTLSNoConfig      string = ""
-	ConstTLSOldConfig     string = "&tls=tlsconfigold"
-	ConstTLSCurrentConfig string = "&tls=tlsconfig"
-    ConstTLSCurrentConfigName string = "tlsconfig"
-    ConstTLSOldConfigName     string = "tlsconfigold"
+	ConstTLSNoConfig          string = ""
+	ConstTLSOldConfig         string = "&tls=tlsconfigold"
+	ConstTLSCurrentConfig     string = "&tls=tlsconfig"
+	ConstTLSCurrentConfigName string = "tlsconfig"
+	ConstTLSOldConfigName     string = "tlsconfigold"
 )
 
 /* Initializes a server object compute if spider node*/
@@ -818,6 +822,7 @@ func (server *ServerMonitor) Refresh() error {
 		logs := ""
 		server.DBVersion, logs, err = dbhelper.GetDBVersion(server.Conn)
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database version %s %s", server.URL, err)
+		server.maybeLoadSchemaCache()
 
 		vars, logs, err := dbhelper.GetVariables(server.Conn, server.DBVersion)
 		server.Variables = config.FromNormalStringMap(server.Variables, vars)

@@ -75,6 +75,25 @@ type ClusterResponse struct {
 	Body Cluster
 }
 
+type SchemaMonitorProgressCounters struct {
+	ProcessedTables int     `json:"processedTables"`
+	TotalTables     int     `json:"totalTables"`
+	ProcessedBytes  int64   `json:"processedBytes"`
+	TotalBytes      int64   `json:"totalBytes"`
+	Percent         float64 `json:"percent"`
+}
+
+type SchemaMonitorProgress struct {
+	Status       string                        `json:"status"`
+	Phase        string                        `json:"phase"`
+	Master       SchemaMonitorProgressCounters `json:"master"`
+	Slaves       SchemaMonitorProgressCounters `json:"slaves"`
+	CurrentSlave string                        `json:"currentSlave"`
+	StartTime    int64                         `json:"startTime"`
+	EndTime      int64                         `json:"endTime"`
+	LastError    string                        `json:"lastError"`
+}
+
 type Cluster struct {
 	OsUser                        *user.User                 `json:"-"`
 	Name                          string                     `json:"name" groups:"apps,web"`
@@ -126,6 +145,7 @@ type Cluster struct {
 	IsNeedStagingChange           bool                       `json:"isNeedStagingChange" groups:"web"`
 	IsConfigPathChange            bool                       `json:"isConfigPathChange" groups:"web"`
 	IsResticQueuePaused           bool                       `json:"isResticQueuePaused" groups:"web"`
+	SchemaMonitorProgress         SchemaMonitorProgress      `json:"schemaMonitorProgress" groups:"web"`
 	SchemaMonitorRequested        int32                      `json:"-"`
 	Conf                          *config.Config             `json:"config" groups:"apps"`
 	Confs                         *config.ConfVersion        `json:"-"`
@@ -252,10 +272,11 @@ type Cluster struct {
 	RefreshTemplateMD5Chan              chan *App                   `json:"-"`
 	LastDelayStatPrint                  time.Time
 	sync.Mutex
-	crcTable               *crc64.Table
-	SlavesOldestMasterFile SlavesOldestMasterFile
-	SlavesConnected        int
-	clog                   *clog.Logger `json:"-"`
+	checksumAllTablesInProgress int32
+	crcTable                    *crc64.Table
+	SlavesOldestMasterFile      SlavesOldestMasterFile
+	SlavesConnected             int
+	clog                        *clog.Logger `json:"-"`
 	*ClusterGraphite
 	VersionsMap         *config.VersionsMap
 	SessionManager      *tty.SessionManager `json:"-"`
@@ -1861,16 +1882,50 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, loglevel, "Monitoring master table schema on %s", cmaster.URL)
 	cmaster.Conn.SetConnMaxLifetime(3595 * time.Second)
 
-	tables, tablelist, logs, err := dbhelper.GetTables(cmaster.Conn, cmaster.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes, cluster.Conf.MonitorSchemaScanTimeout)
+	cluster.schemaMonitorSetPhase("list")
+	tables, tablelist, logs, err := dbhelper.GetTables(cmaster.Conn, cmaster.DBVersion, false, false, cluster.Conf.MonitorSchemaScanTimeout)
 	cluster.LogSQL(logs, err, cmaster.URL, "Monitor", config.LvlDbg, "Could not fetch master tables %s", err)
 	if err != nil {
 		return err
 	}
 	cmaster.Tables = tablelist
 
+	var totalBytes int64
+	for i := range tablelist {
+		totalBytes += tablelist[i].DataLength + tablelist[i].IndexLength
+	}
+	cluster.schemaMonitorSetMasterTotals(len(tablelist), totalBytes)
+
+	if cluster.Conf.MonitorSchemaColumns {
+		cluster.schemaMonitorSetPhase("columns")
+		cluster.schemaMonitorResetMasterProgress()
+		if _, _, err := cluster.loadTableColumns(cmaster, tablelist, func(processedTables int, processedBytes int64) {
+			cluster.schemaMonitorUpdateMasterProgress(processedTables, processedBytes)
+		}); err != nil {
+			return err
+		}
+	}
+
+	if cluster.Conf.MonitorSchemaIndexes {
+		cluster.schemaMonitorSetPhase("indexes")
+		cluster.schemaMonitorResetMasterProgress()
+		if _, _, err := cluster.loadTableIndexes(cmaster, tablelist, func(processedTables int, processedBytes int64) {
+			cluster.schemaMonitorUpdateMasterProgress(processedTables, processedBytes)
+		}); err != nil {
+			return err
+		}
+	}
+
+	cluster.hashTableMetadata(tablelist)
+
+	cluster.schemaMonitorSetPhase("shards")
+	cluster.schemaMonitorResetMasterProgress()
+
 	var tableCluster []string
 	var duplicates []*ServerMonitor
 	var tottablesize, totindexsize int64
+	processedTables := 0
+	processedBytes := int64(0)
 	for _, t := range tables {
 		duplicates = nil
 		tableCluster = nil
@@ -1931,47 +1986,124 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 				}
 			}
 		}
+		processedTables++
+		processedBytes += t.DataLength + t.IndexLength
+		cluster.schemaMonitorUpdateMasterProgress(processedTables, processedBytes)
 	}
 
 	cluster.WorkLoad.DBIndexSize = totindexsize
 	cluster.WorkLoad.DBTableSize = tottablesize
 	cmaster.DictTables = dbhelper.FromNormalTablesMap(cmaster.DictTables, tables)
+	if err := cluster.SaveSchemaCache(cmaster); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Failed to save schema cache for %s: %s", cmaster.URL, err)
+	}
 
 	return nil
 }
 
-func (cluster *Cluster) MonitorAllSlavesTableSchema() {
+func (cluster *Cluster) MonitorAllSlavesTableSchema() error {
+	cluster.schemaMonitorSetPhase("slaves")
+	cluster.schemaMonitorResetSlaveProgress()
+	cluster.schemaMonitorSetSlaveTotals(0, 0)
+
+	var firstErr error
+	processedTables := 0
+	processedBytes := int64(0)
+	totalTables := 0
+	totalBytes := int64(0)
+	steps := 0
+	if cluster.Conf.MonitorSchemaColumns {
+		steps++
+	}
+	if cluster.Conf.MonitorSchemaIndexes {
+		steps++
+	}
+	if steps == 0 {
+		steps = 1
+	}
+
 	for _, sl := range cluster.slaves {
-		cluster.MonitorSlaveTableSchema(sl)
-	}
-}
+		if sl == nil {
+			continue
+		}
+		if sl.State == stateFailed || sl.State == stateMaintenance || sl.State == stateUnconn {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("Slave %s is not in a valid state", sl.URL)
+			}
+			continue
+		}
+		if sl.Conn == nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("Slave %s connection is not established", sl.URL)
+			}
+			continue
+		}
 
-func (cluster *Cluster) MonitorSlaveTableSchema(sl *ServerMonitor) error {
-	if sl.State == stateFailed || sl.State == stateMaintenance || sl.State == stateUnconn {
-		return fmt.Errorf("Slave is not in a valid state")
+		loglevel := config.LvlInfo
+		if cluster.Conf.MdbsProxyOn {
+			loglevel = config.LvlDbg
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, loglevel, "Monitoring slave table schema on %s", sl.URL)
+
+		sl.Conn.SetConnMaxLifetime(3595 * time.Second)
+		tables, tablelist, logs, err := dbhelper.GetTables(sl.Conn, sl.DBVersion, false, false, cluster.Conf.MonitorSchemaScanTimeout)
+		cluster.LogSQL(logs, err, sl.URL, "Monitor", config.LvlDbg, "Could not fetch slave tables %s", err)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		sl.Tables = tablelist
+
+		var slaveBytes int64
+		for i := range tablelist {
+			slaveBytes += tablelist[i].DataLength + tablelist[i].IndexLength
+		}
+		totalTables += len(tablelist)
+		totalBytes += slaveBytes
+		cluster.schemaMonitorSetSlaveTotals(totalTables*steps, totalBytes*int64(steps))
+
+		if cluster.Conf.MonitorSchemaColumns {
+			startTables := processedTables
+			startBytes := processedBytes
+			countTables, countBytes, err := cluster.loadTableColumns(sl, tablelist, func(pt int, pb int64) {
+				cluster.schemaMonitorUpdateSlaveProgress(startTables+pt, startBytes+pb, sl.URL)
+			})
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			processedTables = startTables + countTables
+			processedBytes = startBytes + countBytes
+		}
+
+		if cluster.Conf.MonitorSchemaIndexes {
+			startTables := processedTables
+			startBytes := processedBytes
+			countTables, countBytes, err := cluster.loadTableIndexes(sl, tablelist, func(pt int, pb int64) {
+				cluster.schemaMonitorUpdateSlaveProgress(startTables+pt, startBytes+pb, sl.URL)
+			})
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			processedTables = startTables + countTables
+			processedBytes = startBytes + countBytes
+		}
+
+		cluster.hashTableMetadata(tablelist)
+		sl.DictTables = dbhelper.FromNormalTablesMap(sl.DictTables, tables)
+		if err := cluster.SaveSchemaCache(sl); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Failed to save schema cache for %s: %s", sl.URL, err)
+		}
 	}
 
-	if sl.Conn == nil {
-		return fmt.Errorf("Slave connection is not established")
-	}
-
-	loglevel := config.LvlInfo
-	// Shardproxy will increase the intensity of monitoring, so set to debug
-	if cluster.Conf.MdbsProxyOn {
-		loglevel = config.LvlDbg
-	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, loglevel, "Monitoring slave table schema on %s", sl.URL)
-
-	sl.Conn.SetConnMaxLifetime(3595 * time.Second)
-	tables, tablelist, logs, err := dbhelper.GetTables(sl.Conn, sl.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes, cluster.Conf.MonitorSchemaScanTimeout)
-	cluster.LogSQL(logs, err, sl.URL, "Monitor", config.LvlDbg, "Could not fetch slave tables %s", err)
-	if err != nil {
-		return err
-	}
-	sl.Tables = tablelist
-	sl.DictTables = dbhelper.FromNormalTablesMap(sl.DictTables, tables)
-
-	return nil
+	return firstErr
 }
 
 func (cluster *Cluster) CompareSchemaBetweenMasterAndSlave(sl *ServerMonitor) ([]string, []string) {
@@ -2120,6 +2252,7 @@ func (cluster *Cluster) MonitorSchema() {
 		loglevel = config.LvlDbg
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, loglevel, "Starting schema monitoring")
+	cluster.schemaMonitorReset()
 
 	cluster.StateMachine.SetMonitorSchemaState()
 	defer func() {
@@ -2127,14 +2260,23 @@ func (cluster *Cluster) MonitorSchema() {
 		atomic.StoreInt32(&cluster.SchemaMonitorRequested, 0)
 	}()
 
-	err := cluster.MonitorMasterTableSchema()
-	if err != nil {
+	var schemaErr error
+	if err := cluster.MonitorMasterTableSchema(); err != nil {
+		schemaErr = err
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error during schema monitoring: %s", err)
 	}
 
 	if cluster.Conf.MonitorSchemaOnReplicas {
-		cluster.MonitorAllSlavesTableSchema()
+		if err := cluster.MonitorAllSlavesTableSchema(); err != nil && schemaErr == nil {
+			schemaErr = err
+		}
 	}
+
+	if schemaErr != nil {
+		cluster.schemaMonitorError(schemaErr)
+		return
+	}
+	cluster.schemaMonitorDone()
 }
 
 func (cluster *Cluster) MonitorQueryRules() {

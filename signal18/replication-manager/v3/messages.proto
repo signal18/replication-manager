@@ -195,6 +195,7 @@ message ClusterAction {
     WAITDATABASES = 18;
     REPLICATION_BOOTSTRAP = 19;
     REPLICATION_CLEANUP = 20;
+    REPAIR_TABLE = 21;
   }
   Action action = 3;
   message Server {
