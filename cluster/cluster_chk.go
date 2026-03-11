@@ -748,15 +748,21 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		return
 	}
 
-	for _, chunk := range chunks {
 
-		query := "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, CONCAT(" + rangeCondition+ ") as chunkRangeCondition,"  + bColumnListPredicate + " ," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk WHERE chunkId=? ) B on " + wherePredicate + " GROUP BY chunkId HAVING chunkId IS NOT NULL"
-		_, err := Conn.Exec(query, chunk.ChunkId)
+		query = "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, CONCAT(" + rangeCondition+ ") as chunkRangeCondition,"  + bColumnListPredicate + " ," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk WHERE chunkId=? ) B on " + wherePredicate + " GROUP BY chunkId HAVING chunkId IS NOT NULL"
+	stmt, err := Conn.Prepare(query)
+
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not prepare chunck %s %s", query, err)
+		return
+	}
+	defer stmt.Close()
+	for _, chunk := range chunks {
+		_, err := stmt.Exec(chunk.ChunkId)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
 			return
 		}
-                
 		/*
 		_, err2 := Conn.Exec("DELETE FROM replication_manager_schema.table_chunk WHERE chunkId=?",chunk.ChunkId)
 		if err2 != nil {
