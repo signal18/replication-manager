@@ -680,6 +680,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	wherePredicate := ""
 	columnDefPredicate := ""
 	columnListPredicate := ""
+	bColumnListPredicate := ""
 	shardListPredicate := ""
 	if len(pks) == 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,"Table %s.%s has no primary key, cannot create chunk table", schema, table)
@@ -692,12 +693,14 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 			columnDefPredicate += " , " 
 			wherePredicate += " AND "
 			columnListPredicate += " , "
+			bColumnListPredicate += " , "
 			shardListPredicate += " , "
 		}
 		columnType := cluster.master.GetTableColumDef(schema, table, p)
 		columnDefPredicate = columnDefPredicate + " Min_" + p + " " + columnType + ", Max_" + p + " " + columnType
 		wherePredicate = wherePredicate + " A." + p + " >= B.Min_" + p + " AND A." + p + "<= B.Max_" + p + " "
 		columnListPredicate = columnListPredicate + p + " "
+		bColumnListPredicate = bColumnListPredicate + " B.Min_" + p +" , B.Max_" + p   
 		shardListPredicate = shardListPredicate + " MIN(" + p + ") AS  Min_" + p + " , MAX(" + p + ") AS Max_" + p + " "
 	}
 
@@ -744,7 +747,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 
 	for _, chunk := range chunks {
 
-		query := "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, " + shardListPredicate + " ," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk WHERE chunkId=? ) B on " + wherePredicate + " GROUP BY chunkId HAVING chunkId IS NOT NULL"
+		query := "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, " + bColumnListPredicate + " ," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk WHERE chunkId=? ) B on " + wherePredicate + " GROUP BY chunkId HAVING chunkId IS NOT NULL"
 		_, err := Conn.Exec(query, chunk.ChunkId)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
