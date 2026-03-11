@@ -722,7 +722,7 @@ func (cluster *Cluster) resolveResticMountDirFromConfig(opts resticMountDirResol
 		base := filepath.Clean(filepath.Join(cluster.WorkingDir, resticDefaultMountSubdir))
 		// filepath.Rel does not resolve symlinks; callers should avoid untrusted bases.
 		rel, relErr := filepath.Rel(base, mountDir)
-		if relErr != nil || rel == "" || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		if relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			mountErr := fmt.Errorf("default mount dir %s escapes base %s", mountDir, base)
 			if relErr != nil {
 				mountErr = fmt.Errorf("failed to resolve default mount dir %s under base %s: %w", mountDir, base, relErr)
@@ -883,7 +883,7 @@ func (cluster *Cluster) sanitizeAndValidateResticMountOptions(mountOpt *backupmg
 	if meta.targetDirSource == "default" && meta.mountDirSource == "default" {
 		base := filepath.Clean(filepath.Join(cluster.WorkingDir, resticDefaultMountSubdir))
 		rel, relErr := filepath.Rel(base, mountOpt.TargetDir)
-		if relErr != nil || rel == "" || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		if relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			mountErr := fmt.Errorf("default restic mount dir %s escapes base %s", mountOpt.TargetDir, base)
 			if relErr != nil {
 				mountErr = fmt.Errorf("failed to resolve default restic mount dir %s under base %s: %w", mountOpt.TargetDir, base, relErr)
