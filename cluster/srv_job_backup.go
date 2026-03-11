@@ -10,8 +10,10 @@
 package cluster
 
 import (
+	"archive/tar"
 	"bufio"
 	"bytes"
+	stdgzip "compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -34,7 +36,6 @@ import (
 	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
-	rmcrypto "github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/misc"
 	river "github.com/signal18/replication-manager/utils/river"
 	"github.com/signal18/replication-manager/utils/splitdump"
@@ -43,6 +44,8 @@ import (
 
 var errJobCanceledByUser = errors.New("job canceled by user")
 var errBackupEncryptionUnsupported = errors.New("backup encryption supports files only")
+
+const backupEncryptionToolOpenSSLEnc = "openssl-enc"
 
 func (server *ServerMonitor) resolveBackupEncryptionPassphrase() string {
 	envPassphrase := strings.TrimSpace(os.Getenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE"))
@@ -84,6 +87,193 @@ func (server *ServerMonitor) resolveAdminAPIPasswordFromSecret(secretKey string)
 		}
 	}
 	return ""
+}
+
+func (server *ServerMonitor) ensureOpenSSLAvailableForBackup() error {
+	if server == nil || server.ClusterGroup == nil {
+		return errors.New("cluster group is nil")
+	}
+	if !server.ClusterGroup.Conf.BackupEncryptionEnabled {
+		return nil
+	}
+	if _, err := exec.LookPath("openssl"); err != nil {
+		return fmt.Errorf("backup encryption requires openssl binary in PATH: %w", err)
+	}
+	return nil
+}
+
+func normalizeBackupEncryptionDirectoryFormat(value string) string {
+	format := strings.ToLower(strings.TrimSpace(value))
+	switch format {
+	case "", "tar.gz":
+		return "tar.gz"
+	case "tar":
+		return "tar"
+	default:
+		return "tar.gz"
+	}
+}
+
+func archiveSuffixForDirectoryFormat(format string) string {
+	if format == "tar" {
+		return ".tar"
+	}
+	return ".tar.gz"
+}
+
+func writeTarArchiveFromDirectory(sourceDir string, writer io.Writer) error {
+	cleanSource := filepath.Clean(sourceDir)
+	rootParent := filepath.Dir(cleanSource)
+
+	tw := tar.NewWriter(writer)
+	defer tw.Close()
+
+	return filepath.Walk(cleanSource, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(rootParent, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+
+		var linkTarget string
+		if info.Mode()&os.ModeSymlink != 0 {
+			linkTarget, err = os.Readlink(path)
+			if err != nil {
+				return err
+			}
+		}
+
+		header, err := tar.FileInfoHeader(info, linkTarget)
+		if err != nil {
+			return err
+		}
+		header.Name = rel
+		if info.IsDir() && !strings.HasSuffix(header.Name, "/") {
+			header.Name += "/"
+		}
+
+		if err := tw.WriteHeader(header); err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(tw, file)
+		closeErr := file.Close()
+		if err != nil {
+			return err
+		}
+		return closeErr
+	})
+}
+
+func createDirectoryArchive(sourceDir, archivePath, format string) error {
+	file, err := os.Create(archivePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	if format == "tar" {
+		if err := writeTarArchiveFromDirectory(sourceDir, file); err != nil {
+			return err
+		}
+		return file.Sync()
+	}
+
+	gzw := stdgzip.NewWriter(file)
+	if err := writeTarArchiveFromDirectory(sourceDir, gzw); err != nil {
+		_ = gzw.Close()
+		return err
+	}
+	if err := gzw.Close(); err != nil {
+		return err
+	}
+	return file.Sync()
+}
+
+func (server *ServerMonitor) encryptDirectoryBackupMetadata(meta *backupmgr.BackupMetadata, backupKind string) error {
+	if server == nil {
+		return errors.New("server is nil")
+	}
+	if meta == nil {
+		return errors.New("backup metadata is nil")
+	}
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return errors.New("cluster group is nil")
+	}
+
+	sourceDir := strings.TrimSpace(meta.Dest)
+	if sourceDir == "" {
+		return errors.New("backup destination is empty")
+	}
+	info, err := os.Stat(sourceDir)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return errBackupEncryptionUnsupported
+	}
+
+	format := normalizeBackupEncryptionDirectoryFormat(cluster.Conf.BackupEncryptionDirectoryFormat)
+	archivePath := filepath.Clean(sourceDir) + archiveSuffixForDirectoryFormat(format)
+	archiveTmpPath := archivePath + ".tmp"
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+		"Archiving directory backup %s using format %s", sourceDir, format)
+	_ = os.Remove(archiveTmpPath)
+	if err := createDirectoryArchive(sourceDir, archiveTmpPath, format); err != nil {
+		return fmt.Errorf("failed to archive backup directory %s: %w", sourceDir, err)
+	}
+	archiveInfo, err := os.Stat(archiveTmpPath)
+	if err != nil {
+		_ = os.Remove(archiveTmpPath)
+		return err
+	}
+	if archiveInfo.Size() == 0 {
+		_ = os.Remove(archiveTmpPath)
+		return fmt.Errorf("archived backup is empty: %s", archiveTmpPath)
+	}
+	if err := os.Rename(archiveTmpPath, archivePath); err != nil {
+		_ = os.Remove(archiveTmpPath)
+		return err
+	}
+
+	workingMeta := *meta
+	workingMeta.Dest = archivePath
+	workingMeta.Compressed = format == "tar.gz"
+	keepPlainArchive := cluster.Conf.BackupEncryptionKeepPlainDir
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+		"Encrypting archived directory backup %s", archivePath)
+	if err := server.encryptBackupMetadataFile(&workingMeta, backupKind, keepPlainArchive); err != nil {
+		return err
+	}
+
+	if !cluster.Conf.BackupEncryptionKeepPlainDir {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Removing plaintext backup directory %s after successful encryption", sourceDir)
+		if err := os.RemoveAll(sourceDir); err != nil {
+			return fmt.Errorf("failed to remove plaintext backup directory %s: %w", sourceDir, err)
+		}
+	}
+
+	meta.Dest = workingMeta.Dest
+	meta.Encrypted = workingMeta.Encrypted
+	meta.EncryptionAlgo = workingMeta.EncryptionAlgo
+	meta.EncryptionTool = workingMeta.EncryptionTool
+	meta.Compressed = workingMeta.Compressed
+	meta.Size = workingMeta.Size
+	meta.FileCount = workingMeta.FileCount
+
+	return nil
 }
 
 func (server *ServerMonitor) JobBackupPhysical() error {
@@ -148,6 +338,10 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	}
 
 	cluster := server.ClusterGroup
+	if err := server.ensureOpenSSLAvailableForBackup(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", err)
+		return err
+	}
 	backupLine := server.resolveBackupLine(opts)
 	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
 	resticEnabled := server.shouldRunRestic(opts)
@@ -1436,6 +1630,8 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive flashback logical backup %s request for server: %s", backtype, server.URL)
+	restoreBackupPath := backupfile
+	var restoreCleanup func()
 
 	// If a custom script is configured, use it
 	if cluster.Conf.BackupLoadScript != "" {
@@ -1454,7 +1650,15 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 
 		// Handle mysqldump-based reseed
 	} else if backtype == config.ConstBackupLogicalTypeMysqldump {
-		err := server.reseedMysqldumpWithMetadata(context.Background(), backupfile, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser, source.LastBackupMeta.Logical)
+		var restorePrepErr error
+		restoreBackupPath, restoreCleanup, restorePrepErr = server.prepareEncryptedDirectoryLogicalRestorePath(backupfile, backtype)
+		if restorePrepErr != nil {
+			return restorePrepErr
+		}
+		if restoreCleanup != nil {
+			defer restoreCleanup()
+		}
+		err := server.reseedMysqldumpWithMetadata(context.Background(), restoreBackupPath, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser, source.LastBackupMeta.Logical)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flashback %s on %s: %s", backtype, server.URL, err.Error())
 			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
@@ -1474,7 +1678,15 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 
 		// Handle mydumper-based reseed
 	} else if backtype == config.ConstBackupLogicalTypeMydumper {
-		err := server.JobReseedMyLoader(backupfile, cluster.Conf.BackupRestoreMysqlUser)
+		var restorePrepErr error
+		restoreBackupPath, restoreCleanup, restorePrepErr = server.prepareEncryptedDirectoryLogicalRestorePath(backupfile, backtype)
+		if restorePrepErr != nil {
+			return restorePrepErr
+		}
+		if restoreCleanup != nil {
+			defer restoreCleanup()
+		}
+		err := server.JobReseedMyLoader(restoreBackupPath, cluster.Conf.BackupRestoreMysqlUser)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flashback %s on %s: %s", backtype, server.URL, err.Error())
 			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
@@ -1483,7 +1695,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 		} else {
 			// Parse metadata from mydumper
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")
-			meta, err2 := cluster.JobMyLoaderParseMeta(backupfile)
+			meta, err2 := cluster.JobMyLoaderParseMeta(restoreBackupPath)
 			if err2 != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err2)
 				err = err2
@@ -2430,6 +2642,10 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	}
 
 	cluster := server.ClusterGroup
+	if err := server.ensureOpenSSLAvailableForBackup(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", err)
+		return err
+	}
 	backupLine := server.resolveBackupLine(opts)
 	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
 	resticEnabled := server.shouldRunRestic(opts)
@@ -2718,11 +2934,23 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	}
 
 	if err == nil && cluster.Conf.BackupEncryptionEnabled && server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.Completed {
-		encryptErr := server.encryptBackupMetadataFile(server.LastBackupMeta.Logical, "logical")
-		if encryptErr != nil {
-			if errors.Is(encryptErr, errBackupEncryptionUnsupported) {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Skipping backup encryption for %s backup because destination is directory: %s", server.LastBackupMeta.Logical.BackupTool, server.LastBackupMeta.Logical.Dest)
+		sourcePath := strings.TrimSpace(server.LastBackupMeta.Logical.Dest)
+		sourceInfo, statErr := os.Stat(sourcePath)
+		if statErr != nil {
+			encryptErr := fmt.Errorf("failed to stat backup destination before encryption: %w", statErr)
+			err = fmt.Errorf("logical backup encryption failed for %s: %w", server.URL, encryptErr)
+			server.LastBackupMeta.Logical.Completed = false
+			if e2 := server.JobsUpdateState(server.LastBackupMeta.Logical.BackupTool, err.Error(), 5, 1); e2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+			}
+		} else {
+			var encryptErr error
+			if sourceInfo.IsDir() {
+				encryptErr = server.encryptDirectoryBackupMetadata(server.LastBackupMeta.Logical, "logical")
 			} else {
+				encryptErr = server.encryptBackupMetadataFile(server.LastBackupMeta.Logical, "logical", false)
+			}
+			if encryptErr != nil {
 				err = fmt.Errorf("logical backup encryption failed for %s: %w", server.URL, encryptErr)
 				server.LastBackupMeta.Logical.Completed = false
 				if e2 := server.JobsUpdateState(server.LastBackupMeta.Logical.BackupTool, err.Error(), 5, 1); e2 != nil {
@@ -2752,7 +2980,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	// No need to set it again here - it's already protecting the async operation
 	if resticEnabled && err == nil {
 		resticPath := server.GetMyBackupDirectory()
-		if isAdhoc && server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.Dest != "" {
+		if server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.Dest != "" {
 			resticPath = server.LastBackupMeta.Logical.Dest
 		}
 		// Note: BackupRestic handles its own error logging and flag clearing if prerequisites fail
@@ -3656,6 +3884,13 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		splitUser = meta.SplitUser
 	}
 	restoreUser := cluster.Conf.BackupRestoreMysqlUser && splitUser
+	restoreBackupPath, restoreCleanup, restorePrepErr := server.prepareEncryptedDirectoryLogicalRestorePath(backupfile, backupType)
+	if restorePrepErr != nil {
+		return restorePrepErr
+	}
+	if restoreCleanup != nil {
+		defer restoreCleanup()
+	}
 
 	// Set replication master to current master if not PITR
 	if !isPITR {
@@ -3686,9 +3921,9 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	var err error
 	if backupType == config.ConstBackupLogicalTypeMysqldump {
 		if skipMetadata {
-			err = server.reseedMysqldumpWithSplitdump(ctx, backupfile, restoreUser)
+			err = server.reseedMysqldumpWithSplitdump(ctx, restoreBackupPath, restoreUser)
 		} else {
-			err = server.reseedMysqldumpWithMetadata(ctx, backupfile, restoreUser, meta)
+			err = server.reseedMysqldumpWithMetadata(ctx, restoreBackupPath, restoreUser, meta)
 		}
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backupType, server.URL, err.Error())
@@ -3710,10 +3945,10 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	}
 
 	if backupType == config.ConstBackupLogicalTypeMydumper {
-		err = server.JobReseedMyLoader(backupfile, cluster.Conf.BackupRestoreMysqlUser)
+		err = server.JobReseedMyLoader(restoreBackupPath, cluster.Conf.BackupRestoreMysqlUser)
 		if err == nil && server.IsSlave && !isPITR {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")
-			meta, err2 := cluster.JobMyLoaderParseMeta(backupfile)
+			meta, err2 := cluster.JobMyLoaderParseMeta(restoreBackupPath)
 			if err2 != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err2)
 				err = err2
@@ -4074,7 +4309,7 @@ func (cluster *Cluster) CreateTmpClientConfFile() (string, error) {
 
 }
 
-func (server *ServerMonitor) encryptBackupMetadataFile(meta *backupmgr.BackupMetadata, backupKind string) error {
+func (server *ServerMonitor) encryptBackupMetadataFile(meta *backupmgr.BackupMetadata, backupKind string, keepPlainSource bool) error {
 	if server == nil {
 		return errors.New("server is nil")
 	}
@@ -4094,23 +4329,9 @@ func (server *ServerMonitor) encryptBackupMetadataFile(meta *backupmgr.BackupMet
 		return errBackupEncryptionUnsupported
 	}
 
-	plaintext, err := os.ReadFile(sourcePath)
-	if err != nil {
-		return err
-	}
 	password := server.resolveBackupEncryptionPassphrase()
 	if password == "" {
 		return errors.New("backup encryption passphrase is empty")
-	}
-
-	key := rmcrypto.GetSHA256Hash(password)
-	iv := rmcrypto.GetMD5Hash(password)
-	ciphertext, err := server.EncryptAES256(plaintext, key, iv)
-	if err != nil {
-		return err
-	}
-	if len(ciphertext) == 0 {
-		return errors.New("encrypted backup is empty")
 	}
 
 	tmpPath := sourcePath + ".enc.tmp"
@@ -4119,8 +4340,7 @@ func (server *ServerMonitor) encryptBackupMetadataFile(meta *backupmgr.BackupMet
 	if mode == 0 {
 		mode = 0600
 	}
-
-	if err := os.WriteFile(tmpPath, ciphertext, mode); err != nil {
+	if err := server.encryptBackupFileStream(sourcePath, tmpPath, password, mode); err != nil {
 		return err
 	}
 	encInfo, err := os.Stat(tmpPath)
@@ -4136,13 +4356,16 @@ func (server *ServerMonitor) encryptBackupMetadataFile(meta *backupmgr.BackupMet
 		_ = os.Remove(tmpPath)
 		return err
 	}
-	if err := os.Remove(sourcePath); err != nil {
-		return err
+	if !keepPlainSource {
+		if err := os.Remove(sourcePath); err != nil {
+			return err
+		}
 	}
 
 	meta.Dest = encPath
 	meta.Encrypted = true
 	meta.EncryptionAlgo = "aes-256-cbc"
+	meta.EncryptionTool = backupEncryptionToolOpenSSLEnc
 	if err := meta.GetSizeAndFileCount(); err != nil {
 		if server.ClusterGroup != nil {
 			server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to refresh encrypted %s backup metadata size for %s: %s", backupKind, server.URL, err)
@@ -4150,6 +4373,260 @@ func (server *ServerMonitor) encryptBackupMetadataFile(meta *backupmgr.BackupMet
 	}
 
 	return nil
+}
+
+func (server *ServerMonitor) runOpenSSLStream(sourcePath, destPath string, fileMode os.FileMode, args ...string) error {
+	input, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+
+	output, err := os.OpenFile(destPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, fileMode)
+	if err != nil {
+		return err
+	}
+	defer output.Close()
+
+	cmd := exec.Command("openssl", args...)
+	cmd.Stdin = input
+	cmd.Stdout = output
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		errMsg := strings.TrimSpace(stderr.String())
+		exitCode := -1
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			exitCode = exitErr.ExitCode()
+		}
+		if errMsg == "" {
+			if exitCode >= 0 {
+				return fmt.Errorf("openssl failed (exit=%d)", exitCode)
+			}
+			return err
+		}
+		if exitCode >= 0 {
+			return fmt.Errorf("openssl failed (exit=%d): %s", exitCode, errMsg)
+		}
+		return fmt.Errorf("openssl failed: %s", errMsg)
+	}
+
+	if err := output.Sync(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (server *ServerMonitor) encryptBackupFileStream(sourcePath, destPath, password string, fileMode os.FileMode) error {
+	args := []string{"enc", "-aes-256-cbc", "-a", "-salt", "-pass", "pass:" + password}
+	if err := server.runOpenSSLStream(sourcePath, destPath, fileMode, args...); err != nil {
+		_ = os.Remove(destPath)
+		return err
+	}
+	return nil
+}
+
+func (server *ServerMonitor) decryptBackupFileStream(sourcePath, destPath, password string, fileMode os.FileMode) error {
+	args := []string{"enc", "-d", "-aes-256-cbc", "-a", "-pass", "pass:" + password}
+	if err := server.runOpenSSLStream(sourcePath, destPath, fileMode, args...); err != nil {
+		_ = os.Remove(destPath)
+		return err
+	}
+	return nil
+}
+
+func isEncryptedDirectoryArchivePath(path string) bool {
+	lower := strings.ToLower(strings.TrimSpace(path))
+	return strings.HasSuffix(lower, ".tar.enc") || strings.HasSuffix(lower, ".tar.gz.enc")
+}
+
+func decryptedArchivePath(encPath string) string {
+	trimmed := strings.TrimSpace(encPath)
+	lower := strings.ToLower(trimmed)
+	if strings.HasSuffix(lower, ".enc") {
+		return trimmed[:len(trimmed)-4]
+	}
+	return trimmed + ".dec"
+}
+
+func (server *ServerMonitor) decryptBackupFileToPath(sourcePath, destPath string) error {
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return fmt.Errorf("cannot decrypt directory path: %s", sourcePath)
+	}
+
+	password := server.resolveBackupEncryptionPassphrase()
+	if password == "" {
+		return errors.New("backup encryption passphrase is empty")
+	}
+
+	tmpPath := destPath + ".tmp"
+	mode := info.Mode().Perm()
+	if mode == 0 {
+		mode = 0o600
+	}
+	if err := server.decryptBackupFileStream(sourcePath, tmpPath, password, mode); err != nil {
+		return err
+	}
+	if decInfo, err := os.Stat(tmpPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	} else if decInfo.Size() == 0 {
+		_ = os.Remove(tmpPath)
+		return errors.New("decrypted backup temp file is empty")
+	}
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	return nil
+
+}
+
+func extractArchiveToDir(archivePath, targetDir string) (string, error) {
+	archiveFile, err := os.Open(archivePath)
+	if err != nil {
+		return "", err
+	}
+	defer archiveFile.Close()
+
+	var archiveReader io.Reader = archiveFile
+	var gzipReader *stdgzip.Reader
+	lower := strings.ToLower(archivePath)
+	if strings.HasSuffix(lower, ".tar.gz") {
+		gzipReader, err = stdgzip.NewReader(archiveFile)
+		if err != nil {
+			return "", err
+		}
+		defer gzipReader.Close()
+		archiveReader = gzipReader
+	}
+
+	targetAbs, err := filepath.Abs(targetDir)
+	if err != nil {
+		return "", err
+	}
+
+	tr := tar.NewReader(archiveReader)
+	firstComponent := ""
+	for {
+		header, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+		name := filepath.Clean(strings.TrimSpace(header.Name))
+		if name == "." || name == "" {
+			continue
+		}
+		destPath := filepath.Join(targetAbs, name)
+		destAbs, err := filepath.Abs(destPath)
+		if err != nil {
+			return "", err
+		}
+		relToTarget, err := filepath.Rel(targetAbs, destAbs)
+		if err != nil {
+			return "", err
+		}
+		if relToTarget == ".." || strings.HasPrefix(relToTarget, ".."+string(filepath.Separator)) {
+			return "", fmt.Errorf("archive entry escapes target dir: %s", header.Name)
+		}
+
+		parts := strings.Split(filepath.ToSlash(name), "/")
+		if len(parts) > 0 && firstComponent == "" {
+			firstComponent = parts[0]
+		}
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(destAbs, os.FileMode(header.Mode)); err != nil {
+				return "", err
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			if err := os.MkdirAll(filepath.Dir(destAbs), 0o755); err != nil {
+				return "", err
+			}
+			out, err := os.OpenFile(destAbs, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.FileMode(header.Mode))
+			if err != nil {
+				return "", err
+			}
+			if _, err := io.Copy(out, tr); err != nil {
+				_ = out.Close()
+				return "", err
+			}
+			if err := out.Close(); err != nil {
+				return "", err
+			}
+		case tar.TypeSymlink:
+			if err := os.MkdirAll(filepath.Dir(destAbs), 0o755); err != nil {
+				return "", err
+			}
+			if err := os.Symlink(header.Linkname, destAbs); err != nil {
+				return "", err
+			}
+		default:
+			return "", fmt.Errorf("unsupported archive entry type %d for %s", header.Typeflag, header.Name)
+		}
+	}
+
+	if firstComponent == "" {
+		return "", errors.New("archive is empty")
+	}
+	extractedRoot := filepath.Join(targetAbs, firstComponent)
+	if _, err := os.Stat(extractedRoot); err != nil {
+		return "", err
+	}
+	return extractedRoot, nil
+}
+
+func (server *ServerMonitor) prepareEncryptedDirectoryLogicalRestorePath(backupPath, backupType string) (string, func(), error) {
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return "", nil, errors.New("cluster group is nil")
+	}
+	if !isEncryptedDirectoryArchivePath(backupPath) {
+		return backupPath, nil, nil
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+		"Preparing encrypted directory logical restore for %s from %s", backupType, backupPath)
+
+	tmpRoot, err := os.MkdirTemp("", "repman-logical-restore-*")
+	if err != nil {
+		return "", nil, err
+	}
+	cleanup := func() {
+		if err := os.RemoveAll(tmpRoot); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Failed to cleanup temporary logical restore path %s: %s", tmpRoot, err)
+		}
+	}
+
+	decryptedArchive := filepath.Join(tmpRoot, filepath.Base(decryptedArchivePath(backupPath)))
+	if err := server.decryptBackupFileToPath(backupPath, decryptedArchive); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("failed to decrypt backup archive %s: %w", backupPath, err)
+	}
+
+	extractDir := filepath.Join(tmpRoot, "extract")
+	if err := os.MkdirAll(extractDir, 0o755); err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	extractedRoot, err := extractArchiveToDir(decryptedArchive, extractDir)
+	if err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("failed to extract decrypted archive %s: %w", decryptedArchive, err)
+	}
+
+	return extractedRoot, cleanup, nil
 }
 
 func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
@@ -4167,7 +4644,7 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		backtype := "physical"
 		if cluster.Conf.BackupEncryptionEnabled && server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.Completed {
-			encryptErr := server.encryptBackupMetadataFile(server.LastBackupMeta.Physical, backtype)
+			encryptErr := server.encryptBackupMetadataFile(server.LastBackupMeta.Physical, backtype, false)
 			if encryptErr != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Physical backup encryption failed for %s: %s", server.URL, encryptErr)
 				server.LastBackupMeta.Physical.Completed = false

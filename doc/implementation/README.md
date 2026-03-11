@@ -25,6 +25,12 @@ Configuration management and refactoring documentation.
 - **QUICKSTART.md** - Quick start guide for configuration
 - **REFACTORING.md** - Refactoring documentation and decisions
 
+### `/backup/`
+Backup and encryption implementation documentation.
+
+- **BACKUP_ENCRYPTION_IMPLEMENTATION_PLAN.md** - Phase 1 single-file encryption plan
+- **BACKUP_ENCRYPTION_PHASE2_DIRECTORY_PLAN.md** - Phase 2 directory-based encryption plan
+
 ### `/ui-components/`
 Frontend UI component documentation.
 

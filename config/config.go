@@ -710,6 +710,8 @@ type Config struct {
 	BackupReseedRemoteDecompress              bool   `mapstructure:"backup-reseed-remote-decompress" toml:"backup-reseed-remote-decompress" json:"backupReseedRemoteDecompress"`
 	BackupEncryptionEnabled                   bool   `mapstructure:"backup-encryption-enabled" toml:"backup-encryption-enabled" json:"backupEncryptionEnabled"`
 	BackupEncryptionPassphrase                string `mapstructure:"backup-encryption-passphrase" toml:"backup-encryption-passphrase" json:"-"`
+	BackupEncryptionDirectoryFormat           string `mapstructure:"backup-encryption-directory-format" toml:"backup-encryption-directory-format" json:"backupEncryptionDirectoryFormat"`
+	BackupEncryptionKeepPlainDir              bool   `mapstructure:"backup-encryption-keep-plain-dir" toml:"backup-encryption-keep-plain-dir" json:"backupEncryptionKeepPlainDir"`
 	BackupSplitMysqlUser                      bool   `mapstructure:"backup-split-mysql-user" toml:"backup-split-mysql-user" json:"backupSplitMysqlUser"`
 	BackupRestoreMysqlUser                    bool   `mapstructure:"backup-restore-mysql-user" toml:"backup-restore-mysql-user" json:"backupRestoreMysqlUser"`
 	BackupSplitdumpFileSize                   string `mapstructure:"backup-splitdump-file-size" toml:"backup-splitdump-file-size" json:"backupSplitdumpFileSize"`

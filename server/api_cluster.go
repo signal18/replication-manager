@@ -2523,6 +2523,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchCompressBackups()
 	case "backup-encryption-enabled":
 		mycluster.Conf.BackupEncryptionEnabled = !mycluster.Conf.BackupEncryptionEnabled
+	case "backup-encryption-keep-plain-dir":
+		mycluster.Conf.BackupEncryptionKeepPlainDir = !mycluster.Conf.BackupEncryptionKeepPlainDir
 	case "backup-reseed-remote-decompress":
 		mycluster.Conf.BackupReseedRemoteDecompress = !mycluster.Conf.BackupReseedRemoteDecompress
 	case "backup-split-mysql-user":
@@ -3152,6 +3154,18 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupReseedRemoteDecompress = applyIsActive(mycluster.Conf.BackupReseedRemoteDecompress, isactive)
 	case "backup-encryption-enabled":
 		mycluster.Conf.BackupEncryptionEnabled = applyIsActive(mycluster.Conf.BackupEncryptionEnabled, isactive)
+	case "backup-encryption-keep-plain-dir":
+		mycluster.Conf.BackupEncryptionKeepPlainDir = applyIsActive(mycluster.Conf.BackupEncryptionKeepPlainDir, isactive)
+	case "backup-encryption-directory-format":
+		format := strings.ToLower(strings.TrimSpace(value))
+		switch format {
+		case "", "tar.gz":
+			mycluster.Conf.BackupEncryptionDirectoryFormat = "tar.gz"
+		case "tar":
+			mycluster.Conf.BackupEncryptionDirectoryFormat = "tar"
+		default:
+			return fmt.Errorf("invalid value for backup-encryption-directory-format: %q (allowed: tar.gz|tar)", value)
+		}
 	case "backup-encryption-passphrase":
 		mycluster.Conf.BackupEncryptionPassphrase = strings.TrimSpace(value)
 		var newSecret config.Secret
