@@ -3166,6 +3166,16 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		default:
 			return fmt.Errorf("invalid value for backup-encryption-directory-format: %q (allowed: tar.gz|tar)", value)
 		}
+	case "backup-encryption-directory-mode":
+		mode := strings.ToLower(strings.TrimSpace(value))
+		switch mode {
+		case "", "archive":
+			mycluster.Conf.BackupEncryptionDirectoryMode = "archive"
+		case "per-file":
+			mycluster.Conf.BackupEncryptionDirectoryMode = "per-file"
+		default:
+			return fmt.Errorf("invalid value for backup-encryption-directory-mode: %q (allowed: archive|per-file)", value)
+		}
 	case "backup-encryption-passphrase":
 		mycluster.Conf.BackupEncryptionPassphrase = strings.TrimSpace(value)
 		var newSecret config.Secret

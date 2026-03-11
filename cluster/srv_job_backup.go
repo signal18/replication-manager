@@ -46,6 +46,8 @@ var errJobCanceledByUser = errors.New("job canceled by user")
 var errBackupEncryptionUnsupported = errors.New("backup encryption supports files only")
 
 const backupEncryptionToolOpenSSLEnc = "openssl-enc"
+const backupEncryptionModeArchive = "archive"
+const backupEncryptionModePerFile = "per-file"
 
 func (server *ServerMonitor) resolveBackupEncryptionPassphrase() string {
 	envPassphrase := strings.TrimSpace(os.Getenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE"))
@@ -111,6 +113,18 @@ func normalizeBackupEncryptionDirectoryFormat(value string) string {
 		return "tar"
 	default:
 		return "tar.gz"
+	}
+}
+
+func normalizeBackupEncryptionDirectoryMode(value string) string {
+	mode := strings.ToLower(strings.TrimSpace(value))
+	switch mode {
+	case "", backupEncryptionModeArchive:
+		return backupEncryptionModeArchive
+	case backupEncryptionModePerFile:
+		return backupEncryptionModePerFile
+	default:
+		return backupEncryptionModeArchive
 	}
 }
 
@@ -200,6 +214,97 @@ func createDirectoryArchive(sourceDir, archivePath, format string) error {
 	return file.Sync()
 }
 
+func (server *ServerMonitor) encryptBackupDirectoryPerFile(sourceDir string, keepPlain bool) (int, error) {
+	cluster := server.ClusterGroup
+	encryptedCount := 0
+	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if !info.Mode().IsRegular() {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Skipping non-regular file during per-file encryption: %s", path)
+			return nil
+		}
+		if strings.HasSuffix(strings.ToLower(path), ".enc") {
+			return nil
+		}
+
+		password := server.resolveBackupEncryptionPassphrase()
+		if password == "" {
+			return errors.New("backup encryption passphrase is empty")
+		}
+		mode := info.Mode().Perm()
+		if mode == 0 {
+			mode = 0o600
+		}
+		encPath := path + ".enc"
+		if err := server.encryptBackupFileStream(path, encPath, password, mode); err != nil {
+			return fmt.Errorf("failed to encrypt %s: %w", path, err)
+		}
+		encInfo, err := os.Stat(encPath)
+		if err != nil {
+			return err
+		}
+		if encInfo.Size() == 0 {
+			_ = os.Remove(encPath)
+			return fmt.Errorf("encrypted file is empty: %s", encPath)
+		}
+		if !keepPlain {
+			if err := os.Remove(path); err != nil {
+				return fmt.Errorf("failed to remove plaintext file %s: %w", path, err)
+			}
+		}
+		encryptedCount++
+		return nil
+	})
+	if err != nil {
+		return encryptedCount, err
+	}
+	if encryptedCount == 0 {
+		return 0, errors.New("no regular files encrypted in directory")
+	}
+	return encryptedCount, nil
+}
+
+func (server *ServerMonitor) decryptBackupDirectoryPerFile(sourceDir string) (int, error) {
+	decryptedCount := 0
+	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		if !strings.HasSuffix(strings.ToLower(path), ".enc") {
+			return nil
+		}
+
+		destPath := strings.TrimSuffix(path, ".enc")
+		if err := server.decryptBackupFileToPath(path, destPath); err != nil {
+			return fmt.Errorf("failed to decrypt %s: %w", path, err)
+		}
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("failed to remove encrypted file %s after decrypt: %w", path, err)
+		}
+		decryptedCount++
+		return nil
+	})
+	if err != nil {
+		return decryptedCount, err
+	}
+	if decryptedCount == 0 {
+		return 0, errors.New("no encrypted files found for per-file decrypt")
+	}
+	return decryptedCount, nil
+}
+
 func (server *ServerMonitor) encryptDirectoryBackupMetadata(meta *backupmgr.BackupMetadata, backupKind string) error {
 	if server == nil {
 		return errors.New("server is nil")
@@ -222,6 +327,27 @@ func (server *ServerMonitor) encryptDirectoryBackupMetadata(meta *backupmgr.Back
 	}
 	if !info.IsDir() {
 		return errBackupEncryptionUnsupported
+	}
+
+	mode := normalizeBackupEncryptionDirectoryMode(cluster.Conf.BackupEncryptionDirectoryMode)
+	if mode == backupEncryptionModePerFile {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Encrypting directory backup %s using per-file mode", sourceDir)
+		encryptedCount, err := server.encryptBackupDirectoryPerFile(sourceDir, cluster.Conf.BackupEncryptionKeepPlainDir)
+		if err != nil {
+			return err
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Encrypted %d files in directory backup %s", encryptedCount, sourceDir)
+		meta.Dest = sourceDir
+		meta.Encrypted = true
+		meta.EncryptionAlgo = "aes-256-cbc"
+		meta.EncryptionTool = backupEncryptionToolOpenSSLEnc
+		meta.EncryptionMode = backupEncryptionModePerFile
+		if err := meta.GetSizeAndFileCount(); err != nil {
+			return err
+		}
+		return nil
 	}
 
 	format := normalizeBackupEncryptionDirectoryFormat(cluster.Conf.BackupEncryptionDirectoryFormat)
@@ -269,6 +395,7 @@ func (server *ServerMonitor) encryptDirectoryBackupMetadata(meta *backupmgr.Back
 	meta.Encrypted = workingMeta.Encrypted
 	meta.EncryptionAlgo = workingMeta.EncryptionAlgo
 	meta.EncryptionTool = workingMeta.EncryptionTool
+	meta.EncryptionMode = backupEncryptionModeArchive
 	meta.Compressed = workingMeta.Compressed
 	meta.Size = workingMeta.Size
 	meta.FileCount = workingMeta.FileCount
@@ -1651,7 +1778,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 		// Handle mysqldump-based reseed
 	} else if backtype == config.ConstBackupLogicalTypeMysqldump {
 		var restorePrepErr error
-		restoreBackupPath, restoreCleanup, restorePrepErr = server.prepareEncryptedDirectoryLogicalRestorePath(backupfile, backtype)
+		restoreBackupPath, restoreCleanup, restorePrepErr = server.prepareEncryptedDirectoryLogicalRestorePath(backupfile, backtype, source.LastBackupMeta.Logical)
 		if restorePrepErr != nil {
 			return restorePrepErr
 		}
@@ -1679,7 +1806,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 		// Handle mydumper-based reseed
 	} else if backtype == config.ConstBackupLogicalTypeMydumper {
 		var restorePrepErr error
-		restoreBackupPath, restoreCleanup, restorePrepErr = server.prepareEncryptedDirectoryLogicalRestorePath(backupfile, backtype)
+		restoreBackupPath, restoreCleanup, restorePrepErr = server.prepareEncryptedDirectoryLogicalRestorePath(backupfile, backtype, source.LastBackupMeta.Logical)
 		if restorePrepErr != nil {
 			return restorePrepErr
 		}
@@ -3884,7 +4011,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		splitUser = meta.SplitUser
 	}
 	restoreUser := cluster.Conf.BackupRestoreMysqlUser && splitUser
-	restoreBackupPath, restoreCleanup, restorePrepErr := server.prepareEncryptedDirectoryLogicalRestorePath(backupfile, backupType)
+	restoreBackupPath, restoreCleanup, restorePrepErr := server.prepareEncryptedDirectoryLogicalRestorePath(backupfile, backupType, meta)
 	if restorePrepErr != nil {
 		return restorePrepErr
 	}
@@ -4366,6 +4493,7 @@ func (server *ServerMonitor) encryptBackupMetadataFile(meta *backupmgr.BackupMet
 	meta.Encrypted = true
 	meta.EncryptionAlgo = "aes-256-cbc"
 	meta.EncryptionTool = backupEncryptionToolOpenSSLEnc
+	meta.EncryptionMode = backupEncryptionModeArchive
 	if err := meta.GetSizeAndFileCount(); err != nil {
 		if server.ClusterGroup != nil {
 			server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to refresh encrypted %s backup metadata size for %s: %s", backupKind, server.URL, err)
@@ -4586,12 +4714,37 @@ func extractArchiveToDir(archivePath, targetDir string) (string, error) {
 	return extractedRoot, nil
 }
 
-func (server *ServerMonitor) prepareEncryptedDirectoryLogicalRestorePath(backupPath, backupType string) (string, func(), error) {
+func inferBackupEncryptionMode(meta *backupmgr.BackupMetadata, backupPath string) string {
+	if meta != nil {
+		mode := normalizeBackupEncryptionDirectoryMode(meta.EncryptionMode)
+		if mode == backupEncryptionModePerFile {
+			return backupEncryptionModePerFile
+		}
+	}
+	if isEncryptedDirectoryArchivePath(backupPath) {
+		return backupEncryptionModeArchive
+	}
+	return ""
+}
+
+func (server *ServerMonitor) prepareEncryptedDirectoryLogicalRestorePath(backupPath, backupType string, meta *backupmgr.BackupMetadata) (string, func(), error) {
 	cluster := server.ClusterGroup
 	if cluster == nil {
 		return "", nil, errors.New("cluster group is nil")
 	}
-	if !isEncryptedDirectoryArchivePath(backupPath) {
+	mode := inferBackupEncryptionMode(meta, backupPath)
+	if mode == "" {
+		return backupPath, nil, nil
+	}
+	if mode == backupEncryptionModePerFile {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Preparing per-file encrypted logical restore for %s from %s", backupType, backupPath)
+		decryptedCount, err := server.decryptBackupDirectoryPerFile(backupPath)
+		if err != nil {
+			return "", nil, err
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Decrypted %d encrypted files for logical restore from %s", decryptedCount, backupPath)
 		return backupPath, nil, nil
 	}
 

@@ -78,6 +78,7 @@ OpenSSL compatibility details
   - `Encrypted = true`.
   - `EncryptionAlgo = "aes-256-cbc"`.
   - `EncryptionTool = "openssl-enc"`.
+  - `EncryptionMode = "archive"|"per-file"`.
 - Track archive mode in metadata extension field or log context:
   - `tar` or `tar.gz`.
 
@@ -97,6 +98,7 @@ OpenSSL compatibility details
 Configuration Additions
 
 - `backup-encryption-directory-format` (string): `tar.gz` (default) or `tar`.
+- `backup-encryption-directory-mode` (string): `archive` (default) or `per-file`.
 - `backup-encryption-keep-plain-dir` (bool): default `false`.
   - `true` reserved for debugging and transitional operations.
 
