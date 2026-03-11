@@ -709,7 +709,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	chunkSize := 2000
 	query := "CREATE OR REPLACE TABLE replication_manager_schema.table_chunk ENGINE=INNODB " +
 		"SELECT FLOOR((@rows:=@rows+1/" + fmt.Sprintf("%d", chunkSize) + ")) as chunkId, "
-	query = query + shardListPredicate + " FROM " + schema + "." + table + " , (SELECT @rows:=0 FROM DUAL) A group by chunkId"
+	query = query + shardListPredicate + " FROM " + schema + "." + table + " FORCE INDEX(PRIMARY), (SELECT @rows:=0 FROM DUAL) A group by chunkId"
 
 	_, err = Conn.Exec(query)
 	if err != nil {
