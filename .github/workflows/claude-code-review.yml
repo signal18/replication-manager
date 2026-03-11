@@ -60,3 +60,4 @@ jobs:
           # or https://code.claude.com/docs/en/cli-reference for available options
           claude_args: |
             --max-turns 20
+            --allowedTools "Bash(gh:*)"
