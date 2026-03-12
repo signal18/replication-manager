@@ -101,6 +101,7 @@ type ResticChangePassOption struct {
 // ResticInitOption holds the configuration for init
 type ResticInitOption struct {
 	Force             bool   `json:"force,omitempty"`
+	AllowEmptyPrefix  bool   `json:"allow_empty_prefix,omitempty"`
 	RepositoryVersion string `json:"repository_version,omitempty"` // e.g., "stable", "latest", "1", "2"
 	CopyChunkerParams bool   `json:"copy_chunker_params,omitempty"`
 	FromRepo          string `json:"from_repo,omitempty"`
@@ -3285,6 +3286,13 @@ func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 				repo.setInitErrorBackoff(err)
 				return err
 			}
+			if prefix == "" && !opt.AllowEmptyPrefix {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("refusing to force init S3 repository with empty prefix (entire bucket). set allow_empty_prefix to proceed")
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
 			client, err := s3helper.NewClient(repo.AwsAccessKeyID, repo.AwsSecretAccessKey, "", repo.AwsRegion, endpoint)
 			if err != nil {
 				repo.CanInitRepo = false
@@ -3293,7 +3301,8 @@ func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 				repo.setInitErrorBackoff(err)
 				return err
 			}
-			if err := s3helper.DeletePrefix(client, bucket, prefix); err != nil {
+			deleteOptions := s3helper.DeletePrefixOptions{RequireNonEmptyPrefix: !opt.AllowEmptyPrefix}
+			if err := s3helper.DeletePrefixWithOptions(client, bucket, prefix, deleteOptions); err != nil {
 				repo.CanInitRepo = false
 				err = fmt.Errorf("failed to delete S3 repository prefix: %w", err)
 				repo.SetError(InitTask, err)

@@ -404,10 +404,15 @@ export const resticQueueResume = createGuardedAsyncThunk(
 
 export const resticInitRepo = createGuardedAsyncThunk(
   'cluster/resticInitRepo',
-  async ({ clusterName, force = false }, thunkAPI) => {
+  async ({ clusterName, force = false, allowEmptyPrefix = false }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.resticInitRepo(clusterName, force, baseURL)
+      const { data, status } = await clusterService.resticInitRepo(
+        clusterName,
+        force,
+        { allowEmptyPrefix },
+        baseURL
+      )
       return { data, status }
     } catch (error) {
       return handleError(error, thunkAPI)

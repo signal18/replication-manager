@@ -7663,6 +7663,7 @@ func (repman *ReplicationManager) handlerMuxResticUnlock(w http.ResponseWriter, 
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param force path string false "Force init" Enums(force)
+// @Param body body backupmgr.ResticInitOption false "Init options"
 // @Success 200 {string} string "Restic repository initialized"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
@@ -7675,7 +7676,14 @@ func (repman *ReplicationManager) handlerMuxResticInitRepo(w http.ResponseWriter
 			force = true
 		}
 
-		err := mycluster.ResticInitRepo(force)
+		var initOptions backupmgr.ResticInitOption
+		if err := json.NewDecoder(r.Body).Decode(&initOptions); err != nil && err != io.EOF {
+			http.Error(w, "Error decoding request body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		initOptions.Force = force
+
+		err := mycluster.ResticInitRepoWithOptions(initOptions)
 		if err != nil {
 			http.Error(w, "Error initializing restic repository: "+err.Error(), http.StatusInternalServerError)
 			return

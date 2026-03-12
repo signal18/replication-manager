@@ -546,6 +546,10 @@ func (cluster *Cluster) StartResticManager() error {
 }
 
 func (cluster *Cluster) ResticInitRepo(force bool) error {
+	return cluster.ResticInitRepoWithOptions(backupmgr.ResticInitOption{Force: force})
+}
+
+func (cluster *Cluster) ResticInitRepoWithOptions(options backupmgr.ResticInitOption) error {
 	if !cluster.Conf.BackupRestic {
 		return nil
 	}
@@ -554,7 +558,7 @@ func (cluster *Cluster) ResticInitRepo(force bool) error {
 		cluster.StartResticManager()
 	}
 
-	err := cluster.ResticManager.InitRepo(force)
+	err := cluster.ResticManager.InitRepoWithOptions(options)
 	if err != nil {
 		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
 	}

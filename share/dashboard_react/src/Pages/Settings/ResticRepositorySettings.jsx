@@ -150,7 +150,8 @@ function ResticRepositorySettings({
     try {
       await dispatch(resticInitRepo({ 
         clusterName, 
-        force: initForce
+        force: initForce,
+        allowEmptyPrefix: confirmEmptyPrefix
       })).unwrap()
       
       onCloseInitModal()
