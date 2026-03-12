@@ -858,14 +858,41 @@ func (cluster *Cluster) RepairTableChecksum(schema string, table string) {
 			t.TableSync = ""
 			cluster.master.DictTables.Set(schema+"."+table, t)
 			for i, chunk := range ts.TableChunksError {
-
-				query := "REPLACE INTO " + schema + "." + table + " SELECT * FROM " + schema + "." + table + " A WHERE  " + chunk.ChunkRangeCondition + " FOR UPDATE"
+				query := "start transaction "
+				_, err = Conn.Exec(query)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
+					return
+				}
+				query = "CREATE OR REPLACE TEMPORARY TABLE tmp_repair AS SELECT * FROM " + schema + "." + table + " A WHERE  " + chunk.ChunkRangeCondition + " FOR UPDATE"
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair chunk %d/%d %s", i, len(ts.TableChunksError), query)
 				_, err = Conn.Exec(query)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
 					return
 				}
+				query = "DELETE FROM " + schema + "." + table + " A WHERE  " + chunk.ChunkRangeCondition
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair chunk %d/%d %s", i, len(ts.TableChunksError), query)
+				_, err = Conn.Exec(query)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
+					return
+				}
+				query = "INSERT INTO " + schema + "." + table + " SELECT * FROM  tmp_repair"
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair chunk %d/%d %s", i, len(ts.TableChunksError), query)
+				_, err = Conn.Exec(query)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
+					return
+				}
+				query = "COMMIT"
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair chunk %d/%d %s", i, len(ts.TableChunksError), query)
+				_, err = Conn.Exec(query)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
+					return
+				}
+
 			}
 			//  Empry the slice of chunk errors
 			ts.TableChunksError = ts.TableChunksError[:0]
