@@ -922,3 +922,121 @@ func TestReconcileSnapshotMetadata_EmptyReport(t *testing.T) {
 		t.Errorf("Expected 0 missing metadata, got %d", len(report.MissingMetadata))
 	}
 }
+
+func TestBuildResticS3RepoSpecAppendCluster(t *testing.T) {
+	repo, prefix := buildResticS3RepoSpec("https://s3.example.com", "bucket", "base", "cluster1", true)
+	if repo != "s3:https://s3.example.com/bucket/base/cluster1" {
+		t.Fatalf("unexpected repo path: %s", repo)
+	}
+	if prefix != "base/cluster1" {
+		t.Fatalf("unexpected prefix: %s", prefix)
+	}
+
+	repo, prefix = buildResticS3RepoSpec("", "bucket", "base", "cluster1", false)
+	if repo != "s3:bucket/base" {
+		t.Fatalf("unexpected repo path: %s", repo)
+	}
+	if prefix != "base" {
+		t.Fatalf("unexpected prefix: %s", prefix)
+	}
+
+	repo, prefix = buildResticS3RepoSpec("", "cluster1", "", "cluster1", true)
+	if repo != "s3:cluster1" {
+		t.Fatalf("unexpected repo path: %s", repo)
+	}
+	if prefix != "" {
+		t.Fatalf("unexpected prefix: %s", prefix)
+	}
+
+	repo, prefix = buildResticS3RepoSpec("", "bucket", "base/cluster1", "cluster1", true)
+	if repo != "s3:bucket/base/cluster1" {
+		t.Fatalf("unexpected repo path: %s", repo)
+	}
+	if prefix != "base/cluster1" {
+		t.Fatalf("unexpected prefix: %s", prefix)
+	}
+}
+
+func TestResolveResticRepoAppendClusterGuards(t *testing.T) {
+	conf := &config.Config{BackupResticRepoAppendCluster: false}
+	cluster := &Cluster{Conf: conf, Name: "cluster1"}
+	cluster.Conf.WorkingDir = "/var/lib/repman"
+
+	localRepo, shouldAppend := resolveResticRepoPolicy(conf, "", cluster)
+	if !shouldAppend {
+		t.Fatalf("expected guardrail to force append when local repo is empty")
+	}
+	if localRepo != "" {
+		t.Fatalf("expected local repo to remain empty when not configured")
+	}
+
+	defaultParent := filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "archive")
+	conf.BackupResticLocalRepository = defaultParent
+	localRepo, shouldAppend = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
+	if !shouldAppend {
+		t.Fatalf("expected guardrail to force append when local repo is within default parent")
+	}
+	if localRepo != "" {
+		t.Fatalf("expected local repo to be rejected when within default parent")
+	}
+
+	conf.BackupResticLocalRepository = filepath.Join(defaultParent, "cluster1")
+	localRepo, shouldAppend = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
+	if !shouldAppend {
+		t.Fatalf("expected guardrail to force append when local repo is within default parent")
+	}
+	if localRepo != "" {
+		t.Fatalf("expected local repo to be rejected when within default parent subdir")
+	}
+
+	conf.BackupResticLocalRepository = "/custom/restic"
+	localRepo, shouldAppend = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
+	if shouldAppend {
+		t.Fatalf("expected append to remain disabled with custom local repo")
+	}
+	if localRepo != "/custom/restic" {
+		t.Fatalf("expected local repo to be accepted when outside default parent")
+	}
+
+	conf.BackupResticRepoAppendCluster = true
+	conf.BackupResticLocalRepository = "/custom/cluster1"
+	localRepo, shouldAppend = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
+	if !shouldAppend {
+		t.Fatalf("expected append to remain enabled with custom local repo")
+	}
+	if localRepo != "/custom/cluster1" {
+		t.Fatalf("expected local repo to be accepted when outside default parent")
+	}
+}
+
+func TestResticS3EffectivePrefixForInit(t *testing.T) {
+	cluster := &Cluster{Conf: &config.Config{}, Name: "cluster1"}
+	cluster.Conf.WorkingDir = "/var/lib/repman"
+	cluster.Conf.BackupResticAws = true
+	cluster.Conf.BackupResticAwsBucket = "bucket"
+	cluster.Conf.BackupResticAwsPrefix = ""
+	cluster.Conf.BackupResticRepoAppendCluster = true
+
+	effective, ok := cluster.ResticS3EffectivePrefixForInit()
+	if !ok {
+		t.Fatalf("expected effective prefix to be available")
+	}
+	if effective != "cluster1" {
+		t.Fatalf("expected effective prefix cluster1, got %s", effective)
+	}
+
+	cluster.Conf.BackupResticAwsPrefix = "base"
+	effective, ok = cluster.ResticS3EffectivePrefixForInit()
+	if !ok {
+		t.Fatalf("expected effective prefix to be available")
+	}
+	if effective != "base/cluster1" {
+		t.Fatalf("expected effective prefix base/cluster1, got %s", effective)
+	}
+
+	cluster.Conf.BackupResticAwsPrefix = "base/cluster1"
+	effective, ok = cluster.ResticS3EffectivePrefixForInit()
+	if ok {
+		t.Fatalf("expected no update when prefix already ends with cluster name")
+	}
+}

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,14 +17,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/creack/pty"
 	"github.com/signal18/replication-manager/utils/misc"
 	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
+	"github.com/signal18/replication-manager/utils/s3helper"
 	"github.com/sirupsen/logrus"
 )
 
@@ -106,6 +101,7 @@ type ResticChangePassOption struct {
 // ResticInitOption holds the configuration for init
 type ResticInitOption struct {
 	Force             bool   `json:"force,omitempty"`
+	AllowEmptyPrefix  bool   `json:"allow_empty_prefix,omitempty"`
 	RepositoryVersion string `json:"repository_version,omitempty"` // e.g., "stable", "latest", "1", "2"
 	CopyChunkerParams bool   `json:"copy_chunker_params,omitempty"`
 	FromRepo          string `json:"from_repo,omitempty"`
@@ -318,6 +314,12 @@ type TaskStatus struct {
 type ResticManager struct {
 	BinaryPath           string
 	Env                  []string
+	AwsAccessKeyID       string
+	AwsSecretAccessKey   string
+	AwsRegion            string
+	AwsEndpoint          string
+	AwsBucket            string
+	AwsPrefix            string
 	Backups              []BackupSnapshot
 	BackupMap            map[string]*BackupSnapshot
 	BackupStat           BackupStat
@@ -543,6 +545,16 @@ func (repo *ResticManager) ClearInitErrorBackoffManual() {
 
 func (repo *ResticManager) SetEnv(env []string) {
 	repo.Env = env
+}
+
+// SetAwsConfig updates AWS settings for S3 repository handling.
+func (repo *ResticManager) SetAwsConfig(accessKeyID, secretAccessKey, region, endpoint, bucket, prefix string) {
+	repo.AwsAccessKeyID = accessKeyID
+	repo.AwsSecretAccessKey = secretAccessKey
+	repo.AwsRegion = region
+	repo.AwsEndpoint = endpoint
+	repo.AwsBucket = bucket
+	repo.AwsPrefix = prefix
 }
 
 // UpdateEnvKey updates the environment variable for the Restic repository
@@ -2865,179 +2877,20 @@ func parseS3URL(repoPath string) (bucket, prefix, endpoint string, err error) {
 	return bucket, prefix, endpoint, nil
 }
 
-// createS3Client creates AWS S3 client with MinIO compatibility
-func (repo *ResticManager) createS3Client(endpoint string) (*s3.S3, error) {
-	// Extract credentials from environment
-	accessKey := repo.getEnvValue("AWS_ACCESS_KEY_ID")
-	secretKey := repo.getEnvValue("AWS_SECRET_ACCESS_KEY")
-	sessionToken := repo.getEnvValue("AWS_SESSION_TOKEN")
-	region := repo.getEnvValue("AWS_REGION")
-	if region == "" {
-		region = repo.getEnvValue("AWS_DEFAULT_REGION")
+func (repo *ResticManager) resolveS3RepoSpec(repopath string) (bucket, prefix, endpoint string, err error) {
+	bucket = strings.TrimSpace(repo.AwsBucket)
+	prefix = strings.Trim(repo.AwsPrefix, "/")
+	endpoint = strings.TrimSpace(repo.AwsEndpoint)
+	if bucket == "" {
+		return parseS3URL(repopath)
 	}
-
-	// Create credentials
-	var creds *credentials.Credentials
-	if accessKey != "" && secretKey != "" {
-		if sessionToken != "" {
-			creds = credentials.NewStaticCredentials(accessKey, secretKey, sessionToken)
-		} else {
-			creds = credentials.NewStaticCredentials(accessKey, secretKey, "")
-		}
-	} else {
-		return nil, fmt.Errorf("AWS credentials not found (set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)")
-	}
-
-	// Create AWS config (MinIO-compatible)
-	awsConfig := &aws.Config{
-		Region:           aws.String(region),
-		Credentials:      creds,
-		S3ForcePathStyle: aws.Bool(true), // Required for MinIO
-	}
-
-	// Set custom endpoint
-	if endpoint != "" {
-		awsConfig.Endpoint = aws.String(endpoint)
-	}
-
-	awsConfig.HTTPClient = &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	// Create session
-	sess, err := session.NewSession(awsConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create AWS session: %w", err)
-	}
-
-	return s3.New(sess), nil
-}
-
-// checkS3ObjectExists checks if an object exists in S3 bucket
-func checkS3ObjectExists(client *s3.S3, bucket, key string) (bool, error) {
-	_, err := client.HeadObject(&s3.HeadObjectInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String(key),
-	})
-
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case "NotFound", s3.ErrCodeNoSuchKey:
-				return false, nil
-			case "Forbidden":
-				return false, fmt.Errorf("access denied to S3 object %s/%s (check credentials/permissions)", bucket, key)
-			}
-		}
-		return false, fmt.Errorf("S3 HeadObject failed: %w", err)
-	}
-
-	return true, nil
-}
-
-// listS3Prefix checks if any objects exist with the given prefix
-func listS3Prefix(client *s3.S3, bucket, prefix string) (bool, error) {
-	result, err := client.ListObjectsV2(&s3.ListObjectsV2Input{
-		Bucket:  aws.String(bucket),
-		Prefix:  aws.String(prefix),
-		MaxKeys: aws.Int64(1), // Only need to know if ANY exist
-	})
-
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case s3.ErrCodeNoSuchBucket:
-				return false, fmt.Errorf("S3 bucket not found: %s (create it first or check name)", bucket)
-			case "Forbidden":
-				return false, fmt.Errorf("access denied to S3 bucket: %s (check credentials/permissions)", bucket)
-			}
-		}
-		return false, fmt.Errorf("S3 ListObjects failed: %w", err)
-	}
-
-	return len(result.Contents) > 0, nil
-}
-
-// deleteS3RepoPrefix deletes all objects under the given prefix (or entire bucket if prefix is empty)
-func deleteS3RepoPrefix(client *s3.S3, bucket, prefix string) error {
-	var continuation *string
-
-	for {
-		input := &s3.ListObjectsV2Input{
-			Bucket: aws.String(bucket),
-			Prefix: aws.String(prefix),
-		}
-		if continuation != nil {
-			input.ContinuationToken = continuation
-		}
-
-		result, err := client.ListObjectsV2(input)
-		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				switch aerr.Code() {
-				case s3.ErrCodeNoSuchBucket:
-					return fmt.Errorf("S3 bucket not found: %s (create it first or check name)", bucket)
-				case "Forbidden":
-					return fmt.Errorf("access denied to S3 bucket: %s (check credentials/permissions)", bucket)
-				}
-			}
-			return fmt.Errorf("S3 ListObjects failed: %w", err)
-		}
-
-		if len(result.Contents) > 0 {
-			objects := make([]*s3.ObjectIdentifier, 0, len(result.Contents))
-			for _, obj := range result.Contents {
-				if obj == nil || obj.Key == nil {
-					continue
-				}
-				objects = append(objects, &s3.ObjectIdentifier{Key: obj.Key})
-			}
-
-			for start := 0; start < len(objects); start += 1000 {
-				end := start + 1000
-				if end > len(objects) {
-					end = len(objects)
-				}
-
-				deleteInput := &s3.DeleteObjectsInput{
-					Bucket: aws.String(bucket),
-					Delete: &s3.Delete{
-						Objects: objects[start:end],
-						Quiet:   aws.Bool(true),
-					},
-				}
-				deleteResult, delErr := client.DeleteObjects(deleteInput)
-				if delErr != nil {
-					return fmt.Errorf("S3 DeleteObjects failed: %w", delErr)
-				}
-				if deleteResult != nil && len(deleteResult.Errors) > 0 {
-					firstErr := deleteResult.Errors[0]
-					if firstErr != nil {
-						return fmt.Errorf("S3 DeleteObjects error for key %s: %s", aws.StringValue(firstErr.Key), aws.StringValue(firstErr.Message))
-					}
-					return fmt.Errorf("S3 DeleteObjects returned errors")
-				}
-			}
-		}
-
-		if aws.BoolValue(result.IsTruncated) {
-			continuation = result.NextContinuationToken
-			if continuation == nil {
-				return fmt.Errorf("S3 ListObjects truncated without continuation token")
-			}
-			continue
-		}
-
-		break
-	}
-
-	return nil
+	return bucket, prefix, endpoint, nil
 }
 
 // checkS3RepoFiles verifies S3 repository structure and initializes if needed
 func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) error {
 	// Create S3 client
-	client, err := repo.createS3Client(endpoint)
+	client, err := s3helper.NewClient(repo.AwsAccessKeyID, repo.AwsSecretAccessKey, "", repo.AwsRegion, endpoint)
 	if err != nil {
 		repo.CanInitRepo = false
 		err = fmt.Errorf("failed to create S3 client: %w", err)
@@ -3060,7 +2913,7 @@ func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) err
 		endpointDisplay, bucket, prefix)
 
 	// Check if config exists
-	configExists, err := checkS3ObjectExists(client, bucket, configKey)
+	configExists, err := s3helper.CheckObjectExists(client, bucket, configKey)
 	if err != nil {
 		repo.CanInitRepo = false
 		repo.SetError(InitTask, err)
@@ -3077,7 +2930,7 @@ func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) err
 			dataPrefix = prefix + "/data/"
 		}
 
-		dataExists, err := listS3Prefix(client, bucket, dataPrefix)
+		dataExists, err := s3helper.ListPrefixHasRealObjects(client, bucket, dataPrefix)
 		if err != nil {
 			// Error checking data
 			repo.CanInitRepo = false
@@ -3207,9 +3060,31 @@ func (repo *ResticManager) CheckRepoFiles() error {
 	}
 
 	repopath := repo.GetRepoPath()
-	if isS3Repository(repopath) {
-		// S3 repository file checks are not supported yet.
-		return nil
+	if isS3Repository(repopath) || repo.AwsBucket != "" {
+		bucket, prefix, endpoint, err := repo.resolveS3RepoSpec(repopath)
+		if err != nil {
+			repo.CanInitRepo = false
+			err = fmt.Errorf("failed to parse S3 repo path: %w", err)
+			repo.SetError(InitTask, err)
+			repo.setInitErrorBackoff(err)
+			return err
+		}
+		client, err := s3helper.NewClient(repo.AwsAccessKeyID, repo.AwsSecretAccessKey, "", repo.AwsRegion, endpoint)
+		if err != nil {
+			repo.CanInitRepo = false
+			err = fmt.Errorf("failed to create S3 client: %w", err)
+			repo.SetError(InitTask, err)
+			repo.setInitErrorBackoff(err)
+			return err
+		}
+		if err := s3helper.EnsurePrefixMarker(client, bucket, prefix); err != nil {
+			repo.CanInitRepo = false
+			err = fmt.Errorf("failed to create S3 prefix marker: %w", err)
+			repo.SetError(InitTask, err)
+			repo.setInitErrorBackoff(err)
+			return err
+		}
+		return repo.checkS3RepoFiles(bucket, prefix, endpoint)
 	}
 
 	// Existing local filesystem logic
@@ -3403,13 +3278,44 @@ func (repo *ResticManager) InitRepo(force bool) error {
 func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 	repopath := repo.GetRepoPath()
 	if opt.Force {
-		if isS3Repository(repopath) {
-			// Avoid force init on S3 to prevent accidental data loss or conflicts on shared buckets/prefixes.
-			err := errors.New("force init is disabled for S3 repositories to prevent accidental data loss")
-			repo.CanInitRepo = false
-			repo.SetError(InitTask, err)
-			repo.setInitErrorBackoff(err)
-			return err
+		if isS3Repository(repopath) || repo.AwsBucket != "" {
+			bucket, prefix, endpoint, err := repo.resolveS3RepoSpec(repopath)
+			if err != nil {
+				repo.CanInitRepo = false
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
+			if prefix == "" && !opt.AllowEmptyPrefix {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("refusing to force init S3 repository with empty prefix (entire bucket). set allow_empty_prefix to proceed")
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
+			client, err := s3helper.NewClient(repo.AwsAccessKeyID, repo.AwsSecretAccessKey, "", repo.AwsRegion, endpoint)
+			if err != nil {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("failed to create S3 client: %w", err)
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
+			deleteOptions := s3helper.DeletePrefixOptions{RequireNonEmptyPrefix: !opt.AllowEmptyPrefix}
+			if err := s3helper.DeletePrefixWithOptions(client, bucket, prefix, deleteOptions); err != nil {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("failed to delete S3 repository prefix: %w", err)
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
+			if err := s3helper.EnsurePrefixMarker(client, bucket, prefix); err != nil {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("failed to create S3 prefix marker: %w", err)
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
 		} else {
 			err := os.RemoveAll(repopath)
 			if err != nil {

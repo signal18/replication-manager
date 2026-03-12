@@ -2668,6 +2668,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchTopologyStaging()
 	case "analyze-use-persistent":
 		mycluster.SwitchAnalyzeUsePersistent()
+	case "backup-restic-repo-append-cluster":
+		mycluster.Conf.BackupResticRepoAppendCluster = !mycluster.Conf.BackupResticRepoAppendCluster
 	default:
 		return errors.New("setting not found")
 	}
@@ -2962,6 +2964,8 @@ var base64LogValueSettings = map[string]struct{}{
 	"backup-mysqldump-options":            {},
 	"backup-physical-post-script":         {},
 	"backup-restic-aws-access-secret":     {},
+	"backup-restic-aws-endpoint":          {},
+	"backup-restic-aws-prefix":            {},
 	"backup-restic-local-repository":      {},
 	"backup-restic-password":              {},
 	"backup-restic-repository":            {},
@@ -3672,6 +3676,23 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Secrets["backup-restic-aws-access-secret"] = new_secret
 	case "backup-restic-aws-region":
 		mycluster.Conf.BackupResticAwsRegion = value
+		mycluster.ReloadResticEnv()
+	case "backup-restic-aws-endpoint":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		mycluster.Conf.BackupResticAwsEndpoint = string(val)
+		mycluster.ReloadResticEnv()
+	case "backup-restic-aws-bucket":
+		mycluster.Conf.BackupResticAwsBucket = value
+		mycluster.ReloadResticEnv()
+	case "backup-restic-aws-prefix":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		mycluster.Conf.BackupResticAwsPrefix = string(val)
 		mycluster.ReloadResticEnv()
 	case "backup-restic-additional-env":
 		if err := cluster.ValidateResticAdditionalEnvOverrides(value); err != nil {
@@ -7642,6 +7663,7 @@ func (repman *ReplicationManager) handlerMuxResticUnlock(w http.ResponseWriter, 
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param force path string false "Force init" Enums(force)
+// @Param body body backupmgr.ResticInitOption false "Init options"
 // @Success 200 {string} string "Restic repository initialized"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
@@ -7654,10 +7676,23 @@ func (repman *ReplicationManager) handlerMuxResticInitRepo(w http.ResponseWriter
 			force = true
 		}
 
-		err := mycluster.ResticInitRepo(force)
+		var initOptions backupmgr.ResticInitOption
+		if err := json.NewDecoder(r.Body).Decode(&initOptions); err != nil && err != io.EOF {
+			http.Error(w, "Error decoding request body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		initOptions.Force = force
+
+		err := mycluster.ResticInitRepoWithOptions(initOptions)
 		if err != nil {
 			http.Error(w, "Error initializing restic repository: "+err.Error(), http.StatusInternalServerError)
 			return
+		}
+
+		if effectivePrefix, ok := mycluster.ResticS3EffectivePrefixForInit(); ok {
+			mycluster.Conf.BackupResticAwsPrefix = effectivePrefix
+			mycluster.ReloadResticEnv()
+			mycluster.ConfigManager.SaveConfig(mycluster, false)
 		}
 
 		w.WriteHeader(http.StatusOK)
