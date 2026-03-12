@@ -7420,7 +7420,8 @@ func (repman *ReplicationManager) handlerMuxRemoveExternalOps(w http.ResponseWri
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {array} map[string]interface{} "List of backups"
+// @Param format query string false "Response format" Enums(default,legacy)
+// @Success 200 {object} resticSnapshotsResponse "Snapshots with repository context"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/restic/snapshots [get]
@@ -7471,14 +7472,25 @@ func (repman *ReplicationManager) handlerMuxClusterSnapshots(w http.ResponseWrit
 			})
 		}
 
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+		legacy := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("legacy")))
+		if format == "legacy" || legacy == "1" || legacy == "true" {
+			err := e.Encode(responses)
+			if err != nil {
+				http.Error(w, "Encoding error", http.StatusInternalServerError)
+				return
+			}
+			return
+		}
+
 		response := resticSnapshotsResponse{
 			RepoPath:  repoPath,
 			Stats:     mycluster.GetSnapshotStats(),
 			Snapshots: responses,
 		}
 
-		e := json.NewEncoder(w)
-		e.SetIndent("", "\t")
 		err := e.Encode(response)
 		if err != nil {
 			http.Error(w, "Encoding error", http.StatusInternalServerError)

@@ -8622,16 +8622,29 @@ paths:
         name: clusterName
         required: true
         type: string
+      - description: Response format (default or legacy array)
+        in: query
+        name: format
+        required: false
+        type: string
       produces:
       - application/json
       responses:
         "200":
           description: List of backups
           schema:
-            items:
-              additionalProperties: true
-              type: object
-            type: array
+            properties:
+              repo_path:
+                type: string
+              snapshots:
+                items:
+                  additionalProperties: true
+                  type: object
+                type: array
+              stats:
+                additionalProperties: true
+                type: object
+            type: object
         "403":
           description: No valid ACL
           schema:

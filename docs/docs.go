@@ -6402,16 +6402,34 @@ const docTemplate = `{
                         "name": "clusterName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Response format (default or legacy array)",
+                        "name": "format",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "List of backups",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "additionalProperties": true
+                            "type": "object",
+                            "properties": {
+                                "repo_path": {
+                                    "type": "string"
+                                },
+                                "snapshots": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "additionalProperties": true
+                                    }
+                                },
+                                "stats": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                }
                             }
                         }
                     },
