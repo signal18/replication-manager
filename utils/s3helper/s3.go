@@ -68,27 +68,6 @@ func CheckObjectExists(client *s3.Client, bucket, key string) (bool, error) {
 	return true, nil
 }
 
-// ListPrefixExists checks if any objects exist with the given prefix.
-func ListPrefixExists(client *s3.Client, bucket, prefix string) (bool, error) {
-	result, err := client.ListObjectsV2(context.Background(), &s3.ListObjectsV2Input{
-		Bucket:  aws.String(bucket),
-		Prefix:  aws.String(prefix),
-		MaxKeys: aws.Int32(1),
-	})
-
-	if err != nil {
-		if isS3ErrorCode(err, "NoSuchBucket") {
-			return false, fmt.Errorf("S3 bucket not found: %s (create it first or check name)", bucket)
-		}
-		if isS3ErrorCode(err, "Forbidden", "AccessDenied") {
-			return false, fmt.Errorf("access denied to S3 bucket: %s (check credentials/permissions)", bucket)
-		}
-		return false, fmt.Errorf("S3 ListObjects failed: %w", err)
-	}
-
-	return len(result.Contents) > 0, nil
-}
-
 type DeletePrefixOptions struct {
 	DryRun                bool
 	MaxObjects            int
@@ -162,8 +141,9 @@ func listPrefixHasRealObjects(client listDeleteAPI, bucket, prefix string) (bool
 
 	for {
 		input := &s3.ListObjectsV2Input{
-			Bucket: aws.String(bucket),
-			Prefix: aws.String(prefix),
+			Bucket:  aws.String(bucket),
+			Prefix:  aws.String(prefix),
+			MaxKeys: aws.Int32(2),
 		}
 		if continuation != nil {
 			input.ContinuationToken = continuation

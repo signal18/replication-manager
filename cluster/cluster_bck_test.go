@@ -962,8 +962,8 @@ func TestResolveResticRepoAppendClusterGuards(t *testing.T) {
 	cluster := &Cluster{Conf: conf, Name: "cluster1"}
 	cluster.Conf.WorkingDir = "/var/lib/repman"
 
-	localRepo, append := resolveResticRepoPolicy(conf, "", cluster)
-	if !append {
+	localRepo, shouldAppend := resolveResticRepoPolicy(conf, "", cluster)
+	if !shouldAppend {
 		t.Fatalf("expected guardrail to force append when local repo is empty")
 	}
 	if localRepo != "" {
@@ -972,8 +972,8 @@ func TestResolveResticRepoAppendClusterGuards(t *testing.T) {
 
 	defaultParent := filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "archive")
 	conf.BackupResticLocalRepository = defaultParent
-	localRepo, append = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
-	if !append {
+	localRepo, shouldAppend = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
+	if !shouldAppend {
 		t.Fatalf("expected guardrail to force append when local repo is within default parent")
 	}
 	if localRepo != "" {
@@ -981,8 +981,8 @@ func TestResolveResticRepoAppendClusterGuards(t *testing.T) {
 	}
 
 	conf.BackupResticLocalRepository = filepath.Join(defaultParent, "cluster1")
-	localRepo, append = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
-	if !append {
+	localRepo, shouldAppend = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
+	if !shouldAppend {
 		t.Fatalf("expected guardrail to force append when local repo is within default parent")
 	}
 	if localRepo != "" {
@@ -990,8 +990,8 @@ func TestResolveResticRepoAppendClusterGuards(t *testing.T) {
 	}
 
 	conf.BackupResticLocalRepository = "/custom/restic"
-	localRepo, append = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
-	if append {
+	localRepo, shouldAppend = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
+	if shouldAppend {
 		t.Fatalf("expected append to remain disabled with custom local repo")
 	}
 	if localRepo != "/custom/restic" {
@@ -1000,8 +1000,8 @@ func TestResolveResticRepoAppendClusterGuards(t *testing.T) {
 
 	conf.BackupResticRepoAppendCluster = true
 	conf.BackupResticLocalRepository = "/custom/cluster1"
-	localRepo, append = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
-	if !append {
+	localRepo, shouldAppend = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
+	if !shouldAppend {
 		t.Fatalf("expected append to remain enabled with custom local repo")
 	}
 	if localRepo != "/custom/cluster1" {
