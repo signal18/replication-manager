@@ -145,10 +145,6 @@ func resolveResticRepoPolicy(conf *config.Config, localRepoPath string, cluster 
 	localRepoPath = strings.TrimSpace(localRepoPath)
 	defaultParent := filepath.Clean(filepath.Join(conf.WorkingDir, config.ConstStreamingSubDir, "archive"))
 	if localRepoPath != "" && isWithinParentPath(defaultParent, localRepoPath) {
-		if cluster != nil {
-			cluster.LogModulePrintf(conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-				"backup-restic-local-repository ignored: path is within default archive directory")
-		}
 		localRepoPath = ""
 	}
 	if !appendCluster && localRepoPath == "" {
