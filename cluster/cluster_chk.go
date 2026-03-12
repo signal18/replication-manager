@@ -702,7 +702,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 			columnListPredicate += " , "
 			bColumnListPredicate += " , "
 			shardListPredicate += " , "
-			rangeCondition += " , "
+			rangeCondition += " ' AND ', "
 		}
 		columnType := cluster.master.GetTableColumDef(schema, table, p)
 		columnDefPredicate = columnDefPredicate + " Min_" + p + " " + columnType + ", Max_" + p + " " + columnType
