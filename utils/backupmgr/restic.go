@@ -312,13 +312,13 @@ type TaskStatus struct {
 
 // ResticTaskState tracks the currently running restic task and its progress.
 type ResticTaskState struct {
-	TaskID      int       `json:"task_id"`
-	TaskType    TaskType  `json:"task_type"`
-	Status      string    `json:"status"` // running, completed, failed
-	Error       string    `json:"error,omitempty"`
-	StartedAt   time.Time `json:"started_at,omitempty"`
-	CompletedAt time.Time `json:"completed_at,omitempty"`
-	LastUpdate  time.Time `json:"last_update,omitempty"`
+	TaskID      int        `json:"task_id"`
+	TaskType    TaskType   `json:"task_type"`
+	Status      string     `json:"status"` // running, completed, failed
+	Error       string     `json:"error,omitempty"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	LastUpdate  *time.Time `json:"last_update,omitempty"`
 
 	PercentDone    float64 `json:"percent_done,omitempty"`
 	BytesDone      int64   `json:"bytes_done,omitempty"`
@@ -341,6 +341,8 @@ type ResticTaskState struct {
 	TotalDuration       float64 `json:"total_duration,omitempty"`
 	SnapshotID          string  `json:"snapshot_id,omitempty"`
 }
+
+const resticTaskStateTTL = 60 * time.Second
 
 // ResticManager manages the queue and execution
 type ResticManager struct {
@@ -3964,8 +3966,8 @@ func (repo *ResticManager) SetCurrentTaskRunning(task *ResticTask) {
 		TaskID:     task.ID,
 		TaskType:   task.Type,
 		Status:     "running",
-		StartedAt:  now,
-		LastUpdate: now,
+		StartedAt:  &now,
+		LastUpdate: &now,
 	}
 
 	repo.currentTaskMutex.Lock()
@@ -4003,7 +4005,8 @@ func (repo *ResticManager) UpdateCurrentTaskFromJSON(line []byte) {
 		repo.currentTask.FilesDone = status.FilesDone
 		repo.currentTask.TotalFiles = status.TotalFiles
 		repo.currentTask.SecondsElapsed = status.SecondsElapsed
-		repo.currentTask.LastUpdate = time.Now().UTC()
+		now := time.Now().UTC()
+		repo.currentTask.LastUpdate = &now
 	case "summary":
 		var summary ResticBackupSummary
 		if err := json.Unmarshal(trimmed, &summary); err != nil {
@@ -4022,7 +4025,8 @@ func (repo *ResticManager) UpdateCurrentTaskFromJSON(line []byte) {
 		repo.currentTask.TotalBytesProcessed = summary.TotalBytesProcessed
 		repo.currentTask.TotalDuration = summary.TotalDuration
 		repo.currentTask.SnapshotID = summary.SnapshotID
-		repo.currentTask.LastUpdate = time.Now().UTC()
+		now := time.Now().UTC()
+		repo.currentTask.LastUpdate = &now
 	}
 }
 
@@ -4047,8 +4051,43 @@ func (repo *ResticManager) FinalizeCurrentTask(result ResticResult) {
 	}
 
 	now := time.Now().UTC()
-	repo.currentTask.CompletedAt = now
-	repo.currentTask.LastUpdate = now
+	completionTime := now
+	repo.currentTask.CompletedAt = &completionTime
+	repo.currentTask.LastUpdate = &completionTime
+
+	taskID := repo.currentTask.TaskID
+	go repo.clearCompletedTaskAfterTTL(taskID, completionTime)
+}
+
+func (repo *ResticManager) clearCompletedTaskAfterTTL(taskID int, completionTime time.Time) {
+	if resticTaskStateTTL <= 0 {
+		return
+	}
+
+	timer := time.NewTimer(resticTaskStateTTL)
+	defer timer.Stop()
+	<-timer.C
+
+	repo.currentTaskMutex.Lock()
+	defer repo.currentTaskMutex.Unlock()
+
+	if repo.currentTask == nil {
+		return
+	}
+
+	if repo.currentTask.TaskID != taskID {
+		return
+	}
+
+	if repo.currentTask.CompletedAt == nil || !repo.currentTask.CompletedAt.Equal(completionTime) {
+		return
+	}
+
+	if repo.currentTask.Status != "completed" && repo.currentTask.Status != "failed" {
+		return
+	}
+
+	repo.currentTask = nil
 }
 
 func (repo *ResticManager) GetCurrentTaskState() *ResticTaskState {

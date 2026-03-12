@@ -7475,8 +7475,7 @@ func (repman *ReplicationManager) handlerMuxClusterSnapshots(w http.ResponseWrit
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 		format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
-		legacy := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("legacy")))
-		if format == "legacy" || legacy == "1" || legacy == "true" {
+		if format == "legacy" {
 			err := e.Encode(responses)
 			if err != nil {
 				http.Error(w, "Encoding error", http.StatusInternalServerError)
@@ -7805,15 +7804,11 @@ func (repman *ReplicationManager) handlerMuxGetResticCurrentTask(w http.Response
 			Queue:       taskqueue,
 		}
 
-		responseJSON, err := json.Marshal(response)
-		if err != nil {
-			http.Error(w, "Error marshalling current task response :"+err.Error(), http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, "Error encoding current task response :"+err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write(responseJSON)
 	})
 }
 
