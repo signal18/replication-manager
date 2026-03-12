@@ -131,6 +131,14 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize 
             }
           },
           {
+            name: 'ChecksumRepair',
+            onClick: () => {
+              openConfirmModal()
+              setConfirmTitle(`Confirm run repair for ${row.table_schema}.${row.table_name}?`)
+              setConfirmHandler(() => () => handleChecksumRepair(row.table_schema, row.table_name))
+            }
+          },
+          {
             name: 'Analyze',
             subMenu: [
               {
