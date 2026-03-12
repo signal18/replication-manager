@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -26,17 +26,18 @@ func NewClient(accessKey, secretKey, sessionToken, region, endpoint string) (*s3
 		Timeout: 30 * time.Second,
 	}
 
-	options := []func(*config.LoadOptions) error{
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, sessionToken)),
-		config.WithHTTPClient(httpClient),
+	awsRegion := strings.TrimSpace(region)
+	if awsRegion == "" {
+		awsRegion = strings.TrimSpace(os.Getenv("AWS_REGION"))
 	}
-	if region != "" {
-		options = append(options, config.WithRegion(region))
+	if awsRegion == "" {
+		awsRegion = strings.TrimSpace(os.Getenv("AWS_DEFAULT_REGION"))
 	}
 
-	awsConfig, err := config.LoadDefaultConfig(context.Background(), options...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create AWS config: %w", err)
+	awsConfig := aws.Config{
+		Region:      awsRegion,
+		Credentials: credentials.NewStaticCredentialsProvider(accessKey, secretKey, sessionToken),
+		HTTPClient:  httpClient,
 	}
 
 	return s3.NewFromConfig(awsConfig, func(options *s3.Options) {
