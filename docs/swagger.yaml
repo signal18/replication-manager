@@ -62,6 +62,8 @@ definitions:
       source:
         description: server URL
         type: string
+      splitDump:
+        type: boolean
       splitUser:
         type: boolean
       startTime:
@@ -218,6 +220,8 @@ definitions:
     type: object
   backupmgr.ResticInitOption:
     properties:
+      allow_empty_prefix:
+        type: boolean
       copy_chunker_params:
         type: boolean
       force:
@@ -443,6 +447,62 @@ definitions:
         - $ref: '#/definitions/backupmgr.ResticUnlockOption'
         description: Options for UnlockTask
     type: object
+  backupmgr.ResticTaskState:
+    properties:
+      bytes_done:
+        type: integer
+      completed_at:
+        type: string
+      data_added:
+        type: integer
+      data_blobs:
+        type: integer
+      dirs_changed:
+        type: integer
+      dirs_new:
+        type: integer
+      dirs_unmodified:
+        type: integer
+      error:
+        type: string
+      files_changed:
+        type: integer
+      files_done:
+        type: integer
+      files_new:
+        type: integer
+      files_unmodified:
+        type: integer
+      last_update:
+        type: string
+      percent_done:
+        type: number
+      seconds_elapsed:
+        type: integer
+      snapshot_id:
+        type: string
+      started_at:
+        type: string
+      status:
+        description: running, completed, failed
+        type: string
+      task_id:
+        type: integer
+      task_type:
+        $ref: '#/definitions/backupmgr.TaskType'
+      total_bytes:
+        type: integer
+      total_bytes_processed:
+        type: integer
+      total_duration:
+        type: number
+      total_files:
+        type: integer
+      total_files_processed:
+        type: integer
+      tree_blobs:
+        type: integer
+    type: object
   backupmgr.ResticUnlockOption:
     properties:
       remove_all:
@@ -620,8 +680,6 @@ definitions:
         type: array
       backupList:
         $ref: '#/definitions/backupmgr.BackupMetaMap'
-      backupStat:
-        $ref: '#/definitions/repmanv3.BackupStat'
       blacklist:
         items:
           $ref: '#/definitions/regexp.Regexp'
@@ -1395,6 +1453,29 @@ definitions:
       suffix:
         type: integer
     type: object
+  cluster.SnapshotMetadataSummary:
+    properties:
+      backupLine:
+        type: string
+      backupMethod:
+        type: string
+      backupSessionID:
+        type: string
+      backupTool:
+        type: string
+      compressed:
+        type: boolean
+      dest:
+        type: string
+      endTime:
+        type: string
+      resticBasePath:
+        type: string
+      resticSnapshotID:
+        type: string
+      startTime:
+        type: string
+    type: object
   cluster.SysBenchTpcResultPerMinute:
     properties:
       errors:
@@ -2097,6 +2178,8 @@ definitions:
         type: string
       appHostsIpv6:
         type: string
+      appRefreshConcurrency:
+        type: integer
       apps:
         items:
           $ref: '#/definitions/config.AppConfig'
@@ -2231,6 +2314,8 @@ definitions:
         type: string
       backupMysqldumpPath:
         type: string
+      backupMysqldumpSplitDump:
+        type: boolean
       backupMytopPath:
         type: string
       backupPhysicalPostScript:
@@ -2245,11 +2330,21 @@ definitions:
         type: boolean
       backupRestic:
         type: boolean
+      backupResticAdditionalEnv:
+        type: string
       backupResticAllowUnsafeMount:
         type: boolean
       backupResticAws:
         type: boolean
       backupResticAwsAccessKeyId:
+        type: string
+      backupResticAwsBucket:
+        type: string
+      backupResticAwsEndpoint:
+        type: string
+      backupResticAwsPrefix:
+        type: string
+      backupResticAwsRegion:
         type: string
       backupResticBinaryPath:
         type: string
@@ -2327,6 +2422,8 @@ definitions:
         type: boolean
       backupResticPurgeTag:
         type: string
+      backupResticRepoAppendCluster:
+        type: boolean
       backupResticRepository:
         type: string
       backupResticReseedCleanup:
@@ -2349,6 +2446,8 @@ definitions:
         type: string
       backupSplitMysqlUser:
         type: boolean
+      backupSplitdumpFileSize:
+        type: string
       backupStreaming:
         type: boolean
       backupStreamingBucket:
@@ -2500,6 +2599,8 @@ definitions:
       compressBackups:
         type: boolean
       compressBackupsCompressionLevel:
+        type: integer
+      compressBackupsDecompressBufferSize:
         type: integer
       compressBackupsLogical:
         type: string
@@ -3030,6 +3131,8 @@ definitions:
         type: boolean
       monitoringSchemaOnReplicas:
         type: boolean
+      monitoringSchemaScanTimeout:
+        type: integer
       monitoringSchemaScheduler:
         type: boolean
       monitoringSchemaSchedulerCron:
@@ -3476,6 +3579,8 @@ definitions:
         type: boolean
       replicationErrorScript:
         type: string
+      replicationManagerCliPath:
+        type: string
       replicationMasterConnectRetry:
         type: integer
       replicationMasterRetryCount:
@@ -3660,6 +3765,8 @@ definitions:
         type: string
       sysbenchBinaryTest:
         type: string
+      sysbenchForcePk:
+        type: boolean
       sysbenchScale:
         type: integer
       sysbenchTables:
@@ -4144,15 +4251,6 @@ definitions:
     type: object
   regexp.Regexp:
     type: object
-  repmanv3.BackupStat:
-    properties:
-      total_blob_count:
-        type: integer
-      total_file_count:
-        type: integer
-      total_size:
-        type: integer
-    type: object
   repmanv3.Tag:
     properties:
       category:
@@ -4414,6 +4512,15 @@ definitions:
       version:
         type: string
     type: object
+  server.ResticCurrentTaskResponse:
+    properties:
+      current_task:
+        $ref: '#/definitions/backupmgr.ResticTaskState'
+      queue:
+        items:
+          $ref: '#/definitions/backupmgr.ResticTask'
+        type: array
+    type: object
   server.ResticMountStatusResponse:
     properties:
       active_users:
@@ -4453,6 +4560,54 @@ definitions:
         type: string
       useTempDir:
         type: boolean
+    type: object
+  server.resticSnapshotResponse:
+    properties:
+      gid:
+        type: integer
+      hostname:
+        type: string
+      id:
+        type: string
+      metadata:
+        items:
+          $ref: '#/definitions/cluster.SnapshotMetadataSummary'
+        type: array
+      metadataError:
+        type: string
+      metadataReady:
+        type: boolean
+      metadataStatus:
+        type: string
+      paths:
+        items:
+          type: string
+        type: array
+      short_id:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      time:
+        type: string
+      tree:
+        type: string
+      uid:
+        type: integer
+      username:
+        type: string
+    type: object
+  server.resticSnapshotsResponse:
+    properties:
+      repo_path:
+        type: string
+      snapshots:
+        items:
+          $ref: '#/definitions/server.resticSnapshotResponse'
+        type: array
+      stats:
+        $ref: '#/definitions/backupmgr.BackupStat'
     type: object
   server.token:
     properties:
@@ -7301,6 +7456,53 @@ paths:
       summary: Retrieve backups for a specific cluster
       tags:
       - ClusterBackups
+  /api/clusters/{clusterName}/backups/{backupID}/delete:
+    post:
+      description: Deletes a non-restic backup for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Backup ID
+        in: path
+        name: backupID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Backup deleted
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: Backup running
+          schema:
+            type: string
+        "500":
+          description: Delete failed
+          schema:
+            type: string
+      summary: Delete a backup by ID
+      tags:
+      - ClusterBackups
   /api/clusters/{clusterName}/backups/reconcile:
     post:
       description: This endpoint triggers a manual reconciliation check to detect
@@ -8431,6 +8633,11 @@ paths:
         name: clusterName
         required: true
         type: string
+      - description: Init options
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/backupmgr.ResticInitOption'
       produces:
       - application/json
       responses:
@@ -8470,6 +8677,11 @@ paths:
         in: path
         name: force
         type: string
+      - description: Init options
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/backupmgr.ResticInitOption'
       produces:
       - application/json
       responses:
@@ -8622,29 +8834,20 @@ paths:
         name: clusterName
         required: true
         type: string
-      - description: Response format (default or legacy array)
+      - description: Response format
+        enum:
+        - default
+        - legacy
         in: query
         name: format
-        required: false
         type: string
       produces:
       - application/json
       responses:
         "200":
-          description: List of backups
+          description: Snapshots with repository context
           schema:
-            properties:
-              repo_path:
-                type: string
-              snapshots:
-                items:
-                  additionalProperties: true
-                  type: object
-                type: array
-              stats:
-                additionalProperties: true
-                type: object
-            type: object
+            $ref: '#/definitions/server.resticSnapshotsResponse'
         "403":
           description: No valid ACL
           schema:
@@ -8689,6 +8892,40 @@ paths:
           schema:
             type: string
       summary: Retrieve backup stats for a specific cluster
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/task-current:
+    get:
+      description: Gets the current restic task state and queue for the specified
+        cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Current task and queue fetched
+          schema:
+            $ref: '#/definitions/server.ResticCurrentTaskResponse'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Get Restic Current Task
       tags:
       - ClusterRestic
   /api/clusters/{clusterName}/restic/task-queue:
