@@ -505,6 +505,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumTable)),
 	))
+	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/checksum-repair-table", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumRepairTable)),
+	))
 	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/all/actions/checksum-schema", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterChecksumSchema)),
@@ -516,6 +520,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/actions/checksum-all-tables", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumAllTable)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/checksum-repair-all-tables", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumRepairAllTable)),
 	))
 	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/analyze-table/{persistent}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -5930,6 +5938,76 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumTable(w http.Re
 			return
 		}
 		go mycluster.CheckTableChecksum(vars["schemaName"], vars["tableName"])
+	} else {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+	}
+}
+
+// handlerMuxClusterSchemaChecksumRepairAllTable handles the repair checksum  for all tables in a given cluster.
+// @Summary Compute Repair for all tables in a specific cluster
+// @Description This endpoint triggers the checksum calculation for all tables in the specified cluster.
+// @Tags ClusterSchema
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Successfully triggered checksum calculation for all tables"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/checksum-repair-all-tables [post]
+func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumRepairAllTable(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+		master := mycluster.GetMaster()
+		if master == nil || len(master.Tables) == 0 {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Repair Checksum all tables requested; schema cache empty. Triggered schema monitoring; re-run checksum after cache is ready.")
+			mycluster.SetWaitMonitorSchema()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			json.NewEncoder(w).Encode(map[string]string{
+				"message": "schema cache empty; schema monitoring triggered; retry checksum after cache is populated",
+			})
+			return
+		}
+		go mycluster.RepairAllTableChecksum()
+	} else {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+	}
+}
+
+// handlerMuxClusterSchemaChecksumRepairTable handles repair after checksum calculation for a specific table in a given cluster.
+// @Summary Repair checksum error for a specific table in a specific cluster
+// @Description This endpoint triggers the checksum calculation for a specific table in the specified cluster.
+// @Tags ClusterSchema
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param schemaName path string true "Schema Name"
+// @Param tableName path string true "Table Name"
+// @Success 200 {string} string "Successfully triggered checksum calculation for the table"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/checksum-repair-table [post]
+func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumRepairTable(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+		go mycluster.RepairTableChecksum(vars["schemaName"], vars["tableName"])
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}

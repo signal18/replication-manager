@@ -623,6 +623,12 @@ func (cluster *Cluster) CheckAllTableChecksum() {
 	}
 }
 
+func (cluster *Cluster) RepairAllTableChecksum() {
+	for _, t := range cluster.master.Tables {
+		cluster.RepairTableChecksum(t.TableSchema, t.TableName)
+	}
+}
+
 func (cluster *Cluster) CheckAllTableChecksumSchema(name string) {
 	for _, t := range cluster.master.Tables {
 		if t.TableSchema == name {
@@ -684,14 +690,14 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	shardListPredicate := ""
 	rangeCondition := ""
 	if len(pks) == 0 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,"Table %s.%s has no primary key, cannot create chunk table", schema, table)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Table %s.%s has no primary key, cannot create chunk table", schema, table)
 		return
 	}
 
 	//	var ftype string
 	for _, p := range pks {
 		if columnDefPredicate != "" {
-			columnDefPredicate += " , " 
+			columnDefPredicate += " , "
 			wherePredicate += " AND "
 			columnListPredicate += " , "
 			bColumnListPredicate += " , "
@@ -702,14 +708,14 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		columnDefPredicate = columnDefPredicate + " Min_" + p + " " + columnType + ", Max_" + p + " " + columnType
 		wherePredicate = wherePredicate + " A." + p + " >= B.Min_" + p + " AND A." + p + "<= B.Max_" + p + " "
 		columnListPredicate = columnListPredicate + p + " "
-		bColumnListPredicate = bColumnListPredicate + " B.Min_" + p +" , B.Max_" + p   
-		rangeCondition =  rangeCondition + "'A." + p + " >=',B.Min_" + p + ",' AND A." + p + "<=', B.Max_" + p 
+		bColumnListPredicate = bColumnListPredicate + " B.Min_" + p + " , B.Max_" + p
+		rangeCondition = rangeCondition + "'A." + p + " >=',B.Min_" + p + ",' AND A." + p + "<=', B.Max_" + p
 		shardListPredicate = shardListPredicate + " MIN(" + p + ") AS  Min_" + p + " , MAX(" + p + ") AS Max_" + p + " "
 	}
 
 	_, err = Conn.Exec("/* replication-manager */ CREATE OR REPLACE TABLE replication_manager_schema.table_checksum(chunkId BIGINT,chunkRangeCondition varchar(8000) , " + columnDefPredicate + ",chunkCheckSum BIGINT UNSIGNED ) ENGINE=INNODB")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,"Error creating checksum table: %w", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error creating checksum table: %w", err)
 		return
 	}
 	chunkSize := 2000
@@ -719,7 +725,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 
 	_, err = Conn.Exec(query)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,"Error creating chunk table: %w", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error creating chunk table: %w", err)
 		return
 	}
 	rows, err := Conn.Queryx("SELECT chunkId FROM replication_manager_schema.table_chunk")
@@ -748,8 +754,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		return
 	}
 
-
-		query = "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, CONCAT(" + rangeCondition+ ") as chunkRangeCondition,"  + bColumnListPredicate + " ," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk WHERE chunkId=? ) B on " + wherePredicate + " GROUP BY chunkId HAVING chunkId IS NOT NULL"
+	query = "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, CONCAT(" + rangeCondition + ") as chunkRangeCondition," + bColumnListPredicate + " ," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk WHERE chunkId=? ) B on " + wherePredicate + " GROUP BY chunkId HAVING chunkId IS NOT NULL"
 	stmt, err := Conn.Prepare(query)
 
 	if err != nil {
@@ -764,18 +769,18 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 			return
 		}
 		/*
-		_, err2 := Conn.Exec("DELETE FROM replication_manager_schema.table_chunk WHERE chunkId=?",chunk.ChunkId)
-		if err2 != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum error deleting chunck %s", err)
-			return
-		}
+			_, err2 := Conn.Exec("DELETE FROM replication_manager_schema.table_chunk WHERE chunkId=?",chunk.ChunkId)
+			if err2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum error deleting chunck %s", err)
+				return
+			}
 
-			slave := cluster.GetFirstWorkingSlave()
-			if slave != nil {
-				if slave.GetReplicationDelay() > 5 {
-					time.Sleep(time.Duration(slave.GetReplicationDelay()) * time.Second)
-				}
-			}*/
+				slave := cluster.GetFirstWorkingSlave()
+				if slave != nil {
+					if slave.GetReplicationDelay() > 5 {
+						time.Sleep(time.Duration(slave.GetReplicationDelay()) * time.Second)
+					}
+				}*/
 	}
 	cluster.master.Refresh()
 	masterSeq := cluster.master.CurrentGtid.GetSeqServerIdNos(uint64(cluster.master.ServerID))
@@ -804,16 +809,17 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		slaveChecksums, logs, err := dbhelper.GetTableChecksumResult(s.Conn)
 		cluster.LogSQL(logs, err, s.URL, "CheckTableChecksum", config.LvlDbg, "GetTableChecksumResult")
 		checkok := true
-
 		for _, chunk := range masterChecksums {
 			if chunk.ChunkCheckSum != slaveChecksums[chunk.ChunkId].ChunkCheckSum {
 				checkok = false
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum table failed chunks %d %s.%s %s", chunk.ChunkId,  schema, table, s.URL)
-				t := cluster.master.DictTables.Get(schema + "." + table)
-				t.TableSync = "ER"
-				cluster.master.DictTables.Set(schema+"."+table, t)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum table failed chunks %d %s.%s %s", chunk.ChunkId, schema, table, s.URL)
+				tm := cluster.master.DictTables.Get(schema + "." + table)
+				tm.TableSync = "ER"
+				ts := s.DictTables.Get(schema + "." + table)
+				ts.TableChunksError = append(ts.TableChunksError, chunk)
+				s.DictTables.Set(schema+"."+table, ts)
+				cluster.master.DictTables.Set(schema+"."+table, tm)
 			}
-
 		}
 		if checkok {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum table succeed %s.%s %s", schema, table, s.URL)
@@ -822,6 +828,51 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 			cluster.master.DictTables.Set(schema+"."+table, t)
 		}
 	}
+}
+
+func (cluster *Cluster) RepairTableChecksum(schema string, table string) {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair table %s.%s %s", schema, table, cluster.master.URL)
+
+	master := cluster.GetMaster()
+	if master == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Repair table %s.%s, master not discovered", schema, table)
+		return
+	}
+	Conn, err := master.GetNewDBConn()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error connection in exec query no log %s", err)
+		return
+	}
+	defer Conn.Close()
+
+	Conn.SetConnMaxLifetime(3595 * time.Second)
+	Conn.Exec("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+	Conn.Exec("SET SESSION binlog_format = 'ROW'")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair table %s.%s", schema, table)
+
+	for _, s := range cluster.slaves {
+		ts := s.DictTables.Get(schema + "." + table)
+		// Reset the master table dictionary to reflect the new unkown sync status
+		if len(ts.TableChunksError) > 0 {
+			t := master.DictTables.Get(schema + "." + table)
+			t.TableSync = ""
+			cluster.master.DictTables.Set(schema+"."+table, t)
+			for i, chunk := range ts.TableChunksError {
+
+				query := "REPLACE INTO " + schema + "." + table + " SELECT * FROM " + schema + "." + table + " WHERE  " + chunk.ChunkRangeCondition + " FOR UPDATE"
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair chunk %d/%d %s", i, len(ts.TableChunksError), query)
+				_, err = Conn.Exec(query)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
+					return
+				}
+			}
+			//  Empry the slice of chunk errors
+			ts.TableChunksError = ts.TableChunksError[:0]
+			s.DictTables.Set(schema+"."+table, ts)
+		} // if chunks in error
+	} // for all slaves
+	cluster.CheckTableChecksum(schema, table)
 }
 
 // CheckSameServerID Check against the servers that all server id are differents

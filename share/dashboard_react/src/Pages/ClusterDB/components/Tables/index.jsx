@@ -5,7 +5,7 @@ import { createColumnHelper } from '@tanstack/react-table'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 import { DataTable } from '../../../../components/DataTable'
 import { isEqual } from 'lodash'
-import { analyzeAllTables, analyzeSchema, analyzeTable, checksumAllTables, checksumSchema, checksumTable, getDatabaseService } from '../../../../redux/clusterSlice'
+import { analyzeAllTables, analyzeSchema, analyzeTable, checksumAllTables, checksumRepairAllTables, checksumSchema, checksumRepairSchema, checksumTable, checksumRepairTable, getDatabaseService } from '../../../../redux/clusterSlice'
 import { getTablePct } from '../../../../utility/common'
 import Gauge from '../../../../components/Gauge'
 import MenuOptions from '../../../../components/MenuOptions'
@@ -84,13 +84,25 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize 
   const handleChecksum = (schema, table) => {
     dispatch(checksumTable({ clusterName, schema, table }))
   }
-  
+
+  const handleRepairChecksum = (schema, table) => {
+    dispatch(checksumRepairTable({ clusterName, schema, table }))
+  }
+
   const handleChecksumSchema = (schema) => {
+    dispatch(checksumSchema({ clusterName, schema }))
+  }
+
+  const handleChecksumRepairSchema = (schema) => {
     dispatch(checksumSchema({ clusterName, schema }))
   }
 
   const handleChecksumAll = () => {
     dispatch(checksumAllTables({ clusterName }))
+  }
+
+  const handleChecksumRepairAll = () => {
+    dispatch(checksumRepairAllTables({ clusterName }))
   }
 
   const handleAnalyze = (schema, table, persistent) => {

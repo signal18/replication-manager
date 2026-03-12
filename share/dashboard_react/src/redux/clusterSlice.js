@@ -901,6 +901,22 @@ export const checksumAllTables = createGuardedAsyncThunk(
   }
 )
 
+export const checksumRepairAllTables = createGuardedAsyncThunk(
+  'cluster/checksumRepairAllTables',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.checksumRepairAllTables(clusterName, baseURL)
+      showSuccessBanner('Repair Checksum all tables successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Repair Checksum all tables failed!', error.message, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+
 export const setMaintenanceMode = createGuardedAsyncThunk(
   'cluster/setMaintenanceMode',
   async ({ clusterName, serverId }, thunkAPI) => {
@@ -1582,6 +1598,21 @@ export const checksumTable = createGuardedAsyncThunk(
   }
 )
 
+export const checksumRepairTable = createGuardedAsyncThunk(
+  'cluster/checksumRepairTable',
+  async ({ clusterName, schema, table }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.checksumRepairTable(clusterName, schema, table, baseURL)
+      showSuccessBanner(`Rapair done for schema ${schema} and table ${table}!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Checksum Repair failed for schema ${schema} and table ${table}!`, error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const checksumSchema = createGuardedAsyncThunk(
   'cluster/checksumSchema',
   async ({ clusterName, schema, Schema }, thunkAPI) => {
@@ -1596,6 +1627,22 @@ export const checksumSchema = createGuardedAsyncThunk(
     }
   }
 )
+
+export const checksumRepairSchema = createGuardedAsyncThunk(
+  'cluster/checksumRepairSchema',
+  async ({ clusterName, schema, Schema }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.checksumRepairSchema(clusterName, schema, baseURL)
+      showSuccessBanner(`Checksum Repair done for schema ${schema}!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Checksum Repair failed for schema ${schema}!`, error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 
 export const toggleDatabaseActions = createGuardedAsyncThunk(
   'cluster/toggleDatabaseActions',

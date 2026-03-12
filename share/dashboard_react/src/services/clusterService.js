@@ -35,6 +35,7 @@ export const clusterService = {
 
   // Cluster management APIs
   checksumAllTables,
+  checksumRepairAllTables,
   analyzeAllTables,
   switchOverCluster,
   failOverCluster,
@@ -112,7 +113,9 @@ export const clusterService = {
   updateLongQueryTime,
   toggleDatabaseActions,
   checksumTable,
+  checksumRepairTable,
   checksumSchema,
+  checksumRepairSchema,
   analyzeTable,
   analyzeSchema,
   killThread,
@@ -241,6 +244,10 @@ function getQueryRules(clusterName, baseURL) {
 //#region Cluster management APIs
 function checksumAllTables(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/checksum-all-tables`)
+}
+
+function checksumRepairAllTables(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/checksum-repair-all-tables`)
 }
 
 function analyzeAllTables(clusterName, persistent, baseURL) {
@@ -583,8 +590,16 @@ function checksumTable(clusterName, schema, table, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/schema/${schema}/${table}/actions/checksum-table`)
 }
 
+function checksumRepairTable(clusterName, schema, table, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/schema/${schema}/${table}/actions/checksum-repair-table`)
+}
+
 function checksumSchema(clusterName, schema, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/schema/${schema}/all/actions/checksum-schema`)
+}
+
+function checksumRepairSchema(clusterName, schema, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/schema/${schema}/all/actions/checksum-repair-schema`)
 }
 
 function analyzeTable(clusterName, schema, table, persistent, baseURL) {
@@ -797,7 +812,7 @@ function getResticMountStatus(clusterName, baseURL) {
 }
 
 function resticInitRepo(clusterName, force, baseURL) {
-  const endpoint = force 
+  const endpoint = force
     ? `clusters/${clusterName}/restic/init/force`
     : `clusters/${clusterName}/restic/init`
   return getApi(baseURL).post(endpoint)
