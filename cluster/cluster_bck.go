@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -36,7 +37,7 @@ func isS3ResticRepository(repoPath string) bool {
 func buildResticS3RepoSpec(endpoint, bucket, prefix, clusterName string, appendCluster bool) (string, string) {
 	bucket = strings.TrimSpace(bucket)
 	prefix = strings.Trim(prefix, "/")
-	if appendCluster && clusterName != "" {
+	if appendCluster && shouldAppendClusterNameS3(bucket, prefix, clusterName) {
 		if prefix == "" {
 			prefix = clusterName
 		} else {
@@ -56,6 +57,31 @@ func buildResticS3RepoSpec(endpoint, bucket, prefix, clusterName string, appendC
 	}
 
 	return repoPath, prefix
+}
+
+func shouldAppendClusterNameS3(bucket, prefix, clusterName string) bool {
+	if clusterName == "" {
+		return false
+	}
+	if strings.TrimSpace(bucket) == clusterName {
+		return false
+	}
+	prefix = strings.Trim(prefix, "/")
+	if prefix != "" && path.Base(prefix) == clusterName {
+		return false
+	}
+	return true
+}
+
+func shouldAppendClusterNameLocal(localRepoPath, clusterName string) bool {
+	if clusterName == "" {
+		return false
+	}
+	localRepoPath = strings.TrimSpace(localRepoPath)
+	if localRepoPath == "" {
+		return true
+	}
+	return filepath.Base(filepath.Clean(localRepoPath)) != clusterName
 }
 
 func isWithinParentPath(parent, child string) bool {
@@ -355,7 +381,7 @@ func (cluster *Cluster) ResticGetEnv() []string {
 	} else {
 		if localRepoPath != "" {
 			repoPath = localRepoPath
-			if appendCluster {
+			if appendCluster && shouldAppendClusterNameLocal(repoPath, cluster.Name) {
 				repoPath = filepath.Join(repoPath, cluster.Name)
 			}
 		} else {

@@ -2668,6 +2668,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchTopologyStaging()
 	case "analyze-use-persistent":
 		mycluster.SwitchAnalyzeUsePersistent()
+	case "backup-restic-repo-append-cluster":
+		mycluster.Conf.BackupResticRepoAppendCluster = !mycluster.Conf.BackupResticRepoAppendCluster
 	default:
 		return errors.New("setting not found")
 	}

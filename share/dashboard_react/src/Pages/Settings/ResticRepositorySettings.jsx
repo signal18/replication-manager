@@ -43,6 +43,20 @@ const ResticHostHelp = `backup-restic-host overrides the restic --host value use
 Set a value to use a consistent alias across backups.  
 Leave it empty to use restic's default hostname (no alias).`
 
+const ResticRepoAppendClusterHelp = `backup-restic-repo-append-cluster controls whether the cluster name is appended to the repository path (local and S3).
+
+Example:
+- base: /var/lib/repman/backups/archive
+- cluster: prod
+- on  -> /var/lib/repman/backups/archive/prod
+- off -> /var/lib/repman/backups/archive (only if you set backup-restic-local-repository outside the default archive dir)
+
+Auto-skip rules when enabled:
+- If the last path segment already equals the cluster name, it is not appended again.
+- If the S3 bucket name equals the cluster name, it is not appended to the prefix.
+
+Note: custom local repo paths inside the default archive directory are ignored.`
+
 function ResticRepositorySettings({
   clusterName,
   config,
@@ -343,6 +357,34 @@ function ResticRepositorySettings({
               </Stack>
 
               <Stack spacing={{ base: 1, md: 2 }}>
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
+                  <GridItem className={styles.rowLabel}>
+                    <Text>Backup restic repo append cluster</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <HStack spacing={2} align='center'>
+                      <RMSwitch
+                        isChecked={config?.backupResticRepoAppendCluster}
+                        isDisabled={user?.grants['cluster-settings'] == false}
+                        confirmTitle={'Confirm switch settings for backup-restic-repo-append-cluster?'}
+                        onChange={() => handleSwitchChange('backup-restic-repo-append-cluster')}
+                      />
+                      <RMIconButton
+                        icon={HiQuestionMarkCircle}
+                        onClick={() => {
+                          onOpenInfoModal('Restic Repo Append Cluster', ResticRepoAppendClusterHelp)
+                        }}
+                      />
+                    </HStack>
+                  </GridItem>
+                </Grid>
+
                 <Grid
                   className={styles.resticMountGrid}
                   templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}

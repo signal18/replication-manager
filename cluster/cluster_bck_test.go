@@ -939,6 +939,22 @@ func TestBuildResticS3RepoSpecAppendCluster(t *testing.T) {
 	if prefix != "base" {
 		t.Fatalf("unexpected prefix: %s", prefix)
 	}
+
+	repo, prefix = buildResticS3RepoSpec("", "cluster1", "", "cluster1", true)
+	if repo != "s3:cluster1" {
+		t.Fatalf("unexpected repo path: %s", repo)
+	}
+	if prefix != "" {
+		t.Fatalf("unexpected prefix: %s", prefix)
+	}
+
+	repo, prefix = buildResticS3RepoSpec("", "bucket", "base/cluster1", "cluster1", true)
+	if repo != "s3:bucket/base/cluster1" {
+		t.Fatalf("unexpected repo path: %s", repo)
+	}
+	if prefix != "base/cluster1" {
+		t.Fatalf("unexpected prefix: %s", prefix)
+	}
 }
 
 func TestResolveResticRepoAppendClusterGuards(t *testing.T) {
@@ -979,6 +995,16 @@ func TestResolveResticRepoAppendClusterGuards(t *testing.T) {
 		t.Fatalf("expected append to remain disabled with custom local repo")
 	}
 	if localRepo != "/custom/restic" {
+		t.Fatalf("expected local repo to be accepted when outside default parent")
+	}
+
+	conf.BackupResticRepoAppendCluster = true
+	conf.BackupResticLocalRepository = "/custom/cluster1"
+	localRepo, append = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
+	if !append {
+		t.Fatalf("expected append to remain enabled with custom local repo")
+	}
+	if localRepo != "/custom/cluster1" {
 		t.Fatalf("expected local repo to be accepted when outside default parent")
 	}
 }
