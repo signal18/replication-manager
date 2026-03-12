@@ -970,24 +970,16 @@ func TestResolveResticRepoAppendClusterGuards(t *testing.T) {
 		t.Fatalf("expected local repo to remain empty when not configured")
 	}
 
-	conf.BackupResticRepository = "https://example.com/restic"
-	localRepo, shouldAppend = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
-	if shouldAppend {
-		t.Fatalf("expected append to remain disabled with remote restic repository")
-	}
-	if localRepo != "" {
-		t.Fatalf("expected local repo to remain empty when remote repo is configured")
-	}
-
-	conf.BackupResticRepository = "s3:https://minio.local/bucket"
-	localRepo, shouldAppend = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
-	if shouldAppend {
-		t.Fatalf("expected append to remain disabled with remote s3 restic repository")
-	}
-	if localRepo != "" {
-		t.Fatalf("expected local repo to remain empty when remote s3 repo is configured")
-	}
 	conf.BackupResticRepository = ""
+	conf.BackupResticAws = true
+	localRepo, shouldAppend = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
+	if shouldAppend {
+		t.Fatalf("expected append to remain disabled when AWS restic is enabled")
+	}
+	if localRepo != "" {
+		t.Fatalf("expected local repo to remain empty when AWS restic is enabled")
+	}
+	conf.BackupResticAws = false
 
 	defaultParent := filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "archive")
 	conf.BackupResticLocalRepository = defaultParent

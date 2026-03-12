@@ -34,21 +34,6 @@ func isS3ResticRepository(repoPath string) bool {
 	return strings.HasPrefix(strings.TrimSpace(repoPath), "s3:")
 }
 
-func isRemoteResticRepository(repoPath string) bool {
-	trimmed := strings.TrimSpace(repoPath)
-	if trimmed == "" {
-		return false
-	}
-	if strings.HasPrefix(trimmed, "s3:") {
-		return true
-	}
-	if strings.HasPrefix(trimmed, "sftp:") || strings.HasPrefix(trimmed, "rest:") || strings.HasPrefix(trimmed, "gs:") ||
-		strings.HasPrefix(trimmed, "azure:") || strings.HasPrefix(trimmed, "swift:") || strings.HasPrefix(trimmed, "b2:") {
-		return true
-	}
-	return strings.Contains(trimmed, "://")
-}
-
 func buildResticS3RepoSpec(endpoint, bucket, prefix, clusterName string, appendCluster bool) (string, string) {
 	bucket = strings.TrimSpace(bucket)
 	prefix = strings.Trim(prefix, "/")
@@ -163,7 +148,7 @@ func resolveResticRepoPolicy(conf *config.Config, localRepoPath string, cluster 
 		localRepoPath = ""
 	}
 	if !appendCluster && localRepoPath == "" {
-		if isRemoteResticRepository(conf.BackupResticRepository) {
+		if conf.BackupResticAws {
 			return localRepoPath, appendCluster
 		}
 		if cluster != nil {
