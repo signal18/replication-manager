@@ -7692,6 +7692,7 @@ func (repman *ReplicationManager) handlerMuxResticInitRepo(w http.ResponseWriter
 		if effectivePrefix, ok := mycluster.ResticS3EffectivePrefixForInit(); ok {
 			mycluster.Conf.BackupResticAwsPrefix = effectivePrefix
 			mycluster.ReloadResticEnv()
+			mycluster.ConfigManager.SaveConfig(mycluster, false)
 		}
 
 		w.WriteHeader(http.StatusOK)
