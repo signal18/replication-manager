@@ -32,19 +32,6 @@ func NewClient(accessKey, secretKey, sessionToken, region, endpoint string) (*s3
 	if region != "" {
 		options = append(options, config.WithRegion(region))
 	}
-	if endpoint != "" {
-		options = append(options, config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
-			func(service, region string, _ ...interface{}) (aws.Endpoint, error) {
-				if service == s3.ServiceID {
-					return aws.Endpoint{
-						URL:               endpoint,
-						HostnameImmutable: true,
-					}, nil
-				}
-				return aws.Endpoint{}, &aws.EndpointNotFoundError{}
-			},
-		)))
-	}
 
 	awsConfig, err := config.LoadDefaultConfig(context.Background(), options...)
 	if err != nil {
@@ -53,6 +40,9 @@ func NewClient(accessKey, secretKey, sessionToken, region, endpoint string) (*s3
 
 	return s3.NewFromConfig(awsConfig, func(options *s3.Options) {
 		options.UsePathStyle = true
+		if endpoint != "" {
+			options.EndpointResolver = s3.EndpointResolverFromURL(endpoint)
+		}
 	}), nil
 }
 

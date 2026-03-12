@@ -313,6 +313,12 @@ type TaskStatus struct {
 type ResticManager struct {
 	BinaryPath           string
 	Env                  []string
+	AwsAccessKeyID       string
+	AwsSecretAccessKey   string
+	AwsRegion            string
+	AwsEndpoint          string
+	AwsBucket            string
+	AwsPrefix            string
 	Backups              []BackupSnapshot
 	BackupMap            map[string]*BackupSnapshot
 	BackupStat           BackupStat
@@ -538,6 +544,16 @@ func (repo *ResticManager) ClearInitErrorBackoffManual() {
 
 func (repo *ResticManager) SetEnv(env []string) {
 	repo.Env = env
+}
+
+// SetAwsConfig updates AWS settings for S3 repository handling.
+func (repo *ResticManager) SetAwsConfig(accessKeyID, secretAccessKey, region, endpoint, bucket, prefix string) {
+	repo.AwsAccessKeyID = accessKeyID
+	repo.AwsSecretAccessKey = secretAccessKey
+	repo.AwsRegion = region
+	repo.AwsEndpoint = endpoint
+	repo.AwsBucket = bucket
+	repo.AwsPrefix = prefix
 }
 
 // UpdateEnvKey updates the environment variable for the Restic repository
@@ -2863,15 +2879,7 @@ func parseS3URL(repoPath string) (bucket, prefix, endpoint string, err error) {
 // checkS3RepoFiles verifies S3 repository structure and initializes if needed
 func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) error {
 	// Create S3 client
-	accessKey := repo.getEnvValue("AWS_ACCESS_KEY_ID")
-	secretKey := repo.getEnvValue("AWS_SECRET_ACCESS_KEY")
-	sessionToken := repo.getEnvValue("AWS_SESSION_TOKEN")
-	region := repo.getEnvValue("AWS_REGION")
-	if region == "" {
-		region = repo.getEnvValue("AWS_DEFAULT_REGION")
-	}
-
-	client, err := s3helper.NewClient(accessKey, secretKey, sessionToken, region, endpoint)
+	client, err := s3helper.NewClient(repo.AwsAccessKeyID, repo.AwsSecretAccessKey, "", repo.AwsRegion, endpoint)
 	if err != nil {
 		repo.CanInitRepo = false
 		err = fmt.Errorf("failed to create S3 client: %w", err)
@@ -3041,9 +3049,23 @@ func (repo *ResticManager) CheckRepoFiles() error {
 	}
 
 	repopath := repo.GetRepoPath()
-	if isS3Repository(repopath) {
-		// S3 repository file checks are not supported yet.
-		return nil
+	if isS3Repository(repopath) || repo.AwsBucket != "" {
+		bucket := strings.TrimSpace(repo.AwsBucket)
+		prefix := strings.Trim(repo.AwsPrefix, "/")
+		endpoint := strings.TrimSpace(repo.AwsEndpoint)
+		if bucket == "" {
+			var err error
+			bucket, prefix, endpoint, err = parseS3URL(repopath)
+			if err != nil {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("failed to parse S3 repo path: %w", err)
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
+		}
+
+		return repo.checkS3RepoFiles(bucket, prefix, endpoint)
 	}
 
 	// Existing local filesystem logic

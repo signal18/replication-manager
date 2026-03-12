@@ -33,6 +33,31 @@ func isS3ResticRepository(repoPath string) bool {
 	return strings.HasPrefix(strings.TrimSpace(repoPath), "s3:")
 }
 
+func buildResticS3RepoSpec(endpoint, bucket, prefix, clusterName string) (string, string) {
+	bucket = strings.TrimSpace(bucket)
+	prefix = strings.Trim(prefix, "/")
+	if clusterName != "" {
+		if prefix == "" {
+			prefix = clusterName
+		} else {
+			prefix = prefix + "/" + clusterName
+		}
+	}
+
+	repoPath := ""
+	if endpoint != "" {
+		endpoint = strings.TrimRight(endpoint, "/")
+		repoPath = "s3:" + endpoint + "/" + bucket
+	} else {
+		repoPath = "s3:" + bucket
+	}
+	if prefix != "" {
+		repoPath += "/" + prefix
+	}
+
+	return repoPath, prefix
+}
+
 func splitResticAdditionalEnvTokens(value string) ([]string, error) {
 	parts := make([]string, 0)
 	var current strings.Builder
@@ -264,7 +289,16 @@ func (cluster *Cluster) ResticGetEnv() []string {
 	repoPath := ""
 	// backup-restic-aws controls whether the repo path is remote; otherwise local repo is used.
 	if cluster.Conf.BackupResticAws {
-		repoPath = cluster.Conf.BackupResticRepository + "/" + cluster.Name
+		if strings.TrimSpace(cluster.Conf.BackupResticAwsBucket) != "" {
+			repoPath, _ = buildResticS3RepoSpec(
+				cluster.Conf.BackupResticAwsEndpoint,
+				cluster.Conf.BackupResticAwsBucket,
+				cluster.Conf.BackupResticAwsPrefix,
+				cluster.Name,
+			)
+		} else {
+			repoPath = cluster.Conf.BackupResticRepository + "/" + cluster.Name
+		}
 	} else {
 		if _, err := os.Stat(cluster.GetResticLocalDir()); os.IsNotExist(err) {
 			err := os.MkdirAll(cluster.GetResticLocalDir(), os.ModePerm)
@@ -291,6 +325,28 @@ func (cluster *Cluster) ResticGetEnv() []string {
 func (cluster *Cluster) ReloadResticEnv() {
 	if cluster.ResticManager != nil {
 		cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
+		bucket := ""
+		prefix := ""
+		endpoint := ""
+		if cluster.Conf.BackupResticAws && strings.TrimSpace(cluster.Conf.BackupResticAwsBucket) != "" {
+			_, prefix = buildResticS3RepoSpec(
+				cluster.Conf.BackupResticAwsEndpoint,
+				cluster.Conf.BackupResticAwsBucket,
+				cluster.Conf.BackupResticAwsPrefix,
+				cluster.Name,
+			)
+			bucket = strings.TrimSpace(cluster.Conf.BackupResticAwsBucket)
+			endpoint = strings.TrimSpace(cluster.Conf.BackupResticAwsEndpoint)
+		}
+
+		cluster.ResticManager.SetAwsConfig(
+			cluster.Conf.BackupResticAwsAccessKeyId,
+			cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"),
+			cluster.Conf.BackupResticAwsRegion,
+			endpoint,
+			bucket,
+			prefix,
+		)
 		// Clear init error backoff when environment changes (credentials/config may be fixed)
 		cluster.ResticManager.ClearInitErrorBackoffManual()
 	}
