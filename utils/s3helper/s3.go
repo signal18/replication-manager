@@ -42,7 +42,7 @@ func NewClient(accessKey, secretKey, sessionToken, region, endpoint string) (*s3
 	return s3.NewFromConfig(awsConfig, func(options *s3.Options) {
 		options.UsePathStyle = true
 		if endpoint != "" {
-			options.EndpointResolver = s3.EndpointResolverFromURL(endpoint)
+			options.BaseEndpoint = aws.String(endpoint)
 		}
 	}), nil
 }
