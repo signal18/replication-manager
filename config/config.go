@@ -769,6 +769,7 @@ type Config struct {
 	BackupResticAwsEndpoint                   string `mapstructure:"backup-restic-aws-endpoint" toml:"backup-restic-aws-endpoint" json:"backupResticAwsEndpoint"`
 	BackupResticAwsBucket                     string `mapstructure:"backup-restic-aws-bucket" toml:"backup-restic-aws-bucket" json:"backupResticAwsBucket"`
 	BackupResticAwsPrefix                     string `mapstructure:"backup-restic-aws-prefix" toml:"backup-restic-aws-prefix" json:"backupResticAwsPrefix"`
+	BackupResticRepoAppendCluster             bool   `mapstructure:"backup-restic-repo-append-cluster" toml:"backup-restic-repo-append-cluster" json:"backupResticRepoAppendCluster"`
 	BackupResticAdditionalEnv                 string `mapstructure:"backup-restic-additional-env" toml:"backup-restic-additional-env" json:"backupResticAdditionalEnv"`
 	BackupResticRepository                    string `mapstructure:"backup-restic-repository" toml:"backup-restic-repository" json:"backupResticRepository"`
 	BackupResticPassword                      string `mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
@@ -947,6 +948,7 @@ func init() {
 	viper.SetDefault("backup-restic-purge-prune-repack-cacheable-only", false)
 	viper.SetDefault("backup-restic-purge-prune-repack-small", false)
 	viper.SetDefault("backup-restic-purge-prune-repack-uncompressed", false)
+	viper.SetDefault("backup-restic-repo-append-cluster", true)
 }
 
 type AppConfig struct {

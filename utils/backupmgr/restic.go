@@ -2876,6 +2876,16 @@ func parseS3URL(repoPath string) (bucket, prefix, endpoint string, err error) {
 	return bucket, prefix, endpoint, nil
 }
 
+func (repo *ResticManager) resolveS3RepoSpec(repopath string) (bucket, prefix, endpoint string, err error) {
+	bucket = strings.TrimSpace(repo.AwsBucket)
+	prefix = strings.Trim(repo.AwsPrefix, "/")
+	endpoint = strings.TrimSpace(repo.AwsEndpoint)
+	if bucket == "" {
+		return parseS3URL(repopath)
+	}
+	return bucket, prefix, endpoint, nil
+}
+
 // checkS3RepoFiles verifies S3 repository structure and initializes if needed
 func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) error {
 	// Create S3 client
@@ -3050,21 +3060,14 @@ func (repo *ResticManager) CheckRepoFiles() error {
 
 	repopath := repo.GetRepoPath()
 	if isS3Repository(repopath) || repo.AwsBucket != "" {
-		bucket := strings.TrimSpace(repo.AwsBucket)
-		prefix := strings.Trim(repo.AwsPrefix, "/")
-		endpoint := strings.TrimSpace(repo.AwsEndpoint)
-		if bucket == "" {
-			var err error
-			bucket, prefix, endpoint, err = parseS3URL(repopath)
-			if err != nil {
-				repo.CanInitRepo = false
-				err = fmt.Errorf("failed to parse S3 repo path: %w", err)
-				repo.SetError(InitTask, err)
-				repo.setInitErrorBackoff(err)
-				return err
-			}
+		bucket, prefix, endpoint, err := repo.resolveS3RepoSpec(repopath)
+		if err != nil {
+			repo.CanInitRepo = false
+			err = fmt.Errorf("failed to parse S3 repo path: %w", err)
+			repo.SetError(InitTask, err)
+			repo.setInitErrorBackoff(err)
+			return err
 		}
-
 		return repo.checkS3RepoFiles(bucket, prefix, endpoint)
 	}
 
@@ -3259,13 +3262,29 @@ func (repo *ResticManager) InitRepo(force bool) error {
 func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 	repopath := repo.GetRepoPath()
 	if opt.Force {
-		if isS3Repository(repopath) {
-			// Avoid force init on S3 to prevent accidental data loss or conflicts on shared buckets/prefixes.
-			err := errors.New("force init is disabled for S3 repositories to prevent accidental data loss")
-			repo.CanInitRepo = false
-			repo.SetError(InitTask, err)
-			repo.setInitErrorBackoff(err)
-			return err
+		if isS3Repository(repopath) || repo.AwsBucket != "" {
+			bucket, prefix, endpoint, err := repo.resolveS3RepoSpec(repopath)
+			if err != nil {
+				repo.CanInitRepo = false
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
+			client, err := s3helper.NewClient(repo.AwsAccessKeyID, repo.AwsSecretAccessKey, "", repo.AwsRegion, endpoint)
+			if err != nil {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("failed to create S3 client: %w", err)
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
+			if err := s3helper.DeletePrefix(client, bucket, prefix); err != nil {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("failed to delete S3 repository prefix: %w", err)
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
 		} else {
 			err := os.RemoveAll(repopath)
 			if err != nil {

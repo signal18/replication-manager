@@ -33,10 +33,10 @@ func isS3ResticRepository(repoPath string) bool {
 	return strings.HasPrefix(strings.TrimSpace(repoPath), "s3:")
 }
 
-func buildResticS3RepoSpec(endpoint, bucket, prefix, clusterName string) (string, string) {
+func buildResticS3RepoSpec(endpoint, bucket, prefix, clusterName string, appendCluster bool) (string, string) {
 	bucket = strings.TrimSpace(bucket)
 	prefix = strings.Trim(prefix, "/")
-	if clusterName != "" {
+	if appendCluster && clusterName != "" {
 		if prefix == "" {
 			prefix = clusterName
 		} else {
@@ -56,6 +56,54 @@ func buildResticS3RepoSpec(endpoint, bucket, prefix, clusterName string) (string
 	}
 
 	return repoPath, prefix
+}
+
+func isWithinParentPath(parent, child string) bool {
+	parent = filepath.Clean(parent)
+	child = filepath.Clean(child)
+	if parent == "" || child == "" {
+		return false
+	}
+	parentAbs, err := filepath.Abs(parent)
+	if err == nil {
+		parent = parentAbs
+	}
+	childAbs, err := filepath.Abs(child)
+	if err == nil {
+		child = childAbs
+	}
+	if parent == child {
+		return true
+	}
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	return !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) && rel != ".."
+}
+
+func resolveResticRepoPolicy(conf *config.Config, localRepoPath string, cluster *Cluster) (string, bool) {
+	appendCluster := conf.BackupResticRepoAppendCluster
+	localRepoPath = strings.TrimSpace(localRepoPath)
+	defaultParent := filepath.Clean(filepath.Join(conf.WorkingDir, config.ConstStreamingSubDir, "archive"))
+	if localRepoPath != "" && isWithinParentPath(defaultParent, localRepoPath) {
+		if cluster != nil {
+			cluster.LogModulePrintf(conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"backup-restic-local-repository ignored: path is within default archive directory")
+		}
+		localRepoPath = ""
+	}
+	if !appendCluster && localRepoPath == "" {
+		if cluster != nil {
+			cluster.LogModulePrintf(conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"backup-restic-repo-append-cluster=false ignored: backup-restic-local-repository is empty or invalid")
+		}
+		appendCluster = true
+	}
+	return localRepoPath, appendCluster
 }
 
 func splitResticAdditionalEnvTokens(value string) ([]string, error) {
@@ -288,6 +336,7 @@ func (cluster *Cluster) ResticGetEnv() []string {
 	password := cluster.Conf.GetDecryptedValue("backup-restic-password")
 	repoPath := ""
 	// backup-restic-aws controls whether the repo path is remote; otherwise local repo is used.
+	localRepoPath, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
 	if cluster.Conf.BackupResticAws {
 		if strings.TrimSpace(cluster.Conf.BackupResticAwsBucket) != "" {
 			repoPath, _ = buildResticS3RepoSpec(
@@ -295,18 +344,29 @@ func (cluster *Cluster) ResticGetEnv() []string {
 				cluster.Conf.BackupResticAwsBucket,
 				cluster.Conf.BackupResticAwsPrefix,
 				cluster.Name,
+				appendCluster,
 			)
 		} else {
-			repoPath = cluster.Conf.BackupResticRepository + "/" + cluster.Name
-		}
-	} else {
-		if _, err := os.Stat(cluster.GetResticLocalDir()); os.IsNotExist(err) {
-			err := os.MkdirAll(cluster.GetResticLocalDir(), os.ModePerm)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", cluster.GetResticLocalDir(), err)
+			repoPath = cluster.Conf.BackupResticRepository
+			if appendCluster {
+				repoPath = repoPath + "/" + cluster.Name
 			}
 		}
-		repoPath = cluster.GetResticLocalDir()
+	} else {
+		if localRepoPath != "" {
+			repoPath = localRepoPath
+			if appendCluster {
+				repoPath = filepath.Join(repoPath, cluster.Name)
+			}
+		} else {
+			repoPath = filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
+		}
+		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+			err := os.MkdirAll(repoPath, os.ModePerm)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", repoPath, err)
+			}
+		}
 	}
 
 	return filterResticEnv(
@@ -329,11 +389,13 @@ func (cluster *Cluster) ReloadResticEnv() {
 		prefix := ""
 		endpoint := ""
 		if cluster.Conf.BackupResticAws && strings.TrimSpace(cluster.Conf.BackupResticAwsBucket) != "" {
+			_, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
 			_, prefix = buildResticS3RepoSpec(
 				cluster.Conf.BackupResticAwsEndpoint,
 				cluster.Conf.BackupResticAwsBucket,
 				cluster.Conf.BackupResticAwsPrefix,
 				cluster.Name,
+				appendCluster,
 			)
 			bucket = strings.TrimSpace(cluster.Conf.BackupResticAwsBucket)
 			endpoint = strings.TrimSpace(cluster.Conf.BackupResticAwsEndpoint)

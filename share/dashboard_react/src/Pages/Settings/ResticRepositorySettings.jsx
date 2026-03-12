@@ -84,6 +84,16 @@ function ResticRepositorySettings({
     onClose: onCloseInitModal 
   } = useDisclosure()
   const [initForce, setInitForce] = useState(false)
+  const [confirmEmptyPrefix, setConfirmEmptyPrefix] = useState(false)
+  const isAws = Boolean(config?.backupResticAws)
+  const awsBucket = (config?.backupResticAwsBucket || '').trim()
+  const awsPrefix = (config?.backupResticAwsPrefix || '').trim()
+  const awsEndpoint = (config?.backupResticAwsEndpoint || '').trim()
+  const awsRepoPath = awsBucket
+    ? `s3:${awsEndpoint ? `${awsEndpoint.replace(/\/+$/, '')}/` : ''}${awsBucket}${awsPrefix ? `/${awsPrefix}` : ''}`
+    : config?.backupResticRepository
+  const isAwsPrefixEmpty = isAws && awsBucket && !awsPrefix
+  const isForceInitBlocked = initForce && isAwsPrefixEmpty && !confirmEmptyPrefix
 
   const handleSettingChange = (setting, value, encodeValue = false) =>
     dispatch(
@@ -104,6 +114,7 @@ function ResticRepositorySettings({
 
   const handleResticInit = () => {
     setInitForce(false) // Reset force flag
+    setConfirmEmptyPrefix(false)
     onOpenInitModal()
   }
 
@@ -650,29 +661,18 @@ function ResticRepositorySettings({
               wordBreak='break-all'
             >
               {config?.backupResticAws 
-                ? config?.backupResticRepository 
+                ? awsRepoPath 
                 : config?.backupResticLocalRepository}
             </Text>
             <Divider />
             <Checkbox
               isChecked={initForce}
-              isDisabled={config?.backupResticAws}
               onChange={(e) => setInitForce(e.target.checked)}
             >
               <Text fontSize='sm'>
                 Force re-initialization (overwrite existing configuration)
               </Text>
             </Checkbox>
-            {config?.backupResticAws && (
-              <>
-                <Text fontSize='sm' color='gray.600'>
-                  Force re-initialization is disabled when backup-restic-aws is enabled (S3/MinIO mode).
-                </Text>
-                <Text fontSize='xs' color='gray.500'>
-                  Local repositories are used when backup-restic-aws is off, regardless of repository URL.
-                </Text>
-              </>
-            )}
             {initForce && (
               <Alert status='warning' size='sm' borderRadius='md'>
                 <AlertIcon />
@@ -683,11 +683,30 @@ function ResticRepositorySettings({
                 </Text>
               </Alert>
             )}
+            {initForce && isAwsPrefixEmpty && (
+              <Alert status='error' size='sm' borderRadius='md'>
+                <AlertIcon />
+                <Text fontSize='sm'>
+                  Empty S3 prefix detected. Force init will impact the entire bucket.
+                </Text>
+              </Alert>
+            )}
+            {initForce && isAwsPrefixEmpty && (
+              <Checkbox
+                isChecked={confirmEmptyPrefix}
+                onChange={(e) => setConfirmEmptyPrefix(e.target.checked)}
+              >
+                <Text fontSize='sm'>
+                  I understand this will affect the entire bucket.
+                </Text>
+              </Checkbox>
+            )}
           </VStack>
         }
         onConfirmClick={handleConfirmInit}
         confirmButtonText="Initialize"
         confirmButtonProps={{ 
+          isDisabled: isForceInitBlocked,
           colorScheme: initForce ? 'red' : 'blue' 
         }}
       />

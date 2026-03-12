@@ -922,3 +922,63 @@ func TestReconcileSnapshotMetadata_EmptyReport(t *testing.T) {
 		t.Errorf("Expected 0 missing metadata, got %d", len(report.MissingMetadata))
 	}
 }
+
+func TestBuildResticS3RepoSpecAppendCluster(t *testing.T) {
+	repo, prefix := buildResticS3RepoSpec("https://s3.example.com", "bucket", "base", "cluster1", true)
+	if repo != "s3:https://s3.example.com/bucket/base/cluster1" {
+		t.Fatalf("unexpected repo path: %s", repo)
+	}
+	if prefix != "base/cluster1" {
+		t.Fatalf("unexpected prefix: %s", prefix)
+	}
+
+	repo, prefix = buildResticS3RepoSpec("", "bucket", "base", "cluster1", false)
+	if repo != "s3:bucket/base" {
+		t.Fatalf("unexpected repo path: %s", repo)
+	}
+	if prefix != "base" {
+		t.Fatalf("unexpected prefix: %s", prefix)
+	}
+}
+
+func TestResolveResticRepoAppendClusterGuards(t *testing.T) {
+	conf := &config.Config{BackupResticRepoAppendCluster: false}
+	cluster := &Cluster{Conf: conf, Name: "cluster1"}
+	cluster.Conf.WorkingDir = "/var/lib/repman"
+
+	localRepo, append := resolveResticRepoPolicy(conf, "", cluster)
+	if !append {
+		t.Fatalf("expected guardrail to force append when local repo is empty")
+	}
+	if localRepo != "" {
+		t.Fatalf("expected local repo to remain empty when not configured")
+	}
+
+	defaultParent := filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "archive")
+	conf.BackupResticLocalRepository = defaultParent
+	localRepo, append = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
+	if !append {
+		t.Fatalf("expected guardrail to force append when local repo is within default parent")
+	}
+	if localRepo != "" {
+		t.Fatalf("expected local repo to be rejected when within default parent")
+	}
+
+	conf.BackupResticLocalRepository = filepath.Join(defaultParent, "cluster1")
+	localRepo, append = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
+	if !append {
+		t.Fatalf("expected guardrail to force append when local repo is within default parent")
+	}
+	if localRepo != "" {
+		t.Fatalf("expected local repo to be rejected when within default parent subdir")
+	}
+
+	conf.BackupResticLocalRepository = "/custom/restic"
+	localRepo, append = resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
+	if append {
+		t.Fatalf("expected append to remain disabled with custom local repo")
+	}
+	if localRepo != "/custom/restic" {
+		t.Fatalf("expected local repo to be accepted when outside default parent")
+	}
+}
