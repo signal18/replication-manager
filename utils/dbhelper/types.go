@@ -32,9 +32,9 @@ const (
 
 // chunk represents a table checksum chunk
 type Chunk struct {
-	ChunkId       uint64 `json:"chunkId"`
+	ChunkId             uint64 `json:"chunkId"`
 	ChunkRangeCondition string `json:"chunkRangeCondition"`
-	ChunkCheckSum uint64 `json:"chunkCheckSum"`
+	ChunkCheckSum       uint64 `json:"chunkCheckSum"`
 }
 
 // Plugin represents a database plugin
@@ -146,6 +146,7 @@ type Table struct {
 	CreateOptions     string             `protobuf:"bytes,17,opt,name=create_options,json=createOptions,proto3" json:"create_options,omitempty"`
 	TableComment      string             `protobuf:"bytes,18,opt,name=table_comment,json=tableComment,proto3" json:"table_comment,omitempty"`
 	AutoIncrement     int64              `protobuf:"varint,19,opt,name=auto_increment,json=autoIncrement,proto3" json:"auto_increment"`
+	TableChunksError  []Chunk            `protobuf:"bytes,20,opt,name=table_chunks_error,json=tableChunksError,proto3" json:"table_chunks_error,omitempty"`
 	TableColumnMap    map[string]*Column `protobuf:"-" json:"-"`
 	TableIndexMap     map[string]*Index  `protobuf:"-" json:"-"`
 }

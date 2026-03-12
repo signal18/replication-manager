@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { checksumAllTables, checksumTable, getShardSchema, monitorAllSchemas } from '../../redux/clusterSlice'
+import { checksumRepairAllTables, checksumRepairTable, checksumAllTables, checksumTable, getShardSchema, monitorAllSchemas } from '../../redux/clusterSlice'
 import { createColumnHelper } from '@tanstack/react-table'
 import { DataTable } from '../../components/DataTable'
 import styles from './styles.module.scss'
@@ -23,9 +23,12 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
   const [data, setData] = useState(shardSchema || [])
   const prevShardsRef = useRef(shardSchema)
   const [isChecksumAllRunning, setIsChecksumAllRunning] = useState(false)
+  const [isChecksumRepairAllRunning, setIsChecksumRepairAllRunning] = useState(false)
   const [isSchemaConfirmOpen, setIsSchemaConfirmOpen] = useState(false)
   const [pendingChecksumAll, setPendingChecksumAll] = useState(false)
+  const [pendingChecksumRepairAll, setPendingChecksumRepairAll] = useState(false)
   const [checksumTimeout, setChecksumTimeout] = useState(false)
+  const [checksumRepairTimeout, setChecksumRepairTimeout] = useState(false)
   const mountedRef = useRef(true)
 
   useEffect(() => {
@@ -49,6 +52,14 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
     },
     [dispatch, selectedCluster?.name]
   )
+
+  const handleChecksumRepair = useCallback(
+    (schema, table) => {
+      dispatch(checksumRepairTable({ clusterName: selectedCluster?.name, schema, table }))
+    },
+    [dispatch, selectedCluster?.name]
+  )
+
   const handleChecksumAll = async () => {
     if (!selectedCluster?.name || isChecksumAllRunning) {
       return
@@ -60,6 +71,19 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
     }
     await runChecksumAllFlow()
   }
+
+  const handleChecksumRepairAll = async () => {
+    if (!selectedCluster?.name || isChecksumAllRunning) {
+      return
+    }
+    if (!shardSchema || shardSchema.length === 0) {
+      setPendingChecksumRepairAll(true)
+      setIsSchemaConfirmOpen(true)
+      return
+    }
+    await runChecksumRepairAllFlow()
+  }
+
 
   const runChecksumAllFlow = async () => {
     if (!selectedCluster?.name || isChecksumAllRunning) {
@@ -83,6 +107,32 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
     } finally {
       if (mountedRef.current) {
         setIsChecksumAllRunning(false)
+      }
+    }
+  }
+
+  const runChecksumRepairAllFlow = async () => {
+    if (!selectedCluster?.name || isChecksumAllRunning) {
+      return
+    }
+    setChecksumRepairTimeout(false)
+    setIsChecksumRepairAllRunning(true)
+    try {
+      if (!shardSchema || shardSchema.length === 0) {
+        await dispatch(monitorAllSchemas({ clusterName: selectedCluster?.name }))
+        const schemaReady = await waitForSchemaCache()
+        if (!mountedRef.current) {
+          return
+        }
+        if (!schemaReady) {
+          setChecksumRepairTimeout(true)
+          return
+        }
+      }
+      await dispatch(checksumRepairAllTables({ clusterName: selectedCluster?.name }))
+    } finally {
+      if (mountedRef.current) {
+        setIsChecksumRepairAllRunning(false)
       }
     }
   }
@@ -169,6 +219,9 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
             <RMButton onClick={() => handleChecksum(info.row.original.table_schema, info.row.original.table_name)}>
               Checksum
             </RMButton>
+            <RMButton onClick={() => handleChecksumRepair(info.row.original.table_schema, info.row.original.table_name)}>
+              Repair
+            </RMButton>
             <span>{info.getValue()}</span>
           </Flex>
         )
@@ -221,7 +274,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
         }
       )
     ],
-    [handleChecksum, sizeTotalsInfo, sizePctSorting]
+    [handleChecksum, handleChecksumRepair, sizeTotalsInfo, sizePctSorting]
   )
   useEffect(() => {
     if (selectedCluster?.name) {
@@ -247,6 +300,13 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
               {isChecksumAllRunning ? 'Preparing schema cache...' : 'Checksum All Tables'}
             </RMButton>
             <RMButton
+              className={styles.btnChecksumAll}
+              onClick={handleChecksumRepairAll}
+              isDisabled={!selectedCluster?.name || isChecksumRepairAllRunning}
+              isLoading={isChecksumRepairAllRunning}>
+              {isChecksumRepairAllRunning ? 'Preparing schema cache...' : 'Repair All Tables'}
+            </RMButton>
+            <RMButton
               variant='outline'
               onClick={onOpenSchedulerSettings}
               isDisabled={!onOpenSchedulerSettings || user?.grants['cluster-show-backups'] == false}>
@@ -254,6 +314,11 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
             </RMButton>
           </Flex>
           {checksumTimeout && (
+            <Flex className={styles.timeoutMessage}>
+              <span>Schema monitoring timed out. Check server logs or retry later.</span>
+            </Flex>
+          )}
+          {checksumRepairTimeout && (
             <Flex className={styles.timeoutMessage}>
               <span>Schema monitoring timed out. Check server logs or retry later.</span>
             </Flex>
@@ -292,6 +357,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
           closeModal={() => {
             setIsSchemaConfirmOpen(false)
             setPendingChecksumAll(false)
+            setPendingChecksumRepairAll(false)
           }}
           title='Schema cache required'
           body='Schema cache is empty. Run a schema scan now and wait for it to complete before checksumming all tables?'
@@ -299,6 +365,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
             setIsSchemaConfirmOpen(false)
             if (pendingChecksumAll) {
               setPendingChecksumAll(false)
+              setPendingChecksumRepairAll(false)
               await runChecksumAllFlow()
             }
           }}

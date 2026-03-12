@@ -209,6 +209,7 @@ var clusterACLRules = []ACLRule{
 
 	// Maintenance
 	{"/actions/checksum-all-tables", nil, []string{config.GrantClusterChecksum}},
+	{"/actions/checksum-repair-all-tables", nil, []string{config.GrantClusterChecksumRepair}},
 	{"/actions/analyze-all-tables", nil, []string{config.GrantClusterAnalyze}},
 
 	// Provisioning
