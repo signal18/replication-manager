@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -31,6 +32,132 @@ var splitDumpTimestampRegex = regexp.MustCompile(`^\d+$`)
 
 func isS3ResticRepository(repoPath string) bool {
 	return strings.HasPrefix(strings.TrimSpace(repoPath), "s3:")
+}
+
+func buildResticS3RepoSpec(endpoint, bucket, prefix, clusterName string, appendCluster bool) (string, string) {
+	bucket = strings.TrimSpace(bucket)
+	prefix = strings.Trim(prefix, "/")
+	if appendCluster && shouldAppendClusterNameS3(bucket, prefix, clusterName) {
+		if prefix == "" {
+			prefix = clusterName
+		} else {
+			prefix = prefix + "/" + clusterName
+		}
+	}
+
+	repoPath := ""
+	if endpoint != "" {
+		endpoint = strings.TrimRight(endpoint, "/")
+		repoPath = "s3:" + endpoint + "/" + bucket
+	} else {
+		repoPath = "s3:" + bucket
+	}
+	if prefix != "" {
+		repoPath += "/" + prefix
+	}
+
+	return repoPath, prefix
+}
+
+func shouldAppendClusterNameS3(bucket, prefix, clusterName string) bool {
+	if clusterName == "" {
+		return false
+	}
+	if strings.TrimSpace(bucket) == clusterName {
+		return false
+	}
+	prefix = strings.Trim(prefix, "/")
+	if prefix != "" && path.Base(prefix) == clusterName {
+		return false
+	}
+	return true
+}
+
+func shouldAppendClusterNameLocal(localRepoPath, clusterName string) bool {
+	if clusterName == "" {
+		return false
+	}
+	localRepoPath = strings.TrimSpace(localRepoPath)
+	if localRepoPath == "" {
+		return true
+	}
+	return filepath.Base(filepath.Clean(localRepoPath)) != clusterName
+}
+
+func (cluster *Cluster) ResticS3EffectivePrefixForInit() (string, bool) {
+	if !cluster.Conf.BackupResticAws {
+		return "", false
+	}
+	bucket := strings.TrimSpace(cluster.Conf.BackupResticAwsBucket)
+	if bucket == "" {
+		return "", false
+	}
+	_, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
+	if !appendCluster {
+		return "", false
+	}
+	currentPrefix := strings.Trim(cluster.Conf.BackupResticAwsPrefix, "/")
+	if !shouldAppendClusterNameS3(bucket, currentPrefix, cluster.Name) {
+		return "", false
+	}
+	_, effectivePrefix := buildResticS3RepoSpec(
+		cluster.Conf.BackupResticAwsEndpoint,
+		bucket,
+		currentPrefix,
+		cluster.Name,
+		appendCluster,
+	)
+	if effectivePrefix == "" || effectivePrefix == currentPrefix {
+		return "", false
+	}
+	return effectivePrefix, true
+}
+
+func isWithinParentPath(parent, child string) bool {
+	parent = filepath.Clean(parent)
+	child = filepath.Clean(child)
+	if parent == "" || child == "" {
+		return false
+	}
+	parentAbs, err := filepath.Abs(parent)
+	if err == nil {
+		parent = parentAbs
+	}
+	childAbs, err := filepath.Abs(child)
+	if err == nil {
+		child = childAbs
+	}
+	if parent == child {
+		return true
+	}
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	return !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) && rel != ".."
+}
+
+func resolveResticRepoPolicy(conf *config.Config, localRepoPath string, cluster *Cluster) (string, bool) {
+	appendCluster := conf.BackupResticRepoAppendCluster
+	localRepoPath = strings.TrimSpace(localRepoPath)
+	defaultParent := filepath.Clean(filepath.Join(conf.WorkingDir, config.ConstStreamingSubDir, "archive"))
+	if localRepoPath != "" && isWithinParentPath(defaultParent, localRepoPath) {
+		localRepoPath = ""
+	}
+	if !appendCluster && localRepoPath == "" {
+		if conf.BackupResticAws {
+			return localRepoPath, appendCluster
+		}
+		if cluster != nil {
+			cluster.LogModulePrintf(conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"backup-restic-repo-append-cluster=false ignored: backup-restic-local-repository is empty or invalid")
+		}
+		appendCluster = true
+	}
+	return localRepoPath, appendCluster
 }
 
 func splitResticAdditionalEnvTokens(value string) ([]string, error) {
@@ -263,16 +390,37 @@ func (cluster *Cluster) ResticGetEnv() []string {
 	password := cluster.Conf.GetDecryptedValue("backup-restic-password")
 	repoPath := ""
 	// backup-restic-aws controls whether the repo path is remote; otherwise local repo is used.
+	localRepoPath, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
 	if cluster.Conf.BackupResticAws {
-		repoPath = cluster.Conf.BackupResticRepository + "/" + cluster.Name
-	} else {
-		if _, err := os.Stat(cluster.GetResticLocalDir()); os.IsNotExist(err) {
-			err := os.MkdirAll(cluster.GetResticLocalDir(), os.ModePerm)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", cluster.GetResticLocalDir(), err)
+		if strings.TrimSpace(cluster.Conf.BackupResticAwsBucket) != "" {
+			repoPath, _ = buildResticS3RepoSpec(
+				cluster.Conf.BackupResticAwsEndpoint,
+				cluster.Conf.BackupResticAwsBucket,
+				cluster.Conf.BackupResticAwsPrefix,
+				cluster.Name,
+				appendCluster,
+			)
+		} else {
+			repoPath = cluster.Conf.BackupResticRepository
+			if appendCluster {
+				repoPath = repoPath + "/" + cluster.Name
 			}
 		}
-		repoPath = cluster.GetResticLocalDir()
+	} else {
+		if localRepoPath != "" {
+			repoPath = localRepoPath
+			if appendCluster && shouldAppendClusterNameLocal(repoPath, cluster.Name) {
+				repoPath = filepath.Join(repoPath, cluster.Name)
+			}
+		} else {
+			repoPath = filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
+		}
+		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+			err := os.MkdirAll(repoPath, os.ModePerm)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", repoPath, err)
+			}
+		}
 	}
 
 	return filterResticEnv(
@@ -291,6 +439,30 @@ func (cluster *Cluster) ResticGetEnv() []string {
 func (cluster *Cluster) ReloadResticEnv() {
 	if cluster.ResticManager != nil {
 		cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
+		bucket := ""
+		prefix := ""
+		endpoint := ""
+		if cluster.Conf.BackupResticAws && strings.TrimSpace(cluster.Conf.BackupResticAwsBucket) != "" {
+			_, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
+			_, prefix = buildResticS3RepoSpec(
+				cluster.Conf.BackupResticAwsEndpoint,
+				cluster.Conf.BackupResticAwsBucket,
+				cluster.Conf.BackupResticAwsPrefix,
+				cluster.Name,
+				appendCluster,
+			)
+			bucket = strings.TrimSpace(cluster.Conf.BackupResticAwsBucket)
+			endpoint = strings.TrimSpace(cluster.Conf.BackupResticAwsEndpoint)
+		}
+
+		cluster.ResticManager.SetAwsConfig(
+			cluster.Conf.BackupResticAwsAccessKeyId,
+			cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"),
+			cluster.Conf.BackupResticAwsRegion,
+			endpoint,
+			bucket,
+			prefix,
+		)
 		// Clear init error backoff when environment changes (credentials/config may be fixed)
 		cluster.ResticManager.ClearInitErrorBackoffManual()
 	}
@@ -319,6 +491,9 @@ func (cluster *Cluster) CheckResticErrors() {
 	if !cluster.ResticManager.CanInitRepo && cluster.ResticManager.HasAnyError() {
 		err := cluster.ResticManager.FetchAndClearError(backupmgr.InitTask)
 		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic init error: %s", err)
+		}
 		return
 	}
 
@@ -326,10 +501,13 @@ func (cluster *Cluster) CheckResticErrors() {
 		switch task {
 		case backupmgr.FetchTask:
 			cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err), ErrFrom: "BACKUP"})
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic fetch error: %s", err)
 		case backupmgr.PurgeTask:
 			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic purge error: %s", err)
 		case backupmgr.UnlockTask:
 			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic unlock error: %s", err)
 		default:
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unknown restic task error: %s", err)
 		}
@@ -373,6 +551,10 @@ func (cluster *Cluster) StartResticManager() error {
 }
 
 func (cluster *Cluster) ResticInitRepo(force bool) error {
+	return cluster.ResticInitRepoWithOptions(backupmgr.ResticInitOption{Force: force})
+}
+
+func (cluster *Cluster) ResticInitRepoWithOptions(options backupmgr.ResticInitOption) error {
 	if !cluster.Conf.BackupRestic {
 		return nil
 	}
@@ -381,7 +563,7 @@ func (cluster *Cluster) ResticInitRepo(force bool) error {
 		cluster.StartResticManager()
 	}
 
-	err := cluster.ResticManager.InitRepo(force)
+	err := cluster.ResticManager.InitRepoWithOptions(options)
 	if err != nil {
 		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
 	}

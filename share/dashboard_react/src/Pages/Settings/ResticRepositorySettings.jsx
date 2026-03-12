@@ -43,6 +43,20 @@ const ResticHostHelp = `backup-restic-host overrides the restic --host value use
 Set a value to use a consistent alias across backups.  
 Leave it empty to use restic's default hostname (no alias).`
 
+const ResticRepoAppendClusterHelp = `backup-restic-repo-append-cluster controls whether the cluster name is appended to the repository path (local and S3).
+
+Example:
+- base: /var/lib/repman/backups/archive
+- cluster: prod
+- on  -> /var/lib/repman/backups/archive/prod
+- off -> /var/lib/repman/backups/archive (only if you set backup-restic-local-repository outside the default archive dir)
+
+Auto-skip rules when enabled:
+- If the last path segment already equals the cluster name, it is not appended again.
+- If the S3 bucket name equals the cluster name, it is not appended to the prefix.
+
+Note: custom local repo paths inside the default archive directory are ignored.`
+
 function ResticRepositorySettings({
   clusterName,
   config,
@@ -84,6 +98,30 @@ function ResticRepositorySettings({
     onClose: onCloseInitModal 
   } = useDisclosure()
   const [initForce, setInitForce] = useState(false)
+  const [confirmEmptyPrefix, setConfirmEmptyPrefix] = useState(false)
+  const isAws = Boolean(config?.backupResticAws)
+  const awsBucket = (config?.backupResticAwsBucket || '').trim()
+  const awsPrefix = (config?.backupResticAwsPrefix || '').trim()
+  const awsEndpoint = (config?.backupResticAwsEndpoint || '').trim()
+  const appendCluster = Boolean(config?.backupResticRepoAppendCluster)
+  const clusterSuffix = clusterName ? `/${clusterName}` : ''
+  const trimmedEndpoint = awsEndpoint.replace(/\/+$/, '')
+  const normalizedPrefix = awsPrefix.replace(/^\/+|\/+$/g, '')
+  const lastPrefixSegment = normalizedPrefix ? normalizedPrefix.split('/').slice(-1)[0] : ''
+  const shouldAppendAws = appendCluster && clusterName && awsBucket && awsBucket !== clusterName && lastPrefixSegment !== clusterName
+  const effectivePrefix = shouldAppendAws
+    ? (normalizedPrefix ? `${normalizedPrefix}/${clusterName}` : clusterName)
+    : normalizedPrefix
+  const legacyRepoPath = (config?.backupResticRepository || '').replace(/\/+$/, '')
+  const legacyHasClusterSuffix = clusterName && legacyRepoPath.endsWith(clusterSuffix)
+  const effectiveLegacyRepoPath = appendCluster && clusterName && legacyRepoPath && !legacyHasClusterSuffix
+    ? `${legacyRepoPath}${clusterSuffix}`
+    : legacyRepoPath
+  const awsRepoPath = awsBucket
+    ? `s3:${trimmedEndpoint ? `${trimmedEndpoint}/` : ''}${awsBucket}${effectivePrefix ? `/${effectivePrefix}` : ''}`
+    : effectiveLegacyRepoPath
+  const isAwsPrefixEmpty = isAws && awsBucket && !awsPrefix
+  const isForceInitBlocked = initForce && isAwsPrefixEmpty && !confirmEmptyPrefix
 
   const handleSettingChange = (setting, value, encodeValue = false) =>
     dispatch(
@@ -104,6 +142,7 @@ function ResticRepositorySettings({
 
   const handleResticInit = () => {
     setInitForce(false) // Reset force flag
+    setConfirmEmptyPrefix(false)
     onOpenInitModal()
   }
 
@@ -111,7 +150,8 @@ function ResticRepositorySettings({
     try {
       await dispatch(resticInitRepo({ 
         clusterName, 
-        force: initForce
+        force: initForce,
+        allowEmptyPrefix: confirmEmptyPrefix
       })).unwrap()
       
       onCloseInitModal()
@@ -340,7 +380,35 @@ function ResticRepositorySettings({
                   w='full'
                 >
                   <GridItem className={styles.rowLabel}>
-                    <Text>Backup restic aws</Text>
+                    <Text>Backup restic repo append cluster</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <HStack spacing={2} align='center'>
+                      <RMSwitch
+                        isChecked={config?.backupResticRepoAppendCluster}
+                        isDisabled={user?.grants['cluster-settings'] == false}
+                        confirmTitle={'Confirm switch settings for backup-restic-repo-append-cluster?'}
+                        onChange={() => handleSwitchChange('backup-restic-repo-append-cluster')}
+                      />
+                      <RMIconButton
+                        icon={HiQuestionMarkCircle}
+                        onClick={() => {
+                          onOpenInfoModal('Restic Repo Append Cluster', ResticRepoAppendClusterHelp)
+                        }}
+                      />
+                    </HStack>
+                  </GridItem>
+                </Grid>
+
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
+                  <GridItem className={styles.rowLabel}>
+                    <Text>Enable AWS/S3 repository</Text>
                   </GridItem>
                   <GridItem className={styles.valueCell}>
                     <RMSwitch
@@ -349,6 +417,9 @@ function ResticRepositorySettings({
                       confirmTitle={'Confirm switch settings for backup-restic-aws?'}
                       onChange={() => handleSwitchChange('backup-restic-aws')}
                     />
+                    <Text className={styles.helperText}>
+                      Configure the AWS settings below before enabling.
+                    </Text>
                   </GridItem>
                 </Grid>
 
@@ -424,6 +495,79 @@ function ResticRepositorySettings({
                   rowGap={1}
                   w='full'
                 >
+                  <GridItem className={styles.rowLabel}>
+                    <Text>Backup restic aws endpoint</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <TextForm
+                      value={config?.backupResticAwsEndpoint}
+                      confirmTitle={`Confirm backup-restic-aws-endpoint to `}
+                      className={styles.textbox}
+                      size='sm'
+                      placeholder='https://s3.amazonaws.com or https://minio.example.com'
+                      regexPattern='^https?://[A-Za-z0-9.-]+(?::\\d+)?(?:/.*)?$'
+                      onSave={(value) => handleSettingChange('backup-restic-aws-endpoint', value, true)}
+                    />
+                    <Text className={styles.helperText}>
+                      Optional custom S3 endpoint (http/https with host; leave empty for AWS). Do not use s3:// here.
+                    </Text>
+                  </GridItem>
+                </Grid>
+
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
+                  <GridItem className={styles.rowLabel}>
+                    <Text>Backup restic aws bucket</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <TextForm
+                      value={config?.backupResticAwsBucket}
+                      confirmTitle={`Confirm backup-restic-aws-bucket to `}
+                      className={styles.textbox}
+                      size='sm'
+                      placeholder='bucket-name'
+                      regexPattern='^[^/\\\\]*$'
+                      onSave={(value) => handleSettingChange('backup-restic-aws-bucket', value)}
+                    />
+                    <Text className={styles.helperText}>Bucket name must not contain '/' or '\\'.</Text>
+                  </GridItem>
+                </Grid>
+
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
+                  <GridItem className={styles.rowLabel}>
+                    <Text>Backup restic aws prefix</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <TextForm
+                      value={config?.backupResticAwsPrefix}
+                      confirmTitle={`Confirm backup-restic-aws-prefix to `}
+                      className={styles.textbox}
+                      size='sm'
+                      placeholder='optional/prefix/path'
+                      onSave={(value) => handleSettingChange('backup-restic-aws-prefix', value, true)}
+                    />
+                    <Text className={styles.helperText}>Optional bucket prefix/path (no leading slash).</Text>
+                  </GridItem>
+                </Grid>
+
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
                 <GridItem className={styles.rowLabel}>
                     <Text>Backup restic additional env</Text>
                   </GridItem>
@@ -450,7 +594,35 @@ function ResticRepositorySettings({
                   w='full'
                 >
                   <GridItem className={styles.rowLabel}>
-                    <Text>Backup restic aws bucket</Text>
+                    <Text>Effective S3 repository</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <Text
+                      fontWeight='bold'
+                      fontSize='sm'
+                      fontFamily='monospace'
+                      bg='gray.100'
+                      p={2}
+                      borderRadius='md'
+                      wordBreak='break-all'
+                    >
+                      {awsRepoPath || 's3:<bucket>/<prefix>'}
+                    </Text>
+                    <Text className={styles.helperText}>
+                      Preview of the S3 repository path after applying append-cluster rules.
+                    </Text>
+                  </GridItem>
+                </Grid>
+
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
+                  <GridItem className={styles.rowLabel}>
+                    <Text>Legacy repository URL (fallback)</Text>
                   </GridItem>
                   <GridItem className={styles.valueCell}>
                     <HStack width='100%' spacing={2}>
@@ -480,6 +652,10 @@ function ResticRepositorySettings({
                         }}
                       />
                     </HStack>
+                    <Text className={styles.helperText}>
+                      Used only when AWS is enabled and the S3 bucket field is empty. For custom S3 services use
+                      s3:https://server:port/bucket in this field.
+                    </Text>
                   </GridItem>
                 </Grid>
               </Stack>
@@ -579,29 +755,18 @@ function ResticRepositorySettings({
               wordBreak='break-all'
             >
               {config?.backupResticAws 
-                ? config?.backupResticRepository 
+                ? awsRepoPath 
                 : config?.backupResticLocalRepository}
             </Text>
             <Divider />
             <Checkbox
               isChecked={initForce}
-              isDisabled={config?.backupResticAws}
               onChange={(e) => setInitForce(e.target.checked)}
             >
               <Text fontSize='sm'>
                 Force re-initialization (overwrite existing configuration)
               </Text>
             </Checkbox>
-            {config?.backupResticAws && (
-              <>
-                <Text fontSize='sm' color='gray.600'>
-                  Force re-initialization is disabled when backup-restic-aws is enabled (S3/MinIO mode).
-                </Text>
-                <Text fontSize='xs' color='gray.500'>
-                  Local repositories are used when backup-restic-aws is off, regardless of repository URL.
-                </Text>
-              </>
-            )}
             {initForce && (
               <Alert status='warning' size='sm' borderRadius='md'>
                 <AlertIcon />
@@ -612,11 +777,30 @@ function ResticRepositorySettings({
                 </Text>
               </Alert>
             )}
+            {initForce && isAwsPrefixEmpty && (
+              <Alert status='error' size='sm' borderRadius='md'>
+                <AlertIcon />
+                <Text fontSize='sm'>
+                  Empty S3 prefix detected. Force init will impact the entire bucket.
+                </Text>
+              </Alert>
+            )}
+            {initForce && isAwsPrefixEmpty && (
+              <Checkbox
+                isChecked={confirmEmptyPrefix}
+                onChange={(e) => setConfirmEmptyPrefix(e.target.checked)}
+              >
+                <Text fontSize='sm'>
+                  I understand this will affect the entire bucket.
+                </Text>
+              </Checkbox>
+            )}
           </VStack>
         }
         onConfirmClick={handleConfirmInit}
         confirmButtonText="Initialize"
         confirmButtonProps={{ 
+          isDisabled: isForceInitBlocked,
           colorScheme: initForce ? 'red' : 'blue' 
         }}
       />

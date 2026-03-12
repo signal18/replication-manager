@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,14 +17,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/creack/pty"
 	"github.com/signal18/replication-manager/utils/misc"
 	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
+	"github.com/signal18/replication-manager/utils/s3helper"
 	"github.com/sirupsen/logrus"
 )
 
@@ -106,6 +101,7 @@ type ResticChangePassOption struct {
 // ResticInitOption holds the configuration for init
 type ResticInitOption struct {
 	Force             bool   `json:"force,omitempty"`
+	AllowEmptyPrefix  bool   `json:"allow_empty_prefix,omitempty"`
 	RepositoryVersion string `json:"repository_version,omitempty"` // e.g., "stable", "latest", "1", "2"
 	CopyChunkerParams bool   `json:"copy_chunker_params,omitempty"`
 	FromRepo          string `json:"from_repo,omitempty"`
@@ -314,10 +310,50 @@ type TaskStatus struct {
 	Completion string   `json:"completion_time,omitempty"` // Only present if completed
 }
 
+// ResticTaskState tracks the currently running restic task and its progress.
+type ResticTaskState struct {
+	TaskID      int        `json:"task_id"`
+	TaskType    TaskType   `json:"task_type"`
+	Status      string     `json:"status"` // running, completed, failed
+	Error       string     `json:"error,omitempty"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	LastUpdate  *time.Time `json:"last_update,omitempty"`
+
+	PercentDone    float64 `json:"percent_done,omitempty"`
+	BytesDone      int64   `json:"bytes_done,omitempty"`
+	TotalBytes     int64   `json:"total_bytes,omitempty"`
+	FilesDone      int     `json:"files_done,omitempty"`
+	TotalFiles     int     `json:"total_files,omitempty"`
+	SecondsElapsed int     `json:"seconds_elapsed,omitempty"`
+
+	FilesNew            int     `json:"files_new,omitempty"`
+	FilesChanged        int     `json:"files_changed,omitempty"`
+	FilesUnmodified     int     `json:"files_unmodified,omitempty"`
+	DirsNew             int     `json:"dirs_new,omitempty"`
+	DirsChanged         int     `json:"dirs_changed,omitempty"`
+	DirsUnmodified      int     `json:"dirs_unmodified,omitempty"`
+	DataBlobs           int     `json:"data_blobs,omitempty"`
+	TreeBlobs           int     `json:"tree_blobs,omitempty"`
+	DataAdded           int64   `json:"data_added,omitempty"`
+	TotalFilesProcessed int     `json:"total_files_processed,omitempty"`
+	TotalBytesProcessed int64   `json:"total_bytes_processed,omitempty"`
+	TotalDuration       float64 `json:"total_duration,omitempty"`
+	SnapshotID          string  `json:"snapshot_id,omitempty"`
+}
+
+const resticTaskStateTTL = 60 * time.Second
+
 // ResticManager manages the queue and execution
 type ResticManager struct {
 	BinaryPath           string
 	Env                  []string
+	AwsAccessKeyID       string
+	AwsSecretAccessKey   string
+	AwsRegion            string
+	AwsEndpoint          string
+	AwsBucket            string
+	AwsPrefix            string
 	Backups              []BackupSnapshot
 	BackupMap            map[string]*BackupSnapshot
 	BackupStat           BackupStat
@@ -362,6 +398,8 @@ type ResticManager struct {
 	AllowUnsafeMount     bool                // If true, allow using mount created by other process
 	MountRecoveryEnabled bool                // If true, recover/cleanup stale mounts on startup
 	OnPurgeComplete      func(ResticPurgeOption)
+	currentTask          *ResticTaskState
+	currentTaskMutex     *sync.Mutex
 	// Error backoff state to prevent log flooding
 	lastInitError    error     // Last init error encountered
 	initErrorCount   int       // Number of consecutive init errors
@@ -378,6 +416,7 @@ func NewResticRepo(binaryPath string, msgChan chan sharedlog.Message, logmodule 
 		LogModule:            logmodule,
 		TaskQueue:            make([]*ResticTask, 0),
 		Mutex:                &sync.Mutex{},
+		currentTaskMutex:     &sync.Mutex{},
 		mountRefMutex:        &sync.Mutex{},
 		mountUsers:           make(map[string]struct{}),
 		TaskErrors:           make(map[TaskType]error),
@@ -543,6 +582,16 @@ func (repo *ResticManager) ClearInitErrorBackoffManual() {
 
 func (repo *ResticManager) SetEnv(env []string) {
 	repo.Env = env
+}
+
+// SetAwsConfig updates AWS settings for S3 repository handling.
+func (repo *ResticManager) SetAwsConfig(accessKeyID, secretAccessKey, region, endpoint, bucket, prefix string) {
+	repo.AwsAccessKeyID = accessKeyID
+	repo.AwsSecretAccessKey = secretAccessKey
+	repo.AwsRegion = region
+	repo.AwsEndpoint = endpoint
+	repo.AwsBucket = bucket
+	repo.AwsPrefix = prefix
 }
 
 // UpdateEnvKey updates the environment variable for the Restic repository
@@ -794,6 +843,8 @@ func (repo *ResticManager) worker() {
 			continue
 		}
 
+		repo.SetCurrentTaskRunning(task)
+
 		// Process the task
 		loglevel := logrus.InfoLevel
 		if task.Type == FetchTask {
@@ -865,6 +916,8 @@ func (repo *ResticManager) worker() {
 		if result.Error != nil {
 			repo.SetError(task.Type, result.Error)
 		}
+
+		repo.FinalizeCurrentTask(result)
 
 		if task.resultCh != nil {
 			// CRITICAL FIX: Always send result with timeout to prevent goroutine hangs
@@ -2865,179 +2918,20 @@ func parseS3URL(repoPath string) (bucket, prefix, endpoint string, err error) {
 	return bucket, prefix, endpoint, nil
 }
 
-// createS3Client creates AWS S3 client with MinIO compatibility
-func (repo *ResticManager) createS3Client(endpoint string) (*s3.S3, error) {
-	// Extract credentials from environment
-	accessKey := repo.getEnvValue("AWS_ACCESS_KEY_ID")
-	secretKey := repo.getEnvValue("AWS_SECRET_ACCESS_KEY")
-	sessionToken := repo.getEnvValue("AWS_SESSION_TOKEN")
-	region := repo.getEnvValue("AWS_REGION")
-	if region == "" {
-		region = repo.getEnvValue("AWS_DEFAULT_REGION")
+func (repo *ResticManager) resolveS3RepoSpec(repopath string) (bucket, prefix, endpoint string, err error) {
+	bucket = strings.TrimSpace(repo.AwsBucket)
+	prefix = strings.Trim(repo.AwsPrefix, "/")
+	endpoint = strings.TrimSpace(repo.AwsEndpoint)
+	if bucket == "" {
+		return parseS3URL(repopath)
 	}
-
-	// Create credentials
-	var creds *credentials.Credentials
-	if accessKey != "" && secretKey != "" {
-		if sessionToken != "" {
-			creds = credentials.NewStaticCredentials(accessKey, secretKey, sessionToken)
-		} else {
-			creds = credentials.NewStaticCredentials(accessKey, secretKey, "")
-		}
-	} else {
-		return nil, fmt.Errorf("AWS credentials not found (set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)")
-	}
-
-	// Create AWS config (MinIO-compatible)
-	awsConfig := &aws.Config{
-		Region:           aws.String(region),
-		Credentials:      creds,
-		S3ForcePathStyle: aws.Bool(true), // Required for MinIO
-	}
-
-	// Set custom endpoint
-	if endpoint != "" {
-		awsConfig.Endpoint = aws.String(endpoint)
-	}
-
-	awsConfig.HTTPClient = &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	// Create session
-	sess, err := session.NewSession(awsConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create AWS session: %w", err)
-	}
-
-	return s3.New(sess), nil
-}
-
-// checkS3ObjectExists checks if an object exists in S3 bucket
-func checkS3ObjectExists(client *s3.S3, bucket, key string) (bool, error) {
-	_, err := client.HeadObject(&s3.HeadObjectInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String(key),
-	})
-
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case "NotFound", s3.ErrCodeNoSuchKey:
-				return false, nil
-			case "Forbidden":
-				return false, fmt.Errorf("access denied to S3 object %s/%s (check credentials/permissions)", bucket, key)
-			}
-		}
-		return false, fmt.Errorf("S3 HeadObject failed: %w", err)
-	}
-
-	return true, nil
-}
-
-// listS3Prefix checks if any objects exist with the given prefix
-func listS3Prefix(client *s3.S3, bucket, prefix string) (bool, error) {
-	result, err := client.ListObjectsV2(&s3.ListObjectsV2Input{
-		Bucket:  aws.String(bucket),
-		Prefix:  aws.String(prefix),
-		MaxKeys: aws.Int64(1), // Only need to know if ANY exist
-	})
-
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case s3.ErrCodeNoSuchBucket:
-				return false, fmt.Errorf("S3 bucket not found: %s (create it first or check name)", bucket)
-			case "Forbidden":
-				return false, fmt.Errorf("access denied to S3 bucket: %s (check credentials/permissions)", bucket)
-			}
-		}
-		return false, fmt.Errorf("S3 ListObjects failed: %w", err)
-	}
-
-	return len(result.Contents) > 0, nil
-}
-
-// deleteS3RepoPrefix deletes all objects under the given prefix (or entire bucket if prefix is empty)
-func deleteS3RepoPrefix(client *s3.S3, bucket, prefix string) error {
-	var continuation *string
-
-	for {
-		input := &s3.ListObjectsV2Input{
-			Bucket: aws.String(bucket),
-			Prefix: aws.String(prefix),
-		}
-		if continuation != nil {
-			input.ContinuationToken = continuation
-		}
-
-		result, err := client.ListObjectsV2(input)
-		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				switch aerr.Code() {
-				case s3.ErrCodeNoSuchBucket:
-					return fmt.Errorf("S3 bucket not found: %s (create it first or check name)", bucket)
-				case "Forbidden":
-					return fmt.Errorf("access denied to S3 bucket: %s (check credentials/permissions)", bucket)
-				}
-			}
-			return fmt.Errorf("S3 ListObjects failed: %w", err)
-		}
-
-		if len(result.Contents) > 0 {
-			objects := make([]*s3.ObjectIdentifier, 0, len(result.Contents))
-			for _, obj := range result.Contents {
-				if obj == nil || obj.Key == nil {
-					continue
-				}
-				objects = append(objects, &s3.ObjectIdentifier{Key: obj.Key})
-			}
-
-			for start := 0; start < len(objects); start += 1000 {
-				end := start + 1000
-				if end > len(objects) {
-					end = len(objects)
-				}
-
-				deleteInput := &s3.DeleteObjectsInput{
-					Bucket: aws.String(bucket),
-					Delete: &s3.Delete{
-						Objects: objects[start:end],
-						Quiet:   aws.Bool(true),
-					},
-				}
-				deleteResult, delErr := client.DeleteObjects(deleteInput)
-				if delErr != nil {
-					return fmt.Errorf("S3 DeleteObjects failed: %w", delErr)
-				}
-				if deleteResult != nil && len(deleteResult.Errors) > 0 {
-					firstErr := deleteResult.Errors[0]
-					if firstErr != nil {
-						return fmt.Errorf("S3 DeleteObjects error for key %s: %s", aws.StringValue(firstErr.Key), aws.StringValue(firstErr.Message))
-					}
-					return fmt.Errorf("S3 DeleteObjects returned errors")
-				}
-			}
-		}
-
-		if aws.BoolValue(result.IsTruncated) {
-			continuation = result.NextContinuationToken
-			if continuation == nil {
-				return fmt.Errorf("S3 ListObjects truncated without continuation token")
-			}
-			continue
-		}
-
-		break
-	}
-
-	return nil
+	return bucket, prefix, endpoint, nil
 }
 
 // checkS3RepoFiles verifies S3 repository structure and initializes if needed
 func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) error {
 	// Create S3 client
-	client, err := repo.createS3Client(endpoint)
+	client, err := s3helper.NewClient(repo.AwsAccessKeyID, repo.AwsSecretAccessKey, "", repo.AwsRegion, endpoint)
 	if err != nil {
 		repo.CanInitRepo = false
 		err = fmt.Errorf("failed to create S3 client: %w", err)
@@ -3060,7 +2954,7 @@ func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) err
 		endpointDisplay, bucket, prefix)
 
 	// Check if config exists
-	configExists, err := checkS3ObjectExists(client, bucket, configKey)
+	configExists, err := s3helper.CheckObjectExists(client, bucket, configKey)
 	if err != nil {
 		repo.CanInitRepo = false
 		repo.SetError(InitTask, err)
@@ -3077,7 +2971,7 @@ func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) err
 			dataPrefix = prefix + "/data/"
 		}
 
-		dataExists, err := listS3Prefix(client, bucket, dataPrefix)
+		dataExists, err := s3helper.ListPrefixHasRealObjects(client, bucket, dataPrefix)
 		if err != nil {
 			// Error checking data
 			repo.CanInitRepo = false
@@ -3207,9 +3101,31 @@ func (repo *ResticManager) CheckRepoFiles() error {
 	}
 
 	repopath := repo.GetRepoPath()
-	if isS3Repository(repopath) {
-		// S3 repository file checks are not supported yet.
-		return nil
+	if isS3Repository(repopath) || repo.AwsBucket != "" {
+		bucket, prefix, endpoint, err := repo.resolveS3RepoSpec(repopath)
+		if err != nil {
+			repo.CanInitRepo = false
+			err = fmt.Errorf("failed to parse S3 repo path: %w", err)
+			repo.SetError(InitTask, err)
+			repo.setInitErrorBackoff(err)
+			return err
+		}
+		client, err := s3helper.NewClient(repo.AwsAccessKeyID, repo.AwsSecretAccessKey, "", repo.AwsRegion, endpoint)
+		if err != nil {
+			repo.CanInitRepo = false
+			err = fmt.Errorf("failed to create S3 client: %w", err)
+			repo.SetError(InitTask, err)
+			repo.setInitErrorBackoff(err)
+			return err
+		}
+		if err := s3helper.EnsurePrefixMarker(client, bucket, prefix); err != nil {
+			repo.CanInitRepo = false
+			err = fmt.Errorf("failed to create S3 prefix marker: %w", err)
+			repo.SetError(InitTask, err)
+			repo.setInitErrorBackoff(err)
+			return err
+		}
+		return repo.checkS3RepoFiles(bucket, prefix, endpoint)
 	}
 
 	// Existing local filesystem logic
@@ -3403,13 +3319,44 @@ func (repo *ResticManager) InitRepo(force bool) error {
 func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 	repopath := repo.GetRepoPath()
 	if opt.Force {
-		if isS3Repository(repopath) {
-			// Avoid force init on S3 to prevent accidental data loss or conflicts on shared buckets/prefixes.
-			err := errors.New("force init is disabled for S3 repositories to prevent accidental data loss")
-			repo.CanInitRepo = false
-			repo.SetError(InitTask, err)
-			repo.setInitErrorBackoff(err)
-			return err
+		if isS3Repository(repopath) || repo.AwsBucket != "" {
+			bucket, prefix, endpoint, err := repo.resolveS3RepoSpec(repopath)
+			if err != nil {
+				repo.CanInitRepo = false
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
+			if prefix == "" && !opt.AllowEmptyPrefix {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("refusing to force init S3 repository with empty prefix (entire bucket). set allow_empty_prefix to proceed")
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
+			client, err := s3helper.NewClient(repo.AwsAccessKeyID, repo.AwsSecretAccessKey, "", repo.AwsRegion, endpoint)
+			if err != nil {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("failed to create S3 client: %w", err)
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
+			deleteOptions := s3helper.DeletePrefixOptions{RequireNonEmptyPrefix: !opt.AllowEmptyPrefix}
+			if err := s3helper.DeletePrefixWithOptions(client, bucket, prefix, deleteOptions); err != nil {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("failed to delete S3 repository prefix: %w", err)
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
+			if err := s3helper.EnsurePrefixMarker(client, bucket, prefix); err != nil {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("failed to create S3 prefix marker: %w", err)
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
 		} else {
 			err := os.RemoveAll(repopath)
 			if err != nil {
@@ -3812,6 +3759,17 @@ type ResticBackupSummary struct {
 	SnapshotID          string  `json:"snapshot_id"`
 }
 
+// ResticBackupStatus represents the JSON status output from restic backup
+type ResticBackupStatus struct {
+	MessageType    string  `json:"message_type"`
+	SecondsElapsed int     `json:"seconds_elapsed"`
+	PercentDone    float64 `json:"percent_done"`
+	TotalFiles     int     `json:"total_files"`
+	FilesDone      int     `json:"files_done"`
+	TotalBytes     int64   `json:"total_bytes"`
+	BytesDone      int64   `json:"bytes_done"`
+}
+
 // BackupWithOptions performs backup with full options support
 // Returns the snapshot ID if successful
 func (repo *ResticManager) BackupWithOptions(opt ResticBackupOption) (string, error) {
@@ -3957,6 +3915,8 @@ func (repo *ResticManager) runBackupCommand(args []string) ([]byte, []byte, erro
 			line := scanner.Bytes()
 			// Log for debugging, but don't accumulate in memory
 			repo.Print(logrus.DebugLevel, "[OUT] "+string(line))
+			// Restic JSON progress output is emitted on stdout.
+			repo.UpdateCurrentTaskFromJSON(line)
 			// Only keep the last non-empty line
 			if len(bytes.TrimSpace(line)) > 0 {
 				lastLine = append([]byte(nil), line...) // Copy the line
@@ -3990,6 +3950,156 @@ func (repo *ResticManager) runBackupCommand(args []string) ([]byte, []byte, erro
 	repo.Printf(logrus.InfoLevel, "Command completed successfully: %s %v", repo.BinaryPath, args)
 
 	return lastLine, stderrBuf.Bytes(), nil
+}
+
+type resticMessageEnvelope struct {
+	MessageType string `json:"message_type"`
+}
+
+func (repo *ResticManager) SetCurrentTaskRunning(task *ResticTask) {
+	if task == nil {
+		return
+	}
+
+	now := time.Now().UTC()
+	state := &ResticTaskState{
+		TaskID:     task.ID,
+		TaskType:   task.Type,
+		Status:     "running",
+		StartedAt:  &now,
+		LastUpdate: &now,
+	}
+
+	repo.currentTaskMutex.Lock()
+	repo.currentTask = state
+	repo.currentTaskMutex.Unlock()
+}
+
+func (repo *ResticManager) UpdateCurrentTaskFromJSON(line []byte) {
+	trimmed := bytes.TrimSpace(line)
+	if len(trimmed) == 0 {
+		return
+	}
+
+	var envelope resticMessageEnvelope
+	if err := json.Unmarshal(trimmed, &envelope); err != nil {
+		return
+	}
+
+	repo.currentTaskMutex.Lock()
+	defer repo.currentTaskMutex.Unlock()
+
+	if repo.currentTask == nil {
+		return
+	}
+
+	switch envelope.MessageType {
+	case "status":
+		var status ResticBackupStatus
+		if err := json.Unmarshal(trimmed, &status); err != nil {
+			return
+		}
+		repo.currentTask.PercentDone = status.PercentDone
+		repo.currentTask.BytesDone = status.BytesDone
+		repo.currentTask.TotalBytes = status.TotalBytes
+		repo.currentTask.FilesDone = status.FilesDone
+		repo.currentTask.TotalFiles = status.TotalFiles
+		repo.currentTask.SecondsElapsed = status.SecondsElapsed
+		now := time.Now().UTC()
+		repo.currentTask.LastUpdate = &now
+	case "summary":
+		var summary ResticBackupSummary
+		if err := json.Unmarshal(trimmed, &summary); err != nil {
+			return
+		}
+		repo.currentTask.FilesNew = summary.FilesNew
+		repo.currentTask.FilesChanged = summary.FilesChanged
+		repo.currentTask.FilesUnmodified = summary.FilesUnmodified
+		repo.currentTask.DirsNew = summary.DirsNew
+		repo.currentTask.DirsChanged = summary.DirsChanged
+		repo.currentTask.DirsUnmodified = summary.DirsUnmodified
+		repo.currentTask.DataBlobs = summary.DataBlobs
+		repo.currentTask.TreeBlobs = summary.TreeBlobs
+		repo.currentTask.DataAdded = summary.DataAdded
+		repo.currentTask.TotalFilesProcessed = summary.TotalFilesProcessed
+		repo.currentTask.TotalBytesProcessed = summary.TotalBytesProcessed
+		repo.currentTask.TotalDuration = summary.TotalDuration
+		repo.currentTask.SnapshotID = summary.SnapshotID
+		now := time.Now().UTC()
+		repo.currentTask.LastUpdate = &now
+	}
+}
+
+func (repo *ResticManager) FinalizeCurrentTask(result ResticResult) {
+	repo.currentTaskMutex.Lock()
+	defer repo.currentTaskMutex.Unlock()
+
+	if repo.currentTask == nil {
+		return
+	}
+
+	if result.SnapshotID != "" {
+		repo.currentTask.SnapshotID = result.SnapshotID
+	}
+
+	if result.Error != nil {
+		repo.currentTask.Status = "failed"
+		repo.currentTask.Error = result.Error.Error()
+	} else {
+		repo.currentTask.Status = "completed"
+		repo.currentTask.Error = ""
+	}
+
+	now := time.Now().UTC()
+	completionTime := now
+	repo.currentTask.CompletedAt = &completionTime
+	repo.currentTask.LastUpdate = &completionTime
+
+	taskID := repo.currentTask.TaskID
+	go repo.clearCompletedTaskAfterTTL(taskID, completionTime)
+}
+
+func (repo *ResticManager) clearCompletedTaskAfterTTL(taskID int, completionTime time.Time) {
+	if resticTaskStateTTL <= 0 {
+		return
+	}
+
+	timer := time.NewTimer(resticTaskStateTTL)
+	defer timer.Stop()
+	<-timer.C
+
+	repo.currentTaskMutex.Lock()
+	defer repo.currentTaskMutex.Unlock()
+
+	if repo.currentTask == nil {
+		return
+	}
+
+	if repo.currentTask.TaskID != taskID {
+		return
+	}
+
+	if repo.currentTask.CompletedAt == nil || !repo.currentTask.CompletedAt.Equal(completionTime) {
+		return
+	}
+
+	if repo.currentTask.Status != "completed" && repo.currentTask.Status != "failed" {
+		return
+	}
+
+	repo.currentTask = nil
+}
+
+func (repo *ResticManager) GetCurrentTaskState() *ResticTaskState {
+	repo.currentTaskMutex.Lock()
+	defer repo.currentTaskMutex.Unlock()
+
+	if repo.currentTask == nil {
+		return nil
+	}
+
+	copyState := *repo.currentTask
+	return &copyState
 }
 
 // parseBackupSummary extracts the snapshot ID from restic backup JSON summary line

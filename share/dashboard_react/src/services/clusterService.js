@@ -23,6 +23,7 @@ export const clusterService = {
   getResticStats,
   purgeResticSnapshot,
   purgeResticByPolicy,
+  getResticCurrentTask,
   getResticQueue,
   resticQueueResume,
   resticQueuePause,
@@ -776,6 +777,10 @@ function getResticQueue(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue`)
 }
 
+function getResticCurrentTask(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/task-current`)
+}
+
 function resticQueueResume(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/resume`)
 }
@@ -811,11 +816,14 @@ function getResticMountStatus(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/mount-status`)
 }
 
-function resticInitRepo(clusterName, force, baseURL) {
-  const endpoint = force
+function resticInitRepo(clusterName, force, options, baseURL) {
+  const endpoint = force 
     ? `clusters/${clusterName}/restic/init/force`
     : `clusters/${clusterName}/restic/init`
-  return getApi(baseURL).post(endpoint)
+  const payload = options?.allowEmptyPrefix
+    ? { allow_empty_prefix: true }
+    : undefined
+  return getApi(baseURL).post(endpoint, payload)
 }
 
 // Utility functions

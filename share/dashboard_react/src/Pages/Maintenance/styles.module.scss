@@ -54,9 +54,66 @@
         }
       }
     }
+    .repoRow {
+      width: 100%;
+      padding: rem(8) rem(12);
+      border-radius: rem(0);
+      border: rem(1) solid var(--quaternary-color);
+      background: var(--tertiary-color);
+      color: var(--text-color);
+      display: flex;
+      flex-wrap: wrap;
+      gap: rem(8);
+      align-items: center;
+      justify-content: flex-start;
+      font-size: rem(14);
+      font-weight: 600;
+    }
+    .repoRowLabel {
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: rem(12);
+      opacity: 0.75;
+      white-space: nowrap;
+    }
+    .repoRowValue {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      word-break: break-all;
+      font-size: rem(13);
+      font-weight: 500;
+    }
     .table {
       tr[class*='headerRow'] {
         background-color: var(--quaternary-color) !important;
+      }
+    }
+    .sectionTitle {
+      margin-top: rem(16);
+      padding: rem(6) rem(12);
+      font-size: rem(14);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--white-color);
+      background-color: var(--primary-color);
+      border-radius: rem(6);
+      width: fit-content;
+    }
+    .emptyState {
+      width: 100%;
+      padding: rem(12) rem(16);
+      border: rem(1) solid var(--quaternary-color);
+      border-radius: rem(0);
+      background: var(--tertiary-color);
+      color: var(--text-color);
+      font-size: rem(14);
+    }
+    .currentTaskTable {
+      border-radius: rem(0);
+      table[class*='table'] {
+        tr > td[class*='bodyColumn'] {
+          line-height: normal;
+        }
       }
     }
   }

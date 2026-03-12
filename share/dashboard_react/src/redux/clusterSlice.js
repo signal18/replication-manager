@@ -84,10 +84,16 @@ const fulfilledHandlers = {
     state.backups.stats = action.payload.data
   },
   'cluster/getResticSnapshot': (state, action) => {
-    state.restic.snapshots = action.payload.data
+    state.restic.snapshots = action.payload?.data?.snapshots || []
+    state.restic.stats = action.payload?.data?.stats || null
+    state.restic.repoPath = action.payload?.data?.repo_path || ''
   },
   'cluster/getResticStats': (state, action) => {
     state.restic.stats = action.payload.data
+  },
+  'cluster/getResticCurrentTask': (state, action) => {
+    state.restic.currentTask = action.payload?.data?.current_task || null
+    state.restic.queue = action.payload?.data?.queue || []
   },
   'cluster/getResticQueue': (state, action) => {
     state.restic.queue = action.payload.data
@@ -350,6 +356,19 @@ export const getResticQueue = createGuardedAsyncThunk('cluster/getResticQueue', 
   }
 })
 
+export const getResticCurrentTask = createGuardedAsyncThunk(
+  'cluster/getResticCurrentTask',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.getResticCurrentTask(clusterName, baseURL)
+      return { data, status }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const resticQueueCancel = createGuardedAsyncThunk(
   'cluster/resticQueueCancel',
   async ({ clusterName, taskId }, thunkAPI) => {
@@ -404,10 +423,15 @@ export const resticQueueResume = createGuardedAsyncThunk(
 
 export const resticInitRepo = createGuardedAsyncThunk(
   'cluster/resticInitRepo',
-  async ({ clusterName, force = false }, thunkAPI) => {
+  async ({ clusterName, force = false, allowEmptyPrefix = false }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.resticInitRepo(clusterName, force, baseURL)
+      const { data, status } = await clusterService.resticInitRepo(
+        clusterName,
+        force,
+        { allowEmptyPrefix },
+        baseURL
+      )
       return { data, status }
     } catch (error) {
       return handleError(error, thunkAPI)
@@ -2242,7 +2266,9 @@ const initialState = {
   restic: {
     snapshots: null,
     stats: null,
-    queue: null
+    queue: null,
+    currentTask: null,
+    repoPath: ''
   },
   topProcess: null,
   opensvcStats: null,
@@ -2335,6 +2361,7 @@ export const clusterSlice = createSlice({
         getBackupStats.fulfilled,
         getResticSnapshot.fulfilled,
         getResticStats.fulfilled,
+        getResticCurrentTask.fulfilled,
         getResticQueue.fulfilled,
         getJobs.fulfilled
       ),
