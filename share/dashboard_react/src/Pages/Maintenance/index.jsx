@@ -91,6 +91,10 @@ const resticTaskType = (rtt) => {
       return "unlock"
     case 5:
       return "changepass"
+    case 6:
+      return "restore"
+    case 7:
+      return "check"
     default:
       return "Unknown"
   }
@@ -156,6 +160,8 @@ function Maintenance({ selectedCluster, user }) {
   const snapshots = useSelector((state) => state.cluster.restic.snapshots)
   const stats = useSelector((state) => state.cluster.restic.stats)
   const resticQueue = useSelector((state) => state.cluster.restic.queue)
+  const currentResticTask = useSelector((state) => state.cluster.restic.currentTask)
+  const resticRepoPath = useSelector((state) => state.cluster.restic.repoPath)
 
   const openConfirmModal = (title, payload) => {
     setConfirmState({ isOpen: true, title, payload })
@@ -392,6 +398,10 @@ function Maintenance({ selectedCluster, user }) {
 
   const snapshotDataStats = [
     {
+      key: 'Repository',
+      value: resticRepoPath || '-'
+    },
+    {
       key: 'Total Size',
       value: sizeOf(stats?.total_size)
     },
@@ -454,6 +464,73 @@ function Maintenance({ selectedCluster, user }) {
       )
     }
   ], [selectedCluster?.isResticQueuePaused, queuelength])
+
+  const currentTaskHeader = useMemo(() => {
+    if (!currentResticTask) {
+      return []
+    }
+
+    const percentDone =
+      typeof currentResticTask.percent_done === 'number'
+        ? `${Math.round(currentResticTask.percent_done * 100)}%`
+        : '-'
+    const bytesValue = currentResticTask.total_bytes
+      ? `${formatBytes(currentResticTask.bytes_done || 0)} / ${formatBytes(currentResticTask.total_bytes)}`
+      : '-'
+    const filesValue = currentResticTask.total_files
+      ? `${currentResticTask.files_done || 0} / ${currentResticTask.total_files}`
+      : '-'
+    const startedAt = currentResticTask.started_at ? formatDate(currentResticTask.started_at) : '-'
+    const completedAt = currentResticTask.completed_at ? formatDate(currentResticTask.completed_at) : '-'
+    const duration = currentResticTask.total_duration
+      ? `${Math.round(currentResticTask.total_duration)}s`
+      : currentResticTask.seconds_elapsed
+        ? `${currentResticTask.seconds_elapsed}s`
+        : '-'
+
+    return [
+      {
+        key: 'Task ID',
+        value: currentResticTask.task_id || '-'
+      },
+      {
+        key: 'Task Type',
+        value: resticTaskType(currentResticTask.task_type)
+      },
+      {
+        key: 'Status',
+        value: currentResticTask.status || '-'
+      },
+      {
+        key: 'Progress',
+        value: percentDone
+      },
+      {
+        key: 'Bytes',
+        value: bytesValue
+      },
+      {
+        key: 'Files',
+        value: filesValue
+      },
+      {
+        key: 'Snapshot ID',
+        value: currentResticTask.snapshot_id || '-'
+      },
+      {
+        key: 'Duration',
+        value: duration
+      },
+      {
+        key: 'Started',
+        value: startedAt
+      },
+      {
+        key: 'Completed',
+        value: completedAt
+      }
+    ]
+  }, [currentResticTask])
 
   const queueColumns = useMemo(() => [
     columnHelper.accessor((row) => row.task_id, {
@@ -525,8 +602,18 @@ function Maintenance({ selectedCluster, user }) {
         panelClassName={styles.accordionPanel}
         body={
           <VStack className={styles.snapshotContainer}>
+            <Box className={styles.repoRow}>
+              <Box className={styles.repoRowLabel}>Repository:</Box>
+              <Box className={styles.repoRowValue}>{resticRepoPath || '-'}</Box>
+            </Box>
             <TableType3 dataArray={snapshotDataStats} className={styles.statsTable} />
             <DataTable key="snapshot" data={snapshotData} columns={snapshotColumns} className={styles.table} />
+            <Box className={styles.sectionTitle}>Current Restic Task</Box>
+            {currentResticTask ? (
+              <TableType3 dataArray={currentTaskHeader} className={`${styles.statsTable} ${styles.currentTaskTable}`} />
+            ) : (
+              <Box className={styles.emptyState}>No active task</Box>
+            )}
             <TableType3 dataArray={queueDataHeader} className={styles.statsTable} />
             <DataTable key="queue" data={queueData} columns={queueColumns} className={styles.table} />
           </VStack>

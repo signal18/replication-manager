@@ -23,6 +23,7 @@ export const clusterService = {
   getResticStats,
   purgeResticSnapshot,
   purgeResticByPolicy,
+  getResticCurrentTask,
   getResticQueue,
   resticQueueResume,
   resticQueuePause,
@@ -759,6 +760,10 @@ function purgeResticByPolicy(clusterName, baseURL, options = {}) {
 
 function getResticQueue(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue`)
+}
+
+function getResticCurrentTask(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/task-current`)
 }
 
 function resticQueueResume(clusterName, baseURL) {
