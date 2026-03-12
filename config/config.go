@@ -766,6 +766,9 @@ type Config struct {
 	BackupResticAwsAccessKeyId                string `mapstructure:"backup-restic-aws-access-key-id" toml:"backup-restic-aws-access-key-id" json:"backupResticAwsAccessKeyId"`
 	BackupResticAwsAccessSecret               string `mapstructure:"backup-restic-aws-access-secret"  toml:"backup-restic-aws-access-secret" json:"-"`
 	BackupResticAwsRegion                     string `mapstructure:"backup-restic-aws-region" toml:"backup-restic-aws-region" json:"backupResticAwsRegion"`
+	BackupResticAwsEndpoint                   string `mapstructure:"backup-restic-aws-endpoint" toml:"backup-restic-aws-endpoint" json:"backupResticAwsEndpoint"`
+	BackupResticAwsBucket                     string `mapstructure:"backup-restic-aws-bucket" toml:"backup-restic-aws-bucket" json:"backupResticAwsBucket"`
+	BackupResticAwsPrefix                     string `mapstructure:"backup-restic-aws-prefix" toml:"backup-restic-aws-prefix" json:"backupResticAwsPrefix"`
 	BackupResticAdditionalEnv                 string `mapstructure:"backup-restic-additional-env" toml:"backup-restic-additional-env" json:"backupResticAdditionalEnv"`
 	BackupResticRepository                    string `mapstructure:"backup-restic-repository" toml:"backup-restic-repository" json:"backupResticRepository"`
 	BackupResticPassword                      string `mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
