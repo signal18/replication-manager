@@ -424,6 +424,77 @@ function ResticRepositorySettings({
                   rowGap={1}
                   w='full'
                 >
+                  <GridItem className={styles.rowLabel}>
+                    <Text>Backup restic aws endpoint</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <TextForm
+                      value={config?.backupResticAwsEndpoint}
+                      confirmTitle={`Confirm backup-restic-aws-endpoint to `}
+                      className={styles.textbox}
+                      size='sm'
+                      placeholder='https://s3.amazonaws.com or https://minio.example.com'
+                      regexPattern='^https?://[A-Za-z0-9.-]+(?::\\d+)?(?:/.*)?$'
+                      onSave={(value) => handleSettingChange('backup-restic-aws-endpoint', value, true)}
+                    />
+                    <Text className={styles.helperText}>Optional custom S3 endpoint (http/https with host; leave empty for AWS).</Text>
+                  </GridItem>
+                </Grid>
+
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
+                  <GridItem className={styles.rowLabel}>
+                    <Text>Backup restic aws bucket</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <TextForm
+                      value={config?.backupResticAwsBucket}
+                      confirmTitle={`Confirm backup-restic-aws-bucket to `}
+                      className={styles.textbox}
+                      size='sm'
+                      placeholder='bucket-name'
+                      regexPattern='^[^/\\\\]*$'
+                      onSave={(value) => handleSettingChange('backup-restic-aws-bucket', value)}
+                    />
+                    <Text className={styles.helperText}>Bucket name must not contain '/' or '\\'.</Text>
+                  </GridItem>
+                </Grid>
+
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
+                  <GridItem className={styles.rowLabel}>
+                    <Text>Backup restic aws prefix</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <TextForm
+                      value={config?.backupResticAwsPrefix}
+                      confirmTitle={`Confirm backup-restic-aws-prefix to `}
+                      className={styles.textbox}
+                      size='sm'
+                      placeholder='optional/prefix/path'
+                      onSave={(value) => handleSettingChange('backup-restic-aws-prefix', value, true)}
+                    />
+                    <Text className={styles.helperText}>Optional bucket prefix/path (no leading slash).</Text>
+                  </GridItem>
+                </Grid>
+
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
                 <GridItem className={styles.rowLabel}>
                     <Text>Backup restic additional env</Text>
                   </GridItem>

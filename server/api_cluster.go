@@ -2962,6 +2962,8 @@ var base64LogValueSettings = map[string]struct{}{
 	"backup-mysqldump-options":            {},
 	"backup-physical-post-script":         {},
 	"backup-restic-aws-access-secret":     {},
+	"backup-restic-aws-endpoint":          {},
+	"backup-restic-aws-prefix":            {},
 	"backup-restic-local-repository":      {},
 	"backup-restic-password":              {},
 	"backup-restic-repository":            {},
@@ -3672,6 +3674,23 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Secrets["backup-restic-aws-access-secret"] = new_secret
 	case "backup-restic-aws-region":
 		mycluster.Conf.BackupResticAwsRegion = value
+		mycluster.ReloadResticEnv()
+	case "backup-restic-aws-endpoint":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		mycluster.Conf.BackupResticAwsEndpoint = string(val)
+		mycluster.ReloadResticEnv()
+	case "backup-restic-aws-bucket":
+		mycluster.Conf.BackupResticAwsBucket = value
+		mycluster.ReloadResticEnv()
+	case "backup-restic-aws-prefix":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		mycluster.Conf.BackupResticAwsPrefix = string(val)
 		mycluster.ReloadResticEnv()
 	case "backup-restic-additional-env":
 		if err := cluster.ValidateResticAdditionalEnvOverrides(value); err != nil {
