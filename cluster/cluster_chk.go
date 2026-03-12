@@ -859,7 +859,7 @@ func (cluster *Cluster) RepairTableChecksum(schema string, table string) {
 			cluster.master.DictTables.Set(schema+"."+table, t)
 			for i, chunk := range ts.TableChunksError {
 
-				query := "REPLACE INTO " + schema + "." + table + " SELECT * FROM " + schema + "." + table + " WHERE  " + chunk.ChunkRangeCondition + " FOR UPDATE"
+				query := "REPLACE INTO " + schema + "." + table + " SELECT * FROM " + schema + "." + table + " A WHERE  " + chunk.ChunkRangeCondition + " FOR UPDATE"
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair chunk %d/%d %s", i, len(ts.TableChunksError), query)
 				_, err = Conn.Exec(query)
 				if err != nil {
