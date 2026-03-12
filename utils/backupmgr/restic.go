@@ -3913,6 +3913,7 @@ func (repo *ResticManager) runBackupCommand(args []string) ([]byte, []byte, erro
 			line := scanner.Bytes()
 			// Log for debugging, but don't accumulate in memory
 			repo.Print(logrus.DebugLevel, "[OUT] "+string(line))
+			// Restic JSON progress output is emitted on stdout.
 			repo.UpdateCurrentTaskFromJSON(line)
 			// Only keep the last non-empty line
 			if len(bytes.TrimSpace(line)) > 0 {
@@ -3930,7 +3931,6 @@ func (repo *ResticManager) runBackupCommand(args []string) ([]byte, []byte, erro
 		scanner := bufio.NewScanner(stderrPipe)
 		for scanner.Scan() {
 			line := scanner.Text()
-			repo.UpdateCurrentTaskFromJSON([]byte(line))
 			repo.Print(logrus.DebugLevel, "[ERR] "+line)
 			stderrBuf.WriteString(line + "\n")
 		}

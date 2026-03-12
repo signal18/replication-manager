@@ -398,10 +398,6 @@ function Maintenance({ selectedCluster, user }) {
 
   const snapshotDataStats = [
     {
-      key: 'Repository',
-      value: resticRepoPath || '-'
-    },
-    {
       key: 'Total Size',
       value: sizeOf(stats?.total_size)
     },
