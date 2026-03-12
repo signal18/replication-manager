@@ -848,6 +848,7 @@ func (cluster *Cluster) RepairTableChecksum(schema string, table string) {
 	Conn.SetConnMaxLifetime(3595 * time.Second)
 	Conn.Exec("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ")
 	Conn.Exec("SET SESSION binlog_format = 'ROW'")
+	Conn.Exec("USE " + schema)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair table %s.%s", schema, table)
 
 	for _, s := range cluster.slaves {
