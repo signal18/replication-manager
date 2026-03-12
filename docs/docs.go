@@ -6602,7 +6602,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Current task and queue fetched",
+                        "description": "Current task and queue fetched. Progress fields are populated for backup tasks only.",
                         "schema": {
                             "$ref": "#/definitions/server.ResticCurrentTaskResponse"
                         }

@@ -470,10 +470,11 @@ function Maintenance({ selectedCluster, user }) {
       return []
     }
 
+    const isBackupTask = currentResticTask.task_type === 1
     const percentDone =
-      typeof currentResticTask.percent_done === 'number'
+      isBackupTask && typeof currentResticTask.percent_done === 'number'
         ? `${Math.round(currentResticTask.percent_done * 100)}%`
-        : '-'
+        : 'Running (no progress available)'
     const bytesValue = currentResticTask.total_bytes
       ? `${formatBytes(currentResticTask.bytes_done || 0)} / ${formatBytes(currentResticTask.total_bytes)}`
       : '-'

@@ -7783,7 +7783,7 @@ type ResticCurrentTaskResponse struct {
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {object} ResticCurrentTaskResponse "Current task and queue fetched"
+// @Success 200 {object} ResticCurrentTaskResponse "Current task and queue fetched. Progress fields are populated for backup tasks only."
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/restic/task-current [get]
