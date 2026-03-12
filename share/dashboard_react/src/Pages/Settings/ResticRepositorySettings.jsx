@@ -103,9 +103,23 @@ function ResticRepositorySettings({
   const awsBucket = (config?.backupResticAwsBucket || '').trim()
   const awsPrefix = (config?.backupResticAwsPrefix || '').trim()
   const awsEndpoint = (config?.backupResticAwsEndpoint || '').trim()
+  const appendCluster = Boolean(config?.backupResticRepoAppendCluster)
+  const clusterSuffix = clusterName ? `/${clusterName}` : ''
+  const trimmedEndpoint = awsEndpoint.replace(/\/+$/, '')
+  const normalizedPrefix = awsPrefix.replace(/^\/+|\/+$/g, '')
+  const lastPrefixSegment = normalizedPrefix ? normalizedPrefix.split('/').slice(-1)[0] : ''
+  const shouldAppendAws = appendCluster && clusterName && awsBucket && awsBucket !== clusterName && lastPrefixSegment !== clusterName
+  const effectivePrefix = shouldAppendAws
+    ? (normalizedPrefix ? `${normalizedPrefix}/${clusterName}` : clusterName)
+    : normalizedPrefix
+  const legacyRepoPath = (config?.backupResticRepository || '').replace(/\/+$/, '')
+  const legacyHasClusterSuffix = clusterName && legacyRepoPath.endsWith(clusterSuffix)
+  const effectiveLegacyRepoPath = appendCluster && clusterName && legacyRepoPath && !legacyHasClusterSuffix
+    ? `${legacyRepoPath}${clusterSuffix}`
+    : legacyRepoPath
   const awsRepoPath = awsBucket
-    ? `s3:${awsEndpoint ? `${awsEndpoint.replace(/\/+$/, '')}/` : ''}${awsBucket}${awsPrefix ? `/${awsPrefix}` : ''}`
-    : config?.backupResticRepository
+    ? `s3:${trimmedEndpoint ? `${trimmedEndpoint}/` : ''}${awsBucket}${effectivePrefix ? `/${effectivePrefix}` : ''}`
+    : effectiveLegacyRepoPath
   const isAwsPrefixEmpty = isAws && awsBucket && !awsPrefix
   const isForceInitBlocked = initForce && isAwsPrefixEmpty && !confirmEmptyPrefix
 
@@ -393,7 +407,7 @@ function ResticRepositorySettings({
                   w='full'
                 >
                   <GridItem className={styles.rowLabel}>
-                    <Text>Backup restic aws</Text>
+                    <Text>Enable AWS/S3 repository</Text>
                   </GridItem>
                   <GridItem className={styles.valueCell}>
                     <RMSwitch
@@ -402,6 +416,9 @@ function ResticRepositorySettings({
                       confirmTitle={'Confirm switch settings for backup-restic-aws?'}
                       onChange={() => handleSwitchChange('backup-restic-aws')}
                     />
+                    <Text className={styles.helperText}>
+                      Configure the AWS settings below before enabling.
+                    </Text>
                   </GridItem>
                 </Grid>
 
@@ -574,7 +591,35 @@ function ResticRepositorySettings({
                   w='full'
                 >
                   <GridItem className={styles.rowLabel}>
-                    <Text>Backup restic aws bucket</Text>
+                    <Text>Effective S3 repository</Text>
+                  </GridItem>
+                  <GridItem className={styles.valueCell}>
+                    <Text
+                      fontWeight='bold'
+                      fontSize='sm'
+                      fontFamily='monospace'
+                      bg='gray.100'
+                      p={2}
+                      borderRadius='md'
+                      wordBreak='break-all'
+                    >
+                      {awsRepoPath || 's3:<bucket>/<prefix>'}
+                    </Text>
+                    <Text className={styles.helperText}>
+                      Preview of the S3 repository path after applying append-cluster rules.
+                    </Text>
+                  </GridItem>
+                </Grid>
+
+                <Grid
+                  className={styles.resticMountGrid}
+                  templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                  columnGap={3}
+                  rowGap={1}
+                  w='full'
+                >
+                  <GridItem className={styles.rowLabel}>
+                    <Text>Legacy repository URL (fallback)</Text>
                   </GridItem>
                   <GridItem className={styles.valueCell}>
                     <HStack width='100%' spacing={2}>
@@ -604,6 +649,9 @@ function ResticRepositorySettings({
                         }}
                       />
                     </HStack>
+                    <Text className={styles.helperText}>
+                      Used only when AWS is enabled and the S3 bucket field is empty.
+                    </Text>
                   </GridItem>
                 </Grid>
               </Stack>

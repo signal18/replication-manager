@@ -2929,7 +2929,7 @@ func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) err
 			dataPrefix = prefix + "/data/"
 		}
 
-		dataExists, err := s3helper.ListPrefixExists(client, bucket, dataPrefix)
+		dataExists, err := s3helper.ListPrefixHasRealObjects(client, bucket, dataPrefix)
 		if err != nil {
 			// Error checking data
 			repo.CanInitRepo = false
@@ -3064,6 +3064,21 @@ func (repo *ResticManager) CheckRepoFiles() error {
 		if err != nil {
 			repo.CanInitRepo = false
 			err = fmt.Errorf("failed to parse S3 repo path: %w", err)
+			repo.SetError(InitTask, err)
+			repo.setInitErrorBackoff(err)
+			return err
+		}
+		client, err := s3helper.NewClient(repo.AwsAccessKeyID, repo.AwsSecretAccessKey, "", repo.AwsRegion, endpoint)
+		if err != nil {
+			repo.CanInitRepo = false
+			err = fmt.Errorf("failed to create S3 client: %w", err)
+			repo.SetError(InitTask, err)
+			repo.setInitErrorBackoff(err)
+			return err
+		}
+		if err := s3helper.EnsurePrefixMarker(client, bucket, prefix); err != nil {
+			repo.CanInitRepo = false
+			err = fmt.Errorf("failed to create S3 prefix marker: %w", err)
 			repo.SetError(InitTask, err)
 			repo.setInitErrorBackoff(err)
 			return err
@@ -3281,6 +3296,13 @@ func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 			if err := s3helper.DeletePrefix(client, bucket, prefix); err != nil {
 				repo.CanInitRepo = false
 				err = fmt.Errorf("failed to delete S3 repository prefix: %w", err)
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
+			if err := s3helper.EnsurePrefixMarker(client, bucket, prefix); err != nil {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("failed to create S3 prefix marker: %w", err)
 				repo.SetError(InitTask, err)
 				repo.setInitErrorBackoff(err)
 				return err

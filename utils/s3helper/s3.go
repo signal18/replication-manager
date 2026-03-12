@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -96,6 +97,8 @@ type DeletePrefixOptions struct {
 type listDeleteAPI interface {
 	ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error)
 	DeleteObjects(ctx context.Context, params *s3.DeleteObjectsInput, optFns ...func(*s3.Options)) (*s3.DeleteObjectsOutput, error)
+	HeadObject(ctx context.Context, params *s3.HeadObjectInput, optFns ...func(*s3.Options)) (*s3.HeadObjectOutput, error)
+	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 }
 
 // DeletePrefix deletes all objects under the given prefix (or entire bucket if prefix is empty).
@@ -105,6 +108,99 @@ func DeletePrefix(client *s3.Client, bucket, prefix string) error {
 
 func DeletePrefixWithOptions(client *s3.Client, bucket, prefix string, options DeletePrefixOptions) error {
 	return deletePrefixWithOptions(client, bucket, prefix, options)
+}
+
+func EnsurePrefixMarker(client *s3.Client, bucket, prefix string) error {
+	return ensurePrefixMarker(client, bucket, prefix)
+}
+
+func ListPrefixHasRealObjects(client *s3.Client, bucket, prefix string) (bool, error) {
+	return listPrefixHasRealObjects(client, bucket, prefix)
+}
+
+func ensurePrefixMarker(client listDeleteAPI, bucket, prefix string) error {
+	if strings.TrimSpace(prefix) == "" {
+		return nil
+	}
+	hasReal, err := listPrefixHasRealObjects(client, bucket, prefix)
+	if err != nil {
+		return err
+	}
+	if hasReal {
+		return nil
+	}
+	markerKey := strings.Trim(prefix, "/") + "/.restic-marker"
+	_, err = client.HeadObject(context.Background(), &s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(markerKey),
+	})
+	if err == nil {
+		return nil
+	}
+	if !isS3ErrorCode(err, "NotFound", "NoSuchKey") {
+		return fmt.Errorf("S3 HeadObject failed: %w", err)
+	}
+
+	_, err = client.PutObject(context.Background(), &s3.PutObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(markerKey),
+		Body:   strings.NewReader(""),
+	})
+	if err != nil {
+		return fmt.Errorf("S3 PutObject failed: %w", err)
+	}
+	return nil
+}
+
+func listPrefixHasRealObjects(client listDeleteAPI, bucket, prefix string) (bool, error) {
+	markerKey := ""
+	if strings.TrimSpace(prefix) != "" {
+		markerKey = strings.Trim(prefix, "/") + "/.restic-marker"
+	}
+	var continuation *string
+
+	for {
+		input := &s3.ListObjectsV2Input{
+			Bucket: aws.String(bucket),
+			Prefix: aws.String(prefix),
+		}
+		if continuation != nil {
+			input.ContinuationToken = continuation
+		}
+
+		result, err := client.ListObjectsV2(context.Background(), input)
+		if err != nil {
+			if isS3ErrorCode(err, "NoSuchBucket") {
+				return false, fmt.Errorf("S3 bucket not found: %s (create it first or check name)", bucket)
+			}
+			if isS3ErrorCode(err, "Forbidden", "AccessDenied") {
+				return false, fmt.Errorf("access denied to S3 bucket: %s (check credentials/permissions)", bucket)
+			}
+			return false, fmt.Errorf("S3 ListObjects failed: %w", err)
+		}
+
+		for _, obj := range result.Contents {
+			if obj.Key == nil {
+				continue
+			}
+			if markerKey != "" && aws.ToString(obj.Key) == markerKey {
+				continue
+			}
+			return true, nil
+		}
+
+		if aws.ToBool(result.IsTruncated) {
+			continuation = result.NextContinuationToken
+			if continuation == nil {
+				return false, fmt.Errorf("S3 ListObjects truncated without continuation token")
+			}
+			continue
+		}
+
+		break
+	}
+
+	return false, nil
 }
 
 func deletePrefixWithOptions(client listDeleteAPI, bucket, prefix string, options DeletePrefixOptions) error {
