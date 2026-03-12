@@ -310,6 +310,40 @@ type TaskStatus struct {
 	Completion string   `json:"completion_time,omitempty"` // Only present if completed
 }
 
+// ResticTaskState tracks the currently running restic task and its progress.
+type ResticTaskState struct {
+	TaskID      int        `json:"task_id"`
+	TaskType    TaskType   `json:"task_type"`
+	Status      string     `json:"status"` // running, completed, failed
+	Error       string     `json:"error,omitempty"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	LastUpdate  *time.Time `json:"last_update,omitempty"`
+
+	PercentDone    float64 `json:"percent_done,omitempty"`
+	BytesDone      int64   `json:"bytes_done,omitempty"`
+	TotalBytes     int64   `json:"total_bytes,omitempty"`
+	FilesDone      int     `json:"files_done,omitempty"`
+	TotalFiles     int     `json:"total_files,omitempty"`
+	SecondsElapsed int     `json:"seconds_elapsed,omitempty"`
+
+	FilesNew            int     `json:"files_new,omitempty"`
+	FilesChanged        int     `json:"files_changed,omitempty"`
+	FilesUnmodified     int     `json:"files_unmodified,omitempty"`
+	DirsNew             int     `json:"dirs_new,omitempty"`
+	DirsChanged         int     `json:"dirs_changed,omitempty"`
+	DirsUnmodified      int     `json:"dirs_unmodified,omitempty"`
+	DataBlobs           int     `json:"data_blobs,omitempty"`
+	TreeBlobs           int     `json:"tree_blobs,omitempty"`
+	DataAdded           int64   `json:"data_added,omitempty"`
+	TotalFilesProcessed int     `json:"total_files_processed,omitempty"`
+	TotalBytesProcessed int64   `json:"total_bytes_processed,omitempty"`
+	TotalDuration       float64 `json:"total_duration,omitempty"`
+	SnapshotID          string  `json:"snapshot_id,omitempty"`
+}
+
+const resticTaskStateTTL = 60 * time.Second
+
 // ResticManager manages the queue and execution
 type ResticManager struct {
 	BinaryPath           string
@@ -364,6 +398,8 @@ type ResticManager struct {
 	AllowUnsafeMount     bool                // If true, allow using mount created by other process
 	MountRecoveryEnabled bool                // If true, recover/cleanup stale mounts on startup
 	OnPurgeComplete      func(ResticPurgeOption)
+	currentTask          *ResticTaskState
+	currentTaskMutex     *sync.Mutex
 	// Error backoff state to prevent log flooding
 	lastInitError    error     // Last init error encountered
 	initErrorCount   int       // Number of consecutive init errors
@@ -380,6 +416,7 @@ func NewResticRepo(binaryPath string, msgChan chan sharedlog.Message, logmodule 
 		LogModule:            logmodule,
 		TaskQueue:            make([]*ResticTask, 0),
 		Mutex:                &sync.Mutex{},
+		currentTaskMutex:     &sync.Mutex{},
 		mountRefMutex:        &sync.Mutex{},
 		mountUsers:           make(map[string]struct{}),
 		TaskErrors:           make(map[TaskType]error),
@@ -806,6 +843,8 @@ func (repo *ResticManager) worker() {
 			continue
 		}
 
+		repo.SetCurrentTaskRunning(task)
+
 		// Process the task
 		loglevel := logrus.InfoLevel
 		if task.Type == FetchTask {
@@ -877,6 +916,8 @@ func (repo *ResticManager) worker() {
 		if result.Error != nil {
 			repo.SetError(task.Type, result.Error)
 		}
+
+		repo.FinalizeCurrentTask(result)
 
 		if task.resultCh != nil {
 			// CRITICAL FIX: Always send result with timeout to prevent goroutine hangs
@@ -3718,6 +3759,17 @@ type ResticBackupSummary struct {
 	SnapshotID          string  `json:"snapshot_id"`
 }
 
+// ResticBackupStatus represents the JSON status output from restic backup
+type ResticBackupStatus struct {
+	MessageType    string  `json:"message_type"`
+	SecondsElapsed int     `json:"seconds_elapsed"`
+	PercentDone    float64 `json:"percent_done"`
+	TotalFiles     int     `json:"total_files"`
+	FilesDone      int     `json:"files_done"`
+	TotalBytes     int64   `json:"total_bytes"`
+	BytesDone      int64   `json:"bytes_done"`
+}
+
 // BackupWithOptions performs backup with full options support
 // Returns the snapshot ID if successful
 func (repo *ResticManager) BackupWithOptions(opt ResticBackupOption) (string, error) {
@@ -3863,6 +3915,8 @@ func (repo *ResticManager) runBackupCommand(args []string) ([]byte, []byte, erro
 			line := scanner.Bytes()
 			// Log for debugging, but don't accumulate in memory
 			repo.Print(logrus.DebugLevel, "[OUT] "+string(line))
+			// Restic JSON progress output is emitted on stdout.
+			repo.UpdateCurrentTaskFromJSON(line)
 			// Only keep the last non-empty line
 			if len(bytes.TrimSpace(line)) > 0 {
 				lastLine = append([]byte(nil), line...) // Copy the line
@@ -3896,6 +3950,156 @@ func (repo *ResticManager) runBackupCommand(args []string) ([]byte, []byte, erro
 	repo.Printf(logrus.InfoLevel, "Command completed successfully: %s %v", repo.BinaryPath, args)
 
 	return lastLine, stderrBuf.Bytes(), nil
+}
+
+type resticMessageEnvelope struct {
+	MessageType string `json:"message_type"`
+}
+
+func (repo *ResticManager) SetCurrentTaskRunning(task *ResticTask) {
+	if task == nil {
+		return
+	}
+
+	now := time.Now().UTC()
+	state := &ResticTaskState{
+		TaskID:     task.ID,
+		TaskType:   task.Type,
+		Status:     "running",
+		StartedAt:  &now,
+		LastUpdate: &now,
+	}
+
+	repo.currentTaskMutex.Lock()
+	repo.currentTask = state
+	repo.currentTaskMutex.Unlock()
+}
+
+func (repo *ResticManager) UpdateCurrentTaskFromJSON(line []byte) {
+	trimmed := bytes.TrimSpace(line)
+	if len(trimmed) == 0 {
+		return
+	}
+
+	var envelope resticMessageEnvelope
+	if err := json.Unmarshal(trimmed, &envelope); err != nil {
+		return
+	}
+
+	repo.currentTaskMutex.Lock()
+	defer repo.currentTaskMutex.Unlock()
+
+	if repo.currentTask == nil {
+		return
+	}
+
+	switch envelope.MessageType {
+	case "status":
+		var status ResticBackupStatus
+		if err := json.Unmarshal(trimmed, &status); err != nil {
+			return
+		}
+		repo.currentTask.PercentDone = status.PercentDone
+		repo.currentTask.BytesDone = status.BytesDone
+		repo.currentTask.TotalBytes = status.TotalBytes
+		repo.currentTask.FilesDone = status.FilesDone
+		repo.currentTask.TotalFiles = status.TotalFiles
+		repo.currentTask.SecondsElapsed = status.SecondsElapsed
+		now := time.Now().UTC()
+		repo.currentTask.LastUpdate = &now
+	case "summary":
+		var summary ResticBackupSummary
+		if err := json.Unmarshal(trimmed, &summary); err != nil {
+			return
+		}
+		repo.currentTask.FilesNew = summary.FilesNew
+		repo.currentTask.FilesChanged = summary.FilesChanged
+		repo.currentTask.FilesUnmodified = summary.FilesUnmodified
+		repo.currentTask.DirsNew = summary.DirsNew
+		repo.currentTask.DirsChanged = summary.DirsChanged
+		repo.currentTask.DirsUnmodified = summary.DirsUnmodified
+		repo.currentTask.DataBlobs = summary.DataBlobs
+		repo.currentTask.TreeBlobs = summary.TreeBlobs
+		repo.currentTask.DataAdded = summary.DataAdded
+		repo.currentTask.TotalFilesProcessed = summary.TotalFilesProcessed
+		repo.currentTask.TotalBytesProcessed = summary.TotalBytesProcessed
+		repo.currentTask.TotalDuration = summary.TotalDuration
+		repo.currentTask.SnapshotID = summary.SnapshotID
+		now := time.Now().UTC()
+		repo.currentTask.LastUpdate = &now
+	}
+}
+
+func (repo *ResticManager) FinalizeCurrentTask(result ResticResult) {
+	repo.currentTaskMutex.Lock()
+	defer repo.currentTaskMutex.Unlock()
+
+	if repo.currentTask == nil {
+		return
+	}
+
+	if result.SnapshotID != "" {
+		repo.currentTask.SnapshotID = result.SnapshotID
+	}
+
+	if result.Error != nil {
+		repo.currentTask.Status = "failed"
+		repo.currentTask.Error = result.Error.Error()
+	} else {
+		repo.currentTask.Status = "completed"
+		repo.currentTask.Error = ""
+	}
+
+	now := time.Now().UTC()
+	completionTime := now
+	repo.currentTask.CompletedAt = &completionTime
+	repo.currentTask.LastUpdate = &completionTime
+
+	taskID := repo.currentTask.TaskID
+	go repo.clearCompletedTaskAfterTTL(taskID, completionTime)
+}
+
+func (repo *ResticManager) clearCompletedTaskAfterTTL(taskID int, completionTime time.Time) {
+	if resticTaskStateTTL <= 0 {
+		return
+	}
+
+	timer := time.NewTimer(resticTaskStateTTL)
+	defer timer.Stop()
+	<-timer.C
+
+	repo.currentTaskMutex.Lock()
+	defer repo.currentTaskMutex.Unlock()
+
+	if repo.currentTask == nil {
+		return
+	}
+
+	if repo.currentTask.TaskID != taskID {
+		return
+	}
+
+	if repo.currentTask.CompletedAt == nil || !repo.currentTask.CompletedAt.Equal(completionTime) {
+		return
+	}
+
+	if repo.currentTask.Status != "completed" && repo.currentTask.Status != "failed" {
+		return
+	}
+
+	repo.currentTask = nil
+}
+
+func (repo *ResticManager) GetCurrentTaskState() *ResticTaskState {
+	repo.currentTaskMutex.Lock()
+	defer repo.currentTaskMutex.Unlock()
+
+	if repo.currentTask == nil {
+		return nil
+	}
+
+	copyState := *repo.currentTask
+	return &copyState
 }
 
 // parseBackupSummary extracts the snapshot ID from restic backup JSON summary line

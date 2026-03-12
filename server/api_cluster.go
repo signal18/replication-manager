@@ -173,6 +173,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetResticTaskQueue)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/restic/task-current", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetResticCurrentTask)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/restic/task-queue/resume", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticTaskQueueResume)),
@@ -1967,6 +1972,12 @@ type resticSnapshotResponse struct {
 	MetadataReady  bool                               `json:"metadataReady"`
 	MetadataStatus string                             `json:"metadataStatus"`
 	MetadataError  string                             `json:"metadataError,omitempty"`
+}
+
+type resticSnapshotsResponse struct {
+	RepoPath  string                   `json:"repo_path,omitempty"`
+	Stats     backupmgr.BackupStat     `json:"stats"`
+	Snapshots []resticSnapshotResponse `json:"snapshots"`
 }
 
 // handlerMuxClusterBackupStat handles the retrieval of backup stats for a given cluster.
@@ -7409,7 +7420,8 @@ func (repman *ReplicationManager) handlerMuxRemoveExternalOps(w http.ResponseWri
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {array} map[string]interface{} "List of backups"
+// @Param format query string false "Response format" Enums(default,legacy)
+// @Success 200 {object} resticSnapshotsResponse "Snapshots with repository context"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/restic/snapshots [get]
@@ -7434,6 +7446,14 @@ func (repman *ReplicationManager) handlerMuxClusterSnapshots(w http.ResponseWrit
 			snapshots = cluster.FilterMostRecentSnapshotsPerSessionWithIndex(mycluster, snapshots, metadataIndex)
 		}
 
+		repoPath := strings.TrimSpace(mycluster.Conf.BackupResticRepository)
+		if mycluster.ResticManager != nil {
+			managerPath := strings.TrimSpace(mycluster.ResticManager.GetRepoPath())
+			if managerPath != "" {
+				repoPath = managerPath
+			}
+		}
+
 		responses := make([]resticSnapshotResponse, 0, len(snapshots))
 		for i := range snapshots {
 			snap := snapshots[i]
@@ -7454,7 +7474,23 @@ func (repman *ReplicationManager) handlerMuxClusterSnapshots(w http.ResponseWrit
 
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(responses)
+		format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+		if format == "legacy" {
+			err := e.Encode(responses)
+			if err != nil {
+				http.Error(w, "Encoding error", http.StatusInternalServerError)
+				return
+			}
+			return
+		}
+
+		response := resticSnapshotsResponse{
+			RepoPath:  repoPath,
+			Stats:     mycluster.GetSnapshotStats(),
+			Snapshots: responses,
+		}
+
+		err := e.Encode(response)
 		if err != nil {
 			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
@@ -7730,6 +7766,49 @@ func (repman *ReplicationManager) handlerMuxGetResticTaskQueue(w http.ResponseWr
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(taskqueueJSON)
+	})
+}
+
+// ResticCurrentTaskResponse wraps current task state and queue.
+type ResticCurrentTaskResponse struct {
+	CurrentTask *backupmgr.ResticTaskState `json:"current_task,omitempty"`
+	Queue       []*backupmgr.ResticTask    `json:"queue"`
+}
+
+// handlerMuxGetResticCurrentTask handles the HTTP request to get current restic task state and queue.
+// @Summary Get Restic Current Task
+// @Description Gets the current restic task state and queue for the specified cluster.
+// @Tags ClusterRestic
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} ResticCurrentTaskResponse "Current task and queue fetched. Progress fields are populated for backup tasks only."
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/restic/task-current [get]
+func (repman *ReplicationManager) handlerMuxGetResticCurrentTask(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
+		taskqueue, err := mycluster.ResticGetQueue()
+		if err != nil {
+			http.Error(w, "Error getting task queue :"+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		var currentTask *backupmgr.ResticTaskState
+		if mycluster.ResticManager != nil {
+			currentTask = mycluster.ResticManager.GetCurrentTaskState()
+		}
+
+		response := ResticCurrentTaskResponse{
+			CurrentTask: currentTask,
+			Queue:       taskqueue,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, "Error encoding current task response :"+err.Error(), http.StatusInternalServerError)
+			return
+		}
 	})
 }
 

@@ -239,7 +239,7 @@ CheckTask       // Verify repository integrity
 - Metadata management for tracking backup state
 
 **API Endpoints**:
-- `GET /api/clusters/{name}/restic/snapshots` - List available snapshots
+- `GET /api/clusters/{name}/restic/snapshots` - List available snapshots (default response wraps `repo_path`, `stats`, `snapshots`; use `?format=legacy` for array)
 - `GET /api/clusters/{name}/restic/stats` - Repository statistics
 - `POST /api/clusters/{name}/restic/fetch` - Fetch repository metadata
 - `DELETE /api/clusters/{name}/restic/purge/{id}` - Delete snapshot

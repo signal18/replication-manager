@@ -4577,6 +4577,75 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/backups/{backupID}/delete": {
+            "post": {
+                "description": "Deletes a non-restic backup for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Delete a backup by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Backup ID",
+                        "name": "backupID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Backup deleted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Backup running",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Delete failed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/certificates": {
             "get": {
                 "description": "This endpoint retrieves the client certificates for the specified cluster.",
@@ -6121,6 +6190,14 @@ const docTemplate = `{
                         "name": "clusterName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Init options",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/backupmgr.ResticInitOption"
+                        }
                     }
                 ],
                 "responses": {
@@ -6179,6 +6256,14 @@ const docTemplate = `{
                         "description": "Force init",
                         "name": "force",
                         "in": "path"
+                    },
+                    {
+                        "description": "Init options",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/backupmgr.ResticInitOption"
+                        }
                     }
                 ],
                 "responses": {
@@ -6402,17 +6487,23 @@ const docTemplate = `{
                         "name": "clusterName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "enum": [
+                            "default",
+                            "legacy"
+                        ],
+                        "type": "string",
+                        "description": "Response format",
+                        "name": "format",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "List of backups",
+                        "description": "Snapshots with repository context",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "additionalProperties": true
-                            }
+                            "$ref": "#/definitions/server.resticSnapshotsResponse"
                         }
                     },
                     "403": {
@@ -6465,6 +6556,55 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/backupmgr.BackupStat"
                             }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/restic/task-current": {
+            "get": {
+                "description": "Gets the current restic task state and queue for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterRestic"
+                ],
+                "summary": "Get Restic Current Task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Current task and queue fetched. Progress fields are populated for backup tasks only.",
+                        "schema": {
+                            "$ref": "#/definitions/server.ResticCurrentTaskResponse"
                         }
                     },
                     "403": {
@@ -19378,6 +19518,9 @@ const docTemplate = `{
                     "description": "server URL",
                     "type": "string"
                 },
+                "splitDump": {
+                    "type": "boolean"
+                },
                 "splitUser": {
                     "type": "boolean"
                 },
@@ -19606,6 +19749,9 @@ const docTemplate = `{
         "backupmgr.ResticInitOption": {
             "type": "object",
             "properties": {
+                "allow_empty_prefix": {
+                    "type": "boolean"
+                },
                 "copy_chunker_params": {
                     "type": "boolean"
                 },
@@ -19948,6 +20094,90 @@ const docTemplate = `{
                 }
             }
         },
+        "backupmgr.ResticTaskState": {
+            "type": "object",
+            "properties": {
+                "bytes_done": {
+                    "type": "integer"
+                },
+                "completed_at": {
+                    "type": "string"
+                },
+                "data_added": {
+                    "type": "integer"
+                },
+                "data_blobs": {
+                    "type": "integer"
+                },
+                "dirs_changed": {
+                    "type": "integer"
+                },
+                "dirs_new": {
+                    "type": "integer"
+                },
+                "dirs_unmodified": {
+                    "type": "integer"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "files_changed": {
+                    "type": "integer"
+                },
+                "files_done": {
+                    "type": "integer"
+                },
+                "files_new": {
+                    "type": "integer"
+                },
+                "files_unmodified": {
+                    "type": "integer"
+                },
+                "last_update": {
+                    "type": "string"
+                },
+                "percent_done": {
+                    "type": "number"
+                },
+                "seconds_elapsed": {
+                    "type": "integer"
+                },
+                "snapshot_id": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "running, completed, failed",
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "integer"
+                },
+                "task_type": {
+                    "$ref": "#/definitions/backupmgr.TaskType"
+                },
+                "total_bytes": {
+                    "type": "integer"
+                },
+                "total_bytes_processed": {
+                    "type": "integer"
+                },
+                "total_duration": {
+                    "type": "number"
+                },
+                "total_files": {
+                    "type": "integer"
+                },
+                "total_files_processed": {
+                    "type": "integer"
+                },
+                "tree_blobs": {
+                    "type": "integer"
+                }
+            }
+        },
         "backupmgr.ResticUnlockOption": {
             "type": "object",
             "properties": {
@@ -20208,9 +20438,6 @@ const docTemplate = `{
                 },
                 "backupList": {
                     "$ref": "#/definitions/backupmgr.BackupMetaMap"
-                },
-                "backupStat": {
-                    "$ref": "#/definitions/repmanv3.BackupStat"
                 },
                 "blacklist": {
                     "type": "array",
@@ -21352,6 +21579,41 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.SnapshotMetadataSummary": {
+            "type": "object",
+            "properties": {
+                "backupLine": {
+                    "type": "string"
+                },
+                "backupMethod": {
+                    "type": "string"
+                },
+                "backupSessionID": {
+                    "type": "string"
+                },
+                "backupTool": {
+                    "type": "string"
+                },
+                "compressed": {
+                    "type": "boolean"
+                },
+                "dest": {
+                    "type": "string"
+                },
+                "endTime": {
+                    "type": "string"
+                },
+                "resticBasePath": {
+                    "type": "string"
+                },
+                "resticSnapshotID": {
+                    "type": "string"
+                },
+                "startTime": {
+                    "type": "string"
+                }
+            }
+        },
         "cluster.SysBenchTpcResultPerMinute": {
             "type": "object",
             "properties": {
@@ -22407,6 +22669,9 @@ const docTemplate = `{
                 "appHostsIpv6": {
                     "type": "string"
                 },
+                "appRefreshConcurrency": {
+                    "type": "integer"
+                },
                 "apps": {
                     "type": "array",
                     "items": {
@@ -22608,6 +22873,9 @@ const docTemplate = `{
                 "backupMysqldumpPath": {
                     "type": "string"
                 },
+                "backupMysqldumpSplitDump": {
+                    "type": "boolean"
+                },
                 "backupMytopPath": {
                     "type": "string"
                 },
@@ -22629,6 +22897,9 @@ const docTemplate = `{
                 "backupRestic": {
                     "type": "boolean"
                 },
+                "backupResticAdditionalEnv": {
+                    "type": "string"
+                },
                 "backupResticAllowUnsafeMount": {
                     "type": "boolean"
                 },
@@ -22636,6 +22907,18 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "backupResticAwsAccessKeyId": {
+                    "type": "string"
+                },
+                "backupResticAwsBucket": {
+                    "type": "string"
+                },
+                "backupResticAwsEndpoint": {
+                    "type": "string"
+                },
+                "backupResticAwsPrefix": {
+                    "type": "string"
+                },
+                "backupResticAwsRegion": {
                     "type": "string"
                 },
                 "backupResticBinaryPath": {
@@ -22746,6 +23029,9 @@ const docTemplate = `{
                 "backupResticPurgeTag": {
                     "type": "string"
                 },
+                "backupResticRepoAppendCluster": {
+                    "type": "boolean"
+                },
                 "backupResticRepository": {
                     "type": "string"
                 },
@@ -22778,6 +23064,9 @@ const docTemplate = `{
                 },
                 "backupSplitMysqlUser": {
                     "type": "boolean"
+                },
+                "backupSplitdumpFileSize": {
+                    "type": "string"
                 },
                 "backupStreaming": {
                     "type": "boolean"
@@ -23005,6 +23294,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "compressBackupsCompressionLevel": {
+                    "type": "integer"
+                },
+                "compressBackupsDecompressBufferSize": {
                     "type": "integer"
                 },
                 "compressBackupsLogical": {
@@ -23799,6 +24091,9 @@ const docTemplate = `{
                 "monitoringSchemaOnReplicas": {
                     "type": "boolean"
                 },
+                "monitoringSchemaScanTimeout": {
+                    "type": "integer"
+                },
                 "monitoringSchemaScheduler": {
                     "type": "boolean"
                 },
@@ -24468,6 +24763,9 @@ const docTemplate = `{
                 "replicationErrorScript": {
                     "type": "string"
                 },
+                "replicationManagerCliPath": {
+                    "type": "string"
+                },
                 "replicationMasterConnectRetry": {
                     "type": "integer"
                 },
@@ -24743,6 +25041,9 @@ const docTemplate = `{
                 },
                 "sysbenchBinaryTest": {
                     "type": "string"
+                },
+                "sysbenchForcePk": {
+                    "type": "boolean"
                 },
                 "sysbenchScale": {
                     "type": "integer"
@@ -25470,20 +25771,6 @@ const docTemplate = `{
         "regexp.Regexp": {
             "type": "object"
         },
-        "repmanv3.BackupStat": {
-            "type": "object",
-            "properties": {
-                "total_blob_count": {
-                    "type": "integer"
-                },
-                "total_file_count": {
-                    "type": "integer"
-                },
-                "total_size": {
-                    "type": "integer"
-                }
-            }
-        },
         "repmanv3.Tag": {
             "type": "object",
             "properties": {
@@ -25880,6 +26167,20 @@ const docTemplate = `{
                 }
             }
         },
+        "server.ResticCurrentTaskResponse": {
+            "type": "object",
+            "properties": {
+                "current_task": {
+                    "$ref": "#/definitions/backupmgr.ResticTaskState"
+                },
+                "queue": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/backupmgr.ResticTask"
+                    }
+                }
+            }
+        },
         "server.ResticMountStatusResponse": {
             "type": "object",
             "properties": {
@@ -25940,6 +26241,79 @@ const docTemplate = `{
                 },
                 "useTempDir": {
                     "type": "boolean"
+                }
+            }
+        },
+        "server.resticSnapshotResponse": {
+            "type": "object",
+            "properties": {
+                "gid": {
+                    "type": "integer"
+                },
+                "hostname": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.SnapshotMetadataSummary"
+                    }
+                },
+                "metadataError": {
+                    "type": "string"
+                },
+                "metadataReady": {
+                    "type": "boolean"
+                },
+                "metadataStatus": {
+                    "type": "string"
+                },
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "time": {
+                    "type": "string"
+                },
+                "tree": {
+                    "type": "string"
+                },
+                "uid": {
+                    "type": "integer"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.resticSnapshotsResponse": {
+            "type": "object",
+            "properties": {
+                "repo_path": {
+                    "type": "string"
+                },
+                "snapshots": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.resticSnapshotResponse"
+                    }
+                },
+                "stats": {
+                    "$ref": "#/definitions/backupmgr.BackupStat"
                 }
             }
         },
