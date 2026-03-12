@@ -1008,3 +1008,35 @@ func TestResolveResticRepoAppendClusterGuards(t *testing.T) {
 		t.Fatalf("expected local repo to be accepted when outside default parent")
 	}
 }
+
+func TestResticS3EffectivePrefixForInit(t *testing.T) {
+	cluster := &Cluster{Conf: &config.Config{}, Name: "cluster1"}
+	cluster.Conf.WorkingDir = "/var/lib/repman"
+	cluster.Conf.BackupResticAws = true
+	cluster.Conf.BackupResticAwsBucket = "bucket"
+	cluster.Conf.BackupResticAwsPrefix = ""
+	cluster.Conf.BackupResticRepoAppendCluster = true
+
+	effective, ok := cluster.ResticS3EffectivePrefixForInit()
+	if !ok {
+		t.Fatalf("expected effective prefix to be available")
+	}
+	if effective != "cluster1" {
+		t.Fatalf("expected effective prefix cluster1, got %s", effective)
+	}
+
+	cluster.Conf.BackupResticAwsPrefix = "base"
+	effective, ok = cluster.ResticS3EffectivePrefixForInit()
+	if !ok {
+		t.Fatalf("expected effective prefix to be available")
+	}
+	if effective != "base/cluster1" {
+		t.Fatalf("expected effective prefix base/cluster1, got %s", effective)
+	}
+
+	cluster.Conf.BackupResticAwsPrefix = "base/cluster1"
+	effective, ok = cluster.ResticS3EffectivePrefixForInit()
+	if ok {
+		t.Fatalf("expected no update when prefix already ends with cluster name")
+	}
+}

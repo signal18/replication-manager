@@ -84,6 +84,35 @@ func shouldAppendClusterNameLocal(localRepoPath, clusterName string) bool {
 	return filepath.Base(filepath.Clean(localRepoPath)) != clusterName
 }
 
+func (cluster *Cluster) ResticS3EffectivePrefixForInit() (string, bool) {
+	if !cluster.Conf.BackupResticAws {
+		return "", false
+	}
+	bucket := strings.TrimSpace(cluster.Conf.BackupResticAwsBucket)
+	if bucket == "" {
+		return "", false
+	}
+	_, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
+	if !appendCluster {
+		return "", false
+	}
+	currentPrefix := strings.Trim(cluster.Conf.BackupResticAwsPrefix, "/")
+	if !shouldAppendClusterNameS3(bucket, currentPrefix, cluster.Name) {
+		return "", false
+	}
+	_, effectivePrefix := buildResticS3RepoSpec(
+		cluster.Conf.BackupResticAwsEndpoint,
+		bucket,
+		currentPrefix,
+		cluster.Name,
+		appendCluster,
+	)
+	if effectivePrefix == "" || effectivePrefix == currentPrefix {
+		return "", false
+	}
+	return effectivePrefix, true
+}
+
 func isWithinParentPath(parent, child string) bool {
 	parent = filepath.Clean(parent)
 	child = filepath.Clean(child)

@@ -7681,6 +7681,13 @@ func (repman *ReplicationManager) handlerMuxResticInitRepo(w http.ResponseWriter
 			return
 		}
 
+		if effectivePrefix, ok := mycluster.ResticS3EffectivePrefixForInit(); ok {
+			if err := repman.setClusterSetting(mycluster, "backup-restic-aws-prefix", effectivePrefix); err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"failed to persist restic AWS prefix after init: %v", err)
+			}
+		}
+
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Restic repository initialized"))
 	})
