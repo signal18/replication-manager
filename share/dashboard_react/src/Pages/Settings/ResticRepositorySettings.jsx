@@ -507,7 +507,9 @@ function ResticRepositorySettings({
                       regexPattern='^https?://[A-Za-z0-9.-]+(?::\\d+)?(?:/.*)?$'
                       onSave={(value) => handleSettingChange('backup-restic-aws-endpoint', value, true)}
                     />
-                    <Text className={styles.helperText}>Optional custom S3 endpoint (http/https with host; leave empty for AWS).</Text>
+                    <Text className={styles.helperText}>
+                      Optional custom S3 endpoint (http/https with host; leave empty for AWS). Do not use s3:// here.
+                    </Text>
                   </GridItem>
                 </Grid>
 
@@ -650,7 +652,8 @@ function ResticRepositorySettings({
                       />
                     </HStack>
                     <Text className={styles.helperText}>
-                      Used only when AWS is enabled and the S3 bucket field is empty.
+                      Used only when AWS is enabled and the S3 bucket field is empty. For custom S3 services use
+                      s3:https://server:port/bucket in this field.
                     </Text>
                   </GridItem>
                 </Grid>
