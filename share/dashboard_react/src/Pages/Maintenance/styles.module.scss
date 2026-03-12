@@ -110,6 +110,11 @@
     }
     .currentTaskTable {
       border-radius: rem(0);
+      table[class*='table'] {
+        tr > td[class*='bodyColumn'] {
+          line-height: normal;
+        }
+      }
     }
   }
 }

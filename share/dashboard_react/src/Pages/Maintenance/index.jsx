@@ -4,7 +4,7 @@ import { sizeOf, convertObjectToArray, formatBytes, formatDate, getBackupMethod,
 import AccordionComponent from '../../components/AccordionComponent'
 import { DataTable } from '../../components/DataTable'
 import styles from './styles.module.scss'
-import { Box, HStack, useDisclosure, VStack } from '@chakra-ui/react'
+import { Box, HStack, Progress, useDisclosure, VStack } from '@chakra-ui/react'
 import TableType3 from '../../components/TableType3'
 import { useDispatch, useSelector } from 'react-redux'
 import BackupSettings from '../Settings/BackupSettings'
@@ -466,11 +466,22 @@ function Maintenance({ selectedCluster, user }) {
       return []
     }
 
-    const isBackupTask = currentResticTask.task_type === 1
-    const percentDone =
-      isBackupTask && typeof currentResticTask.percent_done === 'number'
-        ? `${Math.round(currentResticTask.percent_done * 100)}%`
-        : 'Running (no progress available)'
+    const isBackupTask = currentResticTask.task_type === 2
+    const percentDone = (() => {
+      if (!isBackupTask || typeof currentResticTask.percent_done !== 'number') {
+        return 'Running'
+      }
+
+      const clamped = Math.min(Math.max(currentResticTask.percent_done, 0), 1)
+      const percentValue = Math.round(clamped * 100)
+
+      return (
+        <HStack spacing={3} alignItems="center">
+          <Progress value={percentValue} size="sm" flex="1" />
+          <Box minWidth="3.5rem" textAlign="right">{percentValue}%</Box>
+        </HStack>
+      )
+    })()
     const bytesValue = currentResticTask.total_bytes
       ? `${formatBytes(currentResticTask.bytes_done || 0)} / ${formatBytes(currentResticTask.total_bytes)}`
       : '-'
