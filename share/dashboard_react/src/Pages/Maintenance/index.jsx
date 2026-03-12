@@ -466,10 +466,10 @@ function Maintenance({ selectedCluster, user }) {
       return []
     }
 
-    const isBackupTask = currentResticTask.task_type === 1
+    const isBackupTask = currentResticTask.task_type === 2
     const percentDone = (() => {
       if (!isBackupTask || typeof currentResticTask.percent_done !== 'number') {
-        return 'Running (no progress available)'
+        return 'Running'
       }
 
       const clamped = Math.min(Math.max(currentResticTask.percent_done, 0), 1)
