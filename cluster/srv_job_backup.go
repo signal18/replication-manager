@@ -21,6 +21,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -4905,6 +4906,59 @@ func (server *ServerMonitor) perFileRestoreRollbackEntries(entries []perFileRest
 	return nil
 }
 
+func materializeArchiveHardlink(sourceAbs, destAbs string) error {
+	info, err := os.Lstat(sourceAbs)
+	if err != nil {
+		return fmt.Errorf("hardlink source stat error for %s: %w", sourceAbs, err)
+	}
+	if info.Mode()&os.ModeType == os.ModeSymlink {
+		return fmt.Errorf("hardlink source is a symlink, not a regular file: %s", sourceAbs)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("hardlink source is not a regular file: %s", sourceAbs)
+	}
+
+	err = os.Link(sourceAbs, destAbs)
+	if err != nil {
+		if linkErr := materializeArchiveHardlinkByCopy(sourceAbs, destAbs, info.Mode()); linkErr != nil {
+			return fmt.Errorf("hardlink fallback copy failed for %s: %w", destAbs, linkErr)
+		}
+	}
+	return nil
+}
+
+func materializeArchiveHardlinkByCopy(sourceAbs, destAbs string, mode os.FileMode) error {
+	srcFile, err := os.Open(sourceAbs)
+	if err != nil {
+		return fmt.Errorf("failed to open hardlink source %s: %w", sourceAbs, err)
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.OpenFile(destAbs, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
+	if err != nil {
+		return fmt.Errorf("failed to create hardlink destination %s: %w", destAbs, err)
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	if err != nil {
+		return fmt.Errorf("failed to copy hardlink content for %s: %w", destAbs, err)
+	}
+
+	return dstFile.Sync()
+}
+
+// normalizeArchivePathRef applies tar-style path semantics for archive link targets.
+// It treats backslashes as path separators, normalizes with path.Clean (POSIX rules),
+// then converts back to platform separators for filesystem operations.
+// This is intentional for cross-platform archive compatibility (e.g., Windows-generated tars).
+func normalizeArchivePathRef(ref string) string {
+	ref = strings.ReplaceAll(ref, "\\", "/")
+	ref = path.Clean(ref)
+	ref = filepath.FromSlash(ref)
+	return ref
+}
+
 func extractArchiveToDir(archivePath, targetDir string) (string, error) {
 	archiveFile, err := os.Open(archivePath)
 	if err != nil {
@@ -4929,6 +4983,14 @@ func extractArchiveToDir(archivePath, targetDir string) (string, error) {
 		return "", err
 	}
 
+	type pendingHardlink struct {
+		entryName        string
+		destAbs          string
+		sourceCandidates []string
+		linkTarget       string
+	}
+	var pendingHardlinks []pendingHardlink
+
 	tr := tar.NewReader(archiveReader)
 	firstComponent := ""
 	for {
@@ -4939,7 +5001,7 @@ func extractArchiveToDir(archivePath, targetDir string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		name := filepath.Clean(strings.TrimSpace(header.Name))
+		name := filepath.Clean(header.Name)
 		if name == "." || name == "" {
 			continue
 		}
@@ -4982,15 +5044,16 @@ func extractArchiveToDir(archivePath, targetDir string) (string, error) {
 				return "", err
 			}
 		case tar.TypeSymlink:
-			linkTarget := strings.TrimSpace(header.Linkname)
-			if linkTarget == "" {
+			linkTarget := header.Linkname
+			normalizedLinkTarget := normalizeArchivePathRef(linkTarget)
+			if strings.TrimSpace(linkTarget) == "" {
 				return "", fmt.Errorf("invalid empty symlink target for %s", header.Name)
 			}
-			if filepath.IsAbs(linkTarget) {
+			if filepath.IsAbs(normalizedLinkTarget) {
 				return "", fmt.Errorf("symlink target must be relative for %s: %s", header.Name, header.Linkname)
 			}
 
-			resolvedTarget := filepath.Clean(filepath.Join(filepath.Dir(destAbs), linkTarget))
+			resolvedTarget := filepath.Clean(filepath.Join(filepath.Dir(destAbs), normalizedLinkTarget))
 			if !isPathWithinBase(targetAbs, resolvedTarget) {
 				return "", fmt.Errorf("symlink target escapes target dir for %s: %s", header.Name, header.Linkname)
 			}
@@ -5001,8 +5064,112 @@ func extractArchiveToDir(archivePath, targetDir string) (string, error) {
 			if err := os.Symlink(linkTarget, destAbs); err != nil {
 				return "", err
 			}
+		case tar.TypeLink:
+			linkTarget := header.Linkname
+			normalizedLinkTarget := normalizeArchivePathRef(linkTarget)
+			if strings.TrimSpace(linkTarget) == "" {
+				return "", fmt.Errorf("invalid empty hardlink target for %s", header.Name)
+			}
+			if filepath.IsAbs(normalizedLinkTarget) {
+				return "", fmt.Errorf("hardlink target must be relative for %s: %s", header.Name, header.Linkname)
+			}
+
+			var rootRelative, dirRelative string
+
+			rootRelative = filepath.Clean(filepath.Join(targetAbs, normalizedLinkTarget))
+			dirRelative = filepath.Clean(filepath.Join(filepath.Dir(destAbs), normalizedLinkTarget))
+
+			var candidates []string
+
+			// normalizedLinkTarget uses '/' separators (see normalizeArchivePathRef).
+			hasPath := strings.Contains(normalizedLinkTarget, "/")
+			if hasPath {
+				if isPathWithinBase(targetAbs, rootRelative) {
+					candidates = append(candidates, rootRelative)
+				}
+				if isPathWithinBase(targetAbs, dirRelative) {
+					candidates = append(candidates, dirRelative)
+				}
+			} else {
+				if isPathWithinBase(targetAbs, dirRelative) {
+					candidates = append(candidates, dirRelative)
+				}
+				if isPathWithinBase(targetAbs, rootRelative) {
+					candidates = append(candidates, rootRelative)
+				}
+			}
+
+			if len(candidates) == 0 {
+				return "", fmt.Errorf("hardlink target escapes target dir for %s: %s", header.Name, header.Linkname)
+			}
+
+			if err := os.MkdirAll(filepath.Dir(destAbs), 0o755); err != nil {
+				return "", err
+			}
+
+			resolvedSource := ""
+			for _, cand := range candidates {
+				if _, err := os.Stat(cand); err != nil {
+					if os.IsNotExist(err) {
+						continue
+					}
+					return "", fmt.Errorf("hardlink source stat error for %s: %w", header.Name, err)
+				}
+				resolvedSource = cand
+				break
+			}
+
+			if resolvedSource == "" {
+				pendingHardlinks = append(pendingHardlinks, pendingHardlink{
+					entryName:        header.Name,
+					destAbs:          destAbs,
+					sourceCandidates: candidates,
+					linkTarget:       linkTarget,
+				})
+			} else {
+				if err := materializeArchiveHardlink(resolvedSource, destAbs); err != nil {
+					return "", err
+				}
+			}
 		default:
 			return "", fmt.Errorf("unsupported archive entry type %d for %s", header.Typeflag, header.Name)
+		}
+	}
+
+	if len(pendingHardlinks) > 0 {
+		maxPasses := len(pendingHardlinks)
+		for pass := 0; pass < maxPasses; pass++ {
+			progress := false
+			var remaining []pendingHardlink
+			for _, hl := range pendingHardlinks {
+				resolvedSource := ""
+				for _, cand := range hl.sourceCandidates {
+					if _, err := os.Stat(cand); err != nil {
+						if os.IsNotExist(err) {
+							continue
+						}
+						return "", fmt.Errorf("hardlink source stat error for %s: %w", hl.entryName, err)
+					}
+					resolvedSource = cand
+					break
+				}
+
+				if resolvedSource == "" {
+					remaining = append(remaining, hl)
+				} else {
+					if err := materializeArchiveHardlink(resolvedSource, hl.destAbs); err != nil {
+						return "", err
+					}
+					progress = true
+				}
+			}
+			pendingHardlinks = remaining
+			if !progress {
+				break
+			}
+		}
+		if len(pendingHardlinks) > 0 {
+			return "", fmt.Errorf("unresolved hardlink target for %s: %s", pendingHardlinks[0].entryName, pendingHardlinks[0].linkTarget)
 		}
 	}
 
