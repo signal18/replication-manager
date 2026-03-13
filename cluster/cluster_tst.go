@@ -173,6 +173,19 @@ func (cluster *Cluster) prepareTpccParams(prx DatabaseProxy, command string, ove
 	return append(params, command)
 }
 
+func (cluster *Cluster) shouldUseSysbenchV1Syntax() bool {
+	tool, ok := cluster.GetToolsVersion("sysbench")
+	if ok && tool != nil {
+		// Defensive fallback for invalid placeholder version objects.
+		if tool.Major == 0 && tool.Minor == 0 && tool.Release == 0 {
+			return cluster.Conf.SysbenchV1 // deprecated
+		}
+		// Detected sysbench version takes precedence; config flag is fallback only.
+		return !tool.Lower("1.0")
+	}
+	return cluster.Conf.SysbenchV1
+}
+
 func (cluster *Cluster) PrepareBench() error {
 	prx := cluster.GetProxies()[0]
 	if prx == nil {
@@ -188,7 +201,7 @@ func (cluster *Cluster) PrepareBench() error {
 		var cmdprep *exec.Cmd
 		cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, mode, requests, threads, "prepare")
 
-		if cluster.Conf.SysbenchV1 {
+		if cluster.shouldUseSysbenchV1Syntax() {
 			test = cluster.Conf.SysbenchTest
 			time = "--time=" + strconv.Itoa(cluster.Conf.SysbenchTime)
 			tablesize = "--table-size=1000000"
@@ -230,7 +243,7 @@ func (cluster *Cluster) CleanupBench() error {
 	prx := proxies[0]
 	if cluster.benchmarkType == "sysbench" {
 		test := "--test=oltp"
-		if cluster.Conf.SysbenchV1 {
+		if cluster.shouldUseSysbenchV1Syntax() {
 			test = cluster.Conf.SysbenchTest
 		}
 		var cleanup = cluster.Conf.SysbenchBinaryPath + test + " --db-driver=mysql --mysql-db=replication_manager_schema --mysql-user=" + cluster.GetDbUser() + " --mysql-password=" + cluster.GetDbPass() + " --mysql-host=" + prx.GetHost() + " --mysql-port=" + strconv.Itoa(prx.GetWritePort()) + " cleanup"
@@ -291,7 +304,7 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 
 	var cmdrun *exec.Cmd
 	cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, mode, requests, threads, "run")
-	if cluster.Conf.SysbenchV1 {
+	if cluster.shouldUseSysbenchV1Syntax() {
 		test = cluster.Conf.SysbenchTest
 		tablesize = "--table-size=" + mySize
 		threads = "--threads=" + myThreads

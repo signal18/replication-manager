@@ -275,7 +275,10 @@ func (cluster *Cluster) RefreshSysbenchVersion() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Sysbench raw output: %s", rawOutput)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Sysbench cleaned version string: %s", vstring)
 
-	v, _ := version.NewVersionFromString("sysbench", vstring)
+	v, tokens := version.NewVersionFromString("sysbench", vstring)
+	if tokens == 0 {
+		return fmt.Errorf("unable to parse sysbench version from string: %s (raw: %s)", vstring, rawOutput)
+	}
 
 	hasChanged, err := version.HasVersionChanged(oldV, v)
 	if err != nil {
