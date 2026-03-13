@@ -3,6 +3,7 @@ package cluster
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/state"
@@ -26,8 +27,10 @@ func (cluster *Cluster) RefreshToolVersions() {
 		cluster.SetState("WARN0120", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0120"], err), ErrFrom: "CLUSTER"})
 	}
 
-	if err := cluster.RefreshSysbenchVersion(); err != nil {
-		cluster.SetState("WARN0167", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0167"], err), ErrFrom: "CLUSTER"})
+	if cluster.shouldRefreshSysbenchVersionPeriodically() {
+		if err := cluster.RefreshSysbenchVersion(); err != nil {
+			cluster.SetState("WARN0167", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0167"], err), ErrFrom: "CLUSTER"})
+		}
 	}
 
 	if cluster.Conf.BackupRestic {
@@ -257,6 +260,20 @@ func (cluster *Cluster) SetSysbenchVersion(v *version.Version) error {
 	return nil
 }
 
+func (cluster *Cluster) shouldRefreshSysbenchVersionPeriodically() bool {
+	path := strings.TrimSpace(cluster.Conf.SysbenchBinaryPath)
+
+	if path != "" && path != "/usr/bin/sysbench" {
+		return true
+	}
+
+	if cluster.Conf.Test || cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging {
+		return true
+	}
+
+	return false
+}
+
 func (cluster *Cluster) RefreshSysbenchVersion() error {
 	cstring := "changed"
 	oldV, _ := cluster.GetToolsVersion("sysbench")
@@ -264,7 +281,7 @@ func (cluster *Cluster) RefreshSysbenchVersion() error {
 		cstring = "discovered"
 	}
 
-	out, err := exec.Command(cluster.Conf.SysbenchBinaryPath, "--version").Output()
+	out, err := exec.Command(cluster.Conf.SysbenchBinaryPath, "--version").CombinedOutput()
 	if err != nil {
 		return err
 	}

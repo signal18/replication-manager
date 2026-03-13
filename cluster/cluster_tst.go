@@ -173,17 +173,27 @@ func (cluster *Cluster) prepareTpccParams(prx DatabaseProxy, command string, ove
 	return append(params, command)
 }
 
-func (cluster *Cluster) shouldUseSysbenchV1Syntax() bool {
+func (cluster *Cluster) shouldUseSysbenchV1Syntax() (bool, error) {
+	tool, ok := cluster.GetToolsVersion("sysbench")
+	if !ok || tool == nil {
+		return false, fmt.Errorf("sysbench version not available")
+	}
+	return !tool.Lower("1.0"), nil
+}
+
+func (cluster *Cluster) ensureSysbenchVersionAvailable() error {
 	tool, ok := cluster.GetToolsVersion("sysbench")
 	if ok && tool != nil {
-		// Defensive fallback for invalid placeholder version objects.
-		if tool.Major == 0 && tool.Minor == 0 && tool.Release == 0 {
-			return cluster.Conf.SysbenchV1 // deprecated
-		}
-		// Detected sysbench version takes precedence; config flag is fallback only.
-		return !tool.Lower("1.0")
+		return nil
 	}
-	return cluster.Conf.SysbenchV1
+	if err := cluster.RefreshSysbenchVersion(); err != nil {
+		return err
+	}
+	tool, ok = cluster.GetToolsVersion("sysbench")
+	if !ok || tool == nil {
+		return fmt.Errorf("sysbench version not available after refresh")
+	}
+	return nil
 }
 
 func (cluster *Cluster) PrepareBench() error {
@@ -201,7 +211,18 @@ func (cluster *Cluster) PrepareBench() error {
 		var cmdprep *exec.Cmd
 		cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, mode, requests, threads, "prepare")
 
-		if cluster.shouldUseSysbenchV1Syntax() {
+		if err := cluster.ensureSysbenchVersionAvailable(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sysbench version check failed: %s", err)
+			return err
+		}
+
+		useV1Syntax, err := cluster.shouldUseSysbenchV1Syntax()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sysbench syntax selection failed: %s", err)
+			return err
+		}
+
+		if useV1Syntax {
 			test = cluster.Conf.SysbenchTest
 			time = "--time=" + strconv.Itoa(cluster.Conf.SysbenchTime)
 			tablesize = "--table-size=1000000"
@@ -242,8 +263,19 @@ func (cluster *Cluster) CleanupBench() error {
 
 	prx := proxies[0]
 	if cluster.benchmarkType == "sysbench" {
+		if err := cluster.ensureSysbenchVersionAvailable(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sysbench version check failed: %s", err)
+			return err
+		}
+
+		useV1Syntax, err := cluster.shouldUseSysbenchV1Syntax()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sysbench syntax selection failed: %s", err)
+			return err
+		}
+
 		test := "--test=oltp"
-		if cluster.shouldUseSysbenchV1Syntax() {
+		if useV1Syntax {
 			test = cluster.Conf.SysbenchTest
 		}
 		var cleanup = cluster.Conf.SysbenchBinaryPath + test + " --db-driver=mysql --mysql-db=replication_manager_schema --mysql-user=" + cluster.GetDbUser() + " --mysql-password=" + cluster.GetDbPass() + " --mysql-host=" + prx.GetHost() + " --mysql-port=" + strconv.Itoa(prx.GetWritePort()) + " cleanup"
@@ -304,7 +336,19 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 
 	var cmdrun *exec.Cmd
 	cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, mode, requests, threads, "run")
-	if cluster.shouldUseSysbenchV1Syntax() {
+
+	if err := cluster.ensureSysbenchVersionAvailable(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sysbench version check failed: %s", err)
+		return err
+	}
+
+	useV1Syntax, err := cluster.shouldUseSysbenchV1Syntax()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sysbench syntax selection failed: %s", err)
+		return err
+	}
+
+	if useV1Syntax {
 		test = cluster.Conf.SysbenchTest
 		tablesize = "--table-size=" + mySize
 		threads = "--threads=" + myThreads
