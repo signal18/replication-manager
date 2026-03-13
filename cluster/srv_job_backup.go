@@ -5127,6 +5127,10 @@ func extractArchiveToDir(archivePath, targetDir string) (string, error) {
 			firstComponent = parts[0]
 		}
 
+		if filepath.IsAbs(header.Name) {
+			return "", fmt.Errorf("archive entry must be relative for %s: %s", header.Name, header.Name)
+		}
+
 		switch header.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(destAbs, os.FileMode(header.Mode)); err != nil {

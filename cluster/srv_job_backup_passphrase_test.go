@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -452,5 +453,90 @@ func TestDecryptBackupDirectoryPerFile_NoEncryptedFiles_DoesNotRequirePassphrase
 	}
 	if strings.Contains(err.Error(), "backup encryption passphrase is empty") {
 		t.Error("should not require passphrase when no encrypted files exist")
+	}
+}
+
+func TestPerFileDirectoryEncryptDecryptRoundTrip(t *testing.T) {
+	if _, err := exec.LookPath("openssl"); err != nil {
+		t.Skip("openssl binary not available")
+	}
+
+	t.Setenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE", "roundtrip-passphrase")
+
+	cluster := &Cluster{}
+	cluster.Conf = &config.Config{}
+	cluster.Conf.Verbose = false
+
+	server := &ServerMonitor{
+		ClusterGroup: cluster,
+	}
+
+	sourceDir := t.TempDir()
+	nestedDir := filepath.Join(sourceDir, "nested")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatalf("mkdir nested: %v", err)
+	}
+
+	fileA := filepath.Join(sourceDir, "a.sql")
+	fileB := filepath.Join(nestedDir, "b.txt")
+	contentA := []byte("CREATE TABLE roundtrip_a(id INT);\n")
+	contentB := []byte("roundtrip payload B\n")
+
+	if err := os.WriteFile(fileA, contentA, 0o600); err != nil {
+		t.Fatalf("write fileA: %v", err)
+	}
+	if err := os.WriteFile(fileB, contentB, 0o600); err != nil {
+		t.Fatalf("write fileB: %v", err)
+	}
+
+	encCount, err := server.encryptBackupDirectoryPerFile(sourceDir, false)
+	if err != nil {
+		t.Fatalf("encryptBackupDirectoryPerFile: %v", err)
+	}
+	if encCount != 2 {
+		t.Fatalf("encrypted count=%d, want 2", encCount)
+	}
+
+	if _, err := os.Stat(fileA); !os.IsNotExist(err) {
+		t.Fatalf("plaintext fileA should be removed, err=%v", err)
+	}
+	if _, err := os.Stat(fileB); !os.IsNotExist(err) {
+		t.Fatalf("plaintext fileB should be removed, err=%v", err)
+	}
+	if _, err := os.Stat(fileA + ".enc"); err != nil {
+		t.Fatalf("encrypted fileA missing: %v", err)
+	}
+	if _, err := os.Stat(fileB + ".enc"); err != nil {
+		t.Fatalf("encrypted fileB missing: %v", err)
+	}
+
+	decCount, err := server.decryptBackupDirectoryPerFile(sourceDir)
+	if err != nil {
+		t.Fatalf("decryptBackupDirectoryPerFile: %v", err)
+	}
+	if decCount != 2 {
+		t.Fatalf("decrypted count=%d, want 2", decCount)
+	}
+
+	gotA, err := os.ReadFile(fileA)
+	if err != nil {
+		t.Fatalf("read restored fileA: %v", err)
+	}
+	gotB, err := os.ReadFile(fileB)
+	if err != nil {
+		t.Fatalf("read restored fileB: %v", err)
+	}
+	if string(gotA) != string(contentA) {
+		t.Fatalf("restored fileA mismatch")
+	}
+	if string(gotB) != string(contentB) {
+		t.Fatalf("restored fileB mismatch")
+	}
+
+	if _, err := os.Stat(fileA + ".enc"); !os.IsNotExist(err) {
+		t.Fatalf("encrypted fileA should be removed after decrypt, err=%v", err)
+	}
+	if _, err := os.Stat(fileB + ".enc"); !os.IsNotExist(err) {
+		t.Fatalf("encrypted fileB should be removed after decrypt, err=%v", err)
 	}
 }

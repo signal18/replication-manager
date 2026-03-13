@@ -51,6 +51,59 @@ func TestBackupEncryptionStreamRoundTrip(t *testing.T) {
 	}
 }
 
+func TestBackupEncryptionStreamDecryptWrongPasswordFails(t *testing.T) {
+	if _, err := exec.LookPath("openssl"); err != nil {
+		t.Skip("openssl binary not available")
+	}
+
+	server := &ServerMonitor{}
+	tmpDir := t.TempDir()
+	sourcePath := filepath.Join(tmpDir, "source.txt")
+	encryptedPath := filepath.Join(tmpDir, "source.txt.enc")
+	decryptedPath := filepath.Join(tmpDir, "source.txt.dec")
+
+	if err := os.WriteFile(sourcePath, []byte("stream negative-path payload"), 0o600); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	if err := server.encryptBackupFileStream(sourcePath, encryptedPath, "correct-passphrase", 0o600); err != nil {
+		t.Fatalf("encrypt stream: %v", err)
+	}
+
+	err := server.decryptBackupFileStream(encryptedPath, decryptedPath, "wrong-passphrase", 0o600)
+	if err == nil {
+		t.Fatal("expected decrypt error with wrong passphrase")
+	}
+	if !strings.Contains(err.Error(), "openssl failed") {
+		t.Fatalf("expected openssl failure wrapper error, got: %v", err)
+	}
+	if _, statErr := os.Stat(decryptedPath); !os.IsNotExist(statErr) {
+		t.Fatalf("decrypted output should be removed on failure, statErr=%v", statErr)
+	}
+}
+
+func TestBackupEncryptionStreamEncryptEmptyPassphraseFails(t *testing.T) {
+	if _, err := exec.LookPath("openssl"); err != nil {
+		t.Skip("openssl binary not available")
+	}
+
+	server := &ServerMonitor{}
+	tmpDir := t.TempDir()
+	sourcePath := filepath.Join(tmpDir, "source.txt")
+	encryptedPath := filepath.Join(tmpDir, "source.txt.enc")
+
+	if err := os.WriteFile(sourcePath, []byte("empty-passphrase payload"), 0o600); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	err := server.encryptBackupFileStream(sourcePath, encryptedPath, "", 0o600)
+	if err == nil {
+		t.Fatal("expected encrypt error with empty passphrase")
+	}
+	if _, statErr := os.Stat(encryptedPath); !os.IsNotExist(statErr) {
+		t.Fatalf("encrypted output should be removed on failure, statErr=%v", statErr)
+	}
+}
+
 func TestEncryptBackupDoesNotExposePassphraseInArgs(t *testing.T) {
 	if _, err := exec.LookPath("openssl"); err != nil {
 		t.Skip("openssl binary not available")

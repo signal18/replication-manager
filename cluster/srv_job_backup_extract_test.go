@@ -585,3 +585,146 @@ func TestExtractArchiveToDirHardlinkBackslashTargetUsesTarSemantics(t *testing.T
 func TestExtractArchiveToDirHardlinkLiteralBackslashPolicyNote(t *testing.T) {
 	t.Skip("Policy is documented in normalizeArchivePathRef; backslash-as-separator is intentional for cross-platform compatibility")
 }
+
+func TestExtractArchiveToDirRejectsRelativePathTraversalEntryName(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "relative_traversal.tar")
+	writeTestTar(t, archivePath, []testTarEntry{
+		{Name: "root/", Type: tar.TypeDir},
+		{Name: "../outside.txt", Type: tar.TypeReg, Content: "owned"},
+	})
+
+	rootTmp := t.TempDir()
+	extractDir := filepath.Join(rootTmp, "extract")
+	outsidePath := filepath.Join(rootTmp, "outside.txt")
+	if err := os.MkdirAll(extractDir, 0o755); err != nil {
+		t.Fatalf("failed to create extract dir: %v", err)
+	}
+
+	_, err := extractArchiveToDir(archivePath, extractDir)
+	if err == nil {
+		t.Fatal("expected error for path traversal archive entry, got nil")
+	}
+	if !strings.Contains(err.Error(), "archive entry escapes target dir") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := os.Stat(outsidePath); err == nil {
+		t.Fatal("outside file should not be created")
+	}
+}
+
+func TestExtractArchiveToDirRejectsAbsoluteEntryName(t *testing.T) {
+	tests := []struct {
+		name          string
+		entries       []testTarEntry
+		skipOnWindows bool
+	}{
+		{
+			name: "absolute_directory",
+			entries: []testTarEntry{
+				{Name: "root/", Type: tar.TypeDir},
+				{Name: "/absdir/", Type: tar.TypeDir},
+			},
+		},
+		{
+			name: "absolute_regular_file",
+			entries: []testTarEntry{
+				{Name: "root/", Type: tar.TypeDir},
+				{Name: "/abs/evil.txt", Type: tar.TypeReg, Content: "owned"},
+			},
+		},
+		{
+			name: "absolute_symlink",
+			entries: []testTarEntry{
+				{Name: "root/", Type: tar.TypeDir},
+				{Name: "/abslink", Type: tar.TypeSymlink, Linkname: "root"},
+			},
+			skipOnWindows: true,
+		},
+		{
+			name: "absolute_hardlink",
+			entries: []testTarEntry{
+				{Name: "root/", Type: tar.TypeDir},
+				{Name: "root/original.sql", Type: tar.TypeReg, Content: "SELECT 1;"},
+				{Name: "/absalias.sql", Type: tar.TypeLink, Linkname: "root/original.sql"},
+			},
+			skipOnWindows: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.skipOnWindows && runtime.GOOS == "windows" {
+				t.Skip("symlink/hardlink test not supported on windows")
+			}
+
+			archivePath := filepath.Join(t.TempDir(), "absolute_"+tc.name+".tar")
+			writeTestTar(t, archivePath, tc.entries)
+
+			extractDir := filepath.Join(t.TempDir(), "extract")
+			if err := os.MkdirAll(extractDir, 0o755); err != nil {
+				t.Fatalf("failed to create extract dir: %v", err)
+			}
+
+			_, err := extractArchiveToDir(archivePath, extractDir)
+			if err == nil {
+				t.Fatal("expected error for absolute archive entry, got nil")
+			}
+			if !strings.Contains(err.Error(), "archive entry must be relative") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestExtractArchiveToDirRejectsHardlinkToSymlinkSource(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hardlink/symlink test not supported on windows")
+	}
+
+	archivePath := filepath.Join(t.TempDir(), "hardlink_symlink_source.tar")
+	writeTestTar(t, archivePath, []testTarEntry{
+		{Name: "root/", Type: tar.TypeDir},
+		{Name: "root/real.sql", Type: tar.TypeReg, Content: "SELECT 1;"},
+		{Name: "root/link.sql", Type: tar.TypeSymlink, Linkname: "real.sql"},
+		{Name: "root/alias.sql", Type: tar.TypeLink, Linkname: "link.sql"},
+	})
+
+	extractDir := filepath.Join(t.TempDir(), "extract")
+	if err := os.MkdirAll(extractDir, 0o755); err != nil {
+		t.Fatalf("failed to create extract dir: %v", err)
+	}
+
+	_, err := extractArchiveToDir(archivePath, extractDir)
+	if err == nil {
+		t.Fatal("expected error for hardlink-to-symlink source, got nil")
+	}
+	if !strings.Contains(err.Error(), "hardlink source is a symlink") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExtractArchiveToDirRejectsHardlinkToDirectorySource(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hardlink test not supported on windows")
+	}
+
+	archivePath := filepath.Join(t.TempDir(), "hardlink_dir_source.tar")
+	writeTestTar(t, archivePath, []testTarEntry{
+		{Name: "root/", Type: tar.TypeDir},
+		{Name: "root/dir/", Type: tar.TypeDir},
+		{Name: "root/alias", Type: tar.TypeLink, Linkname: "dir"},
+	})
+
+	extractDir := filepath.Join(t.TempDir(), "extract")
+	if err := os.MkdirAll(extractDir, 0o755); err != nil {
+		t.Fatalf("failed to create extract dir: %v", err)
+	}
+
+	_, err := extractArchiveToDir(archivePath, extractDir)
+	if err == nil {
+		t.Fatal("expected error for hardlink-to-directory source, got nil")
+	}
+	if !strings.Contains(err.Error(), "hardlink source is not a regular file") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
