@@ -41,7 +41,8 @@ Legacy compatibility note – Older backups that used explicit key/IV mode remai
 
 Implementation notes
 
-- In cluster/srv_job_backup.go, after a backup file is created and compressed, check the BackupEncryptionEnabled flag. If enabled, call the OpenSSL streaming helper with passphrase (`openssl enc -aes-256-cbc -a -salt -pass pass:<passphrase>`), write the encrypted output to a new file with the .enc extension, and remove (or securely delete) the unencrypted file.
+- In cluster/srv_job_backup.go, after a backup file is created and compressed, check the BackupEncryptionEnabled flag. If enabled, call the OpenSSL streaming helper with passphrase (`openssl enc -aes-256-cbc -a -salt -pass fd:3`), write the encrypted output to a new file with the .enc extension, and remove (or securely delete) the unencrypted file.
+- Passphrase security: The passphrase is passed via file descriptor 3 (`-pass fd:3`) rather than on the command line. This prevents the passphrase from appearing in process listings (`ps aux`), `/proc/<pid>/cmdline`, or audit logs that capture command-line arguments. The passphrase is delivered through a dedicated pipe (`os.Pipe()`) attached via `cmd.ExtraFiles`.
 
 When using restic or other remote storage tools, upload the encrypted file instead of the plaintext backup. This preserves end‑to‑end encryption over the transport.
 
@@ -50,6 +51,7 @@ Update documentation and restore scripts to reflect the need to decrypt the back
 Consequences
 
 Security improvement – Sensitive data in backups will be protected at rest and in transit. This aligns backup handling with the encryption model already used for log ingestion.
+- Passphrase confidentiality: Passphrases are passed to OpenSSL via file descriptor to avoid exposure in process listings, /proc filesystem, and command-line audit logs.
 
 Uniform key management – Using a single backup passphrase avoids introducing additional keys. Operators must safeguard the passphrase, as it controls access to backups.
 

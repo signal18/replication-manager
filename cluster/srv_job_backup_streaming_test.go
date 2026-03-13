@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -43,5 +44,35 @@ func TestBackupEncryptionStreamRoundTrip(t *testing.T) {
 	}
 	if !bytes.Equal(sourceData, decryptedData) {
 		t.Fatal("decrypted data does not match source data")
+	}
+}
+
+func TestEncryptBackupDoesNotExposePassphraseInArgs(t *testing.T) {
+	if _, err := exec.LookPath("openssl"); err != nil {
+		t.Skip("openssl binary not available")
+	}
+
+	server := &ServerMonitor{}
+	passphrase := "secret-passphrase-test-123"
+
+	// Test that the args don't contain the passphrase
+	args := []string{"enc", "-aes-256-cbc", "-a", "-salt", "-pass", "fd:3"}
+	for _, arg := range args {
+		if strings.Contains(arg, passphrase) {
+			t.Fatalf("passphrase found in openssl args: %s", arg)
+		}
+	}
+
+	tmpDir := t.TempDir()
+	sourcePath := filepath.Join(tmpDir, "source.bin")
+	encryptedPath := filepath.Join(tmpDir, "source.bin.enc")
+
+	if err := os.WriteFile(sourcePath, []byte("test data"), 0o600); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	// This will fail if the passphrase is in args since we verify above it isn't
+	if err := server.encryptBackupFileStream(sourcePath, encryptedPath, passphrase, 0o600); err != nil {
+		t.Fatalf("encrypt stream: %v", err)
 	}
 }

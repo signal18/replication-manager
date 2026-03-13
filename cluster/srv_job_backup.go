@@ -4547,9 +4547,68 @@ func (server *ServerMonitor) runOpenSSLStream(sourcePath, destPath string, fileM
 	return nil
 }
 
+func (server *ServerMonitor) runOpenSSLStreamWithPassphrase(sourcePath, destPath string, fileMode os.FileMode, passphrase string, args ...string) error {
+	input, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+
+	output, err := os.OpenFile(destPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, fileMode)
+	if err != nil {
+		return err
+	}
+	defer output.Close()
+
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		return err
+	}
+	defer pr.Close()
+
+	if _, err := io.WriteString(pw, passphrase); err != nil {
+		_ = pw.Close()
+		return err
+	}
+	if err := pw.Close(); err != nil {
+		return err
+	}
+
+	cmd := exec.Command("openssl", args...)
+	cmd.Stdin = input
+	cmd.Stdout = output
+	cmd.ExtraFiles = []*os.File{pr}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		errMsg := strings.TrimSpace(stderr.String())
+		exitCode := -1
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			exitCode = exitErr.ExitCode()
+		}
+		if errMsg == "" {
+			if exitCode >= 0 {
+				return fmt.Errorf("openssl failed (exit=%d)", exitCode)
+			}
+			return err
+		}
+		if exitCode >= 0 {
+			return fmt.Errorf("openssl failed (exit=%d): %s", exitCode, errMsg)
+		}
+		return fmt.Errorf("openssl failed: %s", errMsg)
+	}
+
+	if err := output.Sync(); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (server *ServerMonitor) encryptBackupFileStream(sourcePath, destPath, password string, fileMode os.FileMode) error {
-	args := []string{"enc", "-aes-256-cbc", "-a", "-salt", "-pass", "pass:" + password}
-	if err := server.runOpenSSLStream(sourcePath, destPath, fileMode, args...); err != nil {
+	args := []string{"enc", "-aes-256-cbc", "-a", "-salt", "-pass", "fd:3"}
+	if err := server.runOpenSSLStreamWithPassphrase(sourcePath, destPath, fileMode, password, args...); err != nil {
 		_ = os.Remove(destPath)
 		return err
 	}
@@ -4557,8 +4616,8 @@ func (server *ServerMonitor) encryptBackupFileStream(sourcePath, destPath, passw
 }
 
 func (server *ServerMonitor) decryptBackupFileStream(sourcePath, destPath, password string, fileMode os.FileMode) error {
-	args := []string{"enc", "-d", "-aes-256-cbc", "-a", "-pass", "pass:" + password}
-	if err := server.runOpenSSLStream(sourcePath, destPath, fileMode, args...); err != nil {
+	args := []string{"enc", "-d", "-aes-256-cbc", "-a", "-pass", "fd:3"}
+	if err := server.runOpenSSLStreamWithPassphrase(sourcePath, destPath, fileMode, password, args...); err != nil {
 		_ = os.Remove(destPath)
 		return err
 	}
