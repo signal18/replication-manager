@@ -24,4 +24,5 @@ replication-manager-cli decrypt-backup \
 Notes:
 
 - If `--password` is omitted, the CLI prompts interactively.
-- Encryption/decryption key material is derived from the password with SHA-256 (key) and MD5 (IV), matching server backup encryption behavior.
+- Backups are encrypted with OpenSSL salted passphrase mode (`openssl enc -aes-256-cbc -a -salt -pass pass:<passphrase>`). The CLI uses passphrase decryption by default.
+- Legacy backups encrypted with explicit key/IV mode (`-nosalt -K -iv`) are still supported via a fallback path, but this mode is deprecated.

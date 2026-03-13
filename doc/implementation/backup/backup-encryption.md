@@ -7,29 +7,29 @@ Context
 
 The replication-manager project performs regular backups of MariaDB/MySQL clusters. Both physical and logical backups are orchestrated from the cluster/srv_job_backup.go module. Backups are typically compressed (using gzip) and then stored locally and/or uploaded to remote storage (e.g., via restic). Unlike logs, these backups are not encrypted, which means sensitive database contents remain in plain text on disk or in transit.
 
-Meanwhile, the API endpoint used for writing logs (api_database write‑log) requires clients to submit encrypted payloads. The server decrypts these payloads by computing a 256‑bit key from the server’s password using SHA‑256 and a 128‑bit initialization vector (IV) from the same password using MD5, then invoking openssl aes‑256‑cbc to decrypt the base64‑encoded payload. The key and IV derivation is implemented in utils/crypto/crypto.go, where GetSHA256Hash and GetMD5Hash return the hexadecimal hashes of a string. Using the same mechanism for backups would unify the security posture across different data flows.
+Meanwhile, the API endpoint used for writing logs (api_database write‑log) requires clients to submit encrypted payloads. The server decrypts these payloads by computing a 256‑bit key from the server’s password using SHA‑256 and a 128‑bit initialization vector (IV) from the same password using MD5, then invoking openssl aes‑256‑cbc to decrypt the base64‑encoded payload. The key and IV derivation is implemented in utils/crypto/crypto.go, where GetSHA256Hash and GetMD5Hash return the hexadecimal hashes of a string. Backup encryption is intentionally separate so we can use OpenSSL’s salted passphrase mode for streaming backups while keeping log encryption unchanged.
 
 Decision
 
-We will add optional encryption for backup files. When enabled, backups will be encrypted immediately after compression and before storage or upload. The encryption mechanism replicates the write‑log approach:
+We will add optional encryption for backup files. When enabled, backups will be encrypted immediately after compression and before storage or upload. The encryption mechanism uses OpenSSL’s salted passphrase mode for streaming encryption, matching the server backup flow:
 
-Key derivation – Compute the SHA‑256 hash of the server’s password and use the resulting 64‑character hexadecimal string as the AES‑256 key.
+Passphrase – Use the configured backup encryption passphrase (resolved per existing precedence).
 
-IV derivation – Compute the MD5 hash of the same password and use the resulting 32‑character hexadecimal string as the initialization vector.
+Encryption algorithm – Use AES‑256 in CBC mode, base64‑encode the output, and include OpenSSL’s salt. In terms of tooling this is equivalent to running:
 
-Encryption algorithm – Use AES‑256 in CBC mode, base64‑encode the output and omit OpenSSL’s salt. In terms of tooling this is equivalent to running:
+openssl enc -aes‑256‑cbc -a -salt -pass pass:<passphrase> -in <backup_file> -out <backup_file>.enc
 
-openssl aes‑256‑cbc -e -a -nosalt -K <sha256_hex_key> -iv <md5_hex_iv> -in <backup_file> -out <backup_file>.enc
+Decryption for this format is the symmetric opposite:
 
-This is the symmetric opposite of the decryption command already used for log payloads (openssl aes‑256‑cbc -d -a -nosalt -K key -iv iv).
+openssl enc -d -aes‑256‑cbc -a -pass pass:<passphrase> -in <backup_file>.enc -out <backup_file>
 
 File naming – Encrypted backups will receive an .enc suffix (e.g., backup.sql.gz.enc or xtrabackup.xbstream.enc) so operators can distinguish them from unencrypted files.
 
 Configuration – Introduce a configuration flag (e.g., BackupEncryptionEnabled / `backup-encryption-enabled`) and a passphrase setting (`backup-encryption-passphrase`). When encryption is enabled, passphrase resolution order is: `REPLICATION_MANAGER_BACKUP_PASSPHRASE` env var, then `backup-encryption-passphrase`, then admin password from `api-credentials`, then admin password from `api-credentials-external`, then server password fallback for backward compatibility.
 
-Decryption utilities – Provide a helper command (`replication-manager-cli decrypt-backup`) that accepts an encrypted backup and a password, derives the same key and IV, and runs the corresponding decryption command:
+Decryption utilities – Provide a helper command (`replication-manager-cli decrypt-backup`) that accepts an encrypted backup and a password, runs passphrase decryption by default, and falls back to the legacy key/IV scheme for older artifacts:
 
-openssl aes‑256‑cbc -d -a -nosalt -K <sha256_hex_key> -iv <md5_hex_iv> -in <backup_file>.enc -out <backup_file>
+openssl enc -d -aes‑256‑cbc -a -pass pass:<passphrase> -in <backup_file>.enc -out <backup_file>
 
 Example CLI usage:
 
@@ -37,11 +37,11 @@ replication-manager-cli decrypt-backup --input /var/backups/mysqldump.sql.gz.enc
 
 This ensures that restore procedures can decrypt the backup before feeding it into the database.
 
+Legacy compatibility note – Older backups that used explicit key/IV mode remain decryptable via a fallback path, but this mode is deprecated and planned for removal once legacy artifacts are retired.
+
 Implementation notes
 
-A new utility function (e.g., EncryptAES256(key, iv, data []byte) ([]byte, error)) should be added to utils/crypto or cluster/srv_job_backup.go to wrap the openssl command and produce encrypted bytes. The function should mirror the existing DecryptAES256 implementation in cluster/srv_job_logs.go.
-
-In cluster/srv_job_backup.go, after a backup file is created and compressed, check the BackupEncryptionEnabled flag. If enabled, call the encryption function, write the encrypted output to a new file with the .enc extension and remove (or securely delete) the unencrypted file.
+- In cluster/srv_job_backup.go, after a backup file is created and compressed, check the BackupEncryptionEnabled flag. If enabled, call the OpenSSL streaming helper with passphrase (`openssl enc -aes-256-cbc -a -salt -pass pass:<passphrase>`), write the encrypted output to a new file with the .enc extension, and remove (or securely delete) the unencrypted file.
 
 When using restic or other remote storage tools, upload the encrypted file instead of the plaintext backup. This preserves end‑to‑end encryption over the transport.
 
@@ -51,11 +51,11 @@ Consequences
 
 Security improvement – Sensitive data in backups will be protected at rest and in transit. This aligns backup handling with the encryption model already used for log ingestion.
 
-Uniform key management – Deriving keys and IVs from the server’s password avoids introducing additional secrets. Operators do not need to manage separate encryption keys; however, they must safeguard the server password, as it now controls access to backups.
+Uniform key management – Using a single backup passphrase avoids introducing additional keys. Operators must safeguard the passphrase, as it controls access to backups.
 
 Performance impact – Encryption and decryption add CPU overhead during backup and restore operations. Large physical backups may take longer to process. Proper resource planning is necessary.
 
-Compatibility considerations – Old backups created without encryption remain unencrypted. If the server password changes, backups encrypted with the previous password can only be decrypted with that old password. Administrators should document password changes and maintain secure records for decryption.
+Compatibility considerations – Old backups created without encryption remain unencrypted. If the backup passphrase changes, backups encrypted with the previous passphrase can only be decrypted with that old passphrase. Administrators should document passphrase changes and maintain secure records for decryption.
 
 Implementation complexity – Additional code is required to perform encryption and handle configuration. Thorough testing is necessary to ensure that encryption integrates correctly with existing backup workflows and remote storage mechanisms.
 

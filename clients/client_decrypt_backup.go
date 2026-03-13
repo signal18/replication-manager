@@ -64,14 +64,53 @@ func runDecryptBackup() error {
 		return fmt.Errorf("password is required")
 	}
 
-	key := rmcrypto.GetSHA256Hash(password)
-	iv := rmcrypto.GetMD5Hash(password)
-
 	encodedCiphertext, err := os.ReadFile(input)
 	if err != nil {
 		return fmt.Errorf("failed to read input file: %w", err)
 	}
 
+	outputData, err := decryptWithPassphraseOpenSSL(encodedCiphertext, password)
+	if err != nil {
+		key := rmcrypto.GetSHA256Hash(password)
+		iv := rmcrypto.GetMD5Hash(password)
+		legacyData, legacyErr := decryptWithLegacyKeyIVOpenSSL(encodedCiphertext, key, iv)
+		if legacyErr != nil {
+			return fmt.Errorf("failed to decrypt backup (passphrase mode): %s; legacy mode: %s", err.Error(), legacyErr.Error())
+		}
+		outputData = legacyData
+	}
+
+	if len(outputData) == 0 {
+		return fmt.Errorf("decryption produced empty output")
+	}
+	if err := os.WriteFile(output, outputData, 0600); err != nil {
+		return fmt.Errorf("failed to write decrypted output: %w", err)
+	}
+
+	fmt.Printf("Decrypted backup written to %s\n", output)
+	return nil
+}
+
+func decryptWithPassphraseOpenSSL(encodedCiphertext []byte, password string) ([]byte, error) {
+	cmd := exec.Command("openssl", "enc", "-d", "-aes-256-cbc", "-a", "-pass", "pass:"+password)
+	cmd.Stdin = bytes.NewReader(encodedCiphertext)
+
+	var out bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		errMsg := strings.TrimSpace(stderr.String())
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		return nil, fmt.Errorf("%s", errMsg)
+	}
+
+	return out.Bytes(), nil
+}
+
+func decryptWithLegacyKeyIVOpenSSL(encodedCiphertext []byte, key, iv string) ([]byte, error) {
 	cmd := exec.Command("openssl", "aes-256-cbc", "-d", "-a", "-nosalt", "-K", key, "-iv", iv)
 	cmd.Stdin = bytes.NewReader(encodedCiphertext)
 
@@ -84,18 +123,10 @@ func runDecryptBackup() error {
 		if errMsg == "" {
 			errMsg = err.Error()
 		}
-		return fmt.Errorf("failed to decrypt backup: %s", errMsg)
+		return nil, fmt.Errorf("%s", errMsg)
 	}
 
-	if out.Len() == 0 {
-		return fmt.Errorf("decryption produced empty output")
-	}
-	if err := os.WriteFile(output, out.Bytes(), 0600); err != nil {
-		return fmt.Errorf("failed to write decrypted output: %w", err)
-	}
-
-	fmt.Printf("Decrypted backup written to %s\n", output)
-	return nil
+	return out.Bytes(), nil
 }
 
 func defaultDecryptedBackupPath(input string) string {

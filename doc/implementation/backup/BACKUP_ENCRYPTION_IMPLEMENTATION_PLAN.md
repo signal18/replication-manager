@@ -189,12 +189,14 @@ Phase 6: Decryption tooling and documentation
 
 - Add CLI command `replication-manager-cli decrypt-backup` that:
   - Accepts `--input`, `--output` (optional), and `--password` (optional prompt when omitted).
-  - Derives SHA256 key and MD5 IV exactly as backup encryption.
-  - Runs OpenSSL decrypt command.
+  - Runs passphrase-based OpenSSL decrypt command by default.
+  - Falls back to legacy SHA256/MD5 key/IV mode for older artifacts (deprecated).
   - Writes output file (default: strip `.enc`).
   - Example:
     - `replication-manager-cli decrypt-backup --input /var/backups/mysqldump.sql.gz.enc --output /var/backups/mysqldump.sql.gz`
-  - OpenSSL equivalent:
+  - OpenSSL equivalent (primary):
+    - `openssl enc -d -aes-256-cbc -a -pass pass:<passphrase> -in backup.sql.gz.enc -out backup.sql.gz`
+  - OpenSSL equivalent (legacy fallback):
     - `openssl aes-256-cbc -d -a -nosalt -K <sha256_hex_key> -iv <md5_hex_iv> -in backup.sql.gz.enc -out backup.sql.gz`
 
 2) Documentation updates
