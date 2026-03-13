@@ -901,6 +901,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupEncryptionDirectoryMode, "backup-encryption-directory-mode", "archive", "Directory encryption mode: archive|per-file")
 	flags.BoolVar(&conf.BackupEncryptionKeepPlainDir, "backup-encryption-keep-plain-dir", false, "Keep plaintext directory/archive after successful directory backup encryption (debug only)")
 	flags.BoolVar(&conf.BackupEncryptionUnsafePerFileRestore, "backup-encryption-unsafe-per-file-restore", false, "Allow destructive in-place per-file encrypted restore without .old rollback safety (may leave backup unrecoverable if restore is interrupted)")
+	flags.BoolVar(&conf.BackupEncryptionRequireExplicitPassphrase, "backup-encryption-require-explicit-passphrase", false, "Require explicit passphrase (env var or config) for backup encryption; reject fallback to rotating admin/DB passwords")
 	flags.BoolVar(&conf.BackupSplitMysqlUser, "backup-split-mysql-user", false, "To split mysql user in backup")
 	flags.BoolVar(&conf.BackupRestoreMysqlUser, "backup-restore-mysql-user", true, "Restore mysql user alongside with backup")
 	flags.BoolVar(&conf.BackupCheckFreeSpace, "backup-check-size", true, "To check free space before processing backup")

@@ -52,29 +52,71 @@ const backupEncryptionToolOpenSSLEnc = "openssl-enc"
 const backupEncryptionModeArchive = "archive"
 const backupEncryptionModePerFile = "per-file"
 
+type backupPassphraseSource int
+
+const (
+	backupPassphraseSourceNone backupPassphraseSource = iota
+	backupPassphraseSourceEnv
+	backupPassphraseSourceConfig
+	backupPassphraseSourceAPIInternal
+	backupPassphraseSourceAPIExternal
+	backupPassphraseSourceServerDB
+)
+
+func (source backupPassphraseSource) String() string {
+	switch source {
+	case backupPassphraseSourceEnv:
+		return "REPLICATION_MANAGER_BACKUP_PASSPHRASE env var"
+	case backupPassphraseSourceConfig:
+		return "backup-encryption-passphrase config"
+	case backupPassphraseSourceAPIInternal:
+		return "api-credentials (internal admin password)"
+	case backupPassphraseSourceAPIExternal:
+		return "api-credentials-external (external admin password)"
+	case backupPassphraseSourceServerDB:
+		return "server database password"
+	default:
+		return "none"
+	}
+}
+
 func (server *ServerMonitor) resolveBackupEncryptionPassphrase() string {
+	pass, _, _ := server.resolveBackupEncryptionPassphraseWithSource()
+	return pass
+}
+
+func (server *ServerMonitor) resolveBackupEncryptionPassphraseWithSource() (passphrase string, source backupPassphraseSource, explicit bool) {
 	envPassphrase := strings.TrimSpace(os.Getenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE"))
 	if envPassphrase != "" {
-		return envPassphrase
+		return envPassphrase, backupPassphraseSourceEnv, true
 	}
 	if server != nil && server.ClusterGroup != nil {
 		configPassphrase := strings.TrimSpace(server.ClusterGroup.Conf.BackupEncryptionPassphrase)
 		if configPassphrase != "" {
-			return configPassphrase
+			return configPassphrase, backupPassphraseSourceConfig, true
 		}
 		adminPassphrase := server.resolveAdminAPIPasswordFromSecret("api-credentials")
 		if adminPassphrase != "" {
-			return adminPassphrase
+			return adminPassphrase, backupPassphraseSourceAPIInternal, false
 		}
 		adminExternalPassphrase := server.resolveAdminAPIPasswordFromSecret("api-credentials-external")
 		if adminExternalPassphrase != "" {
-			return adminExternalPassphrase
+			return adminExternalPassphrase, backupPassphraseSourceAPIExternal, false
 		}
 	}
 	if server == nil {
-		return ""
+		return "", backupPassphraseSourceNone, false
 	}
-	return strings.TrimSpace(server.Pass)
+	return strings.TrimSpace(server.Pass), backupPassphraseSourceServerDB, false
+}
+
+func (server *ServerMonitor) resolveBackupEncryptionPassphraseForUse() (string, error) {
+	passphrase, source, _ := server.resolveBackupEncryptionPassphraseWithSource()
+	if passphrase == "" {
+		return "", errors.New("backup encryption passphrase is empty")
+	}
+	server.warnIfBackupPassphraseFallback(source)
+	return passphrase, nil
 }
 
 func (server *ServerMonitor) resolveAdminAPIPasswordFromSecret(secretKey string) string {
@@ -94,15 +136,52 @@ func (server *ServerMonitor) resolveAdminAPIPasswordFromSecret(secretKey string)
 	return ""
 }
 
+func (server *ServerMonitor) warnIfBackupPassphraseFallback(source backupPassphraseSource) {
+	if server == nil || server.ClusterGroup == nil {
+		return
+	}
+	if source == backupPassphraseSourceNone {
+		return
+	}
+	if source == backupPassphraseSourceEnv || source == backupPassphraseSourceConfig {
+		return
+	}
+	cluster := server.ClusterGroup
+	var sourceLabel string
+	switch source {
+	case backupPassphraseSourceAPIInternal:
+		sourceLabel = "api-credentials (internal admin password)"
+	case backupPassphraseSourceAPIExternal:
+		sourceLabel = "api-credentials-external (external admin password)"
+	case backupPassphraseSourceServerDB:
+		sourceLabel = "server database password"
+	default:
+		sourceLabel = source.String()
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+		"Backup encryption using fallback passphrase source: %s (server: %s). "+
+			"This source may change after credential rotation, making older backups undecryptable. "+
+			"Set explicit 'backup-encryption-passphrase' or REPLICATION_MANAGER_BACKUP_PASSPHRASE env var to preserve decryptability.",
+		sourceLabel, server.URL)
+}
+
 func (server *ServerMonitor) ensureOpenSSLAvailableForBackup() error {
 	if server == nil || server.ClusterGroup == nil {
 		return errors.New("cluster group is nil")
 	}
-	if !server.ClusterGroup.Conf.BackupEncryptionEnabled {
+	cluster := server.ClusterGroup
+	if !cluster.Conf.BackupEncryptionEnabled {
 		return nil
 	}
 	if _, err := exec.LookPath("openssl"); err != nil {
 		return fmt.Errorf("backup encryption requires openssl binary in PATH: %w", err)
+	}
+	passphrase, source, explicit := server.resolveBackupEncryptionPassphraseWithSource()
+	if passphrase == "" {
+		return errors.New("backup encryption passphrase is empty")
+	}
+	if cluster.Conf.BackupEncryptionRequireExplicitPassphrase && !explicit {
+		return fmt.Errorf("backup encryption blocked by backup-encryption-require-explicit-passphrase: current passphrase source (%s) is a rotating credential which may change. Set explicit 'backup-encryption-passphrase' or REPLICATION_MANAGER_BACKUP_PASSPHRASE env var to enable encryption", source)
 	}
 	return nil
 }
@@ -220,6 +299,10 @@ func createDirectoryArchive(sourceDir, archivePath, format string) error {
 func (server *ServerMonitor) encryptBackupDirectoryPerFile(sourceDir string, keepPlain bool) (int, error) {
 	cluster := server.ClusterGroup
 	encryptedCount := 0
+
+	var password string
+	passwordResolved := false
+
 	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -236,10 +319,15 @@ func (server *ServerMonitor) encryptBackupDirectoryPerFile(sourceDir string, kee
 			return nil
 		}
 
-		password := server.resolveBackupEncryptionPassphrase()
-		if password == "" {
-			return errors.New("backup encryption passphrase is empty")
+		if !passwordResolved {
+			var err error
+			password, err = server.resolveBackupEncryptionPassphraseForUse()
+			if err != nil {
+				return err
+			}
+			passwordResolved = true
 		}
+
 		mode := info.Mode().Perm()
 		if mode == 0 {
 			mode = 0o600
@@ -275,6 +363,10 @@ func (server *ServerMonitor) encryptBackupDirectoryPerFile(sourceDir string, kee
 
 func (server *ServerMonitor) decryptBackupDirectoryPerFile(sourceDir string) (int, error) {
 	decryptedCount := 0
+
+	var password string
+	passwordResolved := false
+
 	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -289,8 +381,17 @@ func (server *ServerMonitor) decryptBackupDirectoryPerFile(sourceDir string) (in
 			return nil
 		}
 
+		if !passwordResolved {
+			var err error
+			password, err = server.resolveBackupEncryptionPassphraseForUse()
+			if err != nil {
+				return err
+			}
+			passwordResolved = true
+		}
+
 		destPath := strings.TrimSuffix(path, ".enc")
-		if err := server.decryptBackupFileToPath(path, destPath); err != nil {
+		if err := server.decryptBackupFileToPathWithPassword(path, destPath, password, info); err != nil {
 			return fmt.Errorf("failed to decrypt %s: %w", path, err)
 		}
 		if err := os.Remove(path); err != nil {
@@ -4459,9 +4560,9 @@ func (server *ServerMonitor) encryptBackupMetadataFile(meta *backupmgr.BackupMet
 		return errBackupEncryptionUnsupported
 	}
 
-	password := server.resolveBackupEncryptionPassphrase()
-	if password == "" {
-		return errors.New("backup encryption passphrase is empty")
+	password, err := server.resolveBackupEncryptionPassphraseForUse()
+	if err != nil {
+		return err
 	}
 
 	tmpPath := sourcePath + ".enc.tmp"
@@ -4650,11 +4751,15 @@ func (server *ServerMonitor) decryptBackupFileToPath(sourcePath, destPath string
 		return fmt.Errorf("cannot decrypt directory path: %s", sourcePath)
 	}
 
-	password := server.resolveBackupEncryptionPassphrase()
-	if password == "" {
-		return errors.New("backup encryption passphrase is empty")
+	password, err := server.resolveBackupEncryptionPassphraseForUse()
+	if err != nil {
+		return err
 	}
 
+	return server.decryptBackupFileToPathWithPassword(sourcePath, destPath, password, info)
+}
+
+func (server *ServerMonitor) decryptBackupFileToPathWithPassword(sourcePath, destPath, password string, info os.FileInfo) error {
 	tmpPath := destPath + ".tmp"
 	mode := info.Mode().Perm()
 	if mode == 0 {
@@ -4675,7 +4780,6 @@ func (server *ServerMonitor) decryptBackupFileToPath(sourcePath, destPath string
 		return err
 	}
 	return nil
-
 }
 
 type perFileRestoreJournalEntry struct {
@@ -4764,9 +4868,9 @@ func (server *ServerMonitor) preparePerFileEncryptedRestoreTransactional(sourceD
 		return "", rollbackAndCleanup, fmt.Errorf("insufficient disk space for reversible per-file restore: need %d bytes, have %d bytes", totalEncSize, availableSpace)
 	}
 
-	password := server.resolveBackupEncryptionPassphrase()
-	if password == "" {
-		return "", rollbackAndCleanup, errors.New("backup encryption passphrase is empty")
+	password, err := server.resolveBackupEncryptionPassphraseForUse()
+	if err != nil {
+		return "", rollbackAndCleanup, err
 	}
 
 	for _, encPath := range encFiles {

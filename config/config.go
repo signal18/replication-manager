@@ -714,6 +714,7 @@ type Config struct {
 	BackupEncryptionDirectoryMode             string `mapstructure:"backup-encryption-directory-mode" toml:"backup-encryption-directory-mode" json:"backupEncryptionDirectoryMode"`
 	BackupEncryptionKeepPlainDir              bool   `mapstructure:"backup-encryption-keep-plain-dir" toml:"backup-encryption-keep-plain-dir" json:"backupEncryptionKeepPlainDir"`
 	BackupEncryptionUnsafePerFileRestore      bool   `mapstructure:"backup-encryption-unsafe-per-file-restore" toml:"backup-encryption-unsafe-per-file-restore" json:"backupEncryptionUnsafePerFileRestore"`
+	BackupEncryptionRequireExplicitPassphrase bool   `mapstructure:"backup-encryption-require-explicit-passphrase" toml:"backup-encryption-require-explicit-passphrase" json:"backupEncryptionRequireExplicitPassphrase"`
 	BackupSplitMysqlUser                      bool   `mapstructure:"backup-split-mysql-user" toml:"backup-split-mysql-user" json:"backupSplitMysqlUser"`
 	BackupRestoreMysqlUser                    bool   `mapstructure:"backup-restore-mysql-user" toml:"backup-restore-mysql-user" json:"backupRestoreMysqlUser"`
 	BackupSplitdumpFileSize                   string `mapstructure:"backup-splitdump-file-size" toml:"backup-splitdump-file-size" json:"backupSplitdumpFileSize"`

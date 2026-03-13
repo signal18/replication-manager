@@ -1,0 +1,456 @@
+package cluster
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/signal18/replication-manager/config"
+)
+
+func TestResolveBackupEncryptionPassphraseSource(t *testing.T) {
+	t.Run("env var takes precedence", func(t *testing.T) {
+		t.Setenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE", "env-passphrase")
+
+		server := &ServerMonitor{}
+		pass, source, explicit := server.resolveBackupEncryptionPassphraseWithSource()
+
+		if pass != "env-passphrase" {
+			t.Errorf("expected env passphrase, got %q", pass)
+		}
+		if source != backupPassphraseSourceEnv {
+			t.Errorf("expected source env, got %v", source)
+		}
+		if !explicit {
+			t.Error("env source should be explicit")
+		}
+	})
+
+	t.Run("config passphrase when env absent", func(t *testing.T) {
+		os.Unsetenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE")
+
+		cluster := &Cluster{}
+		cluster.Conf = &config.Config{}
+		cluster.Conf.BackupEncryptionPassphrase = "config-passphrase"
+
+		server := &ServerMonitor{
+			ClusterGroup: cluster,
+		}
+		pass, source, explicit := server.resolveBackupEncryptionPassphraseWithSource()
+
+		if pass != "config-passphrase" {
+			t.Errorf("expected config passphrase, got %q", pass)
+		}
+		if source != backupPassphraseSourceConfig {
+			t.Errorf("expected source config, got %v", source)
+		}
+		if !explicit {
+			t.Error("config source should be explicit")
+		}
+	})
+
+	t.Run("fallback to server DB password", func(t *testing.T) {
+		os.Unsetenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE")
+
+		cluster := &Cluster{}
+		cluster.Conf = &config.Config{}
+
+		server := &ServerMonitor{
+			ClusterGroup: cluster,
+			Pass:         "server-db-pass",
+		}
+		pass, source, explicit := server.resolveBackupEncryptionPassphraseWithSource()
+
+		if pass != "server-db-pass" {
+			t.Errorf("expected server DB passphrase, got %q", pass)
+		}
+		if source != backupPassphraseSourceServerDB {
+			t.Errorf("expected source server DB, got %v", source)
+		}
+		if explicit {
+			t.Error("server DB source should not be explicit")
+		}
+	})
+
+	t.Run("nil server returns empty", func(t *testing.T) {
+		os.Unsetenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE")
+
+		var server *ServerMonitor
+		pass, source, explicit := server.resolveBackupEncryptionPassphraseWithSource()
+
+		if pass != "" {
+			t.Errorf("expected empty passphrase for nil server, got %q", pass)
+		}
+		if source != backupPassphraseSourceNone {
+			t.Errorf("expected source none for nil server, got %v", source)
+		}
+		if explicit {
+			t.Error("nil server should not be explicit")
+		}
+	})
+
+	t.Run("fallback to internal api-credentials", func(t *testing.T) {
+		os.Unsetenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE")
+
+		cluster := &Cluster{}
+		cluster.Conf = &config.Config{}
+		cluster.Conf.Secrets = map[string]config.Secret{
+			"api-credentials": {Value: "admin:internal-pass"},
+		}
+
+		server := &ServerMonitor{
+			ClusterGroup: cluster,
+			Pass:         "",
+		}
+		pass, source, explicit := server.resolveBackupEncryptionPassphraseWithSource()
+
+		if pass != "internal-pass" {
+			t.Errorf("expected internal api-credentials passphrase, got %q", pass)
+		}
+		if source != backupPassphraseSourceAPIInternal {
+			t.Errorf("expected source api-internal, got %v", source)
+		}
+		if explicit {
+			t.Error("api-credentials source should not be explicit")
+		}
+	})
+
+	t.Run("fallback to external api-credentials", func(t *testing.T) {
+		os.Unsetenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE")
+
+		cluster := &Cluster{}
+		cluster.Conf = &config.Config{}
+		cluster.Conf.Secrets = map[string]config.Secret{
+			"api-credentials-external": {Value: "admin:external-pass"},
+		}
+
+		server := &ServerMonitor{
+			ClusterGroup: cluster,
+			Pass:         "",
+		}
+		pass, source, explicit := server.resolveBackupEncryptionPassphraseWithSource()
+
+		if pass != "external-pass" {
+			t.Errorf("expected external api-credentials passphrase, got %q", pass)
+		}
+		if source != backupPassphraseSourceAPIExternal {
+			t.Errorf("expected source api-external, got %v", source)
+		}
+		if explicit {
+			t.Error("api-credentials-external source should not be explicit")
+		}
+	})
+
+	t.Run("internal api-credentials takes precedence over external", func(t *testing.T) {
+		os.Unsetenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE")
+
+		cluster := &Cluster{}
+		cluster.Conf = &config.Config{}
+		cluster.Conf.Secrets = map[string]config.Secret{
+			"api-credentials":          {Value: "admin:internal-pass"},
+			"api-credentials-external": {Value: "admin:external-pass"},
+		}
+
+		server := &ServerMonitor{
+			ClusterGroup: cluster,
+			Pass:         "",
+		}
+		pass, source, explicit := server.resolveBackupEncryptionPassphraseWithSource()
+
+		if pass != "internal-pass" {
+			t.Errorf("expected internal to take precedence, got %q", pass)
+		}
+		if source != backupPassphraseSourceAPIInternal {
+			t.Errorf("expected source api-internal, got %v", source)
+		}
+		if explicit {
+			t.Error("internal should not be explicit")
+		}
+	})
+}
+
+func TestBackupPassphraseSourceString(t *testing.T) {
+	tests := []struct {
+		source backupPassphraseSource
+		want   string
+	}{
+		{backupPassphraseSourceEnv, "REPLICATION_MANAGER_BACKUP_PASSPHRASE env var"},
+		{backupPassphraseSourceConfig, "backup-encryption-passphrase config"},
+		{backupPassphraseSourceAPIInternal, "api-credentials (internal admin password)"},
+		{backupPassphraseSourceAPIExternal, "api-credentials-external (external admin password)"},
+		{backupPassphraseSourceServerDB, "server database password"},
+		{backupPassphraseSourceNone, "none"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if got := tt.source.String(); got != tt.want {
+				t.Errorf("backupPassphraseSource.String() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveBackupEncryptionPassphraseForUse(t *testing.T) {
+	t.Run("env source returns passphrase no error", func(t *testing.T) {
+		t.Setenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE", "env-passphrase")
+
+		server := &ServerMonitor{}
+		pass, err := server.resolveBackupEncryptionPassphraseForUse()
+
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if pass != "env-passphrase" {
+			t.Errorf("expected env passphrase, got %q", pass)
+		}
+	})
+
+	t.Run("config source returns passphrase no error", func(t *testing.T) {
+		os.Unsetenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE")
+
+		cluster := &Cluster{}
+		cluster.Conf = &config.Config{}
+		cluster.Conf.BackupEncryptionPassphrase = "config-passphrase"
+
+		server := &ServerMonitor{
+			ClusterGroup: cluster,
+		}
+		pass, err := server.resolveBackupEncryptionPassphraseForUse()
+
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if pass != "config-passphrase" {
+			t.Errorf("expected config passphrase, got %q", pass)
+		}
+	})
+
+	t.Run("server DB source returns passphrase no error", func(t *testing.T) {
+		os.Unsetenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE")
+
+		cluster := &Cluster{}
+		cluster.Conf = &config.Config{}
+
+		server := &ServerMonitor{
+			ClusterGroup: cluster,
+			Pass:         "server-db-pass",
+		}
+		pass, err := server.resolveBackupEncryptionPassphraseForUse()
+
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if pass != "server-db-pass" {
+			t.Errorf("expected server DB passphrase, got %q", pass)
+		}
+	})
+
+	t.Run("none source returns error", func(t *testing.T) {
+		os.Unsetenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE")
+
+		cluster := &Cluster{}
+		cluster.Conf = &config.Config{}
+
+		server := &ServerMonitor{
+			ClusterGroup: cluster,
+			Pass:         "",
+		}
+		_, err := server.resolveBackupEncryptionPassphraseForUse()
+
+		if err == nil {
+			t.Error("expected error for empty passphrase")
+		}
+		if err.Error() != "backup encryption passphrase is empty" {
+			t.Errorf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("nil ClusterGroup with Pass returns passphrase without panic", func(t *testing.T) {
+		os.Unsetenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE")
+
+		server := &ServerMonitor{
+			ClusterGroup: nil,
+			Pass:         "server-db-pass",
+		}
+
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("resolveBackupEncryptionPassphraseForUse panicked: %v", r)
+			}
+		}()
+
+		pass, err := server.resolveBackupEncryptionPassphraseForUse()
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if pass != "server-db-pass" {
+			t.Errorf("expected server DB passphrase, got %q", pass)
+		}
+	})
+
+	t.Run("nil ClusterGroup with empty Pass returns error without panic", func(t *testing.T) {
+		os.Unsetenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE")
+
+		server := &ServerMonitor{
+			ClusterGroup: nil,
+			Pass:         "",
+		}
+
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("resolveBackupEncryptionPassphraseForUse panicked: %v", r)
+			}
+		}()
+
+		_, err := server.resolveBackupEncryptionPassphraseForUse()
+		if err == nil {
+			t.Error("expected error for empty passphrase")
+		}
+		if err.Error() != "backup encryption passphrase is empty" {
+			t.Errorf("unexpected error message: %v", err)
+		}
+	})
+}
+
+func TestEnsureOpenSSLAvailableForBackupStrictMode(t *testing.T) {
+	t.Run("strict mode rejects fallback source", func(t *testing.T) {
+		os.Unsetenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE")
+
+		cluster := &Cluster{}
+		cluster.Conf = &config.Config{}
+		cluster.Conf.BackupEncryptionEnabled = true
+		cluster.Conf.BackupEncryptionRequireExplicitPassphrase = true
+
+		server := &ServerMonitor{
+			ClusterGroup: cluster,
+			Pass:         "server-db-pass",
+		}
+
+		err := server.ensureOpenSSLAvailableForBackup()
+		if err == nil {
+			t.Fatal("expected error in strict mode with fallback source")
+		}
+		if !strings.Contains(err.Error(), "backup-encryption-require-explicit-passphrase") {
+			t.Errorf("error should mention strict mode requirement, got: %v", err)
+		}
+	})
+
+	t.Run("strict mode allows explicit env source", func(t *testing.T) {
+		t.Setenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE", "explicit-passphrase")
+
+		cluster := &Cluster{}
+		cluster.Conf = &config.Config{}
+		cluster.Conf.BackupEncryptionEnabled = true
+		cluster.Conf.BackupEncryptionRequireExplicitPassphrase = true
+
+		server := &ServerMonitor{
+			ClusterGroup: cluster,
+		}
+
+		err := server.ensureOpenSSLAvailableForBackup()
+		if err != nil {
+			t.Errorf("unexpected error with explicit env source: %v", err)
+		}
+	})
+
+	t.Run("strict mode disabled allows fallback", func(t *testing.T) {
+		os.Unsetenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE")
+
+		cluster := &Cluster{}
+		cluster.Conf = &config.Config{}
+		cluster.Conf.BackupEncryptionEnabled = true
+		cluster.Conf.BackupEncryptionRequireExplicitPassphrase = false
+
+		server := &ServerMonitor{
+			ClusterGroup: cluster,
+			Pass:         "server-db-pass",
+		}
+
+		err := server.ensureOpenSSLAvailableForBackup()
+		if err != nil {
+			t.Errorf("unexpected error with fallback in non-strict mode: %v", err)
+		}
+	})
+
+	t.Run("encryption disabled returns nil", func(t *testing.T) {
+		cluster := &Cluster{}
+		cluster.Conf = &config.Config{}
+		cluster.Conf.BackupEncryptionEnabled = false
+
+		server := &ServerMonitor{
+			ClusterGroup: cluster,
+		}
+
+		err := server.ensureOpenSSLAvailableForBackup()
+		if err != nil {
+			t.Errorf("unexpected error when encryption disabled: %v", err)
+		}
+	})
+}
+
+func TestEncryptBackupDirectoryPerFile_NoEligibleFiles_DoesNotRequirePassphrase(t *testing.T) {
+	os.Unsetenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE")
+
+	cluster := &Cluster{}
+	cluster.Conf = &config.Config{}
+
+	server := &ServerMonitor{
+		ClusterGroup: cluster,
+		Pass:         "",
+	}
+
+	tmpDir := t.TempDir()
+
+	subDir := filepath.Join(tmpDir, "subdir")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatalf("failed to create subdir: %v", err)
+	}
+
+	encFile := filepath.Join(tmpDir, "already.enc")
+	if err := os.WriteFile(encFile, []byte("encrypted content"), 0o600); err != nil {
+		t.Fatalf("failed to write .enc file: %v", err)
+	}
+
+	_, err := server.encryptBackupDirectoryPerFile(tmpDir, false)
+	if err == nil {
+		t.Fatal("expected error for no eligible files")
+	}
+	if !strings.Contains(err.Error(), "no regular files encrypted in directory") {
+		t.Errorf("expected 'no regular files encrypted in directory' error, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "backup encryption passphrase is empty") {
+		t.Error("should not require passphrase when no eligible files exist")
+	}
+}
+
+func TestDecryptBackupDirectoryPerFile_NoEncryptedFiles_DoesNotRequirePassphrase(t *testing.T) {
+	os.Unsetenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE")
+
+	cluster := &Cluster{}
+	cluster.Conf = &config.Config{}
+
+	server := &ServerMonitor{
+		ClusterGroup: cluster,
+		Pass:         "",
+	}
+
+	tmpDir := t.TempDir()
+
+	plainFile := filepath.Join(tmpDir, "data.txt")
+	if err := os.WriteFile(plainFile, []byte("plain text"), 0o600); err != nil {
+		t.Fatalf("failed to write plain file: %v", err)
+	}
+
+	_, err := server.decryptBackupDirectoryPerFile(tmpDir)
+	if err == nil {
+		t.Fatal("expected error for no encrypted files")
+	}
+	if !strings.Contains(err.Error(), "no encrypted files found for per-file decrypt") {
+		t.Errorf("expected 'no encrypted files found for per-file decrypt' error, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "backup encryption passphrase is empty") {
+		t.Error("should not require passphrase when no encrypted files exist")
+	}
+}
