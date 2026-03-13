@@ -5,7 +5,9 @@ package clients
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -34,9 +36,19 @@ func TestDecryptWithPassphraseOpenSSL(t *testing.T) {
 		t.Fatalf("failed to encrypt test payload: %s", errMsg)
 	}
 
-	decrypted, err := decryptWithPassphraseOpenSSL(out.Bytes(), password)
-	if err != nil {
+	inputDir := t.TempDir()
+	inputPath := filepath.Join(inputDir, "backup.enc")
+	outputPath := filepath.Join(inputDir, "backup.dec")
+	if err := os.WriteFile(inputPath, out.Bytes(), 0o600); err != nil {
+		t.Fatalf("failed to write encrypted input: %s", err.Error())
+	}
+
+	if err := decryptWithPassphraseOpenSSL(inputPath, outputPath, password); err != nil {
 		t.Fatalf("decryptWithPassphraseOpenSSL failed: %s", err.Error())
+	}
+	decrypted, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("failed to read decrypted output: %s", err.Error())
 	}
 	if !bytes.Equal(decrypted, plaintext) {
 		t.Fatalf("decrypted content mismatch")
@@ -67,13 +79,24 @@ func TestDecryptWithLegacyKeyIVOpenSSL(t *testing.T) {
 		t.Fatalf("failed to encrypt legacy payload: %s", errMsg)
 	}
 
-	if _, err := decryptWithPassphraseOpenSSL(out.Bytes(), password); err == nil {
+	inputDir := t.TempDir()
+	inputPath := filepath.Join(inputDir, "legacy.enc")
+	outputPath := filepath.Join(inputDir, "legacy.dec")
+	passphraseOutputPath := filepath.Join(inputDir, "legacy-passphrase.dec")
+	if err := os.WriteFile(inputPath, out.Bytes(), 0o600); err != nil {
+		t.Fatalf("failed to write legacy encrypted input: %s", err.Error())
+	}
+
+	if err := decryptWithPassphraseOpenSSL(inputPath, passphraseOutputPath, password); err == nil {
 		t.Fatalf("expected passphrase decrypt to fail for legacy payload")
 	}
 
-	decrypted, err := decryptWithLegacyKeyIVOpenSSL(out.Bytes(), key, iv)
-	if err != nil {
+	if err := decryptWithLegacyKeyIVOpenSSL(inputPath, outputPath, key, iv); err != nil {
 		t.Fatalf("decryptWithLegacyKeyIVOpenSSL failed: %s", err.Error())
+	}
+	decrypted, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("failed to read legacy decrypted output: %s", err.Error())
 	}
 	if !bytes.Equal(decrypted, plaintext) {
 		t.Fatalf("legacy decrypted content mismatch")

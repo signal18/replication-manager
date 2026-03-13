@@ -5,6 +5,7 @@ package clients
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -64,26 +65,40 @@ func runDecryptBackup() error {
 		return fmt.Errorf("password is required")
 	}
 
-	encodedCiphertext, err := os.ReadFile(input)
-	if err != nil {
-		return fmt.Errorf("failed to read input file: %w", err)
-	}
+	passphraseTmp := output + ".tmp.passphrase"
+	legacyTmp := output + ".tmp.legacy"
 
-	outputData, err := decryptWithPassphraseOpenSSL(encodedCiphertext, password)
-	if err != nil {
-		key := rmcrypto.GetSHA256Hash(password)
-		iv := rmcrypto.GetMD5Hash(password)
-		legacyData, legacyErr := decryptWithLegacyKeyIVOpenSSL(encodedCiphertext, key, iv)
-		if legacyErr != nil {
-			return fmt.Errorf("failed to decrypt backup (passphrase mode): %s; legacy mode: %s", err.Error(), legacyErr.Error())
+	passErr := decryptWithPassphraseOpenSSL(input, passphraseTmp, password)
+	if passErr == nil {
+		if err := ensureNonEmptyFile(passphraseTmp); err != nil {
+			_ = os.Remove(passphraseTmp)
+			return err
 		}
-		outputData = legacyData
+		if err := os.Rename(passphraseTmp, output); err != nil {
+			_ = os.Remove(passphraseTmp)
+			return fmt.Errorf("failed to write decrypted output: %w", err)
+		}
+		_ = os.Remove(legacyTmp)
+
+		fmt.Printf("Decrypted backup written to %s\n", output)
+		return nil
+	}
+	_ = os.Remove(passphraseTmp)
+
+	key := rmcrypto.GetSHA256Hash(password)
+	iv := rmcrypto.GetMD5Hash(password)
+	legacyErr := decryptWithLegacyKeyIVOpenSSL(input, legacyTmp, key, iv)
+	if legacyErr != nil {
+		_ = os.Remove(legacyTmp)
+		return fmt.Errorf("failed to decrypt backup (passphrase mode): %s; legacy mode: %s", passErr.Error(), legacyErr.Error())
 	}
 
-	if len(outputData) == 0 {
-		return fmt.Errorf("decryption produced empty output")
+	if err := ensureNonEmptyFile(legacyTmp); err != nil {
+		_ = os.Remove(legacyTmp)
+		return err
 	}
-	if err := os.WriteFile(output, outputData, 0600); err != nil {
+	if err := os.Rename(legacyTmp, output); err != nil {
+		_ = os.Remove(legacyTmp)
 		return fmt.Errorf("failed to write decrypted output: %w", err)
 	}
 
@@ -91,42 +106,69 @@ func runDecryptBackup() error {
 	return nil
 }
 
-func decryptWithPassphraseOpenSSL(encodedCiphertext []byte, password string) ([]byte, error) {
-	cmd := exec.Command("openssl", "enc", "-d", "-aes-256-cbc", "-a", "-pass", "pass:"+password)
-	cmd.Stdin = bytes.NewReader(encodedCiphertext)
-
-	var out bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		errMsg := strings.TrimSpace(stderr.String())
-		if errMsg == "" {
-			errMsg = err.Error()
-		}
-		return nil, fmt.Errorf("%s", errMsg)
-	}
-
-	return out.Bytes(), nil
+func decryptWithPassphraseOpenSSL(inputPath, outputPath, password string) error {
+	args := []string{"enc", "-d", "-aes-256-cbc", "-a", "-pass", "pass:" + password}
+	return runOpenSSLStream(inputPath, outputPath, args...)
 }
 
-func decryptWithLegacyKeyIVOpenSSL(encodedCiphertext []byte, key, iv string) ([]byte, error) {
-	cmd := exec.Command("openssl", "aes-256-cbc", "-d", "-a", "-nosalt", "-K", key, "-iv", iv)
-	cmd.Stdin = bytes.NewReader(encodedCiphertext)
+func decryptWithLegacyKeyIVOpenSSL(inputPath, outputPath, key, iv string) error {
+	args := []string{"aes-256-cbc", "-d", "-a", "-nosalt", "-K", key, "-iv", iv}
+	return runOpenSSLStream(inputPath, outputPath, args...)
+}
 
-	var out bytes.Buffer
+func runOpenSSLStream(inputPath, outputPath string, args ...string) error {
+	input, err := os.Open(inputPath)
+	if err != nil {
+		return fmt.Errorf("failed to open input file: %w", err)
+	}
+	defer input.Close()
+
+	output, err := os.OpenFile(outputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("failed to open output file: %w", err)
+	}
+	defer output.Close()
+
+	cmd := exec.Command("openssl", args...)
+	cmd.Stdin = input
+	cmd.Stdout = output
 	var stderr bytes.Buffer
-	cmd.Stdout = &out
 	cmd.Stderr = &stderr
+
 	if err := cmd.Run(); err != nil {
 		errMsg := strings.TrimSpace(stderr.String())
-		if errMsg == "" {
-			errMsg = err.Error()
+		exitCode := -1
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			exitCode = exitErr.ExitCode()
 		}
-		return nil, fmt.Errorf("%s", errMsg)
+		if errMsg == "" {
+			if exitCode >= 0 {
+				return fmt.Errorf("openssl failed (exit=%d)", exitCode)
+			}
+			return err
+		}
+		if exitCode >= 0 {
+			return fmt.Errorf("openssl failed (exit=%d): %s", exitCode, errMsg)
+		}
+		return fmt.Errorf("openssl failed: %s", errMsg)
 	}
 
-	return out.Bytes(), nil
+	if err := output.Sync(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func ensureNonEmptyFile(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("failed to stat decrypted output: %w", err)
+	}
+	if info.Size() == 0 {
+		return fmt.Errorf("decryption produced empty output")
+	}
+	return nil
 }
 
 func defaultDecryptedBackupPath(input string) string {
