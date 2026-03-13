@@ -766,7 +766,11 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		return
 	}
 	defer stmt.Close()
-	for _, chunk := range chunks {
+	tm.TableChunksCount=int64(len(chunks))
+	cluster.master.DictTables.Set(schema+"."+table, tm)
+	for i, chunk := range chunks {
+			tm.TableChunksCurrent=int64(i)
+			cluster.master.DictTables.Set(schema+"."+table, tm)
 		_, err := stmt.Exec(chunk.ChunkId)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
