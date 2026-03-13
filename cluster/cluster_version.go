@@ -26,6 +26,10 @@ func (cluster *Cluster) RefreshToolVersions() {
 		cluster.SetState("WARN0120", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0120"], err), ErrFrom: "CLUSTER"})
 	}
 
+	if err := cluster.RefreshSysbenchVersion(); err != nil {
+		cluster.SetState("WARN0167", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0167"], err), ErrFrom: "CLUSTER"})
+	}
+
 	if cluster.Conf.BackupRestic {
 		if err := cluster.RefreshResticVersion(); err != nil {
 			cluster.SetState("WARN0121", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0121"], err), ErrFrom: "CLUSTER"})
@@ -238,6 +242,51 @@ func (cluster *Cluster) RefreshMyDumperVersion() error {
 			return err
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "MyDumper version %s: %s", cstring, v.ToFullString())
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) SetSysbenchVersion(v *version.Version) error {
+	if v == nil {
+		return fmt.Errorf("nil version provided")
+	}
+	cluster.VersionsMap.Set("sysbench", v)
+	cluster.GetStateMachine().DeleteState("WARN0167")
+
+	return nil
+}
+
+func (cluster *Cluster) RefreshSysbenchVersion() error {
+	cstring := "changed"
+	oldV, _ := cluster.GetToolsVersion("sysbench")
+	if oldV == nil {
+		cstring = "discovered"
+	}
+
+	out, err := exec.Command(cluster.Conf.SysbenchBinaryPath, "--version").Output()
+	if err != nil {
+		return err
+	}
+
+	rawOutput := string(out)
+	vstring := version.ExtractVersionFromOutput(rawOutput)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Sysbench raw output: %s", rawOutput)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Sysbench cleaned version string: %s", vstring)
+
+	v, _ := version.NewVersionFromString("sysbench", vstring)
+
+	hasChanged, err := version.HasVersionChanged(oldV, v)
+	if err != nil {
+		return err
+	}
+
+	if hasChanged {
+		if err := cluster.SetSysbenchVersion(v); err != nil {
+			return err
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sysbench version %s: %s", cstring, v.ToFullString())
 	}
 
 	return nil

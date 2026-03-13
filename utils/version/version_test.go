@@ -650,6 +650,16 @@ func TestExtractVersionFromOutput(t *testing.T) {
 			expected: "0.15.0 compiled with go1.19.5 on linux/amd64",
 		},
 		{
+			name:     "sysbench output",
+			input:    "sysbench 1.1.0 (using system LuaJIT 2.1.0-beta3)",
+			expected: "1.1.0 (using system LuaJIT 2.1.0-beta3)",
+		},
+		{
+			name:     "sysbench with path and version keyword",
+			input:    "/usr/local/bin/sysbench version 1.0.20 (using system LuaJIT 2.1.0-beta3)",
+			expected: "1.0.20 (using system LuaJIT 2.1.0-beta3)",
+		},
+		{
 			name:     "multiline output",
 			input:    "/usr/bin/mysql  Ver 8.0.28 for Linux on x86_64\nCopyright (c) 2000, 2023, Oracle",
 			expected: "8.0.28 for Linux on x86_64",

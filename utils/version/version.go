@@ -86,7 +86,7 @@ func ExtractVersionFromOutput(output string) string {
 	// This handles outputs like "mydumper 0.11.5" or "restic 0.15.0"
 	// We only do this if no version marker was found, to avoid double-processing
 	if !foundMarker {
-		toolNames := []string{"mydumper ", "restic ", "mysql ", "mysqldump ", "mysqlbinlog "}
+		toolNames := []string{"mydumper ", "restic ", "mysql ", "mysqldump ", "mysqlbinlog ", "sysbench "}
 		for _, tool := range toolNames {
 			if strings.HasPrefix(output, tool) {
 				output = strings.TrimPrefix(output, tool)
