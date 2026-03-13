@@ -817,17 +817,17 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		for _, chunk := range masterChecksums {
 			if chunk.ChunkCheckSum != slaveChecksums[chunk.ChunkId].ChunkCheckSum {
 				checkok = false
+				allslavecheckok = false
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum table failed chunks %d %s.%s %s", chunk.ChunkId, schema, table, s.URL)
 				ts.TableChunksError = append(ts.TableChunksError, chunk)
 			}
 		}
 		if !checkok {
-			allslavecheckok = false
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum table succeed %s.%s %s", schema, table, s.URL)
 		}
 		s.DictTables.Set(schema+"."+table, ts)
 	} // End for each slave
-	if !allslavecheckok {
+	if allslavecheckok {
 		tm.TableSync = "OK"
 	} else {
 		tm.TableSync = "ER"
