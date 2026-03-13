@@ -674,7 +674,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	Conn.Exec("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ")
 	Conn.Exec("SET SESSION group_concat_max_len = 1000000")
 
-	Conn.Exec("SET SESSION binlog_format = 'STATEMENT'")
+	Conn.Exec("SET SESSION binlog_format = 'ROW'")
 	var md5Sum string
 	err = Conn.QueryRowx("SELECT CONCAT( \"SUM(CRC32(CONCAT(\" , GROUP_CONCAT( CONCAT( \"IFNULL(\" , COLUMN_NAME, \",'N')\")),\")))\") as fields FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA ='" + schema + "' AND TABLE_NAME='" + table + "'").Scan(&md5Sum)
 	if err != nil {
@@ -733,6 +733,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not load chunks %s", err)
 		return
 	}
+	Conn.Exec("SET SESSION binlog_format = 'STATEMENT'")
 	var chunks []dbhelper.Chunk
 	for rows.Next() {
 		var c dbhelper.Chunk
