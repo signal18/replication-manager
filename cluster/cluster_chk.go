@@ -709,7 +709,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		wherePredicate = wherePredicate + " A." + p + " >= B.Min_" + p + " AND A." + p + "<= B.Max_" + p + " "
 		columnListPredicate = columnListPredicate + p + " "
 		bColumnListPredicate = bColumnListPredicate + " B.Min_" + p + " , B.Max_" + p
-		rangeCondition = rangeCondition + "'A." + p + " >=',B.Min_" + p + ",' AND A." + p + "<=', B.Max_" + p
+		rangeCondition = rangeCondition + "'A." + p + " >=" + dbhelper.SendQuote(columnType) + "',B.Min_" + p + ",'" + dbhelper.SendQuote(columnType) + " AND A." + p + "<=" + dbhelper.SendQuote(columnType) + "', B.Max_" + p + dbhelper.SendQuote(columnType)
 		shardListPredicate = shardListPredicate + " MIN(" + p + ") AS  Min_" + p + " , MAX(" + p + ") AS Max_" + p + " "
 	}
 
