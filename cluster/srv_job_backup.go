@@ -4982,10 +4982,23 @@ func extractArchiveToDir(archivePath, targetDir string) (string, error) {
 				return "", err
 			}
 		case tar.TypeSymlink:
+			linkTarget := strings.TrimSpace(header.Linkname)
+			if linkTarget == "" {
+				return "", fmt.Errorf("invalid empty symlink target for %s", header.Name)
+			}
+			if filepath.IsAbs(linkTarget) {
+				return "", fmt.Errorf("symlink target must be relative for %s: %s", header.Name, header.Linkname)
+			}
+
+			resolvedTarget := filepath.Clean(filepath.Join(filepath.Dir(destAbs), linkTarget))
+			if !isPathWithinBase(targetAbs, resolvedTarget) {
+				return "", fmt.Errorf("symlink target escapes target dir for %s: %s", header.Name, header.Linkname)
+			}
+
 			if err := os.MkdirAll(filepath.Dir(destAbs), 0o755); err != nil {
 				return "", err
 			}
-			if err := os.Symlink(header.Linkname, destAbs); err != nil {
+			if err := os.Symlink(linkTarget, destAbs); err != nil {
 				return "", err
 			}
 		default:
