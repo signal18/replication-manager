@@ -2525,6 +2525,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.BackupEncryptionEnabled = !mycluster.Conf.BackupEncryptionEnabled
 	case "backup-encryption-keep-plain-dir":
 		mycluster.Conf.BackupEncryptionKeepPlainDir = !mycluster.Conf.BackupEncryptionKeepPlainDir
+	case "backup-encryption-unsafe-per-file-restore":
+		mycluster.Conf.BackupEncryptionUnsafePerFileRestore = !mycluster.Conf.BackupEncryptionUnsafePerFileRestore
 	case "backup-reseed-remote-decompress":
 		mycluster.Conf.BackupReseedRemoteDecompress = !mycluster.Conf.BackupReseedRemoteDecompress
 	case "backup-split-mysql-user":
@@ -3156,6 +3158,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupEncryptionEnabled = applyIsActive(mycluster.Conf.BackupEncryptionEnabled, isactive)
 	case "backup-encryption-keep-plain-dir":
 		mycluster.Conf.BackupEncryptionKeepPlainDir = applyIsActive(mycluster.Conf.BackupEncryptionKeepPlainDir, isactive)
+	case "backup-encryption-unsafe-per-file-restore":
+		mycluster.Conf.BackupEncryptionUnsafePerFileRestore = applyIsActive(mycluster.Conf.BackupEncryptionUnsafePerFileRestore, isactive)
 	case "backup-encryption-directory-format":
 		format := strings.ToLower(strings.TrimSpace(value))
 		switch format {

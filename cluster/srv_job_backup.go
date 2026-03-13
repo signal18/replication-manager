@@ -30,6 +30,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	gzip "github.com/klauspost/pgzip"
@@ -4675,6 +4677,234 @@ func (server *ServerMonitor) decryptBackupFileToPath(sourcePath, destPath string
 
 }
 
+type perFileRestoreJournalEntry struct {
+	EncPath    string `json:"enc_path"`
+	EncOldPath string `json:"enc_old_path"`
+	PlainPath  string `json:"plain_path"`
+	TmpPath    string `json:"tmp_path"`
+	State      string `json:"state"`
+}
+
+const (
+	perFileRestoreStateDecryptedTmp = "decrypted_tmp"
+	perFileRestoreStateEncRenamed   = "enc_renamed"
+	perFileRestoreStatePlainActive  = "plain_active"
+	perFileRestoreJournalFile       = ".repman-restore-journal.json"
+)
+
+var writePerFileRestoreJournal = writePerFileRestoreJournalAtomic
+
+func writePerFileRestoreJournalAtomic(journalPath string, entries []perFileRestoreJournalEntry) error {
+	data, err := json.Marshal(entries)
+	if err != nil {
+		return fmt.Errorf("failed to serialize restore journal: %w", err)
+	}
+	tmpPath := journalPath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
+		return fmt.Errorf("failed to write restore journal: %w", err)
+	}
+	if err := os.Rename(tmpPath, journalPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("failed to atomic rename restore journal: %w", err)
+	}
+	return nil
+}
+
+func (server *ServerMonitor) preparePerFileEncryptedRestoreTransactional(sourceDir string) (string, func(), error) {
+	cluster := server.ClusterGroup
+
+	journalPath := filepath.Join(sourceDir, perFileRestoreJournalFile)
+
+	rollbackAndCleanup := func() {
+		server.perFileRestoreRollback(journalPath)
+	}
+
+	if err := server.perFileRestoreRollback(journalPath); err != nil {
+		return "", nil, fmt.Errorf("failed to rollback stale restore journal before per-file restore: %w", err)
+	}
+
+	var entries []perFileRestoreJournalEntry
+
+	encFiles := []string{}
+	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(strings.ToLower(path), ".enc") {
+			encFiles = append(encFiles, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return "", rollbackAndCleanup, fmt.Errorf("failed to scan encrypted files: %w", err)
+	}
+
+	if len(encFiles) == 0 {
+		return "", nil, errors.New("no encrypted files found for per-file decrypt")
+	}
+
+	var totalEncSize int64
+	for _, encPath := range encFiles {
+		info, err := os.Stat(encPath)
+		if err == nil {
+			totalEncSize += info.Size()
+		}
+	}
+
+	var statfs unix.Statfs_t
+	if err := unix.Statfs(sourceDir, &statfs); err != nil {
+		return "", rollbackAndCleanup, fmt.Errorf("failed to check disk space: %w", err)
+	}
+	availableSpace := statfs.Bavail * uint64(statfs.Bsize)
+	if int64(availableSpace) < totalEncSize {
+		return "", rollbackAndCleanup, fmt.Errorf("insufficient disk space for reversible per-file restore: need %d bytes, have %d bytes", totalEncSize, availableSpace)
+	}
+
+	password := server.resolveBackupEncryptionPassphrase()
+	if password == "" {
+		return "", rollbackAndCleanup, errors.New("backup encryption passphrase is empty")
+	}
+
+	for _, encPath := range encFiles {
+		plainPath := strings.TrimSuffix(encPath, ".enc")
+		tmpPath := plainPath + ".restore.tmp"
+		encOldPath := encPath + ".old"
+
+		mode := os.FileMode(0o600)
+		if info, err := os.Stat(encPath); err == nil {
+			mode = info.Mode().Perm()
+		}
+
+		if err := server.decryptBackupFileStream(encPath, tmpPath, password, mode); err != nil {
+			server.perFileRestoreRollbackEntries(entries)
+			return "", rollbackAndCleanup, fmt.Errorf("failed to decrypt %s: %w", encPath, err)
+		}
+
+		entries = append(entries, perFileRestoreJournalEntry{
+			EncPath:    encPath,
+			EncOldPath: encOldPath,
+			PlainPath:  plainPath,
+			TmpPath:    tmpPath,
+			State:      perFileRestoreStateDecryptedTmp,
+		})
+
+		if err := writePerFileRestoreJournal(journalPath, entries); err != nil {
+			server.perFileRestoreRollbackEntries(entries)
+			_ = os.Remove(journalPath)
+			return "", rollbackAndCleanup, fmt.Errorf("failed to persist restore journal after decrypt: %w", err)
+		}
+
+		if err := os.Rename(encPath, encOldPath); err != nil {
+			_ = os.Remove(tmpPath)
+			server.perFileRestoreRollbackEntries(entries)
+			_ = os.Remove(journalPath)
+			return "", rollbackAndCleanup, fmt.Errorf("failed to rename %s to .old: %w", encPath, err)
+		}
+
+		entries[len(entries)-1].State = perFileRestoreStateEncRenamed
+
+		if err := writePerFileRestoreJournal(journalPath, entries); err != nil {
+			_ = os.Rename(encOldPath, encPath)
+			server.perFileRestoreRollbackEntries(entries)
+			_ = os.Remove(journalPath)
+			return "", rollbackAndCleanup, fmt.Errorf("failed to persist restore journal after rename: %w", err)
+		}
+
+		if err := os.Rename(tmpPath, plainPath); err != nil {
+			_ = os.Rename(encOldPath, encPath)
+			server.perFileRestoreRollbackEntries(entries)
+			_ = os.Remove(journalPath)
+			return "", rollbackAndCleanup, fmt.Errorf("failed to activate plaintext %s: %w", plainPath, err)
+		}
+
+		entries[len(entries)-1].State = perFileRestoreStatePlainActive
+
+		if err := writePerFileRestoreJournal(journalPath, entries); err != nil {
+			_ = os.Remove(plainPath)
+			_ = os.Rename(encOldPath, encPath)
+			server.perFileRestoreRollbackEntries(entries)
+			_ = os.Remove(journalPath)
+			return "", rollbackAndCleanup, fmt.Errorf("failed to persist restore journal after activation: %w", err)
+		}
+	}
+
+	cleanupFunc := func() {
+		if err := server.perFileRestoreRollback(journalPath); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+				"Failed to rollback per-file restore state from journal %s: %s (journal preserved for recovery)", journalPath, err)
+			return
+		}
+		if err := os.Remove(journalPath); err != nil && !os.IsNotExist(err) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Failed to remove restore journal: %s", err)
+		}
+	}
+
+	return sourceDir, cleanupFunc, nil
+}
+
+func (server *ServerMonitor) perFileRestoreRollback(journalPath string) error {
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return errors.New("cluster group is nil")
+	}
+
+	journalData, err := os.ReadFile(journalPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to read restore journal: %w", err)
+	}
+
+	var entries []perFileRestoreJournalEntry
+	if err := json.Unmarshal(journalData, &entries); err != nil {
+		return fmt.Errorf("failed to parse restore journal: %w", err)
+	}
+
+	return server.perFileRestoreRollbackEntries(entries)
+}
+
+func (server *ServerMonitor) perFileRestoreRollbackEntries(entries []perFileRestoreJournalEntry) error {
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return errors.New("cluster group is nil")
+	}
+
+	for i := len(entries) - 1; i >= 0; i-- {
+		entry := entries[i]
+
+		if entry.State == perFileRestoreStatePlainActive || entry.State == perFileRestoreStateEncRenamed {
+			if _, err := os.Stat(entry.PlainPath); err == nil {
+				if err := os.Remove(entry.PlainPath); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+						"Failed to remove plaintext during rollback: %s", err)
+				}
+			}
+			if _, err := os.Stat(entry.EncOldPath); err == nil {
+				if err := os.Rename(entry.EncOldPath, entry.EncPath); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+						"Failed to restore .old during rollback: %s", err)
+				}
+			}
+		}
+
+		if entry.State == perFileRestoreStateDecryptedTmp {
+			if _, err := os.Stat(entry.TmpPath); err == nil {
+				if err := os.Remove(entry.TmpPath); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+						"Failed to remove temp file during rollback: %s", err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func extractArchiveToDir(archivePath, targetDir string) (string, error) {
 	archiveFile, err := os.Open(archivePath)
 	if err != nil {
@@ -4798,13 +5028,31 @@ func (server *ServerMonitor) prepareEncryptedDirectoryLogicalRestorePath(backupP
 	if mode == backupEncryptionModePerFile {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 			"Preparing per-file encrypted logical restore for %s from %s", backupType, backupPath)
-		decryptedCount, err := server.decryptBackupDirectoryPerFile(backupPath)
-		if err != nil {
-			return "", nil, err
+
+		if cluster.Conf.BackupKeepUntilValid {
+			restorePath, cleanup, err := server.preparePerFileEncryptedRestoreTransactional(backupPath)
+			if err != nil {
+				return "", nil, err
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+				"Prepared per-file encrypted logical restore from %s (safe reversible mode)", backupPath)
+			return restorePath, cleanup, nil
 		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-			"Decrypted %d encrypted files for logical restore from %s", decryptedCount, backupPath)
-		return backupPath, nil, nil
+
+		if cluster.Conf.BackupEncryptionUnsafePerFileRestore {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Unsafe per-file encrypted restore enabled for %s from %s; decrypting in place without .old rollback safety",
+				backupType, backupPath)
+			decryptedCount, err := server.decryptBackupDirectoryPerFile(backupPath)
+			if err != nil {
+				return "", nil, err
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Decrypted %d files in-place for per-file encrypted logical restore from %s", decryptedCount, backupPath)
+			return backupPath, nil, nil
+		}
+
+		return "", nil, errors.New("per-file encrypted restore requires backup-keep-until-valid=true for safe reversible staging; or set backup-encryption-unsafe-per-file-restore=true to force unsafe in-place restore (backup may become unrecoverable if restore fails)")
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,

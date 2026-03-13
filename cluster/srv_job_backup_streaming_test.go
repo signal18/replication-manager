@@ -2,11 +2,15 @@ package cluster
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 )
 
 func TestBackupEncryptionStreamRoundTrip(t *testing.T) {
@@ -74,5 +78,289 @@ func TestEncryptBackupDoesNotExposePassphraseInArgs(t *testing.T) {
 	// This will fail if the passphrase is in args since we verify above it isn't
 	if err := server.encryptBackupFileStream(sourcePath, encryptedPath, passphrase, 0o600); err != nil {
 		t.Fatalf("encrypt stream: %v", err)
+	}
+}
+
+func TestPreparePerFileEncryptedRestoreRequiresKeepUntilValid(t *testing.T) {
+	if _, err := exec.LookPath("openssl"); err != nil {
+		t.Skip("openssl binary not available")
+	}
+
+	cluster := &Cluster{}
+	cluster.Conf = &config.Config{}
+	cluster.Conf.BackupKeepUntilValid = false
+
+	server := &ServerMonitor{
+		ClusterGroup: cluster,
+	}
+
+	tmpDir := t.TempDir()
+	encPath := filepath.Join(tmpDir, "test.sql.gz.enc")
+	if err := os.WriteFile(encPath, []byte("encrypted data"), 0o600); err != nil {
+		t.Fatalf("write encrypted file: %v", err)
+	}
+
+	meta := &backupmgr.BackupMetadata{
+		EncryptionMode: backupEncryptionModePerFile,
+		Dest:           tmpDir,
+	}
+
+	_, _, err := server.prepareEncryptedDirectoryLogicalRestorePath(tmpDir, "logical", meta)
+	if err == nil {
+		t.Fatal("expected error when backup-keep-until-valid is false")
+	}
+	if !strings.Contains(err.Error(), "backup-keep-until-valid") {
+		t.Fatalf("expected backup-keep-until-valid error, got: %v", err)
+	}
+
+	if _, err := os.Stat(encPath); err != nil {
+		t.Fatalf("encrypted file should not be modified: %v", err)
+	}
+}
+
+func TestPreparePerFileEncryptedRestoreTransactional(t *testing.T) {
+	if _, err := exec.LookPath("openssl"); err != nil {
+		t.Skip("openssl binary not available")
+	}
+
+	t.Setenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE", "test-passphrase")
+
+	cluster := &Cluster{}
+	cluster.Conf = &config.Config{}
+	cluster.Conf.BackupKeepUntilValid = true
+	cluster.Conf.Verbose = false
+
+	server := &ServerMonitor{
+		ClusterGroup: cluster,
+	}
+
+	tmpDir := t.TempDir()
+	sourceData := []byte("test backup data for transactional restore")
+	encPath := filepath.Join(tmpDir, "test.sql.gz.enc")
+
+	if err := server.encryptBackupFileStream(
+		filepath.Join(tmpDir, "test.sql.gz"),
+		encPath,
+		"test-passphrase",
+		0o600,
+	); err != nil {
+		if _, err := os.Stat(filepath.Join(tmpDir, "test.sql.gz")); os.IsNotExist(err) {
+			if err := os.WriteFile(filepath.Join(tmpDir, "test.sql.gz"), sourceData, 0o600); err != nil {
+				t.Fatalf("write source: %v", err)
+			}
+			if err := server.encryptBackupFileStream(
+				filepath.Join(tmpDir, "test.sql.gz"),
+				encPath,
+				"test-passphrase",
+				0o600,
+			); err != nil {
+				t.Fatalf("encrypt: %v", err)
+			}
+		} else {
+			t.Fatalf("encrypt stream: %v", err)
+		}
+	}
+
+	if err := os.Remove(filepath.Join(tmpDir, "test.sql.gz")); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("remove plaintext: %v", err)
+	}
+
+	meta := &backupmgr.BackupMetadata{
+		EncryptionMode: backupEncryptionModePerFile,
+		Dest:           tmpDir,
+	}
+
+	restorePath, cleanup, err := server.prepareEncryptedDirectoryLogicalRestorePath(tmpDir, "logical", meta)
+	if err != nil {
+		t.Fatalf("prepare restore failed: %v", err)
+	}
+	if restorePath != tmpDir {
+		t.Fatalf("expected restore path %s, got %s", tmpDir, restorePath)
+	}
+
+	plainPath := filepath.Join(tmpDir, "test.sql.gz")
+	if _, err := os.Stat(plainPath); err != nil {
+		t.Fatalf("plaintext should exist after restore prep: %v", err)
+	}
+
+	encOldPath := encPath + ".old"
+	if _, err := os.Stat(encOldPath); err != nil {
+		t.Fatalf(".old backup should exist: %v", err)
+	}
+
+	cleanup()
+
+	if _, err := os.Stat(plainPath); err == nil {
+		t.Fatal("plaintext should be removed after cleanup")
+	}
+	if _, err := os.Stat(encPath); err != nil {
+		t.Fatalf("original .enc should be restored after cleanup: %v", err)
+	}
+}
+
+func TestPreparePerFileEncryptedRestoreUnsafe(t *testing.T) {
+	if _, err := exec.LookPath("openssl"); err != nil {
+		t.Skip("openssl binary not available")
+	}
+
+	t.Setenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE", "test-passphrase-unsafe")
+
+	cluster := &Cluster{}
+	cluster.Conf = &config.Config{}
+	cluster.Conf.BackupKeepUntilValid = false
+	cluster.Conf.BackupEncryptionUnsafePerFileRestore = true
+	cluster.Conf.Verbose = false
+
+	server := &ServerMonitor{
+		ClusterGroup: cluster,
+	}
+
+	tmpDir := t.TempDir()
+	sourceData := []byte("test backup data for unsafe restore")
+	plainPath := filepath.Join(tmpDir, "test.sql.gz")
+	encPath := plainPath + ".enc"
+
+	if err := os.WriteFile(plainPath, sourceData, 0o600); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	if err := server.encryptBackupFileStream(plainPath, encPath, "test-passphrase-unsafe", 0o600); err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+
+	if err := os.Remove(plainPath); err != nil {
+		t.Fatalf("remove plaintext: %v", err)
+	}
+
+	meta := &backupmgr.BackupMetadata{
+		EncryptionMode: backupEncryptionModePerFile,
+		Dest:           tmpDir,
+	}
+
+	restorePath, cleanup, err := server.prepareEncryptedDirectoryLogicalRestorePath(tmpDir, "logical", meta)
+	if err != nil {
+		t.Fatalf("prepare restore failed: %v", err)
+	}
+	if restorePath != tmpDir {
+		t.Fatalf("expected restore path %s, got %s", tmpDir, restorePath)
+	}
+
+	if _, err := os.Stat(plainPath); err != nil {
+		t.Fatalf("plaintext should exist after unsafe restore prep: %v", err)
+	}
+
+	if _, err := os.Stat(encPath); err == nil {
+		t.Fatal(".enc should be removed after unsafe in-place decrypt")
+	}
+
+	if cleanup != nil {
+		t.Fatal("unsafe path should not return cleanup callback")
+	}
+}
+
+func TestPreparePerFileEncryptedRestoreNoEncFiles(t *testing.T) {
+	cluster := &Cluster{}
+	cluster.Conf = &config.Config{}
+	cluster.Conf.BackupKeepUntilValid = true
+	cluster.Conf.Verbose = false
+
+	server := &ServerMonitor{
+		ClusterGroup: cluster,
+	}
+
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "somefile.sql"), []byte("plain data"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	meta := &backupmgr.BackupMetadata{
+		EncryptionMode: backupEncryptionModePerFile,
+		Dest:           tmpDir,
+	}
+
+	_, _, err := server.prepareEncryptedDirectoryLogicalRestorePath(tmpDir, "logical", meta)
+	if err == nil {
+		t.Fatal("expected error when no .enc files present")
+	}
+	if !strings.Contains(err.Error(), "no encrypted files found") {
+		t.Fatalf("expected 'no encrypted files found' error, got: %v", err)
+	}
+}
+
+func TestPreparePerFileEncryptedRestoreJournalWriteFailureRollsBack(t *testing.T) {
+	if _, err := exec.LookPath("openssl"); err != nil {
+		t.Skip("openssl binary not available")
+	}
+
+	t.Setenv("REPLICATION_MANAGER_BACKUP_PASSPHRASE", "test-passphrase-journal-fail")
+
+	cluster := &Cluster{}
+	cluster.Conf = &config.Config{}
+	cluster.Conf.BackupKeepUntilValid = true
+	cluster.Conf.Verbose = false
+
+	server := &ServerMonitor{
+		ClusterGroup: cluster,
+	}
+
+	tmpDir := t.TempDir()
+	plainPath := filepath.Join(tmpDir, "test1.sql.gz")
+	encPath1 := plainPath + ".enc"
+	encPath2 := filepath.Join(tmpDir, "test2.sql.gz.enc")
+
+	sourceData := []byte("test backup data for journal failure test")
+	if err := os.WriteFile(plainPath, sourceData, 0o600); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	if err := server.encryptBackupFileStream(plainPath, encPath1, "test-passphrase-journal-fail", 0o600); err != nil {
+		t.Fatalf("encrypt 1: %v", err)
+	}
+	if err := os.WriteFile(encPath2, []byte("encrypted data 2"), 0o600); err != nil {
+		t.Fatalf("write enc 2: %v", err)
+	}
+
+	if err := os.Remove(plainPath); err != nil {
+		t.Fatalf("remove plaintext: %v", err)
+	}
+
+	orig := writePerFileRestoreJournal
+	defer func() { writePerFileRestoreJournal = orig }()
+
+	calls := 0
+	writePerFileRestoreJournal = func(path string, entries []perFileRestoreJournalEntry) error {
+		calls++
+		if calls >= 2 {
+			return fmt.Errorf("injected journal failure after %d calls", calls)
+		}
+		return writePerFileRestoreJournalAtomic(path, entries)
+	}
+
+	meta := &backupmgr.BackupMetadata{
+		EncryptionMode: backupEncryptionModePerFile,
+		Dest:           tmpDir,
+	}
+
+	_, _, err := server.prepareEncryptedDirectoryLogicalRestorePath(tmpDir, "logical", meta)
+	if err == nil {
+		t.Fatal("expected error when journal write fails")
+	}
+
+	if _, err := os.Stat(encPath1); err != nil {
+		t.Fatalf("original .enc should exist after rollback: %v", err)
+	}
+	if _, err := os.Stat(encPath2); err != nil {
+		t.Fatalf("second .enc should exist after rollback: %v", err)
+	}
+	if _, err := os.Stat(plainPath); err == nil {
+		t.Fatal("plaintext should not exist after rollback")
+	}
+	encOldPath1 := encPath1 + ".old"
+	if _, err := os.Stat(encOldPath1); err == nil {
+		t.Fatal(".old backup should not exist after rollback")
+	}
+	journalPath := filepath.Join(tmpDir, ".repman-restore-journal.json")
+	if _, err := os.Stat(journalPath); err == nil {
+		t.Fatal("journal should be removed after failed rollback")
 	}
 }
