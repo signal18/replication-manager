@@ -34,7 +34,7 @@ export default defineConfig({
     }
   },
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
