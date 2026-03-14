@@ -21,8 +21,7 @@ jobs:
     name: Build Linux Packages and Publish Repos
     runs-on: [self-hosted, linux, x64]
 
-    # Match Jenkins inactivity timeout of 360s
-    timeout-minutes: 6
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
