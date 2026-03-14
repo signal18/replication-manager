@@ -45,7 +45,9 @@ jobs:
       - name: Install nfpm
         run: |
           if ! command -v nfpm &>/dev/null; then
-            curl -sfL https://install.goreleaser.com/github.com/goreleaser/nfpm.sh | sh -s -- -b /usr/local/bin
+            NFPM_VER=$(curl -s https://api.github.com/repos/goreleaser/nfpm/releases/latest | grep -o '"tag_name":"[^"]*"' | cut -d'"' -f4)
+            ARCH=$(uname -m | sed 's/aarch64/arm64/')
+            curl -sfL "https://github.com/goreleaser/nfpm/releases/download/${NFPM_VER}/nfpm_Linux_${ARCH}.tar.gz" | tar xz -C /usr/local/bin nfpm
           fi
 
       # Replaces Jenkins ws-cleanup pre-build step
@@ -98,28 +100,14 @@ jobs:
             :warning: **Build cancelled** — `${{ github.repository }}` @ `${{ github.ref_name }}`
             Triggered by: ${{ github.actor }}
 
-      # Slack: notify on failure
-      - name: Notify Slack (failure)
+      # Mattermost: notify on failure
+      - name: Notify Mattermost (failure)
         if: failure()
-        uses: slackapi/slack-github-action@v2
+        uses: mattermost/action-mattermost-notify@2.0.0
         with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "channel": "replication-manager",
-              "text": ":x: *Build failed* — `${{ github.repository }}` @ `${{ github.ref_name }}`\nTriggered by: ${{ github.actor }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
-            }
+          MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
+          TEXT: |
+            :x: **Build failed** — `${{ github.repository }}` @ `${{ github.ref_name }}`
+            Triggered by: ${{ github.actor }}
+            [View run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
-      # Slack: notify on cancelled (aborted)
-      - name: Notify Slack (cancelled)
-        if: cancelled()
-        uses: slackapi/slack-github-action@v2
-        with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "channel": "replication-manager",
-              "text": ":warning: *Build cancelled* — `${{ github.repository }}` @ `${{ github.ref_name }}`\nTriggered by: ${{ github.actor }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
-            }
