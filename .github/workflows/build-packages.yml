@@ -56,7 +56,7 @@ jobs:
             NFPM_VER=$(curl -s https://api.github.com/repos/goreleaser/nfpm/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
             NFPM_VER_CLEAN="${NFPM_VER#v}"
             ARCH=$(uname -m | sed 's/aarch64/arm64/')
-            curl -sfL "https://github.com/goreleaser/nfpm/releases/download/${NFPM_VER}/nfpm_${NFPM_VER_CLEAN}_Linux_${ARCH}.tar.gz" | tar xz -C /usr/local/bin nfpm
+            curl -sfL "https://github.com/goreleaser/nfpm/releases/download/${NFPM_VER}/nfpm_${NFPM_VER_CLEAN}_Linux_${ARCH}.tar.gz" | sudo tar xz -C /usr/local/bin nfpm
           fi
 
       # Replaces Jenkins ws-cleanup pre-build step
