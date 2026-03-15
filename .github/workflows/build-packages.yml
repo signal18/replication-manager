@@ -80,16 +80,25 @@ jobs:
 
       - name: Publish DEB repo
         run: |
-          tag=$(git describe --tags --abbrev=0)
-          cleantag="${tag:1}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            arg="develop"
+          else
+            tag=$(git describe --tags --abbrev=0)
+            arg="${tag:1}"
+          fi
           docker run --rm \
             -v /root/.gnupg:/root/.gnupg \
             -v /home/repo:/home/repo \
             -v /builds:/builds \
-            signal18/reprepro:latest "$cleantag"
+            signal18/reprepro:latest "$arg"
 
       - name: Publish RPM repo
-        run: /usr/local/bin/rpmrepo.sh
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            /usr/local/bin/rpmrepo.sh develop
+          else
+            /usr/local/bin/rpmrepo.sh
+          fi
 
       # Mattermost: notify on success
       - name: Notify Mattermost (success)
