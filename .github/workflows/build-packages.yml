@@ -84,7 +84,7 @@ jobs:
           cleantag="${tag:1}"
           docker run --rm \
             -v /root/.gnupg:/root/.gnupg \
-            -v /home:/home \
+            -v /builds:/builds \
             signal18/reprepro:latest "$cleantag"
 
       - name: Publish RPM repo
