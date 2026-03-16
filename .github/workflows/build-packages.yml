@@ -80,21 +80,17 @@ jobs:
 
       - name: Publish DEB repo
         run: |
-          tag=$(git describe --tags --abbrev=0)
-          cleantag="${tag:1}"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            docker run --rm \
-              -v /root/.gnupg:/root/.gnupg \
-              -v /home/repo:/home/repo \
-              -v /builds:/builds \
-              signal18/reprepro:latest develop "$cleantag"
+            arg="develop"
           else
-            docker run --rm \
-              -v /root/.gnupg:/root/.gnupg \
-              -v /home/repo:/home/repo \
-              -v /builds:/builds \
-              signal18/reprepro:latest "$cleantag"
+            tag=$(git describe --tags --abbrev=0)
+            arg="${tag:1}"
           fi
+          docker run --rm \
+            -v /root/.gnupg:/root/.gnupg \
+            -v /home/repo:/home/repo \
+            -v /builds:/builds \
+            signal18/reprepro:latest "$arg"
 
       - name: Publish RPM repo
         run: |
