@@ -918,6 +918,7 @@ func (cluster *Cluster) ChecksumCleanResult() {
 	for _, t := range cluster.master.Tables {
 			tm := cluster.master.DictTables.Get(t.TableSchema + "." + t.TableName)
 			tm.TableSync = ""
+			cluster.master.DictTables.Set(t.TableSchema +"."+t.TableName, tm)
 	}
 }
 
