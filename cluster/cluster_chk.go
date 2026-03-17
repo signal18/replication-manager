@@ -736,7 +736,6 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not load chunks %s", err)
 		return
 	}
-	Conn.Exec("SET SESSION binlog_format = 'STATEMENT'")
 	var chunks []dbhelper.Chunk
 	for rows.Next() {
 		var c dbhelper.Chunk
@@ -757,7 +756,11 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not add primary key on table_chunk %s", err)
 		return
 	}
-
+ 	_, err = Conn.Exec("SET SESSION binlog_format = STATEMENT")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not switch to statement based %s", err)
+		return
+	}
 	query = "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, CONCAT(" + rangeCondition + ") as chunkRangeCondition," + bColumnListPredicate + " ," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk WHERE chunkId=? ) B on " + wherePredicate + " GROUP BY chunkId HAVING chunkId IS NOT NULL"
 	stmt, err := Conn.Prepare(query)
 
@@ -853,6 +856,8 @@ func (cluster *Cluster) RepairTableChecksum(schema string, table string) {
 	Conn.SetConnMaxLifetime(3595 * time.Second)
 	Conn.Exec("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ")
 	Conn.Exec("SET SESSION binlog_format = 'ROW'")
+	Conn.Exec("SET SESSION FOREIGN_KEY_CHECKS = 0")
+
 	Conn.Exec("USE " + schema)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair table %s.%s", schema, table)
 
