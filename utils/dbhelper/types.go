@@ -151,6 +151,16 @@ type Table struct {
 	TableChunksCurrent int64              `protobuf:"varint,22,opt,name=table_chunks_current,json=tableChunksCurrent,proto3" json:"table_chunks_current,omitempty"`
 	TableColumnMap     map[string]*Column `protobuf:"-" json:"-"`
 	TableIndexMap      map[string]*Index  `protobuf:"-" json:"-"`
+	// TableParents lists tables this table references (outgoing FK / match).
+	// Populated by GetTables() after columns and indexes are loaded.
+	TableParents []TableLink `protobuf:"-" json:"table_parents,omitempty"`
+	// TableChildren lists tables that reference this table (incoming FK / match).
+	// Populated by GetTables() after columns and indexes are loaded.
+	TableChildren []TableLink `protobuf:"-" json:"table_children,omitempty"`
+	// SizeWeightPct is (data_length + index_length) as a percentage of the
+	// total bytes across all tables returned in the same GetTables() call.
+	// Used by the graph node-size encoding.
+	SizeWeightPct float64 `protobuf:"-" json:"size_weight_pct,omitempty"`
 }
 
 // CanonicalizeColumns sorts table columns by name

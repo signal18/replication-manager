@@ -284,11 +284,11 @@ const (
 )
 
 const (
-	ConstTLSNoConfig      string = ""
-	ConstTLSOldConfig     string = "&tls=tlsconfigold"
-	ConstTLSCurrentConfig string = "&tls=tlsconfig"
-    ConstTLSCurrentConfigName string = "tlsconfig"
-    ConstTLSOldConfigName     string = "tlsconfigold"
+	ConstTLSNoConfig          string = ""
+	ConstTLSOldConfig         string = "&tls=tlsconfigold"
+	ConstTLSCurrentConfig     string = "&tls=tlsconfig"
+	ConstTLSCurrentConfigName string = "tlsconfig"
+	ConstTLSOldConfigName     string = "tlsconfigold"
 )
 
 /* Initializes a server object compute if spider node*/
