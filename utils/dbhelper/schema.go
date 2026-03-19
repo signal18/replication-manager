@@ -231,6 +231,10 @@ func applyInformationSchemaStatsExpiry(ext schemaExecutor, myver *version.Versio
 	if myver.IsPostgreSQL() {
 		return ""
 	}
+	if myver.IsMariaDB() {
+		return ""
+	}
+
 	query := "SET SESSION information_schema_stats_expiry = 0"
 	ctx, cancel := scanContext(timeout)
 	defer cancel()
@@ -1160,6 +1164,7 @@ func CreateChunkTable(conn *sqlx.DB, schema, table string, pks []string, chunkSi
 
 	return query, err
 }
+
 type fkLinkRow struct {
 	ChildSchema    string
 	ChildTable     string
@@ -1280,10 +1285,10 @@ func loadFKLinks(ext schemaExecutor, myver *version.Version, tablemap map[string
 		}
 
 		card := fkCardinality(r.FKColCount, r.ChildPKCols, r.ChildFKCount, r.ChildExtraCols)
-		childCols  := splitCSV(r.ChildCols)
+		childCols := splitCSV(r.ChildCols)
 		parentCols := splitCSV(r.ParentCols)
 
-		childKey  := r.ChildSchema  + "." + r.ChildTable
+		childKey := r.ChildSchema + "." + r.ChildTable
 		parentKey := r.ParentSchema + "." + r.ParentTable
 
 		// Attach to child table: this table references the parent.
@@ -1450,9 +1455,10 @@ func computeSizeWeights(tables []Table) {
 // ── Small private utilities ───────────────────────────────────────────────────
 
 // fkCardinality applies the three-rule heuristic.
-//   N-N : child has ≥2 FK constraints AND zero payload columns (junction table)
-//   1-1 : every FK column is also part of the child's own PK
-//   1-N : default
+//
+//	N-N : child has ≥2 FK constraints AND zero payload columns (junction table)
+//	1-1 : every FK column is also part of the child's own PK
+//	1-N : default
 func fkCardinality(fkCols, childPKCols, childFKCount, childExtraCols int) Cardinality {
 	if childFKCount >= 2 && childExtraCols == 0 {
 		return CardinalityManyToMany

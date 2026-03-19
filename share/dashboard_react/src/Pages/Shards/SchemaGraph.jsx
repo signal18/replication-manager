@@ -22,27 +22,27 @@
  *   linked_schema, linked_table, local_columns[], remote_columns[],
  *   relation_name, relation_source, cardinality, join_weight_pct?
  *
- * Theme: useColorMode() from @chakra-ui/react.
+ * Theme: useTheme() from src/ThemeProvider.jsx (custom, not Chakra).
  * No external graph library — pure SVG + minimal force simulation.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useColorMode } from '@chakra-ui/react'
+import { useTheme } from '../../ThemeProvider'
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
-const CANVAS_W    = 1600
-const CANVAS_H    = 1000
+const CANVAS_W    = 2400   // wider canvas gives the force layout more room
+const CANVAS_H    = 1800   // taller canvas — user pans to explore
 const NW_SIMPLE   = 152
 const NH_SIMPLE   = 58
 const NW_DETAILED = 234
 const ROW_H       = 24
 const HDR_H       = 42
-const FORCE_TICKS = 320
-const REPULSION   = 22000
-const SPRING_LEN  = 270
-const SPRING_K    = 0.028
-const DAMPING     = 0.80
+const FORCE_TICKS = 400    // more ticks → better separation
+const REPULSION   = 55000  // stronger repulsion pushes nodes further apart
+const SPRING_LEN  = 380    // longer natural spring length
+const SPRING_K    = 0.018  // softer spring so repulsion wins near-overlap
+const DAMPING     = 0.78
 
 // ─── Theme palette — [lightValue, darkValue] ──────────────────────────────────
 const T = {
@@ -188,7 +188,7 @@ function nodeH(t, mode) {
 function nodeW(mode) { return mode === 'detailed' ? NW_DETAILED : NW_SIMPLE }
 
 // Gap maintained between any two node bounding boxes (px in canvas space).
-const NODE_GAP = 28
+const NODE_GAP = 60
 
 // runLayout:
 //   tables  — current table list
@@ -347,14 +347,14 @@ function SyncPill({ value, dark }) {
   )
 }
 
-function TBtn({ active, onClick, children, dark }) {
+function TBtn({ active, onClick, children }) {
   return (
     <button onClick={onClick} style={{
       padding: '4px 12px',
-      border: `1px solid ${active ? p(T.ctrlBorder, dark) : 'transparent'}`,
+      border: `1px solid ${active ? 'var(--gray-color)' : 'transparent'}`,
       borderRadius: 6,
-      background: active ? (dark ? '#2e2e40' : '#eeecea') : 'transparent',
-      color: active ? p(T.textPri, dark) : p(T.textSec, dark),
+      background: active ? 'var(--body-bg-color)' : 'transparent',
+      color: 'var(--text-color)',
       cursor: 'pointer', fontSize: 12, fontWeight: active ? 600 : 400,
       transition: 'all .12s',
     }}>
@@ -363,12 +363,12 @@ function TBtn({ active, onClick, children, dark }) {
   )
 }
 
-function TBtnGroup({ children, dark }) {
+function TBtnGroup({ children }) {
   return (
     <div style={{
       display: 'flex', gap: 2, padding: 3,
-      background: p(T.ctrlBg, dark),
-      border: `1px solid ${p(T.ctrlBorder, dark)}`,
+      background: 'var(--secondary-gray-color)',
+      border: '1px solid var(--gray-color)',
       borderRadius: 8,
     }}>
       {children}
@@ -376,12 +376,12 @@ function TBtnGroup({ children, dark }) {
   )
 }
 
-function SectionLabel({ label, dark }) {
+function SectionLabel({ label }) {
   return (
     <div style={{
       padding: '8px 13px 3px', fontSize: 10, fontWeight: 700,
       letterSpacing: '0.05em', textTransform: 'uppercase',
-      color: p(T.textMut, dark),
+      color: 'var(--darkgray-color)',
     }}>
       {label}
     </div>
@@ -410,8 +410,8 @@ export default function SchemaGraph({
   onChecksum,
   onRepair,
 }) {
-  const { colorMode } = useColorMode()
-  const dark = colorMode === 'dark'
+  const { theme } = useTheme()
+  const dark = theme === 'dark'
 
   const [graphMode,  setGraphMode]  = useState('simple')
   const [weightMode, setWeightMode] = useState('size')
@@ -473,15 +473,15 @@ export default function SchemaGraph({
         border: '1px solid var(--gray-color)',
         borderRadius: 10,
       }}>
-        <TBtnGroup dark={dark}>
-          <TBtn active={graphMode === 'simple'}   onClick={() => setGraphMode('simple')}   dark={dark}>Simple</TBtn>
-          <TBtn active={graphMode === 'detailed'} onClick={() => setGraphMode('detailed')} dark={dark}>Detailed</TBtn>
+        <TBtnGroup>
+          <TBtn active={graphMode === 'simple'}   onClick={() => setGraphMode('simple')}>Simple</TBtn>
+          <TBtn active={graphMode === 'detailed'} onClick={() => setGraphMode('detailed')}>Detailed</TBtn>
         </TBtnGroup>
 
         {graphMode === 'simple' && (
-          <TBtnGroup dark={dark}>
-            <TBtn active={weightMode === 'size'}  onClick={() => setWeightMode('size')}  dark={dark}>Size %</TBtn>
-            <TBtn active={weightMode === 'usage'} onClick={() => setWeightMode('usage')} dark={dark}>Usage %</TBtn>
+          <TBtnGroup>
+            <TBtn active={weightMode === 'size'}  onClick={() => setWeightMode('size')}>Size %</TBtn>
+            <TBtn active={weightMode === 'usage'} onClick={() => setWeightMode('usage')}>Usage %</TBtn>
           </TBtnGroup>
         )}
 
@@ -516,11 +516,11 @@ export default function SchemaGraph({
                   strokeDasharray={it.dash || undefined} />
                 <polygon points="20,2.5 24,5 20,7.5" fill={it.col} />
               </svg>
-              <span style={{ fontSize: 11, color: p(T.textSec, dark) }}>{it.label}</span>
+              <span style={{ fontSize: 11, color: 'var(--darkgray-color)' }}>{it.label}</span>
             </div>
           ))}
 
-        <div style={{ width: 1, height: 14, background: p(T.ctrlBorder, dark) }} />
+        <div style={{ width: 1, height: 14, background: 'var(--gray-color)' }} />
         {[{l:'1:1',c:'#1D9E75'},{l:'1:N',c:'#3B8ADD'},{l:'N:N',c:'#D85A30'}].map(b => (
           <span key={b.l} style={{
             fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
@@ -555,14 +555,24 @@ export default function SchemaGraph({
 
 // ─── Graph canvas ─────────────────────────────────────────────────────────────
 function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onChecksum, onRepair }) {
+  // Initial zoom 1.4 so nodes appear at readable text size (same as other
+  // components) and the user sees only part of the canvas, inviting exploration.
+  const INIT_ZOOM = 1.4
+  // Centre the viewport on the middle of the canvas at startup.
+  const initPan = () => ({
+    x: -(CANVAS_W / 2 - (typeof window !== 'undefined' ? window.innerWidth * 0.45 : 600) / INIT_ZOOM),
+    y: -(CANVAS_H / 2 - 300 / INIT_ZOOM),
+  })
+
   const [pos,      setPos]      = useState({})
   const [selected, setSelected] = useState(null)
   const [hoveredE, setHoveredE] = useState(null)
-  const [pan,      setPan]      = useState({ x: 60, y: 40 })
-  const [zoom,     setZoom]     = useState(0.80)
+  const [pan,      setPan]      = useState(initPan)
+  const [zoom,     setZoom]     = useState(INIT_ZOOM)
   const [panning,  setPanning]  = useState(false)
   const panStart = useRef(null)
   const svgRef   = useRef(null)
+  const wrapRef  = useRef(null)
   // Keep a stable ref to the latest positions so runLayout can read prevPos
   // without causing the layout effect to re-run on every render.
   const posRef   = useRef({})
@@ -601,10 +611,11 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
     return s
   }, [selected, edges])
 
+  // ── Zoom (wheel anywhere on the canvas wrapper) ───────────────────────────
   const onWheel = useCallback(e => {
     e.preventDefault()
     const nz = clamp(zoom * (e.deltaY < 0 ? 1.11 : 0.90), 0.15, 3.5)
-    const rect = svgRef.current?.getBoundingClientRect()
+    const rect = (wrapRef.current || svgRef.current)?.getBoundingClientRect()
     if (!rect) return
     const mx = (e.clientX - rect.left) / zoom - pan.x
     const my = (e.clientY - rect.top)  / zoom - pan.y
@@ -612,48 +623,78 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
     setZoom(nz)
   }, [zoom, pan])
 
-  const onMDown = e => {
-    if (e.target === svgRef.current || e.target.tagName === 'svg') {
-      setPanning(true)
-      panStart.current = { x: e.clientX - pan.x * zoom, y: e.clientY - pan.y * zoom }
-    }
-  }
-  const onMMove = e => {
+  // ── Pan — active on ANY mousedown inside the wrapper div (not just svg bg)
+  //    Nodes set e.stopPropagation() only for their own click; mousemove on
+  //    the wrapper always pans. This gives the "slide canvas anywhere" feel.
+  const onWrapMouseDown = useCallback(e => {
+    // Don't start a pan if the user clicked a button, input, or the panel.
+    if (e.target.closest('button, input, [data-nopan]')) return
+    setPanning(true)
+    panStart.current = { x: e.clientX - pan.x * zoom, y: e.clientY - pan.y * zoom }
+  }, [pan, zoom])
+
+  const onWrapMouseMove = useCallback(e => {
     if (!panning) return
     setPan({ x: (e.clientX - panStart.current.x) / zoom, y: (e.clientY - panStart.current.y) / zoom })
-  }
-  const stopPan = () => setPanning(false)
+  }, [panning, zoom])
+
+  const stopPan = useCallback(() => setPanning(false), [])
+
+  // Click on bare canvas (not a node) → deselect
+  const onWrapClick = useCallback(e => {
+    if (e.target === wrapRef.current || e.target === svgRef.current || e.target.tagName === 'svg') {
+      setSelected(null)
+    }
+  }, [])
 
   const selTable = selected ? tables.find(t => t.table_name === selected) : null
 
+  const resetView = useCallback(() => {
+    setZoom(INIT_ZOOM)
+    setPan(initPan())
+  }, [])
+
   return (
-    <div style={{
-      position: 'relative', width: '100%', height: 620,
-      borderRadius: 10, overflow: 'hidden',
-      border: `1px solid ${p(T.ctrlBorder, dark)}`,
-    }}>
+    <div
+      ref={wrapRef}
+      style={{
+        position: 'relative', width: '100%', height: 620,
+        borderRadius: 10, overflow: 'hidden',
+        border: `1px solid var(--gray-color)`,
+        // Canvas background matches the app body background exactly
+        background: 'var(--body-bg-color)',
+        cursor: panning ? 'grabbing' : 'grab',
+        userSelect: 'none',
+      }}
+      onMouseDown={onWrapMouseDown}
+      onMouseMove={onWrapMouseMove}
+      onMouseUp={stopPan}
+      onMouseLeave={stopPan}
+      onClick={onWrapClick}
+      onWheel={onWheel}
+    >
       {/* Zoom controls */}
-      <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 20, display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <div data-nopan style={{ position: 'absolute', top: 10, right: 10, zIndex: 20, display: 'flex', flexDirection: 'column', gap: 5 }}>
         {[
           { l: '+', f: () => setZoom(z => clamp(z * 1.2,  0.15, 3.5)) },
           { l: '−', f: () => setZoom(z => clamp(z * 0.83, 0.15, 3.5)) },
-          { l: '⊡', f: () => { setZoom(0.80); setPan({ x: 60, y: 40 }) } },
+          { l: '⊡', f: resetView },
         ].map(b => (
           <button key={b.l} onClick={b.f} style={{
             width: 28, height: 28,
-            border: `1px solid ${p(T.ctrlBorder, dark)}`,
-            background: p(T.ctrlBg, dark), color: p(T.textSec, dark),
+            border: `1px solid var(--gray-color)`,
+            background: 'var(--secondary-gray-color)', color: 'var(--text-color)',
             borderRadius: 6, cursor: 'pointer', fontSize: 14,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>{b.l}</button>
         ))}
       </div>
 
-      <div style={{
+      <div data-nopan style={{
         position: 'absolute', bottom: 8, right: 10, zIndex: 20,
-        fontSize: 10, color: p(T.textMut, dark),
-        background: p(T.ctrlBg, dark), padding: '2px 7px',
-        border: `1px solid ${p(T.ctrlBorder, dark)}`, borderRadius: 4,
+        fontSize: 10, color: 'var(--darkgray-color)',
+        background: 'var(--secondary-gray-color)', padding: '2px 7px',
+        border: `1px solid var(--gray-color)`, borderRadius: 4,
       }}>
         {Math.round(zoom * 100)}%
       </div>
@@ -671,19 +712,11 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
         />
       )}
 
-      {/* SVG canvas */}
+      {/* SVG canvas — transparent so the wrapper bg shows through */}
       <svg
         ref={svgRef}
         width="100%" height="100%"
-        style={{ background: p(T.canvasBg, dark), cursor: panning ? 'grabbing' : 'grab' }}
-        onWheel={onWheel}
-        onMouseDown={onMDown}
-        onMouseMove={onMMove}
-        onMouseUp={stopPan}
-        onMouseLeave={stopPan}
-        onClick={e => {
-          if (e.target === svgRef.current || e.target.tagName === 'svg') setSelected(null)
-        }}
+        style={{ display: 'block', background: 'transparent' }}
       >
         <defs>
           {[['fk', T.edgeFk], ['nm', T.edgeNm], ['wq', T.edgeWq]].map(([id, c]) => (
@@ -712,7 +745,10 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
             const isHov = hoveredE === i
             const op    = selected ? (isSel ? 0.9 : 0.07) : (isHov ? 1 : 0.38)
             const col   = edgeColor(e.source)
-            const nodeBg = p(T.nodeBg, dark)
+            // SVG fill/stroke can't use CSS vars — resolve to concrete colour
+            const nodeBg  = dark ? '#2a3048' : '#f7f8fe'
+            const textSec = dark ? '#778899' : '#666460'
+            const textMut = dark ? '#778899' : '#a0a09a'
 
             return (
               <g key={i}
@@ -742,7 +778,7 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
                   <g>
                     <rect x={mx - 28} y={my + 11} width={56} height={14} rx={3} fill={nodeBg} opacity={0.90} />
                     <text x={mx} y={my + 22} textAnchor="middle"
-                      fontSize={9} fill={p(T.textSec, dark)} fontFamily="system-ui">
+                      fontSize={9} fill={textSec} fontFamily="system-ui">
                       {e.joinWeight.toFixed(1)}% joins
                     </text>
                   </g>
@@ -751,7 +787,7 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
                   <g>
                     <rect x={mx - 62} y={my + 28} width={124} height={14} rx={3} fill={nodeBg} opacity={0.88} />
                     <text x={mx} y={my + 39} textAnchor="middle"
-                      fontSize={8} fill={p(T.textMut, dark)} fontFamily="monospace">
+                      fontSize={8} fill={textMut} fontFamily="monospace">
                       {e.childCols.join(', ').slice(0, 24)}{e.childCols.join(', ').length > 24 ? '…' : ''}
                     </text>
                   </g>
@@ -779,16 +815,21 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
                 .flatMap(ix => ix.columns?.map(c => c.name) || [])
             )
             const cols   = t.table_columns || []
-            const nodeBg = p(T.nodeBg, dark)
+            // SVG can't use CSS variables — resolve theme colours to literals
+            const nodeBg    = dark ? '#2a3048' : '#f7f8fe'
+            const nodeBd    = dark ? '#2d3748' : '#e2e8f0'
+            const textPri   = dark ? '#e7e9ef' : '#333333'
+            const textMut   = dark ? '#778899' : '#a0a09a'
+            const nodeStripe = dark ? '#131a34' : '#eff2fe'
 
             return (
               <g key={t.table_name}
-                onClick={() => setSelected(s => s === t.table_name ? null : t.table_name)}
+                onClick={e => { e.stopPropagation(); setSelected(s => s === t.table_name ? null : t.table_name) }}
                 style={{ cursor: 'pointer', opacity: isDim ? 0.13 : 1 }}
               >
                 <rect x={nx} y={ny} width={nw} height={nh} rx={9}
                   fill={nodeBg}
-                  stroke={isSel ? pal.text : (isDim ? p(T.nodeBorder, dark) : pal.border)}
+                  stroke={isSel ? pal.text : (isDim ? nodeBd : pal.border)}
                   strokeWidth={isSel ? 2 : 0.8}
                 />
                 {graphMode === 'simple' ? (
@@ -797,7 +838,7 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
                     <rect x={nx} y={ny + 12} width={nw} height={8} fill={pal.fill} />
                     <DbIcon x={nx + 4} y={ny + 20} color={pal.text} size={13} />
                     <text x={nx + 22} y={ny + 32} fontSize={12} fontWeight={600}
-                      fill={p(T.textPri, dark)} fontFamily="system-ui">
+                      fill={textPri} fontFamily="system-ui">
                       {t.table_name.length > 16 ? t.table_name.slice(0, 15) + '…' : t.table_name}
                     </text>
                     <rect x={nx + nw - 42} y={ny + 19} width={36} height={13} rx={3} fill={sm.bg} />
@@ -806,11 +847,11 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
                       {sm.icon} {sm.label}
                     </text>
                     <rect x={nx + 8} y={ny + 43} width={nw - 16} height={4} rx={2}
-                      fill={dark ? '#2e2e40' : '#e4e2da'} />
+                      fill={dark ? '#2d3748' : '#e2e8f0'} />
                     <rect x={nx + 8} y={ny + 43} width={barW} height={4} rx={2}
                       fill={pal.text} opacity={0.65} />
                     <text x={nx + nw - 7} y={ny + 43} textAnchor="end"
-                      fontSize={8} fill={p(T.textMut, dark)} fontFamily="system-ui">
+                      fontSize={8} fill={textMut} fontFamily="system-ui">
                       {pct.toFixed(1)}%
                     </text>
                   </>
@@ -845,7 +886,7 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
                       return (
                         <g key={col.name}>
                           {ci % 2 === 1 && (
-                            <rect x={nx} y={ry} width={nw} height={ROW_H} fill={p(T.nodeStripe, dark)} />
+                            <rect x={nx} y={ry} width={nw} height={ROW_H} fill={nodeStripe} />
                           )}
                           {isPk && (
                             <>
@@ -861,7 +902,7 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
                           <text
                             x={nx + (isPk ? 26 : 9)} y={ry + ROW_H / 2 + 4}
                             fontSize={11} fontWeight={isPk ? 600 : 400}
-                            fill={p(T.textPri, dark)} fontFamily="system-ui"
+                            fill={textPri} fontFamily="system-ui"
                           >
                             {col.name.length > 18 ? col.name.slice(0, 17) + '…' : col.name}
                           </text>
@@ -872,7 +913,7 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
                           </text>
                           {col.nullable && (
                             <circle cx={nx + nw - 4} cy={ry + ROW_H / 2} r={2.5}
-                              fill="transparent" stroke={p(T.textMut, dark)} strokeWidth={0.8} />
+                              fill="transparent" stroke={textMut} strokeWidth={0.8} />
                           )}
                         </g>
                       )
@@ -893,15 +934,15 @@ function SelectionPanel({ table: t, pal, edges, dark, onChecksum, onRepair, onDi
   const parents  = edges.filter(e => e.childTable  === t.table_name)
   const children = edges.filter(e => e.parentTable === t.table_name)
   const sm       = syncMeta(t.table_sync, dark)
-  const bd       = p(T.ctrlBorder, dark)
-  const panelBg  = p(T.ctrlBg, dark)
+  const bd       = 'var(--gray-color)'
+  const panelBg  = 'var(--secondary-gray-color)'
 
   return (
-    <div style={{
+    <div data-nopan style={{
       position: 'absolute', left: 10, top: 10, zIndex: 30, width: 214,
       background: panelBg, border: `1px solid ${bd}`,
       borderRadius: 10, overflow: 'hidden',
-      boxShadow: `0 4px 18px ${p(T.shadow, dark)}`,
+      boxShadow: `0 4px 18px rgba(0,0,0,0.18)`,
       fontSize: 12,
     }}>
       <div style={{ background: pal.fill, padding: '8px 11px', borderBottom: `1px solid ${pal.border}` }}>
@@ -922,41 +963,41 @@ function SelectionPanel({ table: t, pal, edges, dark, onChecksum, onRepair, onDi
           ['Size %',  (t.size_weight_pct || 0).toFixed(2) + '%'],
         ].map(([k, v]) => (
           <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
-            <span style={{ color: p(T.textSec, dark) }}>{k}</span>
-            <span style={{ fontWeight: 600, color: p(T.textPri, dark) }}>{v}</span>
+            <span style={{ color: 'var(--darkgray-color)' }}>{k}</span>
+            <span style={{ fontWeight: 600, color: 'var(--text-color)' }}>{v}</span>
           </div>
         ))}
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', alignItems: 'center' }}>
-          <span style={{ color: p(T.textSec, dark) }}>Sync</span>
+          <span style={{ color: 'var(--darkgray-color)' }}>Sync</span>
           <SyncPill value={t.table_sync} dark={dark} />
         </div>
       </div>
 
       {(parents.length > 0 || children.length > 0) && (
         <div style={{ padding: '5px 11px 5px', borderTop: `1px solid ${bd}`, marginTop: 2 }}>
-          <div style={{ fontSize: 10, color: p(T.textMut, dark), marginBottom: 4, fontWeight: 700 }}>
+          <div style={{ fontSize: 10, color: 'var(--darkgray-color)', marginBottom: 4, fontWeight: 700 }}>
             Relations ({parents.length + children.length})
           </div>
           {parents.slice(0, 4).map((e, i) => (
             <div key={`p${i}`} style={{ display: 'flex', gap: 4, padding: '1.5px 0', alignItems: 'center' }}>
               <span style={{ color: edgeColor(e.source), fontSize: 11, fontWeight: 700 }}>→</span>
-              <span style={{ flex: 1, color: p(T.textSec, dark), fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ flex: 1, color: 'var(--darkgray-color)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {e.parentTable}
               </span>
-              <span style={{ fontSize: 9, color: p(T.textMut, dark) }}>{cardLabel(e.cardinality)}</span>
+              <span style={{ fontSize: 9, color: 'var(--darkgray-color)' }}>{cardLabel(e.cardinality)}</span>
             </div>
           ))}
           {children.slice(0, 4).map((e, i) => (
             <div key={`c${i}`} style={{ display: 'flex', gap: 4, padding: '1.5px 0', alignItems: 'center' }}>
               <span style={{ color: edgeColor(e.source), fontSize: 11, fontWeight: 700 }}>←</span>
-              <span style={{ flex: 1, color: p(T.textSec, dark), fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ flex: 1, color: 'var(--darkgray-color)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {e.childTable}
               </span>
-              <span style={{ fontSize: 9, color: p(T.textMut, dark) }}>{cardLabel(e.cardinality)}</span>
+              <span style={{ fontSize: 9, color: 'var(--darkgray-color)' }}>{cardLabel(e.cardinality)}</span>
             </div>
           ))}
           {(parents.length + children.length) > 8 && (
-            <div style={{ fontSize: 10, color: p(T.textMut, dark), marginTop: 2 }}>
+            <div style={{ fontSize: 10, color: 'var(--darkgray-color)', marginTop: 2 }}>
               +{parents.length + children.length - 8} more
             </div>
           )}
@@ -972,7 +1013,7 @@ function SelectionPanel({ table: t, pal, edges, dark, onChecksum, onRepair, onDi
       <button onClick={onDismiss} style={{
         width: '100%', padding: '5px 0', border: 'none',
         borderTop: `1px solid ${bd}`, background: 'transparent',
-        cursor: 'pointer', fontSize: 11, color: p(T.textMut, dark),
+        cursor: 'pointer', fontSize: 11, color: 'var(--darkgray-color)',
       }}>Dismiss</button>
     </div>
   )
@@ -993,7 +1034,6 @@ function AttributeList({ tables, schemas, dark, onChecksum, onRepair }) {
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(340px,1fr))', gap: 10 }}>
       {tables.map(t => {
         const pal   = schemaPal(t.table_schema, schemas, dark)
-        const sm    = syncMeta(t.table_sync, dark)
         const isExp = expanded.has(t.table_name)
         const pkSet = new Set(
           (t.table_indexes || [])
@@ -1002,12 +1042,11 @@ function AttributeList({ tables, schemas, dark, onChecksum, onRepair }) {
         )
         const parents  = t.table_parents  || []
         const children = t.table_children || []
-        const bd       = p(T.nodeBorder, dark)
 
         return (
           <div key={t.table_name} style={{
-            border: `1px solid ${bd}`, borderRadius: 10,
-            background: p(T.nodeBg, dark), overflow: 'hidden', fontSize: 12,
+            border: '1px solid var(--gray-color)', borderRadius: 10,
+            background: 'var(--secondary-gray-color)', overflow: 'hidden', fontSize: 12,
           }}>
             <div onClick={() => toggle(t.table_name)} style={{
               background: pal.fill, padding: '10px 13px', cursor: 'pointer', userSelect: 'none',
@@ -1052,7 +1091,7 @@ function AttributeList({ tables, schemas, dark, onChecksum, onRepair }) {
                     bgL="#EAF3DE" fgL="#27500A" bgD="#132808" fgD="#7ec85e" dark={dark} />
                 </div>
 
-                <SectionLabel label="Columns" dark={dark} />
+                <SectionLabel label="Columns" />
                 {(t.table_columns || []).map((col, ci) => {
                   const tb   = typeBadge(col.type, dark)
                   const isPk = pkSet.has(col.name)
@@ -1060,7 +1099,7 @@ function AttributeList({ tables, schemas, dark, onChecksum, onRepair }) {
                     <div key={col.name} style={{
                       display: 'flex', alignItems: 'center', gap: 7,
                       padding: '4px 13px',
-                      background: ci % 2 ? p(T.nodeStripe, dark) : 'transparent',
+                      background: ci % 2 ? 'var(--body-bg-color)' : 'transparent',
                     }}>
                       {isPk && (
                         <span style={{
@@ -1069,7 +1108,7 @@ function AttributeList({ tables, schemas, dark, onChecksum, onRepair }) {
                           color: dark ? '#d4914a' : '#B07500',
                         }}>PK</span>
                       )}
-                      <span style={{ flex: 1, fontWeight: isPk ? 600 : 400, color: p(T.textPri, dark) }}>
+                      <span style={{ flex: 1, fontWeight: isPk ? 600 : 400, color: 'var(--text-color)' }}>
                         {col.name}
                       </span>
                       <span style={{
@@ -1078,8 +1117,8 @@ function AttributeList({ tables, schemas, dark, onChecksum, onRepair }) {
                       }}>{col.type}</span>
                       {!col.nullable && (
                         <span style={{
-                          fontSize: 9, color: p(T.textMut, dark),
-                          border: `0.5px solid ${p(T.ctrlBorder, dark)}`,
+                          fontSize: 9, color: 'var(--darkgray-color)',
+                          border: '0.5px solid var(--gray-color)',
                           padding: '0 3px', borderRadius: 2,
                         }}>NN</span>
                       )}
@@ -1089,7 +1128,7 @@ function AttributeList({ tables, schemas, dark, onChecksum, onRepair }) {
 
                 {(t.table_indexes || []).length > 0 && (
                   <>
-                    <SectionLabel label="Indexes" dark={dark} />
+                    <SectionLabel label="Indexes" />
                     {(t.table_indexes || []).map(ix => (
                       <div key={ix.name} style={{ display: 'flex', gap: 7, alignItems: 'center', padding: '3px 13px' }}>
                         {ix.unique && (
@@ -1099,8 +1138,8 @@ function AttributeList({ tables, schemas, dark, onChecksum, onRepair }) {
                             color: dark ? '#7ab8ef' : '#0C447C',
                           }}>UQ</span>
                         )}
-                        <span style={{ color: p(T.textSec, dark) }}>{ix.name}</span>
-                        <span style={{ color: p(T.textMut, dark), fontSize: 11 }}>
+                        <span style={{ color: 'var(--darkgray-color)' }}>{ix.name}</span>
+                        <span style={{ color: 'var(--darkgray-color)', fontSize: 11 }}>
                           ({(ix.columns || []).map(c => c.name).join(', ')})
                         </span>
                       </div>
@@ -1111,16 +1150,16 @@ function AttributeList({ tables, schemas, dark, onChecksum, onRepair }) {
                 {/* Relations — read directly from table_parents / table_children */}
                 {(parents.length > 0 || children.length > 0) && (
                   <>
-                    <SectionLabel label="Relations" dark={dark} />
+                    <SectionLabel label="Relations" />
                     {parents.map((lk, i) => {
                       const cl = (lk.local_columns || []).join(', ')
                       return (
                         <div key={`p${i}`} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '3px 13px' }}>
                           <span style={{ color: edgeColor(lk.relation_source), fontSize: 12, fontWeight: 700 }}>→</span>
-                          <span style={{ flex: 1, color: p(T.textSec, dark) }}>{lk.linked_table}</span>
-                          <span style={{ fontSize: 9, color: p(T.textMut, dark) }}>{cardLabel(lk.cardinality)}</span>
+                          <span style={{ flex: 1, color: 'var(--darkgray-color)' }}>{lk.linked_table}</span>
+                          <span style={{ fontSize: 9, color: 'var(--darkgray-color)' }}>{cardLabel(lk.cardinality)}</span>
                           {cl && (
-                            <span style={{ fontSize: 9, color: p(T.textMut, dark), fontFamily: 'monospace' }}>
+                            <span style={{ fontSize: 9, color: 'var(--darkgray-color)', fontFamily: 'monospace' }}>
                               ({cl.slice(0, 18)}{cl.length > 18 ? '…' : ''})
                             </span>
                           )}
@@ -1132,10 +1171,10 @@ function AttributeList({ tables, schemas, dark, onChecksum, onRepair }) {
                       return (
                         <div key={`c${i}`} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '3px 13px' }}>
                           <span style={{ color: edgeColor(lk.relation_source), fontSize: 12, fontWeight: 700 }}>←</span>
-                          <span style={{ flex: 1, color: p(T.textSec, dark) }}>{lk.linked_table}</span>
-                          <span style={{ fontSize: 9, color: p(T.textMut, dark) }}>{cardLabel(lk.cardinality)}</span>
+                          <span style={{ flex: 1, color: 'var(--darkgray-color)' }}>{lk.linked_table}</span>
+                          <span style={{ fontSize: 9, color: 'var(--darkgray-color)' }}>{cardLabel(lk.cardinality)}</span>
                           {cl && (
-                            <span style={{ fontSize: 9, color: p(T.textMut, dark), fontFamily: 'monospace' }}>
+                            <span style={{ fontSize: 9, color: 'var(--darkgray-color)', fontFamily: 'monospace' }}>
                               ({cl.slice(0, 18)}{cl.length > 18 ? '…' : ''})
                             </span>
                           )}
@@ -1147,8 +1186,8 @@ function AttributeList({ tables, schemas, dark, onChecksum, onRepair }) {
 
                 <div style={{
                   display: 'flex', gap: 14, padding: '7px 13px 0', marginTop: 4,
-                  borderTop: `1px solid ${bd}`,
-                  fontSize: 10, color: p(T.textMut, dark),
+                  borderTop: '1px solid var(--gray-color)',
+                  fontSize: 10, color: 'var(--darkgray-color)',
                 }}>
                   <span>{fmtBytes((t.data_length || 0) + (t.index_length || 0))} total</span>
                   <span>{t.engine}</span>
