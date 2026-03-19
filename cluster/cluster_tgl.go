@@ -322,6 +322,11 @@ func (cluster *Cluster) SwitchMonitoringSchemaScheduler() {
 	cluster.SetSchedulerMonitorSchema()
 }
 
+func (cluster *Cluster) SwitchMonitoringChecsumScheduler() {
+	cluster.Conf.MonitorChecksumScheduler = !cluster.Conf.MonitorChecksumScheduler
+	cluster.SetSchedulerMonitorChecksum()
+}
+
 func (cluster *Cluster) SwitchGraphiteEmbedded() {
 	cluster.Conf.GraphiteEmbedded = !cluster.Conf.GraphiteEmbedded
 }
