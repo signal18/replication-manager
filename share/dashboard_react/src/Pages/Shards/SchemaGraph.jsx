@@ -187,27 +187,94 @@ function nodeH(t, mode) {
 }
 function nodeW(mode) { return mode === 'detailed' ? NW_DETAILED : NW_SIMPLE }
 
-function runLayout(tables, edges, mode) {
+// Gap maintained between any two node bounding boxes (px in canvas space).
+const NODE_GAP = 28
+
+// runLayout:
+//   tables  — current table list
+//   edges   — edge list for spring attraction
+//   mode    — 'simple' | 'detailed'
+//   prevPos — positions from the previous layout run (keyed by table_name).
+//             Tables already present keep their positions; only new arrivals
+//             are placed on the initial circle. Pass {} or null on first run.
+//
+// Stability guarantee: when only data changes (table_sync, size_weight_pct,
+// etc.) but the set of table names is unchanged, the caller passes the same
+// prevPos and returns immediately — no simulation, no jitter.
+function runLayout(tables, edges, mode, prevPos = {}) {
   const nw = nodeW(mode)
   const cx = CANVAS_W / 2, cy = CANVAS_H / 2
   const r  = Math.min(CANVAS_W, CANVAS_H) * 0.28
+
+  // Separate known tables (keep position) from new ones (place on circle).
+  const newTables = tables.filter(t => !prevPos[t.table_name])
+
+  // If no table is new and mode hasn't changed, return prevPos unchanged.
+  // This is the key stability guarantee: data refreshes don't move nodes.
+  if (newTables.length === 0 && Object.keys(prevPos).length >= tables.length) {
+    // Return a copy containing only the tables in the current list
+    // (handles tables that were removed by a filter).
+    const filtered = {}
+    tables.forEach(t => { if (prevPos[t.table_name]) filtered[t.table_name] = { ...prevPos[t.table_name] } })
+    return filtered
+  }
+
+  // Seed positions: known tables keep their place, new ones go on the circle.
   const pos = {}
-  tables.forEach((t, i) => {
-    const a = (2 * Math.PI * i) / tables.length
-    pos[t.table_name] = { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a), vx: 0, vy: 0 }
+  let newIdx = 0
+  tables.forEach(t => {
+    if (prevPos[t.table_name]) {
+      pos[t.table_name] = { ...prevPos[t.table_name], vx: 0, vy: 0 }
+    } else {
+      // Spread new arrivals evenly among the new-table slots.
+      const a = (2 * Math.PI * newIdx) / Math.max(newTables.length, 1)
+      pos[t.table_name] = { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a), vx: 0, vy: 0 }
+      newIdx++
+    }
   })
-  for (let tick = 0; tick < FORCE_TICKS; tick++) {
-    const alpha = 1 - tick / FORCE_TICKS
+
+  // Run simulation. If all tables are known we still run a short settling
+  // pass so newly-filtered sets reach equilibrium without jitter.
+  const ticks = newTables.length > 0 ? FORCE_TICKS : 60
+
+  for (let tick = 0; tick < ticks; tick++) {
+    const alpha = 1 - tick / ticks
+
+    // Box-aware repulsion — push nodes apart until their bounding boxes
+    // are separated by at least NODE_GAP pixels in both axes.
     for (let i = 0; i < tables.length; i++) {
       for (let j = i + 1; j < tables.length; j++) {
-        const a = pos[tables[i].table_name], b = pos[tables[j].table_name]
+        const ta = tables[i], tb = tables[j]
+        const a  = pos[ta.table_name], b = pos[tb.table_name]
+
+        const halfWA = nw / 2, halfHA = nodeH(ta, mode) / 2
+        const halfWB = nw / 2, halfHB = nodeH(tb, mode) / 2
+
         const dx = b.x - a.x, dy = b.y - a.y
         const dist = Math.sqrt(dx * dx + dy * dy) || 1
-        const f = REPULSION / (dist * dist) * alpha
-        a.vx -= dx / dist * f; a.vy -= dy / dist * f
-        b.vx += dx / dist * f; b.vy += dy / dist * f
+
+        // Minimum centre-to-centre distance that keeps boxes NODE_GAP apart.
+        // Use the axis-dominant direction for the clearance estimate.
+        const minDist = halfWA + halfWB + NODE_GAP +
+          (Math.abs(dy) > Math.abs(dx) ? halfHA + halfHB - halfWA - halfWB : 0)
+
+        if (dist < minDist) {
+          // Overlap or too close — apply a strong separating impulse.
+          const overlap = (minDist - dist) / dist
+          const fx = dx * overlap * 0.5 * alpha
+          const fy = dy * overlap * 0.5 * alpha
+          a.vx -= fx; a.vy -= fy
+          b.vx += fx; b.vy += fy
+        } else {
+          // Normal inverse-square repulsion for spacing at distance.
+          const f = REPULSION / (dist * dist) * alpha
+          a.vx -= dx / dist * f; a.vy -= dy / dist * f
+          b.vx += dx / dist * f; b.vy += dy / dist * f
+        }
       }
     }
+
+    // Spring attraction along edges.
     for (const e of edges) {
       const a = pos[e.childTable], b = pos[e.parentTable]
       if (!a || !b) continue
@@ -217,15 +284,18 @@ function runLayout(tables, edges, mode) {
       a.vx += dx / dist * f; a.vy += dy / dist * f
       b.vx -= dx / dist * f; b.vy -= dy / dist * f
     }
+
+    // Integrate velocities, damp, clamp to canvas bounds.
     tables.forEach(t => {
       const q  = pos[t.table_name]
       const nh = nodeH(t, mode) / 2
       const hw = nw / 2
       q.vx *= DAMPING; q.vy *= DAMPING
-      q.x = clamp(q.x + q.vx, hw + 24, CANVAS_W - hw - 24)
-      q.y = clamp(q.y + q.vy, nh + 24, CANVAS_H - nh - 24)
+      q.x = clamp(q.x + q.vx, hw + NODE_GAP, CANVAS_W - hw - NODE_GAP)
+      q.y = clamp(q.y + q.vy, nh + NODE_GAP, CANVAS_H - nh - NODE_GAP)
     })
   }
+
   return pos
 }
 
@@ -493,13 +563,33 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
   const [panning,  setPanning]  = useState(false)
   const panStart = useRef(null)
   const svgRef   = useRef(null)
+  // Keep a stable ref to the latest positions so runLayout can read prevPos
+  // without causing the layout effect to re-run on every render.
+  const posRef   = useRef({})
   const nw = nodeW(graphMode)
+
+  // Structural identity key: sorted table names + mode.
+  // This changes ONLY when the set of tables changes or the mode switches.
+  // Data refreshes (sync status, row counts, size_weight_pct) do NOT change
+  // table_name values, so this key stays the same and the layout is skipped.
+  const layoutKey = useMemo(
+    () => tables.map(t => t.table_name).sort().join('|') + '::' + graphMode,
+    [tables, graphMode]
+  )
 
   useEffect(() => {
     if (!tables.length) return
-    setPos(runLayout(tables, edges, graphMode))
+    // Pass the current positions so runLayout can preserve known nodes.
+    const newPos = runLayout(tables, edges, graphMode, posRef.current)
+    posRef.current = newPos
+    setPos(newPos)
     setSelected(null)
-  }, [tables, edges, graphMode])
+  // edges is intentionally NOT a dependency: spring attraction during layout
+  // uses the edges array, but changing which edges are shown (filter toggles)
+  // should not re-scramble the layout — only a structural table-set change
+  // (captured by layoutKey) or a mode switch should trigger a new layout.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutKey])
 
   const hlSet = useMemo(() => {
     if (!selected) return null

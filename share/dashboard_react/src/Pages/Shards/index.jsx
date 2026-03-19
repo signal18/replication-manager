@@ -92,18 +92,12 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
   const dispatch = useDispatch()
 
   // ── Redux selectors ────────────────────────────────────────────────────────
-  // Select shardSchema and the global pause/refresh flag in one selector so
-  // we get both in a single subscription — avoids a second re-render cycle.
-  const { shardSchema, isRefreshing } = useSelector((state) => ({
-    shardSchema:  state.cluster.shardSchema,
-    // Adapt the key below to whichever name your Redux store uses for the
-    // global pause flag. Common names across replication-manager versions:
-    //   state.cluster.refreshing
-    //   state.settings.isPaused
-    //   state.cluster.monitorRefresh
-    // Using a safe fallback (true = not paused) if the key does not exist yet.
-    isRefreshing: state.cluster.refreshing ?? state.settings?.isPaused === false ?? true,
-  }))
+  const shardSchema = useSelector((state) => state.cluster.shardSchema)
+
+  // pauseAutoReload (clusterSlice) writes ONLY to localStorage, never to Redux
+  // state. There is no state.cluster.refreshing field. The correct check —
+  // identical to Home/index.jsx::callServices() — is:
+  const isPaused = () => Boolean(localStorage.getItem('pause_auto_reload'))
 
   // ── Local state ────────────────────────────────────────────────────────────
   // FIX: store the last-seen data in a ref so shardSchema comparisons don't
@@ -118,18 +112,6 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
   const [checksumTimeout, setChecksumTimeout]                       = useState(false)
   const [checksumRepairTimeout, setChecksumRepairTimeout]           = useState(false)
   const mountedRef = useRef(true)
-
-  // FIX: keep a ref to the current isRefreshing value so the polling loop
-  // can read it without being a stale closure, and without being listed as a
-  // dependency (which would restart the interval on every pause toggle).
-  const isRefreshingRef = useRef(isRefreshing)
-  useEffect(() => { isRefreshingRef.current = isRefreshing }, [isRefreshing])
-
-  // FIX: keep a ref to selectedCluster.name for the same reason — the polling
-  // loop needs the current name but we don't want to restart the interval
-  // every time the cluster object reference changes.
-  const clusterNameRef = useRef(selectedCluster?.name)
-  useEffect(() => { clusterNameRef.current = selectedCluster?.name }, [selectedCluster?.name])
 
   // ── View / filter state ────────────────────────────────────────────────────
   const [view,       setView]       = useState('table')
@@ -160,59 +142,26 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
     setData(shardSchema)
   }, [shardSchema])
 
-  // ── Schema refresh — pause-aware ───────────────────────────────────────────
-  // BUG FIX: the original code called getShardSchema once on mount (via a
-  // useEffect on selectedCluster?.name) and then again inside waitForSchemaCache.
-  // The problem is twofold:
+  // ── Schema refresh — pause-aware ──────────────────────────────────────────
+  // Home/index.jsx already calls getShardSchema on every global ticker tick
+  // whenever the Shards tab is active (Home/index.jsx line ~208). Running a
+  // second independent setInterval here creates a duplicate polling path that
+  // bypasses the pause flag entirely.
   //
-  //  1. The Shards page is mounted while the global refresh ticker is already
-  //     running in the background (App-level setInterval → dispatch(getCluster…)
-  //     which in turn dispatches getShardSchema as a side-effect on the Go
-  //     backend). Mounting this page therefore caused a *second* independent
-  //     polling path for the same endpoint, doubling backend load.
-  //
-  //  2. Neither the on-mount call nor waitForSchemaCache checked the global
-  //     pause flag, so pausing the dashboard had no effect on this endpoint.
-  //
-  // The fix:
-  //  • Do one immediate fetch on mount / cluster change (so the table is
-  //    populated instantly when the user navigates here).
-  //  • Start a local interval that re-fetches on a 30 s cadence ONLY when
-  //    the global refresh flag is true AND the component is still mounted.
-  //  • The interval is cleared on unmount and whenever the cluster changes
-  //    (the effect will re-run and create a fresh one).
-  //  • isRefreshingRef is read inside the interval callback, not closed over,
-  //    so toggling pause mid-interval takes effect on the very next tick.
-  //
-  // If the app-level ticker already calls getShardSchema as a side-effect you
-  // can remove the local interval entirely and keep only the on-mount fetch —
-  // the pause fix still works because the app-level ticker itself respects
-  // isRefreshing and simply won't fire.
-
-  const SCHEMA_REFRESH_INTERVAL_MS = 30_000  // 30 s — adjust to taste
-
+  // The correct approach:
+  //   • One immediate fetch on mount / cluster switch so the table is not
+  //     empty while the user waits for the next global tick. Guard it with
+  //     the same localStorage check that Home uses.
+  //   • No local interval — let Home drive all subsequent refreshes.
+  //   • waitForSchemaCache (used by checksum flows) also checks isPaused()
+  //     on every iteration so it stops if the user pauses mid-wait.
   useEffect(() => {
     const clusterName = selectedCluster?.name
     if (!clusterName) return
-
-    // Immediate fetch on mount / cluster switch.
-    if (isRefreshingRef.current) {
+    // Only fetch immediately if refresh is not paused.
+    if (!isPaused()) {
       dispatch(getShardSchema({ clusterName }))
     }
-
-    // Local refresh interval — respects pause flag on every tick.
-    const intervalId = setInterval(() => {
-      // Read through the ref so we always see the latest value without
-      // restarting the interval when isRefreshing toggles.
-      if (!mountedRef.current)        return
-      if (!isRefreshingRef.current)   return   // ← pause respected here
-      if (!clusterNameRef.current)    return
-      dispatch(getShardSchema({ clusterName: clusterNameRef.current }))
-    }, SCHEMA_REFRESH_INTERVAL_MS)
-
-    return () => clearInterval(intervalId)
-  // Intentionally excluding isRefreshing — we read it via ref inside the
-  // callback so the interval is not restarted on every pause/resume toggle.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, selectedCluster?.name])
 
@@ -294,9 +243,9 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
     const intervalMs  = 15_000
     let attempts = 0
     while (attempts < maxAttempts) {
-      if (!mountedRef.current)      return false
-      if (!isRefreshingRef.current) return false  // ← stop if paused
-      const action  = await dispatch(getShardSchema({ clusterName: clusterNameRef.current }))
+      if (!mountedRef.current) return false
+      if (isPaused())          return false  // stop polling if user paused
+      const action  = await dispatch(getShardSchema({ clusterName: selectedCluster.name }))
       const payload = action?.payload?.data
       if (Array.isArray(payload) && payload.length > 0) return true
       attempts++
@@ -613,8 +562,8 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
           {/* Spacer */}
           <div style={{ flex: 1 }} />
 
-          {/* Refresh indicator */}
-          {!isRefreshing && (
+          {/* Refresh indicator — reads the same localStorage flag as Home */}
+          {isPaused() && (
             <span style={{
               fontSize: 11, color: 'var(--darkgray-color)',
               padding: '2px 8px', borderRadius: 4,
