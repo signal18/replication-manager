@@ -345,6 +345,32 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
             />
           )
         },
+        {
+          key: 'Monitor Checksum tables',
+          value: (
+            <Scheduler
+              user={user}
+              value={selectedCluster?.config?.monitoringChecksumSchedulerCron}
+              switchConfirmTitle={'Confirm switch settings for monitoring-checksum-scheduler?'}
+              isSwitchChecked={selectedCluster?.config?.monitoringChecksumScheduler}
+              confirmTitle={'Confirm save monitoring checksum tables scheduler to: '}
+              onSwitchChange={() =>
+                dispatch(
+                  switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-checksum-scheduler' })
+                )
+              }
+              onSave={(value) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'monitoring-scheduler-scheduler-cron',
+                    value: value
+                  })
+                )
+              }
+            />
+          )
+        },
       ]
       : [])
   ]

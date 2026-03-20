@@ -189,6 +189,10 @@ func (cluster *Cluster) SwitchFailSync() {
 	cluster.Conf.FailSync = !cluster.Conf.FailSync
 }
 
+func (cluster *Cluster) SwitchFailoverDivergentData() {
+	cluster.Conf.FailoverDivergentData = !cluster.Conf.FailoverDivergentData
+}
+
 func (cluster *Cluster) SwitchSwitchoverSync() {
 	cluster.Conf.SwitchSync = !cluster.Conf.SwitchSync
 }
@@ -322,7 +326,7 @@ func (cluster *Cluster) SwitchMonitoringSchemaScheduler() {
 	cluster.SetSchedulerMonitorSchema()
 }
 
-func (cluster *Cluster) SwitchMonitoringChecsumScheduler() {
+func (cluster *Cluster) SwitchMonitoringChecksumScheduler() {
 	cluster.Conf.MonitorChecksumScheduler = !cluster.Conf.MonitorChecksumScheduler
 	cluster.SetSchedulerMonitorChecksum()
 }

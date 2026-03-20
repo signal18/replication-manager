@@ -2381,6 +2381,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchFailoverRestartUnsafe()
 	case "failover-at-sync":
 		mycluster.SwitchFailSync()
+	case "failover-divergent-data":
+		mycluster.SwitchFailoverDivergentData()
 	case "force-slave-no-gtid-mode":
 		mycluster.SwitchForceSlaveNoGtid()
 	case "switchover-lower-release":
@@ -3441,6 +3443,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetSchedulerAlertDisableCron(value)
 	case "monitoring-schema-scheduler-cron":
 		mycluster.SetMonitoringSchemaSchedulerCron(value)
+	case "monitoring-checksum-scheduler-cron":
+		mycluster.SetMonitoringChecksumSchedulerCron(value)
 	case "monitoring-schema-ignore-tables":
 		mycluster.SetMonitoringSchemaIgnoreTables(value)
 	case "backup-binlogs-keep":
@@ -3907,6 +3911,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.FailRestartUnsafe = applyIsActive(mycluster.Conf.FailRestartUnsafe, isactive)
 	case "failover-at-sync":
 		mycluster.Conf.FailSync = applyIsActive(mycluster.Conf.FailSync, isactive)
+	case "failover-divergent-data":
+		mycluster.Conf.FailoverDivergentData = applyIsActive(mycluster.Conf.FailoverDivergentData, isactive)
 	case "force-slave-no-gtid-mode":
 		mycluster.Conf.ForceSlaveNoGtid = applyIsActive(mycluster.Conf.ForceSlaveNoGtid, isactive)
 	case "switchover-lower-release":
@@ -4017,6 +4023,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
 			mycluster.SwitchMonitoringSchemaScheduler()
+		}
+	case "monitoring-checksum-scheduler":
+		oldValue := mycluster.Conf.MonitorChecksumScheduler
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.SwitchMonitoringChecksumScheduler()
 		}
 	case "scheduler-alert-disable":
 		mycluster.Conf.SchedulerAlertDisable = applyIsActive(mycluster.Conf.SchedulerAlertDisable, isactive)
