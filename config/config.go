@@ -247,6 +247,7 @@ type Config struct {
 	PostScript                                string `mapstructure:"failover-post-script" toml:"failover-post-script" json:"failoverPostScript"`
 	ReadOnly                                  bool   `mapstructure:"failover-readonly-state" toml:"failover-readonly-state" json:"failoverReadOnlyState"`
 	FailoverSemiSyncState                     bool   `mapstructure:"failover-semisync-state" toml:"failover-semisync-state" json:"failoverSemisyncState"`
+	FailoverDivergentData                     bool   `mapstructure:"failover-divergent-data" toml:"failover-divergent-data" json:"failoverDivergentData"`
 	SuperReadOnly                             bool   `mapstructure:"failover-superreadonly-state" toml:"failover-superreadonly-state" json:"failoverSuperReadOnlyState"`
 	FailTime                                  int64  `mapstructure:"failover-time-limit" toml:"failover-time-limit" json:"failoverTimeLimit"`
 	FailSync                                  bool   `mapstructure:"failover-at-sync" toml:"failover-at-sync" json:"failoverAtSync"`

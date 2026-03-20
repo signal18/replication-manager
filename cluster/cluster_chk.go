@@ -617,30 +617,33 @@ func (cluster *Cluster) CheckSendMail() {
 	}
 }
 
-func (cluster *Cluster) CheckAllTableChecksum() {
+func (cluster *Cluster) CheckAllTableChecksum() bool {
 	cluster.ChecksumCleanResult()
+	hasErrors := false
 	for _, t := range cluster.master.Tables {
-		cluster.CheckTableChecksum(t.TableSchema, t.TableName)
+		res:=cluster.CheckTableChecksum(t.TableSchema, t.TableName)
+		if res =="ER" {
+			hasErrors=true
+	  }
 	}
+	cluster.ChecksumSetResultOnSlave()
+	return hasErrors
 }
 
-func (cluster *Cluster) RepairAllTableChecksum() {
-	for _, t := range cluster.master.Tables {
-		cluster.RepairTableChecksum(t.TableSchema, t.TableName)
-	}
-}
+
 
 func (cluster *Cluster) CheckAllTableChecksumSchema(name string) bool {
 	cluster.ChecksumCleanResult()
 	hasErrors := false
 	for _, t := range cluster.master.Tables {
-
 		if t.TableSchema == name {
 			res:=cluster.CheckTableChecksum(t.TableSchema, t.TableName)
 			if res =="ER" {
-				asErrors:=true
+				hasErrors=true
+			}
 		}
 	}
+	cluster.ChecksumSetResultOnSlave()
 	return hasErrors
 }
 
@@ -952,11 +955,18 @@ func (cluster *Cluster) RepairTableChecksum(schema string, table string) {
 	cluster.CheckTableChecksum(schema, table)
 }
 
+func (cluster *Cluster) RepairAllTableChecksum() {
+	for _, t := range cluster.master.Tables {
+		cluster.RepairTableChecksum(t.TableSchema, t.TableName)
+	}
+	cluster.ChecksumSetResultOnSlave()
+}
+
 // ChecksumCleanResult cleanup all checksum result before re run checksum all table
 func (cluster *Cluster) ChecksumCleanResult() {
-	if cluster.ChecksumIsRunning() { 
-		return 
-	}	
+	if cluster.ChecksumIsRunning() {
+		return
+	}
 	for _, t := range cluster.master.Tables {
 			tm := cluster.master.DictTables.Get(t.TableSchema + "." + t.TableName)
 			tm.TableSync = "WA"
@@ -964,14 +974,22 @@ func (cluster *Cluster) ChecksumCleanResult() {
 	}
 }
 
+// ChecksumSetResultOnSlave affect IsDataDiverge to all nodes
+func (cluster *Cluster) ChecksumSetResultOnSlave() {
+	for _, s := range cluster.Servers {
+		s.SetDataDiverge()
+	}
+}
+
+
 func (cluster *Cluster) ChecksumIsRunning() bool {
 	for _, t := range cluster.master.Tables {
 		tm := cluster.master.DictTables.Get(t.TableSchema + "." + t.TableName)
-		if tm.TableSync =="PR" || tm.TableSync == "WA"  { 
+		if tm.TableSync =="PR" || tm.TableSync == "WA"  {
 			return true
-		}	
+		}
 	}
-	return false	
+	return false
 }
 
 // CheckSameServerID Check against the servers that all server id are differents

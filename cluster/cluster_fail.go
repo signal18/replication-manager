@@ -779,20 +779,21 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 	var maxseq uint64
 	var maxpos uint64
 	type Trackpos struct {
-		URL                 string
-		Indice              int
-		Pos                 uint64
-		Seq                 uint64
-		Prefered            bool
-		Ignoredconf         bool
-		Ignoredrelay        bool
-		Ignoredmultimaster  bool
-		Ignoredreplication  bool
-		IgnoredMinorVersion bool
-		IgnoredErrantTrx    bool
-		IgnoredBlocker      bool
-		Weight              uint
-		DelayStat           DelayStat
+		URL                   string
+		Indice                int
+		Pos                   uint64
+		Seq                   uint64
+		Prefered              bool
+		Ignoredconf           bool
+		Ignoredrelay          bool
+		Ignoredmultimaster    bool
+		Ignoredreplication    bool
+		IgnoredMinorVersion   bool
+		IgnoredErrantTrx      bool
+		IgnoredBlocker        bool
+		IgnoredDataDivergence bool
+		Weight                uint
+		DelayStat             DelayStat
 	}
 
 	// HaveOneValidReader is used to state that at least one replicat is available for reading via proxies
@@ -810,7 +811,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		trackposList[i].DelayStat = sl.DelayStat.Total
 		trackposList[i].IgnoredErrantTrx = sl.HasErrantTransactions()
 		trackposList[i].IgnoredBlocker = sl.HasBlockerIssue()
-
+		trackposList[i].IgnoredDataDivergence = sl.IsDataDiverge
 		//Need comment//
 		if sl.IsRelay {
 			cluster.SetState("ERR00036", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
@@ -830,6 +831,10 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		}
 		if !sl.HasBinlog() && !sl.IsIgnored() {
 			cluster.SetState("ERR00013", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+			continue
+		}
+		if sl.IsDataDiverge && !cluster.Conf.FailoverDivergentData {
+			cluster.SetState("ERR00103", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00103"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 			continue
 		}
 		if cluster.GetTopology() == config.TopoMultiMasterWsrep && cluster.vmaster != nil {

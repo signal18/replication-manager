@@ -502,6 +502,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.PostScript, "failover-post-script", "", "Path of post-failover script")
 	flags.BoolVar(&conf.ReadOnly, "failover-readonly-state", true, "Failover Switchover set slaves as read-only")
 	flags.BoolVar(&conf.FailoverSemiSyncState, "failover-semisync-state", false, "Failover Switchover set semisync slave master state")
+	flags.BoolVar(&conf.FailoverDivergentData, "failover-divergent-data", true, "Failover Switchover on slave where checksum table resport divergent dataset")
 	flags.BoolVar(&conf.SuperReadOnly, "failover-superreadonly-state", false, "Failover Switchover set slaves as super-read-only")
 	flags.StringVar(&conf.FailMode, "failover-mode", "manual", "Failover is manual or automatic")
 	flags.BoolVar(&conf.FailoverMdevCheck, "failover-mdev-check", false, "Failover is prevented if cluster has MDEV issues")
