@@ -95,6 +95,12 @@ func (cluster *Cluster) GetMonitorSchemasFunction() func() {
 	}
 }
 
+func (cluster *Cluster) GetMonitorChecksumFunction() func() {
+	return func() {
+		go cluster.CheckAllTableChecksum()
+	}
+}
+
 func scheduleDescription(title string) string {
 	switch title {
 	case "backuplogical":
@@ -195,4 +201,8 @@ func (cluster *Cluster) SetSchedulerAlertDisable() {
 
 func (cluster *Cluster) SetSchedulerMonitorSchema() {
 	cluster.SetScheduler(cluster.Conf.MonitorSchemaScheduler, "monitorschema", cluster.Conf.MonitorSchemaSchedulerCron, cluster.GetMonitorSchemasFunction())
+}
+
+func (cluster *Cluster) SetSchedulerMonitorChecksum() {
+	cluster.SetScheduler(cluster.Conf.MonitorChecksumScheduler, "monitorschema", cluster.Conf.MonitorChecksumSchedulerCron, cluster.GetMonitorChecksumFunction())
 }
