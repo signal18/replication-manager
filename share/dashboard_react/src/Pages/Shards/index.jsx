@@ -21,25 +21,29 @@ import { GeneralLogs, TaskLogs } from '../Dashboard/components/Logs'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { sizeOf } from '../../utility/common'
 import SchemaGraph from './SchemaGraph'
+import { useTheme } from '../../ThemeProvider'
 
 // ─── Sync badge (DataTable Sync column) ───────────────────────────────────────
+// Colours: [bg-light, fg-light, border-light, bg-dark, fg-dark, border-dark]
 const SYNC_META = {
-  OK:  { bg: '#EAF3DE', fg: '#27500A', border: '#C0DD97', label: 'OK',    title: 'In sync across all replicas' },
-  ER:  { bg: '#FCEBEB', fg: '#A32D2D', border: '#F7C1C1', label: 'ERROR', title: 'Checksum mismatch detected' },
-  NA:  { bg: '#F1EFE8', fg: '#5F5E5A', border: '#D3D1C7', label: 'N/A',   title: 'Cannot checksum: no unique key or process error' },
-  '': { bg: '#FAEEDA', fg: '#633806', border: '#FAC775', label: '—',     title: 'Not yet checksummed' },
+  OK:  { light: { bg: '#EAF3DE', fg: '#27500A', border: '#C0DD97' }, dark: { bg: '#1e3314', fg: '#7ec85e', border: '#3a6128' }, label: 'OK',    title: 'In sync across all replicas' },
+  ER:  { light: { bg: '#FCEBEB', fg: '#A32D2D', border: '#F7C1C1' }, dark: { bg: '#2d1414', fg: '#ef8080', border: '#6b2828' }, label: 'ERROR', title: 'Checksum mismatch detected' },
+  NA:  { light: { bg: '#F1EFE8', fg: '#5F5E5A', border: '#D3D1C7' }, dark: { bg: '#252528', fg: '#a0a09a', border: '#444448' }, label: 'N/A',   title: 'Cannot checksum: no unique key or process error' },
+  '': { light: { bg: '#FAEEDA', fg: '#633806', border: '#FAC775' }, dark: { bg: '#2e2214', fg: '#d4914a', border: '#6b4020' }, label: '—',     title: 'Not yet checksummed' },
 }
 
 function SyncBadge({ value }) {
-  const key  = (value || '').toUpperCase()
-  const meta = SYNC_META[key] || SYNC_META['']
+  const { theme } = useTheme()
+  const key    = (value || '').toUpperCase()
+  const meta   = SYNC_META[key] || SYNC_META['']
+  const colors = theme === 'dark' ? meta.dark : meta.light
   return (
     <Tooltip label={meta.title} hasArrow placement="top">
       <span style={{
         display: 'inline-flex', alignItems: 'center', gap: 4,
-        padding: '2px 8px', borderRadius: 5, fontSize: 11, fontWeight: 500,
-        background: meta.bg, color: meta.fg,
-        border: `1px solid ${meta.border}`,
+        padding: '2px 8px', borderRadius: 5, fontSize: 11, fontWeight: 600,
+        background: colors.bg, color: colors.fg,
+        border: `1px solid ${colors.border}`,
         whiteSpace: 'nowrap', cursor: 'default',
       }}>
         {key === 'OK' && <span style={{ fontSize: 9 }}>✓</span>}

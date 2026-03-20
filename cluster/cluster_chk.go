@@ -630,13 +630,18 @@ func (cluster *Cluster) RepairAllTableChecksum() {
 	}
 }
 
-func (cluster *Cluster) CheckAllTableChecksumSchema(name string) {
+func (cluster *Cluster) CheckAllTableChecksumSchema(name string) bool {
 	cluster.ChecksumCleanResult()
+	hasErrors := false
 	for _, t := range cluster.master.Tables {
+
 		if t.TableSchema == name {
-			cluster.CheckTableChecksum(t.TableSchema, t.TableName)
+			res:=cluster.CheckTableChecksum(t.TableSchema, t.TableName)
+			if res =="ER" {
+				asErrors:=true
 		}
 	}
+	return hasErrors
 }
 
 func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
@@ -855,6 +860,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 				allslavecheckok = false
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum table failed chunks %d %s.%s %s", chunk.ChunkId, schema, table, s.URL)
 				ts.TableChunksError = append(ts.TableChunksError, chunk)
+				s.IsDataDiverge = true
 			}
 		}
 		if !checkok {

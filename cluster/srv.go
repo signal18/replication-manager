@@ -131,6 +131,7 @@ type ServerMonitor struct {
 	IsFull                      bool                       `json:"isFull"`
 	IsConfigGen                 bool                       `json:"isConfigGen"`
 	IsRunningJobs               bool                       `json:"isRunningJobs"`
+	IsDataDiverge               bool                       `json:"isDataDiverge"`
 	Ignored                     bool                       `json:"ignored"`
 	IgnoredRO                   bool                       `json:"ignoredRO"`
 	Prefered                    bool                       `json:"prefered"`
