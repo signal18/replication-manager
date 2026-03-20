@@ -618,6 +618,7 @@ func (cluster *Cluster) CheckSendMail() {
 }
 
 func (cluster *Cluster) CheckAllTableChecksum() {
+	cluster.ChecksumCleanResult()
 	for _, t := range cluster.master.Tables {
 		cluster.CheckTableChecksum(t.TableSchema, t.TableName)
 	}
@@ -709,7 +710,6 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 		return "NA"
 	}
 	tm := cluster.master.DictTables.Get(schema + "." + table)
-	tm.TableSync = ""
 
 	//	var ftype string
 	for _, p := range pks {
@@ -948,11 +948,24 @@ func (cluster *Cluster) RepairTableChecksum(schema string, table string) {
 
 // ChecksumCleanResult cleanup all checksum result before re run checksum all table
 func (cluster *Cluster) ChecksumCleanResult() {
+	if cluster.ChecksumIsRunning() { 
+		return 
+	}	
 	for _, t := range cluster.master.Tables {
 			tm := cluster.master.DictTables.Get(t.TableSchema + "." + t.TableName)
-			tm.TableSync = ""
+			tm.TableSync = "WA"
 			cluster.master.DictTables.Set(t.TableSchema +"."+t.TableName, tm)
 	}
+}
+
+func (cluster *Cluster) ChecksumIsRunning() bool {
+	for _, t := range cluster.master.Tables {
+		tm := cluster.master.DictTables.Get(t.TableSchema + "." + t.TableName)
+		if tm.TableSync =="PR" || tm.TableSync == "WA"  { 
+			return true
+		}	
+	}
+	return false	
 }
 
 // CheckSameServerID Check against the servers that all server id are differents
