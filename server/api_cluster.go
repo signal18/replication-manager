@@ -2570,6 +2570,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchMonitoringSchemaColumns()
 	case "monitoring-schema-indexes":
 		mycluster.SwitchMonitoringSchemaIndexes()
+	case "monitoring-schema-scheduler":
+		mycluster.SwitchMonitoringSchemaScheduler()
+	case "monitoring-checksum-scheduler":
+		mycluster.SwitchMonitoringChecksumScheduler()
 	case "monitoring-schema-on-replicas":
 		mycluster.SwitchMonitoringSchemaOnReplicas()
 	case "monitoring-capture":
