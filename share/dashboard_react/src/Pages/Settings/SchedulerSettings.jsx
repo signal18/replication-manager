@@ -363,7 +363,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'monitoring-scheduler-scheduler-cron',
+                    setting: 'monitoring-checksum-scheduler-cron',
                     value: value
                   })
                 )
