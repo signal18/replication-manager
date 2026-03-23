@@ -862,18 +862,20 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 		// Empty the chunks in Errors
 		ts := s.DictTables.Get(schema + "." + table)
 		ts.TableChunksError=nil
+		var freshErrors []dbhelper.Chunk
 		for _, chunk := range masterChecksums {
 			if chunk.ChunkCheckSum != slaveChecksums[chunk.ChunkId].ChunkCheckSum {
 				checkok = false
 				allslavecheckok = false
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum table failed chunks %d %s.%s %s", chunk.ChunkId, schema, table, s.URL)
-				ts.TableChunksError = append(ts.TableChunksError, chunk)
+				freshErrors = append(freshErrors, chunk)
 				s.IsDataDiverge = true
 			}
 		}
 		if !checkok {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum table failed %s.%s %s", schema, table, s.URL)
 		}
+		ts.TableChunksError = freshErrors                  // atomic swap: either full new list or nil
 		s.DictTables.Set(schema+"."+table, ts)
 	} // End for each slave
 	if allslavecheckok {
