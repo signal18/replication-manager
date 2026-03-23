@@ -77,6 +77,50 @@ function SyncBadge({ value, chunksCount, chunksCurrent }) {
   )
 }
 
+function SizeBar({ pct }) {
+  const { theme } = useTheme()
+  const dark = theme === 'dark'
+  if (isNaN(pct) || pct == null) return null
+
+  const trackBg  = dark ? '#2a2a2e' : '#e9e7e0'
+  const fillBg   = dark ? '#7ab8ef' : '#1A55A3'
+  const textColor = dark ? '#c0bfba' : '#444441'
+
+  return (
+    <Tooltip label={`${pct.toFixed(2)}% of total size`} hasArrow placement='top'>
+      <span style={{
+        display:       'inline-flex',
+        flexDirection: 'column',
+        alignItems:    'flex-start',
+        gap:           3,
+        minWidth:      80,
+        cursor:        'default',
+      }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: textColor, lineHeight: 1 }}>
+          {pct.toFixed(2)}%
+        </span>
+        <span style={{
+          width:        '100%',
+          height:       5,
+          borderRadius: 3,
+          background:   trackBg,
+          overflow:     'hidden',
+          display:      'block',
+        }}>
+          <span style={{
+            display:      'block',
+            height:       '100%',
+            borderRadius: 3,
+            width:        `${Math.min(pct, 100)}%`,
+            background:   fillBg,
+            transition:   'width 0.3s ease',
+          }} />
+        </span>
+      </span>
+    </Tooltip>
+  )
+}
+
 // ─── Table cylinder icon (DataTable Name column) ──────────────────────────────
 function TableIcon({ color = '#718096', size = 14 }) {
   return (
@@ -432,17 +476,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
         header: '% Size',
         enableSorting: true,
         sortingFn: sizePctSorting,
-        cell: info => {
-          if (isNaN(info.getValue())) return ''
-          return (
-            <Gauge
-              className={styles.gauge}
-              minValue={0} maxValue={100}
-              value={info.getValue()}
-              width={100} height={50}
-            />
-          )
-        },
+        cell: info => <SizeBar pct={info.getValue()} />,
       }
     ),
   ], [handleChecksum, handleChecksumRepair, sizeTotalsInfo, sizePctSorting])
