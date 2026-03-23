@@ -666,7 +666,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 		return "NA"
 	}
 	if cluster.IsInSchemaTableList(cluster.Conf.MonitorChecksumIgnoreTables,schema , table ) {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum master table %s.%s, master not discovered", schema, table)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Ignore master table %s.%s found in Monitor-checksum-ignore-tables", schema, table)
 		t.TableSync = "NA"
 		cluster.master.DictTables.Set(schema+"."+table, t)
 		return "NA"
@@ -872,7 +872,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 			}
 		}
 		if !checkok {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum table succeed %s.%s %s", schema, table, s.URL)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum table failed %s.%s %s", schema, table, s.URL)
 		}
 		s.DictTables.Set(schema+"."+table, ts)
 	} // End for each slave

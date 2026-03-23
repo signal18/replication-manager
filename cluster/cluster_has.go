@@ -651,7 +651,7 @@ func (cluster *Cluster) IsInSchemaTableList(tablelist string, schema string, tab
 	if tablelist == "" {
 		return false
 	}
-	if strings.Contains(tablelist, table) {
+	if !strings.Contains(tablelist, table) {
 		return false
 	}
 	for _, pattern := range strings.Split(tablelist, ",") {
