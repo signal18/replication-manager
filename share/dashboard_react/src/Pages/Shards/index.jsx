@@ -400,17 +400,29 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
       header: 'Sync',
       enableSorting: true,
       cell: info => (
-  <SyncBadge
-    value={info.getValue()}
-    chunksCount={info.row.original.table_chunks_count}
-    chunksCurrent={info.row.original.table_chunks_current}
-  />
-),
+        <SyncBadge
+          value={info.getValue()}
+          chunksCount={info.row.original.table_chunks_count}
+          chunksCurrent={info.row.original.table_chunks_current}
+        />
+      ),
       sortingFn: (rowA, rowB) => {
-        const order = { ER: 0, PR: 1, '': 2, NA: 3, OK: 4 }
-        const a = (rowA.original.table_sync || '').toUpperCase()
-        const b = (rowB.original.table_sync || '').toUpperCase()
-        return (order[a] ?? 99) - (order[b] ?? 99)
+      const order = { PR: 0, ER: 1, '': 2, NA: 3, OK: 4 }
+      const a = (rowA.original.table_sync || '').toUpperCase()
+      const b = (rowB.original.table_sync || '').toUpperCase()
+      const diff = (order[a] ?? 99) - (order[b] ?? 99)
+      if (diff !== 0) return diff
+      // Both PR: sort by progress percentage descending (most advanced first)
+      if (a === 'PR' && b === 'PR') {
+      const countA = rowA.original.table_chunks_count   || 0
+      const currA  = rowA.original.table_chunks_current || 0
+      const countB = rowB.original.table_chunks_count   || 0
+      const currB  = rowB.original.table_chunks_current || 0
+      const pctA = countA > 0 ? currA / countA : 0
+      const pctB = countB > 0 ? currB / countB : 0
+      return pctB - pctA
+      }
+      return 0
       },
     }),
     columnHelper.accessor(
@@ -675,7 +687,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
           className={styles.table}
           enableSorting={true}
           lockSorting={true}
-          initialSorting={[{ id: 'sizePct', desc: true }]}
+          initialSorting={[{ id: 'syncStatus', desc: false }]}
         />
       )}
 

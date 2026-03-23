@@ -190,9 +190,28 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize 
       columnHelper.accessor((row) => row.index_length, {
         header: 'Index'
       }),
+      // Update the syncStatus column accessor to add sortingFn:
       columnHelper.accessor((row) => row.table_sync, {
         id: 'syncStatus',
         header: 'Sync',
+        enableSorting: true,
+        sortingFn: (rowA, rowB) => {
+          const order = { PR: 0, ER: 1, '': 2, NA: 3, OK: 4 }
+          const a = (rowA.original.table_sync || '').toUpperCase()
+          const b = (rowB.original.table_sync || '').toUpperCase()
+          const diff = (order[a] ?? 99) - (order[b] ?? 99)
+          if (diff !== 0) return diff
+          if (a === 'PR' && b === 'PR') {
+            const countA = rowA.original.table_chunks_count   || 0
+            const currA  = rowA.original.table_chunks_current || 0
+            const countB = rowB.original.table_chunks_count   || 0
+            const currB  = rowB.original.table_chunks_current || 0
+            const pctA = countA > 0 ? currA / countA : 0
+            const pctB = countB > 0 ? currB / countB : 0
+            return pctB - pctA
+          }
+          return 0
+        },
         cell: (info) => {
           const val = (info.getValue() || '').toUpperCase()
           const count   = info.row.original.table_chunks_count   || 0
@@ -304,7 +323,18 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize 
         </HStack>
       </Flex>
       <Box className={styles.tableContainer}>
-        <DataTable key="tables" data={data} columns={columns} className={styles.table} initialGrouping={groupColumns} enableGrouping={true} enableExpanding={true} columnVisibility={{ "table_schema": false, groupHeader: false }} />
+      <DataTable
+        key="tables"
+        data={data}
+        columns={columns}
+        className={styles.table}
+        initialGrouping={groupColumns}
+        enableGrouping={true}
+        enableExpanding={true}
+        enableSorting={true}
+        initialSorting={[{ id: 'syncStatus', desc: false }]}
+        columnVisibility={{ "table_schema": false, groupHeader: false }}
+      />
         {isConfirmModalOpen && (
           <ConfirmModal
             isOpen={isConfirmModalOpen}
