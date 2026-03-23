@@ -646,3 +646,22 @@ func (cluster *Cluster) IsInSchemaIgnore(table string) bool {
 
 	return false
 }
+
+func (cluster *Cluster) IsInSchemaTableList(tablelist string, schema string, table string) bool {
+	if tablelist == "" {
+		return false
+	}
+	if strings.Contains(tablelist, table) {
+		return false
+	}
+	for _, pattern := range strings.Split(tablelist, ",") {
+
+		lschema := strings.TrimSpace(strings.Split(pattern, ".")[0])
+		ltable := strings.TrimSpace(strings.Split(pattern, ".")[1])
+		if table == ltable && schema == lschema {
+			return true
+		}
+	}
+
+	return false
+}

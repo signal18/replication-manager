@@ -665,7 +665,12 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 		cluster.master.DictTables.Set(schema+"."+table, t)
 		return "NA"
 	}
-
+	if cluster.IsInSchemaTableList(cluster.Conf.MonitorChecksumIgnoreTables,schema , table ) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum master table %s.%s, master not discovered", schema, table)
+		t.TableSync = "NA"
+		cluster.master.DictTables.Set(schema+"."+table, t)
+		return "NA"
+	}
 	Conn, err := master.GetNewDBConn()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error connection in exec query no log %s", err)

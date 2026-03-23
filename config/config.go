@@ -92,6 +92,7 @@ type Config struct {
 	MonitorSchemaScanTimeout                  int    `mapstructure:"monitoring-schema-scan-timeout" toml:"monitoring-schema-scan-timeout" json:"monitoringSchemaScanTimeout"`
 	MonitorChecksumScheduler                  bool   `mapstructure:"monitoring-checksum-scheduler" toml:"monitoring-checksum-scheduler" json:"monitoringChecksumScheduler"`
 	MonitorChecksumSchedulerCron              string `mapstructure:"monitoring-checksum-scheduler-cron" toml:"monitoring-checksum-scheduler-cron" json:"monitoringChecksumSchedulerCron"`
+	MonitorChecksumIgnoreTables               string `mapstructure:"monitoring-checksum-ignore-tables" toml:"monitoring-checksum-ingore-tables" json:"monitoringChecksumIngoreTables"`
 	MonitorQueryRules                         bool   `mapstructure:"monitoring-query-rules" toml:"monitoring-query-rules" json:"monitoringQueryRules"`
 	MonitorSchemaChangeScript                 string `mapstructure:"monitoring-schema-change-script" toml:"monitoring-schema-change-script" json:"monitoringSchemaChangeScript"`
 	MonitorCheckGrants                        bool   `mapstructure:"monitoring-check-grants" toml:"monitoring-check-grants" json:"monitoringCheckGrants"`
