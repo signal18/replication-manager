@@ -204,5 +204,5 @@ func (cluster *Cluster) SetSchedulerMonitorSchema() {
 }
 
 func (cluster *Cluster) SetSchedulerMonitorChecksum() {
-	cluster.SetScheduler(cluster.Conf.MonitorChecksumScheduler, "monitorschema", cluster.Conf.MonitorChecksumSchedulerCron, cluster.GetMonitorChecksumFunction())
+	cluster.SetScheduler(cluster.Conf.MonitorChecksumScheduler, "monitorchecksum", cluster.Conf.MonitorChecksumSchedulerCron, cluster.GetMonitorChecksumFunction())
 }
