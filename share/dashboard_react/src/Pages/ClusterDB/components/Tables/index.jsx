@@ -190,22 +190,41 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize 
       columnHelper.accessor((row) => row.index_length, {
         header: 'Index'
       }),
+      columnHelper.accessor((row) => row.table_sync, {
+        id: 'syncStatus',
+        header: 'Sync',
+        cell: (info) => {
+          const val = (info.getValue() || '').toUpperCase()
+          const count   = info.row.original.table_chunks_count   || 0
+          const current = info.row.original.table_chunks_current || 0
+          const pct = val === 'PR' && count > 0 ? Math.round((current / count) * 100) : null
+          const color = val === 'OK' ? '#27500A' : val === 'ER' ? '#A32D2D' : val === 'PR' ? '#1A55A3' : '#5F5E5A'
+          const bg    = val === 'OK' ? '#EAF3DE' : val === 'ER' ? '#FCEBEB' : val === 'PR' ? '#EBF4FF' : '#F1EFE8'
+          const label = val === 'OK' ? '✓ OK' : val === 'ER' ? '✕ ERROR' : val === 'PR' ? `↻ ${pct ?? 0}%` : val === 'NA' ? '⊘ N/A' : '—'
+          return (
+            <span style={{
+              display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+              padding: '2px 8px', borderRadius: 5, fontSize: 11, fontWeight: 600,
+              background: bg, color: color, whiteSpace: 'nowrap',
+              minWidth: pct !== null ? 70 : undefined,
+            }}>
+              {label}
+              {pct !== null && (
+                <span style={{ width: '100%', height: 4, borderRadius: 2, background: '#c3def9', overflow: 'hidden' }}>
+                  <span style={{ display: 'block', height: '100%', width: `${pct}%`, borderRadius: 2, background: '#1A55A3', transition: 'width 0.3s ease' }} />
+                </span>
+              )}
+            </span>
+          )
+        }
+      }),
       columnHelper.accessor((row) => getTablePct(row.data_length, row.index_length, tableSize), {
         header: '%',
         cell: (info) => {
           if (isNaN(info.getValue())) {
             return ''
           }
-          return (
-            <Gauge
-              className={styles.gauge}
-              minValue={0}
-              maxValue={100}
-              value={info.getValue()}
-              width={210}
-              height={90}
-            />
-          )
+          return ( info.getValue())
         }
       }),
       {

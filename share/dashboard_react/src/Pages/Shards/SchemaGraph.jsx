@@ -78,6 +78,7 @@ const SYNC = {
   OK:  ['#EAF3DE','#27500A','#C0DD97','#1e3314','#7ec85e','#3a6128'],
   ER:  ['#FCEBEB','#A32D2D','#F7C1C1','#2d1414','#e07070','#6b2828'],
   NA:  ['#F1EFE8','#5F5E5A','#D3D1C7','#222228','#8a8882','#444448'],
+  PR:  ['#EBF4FF','#1A55A3','#90C3F7','#0d1e38','#7ab8ef','#1e4a80'],
   '': ['#FAEEDA','#633806','#FAC775','#2e2214','#d4914a','#6b4020'],
 }
 
@@ -100,8 +101,8 @@ function syncMeta(value, dark) {
     bg:    c[0 + off],
     fg:    c[1 + off],
     bd:    c[2 + off],
-    icon:  k === 'OK' ? '✓' : k === 'ER' ? '✕' : k === 'NA' ? '⊘' : '○',
-    label: k === 'OK' ? 'OK' : k === 'ER' ? 'ERROR' : k === 'NA' ? 'N/A' : '—',
+    icon:  k === 'OK' ? '✓' : k === 'ER' ? '✕' : k === 'NA' ? '⊘' : k === 'PR' ? '↻' : '○',
+    label: k === 'OK' ? 'OK' : k === 'ER' ? 'ERROR' : k === 'NA' ? 'N/A' : k === 'PR' ? 'IN PROGRESS' : '—',
   }
 }
 

@@ -29,28 +29,49 @@ const SYNC_META = {
   OK:  { light: { bg: '#EAF3DE', fg: '#27500A', border: '#C0DD97' }, dark: { bg: '#1e3314', fg: '#7ec85e', border: '#3a6128' }, label: 'OK',    title: 'In sync across all replicas' },
   ER:  { light: { bg: '#FCEBEB', fg: '#A32D2D', border: '#F7C1C1' }, dark: { bg: '#2d1414', fg: '#ef8080', border: '#6b2828' }, label: 'ERROR', title: 'Checksum mismatch detected' },
   NA:  { light: { bg: '#F1EFE8', fg: '#5F5E5A', border: '#D3D1C7' }, dark: { bg: '#252528', fg: '#a0a09a', border: '#444448' }, label: 'N/A',   title: 'Cannot checksum: no unique key or process error' },
+  PR:  { light: { bg: '#EBF4FF', fg: '#1A55A3', border: '#90C3F7' }, dark: { bg: '#0d1e38', fg: '#7ab8ef', border: '#1e4a80' }, label: 'IN PROGRESS', title: 'Checksum in progress' },
   '': { light: { bg: '#FAEEDA', fg: '#633806', border: '#FAC775' }, dark: { bg: '#2e2214', fg: '#d4914a', border: '#6b4020' }, label: '—',     title: 'Not yet checksummed' },
 }
 
-function SyncBadge({ value }) {
+function SyncBadge({ value, chunksCount, chunksCurrent }) {
   const { theme } = useTheme()
   const key    = (value || '').toUpperCase()
   const meta   = SYNC_META[key] || SYNC_META['']
   const colors = theme === 'dark' ? meta.dark : meta.light
+  const pct    = key === 'PR' && chunksCount > 0 ? Math.round((chunksCurrent / chunksCount) * 100) : null
+
   return (
-    <Tooltip label={meta.title} hasArrow placement="top">
+    <Tooltip label={pct !== null ? `${chunksCurrent} / ${chunksCount} chunks` : meta.title} hasArrow placement="top">
       <span style={{
         display: 'inline-flex', alignItems: 'center', gap: 4,
         padding: '2px 8px', borderRadius: 5, fontSize: 11, fontWeight: 600,
         background: colors.bg, color: colors.fg,
         border: `1px solid ${colors.border}`,
         whiteSpace: 'nowrap', cursor: 'default',
+        flexDirection: 'column', minWidth: pct !== null ? 80 : undefined,
       }}>
-        {key === 'OK' && <span style={{ fontSize: 9 }}>✓</span>}
-        {key === 'ER' && <span style={{ fontSize: 9 }}>✕</span>}
-        {key === 'NA' && <span style={{ fontSize: 9 }}>⊘</span>}
-        {!key         && <span style={{ fontSize: 9 }}>○</span>}
-        {meta.label}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          {key === 'OK' && <span style={{ fontSize: 9 }}>✓</span>}
+          {key === 'ER' && <span style={{ fontSize: 9 }}>✕</span>}
+          {key === 'NA' && <span style={{ fontSize: 9 }}>⊘</span>}
+          {key === 'PR' && <span style={{ fontSize: 9 }}>↻</span>}
+          {!key         && <span style={{ fontSize: 9 }}>○</span>}
+          {pct !== null ? `${meta.label} ${pct}%` : meta.label}
+        </span>
+        {pct !== null && (
+          <span style={{
+            width: '100%', height: 4, borderRadius: 2,
+            background: theme === 'dark' ? '#1e4a80' : '#c3def9',
+            overflow: 'hidden', display: 'block',
+          }}>
+            <span style={{
+              display: 'block', height: '100%', borderRadius: 2,
+              width: `${pct}%`,
+              background: theme === 'dark' ? '#7ab8ef' : '#1A55A3',
+              transition: 'width 0.3s ease',
+            }} />
+          </span>
+        )}
       </span>
     </Tooltip>
   )
@@ -378,9 +399,15 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
       id: 'syncStatus',
       header: 'Sync',
       enableSorting: true,
-      cell: info => <SyncBadge value={info.getValue()} />,
+      cell: info => (
+  <SyncBadge
+    value={info.getValue()}
+    chunksCount={info.row.original.table_chunks_count}
+    chunksCurrent={info.row.original.table_chunks_current}
+  />
+),
       sortingFn: (rowA, rowB) => {
-        const order = { ER: 0, '': 1, NA: 2, OK: 3 }
+        const order = { ER: 0, PR: 1, '': 2, NA: 3, OK: 4 }
         const a = (rowA.original.table_sync || '').toUpperCase()
         const b = (rowB.original.table_sync || '').toUpperCase()
         return (order[a] ?? 99) - (order[b] ?? 99)
