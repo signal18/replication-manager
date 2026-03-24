@@ -1653,11 +1653,12 @@ func (server *ServerMonitor) Capture(cstate *state.CapturedState) error {
 
 func (server *ServerMonitor) SaveInfos() error {
 	type Save struct {
-		Variables             map[string]string      `json:"variables"`
-		ProcessList           []dbhelper.Processlist `json:"processlist"`
-		Status                map[string]string      `json:"status"`
-		SlaveStatus           []dbhelper.SlaveStatus `json:"slavestatus"`
-		MaxSlowQueryTimestamp int64                  `json:"maxSlowQueryTimestamp"`
+		Variables             map[string]string          `json:"variables"`
+		ProcessList           []dbhelper.Processlist     `json:"processlist"`
+		Status                map[string]string          `json:"status"`
+		SlaveStatus           []dbhelper.SlaveStatus     `json:"slavestatus"`
+		MaxSlowQueryTimestamp int64                      `json:"maxSlowQueryTimestamp"`
+		DictTables            map[string]*dbhelper.Table `json:"dictTables,omitempty"`
 	}
 	var clsave Save
 	clsave.Variables = server.SensitiveVariables.ToNewMap()
@@ -1665,6 +1666,9 @@ func (server *ServerMonitor) SaveInfos() error {
 	clsave.ProcessList = server.FullProcessList
 	clsave.SlaveStatus = server.LastSeenReplications
 	clsave.MaxSlowQueryTimestamp = server.MaxSlowQueryTimestamp
+	if server.DictTables != nil {
+		clsave.DictTables = server.DictTables.ToNewMap()
+	}
 	saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
 	err := os.WriteFile(server.Datadir+"/serverstate.json", saveJSON, 0644)
 	if err != nil {
@@ -1676,11 +1680,12 @@ func (server *ServerMonitor) SaveInfos() error {
 func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 	cluster := server.ClusterGroup
 	type Save struct {
-		Variables             map[string]string      `json:"variables"`
-		ProcessList           []dbhelper.Processlist `json:"processlist"`
-		Status                map[string]string      `json:"status"`
-		SlaveStatus           []dbhelper.SlaveStatus `json:"slavestatus"`
-		MaxSlowQueryTimestamp int64                  `json:"maxSlowQueryTimestamp"`
+		Variables             map[string]string          `json:"variables"`
+		ProcessList           []dbhelper.Processlist     `json:"processlist"`
+		Status                map[string]string          `json:"status"`
+		SlaveStatus           []dbhelper.SlaveStatus     `json:"slavestatus"`
+		MaxSlowQueryTimestamp int64                      `json:"maxSlowQueryTimestamp"`
+		DictTables            map[string]*dbhelper.Table `json:"dictTables,omitempty"`
 	}
 
 	var clsave Save
@@ -1700,6 +1705,19 @@ func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 	server.SensitiveVariables = config.FromNormalStringMap(server.SensitiveVariables, clsave.Variables)
 	server.VariablesMap.SetRuntimeValues(clsave.Variables)
 	server.MaxSlowQueryTimestamp = clsave.MaxSlowQueryTimestamp
+	// Restore table dictionary — provides schema metadata immediately on
+	// restart before the first MonitorSchema cycle runs, and preserves
+	// checksum state (TableSync, TableChunksError) across restarts.
+	if len(clsave.DictTables) > 0 {
+		if server.DictTables == nil {
+			server.DictTables = dbhelper.NewTablesMap()
+		}
+		for k, v := range clsave.DictTables {
+			server.DictTables.Set(k, v)
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Restored %d table definitions from cache for server %s", len(clsave.DictTables), server.URL)
+	}
 	return nil
 }
 
