@@ -819,6 +819,7 @@ func (server *ServerMonitor) SetDataDiverge() {
 		td := server.DictTables.Get(t.TableSchema + "." + t.TableName)
 		if len(td.TableChunksError) > 0 {
 			server.IsDataDiverge = true
+			return
 		}
 	}
 	server.IsDataDiverge = false
