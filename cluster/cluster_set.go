@@ -1659,6 +1659,12 @@ func (cluster *Cluster) SetMonitoringSchemaSchedulerCron(value string) error {
 	return nil
 }
 
+func (cluster *Cluster) SetMonitoringChecksumSchedulerCron(value string) error {
+	cluster.Conf.MonitorChecksumSchedulerCron = value
+	cluster.SetSchedulerMonitorChecksum()
+	return nil
+}
+
 func (cluster *Cluster) SetMonitoringSchemaIgnoreTables(value string) error {
 	if value == "&nbsp;" {
 		value = ""

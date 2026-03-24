@@ -54,6 +54,17 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
       )
     },
     {
+      key: 'Failover enable on divergent data',
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch settings for failover-divergent-data?'}
+          onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'failover-divergent-data' }))}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.failoverDivergentData}
+        />
+      )
+    },
+    {
       key: 'Failover unsafe first slave',
       value: (
         <RMSwitch

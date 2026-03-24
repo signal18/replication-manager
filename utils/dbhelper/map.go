@@ -342,10 +342,24 @@ func FromNormalTablesMap(m *TablesMap, c map[string]*Table) *TablesMap {
 	if m == nil {
 		m = NewTablesMap()
 	} else {
-		m.Clear()
+		// Remove keys that no longer exist in the new schema scan
+		m.Range(func(k any, v any) bool {
+			if _, exists := c[k.(string)]; !exists {
+				m.Delete(k)
+			}
+			return true
+		})
 	}
 
 	for k, v := range c {
+		// Preserve checksum runtime state from the existing entry
+		if existing, ok := m.Load(k); ok {
+			old := existing.(*Table)
+			v.TableSync = old.TableSync
+			v.TableChunksError = old.TableChunksError
+			v.TableChunksCount = old.TableChunksCount
+			v.TableChunksCurrent = old.TableChunksCurrent
+		}
 		m.Store(k, v)
 	}
 

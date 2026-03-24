@@ -809,3 +809,18 @@ func (server *ServerMonitor) ReleaseJobLock() {
 	defer server.jobMutex.Unlock()
 	server.IsRunningJobs = false
 }
+
+func (server *ServerMonitor) SetDataDiverge() {
+	if !server.GetCluster().Conf.MonitorChecksumScheduler {
+		server.IsDataDiverge = false
+		return
+	}
+	for _, t := range server.Tables {
+		td := server.DictTables.Get(t.TableSchema + "." + t.TableName)
+		if len(td.TableChunksError) > 0 {
+			server.IsDataDiverge = true
+			return
+		}
+	}
+	server.IsDataDiverge = false
+}

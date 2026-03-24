@@ -109,7 +109,7 @@ func GetTableChecksumResult(db *sqlx.DB) (map[uint64]Chunk, string, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var v Chunk
-		err = rows.Scan(&v.ChunkId,&v.ChunkRangeCondition,  &v.ChunkCheckSum)
+		err = rows.Scan(&v.ChunkId, &v.ChunkRangeCondition, &v.ChunkCheckSum)
 		if err != nil {
 			return vars, query, err
 		}
@@ -175,6 +175,20 @@ func GetTables(db *sqlx.DB, myver *version.Version, getColumns, getIndexes bool,
 		t.HashTableCrc(crc64Table)
 	}
 
+	// ── Graph links ──────────────────────────────────────────────────────
+	// Runs after hashing so TableIndexMap is fully built on every table.
+	// loadFKLinks issues one SQL query; loadColumnMatchLinks is in-memory.
+
+	qlog, err = loadFKLinks(conn, myver, tablemap, timeout)
+	appendLog(&logBuilder, qlog)
+	if err != nil {
+		// Non-fatal: log and continue; graph edges will be absent.
+		logBuilder.WriteString(fmt.Sprintf(" -- loadFKLinks error: %v", err))
+	}
+	loadColumnMatchLinks(tablemap)
+	computeSizeWeights(tables)
+	// ── end graph links
+
 	if !getColumns {
 		for i := range tables {
 			t := &tables[i]
@@ -217,6 +231,10 @@ func applyInformationSchemaStatsExpiry(ext schemaExecutor, myver *version.Versio
 	if myver.IsPostgreSQL() {
 		return ""
 	}
+	if myver.IsMariaDB() {
+		return ""
+	}
+
 	query := "SET SESSION information_schema_stats_expiry = 0"
 	ctx, cancel := scanContext(timeout)
 	defer cancel()
@@ -1145,4 +1163,340 @@ func CreateChunkTable(conn *sqlx.DB, schema, table string, pks []string, chunkSi
 	_, err = conn.Exec(`ALTER TABLE replication_manager_schema.table_chunk ADD PRIMARY KEY (chunkId)`)
 
 	return query, err
+}
+
+type fkLinkRow struct {
+	ChildSchema    string
+	ChildTable     string
+	ParentSchema   string
+	ParentTable    string
+	ChildCols      string // comma-separated, GROUP_CONCAT ordered by ORDINAL_POSITION
+	ParentCols     string
+	ConstraintName string
+	FKColCount     int
+	ChildPKCols    int
+	ChildFKCount   int
+	ChildExtraCols int
+}
+
+// fkLinksQuery returns the SQL that fetches every explicit FK in one round-trip.
+// Mirrors the schema exclusion list used by tablesQueryAll().
+const fkLinksQueryMySQL = `
+SELECT
+    fk.TABLE_SCHEMA,
+    fk.TABLE_NAME,
+    fk.REFERENCED_TABLE_SCHEMA,
+    fk.REFERENCED_TABLE_NAME,
+    GROUP_CONCAT(fk.COLUMN_NAME
+                 ORDER BY fk.ORDINAL_POSITION SEPARATOR ',') AS child_cols,
+    GROUP_CONCAT(fk.REFERENCED_COLUMN_NAME
+                 ORDER BY fk.ORDINAL_POSITION SEPARATOR ',') AS parent_cols,
+    fk.CONSTRAINT_NAME,
+    COUNT(fk.COLUMN_NAME) AS fk_col_count,
+
+    /* child PK column count */
+    (SELECT COUNT(*)
+     FROM information_schema.KEY_COLUMN_USAGE kc2
+     JOIN information_schema.TABLE_CONSTRAINTS tc2
+       ON  tc2.CONSTRAINT_NAME = kc2.CONSTRAINT_NAME
+       AND tc2.TABLE_SCHEMA    = kc2.TABLE_SCHEMA
+       AND tc2.TABLE_NAME      = kc2.TABLE_NAME
+     WHERE tc2.CONSTRAINT_TYPE = 'PRIMARY KEY'
+       AND kc2.TABLE_SCHEMA    = fk.TABLE_SCHEMA
+       AND kc2.TABLE_NAME      = fk.TABLE_NAME
+    ) AS child_pk_cols,
+
+    /* total FK constraints on child (N-N junction detection) */
+    (SELECT COUNT(DISTINCT fk2.CONSTRAINT_NAME)
+     FROM information_schema.KEY_COLUMN_USAGE fk2
+     JOIN information_schema.TABLE_CONSTRAINTS tc3
+       ON  tc3.CONSTRAINT_NAME = fk2.CONSTRAINT_NAME
+       AND tc3.TABLE_SCHEMA    = fk2.TABLE_SCHEMA
+       AND tc3.TABLE_NAME      = fk2.TABLE_NAME
+     WHERE tc3.CONSTRAINT_TYPE       = 'FOREIGN KEY'
+       AND fk2.REFERENCED_TABLE_NAME IS NOT NULL
+       AND fk2.TABLE_SCHEMA          = fk.TABLE_SCHEMA
+       AND fk2.TABLE_NAME            = fk.TABLE_NAME
+    ) AS child_fk_count,
+
+    /* non-PK, non-FK payload columns (0 → pure junction table) */
+    (SELECT COUNT(c.COLUMN_NAME)
+     FROM information_schema.COLUMNS c
+     WHERE c.TABLE_SCHEMA = fk.TABLE_SCHEMA
+       AND c.TABLE_NAME   = fk.TABLE_NAME
+       AND c.COLUMN_NAME NOT IN (
+           SELECT kc3.COLUMN_NAME
+           FROM   information_schema.KEY_COLUMN_USAGE kc3
+           JOIN   information_schema.TABLE_CONSTRAINTS tc4
+             ON   tc4.CONSTRAINT_NAME = kc3.CONSTRAINT_NAME
+             AND  tc4.TABLE_SCHEMA    = kc3.TABLE_SCHEMA
+             AND  tc4.TABLE_NAME      = kc3.TABLE_NAME
+           WHERE  tc4.CONSTRAINT_TYPE IN ('PRIMARY KEY','FOREIGN KEY')
+             AND  kc3.TABLE_SCHEMA = fk.TABLE_SCHEMA
+             AND  kc3.TABLE_NAME   = fk.TABLE_NAME
+       )
+    ) AS child_extra_cols
+
+FROM information_schema.KEY_COLUMN_USAGE  fk
+JOIN information_schema.TABLE_CONSTRAINTS tc
+  ON  tc.CONSTRAINT_NAME = fk.CONSTRAINT_NAME
+  AND tc.TABLE_SCHEMA    = fk.TABLE_SCHEMA
+  AND tc.TABLE_NAME      = fk.TABLE_NAME
+WHERE tc.CONSTRAINT_TYPE          = 'FOREIGN KEY'
+  AND fk.REFERENCED_TABLE_NAME   IS NOT NULL
+  AND fk.TABLE_SCHEMA NOT IN ('information_schema','mysql','performance_schema','sys')
+  AND fk.TABLE_SCHEMA NOT LIKE '#%'
+GROUP BY
+    fk.TABLE_SCHEMA, fk.TABLE_NAME,
+    fk.REFERENCED_TABLE_SCHEMA, fk.REFERENCED_TABLE_NAME,
+    fk.CONSTRAINT_NAME
+ORDER BY fk.TABLE_SCHEMA, fk.TABLE_NAME, fk.CONSTRAINT_NAME
+`
+
+// loadFKLinks queries information_schema for explicit FK constraints and
+// attaches TableLink entries to both sides of every FK pair found in tablemap.
+// Tables outside tablemap (different schema, filtered out) are skipped silently.
+// Returns the query string for the log builder, matching the existing convention.
+func loadFKLinks(ext schemaExecutor, myver *version.Version, tablemap map[string]*Table, timeout time.Duration) (string, error) {
+	if myver.IsPostgreSQL() {
+		return "", nil // PostgreSQL FK discovery is a separate concern
+	}
+
+	query := fkLinksQueryMySQL
+	ctx, cancel := scanContext(timeout)
+	defer cancel()
+
+	rows, err := ext.QueryxContext(ctx, query)
+	if err != nil {
+		return query, fmt.Errorf("loadFKLinks: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var r fkLinkRow
+		if err := rows.Scan(
+			&r.ChildSchema, &r.ChildTable,
+			&r.ParentSchema, &r.ParentTable,
+			&r.ChildCols, &r.ParentCols,
+			&r.ConstraintName,
+			&r.FKColCount, &r.ChildPKCols, &r.ChildFKCount, &r.ChildExtraCols,
+		); err != nil {
+			return query, fmt.Errorf("loadFKLinks scan: %w", err)
+		}
+
+		card := fkCardinality(r.FKColCount, r.ChildPKCols, r.ChildFKCount, r.ChildExtraCols)
+		childCols := splitCSV(r.ChildCols)
+		parentCols := splitCSV(r.ParentCols)
+
+		childKey := r.ChildSchema + "." + r.ChildTable
+		parentKey := r.ParentSchema + "." + r.ParentTable
+
+		// Attach to child table: this table references the parent.
+		if child, ok := tablemap[childKey]; ok {
+			child.TableParents = append(child.TableParents, TableLink{
+				LinkedSchema:  r.ParentSchema,
+				LinkedTable:   r.ParentTable,
+				LocalColumns:  childCols,
+				RemoteColumns: parentCols,
+				RelationName:  r.ConstraintName,
+				Source:        RelationForeignKey,
+				Cardinality:   card,
+			})
+		}
+
+		// Attach to parent table: it is referenced by the child.
+		if parent, ok := tablemap[parentKey]; ok {
+			parent.TableChildren = append(parent.TableChildren, TableLink{
+				LinkedSchema:  r.ChildSchema,
+				LinkedTable:   r.ChildTable,
+				LocalColumns:  parentCols,
+				RemoteColumns: childCols,
+				RelationName:  r.ConstraintName,
+				Source:        RelationForeignKey,
+				Cardinality:   card,
+			})
+		}
+	}
+	return query, rows.Err()
+}
+
+// loadColumnMatchLinks detects implicit FK-like relationships purely from the
+// already-loaded tablemap — zero additional SQL queries.
+//
+// A link is emitted when:
+//   - Two different tables in the same schema share a column name, AND
+//   - That column participates in a PRIMARY KEY or UNIQUE index on one of them
+//     (that table becomes the "parent"), AND
+//   - No explicit FK link already exists between the pair (avoids duplication).
+func loadColumnMatchLinks(tablemap map[string]*Table) {
+	// Build: (schema, colName) → tables where that column is in a PK/UQ index.
+	type tkey struct{ schema, table string }
+	pkOwners := make(map[string][]tkey) // key = schema+"\x00"+colName
+
+	for key, t := range tablemap {
+		_ = key
+		for _, idx := range t.TableIndexes {
+			if !idx.Unique {
+				continue
+			}
+			for _, c := range idx.Columns {
+				k := t.TableSchema + "\x00" + c.Name
+				pkOwners[k] = append(pkOwners[k], tkey{t.TableSchema, t.TableName})
+			}
+		}
+	}
+
+	for _, child := range tablemap {
+		// Collect tables already linked as explicit FK parents to avoid dupes.
+		explicitParents := make(map[string]bool, len(child.TableParents))
+		for _, lk := range child.TableParents {
+			explicitParents[lk.LinkedSchema+"."+lk.LinkedTable] = true
+		}
+
+		// Child PK column count for cardinality.
+		childPKCols := 0
+		for _, idx := range child.TableIndexes {
+			if idx.Name == "PRIMARY" {
+				childPKCols = len(idx.Columns)
+				break
+			}
+		}
+
+		// Payload columns (non-indexed) for N-N detection.
+		indexedCols := make(map[string]bool)
+		for _, idx := range child.TableIndexes {
+			for _, c := range idx.Columns {
+				indexedCols[c.Name] = true
+			}
+		}
+		extraCols := 0
+		for _, c := range child.TableColumns {
+			if !indexedCols[c.Name] {
+				extraCols++
+			}
+		}
+
+		// Approximate FK count from already-attached parent links.
+		childFKCount := len(child.TableParents)
+
+		for _, col := range child.TableColumns {
+			k := child.TableSchema + "\x00" + col.Name
+			owners, ok := pkOwners[k]
+			if !ok {
+				continue
+			}
+			for _, owner := range owners {
+				if owner.table == child.TableName {
+					continue // self
+				}
+				parentKey := owner.schema + "." + owner.table
+				if explicitParents[parentKey] {
+					continue // already covered by a real FK
+				}
+
+				parent, ok := tablemap[parentKey]
+				if !ok {
+					continue
+				}
+
+				// Find the full index column list on the parent side.
+				parentCols := parentIndexColsFor(parent, col.Name)
+				if len(parentCols) == 0 {
+					continue
+				}
+
+				card := fkCardinality(1, childPKCols, childFKCount, extraCols)
+				relName := "implicit_" + child.TableName + "_" + parent.TableName
+
+				child.TableParents = append(child.TableParents, TableLink{
+					LinkedSchema:  parent.TableSchema,
+					LinkedTable:   parent.TableName,
+					LocalColumns:  []string{col.Name},
+					RemoteColumns: parentCols,
+					RelationName:  relName,
+					Source:        RelationColumnNameMatch,
+					Cardinality:   card,
+				})
+				parent.TableChildren = append(parent.TableChildren, TableLink{
+					LinkedSchema:  child.TableSchema,
+					LinkedTable:   child.TableName,
+					LocalColumns:  parentCols,
+					RemoteColumns: []string{col.Name},
+					RelationName:  relName,
+					Source:        RelationColumnNameMatch,
+					Cardinality:   card,
+				})
+
+				// Mark to prevent a second match on the same pair.
+				explicitParents[parentKey] = true
+				childFKCount++
+			}
+		}
+	}
+}
+
+// computeSizeWeights sets SizeWeightPct on every table as a fraction of the
+// total (data + index) bytes within its schema bucket.
+// Called once after both link passes so all tables are in their final state.
+func computeSizeWeights(tables []Table) {
+	schemaTotal := make(map[string]int64, 4)
+	for i := range tables {
+		schemaTotal[tables[i].TableSchema] += tables[i].DataLength + tables[i].IndexLength
+	}
+	for i := range tables {
+		total := schemaTotal[tables[i].TableSchema]
+		if total > 0 {
+			tables[i].SizeWeightPct = float64(tables[i].DataLength+tables[i].IndexLength) /
+				float64(total) * 100.0
+		}
+	}
+}
+
+// ── Small private utilities ───────────────────────────────────────────────────
+
+// fkCardinality applies the three-rule heuristic.
+//
+//	N-N : child has ≥2 FK constraints AND zero payload columns (junction table)
+//	1-1 : every FK column is also part of the child's own PK
+//	1-N : default
+func fkCardinality(fkCols, childPKCols, childFKCount, childExtraCols int) Cardinality {
+	if childFKCount >= 2 && childExtraCols == 0 {
+		return CardinalityManyToMany
+	}
+	if fkCols > 0 && fkCols == childPKCols {
+		return CardinalityOneToOne
+	}
+	return CardinalityOneToMany
+}
+
+// splitCSV splits a GROUP_CONCAT comma-separated list into a trimmed slice.
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
+}
+
+// parentIndexColsFor returns the full column list of the first PK/UNIQUE index
+// on t that contains colName, or nil if no such index exists.
+func parentIndexColsFor(t *Table, colName string) []string {
+	for _, idx := range t.TableIndexes {
+		if !idx.Unique {
+			continue
+		}
+		for _, c := range idx.Columns {
+			if c.Name == colName {
+				out := make([]string, len(idx.Columns))
+				for i, ic := range idx.Columns {
+					out[i] = ic.Name
+				}
+				return out
+			}
+		}
+	}
+	return nil
 }

@@ -127,28 +127,40 @@ type Index struct {
 
 // Table represents a database table with metadata
 type Table struct {
-	TableSchema       string             `protobuf:"bytes,1,opt,name=table_schema,json=tableSchema,proto3" json:"table_schema,omitempty"`
-	TableName         string             `protobuf:"bytes,2,opt,name=table_name,json=tableName,proto3" json:"table_name,omitempty"`
-	Engine            string             `protobuf:"bytes,3,opt,name=engine,proto3" json:"engine,omitempty"`
-	TableRows         int64              `protobuf:"varint,4,opt,name=table_rows,json=tableRows,proto3" json:"table_rows"`
-	DataLength        int64              `protobuf:"varint,5,opt,name=data_length,json=dataLength,proto3" json:"data_length"`
-	IndexLength       int64              `protobuf:"varint,6,opt,name=index_length,json=indexLength,proto3" json:"index_length"`
-	TableCrc          uint64             `protobuf:"varint,7,opt,name=table_crc,json=tableCrc,proto3" json:"table_crc"`
-	TableClusters     string             `protobuf:"bytes,8,opt,name=table_clusters,json=tableClusters,proto3" json:"table_clusters,omitempty"`
-	TableSync         string             `protobuf:"bytes,9,opt,name=table_sync,json=tableSync,proto3" json:"table_sync"`
-	TableColumns      []Column           `protobuf:"bytes,10,opt,name=table_columns,json=tableColumns,proto3" json:"table_columns,omitempty"`
-	TableIndexes      []Index            `protobuf:"bytes,11,opt,name=table_indexes,json=tableIndexes,proto3" json:"table_indexes,omitempty"`
-	TableColumnsCrc64 uint64             `protobuf:"varint,12,opt,name=table_columns_crc64,json=tableColumnsCrc64,proto3" json:"table_columns_crc64,omitempty"`
-	TableIndexesCrc64 uint64             `protobuf:"varint,13,opt,name=table_indexes_crc64,json=tableIndexesCrc64,proto3" json:"table_indexes_crc64,omitempty"`
-	TableType         string             `protobuf:"bytes,14,opt,name=table_type,json=tableType,proto3" json:"table_type,omitempty"`
-	RowFormat         string             `protobuf:"bytes,15,opt,name=row_format,json=rowFormat,proto3" json:"row_format,omitempty"`
-	TableCollation    string             `protobuf:"bytes,16,opt,name=table_collation,json=tableCollation,proto3" json:"table_collation,omitempty"`
-	CreateOptions     string             `protobuf:"bytes,17,opt,name=create_options,json=createOptions,proto3" json:"create_options,omitempty"`
-	TableComment      string             `protobuf:"bytes,18,opt,name=table_comment,json=tableComment,proto3" json:"table_comment,omitempty"`
-	AutoIncrement     int64              `protobuf:"varint,19,opt,name=auto_increment,json=autoIncrement,proto3" json:"auto_increment"`
-	TableChunksError  []Chunk            `protobuf:"bytes,20,opt,name=table_chunks_error,json=tableChunksError,proto3" json:"table_chunks_error,omitempty"`
-	TableColumnMap    map[string]*Column `protobuf:"-" json:"-"`
-	TableIndexMap     map[string]*Index  `protobuf:"-" json:"-"`
+	TableSchema        string             `protobuf:"bytes,1,opt,name=table_schema,json=tableSchema,proto3" json:"table_schema,omitempty"`
+	TableName          string             `protobuf:"bytes,2,opt,name=table_name,json=tableName,proto3" json:"table_name,omitempty"`
+	Engine             string             `protobuf:"bytes,3,opt,name=engine,proto3" json:"engine,omitempty"`
+	TableRows          int64              `protobuf:"varint,4,opt,name=table_rows,json=tableRows,proto3" json:"table_rows"`
+	DataLength         int64              `protobuf:"varint,5,opt,name=data_length,json=dataLength,proto3" json:"data_length"`
+	IndexLength        int64              `protobuf:"varint,6,opt,name=index_length,json=indexLength,proto3" json:"index_length"`
+	TableCrc           uint64             `protobuf:"varint,7,opt,name=table_crc,json=tableCrc,proto3" json:"table_crc"`
+	TableClusters      string             `protobuf:"bytes,8,opt,name=table_clusters,json=tableClusters,proto3" json:"table_clusters,omitempty"`
+	TableSync          string             `protobuf:"bytes,9,opt,name=table_sync,json=tableSync,proto3" json:"table_sync"`
+	TableColumns       []Column           `protobuf:"bytes,10,opt,name=table_columns,json=tableColumns,proto3" json:"table_columns,omitempty"`
+	TableIndexes       []Index            `protobuf:"bytes,11,opt,name=table_indexes,json=tableIndexes,proto3" json:"table_indexes,omitempty"`
+	TableColumnsCrc64  uint64             `protobuf:"varint,12,opt,name=table_columns_crc64,json=tableColumnsCrc64,proto3" json:"table_columns_crc64,omitempty"`
+	TableIndexesCrc64  uint64             `protobuf:"varint,13,opt,name=table_indexes_crc64,json=tableIndexesCrc64,proto3" json:"table_indexes_crc64,omitempty"`
+	TableType          string             `protobuf:"bytes,14,opt,name=table_type,json=tableType,proto3" json:"table_type,omitempty"`
+	RowFormat          string             `protobuf:"bytes,15,opt,name=row_format,json=rowFormat,proto3" json:"row_format,omitempty"`
+	TableCollation     string             `protobuf:"bytes,16,opt,name=table_collation,json=tableCollation,proto3" json:"table_collation,omitempty"`
+	CreateOptions      string             `protobuf:"bytes,17,opt,name=create_options,json=createOptions,proto3" json:"create_options,omitempty"`
+	TableComment       string             `protobuf:"bytes,18,opt,name=table_comment,json=tableComment,proto3" json:"table_comment,omitempty"`
+	AutoIncrement      int64              `protobuf:"varint,19,opt,name=auto_increment,json=autoIncrement,proto3" json:"auto_increment"`
+	TableChunksError   []Chunk            `protobuf:"bytes,20,opt,name=table_chunks_error,json=tableChunksError,proto3" json:"table_chunks_error,omitempty"`
+	TableChunksCount   int64              `protobuf:"varint,21,opt,name=table_chunks_count,json=tableChunksCount,proto3" json:"table_chunks_count,omitempty"`
+	TableChunksCurrent int64              `protobuf:"varint,22,opt,name=table_chunks_current,json=tableChunksCurrent,proto3" json:"table_chunks_current,omitempty"`
+	TableColumnMap     map[string]*Column `protobuf:"-" json:"-"`
+	TableIndexMap      map[string]*Index  `protobuf:"-" json:"-"`
+	// TableParents lists tables this table references (outgoing FK / match).
+	// Populated by GetTables() after columns and indexes are loaded.
+	TableParents []TableLink `protobuf:"-" json:"table_parents,omitempty"`
+	// TableChildren lists tables that reference this table (incoming FK / match).
+	// Populated by GetTables() after columns and indexes are loaded.
+	TableChildren []TableLink `protobuf:"-" json:"table_children,omitempty"`
+	// SizeWeightPct is (data_length + index_length) as a percentage of the
+	// total bytes across all tables returned in the same GetTables() call.
+	// Used by the graph node-size encoding.
+	SizeWeightPct float64 `protobuf:"-" json:"size_weight_pct,omitempty"`
 }
 
 // CanonicalizeColumns sorts table columns by name

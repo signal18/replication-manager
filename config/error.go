@@ -120,6 +120,7 @@ var ClusterError = map[string]string{
 	"ERR00100":  "Cluster is in switchover. Switchover started at %s",
 	"ERR00101":  "Cluster DB user is same as replication user, but with different password",
 	"ERR00102":  "Jobs unable to connect to db in %s",
+	"ERR00103":  "Skip slave in election %s data diverge in checksum",
 	"WARN0022":  "Rejoining standalone server %s to master %s",
 	"WARN0023":  "Number of failed master ping has been reached",
 	"WARN0045":  "Provision task is in queue",

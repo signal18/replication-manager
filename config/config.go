@@ -90,6 +90,9 @@ type Config struct {
 	MonitorSchemaScheduler                    bool   `mapstructure:"monitoring-schema-scheduler" toml:"monitoring-schema-scheduler" json:"monitoringSchemaScheduler"`
 	MonitorSchemaSchedulerCron                string `mapstructure:"monitoring-schema-scheduler-cron" toml:"monitoring-schema-scheduler-cron" json:"monitoringSchemaSchedulerCron"`
 	MonitorSchemaScanTimeout                  int    `mapstructure:"monitoring-schema-scan-timeout" toml:"monitoring-schema-scan-timeout" json:"monitoringSchemaScanTimeout"`
+	MonitorChecksumScheduler                  bool   `mapstructure:"monitoring-checksum-scheduler" toml:"monitoring-checksum-scheduler" json:"monitoringChecksumScheduler"`
+	MonitorChecksumSchedulerCron              string `mapstructure:"monitoring-checksum-scheduler-cron" toml:"monitoring-checksum-scheduler-cron" json:"monitoringChecksumSchedulerCron"`
+	MonitorChecksumIgnoreTables               string `mapstructure:"monitoring-checksum-ignore-tables" toml:"monitoring-checksum-ingore-tables" json:"monitoringChecksumIngoreTables"`
 	MonitorQueryRules                         bool   `mapstructure:"monitoring-query-rules" toml:"monitoring-query-rules" json:"monitoringQueryRules"`
 	MonitorSchemaChangeScript                 string `mapstructure:"monitoring-schema-change-script" toml:"monitoring-schema-change-script" json:"monitoringSchemaChangeScript"`
 	MonitorCheckGrants                        bool   `mapstructure:"monitoring-check-grants" toml:"monitoring-check-grants" json:"monitoringCheckGrants"`
@@ -245,6 +248,7 @@ type Config struct {
 	PostScript                                string `mapstructure:"failover-post-script" toml:"failover-post-script" json:"failoverPostScript"`
 	ReadOnly                                  bool   `mapstructure:"failover-readonly-state" toml:"failover-readonly-state" json:"failoverReadOnlyState"`
 	FailoverSemiSyncState                     bool   `mapstructure:"failover-semisync-state" toml:"failover-semisync-state" json:"failoverSemisyncState"`
+	FailoverDivergentData                     bool   `mapstructure:"failover-divergent-data" toml:"failover-divergent-data" json:"failoverDivergentData"`
 	SuperReadOnly                             bool   `mapstructure:"failover-superreadonly-state" toml:"failover-superreadonly-state" json:"failoverSuperReadOnlyState"`
 	FailTime                                  int64  `mapstructure:"failover-time-limit" toml:"failover-time-limit" json:"failoverTimeLimit"`
 	FailSync                                  bool   `mapstructure:"failover-at-sync" toml:"failover-at-sync" json:"failoverAtSync"`
