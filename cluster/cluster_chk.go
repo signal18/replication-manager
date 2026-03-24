@@ -969,6 +969,11 @@ func (cluster *Cluster) RepairAllTableChecksum() {
 	cluster.ChecksumSetResultOnSlave()
 }
 
+func (cluster *Cluster) RepairOneTableChecksum(schema string, table string) {
+	cluster.RepairTableChecksum(schema,table)
+	cluster.ChecksumSetResultOnSlave()
+}
+
 // ChecksumCleanResult cleanup all checksum result before re run checksum all table
 func (cluster *Cluster) ChecksumCleanResult() {
 	if cluster.ChecksumIsRunning() {

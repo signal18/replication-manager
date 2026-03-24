@@ -6055,7 +6055,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumRepairTable(w h
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		go mycluster.RepairTableChecksum(vars["schemaName"], vars["tableName"])
+		go mycluster.RepairOneTableChecksum(vars["schemaName"], vars["tableName"])
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
