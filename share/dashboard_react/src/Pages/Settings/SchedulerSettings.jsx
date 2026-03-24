@@ -26,7 +26,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
-      key: 'Remote Jobs via SSH',
+      key: 'Run Jobs via SSH',
       value: (
         <Scheduler
           user={user}
@@ -65,7 +65,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
     ...(selectedCluster?.config?.monitoringScheduler
       ? [
         {
-          key: 'Local Logical Backup',
+          key: 'Logical Backup',
           value: (
             <Scheduler
               user={user}
@@ -94,7 +94,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'Remote Physical Backup',
+          key: 'Physical Backup (Jobs)',
           value: (
             <Scheduler
               user={user}
@@ -123,7 +123,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'Local Optimize Tables',
+          key: 'Optimize Tables',
           value: (
             <Scheduler
               user={user}
@@ -149,7 +149,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'Local Analyze Tables',
+          key: 'Analyze Tables',
           value: (
             <Scheduler
               user={user}
@@ -175,7 +175,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'Remote Fetch Logs',
+          key: 'Fetch Logs (Jobs)',
           value: (
             <Scheduler
               user={user}
@@ -199,7 +199,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'Local Rotate Log Tables',
+          key: 'Rotate Log Tables',
           value: (
             <Scheduler
               user={user}
@@ -228,7 +228,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'Local Rolling Restart',
+          key: 'Rolling Restart',
           value: (
             <Scheduler
               user={user}
@@ -252,7 +252,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'Local Rolling Reprov',
+          key: 'Rolling Reprov',
           value: (
             <Scheduler
               user={user}
@@ -276,7 +276,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'Local Rotate SLA',
+          key: 'Rotate SLA',
           value: (
             <Scheduler
               user={user}
@@ -296,7 +296,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'Local Disable Alerting',
+          key: 'Disable Alerting',
           value: (
             <Scheduler
               user={user}

@@ -3,6 +3,7 @@ package cluster
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/state"
@@ -24,6 +25,12 @@ func (cluster *Cluster) RefreshToolVersions() {
 
 	if err := cluster.RefreshMyDumperVersion(); err != nil {
 		cluster.SetState("WARN0120", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0120"], err), ErrFrom: "CLUSTER"})
+	}
+
+	if cluster.shouldRefreshSysbenchVersionPeriodically() {
+		if err := cluster.RefreshSysbenchVersion(); err != nil {
+			cluster.SetState("WARN0167", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0167"], err), ErrFrom: "CLUSTER"})
+		}
 	}
 
 	if cluster.Conf.BackupRestic {
@@ -238,6 +245,68 @@ func (cluster *Cluster) RefreshMyDumperVersion() error {
 			return err
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "MyDumper version %s: %s", cstring, v.ToFullString())
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) SetSysbenchVersion(v *version.Version) error {
+	if v == nil {
+		return fmt.Errorf("nil version provided")
+	}
+	cluster.VersionsMap.Set("sysbench", v)
+	cluster.GetStateMachine().DeleteState("WARN0167")
+
+	return nil
+}
+
+func (cluster *Cluster) shouldRefreshSysbenchVersionPeriodically() bool {
+	path := strings.TrimSpace(cluster.Conf.SysbenchBinaryPath)
+
+	if path != "" && path != "/usr/bin/sysbench" {
+		return true
+	}
+
+	if cluster.Conf.Test || cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging {
+		return true
+	}
+
+	return false
+}
+
+func (cluster *Cluster) RefreshSysbenchVersion() error {
+	cstring := "changed"
+	oldV, _ := cluster.GetToolsVersion("sysbench")
+	if oldV == nil {
+		cstring = "discovered"
+	}
+
+	out, err := exec.Command(cluster.Conf.SysbenchBinaryPath, "--version").CombinedOutput()
+	if err != nil {
+		return err
+	}
+
+	rawOutput := string(out)
+	vstring := version.ExtractVersionFromOutput(rawOutput)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Sysbench raw output: %s", rawOutput)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Sysbench cleaned version string: %s", vstring)
+
+	v, tokens := version.NewVersionFromString("sysbench", vstring)
+	if tokens == 0 {
+		return fmt.Errorf("unable to parse sysbench version from string: %s (raw: %s)", vstring, rawOutput)
+	}
+
+	hasChanged, err := version.HasVersionChanged(oldV, v)
+	if err != nil {
+		return err
+	}
+
+	if hasChanged {
+		if err := cluster.SetSysbenchVersion(v); err != nil {
+			return err
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sysbench version %s: %s", cstring, v.ToFullString())
 	}
 
 	return nil

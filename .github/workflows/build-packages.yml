@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g. v3.1.21). Defaults to latest tag.'
+        required: false
+        default: ''
 
 # Match Jenkins concurrentBuild: false — queue builds, don't cancel
 concurrency:
@@ -16,8 +21,7 @@ jobs:
     name: Build Linux Packages and Publish Repos
     runs-on: [self-hosted, linux, x64]
 
-    # Match Jenkins inactivity timeout of 360s
-    timeout-minutes: 6
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -25,12 +29,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Checkout latest tag (manual trigger only)
+      - name: Checkout tag (manual trigger only)
         if: github.event_name == 'workflow_dispatch'
         run: |
-          latest_tag=$(git describe --tags --abbrev=0)
-          echo "Checking out $latest_tag"
-          git checkout "$latest_tag"
+          tag="${{ github.event.inputs.tag }}"
+          if [ -z "$tag" ]; then
+            tag=$(git describe --tags --abbrev=0)
+          fi
+          echo "Checking out $tag"
+          git checkout "$tag"
 
       - name: Set up Go 1.24
         uses: actions/setup-go@v5
@@ -45,7 +52,12 @@ jobs:
       - name: Install nfpm
         run: |
           if ! command -v nfpm &>/dev/null; then
-            curl -sfL https://install.goreleaser.com/github.com/goreleaser/nfpm.sh | sh -s -- -b /usr/local/bin
+            NFPM_VER=$(curl -s https://api.github.com/repos/goreleaser/nfpm/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+            NFPM_VER_CLEAN="${NFPM_VER#v}"
+            ARCH=$(uname -m | sed 's/aarch64/arm64/')
+            mkdir -p "$HOME/.local/bin"
+            curl -sfL "https://github.com/goreleaser/nfpm/releases/download/${NFPM_VER}/nfpm_${NFPM_VER_CLEAN}_Linux_${ARCH}.tar.gz" | tar xz -C "$HOME/.local/bin" nfpm
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           fi
 
       # Replaces Jenkins ws-cleanup pre-build step
@@ -68,11 +80,12 @@ jobs:
 
       - name: Publish DEB repo
         run: |
-          tag=$(git describe --tags --abbrev=0)
-          cleantag="${tag:1}"
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          cleantag="${tag#v}"
           docker run --rm \
             -v /root/.gnupg:/root/.gnupg \
-            -v /home:/home \
+            -v /home/repo:/home/repo \
+            -v /builds:/builds \
             signal18/reprepro:latest "$cleantag"
 
       - name: Publish RPM repo
@@ -98,28 +111,14 @@ jobs:
             :warning: **Build cancelled** — `${{ github.repository }}` @ `${{ github.ref_name }}`
             Triggered by: ${{ github.actor }}
 
-      # Slack: notify on failure
-      - name: Notify Slack (failure)
+      # Mattermost: notify on failure
+      - name: Notify Mattermost (failure)
         if: failure()
-        uses: slackapi/slack-github-action@v2
+        uses: mattermost/action-mattermost-notify@2.0.0
         with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "channel": "replication-manager",
-              "text": ":x: *Build failed* — `${{ github.repository }}` @ `${{ github.ref_name }}`\nTriggered by: ${{ github.actor }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
-            }
+          MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
+          TEXT: |
+            :x: **Build failed** — `${{ github.repository }}` @ `${{ github.ref_name }}`
+            Triggered by: ${{ github.actor }}
+            [View run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
-      # Slack: notify on cancelled (aborted)
-      - name: Notify Slack (cancelled)
-        if: cancelled()
-        uses: slackapi/slack-github-action@v2
-        with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "channel": "replication-manager",
-              "text": ":warning: *Build cancelled* — `${{ github.repository }}` @ `${{ github.ref_name }}`\nTriggered by: ${{ github.actor }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
-            }

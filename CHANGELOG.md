@@ -5,6 +5,48 @@ All notable changes to replication-manager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.22] - 2026-03-12
+
+### Added
+- Table checksum repair operations: per-chunk repair from default schema using a temp table, ACL support for repair-all, and alerts on completion (#1408)
+- Restic S3 backend: AWS endpoint and prefix configuration, force-init support, and per-repo append mode control (#1402, #1406, #1407)
+- Restic progress bar display in task tracking and API progress exposure (#1404, #1405)
+- Legacy restic snapshots API format support via `?format=legacy` query parameter (#1404)
+
+### Fixed
+- Checksum range condition corrected for multi-column primary key scenarios (#1408)
+- Restic task state and API response consistency (#1404)
+- Restic S3 prefix persistence and empty-prefix guards after init (#1402)
+- Restic append mode correctly bypassed for AWS S3 backends (#1406, #1407)
+- MyDumper default source-data warning silenced (#1403)
+
+### Changed
+- Restic swagger output normalized to consistent formatting (#1404)
+- Unused AWS signin dependency removed (#1402)
+
+## [3.1.21] - 2026-03-11
+
+### Added
+- Concurrent app refresh with configurable concurrency (#1393)
+- Configurable schema metadata scan timeout (#1391)
+- Cross-platform Restic unmount support with admin-selectable mount directories under strict path checks (#1395, #1399)
+- Human-readable size display in backup listings and GUI table views
+- TPCC sysbench runtime override support
+
+### Fixed
+- Password leakage in schema scan logs (#1391)
+- Missing `rows.Err()` checks after scan loops in schema.go (#1391)
+- gRPC protobuf field number collision in Index struct (#1394)
+- TLS config registration using correct name in `mysql.RegisterTLSConfig`
+- Checksum multi-column handling and chunk min/max key validity (#1398)
+- Deterministic shard table sorting by size
+- Table size percentage sanitization when totals are missing
+
+### Changed
+- gRPC v3 responses refactored around generic protobuf containers (#1394)
+- Schema scans refactored to bulk-load metadata with structured CRCs, reducing lock pressure (#1391)
+- Checksum efficiency improved with prepared statements and forced Primary Key scan (#1398)
+
 ## [3.1.20] - 2026-03-07
 
 ### Fixed
@@ -721,8 +763,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 3.1.x Series
 The 3.1.x series represents significant evolution of replication-manager with major improvements across:
 
-- **Backup & Restore**: Restic task queue, FUSE mount, SFTP/S3 backend with additional env overrides, reseed with metadata cache, configurable compression, post-backup scripts, disk reclaim, and splitdump streaming pipeline with configurable shard sizing and GTID-aware restore
-- **Schema & Data Integrity**: Master-replica table/column/index comparison, lightweight schema refresh with empty-dict-table recovery, table checksum scheduling with schema cache, and shardproxy integration
+- **Backup & Restore**: Restic task queue, FUSE mount, SFTP/S3 backend with AWS endpoint/prefix configuration and append-mode control, reseed with metadata cache, configurable compression, post-backup scripts, disk reclaim, progress visibility, and splitdump streaming pipeline with configurable shard sizing and GTID-aware restore
+- **Schema & Data Integrity**: Master-replica table/column/index comparison, lightweight schema refresh with empty-dict-table recovery, table checksum scheduling with schema cache, per-chunk checksum repair with ACL support, and shardproxy integration
 - **Configuration Management**: Manual variable override and preservation, config drift detection with UI indicators, and three-tier preserved variables
 - **Application Management**: Provisioning framework with template support, S3 integration, credit management, and provision/unprovision grants
 - **Database Compatibility**: MySQL 8.4 support, dbhelper refactor with vendor abstraction, parameterized queries, and improved version handling
@@ -746,6 +788,8 @@ The 3.0.x series established the foundation for modern replication-manager with 
 - **User Management**: Role-based access control with GUI, external operator support, and credential management
 - **Disk Monitoring**: Real-time disk statistics, backup size estimation, and free space validation
 
+[3.1.22]: https://github.com/signal18/replication-manager/releases/tag/v3.1.22
+[3.1.21]: https://github.com/signal18/replication-manager/releases/tag/v3.1.21
 [3.1.20]: https://github.com/signal18/replication-manager/releases/tag/v3.1.20
 [3.1.19]: https://github.com/signal18/replication-manager/releases/tag/v3.1.19
 [3.1.18]: https://github.com/signal18/replication-manager/releases/tag/v3.1.18

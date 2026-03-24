@@ -1,36 +1,50 @@
-## replication-manager
-
-![replication-manager](https://github.com/signal18/replication-manager/raw/2.0/dashboard/static/img/logo.png)
+## Replication Manager
 
 Replication Manager is a high-availability orchestrator for MariaDB, MySQL, and Percona Server replication topologies.
 
 The main features are:
- * Replication monitoring (GTID, multi-source, delayed)
- * Topology detection (leader election for async, semi-sync, multi-master, mesh, wsrep, group-repl, relay)
- * Slave to master promotion (switchover)
- * Master election on failure detection (failover)
+
+**Replication & Topology**
+ * Replication monitoring with support for GTID, multi-source, and delayed replication
+ * Topology detection and leader election across async, semi-sync, multi-master, mesh, wsrep, group replication, and relay topologies
+ * Controlled replica-to-primary promotion (switchover)
+ * Automatic primary election on failure detection (failover)
  * Replication best-practice enforcement
- * Targeting up to zero loss in most failure scenarios
- * Multi-cluster management
- * Proxy integration (ProxySQL, MaxScale, HAProxy, Spider)
- * Maintenance automation (logical & physical backups, defrag, backup snapshots, log archiving)
- * Metrics history in Carbon/Graphite API
- * Alerting via email, Pushover, Slack, Teams, Mattermost
- * Database rejoining and reseeding policy
- * Scriptable state and events
- * Remote scripting via SSH
- * Database and proxy configurator
- * OpenSVC and Kubernetes service deployment including init containers
- * Encrypted config file secrets, multi-layer configs
- * GitLab SSO
- * API with ACL
- * Capture on high load
+ * Near-zero data loss targeting across most failure scenarios
+ * Automatic database rejoining and reseeding
+
+**Cluster Management**
+ * Multi-cluster management from a single instance
  * SLA tracking
- * Replication and monitoring credential rotation or Vault integration
- * Staging multi-source clusters
- * WebTTY
- * Restic backup snapshots and PITR
- * Modular logging levels
+ * Traffic capture on high load
+ * Staging with multi-source clusters
+ * Scriptable states and events
+ * Remote script execution via SSH
+
+**Proxy Integration**
+ * Automated backend management for ProxySQL, MaxScale, HAProxy, and Spider
+
+**Backup & Recovery**
+ * Logical and physical backups via mysqldump, mydumper, mariabackup, and xtrabackup
+ * Snapshot backups and point-in-time recovery via Restic
+ * S3-compatible object storage backend for backup repositories
+ * Automated log archiving and table defragmentation
+
+**Observability & Alerting**
+ * Metrics history exposed via the Carbon/Graphite API
+ * Alerting via email, Pushover, Slack, Teams, and Mattermost
+ * Per-module log level configuration
+
+**Operations & Security**
+ * Built-in database and proxy configurator
+ * Credential rotation for replication and monitoring accounts, with HashiCorp Vault integration
+ * Encrypted secrets in configuration files, with support for multi-layer config inheritance
+ * OAuth2 SSO compatible with GitLab, GitHub, and any OIDC provider
+ * REST and gRPC APIs with role-based access control
+ * Integrated WebTTY terminal sessions
+
+**Provisioning**
+ * Service deployment on OpenSVC and Kubernetes, including init container support
 
 
 ### [Documentation](https://docs.signal18.io)

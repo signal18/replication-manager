@@ -490,7 +490,7 @@ type Config struct {
 	GraphiteCarbonPprofPort                   int    `scope:"server" mapstructure:"graphite-carbon-pprof-port" toml:"graphite-carbon-pprof-port" json:"graphiteCarbonPprofPort"`
 	SysbenchBinaryPath                        string `scope:"server" mapstructure:"sysbench-binary-path" toml:"sysbench-binary-path" json:"sysbenchBinaryPath"`
 	SysbenchTest                              string `mapstructure:"sysbench-test" toml:"sysbench-test" json:"sysbenchBinaryTest"`
-	SysbenchV1                                bool   `scope:"server" mapstructure:"sysbench-v1" toml:"sysbench-v1" json:"sysbenchV1"`
+	SysbenchV1                                bool   `scope:"server" mapstructure:"sysbench-v1" toml:"sysbench-v1" json:"sysbenchV1"` // deprecated, version is now detected by binary
 	SysbenchTime                              int    `mapstructure:"sysbench-time" toml:"sysbench-time" json:"sysbenchTime"`
 	SysbenchThreads                           int    `mapstructure:"sysbench-threads" toml:"sysbench-threads" json:"sysbenchThreads"`
 	SysbenchTables                            int    `mapstructure:"sysbench-tables" toml:"sysbench-tables" json:"sysbenchTables"`
