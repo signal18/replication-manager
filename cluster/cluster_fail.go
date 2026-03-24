@@ -695,6 +695,10 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 			cluster.SetState("ERR00039", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00039"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
+		if sl.IsDataDiverge && !cluster.Conf.FailoverDivergentData {
+			cluster.SetState("ERR00103", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00103"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+			continue
+		}
 
 		/* Rig the election if the examined slave is preferred candidate master in switchover */
 		if cluster.IsInPreferedHosts(sl) {
