@@ -240,6 +240,12 @@ var ClusterError = map[string]string{
 	"WARN0165":  "Restart container cookie deferred on %s: %s",
 	"WARN0166":  "Restic reseed queued on server %s (snapshot %s, method %s, strategy %s)",
 	"WARN0167":  "Failed to get sysbench version on repman: %s",
+	// Log-tailer plugin state codes (WARN0200-WARN0299 reserved for logplugin)
+	"WARN0200": "Server %s has recent ERROR entries in database error log (last 24h)",
+	"WARN0201": "Server %s has recent SQL errors in SQL error log (last 24h)",
+	"WARN0202": "Server %s has recent slow queries in slow query log (last 24h)",
+	"WARN0203": "Log plugin execution error",
+	"WARN0204": "Server %s has new query templates in audit log not seen in baseline window",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",

@@ -179,6 +179,9 @@ type Config struct {
 	LogLevelDatabaseSlowquery                 int    `mapstructure:"log-level-database-slowquery" toml:"log-level-database-slowquery" json:"logLevelDatabaseSlowquery"`
 	LogLevelDatabaseOptimize                  int    `mapstructure:"log-level-database-optimize" toml:"log-level-database-optimize" json:"logLevelDatabaseOptimize"`
 	LogLevelDatabaseAudit                     int    `mapstructure:"log-level-database-audit" toml:"log-level-database-audit" json:"logLevelDatabaseAudit"`
+	LogPlugin                                 bool                       `mapstructure:"log-plugin" toml:"log-plugin" json:"logPlugin"`
+	LogPluginLevel                            int                        `mapstructure:"log-level-plugin" toml:"log-level-plugin" json:"logPluginLevel"`
+	PluginConfig                              map[string]map[string]string `mapstructure:"plugin-config" toml:"plugin-config" json:"pluginConfig"`
 	User                                      string `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	DbServersChangeStateScript                string `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`
@@ -1440,6 +1443,7 @@ const (
 	ConstLogModDbOptimize     = 27
 	ConstLogModDbAudit        = 28
 	ConstLogModDbSqlErrors    = 29
+	ConstLogModPlugin         = 30 // generic log-tailer plugin module
 )
 
 /*
@@ -1476,6 +1480,7 @@ const (
 	ConstLogNameDbOptimize     string = "log-database-optimize"
 	ConstLogNameDbAuditlog     string = "log-database-auditlog"
 	ConstLogNameDbSqlError     string = "log-database-sqlerrorlog"
+	ConstLogNamePlugin         string = "log-plugin" // generic log-tailer plugin module
 )
 
 /*
@@ -3407,6 +3412,10 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			return conf.LogLevelDatabaseAudit >= lvl
 		case module == ConstLogModDbSqlErrors:
 			return conf.LogLevelDatabaseSqlErrors >= lvl
+		case module == ConstLogModPlugin:
+			if conf.LogPlugin {
+				return conf.LogPluginLevel >= lvl
+			}
 		}
 	}
 
@@ -3592,6 +3601,8 @@ func GetTagsForLog(module int) string {
 		return "optimize"
 	case ConstLogModDbAudit:
 		return "auditlog"
+	case ConstLogModPlugin:
+		return "plugin"
 	}
 	return ""
 }
@@ -3672,6 +3683,8 @@ func GetIndexFromModuleName(module string) int {
 		return ConstLogModDbOptimize
 	case ConstLogNameDbAuditlog:
 		return ConstLogModDbAudit
+	case ConstLogNamePlugin:
+		return ConstLogModPlugin
 	}
 	return -1
 }

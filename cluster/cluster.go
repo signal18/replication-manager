@@ -750,6 +750,8 @@ func (cluster *Cluster) Run() {
 					cluster.SetRollingJobsUpgradeState()
 					// Clean up any lingering restart cookies from previous runs
 					cluster.CleanupRestartCookies()
+					// Scan cluster.WorkingDir/plugins/ for subscription plugin binaries
+					cluster.ReloadLogPlugins()
 					cluster.runOnceAfterTopology = false
 				} else {
 
@@ -852,6 +854,8 @@ func (cluster *Cluster) Run() {
 				cluster.IsFailable = cluster.GetStatus()
 				cluster.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().IsFailed()
 				cluster.CheckDBCredentials()
+				// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
+				cluster.CheckLogPlugins()
 				// CheckFailed trigger failover code if passing all false positiv and constraints
 				cluster.CheckFailed()
 				cluster.IsConfigPathChange = cluster.HasConfigPathChanged()

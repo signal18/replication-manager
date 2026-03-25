@@ -212,6 +212,7 @@ func (repman *ReplicationManager) PushAllConfigsToGit() error {
 
 	repman.AddPullToGitignore()
 	repman.AddTempDirToGitignore()
+	repman.AddPluginDirToGitignore()
 
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Pushing All Configs To Git")
 
@@ -484,7 +485,7 @@ func (repman *ReplicationManager) LoadPartnersJson() error {
 
 }
 
-// Ensures ".pull/" is in .gitignore.
+// AddPullToGitignore ensures ".pull/" is in .gitignore.
 func (repman *ReplicationManager) AddPullToGitignore() {
 	gitignoreFile := repman.Conf.WorkingDir + "/.gitignore"
 	lineToAdd := ".pull/"
@@ -576,6 +577,36 @@ func (repman *ReplicationManager) AddTempDirToGitignore() {
 			fmt.Println("Error appending to .gitignore:", err)
 		}
 	}
+}
+
+// addLineToGitignore ensures a given line is present in the .gitignore file
+// at gitignoreFile, creating the file if it does not exist.
+func addLineToGitignore(gitignoreFile, lineToAdd string) {
+	if _, err := os.Stat(gitignoreFile); os.IsNotExist(err) {
+		os.WriteFile(gitignoreFile, []byte(lineToAdd+"\n"), 0644)
+		return
+	}
+	file, err := os.OpenFile(gitignoreFile, os.O_RDWR|os.O_APPEND, 0644)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		if strings.TrimSpace(scanner.Text()) == lineToAdd {
+			return
+		}
+	}
+	file.WriteString(lineToAdd + "\n")
+}
+
+// AddPluginDirToGitignore ensures "<clusterName>/plugins/" patterns are in
+// .gitignore so that subscription-delivered plugin binaries are never
+// accidentally committed back to the config repository.
+func (repman *ReplicationManager) AddPluginDirToGitignore() {
+	gitignoreFile := repman.Conf.WorkingDir + "/.gitignore"
+	// Ignore all plugins/ subdirs regardless of cluster name.
+	addLineToGitignore(gitignoreFile, "*/plugins/")
 }
 
 func (repman *ReplicationManager) MoveConfigsToTmpDir(path string) error {
