@@ -8,7 +8,7 @@ COPY . .
 RUN make osc cli
 RUN go install github.com/moul/gotty-client/cmd/gotty-client@v1.10.0
 
-FROM debian:trixie-slim
+FROM debian:bookworm-slim
 
 ENV PROXYSQL_VERSION=2.7.3
 ENV MARIADB_VERSION=11.4
