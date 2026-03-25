@@ -5,6 +5,28 @@ All notable changes to replication-manager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.23] - 2026-03-24
+
+### Added
+- Data divergence detection: `IsDivergeData` state on servers with new ERR00103 error to skip diverged slaves during switchover candidate election (#1412)
+- Table checksum repair: foreign key checks disabled during repair, progress reporting, and metadata caching on disk with reload support (#1412)
+- Sysbench version auto-detection with noise control and version-specific syntax selection (#1409)
+- Custom build tag support for GitHub Actions release workflow
+- Graph view in dashboard front-end for topology visualization
+
+### Fixed
+- Checksum cleanup on full-table checksum runs (#1412)
+- IsInChecksumIgnoreTables logic corrected (#1412)
+- SetDataDiverge and IsDataDiverge state management after single-table repair (#1412)
+- Error state preservation across checksum operations (#1412)
+- Checksum scheduler activation typo in front-end settings (#1412)
+- Wrong ERR reporting corrected when state is OK
+- Dashboard SchedulerSettings copy-paste issue (#1412)
+
+### Changed
+- Dependency upgrade: `google.golang.org/grpc` bumped from 1.76.0 to 1.79.3
+- GitHub Actions: nfpm install path and publish package paths corrected; job timeout increased
+
 ## [3.1.22] - 2026-03-12
 
 ### Added
@@ -764,7 +786,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The 3.1.x series represents significant evolution of replication-manager with major improvements across:
 
 - **Backup & Restore**: Restic task queue, FUSE mount, SFTP/S3 backend with AWS endpoint/prefix configuration and append-mode control, reseed with metadata cache, configurable compression, post-backup scripts, disk reclaim, progress visibility, and splitdump streaming pipeline with configurable shard sizing and GTID-aware restore
-- **Schema & Data Integrity**: Master-replica table/column/index comparison, lightweight schema refresh with empty-dict-table recovery, table checksum scheduling with schema cache, per-chunk checksum repair with ACL support, and shardproxy integration
+- **Schema & Data Integrity**: Master-replica table/column/index comparison, lightweight schema refresh with empty-dict-table recovery, table checksum scheduling with schema cache, per-chunk checksum repair with ACL support, data divergence detection with automatic slave election exclusion, and shardproxy integration
 - **Configuration Management**: Manual variable override and preservation, config drift detection with UI indicators, and three-tier preserved variables
 - **Application Management**: Provisioning framework with template support, S3 integration, credit management, and provision/unprovision grants
 - **Database Compatibility**: MySQL 8.4 support, dbhelper refactor with vendor abstraction, parameterized queries, and improved version handling
@@ -788,6 +810,7 @@ The 3.0.x series established the foundation for modern replication-manager with 
 - **User Management**: Role-based access control with GUI, external operator support, and credential management
 - **Disk Monitoring**: Real-time disk statistics, backup size estimation, and free space validation
 
+[3.1.23]: https://github.com/signal18/replication-manager/releases/tag/v3.1.23
 [3.1.22]: https://github.com/signal18/replication-manager/releases/tag/v3.1.22
 [3.1.21]: https://github.com/signal18/replication-manager/releases/tag/v3.1.21
 [3.1.20]: https://github.com/signal18/replication-manager/releases/tag/v3.1.20
