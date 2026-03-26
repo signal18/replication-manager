@@ -10,6 +10,8 @@
 package cluster
 
 import (
+	"fmt"
+
 	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -19,11 +21,16 @@ import (
 // RunLogPlugins evaluates every plugin in logplugin.GlobalRegistry against
 // the current server's log ring buffers and injects any Findings into the
 // cluster state machine.
+//
+// Logging is intentionally suppressed for findings that were already open in
+// the previous monitoring tick so the log is not flooded on every tick.
+// A WARN line is emitted only when:
+//   - a finding first appears   (state transition: absent → open)
+//   - a finding clears          (handled by cluster.LogPrintAllStates)
 func (server *ServerMonitor) RunLogPlugins() {
 	cluster := server.ClusterGroup
 
 	for _, p := range logplugin.GlobalRegistry.All() {
-		// Build a per-plugin LogSource: snapshot buffers + resolved config.
 		src := logplugin.LogSource{
 			ServerURL:   server.URL,
 			ErrorLog:    snapshotHttpLog(server.ErrorLog),
@@ -35,15 +42,33 @@ func (server *ServerMonitor) RunLogPlugins() {
 
 		findings := p.Evaluate(src)
 		for _, f := range findings {
-			cluster.LogModulePrintf(
-				cluster.Conf.Verbose,
-				config.ConstLogModPlugin,
-				config.LvlWarn,
-				"[logplugin:%s] %s on server %s: %s",
-				p.Name(), f.ErrKey, server.URL, f.Description,
-			)
 			st := f.ToState("PLUGIN")
 			st.ServerUrl = server.URL
+
+			// Build the composite state key exactly as AddState does:
+			// key = ErrKey + "@" + ServerUrl  (when ServerUrl is set)
+			compositeKey := fmt.Sprintf("%s@%s", f.ErrKey, server.URL)
+
+			// Only log on state transition (first occurrence this server/key pair
+			// was not already open in the previous tick's OldState).
+			if !cluster.StateMachine.IsInState(compositeKey) {
+				cluster.LogModulePrintf(
+					cluster.Conf.Verbose,
+					config.ConstLogModPlugin,
+					config.LvlWarn,
+					"[logplugin:%s] %s on server %s: %s",
+					p.Name(), f.ErrKey, server.URL, f.Description,
+				)
+			} else {
+				cluster.LogModulePrintf(
+					cluster.Conf.Verbose,
+					config.ConstLogModPlugin,
+					config.LvlDbg,
+					"[logplugin:%s] %s still open on server %s",
+					p.Name(), f.ErrKey, server.URL,
+				)
+			}
+
 			cluster.SetState(f.ErrKey, st)
 		}
 
@@ -59,9 +84,8 @@ func (server *ServerMonitor) RunLogPlugins() {
 	}
 }
 
-// resolvePluginConfig returns cluster.Conf.PluginConfig[pluginName], or nil
-// if no config has been set for that plugin.  Returns a copy so plugins
-// cannot mutate the live config.
+// resolvePluginConfig returns a copy of cluster.Conf.PluginConfig[pluginName],
+// or nil if no config has been set for that plugin.
 func resolvePluginConfig(cluster *Cluster, pluginName string) map[string]string {
 	if cluster.Conf.PluginConfig == nil {
 		return nil
