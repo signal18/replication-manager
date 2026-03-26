@@ -229,6 +229,10 @@ func (cluster *Cluster) CheckLogPlugins() {
 	if !cluster.Conf.LogPlugin {
 		return
 	}
+	// Lazy init in case cluster was loaded from saved state without init
+	if cluster.pluginSpikeCache == nil {
+		cluster.pluginSpikeCache = make(map[string]*logplugin.SpikeCache)
+	}
 	for _, server := range cluster.Servers {
 		if server == nil || server.IsDown() || server.IsIgnored() {
 			continue
