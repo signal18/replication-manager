@@ -52,6 +52,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	logsql "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
+	"github.com/signal18/replication-manager/cluster/logplugin"
 )
 
 var clusterError = config.ClusterError
@@ -266,6 +267,9 @@ type Cluster struct {
 	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}
 	preservedVarsLoaded         bool                       `json:"-"`
 	preservedVarsMutex          sync.RWMutex               `json:"-"`
+	// pluginSpikeCache holds the last DetectSpike result per server+plugin pair.
+	// Keyed as "serverURL:pluginName". Prevents graphite HTTP on every tick.
+	pluginSpikeCache map[string]*logplugin.SpikeCache `json:"-"`
 }
 
 type SlavesOldestMasterFile struct {
@@ -413,6 +417,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.VersionsMap = config.NewVersionsMap()
 
 	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
+	cluster.pluginSpikeCache = make(map[string]*logplugin.SpikeCache)
 	if cluster.Conf.Arbitration {
 		cluster.Status = ConstMonitorStandby
 	} else {

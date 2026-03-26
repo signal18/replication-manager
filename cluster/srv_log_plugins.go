@@ -225,11 +225,6 @@ func snapshotSlowLog(sl s18log.SlowLog) []s18log.HttpMessage {
 	return out
 }
 
-// pluginSpikeCache is the cluster-level spike cache map.
-// Key: "serverURL:pluginName"  Value: last DetectSpike result + timestamp.
-// Owned by CheckLogPlugins so it persists across ticks.
-var pluginSpikeCache = make(map[string]*logplugin.SpikeCache)
-
 func (cluster *Cluster) CheckLogPlugins() {
 	if !cluster.Conf.LogPlugin {
 		return
@@ -238,7 +233,7 @@ func (cluster *Cluster) CheckLogPlugins() {
 		if server == nil || server.IsDown() || server.IsIgnored() {
 			continue
 		}
-		server.RunLogPlugins(pluginSpikeCache)
+		server.RunLogPlugins(cluster.pluginSpikeCache)
 	}
 }
 
