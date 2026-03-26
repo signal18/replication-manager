@@ -137,13 +137,8 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			cluster.SetState(f.ErrKey, st)
 		}
 
-		// If the spike cache still holds a valid result but Evaluate() did not
-		// produce a WARN0205 finding this tick (ring buffer transiently empty,
-		// or sigma momentarily below threshold), preserve the state so it stays
-		// in CurState without causing a RESOLV/OPEN churn.
-		// PreserveState copies WARN0205@<serverURL> from OldState → CurState.
 		cache := spikeCache[cacheKey]
-		if cache != nil && cache.Result != nil {
+		if cache != nil && cache.IsHeld() {
 			hasSpikeInFindings := false
 			for _, f := range result.Findings {
 				if f.ErrKey == "WARN0205" {
@@ -157,8 +152,9 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 					cluster.Conf.Verbose,
 					config.ConstLogModPlugin,
 					config.LvlDbg,
-					"[logplugin:%s] WARN0205 preserved from previous tick for server %s",
+					"[logplugin:%s] WARN0205 held for server %s (%.0fs remaining)",
 					p.Name(), server.URL,
+					logplugin.SpikeHoldDuration.Seconds()-time.Since(cache.OpenedAt).Seconds(),
 				)
 			}
 		}

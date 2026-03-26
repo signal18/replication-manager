@@ -84,18 +84,27 @@ type SpikeCache struct {
 	// re-injected finding description matches the original exactly.
 	MetricName string
 	// CheckedAt is when DetectSpike last ran the full graphite computation.
-	CheckedAt  time.Time
-	// ClearCount is how many consecutive checks have returned no spike.
-	// WARN0205 is only cleared from the cache after ClearThreshold consecutive
-	// non-spike results, providing hysteresis against transient sigma dips.
-	ClearCount int
+	CheckedAt time.Time
+	// OpenedAt is when the spike was first confirmed. The state is held open
+	// for at least SpikeHoldDuration after OpenedAt regardless of sigma
+	// oscillations, preventing RESOLV/OPEN churn while the baseline is thin.
+	OpenedAt time.Time
 }
 
-// ClearThreshold is how many consecutive no-spike results are required before
-// the cached spike result is cleared.  This prevents a transient dip in sigma
-// (due to graphite returning slightly different aggregated values on each fetch)
-// from causing a RESOLV/OPEN churn in the state machine.
-const ClearThreshold = 3
+// SpikeHoldDuration is the minimum wall-clock time a spike state stays open
+// after first detection. Graphite baselines for hourly/daily granularities can
+// be thin early in the hour/day, causing sigma to oscillate around the threshold
+// as new data points accumulate. Holding the state prevents RESOLV/OPEN churn.
+const SpikeHoldDuration = 30 * time.Minute
+
+// IsHeld returns true when the spike was opened recently enough that the
+// hold period has not yet expired, even if DetectSpike currently returns nil.
+func (c *SpikeCache) IsHeld() bool {
+	if c == nil || c.OpenedAt.IsZero() {
+		return false
+	}
+	return time.Since(c.OpenedAt) < SpikeHoldDuration
+}
 
 // IsFresh returns true when the cache entry is recent enough to reuse.
 func (c *SpikeCache) IsFresh() bool {
@@ -449,20 +458,20 @@ func DetectSpike(apiURL, metricName string, sigma float64, correlatePrefix strin
 
 	if len(allSpikes) == 0 {
 		if cache != nil {
-			cache.ClearCount++
 			cache.CheckedAt = time.Now()
-			// Only clear the cached spike result after ClearThreshold consecutive
-			// no-spike checks.  This prevents a transient sigma dip from clearing
-			// the state and causing RESOLV/OPEN churn.
-			if cache.ClearCount >= ClearThreshold {
+			// Only clear the cached spike result once the hold period has expired.
+			// While the hold is active, srv_log_plugins.go calls PreserveState so
+			// WARN0205 stays in CurState without RESOLV/OPEN churn.
+			if !cache.IsHeld() {
 				cache.Result = nil
 				cache.MetricName = ""
+				cache.OpenedAt = time.Time{}
 			}
 		}
 		return nil, nil
 	}
 
-	// A spike was detected — reset the clear counter.
+	// A spike was detected.
 
 	result := &SpikeResult{
 		SpikeTime:        finest.SpikeTime,
@@ -486,7 +495,11 @@ func DetectSpike(apiURL, metricName string, sigma float64, correlatePrefix strin
 		cache.Result = result
 		cache.MetricName = metricName
 		cache.CheckedAt = time.Now()
-		cache.ClearCount = 0 // spike confirmed — reset hysteresis counter
+		// Set OpenedAt only on the first detection so the hold period starts
+		// from when the spike was first seen, not from each re-check.
+		if cache.OpenedAt.IsZero() {
+			cache.OpenedAt = time.Now()
+		}
 	}
 	return result, nil
 }
