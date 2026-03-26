@@ -1,4 +1,4 @@
-import { Flex, Text, Spinner } from '@chakra-ui/react'
+import { Flex, Text, Spinner, Badge } from '@chakra-ui/react'
 import React, { useEffect, useState } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
@@ -16,7 +16,6 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
   const [plugins, setPlugins] = useState([])
   const [pluginsLoading, setPluginsLoading] = useState(false)
 
-  // Load plugin list from /api/clusters/{name}/plugins
   useEffect(() => {
     if (!selectedCluster?.name) return
     setPluginsLoading(true)
@@ -27,84 +26,98 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
       .finally(() => setPluginsLoading(false))
   }, [selectedCluster?.name, selectedCluster?.config?.logPlugin])
 
-  // Build per-plugin config rows.
-  // Each plugin exposes its current config as a flat key→value map.
-  // The UI renders a NumberInput for every key we know about, plus any
-  // extra keys already present in the config so custom keys are visible.
-  const pluginConfigRows = (plugin) => {
-    const knownKeys = pluginKnownKeys(plugin.name)
-    const allKeys = new Set([...knownKeys, ...Object.keys(plugin.config || {})])
-    return [...allKeys].map((key) => ({
-      key: pluginKeyLabel(plugin.name, key),
-      value: (
-        <NumberInput
-          min={1}
-          max={8760}
-          step={1}
-          value={parseInt(plugin.config?.[key] ?? pluginKeyDefault(plugin.name, key), 10)}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          showConfirmModal={true}
-          confirmTitle={`Confirm change '${key}' for plugin '${plugin.name}' to: `}
-          onConfirm={(val) =>
-            dispatch(
-              setSetting({
-                clusterName: selectedCluster?.name,
-                // Encoded as plugin-config-<pluginname>-<key>
-                setting: `plugin-config-${plugin.name}-${key}`,
-                value: String(val)
-              })
-            )
-          }
-        />
-      )
-    }))
-  }
+  // Build a flat list of sub-rows for the "Log Plugins" section.
+  // TableType2 supports exactly two levels: top-level items and one level
+  // of sub-items. Every entry here must have value = ReactElement.
+  const buildPluginSubRows = () => {
+    const rows = [
+      {
+        key: 'Enable Log Plugins',
+        value: (
+          <RMSwitch
+            confirmTitle={'Confirm switch settings for log-plugin?'}
+            onChange={() =>
+              dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'log-plugin' }))
+            }
+            isDisabled={user?.grants['cluster-settings'] == false}
+            isChecked={selectedCluster?.config?.logPlugin}
+          />
+        )
+      },
+      {
+        key: 'Plugin Log Level',
+        value: (
+          <LogSlider
+            value={selectedCluster?.config?.logPluginLevel}
+            confirmTitle={`Confirm change 'log-level-plugin' to: `}
+            onChange={(val) =>
+              dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-plugin', value: val }))
+            }
+          />
+        )
+      }
+    ]
 
-  // Plugin section: enable switch + level slider + per-plugin config
-  const pluginSection = [
-    {
-      key: 'Enable Log Plugins',
-      value: (
-        <RMSwitch
-          confirmTitle={'Confirm switch settings for log-plugin?'}
-          onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'log-plugin' }))
-          }
-          isDisabled={user?.grants['cluster-settings'] == false}
-          isChecked={selectedCluster?.config?.logPlugin}
-        />
-      )
-    },
-    {
-      key: 'Log Plugin Level',
-      value: (
-        <LogSlider
-          value={selectedCluster?.config?.logPluginLevel}
-          confirmTitle={`Confirm change 'log-level-plugin' to: `}
-          onChange={(val) =>
-            dispatch(
-              setSetting({
-                clusterName: selectedCluster?.name,
-                setting: 'log-level-plugin',
-                value: val
-              })
-            )
-          }
-        />
-      )
-    },
-    {
-      key: 'Available Plugins',
-      value: pluginsLoading
-        ? [{ key: 'Loading…', value: <Spinner size='sm' /> }]
-        : plugins.length === 0
-        ? [{ key: 'No plugins loaded', value: <Text fontSize='sm' color='gray.400'>Enable log-plugin and restart to load plugins</Text> }]
-        : plugins.map((plugin) => ({
-            key: `Plugin: ${plugin.name}`,
-            value: pluginConfigRows(plugin)
-          }))
+    if (pluginsLoading) {
+      rows.push({ key: 'Plugins', value: <Spinner size='sm' /> })
+      return rows
     }
-  ]
+
+    if (plugins.length === 0) {
+      rows.push({
+        key: 'Plugins',
+        value: <Text fontSize='sm' color='gray.400'>No plugins loaded — enable log-plugin and restart</Text>
+      })
+      return rows
+    }
+
+    // One row per plugin config key — flat, no nested arrays
+    plugins.forEach((plugin) => {
+      // Plugin name header row
+      rows.push({
+        key: (
+          <Text fontWeight='semibold' fontSize='sm' color='blue.300'>
+            {plugin.name}
+          </Text>
+        ),
+        value: (
+          <Badge colorScheme={plugin.enabled ? 'green' : 'gray'}>
+            {plugin.enabled ? 'enabled' : 'disabled'}
+          </Badge>
+        )
+      })
+
+      // One NumberInput row per config key
+      pluginKnownKeys(plugin.name).forEach((key) => {
+        const currentVal = parseInt(plugin.config?.[key] ?? pluginKeyDefault(plugin.name, key), 10)
+        rows.push({
+          key: `  ${pluginKeyLabel(plugin.name, key)}`,
+          value: (
+            <NumberInput
+              min={1}
+              max={8760}
+              step={1}
+              value={currentVal}
+              isDisabled={user?.grants['cluster-settings'] == false}
+              showConfirmModal={true}
+              confirmTitle={`Confirm change '${key}' for '${plugin.name}' to: `}
+              onConfirm={(val) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: `plugin-config-${plugin.name}-${key}`,
+                    value: String(val)
+                  })
+                )
+              }
+            />
+          )
+        })
+      })
+    })
+
+    return rows
+  }
 
   const dataObject = [
     {
@@ -153,9 +166,10 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
         />
       )
     },
+    // Log Plugins section — flat sub-rows, all values are React elements
     {
       key: 'Log Plugins',
-      value: pluginSection
+      value: buildPluginSubRows()
     },
     {
       key: 'Toggle Log Level Per Module',
@@ -478,7 +492,6 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
 
 // ---- Plugin config metadata -------------------------------------------------
 
-// Known config keys per plugin name.
 function pluginKnownKeys(pluginName) {
   switch (pluginName) {
     case 'errorlog':
@@ -492,7 +505,6 @@ function pluginKnownKeys(pluginName) {
   }
 }
 
-// Human-readable label for a config key.
 function pluginKeyLabel(pluginName, key) {
   const labels = {
     'timeframe-hours': 'Timeframe (hours)',
@@ -502,7 +514,6 @@ function pluginKeyLabel(pluginName, key) {
   return labels[key] || key
 }
 
-// Default value for a config key (shown when not yet set by operator).
 function pluginKeyDefault(pluginName, key) {
   if (pluginName === 'auditlog') {
     if (key === 'current-window-hours') return '1'
