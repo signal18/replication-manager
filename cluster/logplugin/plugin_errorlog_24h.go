@@ -75,7 +75,7 @@ func (p *ErrorLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	// Dynamic spike detection via graphite history
 	if src.HasGraphite() && metricName != "" {
 		correlPrefix := fmt.Sprintf("mysql.%s", src.GraphiteHostname)
-		spike, err := DetectSpike(src.GraphiteAPIURL, metricName, sigma, correlPrefix)
+		spike, err := DetectSpike(src.GraphiteAPIURL, metricName, sigma, correlPrefix, src.SpikeCache)
 		if err == nil && spike != nil {
 			res.Findings = append(res.Findings, Finding{
 				ErrKey:      "WARN0205",

@@ -43,18 +43,32 @@ func (cluster *Cluster) graphiteAPIURL() string {
 	return fmt.Sprintf("http://%s:%d", host, cluster.Conf.GraphiteCarbonApiPort)
 }
 
+// spikeCacheKey returns the map key for the per-plugin-per-server spike cache.
+func spikeCacheKey(serverURL, pluginName string) string {
+	return serverURL + ":" + pluginName
+}
+
 // RunLogPlugins evaluates every enabled plugin, injects Findings into the
 // state machine, and queues synthetic graphite metrics for plugins that lack
 // a native MySQL status metric for their dimension.
 //
+// Spike detection results are cached for SpikeCheckInterval (~60s) so graphite
+// is not queried on every 5-second monitoring tick, preventing state machine
+// churn from slightly varying sigma values.
+//
 // Logging is suppressed for findings already open in the previous tick so the
 // log is not flooded — only state transitions (new / resolved) produce a WARN.
-func (server *ServerMonitor) RunLogPlugins() {
+func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.SpikeCache) {
 	cluster := server.ClusterGroup
 	apiURL := cluster.graphiteAPIURL()
 	hostname := server.graphiteHostname()
 
 	for _, p := range logplugin.GlobalRegistry.All() {
+		cacheKey := spikeCacheKey(server.URL, p.Name())
+		// Allocate a cache entry on first use so DetectSpike can write back into it.
+		if spikeCache[cacheKey] == nil {
+			spikeCache[cacheKey] = &logplugin.SpikeCache{}
+		}
 		src := logplugin.LogSource{
 			ServerURL:        server.URL,
 			ErrorLog:         snapshotHttpLog(server.ErrorLog),
@@ -64,6 +78,7 @@ func (server *ServerMonitor) RunLogPlugins() {
 			Config:           resolvePluginConfig(cluster, p.Name()),
 			GraphiteAPIURL:   apiURL,
 			GraphiteHostname: hostname,
+			SpikeCache:       spikeCache[cacheKey],
 		}
 
 		if !src.IsEnabled() {
@@ -178,6 +193,11 @@ func snapshotSlowLog(sl s18log.SlowLog) []s18log.HttpMessage {
 	return out
 }
 
+// pluginSpikeCache is the cluster-level spike cache map.
+// Key: "serverURL:pluginName"  Value: last DetectSpike result + timestamp.
+// Owned by CheckLogPlugins so it persists across ticks.
+var pluginSpikeCache = make(map[string]*logplugin.SpikeCache)
+
 func (cluster *Cluster) CheckLogPlugins() {
 	if !cluster.Conf.LogPlugin {
 		return
@@ -186,7 +206,7 @@ func (cluster *Cluster) CheckLogPlugins() {
 		if server == nil || server.IsDown() || server.IsIgnored() {
 			continue
 		}
-		server.RunLogPlugins()
+		server.RunLogPlugins(pluginSpikeCache)
 	}
 }
 

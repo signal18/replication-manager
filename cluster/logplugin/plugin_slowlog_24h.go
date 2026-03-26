@@ -83,7 +83,7 @@ func (p *SlowLogPlugin) Evaluate(src LogSource) EvaluateResult {
 			if metricName == "" {
 				continue
 			}
-			spike, err := DetectSpike(src.GraphiteAPIURL, metricName, sigma, correlPrefix)
+			spike, err := DetectSpike(src.GraphiteAPIURL, metricName, sigma, correlPrefix, src.SpikeCache)
 			if err != nil || spike == nil {
 				continue
 			}

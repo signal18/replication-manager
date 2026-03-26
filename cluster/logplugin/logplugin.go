@@ -69,6 +69,29 @@ type EvaluateResult struct {
 	MetricName    string
 }
 
+// SpikeCheckInterval is how often DetectSpike is actually called.
+// Between checks the previous result is reused so graphite is not
+// queried on every 5-second monitoring tick.
+const SpikeCheckInterval = 60 * time.Second
+
+// SpikeCache holds the last DetectSpike result for one plugin+server+metric tuple.
+// DetectSpike reads and writes the cache to avoid querying graphite on every
+// monitoring tick. The cache is keyed and managed by srv_log_plugins.go.
+type SpikeCache struct {
+	// Result is the last computed SpikeResult (nil = no spike was detected).
+	Result    *SpikeResult
+	// CheckedAt is when DetectSpike last ran the full graphite computation.
+	CheckedAt time.Time
+}
+
+// IsFresh returns true when the cache entry is recent enough to reuse.
+func (c *SpikeCache) IsFresh() bool {
+	if c == nil {
+		return false
+	}
+	return time.Since(c.CheckedAt) < SpikeCheckInterval
+}
+
 // LogSource is passed to every plugin Evaluate() call.
 // All buffer fields are lock-free value copies.
 type LogSource struct {
@@ -85,6 +108,10 @@ type LogSource struct {
 	// GraphiteHostname is the hostname key used in graphite metric names,
 	// e.g. "db1-belair-svc-cloud18" (dots replaced with dashes by carbon).
 	GraphiteHostname string
+	// SpikeCache carries the previous DetectSpike result so plugins skip
+	// the graphite HTTP call when the cache is still fresh (< SpikeCheckInterval).
+	// Managed by srv_log_plugins.go — nil means no cache yet.
+	SpikeCache *SpikeCache
 }
 
 // IsEnabled returns false only when config explicitly sets enabled=false/0/no.
@@ -315,7 +342,7 @@ func granularityWindowStr(name string, ts time.Time, bucket time.Duration) strin
 	case "hour":
 		return fmt.Sprintf("%s – %s (1 hour window)",
 			start.Format("2006-01-02 15:00"),
-			end.Format("16:00"))
+			end.Format("15:00"))
 	case "day":
 		return fmt.Sprintf("%s (full day)",
 			start.Format("2006-01-02 Mon"))
@@ -348,7 +375,21 @@ func granularityBaselineDesc(name, fetchFrom string) string {
 // granularity where a spike was detected, so users can see which time frames
 // are anomalous.  Returns nil when no spike is detected at any granularity
 // or when there is insufficient history at every level.
-func DetectSpike(apiURL, metricName string, sigma float64, correlatePrefix string) (*SpikeResult, error) {
+//
+// cache may be nil.  When the cache is fresh (< SpikeCheckInterval old) the
+// previous result is returned immediately without querying graphite, preventing
+// a flood of HTTP calls on every 5-second monitoring tick.
+// The caller is responsible for updating the cache after a non-nil return.
+func DetectSpike(apiURL, metricName string, sigma float64, correlatePrefix string, cache *SpikeCache) (*SpikeResult, error) {
+	// Return cached result if still fresh — avoids graphite HTTP every tick
+	if cache != nil && cache.IsFresh() {
+		return cache.Result, nil
+	}
+	// Mark the check time immediately so concurrent calls (multiple servers)
+	// don't pile up. We update Result after computation below.
+	if cache != nil {
+		cache.CheckedAt = time.Now()
+	}
 	var allSpikes []GranularitySpike
 	var finest *GranularitySpike // finest granularity that fired
 
@@ -394,6 +435,10 @@ func DetectSpike(apiURL, metricName string, sigma float64, correlatePrefix strin
 	}
 
 	if len(allSpikes) == 0 {
+		if cache != nil {
+			cache.Result = nil
+			cache.CheckedAt = time.Now()
+		}
 		return nil, nil
 	}
 
@@ -411,9 +456,14 @@ func DetectSpike(apiURL, metricName string, sigma float64, correlatePrefix strin
 	if correlatePrefix != "" && apiURL != "" {
 		result.CorrelatedMetrics = correlateGraphiteSpike(
 			apiURL, correlatePrefix, defaultGranularities[0].FetchFrom, finest.SpikeTime, sigma,
+			metricName, // exclude the analyzed metric from correlation results
 		)
 	}
 
+	if cache != nil {
+		cache.Result = result
+		cache.CheckedAt = time.Now()
+	}
 	return result, nil
 }
 
@@ -508,7 +558,9 @@ func FormatSpikeDescription(serverURL, metricName string, spike *SpikeResult) st
 
 // correlateGraphiteSpike finds other metrics under prefix that also spike
 // at the same timestamp using a simpler z-score check.
-func correlateGraphiteSpike(apiURL, prefix, from string, spikeTime time.Time, sigma float64) []string {
+// excludeMetric is the metric being analyzed — it is excluded from results
+// to prevent a metric from being listed as correlated with itself.
+func correlateGraphiteSpike(apiURL, prefix, from string, spikeTime time.Time, sigma float64, excludeMetric string) []string {
 	// Fetch metric names under prefix
 	u, _ := url.Parse(apiURL + "/metrics/find/")
 	q := u.Query()
@@ -534,6 +586,10 @@ func correlateGraphiteSpike(apiURL, prefix, from string, spikeTime time.Time, si
 	var correlated []string
 	for _, m := range found {
 		if m.Leaf != 1 {
+			continue
+		}
+		// Never report the analyzed metric as correlated with itself
+		if m.ID == excludeMetric {
 			continue
 		}
 		points, err := FetchGraphiteMetric(apiURL, m.ID, from, "now")

@@ -121,7 +121,7 @@ func (p *AuditLogDriftPlugin) Evaluate(src LogSource) EvaluateResult {
 	// Spike detection on new-template count via graphite
 	if src.HasGraphite() && syntheticMetric != "" {
 		correlPrefix := fmt.Sprintf("mysql.%s", src.GraphiteHostname)
-		spike, err := DetectSpike(src.GraphiteAPIURL, syntheticMetric, sigma, correlPrefix)
+		spike, err := DetectSpike(src.GraphiteAPIURL, syntheticMetric, sigma, correlPrefix, src.SpikeCache)
 		if err == nil && spike != nil {
 			res.Findings = append(res.Findings, Finding{
 				ErrKey:      "WARN0205",
