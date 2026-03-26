@@ -79,9 +79,12 @@ const SpikeCheckInterval = 60 * time.Second
 // monitoring tick. The cache is keyed and managed by srv_log_plugins.go.
 type SpikeCache struct {
 	// Result is the last computed SpikeResult (nil = no spike was detected).
-	Result    *SpikeResult
+	Result     *SpikeResult
+	// MetricName is the graphite metric that was analyzed, stored so the
+	// re-injected finding description matches the original exactly.
+	MetricName string
 	// CheckedAt is when DetectSpike last ran the full graphite computation.
-	CheckedAt time.Time
+	CheckedAt  time.Time
 }
 
 // IsFresh returns true when the cache entry is recent enough to reuse.
@@ -462,6 +465,7 @@ func DetectSpike(apiURL, metricName string, sigma float64, correlatePrefix strin
 
 	if cache != nil {
 		cache.Result = result
+		cache.MetricName = metricName
 		cache.CheckedAt = time.Now()
 	}
 	return result, nil

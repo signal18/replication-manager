@@ -137,6 +137,38 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			cluster.SetState(f.ErrKey, st)
 		}
 
+		// If Evaluate() returned no WARN0205 this tick (e.g. ring buffer was
+		// transiently empty) but the spike cache still holds a valid recent
+		// spike result, re-inject WARN0205 so it stays in CurState and does
+		// not cause a spurious RESOLV/OPEN churn in the state machine.
+		cache := spikeCache[cacheKey]
+		if cache != nil && cache.IsFresh() && cache.Result != nil {
+			hasSpikeInFindings := false
+			for _, f := range result.Findings {
+				if f.ErrKey == "WARN0205" {
+					hasSpikeInFindings = true
+					break
+				}
+			}
+			if !hasSpikeInFindings {
+				cachedDesc := logplugin.FormatSpikeDescription(server.URL, cache.MetricName, cache.Result)
+				st := logplugin.Finding{
+					ErrKey:      "WARN0205",
+					Severity:    logplugin.SeverityWarning,
+					Description: cachedDesc,
+				}.ToState("PLUGIN")
+				st.ServerUrl = server.URL
+				cluster.SetState("WARN0205", st)
+				cluster.LogModulePrintf(
+					cluster.Conf.Verbose,
+					config.ConstLogModPlugin,
+					config.LvlDbg,
+					"[logplugin:%s] WARN0205 re-injected from cache for server %s",
+					p.Name(), server.URL,
+				)
+			}
+		}
+
 		if len(result.Findings) == 0 {
 			cluster.LogModulePrintf(
 				cluster.Conf.Verbose,
