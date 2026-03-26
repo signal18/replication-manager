@@ -137,12 +137,13 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			cluster.SetState(f.ErrKey, st)
 		}
 
-		// If Evaluate() returned no WARN0205 this tick (e.g. ring buffer was
-		// transiently empty) but the spike cache still holds a valid recent
-		// spike result, re-inject WARN0205 so it stays in CurState and does
-		// not cause a spurious RESOLV/OPEN churn in the state machine.
+		// If the spike cache still holds a valid result but Evaluate() did not
+		// produce a WARN0205 finding this tick (ring buffer transiently empty,
+		// or sigma momentarily below threshold), preserve the state so it stays
+		// in CurState without causing a RESOLV/OPEN churn.
+		// PreserveState copies WARN0205@<serverURL> from OldState → CurState.
 		cache := spikeCache[cacheKey]
-		if cache != nil && cache.IsFresh() && cache.Result != nil {
+		if cache != nil && cache.Result != nil {
 			hasSpikeInFindings := false
 			for _, f := range result.Findings {
 				if f.ErrKey == "WARN0205" {
@@ -151,19 +152,12 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 				}
 			}
 			if !hasSpikeInFindings {
-				cachedDesc := logplugin.FormatSpikeDescription(server.URL, cache.MetricName, cache.Result)
-				st := logplugin.Finding{
-					ErrKey:      "WARN0205",
-					Severity:    logplugin.SeverityWarning,
-					Description: cachedDesc,
-				}.ToState("PLUGIN")
-				st.ServerUrl = server.URL
-				cluster.SetState("WARN0205", st)
+				cluster.StateMachine.PreserveState("WARN0205")
 				cluster.LogModulePrintf(
 					cluster.Conf.Verbose,
 					config.ConstLogModPlugin,
 					config.LvlDbg,
-					"[logplugin:%s] WARN0205 re-injected from cache for server %s",
+					"[logplugin:%s] WARN0205 preserved from previous tick for server %s",
 					p.Name(), server.URL,
 				)
 			}
