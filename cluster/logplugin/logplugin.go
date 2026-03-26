@@ -120,17 +120,6 @@ func (r *Registry) All() []LogPlugin {
 	return out
 }
 
-// replace swaps an existing plugin with the same Name(), or appends.
-func (r *Registry) replace(name string, p LogPlugin) {
-	for i, existing := range r.plugins {
-		if existing.Name() == name {
-			r.plugins[i] = p
-			return
-		}
-	}
-	r.plugins = append(r.plugins, p)
-}
-
 // ---- Config helpers ---------------------------------------------------------
 
 func ConfigStr(cfg map[string]string, key, defaultVal string) string {

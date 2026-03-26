@@ -16,7 +16,6 @@ package logplugin
 
 import (
 	"fmt"
-	"strings"
 	"time"
 )
 
