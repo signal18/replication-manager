@@ -3,28 +3,32 @@
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
-// Redistribution/Reuse of this code is permitted under the GNU v3 license, as
-// an additional term, ALL code must carry the original Author(s) credit in comment form.
-// See LICENSE in this directory for the integral text.
 
 // Package logplugin provides a generic log-tailer plugin interface for replication-manager.
 //
-// Each plugin receives a LogSource snapshot of all four server log ring buffers
-// plus a per-plugin Config map resolved from cluster.Conf.PluginConfig[name].
+// Each plugin:
+//   - receives a LogSource snapshot of log ring buffers + graphite context
+//   - fetches its own history from the graphite render API
+//   - computes a dynamic multi-granularity baseline (per-minute, per-hour, per-day, per-week)
+//   - detects spikes using mean ± N×stddev on the appropriate granularity
+//   - returns an EvaluateResult with Findings, counts, and correlated graphite metrics
 //
-// Config resolution order (highest wins):
-//   - root /etc/replication-manager/config.toml [DEFAULT.plugin-config.<name>] → immutable
-//   - cluster TOML [<cluster>.plugin-config.<name>]                             → operator
-//   - plugin hard-coded default                                                  → fallback
+// Per-plugin enable/disable:
 //
-// Adding a new built-in plugin requires only a single file with an init():
-//
-//	func init() { Register(&MyPlugin{}) }
+//	[mycluster.plugin-config.slowlog]
+//	enabled = false
 package logplugin
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"math"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
@@ -40,15 +44,12 @@ const (
 
 // Finding is a single alert raised by a plugin evaluation.
 type Finding struct {
-	// ErrKey is the state-machine key, e.g. "WARN0200".
-	ErrKey string
-	// Severity is either SeverityWarning or SeverityError.
-	Severity Severity
-	// Description is the human-readable message shown in the UI / logs.
+	ErrKey      string
+	Severity    Severity
 	Description string
 }
 
-// ToState converts a Finding to the state.State used by the cluster state machine.
+// ToState converts a Finding to a cluster state.State.
 func (f Finding) ToState(from string) state.State {
 	return state.State{
 		ErrKey:  f.ErrKey,
@@ -58,35 +59,48 @@ func (f Finding) ToState(from string) state.State {
 	}
 }
 
-// LogSource groups the log ring-buffer snapshots and resolved config available
-// to a plugin.  All fields are value copies so plugins run lock-free.
+// EvaluateResult is returned by Evaluate.
+type EvaluateResult struct {
+	Findings      []Finding
+	CurrentCount  int     // events counted in current window
+	PreviousCount int     // events in previous same-length window (for fallback when graphite unavailable)
+	// MetricName is the graphite metric name this plugin writes its count under.
+	// Empty if graphite is not configured.
+	MetricName    string
+}
+
+// LogSource is passed to every plugin Evaluate() call.
+// All buffer fields are lock-free value copies.
 type LogSource struct {
-	// ServerURL is the URL (host:port) of the server being checked.
-	ServerURL string
-	// ErrorLog is a snapshot of the database error log ring buffer.
-	ErrorLog []s18log.HttpMessage
-	// SqlErrorLog is a snapshot of the SQL error log ring buffer.
-	SqlErrorLog []s18log.HttpMessage
-	// SlowLog is a snapshot of the slow-query log ring buffer.
-	SlowLog []s18log.HttpMessage
-	// AuditLog is a snapshot of the MariaDB SERVER_AUDIT log ring buffer.
-	AuditLog []s18log.HttpMessage
-	// Config is the resolved per-plugin config map for this plugin.
-	// Keys and values are strings; use ConfigStr / ConfigInt / ConfigBool helpers.
-	// nil means no config was set — helpers fall back to their defaults.
-	Config map[string]string
+	ServerURL       string
+	ErrorLog        []s18log.HttpMessage
+	SqlErrorLog     []s18log.HttpMessage
+	SlowLog         []s18log.HttpMessage
+	AuditLog        []s18log.HttpMessage
+	// Config is the resolved per-plugin config map (nil = use defaults).
+	Config          map[string]string
+	// GraphiteAPIURL is the base URL of the graphite render API,
+	// e.g. "http://127.0.0.1:10002". Empty when graphite is disabled.
+	GraphiteAPIURL  string
+	// GraphiteHostname is the hostname key used in graphite metric names,
+	// e.g. "db1-belair-svc-cloud18" (dots replaced with dashes by carbon).
+	GraphiteHostname string
+}
+
+// IsEnabled returns false only when config explicitly sets enabled=false/0/no.
+func (src LogSource) IsEnabled() bool {
+	return ConfigBool(src.Config, "enabled", true)
+}
+
+// HasGraphite returns true when a graphite API endpoint is configured.
+func (src LogSource) HasGraphite() bool {
+	return src.GraphiteAPIURL != "" && src.GraphiteHostname != ""
 }
 
 // LogPlugin is the interface every log-tailer plugin must implement.
 type LogPlugin interface {
-	// Name returns the unique plugin identifier used in config keys and log tags.
-	// It must match the key under plugin-config in the TOML:
-	//   [plugin-config.errorlog]  →  Name() == "errorlog"
 	Name() string
-
-	// Evaluate inspects the LogSource snapshot and returns zero or more Findings.
-	// Returning nil or an empty slice means "all clear".
-	Evaluate(src LogSource) []Finding
+	Evaluate(src LogSource) EvaluateResult
 }
 
 // Registry holds all registered plugins.
@@ -94,26 +108,31 @@ type Registry struct {
 	plugins []LogPlugin
 }
 
-// GlobalRegistry is the package-level registry populated during init().
 var GlobalRegistry = &Registry{}
 
-// Register adds a plugin to the global registry.  Call from init().
 func Register(p LogPlugin) {
 	GlobalRegistry.plugins = append(GlobalRegistry.plugins, p)
 }
 
-// All returns a snapshot copy of the plugin slice.
 func (r *Registry) All() []LogPlugin {
 	out := make([]LogPlugin, len(r.plugins))
 	copy(out, r.plugins)
 	return out
 }
 
-// ---- Config helpers ---------------------------------------------------------
-// These are shared by built-in and external plugins alike.
-// They read from LogSource.Config with a typed default fallback.
+// replace swaps an existing plugin with the same Name(), or appends.
+func (r *Registry) replace(name string, p LogPlugin) {
+	for i, existing := range r.plugins {
+		if existing.Name() == name {
+			r.plugins[i] = p
+			return
+		}
+	}
+	r.plugins = append(r.plugins, p)
+}
 
-// ConfigStr returns the string value for key from cfg, or defaultVal if absent.
+// ---- Config helpers ---------------------------------------------------------
+
 func ConfigStr(cfg map[string]string, key, defaultVal string) string {
 	if cfg == nil {
 		return defaultVal
@@ -124,8 +143,6 @@ func ConfigStr(cfg map[string]string, key, defaultVal string) string {
 	return defaultVal
 }
 
-// ConfigInt returns the integer value for key from cfg, or defaultVal if absent
-// or unparseable.
 func ConfigInt(cfg map[string]string, key string, defaultVal int) int {
 	s := ConfigStr(cfg, key, "")
 	if s == "" {
@@ -138,8 +155,18 @@ func ConfigInt(cfg map[string]string, key string, defaultVal int) int {
 	return n
 }
 
-// ConfigBool returns the boolean value for key from cfg, or defaultVal if absent.
-// Accepted truthy values: "true", "1", "yes" (case-insensitive).
+func ConfigFloat(cfg map[string]string, key string, defaultVal float64) float64 {
+	s := ConfigStr(cfg, key, "")
+	if s == "" {
+		return defaultVal
+	}
+	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return defaultVal
+	}
+	return f
+}
+
 func ConfigBool(cfg map[string]string, key string, defaultVal bool) bool {
 	s := strings.ToLower(strings.TrimSpace(ConfigStr(cfg, key, "")))
 	switch s {
@@ -149,4 +176,406 @@ func ConfigBool(cfg map[string]string, key string, defaultVal bool) bool {
 		return false
 	}
 	return defaultVal
+}
+
+// ---- Graphite helpers -------------------------------------------------------
+
+// graphiteDatapoint is one [value, timestamp] pair from the render API.
+type graphiteDatapoint struct {
+	Value *float64
+	Time  int64
+}
+
+// graphiteSeriesResponse is one target from the render JSON response.
+type graphiteSeriesResponse struct {
+	Target     string
+	Datapoints []graphiteDatapoint
+}
+
+// UnmarshalJSON handles [[null|float, int], ...] graphite format.
+func (d *graphiteDatapoint) UnmarshalJSON(b []byte) error {
+	var raw [2]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	var ts int64
+	if err := json.Unmarshal(raw[1], &ts); err != nil {
+		return err
+	}
+	d.Time = ts
+
+	var v float64
+	if err := json.Unmarshal(raw[0], &v); err == nil {
+		d.Value = &v
+	}
+	return nil
+}
+
+func (r *graphiteSeriesResponse) UnmarshalJSON(b []byte) error {
+	var tmp struct {
+		Target     string              `json:"target"`
+		Datapoints []graphiteDatapoint `json:"datapoints"`
+	}
+	if err := json.Unmarshal(b, &tmp); err != nil {
+		return err
+	}
+	r.Target = tmp.Target
+	r.Datapoints = tmp.Datapoints
+	return nil
+}
+
+// FetchGraphiteMetric queries the graphite render API and returns datapoints.
+// from/until use graphite relative syntax: "-7d", "-1h", "now".
+func FetchGraphiteMetric(apiURL, target, from, until string) ([]graphiteDatapoint, error) {
+	u, err := url.Parse(apiURL + "/render/")
+	if err != nil {
+		return nil, err
+	}
+	q := u.Query()
+	q.Set("target", target)
+	q.Set("from", from)
+	q.Set("until", until)
+	q.Set("format", "json")
+	q.Set("noCache", "1")
+	u.RawQuery = q.Encode()
+
+	resp, err := http.Get(u.String())
+	if err != nil {
+		return nil, fmt.Errorf("graphite fetch error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var series []graphiteSeriesResponse
+	if err := json.Unmarshal(body, &series); err != nil {
+		return nil, fmt.Errorf("graphite parse error: %w", err)
+	}
+	if len(series) == 0 {
+		return nil, nil
+	}
+	return series[0].Datapoints, nil
+}
+
+// ---- Dynamic spike detection ------------------------------------------------
+
+// Granularity describes a time-of-X aware baseline window.
+type Granularity struct {
+	Name        string        // "minute", "hour", "day", "week"
+	FetchFrom   string        // graphite from= parameter (history to fetch)
+	BucketSize  time.Duration // size of one bucket (1h, 1d, 1w)
+	MinBaseline int           // minimum non-null baseline points required
+}
+
+// defaultGranularities is the ordered list used for spike detection.
+// We try from finest to coarsest — report the first significant hit.
+var defaultGranularities = []Granularity{
+	{Name: "minute", FetchFrom: "-2h",  BucketSize: time.Minute,      MinBaseline: 10},
+	{Name: "hour",   FetchFrom: "-7d",  BucketSize: time.Hour,        MinBaseline: 5},
+	{Name: "day",    FetchFrom: "-28d", BucketSize: 24 * time.Hour,   MinBaseline: 3},
+	{Name: "week",   FetchFrom: "-52w", BucketSize: 7 * 24 * time.Hour, MinBaseline: 3},
+}
+
+// SpikeResult describes a detected spike across one or more granularities.
+type SpikeResult struct {
+	// SpikeTime is when the spike was measured (timestamp of the current data point).
+	SpikeTime      time.Time
+	// Granularity is the finest granularity at which the spike was detected.
+	Granularity    string
+	// BaselineWindow describes the history window used for the baseline,
+	// e.g. "same hour-of-day over the last 7 days".
+	BaselineWindow string
+	CurrentValue   float64
+	BaselineMean   float64
+	BaselineStddev float64
+	Sigma          float64
+	// AllGranularities lists every granularity where a spike was detected,
+	// with the spike timestamp formatted for that granularity so users know
+	// exactly which time window to investigate in the logs.
+	AllGranularities []GranularitySpike
+	// CorrelatedMetrics are other mysql.* metrics also spiking at the same time.
+	CorrelatedMetrics []string
+}
+
+// GranularitySpike is one granularity-level detection result.
+type GranularitySpike struct {
+	Name           string    // "minute", "hour", "day", "week"
+	SpikeTime      time.Time // exact timestamp of the spike data point
+	// TimeWindow is the human-readable time range to look at in the logs,
+	// e.g. "2026-03-26 14:00 – 2026-03-26 15:00" for an hourly spike.
+	TimeWindow     string
+	CurrentValue   float64
+	BaselineMean   float64
+	BaselineStddev float64
+	Sigma          float64
+}
+
+// granularityWindowStr formats a human-readable investigation window
+// for the given granularity bucket ending at ts.
+func granularityWindowStr(name string, ts time.Time, bucket time.Duration) string {
+	start := ts.Truncate(bucket)
+	end := start.Add(bucket)
+	switch name {
+	case "minute":
+		return fmt.Sprintf("%s – %s (1 min window)",
+			start.Format("2006-01-02 15:04"),
+			end.Format("15:04"))
+	case "hour":
+		return fmt.Sprintf("%s – %s (1 hour window)",
+			start.Format("2006-01-02 15:00"),
+			end.Format("16:00"))
+	case "day":
+		return fmt.Sprintf("%s (full day)",
+			start.Format("2006-01-02 Mon"))
+	case "week":
+		return fmt.Sprintf("week of %s – %s",
+			start.Format("2006-01-02"),
+			end.Format("2006-01-02"))
+	}
+	return ts.Format(time.RFC3339)
+}
+
+// granularityBaselineDesc returns a human description of the baseline window.
+func granularityBaselineDesc(name, fetchFrom string) string {
+	switch name {
+	case "minute":
+		return "same minute-of-hour, last 2 hours"
+	case "hour":
+		return "same hour-of-day, last 7 days"
+	case "day":
+		return "same day-of-week, last 4 weeks"
+	case "week":
+		return "same week-of-month, last 52 weeks"
+	}
+	return fetchFrom
+}
+
+// DetectSpike fetches the given graphite metric and checks whether the most
+// recent value is a statistical outlier relative to a time-aware baseline.
+// It checks ALL granularities and returns a SpikeResult that lists every
+// granularity where a spike was detected, so users can see which time frames
+// are anomalous.  Returns nil when no spike is detected at any granularity
+// or when there is insufficient history at every level.
+func DetectSpike(apiURL, metricName string, sigma float64, correlatePrefix string) (*SpikeResult, error) {
+	var allSpikes []GranularitySpike
+	var finest *GranularitySpike // finest granularity that fired
+
+	for _, g := range defaultGranularities {
+		points, err := FetchGraphiteMetric(apiURL, metricName, g.FetchFrom, "now")
+		if err != nil || len(points) < g.MinBaseline+1 {
+			continue
+		}
+
+		current, currentTS := lastNonNull(points)
+		if current == nil {
+			continue
+		}
+
+		baseline := sameTimeBucket(points[:len(points)-1], currentTS, g.BucketSize)
+		if len(baseline) < g.MinBaseline {
+			continue
+		}
+
+		mean, stddev := meanStddev(baseline)
+		if stddev < 0.01 {
+			continue
+		}
+
+		s := (*current - mean) / stddev
+		if s < sigma {
+			continue
+		}
+
+		gs := GranularitySpike{
+			Name:           g.Name,
+			SpikeTime:      currentTS,
+			TimeWindow:     granularityWindowStr(g.Name, currentTS, g.BucketSize),
+			CurrentValue:   *current,
+			BaselineMean:   mean,
+			BaselineStddev: stddev,
+			Sigma:          s,
+		}
+		allSpikes = append(allSpikes, gs)
+		if finest == nil {
+			finest = &gs // first = finest granularity (list is ordered finest→coarsest)
+		}
+	}
+
+	if len(allSpikes) == 0 {
+		return nil, nil
+	}
+
+	result := &SpikeResult{
+		SpikeTime:        finest.SpikeTime,
+		Granularity:      finest.Name,
+		BaselineWindow:   granularityBaselineDesc(finest.Name, ""),
+		CurrentValue:     finest.CurrentValue,
+		BaselineMean:     finest.BaselineMean,
+		BaselineStddev:   finest.BaselineStddev,
+		Sigma:            finest.Sigma,
+		AllGranularities: allSpikes,
+	}
+
+	if correlatePrefix != "" && apiURL != "" {
+		result.CorrelatedMetrics = correlateGraphiteSpike(
+			apiURL, correlatePrefix, defaultGranularities[0].FetchFrom, finest.SpikeTime, sigma,
+		)
+	}
+
+	return result, nil
+}
+
+// lastNonNull returns the last non-null value and its timestamp.
+func lastNonNull(points []graphiteDatapoint) (*float64, time.Time) {
+	for i := len(points) - 1; i >= 0; i-- {
+		if points[i].Value != nil {
+			t := time.Unix(points[i].Time, 0)
+			return points[i].Value, t
+		}
+	}
+	return nil, time.Time{}
+}
+
+// sameTimeBucket returns values from points that fall in the same
+// "bucket position" as ts — e.g. same hour-of-day for hourly buckets.
+func sameTimeBucket(points []graphiteDatapoint, ts time.Time, bucket time.Duration) []float64 {
+	var out []float64
+	for _, p := range points {
+		if p.Value == nil {
+			continue
+		}
+		pt := time.Unix(p.Time, 0)
+		if sameBucketPosition(pt, ts, bucket) {
+			out = append(out, *p.Value)
+		}
+	}
+	return out
+}
+
+func sameBucketPosition(a, b time.Time, bucket time.Duration) bool {
+	switch bucket {
+	case time.Minute:
+		return a.Minute() == b.Minute()
+	case time.Hour:
+		return a.Hour() == b.Hour()
+	case 24 * time.Hour:
+		return a.Weekday() == b.Weekday()
+	case 7 * 24 * time.Hour:
+		// same week-of-month
+		_, aw := a.ISOWeek()
+		_, bw := b.ISOWeek()
+		return aw%4 == bw%4
+	}
+	return false
+}
+
+func meanStddev(vals []float64) (float64, float64) {
+	if len(vals) == 0 {
+		return 0, 0
+	}
+	sum := 0.0
+	for _, v := range vals {
+		sum += v
+	}
+	mean := sum / float64(len(vals))
+	variance := 0.0
+	for _, v := range vals {
+		d := v - mean
+		variance += d * d
+	}
+	return mean, math.Sqrt(variance / float64(len(vals)))
+}
+
+// FormatSpikeDescription builds the human-readable finding description for a
+// spike, listing every granularity that fired with its exact investigation
+// time window.  Example output:
+//
+//	Spike on db1:3306 (metric: mysql.db1.plugin_slowlog_count)
+//	  minute  3.4σ  current=45 mean=8.2±3.1  → investigate: 2026-03-26 14:23 – 14:24
+//	  hour    2.8σ  current=45 mean=12.1±5.6  → investigate: 2026-03-26 14:00 – 15:00
+//	  Baseline: same minute-of-hour, last 2 hours
+//	  Correlated: mysql.db1.mysql_global_status_com_select, mysql.db1.mysql_global_status_threads_running
+func FormatSpikeDescription(serverURL, metricName string, spike *SpikeResult) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Spike on %s [%s]", serverURL, metricName))
+	for _, g := range spike.AllGranularities {
+		sb.WriteString(fmt.Sprintf(
+			" | %s %.1fσ (cur=%.0f avg=%.1f±%.1f) → %s",
+			g.Name, g.Sigma, g.CurrentValue, g.BaselineMean, g.BaselineStddev,
+			g.TimeWindow,
+		))
+	}
+	if spike.BaselineWindow != "" {
+		sb.WriteString(fmt.Sprintf(" [baseline: %s]", spike.BaselineWindow))
+	}
+	if len(spike.CorrelatedMetrics) > 0 {
+		sb.WriteString(" [correlated: " + strings.Join(spike.CorrelatedMetrics, ", ") + "]")
+	}
+	return sb.String()
+}
+
+// correlateGraphiteSpike finds other metrics under prefix that also spike
+// at the same timestamp using a simpler z-score check.
+func correlateGraphiteSpike(apiURL, prefix, from string, spikeTime time.Time, sigma float64) []string {
+	// Fetch metric names under prefix
+	u, _ := url.Parse(apiURL + "/metrics/find/")
+	q := u.Query()
+	q.Set("query", prefix+".*")
+	q.Set("format", "treejson")
+	u.RawQuery = q.Encode()
+
+	resp, err := http.Get(u.String())
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var found []struct {
+		ID   string `json:"id"`
+		Leaf int    `json:"leaf"`
+	}
+	if err := json.Unmarshal(body, &found); err != nil {
+		return nil
+	}
+
+	var correlated []string
+	for _, m := range found {
+		if m.Leaf != 1 {
+			continue
+		}
+		points, err := FetchGraphiteMetric(apiURL, m.ID, from, "now")
+		if err != nil || len(points) < 5 {
+			continue
+		}
+		// Simple check: does the value at spikeTime deviate from mean by sigma?
+		var vals []float64
+		var spikeVal *float64
+		for _, p := range points {
+			if p.Value == nil {
+				continue
+			}
+			pt := time.Unix(p.Time, 0)
+			if math.Abs(pt.Sub(spikeTime).Seconds()) < 120 {
+				v := *p.Value
+				spikeVal = &v
+			} else {
+				vals = append(vals, *p.Value)
+			}
+		}
+		if spikeVal == nil || len(vals) < 3 {
+			continue
+		}
+		mean, stddev := meanStddev(vals)
+		if stddev > 0.01 && (*spikeVal-mean)/stddev >= sigma {
+			correlated = append(correlated, m.ID)
+		}
+		if len(correlated) >= 5 { // cap at 5 correlated metrics
+			break
+		}
+	}
+	return correlated
 }

@@ -73,7 +73,8 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
 
     // One row per plugin config key — flat, no nested arrays
     plugins.forEach((plugin) => {
-      // Plugin name header row
+      // Plugin name header row with enabled toggle
+      const isPluginEnabled = plugin.config?.['enabled'] !== 'false'
       rows.push({
         key: (
           <Text fontWeight='semibold' fontSize='sm' color='blue.300'>
@@ -81,9 +82,18 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           </Text>
         ),
         value: (
-          <Badge colorScheme={plugin.enabled ? 'green' : 'gray'}>
-            {plugin.enabled ? 'enabled' : 'disabled'}
-          </Badge>
+          <RMSwitch
+            confirmTitle={`Confirm ${isPluginEnabled ? 'disable' : 'enable'} plugin '${plugin.name}'?`}
+            onChange={() =>
+              dispatch(setSetting({
+                clusterName: selectedCluster?.name,
+                setting: `plugin-config-${plugin.name}-enabled`,
+                value: isPluginEnabled ? 'false' : 'true'
+              }))
+            }
+            isDisabled={user?.grants['cluster-settings'] == false}
+            isChecked={isPluginEnabled}
+          />
         )
       })
 
@@ -497,11 +507,11 @@ function pluginKnownKeys(pluginName) {
     case 'errorlog':
     case 'sqlerrorlog':
     case 'slowlog':
-      return ['timeframe-hours']
+      return ['timeframe-hours', 'spike-sigma']
     case 'auditlog':
-      return ['current-window-hours', 'baseline-window-hours']
+      return ['current-window-hours', 'baseline-window-hours', 'spike-sigma']
     default:
-      return []
+      return ['spike-sigma']
   }
 }
 
@@ -509,7 +519,8 @@ function pluginKeyLabel(pluginName, key) {
   const labels = {
     'timeframe-hours': 'Timeframe (hours)',
     'current-window-hours': 'Current window (hours)',
-    'baseline-window-hours': 'Baseline window (hours)'
+    'baseline-window-hours': 'Baseline window (hours)',
+    'spike-sigma': 'Spike threshold (σ)'
   }
   return labels[key] || key
 }
@@ -519,6 +530,7 @@ function pluginKeyDefault(pluginName, key) {
     if (key === 'current-window-hours') return '1'
     if (key === 'baseline-window-hours') return '24'
   }
+  if (key === 'spike-sigma') return '2'
   return '24'
 }
 

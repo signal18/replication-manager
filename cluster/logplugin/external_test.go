@@ -178,7 +178,7 @@ func TestExternalPlugin_AllClear(t *testing.T) {
 	p := NewExternalLogPlugin("noop", binPath, 5*time.Second)
 	src := LogSource{ServerURL: "127.0.0.1:3306",
 		ErrorLog: []s18log.HttpMessage{{Level: "ERROR", Text: "boom", Timestamp: "2024-01-02 10:00:00"}}}
-	findings := p.Evaluate(src)
+	findings := p.Evaluate(src).Findings
 	if len(findings) != 0 {
 		t.Errorf("expected 0 findings, got %v", findings)
 	}
@@ -195,7 +195,7 @@ func TestExternalPlugin_ReturnsFinding(t *testing.T) {
 	binPath := writeFakePlugin(t, dir, "mycheck", resp)
 
 	p := NewExternalLogPlugin("mycheck", binPath, 5*time.Second)
-	findings := p.Evaluate(LogSource{ServerURL: "127.0.0.1:3306"})
+	findings := p.Evaluate(LogSource{ServerURL: "127.0.0.1:3306"}).Findings
 	if len(findings) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(findings))
 	}
@@ -215,7 +215,7 @@ func TestExternalPlugin_BrokenExitReturnsWARN0203(t *testing.T) {
 	binPath := writeBrokenPlugin(t, dir, "broken")
 
 	p := NewExternalLogPlugin("broken", binPath, 5*time.Second)
-	findings := p.Evaluate(LogSource{ServerURL: "127.0.0.1:3306"})
+	findings := p.Evaluate(LogSource{ServerURL: "127.0.0.1:3306"}).Findings
 	if len(findings) != 1 {
 		t.Fatalf("expected 1 error finding, got %d", len(findings))
 	}
@@ -236,7 +236,7 @@ func TestExternalPlugin_Timeout(t *testing.T) {
 	}
 
 	p := NewExternalLogPlugin("slow", binPath, 100*time.Millisecond)
-	findings := p.Evaluate(LogSource{ServerURL: "127.0.0.1:3306"})
+	findings := p.Evaluate(LogSource{ServerURL: "127.0.0.1:3306"}).Findings
 	if len(findings) != 1 || findings[0].ErrKey != "WARN0203" {
 		t.Errorf("expected WARN0203 timeout finding, got %v", findings)
 	}
@@ -254,7 +254,7 @@ func TestExternalPlugin_InvalidJSONReturnsWARN0203(t *testing.T) {
 	}
 
 	p := NewExternalLogPlugin("badjson", binPath, 5*time.Second)
-	findings := p.Evaluate(LogSource{ServerURL: "127.0.0.1:3306"})
+	findings := p.Evaluate(LogSource{ServerURL: "127.0.0.1:3306"}).Findings
 	if len(findings) != 1 || findings[0].ErrKey != "WARN0203" {
 		t.Errorf("expected WARN0203 for bad JSON, got %v", findings)
 	}
@@ -271,7 +271,7 @@ func TestExternalPlugin_UnknownSeverityDefaultsToWarning(t *testing.T) {
 	binPath := writeFakePlugin(t, dir, "critsev", resp)
 
 	p := NewExternalLogPlugin("critsev", binPath, 5*time.Second)
-	findings := p.Evaluate(LogSource{ServerURL: "127.0.0.1:3306"})
+	findings := p.Evaluate(LogSource{ServerURL: "127.0.0.1:3306"}).Findings
 	if len(findings) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(findings))
 	}

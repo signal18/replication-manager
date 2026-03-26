@@ -3,54 +3,105 @@
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
-// Redistribution/Reuse of this code is permitted under the GNU v3 license, as
-// an additional term, ALL code must carry the original Author(s) credit in comment form.
-// See LICENSE in this directory for the integral text.
 
 package cluster
 
 import (
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-// RunLogPlugins evaluates every plugin in logplugin.GlobalRegistry against
-// the current server's log ring buffers and injects any Findings into the
-// cluster state machine.
+// graphiteHostname returns the metric-safe hostname for the server,
+// matching the format used in srv_snd.go.
+func (server *ServerMonitor) graphiteHostname() string {
+	if server.Variables == nil {
+		return ""
+	}
+	replacer := strings.NewReplacer(
+		"`", "", "?", "", " ", "_", ".", "-",
+		"(", "-", ")", "-", "/", "_", "<", "-", "'", "-", `"`, "-",
+	)
+	return replacer.Replace(server.Variables.Get("HOSTNAME"))
+}
+
+// graphiteAPIURL returns the base URL of the carbon API, or "" when disabled.
+func (cluster *Cluster) graphiteAPIURL() string {
+	if !cluster.Conf.GraphiteMetrics {
+		return ""
+	}
+	host := cluster.Conf.GraphiteCarbonHost
+	if cluster.Conf.GraphiteEmbedded {
+		host = "127.0.0.1"
+	}
+	return fmt.Sprintf("http://%s:%d", host, cluster.Conf.GraphiteCarbonApiPort)
+}
+
+// RunLogPlugins evaluates every enabled plugin, injects Findings into the
+// state machine, and queues synthetic graphite metrics for plugins that lack
+// a native MySQL status metric for their dimension.
 //
-// Logging is intentionally suppressed for findings that were already open in
-// the previous monitoring tick so the log is not flooded on every tick.
-// A WARN line is emitted only when:
-//   - a finding first appears   (state transition: absent → open)
-//   - a finding clears          (handled by cluster.LogPrintAllStates)
+// Logging is suppressed for findings already open in the previous tick so the
+// log is not flooded — only state transitions (new / resolved) produce a WARN.
 func (server *ServerMonitor) RunLogPlugins() {
 	cluster := server.ClusterGroup
+	apiURL := cluster.graphiteAPIURL()
+	hostname := server.graphiteHostname()
 
 	for _, p := range logplugin.GlobalRegistry.All() {
 		src := logplugin.LogSource{
-			ServerURL:   server.URL,
-			ErrorLog:    snapshotHttpLog(server.ErrorLog),
-			SqlErrorLog: snapshotHttpLog(server.SqlErrorLog),
-			SlowLog:     snapshotSlowLog(server.SlowLog),
-			AuditLog:    snapshotHttpLog(server.AuditLog),
-			Config:      resolvePluginConfig(cluster, p.Name()),
+			ServerURL:        server.URL,
+			ErrorLog:         snapshotHttpLog(server.ErrorLog),
+			SqlErrorLog:      snapshotHttpLog(server.SqlErrorLog),
+			SlowLog:          snapshotSlowLog(server.SlowLog),
+			AuditLog:         snapshotHttpLog(server.AuditLog),
+			Config:           resolvePluginConfig(cluster, p.Name()),
+			GraphiteAPIURL:   apiURL,
+			GraphiteHostname: hostname,
 		}
 
-		findings := p.Evaluate(src)
-		for _, f := range findings {
+		if !src.IsEnabled() {
+			cluster.LogModulePrintf(
+				cluster.Conf.Verbose,
+				config.ConstLogModPlugin,
+				config.LvlDbg,
+				"[logplugin:%s] disabled for server %s",
+				p.Name(), server.URL,
+			)
+			continue
+		}
+
+		result := p.Evaluate(src)
+
+		// Send synthetic graphite metric if the plugin produced one.
+		// This ensures history accumulates even before any spike is detected.
+		if result.MetricName != "" && cluster.Conf.GraphiteMetrics && cluster.ClusterGraphite != nil {
+			m := graphite.NewMetric(
+				result.MetricName,
+				fmt.Sprintf("%d", result.CurrentCount),
+				time.Now().Unix(),
+			)
+			cluster.ClusterGraphite.AddMetrics([]graphite.Metric{m})
+			cluster.LogModulePrintf(
+				cluster.Conf.Verbose,
+				config.ConstLogModPlugin,
+				config.LvlDbg,
+				"[logplugin:%s] queued graphite metric %s=%d",
+				p.Name(), result.MetricName, result.CurrentCount,
+			)
+		}
+
+		for _, f := range result.Findings {
 			st := f.ToState("PLUGIN")
 			st.ServerUrl = server.URL
-
-			// Build the composite state key exactly as AddState does:
-			// key = ErrKey + "@" + ServerUrl  (when ServerUrl is set)
 			compositeKey := fmt.Sprintf("%s@%s", f.ErrKey, server.URL)
 
-			// Only log on state transition (first occurrence this server/key pair
-			// was not already open in the previous tick's OldState).
 			if !cluster.StateMachine.IsInState(compositeKey) {
 				cluster.LogModulePrintf(
 					cluster.Conf.Verbose,
@@ -68,11 +119,10 @@ func (server *ServerMonitor) RunLogPlugins() {
 					p.Name(), f.ErrKey, server.URL,
 				)
 			}
-
 			cluster.SetState(f.ErrKey, st)
 		}
 
-		if len(findings) == 0 {
+		if len(result.Findings) == 0 {
 			cluster.LogModulePrintf(
 				cluster.Conf.Verbose,
 				config.ConstLogModPlugin,
@@ -84,8 +134,6 @@ func (server *ServerMonitor) RunLogPlugins() {
 	}
 }
 
-// resolvePluginConfig returns a copy of cluster.Conf.PluginConfig[pluginName],
-// or nil if no config has been set for that plugin.
 func resolvePluginConfig(cluster *Cluster, pluginName string) map[string]string {
 	if cluster.Conf.PluginConfig == nil {
 		return nil
@@ -101,7 +149,6 @@ func resolvePluginConfig(cluster *Cluster, pluginName string) map[string]string 
 	return out
 }
 
-// snapshotHttpLog returns a copy of non-empty ring buffer messages.
 func snapshotHttpLog(log s18log.HttpLog) []s18log.HttpMessage {
 	log.L.Lock()
 	defer log.L.Unlock()
@@ -114,7 +161,6 @@ func snapshotHttpLog(log s18log.HttpLog) []s18log.HttpMessage {
 	return out
 }
 
-// snapshotSlowLog converts s18log.SlowLog entries into HttpMessage format.
 func snapshotSlowLog(sl s18log.SlowLog) []s18log.HttpMessage {
 	sl.L.Lock()
 	defer sl.L.Unlock()
@@ -132,8 +178,6 @@ func snapshotSlowLog(sl s18log.SlowLog) []s18log.HttpMessage {
 	return out
 }
 
-// CheckLogPlugins is the cluster-level entry point called every monitoring
-// tick from cluster.Run(). Down or ignored servers are skipped.
 func (cluster *Cluster) CheckLogPlugins() {
 	if !cluster.Conf.LogPlugin {
 		return
@@ -146,8 +190,6 @@ func (cluster *Cluster) CheckLogPlugins() {
 	}
 }
 
-// GetLogPluginStates returns all currently open plugin-raised states,
-// optionally filtered to a specific server URL (pass "" for all servers).
 func (cluster *Cluster) GetLogPluginStates(serverURL string) []state.State {
 	SM := cluster.GetStateMachine()
 	opened := SM.GetLastOpenedStates()
@@ -156,6 +198,7 @@ func (cluster *Cluster) GetLogPluginStates(serverURL string) []state.State {
 		logplugin.ErrKeySQLError24h: true,
 		logplugin.ErrKeySlowLog24h:  true,
 		logplugin.ErrKeyAuditDrift:  true,
+		"WARN0205":                   true,
 	}
 	var out []state.State
 	for _, st := range opened {
@@ -166,8 +209,6 @@ func (cluster *Cluster) GetLogPluginStates(serverURL string) []state.State {
 	return out
 }
 
-// ReloadLogPlugins scans cluster.WorkingDir/plugins/ for external plugin
-// binaries and registers / hot-replaces them in GlobalRegistry.
 func (cluster *Cluster) ReloadLogPlugins() {
 	dir := logplugin.PluginDir(cluster.WorkingDir)
 	n, err := logplugin.LoadPluginsFromDir(dir, logplugin.GlobalRegistry)

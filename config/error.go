@@ -246,6 +246,7 @@ var ClusterError = map[string]string{
 	"WARN0202": "Server %s has recent slow queries in slow query log (last 24h)",
 	"WARN0203": "Log plugin execution error",
 	"WARN0204": "Server %s has new query templates in audit log not seen in baseline window",
+	"WARN0205": "Server %s has a log event spike detected vs dynamic multi-granularity baseline",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",

@@ -100,7 +100,7 @@ func TestParseLogTimestamp(t *testing.T) {
 func TestErrorLog24hPlugin_NoEntries(t *testing.T) {
 	p := &ErrorLog24hPlugin{}
 	src := LogSource{ServerURL: "127.0.0.1:3306", ErrorLog: nil}
-	if f := p.Evaluate(src); len(f) != 0 {
+	if r := p.Evaluate(src); len(r.Findings) != 0 {
 		t.Errorf("expected 0 findings, got %d", len(f))
 	}
 }
@@ -113,7 +113,7 @@ func TestErrorLog24hPlugin_OldErrorIgnored(t *testing.T) {
 			makeMsg("ERROR", "disk full", oldTS()),
 		},
 	}
-	if f := p.Evaluate(src); len(f) != 0 {
+	if r := p.Evaluate(src); len(r.Findings) != 0 {
 		t.Errorf("expected 0 findings for old error, got %d", len(f))
 	}
 }
@@ -126,7 +126,7 @@ func TestErrorLog24hPlugin_RecentErrorRaisesWarning(t *testing.T) {
 			makeMsg("ERROR", "InnoDB corruption", recentTS()),
 		},
 	}
-	f := p.Evaluate(src)
+	f := p.Evaluate(src).Findings
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(f))
 	}
@@ -147,7 +147,7 @@ func TestErrorLog24hPlugin_InfoLevelSkipped(t *testing.T) {
 			makeMsg("Info", "connected", recentTS()),
 		},
 	}
-	if f := p.Evaluate(src); len(f) != 0 {
+	if r := p.Evaluate(src); len(r.Findings) != 0 {
 		t.Errorf("Info/Note entries should not trigger plugin, got %d findings", len(f))
 	}
 }
@@ -161,7 +161,7 @@ func TestErrorLog24hPlugin_NoTimestampIncluded(t *testing.T) {
 			{Level: "ERROR", Text: "unknown error", Timestamp: ""},
 		},
 	}
-	f := p.Evaluate(src)
+	f := p.Evaluate(src).Findings
 	if len(f) != 1 {
 		t.Errorf("no-timestamp ERROR should be included; got %d findings", len(f))
 	}
@@ -174,7 +174,7 @@ func TestErrorLog24hPlugin_CountInDescription(t *testing.T) {
 		msgs[i] = makeMsg("ERROR", fmt.Sprintf("err %d", i), recentTS())
 	}
 	src := LogSource{ServerURL: "127.0.0.1:3306", ErrorLog: msgs}
-	f := p.Evaluate(src)
+	f := p.Evaluate(src).Findings
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(f))
 	}
@@ -190,7 +190,7 @@ func TestErrorLog24hPlugin_CountInDescription(t *testing.T) {
 func TestSqlErrorLog24hPlugin_NoEntries(t *testing.T) {
 	p := &SqlErrorLog24hPlugin{}
 	src := LogSource{ServerURL: "127.0.0.1:3306"}
-	if f := p.Evaluate(src); len(f) != 0 {
+	if r := p.Evaluate(src); len(r.Findings) != 0 {
 		t.Errorf("expected 0 findings, got %d", len(f))
 	}
 }
@@ -203,7 +203,7 @@ func TestSqlErrorLog24hPlugin_RecentEntry(t *testing.T) {
 			makeMsg("ERROR", "SELECT syntax error", recentTS()),
 		},
 	}
-	f := p.Evaluate(src)
+	f := p.Evaluate(src).Findings
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(f))
 	}
@@ -220,7 +220,7 @@ func TestSqlErrorLog24hPlugin_OldEntryIgnored(t *testing.T) {
 			makeMsg("ERROR", "old sql error", oldTS()),
 		},
 	}
-	if f := p.Evaluate(src); len(f) != 0 {
+	if r := p.Evaluate(src); len(r.Findings) != 0 {
 		t.Errorf("expected 0 findings for old SQL error, got %d", len(f))
 	}
 }
@@ -230,7 +230,7 @@ func TestSqlErrorLog24hPlugin_OldEntryIgnored(t *testing.T) {
 func TestSlowLog24hPlugin_NoEntries(t *testing.T) {
 	p := &SlowLog24hPlugin{}
 	src := LogSource{ServerURL: "127.0.0.1:3306"}
-	if f := p.Evaluate(src); len(f) != 0 {
+	if r := p.Evaluate(src); len(r.Findings) != 0 {
 		t.Errorf("expected 0 findings, got %d", len(f))
 	}
 }
@@ -243,7 +243,7 @@ func TestSlowLog24hPlugin_RecentEntry(t *testing.T) {
 			makeMsg("", "SELECT SLEEP(10)", recentTS()),
 		},
 	}
-	f := p.Evaluate(src)
+	f := p.Evaluate(src).Findings
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(f))
 	}
@@ -260,7 +260,7 @@ func TestSlowLog24hPlugin_OldEntryIgnored(t *testing.T) {
 			makeMsg("", "SELECT SLEEP(10)", oldTS()),
 		},
 	}
-	if f := p.Evaluate(src); len(f) != 0 {
+	if r := p.Evaluate(src); len(r.Findings) != 0 {
 		t.Errorf("expected 0 findings for old slow query, got %d", len(f))
 	}
 }
@@ -273,7 +273,7 @@ func TestSlowLog24hPlugin_EmptyTextSkipped(t *testing.T) {
 			makeMsg("", "", recentTS()),
 		},
 	}
-	if f := p.Evaluate(src); len(f) != 0 {
+	if r := p.Evaluate(src); len(r.Findings) != 0 {
 		t.Errorf("empty-text entry should be skipped, got %d findings", len(f))
 	}
 }

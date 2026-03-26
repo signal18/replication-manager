@@ -55,10 +55,12 @@ const (
 
 // stdioRequest is the JSON payload written to a plugin's stdin.
 type stdioRequest struct {
-	ServerURL   string     `json:"server_url"`
-	ErrorLog    []stdioMsg `json:"error_log"`
-	SqlErrorLog []stdioMsg `json:"sql_error_log"`
-	SlowLog     []stdioMsg `json:"slow_log"`
+	ServerURL        string     `json:"server_url"`
+	ErrorLog         []stdioMsg `json:"error_log"`
+	SqlErrorLog      []stdioMsg `json:"sql_error_log"`
+	SlowLog          []stdioMsg `json:"slow_log"`
+	GraphiteAPIURL   string     `json:"graphite_api_url"`
+	GraphiteHostname string     `json:"graphite_hostname"`
 }
 
 // stdioMsg is the wire representation of an s18log.HttpMessage.
@@ -101,17 +103,19 @@ func NewExternalLogPlugin(name, binPath string, timeout time.Duration) *External
 
 func (p *ExternalLogPlugin) Name() string { return p.name }
 
-func (p *ExternalLogPlugin) Evaluate(src LogSource) []Finding {
+func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	req := stdioRequest{
-		ServerURL:   src.ServerURL,
-		ErrorLog:    msgsToWire(src.ErrorLog),
-		SqlErrorLog: msgsToWire(src.SqlErrorLog),
-		SlowLog:     msgsToWire(src.SlowLog),
+		ServerURL:        src.ServerURL,
+		ErrorLog:         msgsToWire(src.ErrorLog),
+		SqlErrorLog:      msgsToWire(src.SqlErrorLog),
+		SlowLog:          msgsToWire(src.SlowLog),
+		GraphiteAPIURL:   src.GraphiteAPIURL,
+		GraphiteHostname: src.GraphiteHostname,
 	}
 
 	payload, err := json.Marshal(req)
 	if err != nil {
-		return pluginErrFinding(p.name, src.ServerURL, fmt.Sprintf("marshal error: %v", err))
+		return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL, fmt.Sprintf("marshal error: %v", err))}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
@@ -122,15 +126,15 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) []Finding {
 
 	out, err := cmd.Output()
 	if ctx.Err() == context.DeadlineExceeded {
-		return pluginErrFinding(p.name, src.ServerURL, "plugin timed out")
+		return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL, "plugin timed out")}
 	}
 	if err != nil {
-		return pluginErrFinding(p.name, src.ServerURL, fmt.Sprintf("exec error: %v", err))
+		return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL, fmt.Sprintf("exec error: %v", err))}
 	}
 
 	var resp stdioResponse
 	if err := json.Unmarshal(out, &resp); err != nil {
-		return pluginErrFinding(p.name, src.ServerURL, fmt.Sprintf("bad JSON response: %v", err))
+		return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL, fmt.Sprintf("bad JSON response: %v", err))}
 	}
 
 	findings := make([]Finding, 0, len(resp.Findings))
@@ -145,7 +149,7 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) []Finding {
 			Description: sf.Description,
 		})
 	}
-	return findings
+	return EvaluateResult{Findings: findings}
 }
 
 // LoadPluginsFromDir scans pluginDir for executable files, creates an

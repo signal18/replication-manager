@@ -130,7 +130,7 @@ func TestConfigBool(t *testing.T) {
 func TestAuditDrift_NoEntries(t *testing.T) {
 	p := &AuditLogDriftPlugin{}
 	src := LogSource{ServerURL: "127.0.0.1:3306"}
-	if f := p.Evaluate(src); len(f) != 0 {
+	if r := p.Evaluate(src); len(r.Findings) != 0 {
 		t.Errorf("expected 0 findings for empty log, got %d", len(f))
 	}
 }
@@ -145,7 +145,7 @@ func TestAuditDrift_NoDivergence(t *testing.T) {
 			auditMsg(baselineAuditTS(), "QUERY", "SELECT * FROM users WHERE id = 2"),
 		},
 	}
-	if f := p.Evaluate(src); len(f) != 0 {
+	if r := p.Evaluate(src); len(r.Findings) != 0 {
 		t.Errorf("same template in both windows should produce no finding, got %d", len(f))
 	}
 }
@@ -163,7 +163,7 @@ func TestAuditDrift_NewTemplateDetected(t *testing.T) {
 			auditMsg(recentAuditTS(), "QUERY_DML", "DELETE FROM sessions WHERE expires < NOW()"),
 		},
 	}
-	f := p.Evaluate(src)
+	f := p.Evaluate(src).Findings
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding for new template, got %d", len(f))
 	}
@@ -187,7 +187,7 @@ func TestAuditDrift_SkipsNonQueryOps(t *testing.T) {
 	}
 	// Only CONNECT in current window (no QUERY), baseline has QUERY.
 	// current_set is empty → no findings (not enough data).
-	if f := p.Evaluate(src); len(f) != 0 {
+	if r := p.Evaluate(src); len(r.Findings) != 0 {
 		t.Errorf("CONNECT ops should be skipped, got %d findings", len(f))
 	}
 }
@@ -208,7 +208,7 @@ func TestAuditDrift_CustomWindowViaConfig(t *testing.T) {
 			auditMsg(recentAuditTS(), "QUERY_DDL", "ALTER TABLE orders ADD COLUMN status INT"),
 		},
 	}
-	f := p.Evaluate(src)
+	f := p.Evaluate(src).Findings
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding with custom window, got %d", len(f))
 	}
@@ -225,7 +225,7 @@ func TestAuditDrift_OldEntriesIgnored(t *testing.T) {
 		},
 	}
 	// Both windows empty → no findings (not enough data)
-	if f := p.Evaluate(src); len(f) != 0 {
+	if r := p.Evaluate(src); len(r.Findings) != 0 {
 		t.Errorf("old entries should be outside both windows, got %d findings", len(f))
 	}
 }
@@ -241,7 +241,7 @@ func TestAuditDrift_NoTimestampConservativelyIncluded(t *testing.T) {
 			auditMsg("", "QUERY", "SELECT 2"),
 		},
 	}
-	if f := p.Evaluate(src); len(f) != 0 {
+	if r := p.Evaluate(src); len(r.Findings) != 0 {
 		t.Errorf("same template (no timestamp) should produce no finding, got %d", len(f))
 	}
 }
@@ -256,7 +256,7 @@ func TestAuditDrift_EmptyBaselineNoFalsePositive(t *testing.T) {
 			auditMsg(recentAuditTS(), "QUERY", "SELECT * FROM t"),
 		},
 	}
-	if f := p.Evaluate(src); len(f) != 0 {
+	if r := p.Evaluate(src); len(r.Findings) != 0 {
 		t.Errorf("empty baseline should not raise a false positive, got %d findings", len(f))
 	}
 }
@@ -280,7 +280,7 @@ func TestAuditDrift_MaxNewTemplatesList(t *testing.T) {
 		Config:    cfg,
 		AuditLog:  msgs,
 	}
-	f := p.Evaluate(src)
+	f := p.Evaluate(src).Findings
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(f))
 	}

@@ -2,12 +2,16 @@
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // This source code is licensed under the GNU General Public License, version 3.
 
-// Plugin errorlog raises WARN0200 when the database error log ring buffer
-// contains any ERROR-level line within the configured timeframe.
+// Plugin errorlog raises WARN0200 for ERROR-level lines in the database error log.
+// No native MySQL status metric covers this dimension, so it writes a synthetic
+// metric mysql.<hostname>.plugin_errorlog_count to graphite on every evaluation.
+// Spike detection uses that synthetic metric history.
 //
-// Config key (under [plugin-config.errorlog]):
+// Config keys (under [plugin-config.errorlog]):
 //
-//	timeframe-hours  int  default: 24
+//	enabled         bool    default: true
+//	timeframe-hours int     default: 24
+//	spike-sigma     float   default: 2.0
 package logplugin
 
 import (
@@ -18,49 +22,70 @@ import (
 
 const ErrKeyDBError24h = "WARN0200"
 
-func init() {
-	Register(&ErrorLogPlugin{})
-}
+func init() { Register(&ErrorLogPlugin{}) }
 
-// ErrorLogPlugin raises a WARNING when any ERROR-level line has appeared in
-// the database error log within the configured timeframe (default 24h).
 type ErrorLogPlugin struct{}
 
 func (p *ErrorLogPlugin) Name() string { return "errorlog" }
 
-func (p *ErrorLogPlugin) Evaluate(src LogSource) []Finding {
+func (p *ErrorLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	hours := ConfigInt(src.Config, "timeframe-hours", 24)
-	cutoff := time.Now().Add(-time.Duration(hours) * time.Hour)
-	count := 0
+	sigma := ConfigFloat(src.Config, "spike-sigma", 2.0)
 
+	now := time.Now()
+	cutoff := now.Add(-time.Duration(hours) * time.Hour)
+	prevCutoff := now.Add(-time.Duration(2*hours) * time.Hour)
+
+	current, previous := 0, 0
 	for _, msg := range src.ErrorLog {
-		if msg.Text == "" {
+		if msg.Text == "" || !isErrorLevel(msg.Level) {
 			continue
 		}
-		if !isErrorLevel(msg.Level) {
-			continue
+		ts, err := parseLogTimestamp(msg.Timestamp)
+		if err != nil || ts.After(cutoff) {
+			current++
+		} else if ts.After(prevCutoff) {
+			previous++
 		}
-		if msg.Timestamp != "" {
-			t, err := parseLogTimestamp(msg.Timestamp)
-			if err == nil && t.Before(cutoff) {
-				continue
-			}
-		}
-		count++
 	}
 
-	if count == 0 {
-		return nil
+	metricName := ""
+	if src.HasGraphite() {
+		metricName = fmt.Sprintf("mysql.%s.plugin_errorlog_count", src.GraphiteHostname)
 	}
 
-	return []Finding{{
+	res := EvaluateResult{
+		CurrentCount:  current,
+		PreviousCount: previous,
+		MetricName:    metricName,
+	}
+
+	if current == 0 {
+		return res
+	}
+
+	res.Findings = append(res.Findings, Finding{
 		ErrKey:   ErrKeyDBError24h,
 		Severity: SeverityWarning,
 		Description: fmt.Sprintf(
-			"Server %s has %d ERROR entry/entries in database error log in the last %dh",
-			src.ServerURL, count, hours,
-		),
-	}}
+			"Server %s: %d ERROR(s) in error log in last %dh",
+			src.ServerURL, current, hours),
+	})
+
+	// Dynamic spike detection via graphite history
+	if src.HasGraphite() && metricName != "" {
+		correlPrefix := fmt.Sprintf("mysql.%s", src.GraphiteHostname)
+		spike, err := DetectSpike(src.GraphiteAPIURL, metricName, sigma, correlPrefix)
+		if err == nil && spike != nil {
+			res.Findings = append(res.Findings, Finding{
+				ErrKey:      "WARN0205",
+				Severity:    SeverityWarning,
+				Description: FormatSpikeDescription(src.ServerURL, metricName, spike),
+			})
+		}
+	}
+
+	return res
 }
 
 func isErrorLevel(level string) bool {
@@ -68,19 +93,17 @@ func isErrorLevel(level string) bool {
 	return up == "ERROR" || up == "ERR"
 }
 
-// parseLogTimestamp tries common MariaDB/MySQL error-log timestamp formats.
 func parseLogTimestamp(s string) (time.Time, error) {
-	formats := []string{
+	for _, f := range []string{
 		"2006-01-02 15:04:05",
 		"2006-01-02T15:04:05.000000Z",
 		"2006-01-02T15:04:05Z",
 		"2006/01/02 15:04:05",
 		"2006-01-02T15:04:05",
-	}
-	for _, f := range formats {
+	} {
 		if t, err := time.Parse(f, s); err == nil {
 			return t, nil
 		}
 	}
-	return time.Time{}, fmt.Errorf("unknown timestamp format: %q", s)
+	return time.Time{}, fmt.Errorf("unknown timestamp: %q", s)
 }
