@@ -85,7 +85,17 @@ type SpikeCache struct {
 	MetricName string
 	// CheckedAt is when DetectSpike last ran the full graphite computation.
 	CheckedAt  time.Time
+	// ClearCount is how many consecutive checks have returned no spike.
+	// WARN0205 is only cleared from the cache after ClearThreshold consecutive
+	// non-spike results, providing hysteresis against transient sigma dips.
+	ClearCount int
 }
+
+// ClearThreshold is how many consecutive no-spike results are required before
+// the cached spike result is cleared.  This prevents a transient dip in sigma
+// (due to graphite returning slightly different aggregated values on each fetch)
+// from causing a RESOLV/OPEN churn in the state machine.
+const ClearThreshold = 3
 
 // IsFresh returns true when the cache entry is recent enough to reuse.
 func (c *SpikeCache) IsFresh() bool {
@@ -439,11 +449,20 @@ func DetectSpike(apiURL, metricName string, sigma float64, correlatePrefix strin
 
 	if len(allSpikes) == 0 {
 		if cache != nil {
-			cache.Result = nil
+			cache.ClearCount++
 			cache.CheckedAt = time.Now()
+			// Only clear the cached spike result after ClearThreshold consecutive
+			// no-spike checks.  This prevents a transient sigma dip from clearing
+			// the state and causing RESOLV/OPEN churn.
+			if cache.ClearCount >= ClearThreshold {
+				cache.Result = nil
+				cache.MetricName = ""
+			}
 		}
 		return nil, nil
 	}
+
+	// A spike was detected — reset the clear counter.
 
 	result := &SpikeResult{
 		SpikeTime:        finest.SpikeTime,
@@ -467,6 +486,7 @@ func DetectSpike(apiURL, metricName string, sigma float64, correlatePrefix strin
 		cache.Result = result
 		cache.MetricName = metricName
 		cache.CheckedAt = time.Now()
+		cache.ClearCount = 0 // spike confirmed — reset hysteresis counter
 	}
 	return result, nil
 }
