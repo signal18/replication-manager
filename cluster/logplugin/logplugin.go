@@ -62,11 +62,11 @@ func (f Finding) ToState(from string) state.State {
 // EvaluateResult is returned by Evaluate.
 type EvaluateResult struct {
 	Findings      []Finding
-	CurrentCount  int     // events counted in current window
-	PreviousCount int     // events in previous same-length window (for fallback when graphite unavailable)
+	CurrentCount  int // events counted in current window
+	PreviousCount int // events in previous same-length window (for fallback when graphite unavailable)
 	// MetricName is the graphite metric name this plugin writes its count under.
 	// Empty if graphite is not configured.
-	MetricName    string
+	MetricName string
 }
 
 // SpikeCheckInterval is how often DetectSpike is actually called.
@@ -79,7 +79,7 @@ const SpikeCheckInterval = 60 * time.Second
 // monitoring tick. The cache is keyed and managed by srv_log_plugins.go.
 type SpikeCache struct {
 	// Result is the last computed SpikeResult (nil = no spike was detected).
-	Result     *SpikeResult
+	Result *SpikeResult
 	// MetricName is the graphite metric that was analyzed, stored so the
 	// re-injected finding description matches the original exactly.
 	MetricName string
@@ -117,16 +117,16 @@ func (c *SpikeCache) IsFresh() bool {
 // LogSource is passed to every plugin Evaluate() call.
 // All buffer fields are lock-free value copies.
 type LogSource struct {
-	ServerURL       string
-	ErrorLog        []s18log.HttpMessage
-	SqlErrorLog     []s18log.HttpMessage
-	SlowLog         []s18log.HttpMessage
-	AuditLog        []s18log.HttpMessage
+	ServerURL   string
+	ErrorLog    []s18log.HttpMessage
+	SqlErrorLog []s18log.HttpMessage
+	SlowLog     []s18log.HttpMessage
+	AuditLog    []s18log.HttpMessage
 	// Config is the resolved per-plugin config map (nil = use defaults).
-	Config          map[string]string
+	Config map[string]string
 	// GraphiteAPIURL is the base URL of the graphite render API,
 	// e.g. "http://127.0.0.1:10002". Empty when graphite is disabled.
-	GraphiteAPIURL  string
+	GraphiteAPIURL string
 	// GraphiteHostname is the hostname key used in graphite metric names,
 	// e.g. "db1-belair-svc-cloud18" (dots replaced with dashes by carbon).
 	GraphiteHostname string
@@ -156,10 +156,11 @@ type LogPlugin interface {
 // Higher weight = more severe. Used by the errorlog plugin's min-log-level filter.
 //
 // MySQL/MariaDB levels in order of severity:
-//   System   (1) — startup/shutdown messages, always logged
-//   Note     (2) — informational, e.g. "InnoDB: initializing..."
-//   Warning  (3) — potentially problematic conditions
-//   ERROR    (4) — errors that caused an operation to fail
+//
+//	System   (1) — startup/shutdown messages, always logged
+//	Note     (2) — informational, e.g. "InnoDB: initializing..."
+//	Warning  (3) — potentially problematic conditions
+//	ERROR    (4) — errors that caused an operation to fail
 //
 // Setting min-log-level = "Warning" counts Warning + ERROR (weight >= 3).
 // Setting min-log-level = "Note"    counts Note + Warning + ERROR (weight >= 2).
@@ -351,18 +352,18 @@ type Granularity struct {
 // defaultGranularities is the ordered list used for spike detection.
 // We try from finest to coarsest — report the first significant hit.
 var defaultGranularities = []Granularity{
-	{Name: "minute", FetchFrom: "-2h",  BucketSize: time.Minute,      MinBaseline: 10},
-	{Name: "hour",   FetchFrom: "-7d",  BucketSize: time.Hour,        MinBaseline: 5},
-	{Name: "day",    FetchFrom: "-28d", BucketSize: 24 * time.Hour,   MinBaseline: 3},
-	{Name: "week",   FetchFrom: "-52w", BucketSize: 7 * 24 * time.Hour, MinBaseline: 3},
+	{Name: "minute", FetchFrom: "-2h", BucketSize: time.Minute, MinBaseline: 10},
+	{Name: "hour", FetchFrom: "-7d", BucketSize: time.Hour, MinBaseline: 5},
+	{Name: "day", FetchFrom: "-28d", BucketSize: 24 * time.Hour, MinBaseline: 3},
+	{Name: "week", FetchFrom: "-52w", BucketSize: 7 * 24 * time.Hour, MinBaseline: 3},
 }
 
 // SpikeResult describes a detected spike across one or more granularities.
 type SpikeResult struct {
 	// SpikeTime is when the spike was measured (timestamp of the current data point).
-	SpikeTime      time.Time
+	SpikeTime time.Time
 	// Granularity is the finest granularity at which the spike was detected.
-	Granularity    string
+	Granularity string
 	// BaselineWindow describes the history window used for the baseline,
 	// e.g. "same hour-of-day over the last 7 days".
 	BaselineWindow string
@@ -380,8 +381,8 @@ type SpikeResult struct {
 
 // GranularitySpike is one granularity-level detection result.
 type GranularitySpike struct {
-	Name           string    // "minute", "hour", "day", "week"
-	SpikeTime      time.Time // exact timestamp of the spike data point
+	Name      string    // "minute", "hour", "day", "week"
+	SpikeTime time.Time // exact timestamp of the spike data point
 	// TimeWindow is the human-readable time range to look at in the logs,
 	// e.g. "2026-03-26 14:00 – 2026-03-26 15:00" for an hourly spike.
 	TimeWindow     string

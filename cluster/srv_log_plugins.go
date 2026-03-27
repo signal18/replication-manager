@@ -239,7 +239,7 @@ func (cluster *Cluster) GetLogPluginStates(serverURL string) []state.State {
 		logplugin.ErrKeySQLError24h: true,
 		logplugin.ErrKeySlowLog24h:  true,
 		logplugin.ErrKeyAuditDrift:  true,
-		"WARN0205":                   true,
+		"WARN0205":                  true,
 	}
 	var out []state.State
 	for _, st := range opened {

@@ -6,10 +6,11 @@
 // severity is at or above min-log-level.
 //
 // MySQL/MariaDB error log severity levels (lowest to highest):
-//   System  — startup/shutdown, always present
-//   Note    — informational
-//   Warning — potentially problematic
-//   ERROR   — operation failed
+//
+//	System  — startup/shutdown, always present
+//	Note    — informational
+//	Warning — potentially problematic
+//	ERROR   — operation failed
 //
 // Config keys (under [plugin-config.errorlog]):
 //
