@@ -1174,6 +1174,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvDockerRegistryCredentials, "prov-docker-registry-credentials", "", "Docker registry credentials for private registry. Format: url:port:user:password")
 
 	flags.BoolVar(&conf.AppOn, "app-on", false, "Enable application mode")
+	flags.IntVar(&conf.AppErrorDebounceThreshold, "app-error-debounce-threshold", 3, "Consecutive app route failures before emitting runtime app errors")
 	flags.IntVar(&conf.AppRefreshConcurrency, "app-refresh-concurrency", 2, "Number of concurrent refresh for deployed apps")
 	flags.IntVar(&conf.LogAppLevel, "app-log-level", 3, "Log level for application")
 	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "App agents for micro services provisionning.")
