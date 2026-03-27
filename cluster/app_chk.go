@@ -32,7 +32,7 @@ func (app *App) GetMonitoringStatus() string {
 		}
 		return fmt.Sprintf("%s://%s:%s", route.Protocol, app.GetHost(), route.Port)
 	}
-	debouncedRecordAppErr := func(routeKey string, states []state.State, routeErr error) bool {
+	debouncedRecordAppErr := func(routeKey string, states []state.State, routeErr error) {
 		failCount := app.IncAppErrConsecutiveCnt(routeKey)
 		if failCount < failureThreshold {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg,
@@ -43,13 +43,12 @@ func (app *App) GetMonitoringStatus() string {
 				failCount,
 				failureThreshold,
 			)
-			return false
+			return
 		}
 
 		for _, st := range states {
 			errStates[st.ErrKey] = st
 		}
-		return true
 	}
 	markSuccessfulRouteCheck := func(routeKey string) {
 		app.ResetAppErrConsecutiveCnt(routeKey)

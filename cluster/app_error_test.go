@@ -241,14 +241,7 @@ func TestGetMonitoringStatusNoRoutesClearsAllRouteDebounceCounters(t *testing.T)
 }
 
 func TestGetMonitoringStatusTCPFailureDualEmissionWithConfigurableThreshold(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("failed to allocate test tcp port: %v", err)
-	}
-	port := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
-	ln.Close()
-
-	app := newMonitoringTestApp([]config.Route{{Protocol: "tcp", CName: "127.0.0.1", Port: port, Primary: true}})
+	app := newMonitoringTestApp([]config.Route{{Protocol: "tcp", CName: "127.0.0.1", Port: "1", Primary: true}})
 	app.ClusterGroup.Conf.AppErrorDebounceThreshold = 2
 
 	status := app.GetMonitoringStatus()
@@ -275,14 +268,7 @@ func TestGetMonitoringStatusTCPFailureDualEmissionWithConfigurableThreshold(t *t
 }
 
 func TestGetMonitoringStatusDefaultDebounceThresholdIsThree(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("failed to allocate test tcp port: %v", err)
-	}
-	port := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
-	ln.Close()
-
-	app := newMonitoringTestApp([]config.Route{{Protocol: "tcp", CName: "127.0.0.1", Port: port, Primary: true}})
+	app := newMonitoringTestApp([]config.Route{{Protocol: "tcp", CName: "127.0.0.1", Port: "1", Primary: true}})
 	app.ClusterGroup.Conf.AppErrorDebounceThreshold = 0
 
 	for i := 1; i <= 2; i++ {
