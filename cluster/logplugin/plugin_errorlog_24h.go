@@ -2,15 +2,20 @@
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // This source code is licensed under the GNU General Public License, version 3.
 
-// Plugin errorlog raises WARN0200 for ERROR-level lines in the database error log.
-// No native MySQL status metric covers this dimension, so it writes a synthetic
-// metric mysql.<hostname>.plugin_errorlog_count to graphite on every evaluation.
-// Spike detection uses that synthetic metric history.
+// Plugin errorlog raises WARN0200 for lines in the database error log whose
+// severity is at or above min-log-level.
+//
+// MySQL/MariaDB error log severity levels (lowest to highest):
+//   System  — startup/shutdown, always present
+//   Note    — informational
+//   Warning — potentially problematic
+//   ERROR   — operation failed
 //
 // Config keys (under [plugin-config.errorlog]):
 //
 //	enabled         bool    default: true
 //	timeframe-hours int     default: 24
+//	min-log-level   string  default: "Warning"  (Warning + ERROR counted)
 //	spike-sigma     float   default: 2.0
 package logplugin
 
@@ -31,6 +36,7 @@ func (p *ErrorLogPlugin) Name() string { return "errorlog" }
 func (p *ErrorLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	hours := ConfigInt(src.Config, "timeframe-hours", 24)
 	sigma := ConfigFloat(src.Config, "spike-sigma", 2.0)
+	minWeight := MinLogLevelWeight(src.Config) // default: Warning (3)
 
 	now := time.Now()
 	cutoff := now.Add(-time.Duration(hours) * time.Hour)
@@ -38,7 +44,11 @@ func (p *ErrorLogPlugin) Evaluate(src LogSource) EvaluateResult {
 
 	current, previous := 0, 0
 	for _, msg := range src.ErrorLog {
-		if msg.Text == "" || !isErrorLevel(msg.Level) {
+		if msg.Text == "" {
+			continue
+		}
+		// Filter by minimum log level
+		if LogLevelWeight(msg.Level) < minWeight {
 			continue
 		}
 		ts, err := parseLogTimestamp(msg.Timestamp)
@@ -64,12 +74,13 @@ func (p *ErrorLogPlugin) Evaluate(src LogSource) EvaluateResult {
 		return res
 	}
 
+	minLevel := ConfigStr(src.Config, "min-log-level", "Warning")
 	res.Findings = append(res.Findings, Finding{
 		ErrKey:   ErrKeyDBError24h,
 		Severity: SeverityWarning,
 		Description: fmt.Sprintf(
-			"Server %s: %d ERROR(s) in error log in last %dh",
-			src.ServerURL, current, hours),
+			"Server %s: %d %s+ entry/entries in error log in last %dh",
+			src.ServerURL, current, minLevel, hours),
 	})
 
 	// Dynamic spike detection via graphite history

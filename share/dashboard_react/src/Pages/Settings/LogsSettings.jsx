@@ -8,6 +8,7 @@ import LogSlider from '../../components/Sliders/LogSlider'
 import RMSwitch from '../../components/RMSwitch'
 import NumberInput from '../../components/NumberInput'
 import { clusterService } from '../../services/clusterService'
+import Dropdown from '../../components/Dropdown'
 
 function LogsSettings({ selectedCluster, user, openConfirmModal }) {
   const dispatch = useDispatch()
@@ -45,7 +46,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
         )
       },
       {
-        key: 'Plugin Log Level',
+        key: 'Plugin Module Verbosity',
         value: (
           <LogSlider
             value={selectedCluster?.config?.logPluginLevel}
@@ -97,36 +98,61 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
         )
       })
 
-      // One NumberInput row per config key
+      // One control row per config key
       pluginKnownKeys(plugin.name).forEach((key) => {
-        const currentVal = parseInt(plugin.config?.[key] ?? pluginKeyDefault(plugin.name, key), 10)
-        rows.push({
-          key: `  ${pluginKeyLabel(plugin.name, key)}`,
-          value: (
+        const currentRaw = plugin.config?.[key] ?? pluginKeyDefault(plugin.name, key)
+
+        let control
+        if (key === 'min-log-level') {
+          const levelOptions = [
+            { value: 'System',  label: 'System — startup/shutdown only' },
+            { value: 'Note',    label: 'Note — informational+' },
+            { value: 'Warning', label: 'Warning — warnings + errors (default)' },
+            { value: 'ERROR',   label: 'ERROR — errors only' },
+          ]
+          control = (
+            <Dropdown
+              options={levelOptions}
+              selectedValue={currentRaw}
+              isDisabled={user?.grants['cluster-settings'] == false}
+              confirmTitle={`Confirm min-log-level for '${plugin.name}': `}
+              onChange={(opt) =>
+                dispatch(setSetting({
+                  clusterName: selectedCluster?.name,
+                  setting: `plugin-config-${plugin.name}-min-log-level`,
+                  value: opt.value
+                }))
+              }
+            />
+          )
+        } else {
+          control = (
             <NumberInput
-              min={1}
-              max={8760}
-              step={1}
-              value={currentVal}
+              min={key === 'spike-sigma' ? 0.5 : 1}
+              max={key === 'spike-sigma' ? 10 : 8760}
+              step={key === 'spike-sigma' ? 0.5 : 1}
+              value={key === 'spike-sigma' ? parseFloat(currentRaw) : parseInt(currentRaw, 10)}
               isDisabled={user?.grants['cluster-settings'] == false}
               showConfirmModal={true}
               confirmTitle={`Confirm change '${key}' for '${plugin.name}' to: `}
               onConfirm={(val) =>
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: `plugin-config-${plugin.name}-${key}`,
-                    value: String(val)
-                  })
-                )
+                dispatch(setSetting({
+                  clusterName: selectedCluster?.name,
+                  setting: `plugin-config-${plugin.name}-${key}`,
+                  value: String(val)
+                }))
               }
             />
           )
+        }
+        rows.push({
+          key: `  ${pluginKeyLabel(plugin.name, key)}`,
+          value: control
         })
       })
     })
 
-    return rows
+        return rows
   }
 
   const dataObject = [
@@ -505,6 +531,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
 function pluginKnownKeys(pluginName) {
   switch (pluginName) {
     case 'errorlog':
+      return ['timeframe-hours', 'min-log-level', 'spike-sigma']
     case 'sqlerrorlog':
     case 'slowlog':
       return ['timeframe-hours', 'spike-sigma']
@@ -520,7 +547,8 @@ function pluginKeyLabel(pluginName, key) {
     'timeframe-hours': 'Timeframe (hours)',
     'current-window-hours': 'Current window (hours)',
     'baseline-window-hours': 'Baseline window (hours)',
-    'spike-sigma': 'Spike threshold (σ)'
+    'spike-sigma': 'Spike threshold (σ)',
+    'min-log-level': 'Min log level (errorlog only)'
   }
   return labels[key] || key
 }
@@ -531,6 +559,7 @@ function pluginKeyDefault(pluginName, key) {
     if (key === 'baseline-window-hours') return '24'
   }
   if (key === 'spike-sigma') return '2'
+  if (key === 'min-log-level') return 'Warning'
   return '24'
 }
 

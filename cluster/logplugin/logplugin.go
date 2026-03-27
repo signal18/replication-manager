@@ -152,6 +152,46 @@ type LogPlugin interface {
 	Evaluate(src LogSource) EvaluateResult
 }
 
+// MySQL error log severity levels and their numeric weights.
+// Higher weight = more severe. Used by the errorlog plugin's min-log-level filter.
+//
+// MySQL/MariaDB levels in order of severity:
+//   System   (1) — startup/shutdown messages, always logged
+//   Note     (2) — informational, e.g. "InnoDB: initializing..."
+//   Warning  (3) — potentially problematic conditions
+//   ERROR    (4) — errors that caused an operation to fail
+//
+// Setting min-log-level = "Warning" counts Warning + ERROR (weight >= 3).
+// Setting min-log-level = "Note"    counts Note + Warning + ERROR (weight >= 2).
+// Setting min-log-level = "ERROR"   counts only ERROR (weight >= 4).
+var logLevelWeights = map[string]int{
+	"SYSTEM":  1,
+	"NOTE":    2,
+	"WARNING": 3,
+	"WARN":    3, // alias
+	"ERROR":   4,
+	"ERR":     4, // alias
+}
+
+// LogLevelWeight returns the numeric severity weight for a MySQL error log
+// level string, or 0 if unrecognised (will be filtered out by default).
+func LogLevelWeight(level string) int {
+	if w, ok := logLevelWeights[strings.ToUpper(strings.TrimSpace(level))]; ok {
+		return w
+	}
+	return 0
+}
+
+// MinLogLevelWeight parses a min-log-level config string into its numeric
+// weight.  Returns weight for "Warning" (3) as the default if unrecognised.
+func MinLogLevelWeight(cfg map[string]string) int {
+	level := ConfigStr(cfg, "min-log-level", "Warning")
+	if w, ok := logLevelWeights[strings.ToUpper(strings.TrimSpace(level))]; ok {
+		return w
+	}
+	return logLevelWeights["WARNING"]
+}
+
 // Registry holds all registered plugins.
 type Registry struct {
 	plugins []LogPlugin
