@@ -79,7 +79,8 @@ emb:
 # Usage:  make plugins
 #         make plugins GOOS=linux GOARCH=amd64
 #
-PLUGIN_SRC_DIRS := $(shell find cluster/logplugin/plugins -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
+# Find only dirs that contain a main.go (i.e. actual plugin binaries, not library packages)
+PLUGIN_SRC_DIRS := $(shell find cluster/logplugin/plugins -mindepth 2 -maxdepth 2 -name "main.go" -exec dirname {} \; 2>/dev/null)
 PLUGIN_NAMES    := $(notdir $(PLUGIN_SRC_DIRS))
 PLUGIN_BINDIR   := build/plugins
 

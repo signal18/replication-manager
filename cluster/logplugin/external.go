@@ -3,31 +3,26 @@
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
-// Redistribution/Reuse of this code is permitted under the GNU v3 license, as
-// an additional term, ALL code must carry the original Author(s) credit in comment form.
-// See LICENSE in this directory for the integral text.
 
-// External binary plugin support.
+// Package logplugin — external binary plugin loader.
 //
-// External plugins are standalone executables placed by the back office under
+// External plugins are standalone executables placed under
 //
 //	<cluster.WorkingDir>/plugins/
 //
-// via the normal per-cluster GitLab pull.  The directory layout is:
+// Directory layout (source):
 //
-//	/var/lib/replication-manager/
-//	└── mycluster/                         ← cluster.WorkingDir
-//	    ├── mycluster.toml
-//	    └── plugins/
-//	        ├── plugin-innodb-corruption   ← executable dropped by back office
-//	        └── plugin-replication-drift
+//	cluster/logplugin/
+//	└── plugins/
+//	    └── plugin-innodb-corruption/
+//	        └── main.go
 //
 // Wire protocol (JSON over stdin/stdout):
 //
-//	stdin  ← {"server_url":"h:3306","error_log":[...],"sql_error_log":[...],"slow_log":[...]}
-//	stdout → {"findings":[{"err_key":"WARN0300","severity":"WARNING","description":"..."}]}
-//	exit 0  = evaluation complete (findings may be empty — means "all clear")
-//	exit ≠0 = plugin error; repman logs a WARN0203 and skips state injection
+//	stdin  ← stdioRequest  (server URL + all log/PFS/processlist snapshots)
+//	stdout → stdioResponse (findings array)
+//	exit 0  = OK  (empty findings = all clear)
+//	exit ≠0 = error (repman logs WARN0203)
 package logplugin
 
 import (
@@ -45,47 +40,121 @@ import (
 )
 
 const (
-	// DefaultPluginTimeout is the maximum time a plugin binary may run per evaluation.
-	DefaultPluginTimeout = 5 * time.Second
-
 	// PluginDirName is the subdirectory inside cluster.WorkingDir where
-	// the back office drops plugin binaries via the GitLab pull.
+	// runtime plugin binaries are placed (by GitLab pull or manual copy).
 	PluginDirName = "plugins"
+
+	// DefaultPluginTimeout is the maximum time a plugin binary may run.
+	DefaultPluginTimeout = 5 * time.Second
 )
 
-// stdioRequest is the JSON payload written to a plugin's stdin.
-type stdioRequest struct {
-	ServerURL        string     `json:"server_url"`
-	ErrorLog         []stdioMsg `json:"error_log"`
-	SqlErrorLog      []stdioMsg `json:"sql_error_log"`
-	SlowLog          []stdioMsg `json:"slow_log"`
-	GraphiteAPIURL   string     `json:"graphite_api_url"`
-	GraphiteHostname string     `json:"graphite_hostname"`
+// ---- wire types -------------------------------------------------------------
+// These are the JSON structs sent to / received from plugin binaries.
+// Plugin authors copy these into their own package — no shared dependency needed.
+
+// stdioRequest is written to the plugin's stdin.
+type StdioRequest struct {
+	// Core identification
+	ServerURL        string `json:"server_url"`
+	GraphiteAPIURL   string `json:"graphite_api_url"`
+	GraphiteHostname string `json:"graphite_hostname"`
+
+	// Log ring buffers
+	ErrorLog    []StdioMsg `json:"error_log"`
+	SqlErrorLog []StdioMsg `json:"sql_error_log"`
+	SlowLog     []StdioSlowMsg `json:"slow_log"`
+	AuditLog    []StdioMsg `json:"audit_log"`
+
+	// Performance Schema query statistics (populated when PFS monitoring is on)
+	PFSQueries []StdioPFSQuery `json:"pfs_queries"`
+
+	// Current processlist (populated when processlist monitoring is on)
+	ProcessList []StdioProcess `json:"process_list"`
+
+	// Metadata lock waits (populated when METADATA_LOCK_INFO plugin is installed)
+	MetaDataLocks []StdioMDL `json:"metadata_locks"`
 }
 
-// stdioMsg is the wire representation of an s18log.HttpMessage.
-// Kept flat and dependency-free so plugin authors need no replication-manager imports.
-type stdioMsg struct {
+// stdioMsg is a generic log entry (error log, SQL error log, audit log).
+type StdioMsg struct {
 	Level     string `json:"level"`
 	Timestamp string `json:"timestamp"`
 	Text      string `json:"text"`
 }
 
-// stdioResponse is the JSON payload read from a plugin's stdout.
+// stdioSlowMsg is a slow-query log entry with full metrics.
+type StdioSlowMsg struct {
+	Timestamp     string             `json:"timestamp"`
+	Query         string             `json:"query"`
+	User          string             `json:"user"`
+	Host          string             `json:"host"`
+	Db            string             `json:"db"`
+	TimeMetrics   map[string]float64 `json:"time_metrics"`   // query_time, lock_time, etc.
+	NumberMetrics map[string]uint64  `json:"number_metrics"` // rows_sent, rows_examined, etc.
+}
+
+// stdioPFSQuery is one row from performance_schema.events_statements_summary_by_digest.
+type StdioPFSQuery struct {
+	Digest        string  `json:"digest"`
+	DigestText    string  `json:"digest_text"`
+	Schema        string  `json:"schema"`
+	ExecCount     int64   `json:"exec_count"`
+	ErrCount      int64   `json:"err_count"`
+	WarnCount     int64   `json:"warn_count"`
+	ExecTimeTotal string  `json:"exec_time_total"`
+	ExecTimeMaxMs float64 `json:"exec_time_max_ms"`
+	ExecTimeAvgMs float64 `json:"exec_time_avg_ms"`
+	RowsSent      int64   `json:"rows_sent"`
+	RowsSentAvg   int64   `json:"rows_sent_avg"`
+	RowsScanned   int64   `json:"rows_scanned"`
+	PlanFullScan  string  `json:"plan_full_scan"` // "YES" / "NO"
+	PlanTmpDisk   int64   `json:"plan_tmp_disk"`
+	PlanTmpMem    int64   `json:"plan_tmp_mem"`
+	LastSeen      string  `json:"last_seen"`
+}
+
+// stdioProcess is one row from INFORMATION_SCHEMA.PROCESSLIST (extended).
+type StdioProcess struct {
+	Id          uint64  `json:"id"`
+	User        string  `json:"user"`
+	Host        string  `json:"host"`
+	Db          string  `json:"db"`
+	Command     string  `json:"command"`
+	TimeSeconds float64 `json:"time_seconds"`
+	State       string  `json:"state"`
+	Info        string  `json:"info"`
+	RowsSent    uint64  `json:"rows_sent"`
+	RowsExamined uint64 `json:"rows_examined"`
+	TrxTime     uint64  `json:"trx_time"`
+	TrxRowsLocked uint64 `json:"trx_rows_locked"`
+}
+
+// stdioMDL is one metadata lock wait entry.
+type StdioMDL struct {
+	ThreadID     uint64 `json:"thread_id"`
+	LockMode     string `json:"lock_mode"`
+	LockDuration string `json:"lock_duration"`
+	LockTimeMs   int64  `json:"lock_time_ms"`
+	LockType     string `json:"lock_type"`
+	Schema       string `json:"schema"`
+	Table        string `json:"table"`
+}
+
+// stdioResponse is read from the plugin's stdout.
 type stdioResponse struct {
 	Findings []stdioFinding `json:"findings"`
 }
 
-// stdioFinding is the wire representation of a Finding returned by a plugin.
 type stdioFinding struct {
 	ErrKey      string `json:"err_key"`
-	Severity    string `json:"severity"`    // "WARNING" or "ERROR"
+	Severity    string `json:"severity"`
 	Description string `json:"description"`
 }
 
+// ---- ExternalLogPlugin ------------------------------------------------------
+
 // ExternalLogPlugin wraps a downloaded plugin binary as a LogPlugin.
-// Each Evaluate() call spawns an independent child process so multiple
-// servers can be evaluated in parallel without races.
+// It is created by LoadPluginsFromDir and registered in the GlobalRegistry.
 type ExternalLogPlugin struct {
 	name    string
 	binPath string
@@ -93,24 +162,24 @@ type ExternalLogPlugin struct {
 }
 
 // NewExternalLogPlugin creates a wrapper for the executable at binPath.
-// name is the stable identifier used in config and log tags.
 func NewExternalLogPlugin(name, binPath string, timeout time.Duration) *ExternalLogPlugin {
-	if timeout <= 0 {
-		timeout = DefaultPluginTimeout
-	}
 	return &ExternalLogPlugin{name: name, binPath: binPath, timeout: timeout}
 }
 
 func (p *ExternalLogPlugin) Name() string { return p.name }
 
 func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
-	req := stdioRequest{
+	req := StdioRequest{
 		ServerURL:        src.ServerURL,
-		ErrorLog:         msgsToWire(src.ErrorLog),
-		SqlErrorLog:      msgsToWire(src.SqlErrorLog),
-		SlowLog:          msgsToWire(src.SlowLog),
 		GraphiteAPIURL:   src.GraphiteAPIURL,
 		GraphiteHostname: src.GraphiteHostname,
+		ErrorLog:         msgsToWire(src.ErrorLog),
+		SqlErrorLog:      msgsToWire(src.SqlErrorLog),
+		SlowLog:          src.SlowLog,
+		AuditLog:         msgsToWire(src.AuditLog),
+		PFSQueries:       pfsToWire(src.PFSQueries),
+		ProcessList:      processToWire(src.ProcessList),
+		MetaDataLocks:    mdlToWire(src.MetaDataLocks),
 	}
 
 	payload, err := json.Marshal(req)
@@ -152,37 +221,44 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	return EvaluateResult{Findings: findings}
 }
 
+// ---- loader -----------------------------------------------------------------
+
 // LoadPluginsFromDir scans pluginDir for executable files, creates an
 // ExternalLogPlugin for each one, and registers/replaces it in reg.
+// Returns the number of plugins loaded and any scan error.
 //
+// Rules:
 //   - Non-executable files and dotfiles are silently skipped.
-//   - If a plugin with the same name is already registered it is replaced,
-//     so that a git pull delivering a new binary takes effect on the next tick
-//     without restarting repman.
-//   - If pluginDir does not exist the function returns (0, nil) — not an error.
+//   - A plugin whose name already exists in reg is hot-replaced in place.
 func LoadPluginsFromDir(pluginDir string, reg *Registry) (int, error) {
 	entries, err := os.ReadDir(pluginDir)
-	if os.IsNotExist(err) {
-		return 0, nil
-	}
 	if err != nil {
-		return 0, fmt.Errorf("logplugin: cannot read plugin dir %q: %w", pluginDir, err)
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("scan plugin dir %s: %w", pluginDir, err)
 	}
 
 	loaded := 0
 	for _, e := range entries {
+		// Skip directories, dotfiles, and known non-binary names (e.g. the
+		// "wire" library package which lives alongside the plugin sources).
 		if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		// Convention: all plugin binaries are named plugin-*.
+		// Anything that doesn't match is silently skipped so library packages
+		// or helper scripts in the same directory don't cause exec errors.
+		if !strings.HasPrefix(e.Name(), "plugin-") {
 			continue
 		}
 		info, err := e.Info()
 		if err != nil {
 			continue
 		}
-		// Require at least one execute bit to be set.
-		if info.Mode()&0111 == 0 {
+		if info.Mode()&0111 == 0 { // not executable
 			continue
 		}
-
 		binPath := filepath.Join(pluginDir, e.Name())
 		name := pluginNameFromBinary(e.Name())
 		reg.replace(name, NewExternalLogPlugin(name, binPath, DefaultPluginTimeout))
@@ -197,18 +273,11 @@ func PluginDir(clusterWorkingDir string) string {
 	return filepath.Join(clusterWorkingDir, PluginDirName)
 }
 
-// pluginNameFromBinary derives a stable name from a binary filename.
-//
-//	"plugin-innodb-corruption" → "innodb-corruption"
-//	"plugin-foo.exe"          → "foo"
-//	"myplugin"                → "myplugin"
+// pluginNameFromBinary derives the plugin name from the binary filename.
 func pluginNameFromBinary(filename string) string {
-	name := strings.TrimPrefix(filename, "plugin-")
-	name = strings.TrimSuffix(name, ".exe")
-	return name
+	return strings.TrimSuffix(filename, filepath.Ext(filename))
 }
 
-// replace swaps the existing plugin with the same Name(), or appends.
 func (r *Registry) replace(name string, p LogPlugin) {
 	for i, existing := range r.plugins {
 		if existing.Name() == name {
@@ -219,27 +288,32 @@ func (r *Registry) replace(name string, p LogPlugin) {
 	r.plugins = append(r.plugins, p)
 }
 
-// msgsToWire converts []s18log.HttpMessage to the over-the-wire slice.
-func msgsToWire(msgs []s18log.HttpMessage) []stdioMsg {
-	out := make([]stdioMsg, 0, len(msgs))
+// ---- conversion helpers -----------------------------------------------------
+
+func msgsToWire(msgs []s18log.HttpMessage) []StdioMsg {
+	out := make([]StdioMsg, 0, len(msgs))
 	for _, m := range msgs {
-		out = append(out, stdioMsg{
-			Level:     m.Level,
-			Timestamp: m.Timestamp,
-			Text:      m.Text,
-		})
+		out = append(out, stdioMsg{Level: m.Level, Timestamp: m.Timestamp, Text: m.Text})
 	}
 	return out
 }
 
-// pluginErrFinding returns a single WARNING Finding describing an execution
-// error so the operator sees it in the state machine UI.
-// WARN0203 is reserved for plugin execution failures.
+func pfsToWire(queries []StdioPFSQuery) []StdioPFSQuery {
+	return queries // already in wire format, populated by snapshotPFSQueries in srv_log_plugins.go
+}
+
+func processToWire(procs []StdioProcess) []StdioProcess {
+	return procs // already in wire format
+}
+
+func mdlToWire(mdls []StdioMDL) []StdioMDL {
+	return mdls // already in wire format
+}
+
 func pluginErrFinding(pluginName, serverURL, msg string) []Finding {
 	return []Finding{{
-		ErrKey:   "WARN0203",
-		Severity: SeverityWarning,
-		Description: fmt.Sprintf(
-			"log plugin %q failed on %s: %s", pluginName, serverURL, msg),
+		ErrKey:      "WARN0203",
+		Severity:    SeverityError,
+		Description: fmt.Sprintf("Plugin %s on %s: %s", pluginName, serverURL, msg),
 	}}
 }
