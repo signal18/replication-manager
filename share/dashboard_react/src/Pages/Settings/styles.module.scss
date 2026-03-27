@@ -248,6 +248,15 @@ div.settingsContainer {
   text-align: left;
   cursor: pointer;
   gap: rem(8);
+
+  &:hover {
+    border-color: var(--secondary-color);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--secondary-color);
+    outline-offset: 1px;
+  }
 }
 
 .panelHeaderContent {
@@ -302,4 +311,397 @@ div.settingsContainer {
   letter-spacing: rem(0.3);
   text-transform: uppercase;
   cursor: pointer;
+}
+
+.logsPage {
+  width: 100%;
+}
+
+.logsIntro {
+  padding: rem(6) rem(2);
+}
+
+.logsIntroTitle {
+  font-size: rem(16);
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.logsIntroDescription {
+  font-size: rem(12);
+  color: var(--darkgray-color);
+  font-weight: 500;
+}
+
+.settingsCard {
+  display: flex;
+  flex-direction: column;
+  gap: rem(10);
+  padding: rem(10);
+  border: 1px solid var(--gray-color);
+  border-radius: rem(8);
+  background-color: var(--secondary-gray-color);
+}
+
+.settingsCardTitle {
+  font-size: rem(15);
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.settingsCardDescription {
+  font-size: rem(12);
+  color: var(--darkgray-color);
+  font-weight: 500;
+}
+
+.logsSectionContent {
+  width: 100%;
+  padding: rem(4) 0 rem(2);
+}
+
+.logsOuterTable {
+  margin-top: 0;
+}
+
+.logsOuterRow {
+  min-height: rem(44);
+}
+
+.logsOuterLabel {
+  padding: rem(10) rem(16) !important;
+  padding-left: rem(16) !important;
+  background-color: var(--tertiary-color) !important;
+  font-size: rem(14);
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text-color);
+}
+
+.logsOuterValue {
+  padding: rem(10) rem(12) !important;
+  padding-left: rem(12) !important;
+  font-size: rem(12);
+  line-height: 1.4;
+}
+
+.logsInnerTable {
+  margin-top: 0;
+}
+
+.logsInnerRow {
+  min-height: rem(38);
+}
+
+.logsInnerLabel {
+  padding: rem(8) rem(12) !important;
+  padding-left: rem(12) !important;
+  background-color: var(--quaternary-color) !important;
+  font-size: rem(13);
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-color);
+}
+
+.logsInnerValue {
+  padding: rem(8) rem(12) !important;
+  padding-left: rem(12) !important;
+  font-size: rem(12);
+  line-height: 1.35;
+}
+
+.settingsRows {
+  border: 1px solid var(--tertiary-color);
+  border-radius: rem(8);
+  background-color: var(--quaternary-color);
+  overflow: hidden;
+}
+
+.advancedRows {
+  border: 0;
+  border-radius: rem(0);
+  background-color: transparent;
+  overflow: visible;
+}
+
+.settingRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: rem(8);
+  padding: rem(10);
+  border-bottom: 1px solid var(--tertiary-color);
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  @include breakpoint('md', 'lg') {
+    grid-template-columns: minmax(rem(280), rem(360)) minmax(rem(280), 1fr);
+    gap: rem(12);
+    align-items: center;
+  }
+
+  @include breakpoint('lg') {
+    grid-template-columns: minmax(rem(320), rem(420)) minmax(rem(320), 1fr);
+  }
+}
+
+.settingRowCompact {
+  padding: rem(8);
+  background-color: transparent;
+
+  @include breakpoint('md', 'lg') {
+    grid-template-columns: minmax(rem(260), rem(340)) minmax(rem(240), 1fr);
+    gap: rem(10);
+  }
+
+  @include breakpoint('lg') {
+    grid-template-columns: minmax(rem(300), rem(380)) minmax(rem(280), 1fr);
+  }
+}
+
+.logsPanel {
+  gap: rem(6);
+  padding: rem(8);
+  border-color: var(--tertiary-color);
+  background-color: transparent;
+}
+
+.logsPanelHeader {
+  background-color: transparent;
+}
+
+.logsPanelBody {
+  padding: rem(4) rem(6) rem(2);
+}
+
+.logsSectionStatus {
+  padding: rem(2) rem(8);
+  border-radius: rem(999);
+  border: 1px solid var(--tertiary-color);
+  background-color: var(--secondary-gray-color);
+  color: var(--darkgray-color);
+  font-size: rem(11);
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.logsSectionStatusCustomized {
+  border-color: var(--secondary-color);
+  color: var(--secondary-color);
+}
+
+.settingLabelGroup {
+  text-align: left;
+}
+
+.settingLabel {
+  font-size: rem(13);
+  color: var(--text-color);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.settingDescription {
+  font-size: rem(11.5);
+  color: var(--darkgray-color);
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.settingControl {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.logLevelInlineControl {
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.logLevelControl {
+  display: grid;
+  grid-template-columns: auto minmax(rem(260), 1fr);
+  gap: rem(8);
+  align-items: center;
+  width: 100%;
+}
+
+.logLevelControlCompact {
+  grid-template-columns: auto minmax(rem(220), 1fr);
+  gap: rem(6);
+}
+
+.logLevelOffButton {
+  border: 1px solid var(--tertiary-color);
+  background-color: var(--secondary-gray-color);
+  color: var(--text-color);
+  border-radius: rem(6);
+  padding: rem(4) rem(10);
+  font-size: rem(12);
+  line-height: 1.2;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background-color: var(--quaternary-color);
+    border-color: var(--secondary-color);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--secondary-color);
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.logLevelOffButtonSelected {
+  background-color: #6b7280;
+  border-color: #6b7280;
+  color: var(--white-color);
+}
+
+.logLevelGauge {
+  display: flex;
+  flex-wrap: wrap;
+  gap: rem(6);
+  justify-content: flex-start;
+}
+
+.logLevelGaugeButton {
+  border: 1px solid var(--tertiary-color);
+  background-color: var(--secondary-gray-color);
+  color: var(--text-color);
+  border-radius: rem(6);
+  padding: rem(4) rem(8);
+  font-size: rem(12);
+  line-height: 1.2;
+  font-weight: 600;
+  min-height: rem(30);
+  flex: 0 0 rem(88);
+  width: rem(88);
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background-color: var(--quaternary-color);
+    border-color: var(--secondary-color);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--secondary-color);
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.logLevelGaugeButtonCompact {
+  padding: rem(3) rem(7);
+  min-height: rem(27);
+  font-size: rem(11);
+  flex-basis: rem(78);
+  width: rem(78);
+}
+
+.logLevelGaugeButtonUnfilled {
+  background-color: var(--secondary-gray-color);
+  color: var(--text-color);
+}
+
+.logLevelGaugeButtonSelected {
+  box-shadow: inset 0 0 0 1px var(--white-color);
+}
+
+.logLevelGaugeButtonLevel1 {
+  border-color: #ef4444;
+}
+
+.logLevelGaugeButtonLevel2 {
+  border-color: #facc15;
+}
+
+.logLevelGaugeButtonLevel3 {
+  border-color: #3b82f6;
+}
+
+.logLevelGaugeButtonLevel4 {
+  border-color: #8b5cf6;
+}
+
+.logLevelGaugeButtonFilled1 {
+  background-color: rgba(239, 68, 68, 0.16);
+  border-color: #ef4444;
+  color: #991b1b;
+}
+
+.logLevelGaugeButtonFilled2 {
+  background-color: rgba(250, 204, 21, 0.24);
+  border-color: #facc15;
+  color: #1f2937;
+}
+
+.logLevelGaugeButtonFilled3 {
+  background-color: rgba(59, 130, 246, 0.16);
+  border-color: #3b82f6;
+  color: #1d4ed8;
+}
+
+.logLevelGaugeButtonFilled4 {
+  background-color: rgba(139, 92, 246, 0.16);
+  border-color: #8b5cf6;
+  color: #6d28d9;
+}
+
+.logLevelGaugeButtonSelectedLevel1 {
+  background-color: #ef4444;
+  border-color: #ef4444;
+  color: var(--white-color);
+}
+
+.logLevelGaugeButtonSelectedLevel2 {
+  background-color: #facc15;
+  border-color: #facc15;
+  color: #1f2937;
+}
+
+.logLevelGaugeButtonSelectedLevel3 {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+  color: var(--white-color);
+}
+
+.logLevelGaugeButtonSelectedLevel4 {
+  background-color: #8b5cf6;
+  border-color: #8b5cf6;
+  color: var(--white-color);
+}
+
+.logLevelCurrentLabel {
+  font-size: rem(12);
+  color: var(--darkgray-color);
+  font-weight: 500;
+}
+
+.logCompactTable {
+  grid-template-columns: auto !important;
+
+  @include breakpoint('md', 'lg') {
+    grid-template-columns: 320px auto !important;
+  }
+
+  @include breakpoint('lg') {
+    grid-template-columns: 380px auto !important;
+  }
 }
