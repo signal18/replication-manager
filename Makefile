@@ -80,19 +80,19 @@ emb:
 #         make plugins GOOS=linux GOARCH=amd64
 #
 PLUGIN_SRC_DIRS := $(shell find cluster/logplugin/plugins -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
+PLUGIN_NAMES    := $(notdir $(PLUGIN_SRC_DIRS))
 PLUGIN_BINDIR   := build/plugins
 
-plugins: $(PLUGIN_SRC_DIRS:%=plugin-%)
+plugins: $(PLUGIN_NAMES:%=$(PLUGIN_BINDIR)/%)
 
-plugin-%:
+$(PLUGIN_BINDIR)/%:
 	@mkdir -p $(PLUGIN_BINDIR)
-	@name=$$(basename $*); \
-	echo "Building plugin: $$name"; \
+	@echo "Building plugin: $*"
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
 	  go build -v \
 	    --ldflags "-extldflags '-static' -w -s" \
-	    -o $(PLUGIN_BINDIR)/$$name \
-	    ./cluster/logplugin/plugins/$$name/...
+	    -o $(PLUGIN_BINDIR)/$* \
+	    ./cluster/logplugin/plugins/$*/...
 
 plugins-clean:
 	rm -rf $(PLUGIN_BINDIR)
