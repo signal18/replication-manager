@@ -26,6 +26,7 @@ const (
 	ErrAppUnexpectedStatus = "APPERR002"
 	ErrAppTCPConnectFailed = "APPERR003"
 	ErrAppUnsupportedProto = "APPERR004"
+	appErrFailureThreshold = 3
 )
 
 // App defines a app
@@ -47,6 +48,7 @@ type App struct {
 	Agent                string                 `json:"agent"`
 	Weight               string                 `json:"weight"`
 	FailCount            int                    `json:"failCount"`
+	AppErrConsecutiveCnt int                    `json:"-"`
 	ErrState             map[string]state.State `json:"-"`
 	ClusterGroup         *Cluster               `json:"-"`
 	Process              *os.Process            `json:"process"`
@@ -138,6 +140,21 @@ func (app *App) ClearAppError() {
 	defer app.Unlock()
 
 	app.ErrState = make(map[string]state.State)
+}
+
+func (app *App) IncAppErrConsecutiveCnt() int {
+	app.Lock()
+	defer app.Unlock()
+
+	app.AppErrConsecutiveCnt++
+	return app.AppErrConsecutiveCnt
+}
+
+func (app *App) ResetAppErrConsecutiveCnt() {
+	app.Lock()
+	defer app.Unlock()
+
+	app.AppErrConsecutiveCnt = 0
 }
 
 func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {

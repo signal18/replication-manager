@@ -2,6 +2,8 @@ package cluster
 
 import (
 	"fmt"
+	"net"
+	"strconv"
 	"sync"
 	"testing"
 
@@ -11,6 +13,23 @@ import (
 
 func newTestApp() *App {
 	return &App{Mutex: &sync.Mutex{}}
+}
+
+func newMonitoringTestApp(routes []config.Route) *App {
+	return &App{
+		Id:       "app-test",
+		Name:     "app-test",
+		Host:     "127.0.0.1",
+		Mutex:    &sync.Mutex{},
+		ErrState: make(map[string]state.State),
+		AppConfig: &config.AppConfig{
+			Deployment: &config.Deployment{Routes: routes},
+		},
+		ClusterGroup: &Cluster{
+			Name: "test-cluster",
+			Conf: &config.Config{Timeout: 1},
+		},
+	}
 }
 
 func TestRecordAppErrorThreadSafe(t *testing.T) {
@@ -112,5 +131,100 @@ func TestSetRouteStatusesThreadSafe(t *testing.T) {
 	}
 	if app.RouteStatus[0].Route.CName != "final" {
 		t.Fatalf("expected final route status to be stored")
+	}
+}
+
+func TestGetMonitoringStatusDebouncesAppErrorsAtThreeFailures(t *testing.T) {
+	app := newMonitoringTestApp(nil)
+
+	for i := 1; i <= 2; i++ {
+		state := app.GetMonitoringStatus()
+		if state != stateFailed {
+			t.Fatalf("expected state %s on iteration %d, got %s", stateFailed, i, state)
+		}
+		if _, ok := app.ErrState[ErrAppConnectFailed]; ok {
+			t.Fatalf("did not expect %s before threshold, iteration %d", ErrAppConnectFailed, i)
+		}
+	}
+
+	state := app.GetMonitoringStatus()
+	if state != stateFailed {
+		t.Fatalf("expected state %s on threshold iteration, got %s", stateFailed, state)
+	}
+	if _, ok := app.ErrState[ErrAppConnectFailed]; !ok {
+		t.Fatalf("expected %s at threshold", ErrAppConnectFailed)
+	}
+}
+
+func TestGetMonitoringStatusResetsFailureCounterOnSuccessfulRouteCheck(t *testing.T) {
+	app := newMonitoringTestApp([]config.Route{{Protocol: "bad", CName: "invalid", Port: "80", Primary: true}})
+
+	app.GetMonitoringStatus()
+	app.GetMonitoringStatus()
+	if app.AppErrConsecutiveCnt != 2 {
+		t.Fatalf("expected debounce counter to be 2, got %d", app.AppErrConsecutiveCnt)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start test tcp listener: %v", err)
+	}
+	defer ln.Close()
+
+	port := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
+	app.AppConfig.Deployment.Routes = []config.Route{{Protocol: "tcp", CName: "127.0.0.1", Port: port, Primary: true}}
+
+	state := app.GetMonitoringStatus()
+	if state != stateAppRunning {
+		t.Fatalf("expected state %s after successful check, got %s", stateAppRunning, state)
+	}
+	if app.AppErrConsecutiveCnt != 0 {
+		t.Fatalf("expected debounce counter reset after success, got %d", app.AppErrConsecutiveCnt)
+	}
+
+	app.AppConfig.Deployment.Routes = []config.Route{{Protocol: "bad", CName: "invalid", Port: "80", Primary: true}}
+	app.GetMonitoringStatus()
+	if app.AppErrConsecutiveCnt != 1 {
+		t.Fatalf("expected debounce counter restart from 1 after success reset, got %d", app.AppErrConsecutiveCnt)
+	}
+	if _, ok := app.ErrState[ErrAppUnsupportedProto]; ok {
+		t.Fatalf("did not expect %s immediately after reset", ErrAppUnsupportedProto)
+	}
+}
+
+func TestGetMonitoringStatusMapsTCPConnectFailureToAPPERR001(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to allocate test tcp port: %v", err)
+	}
+	port := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
+	ln.Close()
+
+	app := newMonitoringTestApp([]config.Route{{Protocol: "tcp", CName: "127.0.0.1", Port: port, Primary: true}})
+	// Seed legacy key to ensure app checks clear it under the new mapping.
+	app.RecordAppError(ErrAppTCPConnectFailed, state.State{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed})
+
+	for i := 1; i <= 2; i++ {
+		status := app.GetMonitoringStatus()
+		if status != stateFailed {
+			t.Fatalf("expected state %s on iteration %d, got %s", stateFailed, i, status)
+		}
+		if _, ok := app.ErrState[ErrAppConnectFailed]; ok {
+			t.Fatalf("did not expect %s before threshold, iteration %d", ErrAppConnectFailed, i)
+		}
+		if _, ok := app.ErrState[ErrAppTCPConnectFailed]; ok {
+			t.Fatalf("did not expect legacy key %s to persist, iteration %d", ErrAppTCPConnectFailed, i)
+		}
+	}
+
+	status := app.GetMonitoringStatus()
+	if status != stateFailed {
+		t.Fatalf("expected state %s on threshold iteration, got %s", stateFailed, status)
+	}
+	if _, ok := app.ErrState[ErrAppConnectFailed]; !ok {
+		t.Fatalf("expected %s at threshold", ErrAppConnectFailed)
+	}
+	if _, ok := app.ErrState[ErrAppTCPConnectFailed]; ok {
+		t.Fatalf("did not expect %s to be emitted for tcp failures", ErrAppTCPConnectFailed)
 	}
 }
