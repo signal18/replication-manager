@@ -60,10 +60,10 @@ type StdioRequest struct {
 	GraphiteHostname string `json:"graphite_hostname"`
 
 	// Log ring buffers
-	ErrorLog    []StdioMsg `json:"error_log"`
-	SqlErrorLog []StdioMsg `json:"sql_error_log"`
+	ErrorLog    []StdioMsg     `json:"error_log"`
+	SqlErrorLog []StdioMsg     `json:"sql_error_log"`
 	SlowLog     []StdioSlowMsg `json:"slow_log"`
-	AuditLog    []StdioMsg `json:"audit_log"`
+	AuditLog    []StdioMsg     `json:"audit_log"`
 
 	// Performance Schema query statistics (populated when PFS monitoring is on)
 	PFSQueries []StdioPFSQuery `json:"pfs_queries"`
@@ -115,18 +115,18 @@ type StdioPFSQuery struct {
 
 // stdioProcess is one row from INFORMATION_SCHEMA.PROCESSLIST (extended).
 type StdioProcess struct {
-	Id          uint64  `json:"id"`
-	User        string  `json:"user"`
-	Host        string  `json:"host"`
-	Db          string  `json:"db"`
-	Command     string  `json:"command"`
-	TimeSeconds float64 `json:"time_seconds"`
-	State       string  `json:"state"`
-	Info        string  `json:"info"`
-	RowsSent    uint64  `json:"rows_sent"`
-	RowsExamined uint64 `json:"rows_examined"`
-	TrxTime     uint64  `json:"trx_time"`
-	TrxRowsLocked uint64 `json:"trx_rows_locked"`
+	Id            uint64  `json:"id"`
+	User          string  `json:"user"`
+	Host          string  `json:"host"`
+	Db            string  `json:"db"`
+	Command       string  `json:"command"`
+	TimeSeconds   float64 `json:"time_seconds"`
+	State         string  `json:"state"`
+	Info          string  `json:"info"`
+	RowsSent      uint64  `json:"rows_sent"`
+	RowsExamined  uint64  `json:"rows_examined"`
+	TrxTime       uint64  `json:"trx_time"`
+	TrxRowsLocked uint64  `json:"trx_rows_locked"`
 }
 
 // stdioMDL is one metadata lock wait entry.
@@ -293,7 +293,7 @@ func (r *Registry) replace(name string, p LogPlugin) {
 func msgsToWire(msgs []s18log.HttpMessage) []StdioMsg {
 	out := make([]StdioMsg, 0, len(msgs))
 	for _, m := range msgs {
-		out = append(out, stdioMsg{Level: m.Level, Timestamp: m.Timestamp, Text: m.Text})
+		out = append(out, StdioMsg{Level: m.Level, Timestamp: m.Timestamp, Text: m.Text})
 	}
 	return out
 }
