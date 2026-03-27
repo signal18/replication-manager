@@ -79,6 +79,9 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			GraphiteAPIURL:   apiURL,
 			GraphiteHostname: hostname,
 			SpikeCache:       spikeCache[cacheKey],
+			PFSQueries:       snapshotPFSQueries(server),
+			ProcessList:      snapshotProcessList(server),
+			MetaDataLocks:    snapshotMetaDataLocks(server),
 		}
 
 		if !src.IsEnabled() {
@@ -198,18 +201,22 @@ func snapshotHttpLog(log s18log.HttpLog) []s18log.HttpMessage {
 	return out
 }
 
-func snapshotSlowLog(sl s18log.SlowLog) []s18log.HttpMessage {
+func snapshotSlowLog(sl s18log.SlowLog) []logplugin.StdioSlowMsg {
 	sl.L.Lock()
 	defer sl.L.Unlock()
-	out := make([]s18log.HttpMessage, 0, len(sl.Buffer))
+	out := make([]logplugin.StdioSlowMsg, 0, len(sl.Buffer))
 	for _, m := range sl.Buffer {
 		if m.Query == "" {
 			continue
 		}
-		out = append(out, s18log.HttpMessage{
-			Level:     "SLOW",
-			Timestamp: m.Timestamp,
-			Text:      m.Query,
+		out = append(out, logplugin.StdioSlowMsg{
+			Timestamp:     m.Timestamp,
+			Query:         m.Query,
+			User:          m.User,
+			Host:          m.Host,
+			Db:            m.Db,
+			TimeMetrics:   m.TimeMetrics,
+			NumberMetrics: m.NumberMetrics,
 		})
 	}
 	return out
@@ -239,7 +246,7 @@ func (cluster *Cluster) GetLogPluginStates(serverURL string) []state.State {
 		logplugin.ErrKeySQLError24h: true,
 		logplugin.ErrKeySlowLog24h:  true,
 		logplugin.ErrKeyAuditDrift:  true,
-		"WARN0205":                  true,
+		"WARN0205":                   true,
 	}
 	var out []state.State
 	for _, st := range opened {
@@ -280,4 +287,123 @@ func (cluster *Cluster) ReloadLogPlugins() {
 			dir,
 		)
 	}
+}
+
+// snapshotPFSQueries returns a wire-format snapshot of the PFS digest table.
+func snapshotPFSQueries(server *ServerMonitor) []logplugin.StdioPFSQuery {
+	if server.PFSQueries == nil {
+		return nil
+	}
+	m := server.PFSQueries.ToNewMap()
+	out := make([]logplugin.StdioPFSQuery, 0, len(m))
+	for _, q := range m {
+		if q == nil {
+			continue
+		}
+		var maxMs, avgMs float64
+		if q.Exec_time_max.Valid {
+			maxMs = q.Exec_time_max.Float64
+		}
+		if q.Exec_time_avg_ms.Valid {
+			avgMs = q.Exec_time_avg_ms.Float64
+		}
+		out = append(out, logplugin.StdioPFSQuery{
+			Digest:        q.Digest,
+			DigestText:    q.Digest_text,
+			Schema:        q.Schema_name,
+			ExecCount:     q.Exec_count,
+			ErrCount:      q.Err_count,
+			WarnCount:     q.Warn_count,
+			ExecTimeTotal: q.Exec_time_total,
+			ExecTimeMaxMs: maxMs,
+			ExecTimeAvgMs: avgMs,
+			RowsSent:      q.Rows_sent,
+			RowsSentAvg:   q.Rows_sent_avg,
+			RowsScanned:   q.Rows_scanned,
+			PlanFullScan:  q.Plan_full_scan,
+			PlanTmpDisk:   q.Plan_tmp_disk,
+			PlanTmpMem:    q.Plan_tmp_mem,
+			LastSeen:      q.Last_seen,
+		})
+	}
+	return out
+}
+
+// snapshotProcessList returns a wire-format snapshot of the processlist.
+func snapshotProcessList(server *ServerMonitor) []logplugin.StdioProcess {
+	if server.FullProcessList == nil {
+		return nil
+	}
+	out := make([]logplugin.StdioProcess, 0, len(server.FullProcessList))
+	for _, p := range server.FullProcessList {
+		var t float64
+		if p.Time.Valid {
+			t = p.Time.Float64
+		}
+		var state, info, db string
+		if p.State.Valid {
+			state = p.State.String
+		}
+		if p.Info.Valid {
+			info = p.Info.String
+		}
+		if p.Db.Valid {
+			db = p.Db.String
+		}
+		out = append(out, logplugin.StdioProcess{
+			Id:            p.Id,
+			User:          p.User,
+			Host:          p.Host,
+			Db:            db,
+			Command:       p.Command,
+			TimeSeconds:   t,
+			State:         state,
+			Info:          info,
+			RowsSent:      p.RowsSent,
+			RowsExamined:  p.RowsExamined,
+			TrxTime:       p.TrxTime,
+			TrxRowsLocked: p.TrxRowsLocked,
+		})
+	}
+	return out
+}
+
+// snapshotMetaDataLocks returns a wire-format snapshot of MDL waits.
+func snapshotMetaDataLocks(server *ServerMonitor) []logplugin.StdioMDL {
+	if server.MetaDataLocks == nil {
+		return nil
+	}
+	out := make([]logplugin.StdioMDL, 0, len(server.MetaDataLocks))
+	for _, m := range server.MetaDataLocks {
+		var mode, dur, lockType, schema, table string
+		var lockMs int64
+		if m.Lock_mode.Valid {
+			mode = m.Lock_mode.String
+		}
+		if m.Lock_duration.Valid {
+			dur = m.Lock_duration.String
+		}
+		if m.Lock_type.Valid {
+			lockType = m.Lock_type.String
+		}
+		if m.Lock_schema.Valid {
+			schema = m.Lock_schema.String
+		}
+		if m.Lock_name.Valid {
+			table = m.Lock_name.String
+		}
+		if m.Lock_time_ms.Valid {
+			lockMs = m.Lock_time_ms.Int64
+		}
+		out = append(out, logplugin.StdioMDL{
+			ThreadID:     m.Thread_id,
+			LockMode:     mode,
+			LockDuration: dur,
+			LockTimeMs:   lockMs,
+			LockType:     lockType,
+			Schema:       schema,
+			Table:        table,
+		})
+	}
+	return out
 }

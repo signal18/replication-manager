@@ -37,7 +37,7 @@ func (p *SlowLogPlugin) Evaluate(src LogSource) EvaluateResult {
 
 	current, previous := 0, 0
 	for _, msg := range src.SlowLog {
-		if msg.Text == "" {
+		if msg.Query == "" {
 			continue
 		}
 		ts, err := parseLogTimestamp(msg.Timestamp)

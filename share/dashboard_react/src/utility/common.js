@@ -250,14 +250,19 @@ export const convertSize = (value, targetUnit = 'B', sourceUnit = 'B') => {
     P: 1024 ** 5,
   };
 
+  // Guard: return 0 when value is not yet available (cluster config still loading)
+  if (value === undefined || value === null || value === '') {
+    return 0
+  }
+
   const toUnit = targetUnit.toUpperCase();
   const defaultSourceUnit = sourceUnit.toUpperCase();
 
   const regex = /^([\d.]+)\s*([KMGTPE]?)(B)?$/i;
-  const match = value.trim().match(regex);
+  const match = String(value).trim().match(regex);
 
   if (!match) {
-    throw new Error(`Invalid size format: ${value}`);
+    return 0
   }
 
   const number = parseFloat(match[1]);

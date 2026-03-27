@@ -51,7 +51,7 @@ func (p *AuditLogDriftPlugin) Evaluate(src LogSource) EvaluateResult {
 	currentCount := 0
 
 	for _, msg := range src.AuditLog {
-		if msg.Text == "" {
+		if msg.Query == "" {
 			continue
 		}
 		ts, op, sql := parseAuditEntry(msg.Timestamp, msg.Text)
