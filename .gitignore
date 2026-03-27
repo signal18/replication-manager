@@ -34,3 +34,7 @@ share/dashboard/assets
 share/dashboard/index.html
 share/dashboard/index.html.gz
 .mcp.json
+_bmad
+_bmad-output
+.claude
+.ignore
