@@ -31,24 +31,24 @@ const (
 
 // App defines a app
 type App struct {
-	Id                   string                 `json:"id" groups:"apps"`
-	Name                 string                 `json:"name" groups:"apps"`
-	Type                 string                 `json:"type" groups:"apps"`
-	Host                 string                 `json:"host" groups:"apps"`
-	HostIPV6             string                 `json:"hostIPV6"`
-	Port                 string                 `json:"port" groups:"apps"`
-	User                 string                 `json:"-"`
-	Pass                 string                 `json:"-"`
-	Version              string                 `json:"version" groups:"apps"`
-	Datadir              string                 `json:"datadir"`
-	State                string                 `json:"state"`
-	PrevState            string                 `json:"prevState"`
-	SlapOSDatadir        string                 `json:"slaposDatadir"`
-	ServiceName          string                 `json:"serviceName"`
-	Agent                string                 `json:"agent"`
-	Weight               string                 `json:"weight"`
-	FailCount            int                    `json:"failCount"`
-	AppErrConsecutiveCnt int                    `json:"-"`
+	Id            string `json:"id" groups:"apps"`
+	Name          string `json:"name" groups:"apps"`
+	Type          string `json:"type" groups:"apps"`
+	Host          string `json:"host" groups:"apps"`
+	HostIPV6      string `json:"hostIPV6"`
+	Port          string `json:"port" groups:"apps"`
+	User          string `json:"-"`
+	Pass          string `json:"-"`
+	Version       string `json:"version" groups:"apps"`
+	Datadir       string `json:"datadir"`
+	State         string `json:"state"`
+	PrevState     string `json:"prevState"`
+	SlapOSDatadir string `json:"slaposDatadir"`
+	ServiceName   string `json:"serviceName"`
+	Agent         string `json:"agent"`
+	Weight        string `json:"weight"`
+	FailCount     int    `json:"failCount"`
+	// Route-scoped debounce counters are the single source of truth.
 	AppErrConsecutiveMap map[string]int         `json:"-"`
 	ErrState             map[string]state.State `json:"-"`
 	ClusterGroup         *Cluster               `json:"-"`
@@ -152,7 +152,6 @@ func (app *App) IncAppErrConsecutiveCnt(routeKey string) int {
 		app.AppErrConsecutiveMap = make(map[string]int)
 	}
 	app.AppErrConsecutiveMap[routeKey]++
-	app.AppErrConsecutiveCnt = app.AppErrConsecutiveMap[routeKey]
 	return app.AppErrConsecutiveMap[routeKey]
 }
 
@@ -163,7 +162,6 @@ func (app *App) ResetAppErrConsecutiveCnt(routeKey string) {
 	if app.AppErrConsecutiveMap != nil {
 		delete(app.AppErrConsecutiveMap, routeKey)
 	}
-	app.AppErrConsecutiveCnt = 0
 }
 
 func (app *App) ResetAllAppErrConsecutiveCnt() {
@@ -171,7 +169,6 @@ func (app *App) ResetAllAppErrConsecutiveCnt() {
 	defer app.Unlock()
 
 	app.AppErrConsecutiveMap = make(map[string]int)
-	app.AppErrConsecutiveCnt = 0
 }
 
 func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {

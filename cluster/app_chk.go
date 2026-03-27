@@ -136,6 +136,7 @@ func (app *App) GetMonitoringStatus() string {
 				}
 			}
 		default:
+			// Keep APPERR004 argument order aligned with config.ClusterError format string.
 			errStates[ErrAppUnsupportedProto] = state.State{ErrType: "WARN", ErrKey: ErrAppUnsupportedProto, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppUnsupportedProto], route.Protocol, app.GetId()), ServerUrl: app.Host}
 			app.ResetAppErrConsecutiveCnt(routeKey)
 			routeStatus.Status = stateFailed

@@ -179,6 +179,10 @@ func TestGetMonitoringStatusUnsupportedProtocolEmitsImmediately(t *testing.T) {
 	if _, ok := app.ErrState[ErrAppUnsupportedProto]; !ok {
 		t.Fatalf("expected immediate %s", ErrAppUnsupportedProto)
 	}
+	expected := fmt.Sprintf(config.ClusterError[ErrAppUnsupportedProto], "bad", app.GetId())
+	if got := app.ErrState[ErrAppUnsupportedProto].ErrDesc; got != expected {
+		t.Fatalf("unexpected %s description: got %q want %q", ErrAppUnsupportedProto, got, expected)
+	}
 }
 
 func TestGetMonitoringStatusSuccessOnOneRouteDoesNotResetOtherRouteDebounce(t *testing.T) {
@@ -205,6 +209,12 @@ func TestGetMonitoringStatusSuccessOnOneRouteDoesNotResetOtherRouteDebounce(t *t
 		if _, ok := app.ErrState[ErrAppTCPConnectFailed]; ok {
 			t.Fatalf("did not expect %s before threshold, iteration %d", ErrAppTCPConnectFailed, i)
 		}
+		if got := app.AppErrConsecutiveMap["tcp://127.0.0.1:1"]; got != i {
+			t.Fatalf("expected failing route counter=%d, got %d", i, got)
+		}
+		if _, ok := app.AppErrConsecutiveMap[fmt.Sprintf("tcp://127.0.0.1:%s", port)]; ok {
+			t.Fatalf("did not expect successful route counter to be tracked")
+		}
 	}
 
 	status := app.GetMonitoringStatus()
@@ -213,6 +223,20 @@ func TestGetMonitoringStatusSuccessOnOneRouteDoesNotResetOtherRouteDebounce(t *t
 	}
 	if _, ok := app.ErrState[ErrAppTCPConnectFailed]; !ok {
 		t.Fatalf("expected %s at threshold", ErrAppTCPConnectFailed)
+	}
+}
+
+func TestGetMonitoringStatusNoRoutesClearsAllRouteDebounceCounters(t *testing.T) {
+	app := newMonitoringTestApp([]config.Route{{Protocol: "tcp", CName: "127.0.0.1", Port: "1", Primary: true}})
+	app.GetMonitoringStatus()
+	if len(app.AppErrConsecutiveMap) == 0 {
+		t.Fatalf("expected route debounce counters to be populated before reset")
+	}
+
+	app.AppConfig.Deployment.Routes = nil
+	app.GetMonitoringStatus()
+	if len(app.AppErrConsecutiveMap) != 0 {
+		t.Fatalf("expected all route debounce counters to be cleared, got %d", len(app.AppErrConsecutiveMap))
 	}
 }
 
