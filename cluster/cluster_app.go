@@ -501,7 +501,7 @@ func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {
 		go func() {
 			defer workerWg.Done()
 			for app := range appChan {
-				app.FetchStats()
+				app.Refresh()
 			}
 		}()
 	}
