@@ -19,59 +19,65 @@ func (app *App) GetMonitoringStatus() string {
 	cluster := app.ClusterGroup
 	routes := app.GetAppConfig().Deployment.Routes
 	var primaryStatus = stateAppRunning
-	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppUnsupportedProto}
+	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto}
 	errStates := make(map[string]state.State)
+	failureThreshold := cluster.Conf.AppErrorDebounceThreshold
+	if failureThreshold <= 0 {
+		// Keep legacy default when the cluster-level override is unset/invalid.
+		failureThreshold = appErrFailureThreshold
+	}
 	routeEndpoint := func(route config.Route) string {
 		if route.CName != "" {
 			return fmt.Sprintf("%s://%s:%s", route.Protocol, route.CName, route.Port)
 		}
 		return fmt.Sprintf("%s://%s:%s", route.Protocol, app.GetHost(), route.Port)
 	}
-	debouncedRecordAppErr := func(key string, st state.State, routeEndpoint string, routeErr error) bool {
-		failCount := app.IncAppErrConsecutiveCnt()
-		if failCount < appErrFailureThreshold {
+	debouncedRecordAppErr := func(routeKey string, states []state.State, routeErr error) bool {
+		failCount := app.IncAppErrConsecutiveCnt(routeKey)
+		if failCount < failureThreshold {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg,
 				"Debounced app check failure for app %s endpoint %s: %s (fail count %d/%d)",
 				app.Name,
-				routeEndpoint,
+				routeKey,
 				routeErr,
 				failCount,
-				appErrFailureThreshold,
+				failureThreshold,
 			)
 			return false
 		}
 
-		errStates[key] = st
+		for _, st := range states {
+			errStates[st.ErrKey] = st
+		}
 		return true
 	}
-	markSuccessfulRouteCheck := func() {
-		app.ResetAppErrConsecutiveCnt()
+	markSuccessfulRouteCheck := func(routeKey string) {
+		app.ResetAppErrConsecutiveCnt(routeKey)
 	}
 
 	if len(routes) == 0 {
-		emitted := debouncedRecordAppErr(
-			ErrAppConnectFailed,
-			state.State{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), "no routes defined"), ServerUrl: app.Host},
-			"no-routes-defined",
-			errors.New("no routes defined"),
-		)
-		if emitted {
-			app.RecordAppError(ErrAppConnectFailed, state.State{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), "no routes defined"), ServerUrl: app.Host})
-		} else {
-			app.ResetAppError(ErrAppConnectFailed)
+		errStates[ErrAppConnectFailed] = state.State{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), "no routes defined"), ServerUrl: app.Host}
+		app.ResetAllAppErrConsecutiveCnt()
+		for _, key := range appErrKeys {
+			if st, ok := errStates[key]; ok {
+				app.RecordAppError(key, st)
+			} else {
+				app.ResetAppError(key)
+			}
 		}
-		app.ResetAppError(ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto)
+		app.SetRouteStatuses(nil)
 		return stateFailed
 	}
 
 	routeStatuses := make([]config.RouteStatus, 0, len(routes))
 	for _, route := range routes {
+		routeKey := routeEndpoint(route)
 		routeStatus := config.RouteStatus{Route: route, Status: stateAppRunning}
 		switch route.Protocol {
 		case "https":
 			httpStatus, _, err := app.GetAppHTTPStatus(route, false)
 			if err == nil {
-				markSuccessfulRouteCheck()
+				markSuccessfulRouteCheck(routeKey)
 			} else {
 				routeStatus.Status = stateAppWarning
 				primaryStatus = stateAppWarning
@@ -93,12 +99,7 @@ func (app *App) GetMonitoringStatus() string {
 						errDesc = fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
 					}
 
-					debouncedRecordAppErr(
-						errKey,
-						state.State{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc, ServerUrl: app.Host},
-						routeEndpoint(route),
-						err,
-					)
+					debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc, ServerUrl: app.Host}}, err)
 
 					if route.Primary {
 						primaryStatus = stateFailed
@@ -107,41 +108,36 @@ func (app *App) GetMonitoringStatus() string {
 					}
 					routeStatus.Status = stateFailed
 				} else {
-					markSuccessfulRouteCheck()
+					markSuccessfulRouteCheck(routeKey)
 				}
 			}
 		case "tcp":
 			// For TCP routes, we assume the app is running if it can connect
 			err := app.GetAppTCPStatus(route)
 			if err == nil {
-				markSuccessfulRouteCheck()
+				markSuccessfulRouteCheck(routeKey)
 			} else {
 				routeStatus.Status = stateAppWarning
 				primaryStatus = stateAppWarning
 
 				if err := app.GetAppLocalTCPStatus(route); err != nil {
-					debouncedRecordAppErr(
-						ErrAppConnectFailed,
-						state.State{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err), ServerUrl: app.Host},
-						routeEndpoint(route),
-						err,
-					)
+					// Temporary compatibility: emit APPERR003 (canonical) and APPERR001 together.
+					debouncedRecordAppErr(routeKey, []state.State{
+						{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), err), ServerUrl: app.Host},
+						{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err), ServerUrl: app.Host},
+					}, err)
 
 					routeStatus.Status = stateFailed
 					if route.Primary {
 						primaryStatus = stateFailed
 					}
 				} else {
-					markSuccessfulRouteCheck()
+					markSuccessfulRouteCheck(routeKey)
 				}
 			}
 		default:
-			debouncedRecordAppErr(
-				ErrAppUnsupportedProto,
-				state.State{ErrType: "WARN", ErrKey: ErrAppUnsupportedProto, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppUnsupportedProto], app.GetId(), route.Protocol), ServerUrl: app.Host},
-				routeEndpoint(route),
-				fmt.Errorf("unsupported protocol %s", route.Protocol),
-			)
+			errStates[ErrAppUnsupportedProto] = state.State{ErrType: "WARN", ErrKey: ErrAppUnsupportedProto, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppUnsupportedProto], route.Protocol, app.GetId()), ServerUrl: app.Host}
+			app.ResetAppErrConsecutiveCnt(routeKey)
 			routeStatus.Status = stateFailed
 
 			if route.Primary {
@@ -161,9 +157,6 @@ func (app *App) GetMonitoringStatus() string {
 			app.ResetAppError(key)
 		}
 	}
-	// APPERR003 is no longer emitted by app checks. Always clear legacy state.
-	app.ResetAppError(ErrAppTCPConnectFailed)
-
 	app.SetRouteStatuses(routeStatuses)
 
 	return primaryStatus

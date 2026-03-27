@@ -49,6 +49,7 @@ type App struct {
 	Weight               string                 `json:"weight"`
 	FailCount            int                    `json:"failCount"`
 	AppErrConsecutiveCnt int                    `json:"-"`
+	AppErrConsecutiveMap map[string]int         `json:"-"`
 	ErrState             map[string]state.State `json:"-"`
 	ClusterGroup         *Cluster               `json:"-"`
 	Process              *os.Process            `json:"process"`
@@ -110,6 +111,7 @@ func NewApp(placement int, cluster *Cluster, appHost string) *App {
 
 	app.RouteStatus = make([]config.RouteStatus, 0)
 	app.ErrState = make(map[string]state.State)
+	app.AppErrConsecutiveMap = make(map[string]int)
 	app.CheckPrimaryRoute()
 	return app
 }
@@ -142,18 +144,33 @@ func (app *App) ClearAppError() {
 	app.ErrState = make(map[string]state.State)
 }
 
-func (app *App) IncAppErrConsecutiveCnt() int {
+func (app *App) IncAppErrConsecutiveCnt(routeKey string) int {
 	app.Lock()
 	defer app.Unlock()
 
-	app.AppErrConsecutiveCnt++
-	return app.AppErrConsecutiveCnt
+	if app.AppErrConsecutiveMap == nil {
+		app.AppErrConsecutiveMap = make(map[string]int)
+	}
+	app.AppErrConsecutiveMap[routeKey]++
+	app.AppErrConsecutiveCnt = app.AppErrConsecutiveMap[routeKey]
+	return app.AppErrConsecutiveMap[routeKey]
 }
 
-func (app *App) ResetAppErrConsecutiveCnt() {
+func (app *App) ResetAppErrConsecutiveCnt(routeKey string) {
 	app.Lock()
 	defer app.Unlock()
 
+	if app.AppErrConsecutiveMap != nil {
+		delete(app.AppErrConsecutiveMap, routeKey)
+	}
+	app.AppErrConsecutiveCnt = 0
+}
+
+func (app *App) ResetAllAppErrConsecutiveCnt() {
+	app.Lock()
+	defer app.Unlock()
+
+	app.AppErrConsecutiveMap = make(map[string]int)
 	app.AppErrConsecutiveCnt = 0
 }
 
