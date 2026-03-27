@@ -26,27 +26,30 @@ const (
 	ErrAppUnexpectedStatus = "APPERR002"
 	ErrAppTCPConnectFailed = "APPERR003"
 	ErrAppUnsupportedProto = "APPERR004"
+	appErrFailureThreshold = 3
 )
 
 // App defines a app
 type App struct {
-	Id                   string                 `json:"id" groups:"apps"`
-	Name                 string                 `json:"name" groups:"apps"`
-	Type                 string                 `json:"type" groups:"apps"`
-	Host                 string                 `json:"host" groups:"apps"`
-	HostIPV6             string                 `json:"hostIPV6"`
-	Port                 string                 `json:"port" groups:"apps"`
-	User                 string                 `json:"-"`
-	Pass                 string                 `json:"-"`
-	Version              string                 `json:"version" groups:"apps"`
-	Datadir              string                 `json:"datadir"`
-	State                string                 `json:"state"`
-	PrevState            string                 `json:"prevState"`
-	SlapOSDatadir        string                 `json:"slaposDatadir"`
-	ServiceName          string                 `json:"serviceName"`
-	Agent                string                 `json:"agent"`
-	Weight               string                 `json:"weight"`
-	FailCount            int                    `json:"failCount"`
+	Id            string `json:"id" groups:"apps"`
+	Name          string `json:"name" groups:"apps"`
+	Type          string `json:"type" groups:"apps"`
+	Host          string `json:"host" groups:"apps"`
+	HostIPV6      string `json:"hostIPV6"`
+	Port          string `json:"port" groups:"apps"`
+	User          string `json:"-"`
+	Pass          string `json:"-"`
+	Version       string `json:"version" groups:"apps"`
+	Datadir       string `json:"datadir"`
+	State         string `json:"state"`
+	PrevState     string `json:"prevState"`
+	SlapOSDatadir string `json:"slaposDatadir"`
+	ServiceName   string `json:"serviceName"`
+	Agent         string `json:"agent"`
+	Weight        string `json:"weight"`
+	FailCount     int    `json:"failCount"`
+	// Route-scoped debounce counters are the single source of truth.
+	AppErrConsecutiveMap map[string]int         `json:"-"`
 	ErrState             map[string]state.State `json:"-"`
 	ClusterGroup         *Cluster               `json:"-"`
 	Process              *os.Process            `json:"process"`
@@ -108,6 +111,7 @@ func NewApp(placement int, cluster *Cluster, appHost string) *App {
 
 	app.RouteStatus = make([]config.RouteStatus, 0)
 	app.ErrState = make(map[string]state.State)
+	app.AppErrConsecutiveMap = make(map[string]int)
 	app.CheckPrimaryRoute()
 	return app
 }
@@ -138,6 +142,33 @@ func (app *App) ClearAppError() {
 	defer app.Unlock()
 
 	app.ErrState = make(map[string]state.State)
+}
+
+func (app *App) IncAppErrConsecutiveCnt(routeKey string) int {
+	app.Lock()
+	defer app.Unlock()
+
+	if app.AppErrConsecutiveMap == nil {
+		app.AppErrConsecutiveMap = make(map[string]int)
+	}
+	app.AppErrConsecutiveMap[routeKey]++
+	return app.AppErrConsecutiveMap[routeKey]
+}
+
+func (app *App) ResetAppErrConsecutiveCnt(routeKey string) {
+	app.Lock()
+	defer app.Unlock()
+
+	if app.AppErrConsecutiveMap != nil {
+		delete(app.AppErrConsecutiveMap, routeKey)
+	}
+}
+
+func (app *App) ResetAllAppErrConsecutiveCnt() {
+	app.Lock()
+	defer app.Unlock()
+
+	app.AppErrConsecutiveMap = make(map[string]int)
 }
 
 func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
