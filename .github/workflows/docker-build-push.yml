@@ -69,9 +69,11 @@ jobs:
 
       - name: Extract tag name
         id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [[ -n "${{ inputs.tag }}" ]]; then
-            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          if [[ -n "$INPUT_TAG" ]]; then
+            echo "tag=$INPUT_TAG" >> $GITHUB_OUTPUT
           else
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
@@ -100,10 +102,18 @@ jobs:
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REF_NAME: ${{ github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ vars.MATTERMOST_WEBHOOK_URL }}
         run: |
           curl -X POST -H 'Content-Type: application/json' \
-            --data "{\"text\":\":x: Docker OSC build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
-            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+            --data "{\"text\":\":x: Docker OSC build failed!\n**Job:** \`${WORKFLOW_NAME}\`\n**Build:** \`${RUN_NUMBER}\`\n**Branch/Tag:** \`${REF_NAME}\`\n[View Run](${SERVER_URL}/${REPO}/actions/runs/${RUN_ID})\"}" \
+            "$WEBHOOK_URL"
 
   # OSC Rootless - Only on tags
   build-osc-rootless:
@@ -132,9 +142,11 @@ jobs:
 
       - name: Extract tag name
         id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [[ -n "${{ inputs.tag }}" ]]; then
-            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          if [[ -n "$INPUT_TAG" ]]; then
+            echo "tag=$INPUT_TAG" >> $GITHUB_OUTPUT
           else
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
@@ -163,10 +175,18 @@ jobs:
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REF_NAME: ${{ github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ vars.MATTERMOST_WEBHOOK_URL }}
         run: |
           curl -X POST -H 'Content-Type: application/json' \
-            --data "{\"text\":\":x: Docker OSC Rootless build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
-            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+            --data "{\"text\":\":x: Docker OSC Rootless build failed!\n**Job:** \`${WORKFLOW_NAME}\`\n**Build:** \`${RUN_NUMBER}\`\n**Branch/Tag:** \`${REF_NAME}\`\n[View Run](${SERVER_URL}/${REPO}/actions/runs/${RUN_ID})\"}" \
+            "$WEBHOOK_URL"
 
   # PRO (Professional with OpenSVC) - Only on tags
   build-pro:
@@ -195,9 +215,11 @@ jobs:
 
       - name: Extract tag name
         id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [[ -n "${{ inputs.tag }}" ]]; then
-            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          if [[ -n "$INPUT_TAG" ]]; then
+            echo "tag=$INPUT_TAG" >> $GITHUB_OUTPUT
           else
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
@@ -223,10 +245,18 @@ jobs:
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REF_NAME: ${{ github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ vars.MATTERMOST_WEBHOOK_URL }}
         run: |
           curl -X POST -H 'Content-Type: application/json' \
-            --data "{\"text\":\":x: Docker PRO build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
-            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+            --data "{\"text\":\":x: Docker PRO build failed!\n**Job:** \`${WORKFLOW_NAME}\`\n**Build:** \`${RUN_NUMBER}\`\n**Branch/Tag:** \`${REF_NAME}\`\n[View Run](${SERVER_URL}/${REPO}/actions/runs/${RUN_ID})\"}" \
+            "$WEBHOOK_URL"
 
   # PRO Rootless - Only on tags
   build-pro-rootless:
@@ -255,9 +285,11 @@ jobs:
 
       - name: Extract tag name
         id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [[ -n "${{ inputs.tag }}" ]]; then
-            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          if [[ -n "$INPUT_TAG" ]]; then
+            echo "tag=$INPUT_TAG" >> $GITHUB_OUTPUT
           else
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
@@ -283,10 +315,18 @@ jobs:
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REF_NAME: ${{ github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ vars.MATTERMOST_WEBHOOK_URL }}
         run: |
           curl -X POST -H 'Content-Type: application/json' \
-            --data "{\"text\":\":x: Docker PRO Rootless build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
-            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+            --data "{\"text\":\":x: Docker PRO Rootless build failed!\n**Job:** \`${WORKFLOW_NAME}\`\n**Build:** \`${RUN_NUMBER}\`\n**Branch/Tag:** \`${REF_NAME}\`\n[View Run](${SERVER_URL}/${REPO}/actions/runs/${RUN_ID})\"}" \
+            "$WEBHOOK_URL"
 
   # Nightly build - On tags, or when Go/Dockerfile files changed
   build-nightly:
@@ -335,10 +375,18 @@ jobs:
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REF_NAME: ${{ github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ vars.MATTERMOST_WEBHOOK_URL }}
         run: |
           curl -X POST -H 'Content-Type: application/json' \
-            --data "{\"text\":\":x: Docker Nightly build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
-            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+            --data "{\"text\":\":x: Docker Nightly build failed!\n**Job:** \`${WORKFLOW_NAME}\`\n**Build:** \`${RUN_NUMBER}\`\n**Branch:** \`${REF_NAME}\`\n[View Run](${SERVER_URL}/${REPO}/actions/runs/${RUN_ID})\"}" \
+            "$WEBHOOK_URL"
 
   # Nightly Rootless - On tags, or when Go/Dockerfile files changed
   build-nightly-rootless:
@@ -387,10 +435,18 @@ jobs:
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REF_NAME: ${{ github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ vars.MATTERMOST_WEBHOOK_URL }}
         run: |
           curl -X POST -H 'Content-Type: application/json' \
-            --data "{\"text\":\":x: Docker Nightly Rootless build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
-            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+            --data "{\"text\":\":x: Docker Nightly Rootless build failed!\n**Job:** \`${WORKFLOW_NAME}\`\n**Build:** \`${RUN_NUMBER}\`\n**Branch:** \`${REF_NAME}\`\n[View Run](${SERVER_URL}/${REPO}/actions/runs/${RUN_ID})\"}" \
+            "$WEBHOOK_URL"
 
   # DEV build - On tags, or when Go/Dockerfile files changed
   build-dev:
@@ -420,9 +476,11 @@ jobs:
 
       - name: Extract tag name (if exists)
         id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [[ -n "${{ inputs.tag }}" ]]; then
-            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          if [[ -n "$INPUT_TAG" ]]; then
+            echo "tag=$INPUT_TAG" >> $GITHUB_OUTPUT
             echo "is_tag=true" >> $GITHUB_OUTPUT
           elif [[ $GITHUB_REF == refs/tags/* ]]; then
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
@@ -442,10 +500,13 @@ jobs:
 
       - name: Build tags list
         id: tags
+        env:
+          IS_TAG: ${{ steps.tag.outputs.is_tag }}
+          TAG_NAME: ${{ steps.tag.outputs.tag }}
         run: |
           TAGS="signal18/replication-manager:dev"
-          if [[ "${{ steps.tag.outputs.is_tag }}" == "true" ]]; then
-            TAGS="${TAGS},signal18/replication-manager:${{ steps.tag.outputs.tag }}-dev"
+          if [[ "$IS_TAG" == "true" ]]; then
+            TAGS="${TAGS},signal18/replication-manager:${TAG_NAME}-dev"
           fi
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
 
@@ -462,10 +523,18 @@ jobs:
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REF_NAME: ${{ github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ vars.MATTERMOST_WEBHOOK_URL }}
         run: |
           curl -X POST -H 'Content-Type: application/json' \
-            --data "{\"text\":\":x: Docker DEV build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
-            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+            --data "{\"text\":\":x: Docker DEV build failed!\n**Job:** \`${WORKFLOW_NAME}\`\n**Build:** \`${RUN_NUMBER}\`\n**Branch/Tag:** \`${REF_NAME}\`\n[View Run](${SERVER_URL}/${REPO}/actions/runs/${RUN_ID})\"}" \
+            "$WEBHOOK_URL"
 
   # DEV Rootless - On tags, or when Go/Dockerfile files changed
   build-dev-rootless:
@@ -495,9 +564,11 @@ jobs:
 
       - name: Extract tag name (if exists)
         id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [[ -n "${{ inputs.tag }}" ]]; then
-            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          if [[ -n "$INPUT_TAG" ]]; then
+            echo "tag=$INPUT_TAG" >> $GITHUB_OUTPUT
             echo "is_tag=true" >> $GITHUB_OUTPUT
           elif [[ $GITHUB_REF == refs/tags/* ]]; then
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
@@ -517,10 +588,13 @@ jobs:
 
       - name: Build tags list
         id: tags
+        env:
+          IS_TAG: ${{ steps.tag.outputs.is_tag }}
+          TAG_NAME: ${{ steps.tag.outputs.tag }}
         run: |
           TAGS="signal18/replication-manager:dev-rootless"
-          if [[ "${{ steps.tag.outputs.is_tag }}" == "true" ]]; then
-            TAGS="${TAGS},signal18/replication-manager:${{ steps.tag.outputs.tag }}-dev-rootless"
+          if [[ "$IS_TAG" == "true" ]]; then
+            TAGS="${TAGS},signal18/replication-manager:${TAG_NAME}-dev-rootless"
           fi
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
 
@@ -537,10 +611,18 @@ jobs:
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REF_NAME: ${{ github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ vars.MATTERMOST_WEBHOOK_URL }}
         run: |
           curl -X POST -H 'Content-Type: application/json' \
-            --data "{\"text\":\":x: Docker DEV Rootless build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
-            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+            --data "{\"text\":\":x: Docker DEV Rootless build failed!\n**Job:** \`${WORKFLOW_NAME}\`\n**Build:** \`${RUN_NUMBER}\`\n**Branch/Tag:** \`${REF_NAME}\`\n[View Run](${SERVER_URL}/${REPO}/actions/runs/${RUN_ID})\"}" \
+            "$WEBHOOK_URL"
 
   # SLIM build - Only on tags
   build-slim:
@@ -569,9 +651,11 @@ jobs:
 
       - name: Extract tag name
         id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [[ -n "${{ inputs.tag }}" ]]; then
-            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          if [[ -n "$INPUT_TAG" ]]; then
+            echo "tag=$INPUT_TAG" >> $GITHUB_OUTPUT
           else
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
@@ -597,10 +681,18 @@ jobs:
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REF_NAME: ${{ github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ vars.MATTERMOST_WEBHOOK_URL }}
         run: |
           curl -X POST -H 'Content-Type: application/json' \
-            --data "{\"text\":\":x: Docker SLIM build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
-            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+            --data "{\"text\":\":x: Docker SLIM build failed!\n**Job:** \`${WORKFLOW_NAME}\`\n**Build:** \`${RUN_NUMBER}\`\n**Branch/Tag:** \`${REF_NAME}\`\n[View Run](${SERVER_URL}/${REPO}/actions/runs/${RUN_ID})\"}" \
+            "$WEBHOOK_URL"
 
   # SLIM Rootless - Only on tags
   build-slim-rootless:
@@ -629,9 +721,11 @@ jobs:
 
       - name: Extract tag name
         id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [[ -n "${{ inputs.tag }}" ]]; then
-            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          if [[ -n "$INPUT_TAG" ]]; then
+            echo "tag=$INPUT_TAG" >> $GITHUB_OUTPUT
           else
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
@@ -657,7 +751,15 @@ jobs:
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REF_NAME: ${{ github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ vars.MATTERMOST_WEBHOOK_URL }}
         run: |
           curl -X POST -H 'Content-Type: application/json' \
-            --data "{\"text\":\":x: Docker SLIM Rootless build failed!\n**Job:** \`${{ github.workflow }}\`\n**Build:** \`${{ github.run_number }}\`\n**Branch/Tag:** \`${{ github.ref_name }}\`\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
-            ${{ vars.MATTERMOST_WEBHOOK_URL }}
+            --data "{\"text\":\":x: Docker SLIM Rootless build failed!\n**Job:** \`${WORKFLOW_NAME}\`\n**Build:** \`${RUN_NUMBER}\`\n**Branch/Tag:** \`${REF_NAME}\`\n[View Run](${SERVER_URL}/${REPO}/actions/runs/${RUN_ID})\"}" \
+            "$WEBHOOK_URL"
