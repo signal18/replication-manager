@@ -252,7 +252,7 @@ extract_http_header() {
 }
 
 # Send HTTP/HTTPS request (consolidated)
-# Usage: send_http_request "METHOD" "host" "port" "endpoint" ["data"] ["accept_header"] ["auth_token"] ["timeout"]
+# Usage: send_http_request "METHOD" "host" "port" "endpoint" ["data"] ["accept_header"] ["auth_token"] ["timeout"] ["read_timeout"]
 send_http_request() {
     local method="$1"
     local host="$2"
@@ -262,6 +262,7 @@ send_http_request() {
     local accept="${6:-application/json}"
     local auth_token="${7:-}"
     local timeout="${8:-60}"  # Default 60 seconds timeout
+    local read_timeout="${9:-}"
     
     # Default to port 10005 if not specified
     if [[ -z "$port" || "$port" == "$host" ]]; then
@@ -294,7 +295,7 @@ send_http_request() {
     
     # Choose protocol based on port (IPv6 brackets are REQUIRED for socat)
     local socat_target
-    # Use connect-timeout for connect phase and socat -T for read/write timeout.
+    # Use connect-timeout for connect phase.
     # Do NOT use readbytes (it truncates large files).
     local socat_opts="connect-timeout=$timeout"
     
@@ -304,7 +305,11 @@ send_http_request() {
         socat_target="TCP:$host:$port,$socat_opts"
     fi
     
-    echo -en "$request" | socat -T "$timeout" - "$socat_target" 2> >(grep -v "refusing to set empty SNI host name" >&2)
+    if [[ -n "$read_timeout" ]]; then
+        echo -en "$request" | socat -T "$read_timeout" - "$socat_target" 2> >(grep -v "refusing to set empty SNI host name" >&2)
+    else
+        echo -en "$request" | socat - "$socat_target" 2> >(grep -v "refusing to set empty SNI host name" >&2)
+    fi
 }
 
 ########################
@@ -986,6 +991,11 @@ pull_jobs_upgrade_script() {
     local api_host="$REPLICATION_MANAGER_HOST"
     local api_port="$REPLICATION_MANAGER_PORT"
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/get-jobs-upgrade-script"
+    local pull_timeout="${JOBS_UPGRADE_PULL_TIMEOUT:-60}"
+
+    if ! [[ "$pull_timeout" =~ ^[0-9]+$ ]]; then
+        pull_timeout=60
+    fi
 
     local encrypted_data
     encrypted_data=$(encrypt_data "{\"server\":\"$server:$port\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
@@ -994,7 +1004,7 @@ pull_jobs_upgrade_script() {
     # Use octet-stream accept to force HTTP/1.0 mode in send_http_request,
     # avoiding chunked transfer framing corruption for script download.
     local response
-    response=$(send_http_request "POST" "$api_host" "$api_port" "$endpoint" "$json_data" "application/octet-stream")
+    response=$(send_http_request "POST" "$api_host" "$api_port" "$endpoint" "$json_data" "application/octet-stream" "" "$pull_timeout" "$pull_timeout")
     local http_code=$(extract_http_code "$response")
 
     if [[ "$http_code" != "200" ]]; then

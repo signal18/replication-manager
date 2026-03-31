@@ -4860,7 +4860,8 @@ func (repman *ReplicationManager) handlerMuxServerJobsUpgradeScript(w http.Respo
 	scriptPath := filepath.Join(node.Datadir, "init/init", "dbjobs_new")
 	content, err := os.ReadFile(scriptPath)
 	if err != nil {
-		http.Error(w, "Error reading dbjobs_new file: "+err.Error(), http.StatusInternalServerError)
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reading dbjobs_new file for %s at %s: %s", node.Name, scriptPath, err.Error())
+		http.Error(w, "Error reading dbjobs_new file", http.StatusInternalServerError)
 		return
 	}
 
