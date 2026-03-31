@@ -1,20 +1,22 @@
-import { Box, Flex, HStack, Spinner, Stack, Text } from '@chakra-ui/react'
+import { Box, Flex, HStack, Input, Spinner, Stack, Text, Textarea } from '@chakra-ui/react'
 import React, { useRef, useState, useEffect, useMemo } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
 
 import { useDispatch, useSelector } from 'react-redux'
 import TableType2 from '../../components/TableType2'
-import { setSetting, switchSetting } from '../../redux/settingsSlice'
+import { setSecretSetting, setSetting, switchSetting } from '../../redux/settingsSlice'
 import RMSlider from '../../components/Sliders/RMSlider'
 import Dropdown from '../../components/Dropdown'
 import { convertObjectToArrayForDropdown, formatBytes } from '../../utility/common'
 import TextForm from '../../components/TextForm'
 import CommonModal from '../../components/Modals/CommonModal'
+import ConfirmModal from '../../components/Modals/ConfirmModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
 import Markdown from 'react-markdown'
-import { HiQuestionMarkCircle } from 'react-icons/hi'
+import { HiCheck, HiQuestionMarkCircle, HiX } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
+import RMButton from '../../components/RMButton'
 import remarkGfm from 'remark-gfm'
 import BackupSnapshotsSettings from './BackupSnapshotsSettings'
 import NumberInput from '../../components/NumberInput'
@@ -33,6 +35,144 @@ const sizeGenerator = () => {
 }
 
 const defaultDecompressBufferSize = 250000
+
+const backupEncryptionDirectoryModeOptions = [
+  { name: 'Archive', value: 'archive' },
+  { name: 'Per-file', value: 'per-file' }
+]
+
+const backupEncryptionDirectoryFormatOptions = [
+  { name: 'tar.gz', value: 'tar.gz' },
+  { name: 'tar', value: 'tar' }
+]
+
+const backupEncryptionSecretModeOptions = [
+  { name: 'Single passphrase', value: 'passphrase' },
+  { name: 'Rotation keyring', value: 'keyring' }
+]
+
+const validateKeyringJson = (rawValue) => {
+  if (!rawValue?.trim()) {
+    return {
+      isValid: false,
+      message: 'Keyring JSON is required'
+    }
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {
+        isValid: false,
+        message: 'Keyring JSON must be a JSON object'
+      }
+    }
+
+    const activeKeyId = typeof parsed.activeKeyId === 'string' ? parsed.activeKeyId.trim() : ''
+    if (!activeKeyId) {
+      return {
+        isValid: false,
+        message: 'activeKeyId is required'
+      }
+    }
+
+    if (!Array.isArray(parsed.keys) || parsed.keys.length === 0) {
+      return {
+        isValid: false,
+        message: 'keys must be a non-empty array'
+      }
+    }
+
+    const seen = new Set()
+    let activeCount = 0
+    let activeMatches = false
+
+    for (const entry of parsed.keys) {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        return {
+          isValid: false,
+          message: 'Each key entry must be an object'
+        }
+      }
+
+      const id = typeof entry.id === 'string' ? entry.id.trim() : ''
+      const passphrase = typeof entry.passphrase === 'string' ? entry.passphrase.trim() : ''
+      const state = typeof entry.state === 'string' ? entry.state.trim().toLowerCase() : ''
+
+      if (!id) {
+        return {
+          isValid: false,
+          message: 'Each key entry requires a non-empty id'
+        }
+      }
+      if (seen.has(id)) {
+        return {
+          isValid: false,
+          message: `Duplicate key id: ${id}`
+        }
+      }
+      seen.add(id)
+
+      if (!passphrase) {
+        return {
+          isValid: false,
+          message: `Key \"${id}\" requires a non-empty passphrase`
+        }
+      }
+      if (!['active', 'decrypt-only'].includes(state)) {
+        return {
+          isValid: false,
+          message: `Key \"${id}\" has invalid state. Allowed: active|decrypt-only`
+        }
+      }
+      if (state === 'active') {
+        activeCount += 1
+        if (id === activeKeyId) {
+          activeMatches = true
+        }
+      }
+    }
+
+    if (activeCount !== 1) {
+      return {
+        isValid: false,
+        message: 'Exactly one key must have state=active'
+      }
+    }
+    if (!activeMatches) {
+      return {
+        isValid: false,
+        message: 'activeKeyId must reference the key with state=active'
+      }
+    }
+
+    if (parsed.legacyDefaultKeyId !== undefined) {
+      const legacyId = typeof parsed.legacyDefaultKeyId === 'string' ? parsed.legacyDefaultKeyId.trim() : ''
+      if (!legacyId) {
+        return {
+          isValid: false,
+          message: 'legacyDefaultKeyId must be a non-empty string when provided'
+        }
+      }
+      if (!seen.has(legacyId)) {
+        return {
+          isValid: false,
+          message: 'legacyDefaultKeyId must reference a key in keys[]'
+        }
+      }
+    }
+
+    return {
+      isValid: true,
+      message: ''
+    }
+  } catch {
+    return {
+      isValid: false,
+      message: 'Invalid JSON format'
+    }
+  }
+}
 
 const buildDecompressBufferOptions = (options) => {
   const updatedOptions = [...options]
@@ -60,6 +200,11 @@ function BackupSettings({ selectedCluster, user }) {
   const [selectedBinlogBackupType, setselectedBinlogBackupType] = useState('')
   const [isBackupSnapshotsOpen, setIsBackupSnapshotsOpen] = useState(true)
   const [isResticRepoConfigOpen, setIsResticRepoConfigOpen] = useState(true)
+  const [backupEncryptionSecretMode, setBackupEncryptionSecretMode] = useState('passphrase')
+  const [backupEncryptionPassphrase, setBackupEncryptionPassphrase] = useState('')
+  const [backupEncryptionKeyring, setBackupEncryptionKeyring] = useState('')
+  const [isKeyringModalOpen, setIsKeyringModalOpen] = useState(false)
+  const [isKeyringConfirmModalOpen, setIsKeyringConfirmModalOpen] = useState(false)
   const backupSnapshotsToggleRef = useRef(null)
   const [action, setAction] = useState({
     title: '',
@@ -113,6 +258,23 @@ Leave empty to use PATH lookup (replication-manager-cli).`
   const SplitDumpStreamSizeRequirement = `Splitdump shard size limit for mysqldump splitdump output.  
 Default: 1G. Select from list; 0 disables sharding.`
 
+  const BackupEncryptionRequirement = `Enable encryption for backup artifacts.  
+When enabled, backup encryption controls are shown to configure mode, format, and secret material.`
+
+  const BackupEncryptionExplicitPassphraseRequirement = `Require explicit passphrase usage for backup encryption operations.  
+Use this when you want restores or encryption workflows to refuse implicit/default credentials.`
+
+  const BackupEncryptionPassphraseRequirement = `Write-only passphrase entry for backup encryption.  
+Current value is never displayed in UI.  
+Saving updates the passphrase secret for this cluster.`
+
+  const BackupEncryptionKeyringRequirement = `Write-only JSON keyring editor for backup encryption keys.  
+Current keyring value is never displayed in UI.  
+Paste JSON and save to update keyring secret.`
+
+  const BackupEncryptionUnsafePerFileRestoreRequirement = `Allow unsafe per-file restore behavior.  
+Use only if you understand the data safety implications of restoring partially encrypted per-file backups.`
+
   const splitdumpSizeOptions = [
     { name: '16 MiB', value: '16MiB' },
     { name: '32 MiB', value: '32MiB' },
@@ -125,6 +287,13 @@ Default: 1G. Select from list; 0 disables sharding.`
     { name: '4 G', value: '4G' },
     { name: 'No sharding', value: '0' }
   ]
+
+  const backupEncryptionKeyringValidation = useMemo(
+    () => validateKeyringJson(backupEncryptionKeyring),
+    [backupEncryptionKeyring]
+  )
+
+  const canEditSettings = user?.grants['cluster-settings'] !== false
 
   const openCommonModal = () => {
     setIsCommonModalOpen(true)
@@ -163,6 +332,12 @@ Default: 1G. Select from list; 0 disables sharding.`
     setIsResticRepoConfigOpen((prev) => !prev)
   }
 
+  const closeKeyringModal = () => {
+    setIsKeyringConfirmModalOpen(false)
+    setIsKeyringModalOpen(false)
+    setBackupEncryptionKeyring('')
+  }
+
   useEffect(() => {
     if (selectedCluster?.config?.binlogCopyMode) {
       setselectedBinlogBackupType(selectedCluster.config.binlogCopyMode)
@@ -183,6 +358,14 @@ Default: 1G. Select from list; 0 disables sharding.`
       setBinlogParseOptions(convertObjectToArrayForDropdown(monitor.binlogParseList))
     }
   }, [monitor?.backupBinlogList, monitor?.backupLogicalList, monitor?.backupPhysicalList, monitor?.binlogParseList])
+
+  useEffect(() => {
+    setBackupEncryptionSecretMode('passphrase')
+    setBackupEncryptionPassphrase('')
+    setBackupEncryptionKeyring('')
+    setIsKeyringModalOpen(false)
+    setIsKeyringConfirmModalOpen(false)
+  }, [selectedCluster?.name])
 
   const isUsingScript = selectedCluster?.config?.backupSaveScript.length > 0
 
@@ -892,6 +1075,259 @@ Default: 1G. Select from list; 0 disables sharding.`
     {
       key: (
         <HStack spacing={2} className={styles.sectionHeader}>
+          <Text>Backup encryption</Text>
+          <RMIconButton
+            icon={HiQuestionMarkCircle}
+            onClick={() => openInfoModal('Backup encryption', BackupEncryptionRequirement)}
+          />
+        </HStack>
+      ),
+      value: [
+        {
+          key: 'Enable backup encryption',
+          value: (
+            <RMSwitch
+              isChecked={selectedCluster?.config?.backupEncryptionEnabled}
+              isDisabled={!canEditSettings}
+              confirmTitle={'Confirm switch settings for backup-encryption-enabled?'}
+              onChange={() =>
+                dispatch(
+                  switchSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'backup-encryption-enabled'
+                  })
+                )
+              }
+            />
+          )
+        },
+        ...(selectedCluster?.config?.backupEncryptionEnabled
+          ? [
+            {
+              key: 'Encryption directory mode',
+              value: (
+                <Dropdown
+                  options={backupEncryptionDirectoryModeOptions}
+                  className={styles.dropdownButton}
+                  selectedValue={selectedCluster?.config?.backupEncryptionDirectoryMode || 'archive'}
+                  confirmTitle={'Confirm backup-encryption-directory-mode to '}
+                  isDisabled={!canEditSettings}
+                  onChange={(value) =>
+                    dispatch(
+                      setSetting({
+                        clusterName: selectedCluster?.name,
+                        setting: 'backup-encryption-directory-mode',
+                        value
+                      })
+                    )
+                  }
+                />
+              )
+            },
+            ...(selectedCluster?.config?.backupEncryptionDirectoryMode !== 'per-file'
+              ? [
+                {
+                  key: 'Encryption archive format',
+                  value: (
+                    <Dropdown
+                      options={backupEncryptionDirectoryFormatOptions}
+                      className={styles.dropdownButton}
+                      selectedValue={selectedCluster?.config?.backupEncryptionDirectoryFormat || 'tar.gz'}
+                      confirmTitle={'Confirm backup-encryption-directory-format to '}
+                      isDisabled={!canEditSettings}
+                      onChange={(value) =>
+                        dispatch(
+                          setSetting({
+                            clusterName: selectedCluster?.name,
+                            setting: 'backup-encryption-directory-format',
+                            value
+                          })
+                        )
+                      }
+                    />
+                  )
+                }
+              ]
+              : []),
+            {
+              key: 'Secret input mode',
+              value: (
+                <Dropdown
+                  options={backupEncryptionSecretModeOptions}
+                  className={styles.dropdownButton}
+                  selectedValue={backupEncryptionSecretMode}
+                  isDisabled={!canEditSettings}
+                  onChange={(value) => setBackupEncryptionSecretMode(value)}
+                />
+              )
+            },
+            {
+              key: 'Keep plain directory copy',
+              value: (
+                <RMSwitch
+                  isChecked={selectedCluster?.config?.backupEncryptionKeepPlainDir}
+                  isDisabled={!canEditSettings}
+                  confirmTitle={'Confirm switch settings for backup-encryption-keep-plain-dir?'}
+                  onChange={() =>
+                    dispatch(
+                      switchSetting({
+                        clusterName: selectedCluster?.name,
+                        setting: 'backup-encryption-keep-plain-dir'
+                      })
+                    )
+                  }
+                />
+              )
+            },
+            {
+              key: (
+                <HStack spacing={2}>
+                  <Text as='span'>Require explicit passphrase</Text>
+                  <RMIconButton
+                    icon={HiQuestionMarkCircle}
+                    onClick={() =>
+                      openInfoModal(
+                        'Require explicit passphrase',
+                        BackupEncryptionExplicitPassphraseRequirement
+                      )
+                    }
+                  />
+                </HStack>
+              ),
+              value: (
+                <RMSwitch
+                  isChecked={selectedCluster?.config?.backupEncryptionRequireExplicitPassphrase}
+                  isDisabled={!canEditSettings}
+                  confirmTitle={'Confirm switch settings for backup-encryption-require-explicit-passphrase?'}
+                  onChange={() =>
+                    dispatch(
+                      switchSetting({
+                        clusterName: selectedCluster?.name,
+                        setting: 'backup-encryption-require-explicit-passphrase'
+                      })
+                    )
+                  }
+                />
+              )
+            },
+            ...(backupEncryptionSecretMode === 'passphrase'
+              ? [{
+              key: (
+                <HStack spacing={2}>
+                  <Text as='span'>Passphrase (write-only)</Text>
+                  <RMIconButton
+                    icon={HiQuestionMarkCircle}
+                    onClick={() =>
+                      openInfoModal('Encryption passphrase', BackupEncryptionPassphraseRequirement)
+                    }
+                  />
+                </HStack>
+              ),
+              value: (
+                <HStack width={'100%'}>
+                  <Input
+                    type='password'
+                    value={backupEncryptionPassphrase}
+                    onChange={(e) => setBackupEncryptionPassphrase(e.target.value)}
+                    placeholder='Stored value is not shown. Enter new passphrase'
+                    isDisabled={!canEditSettings}
+                  />
+                  <RMIconButton
+                    icon={HiX}
+                    tooltip='Clear'
+                    colorScheme='red'
+                    isDisabled={!backupEncryptionPassphrase || !canEditSettings}
+                    onClick={() => setBackupEncryptionPassphrase('')}
+                  />
+                  <RMIconButton
+                    icon={HiCheck}
+                    tooltip='Save passphrase'
+                    colorScheme='green'
+                    isDisabled={!backupEncryptionPassphrase || !canEditSettings}
+                    confirm={true}
+                    confirmTitle='Confirm backup encryption passphrase update?'
+                    confirmBody='This will store the new passphrase. Existing secret values are never displayed.'
+                    onClick={() => {
+                      dispatch(
+                        setSecretSetting({
+                          clusterName: selectedCluster?.name,
+                          setting: 'backup-encryption-passphrase',
+                          value: backupEncryptionPassphrase
+                        })
+                      )
+                      setBackupEncryptionPassphrase('')
+                    }}
+                  />
+                </HStack>
+              )
+            }]
+              : []),
+            ...(backupEncryptionSecretMode === 'keyring'
+              ? [{
+              key: (
+                <HStack spacing={2}>
+                  <Text as='span'>Keyring JSON (write-only)</Text>
+                  <RMIconButton
+                    icon={HiQuestionMarkCircle}
+                    onClick={() => openInfoModal('Encryption keyring', BackupEncryptionKeyringRequirement)}
+                  />
+                </HStack>
+              ),
+              value: (
+                <HStack width={'100%'}>
+                  <Text fontSize='sm' color='gray.500'>Current keyring is hidden</Text>
+                  <RMButton
+                    size='small'
+                    isDisabled={!canEditSettings}
+                    onClick={() => setIsKeyringModalOpen(true)}>
+                    Edit keyring JSON
+                  </RMButton>
+                </HStack>
+              )
+            }]
+              : []),
+            ...(selectedCluster?.config?.backupEncryptionDirectoryMode === 'per-file'
+              ? [
+                {
+                  key: (
+                    <HStack spacing={2}>
+                      <Text as='span'>Unsafe per-file restore mode</Text>
+                      <RMIconButton
+                        icon={HiQuestionMarkCircle}
+                        onClick={() =>
+                          openInfoModal(
+                            'Unsafe per-file restore mode',
+                            BackupEncryptionUnsafePerFileRestoreRequirement
+                          )
+                        }
+                      />
+                    </HStack>
+                  ),
+                  value: (
+                    <RMSwitch
+                      isChecked={selectedCluster?.config?.backupEncryptionUnsafePerFileRestore}
+                      isDisabled={!canEditSettings}
+                      confirmTitle={'Confirm switch settings for backup-encryption-unsafe-per-file-restore?'}
+                      onChange={() =>
+                        dispatch(
+                          switchSetting({
+                            clusterName: selectedCluster?.name,
+                            setting: 'backup-encryption-unsafe-per-file-restore'
+                          })
+                        )
+                      }
+                    />
+                  )
+                }
+              ]
+              : [])
+          ]
+          : [])
+      ]
+    },
+    {
+      key: (
+        <HStack spacing={2} className={styles.sectionHeader}>
           <Text>Backup snapshots</Text>
           <Box
             as="button"
@@ -1044,6 +1480,92 @@ Default: 1G. Select from list; 0 disables sharding.`
           bodyClassName={joinClasses(modalStyles.infoModalBody, styles.infoModalBody)}
           closeModal={() => {
             closeCommonModal()
+          }}
+        />
+      )}
+      {isKeyringModalOpen && (
+        <CommonModal
+          isOpen={isKeyringModalOpen}
+          size='xl'
+          title='Backup encryption keyring JSON'
+          body={(
+            <Stack spacing={4}>
+              <Text fontSize='sm' color='gray.500'>
+                Write-only editor. Existing keyring value is not shown.
+              </Text>
+              <Box
+                as='pre'
+                p={3}
+                borderRadius='md'
+                border='1px solid'
+                borderColor='gray.200'
+                bg='blackAlpha.100'
+                overflow='auto'
+                fontSize='xs'>
+{`{
+  "activeKeyId": "2026-03",
+  "legacyDefaultKeyId": "pre-keyring",
+  "keys": [
+    {"id": "pre-keyring", "passphrase": "old-pass", "state": "decrypt-only"},
+    {"id": "2026-03", "passphrase": "new-pass", "state": "active"}
+  ]
+}`}
+              </Box>
+              <Textarea
+                value={backupEncryptionKeyring}
+                onChange={(e) => setBackupEncryptionKeyring(e.target.value)}
+                placeholder='Paste keyring JSON here'
+                minHeight='280px'
+                fontFamily='monospace'
+                fontSize='sm'
+                isDisabled={!canEditSettings}
+              />
+              {!backupEncryptionKeyringValidation.isValid && (
+                <Text fontSize='sm' color='red.400'>
+                  {backupEncryptionKeyringValidation.message}
+                </Text>
+              )}
+              <HStack justify='flex-end'>
+                <RMButton
+                  variant='outline'
+                  colorScheme='white'
+                  size='small'
+                  onClick={closeKeyringModal}>
+                  Cancel
+                </RMButton>
+                <RMButton
+                  colorScheme='blue'
+                  size='small'
+                  isDisabled={!backupEncryptionKeyringValidation.isValid || !canEditSettings}
+                  onClick={() => setIsKeyringConfirmModalOpen(true)}>
+                  Save keyring
+                </RMButton>
+              </HStack>
+            </Stack>
+          )}
+          contentClassName={joinClasses(modalStyles.infoModalContent, styles.infoModalContent)}
+          headerClassName={joinClasses(modalStyles.infoModalHeader, styles.infoModalHeader)}
+          bodyClassName={joinClasses(modalStyles.infoModalBody, styles.infoModalBody)}
+          closeModal={closeKeyringModal}
+        />
+      )}
+      {isKeyringConfirmModalOpen && (
+        <ConfirmModal
+          isOpen={isKeyringConfirmModalOpen}
+          closeModal={() => setIsKeyringConfirmModalOpen(false)}
+          title='Confirm backup encryption keyring update?'
+          body='This will store the provided keyring JSON. Existing secret values are never displayed.'
+          onConfirmClick={() => {
+            dispatch(
+              setSecretSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'backup-encryption-keyring',
+                value: backupEncryptionKeyring
+              })
+            )
+            setIsKeyringConfirmModalOpen(false)
+            setIsKeyringModalOpen(false)
+            setBackupEncryptionKeyring('')
           }}
         />
       )}

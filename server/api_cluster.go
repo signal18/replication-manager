@@ -275,6 +275,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSettings)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/set-secret/{settingName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSecretSettings)),
+	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/clear/{settingName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSettings)),
@@ -2734,6 +2738,11 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 		value = settingValue
 	}
 
+	if setting == "backup-encryption-passphrase" || setting == "backup-encryption-keyring" {
+		http.Error(w, "Use set-secret endpoint for this setting", http.StatusBadRequest)
+		return
+	}
+
 	// Should be handled with global settings
 	serverScope := config.IsScope(setting, "server")
 	if serverScope {
@@ -2769,6 +2778,61 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 		}
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handlerMuxSetSecretSettings handles secure setting updates sent via POST body.
+// @Summary Set secret setting for a specific cluster
+// @Description This endpoint sets write-only secret settings for the specified cluster using request body instead of URL path values.
+// @Tags ClusterSettings
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param settingName path string true "Setting Name"
+// @Param payload body object true "Secret payload" SchemaExample({"value":"secret"})
+// @Success 200 {string} string "Successfully set secret setting"
+// @Failure 400 {string} string "Bad request"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/settings/actions/set-secret/{settingName} [post]
+func (repman *ReplicationManager) handlerMuxSetSecretSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	cName := vars["clusterName"]
+	setting := vars["settingName"]
+
+	if setting != "backup-encryption-passphrase" && setting != "backup-encryption-keyring" {
+		http.Error(w, "Unsupported secret setting", http.StatusBadRequest)
+		return
+	}
+
+	mycluster := repman.getClusterByName(cName)
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, fmt.Sprintf("User doesn't have required ACL for %s in cluster %s", setting, cName), http.StatusForbidden)
+		return
+	}
+
+	var payload struct {
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	if err := repman.setClusterSetting(mycluster, setting, payload.Value); err != nil {
+		errCode := 500
+		if err.Error() == "Setting not found" {
+			errCode = 501
+		}
+		http.Error(w, "Failed to set cluster setting: "+err.Error(), errCode)
 		return
 	}
 }
