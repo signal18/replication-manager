@@ -236,7 +236,7 @@ Set to **0** to keep plans forever (no automatic purge).`
   } = useSelector((state) => state)
 
   const helpKey = (label, helpContent, title) => (
-    <HStack spacing={2} align="center">
+    <HStack spacing={1} align="center" width="fit-content">
       <Text>{label}</Text>
       <RMIconButton
         icon={HiQuestionMarkCircle}
