@@ -155,6 +155,14 @@ function Home() {
     )
   }
 
+  const refreshMaintenanceData = (clusterName) => {
+    dispatch(getResticSnapshot({ clusterName, filter: 'latest-per-session' }))
+    dispatch(getBackups({ clusterName }))
+    dispatch(getBackupStats({ clusterName }))
+    dispatch(getResticCurrentTask({ clusterName }))
+    dispatch(getJobs({ clusterName }))
+  }
+
   const callServices = () => {
     const isAutoReloadPaused = localStorage.getItem('pause_auto_reload')
 
@@ -192,11 +200,7 @@ function Home() {
         dispatch(getClusterCertificates({ clusterName: selectedClusterNameRef.current }))
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Maintenance') {
-        dispatch(getResticSnapshot({ clusterName: selectedClusterNameRef.current, filter: 'latest-per-session' }))
-        dispatch(getBackups({ clusterName: selectedClusterNameRef.current }))
-        dispatch(getBackupStats({ clusterName: selectedClusterNameRef.current }))
-        dispatch(getResticCurrentTask({ clusterName: selectedClusterNameRef.current }))
-        dispatch(getJobs({ clusterName: selectedClusterNameRef.current }))
+        refreshMaintenanceData(selectedClusterNameRef.current)
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Tops') {
         dispatch(getTopProcess({ clusterName: selectedClusterNameRef.current }))
@@ -220,6 +224,12 @@ function Home() {
       dispatch(setCluster({ data: null }))
       dispatch(setBaseURL({ baseURL: '' }))
       selectedClusterNameRef.current = ''
+    } else if (
+      isClusterOpenRef.current &&
+      selectedClusterNameRef.current &&
+      dashboardTabsRef.current[tabIndex - 1] === 'Maintenance'
+    ) {
+      refreshMaintenanceData(selectedClusterNameRef.current)
     }
   }
 
@@ -240,6 +250,9 @@ function Home() {
       const tabIndex = maintenanceIndex + 1
       selectedTabRef.current = tabIndex
       setSelectedTab(tabIndex)
+      if (selectedClusterNameRef.current) {
+        refreshMaintenanceData(selectedClusterNameRef.current)
+      }
     }
   }
   const openNewClusterModal = (e) => {
