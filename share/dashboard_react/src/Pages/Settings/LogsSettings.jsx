@@ -7,6 +7,7 @@ import TableType2 from '../../components/TableType2'
 import RMSwitch from '../../components/RMSwitch'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { HiChevronDown, HiChevronUp } from 'react-icons/hi'
+import clsx from 'clsx'
 
 const LOG_LEVEL_OPTIONS = [
   { value: 0, label: 'Off' },
@@ -146,7 +147,7 @@ function ConfirmableLogLevelControl({
   return (
     <>
       <HStack spacing={2} align='center' className={compact ? undefined : styles.logLevelInlineControl}>
-        <Box className={`${styles.logLevelControl} ${compact ? styles.logLevelControlCompact : ''}`}>
+        <Box className={clsx(styles.logLevelControl, compact && styles.logLevelControlCompact)}>
           <button
             type='button'
             className={`${styles.logLevelOffButton} ${selectedValue === 0 ? styles.logLevelOffButtonSelected : ''}`}
@@ -160,11 +161,20 @@ function ConfirmableLogLevelControl({
             {VERBOSE_LOG_LEVEL_OPTIONS.map((option) => {
               const isSelected = selectedValue === option.value
               const isFilled = selectedValue !== 0 && selectedValue >= option.value
+              const gaugeButtonClassName = clsx(
+                styles.logLevelGaugeButton,
+                styles[`logLevelGaugeButtonLevel${option.value}`],
+                isFilled ? styles[`logLevelGaugeButtonFilled${option.value}`] : styles.logLevelGaugeButtonUnfilled,
+                compact && styles.logLevelGaugeButtonCompact,
+                isSelected && styles.logLevelGaugeButtonSelected,
+                isSelected && styles[`logLevelGaugeButtonSelectedLevel${option.value}`]
+              )
+
               return (
                 <button
                   key={option.value}
                   type='button'
-                  className={`${styles.logLevelGaugeButton} ${styles[`logLevelGaugeButtonLevel${option.value}`]} ${isFilled ? styles[`logLevelGaugeButtonFilled${option.value}`] : styles.logLevelGaugeButtonUnfilled} ${compact ? styles.logLevelGaugeButtonCompact : ''} ${isSelected ? `${styles.logLevelGaugeButtonSelected} ${styles[`logLevelGaugeButtonSelectedLevel${option.value}`]}` : ''}`}
+                  className={gaugeButtonClassName}
                   onClick={() => requestChange(option.value)}
                   disabled={isDisabled}
                   aria-pressed={isSelected}>
@@ -181,7 +191,7 @@ function ConfirmableLogLevelControl({
         <ConfirmModal
           isOpen={isConfirmModalOpen}
           closeModal={closeModal}
-          title={`${confirmTitle} ${LEVEL_LABEL_BY_VALUE[pendingValue ?? currentValue]}`}
+          title={`${confirmTitle.trimEnd()} ${LEVEL_LABEL_BY_VALUE[pendingValue ?? currentValue]}`}
           onConfirmClick={confirmChange}
         />
       )}
@@ -191,6 +201,7 @@ function ConfirmableLogLevelControl({
 
 function CollapsibleLogSection({
   title,
+  description,
   isOpen,
   onToggle,
   rows,
@@ -212,6 +223,7 @@ function CollapsibleLogSection({
         className={`${styles.panelHeader} ${styles.logsPanelHeader}`}>
         <Stack spacing={1} className={styles.panelHeaderContent}>
           <Text className={styles.panelTitle}>{title}</Text>
+          {description && <Text className={styles.panelDescription}>{description}</Text>}
         </Stack>
         <Box className={styles.panelChevron}>{isOpen ? <HiChevronUp /> : <HiChevronDown />}</Box>
       </HStack>
@@ -237,7 +249,7 @@ function CollapsibleLogSection({
 function LogsSettings({ selectedCluster, user }) {
   const dispatch = useDispatch()
 
-  const isSettingsDisabled = user?.grants['cluster-settings'] == false
+  const isSettingsDisabled = user?.grants['cluster-settings'] === false
   const [sectionOpenState, setSectionOpenState] = useState(() => {
     const initialState = {}
     INTERNAL_OVERRIDE_GROUPS.forEach((group) => {
@@ -286,9 +298,8 @@ function LogsSettings({ selectedCluster, user }) {
       description: 'Include monitored SQL statements in logs.',
       control: (
         <ConfirmableLogLevelControl
-          compact={false}
           value={selectedCluster?.config?.logSqlLevel}
-          confirmTitle={`Confirm change 'log-level-sql' to: `}
+          confirmTitle={`Confirm change 'log-level-sql' to:`}
           isDisabled={isSettingsDisabled}
           onConfirm={buildSetSettingHandler('log-level-sql', selectedCluster?.name)}
         />
@@ -299,9 +310,8 @@ function LogsSettings({ selectedCluster, user }) {
       description: 'General log scope for cluster-wide logging behavior.',
       control: (
         <ConfirmableLogLevelControl
-          compact={false}
           value={selectedCluster?.config?.logLevel}
-          confirmTitle={`Confirm change 'log-level' to: `}
+          confirmTitle={`Confirm change 'log-level' to:`}
           isDisabled={isSettingsDisabled}
           onConfirm={buildSetSettingHandler('log-level', selectedCluster?.name)}
         />
@@ -315,7 +325,7 @@ function LogsSettings({ selectedCluster, user }) {
       <ConfirmableLogLevelControl
         compact={true}
         value={selectedCluster?.config?.[item.configKey]}
-        confirmTitle={`Confirm change '${item.settingKey}' to: `}
+        confirmTitle={`Confirm change '${item.settingKey}' to:`}
         isDisabled={isSettingsDisabled}
         onConfirm={buildSetSettingHandler(item.settingKey, selectedCluster?.name)}
       />
@@ -377,6 +387,7 @@ function LogsSettings({ selectedCluster, user }) {
           <CollapsibleLogSection
             key={group.id}
             title={group.title}
+            description={group.description}
             isOpen={sectionOpenState[group.id]}
             onToggle={() => toggleSection(group.id)}
             rows={mapSettingsToRows(group.items)}
@@ -391,7 +402,7 @@ function LogsSettings({ selectedCluster, user }) {
   const proxyOverridesContent = (
     <Stack spacing={3} className={styles.logsSectionContent}>
       <CollapsibleLogSection
-        title='Proxy Log Scopes'
+        title='Proxy Types'
         isOpen={sectionOpenState['proxy-overrides']}
         onToggle={() => toggleSection('proxy-overrides')}
         rows={mapSettingsToRows(PROXY_LOG_SETTINGS)}
