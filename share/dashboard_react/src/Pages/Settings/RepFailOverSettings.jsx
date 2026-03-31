@@ -1,4 +1,4 @@
-import { Box, Flex } from '@chakra-ui/react'
+import { Box, Flex, HStack } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
@@ -24,12 +24,10 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
   }
 
   const helpKey = (label, content) => (
-    <Box as="span" display="inline">
-      {label}
-      <Box as="span" display="inline-flex" verticalAlign="middle" ml={1}>
-        <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
-      </Box>
-    </Box>
+    <HStack spacing={1} align="center">
+      <span>{label}</span>
+      <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
+    </HStack>
   )
 
   const helpFailoverLimit = `**Failover Limit**\n\nMaximum number of automatic failovers allowed before replication-manager stops attempting further failovers.\nSet to 0 for unlimited.\nAfter the limit is reached, manual intervention is required to reset the counter and re-enable automatic failover.`
@@ -75,7 +73,7 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
   return (
     <>
       <Flex justify='space-between' gap='0'>
-        <TableType2 dataArray={dataObject} className={styles.table} />
+        <TableType2 dataArray={dataObject} className={styles.table} labelClassName={styles.labelWithHelp} />
       </Flex>
       <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
     </>

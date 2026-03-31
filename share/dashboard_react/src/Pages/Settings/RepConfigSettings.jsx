@@ -1,4 +1,4 @@
-import { Box, Flex } from '@chakra-ui/react'
+import { Box, Flex, HStack } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
@@ -25,12 +25,10 @@ function RepConfigSettings({ selectedCluster, user, openConfirmModal, closeConfi
   }
 
   const helpKey = (label, content) => (
-    <Box as="span" display="inline">
-      {label}
-      <Box as="span" display="inline-flex" verticalAlign="middle" ml={1}>
-        <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
-      </Box>
-    </Box>
+    <HStack spacing={1} align="center">
+      <span>{label}</span>
+      <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
+    </HStack>
   )
 
   const helpChannel = `**Replication Channel**\n\nName of the replication channel used for multi-source replication.\nLeave empty for the default (unnamed) channel.\nMust match the channel name configured on the replica with \`CHANGE MASTER TO ... FOR CHANNEL 'name'\`.`
@@ -76,7 +74,7 @@ function RepConfigSettings({ selectedCluster, user, openConfirmModal, closeConfi
   return (
     <>
       <Flex justify='space-between' gap='0'>
-        <TableType2 dataArray={dataObject} className={styles.table} />
+        <TableType2 dataArray={dataObject} className={styles.table} labelClassName={styles.labelWithHelp} />
       </Flex>
       <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
     </>

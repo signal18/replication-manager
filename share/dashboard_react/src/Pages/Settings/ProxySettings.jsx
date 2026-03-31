@@ -1,4 +1,4 @@
-import { Box, Flex } from '@chakra-ui/react'
+import { Box, Flex, HStack } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
@@ -24,12 +24,10 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
   }
 
   const helpKey = (label, content) => (
-    <Box as="span" display="inline">
-      {label}
-      <Box as="span" display="inline-flex" verticalAlign="middle" ml={1}>
-        <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
-      </Box>
-    </Box>
+    <HStack spacing={1} align="center">
+      <span>{label}</span>
+      <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
+    </HStack>
   )
 
   const helpProxySQLMonitor = `**ProxySQL Monitor**\n\nEnables replication-manager's ProxySQL integration.\nWhen active, replication-manager connects to ProxySQL and keeps its server list, hostgroups, and routing rules in sync with the current cluster topology.`
@@ -61,7 +59,7 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
   return (
     <>
       <Flex justify='space-between' gap='0'>
-        <TableType2 dataArray={dataObject} className={styles.table} />
+        <TableType2 dataArray={dataObject} className={styles.table} labelClassName={styles.labelWithHelp} />
       </Flex>
       <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
     </>
