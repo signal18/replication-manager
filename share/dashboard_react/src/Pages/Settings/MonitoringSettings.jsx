@@ -34,6 +34,17 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
 
   // ── Help content ────────────────────────────────────────────────────────────
 
+  const helpSaveConfig = `**Monitoring Save Config**
+
+When enabled, any setting changed through the API or GUI is immediately persisted to the cluster configuration file on disk.  
+When disabled, changes apply at runtime only and are lost on the next restart.`
+
+  const helpPause = `**Monitoring Pause**
+
+Temporarily suspends all monitoring cycles for this cluster.  
+The replication-manager process keeps running but stops polling servers, evaluating failover conditions, and updating state.  
+Useful during planned maintenance windows to avoid spurious alerts or unintended failovers.`
+
   const helpMonitoringCapture = `**Monitoring Capture On Error**
 
 When enabled, replication-manager captures a full diagnostic snapshot every time an error state is detected.  
@@ -63,7 +74,31 @@ Example: \`WARN0001,ERR00042\``
 
 When enabled, replication-manager tracks DDL changes (CREATE, ALTER, DROP) on all schemas.  
 A diff is computed at each monitoring cycle and exposed via the schema-change API endpoint and GUI tab.  
-Requires \`monitoring-schema-columns\` and/or \`monitoring-schema-indexes\` to also be enabled for full coverage.`
+Requires **Monitoring Schema Columns** and/or **Monitoring Schema Indexes** to also be enabled for full coverage.`
+
+  const helpSchemaColumns = `**Monitoring Schema Columns**
+
+When enabled, column-level changes (ADD COLUMN, DROP COLUMN, MODIFY COLUMN) are included in the schema diff.  
+Requires **Monitoring Schema** to be enabled.`
+
+  const helpSchemaIndexes = `**Monitoring Schema Indexes**
+
+When enabled, index-level changes (ADD INDEX, DROP INDEX, CREATE UNIQUE INDEX) are included in the schema diff.  
+Requires **Monitoring Schema** to be enabled.`
+
+  const helpSchemaIgnoreTables = `**Monitoring Schema Ignore Tables**
+
+A comma-separated list of tables (in \`schema.table\` format) to exclude from schema change monitoring.  
+Changes on these tables will never appear in the schema diff, regardless of the other schema settings.  
+
+Example: \`mydb.audit_log,mydb.temp_import\``
+
+  const helpSchemaScanTimeout = `**Monitoring Schema Scan Timeout**
+
+Maximum time in seconds that replication-manager will wait for a schema metadata query to complete  
+(\`INFORMATION_SCHEMA.TABLES\`, \`INFORMATION_SCHEMA.COLUMNS\`, \`INFORMATION_SCHEMA.STATISTICS\`).  
+Default: **30 seconds**.  
+Increase this value on servers with very large numbers of tables or slow I_S performance.`
 
   const helpVariableDiff = `**Monitoring Variable Diff**
 
@@ -77,14 +112,51 @@ Enables collection of \`SHOW FULL PROCESSLIST\` on every monitoring cycle.
 Collected data is exposed in the GUI processlist tab and included in capture snapshots.
 
 Related settings:
-- **Monitoring Processlist Inactive** — include idle connections (Command = Sleep)
-- **Monitoring Processlist Transactions** — include InnoDB transaction details from \`information_schema.innodb_trx\`
+- **Monitoring Processlist Inactive** — include idle connections
+- **Monitoring Processlist Transactions** — include InnoDB transaction details
 - **Monitoring Processlist Information Schema** — use \`information_schema.processlist\` instead of \`SHOW FULL PROCESSLIST\``
+
+  const helpProcesslistInfoSchema = `**Monitoring Processlist Information Schema**
+
+When enabled, processlist data is collected from \`information_schema.processlist\` instead of \`SHOW FULL PROCESSLIST\`.  
+The I_S table includes additional columns and is not subject to the \`PROCESS\` privilege restriction on MySQL 8.0+.  
+On MariaDB, \`SHOW FULL PROCESSLIST\` is generally preferred.`
+
+  const helpProcesslistInactive = `**Monitoring Processlist Inactive**
+
+When enabled, idle connections (Command = \`Sleep\`) are included in the collected processlist.  
+Disabled by default to reduce noise. Enable when tracking connection pool behaviour or idle connection leaks.`
+
+  const helpProcesslistTransactions = `**Monitoring Processlist Transactions**
+
+When enabled, active InnoDB transaction details from \`information_schema.innodb_trx\` are joined into the processlist view.  
+Useful for identifying long-running transactions, lock waits, and deadlock candidates.`
+
+  const helpInnoDBStatus = `**Monitoring InnoDB Status**
+
+Enables periodic collection of \`SHOW ENGINE INNODB STATUS\` output.  
+The result is parsed and exposed in the GUI and included in capture snapshots.  
+Useful for diagnosing lock contention, deadlocks, buffer pool pressure, and I/O bottlenecks.`
+
+  const helpInnoDBMutex = `**Monitoring InnoDB Mutex**
+
+Enables collection of mutex wait metrics from \`performance_schema.events_waits_summary_global_by_event_name\`  
+for InnoDB mutex instruments (names matching \`wait/synch/mutex/innodb/%\`).  
+Exposes per-mutex spin, wait, and signal counts in the GUI graphs.  
+Requires Performance Schema to be enabled on the monitored servers.`
+
+  const helpInnoDBLatch = `**Monitoring InnoDB Latch**
+
+Enables collection of read-write lock (latch) wait metrics from Performance Schema  
+for InnoDB rw-lock instruments (names matching \`wait/synch/rwlock/innodb/%\`).  
+Latches protect InnoDB internal structures; high latch waits indicate concurrency bottlenecks.  
+Requires Performance Schema to be enabled on the monitored servers.`
 
   const helpPFSMemory = `**Monitoring Performance Schema Memory**
 
 Enables collection of memory instrument metrics from \`performance_schema.memory_summary_global_by_event_name\`.  
-Exposes per-subsystem memory consumption (InnoDB buffer pool, temp tables, etc.) in the GUI graphs.`
+Exposes per-subsystem memory consumption (InnoDB buffer pool, temp tables, etc.) in the GUI graphs.  
+Requires Performance Schema to be enabled on the monitored servers.`
 
   const helpPFSInstruments = `**Monitoring Performance Schema Instruments**
 
@@ -102,7 +174,7 @@ At each period boundary the digest table is:
 
 Each line in the snapshot contains: \`digest\`, \`digestText\` (normalised template), \`sampleQuery\` (concrete SQL for EXPLAIN), \`execCount\`, \`execTimeAvgMs\`, \`rowsScanned\`, \`planFullScan\`, etc.
 
-> **Note:** This feature requires \`performance_schema = ON\` on the monitored servers.`
+> **Note:** Requires \`performance_schema = ON\` on the monitored servers.`
 
   const helpPFSQueriesPeriod = `**Monitoring Performance Schema Queries Period (hours)**
 
@@ -163,12 +235,22 @@ Set to **0** to keep plans forever (no automatic purge).`
     }
   } = useSelector((state) => state)
 
+  const helpKey = (label, helpContent, title) => (
+    <HStack spacing={2} align="center">
+      <Text>{label}</Text>
+      <RMIconButton
+        icon={HiQuestionMarkCircle}
+        onClick={() => openInfoModal(title || label, helpContent)}
+      />
+    </HStack>
+  )
+
   const dataObject = [
     {
       key: 'Monitoring Save Config',
       value: [
         {
-          key: 'Monitoring Save Config',
+          key: helpKey('Monitoring Save Config', helpSaveConfig),
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for monitoring-save-config?'}
@@ -182,7 +264,7 @@ Set to **0** to keep plans forever (no automatic purge).`
           )
         },
         {
-          key: 'Monitoring Pause',
+          key: helpKey('Monitoring Pause', helpPause),
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for monitoring-pause?'}
@@ -198,12 +280,7 @@ Set to **0** to keep plans forever (no automatic purge).`
       ]
     },
     {
-      key: (
-        <HStack>
-          <Text>Monitoring Capture On Error</Text>
-          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Capture On Error', helpMonitoringCapture)} />
-        </HStack>
-      ),
+      key: helpKey('Monitoring Capture On Error', helpMonitoringCapture),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-capture?'}
@@ -217,12 +294,7 @@ Set to **0** to keep plans forever (no automatic purge).`
       )
     },
     {
-      key: (
-        <HStack>
-          <Text>Monitoring Capture On Error Trigger</Text>
-          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Capture On Error Trigger', helpCaptureTrigger)} />
-        </HStack>
-      ),
+      key: helpKey('Monitoring Capture On Error Trigger', helpCaptureTrigger),
       value: (
         <TextForm
           value={selectedCluster?.config?.monitoringCaptureTrigger}
@@ -240,12 +312,7 @@ Set to **0** to keep plans forever (no automatic purge).`
       )
     },
     {
-      key: (
-        <HStack>
-          <Text>Monitoring Ignore Error List</Text>
-          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Ignore Error List', helpIgnoreErrors)} />
-        </HStack>
-      ),
+      key: helpKey('Monitoring Ignore Error List', helpIgnoreErrors),
       value: (
         <TextForm
           value={selectedCluster?.config?.monitoringIgnoreErrors}
@@ -263,12 +330,7 @@ Set to **0** to keep plans forever (no automatic purge).`
       )
     },
     {
-      key: (
-        <HStack>
-          <Text>Monitoring Schema</Text>
-          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Schema', helpSchema)} />
-        </HStack>
-      ),
+      key: helpKey('Monitoring Schema', helpSchema),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-schema-change?'}
@@ -282,7 +344,7 @@ Set to **0** to keep plans forever (no automatic purge).`
       )
     },
     {
-      key: 'Monitoring Schema Columns',
+      key: helpKey('Monitoring Schema Columns', helpSchemaColumns),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-schema-columns?'}
@@ -296,7 +358,7 @@ Set to **0** to keep plans forever (no automatic purge).`
       )
     },
     {
-      key: 'Monitoring Schema Indexes',
+      key: helpKey('Monitoring Schema Indexes', helpSchemaIndexes),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-schema-indexes?'}
@@ -310,7 +372,7 @@ Set to **0** to keep plans forever (no automatic purge).`
       )
     },
     {
-      key: 'Monitoring Schema Ignore Tables',
+      key: helpKey('Monitoring Schema Ignore Tables', helpSchemaIgnoreTables),
       value: (
         <TextForm
           value={selectedCluster?.config?.monitoringSchemaIgnoreTables}
@@ -328,37 +390,27 @@ Set to **0** to keep plans forever (no automatic purge).`
       )
     },
     {
-      key: 'Monitoring Schema Scan Timeout',
+      key: helpKey('Monitoring Schema Scan Timeout', helpSchemaScanTimeout),
       value: (
-        <Flex className={styles.valueWithInfo}>
-          <Text className={styles.info}>
-            Timeout in seconds for schema metadata scans (TABLES, COLUMNS, STATISTICS queries)
-          </Text>
-          <NumberInput
-            value={selectedCluster?.config?.monitoringSchemaScanTimeout}
-            showEditButton={true}
-            showConfirmModal={true}
-            confirmTitle={`Confirm change 'monitoring-schema-scan-timeout' to: `}
-            onConfirm={(timeoutValue) =>
-              dispatch(
-                setSetting({
-                  clusterName: selectedCluster?.name,
-                  setting: 'monitoring-schema-scan-timeout',
-                  value: timeoutValue.length === 0 ? '30' : timeoutValue
-                })
-              )
-            }
-          />
-        </Flex>
+        <NumberInput
+          value={selectedCluster?.config?.monitoringSchemaScanTimeout}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change 'monitoring-schema-scan-timeout' to: `}
+          onConfirm={(timeoutValue) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'monitoring-schema-scan-timeout',
+                value: timeoutValue.length === 0 ? '30' : timeoutValue
+              })
+            )
+          }
+        />
       )
     },
     {
-      key: (
-        <HStack>
-          <Text>Monitoring Variable Diff</Text>
-          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Variable Diff', helpVariableDiff)} />
-        </HStack>
-      ),
+      key: helpKey('Monitoring Variable Diff', helpVariableDiff),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-variable-diff?'}
@@ -372,12 +424,7 @@ Set to **0** to keep plans forever (no automatic purge).`
       )
     },
     {
-      key: (
-        <HStack>
-          <Text>Monitoring Processlist</Text>
-          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Processlist', helpProcesslist)} />
-        </HStack>
-      ),
+      key: helpKey('Monitoring Processlist', helpProcesslist),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-processlist?'}
@@ -391,7 +438,7 @@ Set to **0** to keep plans forever (no automatic purge).`
       )
     },
     {
-      key: 'Monitoring Processlist Information Schema',
+      key: helpKey('Monitoring Processlist Information Schema', helpProcesslistInfoSchema),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-processlist-information-schema?'}
@@ -405,7 +452,7 @@ Set to **0** to keep plans forever (no automatic purge).`
       )
     },
     {
-      key: 'Monitoring Processlist Inactive',
+      key: helpKey('Monitoring Processlist Inactive', helpProcesslistInactive),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-processlist-inactive?'}
@@ -419,7 +466,7 @@ Set to **0** to keep plans forever (no automatic purge).`
       )
     },
     {
-      key: 'Monitoring Processlist Transactions',
+      key: helpKey('Monitoring Processlist Transactions', helpProcesslistTransactions),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-processlist-transactions?'}
@@ -433,7 +480,7 @@ Set to **0** to keep plans forever (no automatic purge).`
       )
     },
     {
-      key: 'Monitoring InnoDB Status',
+      key: helpKey('Monitoring InnoDB Status', helpInnoDBStatus),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-innodb-status?'}
@@ -447,7 +494,7 @@ Set to **0** to keep plans forever (no automatic purge).`
       )
     },
     {
-      key: 'Monitoring InnoDB Mutex',
+      key: helpKey('Monitoring InnoDB Mutex', helpInnoDBMutex),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-performance-schema-mutex?'}
@@ -461,7 +508,7 @@ Set to **0** to keep plans forever (no automatic purge).`
       )
     },
     {
-      key: 'Monitoring InnoDB Latch',
+      key: helpKey('Monitoring InnoDB Latch', helpInnoDBLatch),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-performance-schema-latch?'}
@@ -478,12 +525,7 @@ Set to **0** to keep plans forever (no automatic purge).`
       key: 'Monitoring Performance Schema Queries',
       value: [
         {
-          key: (
-            <HStack>
-              <Text>Monitoring Performance Schema Memory</Text>
-              <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Performance Schema Memory', helpPFSMemory)} />
-            </HStack>
-          ),
+          key: helpKey('Monitoring Performance Schema Memory', helpPFSMemory),
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for monitoring-performance-schema-memory?'}
@@ -496,12 +538,7 @@ Set to **0** to keep plans forever (no automatic purge).`
           )
         },
         {
-          key: (
-            <HStack>
-              <Text>Monitoring Performance Schema Instruments</Text>
-              <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Performance Schema Instruments', helpPFSInstruments)} />
-            </HStack>
-          ),
+          key: helpKey('Monitoring Performance Schema Instruments', helpPFSInstruments),
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for monitoring-performance-schema-instruments?'}
@@ -514,12 +551,7 @@ Set to **0** to keep plans forever (no automatic purge).`
           )
         },
         {
-          key: (
-            <HStack>
-              <Text>Monitoring Performance Schema Queries</Text>
-              <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Performance Schema Queries', helpPFSQueries)} />
-            </HStack>
-          ),
+          key: helpKey('Monitoring Performance Schema Queries', helpPFSQueries),
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for monitoring-performance-schema-queries?'}
@@ -532,44 +564,29 @@ Set to **0** to keep plans forever (no automatic purge).`
           )
         },
         {
-          key: (
-            <HStack>
-              <Text>Monitoring Performance Schema Queries Period (hours)</Text>
-              <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Performance Schema Queries Period', helpPFSQueriesPeriod)} />
-            </HStack>
-          ),
+          key: helpKey('Monitoring Performance Schema Queries Period (hours)', helpPFSQueriesPeriod),
           value: (
-            <Flex className={styles.valueWithInfo}>
-              <Text className={styles.info}>
-                How often (in hours) the performance schema digest table is snapshotted and reset. Default: 1.
-              </Text>
-              <NumberInput
-                value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesPeriod}
-                min={1}
-                max={168}
-                showEditButton={true}
-                showConfirmModal={true}
-                confirmTitle={`Confirm change 'monitoring-performance-schema-queries-period' to: `}
-                onConfirm={(val) =>
-                  dispatch(
-                    setSetting({
-                      clusterName: selectedCluster?.name,
-                      setting: 'monitoring-performance-schema-queries-period',
-                      value: val.length === 0 ? '1' : val
-                    })
-                  )
-                }
-              />
-            </Flex>
+            <NumberInput
+              value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesPeriod}
+              min={1}
+              max={168}
+              showEditButton={true}
+              showConfirmModal={true}
+              confirmTitle={`Confirm change 'monitoring-performance-schema-queries-period' to: `}
+              onConfirm={(val) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'monitoring-performance-schema-queries-period',
+                    value: val.length === 0 ? '1' : val
+                  })
+                )
+              }
+            />
           )
         },
         {
-          key: (
-            <HStack>
-              <Text>Monitoring Performance Schema Queries Explain</Text>
-              <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Performance Schema Queries Explain', helpPFSExplain)} />
-            </HStack>
-          ),
+          key: helpKey('Monitoring Performance Schema Queries Explain', helpPFSExplain),
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for monitoring-performance-schema-queries-explain?'}
@@ -582,70 +599,48 @@ Set to **0** to keep plans forever (no automatic purge).`
           )
         },
         {
-          key: (
-            <HStack>
-              <Text>Monitoring Performance Schema Queries Explain Delay (ms)</Text>
-              <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Performance Schema Queries Explain Delay', helpPFSExplainDelay)} />
-            </HStack>
-          ),
+          key: helpKey('Monitoring Performance Schema Queries Explain Delay (ms)', helpPFSExplainDelay),
           value: (
-            <Flex className={styles.valueWithInfo}>
-              <Text className={styles.info}>
-                Milliseconds to sleep between consecutive EXPLAIN calls during a snapshot to spread optimizer load.
-                Set to 0 to disable. Default: 200.
-              </Text>
-              <NumberInput
-                value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesExplainDelay}
-                min={0}
-                max={5000}
-                step={50}
-                showEditButton={true}
-                showConfirmModal={true}
-                confirmTitle={`Confirm change 'monitoring-performance-schema-queries-explain-delay' to: `}
-                onConfirm={(val) =>
-                  dispatch(
-                    setSetting({
-                      clusterName: selectedCluster?.name,
-                      setting: 'monitoring-performance-schema-queries-explain-delay',
-                      value: val.length === 0 ? '200' : val
-                    })
-                  )
-                }
-              />
-            </Flex>
+            <NumberInput
+              value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesExplainDelay}
+              min={0}
+              max={5000}
+              step={50}
+              showEditButton={true}
+              showConfirmModal={true}
+              confirmTitle={`Confirm change 'monitoring-performance-schema-queries-explain-delay' to: `}
+              onConfirm={(val) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'monitoring-performance-schema-queries-explain-delay',
+                    value: val.length === 0 ? '200' : val
+                  })
+                )
+              }
+            />
           )
         },
         {
-          key: (
-            <HStack>
-              <Text>Monitoring Performance Schema Queries Explain Purge Period (days)</Text>
-              <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Performance Schema Queries Explain Purge Period', helpPFSExplainPurge)} />
-            </HStack>
-          ),
+          key: helpKey('Monitoring Performance Schema Queries Explain Purge Period (days)', helpPFSExplainPurge),
           value: (
-            <Flex className={styles.valueWithInfo}>
-              <Text className={styles.info}>
-                Age in days after which a cached explain plan is evicted from memory and disk.
-                Set to 0 to keep plans forever. Default: 30.
-              </Text>
-              <NumberInput
-                value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesExplainPurgePeriod}
-                min={0}
-                max={365}
-                showEditButton={true}
-                showConfirmModal={true}
-                confirmTitle={`Confirm change 'monitoring-performance-schema-queries-explain-purge-period' to: `}
-                onConfirm={(val) =>
-                  dispatch(
-                    setSetting({
-                      clusterName: selectedCluster?.name,
-                      setting: 'monitoring-performance-schema-queries-explain-purge-period',
-                      value: val.length === 0 ? '30' : val
-                    })
-                  )
-                }
-              />
-            </Flex>
+            <NumberInput
+              value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesExplainPurgePeriod}
+              min={0}
+              max={365}
+              showEditButton={true}
+              showConfirmModal={true}
+              confirmTitle={`Confirm change 'monitoring-performance-schema-queries-explain-purge-period' to: `}
+              onConfirm={(val) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'monitoring-performance-schema-queries-explain-purge-period',
+                    value: val.length === 0 ? '30' : val
+                  })
+                )
+              }
+            />
           )
         }
       ]
