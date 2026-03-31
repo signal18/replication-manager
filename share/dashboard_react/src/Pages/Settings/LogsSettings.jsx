@@ -1,5 +1,5 @@
 import { Box, HStack, Stack, Text } from '@chakra-ui/react'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
@@ -111,13 +111,14 @@ function ConfirmableLogLevelControl({
   const [currentValue, setCurrentValue] = useState(normalizeLogLevel(value))
   const [pendingValue, setPendingValue] = useState(null)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
+  const isConfirmModalOpenRef = useRef(false)
 
   useEffect(() => {
     setCurrentValue(normalizeLogLevel(value))
-    if (!isConfirmModalOpen) {
+    if (!isConfirmModalOpenRef.current) {
       setPendingValue(null)
     }
-  }, [value, isConfirmModalOpen])
+  }, [value])
 
   const selectedValue = pendingValue ?? currentValue
 
@@ -126,10 +127,12 @@ function ConfirmableLogLevelControl({
       return
     }
     setPendingValue(nextValue)
+    isConfirmModalOpenRef.current = true
     setIsConfirmModalOpen(true)
   }
 
   const closeModal = () => {
+    isConfirmModalOpenRef.current = false
     setPendingValue(null)
     setIsConfirmModalOpen(false)
   }
@@ -217,7 +220,6 @@ function CollapsibleLogSection({
         type='button'
         spacing={2}
         onClick={onToggle}
-        aria-label={`Toggle ${title}`}
         aria-expanded={isOpen}
         aria-controls={controlsId}
         className={`${styles.panelHeader} ${styles.logsPanelHeader}`}>
@@ -400,15 +402,13 @@ function LogsSettings({ selectedCluster, user }) {
   )
 
   const proxyOverridesContent = (
-    <Stack spacing={3} className={styles.logsSectionContent}>
-      <CollapsibleLogSection
-        title='Proxy Types'
-        isOpen={sectionOpenState['proxy-overrides']}
-        onToggle={() => toggleSection('proxy-overrides')}
-        rows={mapSettingsToRows(PROXY_LOG_SETTINGS)}
-        controlsId='log-settings-proxy-overrides'
-      />
-    </Stack>
+    <CollapsibleLogSection
+      title='Proxy Types'
+      isOpen={sectionOpenState['proxy-overrides']}
+      onToggle={() => toggleSection('proxy-overrides')}
+      rows={mapSettingsToRows(PROXY_LOG_SETTINGS)}
+      controlsId='log-settings-proxy-overrides'
+    />
   )
 
   const tableSections = [
