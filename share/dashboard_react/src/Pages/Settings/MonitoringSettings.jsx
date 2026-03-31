@@ -1,5 +1,5 @@
-import { Flex, Text } from '@chakra-ui/react'
-import React from 'react'
+import { Box, Flex, HStack, Text } from '@chakra-ui/react'
+import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
 import { useDispatch, useSelector } from 'react-redux'
@@ -7,9 +7,144 @@ import TableType2 from '../../components/TableType2'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import TextForm from '../../components/TextForm'
 import NumberInput from '../../components/NumberInput'
+import CommonModal from '../../components/Modals/CommonModal'
+import modalStyles from '../../components/Modals/styles.module.scss'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { HiQuestionMarkCircle } from 'react-icons/hi'
+import RMIconButton from '../../components/RMIconButton'
 
 function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
   const dispatch = useDispatch()
+
+  const [action, setAction] = useState({ title: '', body: <></> })
+  const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
+
+  const openInfoModal = (title, content) => {
+    setAction({ title, body: renderInfoModalBody(content) })
+    setIsCommonModalOpen(true)
+  }
+  const closeInfoModal = () => setIsCommonModalOpen(false)
+
+  const renderInfoModalBody = (content) => (
+    <Box className={modalStyles.infoTooltip}>
+      <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
+    </Box>
+  )
+
+  // ── Help content ────────────────────────────────────────────────────────────
+
+  const helpMonitoringCapture = `**Monitoring Capture On Error**
+
+When enabled, replication-manager captures a full diagnostic snapshot every time an error state is detected.  
+The snapshot includes:
+- \`SHOW FULL PROCESSLIST\`
+- \`SHOW ENGINE INNODB STATUS\`
+- Slave and master replication status
+
+Snapshots are written to JSON files named \`capture_<server>_<timestamp>.json\` in the cluster working directory.  
+Use the **Monitoring Capture On Error Trigger** setting to restrict capture to specific error codes.`
+
+  const helpCaptureTrigger = `**Monitoring Capture On Error Trigger**
+
+A comma-separated list of error codes that restrict when a capture snapshot is taken.  
+Leave empty to capture on every error state transition.  
+
+Example: \`ERR00001,ERR00002\``
+
+  const helpIgnoreErrors = `**Monitoring Ignore Error List**
+
+A comma-separated list of error or warning codes that replication-manager will silently suppress.  
+Useful to avoid alert noise from known, accepted conditions in your environment.  
+
+Example: \`WARN0001,ERR00042\``
+
+  const helpSchema = `**Monitoring Schema**
+
+When enabled, replication-manager tracks DDL changes (CREATE, ALTER, DROP) on all schemas.  
+A diff is computed at each monitoring cycle and exposed via the schema-change API endpoint and GUI tab.  
+Requires \`monitoring-schema-columns\` and/or \`monitoring-schema-indexes\` to also be enabled for full coverage.`
+
+  const helpVariableDiff = `**Monitoring Variable Diff**
+
+Tracks changes in MySQL/MariaDB global variables between monitoring cycles.  
+When a variable value changes unexpectedly (e.g. after a \`SET GLOBAL\`), the diff is logged and surfaced in the GUI.  
+Useful for detecting configuration drift across a cluster.`
+
+  const helpProcesslist = `**Monitoring Processlist**
+
+Enables collection of \`SHOW FULL PROCESSLIST\` on every monitoring cycle.  
+Collected data is exposed in the GUI processlist tab and included in capture snapshots.
+
+Related settings:
+- **Monitoring Processlist Inactive** — include idle connections (Command = Sleep)
+- **Monitoring Processlist Transactions** — include InnoDB transaction details from \`information_schema.innodb_trx\`
+- **Monitoring Processlist Information Schema** — use \`information_schema.processlist\` instead of \`SHOW FULL PROCESSLIST\``
+
+  const helpPFSMemory = `**Monitoring Performance Schema Memory**
+
+Enables collection of memory instrument metrics from \`performance_schema.memory_summary_global_by_event_name\`.  
+Exposes per-subsystem memory consumption (InnoDB buffer pool, temp tables, etc.) in the GUI graphs.`
+
+  const helpPFSInstruments = `**Monitoring Performance Schema Instruments**
+
+Enables collection of instrument enable/disable state from \`performance_schema.setup_instruments\`.  
+Useful to audit which Performance Schema instruments are active on each server.`
+
+  const helpPFSQueries = `**Monitoring Performance Schema Queries**
+
+Enables periodic snapshot capture of \`performance_schema.events_statements_summary_by_digest\`.
+
+At each period boundary the digest table is:
+1. **Read** — all digest rows with stats and a concrete sample SQL are written to a timestamped JSON-lines file:  
+   \`<datadir>/log/log_pfs_queries_<YYYYMMDD_HH>.jsonl\`
+2. **Truncated** — counters reset so the next period reflects only queries that ran in that window.
+
+Each line in the snapshot contains: \`digest\`, \`digestText\` (normalised template), \`sampleQuery\` (concrete SQL for EXPLAIN), \`execCount\`, \`execTimeAvgMs\`, \`rowsScanned\`, \`planFullScan\`, etc.
+
+> **Note:** This feature requires \`performance_schema = ON\` on the monitored servers.`
+
+  const helpPFSQueriesPeriod = `**Monitoring Performance Schema Queries Period (hours)**
+
+How many hours between consecutive PFS digest snapshot flushes.  
+Default: **1 hour**.
+
+Shorter periods give finer-grained workload windows but produce more snapshot files.  
+The truncate at the end of each period resets all digest counters, so stats always reflect only the queries seen in that window.`
+
+  const helpPFSExplain = `**Monitoring Performance Schema Queries Explain**
+
+When enabled, replication-manager runs \`EXPLAIN\` for each query template captured during a PFS snapshot and persists the query plan to disk:  
+\`<datadir>/log/pfs_explain_cache.jsonl\`
+
+**Priority order for EXPLAIN execution:**
+1. Templates never yet explained (highest priority)
+2. Templates with the oldest cached plan (most likely stale after schema or statistics changes)
+
+Plans are cached per digest hash. Once a plan exists it is refreshed in-memory each period but only appended to disk when new. The cache file is deduplicated on restart (last-write wins per digest).
+
+Use the cached plans API endpoints:
+- \`GET .../queries/{digest}/actions/explain-pfs-cached\` — single plan
+- \`GET .../queries/explain-pfs-cached\` — all plans for a server`
+
+  const helpPFSExplainDelay = `**Monitoring Performance Schema Queries Explain Delay (ms)**
+
+Milliseconds to sleep between consecutive \`EXPLAIN\` calls during a snapshot.  
+Default: **200 ms**.
+
+Since EXPLAIN can trigger optimizer work (especially on complex queries with subqueries or derived tables), spreading calls over time prevents a burst of optimizer load at snapshot time.  
+The delay uses a cancellable timer — if a new snapshot fires before all EXPLAINs finish, the in-flight run is interrupted immediately rather than waiting for the next delay to expire.  
+Set to **0** to disable throttling entirely (not recommended on production).`
+
+  const helpPFSExplainPurge = `**Monitoring Performance Schema Queries Explain Purge Period (days)**
+
+Age in days after which a cached explain plan is evicted from both the in-memory map and the on-disk cache file.  
+Default: **30 days**.
+
+The purge runs once per day inside the monitoring cycle. When entries are evicted the cache file is atomically rewritten (temp file + rename) so it is never left in a partial state.  
+Set to **0** to keep plans forever (no automatic purge).`
+
+  // ── Settings ────────────────────────────────────────────────────────────────
 
   const {
     settings: {
@@ -21,8 +156,8 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       monVarDiffLoading,
       monProcessListLoading,
       monProcessListLoadingInactive,
-      monProcessListLoadingTransactions ,
-      monProcessListLoadingInformationSchema ,
+      monProcessListLoadingTransactions,
+      monProcessListLoadingInformationSchema,
       captureTriggerLoading,
       monIgnoreErrLoading
     }
@@ -63,26 +198,31 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       ]
     },
     {
-      key: 'Monitoring Capture On Error',
+      key: (
+        <HStack>
+          <Text>Monitoring Capture On Error</Text>
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Capture On Error', helpMonitoringCapture)} />
+        </HStack>
+      ),
       value: (
-        <Flex className={styles.valueWithInfo}>
-          <Text className={styles.info}>
-            Stack trace contain show processlist, engine status, slave and master status for
-          </Text>
-          <RMSwitch
-            confirmTitle={'Confirm switch settings for monitoring-capture?'}
-            onChange={() =>
-              dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-capture' }))
-            }
-            isDisabled={user?.grants['cluster-settings'] == false}
-            isChecked={selectedCluster?.config?.monitoringCapture}
-            loading={monCaptureLoading}
-          />
-        </Flex>
+        <RMSwitch
+          confirmTitle={'Confirm switch settings for monitoring-capture?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-capture' }))
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.monitoringCapture}
+          loading={monCaptureLoading}
+        />
       )
     },
     {
-      key: 'Monitoring Capture On Error Trigger',
+      key: (
+        <HStack>
+          <Text>Monitoring Capture On Error Trigger</Text>
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Capture On Error Trigger', helpCaptureTrigger)} />
+        </HStack>
+      ),
       value: (
         <TextForm
           value={selectedCluster?.config?.monitoringCaptureTrigger}
@@ -100,7 +240,12 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
-      key: 'Monitoring Ignore Error List',
+      key: (
+        <HStack>
+          <Text>Monitoring Ignore Error List</Text>
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Ignore Error List', helpIgnoreErrors)} />
+        </HStack>
+      ),
       value: (
         <TextForm
           value={selectedCluster?.config?.monitoringIgnoreErrors}
@@ -118,7 +263,12 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
-      key: 'Monitoring Schema',
+      key: (
+        <HStack>
+          <Text>Monitoring Schema</Text>
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Schema', helpSchema)} />
+        </HStack>
+      ),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-schema-change?'}
@@ -145,7 +295,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
         />
       )
     },
-     {
+    {
       key: 'Monitoring Schema Indexes',
       value: (
         <RMSwitch
@@ -203,7 +353,12 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
-      key: 'Monitoring Variable Diff',
+      key: (
+        <HStack>
+          <Text>Monitoring Variable Diff</Text>
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Variable Diff', helpVariableDiff)} />
+        </HStack>
+      ),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-variable-diff?'}
@@ -217,7 +372,12 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
-      key: 'Monitoring Processlist',
+      key: (
+        <HStack>
+          <Text>Monitoring Processlist</Text>
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Processlist', helpProcesslist)} />
+        </HStack>
+      ),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-processlist?'}
@@ -318,7 +478,12 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       key: 'Monitoring Performance Schema Queries',
       value: [
         {
-          key: 'Monitoring Performance Schema Memory',
+          key: (
+            <HStack>
+              <Text>Monitoring Performance Schema Memory</Text>
+              <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Performance Schema Memory', helpPFSMemory)} />
+            </HStack>
+          ),
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for monitoring-performance-schema-memory?'}
@@ -331,7 +496,12 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'Monitoring Performance Schema Instruments',
+          key: (
+            <HStack>
+              <Text>Monitoring Performance Schema Instruments</Text>
+              <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Performance Schema Instruments', helpPFSInstruments)} />
+            </HStack>
+          ),
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for monitoring-performance-schema-instruments?'}
@@ -344,30 +514,34 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'Monitoring Performance Schema Queries',
+          key: (
+            <HStack>
+              <Text>Monitoring Performance Schema Queries</Text>
+              <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Performance Schema Queries', helpPFSQueries)} />
+            </HStack>
+          ),
           value: (
-            <Flex className={styles.valueWithInfo}>
-              <Text className={styles.info}>
-                Periodic snapshot of events_statements_summary_by_digest — flushes the digest table at each period
-                and writes a timestamped log_pfs_queries file with one templated query + sample SQL per line.
-              </Text>
-              <RMSwitch
-                confirmTitle={'Confirm switch settings for monitoring-performance-schema-queries?'}
-                onChange={() =>
-                  dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries' }))
-                }
-                isDisabled={user?.grants['cluster-settings'] == false}
-                isChecked={selectedCluster?.config?.monitoringPerformanceSchemaQueries}
-              />
-            </Flex>
+            <RMSwitch
+              confirmTitle={'Confirm switch settings for monitoring-performance-schema-queries?'}
+              onChange={() =>
+                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries' }))
+              }
+              isDisabled={user?.grants['cluster-settings'] == false}
+              isChecked={selectedCluster?.config?.monitoringPerformanceSchemaQueries}
+            />
           )
         },
         {
-          key: 'Monitoring Performance Schema Queries Period (hours)',
+          key: (
+            <HStack>
+              <Text>Monitoring Performance Schema Queries Period (hours)</Text>
+              <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Performance Schema Queries Period', helpPFSQueriesPeriod)} />
+            </HStack>
+          ),
           value: (
             <Flex className={styles.valueWithInfo}>
               <Text className={styles.info}>
-                How often (in hours) the PFS digest table is snapshotted and reset. Default: 1.
+                How often (in hours) the performance schema digest table is snapshotted and reset. Default: 1.
               </Text>
               <NumberInput
                 value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesPeriod}
@@ -390,26 +564,30 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'Monitoring Performance Schema Queries Explain',
+          key: (
+            <HStack>
+              <Text>Monitoring Performance Schema Queries Explain</Text>
+              <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Performance Schema Queries Explain', helpPFSExplain)} />
+            </HStack>
+          ),
           value: (
-            <Flex className={styles.valueWithInfo}>
-              <Text className={styles.info}>
-                Run EXPLAIN for each new query template at snapshot time and persist the plan to
-                pfs_explain_cache.jsonl. New templates are prioritised; existing plans are refreshed oldest-first.
-              </Text>
-              <RMSwitch
-                confirmTitle={'Confirm switch settings for monitoring-performance-schema-queries-explain?'}
-                onChange={() =>
-                  dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries-explain' }))
-                }
-                isDisabled={user?.grants['cluster-settings'] == false}
-                isChecked={selectedCluster?.config?.monitoringPerformanceSchemaQueriesExplain}
-              />
-            </Flex>
+            <RMSwitch
+              confirmTitle={'Confirm switch settings for monitoring-performance-schema-queries-explain?'}
+              onChange={() =>
+                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries-explain' }))
+              }
+              isDisabled={user?.grants['cluster-settings'] == false}
+              isChecked={selectedCluster?.config?.monitoringPerformanceSchemaQueriesExplain}
+            />
           )
         },
         {
-          key: 'Monitoring Performance Schema Queries Explain Delay (ms)',
+          key: (
+            <HStack>
+              <Text>Monitoring Performance Schema Queries Explain Delay (ms)</Text>
+              <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Performance Schema Queries Explain Delay', helpPFSExplainDelay)} />
+            </HStack>
+          ),
           value: (
             <Flex className={styles.valueWithInfo}>
               <Text className={styles.info}>
@@ -438,7 +616,12 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'Monitoring Performance Schema Queries Explain Purge Period (days)',
+          key: (
+            <HStack>
+              <Text>Monitoring Performance Schema Queries Explain Purge Period (days)</Text>
+              <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Monitoring Performance Schema Queries Explain Purge Period', helpPFSExplainPurge)} />
+            </HStack>
+          ),
           value: (
             <Flex className={styles.valueWithInfo}>
               <Text className={styles.info}>
@@ -470,9 +653,18 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
   ]
 
   return (
-    <Flex justify='space-between' gap='0'>
-      <TableType2 dataArray={dataObject} className={styles.table} />
-    </Flex>
+    <>
+      <Flex justify='space-between' gap='0'>
+        <TableType2 dataArray={dataObject} className={styles.table} />
+      </Flex>
+      <CommonModal
+        isOpen={isCommonModalOpen}
+        closeModal={closeInfoModal}
+        title={action.title}
+        body={action.body}
+        size='xl'
+      />
+    </>
   )
 }
 
