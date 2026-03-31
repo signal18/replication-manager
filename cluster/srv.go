@@ -221,6 +221,7 @@ type ServerMonitor struct {
 	IsRefreshingBinlogMeta      bool
 	IsLoadingJobList            bool
 	NeedRefreshJobs             bool
+	lastJobsRefreshAttempt      time.Time
 	PointInTimeMeta             backupmgr.PointInTimeMeta
 	BinaryLogDir                string
 	BinaryLogName               string
@@ -248,6 +249,7 @@ type ServerMonitor struct {
 	resticReseedCleanup      map[string]*ResticReseedCleanupEntry
 	jobCancelMutex           sync.Mutex
 	jobCancelEntries         map[string]*jobCancelEntry
+	jobRefreshStateMutex     sync.RWMutex
 }
 
 // PFSExplainRecord is the on-disk structure for a cached query plan.
@@ -331,7 +333,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.LastBackupMeta.Logical = new(backupmgr.BackupMetadata)
 	server.BinaryLogMetaToWrite = make([]string, 0)
 	server.BinaryLogMetaToRemove = make([]string, 0)
-	server.NeedRefreshJobs = true
+	server.SetNeedRefreshJobs(true)
 
 	// Set source cluster name, set cluster name as source if not specified
 	// This is needed to make check more simple
