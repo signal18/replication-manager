@@ -501,8 +501,14 @@ func (server *ServerMonitor) GetPFSQueries() {
 		// The goroutine receives a *snapshot* of the current PFSQueries map so it
 		// works on the period that just ended, not on whatever the map contains
 		// when each individual EXPLAIN fires.
+		// The wrapper nils pfsExplainCancel on natural completion (Bug 6 fix):
+		// pfsExplainCancel is only ever written from this monitoring-loop goroutine,
+		// so the nil is safe — no other writer can race with it.
 		snapshot := server.PFSQueries.ToNewMap()
-		go server.RunPFSExplainCapture(ctx, snapshot)
+		go func() {
+			server.RunPFSExplainCapture(ctx, snapshot)
+			server.pfsExplainCancel = nil
+		}()
 
 		// Reset counters so the next window starts clean.
 		logs, err := dbhelper.TruncatePFSStatements(server.Conn)
@@ -570,7 +576,16 @@ func (server *ServerMonitor) FlushPFSSnapshotToLog() {
 	now := time.Now()
 	filename := server.Datadir + "/log/log_pfs_queries_" + now.Format("20060102_15") + ".jsonl"
 
-	f, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	// Open flags depend on whether rotation is needed.
+	// O_APPEND cannot be combined with truncation on Linux — the kernel ignores
+	// any Seek after Truncate when O_APPEND is set.  If the file exceeds the
+	// rotation threshold we reopen it with O_TRUNC instead.
+	flags := os.O_CREATE | os.O_APPEND | os.O_WRONLY
+	if fi, statErr := os.Stat(filename); statErr == nil && fi.Size() > 100*1024*1024 {
+		flags = os.O_CREATE | os.O_WRONLY | os.O_TRUNC
+	}
+
+	f, err := os.OpenFile(filename, flags, 0600)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
 			"PFS snapshot: could not open log file %s: %v", filename, err)
@@ -578,14 +593,9 @@ func (server *ServerMonitor) FlushPFSSnapshotToLog() {
 	}
 	defer f.Close()
 
-	// Rotate if file exceeds 100 MB.
-	if fi, statErr := f.Stat(); statErr == nil && fi.Size() > 100*1024*1024 {
-		f.Truncate(0)
-		f.Seek(0, 0)
-	}
-
 	ts := now.Format(time.RFC3339)
 	written := 0
+	writeErrorLogged := false
 	for _, q := range pfsq {
 		entry := PFSSnapshotEntry{
 			Timestamp:    ts,
@@ -605,8 +615,14 @@ func (server *ServerMonitor) FlushPFSSnapshotToLog() {
 		if jsonErr != nil {
 			continue
 		}
-		f.Write(line)
-		f.Write([]byte("\n"))
+		if _, werr := f.Write(append(line, '\n')); werr != nil {
+			if !writeErrorLogged {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+					"PFS snapshot: write error on %s: %v — remaining records dropped", filename, werr)
+				writeErrorLogged = true
+			}
+			break
+		}
 		written++
 	}
 
@@ -639,7 +655,10 @@ func (server *ServerMonitor) LoadPFSExplainCache() {
 		return
 	}
 
-	loaded := 0
+	// Parse all lines first (no lock needed — called single-threaded at startup).
+	// Last-wins per digest: refreshed records are appended after their predecessors,
+	// so iterating the full file and overwriting naturally deduplicates.
+	tmp := make(map[string]PFSExplainRecord)
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -652,15 +671,19 @@ func (server *ServerMonitor) LoadPFSExplainCache() {
 			continue
 		}
 		if rec.Digest != "" {
-			server.PFSExplainCacheMu.Lock()
-			server.PFSExplainCache[rec.Digest] = rec
-			server.PFSExplainCacheMu.Unlock()
-			loaded++
+			tmp[rec.Digest] = rec
 		}
 	}
 
+	// Single lock acquisition to copy the parsed map into the live cache.
+	server.PFSExplainCacheMu.Lock()
+	for digest, rec := range tmp {
+		server.PFSExplainCache[digest] = rec
+	}
+	server.PFSExplainCacheMu.Unlock()
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-		"LoadPFSExplainCache: loaded %d cached explain plans from %s", loaded, path)
+		"LoadPFSExplainCache: loaded %d cached explain plans from %s", len(tmp), path)
 }
 
 // PurgePFSExplainCache removes explain records older than MonitorPFSQueriesExplainPurgePeriod
@@ -685,44 +708,42 @@ func (server *ServerMonitor) PurgePFSExplainCache() {
 
 	cutoff := time.Now().AddDate(0, 0, -purgeDays)
 
+	// --- Phase 1: classify entries under the lock (fast, no I/O) ---
 	server.PFSExplainCacheMu.Lock()
-	defer server.PFSExplainCacheMu.Unlock()
 
 	if len(server.PFSExplainCache) == 0 {
+		server.PFSExplainCacheMu.Unlock()
 		return
 	}
 
-	// First pass: identify which digests to evict and collect survivors.
 	survivors := make([]PFSExplainRecord, 0, len(server.PFSExplainCache))
-	evicted := 0
+	evictedKeys := make([]string, 0)
 	noDate := 0
 
 	for digest, rec := range server.PFSExplainCache {
 		capturedAt, parseErr := time.Parse(time.RFC3339, rec.CapturedAt)
 		if parseErr != nil {
-			// Unparseable timestamp — keep the record, log a warning.
 			noDate++
 			survivors = append(survivors, rec)
 			continue
 		}
 		if capturedAt.Before(cutoff) {
-			delete(server.PFSExplainCache, digest)
-			evicted++
+			evictedKeys = append(evictedKeys, digest)
 		} else {
 			survivors = append(survivors, rec)
 		}
 	}
 
-	if evicted == 0 {
-		return // nothing old enough — skip the disk rewrite
+	server.PFSExplainCacheMu.Unlock()
+
+	if len(evictedKeys) == 0 {
+		return // nothing old enough — skip disk rewrite
 	}
 
-	// Second pass: rewrite the disk file atomically.
+	// --- Phase 2: rewrite disk file (slow I/O, lock NOT held) ---
 	path := server.pfsExplainCachePath()
-	dir := server.Datadir + "/log"
-	os.MkdirAll(dir, 0755)
+	os.MkdirAll(server.Datadir+"/log", 0755)
 
-	// Write to a sibling temp file, then rename into place.
 	tmpPath := path + ".purge.tmp"
 	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
@@ -747,20 +768,27 @@ func (server *ServerMonitor) PurgePFSExplainCache() {
 	f.Close()
 
 	if writeErr {
-		os.Remove(tmpPath) // discard the partial temp file; original is untouched
+		os.Remove(tmpPath)
 		return
 	}
 
 	if err := os.Rename(tmpPath, path); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
-			"PurgePFSExplainCache: cannot rename %s → %s: %v", tmpPath, path, err)
+			"PurgePFSExplainCache: cannot rename %s \u2192 %s: %v", tmpPath, path, err)
 		os.Remove(tmpPath)
 		return
 	}
 
+	// --- Phase 3: evict from in-memory map under lock (fast) ---
+	server.PFSExplainCacheMu.Lock()
+	for _, digest := range evictedKeys {
+		delete(server.PFSExplainCache, digest)
+	}
+	server.PFSExplainCacheMu.Unlock()
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 		"PurgePFSExplainCache: evicted %d records older than %d days (%d survivors, %d unparseable) from %s",
-		evicted, purgeDays, len(survivors)-noDate, noDate, path)
+		len(evictedKeys), purgeDays, len(survivors)-noDate, noDate, path)
 }
 
 // explainWorkItem is one unit of work for RunPFSExplainCapture, pre-sorted by priority.
@@ -799,14 +827,10 @@ func (server *ServerMonitor) RunPFSExplainCapture(ctx context.Context, snapshot 
 	}
 
 	// --- Build priority-sorted work list ---
-	// Priority order:
-	//   1. Never explained (zero CapturedAt) — always highest priority
-	//   2. Oldest CapturedAt first — most likely to be stale
-	//   3. Skip digests with no sample query (cannot EXPLAIN yet)
 	work := make([]explainWorkItem, 0, len(snapshot))
 	for digest, q := range snapshot {
 		if q.Sample_query == "" {
-			continue // no sample yet; will retry next period
+			continue
 		}
 		var capturedAt time.Time
 		server.PFSExplainCacheMu.Lock()
@@ -821,26 +845,34 @@ func (server *ServerMonitor) RunPFSExplainCapture(ctx context.Context, snapshot 
 		})
 	}
 
-	// Zero time sorts first (never explained), then ascending age (oldest first).
 	sort.Slice(work, func(i, j int) bool {
 		zi := work[i].capturedAt.IsZero()
 		zj := work[j].capturedAt.IsZero()
 		if zi != zj {
-			return zi // zero (never explained) before non-zero
+			return zi
 		}
 		return work[i].capturedAt.Before(work[j].capturedAt)
 	})
 
+	if len(work) == 0 {
+		return
+	}
+
 	os.MkdirAll(server.Datadir+"/log", 0755)
 	path := server.pfsExplainCachePath()
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	// Bug 2: only NEW plans are appended to the cache file; refreshed (already-cached)
+	// plans update the in-memory map but do NOT append a duplicate line to disk.
+	// The on-disk file therefore grows only when genuinely new templates appear.
+	// Duplicate entries introduced before this fix are deduplicated on the next
+	// LoadPFSExplainCache (last-wins iteration) or purge rewrite.
+	appendFile, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
 			"RunPFSExplainCapture: cannot open cache file %s: %v", path, err)
 		return
 	}
-	defer f.Close()
+	defer appendFile.Close()
 
 	now := time.Now().Format(time.RFC3339)
 	newPlans := 0
@@ -849,8 +881,6 @@ func (server *ServerMonitor) RunPFSExplainCapture(ctx context.Context, snapshot 
 	first := true
 
 	for _, item := range work {
-		// Check for cancellation before every EXPLAIN — this is the earliest
-		// point we can bail cleanly without leaving a half-written record.
 		select {
 		case <-ctx.Done():
 			interrupted = len(work) - newPlans - refreshed
@@ -861,29 +891,26 @@ func (server *ServerMonitor) RunPFSExplainCapture(ctx context.Context, snapshot 
 		default:
 		}
 
-		// Throttle between explains (skip delay before the very first one).
+		// Bug 5: use time.NewTimer + Stop so the timer goroutine is always cleaned up,
+		// even when the context fires first.
 		if !first && delayMs > 0 {
-			// Use a select on the timer + ctx so cancellation wakes us immediately
-			// even during the sleep, rather than waiting up to delayMs to notice.
+			t := time.NewTimer(time.Duration(delayMs) * time.Millisecond)
 			select {
 			case <-ctx.Done():
+				t.Stop()
 				interrupted = len(work) - newPlans - refreshed
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 					"RunPFSExplainCapture: cancelled during delay on %s — %d/%d explains done, %d interrupted",
 					server.URL, newPlans+refreshed, len(work), interrupted)
 				return
-			case <-time.After(time.Duration(delayMs) * time.Millisecond):
+			case <-t.C:
 			}
 		}
 		first = false
 
-		isNew := true
 		server.PFSExplainCacheMu.Lock()
 		_, alreadyCached := server.PFSExplainCache[item.digest]
 		server.PFSExplainCacheMu.Unlock()
-		if alreadyCached {
-			isNew = false // will be a refresh (re-explain of an existing entry)
-		}
 
 		plan, explainErr := server.GetQueryExplain(item.query.Schema_name, item.query.Sample_query)
 		if explainErr != nil {
@@ -902,26 +929,33 @@ func (server *ServerMonitor) RunPFSExplainCapture(ctx context.Context, snapshot 
 			Plan:        plan,
 		}
 
-		line, jsonErr := json.Marshal(rec)
-		if jsonErr != nil {
-			continue
-		}
-		f.Write(line)
-		f.Write([]byte("\n"))
-
-		server.PFSExplainCacheMu.Lock()
-		server.PFSExplainCache[item.digest] = rec
-		server.PFSExplainCacheMu.Unlock()
-
-		if isNew {
+		// Only write NEW plans to disk; refreshes update memory only (Bug 2).
+		if !alreadyCached {
+			line, jsonErr := json.Marshal(rec)
+			if jsonErr == nil {
+				if _, werr := appendFile.Write(append(line, '\n')); werr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+						"RunPFSExplainCapture: write error on %s: %v — stopping disk writes", path, werr)
+					// Update memory but stop trying to write to disk for this run.
+					server.PFSExplainCacheMu.Lock()
+					server.PFSExplainCache[item.digest] = rec
+					server.PFSExplainCacheMu.Unlock()
+					newPlans++
+					break
+				}
+			}
 			newPlans++
 		} else {
 			refreshed++
 		}
+
+		server.PFSExplainCacheMu.Lock()
+		server.PFSExplainCache[item.digest] = rec
+		server.PFSExplainCacheMu.Unlock()
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-		"RunPFSExplainCapture: %d new plans, %d refreshed, %d skipped (no sample), delay %dms on %s",
+		"RunPFSExplainCapture: %d new plans written to disk, %d refreshed in memory, %d skipped (no sample), delay %dms on %s",
 		newPlans, refreshed, len(snapshot)-len(work), delayMs, server.URL)
 }
 
