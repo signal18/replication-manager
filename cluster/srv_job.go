@@ -202,6 +202,54 @@ func (server *ServerMonitor) jobsCreateTable() error {
 	return nil
 }
 
+func jobTaskFreshnessTimestamp(task *config.Task) int64 {
+	if task == nil {
+		return 0
+	}
+
+	if task.End > 0 {
+		return task.End
+	}
+
+	return task.Start
+}
+
+func jobTaskHasMeaningfulChanges(cached *config.Task, dbTask *config.Task) bool {
+	if cached == nil || dbTask == nil {
+		return cached != dbTask
+	}
+
+	return cached.Id != dbTask.Id ||
+		cached.Task != dbTask.Task ||
+		cached.Port != dbTask.Port ||
+		cached.Server != dbTask.Server ||
+		cached.Done != dbTask.Done ||
+		cached.State != dbTask.State ||
+		cached.Result != dbTask.Result ||
+		cached.Payload != dbTask.Payload ||
+		cached.Start != dbTask.Start ||
+		cached.End != dbTask.End
+}
+
+func shouldUpdateCachedJobTask(cached *config.Task, dbTask *config.Task) bool {
+	if cached == nil {
+		return true
+	}
+
+	dbFreshness := jobTaskFreshnessTimestamp(dbTask)
+	cachedFreshness := jobTaskFreshnessTimestamp(cached)
+
+	if dbFreshness > cachedFreshness {
+		return true
+	}
+
+	if dbFreshness < cachedFreshness {
+		return false
+	}
+
+	return jobTaskHasMeaningfulChanges(cached, dbTask)
+}
+
 func (server *ServerMonitor) JobsUpdateEntries(Conn *sqlx.Conn) error {
 	query := "SELECT id, task, port, server, done, state, result, payload, floor(UNIX_TIMESTAMP(start)) start, floor(UNIX_TIMESTAMP(end)) end FROM replication_manager_schema.jobs"
 
@@ -236,7 +284,9 @@ func (server *ServerMonitor) JobsUpdateEntries(Conn *sqlx.Conn) error {
 		t.Result = res.String
 		t.Payload = payload.String
 		t.End = end.Int64
-		if v, exists := server.JobResults.LoadOrStore(t.Task, &t); exists {
+		if v, exists := server.JobResults.LoadOrStore(t.Task, &t); !exists {
+			continue
+		} else if shouldUpdateCachedJobTask(v, &t) {
 			v.Set(t)
 		}
 	}

@@ -111,7 +111,10 @@ func (cluster *Cluster) JobsGetEntries() (config.JobEntries, error) {
 		if s == nil {
 			continue
 		}
-		if !s.JobsHasEntries() {
+		// When scheduler monitoring is disabled, there is no periodic invoker that
+		// reconciles runtime job cache with DB state. In that mode, refresh on API
+		// reads to keep entries aligned.
+		if !s.JobsHasEntries() || s.NeedRefreshJobs || !cluster.Conf.MonitorScheduler {
 			if err := s.JobsRefreshEntries(); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Jobs refresh skipped for %s: %s", s.URL, err)
 			}
