@@ -104,5 +104,64 @@
       </td>
     </tr>
 
+    <tr>
+      <th>PFS Query Capture</th>
+    </tr>
+    <tr>
+      <td>
+        Periodic snapshot of <code>events_statements_summary_by_digest</code>: flushes the digest table at each period and writes a timestamped <code>log_pfs_queries_&lt;date&gt;.jsonl</code> file with one templated query per line.
+        <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.monitoringPerformanceSchemaQueries" ng-click="switchsettings('monitoring-performance-schema-queries')" aria-label="PFS query capture">
+          <span ng-if="selectedCluster.config.monitoringPerformanceSchemaQueries" class="label label-primary">On</span><span ng-if="!selectedCluster.config.monitoringPerformanceSchemaQueries" class="label label-warning">Off</span>
+        </md-switch>
+      </td>
+    </tr>
+    <tr>
+      <th>PFS Query Capture Period (hours)</th>
+    </tr>
+    <tr>
+      <td>
+        How often (in hours) the PFS digest table is snapshotted and reset. Default: 1.
+        <input ng-show="roPFSQueriesPeriod" type="number" min="1" ng-model="selectedCluster.config.monitoringPerformanceSchemaQueriesPeriod" readonly/>
+        <input ng-show="!roPFSQueriesPeriod" type="number" min="1" name="selectedPFSQueriesPeriod" id="selectedPFSQueriesPeriod" ng-model="selectedPFSQueriesPeriod"/>
+        <button ng-click="togglePFSQueriesPeriod()"><span ng-show="!roPFSQueriesPeriod"><i class="fas fa fa-times"></i></span><span ng-show="roPFSQueriesPeriod"><i class="fas fa fa-edit"></i></span></button>
+        <button ng-if="!roPFSQueriesPeriod" ng-click="setsettings('monitoring-performance-schema-queries-period', selectedPFSQueriesPeriod); togglePFSQueriesPeriod()"><i class="fas fa fa-save"></i></button>
+      </td>
+    </tr>
+    <tr>
+      <th>PFS Query Explain Cache</th>
+    </tr>
+    <tr>
+      <td>
+        Run <code>EXPLAIN</code> for each new query template at snapshot time and persist the plan to <code>pfs_explain_cache.jsonl</code>. New templates are prioritised; existing plans are refreshed oldest-first.
+        <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.monitoringPerformanceSchemaQueriesExplain" ng-click="switchsettings('monitoring-performance-schema-queries-explain')" aria-label="PFS explain cache">
+          <span ng-if="selectedCluster.config.monitoringPerformanceSchemaQueriesExplain" class="label label-primary">On</span><span ng-if="!selectedCluster.config.monitoringPerformanceSchemaQueriesExplain" class="label label-warning">Off</span>
+        </md-switch>
+      </td>
+    </tr>
+    <tr>
+      <th>PFS Explain Inter-Query Delay (ms)</th>
+    </tr>
+    <tr>
+      <td>
+        Milliseconds to sleep between consecutive <code>EXPLAIN</code> calls during a snapshot to spread optimizer load. Set to 0 to disable. Default: 200.
+        <input ng-show="roPFSExplainDelay" type="number" min="0" ng-model="selectedCluster.config.monitoringPerformanceSchemaQueriesExplainDelay" readonly/>
+        <input ng-show="!roPFSExplainDelay" type="number" min="0" name="selectedPFSExplainDelay" id="selectedPFSExplainDelay" ng-model="selectedPFSExplainDelay"/>
+        <button ng-click="togglePFSExplainDelay()"><span ng-show="!roPFSExplainDelay"><i class="fas fa fa-times"></i></span><span ng-show="roPFSExplainDelay"><i class="fas fa fa-edit"></i></span></button>
+        <button ng-if="!roPFSExplainDelay" ng-click="setsettings('monitoring-performance-schema-queries-explain-delay', selectedPFSExplainDelay); togglePFSExplainDelay()"><i class="fas fa fa-save"></i></button>
+      </td>
+    </tr>
+    <tr>
+      <th>PFS Explain Cache Purge Period (days)</th>
+    </tr>
+    <tr>
+      <td>
+        Age in days after which a cached explain plan is evicted from memory and disk. Set to 0 to keep plans forever. Default: 30.
+        <input ng-show="roPFSExplainPurge" type="number" min="0" ng-model="selectedCluster.config.monitoringPerformanceSchemaQueriesExplainPurgePeriod" readonly/>
+        <input ng-show="!roPFSExplainPurge" type="number" min="0" name="selectedPFSExplainPurge" id="selectedPFSExplainPurge" ng-model="selectedPFSExplainPurge"/>
+        <button ng-click="togglePFSExplainPurge()"><span ng-show="!roPFSExplainPurge"><i class="fas fa fa-times"></i></span><span ng-show="roPFSExplainPurge"><i class="fas fa fa-edit"></i></span></button>
+        <button ng-if="!roPFSExplainPurge" ng-click="setsettings('monitoring-performance-schema-queries-explain-purge-period', selectedPFSExplainPurge); togglePFSExplainPurge()"><i class="fas fa fa-save"></i></button>
+      </td>
+    </tr>
+
   </table>
 </md-card>

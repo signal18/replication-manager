@@ -341,6 +341,133 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
           loading={monProcessListLoading}
         />
       )
+    },
+    {
+      key: 'PFS Query Capture',
+      value: [
+        {
+          key: 'PFS Query Capture',
+          value: (
+            <Flex className={styles.valueWithInfo}>
+              <Text className={styles.info}>
+                Periodic snapshot of events_statements_summary_by_digest — flushes the digest table at each period
+                and writes a timestamped log_pfs_queries file with one templated query + sample SQL per line.
+              </Text>
+              <RMSwitch
+                confirmTitle={'Confirm switch settings for monitoring-performance-schema-queries?'}
+                onChange={() =>
+                  dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries' }))
+                }
+                isDisabled={user?.grants['cluster-settings'] == false}
+                isChecked={selectedCluster?.config?.monitoringPerformanceSchemaQueries}
+              />
+            </Flex>
+          )
+        },
+        {
+          key: 'PFS Query Capture Period (hours)',
+          value: (
+            <Flex className={styles.valueWithInfo}>
+              <Text className={styles.info}>
+                How often (in hours) the PFS digest table is snapshotted and reset. Default: 1.
+              </Text>
+              <NumberInput
+                value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesPeriod}
+                min={1}
+                max={168}
+                showEditButton={true}
+                showConfirmModal={true}
+                confirmTitle={`Confirm change 'monitoring-performance-schema-queries-period' to: `}
+                onConfirm={(val) =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'monitoring-performance-schema-queries-period',
+                      value: val.length === 0 ? '1' : val
+                    })
+                  )
+                }
+              />
+            </Flex>
+          )
+        },
+        {
+          key: 'PFS Query Explain Cache',
+          value: (
+            <Flex className={styles.valueWithInfo}>
+              <Text className={styles.info}>
+                Run EXPLAIN for each new query template at snapshot time and persist the plan to
+                pfs_explain_cache.jsonl. New templates are prioritised; existing plans are refreshed oldest-first.
+              </Text>
+              <RMSwitch
+                confirmTitle={'Confirm switch settings for monitoring-performance-schema-queries-explain?'}
+                onChange={() =>
+                  dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries-explain' }))
+                }
+                isDisabled={user?.grants['cluster-settings'] == false}
+                isChecked={selectedCluster?.config?.monitoringPerformanceSchemaQueriesExplain}
+              />
+            </Flex>
+          )
+        },
+        {
+          key: 'PFS Explain Inter-Query Delay (ms)',
+          value: (
+            <Flex className={styles.valueWithInfo}>
+              <Text className={styles.info}>
+                Milliseconds to sleep between consecutive EXPLAIN calls during a snapshot to spread optimizer load.
+                Set to 0 to disable. Default: 200.
+              </Text>
+              <NumberInput
+                value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesExplainDelay}
+                min={0}
+                max={5000}
+                step={50}
+                showEditButton={true}
+                showConfirmModal={true}
+                confirmTitle={`Confirm change 'monitoring-performance-schema-queries-explain-delay' to: `}
+                onConfirm={(val) =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'monitoring-performance-schema-queries-explain-delay',
+                      value: val.length === 0 ? '200' : val
+                    })
+                  )
+                }
+              />
+            </Flex>
+          )
+        },
+        {
+          key: 'PFS Explain Cache Purge Period (days)',
+          value: (
+            <Flex className={styles.valueWithInfo}>
+              <Text className={styles.info}>
+                Age in days after which a cached explain plan is evicted from memory and disk.
+                Set to 0 to keep plans forever. Default: 30.
+              </Text>
+              <NumberInput
+                value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesExplainPurgePeriod}
+                min={0}
+                max={365}
+                showEditButton={true}
+                showConfirmModal={true}
+                confirmTitle={`Confirm change 'monitoring-performance-schema-queries-explain-purge-period' to: `}
+                onConfirm={(val) =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'monitoring-performance-schema-queries-explain-purge-period',
+                      value: val.length === 0 ? '30' : val
+                    })
+                  )
+                }
+              />
+            </Flex>
+          )
+        }
+      ]
     }
   ]
 
