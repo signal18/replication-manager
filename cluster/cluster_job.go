@@ -24,6 +24,8 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+const jobsAPIDBRefreshMinInterval = 5 * time.Second
+
 func (cluster *Cluster) JobAnalyzeSQL(persistent bool) error {
 	var err error
 	var logs string
@@ -112,9 +114,9 @@ func (cluster *Cluster) JobsGetEntries() (config.JobEntries, error) {
 			continue
 		}
 		// When scheduler monitoring is disabled, there is no periodic invoker that
-		// reconciles runtime job cache with DB state. In that mode, refresh on API
-		// reads to keep entries aligned.
-		if !s.JobsHasEntries() || s.NeedRefreshJobs || !cluster.Conf.MonitorScheduler {
+		// reconciles runtime job cache with DB state. In that mode, allow API reads
+		// to refresh with a short minimum interval to avoid DB pressure under polling.
+		if !s.JobsHasEntries() || s.NeedRefreshJobsPending() || (!cluster.Conf.MonitorScheduler && s.HasJobsRefreshTTLExpired(jobsAPIDBRefreshMinInterval)) {
 			if err := s.JobsRefreshEntries(); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Jobs refresh skipped for %s: %s", s.URL, err)
 			}

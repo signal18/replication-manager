@@ -232,6 +232,10 @@ func jobTaskHasMeaningfulChanges(cached *config.Task, dbTask *config.Task) bool 
 }
 
 func shouldUpdateCachedJobTask(cached *config.Task, dbTask *config.Task) bool {
+	if dbTask == nil {
+		return false
+	}
+
 	if cached == nil {
 		return true
 	}
@@ -319,12 +323,11 @@ func (server *ServerMonitor) JobsRefreshEntries() error {
 	if server.Conn == nil {
 		return fmt.Errorf("No connection pool on %s", server.URL)
 	}
-	if server.IsLoadingJobList {
+	if !server.TryStartLoadingJobList() {
 		return errors.New("Waiting for previous update")
 	}
-
-	server.SetLoadingJobList(true)
 	defer server.SetLoadingJobList(false)
+	server.MarkJobsRefreshAttempt(time.Now())
 
 	conn, err := server.GetConnNoBinlog(server.Conn)
 	if err != nil {
@@ -838,11 +841,9 @@ func (server *ServerMonitor) JobsCheckStates() error {
 		return fmt.Errorf("No connection pool on %s", server.URL)
 	}
 
-	if server.IsLoadingJobList {
+	if !server.TryStartLoadingJobList() {
 		return errors.New("Waiting for previous update")
 	}
-
-	server.SetLoadingJobList(true)
 	defer server.SetLoadingJobList(false)
 
 	conn, err := server.GetConnNoBinlog(server.Conn)
@@ -861,7 +862,7 @@ func (server *ServerMonitor) JobsCheckStates() error {
 	server.JobsCheckErrors(conn)
 	server.JobsCheckPending(conn)
 
-	if server.NeedRefreshJobs {
+	if server.NeedRefreshJobsPending() {
 		err = server.JobsUpdateEntries(conn)
 		return err
 	}

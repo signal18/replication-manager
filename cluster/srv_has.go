@@ -24,6 +24,34 @@ func (server *ServerMonitor) IsSemiSyncMaster() bool {
 	return server.Status.Get("RPL_SEMI_SYNC_MASTER_STATUS") == "ON" || server.Status.Get("RPL_SEMI_SYNC_SOURCE_STATUS") == "ON"
 }
 
+func (server *ServerMonitor) IsLoadingJobListActive() bool {
+	server.jobRefreshStateMutex.RLock()
+	defer server.jobRefreshStateMutex.RUnlock()
+	return server.IsLoadingJobList
+}
+
+func (server *ServerMonitor) NeedRefreshJobsPending() bool {
+	server.jobRefreshStateMutex.RLock()
+	defer server.jobRefreshStateMutex.RUnlock()
+	return server.NeedRefreshJobs
+}
+
+func (server *ServerMonitor) HasJobsRefreshTTLExpired(ttl time.Duration) bool {
+	if ttl <= 0 {
+		return true
+	}
+
+	server.jobRefreshStateMutex.RLock()
+	lastAttempt := server.lastJobsRefreshAttempt
+	server.jobRefreshStateMutex.RUnlock()
+
+	if lastAttempt.IsZero() {
+		return true
+	}
+
+	return time.Since(lastAttempt) >= ttl
+}
+
 func (server *ServerMonitor) IsSemiSyncReplica() bool {
 	// If MySQL or Percona 8.0 or greater
 	if server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("8.0") {

@@ -420,7 +420,25 @@ func (server *ServerMonitor) SetWaitRunJobSSHCookie() error {
 }
 
 func (server *ServerMonitor) SetLoadingJobList(val bool) {
+	server.jobRefreshStateMutex.Lock()
 	server.IsLoadingJobList = val
+	server.jobRefreshStateMutex.Unlock()
+}
+
+func (server *ServerMonitor) TryStartLoadingJobList() bool {
+	server.jobRefreshStateMutex.Lock()
+	defer server.jobRefreshStateMutex.Unlock()
+	if server.IsLoadingJobList {
+		return false
+	}
+	server.IsLoadingJobList = true
+	return true
+}
+
+func (server *ServerMonitor) MarkJobsRefreshAttempt(at time.Time) {
+	server.jobRefreshStateMutex.Lock()
+	server.lastJobsRefreshAttempt = at
+	server.jobRefreshStateMutex.Unlock()
 }
 
 func (server *ServerMonitor) SetReplicationCredentialsRotation(ss *dbhelper.SlaveStatus) {
@@ -491,7 +509,9 @@ func (server *ServerMonitor) TrySetInReseedBackup(task string) (bool, string) {
 }
 
 func (server *ServerMonitor) SetNeedRefreshJobs(value bool) {
+	server.jobRefreshStateMutex.Lock()
 	server.NeedRefreshJobs = value
+	server.jobRefreshStateMutex.Unlock()
 }
 
 func (server *ServerMonitor) SetRestartNode(value string) {
