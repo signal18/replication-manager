@@ -4,6 +4,7 @@ import { handleError, showErrorBanner, showSuccessBanner } from '../utility/comm
 import { get, isEqual } from 'lodash'
 
 const pendingKeySelectors = {
+  'cluster/getJobs': (arg) => arg?.clusterName,
   'cluster/getDatabaseService': (arg) => arg?.serviceName,
   'cluster/getAppService': (arg) => arg?.serviceName
 }
@@ -105,7 +106,9 @@ const fulfilledHandlers = {
     state.queryRules = action.payload.data
   },
   'cluster/getJobs': (state, action) => {
-    state.jobs = action.payload.data
+    if (action.meta?.arg?.clusterName === state.clusterData?.name) {
+      state.jobs = action.payload.data
+    }
   }
 }
 
