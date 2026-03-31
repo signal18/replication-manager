@@ -8,6 +8,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -503,6 +506,9 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/send-jobs-upgrade", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsUpgradeSender)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/get-jobs-upgrade-script", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsUpgradeScript)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/jobs-create-table", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsCreateTable)),
@@ -4827,6 +4833,49 @@ func (repman *ReplicationManager) handlerMuxServerJobsUpgradeSender(w http.Respo
 	} else {
 		http.Error(w, "No cluster", 500)
 	}
+}
+
+// handlerMuxServerJobsUpgradeScript serves dbjobs_new script directly for pull-based self-upgrade.
+// This endpoint is backward-compatible: older scripts keep using send-jobs-upgrade push flow.
+func (repman *ReplicationManager) handlerMuxServerJobsUpgradeScript(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+
+	node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), errcode)
+		return
+	}
+
+	if node == nil {
+		http.Error(w, "No server", http.StatusInternalServerError)
+		return
+	}
+
+	scriptPath := filepath.Join(node.Datadir, "init/init", "dbjobs_new")
+	content, err := os.ReadFile(scriptPath)
+	if err != nil {
+		http.Error(w, "Error reading dbjobs_new file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	checksumBytes := sha256.Sum256(content)
+	checksum := hex.EncodeToString(checksumBytes[:])
+
+	node.SetWaitJobsCheckCookie()
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Serving dbjobs_new script via pull API to %s", node.Name)
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Repman-Script-Sha256", checksum)
+	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
+	w.Header().Set("Connection", "close")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(content)
 }
 
 // handlerMuxServerJobsCreateTable handles the HTTP request to create a jobs tasks table on a specific server within a cluster.

@@ -231,6 +231,26 @@ extract_http_body() {
     echo "$response" | awk 'BEGIN{body=0} /^(\r)?$/ {body=1; next} body {print}' | tr -d '\r'
 }
 
+# Extract a single HTTP header value from response
+# Usage: extract_http_header "response" "Header-Name"
+extract_http_header() {
+    local response="$1"
+    local header_name="$2"
+    echo "$response" | awk -v hdr="$header_name" 'BEGIN { IGNORECASE=1 }
+        /^(\r)?$/ { exit }
+        {
+            line=$0
+            sub(/\r$/, "", line)
+            split(line, parts, ":")
+            if (tolower(parts[1]) == tolower(hdr)) {
+                value=substr(line, index(line, ":") + 1)
+                sub(/^[ \t]+/, "", value)
+                print value
+                exit
+            }
+        }'
+}
+
 # Send HTTP/HTTPS request (consolidated)
 # Usage: send_http_request "METHOD" "host" "port" "endpoint" ["data"] ["accept_header"] ["auth_token"] ["timeout"]
 send_http_request() {
@@ -274,7 +294,8 @@ send_http_request() {
     
     # Choose protocol based on port (IPv6 brackets are REQUIRED for socat)
     local socat_target
-    # Only use connect-timeout, do NOT use readbytes (it truncates large files)
+    # Use connect-timeout for connect phase and socat -T for read/write timeout.
+    # Do NOT use readbytes (it truncates large files).
     local socat_opts="connect-timeout=$timeout"
     
     if is_ssl_port "$port"; then
@@ -283,7 +304,7 @@ send_http_request() {
         socat_target="TCP:$host:$port,$socat_opts"
     fi
     
-    echo -en "$request" | socat - "$socat_target" 2> >(grep -v "refusing to set empty SNI host name" >&2)
+    echo -en "$request" | socat -T "$timeout" - "$socat_target" 2> >(grep -v "refusing to set empty SNI host name" >&2)
 }
 
 ########################
@@ -955,6 +976,50 @@ request_jobs_upgrade() {
     [[ "$http_code" == "200" ]]
 }
 
+# Pull jobs-upgrade script directly from API (v2), with v1 push fallback handled by caller
+# Usage: pull_jobs_upgrade_script "target_file"
+pull_jobs_upgrade_script() {
+    local target_file="$1"
+    local cluster="$CLUSTER_NAME"
+    local server="$MYSQL_SERVER"
+    local port="$MYSQL_PORT"
+    local api_host="$REPLICATION_MANAGER_HOST"
+    local api_port="$REPLICATION_MANAGER_PORT"
+    local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/get-jobs-upgrade-script"
+
+    local encrypted_data
+    encrypted_data=$(encrypt_data "{\"server\":\"$server:$port\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+    local json_data="{\"data\":\"$encrypted_data\"}"
+
+    # Use octet-stream accept to force HTTP/1.0 mode in send_http_request,
+    # avoiding chunked transfer framing corruption for script download.
+    local response
+    response=$(send_http_request "POST" "$api_host" "$api_port" "$endpoint" "$json_data" "application/octet-stream")
+    local http_code=$(extract_http_code "$response")
+
+    if [[ "$http_code" != "200" ]]; then
+        return 1
+    fi
+
+    extract_http_body "$response" >"$target_file"
+
+    if [[ ! -s "$target_file" ]]; then
+        return 1
+    fi
+
+    local expected_sha256=$(extract_http_header "$response" "X-Repman-Script-Sha256")
+    if [[ -n "$expected_sha256" ]] && command -v sha256sum >/dev/null 2>&1; then
+        local actual_sha256
+        actual_sha256=$(sha256sum "$target_file" | awk '{print $1}')
+        if [[ "$actual_sha256" != "$expected_sha256" ]]; then
+            send_lines_to_api "Pulled jobs-upgrade script checksum mismatch (expected $expected_sha256, got $actual_sha256)." "jobs-upgrade" "$LVL_ERROR"
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
 ################################
 # Log Processing Functions     #
 ################################
@@ -1384,6 +1449,11 @@ jobsCheck() {
 }
 
 jobsUpgrade() {
+    local listener_timeout="${JOBS_UPGRADE_LISTENER_TIMEOUT:-900}"
+    if ! [[ "$listener_timeout" =~ ^[0-9]+$ ]]; then
+        listener_timeout=900
+    fi
+
     if [ -f "$LOG_DIR/jobs-upgrade.process.out" ]; then
         rm -f "$LOG_DIR/jobs-upgrade.process.out"
     fi
@@ -1422,16 +1492,65 @@ jobsUpgrade() {
     
     echo "Waiting new script." >"$LOG_DIR/jobs-upgrade.process.out"
 
-    # Open receiver port to get the new script to a temporary file
+    # First try pull-based upgrade (v2, server-first compatible)
     TEMP_FILE="${BASH_SOURCE[0]}.tmp"
+    if pull_jobs_upgrade_script "$TEMP_FILE"; then
+        send_lines_to_api "Pulled new jobs script from API." "jobs-upgrade" "$LVL_INFO"
+
+        if ! grep -q '^# EOF$' "$TEMP_FILE"; then
+            echo "Received pull-based script is invalid (missing EOF marker)." >>"$LOG_DIR/jobs-upgrade.process.out"
+            send_lines_to_api "Received pull-based script is invalid (missing EOF marker)." "jobs-upgrade" "$LVL_ERROR"
+            rm -f "$TEMP_FILE"
+        else
+            chmod +x "$TEMP_FILE"
+            cp "$TEMP_FILE" "${BASH_SOURCE[0]}"
+
+            send_lines_to_api "Script updated via pull API. Re-executing with the new version." "jobs-upgrade" "$LVL_INFO"
+            remove_run_lockdir "jobs-upgrade" 5
+            trap - EXIT
+            exec bash "${BASH_SOURCE[0]}" "$@"
+        fi
+    else
+        send_lines_to_api "Pull API unavailable or failed, falling back to legacy push listener." "jobs-upgrade" "$LVL_DEBUG"
+    fi
+
+    # Open receiver port to get the new script to a temporary file
     socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND - > "$TEMP_FILE" 2>>"$LOG_DIR/jobs-upgrade.process.out" &
     SOCAT_PID=$!
 
     # Request the upgrade
     request_jobs_upgrade "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT"
+    local REQUEST_EXIT_CODE=$?
 
-    # Wait for socat to finish
-    wait $SOCAT_PID
+    if [ $REQUEST_EXIT_CODE -ne 0 ]; then
+        echo "Failed to request jobs-upgrade from API." >>"$LOG_DIR/jobs-upgrade.process.out"
+        send_lines_to_api "Failed to request jobs-upgrade from API." "jobs-upgrade" "$LVL_ERROR"
+        kill "$SOCAT_PID" 2>/dev/null
+        wait "$SOCAT_PID" 2>/dev/null
+        rm -f "$TEMP_FILE"
+        remove_run_lockdir "jobs-upgrade" 1
+        trap - EXIT
+        return 1
+    fi
+
+    # Wait for socat to finish with bounded timeout
+    local elapsed=0
+    while kill -0 "$SOCAT_PID" 2>/dev/null; do
+        if [ $elapsed -ge $listener_timeout ]; then
+            kill "$SOCAT_PID" 2>/dev/null
+            wait "$SOCAT_PID" 2>/dev/null
+            echo "Timeout waiting for jobs-upgrade script after ${listener_timeout}s." >>"$LOG_DIR/jobs-upgrade.process.out"
+            send_lines_to_api "Timeout waiting for jobs-upgrade script after ${listener_timeout}s." "jobs-upgrade" "$LVL_ERROR"
+            rm -f "$TEMP_FILE"
+            remove_run_lockdir "jobs-upgrade" 1
+            trap - EXIT
+            return 1
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+
+    wait "$SOCAT_PID"
     SOCAT_EXIT_CODE=$?
 
     # Only replace if the socat command succeeded
@@ -1454,6 +1573,7 @@ jobsUpgrade() {
             exec bash "${BASH_SOURCE[0]}" "$@"
         fi
     else
+        echo "Failed to receive the new script via socat." >>"$LOG_DIR/jobs-upgrade.process.out"
         send_lines_to_api "Failed to receive the new script via socat." "jobs-upgrade" "$LVL_ERROR"
         rm -f "$TEMP_FILE"
     fi
