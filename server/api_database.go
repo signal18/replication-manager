@@ -487,6 +487,14 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxQueryExplainSlowLog)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/queries/{queryDigest}/actions/explain-pfs-cached", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxQueryExplainPFSCached)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/queries/explain-pfs-cached", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxQueryExplainPFSCachedAll)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/queries/{queryDigest}/actions/analyze-pfs", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxQueryAnalyzePFS)),
@@ -1019,6 +1027,87 @@ func (repman *ReplicationManager) handlerMuxQueryExplainSlowLog(w http.ResponseW
 	} else {
 		http.Error(w, "Cluster Not Found", 500)
 		return
+	}
+}
+
+// handlerMuxQueryExplainPFSCached returns the persisted explain plan for a single
+// digest from the on-disk cache.  No live DB query is issued.
+// @Summary Get cached EXPLAIN plan for a PFS digest
+// @Description Returns the explain plan that was captured at snapshot time for the given digest.
+// @Tags DatabaseQueries
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param queryDigest path string true "Query Digest"
+// @Success 200 {object} cluster.PFSExplainRecord "Cached explain plan"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "Digest not found in explain cache"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Encoding error"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/queries/{queryDigest}/actions/explain-pfs-cached [get]
+func (repman *ReplicationManager) handlerMuxQueryExplainPFSCached(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	node := mycluster.GetServerFromName(vars["serverName"])
+	if node == nil {
+		http.Error(w, "Server Not Found", 500)
+		return
+	}
+	rec, err := node.GetCachedExplainPFS(vars["queryDigest"])
+	if err != nil {
+		http.Error(w, "Digest not found in explain cache", http.StatusNotFound)
+		return
+	}
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	if encErr := e.Encode(rec); encErr != nil {
+		http.Error(w, "Encoding error", 500)
+	}
+}
+
+// handlerMuxQueryExplainPFSCachedAll returns all persisted explain plans for a server,
+// sorted by digest text.  Useful for bulk export or UI listing.
+// @Summary List all cached EXPLAIN plans for a server
+// @Description Returns every explain plan stored in the server's on-disk PFS explain cache.
+// @Tags DatabaseQueries
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Success 200 {array} cluster.PFSExplainRecord "All cached explain plans"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Encoding error"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/queries/explain-pfs-cached [get]
+func (repman *ReplicationManager) handlerMuxQueryExplainPFSCachedAll(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	node := mycluster.GetServerFromName(vars["serverName"])
+	if node == nil {
+		http.Error(w, "Server Not Found", 500)
+		return
+	}
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	if encErr := e.Encode(node.GetAllCachedExplainPFS()); encErr != nil {
+		http.Error(w, "Encoding error", 500)
 	}
 }
 

@@ -69,6 +69,7 @@ type ResponseTime struct {
 type PFSQuery struct {
 	Digest           string          `json:"digest"`
 	Query            string          `json:"query"`
+	Sample_query     string          `json:"sampleQuery"`  // one concrete SQL example for this digest (for EXPLAIN)
 	Digest_text      string          `json:"digestText"`
 	Schema_name      string          `json:"shemaName"`
 	Last_seen        string          `json:"lastSeen"`

@@ -10,6 +10,8 @@
 package cluster
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/crc64"
@@ -302,9 +304,14 @@ func (server *ServerMonitor) GetVariablesCaseSensitive() map[string]string {
 
 func (server *ServerMonitor) GetQueryFromPFSDigest(digest string) (string, string, error) {
 	for _, v := range server.PFSQueries.ToNewMap() {
-		//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Status %s %s", digest, v.Digest)
 		if v.Digest == digest {
-			return v.Schema_name, v.Query, nil
+			// Prefer the concrete sample query (needed for EXPLAIN).
+			// Fall back to the normalised digest_text if no sample was captured yet.
+			q := v.Sample_query
+			if q == "" {
+				q = v.Query
+			}
+			return v.Schema_name, q, nil
 		}
 	}
 	return "", "", errors.New("Query digest not found in PFS")
@@ -335,6 +342,36 @@ func (server *ServerMonitor) GetQueryExplainPFS(digest string) ([]dbhelper.Expla
 		return nil, err
 	}
 	return server.GetQueryExplain(schema, query)
+}
+
+// GetCachedExplainPFS returns the persisted explain plan for a digest from the
+// on-disk cache.  It never hits the live database — the plan was captured at
+// snapshot time and is valid until schema or statistics change.
+// Returns nil, error when the digest is not yet in the cache.
+func (server *ServerMonitor) GetCachedExplainPFS(digest string) (*PFSExplainRecord, error) {
+	server.PFSExplainCacheMu.Lock()
+	rec, ok := server.PFSExplainCache[digest]
+	server.PFSExplainCacheMu.Unlock()
+	if ok {
+		return &rec, nil
+	}
+	return nil, errors.New("digest not found in PFS explain cache")
+}
+
+// GetAllCachedExplainPFS returns every cached explain record for this server,
+// sorted by digest text for stable output.
+func (server *ServerMonitor) GetAllCachedExplainPFS() []PFSExplainRecord {
+	server.PFSExplainCacheMu.Lock()
+	recs := make([]PFSExplainRecord, 0, len(server.PFSExplainCache))
+	for _, rec := range server.PFSExplainCache {
+		recs = append(recs, rec)
+	}
+	server.PFSExplainCacheMu.Unlock()
+	// Stable sort by digest text so API responses are deterministic.
+	sort.Slice(recs, func(i, j int) bool {
+		return recs[i].DigestText < recs[j].DigestText
+	})
+	return recs
 }
 
 func (server *ServerMonitor) GetQueryAnalyzePFS(digest string) (string, string, error) {
@@ -431,12 +468,461 @@ func (server *ServerMonitor) GetPFSQueries() {
 	server.IsInPFSQueryCapture = true
 	defer func() { server.IsInPFSQueryCapture = false }()
 
-	var err error
-	logs := ""
-	// GET PFS query digest
-	pfsq, logs, err := dbhelper.GetQueries(server.Conn)
+	cluster := server.ClusterGroup
+
+	// Determine if we must take a periodic snapshot.
+	// MonitorPFSQueries enables the snapshot feature; MonitorPFSQueriesPeriod sets the
+	// window in hours (default 1 hour when 0 is left unconfigured).
+	periodHours := cluster.Conf.MonitorPFSQueriesPeriod
+	if periodHours <= 0 {
+		periodHours = 1
+	}
+	doSnapshot := cluster.Conf.MonitorPFSQueries &&
+		time.Since(server.PFSLastSnapshot) >= time.Duration(periodHours)*time.Hour
+
+	if doSnapshot {
+		// Cancel any still-running explain goroutine from the previous period
+		// before we overwrite PFSQueries with the new snapshot.
+		if server.pfsExplainCancel != nil {
+			server.pfsExplainCancel()
+			server.pfsExplainCancel = nil
+		}
+
+		// Snapshot current digest table BEFORE truncating so we capture the full period.
+		server.FlushPFSSnapshotToLog()
+
+		// Build a fresh context for this period's explain goroutine.
+		// Stored on the server so the next snapshot (or a server shutdown) can cancel it.
+		ctx, cancel := context.WithCancel(context.Background())
+		server.pfsExplainCancel = cancel
+
+		// Launch explain in a goroutine — inter-explain delay × N digests can take
+		// minutes; we must never block the TRUNCATE or the monitoring cycle.
+		// The goroutine receives a *snapshot* of the current PFSQueries map so it
+		// works on the period that just ended, not on whatever the map contains
+		// when each individual EXPLAIN fires.
+		snapshot := server.PFSQueries.ToNewMap()
+		go server.RunPFSExplainCapture(ctx, snapshot)
+
+		// Reset counters so the next window starts clean.
+		logs, err := dbhelper.TruncatePFSStatements(server.Conn)
+		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg,
+			"Could not truncate PFS statements summary on %s: %s", server.URL, err)
+		server.PFSLastSnapshot = time.Now()
+	}
+
+	// Purge stale explain cache entries once per day, independently of the snapshot
+	// period. Running daily is frequent enough to honour the configured retention
+	// while avoiding unnecessary disk rewrites on every 2-second monitoring tick.
+	if cluster.Conf.MonitorPFSQueriesExplain &&
+		cluster.Conf.MonitorPFSQueriesExplainPurgePeriod > 0 &&
+		time.Since(server.PFSLastExplainPurge) >= 24*time.Hour {
+		server.PurgePFSExplainCache()
+		server.PFSLastExplainPurge = time.Now()
+	}
+
+	// Always refresh the in-memory map for the live GUI view.
+	pfsq, logs, err := dbhelper.GetQueries(server.Conn, server.DBVersion)
 	server.PFSQueries = dbhelper.FromNormalPFSMap(server.PFSQueries, pfsq)
-	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get queries %s %s", server.URL, err)
+	cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg,
+		"Could not get queries %s %s", server.URL, err)
+}
+
+// PFSSnapshotEntry is the JSON structure written to the periodic snapshot log.
+// One line per digest — every field needed to replay EXPLAIN later without
+// having to hit the live Performance Schema again.
+type PFSSnapshotEntry struct {
+	Timestamp    string  `json:"timestamp"`
+	Digest       string  `json:"digest"`
+	DigestText   string  `json:"digestText"`
+	SampleQuery  string  `json:"sampleQuery"`
+	SchemaName   string  `json:"schemaName"`
+	ExecCount    int64   `json:"execCount"`
+	ExecTimeAvg  float64 `json:"execTimeAvgMs"`
+	ExecTimeMax  float64 `json:"execTimeMaxMs"`
+	RowsScanned  int64   `json:"rowsScanned"`
+	PlanFullScan string  `json:"planFullScan"`
+	PlanTmpDisk  int64   `json:"planTmpDisk"`
+	ErrCount     int64   `json:"errCount"`
+}
+
+// FlushPFSSnapshotToLog writes one JSON-lines file per hour containing every
+// digest collected during the period, including a concrete sample_query so that
+// EXPLAIN can be replayed offline.  The file is named:
+//
+//	<Datadir>/log/log_pfs_queries_<YYYYMMDD_HH>.jsonl
+//
+// Rotation: if the file grows beyond 100 MB it is truncated before writing
+// (same policy as the slow-query log file in GetSlowLogTable).
+func (server *ServerMonitor) FlushPFSSnapshotToLog() {
+	cluster := server.ClusterGroup
+
+	// We need an up-to-date fetch to get sample queries before the TRUNCATE.
+	pfsq, _, err := dbhelper.GetQueries(server.Conn, server.DBVersion)
+	if err != nil || len(pfsq) == 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg,
+			"PFS snapshot: nothing to flush on %s", server.URL)
+		return
+	}
+
+	os.MkdirAll(server.Datadir+"/log", 0755)
+
+	now := time.Now()
+	filename := server.Datadir + "/log/log_pfs_queries_" + now.Format("20060102_15") + ".jsonl"
+
+	f, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+			"PFS snapshot: could not open log file %s: %v", filename, err)
+		return
+	}
+	defer f.Close()
+
+	// Rotate if file exceeds 100 MB.
+	if fi, statErr := f.Stat(); statErr == nil && fi.Size() > 100*1024*1024 {
+		f.Truncate(0)
+		f.Seek(0, 0)
+	}
+
+	ts := now.Format(time.RFC3339)
+	written := 0
+	for _, q := range pfsq {
+		entry := PFSSnapshotEntry{
+			Timestamp:    ts,
+			Digest:       q.Digest,
+			DigestText:   q.Digest_text,
+			SampleQuery:  q.Sample_query,
+			SchemaName:   q.Schema_name,
+			ExecCount:    q.Exec_count,
+			ExecTimeAvg:  q.Exec_time_avg_ms.Float64,
+			ExecTimeMax:  q.Exec_time_max.Float64,
+			RowsScanned:  q.Rows_scanned,
+			PlanFullScan: q.Plan_full_scan,
+			PlanTmpDisk:  q.Plan_tmp_disk,
+			ErrCount:     q.Err_count,
+		}
+		line, jsonErr := json.Marshal(entry)
+		if jsonErr != nil {
+			continue
+		}
+		f.Write(line)
+		f.Write([]byte("\n"))
+		written++
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+		"PFS snapshot: wrote %d digest entries to %s", written, filename)
+}
+
+// pfsExplainCachePath returns the canonical path for this server's explain plan cache file.
+// The file is stored under the server Datadir so it survives restarts and is
+// co-located with the other per-server state files (serverstate.json, slow-query log, …).
+//
+//	<Datadir>/log/pfs_explain_cache.jsonl
+//
+// The format is JSON-lines: one PFSExplainRecord per line, one line per unique digest.
+// New digests are appended; existing ones are never rewritten (write-once semantics).
+func (server *ServerMonitor) pfsExplainCachePath() string {
+	return server.Datadir + "/log/pfs_explain_cache.jsonl"
+}
+
+// LoadPFSExplainCache reads the on-disk explain cache into server.PFSExplainCache.
+// Called once during server initialisation so cached plans survive a process restart
+// and are immediately available to the API without waiting for the next snapshot cycle.
+func (server *ServerMonitor) LoadPFSExplainCache() {
+	cluster := server.ClusterGroup
+	path := server.pfsExplainCachePath()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		// File simply does not exist yet — not an error.
+		return
+	}
+
+	loaded := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var rec PFSExplainRecord
+		if jsonErr := json.Unmarshal([]byte(line), &rec); jsonErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"LoadPFSExplainCache: skipping malformed line in %s: %v", path, jsonErr)
+			continue
+		}
+		if rec.Digest != "" {
+			server.PFSExplainCacheMu.Lock()
+			server.PFSExplainCache[rec.Digest] = rec
+			server.PFSExplainCacheMu.Unlock()
+			loaded++
+		}
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+		"LoadPFSExplainCache: loaded %d cached explain plans from %s", loaded, path)
+}
+
+// PurgePFSExplainCache removes explain records older than MonitorPFSQueriesExplainPurgePeriod
+// days from both the in-memory map and the on-disk cache file.
+//
+// Disk rewrite strategy: because the cache file is append-only, purging requires a
+// full rewrite. We write surviving records to a temp file in the same directory,
+// then atomically replace the original with os.Rename. This guarantees the file is
+// never left in a partial state even if the process is killed mid-purge.
+//
+// The function is a no-op when:
+//   - MonitorPFSQueriesExplainPurgePeriod is 0 (purge disabled)
+//   - The cache is empty
+//   - No entry is old enough to evict
+func (server *ServerMonitor) PurgePFSExplainCache() {
+	cluster := server.ClusterGroup
+
+	purgeDays := cluster.Conf.MonitorPFSQueriesExplainPurgePeriod
+	if purgeDays <= 0 {
+		return // purge disabled
+	}
+
+	cutoff := time.Now().AddDate(0, 0, -purgeDays)
+
+	server.PFSExplainCacheMu.Lock()
+	defer server.PFSExplainCacheMu.Unlock()
+
+	if len(server.PFSExplainCache) == 0 {
+		return
+	}
+
+	// First pass: identify which digests to evict and collect survivors.
+	survivors := make([]PFSExplainRecord, 0, len(server.PFSExplainCache))
+	evicted := 0
+	noDate := 0
+
+	for digest, rec := range server.PFSExplainCache {
+		capturedAt, parseErr := time.Parse(time.RFC3339, rec.CapturedAt)
+		if parseErr != nil {
+			// Unparseable timestamp — keep the record, log a warning.
+			noDate++
+			survivors = append(survivors, rec)
+			continue
+		}
+		if capturedAt.Before(cutoff) {
+			delete(server.PFSExplainCache, digest)
+			evicted++
+		} else {
+			survivors = append(survivors, rec)
+		}
+	}
+
+	if evicted == 0 {
+		return // nothing old enough — skip the disk rewrite
+	}
+
+	// Second pass: rewrite the disk file atomically.
+	path := server.pfsExplainCachePath()
+	dir := server.Datadir + "/log"
+	os.MkdirAll(dir, 0755)
+
+	// Write to a sibling temp file, then rename into place.
+	tmpPath := path + ".purge.tmp"
+	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+			"PurgePFSExplainCache: cannot create temp file %s: %v", tmpPath, err)
+		return
+	}
+
+	writeErr := false
+	for _, rec := range survivors {
+		line, jsonErr := json.Marshal(rec)
+		if jsonErr != nil {
+			continue
+		}
+		if _, werr := f.Write(append(line, '\n')); werr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+				"PurgePFSExplainCache: write error on temp file %s: %v", tmpPath, werr)
+			writeErr = true
+			break
+		}
+	}
+	f.Close()
+
+	if writeErr {
+		os.Remove(tmpPath) // discard the partial temp file; original is untouched
+		return
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+			"PurgePFSExplainCache: cannot rename %s → %s: %v", tmpPath, path, err)
+		os.Remove(tmpPath)
+		return
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+		"PurgePFSExplainCache: evicted %d records older than %d days (%d survivors, %d unparseable) from %s",
+		evicted, purgeDays, len(survivors)-noDate, noDate, path)
+}
+
+// explainWorkItem is one unit of work for RunPFSExplainCapture, pre-sorted by priority.
+type explainWorkItem struct {
+	digest      string
+	query       *dbhelper.PFSQuery
+	capturedAt  time.Time // zero if never explained — sorts first (highest priority)
+}
+
+// RunPFSExplainCapture iterates over the digests captured during the just-completed
+// snapshot period, running EXPLAIN once per template and persisting the plan to the
+// on-disk cache file.
+//
+// Cancellation and ordering:
+//   - ctx is cancelled by the next snapshot trigger (or server shutdown), so a
+//     slow in-flight run is cleanly interrupted rather than left as an orphan.
+//   - snapshot is a frozen copy of PFSQueries taken just before the TRUNCATE, so
+//     the goroutine always works on the period that just ended regardless of how
+//     long it takes.
+//   - Work items are sorted so digests with NO cached plan come first, then digests
+//     whose plan is oldest (most likely to be stale after schema/stats changes).
+//     This means a partial run (interrupted by the next snapshot) will always
+//     have covered the highest-value digests first.
+//   - The in-memory cache and the disk file are updated under PFSExplainCacheMu so
+//     concurrent reads from the API handlers never observe torn state.
+func (server *ServerMonitor) RunPFSExplainCapture(ctx context.Context, snapshot map[string]*dbhelper.PFSQuery) {
+	cluster := server.ClusterGroup
+
+	if !cluster.Conf.MonitorPFSQueriesExplain {
+		return
+	}
+
+	delayMs := cluster.Conf.MonitorPFSQueriesExplainDelay
+	if delayMs < 0 {
+		delayMs = 0
+	}
+
+	// --- Build priority-sorted work list ---
+	// Priority order:
+	//   1. Never explained (zero CapturedAt) — always highest priority
+	//   2. Oldest CapturedAt first — most likely to be stale
+	//   3. Skip digests with no sample query (cannot EXPLAIN yet)
+	work := make([]explainWorkItem, 0, len(snapshot))
+	for digest, q := range snapshot {
+		if q.Sample_query == "" {
+			continue // no sample yet; will retry next period
+		}
+		var capturedAt time.Time
+		server.PFSExplainCacheMu.Lock()
+		if rec, exists := server.PFSExplainCache[digest]; exists {
+			capturedAt, _ = time.Parse(time.RFC3339, rec.CapturedAt)
+		}
+		server.PFSExplainCacheMu.Unlock()
+		work = append(work, explainWorkItem{
+			digest:     digest,
+			query:      q,
+			capturedAt: capturedAt,
+		})
+	}
+
+	// Zero time sorts first (never explained), then ascending age (oldest first).
+	sort.Slice(work, func(i, j int) bool {
+		zi := work[i].capturedAt.IsZero()
+		zj := work[j].capturedAt.IsZero()
+		if zi != zj {
+			return zi // zero (never explained) before non-zero
+		}
+		return work[i].capturedAt.Before(work[j].capturedAt)
+	})
+
+	os.MkdirAll(server.Datadir+"/log", 0755)
+	path := server.pfsExplainCachePath()
+
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+			"RunPFSExplainCapture: cannot open cache file %s: %v", path, err)
+		return
+	}
+	defer f.Close()
+
+	now := time.Now().Format(time.RFC3339)
+	newPlans := 0
+	refreshed := 0
+	interrupted := 0
+	first := true
+
+	for _, item := range work {
+		// Check for cancellation before every EXPLAIN — this is the earliest
+		// point we can bail cleanly without leaving a half-written record.
+		select {
+		case <-ctx.Done():
+			interrupted = len(work) - newPlans - refreshed
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+				"RunPFSExplainCapture: cancelled by new snapshot on %s — %d/%d explains done, %d interrupted",
+				server.URL, newPlans+refreshed, len(work), interrupted)
+			return
+		default:
+		}
+
+		// Throttle between explains (skip delay before the very first one).
+		if !first && delayMs > 0 {
+			// Use a select on the timer + ctx so cancellation wakes us immediately
+			// even during the sleep, rather than waiting up to delayMs to notice.
+			select {
+			case <-ctx.Done():
+				interrupted = len(work) - newPlans - refreshed
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+					"RunPFSExplainCapture: cancelled during delay on %s — %d/%d explains done, %d interrupted",
+					server.URL, newPlans+refreshed, len(work), interrupted)
+				return
+			case <-time.After(time.Duration(delayMs) * time.Millisecond):
+			}
+		}
+		first = false
+
+		isNew := true
+		server.PFSExplainCacheMu.Lock()
+		_, alreadyCached := server.PFSExplainCache[item.digest]
+		server.PFSExplainCacheMu.Unlock()
+		if alreadyCached {
+			isNew = false // will be a refresh (re-explain of an existing entry)
+		}
+
+		plan, explainErr := server.GetQueryExplain(item.query.Schema_name, item.query.Sample_query)
+		if explainErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"RunPFSExplainCapture: EXPLAIN failed for digest %s on %s: %v",
+				item.digest, server.URL, explainErr)
+			continue
+		}
+
+		rec := PFSExplainRecord{
+			CapturedAt:  now,
+			Digest:      item.digest,
+			DigestText:  item.query.Digest_text,
+			SampleQuery: item.query.Sample_query,
+			SchemaName:  item.query.Schema_name,
+			Plan:        plan,
+		}
+
+		line, jsonErr := json.Marshal(rec)
+		if jsonErr != nil {
+			continue
+		}
+		f.Write(line)
+		f.Write([]byte("\n"))
+
+		server.PFSExplainCacheMu.Lock()
+		server.PFSExplainCache[item.digest] = rec
+		server.PFSExplainCacheMu.Unlock()
+
+		if isNew {
+			newPlans++
+		} else {
+			refreshed++
+		}
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+		"RunPFSExplainCapture: %d new plans, %d refreshed, %d skipped (no sample), delay %dms on %s",
+		newPlans, refreshed, len(snapshot)-len(work), delayMs, server.URL)
 }
 
 func (server *ServerMonitor) GetPFSStatements() []dbhelper.PFSQuery {
