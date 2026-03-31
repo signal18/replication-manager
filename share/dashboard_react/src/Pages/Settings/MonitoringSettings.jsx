@@ -63,7 +63,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       ]
     },
     {
-      key: 'Capture',
+      key: 'Monitoring Capture On Error',
       value: (
         <Flex className={styles.valueWithInfo}>
           <Text className={styles.info}>
@@ -82,7 +82,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
-      key: 'Capture Trigger',
+      key: 'Monitoring Capture On Error Trigger',
       value: (
         <TextForm
           value={selectedCluster?.config?.monitoringCaptureTrigger}
@@ -273,34 +273,6 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
-      key: 'Monitoring Performance Schema Memory',
-      value: (
-        <RMSwitch
-          confirmTitle={'Confirm switch settings for monitoring-performance-schema-memory?'}
-          onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-memory' }))
-          }
-          isDisabled={user?.grants['cluster-settings'] == false}
-          isChecked={selectedCluster?.config?.monitoringPerformanceSchemaMemory}
-          loading={monInnoDBLoading}
-        />
-      )
-    },
-    {
-      key: 'Monitoring Performance Schema Instruments',
-      value: (
-        <RMSwitch
-          confirmTitle={'Confirm switch settings for monitoring-performance-schema-instruments?'}
-          onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-instruments' }))
-          }
-          isDisabled={user?.grants['cluster-settings'] == false}
-          isChecked={selectedCluster?.config?.monitoringPerformanceIntruments}
-          loading={monInnoDBLoading}
-        />
-      )
-    },
-    {
       key: 'Monitoring InnoDB Status',
       value: (
         <RMSwitch
@@ -345,6 +317,32 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
     {
       key: 'Monitoring Performance Schema Queries',
       value: [
+        {
+          key: 'Monitoring Performance Schema Memory',
+          value: (
+            <RMSwitch
+              confirmTitle={'Confirm switch settings for monitoring-performance-schema-memory?'}
+              onChange={() =>
+                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-memory' }))
+              }
+              isDisabled={user?.grants['cluster-settings'] == false}
+              isChecked={selectedCluster?.config?.monitoringPerformanceSchemaMemory}
+            />
+          )
+        },
+        {
+          key: 'Monitoring Performance Schema Instruments',
+          value: (
+            <RMSwitch
+              confirmTitle={'Confirm switch settings for monitoring-performance-schema-instruments?'}
+              onChange={() =>
+                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-instruments' }))
+              }
+              isDisabled={user?.grants['cluster-settings'] == false}
+              isChecked={selectedCluster?.config?.monitoringPerformanceIntruments}
+            />
+          )
+        },
         {
           key: 'Monitoring Performance Schema Queries',
           value: (
