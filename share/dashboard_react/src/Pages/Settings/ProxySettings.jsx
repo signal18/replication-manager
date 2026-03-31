@@ -1,4 +1,4 @@
-import { Box, Flex, HStack, Text } from '@chakra-ui/react'
+import { Box, Flex } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
@@ -24,10 +24,12 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
   }
 
   const helpKey = (label, content) => (
-    <HStack spacing={1} align="center" width="fit-content">
-      <Text>{label}</Text>
-      <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
-    </HStack>
+    <Box as="span" display="inline">
+      {label}
+      <Box as="span" display="inline-flex" verticalAlign="middle" ml={1}>
+        <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
+      </Box>
+    </Box>
   )
 
   const helpProxySQLMonitor = `**ProxySQL Monitor**\n\nEnables replication-manager's ProxySQL integration.\nWhen active, replication-manager connects to ProxySQL and keeps its server list, hostgroups, and routing rules in sync with the current cluster topology.`

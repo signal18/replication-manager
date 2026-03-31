@@ -1,4 +1,4 @@
-import { Box, Flex, HStack, Text } from '@chakra-ui/react'
+import { Box, Flex } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
@@ -26,10 +26,12 @@ function AlertSettings({ selectedCluster, user, openConfirmModal }) {
   }
 
   const helpKey = (label, content) => (
-    <HStack spacing={1} align="center" width="fit-content">
-      <Text>{label}</Text>
-      <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
-    </HStack>
+    <Box as="span" display="inline">
+      {label}
+      <Box as="span" display="inline-flex" verticalAlign="middle" ml={1}>
+        <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
+      </Box>
+    </Box>
   )
 
   const helpMailFrom = `**Mail From**\n\nSender address used in alert emails.\nExample: \`replication-manager@company.com\``

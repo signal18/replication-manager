@@ -1,4 +1,4 @@
-import { Box, Flex, HStack, Text } from '@chakra-ui/react'
+import { Box, Flex } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
@@ -24,10 +24,12 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
   }
 
   const helpKey = (label, content) => (
-    <HStack spacing={1} align="center" width="fit-content">
-      <Text>{label}</Text>
-      <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
-    </HStack>
+    <Box as="span" display="inline">
+      {label}
+      <Box as="span" display="inline-flex" verticalAlign="middle" ml={1}>
+        <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
+      </Box>
+    </Box>
   )
 
   const helpFailoverLimit = `**Failover Limit**\n\nMaximum number of automatic failovers allowed before replication-manager stops attempting further failovers.\nSet to 0 for unlimited.\nAfter the limit is reached, manual intervention is required to reset the counter and re-enable automatic failover.`

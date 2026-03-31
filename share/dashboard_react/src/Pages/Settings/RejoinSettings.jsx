@@ -1,4 +1,4 @@
-import { Box, Flex, HStack, Text } from '@chakra-ui/react'
+import { Box, Flex } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
@@ -23,10 +23,12 @@ function RejoinSettings({ selectedCluster, user, openConfirmModal }) {
   }
 
   const helpKey = (label, content) => (
-    <HStack spacing={1} align="center" width="fit-content">
-      <Text>{label}</Text>
-      <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
-    </HStack>
+    <Box as="span" display="inline">
+      {label}
+      <Box as="span" display="inline-flex" verticalAlign="middle" ml={1}>
+        <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
+      </Box>
+    </Box>
   )
 
   const { settings: { arLoading, arBackupBinlogLoading, arFlashbackOnSyncLoading, arFlashbackLoading, arMysqldumpLoading, arLogicalBackupLoading, arPhysicalBackupLoading, arForceRestoreLoading, autoseedLoading } } = useSelector((state) => state)

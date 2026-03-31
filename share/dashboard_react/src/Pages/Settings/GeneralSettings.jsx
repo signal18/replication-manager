@@ -1,4 +1,4 @@
-import { Box, Flex, HStack, Spinner, Text } from '@chakra-ui/react'
+import { Box, Flex, Spinner } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
@@ -29,10 +29,12 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal, onTabChange 
   }
 
   const helpKey = (label, content) => (
-    <HStack spacing={1} align="center" width="fit-content">
-      <Text>{label}</Text>
-      <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
-    </HStack>
+    <Box as="span" display="inline">
+      {label}
+      <Box as="span" display="inline-flex" verticalAlign="middle" ml={1}>
+        <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
+      </Box>
+    </Box>
   )
 
   const {

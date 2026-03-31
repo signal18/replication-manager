@@ -1,4 +1,4 @@
-import { Box, Flex, HStack, Text } from '@chakra-ui/react'
+import { Box, Flex } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
@@ -24,10 +24,12 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
   }
 
   const helpKey = (label, content) => (
-    <HStack spacing={1} align="center" width="fit-content">
-      <Text>{label}</Text>
-      <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
-    </HStack>
+    <Box as="span" display="inline">
+      {label}
+      <Box as="span" display="inline-flex" verticalAlign="middle" ml={1}>
+        <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
+      </Box>
+    </Box>
   )
 
   const cronHelp = (name, desc) => `**${name}**\n\n${desc}\n\nThe switch enables or disables the job entirely. The cron field uses 6-field extended cron format:\n\`\`\`\nsecond minute hour day-of-month month day-of-week\n\`\`\`\nExample: \`0 0 2 * * *\` = every day at 02:00.`

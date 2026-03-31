@@ -1,4 +1,4 @@
-import { Box, Flex, HStack, Text } from '@chakra-ui/react'
+import { Box, Flex } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
@@ -25,10 +25,12 @@ function RepConfigSettings({ selectedCluster, user, openConfirmModal, closeConfi
   }
 
   const helpKey = (label, content) => (
-    <HStack spacing={1} align="center" width="fit-content">
-      <Text>{label}</Text>
-      <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
-    </HStack>
+    <Box as="span" display="inline">
+      {label}
+      <Box as="span" display="inline-flex" verticalAlign="middle" ml={1}>
+        <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
+      </Box>
+    </Box>
   )
 
   const helpChannel = `**Replication Channel**\n\nName of the replication channel used for multi-source replication.\nLeave empty for the default (unnamed) channel.\nMust match the channel name configured on the replica with \`CHANGE MASTER TO ... FOR CHANNEL 'name'\`.`
