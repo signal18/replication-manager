@@ -114,9 +114,10 @@ function ConfirmableLogLevelControl({
 
   useEffect(() => {
     setCurrentValue(normalizeLogLevel(value))
-    setPendingValue(null)
-    setIsConfirmModalOpen(false)
-  }, [value])
+    if (!isConfirmModalOpen) {
+      setPendingValue(null)
+    }
+  }, [value, isConfirmModalOpen])
 
   const selectedValue = pendingValue ?? currentValue
 
@@ -189,9 +190,8 @@ function ConfirmableLogLevelControl({
 
       {isConfirmModalOpen && (
         <ConfirmModal
-          isOpen={isConfirmModalOpen}
           closeModal={closeModal}
-          title={`${confirmTitle.trimEnd()} ${LEVEL_LABEL_BY_VALUE[pendingValue ?? currentValue]}`}
+          title={`${confirmTitle.trimEnd()} ${LEVEL_LABEL_BY_VALUE[pendingValue]}`}
           onConfirmClick={confirmChange}
         />
       )}

@@ -15,7 +15,7 @@ import parentStyles from '../styles.module.scss'
 
 function ConfirmModal({
   title,
-  isOpen,
+  isOpen = true,
   closeModal,
   body,
   onConfirmClick,
