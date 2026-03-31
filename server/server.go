@@ -269,6 +269,26 @@ func (repman *ReplicationManager) SetDefaultFlags(v *viper.Viper) {
 
 }
 
+func (repman *ReplicationManager) logOpenSSLStartupStatus() {
+	opensslPath, err := exec.LookPath("openssl")
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
+			"OpenSSL not found in PATH; backup encryption jobs will fail when encryption is enabled")
+		return
+	}
+
+	cmd := exec.Command(opensslPath, "version")
+	versionOut, err := cmd.Output()
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
+			"OpenSSL found at %s but version check failed: %v", opensslPath, err)
+		return
+	}
+
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+		"OpenSSL available: %s (%s)", opensslPath, strings.TrimSpace(string(versionOut)))
+}
+
 func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Config, isClient bool) {
 	flags.IntVar(&conf.TokenTimeout, "api-token-timeout", 48, "Timespan of API Token before expired in hour")
 
@@ -883,6 +903,14 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.CompressBackupsParallelBlocks, "compress-backups-parallel-blocks", 16, "Number of parallel blocks for pgzip decompression (higher=faster but more memory)")
 	flags.IntVar(&conf.CompressBackupsDecompressBufferSize, "compress-backups-decompress-buffer-size", 250000, "Block size for pgzip decompression")
 	flags.BoolVar(&conf.BackupReseedRemoteDecompress, "backup-reseed-remote-decompress", false, "Decompress backup on remote server during reseed (send compressed stream)")
+	flags.BoolVar(&conf.BackupEncryptionEnabled, "backup-encryption-enabled", false, "Enable OpenSSL AES-256-CBC encryption for backups")
+	flags.StringVar(&conf.BackupEncryptionPassphrase, "backup-encryption-passphrase", "", "Passphrase for backup encryption (env override: REPLICATION_MANAGER_BACKUP_PASSPHRASE)")
+	flags.StringVar(&conf.BackupEncryptionKeyring, "backup-encryption-keyring", "", "JSON keyring for backup encryption key rotation")
+	flags.StringVar(&conf.BackupEncryptionDirectoryFormat, "backup-encryption-directory-format", "tar.gz", "Archive format for directory backup encryption: tar.gz|tar")
+	flags.StringVar(&conf.BackupEncryptionDirectoryMode, "backup-encryption-directory-mode", "archive", "Directory encryption mode: archive|per-file")
+	flags.BoolVar(&conf.BackupEncryptionKeepPlainDir, "backup-encryption-keep-plain-dir", false, "Keep plaintext directory/archive after successful directory backup encryption (debug only)")
+	flags.BoolVar(&conf.BackupEncryptionUnsafePerFileRestore, "backup-encryption-unsafe-per-file-restore", false, "Allow destructive in-place per-file encrypted restore without .old rollback safety (may leave backup unrecoverable if restore is interrupted)")
+	flags.BoolVar(&conf.BackupEncryptionRequireExplicitPassphrase, "backup-encryption-require-explicit-passphrase", false, "Require explicit passphrase (env var or config) for backup encryption; reject fallback to rotating admin/DB passwords")
 	flags.BoolVar(&conf.BackupSplitMysqlUser, "backup-split-mysql-user", false, "To split mysql user in backup")
 	flags.BoolVar(&conf.BackupRestoreMysqlUser, "backup-restore-mysql-user", true, "Restore mysql user alongside with backup")
 	flags.BoolVar(&conf.BackupCheckFreeSpace, "backup-check-size", true, "To check free space before processing backup")
@@ -2319,6 +2347,7 @@ func (repman *ReplicationManager) Run() error {
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No log file defined. Writing logs to stdout. Use journalctl to view logs.")
 	}
+	repman.logOpenSSLStartupStatus()
 
 	if !repman.Conf.Daemon {
 		err := termbox.Init()
@@ -3038,6 +3067,10 @@ func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string
 		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
 	case "backup-streaming-aws-access-secret":
 		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-streaming-aws-access-secret"))
+	case "backup-encryption-passphrase":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-encryption-passphrase"))
+	case "backup-encryption-keyring":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-encryption-keyring"))
 	case "arbitration-external-secret":
 		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("arbitration-external-secret"))
 	case "alert-pushover-user-token":

@@ -2542,6 +2542,14 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupBinlogs()
 	case "compress-backups":
 		mycluster.SwitchCompressBackups()
+	case "backup-encryption-enabled":
+		mycluster.Conf.BackupEncryptionEnabled = !mycluster.Conf.BackupEncryptionEnabled
+	case "backup-encryption-keep-plain-dir":
+		mycluster.Conf.BackupEncryptionKeepPlainDir = !mycluster.Conf.BackupEncryptionKeepPlainDir
+	case "backup-encryption-unsafe-per-file-restore":
+		mycluster.Conf.BackupEncryptionUnsafePerFileRestore = !mycluster.Conf.BackupEncryptionUnsafePerFileRestore
+	case "backup-encryption-require-explicit-passphrase":
+		mycluster.Conf.BackupEncryptionRequireExplicitPassphrase = !mycluster.Conf.BackupEncryptionRequireExplicitPassphrase
 	case "backup-reseed-remote-decompress":
 		mycluster.Conf.BackupReseedRemoteDecompress = !mycluster.Conf.BackupReseedRemoteDecompress
 	case "backup-split-mysql-user":
@@ -2984,6 +2992,8 @@ var base64LogValueSettings = map[string]struct{}{
 	"backup-logical-post-script":          {},
 	"backup-mydumper-options":             {},
 	"backup-mydumper-regex":               {},
+	"backup-encryption-passphrase":        {},
+	"backup-encryption-keyring":           {},
 	"backup-myloader-options":             {},
 	"backup-mysqlclient-options":          {},
 	"backup-mysqldump-options":            {},
@@ -3006,7 +3016,7 @@ var base64LogValueSettings = map[string]struct{}{
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
-	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
+	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "backup-encryption-passphrase", "backup-encryption-keyring", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
 		logValue := value
@@ -3176,6 +3186,46 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.CompressBackupsDecompressBufferSize = val
 	case "backup-reseed-remote-decompress":
 		mycluster.Conf.BackupReseedRemoteDecompress = applyIsActive(mycluster.Conf.BackupReseedRemoteDecompress, isactive)
+	case "backup-encryption-enabled":
+		mycluster.Conf.BackupEncryptionEnabled = applyIsActive(mycluster.Conf.BackupEncryptionEnabled, isactive)
+	case "backup-encryption-keep-plain-dir":
+		mycluster.Conf.BackupEncryptionKeepPlainDir = applyIsActive(mycluster.Conf.BackupEncryptionKeepPlainDir, isactive)
+	case "backup-encryption-unsafe-per-file-restore":
+		mycluster.Conf.BackupEncryptionUnsafePerFileRestore = applyIsActive(mycluster.Conf.BackupEncryptionUnsafePerFileRestore, isactive)
+	case "backup-encryption-require-explicit-passphrase":
+		mycluster.Conf.BackupEncryptionRequireExplicitPassphrase = applyIsActive(mycluster.Conf.BackupEncryptionRequireExplicitPassphrase, isactive)
+	case "backup-encryption-directory-format":
+		format := strings.ToLower(strings.TrimSpace(value))
+		switch format {
+		case "", "tar.gz":
+			mycluster.Conf.BackupEncryptionDirectoryFormat = "tar.gz"
+		case "tar":
+			mycluster.Conf.BackupEncryptionDirectoryFormat = "tar"
+		default:
+			return fmt.Errorf("invalid value for backup-encryption-directory-format: %q (allowed: tar.gz|tar)", value)
+		}
+	case "backup-encryption-directory-mode":
+		mode := strings.ToLower(strings.TrimSpace(value))
+		switch mode {
+		case "", "archive":
+			mycluster.Conf.BackupEncryptionDirectoryMode = "archive"
+		case "per-file":
+			mycluster.Conf.BackupEncryptionDirectoryMode = "per-file"
+		default:
+			return fmt.Errorf("invalid value for backup-encryption-directory-mode: %q (allowed: archive|per-file)", value)
+		}
+	case "backup-encryption-passphrase":
+		mycluster.Conf.BackupEncryptionPassphrase = strings.TrimSpace(value)
+		var newSecret config.Secret
+		newSecret.Value = mycluster.Conf.BackupEncryptionPassphrase
+		newSecret.OldValue = mycluster.Conf.GetDecryptedValue("backup-encryption-passphrase")
+		mycluster.Conf.Secrets["backup-encryption-passphrase"] = newSecret
+	case "backup-encryption-keyring":
+		mycluster.Conf.BackupEncryptionKeyring = strings.TrimSpace(value)
+		var newSecret config.Secret
+		newSecret.Value = mycluster.Conf.BackupEncryptionKeyring
+		newSecret.OldValue = mycluster.Conf.GetDecryptedValue("backup-encryption-keyring")
+		mycluster.Conf.Secrets["backup-encryption-keyring"] = newSecret
 	case "compress-backups-logical":
 		normalized, err := normalizeCompressionOverride(value)
 		if err != nil {

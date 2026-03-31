@@ -45,6 +45,10 @@ type BackupMetadata struct {
 	Compressed        bool           `json:"compressed"`
 	Encrypted         bool           `json:"encrypted"`
 	EncryptionAlgo    string         `json:"encryptionAlgo"`
+	EncryptionTool    string         `json:"encryptionTool"`
+	EncryptionMode    string         `json:"encryptionMode"`
+	EncryptionVersion int            `json:"encryptionVersion,omitempty"`
+	EncryptionKeyID   string         `json:"encryptionKeyId,omitempty"`
 	EncryptionKey     string         `json:"encryptionKey"`
 	Checksum          string         `json:"checksum"`
 	RetentionDays     int            `json:"retentionDays"`
