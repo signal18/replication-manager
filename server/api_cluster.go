@@ -33,6 +33,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dockerhelper"
@@ -92,6 +93,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/settings", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSettings)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/plugins", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterPlugins)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/tags", negroni.New(
@@ -2695,6 +2701,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchAnalyzeUsePersistent()
 	case "backup-restic-repo-append-cluster":
 		mycluster.Conf.BackupResticRepoAppendCluster = !mycluster.Conf.BackupResticRepoAppendCluster
+	case "log-plugin":
+		mycluster.Conf.LogPlugin = !mycluster.Conf.LogPlugin
 	default:
 		return errors.New("setting not found")
 	}
@@ -4428,7 +4436,32 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.TopologyStaging = applyIsActive(mycluster.Conf.TopologyStaging, isactive)
 	case "analyze-use-persistent":
 		mycluster.Conf.AnalyzeUsePersistent = applyIsActive(mycluster.Conf.AnalyzeUsePersistent, isactive)
+	case "log-plugin":
+		mycluster.Conf.LogPlugin = applyIsActive(mycluster.Conf.LogPlugin, isactive)
+	case "log-level-plugin":
+		v, _ := strconv.Atoi(value)
+		mycluster.Conf.LogPluginLevel = v
 	default:
+		// Check if this is a plugin-config key: "plugin-config-<pluginname>-<key>"
+		// e.g. "plugin-config-errorlog-timeframe-hours" → PluginConfig["errorlog"]["timeframe-hours"]
+		if strings.HasPrefix(name, "plugin-config-") {
+			rest := strings.TrimPrefix(name, "plugin-config-")
+			// First segment is the plugin name, remainder is the config key
+			parts := strings.SplitN(rest, "-", 2)
+			if len(parts) == 2 {
+				pluginName := parts[0]
+				configKey := parts[1]
+				if mycluster.Conf.PluginConfig == nil {
+					mycluster.Conf.PluginConfig = make(map[string]map[string]string)
+				}
+				if mycluster.Conf.PluginConfig[pluginName] == nil {
+					mycluster.Conf.PluginConfig[pluginName] = make(map[string]string)
+				}
+				mycluster.Conf.PluginConfig[pluginName][configKey] = value
+				mycluster.ConfigManager.SaveConfig(mycluster, false)
+				return nil
+			}
+		}
 		return errors.New("setting not found")
 	}
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
@@ -5833,6 +5866,59 @@ func (repman *ReplicationManager) handlerMuxClusterSettings(w http.ResponseWrite
 		return
 	}
 
+}
+
+// handlerMuxClusterPlugins returns the list of active log-tailer plugins for
+// the cluster together with their current resolved config and enabled state.
+//
+// @Summary  List active log-tailer plugins for a cluster
+// @Tags     ClusterSettings
+// @Produce  json
+// @Param    clusterName path string true "Cluster Name"
+// @Success  200 {array}  object
+// @Router   /api/clusters/{clusterName}/plugins [get]
+func (repman *ReplicationManager) handlerMuxClusterPlugins(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	type PluginInfo struct {
+		Name    string            `json:"name"`
+		Enabled bool              `json:"enabled"`
+		Config  map[string]string `json:"config"`
+	}
+
+	plugins := logplugin.GlobalRegistry.All()
+	result := make([]PluginInfo, 0, len(plugins))
+	for _, p := range plugins {
+		var cfg map[string]string
+		if mycluster.Conf.PluginConfig != nil {
+			cfg = mycluster.Conf.PluginConfig[p.Name()]
+		}
+		if cfg == nil {
+			cfg = map[string]string{}
+		}
+		result = append(result, PluginInfo{
+			Name:    p.Name(),
+			Enabled: mycluster.Conf.LogPlugin,
+			Config:  cfg,
+		})
+	}
+
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	if err := e.Encode(result); err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+	}
 }
 
 // handlerMuxClusterSendVaultToken sends the Vault token to the specified cluster via email.

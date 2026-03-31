@@ -20,13 +20,13 @@ WITH_REACT = ON
 
 all: cli bin tar arb
 
-bin: osc tst pro osc-cgo emb
+bin: osc tst pro osc-cgo emb plugins
 
-non-cgo: cli osc tst pro arb emb
+non-cgo: cli osc tst pro arb emb plugins
 
 tar: osc-basedir tst-basedir pro-basedir osc-cgo-basedir
 
-pro osc emb pro-basedir : react
+pro osc emb pro-basedir : react plugins
 
 react:
 	$(Building react frontend $(REACT))
@@ -71,10 +71,32 @@ arb:
 emb:
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server" --ldflags "-w -s $(EMBED) -X 'github.com/signal18/replication-manager/server.Version=$(VERSION)' -X 'github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION)' -X 'github.com/signal18/replication-manager/server.Build=$(BUILD)' -X github.com/signal18/replication-manager/server.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN)
 
-got:
+# ---- External log-tailer plugins --------------------------------------------
+# Each subdirectory under cluster/logplugin/plugins/ that contains a main.go
+# is built as a standalone plugin binary under build/plugins/.
+# Subscription plugins delivered via GitLab follow the same pattern.
+#
+# Usage:  make plugins
+#         make plugins GOOS=linux GOARCH=amd64
+#
+# Find only dirs that contain a main.go (i.e. actual plugin binaries, not library packages)
+PLUGIN_SRC_DIRS := $(shell find cluster/logplugin/plugins -mindepth 2 -maxdepth 2 -name "main.go" -exec dirname {} \; 2>/dev/null)
+PLUGIN_NAMES    := $(notdir $(PLUGIN_SRC_DIRS))
+PLUGIN_BINDIR   := build/plugins
 
-package: all
-	nobuild=0 ./package_$(OS).sh
+plugins: $(PLUGIN_NAMES:%=$(PLUGIN_BINDIR)/%)
+
+$(PLUGIN_BINDIR)/%:
+	@mkdir -p $(PLUGIN_BINDIR)
+	@echo "Building plugin: $*"
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
+	  go build -v \
+	    --ldflags "-extldflags '-static' -w -s" \
+	    -o $(PLUGIN_BINDIR)/$* \
+	    ./cluster/logplugin/plugins/$*/...
+
+plugins-clean:
+	rm -rf $(PLUGIN_BINDIR)
 
 clean:
 	find $(BINDIR) -type f | xargs rm

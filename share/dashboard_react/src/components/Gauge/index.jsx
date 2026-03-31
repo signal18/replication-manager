@@ -44,9 +44,7 @@ function Gauge({
   }, [width, height, isGaugeSizeCustomized])
 
   useEffect(() => {
-    if (value >= 0) {
-      updateGaugePosition()
-    }
+    updateGaugePosition()
   }, [value, updateGaugePosition])
 
   useEffect(() => {
@@ -83,8 +81,7 @@ function Gauge({
   return (
     <Flex direction='column' justify='center' position='relative'>
       <Box width={width} height={height} className={`${styles.container} ${className}`} ref={svgRef}>
-        {value >= minValue && value <= maxValue && (
-          <GaugeComponent
+        <GaugeComponent
             minValue={minValue}
             maxValue={maxValue}
             className={styles.guage}
@@ -96,7 +93,7 @@ function Gauge({
               ]
             }}
             style={isGaugeSizeCustomized ? {} : { width: `${width}px`, height: `${height}px` }}
-            value={value}
+            value={!isFinite(value) || value < minValue ? minValue : value > maxValue ? maxValue : value}
             labels={{
               valueLabel: {
                 formatTextValue: () => '',
@@ -105,7 +102,6 @@ function Gauge({
               tickLabels: { hideMinMax: hideMinMax, type: 'inner' }
             }}
           />
-        )}
         <Box className={`${styles.textOverlay} ${textOverlayClassName}`}>
           <Text className={styles.valueText}>{`${formatValue(value)} ${appendTextToValue}`}</Text>
           <Text className={styles.labelText}>{text}</Text>
