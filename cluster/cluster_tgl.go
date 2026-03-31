@@ -363,6 +363,14 @@ func (cluster *Cluster) SwitchMonitorPFSInstruments() {
 	cluster.Conf.MonitorPFSInstruments = !cluster.Conf.MonitorPFSInstruments
 }
 
+func (cluster *Cluster) SwitchMonitorPFSQueries() {
+	cluster.Conf.MonitorPFSQueries = !cluster.Conf.MonitorPFSQueries
+}
+
+func (cluster *Cluster) SwitchMonitorPFSQueriesExplain() {
+	cluster.Conf.MonitorPFSQueriesExplain = !cluster.Conf.MonitorPFSQueriesExplain
+}
+
 func (cluster *Cluster) SwitchFailoverLowerRelease() {
 	cluster.Conf.SwitchLowerRelease = !cluster.Conf.SwitchLowerRelease
 }
