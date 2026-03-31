@@ -343,10 +343,10 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
-      key: 'PFS Query Capture',
+      key: 'Monitoring Performance Schema Queries',
       value: [
         {
-          key: 'PFS Query Capture',
+          key: 'Monitoring Performance Schema Queries',
           value: (
             <Flex className={styles.valueWithInfo}>
               <Text className={styles.info}>
@@ -365,7 +365,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'PFS Query Capture Period (hours)',
+          key: 'Monitoring Performance Schema Queries Period (hours)',
           value: (
             <Flex className={styles.valueWithInfo}>
               <Text className={styles.info}>
@@ -392,7 +392,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'PFS Query Explain Cache',
+          key: 'Monitoring Performance Schema Queries Explain',
           value: (
             <Flex className={styles.valueWithInfo}>
               <Text className={styles.info}>
@@ -411,7 +411,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'PFS Explain Inter-Query Delay (ms)',
+          key: 'Monitoring Performance Schema Queries Explain Delay (ms)',
           value: (
             <Flex className={styles.valueWithInfo}>
               <Text className={styles.info}>
@@ -440,7 +440,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'PFS Explain Cache Purge Period (days)',
+          key: 'Monitoring Performance Schema Queries Explain Purge Period (days)',
           value: (
             <Flex className={styles.valueWithInfo}>
               <Text className={styles.info}>

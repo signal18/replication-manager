@@ -105,18 +105,18 @@
     </tr>
 
     <tr>
-      <th>PFS Query Capture</th>
+      <th>Monitoring Performance Schema Queries</th>
     </tr>
     <tr>
       <td>
         Periodic snapshot of <code>events_statements_summary_by_digest</code>: flushes the digest table at each period and writes a timestamped <code>log_pfs_queries_&lt;date&gt;.jsonl</code> file with one templated query per line.
-        <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.monitoringPerformanceSchemaQueries" ng-click="switchsettings('monitoring-performance-schema-queries')" aria-label="PFS query capture">
+        <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.monitoringPerformanceSchemaQueries" ng-click="switchsettings('monitoring-performance-schema-queries')" aria-label="Monitoring performance schema queries">
           <span ng-if="selectedCluster.config.monitoringPerformanceSchemaQueries" class="label label-primary">On</span><span ng-if="!selectedCluster.config.monitoringPerformanceSchemaQueries" class="label label-warning">Off</span>
         </md-switch>
       </td>
     </tr>
     <tr>
-      <th>PFS Query Capture Period (hours)</th>
+      <th>Monitoring Performance Schema Queries Period (hours)</th>
     </tr>
     <tr>
       <td>
@@ -128,18 +128,18 @@
       </td>
     </tr>
     <tr>
-      <th>PFS Query Explain Cache</th>
+      <th>Monitoring Performance Schema Queries Explain</th>
     </tr>
     <tr>
       <td>
         Run <code>EXPLAIN</code> for each new query template at snapshot time and persist the plan to <code>pfs_explain_cache.jsonl</code>. New templates are prioritised; existing plans are refreshed oldest-first.
-        <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.monitoringPerformanceSchemaQueriesExplain" ng-click="switchsettings('monitoring-performance-schema-queries-explain')" aria-label="PFS explain cache">
+        <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.monitoringPerformanceSchemaQueriesExplain" ng-click="switchsettings('monitoring-performance-schema-queries-explain')" aria-label="Monitoring performance schema queries explain">
           <span ng-if="selectedCluster.config.monitoringPerformanceSchemaQueriesExplain" class="label label-primary">On</span><span ng-if="!selectedCluster.config.monitoringPerformanceSchemaQueriesExplain" class="label label-warning">Off</span>
         </md-switch>
       </td>
     </tr>
     <tr>
-      <th>PFS Explain Inter-Query Delay (ms)</th>
+      <th>Monitoring Performance Schema Queries Explain Delay (ms)</th>
     </tr>
     <tr>
       <td>
@@ -151,7 +151,7 @@
       </td>
     </tr>
     <tr>
-      <th>PFS Explain Cache Purge Period (days)</th>
+      <th>Monitoring Performance Schema Queries Explain Purge Period (days)</th>
     </tr>
     <tr>
       <td>
