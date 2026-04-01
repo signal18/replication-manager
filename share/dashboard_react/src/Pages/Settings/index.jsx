@@ -10,17 +10,23 @@ import RejoinSettings from './RejoinSettings'
 import ProxySettings from './ProxySettings'
 import GraphSettings from './GraphSettings'
 import CloudSettings from './CloudSettings'
-import GlobalSettings from './StagingSettings'
 import RepFailOverSettings from './RepFailOverSettings'
 import RepConfigSettings from './RepConfigSettings'
 import AlertSettings from './AlertSettings'
-import StagingSettings from './StagingSettings'
+import BackupSettings from './BackupSettings'
+import SchedulerSettings from './SchedulerSettings'
 
 function Settings({ selectedCluster, user, onTabChange, monitor }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [confirmTitle, setConfirmTitle] = useState('')
 
+  const { isOpen: isBackupOpen, onToggle: onBackupToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isBackupOpen')) || false
+  })
+  const { isOpen: isSchedulerOpen, onToggle: onSchedulerToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isSchedulerOpen')) || false
+  })
   const { isOpen: isGeneralOpen, onToggle: onGeneralToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isGeneralOpen')) === false ? false : true
   })
@@ -51,10 +57,13 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   const { isOpen: isCloud18Open, onToggle: onCloud18Toggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isCloud18Open')) || false
   })
-  const { isOpen: isStagingOpen, onToggle: onStagingToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isStagingOpen')) || false
-  })
 
+  useEffect(() => {
+    localStorage.setItem('isBackupOpen', JSON.stringify(isBackupOpen))
+  }, [isBackupOpen])
+  useEffect(() => {
+    localStorage.setItem('isSchedulerOpen', JSON.stringify(isSchedulerOpen))
+  }, [isSchedulerOpen])
   useEffect(() => {
     localStorage.setItem('isGeneralOpen', JSON.stringify(isGeneralOpen))
   }, [isGeneralOpen])
@@ -89,9 +98,6 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
     localStorage.setItem('isCloud18Open', JSON.stringify(isCloud18Open))
   }, [isCloud18Open])
 
-  useEffect(() => {
-    localStorage.setItem('isStagingOpen', JSON.stringify(isStagingOpen))
-  }, [isStagingOpen])
 
   const openConfirmModal = (title, handler) => {
     setIsConfirmModalOpen(true)
@@ -111,7 +117,7 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
         isOpen={isGeneralOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
-        body={<GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} onTabChange={onTabChange} />}
+        body={<GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} onTabChange={onTabChange} monitor={monitor} />}
       />
       <AccordionComponent
         heading={'Failover'}
@@ -186,12 +192,20 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
         body={<CloudSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
-        heading={'Staging'}
-        onToggle={onStagingToggle}
-        isOpen={isStagingOpen}
+        heading={'Scheduler'}
+        onToggle={onSchedulerToggle}
+        isOpen={isSchedulerOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
-        body={<StagingSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} monitor={monitor} />}
+        body={<SchedulerSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+      />
+      <AccordionComponent
+        heading={'Backup'}
+        onToggle={onBackupToggle}
+        isOpen={isBackupOpen}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        body={<BackupSettings selectedCluster={selectedCluster} user={user} />}
       />
 
       {isConfirmModalOpen && (
