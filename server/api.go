@@ -1796,6 +1796,7 @@ func logResponse(resp *http.Response) {
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string false "Cluster Name"
 // @Param serverName path string false "Server Name"
+// @Param rid query string false "OpenSVC server bash terminal container RID (allowed: container#db, container#jobs)"
 // @Success 200 {string} string "Connected successfully"
 // @Failure 400 {string} string "No user provided"
 // @Failure 500 {string} string "No valid node" or "No valid cluster"
@@ -1960,6 +1961,16 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error setting session values from node: %v", err)
 			session.SafeWriteMessage(websocket.TextMessage, []byte("Failed to set session values from node\n"))
 			return
+		}
+
+		selectedRID, shouldSetRID, err := resolveTerminalContainerRIDForSession(node != nil, session.CmdType, session.Orchestrator, r.URL.Query().Get("rid"))
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Terminal session rid validation failed: %v", err)
+			session.SafeWriteMessage(websocket.TextMessage, []byte("Invalid rid parameter: "+err.Error()+"\n"))
+			return
+		}
+		if shouldSetRID {
+			session.ServiceContainerName = selectedRID
 		}
 
 		if session.CmdType == tty.TerminalBash {
