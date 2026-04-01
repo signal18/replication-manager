@@ -19,13 +19,9 @@ const (
 // resolveOpenSVCTerminalContainerRID validates and resolves the target OpenSVC
 // container resource for a terminal session.
 //
-// Existing server-terminal behavior is preserved by defaulting to
-// container#db when rid is empty.
+// Caller contract: rid must be non-empty. Empty/default behavior is handled by
+// resolveTerminalContainerRIDForSession.
 func resolveOpenSVCTerminalContainerRID(rid string) (string, error) {
-	if rid == "" {
-		return defaultServerServiceContainer, nil
-	}
-
 	switch rid {
 	case defaultServerServiceContainer, cluster.RestartRidJobsContainer:
 		return rid, nil

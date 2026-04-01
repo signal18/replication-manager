@@ -174,6 +174,8 @@ const TerminalComponent = () => {
 
   const handleDisconnect = () => {
     if (socketRef.current) {
+      // Intentionally defer status update to socket.onclose so UI reflects the
+      // actual websocket lifecycle (including any brief close handshake).
       socketRef.current.close();
       return;
     }

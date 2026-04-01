@@ -16,10 +16,10 @@ func TestResolveOpenSVCTerminalContainerRID(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "empty rid defaults to db container",
+			name:    "empty rid rejected by value validator",
 			rid:     "",
-			want:    defaultServerServiceContainer,
-			wantErr: false,
+			want:    "",
+			wantErr: true,
 		},
 		{
 			name:    "explicit db container accepted",
