@@ -106,7 +106,7 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   return (
     <Flex className={styles.settingsContainer}>
       <AccordionComponent
-        heading={'General'}
+        heading={'Topology'}
         onToggle={onGeneralToggle}
         isOpen={isGeneralOpen}
         headerClassName={styles.accordionHeader}
@@ -114,7 +114,7 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
         body={<GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} onTabChange={onTabChange} />}
       />
       <AccordionComponent
-        heading={'Replication Failover Constraints'}
+        heading={'Failover'}
         onToggle={onRepFailOverToggle}
         isOpen={isRepFailOverOpen}
         headerClassName={styles.accordionHeader}
@@ -122,7 +122,7 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
         body={<RepFailOverSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
-        heading={'Replication Configuration'}
+        heading={'Replication'}
         onToggle={onRepConfigToggle}
         isOpen={isRepConfigOpen}
         headerClassName={styles.accordionHeader}
