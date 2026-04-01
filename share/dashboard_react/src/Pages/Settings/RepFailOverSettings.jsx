@@ -1,7 +1,7 @@
 import { Box, Flex } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import styles from './styles.module.scss'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import RMSwitch from '../../components/RMSwitch'
@@ -15,6 +15,7 @@ import RMIconButton from '../../components/RMIconButton'
 
 function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeConfirmModal }) {
   const dispatch = useDispatch()
+  const { settings: { failoverLoading } } = useSelector((state) => state)
   const [action, setAction] = useState({ title: '', body: <></> })
   const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
 
@@ -26,6 +27,8 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
   const h = (content, title) => <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} iconFontsize='1rem' variant='ghost' style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }} />
   const sw = (setting, configKey) => <RMSwitch confirmTitle={`Confirm switch settings for ${setting}?`} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.[configKey]} />
   const sl = (setting, configKey, min, max, interval, title) => <RMSlider value={selectedCluster?.config?.[configKey]} min={min} max={max} showMarkAtInterval={interval} confirmTitle={`Confirm change '${setting}' to: `} onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting, value: val }))} />
+
+  const hFailoverMode = `**Failover Mode**\n\nControls whether failover is triggered automatically or requires manual intervention.\n\n- **On-call (manual)** — replication-manager detects the failure and alerts, but waits for an operator to confirm before promoting a replica.\n- **On-leave (auto)** — promotes the best replica automatically when failover conditions are met.\n\nConfig: \`failover-mode\``
 
   const hLimit = `**Failover Limit**\n\nMaximum number of automatic failovers allowed before replication-manager stops.\nSet to 0 for unlimited. Manual intervention required after the limit is reached.\n\nConfig: \`failover-limit\``
   const hCheck = `**Checks Failover & Switchover Constraints**\n\nVerifies all safety constraints before executing: lag threshold, semi-sync state, and absence of long-running writes.\nDisabling forces failover even when constraints are not met.\n\nConfig: \`check-replication-state\``
@@ -47,6 +50,7 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
   const hMinorRelease = `**Switchover Allow on Minor Release**\n\nAllows switchover when the candidate replica runs a different minor version than the master.\nEnable during rolling upgrades.\n\nConfig: \`switchover-lower-release\``
 
   const dataObject = [
+    { key: 'Failover Mode (interactive)', help: h(hFailoverMode, 'Failover Mode'), value: (<RMSwitch onText='On-call (manual)' offText='On-leave (auto)' confirmTitle={'Confirm switch settings for failover-mode?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'failover-mode' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.interactive} loading={failoverLoading} />)},
     { key: 'Failover Limit', help: h(hLimit, 'Failover Limit'), value: (<RMSlider value={selectedCluster?.config?.failoverLimit} confirmTitle={`Confirm change 'failover-limit' to: `} onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'failover-limit', value: val }))} />) },
     { key: 'Checks Failover & Switchover Constraints', help: h(hCheck, 'Checks Failover & Switchover Constraints'), value: sw('check-replication-state', 'checkReplicationState') },
     { key: 'Failover Only on Semi-Sync State Sync', help: h(hAtSync, 'Failover Only on Semi-Sync State Sync'), value: sw('failover-at-sync', 'failoverAtSync') },

@@ -7,8 +7,6 @@ import styles from './styles.module.scss'
 import { Box, HStack, Progress, useDisclosure, VStack } from '@chakra-ui/react'
 import TableType3 from '../../components/TableType3'
 import { useDispatch, useSelector } from 'react-redux'
-import BackupSettings from '../Settings/BackupSettings'
-import SchedulerSettings from '../Settings/SchedulerSettings'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
 import { deleteBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
@@ -135,12 +133,6 @@ function Maintenance({ selectedCluster, user }) {
 
   const dispatch = useDispatch()
   const columnHelper = createColumnHelper()
-  const { isOpen: isBackupSettingsOpen, onToggle: onBackupSettingsToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isBackupSettingsOpen')) || false
-  })
-  const { isOpen: isSchedulerOpen, onToggle: onSchedulerToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isSchedulerOpen')) || false
-  })
   const { isOpen: isBackupsOpen, onToggle: onBackupsToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isBackupsOpen')) === false ? false : true
   })
@@ -215,12 +207,6 @@ function Maintenance({ selectedCluster, user }) {
     }))
   }
 
-  useEffect(() => {
-    localStorage.setItem('isBackupSettingsOpen', JSON.stringify(isBackupSettingsOpen))
-  }, [isBackupSettingsOpen])
-  useEffect(() => {
-    localStorage.setItem('isSchedulerOpen', JSON.stringify(isSchedulerOpen))
-  }, [isSchedulerOpen])
   useEffect(() => {
     localStorage.setItem('isBackupSnapshotOpen', JSON.stringify(isBackupSnapshotOpen))
   }, [isBackupSnapshotOpen])
@@ -569,25 +555,7 @@ function Maintenance({ selectedCluster, user }) {
 
   return (
     <VStack className={styles.backupContainer}>
-      <AccordionComponent
-        heading={'Scheduler Settings'}
-        isOpen={isSchedulerOpen}
-        onToggle={onSchedulerToggle}
-        className={styles.accordion}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<SchedulerSettings selectedCluster={selectedCluster} user={user} />}
-      />
-      <AccordionComponent
-        heading={'Backups Settings'}
-        isOpen={isBackupSettingsOpen}
-        onToggle={onBackupSettingsToggle}
-        className={styles.accordion}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<BackupSettings selectedCluster={selectedCluster} user={user} />}
-      />
-      <AccordionComponent
+<AccordionComponent
         heading={'Current Backups'}
         isOpen={isBackupsOpen}
         onToggle={onBackupsToggle}
