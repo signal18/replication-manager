@@ -30,7 +30,7 @@ const TerminalComponent = () => {
   const { clusterName, serverName, proxyName, commandType } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [serviceContainer, setServiceContainer] = useState('container#db');
+  const [serviceContainer, setServiceContainer] = useState(OpenSVCTerminalRID.Default);
 
   const {
     cluster: { clusterData },
@@ -38,26 +38,39 @@ const TerminalComponent = () => {
   } = useSelector((state) => state);
   const dispatch = useDispatch();
   const normalizedCommandType = (commandType || 'bash').toLowerCase();
-  const isOpenSVCServerShellTerminal = Boolean(clusterName && serverName) &&
-    normalizedCommandType === 'bash' &&
+  const isServerTerminal = Boolean(clusterName && serverName);
+  const isShellTerminal = normalizedCommandType === 'bash';
+  const requiresClusterContext = isServerTerminal && isShellTerminal;
+  const isTerminalContextKnown = !requiresClusterContext || clusterData?.name === clusterName;
+  const isOpenSVCServerShellTerminal = isTerminalContextKnown &&
+    isServerTerminal &&
+    isShellTerminal &&
     clusterData?.config?.provOrchestrator === 'opensvc';
   const ridParam = searchParams.get('rid');
 
   useEffect(() => {
+    if (!isTerminalContextKnown) {
+      return;
+    }
+
     if (!isOpenSVCServerShellTerminal) {
       setServiceContainer(OpenSVCTerminalRID.Default);
       return;
     }
 
     setServiceContainer(resolveServiceContainerFromRID(ridParam));
-  }, [isOpenSVCServerShellTerminal, ridParam]);
+  }, [isOpenSVCServerShellTerminal, isTerminalContextKnown, ridParam]);
 
   useEffect(() => {
+    if (!isTerminalContextKnown) {
+      return;
+    }
+
     const { params, changed } = normalizeRIDSearchParams(searchParams, isOpenSVCServerShellTerminal);
     if (changed) {
       setSearchParams(params, { replace: true });
     }
-  }, [isOpenSVCServerShellTerminal, ridParam, searchParams, setSearchParams]);
+  }, [isOpenSVCServerShellTerminal, isTerminalContextKnown, ridParam, searchParams, setSearchParams]);
 
   const handleServiceContainerChange = (event) => {
     const nextContainer = event.target.value;
