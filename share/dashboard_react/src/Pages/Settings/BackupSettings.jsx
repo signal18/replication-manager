@@ -70,6 +70,20 @@ function BackupSettings({ selectedCluster, user }) {
     openCommonModal()
   }
 
+
+  const splitdumpSizeOptions = [
+    { name: '16 MiB', value: '16MiB' },
+    { name: '32 MiB', value: '32MiB' },
+    { name: '64 MiB', value: '64MiB' },
+    { name: '128 MiB', value: '128MiB' },
+    { name: '256 MiB', value: '256MiB' },
+    { name: '512 MiB', value: '512MiB' },
+    { name: '1 G', value: '1G' },
+    { name: '2 G', value: '2G' },
+    { name: '4 G', value: '4G' },
+    { name: 'No sharding', value: '0' }
+  ]
+
   // Consistent help icon style matching other settings tabs
   const h = (content, title) => (
     <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)}
