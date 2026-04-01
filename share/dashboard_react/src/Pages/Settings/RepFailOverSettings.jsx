@@ -65,7 +65,7 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
   return (
     <>
       <Flex justify='space-between' gap='0'>
-        <TableType2 dataArray={dataObject} className={styles.table} helpColumn={true} />
+        <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
       </Flex>
       <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
     </>

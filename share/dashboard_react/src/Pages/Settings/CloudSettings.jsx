@@ -204,7 +204,7 @@ function CloudSettings({ selectedCluster, user }) {
   return (
     <>
       <Flex justify='space-between' gap='0'>
-        <TableType2 dataArray={dataObject} className={styles.table} helpColumn={true} />
+        <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
       </Flex>
       <CommonModal isOpen={isHelpModalOpen} closeModal={() => setIsHelpModalOpen(false)} title={helpAction.title} body={helpAction.body} size='xl' />
       {isCredentialModalOpen && (<SetCredentialsModal clusterName={selectedCluster?.name} isOpen={isCredentialModalOpen} type={credentialType} closeModal={() => { setIsCredentialModalOpen(false); setCredentialType('') }} />)}

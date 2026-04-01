@@ -98,6 +98,17 @@ div.settingsContainer {
     grid-template-columns: 380px auto !important;
   }
 
+.tableWithHelp {
+  align-items: center;
+  overflow: hidden;
+  grid-template-columns: auto !important;
+  @include breakpoint('md', 'lg') {
+    grid-template-columns: 320px 32px auto !important;
+  }
+  @include breakpoint('lg') {
+    grid-template-columns: 380px 32px auto !important;
+  }
+
   .dropdownContainer {
     margin: rem(8) 0;
     align-items: center;
