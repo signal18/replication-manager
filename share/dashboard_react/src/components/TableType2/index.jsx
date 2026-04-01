@@ -9,18 +9,28 @@ function TableType2({
   valueClassName,
   templateColumns = '150px auto',
   rowDivider = true,
-  rowClassName
+  rowClassName,
+  helpColumn = false
 }) {
-  // const {
-  //   common: { isDesktop }
-  // } = useSelector((state) => state)
+  const cols = helpColumn
+    ? templateColumns.replace(/^(\S+)\s+(.+)$/, '$1 32px $2')
+    : templateColumns
+  const span = helpColumn ? 3 : 2
+
+  const renderHelpCell = (help) => helpColumn ? (
+    <GridItem className={`${styles.row} ${rowClassName}`}>
+      <Box className={styles.helpCell}>{help || null}</Box>
+    </GridItem>
+  ) : null
+
   return (
-    <Grid templateColumns={templateColumns} className={`${styles.container} ${className}`}>
+    <Grid templateColumns={cols} className={`${styles.container} ${className}`}>
       {dataArray.map((item, index) => (
         <React.Fragment key={index}>
           <GridItem className={`${styles.row} ${rowClassName}`}>
             <Box className={`${styles.label} ${labelClassName}`}>{item.key}</Box>
           </GridItem>
+          {renderHelpCell(item.help)}
           {Array.isArray(item.value) ? (
             <GridItem className={`${styles.row} ${rowClassName}`}>
               <Box className={`${styles.label} ${labelClassName}`}></Box>
@@ -33,19 +43,18 @@ function TableType2({
           {Array.isArray(item.value) &&
             item.value.map((subItem, subIndex) => {
               const isFullWidth = subItem.fullWidth
-
               return (
                 <React.Fragment key={subIndex}>
                   {isFullWidth ? (
                     <>
                       {subItem.key && (
-                        <GridItem colSpan={2} className={`${styles.row} ${rowClassName}`}>
+                        <GridItem colSpan={span} className={`${styles.row} ${rowClassName}`}>
                           <Box className={`${styles.label} ${styles.subLabel}`} pl={3}>
                             {subItem.key}
                           </Box>
                         </GridItem>
                       )}
-                      <GridItem colSpan={2} className={`${styles.row} ${rowClassName}`}>
+                      <GridItem colSpan={span} className={`${styles.row} ${rowClassName}`}>
                         <Box className={`${styles.value} ${valueClassName}`}>{subItem.value}</Box>
                       </GridItem>
                     </>
@@ -56,22 +65,22 @@ function TableType2({
                           {subItem.key}
                         </Box>
                       </GridItem>
+                      {renderHelpCell(subItem.help)}
                       <GridItem className={`${styles.row} ${rowClassName}`}>
                         <Box className={`${styles.value} ${valueClassName}`}>{subItem.value}</Box>
                       </GridItem>
                     </>
                   )}
                   {rowDivider && subIndex < item.value.length - 1 && (
-                    <GridItem colSpan={2} className={styles.dividerRow}>
+                    <GridItem colSpan={span} className={styles.dividerRow}>
                       <Box className={styles.divider} />
                     </GridItem>
                   )}
                 </React.Fragment>
               )
             })}
-
           {rowDivider && index < dataArray.length - 1 && (
-            <GridItem colSpan={2} className={styles.dividerRow}>
+            <GridItem colSpan={span} className={styles.dividerRow}>
               <Box className={styles.divider} />
             </GridItem>
           )}
