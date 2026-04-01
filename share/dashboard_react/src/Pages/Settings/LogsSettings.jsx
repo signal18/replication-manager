@@ -1,566 +1,96 @@
-import { Flex, Text, Spinner, Badge } from '@chakra-ui/react'
-import React, { useEffect, useState } from 'react'
+import { Box, Flex } from '@chakra-ui/react'
+import React, { useState } from 'react'
 import styles from './styles.module.scss'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import LogSlider from '../../components/Sliders/LogSlider'
 import RMSwitch from '../../components/RMSwitch'
-import NumberInput from '../../components/NumberInput'
-import { clusterService } from '../../services/clusterService'
-import Dropdown from '../../components/Dropdown'
+import RMSlider from '../../components/Sliders/RMSlider'
+import CommonModal from '../../components/Modals/CommonModal'
+import modalStyles from '../../components/Modals/styles.module.scss'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { HiQuestionMarkCircle } from 'react-icons/hi'
+import RMIconButton from '../../components/RMIconButton'
 
 function LogsSettings({ selectedCluster, user, openConfirmModal }) {
   const dispatch = useDispatch()
-  const baseURL = useSelector((state) => state?.auth?.baseURL || '')
+  const [action, setAction] = useState({ title: '', body: <></> })
+  const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
 
-  const [plugins, setPlugins] = useState([])
-  const [pluginsLoading, setPluginsLoading] = useState(false)
-
-  useEffect(() => {
-    if (!selectedCluster?.name) return
-    setPluginsLoading(true)
-    clusterService
-      .getClusterPlugins(selectedCluster.name, baseURL)
-      .then(({ data }) => setPlugins(Array.isArray(data) ? data : []))
-      .catch(() => setPlugins([]))
-      .finally(() => setPluginsLoading(false))
-  }, [selectedCluster?.name, selectedCluster?.config?.logPlugin])
-
-  // Build a flat list of sub-rows for the "Log Plugins" section.
-  // TableType2 supports exactly two levels: top-level items and one level
-  // of sub-items. Every entry here must have value = ReactElement.
-  const buildPluginSubRows = () => {
-    const rows = [
-      {
-        key: 'Enable Log Plugins',
-        value: (
-          <RMSwitch
-            confirmTitle={'Confirm switch settings for log-plugin?'}
-            onChange={() =>
-              dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'log-plugin' }))
-            }
-            isDisabled={user?.grants['cluster-settings'] == false}
-            isChecked={selectedCluster?.config?.logPlugin}
-          />
-        )
-      },
-      {
-        key: 'Plugin Module Verbosity',
-        value: (
-          <LogSlider
-            value={selectedCluster?.config?.logPluginLevel}
-            confirmTitle={`Confirm change 'log-level-plugin' to: `}
-            onChange={(val) =>
-              dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-plugin', value: val }))
-            }
-          />
-        )
-      }
-    ]
-
-    if (pluginsLoading) {
-      rows.push({ key: 'Plugins', value: <Spinner size='sm' /> })
-      return rows
-    }
-
-    if (plugins.length === 0) {
-      rows.push({
-        key: 'Plugins',
-        value: <Text fontSize='sm' color='gray.400'>No plugins loaded — enable log-plugin and restart</Text>
-      })
-      return rows
-    }
-
-    // One row per plugin config key — flat, no nested arrays
-    plugins.forEach((plugin) => {
-      // Plugin name header row with enabled toggle
-      const isPluginEnabled = plugin.config?.['enabled'] !== 'false'
-      rows.push({
-        key: (
-          <Text fontWeight='semibold' fontSize='sm' color='blue.300'>
-            {plugin.name}
-          </Text>
-        ),
-        value: (
-          <RMSwitch
-            confirmTitle={`Confirm ${isPluginEnabled ? 'disable' : 'enable'} plugin '${plugin.name}'?`}
-            onChange={() =>
-              dispatch(setSetting({
-                clusterName: selectedCluster?.name,
-                setting: `plugin-config-${plugin.name}-enabled`,
-                value: isPluginEnabled ? 'false' : 'true'
-              }))
-            }
-            isDisabled={user?.grants['cluster-settings'] == false}
-            isChecked={isPluginEnabled}
-          />
-        )
-      })
-
-      // One control row per config key
-      pluginKnownKeys(plugin.name).forEach((key) => {
-        const currentRaw = plugin.config?.[key] ?? pluginKeyDefault(plugin.name, key)
-
-        let control
-        if (key === 'min-log-level') {
-          const levelOptions = [
-            { value: 'System',  label: 'System — startup/shutdown only' },
-            { value: 'Note',    label: 'Note — informational+' },
-            { value: 'Warning', label: 'Warning — warnings + errors (default)' },
-            { value: 'ERROR',   label: 'ERROR — errors only' },
-          ]
-          control = (
-            <Dropdown
-              options={levelOptions}
-              selectedValue={currentRaw}
-              isDisabled={user?.grants['cluster-settings'] == false}
-              confirmTitle={`Confirm min-log-level for '${plugin.name}': `}
-              onChange={(opt) =>
-                dispatch(setSetting({
-                  clusterName: selectedCluster?.name,
-                  setting: `plugin-config-${plugin.name}-min-log-level`,
-                  value: opt.value
-                }))
-              }
-            />
-          )
-        } else {
-          control = (
-            <NumberInput
-              min={key === 'spike-sigma' ? 0.5 : 1}
-              max={key === 'spike-sigma' ? 10 : 8760}
-              step={key === 'spike-sigma' ? 0.5 : 1}
-              value={key === 'spike-sigma' ? parseFloat(currentRaw) : parseInt(currentRaw, 10)}
-              isDisabled={user?.grants['cluster-settings'] == false}
-              showConfirmModal={true}
-              confirmTitle={`Confirm change '${key}' for '${plugin.name}' to: `}
-              onConfirm={(val) =>
-                dispatch(setSetting({
-                  clusterName: selectedCluster?.name,
-                  setting: `plugin-config-${plugin.name}-${key}`,
-                  value: String(val)
-                }))
-              }
-            />
-          )
-        }
-        rows.push({
-          key: `  ${pluginKeyLabel(plugin.name, key)}`,
-          value: control
-        })
-      })
-    })
-
-        return rows
+  const openInfoModal = (title, content) => {
+    setAction({ title, body: <Box className={modalStyles.infoTooltip}><Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown></Box> })
+    setIsCommonModalOpen(true)
   }
 
+  const h = (content, title) => (
+    <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} iconFontsize='1rem' variant='ghost' style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }} />
+  )
+
+  const sl = (setting, configKey) => <LogSlider value={selectedCluster?.config?.[configKey]} confirmTitle={`Confirm change '${setting}' to: `} onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting, value: val }))} />
+  const lh = (name, configkey) => `**${name}**\n\nLog verbosity level for this module.\n\n- **0** — disabled\n- **1** — errors only\n- **2** — errors + warnings\n- **3** — informational\n- **4** — debug\n- **5** — trace (very verbose)\n\nConfig: \`${configkey}\``
+
+  const hVerbose = `**Verbose Mode**\n\nGlobal verbose flag. When enabled all modules log at their maximum configured level.\nDisable on production to reduce log volume.\n\nConfig: \`verbose\``
+  const hSyslog = `**Log to SysLog**\n\nForwards all log output to the system syslog daemon in addition to the local log file.\n\nConfig: \`log-syslog\``
+  const hLogSql = `**Log SQL in Monitoring**\n\nControls verbosity of SQL statements executed during monitoring cycles.\nAt level 4+ every monitoring SQL statement is logged with its result.\n\nConfig: \`log-level-sql\``
+  const hLogLevel = `**Log Level**\n\nGlobal log verbosity for all modules not individually configured.\n0 = disabled, 1 = error, 2 = warning, 3 = info, 4 = debug, 5 = trace\n\nConfig: \`log-level\``
+
+  const hRepStatPrint = `**Log Replication Statistics Print**\n\nLogs current replication delay statistics to the log at each monitoring cycle.\n\nConfig: \`print-delay-stat\``
+  const hRepStatPrintHistory = `**Log Replication Statistics Print History**\n\nLogs the full delay statistic history to the log. More verbose than Print Replication Statistics.\n\nConfig: \`print-delay-stat-history\``
+  const hRepStatPrintInterval = `**Log Replication Statistics Print Interval**\n\nHow often (in seconds) the delay statistics summary is printed when enabled.\nDefault: 60 seconds.\n\nConfig: \`print-delay-stat-interval\``
+
   const dataObject = [
+    { key: 'Verbose Mode', help: h(hVerbose, 'Verbose Mode'), value: (<RMSwitch confirmTitle={'Confirm switch settings for verbose?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'verbose' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.verbose} />) },
+    { key: 'Log to SysLog', help: h(hSyslog, 'Log to SysLog'), value: (<RMSwitch confirmTitle={'Confirm switch settings for log-syslog?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'log-syslog' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.logSyslog} />) },
+    { key: 'Log SQL in Monitoring', help: h(hLogSql, 'Log SQL in Monitoring'), value: sl('log-level-sql', 'logSqlLevel') },
+    { key: 'Log Level', help: h(hLogLevel, 'Log Level'), value: sl('log-level', 'logLevel') },
     {
-      key: 'Verbose Mode',
-      value: (
-        <RMSwitch
-          confirmTitle={'Confirm switch settings for verbose?'}
-          onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'verbose' }))}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          isChecked={selectedCluster?.config?.verbose}
-        />
-      )
-    },
-    {
-      key: 'Log to SysLog',
-      value: (
-        <RMSwitch
-          confirmTitle={'Confirm switch settings for log-syslog?'}
-          onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'log-syslog' }))}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          isChecked={selectedCluster?.config?.logSyslog}
-        />
-      )
-    },
-    {
-      key: 'Log SQL in Monitoring',
-      value: (
-        <LogSlider
-          value={selectedCluster?.config?.logSqlLevel}
-          confirmTitle={`Confirm change 'log-level-sql' to: `}
-          onChange={(val) =>
-            dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-sql', value: val }))
-          }
-        />
-      )
-    },
-    {
-      key: 'Log Level',
-      value: (
-        <LogSlider
-          value={selectedCluster?.config?.logLevel}
-          confirmTitle={`Confirm change 'log-level' to: `}
-          onChange={(val) =>
-            dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level', value: val }))
-          }
-        />
-      )
-    },
-    // Log Plugins section — flat sub-rows, all values are React elements
-    {
-      key: 'Log Plugins',
-      value: buildPluginSubRows()
-    },
-    {
-      key: 'Toggle Log Level Per Module',
-      value: [
-        {
-          key: 'Log DB Jobs',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logTaskLevel}
-              confirmTitle={`Confirm change 'log-level-task' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-task', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Writer Election',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logWriterElectionLevel}
-              confirmTitle={`Confirm change 'log-level-writer-election' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-writer-election', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log SST',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logSstLevel}
-              confirmTitle={`Confirm change 'log-level-sst' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-sst', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log HeartBeat',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logHeartbeatLevel}
-              confirmTitle={`Confirm change 'log-level-heartbeat' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-heartbeat', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Config Load',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logConfigLoadLevel}
-              confirmTitle={`Confirm change 'log-level-config-load' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-config-load', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Backup Stream',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logBackupStreamLevel}
-              confirmTitle={`Confirm change 'log-level-backup-stream' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-backup-stream', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Orchestrator',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logOrchestratorLevel}
-              confirmTitle={`Confirm change 'log-level-orchestrator' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-orchestrator', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Vault',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logVaultLevel}
-              confirmTitle={`Confirm change 'log-level-vault' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-vault', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Topology Detection',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logTopologyLevel}
-              confirmTitle={`Confirm change 'log-level-topology' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-topology', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Graphite',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logGraphiteLevel}
-              confirmTitle={`Confirm change 'log-level-graphite' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-graphite', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Binlog Purge',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logBinlogPurgeLevel}
-              confirmTitle={`Confirm change 'log-level-binlog-purge' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-binlog-purge', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Restic',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logResticLevel}
-              confirmTitle={`Confirm change 'log-level-restic' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-restic', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Fetch Auditlog Level',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logLevelDatabaseAudit}
-              confirmTitle={`Confirm change 'log-level-database-audit' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-database-audit', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Fetch Errorlog Level',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logLevelDatabaseErrors}
-              confirmTitle={`Confirm change 'log-level-database-errors' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-database-errors', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Fetch SQL Error Log Level',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logLevelDatabaseSqlErrors}
-              confirmTitle={`Confirm change 'log-level-database-sql-errors' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-database-sql-errors', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Fetch Slowquery Level',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logLevelDatabaseSlowquery}
-              confirmTitle={`Confirm change 'log-level-database-slowquery' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-database-slowquery', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log DB Optimize Level',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logLevelDatabaseOptimize}
-              confirmTitle={`Confirm change 'log-level-database-optimize' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-database-optimize', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Mailer Level',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logMailerLevel}
-              confirmTitle={`Confirm change 'log-level-mailer' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-mailer', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Support Level',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logSupportLevel}
-              confirmTitle={`Confirm change 'log-level-support' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-support', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log External Script Level',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logExternalScriptLevel}
-              confirmTitle={`Confirm change 'log-level-external-script' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-external-script', value: val }))
-              }
-            />
-          )
-        }
+      key: 'Toggle Log Level Per Module', value: [
+        { key: 'Log DB Jobs', help: h(lh('Log DB Jobs', 'log-level-task'), 'Log DB Jobs'), value: sl('log-level-task', 'logTaskLevel') },
+        { key: 'Log Writer Election', help: h(lh('Log Writer Election', 'log-level-writer-election'), 'Log Writer Election'), value: sl('log-level-writer-election', 'logWriterElectionLevel') },
+        { key: 'Log SST', help: h(lh('Log SST', 'log-level-sst'), 'Log SST'), value: sl('log-level-sst', 'logSstLevel') },
+        { key: 'Log HeartBeat', help: h(lh('Log HeartBeat', 'log-level-heartbeat'), 'Log HeartBeat'), value: sl('log-level-heartbeat', 'logHeartbeatLevel') },
+        { key: 'Log Config Load', help: h(lh('Log Config Load', 'log-level-config-load'), 'Log Config Load'), value: sl('log-level-config-load', 'logConfigLoadLevel') },
+        { key: 'Log Backup Stream', help: h(lh('Log Backup Stream', 'log-level-backup-stream'), 'Log Backup Stream'), value: sl('log-level-backup-stream', 'logBackupStreamLevel') },
+        { key: 'Log Orchestrator', help: h(lh('Log Orchestrator', 'log-level-orchestrator'), 'Log Orchestrator'), value: sl('log-level-orchestrator', 'logOrchestratorLevel') },
+        { key: 'Log Vault', help: h(lh('Log Vault', 'log-level-vault'), 'Log Vault'), value: sl('log-level-vault', 'logVaultLevel') },
+        { key: 'Log Topology Detection', help: h(lh('Log Topology Detection', 'log-level-topology'), 'Log Topology Detection'), value: sl('log-level-topology', 'logTopologyLevel') },
+        { key: 'Log Graphite', help: h(lh('Log Graphite', 'log-level-graphite'), 'Log Graphite'), value: sl('log-level-graphite', 'logGraphiteLevel') },
+        { key: 'Log Binlog Purge', help: h(lh('Log Binlog Purge', 'log-level-binlog-purge'), 'Log Binlog Purge'), value: sl('log-level-binlog-purge', 'logBinlogPurgeLevel') },
+        { key: 'Log Restic', help: h(lh('Log Restic', 'log-level-restic'), 'Log Restic'), value: sl('log-level-restic', 'logResticLevel') },
+        { key: 'Log Fetch Audit Log Level', help: h(lh('Log Fetch Audit Log', 'log-level-database-audit'), 'Log Fetch Audit Log'), value: sl('log-level-database-audit', 'logLevelDatabaseAudit') },
+        { key: 'Log Fetch Error Log Level', help: h(lh('Log Fetch Error Log', 'log-level-database-errors'), 'Log Fetch Error Log'), value: sl('log-level-database-errors', 'logLevelDatabaseErrors') },
+        { key: 'Log Fetch SQL Error Log Level', help: h(lh('Log Fetch SQL Error Log', 'log-level-database-sql-errors'), 'Log Fetch SQL Error Log'), value: sl('log-level-database-sql-errors', 'logLevelDatabaseSqlErrors') },
+        { key: 'Log Fetch Slow Query Level', help: h(lh('Log Fetch Slow Query', 'log-level-database-slowquery'), 'Log Fetch Slow Query'), value: sl('log-level-database-slowquery', 'logLevelDatabaseSlowquery') },
+        { key: 'Log DB Optimize Level', help: h(lh('Log DB Optimize', 'log-level-database-optimize'), 'Log DB Optimize'), value: sl('log-level-database-optimize', 'logLevelDatabaseOptimize') },
+        { key: 'Log Mailer Level', help: h(lh('Log Mailer', 'log-level-mailer'), 'Log Mailer'), value: sl('log-level-mailer', 'logMailerLevel') },
+        { key: 'Log Support Level', help: h(lh('Log Support', 'log-level-support'), 'Log Support'), value: sl('log-level-support', 'logSupportLevel') },
+        { key: 'Log External Script Level', help: h(lh('Log External Script', 'log-level-external-script'), 'Log External Script'), value: sl('log-level-external-script', 'logExternalScriptLevel') },
       ]
     },
-    {
-      key: 'Log Proxy',
-      value: [
+    { key: 'Log Replication Statistics Print', help: h(hRepStatPrint, 'Log Replication Statistics Print'), value: (<RMSwitch confirmTitle={'Confirm switch settings for print-delay-stat?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'print-delay-stat' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.printDelayStat} />) },
+    { key: 'Log Replication Statistics Print History', help: h(hRepStatPrintHistory, 'Log Replication Statistics Print History'), value: (<RMSwitch confirmTitle={'Confirm switch settings for print-delay-stat-history?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'print-delay-stat-history' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.printDelayStatHistory} />) },
+    { key: 'Log Replication Statistics Print Interval', help: h(hRepStatPrintInterval, 'Log Replication Statistics Print Interval'), value: (<RMSlider value={selectedCluster?.config?.printDelayStatInterval} max={60} showMarkAtInterval={10} confirmTitle='Confirm change replication statistics print interval to: ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'print-delay-stat-interval', value: val }))} />) },
         {
-          key: 'Log Proxy',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.logProxyLevel}
-              confirmTitle={`Confirm change 'log-level-proxy' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-proxy', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log HAProxy',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.haproxyLogLevel}
-              confirmTitle={`Confirm change 'log-level-haproxy' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-haproxy', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log ProxySQL',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.proxysqlLogLevel}
-              confirmTitle={`Confirm change 'log-level-proxysql' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-proxysql', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Proxy Janitor',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.proxyjanitorLogLevel}
-              confirmTitle={`Confirm change 'log-level-proxyjanitor' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-proxyjanitor', value: val }))
-              }
-            />
-          )
-        },
-        {
-          key: 'Log Maxscale',
-          value: (
-            <LogSlider
-              value={selectedCluster?.config?.maxscaleLogLevel}
-              confirmTitle={`Confirm change 'log-level-maxscale' to: `}
-              onChange={(val) =>
-                dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'log-level-maxscale', value: val }))
-              }
-            />
-          )
-        }
+      key: 'Log Proxy', value: [
+        { key: 'Log Proxy', help: h(lh('Log Proxy', 'log-level-proxy'), 'Log Proxy'), value: sl('log-level-proxy', 'logProxyLevel') },
+        { key: 'Log HAProxy', help: h(lh('Log HAProxy', 'log-level-haproxy'), 'Log HAProxy'), value: sl('log-level-haproxy', 'haproxyLogLevel') },
+        { key: 'Log ProxySQL', help: h(lh('Log ProxySQL', 'log-level-proxysql'), 'Log ProxySQL'), value: sl('log-level-proxysql', 'proxysqlLogLevel') },
+        { key: 'Log Proxy Janitor', help: h(lh('Log Proxy Janitor', 'log-level-proxyjanitor'), 'Log Proxy Janitor'), value: sl('log-level-proxyjanitor', 'proxyjanitorLogLevel') },
+        { key: 'Log Maxscale', help: h(lh('Log Maxscale', 'log-level-maxscale'), 'Log Maxscale'), value: sl('log-level-maxscale', 'maxscaleLogLevel') },
       ]
     }
   ]
 
   return (
-    <Flex justify='space-between' gap='0'>
-      <TableType2 dataArray={dataObject} className={styles.table} />
-    </Flex>
+    <>
+      <Flex justify='space-between' gap='0'>
+        <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
+      </Flex>
+      <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
+    </>
   )
-}
-
-// ---- Plugin config metadata -------------------------------------------------
-
-function pluginKnownKeys(pluginName) {
-  switch (pluginName) {
-    case 'errorlog':
-      return ['timeframe-hours', 'min-log-level', 'spike-sigma']
-    case 'sqlerrorlog':
-    case 'slowlog':
-      return ['timeframe-hours', 'spike-sigma']
-    case 'auditlog':
-      return ['current-window-hours', 'baseline-window-hours', 'spike-sigma']
-    default:
-      return ['spike-sigma']
-  }
-}
-
-function pluginKeyLabel(pluginName, key) {
-  const labels = {
-    'timeframe-hours': 'Timeframe (hours)',
-    'current-window-hours': 'Current window (hours)',
-    'baseline-window-hours': 'Baseline window (hours)',
-    'spike-sigma': 'Spike threshold (σ)',
-    'min-log-level': 'Min log level (errorlog only)'
-  }
-  return labels[key] || key
-}
-
-function pluginKeyDefault(pluginName, key) {
-  if (pluginName === 'auditlog') {
-    if (key === 'current-window-hours') return '1'
-    if (key === 'baseline-window-hours') return '24'
-  }
-  if (key === 'spike-sigma') return '2'
-  if (key === 'min-log-level') return 'Warning'
-  return '24'
 }
 
 export default LogsSettings

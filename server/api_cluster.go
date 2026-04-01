@@ -2472,6 +2472,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchMonitorPFSMemory()
 	case "monitoring-performance-schema-instruments":
 		mycluster.SwitchMonitorPFSInstruments()
+	case "monitoring-performance-schema-queries":
+		mycluster.SwitchMonitorPFSQueries()
+	case "monitoring-performance-schema-queries-explain":
+		mycluster.SwitchMonitorPFSQueriesExplain()
 	case "shardproxy-copy-grants":
 		mycluster.SwitchProxysqlCopyGrants()
 	case "proxysql-copy-grants":
@@ -4159,6 +4163,19 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.MonitorVariableDiff = applyIsActive(mycluster.Conf.MonitorVariableDiff, isactive)
 	case "monitoring-processlist":
 		mycluster.Conf.MonitorProcessList = applyIsActive(mycluster.Conf.MonitorProcessList, isactive)
+	case "monitoring-performance-schema-queries":
+		mycluster.Conf.MonitorPFSQueries = applyIsActive(mycluster.Conf.MonitorPFSQueries, isactive)
+	case "monitoring-performance-schema-queries-period":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.MonitorPFSQueriesPeriod = val
+	case "monitoring-performance-schema-queries-explain":
+		mycluster.Conf.MonitorPFSQueriesExplain = applyIsActive(mycluster.Conf.MonitorPFSQueriesExplain, isactive)
+	case "monitoring-performance-schema-queries-explain-delay":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.MonitorPFSQueriesExplainDelay = val
+	case "monitoring-performance-schema-queries-explain-purge-period":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.MonitorPFSQueriesExplainPurgePeriod = val
 	case "force-slave-readonly":
 		mycluster.Conf.ForceSlaveReadOnly = applyIsActive(mycluster.Conf.ForceSlaveReadOnly, isactive)
 	case "force-binlog-row":

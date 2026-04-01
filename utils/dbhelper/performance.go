@@ -174,8 +174,16 @@ func DisablePFSQueries(db *sqlx.DB) (string, error) {
 	return query, err
 }
 
+// GetSampleQueryFromPFS fetches one concrete SQL example for a given digest from
+// events_statements_history_long, skipping internal replication-manager queries.
+// This sample is used to run EXPLAIN on the digest template.
 func GetSampleQueryFromPFS(db *sqlx.DB, Query PFSQuery) (string, error) {
-	query := "SELECT COALESCE(B.SQL_TEXT,'') as query FROM performance_schema.events_statements_history_long B WHERE B.DIGEST = ?"
+	query := `SELECT COALESCE(B.SQL_TEXT,'') as query
+	FROM performance_schema.events_statements_history_long B
+	WHERE B.DIGEST = ?
+	AND B.SQL_TEXT IS NOT NULL
+	AND B.SQL_TEXT NOT LIKE '%replication-manager%'
+	LIMIT 1`
 	rows, err := db.Queryx(query, Query.Digest)
 	if err != nil {
 		return "", err
@@ -191,17 +199,41 @@ func GetSampleQueryFromPFS(db *sqlx.DB, Query PFSQuery) (string, error) {
 	return "", err
 }
 
-func GetQueries(db *sqlx.DB) (map[string]PFSQuery, string, error) {
+// GetQueries fetches digest statistics from performance_schema.events_statements_summary_by_digest.
+// On MySQL/Percona 5.7+ the QUERY_SAMPLE_TEXT column is available directly on the summary table,
+// so we use it with no extra join.  On MariaDB (which lacks that column) we do a correlated
+// lookup against events_statements_history_long, filtering out internal queries.
+// The sample_query field is kept in memory and written to the periodic snapshot log so that
+// EXPLAIN can later be replayed against any captured template without hitting the DB again.
+func GetQueries(db *sqlx.DB, version *version.Version) (map[string]PFSQuery, string, error) {
 
 	vars := make(map[string]PFSQuery)
 	query := "set session group_concat_max_len=2048"
 	db.Exec(query)
-	/*	COALESCE((SELECT B.SQL_TEXT FROM performance_schema.events_statements_history_long B WHERE
-		A.DIGEST = B.DIGEST LIMIT 1 ),'')  as query, */
-	// to expensive FULL SCAN to extact during explain
+
+	// Build the sample-query expression depending on the server flavour.
+	// MySQL 5.7+ exposes QUERY_SAMPLE_TEXT directly on the summary table — zero extra cost.
+	// MariaDB requires a correlated subquery on events_statements_history_long.
+	var sampleExpr string
+	if version != nil && version.IsMySQLOrPerconaGreater57() {
+		// QUERY_SAMPLE_TEXT was introduced in MySQL 5.7.9 performance_schema
+		sampleExpr = "COALESCE(A.QUERY_SAMPLE_TEXT, '')"
+	} else {
+		// MariaDB: correlated lookup — filtered so we never store our own monitoring queries
+		sampleExpr = `COALESCE((
+			SELECT B.SQL_TEXT
+			FROM performance_schema.events_statements_history_long B
+			WHERE B.DIGEST = A.DIGEST
+			AND B.SQL_TEXT IS NOT NULL
+			AND B.SQL_TEXT NOT LIKE '%replication-manager%'
+			LIMIT 1
+		), '')`
+	}
+
 	query = `SELECT /*replication-manager*/
 	A.digest as digest,
 	'' as query,
+	` + sampleExpr + ` as sample_query,
 	A.digest_text as digest_text,
 	A.LAST_SEEN as last_seen,
 	COALESCE(A.SCHEMA_NAME,'') as schema_name,
@@ -209,7 +241,7 @@ func GetQueries(db *sqlx.DB) (map[string]PFSQuery, string, error) {
 	A.SUM_CREATED_TMP_DISK_TABLES as plan_tmp_disk,
 	A.SUM_CREATED_TMP_TABLES as plan_tmp_mem,
 	A.COUNT_STAR AS exec_count,
-  A.SUM_ERRORS AS err_count,
+	A.SUM_ERRORS AS err_count,
 	A.SUM_WARNINGS AS warn_count,
 	SEC_TO_TIME(A.SUM_TIMER_WAIT/1000000000000) AS exec_time_total,
 	(A.MAX_TIMER_WAIT/1000000000000) AS exec_time_max,
@@ -221,10 +253,7 @@ func GetQueries(db *sqlx.DB) (map[string]PFSQuery, string, error) {
 	FROM performance_schema.events_statements_summary_by_digest A
 	WHERE A.digest_text is not null`
 
-	// Do not order as it's eavy fot temporary directory
-	//ORDER BY A.sum_timer_wait desc
-	//LIMIT 50`
-
+	// Do not order — filesort on the full summary table is expensive
 	rows, err := db.Queryx(query)
 	if err != nil {
 		return nil, query, errors.New("Could not get queries")
@@ -232,13 +261,29 @@ func GetQueries(db *sqlx.DB) (map[string]PFSQuery, string, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var v PFSQuery
-		err := rows.Scan(&v.Digest, &v.Query, &v.Digest_text, &v.Last_seen, &v.Schema_name, &v.Plan_full_scan, &v.Plan_tmp_disk, &v.Plan_tmp_mem, &v.Exec_count, &v.Err_count, &v.Warn_count, &v.Exec_time_total, &v.Exec_time_max, &v.Exec_time_avg_ms, &v.Rows_sent, &v.Rows_sent_avg, &v.Rows_scanned, &v.Value)
+		err := rows.Scan(
+			&v.Digest, &v.Query, &v.Sample_query,
+			&v.Digest_text, &v.Last_seen, &v.Schema_name,
+			&v.Plan_full_scan, &v.Plan_tmp_disk, &v.Plan_tmp_mem,
+			&v.Exec_count, &v.Err_count, &v.Warn_count,
+			&v.Exec_time_total, &v.Exec_time_max, &v.Exec_time_avg_ms,
+			&v.Rows_sent, &v.Rows_sent_avg, &v.Rows_scanned, &v.Value,
+		)
 		if err != nil {
 			return nil, query, errors.New("Could not get results from status scan")
 		}
 		vars[v.Digest] = v
 	}
 	return vars, query, nil
+}
+
+// TruncatePFSStatements resets the events_statements_summary_by_digest table.
+// Called at the start of each capture period so the next snapshot reflects only
+// the queries that ran within that window.
+func TruncatePFSStatements(db *sqlx.DB) (string, error) {
+	query := "TRUNCATE TABLE performance_schema.events_statements_summary_by_digest"
+	_, err := db.Exec(query)
+	return query, err
 }
 
 func GetPlugins(db *sqlx.DB, myver *version.Version) (map[string]*Plugin, string, error) {

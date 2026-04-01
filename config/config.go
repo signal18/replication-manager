@@ -107,6 +107,11 @@ type Config struct {
 	MonitorPFSMutex                           bool   `mapstructure:"monitoring-performance-schema-mutex" toml:"monitoring-performance-schema-mutex" json:"monitoringPerformanceSchemaMutex"`
 	MonitorPFSLatch                           bool   `mapstructure:"monitoring-performance-schema-latch" toml:"monitoring-performance-schema-latch" json:"monitoringPerformanceSchemaLatch"`
 	MonitorPFSMemory                          bool   `mapstructure:"monitoring-performance-schema-memory" toml:"monitoring-performance-schema-memory" json:"monitoringPerformanceSchemaMemory"`
+	MonitorPFSQueries                         bool   `mapstructure:"monitoring-performance-schema-queries" toml:"monitoring-performance-schema-queries" json:"monitoringPerformanceSchemaQueries"`
+	MonitorPFSQueriesPeriod                   int    `mapstructure:"monitoring-performance-schema-queries-period" toml:"monitoring-performance-schema-queries-period" json:"monitoringPerformanceSchemaQueriesPeriod"`
+	MonitorPFSQueriesExplain                  bool   `mapstructure:"monitoring-performance-schema-queries-explain" toml:"monitoring-performance-schema-queries-explain" json:"monitoringPerformanceSchemaQueriesExplain"`
+	MonitorPFSQueriesExplainDelay             int    `mapstructure:"monitoring-performance-schema-queries-explain-delay" toml:"monitoring-performance-schema-queries-explain-delay" json:"monitoringPerformanceSchemaQueriesExplainDelay"`
+	MonitorPFSQueriesExplainPurgePeriod       int    `mapstructure:"monitoring-performance-schema-queries-explain-purge-period" toml:"monitoring-performance-schema-queries-explain-purge-period" json:"monitoringPerformanceSchemaQueriesExplainPurgePeriod"`
 	MonitorPlugins                            bool   `mapstructure:"monitoring-plugins" toml:"monitoring-plugins" json:"monitoringPlugins"`
 	MonitorInnoDBStatus                       bool   `mapstructure:"monitoring-innodb-status" toml:"monitoring-innodb-status" json:"monitoringInnoDBStatus"`
 	MonitorLongQueryWithProcess               bool   `mapstructure:"monitoring-long-query-with-process" toml:"monitoring-long-query-with-process" json:"monitoringLongQueryWithProcess"`

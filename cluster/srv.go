@@ -10,6 +10,7 @@
 package cluster
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -209,6 +210,11 @@ type ServerMonitor struct {
 	JobResults                  *config.TasksMap           `json:"jobResults"`
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
+	PFSLastSnapshot             time.Time                   // timestamp of last periodic PFS digest snapshot flush
+	PFSLastExplainPurge         time.Time                   // timestamp of last explain cache purge run
+	PFSExplainCache             map[string]PFSExplainRecord // digest → cached explain plan, keyed by digest hash
+	PFSExplainCacheMu           sync.Mutex                  // protects PFSExplainCache against goroutine/monitor-loop races
+	pfsExplainCancel            context.CancelFunc          // cancels any in-flight RunPFSExplainCapture goroutine
 	InPurgingBinaryLog          bool
 	IsBackingUpBinaryLog        bool
 	IsRefreshingBinlog          bool
@@ -244,6 +250,18 @@ type ServerMonitor struct {
 	jobCancelMutex           sync.Mutex
 	jobCancelEntries         map[string]*jobCancelEntry
 	jobRefreshStateMutex     sync.RWMutex
+}
+
+// PFSExplainRecord is the on-disk structure for a cached query plan.
+// One record per unique digest hash — written once, never overwritten,
+// so the file grows only when new query templates appear.
+type PFSExplainRecord struct {
+	CapturedAt  string               `json:"capturedAt"`  // RFC3339 timestamp of first EXPLAIN
+	Digest      string               `json:"digest"`      // PFS digest hash
+	DigestText  string               `json:"digestText"`  // normalised template  e.g. SELECT * FROM t WHERE id = ?
+	SampleQuery string               `json:"sampleQuery"` // concrete SQL instance used for EXPLAIN
+	SchemaName  string               `json:"schemaName"`
+	Plan        []dbhelper.Explain   `json:"plan"`        // rows returned by EXPLAIN
 }
 
 type ServerBackupMeta struct {
@@ -352,6 +370,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.PFSInstruments = config.NewStringsMap()
 	server.PFSQueries = dbhelper.NewPFSQueriesMap()
 	server.SlowPFSQueries = dbhelper.NewPFSQueriesMap()
+	server.PFSExplainCache = make(map[string]PFSExplainRecord)
 	server.DictTables = dbhelper.NewTablesMap()
 	server.Plugins = dbhelper.NewPluginsMap()
 	server.Users = dbhelper.NewGrantsMap()
@@ -403,6 +422,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	}
 
 	server.ReloadSaveInfosVariables()
+	server.LoadPFSExplainCache()
 	server.DelayStat = new(ServerDelayStat)
 	server.DelayStat.ResetDelayStat()
 
