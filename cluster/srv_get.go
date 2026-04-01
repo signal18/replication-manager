@@ -459,7 +459,14 @@ func (server *ServerMonitor) GetAuditLog() *s18log.HttpLog {
 }
 
 func (server *ServerMonitor) GetPFSQueries() {
-	if !server.ClusterGroup.Conf.MonitorPFS || !server.HavePFSSlowQueryLog || !server.HavePFS {
+	// HavePFSSlowQueryLog gates the slow-query-log consumer feature only.
+	// The PFS snapshot reads from events_statements_summary_by_digest which is
+	// populated by the performance_schema itself — independent of whether the
+	// slow query log consumers (events_statements_history_long /
+	// events_stages_history) are enabled.  Blocking the snapshot on that flag
+	// was causing FlushPFSSnapshotToLog to never fire even when
+	// monitoring-performance-schema = true and performance_schema = ON.
+	if !server.ClusterGroup.Conf.MonitorPFS || !server.HavePFS {
 		return
 	}
 	if server.IsInPFSQueryCapture {

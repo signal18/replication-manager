@@ -177,7 +177,7 @@ func GetTables(db *sqlx.DB, myver *version.Version, getColumns, getIndexes bool,
 
 	// ── Graph links ──────────────────────────────────────────────────────
 	// Runs after hashing so TableIndexMap is fully built on every table.
-	// loadFKLinks issues one SQL query; loadColumnMatchLinks is in-memory.
+	// loadFKLinks issues one SQL query; loadColumnMatchLinks works in-memory from the loaded tablemap.
 
 	qlog, err = loadFKLinks(conn, myver, tablemap, timeout)
 	appendLog(&logBuilder, qlog)
@@ -185,7 +185,11 @@ func GetTables(db *sqlx.DB, myver *version.Version, getColumns, getIndexes bool,
 		// Non-fatal: log and continue; graph edges will be absent.
 		logBuilder.WriteString(fmt.Sprintf(" -- loadFKLinks error: %v", err))
 	}
-	loadColumnMatchLinks(tablemap)
+	qlog, err = loadColumnMatchLinks(conn, myver, tablemap, timeout)
+	appendLog(&logBuilder, qlog)
+	if err != nil {
+		logBuilder.WriteString(fmt.Sprintf(" -- loadColumnMatchLinks error: %v", err))
+	}
 	computeSizeWeights(tables)
 	// ── end graph links
 
@@ -1320,49 +1324,87 @@ func loadFKLinks(ext schemaExecutor, myver *version.Version, tablemap map[string
 	return query, rows.Err()
 }
 
-// loadColumnMatchLinks detects implicit FK-like relationships purely from the
+// colMatchLinksQuery detects implicit FK-like relationships from shared PRIMARY
+// KEY column names — zero application-side filtering needed.
+//
+// Rules enforced in SQL:
+//  1. The shared columns form the complete PRIMARY KEY of the parent table.
+//  2. The same columns appear at the same ordinal positions as the leading
+//     prefix of the child table's PRIMARY KEY (parent PK ⊆ child PK prefix).
+//  3. No explicit FOREIGN KEY already exists between the pair.
+//
+// Result columns: child_schema, child_table, parent_schema, parent_table,
+//
+//	shared_cols (csv), child_pk_cols (int), child_fk_count (int), child_extra_cols (int)
+//
+// loadColumnMatchLinks detects implicit FK-like relationships from the
 // already-loaded tablemap — zero additional SQL queries.
 //
-// A link is emitted when:
-//   - Two different tables in the same schema share a column name, AND
-//   - That column participates in a PRIMARY KEY or UNIQUE index on one of them
-//     (that table becomes the "parent"), AND
-//   - No explicit FK link already exists between the pair (avoids duplication).
-func loadColumnMatchLinks(tablemap map[string]*Table) {
-	// Build: (schema, colName) → tables where that column is in a PK/UQ index.
-	type tkey struct{ schema, table string }
-	pkOwners := make(map[string][]tkey) // key = schema+"\x00"+colName
+// A link is emitted when ALL of the following hold:
+//  1. Two different tables in the same schema share at least one PK column name.
+//  2. The shared column(s) form the complete PRIMARY KEY of the parent.
+//  3. The parent PK is a strict prefix of the child PK (child PK is wider).
+//     Equal-width PKs mean shards of the same logical table — skipped.
+//  4. No explicit FK already exists between the pair.
+func loadColumnMatchLinks(_ schemaExecutor, _ *version.Version, tablemap map[string]*Table, _ time.Duration) (string, error) {
+	type tableKey struct{ schema, table string }
 
-	for key, t := range tablemap {
-		_ = key
+	// ── Pass 1: PK-prefix structural match ───────────────────────────────────
+	// A link is emitted when the parent's full PRIMARY KEY appears as a strict
+	// leading prefix of the child's PRIMARY KEY (column names and ordinal
+	// positions must match exactly). Equal-width PKs = shards, skipped.
+
+	type pkEntry struct {
+		tk      tableKey
+		pkWidth int
+		pkCols  []string
+	}
+	pkIndex := make(map[string][]pkEntry) // schema\x00col\x00pos → tables
+
+	for _, t := range tablemap {
+		var pkCols []string
 		for _, idx := range t.TableIndexes {
-			if !idx.Unique {
-				continue
+			if idx.Name == "PRIMARY" {
+				pkCols = make([]string, len(idx.Columns))
+				for i, c := range idx.Columns {
+					pkCols[i] = c.Name
+				}
+				break
 			}
-			for _, c := range idx.Columns {
-				k := t.TableSchema + "\x00" + c.Name
-				pkOwners[k] = append(pkOwners[k], tkey{t.TableSchema, t.TableName})
-			}
+		}
+		if len(pkCols) == 0 {
+			continue
+		}
+		tk := tableKey{t.TableSchema, t.TableName}
+		for pos, col := range pkCols {
+			k := t.TableSchema + "\x00" + col + "\x00" + string(rune(pos))
+			pkIndex[k] = append(pkIndex[k], pkEntry{tk, len(pkCols), pkCols})
 		}
 	}
 
+	// linkedPairs tracks all emitted links (both passes) to prevent duplicates.
+	linkedPairs := make(map[string]bool)
+
 	for _, child := range tablemap {
-		// Collect tables already linked as explicit FK parents to avoid dupes.
+		var childPK []string
+		for _, idx := range child.TableIndexes {
+			if idx.Name == "PRIMARY" {
+				childPK = make([]string, len(idx.Columns))
+				for i, c := range idx.Columns {
+					childPK[i] = c.Name
+				}
+				break
+			}
+		}
+		if len(childPK) == 0 {
+			continue
+		}
+
 		explicitParents := make(map[string]bool, len(child.TableParents))
 		for _, lk := range child.TableParents {
 			explicitParents[lk.LinkedSchema+"."+lk.LinkedTable] = true
 		}
 
-		// Child PK column count for cardinality.
-		childPKCols := 0
-		for _, idx := range child.TableIndexes {
-			if idx.Name == "PRIMARY" {
-				childPKCols = len(idx.Columns)
-				break
-			}
-		}
-
-		// Payload columns (non-indexed) for N-N detection.
 		indexedCols := make(map[string]bool)
 		for _, idx := range child.TableIndexes {
 			for _, c := range idx.Columns {
@@ -1375,44 +1417,36 @@ func loadColumnMatchLinks(tablemap map[string]*Table) {
 				extraCols++
 			}
 		}
-
-		// Approximate FK count from already-attached parent links.
 		childFKCount := len(child.TableParents)
 
-		for _, col := range child.TableColumns {
-			k := child.TableSchema + "\x00" + col.Name
-			owners, ok := pkOwners[k]
-			if !ok {
-				continue
-			}
-			for _, owner := range owners {
-				if owner.table == child.TableName {
-					continue // self
+		for pos, col := range childPK {
+			k := child.TableSchema + "\x00" + col + "\x00" + string(rune(pos))
+			for _, pe := range pkIndex[k] {
+				if pe.tk.table == child.TableName {
+					continue
 				}
-				parentKey := owner.schema + "." + owner.table
-				if explicitParents[parentKey] {
-					continue // already covered by a real FK
+				parentKey := pe.tk.schema + "." + pe.tk.table
+				pairKey := child.TableSchema + "\x00" + child.TableName + "\x00" + parentKey
+				if explicitParents[parentKey] || linkedPairs[pairKey] {
+					continue
 				}
-
+				if pe.pkWidth >= len(childPK) {
+					continue // same-width PK = shard
+				}
+				if !isPKPrefix(pe.pkCols, childPK) {
+					continue
+				}
 				parent, ok := tablemap[parentKey]
 				if !ok {
 					continue
 				}
-
-				// Find the full index column list on the parent side.
-				parentCols := parentIndexColsFor(parent, col.Name)
-				if len(parentCols) == 0 {
-					continue
-				}
-
-				card := fkCardinality(1, childPKCols, childFKCount, extraCols)
-				relName := "implicit_" + child.TableName + "_" + parent.TableName
-
+				card := fkCardinality(pe.pkWidth, len(childPK), childFKCount, extraCols)
+				relName := "implicit_pk_" + child.TableName + "_" + parent.TableName
 				child.TableParents = append(child.TableParents, TableLink{
 					LinkedSchema:  parent.TableSchema,
 					LinkedTable:   parent.TableName,
-					LocalColumns:  []string{col.Name},
-					RemoteColumns: parentCols,
+					LocalColumns:  pe.pkCols,
+					RemoteColumns: pe.pkCols,
 					RelationName:  relName,
 					Source:        RelationColumnNameMatch,
 					Cardinality:   card,
@@ -1420,24 +1454,155 @@ func loadColumnMatchLinks(tablemap map[string]*Table) {
 				parent.TableChildren = append(parent.TableChildren, TableLink{
 					LinkedSchema:  child.TableSchema,
 					LinkedTable:   child.TableName,
-					LocalColumns:  parentCols,
-					RemoteColumns: []string{col.Name},
+					LocalColumns:  pe.pkCols,
+					RemoteColumns: pe.pkCols,
 					RelationName:  relName,
 					Source:        RelationColumnNameMatch,
 					Cardinality:   card,
 				})
-
-				// Mark to prevent a second match on the same pair.
-				explicitParents[parentKey] = true
+				linkedPairs[pairKey] = true
 				childFKCount++
 			}
 		}
 	}
+
+	// ── Pass 2: table-name-in-column-name inference ───────────────────────────
+	// A column named {table}, {table}_id, id_{table}, {table}_fk, fk_{table}
+	// — where {table} is the name of another table in the same schema — is
+	// treated as an implicit FK to that table's PRIMARY KEY.
+	// Also handles naive plurals: clients_id → client.
+	//
+	// Patterns (c = column name lowercased, t = parent table name):
+	//   c == t                 exact:   client     → client
+	//   c == t + "_id"                  client_id  → client
+	//   c == "id_" + t                  id_client  → client
+	//   c == t + "_fk"                  client_fk  → client
+	//   c == "fk_" + t                  fk_client  → client
+	//   above with t = singular(table)  clients_id → client  (strip trailing s)
+
+	type parentMeta struct {
+		table  string
+		schema string
+		pkCols []string
+	}
+	nameIndex := make(map[string]parentMeta) // schema\x00normalizedName → meta
+
+	for _, t := range tablemap {
+		var pkCols []string
+		for _, idx := range t.TableIndexes {
+			if idx.Name == "PRIMARY" {
+				pkCols = make([]string, len(idx.Columns))
+				for i, c := range idx.Columns {
+					pkCols[i] = c.Name
+				}
+				break
+			}
+		}
+		if len(pkCols) == 0 {
+			continue
+		}
+		base := strings.ToLower(t.TableName)
+		pm := parentMeta{t.TableName, t.TableSchema, pkCols}
+		nameIndex[t.TableSchema+"\x00"+base] = pm
+		if strings.HasSuffix(base, "s") {
+			sing := strings.TrimSuffix(base, "s")
+			if _, exists := nameIndex[t.TableSchema+"\x00"+sing]; !exists {
+				nameIndex[t.TableSchema+"\x00"+sing] = pm
+			}
+		}
+	}
+
+	columnRefersTo := func(schema, col string) (parentMeta, bool) {
+		c := strings.ToLower(col)
+		for _, cand := range []string{
+			strings.TrimSuffix(strings.TrimSuffix(c, "_id"), "_fk"),
+			strings.TrimPrefix(strings.TrimPrefix(c, "id_"), "fk_"),
+			c,
+		} {
+			cand = strings.Trim(cand, "_")
+			if cand == "" {
+				continue
+			}
+			if pm, ok := nameIndex[schema+"\x00"+cand]; ok {
+				return pm, true
+			}
+		}
+		return parentMeta{}, false
+	}
+
+	for _, child := range tablemap {
+		explicitParents := make(map[string]bool, len(child.TableParents))
+		for _, lk := range child.TableParents {
+			explicitParents[lk.LinkedSchema+"."+lk.LinkedTable] = true
+		}
+
+		indexedCols := make(map[string]bool)
+		for _, idx := range child.TableIndexes {
+			for _, c := range idx.Columns {
+				indexedCols[c.Name] = true
+			}
+		}
+		extraCols := 0
+		for _, c := range child.TableColumns {
+			if !indexedCols[c.Name] {
+				extraCols++
+			}
+		}
+		childFKCount := len(child.TableParents)
+
+		var childPKCols int
+		for _, idx := range child.TableIndexes {
+			if idx.Name == "PRIMARY" {
+				childPKCols = len(idx.Columns)
+				break
+			}
+		}
+
+		for _, col := range child.TableColumns {
+			pm, ok := columnRefersTo(child.TableSchema, col.Name)
+			if !ok {
+				continue
+			}
+			if pm.table == child.TableName {
+				continue
+			}
+			parentKey := pm.schema + "." + pm.table
+			pairKey := child.TableSchema + "\x00" + child.TableName + "\x00" + parentKey
+			if explicitParents[parentKey] || linkedPairs[pairKey] {
+				continue
+			}
+			parent, ok := tablemap[parentKey]
+			if !ok {
+				continue
+			}
+			card := fkCardinality(len(pm.pkCols), childPKCols, childFKCount, extraCols)
+			relName := "implicit_col_" + child.TableName + "_" + parent.TableName
+			child.TableParents = append(child.TableParents, TableLink{
+				LinkedSchema:  parent.TableSchema,
+				LinkedTable:   parent.TableName,
+				LocalColumns:  []string{col.Name},
+				RemoteColumns: pm.pkCols,
+				RelationName:  relName,
+				Source:        RelationColumnNameMatch,
+				Cardinality:   card,
+			})
+			parent.TableChildren = append(parent.TableChildren, TableLink{
+				LinkedSchema:  child.TableSchema,
+				LinkedTable:   child.TableName,
+				LocalColumns:  pm.pkCols,
+				RemoteColumns: []string{col.Name},
+				RelationName:  relName,
+				Source:        RelationColumnNameMatch,
+				Cardinality:   card,
+			})
+			linkedPairs[pairKey] = true
+			childFKCount++
+		}
+	}
+
+	return "", nil
 }
 
-// computeSizeWeights sets SizeWeightPct on every table as a fraction of the
-// total (data + index) bytes within its schema bucket.
-// Called once after both link passes so all tables are in their final state.
 func computeSizeWeights(tables []Table) {
 	schemaTotal := make(map[string]int64, 4)
 	for i := range tables {
@@ -1481,8 +1646,49 @@ func splitCSV(s string) []string {
 	return parts
 }
 
-// parentIndexColsFor returns the full column list of the first PK/UNIQUE index
-// on t that contains colName, or nil if no such index exists.
+// primaryKeyColsFor returns the ordered column names of the PRIMARY KEY of t,
+// or nil if t has no primary key.
+func primaryKeyColsFor(t *Table) []string {
+	for _, idx := range t.TableIndexes {
+		if idx.Name == "PRIMARY" {
+			out := make([]string, len(idx.Columns))
+			for i, c := range idx.Columns {
+				out[i] = c.Name
+			}
+			return out
+		}
+	}
+	return nil
+}
+
+// isPKPrefix returns true when parentPK is a prefix of (or equal to) childPK.
+// Both slices must be in key-column order.
+//
+// Examples:
+//
+//	parent={id}        child={id}           → true  (exact match, 1-1)
+//	parent={id}        child={id,type_id}   → true  (parent PK is leading part)
+//	parent={id,ver}    child={id,ver,seq}   → true  (multi-col prefix)
+//	parent={id}        child={other,id}     → false (id not at position 0)
+//	parent={a,b}       child={a,c}          → false (b not at position 1 of child)
+//	parent={id}        child={}             → false (child has no PK)
+func isPKPrefix(parentPK, childPK []string) bool {
+	if len(parentPK) == 0 || len(childPK) == 0 {
+		return false
+	}
+	if len(parentPK) > len(childPK) {
+		return false // parent PK has more cols than child PK — can't be a prefix
+	}
+	for i, col := range parentPK {
+		if childPK[i] != col {
+			return false
+		}
+	}
+	return true
+}
+
+// parentIndexColsFor is retained for backward compatibility with any callers
+// outside loadColumnMatchLinks. Prefer primaryKeyColsFor for new code.
 func parentIndexColsFor(t *Table, colName string) []string {
 	for _, idx := range t.TableIndexes {
 		if !idx.Unique {
