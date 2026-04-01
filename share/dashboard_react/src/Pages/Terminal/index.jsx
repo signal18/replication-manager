@@ -175,35 +175,51 @@ const TerminalComponent = () => {
   const handleDisconnect = () => {
     if (socketRef.current) {
       socketRef.current.close();
+      return;
     }
     setStatus('disconnected');
   };
 
   useEffect(() => {
     if (status === 'connecting' && url) {
+      if (socketRef.current && (socketRef.current.readyState === WebSocket.OPEN || socketRef.current.readyState === WebSocket.CONNECTING)) {
+        socketRef.current.close();
+      }
+
       // Once the WebSocket is connected, create the WebSocket instance
-      socketRef.current = new WebSocket(url);
+      const socket = new WebSocket(url);
+      socketRef.current = socket;
 
       // Attach the terminal to the WebSocket using AttachAddon
-      const attachAddon = new AttachAddon(socketRef.current);
+      const attachAddon = new AttachAddon(socket);
       terminalInstanceRef.current.loadAddon(attachAddon);
 
-      socketRef.current.onerror = () => {
+      socket.onerror = () => {
+        if (socketRef.current !== socket) {
+          return;
+        }
         console.error('WebSocket error');
         setStatus('error');
       };
 
-      socketRef.current.onopen = () => {
+      socket.onopen = () => {
+        if (socketRef.current !== socket) {
+          return;
+        }
         setStatus('connected');
-        socketRef.current.send(JSON.stringify({ type: 'auth', token: getTokenByBaseURL(baseURL) }));
+        socket.send(JSON.stringify({ type: 'auth', token: getTokenByBaseURL(baseURL) }));
       };
 
-      socketRef.current.onclose = () => {
+      socket.onclose = () => {
+        if (socketRef.current !== socket) {
+          return;
+        }
+        socketRef.current = null;
         setStatus('disconnected');
       };
 
     }
-  }, [status, url]);
+  }, [status, url, baseURL]);
 
   return (
     <PageContainer>
