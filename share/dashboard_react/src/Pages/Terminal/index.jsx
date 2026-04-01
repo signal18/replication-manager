@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, chakra, HStack, Text } from '@chakra-ui/react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Box, chakra, HStack, Select, Text } from '@chakra-ui/react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import 'typeface-fira-code';
 import PageContainer from '../PageContainer';
 import { Terminal } from '@xterm/xterm';
@@ -12,6 +12,12 @@ import { useDispatch, useSelector } from 'react-redux';
 import { getClusterData } from '../../redux/clusterSlice';
 import RMButton from '../../components/RMButton';
 import { getTokenByBaseURL } from '../../services/apiHelper';
+import {
+  normalizeRIDSearchParams,
+  OpenSVCTerminalRID,
+  resolveServiceContainerFromRID,
+  setRIDSearchParam,
+} from './ridUtils';
 
 const ChakraLink = chakra(Link);
 
@@ -22,13 +28,57 @@ const TerminalComponent = () => {
   const terminalInstanceRef = useRef(null); // Store the terminal instance
   const socketRef = useRef(null); // Store the WebSocket connection in a ref for stability
   const { clusterName, serverName, proxyName, commandType } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const [serviceContainer, setServiceContainer] = useState(OpenSVCTerminalRID.Default);
 
   const {
     cluster: { clusterData },
     auth: { baseURL },
   } = useSelector((state) => state);
   const dispatch = useDispatch();
+  const normalizedCommandType = (commandType || 'bash').toLowerCase();
+  const isServerTerminal = Boolean(clusterName && serverName);
+  const isShellTerminal = normalizedCommandType === 'bash';
+  const requiresClusterContext = isServerTerminal && isShellTerminal;
+  const isTerminalContextKnown = !requiresClusterContext || clusterData?.name === clusterName;
+  const isOpenSVCServerShellTerminal = isTerminalContextKnown &&
+    isServerTerminal &&
+    isShellTerminal &&
+    clusterData?.config?.provOrchestrator === 'opensvc';
+  const ridParam = searchParams.get('rid');
+
+  useEffect(() => {
+    if (!isTerminalContextKnown) {
+      return;
+    }
+
+    if (!isOpenSVCServerShellTerminal) {
+      setServiceContainer(OpenSVCTerminalRID.Default);
+      return;
+    }
+
+    setServiceContainer(resolveServiceContainerFromRID(ridParam));
+  }, [isOpenSVCServerShellTerminal, isTerminalContextKnown, ridParam]);
+
+  useEffect(() => {
+    if (!isTerminalContextKnown) {
+      return;
+    }
+
+    const { params, changed } = normalizeRIDSearchParams(searchParams, isOpenSVCServerShellTerminal);
+    if (changed) {
+      setSearchParams(params, { replace: true });
+    }
+  }, [isOpenSVCServerShellTerminal, isTerminalContextKnown, ridParam, searchParams, setSearchParams]);
+
+  const handleServiceContainerChange = (event) => {
+    const nextContainer = event.target.value;
+    setServiceContainer(nextContainer);
+
+    const nextParams = setRIDSearchParam(searchParams, nextContainer);
+    setSearchParams(nextParams, { replace: true });
+  };
 
   useEffect(() => {
     if (clusterName) {
@@ -126,6 +176,10 @@ const TerminalComponent = () => {
       websocketUrl += `/${commandType}`;
     }
 
+    if (isOpenSVCServerShellTerminal && serviceContainer === OpenSVCTerminalRID.Jobs) {
+      websocketUrl += `?rid=${encodeURIComponent(serviceContainer)}`;
+    }
+
     // Update state with the WebSocket URL
     setUrl(websocketUrl);
     setStatus('connecting');
@@ -133,36 +187,54 @@ const TerminalComponent = () => {
 
   const handleDisconnect = () => {
     if (socketRef.current) {
+      // Intentionally defer status update to socket.onclose so UI reflects the
+      // actual websocket lifecycle (including any brief close handshake).
       socketRef.current.close();
+      return;
     }
     setStatus('disconnected');
   };
 
   useEffect(() => {
     if (status === 'connecting' && url) {
+      if (socketRef.current && (socketRef.current.readyState === WebSocket.OPEN || socketRef.current.readyState === WebSocket.CONNECTING)) {
+        socketRef.current.close();
+      }
+
       // Once the WebSocket is connected, create the WebSocket instance
-      socketRef.current = new WebSocket(url);
+      const socket = new WebSocket(url);
+      socketRef.current = socket;
 
       // Attach the terminal to the WebSocket using AttachAddon
-      const attachAddon = new AttachAddon(socketRef.current);
+      const attachAddon = new AttachAddon(socket);
       terminalInstanceRef.current.loadAddon(attachAddon);
 
-      socketRef.current.onerror = () => {
+      socket.onerror = () => {
+        if (socketRef.current !== socket) {
+          return;
+        }
         console.error('WebSocket error');
         setStatus('error');
       };
 
-      socketRef.current.onopen = () => {
+      socket.onopen = () => {
+        if (socketRef.current !== socket) {
+          return;
+        }
         setStatus('connected');
-        socketRef.current.send(JSON.stringify({ type: 'auth', token: getTokenByBaseURL(baseURL) }));
+        socket.send(JSON.stringify({ type: 'auth', token: getTokenByBaseURL(baseURL) }));
       };
 
-      socketRef.current.onclose = () => {
+      socket.onclose = () => {
+        if (socketRef.current !== socket) {
+          return;
+        }
+        socketRef.current = null;
         setStatus('disconnected');
       };
 
     }
-  }, [status, url]);
+  }, [status, url, baseURL]);
 
   return (
     <PageContainer>
@@ -187,6 +259,21 @@ const TerminalComponent = () => {
           </HStack>
         </HStack>
         <div ref={terminalRef} style={{ height: '75vh', width: '100%', border: '1px solid #000' }}></div>
+        {isOpenSVCServerShellTerminal && (
+          <HStack mt={3} spacing={3}>
+            <Text fontSize="sm">OpenSVC container</Text>
+            <Select
+              size="sm"
+              maxW="280px"
+              value={serviceContainer}
+              onChange={handleServiceContainerChange}
+              isDisabled={status === 'connected' || status === 'connecting'}
+            >
+              <option value={OpenSVCTerminalRID.Default}>container#db (default)</option>
+              <option value={OpenSVCTerminalRID.Jobs}>container#jobs</option>
+            </Select>
+          </HStack>
+        )}
         <div style={{ marginTop: '10px' }}>
           {status === 'connected' ? (
             <RMButton onClick={handleDisconnect}>Disconnect</RMButton>

@@ -11,6 +11,49 @@ import (
 	"github.com/signal18/replication-manager/utils/tty"
 )
 
+const (
+	defaultServerServiceContainer = "container#db"
+	defaultProxyServiceContainer  = "container#prx"
+)
+
+// resolveOpenSVCTerminalContainerRID validates and resolves the target OpenSVC
+// container resource for a terminal session.
+//
+// Caller contract: rid must be non-empty. Empty/default behavior is handled by
+// resolveTerminalContainerRIDForSession.
+func resolveOpenSVCTerminalContainerRID(rid string) (string, error) {
+	switch rid {
+	case defaultServerServiceContainer, cluster.RestartRidJobsContainer:
+		return rid, nil
+	default:
+		return "", fmt.Errorf("invalid terminal rid: only '%s' or '%s' are allowed", defaultServerServiceContainer, cluster.RestartRidJobsContainer)
+	}
+}
+
+// resolveTerminalContainerRIDForSession validates whether rid is applicable for
+// the requested terminal type and returns the effective service container name.
+//
+// rid is only accepted for OpenSVC server bash terminals.
+func resolveTerminalContainerRIDForSession(isNodeTerminal bool, cmdType tty.TerminalCommandType, orchestrator string, rid string) (string, bool, error) {
+	if rid == "" {
+		if isNodeTerminal && cmdType == tty.TerminalBash && orchestrator == config.ConstOrchestratorOpenSVC {
+			return defaultServerServiceContainer, true, nil
+		}
+		return "", false, nil
+	}
+
+	if !isNodeTerminal || cmdType != tty.TerminalBash || orchestrator != config.ConstOrchestratorOpenSVC {
+		return "", false, fmt.Errorf("rid is only supported for OpenSVC server bash terminals")
+	}
+
+	selectedRID, err := resolveOpenSVCTerminalContainerRID(rid)
+	if err != nil {
+		return "", false, err
+	}
+
+	return selectedRID, true, nil
+}
+
 func (repman *ReplicationManager) InitWebTTY() {
 	// Initialize the session manager
 	stateFile := filepath.Join(repman.Conf.WorkingDir, "tty.state.json")
@@ -60,7 +103,7 @@ func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session,
 	mycluster := node.ClusterGroup
 	session.Orchestrator = mycluster.GetOrchestrator()
 	session.ServiceName = mycluster.Name + "/svc/" + node.Name
-	session.ServiceContainerName = "container#db"
+	session.ServiceContainerName = defaultServerServiceContainer
 	apiUser, ok := mycluster.APIUsers[session.Owner]
 	if !ok {
 		return fmt.Errorf("user %s not found in cluster %s", session.Owner, mycluster.Name)
@@ -123,7 +166,7 @@ func (repman *ReplicationManager) SetSessionValuesFromProxy(session *tty.Session
 	mycluster := proxy.GetCluster()
 	session.Orchestrator = mycluster.GetOrchestrator()
 	session.ServiceName = mycluster.Name + "/svc/" + proxy.GetName()
-	session.ServiceContainerName = "container#prx"
+	session.ServiceContainerName = defaultProxyServiceContainer
 	switch session.CmdType {
 	case tty.TerminalBash:
 		session.Port = strconv.Itoa(proxy.GetCluster().Conf.OnPremiseSSHPort)

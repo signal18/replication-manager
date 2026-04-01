@@ -36,9 +36,7 @@ import {
 import { useState, useEffect, useCallback } from 'react'
 import { useHref } from 'react-router-dom'
 import { generateConfig } from '../../../../redux/configSlice'
-
-// Constants
-const JOBS_CONTAINER_RID = 'container#jobs'
+import { OpenSVCTerminalRID } from '../../../Terminal/ridUtils'
 
 /**
  * ServerMenu - Context menu for database server operations
@@ -415,7 +413,7 @@ function ServerMenu({
                               setConfirmTitle(`Confirm restart jobs container for ${serverName}?`)
                               setConfirmHandler(
                                 () => () =>
-                                  dispatch(restartDatabase({ clusterName, serverId: row.id, rid: JOBS_CONTAINER_RID }))
+                                  dispatch(restartDatabase({ clusterName, serverId: row.id, rid: OpenSVCTerminalRID.Jobs }))
                               )
                             }
                           }
