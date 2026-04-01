@@ -17,9 +17,11 @@ function TableType2({
     : templateColumns
   const span = helpColumn ? 3 : 2
 
-  const renderHelpCell = (help) => helpColumn ? (
+  const renderHelpCell = (help, sub = false) => helpColumn ? (
     <GridItem className={`${styles.row} ${rowClassName}`}>
-      <Box className={styles.helpCell}>{help || null}</Box>
+      <Box className={sub ? styles.helpCellSub : styles.helpCell}>
+        {help || null}
+      </Box>
     </GridItem>
   ) : null
 
@@ -65,7 +67,7 @@ function TableType2({
                           {subItem.key}
                         </Box>
                       </GridItem>
-                      {renderHelpCell(subItem.help)}
+                      {renderHelpCell(subItem.help, true)}
                       <GridItem className={`${styles.row} ${rowClassName}`}>
                         <Box className={`${styles.value} ${valueClassName}`}>{subItem.value}</Box>
                       </GridItem>
