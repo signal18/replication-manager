@@ -1,4 +1,4 @@
-import { Box, Flex, HStack } from '@chakra-ui/react'
+import { Box, Flex } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
@@ -22,41 +22,38 @@ function RejoinSettings({ selectedCluster, user, openConfirmModal }) {
     setIsCommonModalOpen(true)
   }
 
-  const helpKey = (label, content) => (
-    <HStack spacing={1} align="center">
-      <span>{label}</span>
-      <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
-    </HStack>
-  )
+  const h = (content, title) => <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} />
 
   const { settings: { arLoading, arBackupBinlogLoading, arFlashbackOnSyncLoading, arFlashbackLoading, arMysqldumpLoading, arLogicalBackupLoading, arPhysicalBackupLoading, arForceRestoreLoading, autoseedLoading } } = useSelector((state) => state)
 
-  const helpFailback = `**Failback (Auto Rejoin)**\n\nWhen enabled, replication-manager automatically reintegrates a former master or lagging replica back into the cluster after it recovers.\nThe rejoin method depends on the other Failback settings below.\nDisable if you prefer manual control over when and how nodes rejoin.`
-  const helpBackupBinlog = `**Failback Backup Extra Events**\n\nWhen enabled, replication-manager saves binary log events that occurred on the new master between the old master's crash and the failover.\nThese events can later be replayed to recover transactions that were not yet replicated at the time of the failure.`
-  const helpFlashbackSync = `**Failback Flashback When Semi-Sync Status Sync**\n\nEnables flashback-based rejoin when the cluster was in a semi-synchronous replication sync state at the time of failover.\nFlashback rolls back the divergent transactions on the rejoining node rather than doing a full reseed, which is much faster.`
-  const helpFlashback = `**Failback Binlog Flashback**\n\nUses MariaDB's FLASHBACK feature to reverse divergent transactions on the rejoining node.\nFaster than a full mysqldump reseed for nodes that are only slightly ahead of the new master.\nRequires MariaDB 10.2+ with binlog format ROW.`
-  const helpMysqldump = `**Failback Direct Master Dump**\n\nReseeds the rejoining node by streaming a live mysqldump from the current master.\nSlower than flashback but works on all MySQL/MariaDB versions and does not require binlog.\nSafe choice when the node is heavily diverged.`
-  const helpLogicalBackup = `**Failback Via Logical Backup**\n\nReseeds the rejoining node from the most recent logical backup (mysqldump, mydumper).\nAvoids putting load on the live master at the cost of using a potentially older backup.\nRequires a valid logical backup to be available.`
-  const helpPhysicalBackup = `**Failback Via Physical Backup**\n\nReseeds the rejoining node from the most recent physical backup (Xtrabackup, Mariabackup).\nFastest restore for large datasets.\nRequires a valid physical backup to be available and compatible with the server version.`
-  const helpForceRestore = `**Force Rejoin With Restore**\n\nForces a full restore even if the node appears to be only slightly behind.\nUse when automatic divergence detection is unreliable or when you want to guarantee a clean state.`
-  const helpAutoseed = `**Auto Seed From Backup Standalone Server**\n\nWhen enabled, a standalone server (not yet part of the cluster) is automatically seeded from the latest backup and added to the replication topology.\nUseful for adding new nodes without manual intervention.`
+  const sw = (setting, configKey, loading) => <RMSwitch confirmTitle={`Confirm switch settings for ${setting}?`} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.[configKey]} loading={loading} />
+
+  const hFailback = `**Failback (Auto Rejoin)**\n\nAutomatically reintegrates a former master or lagging replica back into the cluster after it recovers.\nThe rejoin method depends on the other Failback settings below.\n\nConfig: \`autorejoin\``
+  const hBinlog = `**Failback Backup Extra Events**\n\nSaves binary log events that occurred on the new master between the crash and the failover.\nCan later be replayed to recover transactions not yet replicated at the time of failure.\n\nConfig: \`autorejoin-backup-binlog\``
+  const hFlashbackSync = `**Failback Flashback When Semi-Sync Sync**\n\nEnables flashback-based rejoin when the cluster was in a semi-synchronous sync state at failover.\nRolls back divergent transactions rather than doing a full reseed.\n\nConfig: \`autorejoin-flashback-on-sync\``
+  const hFlashback = `**Failback Binlog Flashback**\n\nUses MariaDB's FLASHBACK to reverse divergent transactions on the rejoining node.\nFaster than a full mysqldump reseed. Requires MariaDB 10.2+ with ROW binlog format.\n\nConfig: \`autorejoin-flashback\``
+  const hDump = `**Failback Direct Master Dump**\n\nReseeds the rejoining node by streaming a live mysqldump from the current master.\nSafe choice when the node is heavily diverged.\n\nConfig: \`autorejoin-mysqldump\``
+  const hLogical = `**Failback Via Logical Backup**\n\nReseeds from the most recent logical backup (mysqldump, mydumper).\nAvoids load on the live master at the cost of using a potentially older backup.\n\nConfig: \`autorejoin-logical-backup\``
+  const hPhysical = `**Failback Via Physical Backup**\n\nReseeds from the most recent physical backup (Xtrabackup, Mariabackup).\nFastest restore for large datasets.\n\nConfig: \`autorejoin-physical-backup\``
+  const hForce = `**Force Rejoin With Restore**\n\nForces a full restore even if the node appears only slightly behind.\nUse when automatic divergence detection is unreliable.\n\nConfig: \`autorejoin-force-restore\``
+  const hAutoseed = `**Auto Seed From Backup Standalone Server**\n\nAutomatically seeds a standalone server from the latest backup and adds it to the replication topology.\n\nConfig: \`autoseed\``
 
   const dataObject = [
-    { key: helpKey('Failback', helpFailback), value: (<RMSwitch confirmTitle={'Confirm switch settings for autorejoin?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'autorejoin' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.autorejoin} loading={arLoading} />) },
-    { key: helpKey('Failback Backup Extra Events', helpBackupBinlog), value: (<RMSwitch isChecked={selectedCluster?.config?.autorejoinBackupBinlog} isDisabled={user?.grants['cluster-settings'] == false} loading={arBackupBinlogLoading} confirmTitle={'Confirm switch settings for autorejoin-backup-binlog?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'autorejoin-backup-binlog' }))} />) },
-    { key: helpKey('Failback Flashback When Semi-Sync Status Sync', helpFlashbackSync), value: (<RMSwitch isChecked={selectedCluster?.config?.autorejoinFlashbackOnSync} isDisabled={user?.grants['cluster-settings'] == false} loading={arFlashbackOnSyncLoading} confirmTitle={'Confirm switch settings for autorejoin-flashback-on-sync?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'autorejoin-flashback-on-sync' }))} />) },
-    { key: helpKey('Failback Binlog Flashback', helpFlashback), value: (<RMSwitch isChecked={selectedCluster?.config?.autorejoinFlashback} isDisabled={user?.grants['cluster-settings'] == false} loading={arFlashbackLoading} confirmTitle={'Confirm switch settings for autorejoin-flashback?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'autorejoin-flashback' }))} />) },
-    { key: helpKey('Failback Direct Master Dump', helpMysqldump), value: (<RMSwitch isChecked={selectedCluster?.config?.autorejoinMysqldump} isDisabled={user?.grants['cluster-settings'] == false} loading={arMysqldumpLoading} confirmTitle={'Confirm switch settings for autorejoin-mysqldump?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'autorejoin-mysqldump' }))} />) },
-    { key: helpKey('Failback Via Logical Backup', helpLogicalBackup), value: (<RMSwitch isChecked={selectedCluster?.config?.autorejoinLogicalBackup} isDisabled={user?.grants['cluster-settings'] == false} loading={arLogicalBackupLoading} confirmTitle={'Confirm switch settings for autorejoin-logical-backup?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'autorejoin-logical-backup' }))} />) },
-    { key: helpKey('Failback Via Physical Backup', helpPhysicalBackup), value: (<RMSwitch isChecked={selectedCluster?.config?.autorejoinPhysicalBackup} isDisabled={user?.grants['cluster-settings'] == false} loading={arPhysicalBackupLoading} confirmTitle={'Confirm switch settings for autorejoin-physical-backup?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'autorejoin-physical-backup' }))} />) },
-    { key: helpKey('Force Rejoin With Restore', helpForceRestore), value: (<RMSwitch isChecked={selectedCluster?.config?.autorejoinForceRestore} isDisabled={user?.grants['cluster-settings'] == false} loading={arForceRestoreLoading} confirmTitle={'Confirm switch settings for autorejoin-force-restore?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'autorejoin-force-restore' }))} />) },
-    { key: helpKey('Auto Seed From Backup Standalone Server', helpAutoseed), value: (<RMSwitch isChecked={selectedCluster?.config?.autoseed} isDisabled={user?.grants['cluster-settings'] == false} loading={autoseedLoading} confirmTitle={'Confirm switch settings for autoseed?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'autoseed' }))} />) },
+    { key: 'Failback', help: h(hFailback, 'Failback'), value: sw('autorejoin', 'autorejoin', arLoading) },
+    { key: 'Failback Backup Extra Events', help: h(hBinlog, 'Failback Backup Extra Events'), value: sw('autorejoin-backup-binlog', 'autorejoinBackupBinlog', arBackupBinlogLoading) },
+    { key: 'Failback Flashback When Semi-Sync Status Sync', help: h(hFlashbackSync, 'Failback Flashback When Semi-Sync Status Sync'), value: sw('autorejoin-flashback-on-sync', 'autorejoinFlashbackOnSync', arFlashbackOnSyncLoading) },
+    { key: 'Failback Binlog Flashback', help: h(hFlashback, 'Failback Binlog Flashback'), value: sw('autorejoin-flashback', 'autorejoinFlashback', arFlashbackLoading) },
+    { key: 'Failback Direct Master Dump', help: h(hDump, 'Failback Direct Master Dump'), value: sw('autorejoin-mysqldump', 'autorejoinMysqldump', arMysqldumpLoading) },
+    { key: 'Failback Via Logical Backup', help: h(hLogical, 'Failback Via Logical Backup'), value: sw('autorejoin-logical-backup', 'autorejoinLogicalBackup', arLogicalBackupLoading) },
+    { key: 'Failback Via Physical Backup', help: h(hPhysical, 'Failback Via Physical Backup'), value: sw('autorejoin-physical-backup', 'autorejoinPhysicalBackup', arPhysicalBackupLoading) },
+    { key: 'Force Rejoin With Restore', help: h(hForce, 'Force Rejoin With Restore'), value: sw('autorejoin-force-restore', 'autorejoinForceRestore', arForceRestoreLoading) },
+    { key: 'Auto Seed From Backup Standalone Server', help: h(hAutoseed, 'Auto Seed From Backup Standalone Server'), value: sw('autoseed', 'autoseed', autoseedLoading) },
   ]
 
   return (
     <>
       <Flex justify='space-between' gap='0'>
-        <TableType2 dataArray={dataObject} className={styles.table} labelClassName={styles.labelWithHelp} />
+        <TableType2 dataArray={dataObject} className={styles.table} helpColumn={true} />
       </Flex>
       <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
     </>

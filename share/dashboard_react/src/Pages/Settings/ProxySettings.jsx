@@ -1,4 +1,4 @@
-import { Box, Flex, HStack } from '@chakra-ui/react'
+import { Box, Flex } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
@@ -23,43 +23,39 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
     setIsCommonModalOpen(true)
   }
 
-  const helpKey = (label, content) => (
-    <HStack spacing={1} align="center">
-      <span>{label}</span>
-      <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(label, content)} />
-    </HStack>
-  )
+  const h = (content, title) => <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} />
+  const sw = (setting, configKey) => <RMSwitch confirmTitle={`Confirm switch settings for ${setting}?`} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.[configKey]} />
 
-  const helpProxySQLMonitor = `**ProxySQL Monitor**\n\nEnables replication-manager's ProxySQL integration.\nWhen active, replication-manager connects to ProxySQL and keeps its server list, hostgroups, and routing rules in sync with the current cluster topology.`
-  const helpBootstrapServers = `**ProxySQL Bootstrap Servers**\n\nPushes the current cluster server list into ProxySQL's \`mysql_servers\` table.\nRun this once after initial setup or after adding/removing nodes to synchronise ProxySQL with the cluster.`
-  const helpBootstrapUsers = `**ProxySQL Bootstrap Users**\n\nCopies MySQL user grants into ProxySQL's \`mysql_users\` table.\nEnsures application users defined in MySQL are available in ProxySQL without manual configuration.`
-  const helpBootstrapVariables = `**ProxySQL Bootstrap Variables**\n\nApplies recommended ProxySQL global variables from the replication-manager configuration.\nCovers connection pool sizes, timeouts, and monitoring credentials.`
-  const helpBootstrapHostgroups = `**ProxySQL Bootstrap Hostgroups**\n\nConfigures ProxySQL hostgroups (writer, reader, backup-writer) based on the current cluster topology.\nRe-run after topology changes to realign read/write routing.`
-  const helpBootstrapQueryRules = `**ProxySQL Bootstrap Query Rules**\n\nLoads default query routing rules into ProxySQL.\nRules typically route writes to the writer hostgroup and reads to the reader hostgroup.\nExisting rules are replaced.`
-  const helpCompression = `**Proxies Compression to Backends**\n\nEnables MySQL protocol compression on connections between ProxySQL and the backend database servers.\nReduces network bandwidth at the cost of additional CPU on both sides.\nMost beneficial over high-latency or low-bandwidth links.`
-  const helpReadsOnWriter = `**Proxies Reads on Writer**\n\nWhen enabled, read queries are also routed to the writer (master) node.\nUseful when replica lag is too high to serve reads from replicas, or when strong read consistency is required.`
-  const helpReadsOnWriterNoSlave = `**Proxies Reads on Writer When No Slave**\n\nFallback: automatically routes reads to the writer when no healthy replica is available.\nPrevents read failures during replica outages without requiring manual reconfiguration.`
-  const helpMaxConn = `**Proxies Max Backend Connections**\n\nMaximum number of connections ProxySQL will open to each backend server.\nTune according to the \`max_connections\` setting on your MySQL servers.\nDefault: 1000.`
-  const helpMaxLag = `**Proxies Max Backend Replication Lag for Reads**\n\nMaximum replication lag (in seconds) a replica may have before ProxySQL stops routing reads to it.\nReplicas exceeding this threshold are temporarily removed from the reader hostgroup.\nDefault: 10 seconds.`
+  const hMonitor = `**ProxySQL Monitor**\n\nEnables replication-manager's ProxySQL integration.\nKeeps ProxySQL's server list, hostgroups, and routing rules in sync with the current cluster topology.\n\nConfig: \`proxysql\``
+  const hServers = `**ProxySQL Bootstrap Servers**\n\nPushes the current cluster server list into ProxySQL's \`mysql_servers\` table.\n\nConfig: \`proxysql-bootstrap-servers\``
+  const hUsers = `**ProxySQL Bootstrap Users**\n\nCopies MySQL user grants into ProxySQL's \`mysql_users\` table.\n\nConfig: \`proxysql-bootstrap-users\``
+  const hVars = `**ProxySQL Bootstrap Variables**\n\nApplies recommended ProxySQL global variables from the replication-manager configuration.\n\nConfig: \`proxysql-bootstrap-variables\``
+  const hHG = `**ProxySQL Bootstrap Hostgroups**\n\nConfigures ProxySQL hostgroups (writer, reader, backup-writer) based on the current cluster topology.\n\nConfig: \`proxysql-bootstrap-hostgroups\``
+  const hQR = `**ProxySQL Bootstrap Query Rules**\n\nLoads default query routing rules into ProxySQL. Existing rules are replaced.\n\nConfig: \`proxysql-bootstrap-query-rules\``
+  const hCompress = `**Proxies Compression to Backends**\n\nEnables MySQL protocol compression on connections between ProxySQL and the backend servers.\nReduces network bandwidth at the cost of additional CPU.\n\nConfig: \`proxy-servers-backend-compression\``
+  const hReadsWriter = `**Proxies Reads on Writer**\n\nRoutes read queries to the writer (master) node as well.\nUseful when strong read consistency is required or replica lag is too high.\n\nConfig: \`proxy-servers-read-on-master\``
+  const hReadsNoSlave = `**Proxies Reads on Writer When No Slave**\n\nFallback: automatically routes reads to the writer when no healthy replica is available.\n\nConfig: \`proxy-servers-read-on-master-no-slave\``
+  const hMaxConn = `**Proxies Max Backend Connections**\n\nMaximum connections ProxySQL will open to each backend server.\nTune according to the \`max_connections\` setting on your MySQL servers.\n\nConfig: \`proxy-servers-backend-max-connections\``
+  const hMaxLag = `**Proxies Max Backend Replication Lag for Reads**\n\nMaximum replication lag (in seconds) a replica may have before ProxySQL stops routing reads to it.\n\nConfig: \`proxy-servers-backend-max-replication-lag\``
 
   const dataObject = [
-    { key: helpKey('ProxySQL Monitor', helpProxySQLMonitor), value: (<RMSwitch confirmTitle={'Confirm switch settings for proxysql?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'proxysql' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.proxysql} />) },
-    { key: helpKey('ProxySQL Bootstrap Servers', helpBootstrapServers), value: (<RMSwitch confirmTitle={'Confirm switch settings for proxysql-bootstrap-servers?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'proxysql-bootstrap-servers' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.proxysqlBootstrap} />) },
-    { key: helpKey('ProxySQL Bootstrap Users', helpBootstrapUsers), value: (<RMSwitch confirmTitle={'Confirm switch settings for proxysql-bootstrap-users?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'proxysql-bootstrap-users' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.proxysqlBootstrapUsers} />) },
-    { key: helpKey('ProxySQL Bootstrap Variables', helpBootstrapVariables), value: (<RMSwitch confirmTitle={'Confirm switch settings for proxysql-bootstrap-variables?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'proxysql-bootstrap-variables' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.proxysqlBootstrapVariables} />) },
-    { key: helpKey('ProxySQL Bootstrap Hostgroups', helpBootstrapHostgroups), value: (<RMSwitch confirmTitle={'Confirm switch settings for proxysql-bootstrap-hostgroups?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'proxysql-bootstrap-hostgroups' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.proxysqlBootstrapHostgroups} />) },
-    { key: helpKey('ProxySQL Bootstrap Query Rules', helpBootstrapQueryRules), value: (<RMSwitch confirmTitle={'Confirm switch settings for proxysql-bootstrap-query-rules?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'proxysql-bootstrap-query-rules' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.proxysqlBootstrapQueryRules} />) },
-    { key: helpKey('Proxies Compression to Backends', helpCompression), value: (<RMSwitch confirmTitle={'Confirm switch settings for proxy-servers-backend-compression?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'proxy-servers-backend-compression' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.proxyServersBackendCompression} />) },
-    { key: helpKey('Proxies Reads on Writer', helpReadsOnWriter), value: (<RMSwitch confirmTitle={'Confirm switch settings for proxy-servers-read-on-master?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'proxy-servers-read-on-master' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.proxyServersReadOnMaster} />) },
-    { key: helpKey('Proxies Reads on Writer When No Slave', helpReadsOnWriterNoSlave), value: (<RMSwitch confirmTitle={'Confirm switch settings for proxy-servers-read-on-master-no-slave?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'proxy-servers-read-on-master-no-slave' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.proxyServersReadOnMasterNoSlave} />) },
-    { key: helpKey('Proxies Max Backend Connections', helpMaxConn), value: (<RMSlider value={selectedCluster?.config?.proxyServersBackendMaxConnections} min={100} max={10000} step={100} showMarkAtInterval={2000} selectedMarkLabelCSS={styles.maxConnectMarkLabel} confirmTitle='Confirm change backends max connections : ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'proxy-servers-backend-max-connections', value: val }))} />) },
-    { key: helpKey('Proxies Max Backend Replication Lag for Reads', helpMaxLag), value: (<RMSlider value={selectedCluster?.config?.proxyServersBackendMaxReplicationLag} min={10} max={5000} step={1} showMarkAtInterval={1000} selectedMarkLabelCSS={styles.maxConnectMarkLabel} confirmTitle='Confirm change delay : ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'proxy-servers-backend-max-replication-lag', value: val }))} />) },
+    { key: 'ProxySQL Monitor', help: h(hMonitor, 'ProxySQL Monitor'), value: sw('proxysql', 'proxysql') },
+    { key: 'ProxySQL Bootstrap Servers', help: h(hServers, 'ProxySQL Bootstrap Servers'), value: sw('proxysql-bootstrap-servers', 'proxysqlBootstrap') },
+    { key: 'ProxySQL Bootstrap Users', help: h(hUsers, 'ProxySQL Bootstrap Users'), value: sw('proxysql-bootstrap-users', 'proxysqlBootstrapUsers') },
+    { key: 'ProxySQL Bootstrap Variables', help: h(hVars, 'ProxySQL Bootstrap Variables'), value: sw('proxysql-bootstrap-variables', 'proxysqlBootstrapVariables') },
+    { key: 'ProxySQL Bootstrap Hostgroups', help: h(hHG, 'ProxySQL Bootstrap Hostgroups'), value: sw('proxysql-bootstrap-hostgroups', 'proxysqlBootstrapHostgroups') },
+    { key: 'ProxySQL Bootstrap Query Rules', help: h(hQR, 'ProxySQL Bootstrap Query Rules'), value: sw('proxysql-bootstrap-query-rules', 'proxysqlBootstrapQueryRules') },
+    { key: 'Proxies Compression to Backends', help: h(hCompress, 'Proxies Compression to Backends'), value: sw('proxy-servers-backend-compression', 'proxyServersBackendCompression') },
+    { key: 'Proxies Reads on Writer', help: h(hReadsWriter, 'Proxies Reads on Writer'), value: sw('proxy-servers-read-on-master', 'proxyServersReadOnMaster') },
+    { key: 'Proxies Reads on Writer When No Slave', help: h(hReadsNoSlave, 'Proxies Reads on Writer When No Slave'), value: sw('proxy-servers-read-on-master-no-slave', 'proxyServersReadOnMasterNoSlave') },
+    { key: 'Proxies Max Backend Connections', help: h(hMaxConn, 'Proxies Max Backend Connections'), value: (<RMSlider value={selectedCluster?.config?.proxyServersBackendMaxConnections} min={100} max={10000} step={100} showMarkAtInterval={2000} selectedMarkLabelCSS={styles.maxConnectMarkLabel} confirmTitle='Confirm change backends max connections : ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'proxy-servers-backend-max-connections', value: val }))} />) },
+    { key: 'Proxies Max Backend Replication Lag for Reads', help: h(hMaxLag, 'Proxies Max Backend Replication Lag for Reads'), value: (<RMSlider value={selectedCluster?.config?.proxyServersBackendMaxReplicationLag} min={10} max={5000} step={1} showMarkAtInterval={1000} selectedMarkLabelCSS={styles.maxConnectMarkLabel} confirmTitle='Confirm change delay : ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'proxy-servers-backend-max-replication-lag', value: val }))} />) },
   ]
 
   return (
     <>
       <Flex justify='space-between' gap='0'>
-        <TableType2 dataArray={dataObject} className={styles.table} labelClassName={styles.labelWithHelp} />
+        <TableType2 dataArray={dataObject} className={styles.table} helpColumn={true} />
       </Flex>
       <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
     </>
