@@ -24,7 +24,7 @@ function RepConfigSettings({ selectedCluster, user, openConfirmModal, closeConfi
     setIsCommonModalOpen(true)
   }
 
-  const h = (content, title) => <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} />
+  const h = (content, title) => <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} iconFontsize='1rem' variant='ghost' style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }} />
   const sw = (setting, configKey) => <RMSwitch confirmTitle={`Confirm switch settings for ${setting}?`} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.[configKey]} />
 
   const hChannel = `**Replication Channel**\n\nName of the replication channel for multi-source replication.\nLeave empty for the default (unnamed) channel.\n\nConfig: \`replication-source-name\``

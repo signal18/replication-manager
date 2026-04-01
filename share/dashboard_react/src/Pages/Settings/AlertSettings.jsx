@@ -26,7 +26,7 @@ function AlertSettings({ selectedCluster, user, openConfirmModal }) {
   }
 
   const h = (content, title) => (
-    <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} />
+    <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} iconFontsize='1rem' variant='ghost' style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }} />
   )
 
   const hMailFrom = `**Mail From**\n\nSender address used in alert emails.\nExample: \`replication-manager@company.com\`\n\nConfig: \`mail-from\``

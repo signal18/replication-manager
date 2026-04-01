@@ -6,6 +6,7 @@ import TableType2 from '../../components/TableType2'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import LogSlider from '../../components/Sliders/LogSlider'
 import RMSwitch from '../../components/RMSwitch'
+import RMSlider from '../../components/Sliders/RMSlider'
 import CommonModal from '../../components/Modals/CommonModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
 import Markdown from 'react-markdown'
@@ -24,7 +25,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
   }
 
   const h = (content, title) => (
-    <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} />
+    <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} iconFontsize='1rem' variant='ghost' style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }} />
   )
 
   const sl = (setting, configKey) => <LogSlider value={selectedCluster?.config?.[configKey]} confirmTitle={`Confirm change '${setting}' to: `} onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting, value: val }))} />
@@ -34,6 +35,10 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
   const hSyslog = `**Log to SysLog**\n\nForwards all log output to the system syslog daemon in addition to the local log file.\n\nConfig: \`log-syslog\``
   const hLogSql = `**Log SQL in Monitoring**\n\nControls verbosity of SQL statements executed during monitoring cycles.\nAt level 4+ every monitoring SQL statement is logged with its result.\n\nConfig: \`log-level-sql\``
   const hLogLevel = `**Log Level**\n\nGlobal log verbosity for all modules not individually configured.\n0 = disabled, 1 = error, 2 = warning, 3 = info, 4 = debug, 5 = trace\n\nConfig: \`log-level\``
+
+  const hRepStatPrint = `**Log Replication Statistics Print**\n\nLogs current replication delay statistics to the log at each monitoring cycle.\n\nConfig: \`print-delay-stat\``
+  const hRepStatPrintHistory = `**Log Replication Statistics Print History**\n\nLogs the full delay statistic history to the log. More verbose than Print Replication Statistics.\n\nConfig: \`print-delay-stat-history\``
+  const hRepStatPrintInterval = `**Log Replication Statistics Print Interval**\n\nHow often (in seconds) the delay statistics summary is printed when enabled.\nDefault: 60 seconds.\n\nConfig: \`print-delay-stat-interval\``
 
   const dataObject = [
     { key: 'Verbose Mode', help: h(hVerbose, 'Verbose Mode'), value: (<RMSwitch confirmTitle={'Confirm switch settings for verbose?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'verbose' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.verbose} />) },
@@ -64,7 +69,10 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
         { key: 'Log External Script Level', help: h(lh('Log External Script', 'log-level-external-script'), 'Log External Script'), value: sl('log-level-external-script', 'logExternalScriptLevel') },
       ]
     },
-    {
+    { key: 'Log Replication Statistics Print', help: h(hRepStatPrint, 'Log Replication Statistics Print'), value: (<RMSwitch confirmTitle={'Confirm switch settings for print-delay-stat?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'print-delay-stat' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.printDelayStat} />) },
+    { key: 'Log Replication Statistics Print History', help: h(hRepStatPrintHistory, 'Log Replication Statistics Print History'), value: (<RMSwitch confirmTitle={'Confirm switch settings for print-delay-stat-history?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'print-delay-stat-history' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.printDelayStatHistory} />) },
+    { key: 'Log Replication Statistics Print Interval', help: h(hRepStatPrintInterval, 'Log Replication Statistics Print Interval'), value: (<RMSlider value={selectedCluster?.config?.printDelayStatInterval} max={60} showMarkAtInterval={10} confirmTitle='Confirm change replication statistics print interval to: ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'print-delay-stat-interval', value: val }))} />) },
+        {
       key: 'Log Proxy', value: [
         { key: 'Log Proxy', help: h(lh('Log Proxy', 'log-level-proxy'), 'Log Proxy'), value: sl('log-level-proxy', 'logProxyLevel') },
         { key: 'Log HAProxy', help: h(lh('Log HAProxy', 'log-level-haproxy'), 'Log HAProxy'), value: sl('log-level-haproxy', 'haproxyLogLevel') },

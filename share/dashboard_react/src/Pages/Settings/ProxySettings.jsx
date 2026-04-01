@@ -23,7 +23,7 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
     setIsCommonModalOpen(true)
   }
 
-  const h = (content, title) => <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} />
+  const h = (content, title) => <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} iconFontsize='1rem' variant='ghost' style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }} />
   const sw = (setting, configKey) => <RMSwitch confirmTitle={`Confirm switch settings for ${setting}?`} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.[configKey]} />
 
   const hMonitor = `**ProxySQL Monitor**\n\nEnables replication-manager's ProxySQL integration.\nKeeps ProxySQL's server list, hostgroups, and routing rules in sync with the current cluster topology.\n\nConfig: \`proxysql\``

@@ -7,6 +7,7 @@ import TableType2 from '../../components/TableType2'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import TextForm from '../../components/TextForm'
 import NumberInput from '../../components/NumberInput'
+import RMSlider from '../../components/Sliders/RMSlider'
 import CommonModal from '../../components/Modals/CommonModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
 import Markdown from 'react-markdown'
@@ -25,7 +26,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
   }
 
   const h = (content, title) => (
-    <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} />
+    <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} iconFontsize='1rem' variant='ghost' style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }} />
   )
 
   const { settings: { monSaveConfigLoading, monPauseLoading, monCaptureLoading, monSchemaChangeLoading, monInnoDBLoading, monVarDiffLoading, monProcessListLoading, captureTriggerLoading, monIgnoreErrLoading } } = useSelector((state) => state)
@@ -82,6 +83,8 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
     { key: 'Monitoring InnoDB Status', help: h(hInnoDB, 'Monitoring InnoDB Status'), value: sw('monitoring-innodb-status', 'monitoringInnoDBStatus', monInnoDBLoading) },
     { key: 'Monitoring InnoDB Mutex', help: h(hMutex, 'Monitoring InnoDB Mutex'), value: sw('monitoring-performance-schema-mutex', 'monitoringPerformanceSchemaMutex', monProcessListLoading) },
     { key: 'Monitoring InnoDB Latch', help: h(hLatch, 'Monitoring InnoDB Latch'), value: sw('monitoring-performance-schema-latch', 'monitoringPerformanceSchemaLatch', monProcessListLoading) },
+    { key: 'Monitoring Replication Statistics', help: h(hRepStatCapture, 'Monitoring Replication Statistics'), value: sw('delay-stat-capture', 'delayStatCapture') },
+    { key: 'Monitoring Replication Statistics Rotate', help: h(hRepStatRotate, 'Monitoring Replication Statistics Rotate'), value: (<RMSlider value={selectedCluster?.config?.delayStatRotate} max={72} showMarkAtInterval={12} confirmTitle='Confirm change replication statistics rotate to: ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'delay-stat-rotate', value: val }))} />) },
     {
       key: 'Monitoring Performance Schema Queries', value: [
         { key: 'Monitoring Performance Schema Memory', help: h(hPFSMemory, 'Monitoring Performance Schema Memory'), value: sw('monitoring-performance-schema-memory', 'monitoringPerformanceSchemaMemory') },

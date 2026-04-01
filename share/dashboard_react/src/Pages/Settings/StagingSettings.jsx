@@ -27,7 +27,7 @@ function StagingSettings({ selectedCluster, user, openConfirmModal, monitor }) {
     setIsCommonModalOpen(true)
   }
 
-  const h = (content, title) => <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} />
+  const h = (content, title) => <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} iconFontsize='1rem' variant='ghost' style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }} />
 
   useEffect(() => {
     if (monitor?.clusters) setClusters(monitor?.clusters?.filter((cl) => cl != selectedCluster.name).map((cluster) => ({ name: cluster, value: cluster })))

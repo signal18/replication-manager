@@ -23,7 +23,7 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
     setIsCommonModalOpen(true)
   }
 
-  const h = (content, title) => <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} />
+  const h = (content, title) => <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} iconFontsize='1rem' variant='ghost' style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }} />
   const sw = (setting, configKey) => <RMSwitch confirmTitle={`Confirm switch settings for ${setting}?`} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.[configKey]} />
   const sl = (setting, configKey, min, max, interval, title) => <RMSlider value={selectedCluster?.config?.[configKey]} min={min} max={max} showMarkAtInterval={interval} confirmTitle={`Confirm change '${setting}' to: `} onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting, value: val }))} />
 
@@ -34,8 +34,8 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
   const hUnsafe = `**Failover Unsafe First Slave**\n\nAllows promoting a replica even if it has not fully applied all relay log events.\nMay result in lost transactions. Use with caution.\n\nConfig: \`failover-restart-unsafe\``
   const hPositional = `**Failover Using Positional Replication**\n\nForces failover to use binlog file/position-based replication instead of GTID.\nUse on older MySQL setups that do not support GTID.\n\nConfig: \`force-slave-no-gtid-mode\``
   const hPseudoGTID = `**Failover Using Pseudo GTID**\n\nUses positional heartbeat events to simulate GTID-like failover on servers without native GTID support.\n\nConfig: \`autorejoin-slave-positional-heartbeat\``
-  const hDelayCapture = `**Capture Statistics for Hourly Delay Average**\n\nEnables collection of replication lag measurements averaged per hour.\nRequired for Failover Check Delay Statistics to function.\n\nConfig: \`delay-stat-capture\``
-  const hDelayCheck = `**Failover Check Delay Statistics**\n\nUses hourly delay averages to gate failover decisions.\nPrevents promoting a replica that has been consistently slow.\n\nConfig: \`failover-check-delay-stat\``
+  const hDelayCapture = `**Capture Statistics for Hourly Delay Average**\n\nEnables collection of replication lag measurements averaged per hour.\nRequired for Failover Candidate Rate Using Statistics to function.\n\nConfig: \`delay-stat-capture\``
+  const hDelayCheck = `**Failover Candidate Rate Using Statistics**\n\nUses hourly delay averages to gate failover decisions.\nPrevents promoting a replica that has been consistently slow.\n\nConfig: \`failover-check-delay-stat\``
   const hDelayRotate = `**Delay Statistic Rotate Hours**\n\nNumber of hours of delay statistics to retain. Default: 24 hours. Maximum: 72 hours.\n\nConfig: \`delay-stat-rotate\``
   const hPrintStat = `**Print Delay Statistic**\n\nLogs current replication delay statistics at each monitoring cycle.\n\nConfig: \`print-delay-stat\``
   const hPrintHistory = `**Print Delay Statistic History**\n\nLogs the full delay statistic history. More verbose than Print Delay Statistic.\n\nConfig: \`print-delay-stat-history\``
@@ -43,7 +43,7 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
   const hSwitchSync = `**Switchover Only on Semi-Sync State Sync**\n\nRestricts switchover to situations where semi-synchronous replication is fully acknowledged.\nEnsures zero data loss during switchover.\n\nConfig: \`switchover-at-sync\``
   const hSwitchLock = `**Switchover Lock Users on Freeze Workload**\n\nTemporarily locks all user accounts on the current master during switchover to drain active connections.\nEnsures a clean traffic cutover with no in-flight writes at the moment of promotion.\n\nConfig: \`switchover-lock-user-on-freeze\``
   const hMaxDelay = `**Switchover Replication Maximum Delay**\n\nMaximum replication lag (seconds) a replica may have to be a valid switchover target.\nDefault: 30 seconds.\n\nConfig: \`failover-max-slave-delay\``
-  const hWaitRoute = `**Switchover Wait Unmanaged Proxy Monitor Detection**\n\nSeconds to wait after switchover for unmanaged proxies to detect the new master. Default: 1 second.\n\nConfig: \`switchover-wait-route-change\``
+  const hWaitRoute = `**Switchover Wait Unmanaged Proxy Monitor**\n\nSeconds to wait after switchover for unmanaged proxies to detect the new master. Default: 1 second.\n\nConfig: \`switchover-wait-route-change\``
   const hMinorRelease = `**Switchover Allow on Minor Release**\n\nAllows switchover when the candidate replica runs a different minor version than the master.\nEnable during rolling upgrades.\n\nConfig: \`switchover-lower-release\``
 
   const dataObject = [
@@ -54,16 +54,11 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
     { key: 'Failover Unsafe First Slave', help: h(hUnsafe, 'Failover Unsafe First Slave'), value: sw('failover-restart-unsafe', 'failoverRestartUnsafe') },
     { key: 'Failover Using Positional Replication', help: h(hPositional, 'Failover Using Positional Replication'), value: sw('force-slave-no-gtid-mode', 'forceSlaveNoGtidMode') },
     { key: 'Failover Using Pseudo GTID', help: h(hPseudoGTID, 'Failover Using Pseudo GTID'), value: sw('autorejoin-slave-positional-heartbeat', 'autorejoinSlavePositionalHeartbeat') },
-    { key: 'Capture Statistics for Hourly Delay Average', help: h(hDelayCapture, 'Capture Statistics for Hourly Delay Average'), value: sw('delay-stat-capture', 'delayStatCapture') },
-    { key: 'Failover Check Delay Statistics', help: h(hDelayCheck, 'Failover Check Delay Statistics'), value: sw('failover-check-delay-stat', 'failoverCheckDelayStat') },
-    { key: 'Delay Statistic Rotate Hours', help: h(hDelayRotate, 'Delay Statistic Rotate Hours'), value: (<RMSlider value={selectedCluster?.config?.delayStatRotate} max={72} showMarkAtInterval={12} confirmTitle='Confirm change delay stat rotate value to: ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'delay-stat-rotate', value: val }))} />) },
-    { key: 'Print Delay Statistic', help: h(hPrintStat, 'Print Delay Statistic'), value: sw('print-delay-stat', 'printDelayStat') },
-    { key: 'Print Delay Statistic History', help: h(hPrintHistory, 'Print Delay Statistic History'), value: sw('print-delay-stat-history', 'printDelayStatHistory') },
-    { key: 'Delay Statistic Print Interval', help: h(hPrintInterval, 'Delay Statistic Print Interval'), value: (<RMSlider value={selectedCluster?.config?.printDelayStatInterval} max={60} showMarkAtInterval={10} confirmTitle='Confirm change delay stat print interval to: ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'print-delay-stat-interval', value: val }))} />) },
+    { key: 'Failover Candidate Rate Using Statistics', help: h(hDelayCheck, 'Failover Candidate Rate Using Statistics'), value: sw('failover-check-delay-stat', 'failoverCheckDelayStat') },
     { key: 'Switchover Only on Semi-Sync State Sync', help: h(hSwitchSync, 'Switchover Only on Semi-Sync State Sync'), value: sw('switchover-at-sync', 'switchoverAtSync') },
     { key: 'Switchover Lock Users on Freeze Workload', help: h(hSwitchLock, 'Switchover Lock Users on Freeze Workload'), value: sw('switchover-lock-user-on-freeze', 'switchLockUserOnFreeze') },
     { key: 'Switchover Replication Maximum Delay', help: h(hMaxDelay, 'Switchover Replication Maximum Delay'), value: (<RMSlider value={selectedCluster?.config?.failoverMaxSlaveDelay} max={100} showMarkAtInterval={20} confirmTitle='Confirm change max delay to: ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'failover-max-slave-delay', value: val }))} />) },
-    { key: 'Switchover Wait Unmanaged Proxy Monitor Detection', help: h(hWaitRoute, 'Switchover Wait Unmanaged Proxy Monitor Detection'), value: (<RMSlider value={selectedCluster?.config?.switchoverWaitRouteChange} confirmTitle='Confirm change wait change route detection to: ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'switchover-wait-route-change', value: val }))} />) },
+    { key: 'Switchover Wait Unmanaged Proxy Monitor', help: h(hWaitRoute, 'Switchover Wait Unmanaged Proxy Monitor'), value: (<RMSlider value={selectedCluster?.config?.switchoverWaitRouteChange} confirmTitle='Confirm change wait change route detection to: ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'switchover-wait-route-change', value: val }))} />) },
     { key: 'Switchover Allow on Minor Release', help: h(hMinorRelease, 'Switchover Allow on Minor Release'), value: sw('switchover-lower-release', 'switchoverLowerRelease') },
   ]
 
