@@ -60,6 +60,9 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
   const hPFSDelay = `**Monitoring Performance Schema Queries Explain Delay (ms)**\n\nMilliseconds to sleep between consecutive EXPLAIN calls to spread optimizer load.\nDefault: **200 ms**. Set to 0 to disable throttling.\n\nConfig: \`monitoring-performance-schema-queries-explain-delay\``
   const hPFSPurge = `**Monitoring Performance Schema Queries Explain Purge Period (days)**\n\nAge in days after which a cached explain plan is evicted from memory and disk.\nDefault: **30 days**. Set to 0 to keep plans forever.\n\nConfig: \`monitoring-performance-schema-queries-explain-purge-period\``
 
+  const hRepStatCapture = `**Monitoring Replication Statistics**\n\nEnables collection of replication lag measurements at regular intervals averaged per hour.\nUsed to detect degrading replica performance over time.\nRequired for Failover Candidate Rate Using Statistics to function.\n\nConfig: \`delay-stat-capture\``
+  const hRepStatRotate = `**Monitoring Replication Statistics Rotate**\n\nNumber of hours of delay statistics to retain before rotating.\nDefault: 24 hours. Maximum: 72 hours.\n\nConfig: \`delay-stat-rotate\``
+
   const dataObject = [
     {
       key: 'Monitoring Save Config', value: [
