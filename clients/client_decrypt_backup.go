@@ -108,8 +108,16 @@ func runDecryptBackup() error {
 }
 
 func decryptWithPassphraseOpenSSL(inputPath, outputPath, password string) error {
-	args := []string{"enc", "-d", "-aes-256-cbc", "-a", "-pass", "fd:3"}
-	return runOpenSSLStreamWithPassphraseFD(inputPath, outputPath, password, args...)
+	rawArgs := []string{"enc", "-d", "-aes-256-cbc", "-pass", "fd:3"}
+	if err := runOpenSSLStreamWithPassphraseFD(inputPath, outputPath, password, rawArgs...); err != nil {
+		_ = os.Remove(outputPath)
+		compatArgs := []string{"enc", "-d", "-aes-256-cbc", "-a", "-pass", "fd:3"}
+		if compatErr := runOpenSSLStreamWithPassphraseFD(inputPath, outputPath, password, compatArgs...); compatErr != nil {
+			_ = os.Remove(outputPath)
+			return fmt.Errorf("passphrase decrypt failed in raw and base64 compatibility modes: raw=%v; base64=%w", err, compatErr)
+		}
+	}
+	return nil
 }
 
 func decryptWithLegacyKeyIVOpenSSL(inputPath, outputPath, key, iv string) error {

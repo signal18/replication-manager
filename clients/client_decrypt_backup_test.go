@@ -73,7 +73,7 @@ func TestDecryptWithPassphraseOpenSSL(t *testing.T) {
 	password := "passphrase-test"
 	plaintext := []byte("backup payload content")
 
-	cmd := exec.Command("openssl", "enc", "-aes-256-cbc", "-a", "-salt", "-pass", "pass:"+password)
+	cmd := exec.Command("openssl", "enc", "-aes-256-cbc", "-salt", "-pass", "pass:"+password)
 	cmd.Stdin = bytes.NewReader(plaintext)
 	var out bytes.Buffer
 	var stderr bytes.Buffer
@@ -103,6 +103,47 @@ func TestDecryptWithPassphraseOpenSSL(t *testing.T) {
 	}
 	if !bytes.Equal(decrypted, plaintext) {
 		t.Fatalf("decrypted content mismatch")
+	}
+}
+
+func TestDecryptWithPassphraseOpenSSLBase64Compatibility(t *testing.T) {
+	if _, err := exec.LookPath("openssl"); err != nil {
+		t.Skip("openssl binary not available")
+	}
+
+	password := "passphrase-compat-test"
+	plaintext := []byte("backup payload content from old base64 format")
+
+	cmd := exec.Command("openssl", "enc", "-aes-256-cbc", "-a", "-salt", "-pass", "pass:"+password)
+	cmd.Stdin = bytes.NewReader(plaintext)
+	var out bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		errMsg := strings.TrimSpace(stderr.String())
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		t.Fatalf("failed to encrypt test payload: %s", errMsg)
+	}
+
+	inputDir := t.TempDir()
+	inputPath := filepath.Join(inputDir, "backup.enc")
+	outputPath := filepath.Join(inputDir, "backup.dec")
+	if err := os.WriteFile(inputPath, out.Bytes(), 0o600); err != nil {
+		t.Fatalf("failed to write encrypted input: %s", err.Error())
+	}
+
+	if err := decryptWithPassphraseOpenSSL(inputPath, outputPath, password); err != nil {
+		t.Fatalf("decryptWithPassphraseOpenSSL base64 compatibility failed: %s", err.Error())
+	}
+	decrypted, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("failed to read decrypted output: %s", err.Error())
+	}
+	if !bytes.Equal(decrypted, plaintext) {
+		t.Fatalf("decrypted compatibility content mismatch")
 	}
 }
 

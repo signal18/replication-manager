@@ -82,6 +82,48 @@ func TestBackupEncryptionStreamDecryptWrongPasswordFails(t *testing.T) {
 	}
 }
 
+func TestBackupEncryptionStreamDecryptBase64Compatibility(t *testing.T) {
+	if _, err := exec.LookPath("openssl"); err != nil {
+		t.Skip("openssl binary not available")
+	}
+
+	server := &ServerMonitor{}
+	tmpDir := t.TempDir()
+	encryptedPath := filepath.Join(tmpDir, "source.base64.enc")
+	decryptedPath := filepath.Join(tmpDir, "source.base64.dec")
+
+	password := "base64-compat-passphrase"
+	plaintext := []byte("backup payload for base64 compatibility")
+
+	cmd := exec.Command("openssl", "enc", "-aes-256-cbc", "-a", "-salt", "-pass", "pass:"+password)
+	cmd.Stdin = bytes.NewReader(plaintext)
+	var out bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		errMsg := strings.TrimSpace(stderr.String())
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		t.Fatalf("failed to encrypt base64 compatibility payload: %s", errMsg)
+	}
+	if err := os.WriteFile(encryptedPath, out.Bytes(), 0o600); err != nil {
+		t.Fatalf("write encrypted compatibility input: %v", err)
+	}
+
+	if err := server.decryptBackupFileStream(encryptedPath, decryptedPath, password, 0o600); err != nil {
+		t.Fatalf("decrypt base64 compatibility payload: %v", err)
+	}
+	decryptedData, err := os.ReadFile(decryptedPath)
+	if err != nil {
+		t.Fatalf("read decrypted compatibility output: %v", err)
+	}
+	if !bytes.Equal(decryptedData, plaintext) {
+		t.Fatal("base64 compatibility decrypted data mismatch")
+	}
+}
+
 func TestBackupEncryptionStreamEncryptEmptyPassphraseFails(t *testing.T) {
 	if _, err := exec.LookPath("openssl"); err != nil {
 		t.Skip("openssl binary not available")
@@ -114,7 +156,7 @@ func TestEncryptBackupDoesNotExposePassphraseInArgs(t *testing.T) {
 	passphrase := "secret-passphrase-test-123"
 
 	// Test that the args don't contain the passphrase
-	args := []string{"enc", "-aes-256-cbc", "-a", "-salt", "-pass", "fd:3"}
+	args := []string{"enc", "-aes-256-cbc", "-salt", "-pass", "fd:3"}
 	for _, arg := range args {
 		if strings.Contains(arg, passphrase) {
 			t.Fatalf("passphrase found in openssl args: %s", arg)

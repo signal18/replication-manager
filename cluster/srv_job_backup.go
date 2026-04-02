@@ -5165,7 +5165,20 @@ func parseBackupEncryptionHeaderFromPath(sourcePath string) (*backupEncryptionAr
 }
 
 func (server *ServerMonitor) encryptBackupFileStream(sourcePath, destPath, password string, fileMode os.FileMode) error {
-	args := []string{"enc", "-aes-256-cbc", "-a", "-salt", "-pass", "fd:3"}
+	args := []string{"enc", "-aes-256-cbc", "-salt", "-pass", "fd:3"}
+	if err := server.runOpenSSLStreamWithPassphrase(sourcePath, destPath, fileMode, password, args...); err != nil {
+		_ = os.Remove(destPath)
+		return err
+	}
+	return nil
+}
+
+func (server *ServerMonitor) decryptBackupFileStreamWithBase64Option(sourcePath, destPath, password string, fileMode os.FileMode, useBase64 bool) error {
+	args := []string{"enc", "-d", "-aes-256-cbc"}
+	if useBase64 {
+		args = append(args, "-a")
+	}
+	args = append(args, "-pass", "fd:3")
 	if err := server.runOpenSSLStreamWithPassphrase(sourcePath, destPath, fileMode, password, args...); err != nil {
 		_ = os.Remove(destPath)
 		return err
@@ -5174,10 +5187,10 @@ func (server *ServerMonitor) encryptBackupFileStream(sourcePath, destPath, passw
 }
 
 func (server *ServerMonitor) decryptBackupFileStream(sourcePath, destPath, password string, fileMode os.FileMode) error {
-	args := []string{"enc", "-d", "-aes-256-cbc", "-a", "-pass", "fd:3"}
-	if err := server.runOpenSSLStreamWithPassphrase(sourcePath, destPath, fileMode, password, args...); err != nil {
-		_ = os.Remove(destPath)
-		return err
+	if err := server.decryptBackupFileStreamWithBase64Option(sourcePath, destPath, password, fileMode, false); err != nil {
+		if compatErr := server.decryptBackupFileStreamWithBase64Option(sourcePath, destPath, password, fileMode, true); compatErr != nil {
+			return fmt.Errorf("openssl decrypt failed in raw and base64 compatibility modes: raw=%v; base64=%w", err, compatErr)
+		}
 	}
 	return nil
 }
