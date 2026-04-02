@@ -9,6 +9,7 @@ package cluster
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -2378,17 +2379,93 @@ func (cluster *Cluster) SetDatabaseCredentials(role string, cred string) error {
 		cluster.Conf.Cloud18DbaUserCredentials = cred
 		cluster.Conf.Secrets["cloud18-dba-user-credentials"] = new_secret
 	case "sponsor":
-		var new_secret config.Secret
-		new_secret.Value = cred
-		new_secret.OldValue = cluster.Conf.GetDecryptedValue("cloud18-sponsor-user-credentials")
-
 		cluster.Conf.Cloud18SponsorUserCredentials = cred
-		cluster.Conf.Secrets["cloud18-sponsor-user-credentials"] = new_secret
+		rotated := cluster.Conf.Secrets["cloud18-sponsor-user-credentials"].Rotate(cred)
+		cluster.Conf.Secrets["cloud18-sponsor-user-credentials"] = rotated
+		cluster.appendSponsorCredentialHistory(rotated.OldValue)
 	default:
 		return errors.New("Unknown secret role")
 	}
 
 	return nil
+}
+
+// appendSponsorCredentialHistory prepends outgoing (the just-rotated-away credential)
+// to the persisted JSON history stored in cloud18-sponsor-credentials-history.
+func (cluster *Cluster) appendSponsorCredentialHistory(outgoing string) {
+	outgoing = strings.TrimSpace(outgoing)
+	if outgoing == "" {
+		return
+	}
+
+	raw := strings.TrimSpace(cluster.Conf.GetDecryptedValue("cloud18-sponsor-credentials-history"))
+	var history []config.SecretHistoryEntry
+	if raw != "" {
+		_ = json.Unmarshal([]byte(raw), &history)
+	}
+
+	// Deduplicate: skip if already in history
+	for _, e := range history {
+		if e.Value == outgoing {
+			return
+		}
+	}
+
+	entry := config.SecretHistoryEntry{Value: outgoing, RotatedAt: time.Now()}
+	history = append([]config.SecretHistoryEntry{entry}, history...)
+
+	data, err := json.Marshal(history)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Failed to marshal sponsor credentials history: %v", err)
+		return
+	}
+	jsonStr := string(data)
+	cluster.Conf.Cloud18SponsorCredentialsHistory = jsonStr
+	cluster.Conf.Secrets["cloud18-sponsor-credentials-history"] = config.Secret{Value: jsonStr}
+}
+
+// PurgeSponsorCredentialHistory removes all entries from the persisted sponsor
+// credential history. After a purge, old backups encrypted with a previous
+// sponsor password can no longer be automatically decrypted via the retry chain.
+func (cluster *Cluster) PurgeSponsorCredentialHistory() {
+	cluster.Conf.Cloud18SponsorCredentialsHistory = ""
+	cluster.Conf.Secrets["cloud18-sponsor-credentials-history"] = config.Secret{}
+	// Also clear the in-memory History on the sponsor secret
+	s := cluster.Conf.Secrets["cloud18-sponsor-user-credentials"]
+	s.History = nil
+	cluster.Conf.Secrets["cloud18-sponsor-user-credentials"] = s
+}
+
+// PurgeSponsorCredentialHistoryOlderThan removes persisted history entries whose
+// RotatedAt timestamp is before the given cutoff, keeping newer entries intact.
+func (cluster *Cluster) PurgeSponsorCredentialHistoryOlderThan(cutoff time.Time) {
+	raw := strings.TrimSpace(cluster.Conf.GetDecryptedValue("cloud18-sponsor-credentials-history"))
+	if raw == "" {
+		return
+	}
+	var history []config.SecretHistoryEntry
+	if err := json.Unmarshal([]byte(raw), &history); err != nil {
+		return
+	}
+	kept := history[:0]
+	for _, e := range history {
+		if !e.RotatedAt.Before(cutoff) {
+			kept = append(kept, e)
+		}
+	}
+	if len(kept) == len(history) {
+		return
+	}
+	data, err := json.Marshal(kept)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Failed to marshal sponsor credentials history: %v", err)
+		return
+	}
+	jsonStr := string(data)
+	cluster.Conf.Cloud18SponsorCredentialsHistory = jsonStr
+	cluster.Conf.Secrets["cloud18-sponsor-credentials-history"] = config.Secret{Value: jsonStr}
 }
 
 func (cluster *Cluster) SetResticPassword(cred string) {

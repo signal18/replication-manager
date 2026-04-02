@@ -281,6 +281,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSettings)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/set-secret/{settingName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSecretSettings)),
+	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/clear/{settingName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSettings)),
@@ -2552,6 +2556,14 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupBinlogs()
 	case "compress-backups":
 		mycluster.SwitchCompressBackups()
+	case "backup-encryption-enabled":
+		mycluster.Conf.BackupEncryptionEnabled = !mycluster.Conf.BackupEncryptionEnabled
+	case "backup-encryption-keep-plain-dir":
+		mycluster.Conf.BackupEncryptionKeepPlainDir = !mycluster.Conf.BackupEncryptionKeepPlainDir
+	case "backup-encryption-unsafe-per-file-restore":
+		mycluster.Conf.BackupEncryptionUnsafePerFileRestore = !mycluster.Conf.BackupEncryptionUnsafePerFileRestore
+	case "backup-encryption-require-explicit-passphrase":
+		mycluster.Conf.BackupEncryptionRequireExplicitPassphrase = !mycluster.Conf.BackupEncryptionRequireExplicitPassphrase
 	case "backup-reseed-remote-decompress":
 		mycluster.Conf.BackupReseedRemoteDecompress = !mycluster.Conf.BackupReseedRemoteDecompress
 	case "backup-split-mysql-user":
@@ -2738,6 +2750,11 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 		value = settingValue
 	}
 
+	if setting == "backup-encryption-passphrase" || setting == "backup-encryption-keyring" {
+		http.Error(w, "Use set-secret endpoint for this setting", http.StatusBadRequest)
+		return
+	}
+
 	// Should be handled with global settings
 	serverScope := config.IsScope(setting, "server")
 	if serverScope {
@@ -2773,6 +2790,61 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 		}
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handlerMuxSetSecretSettings handles secure setting updates sent via POST body.
+// @Summary Set secret setting for a specific cluster
+// @Description This endpoint sets write-only secret settings for the specified cluster using request body instead of URL path values.
+// @Tags ClusterSettings
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param settingName path string true "Setting Name"
+// @Param payload body object true "Secret payload" SchemaExample({"value":"secret"})
+// @Success 200 {string} string "Successfully set secret setting"
+// @Failure 400 {string} string "Bad request"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/settings/actions/set-secret/{settingName} [post]
+func (repman *ReplicationManager) handlerMuxSetSecretSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	cName := vars["clusterName"]
+	setting := vars["settingName"]
+
+	if setting != "backup-encryption-passphrase" && setting != "backup-encryption-keyring" {
+		http.Error(w, "Unsupported secret setting", http.StatusBadRequest)
+		return
+	}
+
+	mycluster := repman.getClusterByName(cName)
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, fmt.Sprintf("User doesn't have required ACL for %s in cluster %s", setting, cName), http.StatusForbidden)
+		return
+	}
+
+	var payload struct {
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	if err := repman.setClusterSetting(mycluster, setting, payload.Value); err != nil {
+		errCode := 500
+		if err.Error() == "Setting not found" {
+			errCode = 501
+		}
+		http.Error(w, "Failed to set cluster setting: "+err.Error(), errCode)
 		return
 	}
 }
@@ -2996,6 +3068,8 @@ var base64LogValueSettings = map[string]struct{}{
 	"backup-logical-post-script":          {},
 	"backup-mydumper-options":             {},
 	"backup-mydumper-regex":               {},
+	"backup-encryption-passphrase":        {},
+	"backup-encryption-keyring":           {},
 	"backup-myloader-options":             {},
 	"backup-mysqlclient-options":          {},
 	"backup-mysqldump-options":            {},
@@ -3018,7 +3092,7 @@ var base64LogValueSettings = map[string]struct{}{
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
-	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
+	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "backup-encryption-passphrase", "backup-encryption-keyring", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
 		logValue := value
@@ -3188,6 +3262,46 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.CompressBackupsDecompressBufferSize = val
 	case "backup-reseed-remote-decompress":
 		mycluster.Conf.BackupReseedRemoteDecompress = applyIsActive(mycluster.Conf.BackupReseedRemoteDecompress, isactive)
+	case "backup-encryption-enabled":
+		mycluster.Conf.BackupEncryptionEnabled = applyIsActive(mycluster.Conf.BackupEncryptionEnabled, isactive)
+	case "backup-encryption-keep-plain-dir":
+		mycluster.Conf.BackupEncryptionKeepPlainDir = applyIsActive(mycluster.Conf.BackupEncryptionKeepPlainDir, isactive)
+	case "backup-encryption-unsafe-per-file-restore":
+		mycluster.Conf.BackupEncryptionUnsafePerFileRestore = applyIsActive(mycluster.Conf.BackupEncryptionUnsafePerFileRestore, isactive)
+	case "backup-encryption-require-explicit-passphrase":
+		mycluster.Conf.BackupEncryptionRequireExplicitPassphrase = applyIsActive(mycluster.Conf.BackupEncryptionRequireExplicitPassphrase, isactive)
+	case "backup-encryption-directory-format":
+		format := strings.ToLower(strings.TrimSpace(value))
+		switch format {
+		case "", "tar.gz":
+			mycluster.Conf.BackupEncryptionDirectoryFormat = "tar.gz"
+		case "tar":
+			mycluster.Conf.BackupEncryptionDirectoryFormat = "tar"
+		default:
+			return fmt.Errorf("invalid value for backup-encryption-directory-format: %q (allowed: tar.gz|tar)", value)
+		}
+	case "backup-encryption-directory-mode":
+		mode := strings.ToLower(strings.TrimSpace(value))
+		switch mode {
+		case "", "archive":
+			mycluster.Conf.BackupEncryptionDirectoryMode = "archive"
+		case "per-file":
+			mycluster.Conf.BackupEncryptionDirectoryMode = "per-file"
+		default:
+			return fmt.Errorf("invalid value for backup-encryption-directory-mode: %q (allowed: archive|per-file)", value)
+		}
+	case "backup-encryption-passphrase":
+		mycluster.Conf.BackupEncryptionPassphrase = strings.TrimSpace(value)
+		var newSecret config.Secret
+		newSecret.Value = mycluster.Conf.BackupEncryptionPassphrase
+		newSecret.OldValue = mycluster.Conf.GetDecryptedValue("backup-encryption-passphrase")
+		mycluster.Conf.Secrets["backup-encryption-passphrase"] = newSecret
+	case "backup-encryption-keyring":
+		mycluster.Conf.BackupEncryptionKeyring = strings.TrimSpace(value)
+		var newSecret config.Secret
+		newSecret.Value = mycluster.Conf.BackupEncryptionKeyring
+		newSecret.OldValue = mycluster.Conf.GetDecryptedValue("backup-encryption-keyring")
+		mycluster.Conf.Secrets["backup-encryption-keyring"] = newSecret
 	case "compress-backups-logical":
 		normalized, err := normalizeCompressionOverride(value)
 		if err != nil {

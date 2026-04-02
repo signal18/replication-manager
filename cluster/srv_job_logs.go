@@ -270,6 +270,27 @@ func (server *ServerMonitor) DecryptAES256(encrypted, key, iv string) ([]byte, e
 	return out.Bytes(), nil
 }
 
+// EncryptAES256 runs openssl AES-256-CBC encryption and returns base64-encoded ciphertext bytes.
+func (server *ServerMonitor) EncryptAES256(plain []byte, key, iv string) ([]byte, error) {
+	cmd := exec.Command("openssl", "aes-256-cbc", "-e", "-a", "-nosalt", "-K", key, "-iv", iv)
+	cmd.Stdin = bytes.NewReader(plain)
+
+	var out bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg != "" {
+			return nil, fmt.Errorf("openssl encrypt error: %v (%s)", err, msg)
+		}
+		return nil, fmt.Errorf("openssl encrypt error: %v", err)
+	}
+
+	return out.Bytes(), nil
+}
+
 // ParseDecryptedLogs parses JSON log entries from decrypted data
 // and feeds them into the server’s log parsing logic.
 func (server *ServerMonitor) ParseDecryptedLogs(data []byte, mod int, task string) error {

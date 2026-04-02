@@ -1470,6 +1470,10 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.GetShardUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetShardPass())
 	case "backup-restic-password":
 		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("backup-restic-password"))
+	case "backup-encryption-passphrase":
+		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("backup-encryption-passphrase"))
+	case "backup-encryption-keyring":
+		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("backup-encryption-keyring"))
 	case "haproxy-password":
 		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("haproxy-password"))
 	case "maxscale-pass":
@@ -1507,6 +1511,8 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.GetDbaUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetDbaPass())
 	case "cloud18-sponsor-user-credentials":
 		return cluster.GetSponsorUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetSponsorPass())
+	case "cloud18-sponsor-credentials-history":
+		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("cloud18-sponsor-credentials-history"))
 	case "git-acces-token":
 		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("git-acces-token"))
 	case "vault-token":

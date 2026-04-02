@@ -50,6 +50,22 @@ export const setSetting = createAsyncThunk('settings/setSetting', async ({ clust
   }
 })
 
+export const setSecretSetting = createAsyncThunk('settings/setSecretSetting', async ({ clusterName, setting, value }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await settingsService.setSecretSetting(clusterName, setting, value, baseURL)
+    if (status === 200) {
+      showSuccessBanner(`${setting} changed successfully!`, status, thunkAPI)
+      return { data, status }
+    } else {
+      throw new Error(data)
+    }
+  } catch (error) {
+    showErrorBanner(`Changing ${setting} failed!`, error.toString(), thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
 export const updateGraphiteWhiteList = createAsyncThunk(
   'settings/updateGraphiteWhiteList',
   async ({ clusterName, whiteListValue }, thunkAPI) => {

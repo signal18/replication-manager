@@ -721,6 +721,14 @@ type Config struct {
 	CompressBackupsLogical                    string `mapstructure:"compress-backups-logical" toml:"compress-backups-logical" json:"compressBackupsLogical"`
 	CompressBackupsPhysical                   string `mapstructure:"compress-backups-physical" toml:"compress-backups-physical" json:"compressBackupsPhysical"`
 	BackupReseedRemoteDecompress              bool   `mapstructure:"backup-reseed-remote-decompress" toml:"backup-reseed-remote-decompress" json:"backupReseedRemoteDecompress"`
+	BackupEncryptionEnabled                   bool   `mapstructure:"backup-encryption-enabled" toml:"backup-encryption-enabled" json:"backupEncryptionEnabled"`
+	BackupEncryptionPassphrase                string `mapstructure:"backup-encryption-passphrase" toml:"backup-encryption-passphrase" json:"-"`
+	BackupEncryptionKeyring                   string `mapstructure:"backup-encryption-keyring" toml:"backup-encryption-keyring" json:"-"`
+	BackupEncryptionDirectoryFormat           string `mapstructure:"backup-encryption-directory-format" toml:"backup-encryption-directory-format" json:"backupEncryptionDirectoryFormat"`
+	BackupEncryptionDirectoryMode             string `mapstructure:"backup-encryption-directory-mode" toml:"backup-encryption-directory-mode" json:"backupEncryptionDirectoryMode"`
+	BackupEncryptionKeepPlainDir              bool   `mapstructure:"backup-encryption-keep-plain-dir" toml:"backup-encryption-keep-plain-dir" json:"backupEncryptionKeepPlainDir"`
+	BackupEncryptionUnsafePerFileRestore      bool   `mapstructure:"backup-encryption-unsafe-per-file-restore" toml:"backup-encryption-unsafe-per-file-restore" json:"backupEncryptionUnsafePerFileRestore"`
+	BackupEncryptionRequireExplicitPassphrase bool   `mapstructure:"backup-encryption-require-explicit-passphrase" toml:"backup-encryption-require-explicit-passphrase" json:"backupEncryptionRequireExplicitPassphrase"`
 	BackupSplitMysqlUser                      bool   `mapstructure:"backup-split-mysql-user" toml:"backup-split-mysql-user" json:"backupSplitMysqlUser"`
 	BackupRestoreMysqlUser                    bool   `mapstructure:"backup-restore-mysql-user" toml:"backup-restore-mysql-user" json:"backupRestoreMysqlUser"`
 	BackupSplitdumpFileSize                   string `mapstructure:"backup-splitdump-file-size" toml:"backup-splitdump-file-size" json:"backupSplitdumpFileSize"`
@@ -911,6 +919,7 @@ type Config struct {
 	Cloud18DatabaseReadWriteSrvRecord      string                 `mapstructure:"cloud18-database-read-write-srv-record"  toml:"cloud18-database-read-write-srv-record" json:"cloud18DatabaseReadWriteSrvRecord"`
 	Cloud18DbaUserCredentials              string                 `mapstructure:"cloud18-dba-user-credentials"  toml:"cloud18-dba-user-credentials" json:"cloud18DbaUserCredential"`
 	Cloud18SponsorUserCredentials          string                 `mapstructure:"cloud18-sponsor-user-credentials"  toml:"cloud18-sponsor-user-credentials" json:"cloud18SponsorUserCredential"`
+	Cloud18SponsorCredentialsHistory       string                 `mapstructure:"cloud18-sponsor-credentials-history" toml:"cloud18-sponsor-credentials-history" json:"-"`
 	Cloud18SalesSubscriptionScript         string                 `mapstructure:"cloud18-sales-subscription-script"  toml:"cloud18-sales-subscription-script" json:"cloud18SalesSubscriptionScript"`
 	Cloud18SalesSubscriptionValidateScript string                 `mapstructure:"cloud18-sales-subscription-validate-script"  toml:"cloud18-sales-subscription-validate-script" json:"cloud18SalesSubscriptionValidateScript"`
 	Cloud18SalesUnsubscribeScript          string                 `mapstructure:"cloud18-sales-unsubscribe-script"  toml:"cloud18-sales-unsubscribe-script" json:"cloud18SalesUnsubscribeScript"`
@@ -1064,9 +1073,28 @@ type ConfigVariableType struct {
 	Label     string `json:"label"`
 }
 
+// SecretHistoryEntry records a credential value that was rotated away and when.
+type SecretHistoryEntry struct {
+	Value     string    `json:"value"`     // credential as stored (e.g. "user:pass")
+	RotatedAt time.Time `json:"rotatedAt"` // when this value was replaced
+}
+
+// Secret holds a credential value, its immediate predecessor, and a timestamped
+// history of older values (newest-first, in-memory only).
 type Secret struct {
 	OldValue string
 	Value    string
+	History  []SecretHistoryEntry // in-memory only; not persisted to TOML/JSON
+}
+
+// Rotate returns a new Secret with newValue as Value. The outgoing OldValue is
+// prepended to History with the current timestamp (skipped if empty or duplicate).
+func (s Secret) Rotate(newValue string) Secret {
+	hist := s.History
+	if s.OldValue != "" && s.OldValue != s.Value {
+		hist = append([]SecretHistoryEntry{{Value: s.OldValue, RotatedAt: time.Now()}}, hist...)
+	}
+	return Secret{Value: newValue, OldValue: s.Value, History: hist}
 }
 
 type Partner struct {
@@ -1554,35 +1582,38 @@ func (conf *Config) GetSecrets() map[string]Secret {
 
 func (conf *Config) DecryptSecretsFromConfig() {
 	conf.Secrets = map[string]Secret{
-		"api-credentials":                       {"", ""},
-		"api-credentials-external":              {"", ""},
-		"db-servers-credential":                 {"", ""},
-		"monitoring-write-heartbeat-credential": {"", ""},
-		"onpremise-ssh-credential":              {"", ""},
-		"replication-credential":                {"", ""},
-		"shardproxy-credential":                 {"", ""},
-		"haproxy-password":                      {"", ""},
-		"maxscale-pass":                         {"", ""},
-		"myproxy-password":                      {"", ""},
-		"proxysql-password":                     {"", ""},
-		"proxyjanitor-password":                 {"", ""},
-		"vault-secret-id":                       {"", ""},
-		"opensvc-p12-secret":                    {"", ""},
-		"backup-restic-aws-access-secret":       {"", ""},
-		"backup-streaming-aws-access-secret":    {"", ""},
-		"backup-restic-password":                {"", ""},
-		"arbitration-external-secret":           {"", ""},
-		"alert-pushover-user-token":             {"", ""},
-		"alert-pushover-app-token":              {"", ""},
-		"git-acces-token":                       {"", ""},
-		"mail-smtp-password":                    {"", ""},
-		"cloud18-gitlab-password":               {"", ""},
-		"cloud18-dba-user-credentials":          {"", ""},
-		"cloud18-sponsor-user-credentials":      {"", ""},
-		"cloud18-domain-secret":                 {"", ""},
-		"vault-token":                           {"", ""},
-		"api-oauth-client-secret":               {"", ""},
-		"meet-token":                            {"", ""}}
+		"api-credentials":                       {},
+		"api-credentials-external":              {},
+		"db-servers-credential":                 {},
+		"monitoring-write-heartbeat-credential": {},
+		"onpremise-ssh-credential":              {},
+		"replication-credential":                {},
+		"shardproxy-credential":                 {},
+		"haproxy-password":                      {},
+		"maxscale-pass":                         {},
+		"myproxy-password":                      {},
+		"proxysql-password":                     {},
+		"proxyjanitor-password":                 {},
+		"vault-secret-id":                       {},
+		"opensvc-p12-secret":                    {},
+		"backup-restic-aws-access-secret":       {},
+		"backup-streaming-aws-access-secret":    {},
+		"backup-restic-password":                {},
+		"backup-encryption-passphrase":          {},
+		"backup-encryption-keyring":             {},
+		"arbitration-external-secret":           {},
+		"alert-pushover-user-token":             {},
+		"alert-pushover-app-token":              {},
+		"git-acces-token":                       {},
+		"mail-smtp-password":                    {},
+		"cloud18-gitlab-password":               {},
+		"cloud18-dba-user-credentials":          {},
+		"cloud18-sponsor-user-credentials":      {},
+		"cloud18-sponsor-credentials-history":   {},
+		"cloud18-domain-secret":                 {},
+		"vault-token":                           {},
+		"api-oauth-client-secret":               {},
+		"meet-token":                            {}}
 
 	for k := range conf.Secrets {
 

@@ -582,6 +582,8 @@ type SnapshotMetadataSummary struct {
 	Dest             string    `json:"dest,omitempty"`
 	BackupMethod     string    `json:"backupMethod"`
 	BackupTool       string    `json:"backupTool"`
+	EncryptionTool   string    `json:"encryptionTool,omitempty"`
+	EncryptionMode   string    `json:"encryptionMode,omitempty"`
 	BackupLine       string    `json:"backupLine"`
 	StartTime        time.Time `json:"startTime"`
 	EndTime          time.Time `json:"endTime"`
@@ -629,6 +631,8 @@ func buildSnapshotMetadataSummary(meta *backupmgr.BackupMetadata, method backupm
 		Dest:             strings.TrimSpace(meta.Dest),
 		BackupMethod:     backupMethodToString(method),
 		BackupTool:       meta.BackupTool,
+		EncryptionTool:   strings.TrimSpace(meta.EncryptionTool),
+		EncryptionMode:   strings.TrimSpace(meta.EncryptionMode),
 		BackupLine:       meta.BackupLine,
 		StartTime:        meta.StartTime,
 		EndTime:          meta.EndTime,

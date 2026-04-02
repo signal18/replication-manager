@@ -162,6 +162,12 @@ func TestAlternateCompressionPathSwap(t *testing.T) {
 	if alt := alternateCompressionPath("/tmp/mariabackup.xbtream"); alt != "/tmp/mariabackup.xbtream.gz" {
 		t.Fatalf("expected alternate with .gz, got %q", alt)
 	}
+	if alt := alternateCompressionPath("/tmp/mariabackup.xbtream.gz.enc"); alt != "/tmp/mariabackup.xbtream.enc" {
+		t.Fatalf("expected alternate without .gz before .enc, got %q", alt)
+	}
+	if alt := alternateCompressionPath("/tmp/mariabackup.xbtream.enc"); alt != "/tmp/mariabackup.xbtream.gz.enc" {
+		t.Fatalf("expected alternate with .gz before .enc, got %q", alt)
+	}
 }
 
 func TestExpandResticMountTemplateReplacesTokens(t *testing.T) {

@@ -367,6 +367,9 @@ func init() {
 	rootClientCmd.AddCommand(splitRestoreCmd)
 	initSplitRestoreFlags(splitRestoreCmd)
 
+	rootClientCmd.AddCommand(decryptBackupCmd)
+	initDecryptBackupFlags(decryptBackupCmd)
+
 	rootClientCmd.AddCommand(bootstrapCmd)
 	initBootstrapFlags(bootstrapCmd)
 	initClusterFlags(bootstrapCmd)
