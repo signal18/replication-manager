@@ -32,6 +32,7 @@ import (
 
 	"github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/cluster/configurator"
+	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/manager"
@@ -52,7 +53,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	logsql "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
-	"github.com/signal18/replication-manager/cluster/logplugin"
 )
 
 var clusterError = config.ClusterError
@@ -696,6 +696,7 @@ func (cluster *Cluster) Run() {
 
 	for !cluster.exit {
 		if !cluster.Conf.MonitorPause {
+			cluster.ReconcileSecretVersionStore()
 			cluster.ServerIdList = cluster.GetDBServerIdList()
 			cluster.ProxyIdList = cluster.GetProxyServerIdList()
 			cluster.AppIdList = cluster.GetAppServerIdList()

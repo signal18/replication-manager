@@ -316,6 +316,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.ConfRewrite, "monitoring-save-config", true, "Save configuration changes to <monitoring-datadir>/<cluster_name> ")
 	flags.BoolVar(&conf.ConfRestoreOnStart, "monitoring-restore-config-on-start", false, "Wipe working directory and restore config")
 	flags.BoolVar(&conf.MonitoringMergeConfigOnStart, "monitoring-merge-config-on-start", false, "Merge configuration changes to source config.toml file (/etc or other source location) ")
+	flags.BoolVar(&conf.MonitoringSecretVersioning, "monitoring-secret-versioning", false, "Track cluster-local secret hash versions (enabled by default when Vault is not configured)")
 	flags.Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring interval in seconds")
 
 	//not working so far
