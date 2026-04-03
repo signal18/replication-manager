@@ -163,7 +163,7 @@ func (cmm *CommitManager) processCommitQueue() {
 			cmm.commitQueue = cmm.commitQueue[1:]
 			cmm.mu.Unlock()
 
-			cmm.logger.Infof("none", config.ConstLogModGit, "CommitManager processing file: %s", task.Filename)
+			cmm.logger.Debugf("none", config.ConstLogModGit, "CommitManager processing file: %s", task.Filename)
 			cmm.addFileToCommit(task)
 		}
 	}
