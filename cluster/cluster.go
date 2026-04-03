@@ -1129,6 +1129,10 @@ func (cluster *Cluster) Save() error {
 		// Check and inject config
 		cluster.CheckInjectConfig()
 
+		// Copy plugin binaries from .pull/<clusterName>/plugins/ into the
+		// runtime plugins dir, then hot-reload if anything changed.
+		cluster.CheckPullPlugins()
+
 		// Save the main configuration file
 		changed, err := cluster.SaveConfigFile()
 		if err != nil {

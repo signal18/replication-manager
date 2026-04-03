@@ -3,8 +3,19 @@
 // No replication-manager dependency is required at runtime.
 package wire
 
+// WireVersion is incremented whenever a field is removed from or the
+// semantics of an existing field change in a breaking way.  Adding new
+// optional fields is NOT a breaking change — old plugins simply ignore them.
+//
+// Plugins should reject requests with WireVersion > their own
+// MaxSupportedWireVersion and return an ERR finding instead of crashing.
+const WireVersion = 1
+
 // Request is written to the plugin's stdin as a single JSON object.
 type Request struct {
+	// WireVersion lets plugins detect incompatible repman upgrades.
+	// Always set to the WireVersion constant above.
+	WireVersion      int        `json:"wire_version"`
 	ServerURL        string     `json:"server_url"`
 	GraphiteAPIURL   string     `json:"graphite_api_url"`
 	GraphiteHostname string     `json:"graphite_hostname"`
@@ -79,6 +90,12 @@ type MDL struct {
 
 type Response struct {
 	Findings []Finding `json:"findings"`
+	// PluginVersion is optional — plugins may set it to their own semver string
+	// (e.g. "1.2.0") so repman can log it and detect stale binaries.
+	PluginVersion string `json:"plugin_version,omitempty"`
+	// MaxSupportedWireVersion is the highest WireVersion the plugin understands.
+	// Omitting it is treated as version 1 (backward compatible).
+	MaxSupportedWireVersion int `json:"max_supported_wire_version,omitempty"`
 }
 
 type Finding struct {

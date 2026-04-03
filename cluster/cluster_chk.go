@@ -13,6 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"crypto/ed25519"
+	"path/filepath"
 	"net/http"
 	"os"
 	"strconv"
@@ -22,6 +24,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert"
@@ -1191,6 +1194,203 @@ func (cluster *Cluster) CheckInjectConfig() {
 			file.Close()
 		}
 	}
+}
+
+// CheckPullPlugins copies plugin binaries from the .pull directory into this
+// cluster's runtime plugins directory.
+//
+// Source:      <WorkingDir>/.pull/<clusterName>/plugins/plugin-*
+// Destination: <WorkingDir>/<clusterName>/plugins/plugin-*
+//
+// Rules (mirror the same safety rules as LoadPluginsFromDir):
+//   - Only files whose names start with "plugin-" are copied.
+//   - A file is skipped when the destination already exists AND has the same
+//     size AND the same mtime as the source — identical binary, no-op.
+//   - If the destination exists but differs, it is atomically replaced via a
+//     temp-file + rename so a running plugin binary is never truncated in place.
+//   - The destination is made executable (0755) after copy.
+//   - Non-regular files (dirs, symlinks) are silently skipped.
+//
+// The function is called from the same monitoring-loop path as CheckInjectConfig
+// so it fires on every config-rewrite tick — cheap because the mtime check
+// short-circuits the copy when nothing has changed.
+// loadPluginSigningKey reads the Ed25519 public key from the path configured
+// in PluginSigningPublicKey.  Returns nil when the path is empty (verification
+// disabled) or when the file cannot be read (error is logged).
+func (cluster *Cluster) loadPluginSigningKey() ed25519.PublicKey {
+	path := cluster.Conf.PluginSigningPublicKey
+	if path == "" {
+		return nil // signing not configured — permissive mode
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlErr,
+			"[logplugin] cannot read plugin signing public key %s: %v", path, err)
+		return nil
+	}
+	if len(data) != ed25519.PublicKeySize {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlErr,
+			"[logplugin] plugin signing public key %s has wrong length %d (expected %d)",
+			path, len(data), ed25519.PublicKeySize)
+		return nil
+	}
+	return ed25519.PublicKey(data)
+}
+
+// verifyPluginSignature verifies the Ed25519 signature of a plugin binary.
+// sigPath is expected to be binPath + ".sig".
+// Returns nil on success, a descriptive error otherwise.
+func verifyPluginSignature(binPath string, pub ed25519.PublicKey) error {
+	binData, err := os.ReadFile(binPath)
+	if err != nil {
+		return fmt.Errorf("cannot read binary: %w", err)
+	}
+	sigPath := binPath + ".sig"
+	sig, err := os.ReadFile(sigPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("missing signature file %s", sigPath)
+		}
+		return fmt.Errorf("cannot read signature file %s: %w", sigPath, err)
+	}
+	if len(sig) != ed25519.SignatureSize {
+		return fmt.Errorf("signature file %s has wrong length %d (expected %d)",
+			sigPath, len(sig), ed25519.SignatureSize)
+	}
+	if !ed25519.Verify(pub, binData, sig) {
+		return fmt.Errorf("signature verification FAILED for %s — binary may have been tampered with", binPath)
+	}
+	return nil
+}
+
+func (cluster *Cluster) CheckPullPlugins() {
+	srcDir := cluster.Conf.WorkingDir + "/.pull/" + cluster.Name + "/plugins"
+	dstDir := logplugin.PluginDir(cluster.WorkingDir)
+
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return // nothing in .pull yet — perfectly normal
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+			"[logplugin] cannot read pull plugin dir %s: %v", srcDir, err)
+		return
+	}
+
+	if err := os.MkdirAll(dstDir, 0755); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlErr,
+			"[logplugin] cannot create plugin dir %s: %v", dstDir, err)
+		return
+	}
+
+	// Load the public key once per call — cheap file read, avoids stale key
+	// if the admin rotates it between calls.
+	pubKey := cluster.loadPluginSigningKey()
+	signingEnabled := pubKey != nil
+
+	if !signingEnabled && cluster.Conf.PluginSigningPublicKey != "" {
+		// Key path configured but unreadable — already logged in loadPluginSigningKey.
+		// Refuse all copies rather than silently running unsigned plugins.
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+			"[logplugin] plugin-signing-public-key is set but key could not be loaded — no plugins will be deployed")
+		return
+	}
+
+	copied := 0
+	for _, e := range entries {
+		if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		if !strings.HasPrefix(e.Name(), "plugin-") {
+			continue // ignore non-plugin files, .sig files, READMEs, etc.
+		}
+		info, err := e.Info()
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+
+		srcPath := srcDir + "/" + e.Name()
+		dstPath := dstDir + "/" + e.Name()
+
+		// ── Signature verification ────────────────────────────────────────────
+		// Must happen BEFORE the mtime short-circuit so a tampered binary that
+		// happens to keep the same size+mtime is still caught.
+		if signingEnabled {
+			if err := verifyPluginSignature(srcPath, pubKey); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlErr,
+					"[logplugin] WARN0204 refusing unsigned/invalid plugin %s: %v", e.Name(), err)
+				continue // do not copy — treat as if the file does not exist
+			}
+		}
+
+		// Skip if destination is already identical (same size + same mtime).
+		if dstInfo, err := os.Stat(dstPath); err == nil {
+			if dstInfo.Size() == info.Size() && dstInfo.ModTime().Equal(info.ModTime()) {
+				continue
+			}
+		}
+
+		if err := copyPluginAtomic(srcPath, dstPath, info.ModTime()); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+				"[logplugin] failed to copy plugin %s → %s: %v", srcPath, dstPath, err)
+			continue
+		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlInfo,
+			"[logplugin] deployed plugin %s from .pull%s", e.Name(),
+			map[bool]string{true: " (signature verified)", false: " (unsigned — set plugin-signing-public-key to enforce)"}[signingEnabled])
+		copied++
+	}
+
+	if copied > 0 {
+		// Hot-reload so the new binaries are picked up immediately without
+		// waiting for the next topology-stabilisation cycle.
+		cluster.ReloadLogPlugins()
+	}
+}
+
+// copyPluginAtomic writes src to a temp file in the same directory as dst,
+// then renames it to dst — ensuring the destination is never left in a
+// partially-written state even if the process is killed mid-copy.
+// The destination is chmod'd 0755 (executable) and its mtime is set to
+// srcMtime so subsequent mtime comparisons work correctly.
+func copyPluginAtomic(src, dst string, srcMtime time.Time) error {
+	dir := filepath.Dir(dst)
+	tmp, err := os.CreateTemp(dir, ".plugin-tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temp: %w", err)
+	}
+	tmpName := tmp.Name()
+
+	// Ensure temp file is cleaned up if we exit early.
+	defer func() {
+		tmp.Close()
+		os.Remove(tmpName) // no-op after a successful rename
+	}()
+
+	in, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("open src: %w", err)
+	}
+	defer in.Close()
+
+	if _, err := io.Copy(tmp, in); err != nil {
+		return fmt.Errorf("copy data: %w", err)
+	}
+	if err := tmp.Chmod(0755); err != nil {
+		return fmt.Errorf("chmod: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close tmp: %w", err)
+	}
+	// Preserve source mtime so the next mtime-check skips unchanged files.
+	if err := os.Chtimes(tmpName, srcMtime, srcMtime); err != nil {
+		return fmt.Errorf("chtimes: %w", err)
+	}
+	if err := os.Rename(tmpName, dst); err != nil {
+		return fmt.Errorf("rename: %w", err)
+	}
+	return nil
 }
 
 func (cluster *Cluster) CheckDefaultUser(i bool) {

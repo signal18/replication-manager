@@ -52,8 +52,15 @@ const (
 // These are the JSON structs sent to / received from plugin binaries.
 // Plugin authors copy these into their own package — no shared dependency needed.
 
+// WireVersion mirrors the constant in the wire package so external.go
+// can populate it without importing wire (avoiding a circular dep if wire
+// were ever to import logplugin types).  Keep in sync with wire.WireVersion.
+const WireVersion = 1
+
 // stdioRequest is written to the plugin's stdin.
 type StdioRequest struct {
+	// WireVersion tells the plugin which protocol revision repman is using.
+	WireVersion      int    `json:"wire_version"`
 	// Core identification
 	ServerURL        string `json:"server_url"`
 	GraphiteAPIURL   string `json:"graphite_api_url"`
@@ -142,7 +149,9 @@ type StdioMDL struct {
 
 // stdioResponse is read from the plugin's stdout.
 type stdioResponse struct {
-	Findings []stdioFinding `json:"findings"`
+	Findings                []stdioFinding `json:"findings"`
+	PluginVersion           string         `json:"plugin_version,omitempty"`
+	MaxSupportedWireVersion int            `json:"max_supported_wire_version,omitempty"`
 }
 
 type stdioFinding struct {
@@ -156,9 +165,10 @@ type stdioFinding struct {
 // ExternalLogPlugin wraps a downloaded plugin binary as a LogPlugin.
 // It is created by LoadPluginsFromDir and registered in the GlobalRegistry.
 type ExternalLogPlugin struct {
-	name    string
-	binPath string
-	timeout time.Duration
+	name          string
+	binPath       string
+	timeout       time.Duration
+	pluginVersion string // reported by the binary via --version, empty if unsupported
 }
 
 // NewExternalLogPlugin creates a wrapper for the executable at binPath.
@@ -166,10 +176,14 @@ func NewExternalLogPlugin(name, binPath string, timeout time.Duration) *External
 	return &ExternalLogPlugin{name: name, binPath: binPath, timeout: timeout}
 }
 
-func (p *ExternalLogPlugin) Name() string { return p.name }
+func (p *ExternalLogPlugin) Name() string          { return p.name }
+func (p *ExternalLogPlugin) Version() string       { return p.pluginVersion }
 
 func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	req := StdioRequest{
+		// Tell the plugin which wire protocol version we are speaking.
+		// Populated from the wire package constant so it stays in sync.
+		WireVersion:      WireVersion,
 		ServerURL:        src.ServerURL,
 		GraphiteAPIURL:   src.GraphiteAPIURL,
 		GraphiteHostname: src.GraphiteHostname,
@@ -204,6 +218,14 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	var resp stdioResponse
 	if err := json.Unmarshal(out, &resp); err != nil {
 		return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL, fmt.Sprintf("bad JSON response: %v", err))}
+	}
+
+	// If the plugin advertises a wire version ceiling and we exceed it, emit a
+	// warning finding rather than silently producing garbage results.
+	if resp.MaxSupportedWireVersion > 0 && WireVersion > resp.MaxSupportedWireVersion {
+		return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL,
+			fmt.Sprintf("wire protocol mismatch: repman speaks v%d but plugin max is v%d — update the plugin binary",
+				WireVersion, resp.MaxSupportedWireVersion))}
 	}
 
 	findings := make([]Finding, 0, len(resp.Findings))
@@ -261,10 +283,49 @@ func LoadPluginsFromDir(pluginDir string, reg *Registry) (int, error) {
 		}
 		binPath := filepath.Join(pluginDir, e.Name())
 		name := pluginNameFromBinary(e.Name())
-		reg.replace(name, NewExternalLogPlugin(name, binPath, DefaultPluginTimeout))
+		plg := NewExternalLogPlugin(name, binPath, DefaultPluginTimeout)
+
+		// Probe the binary with --version to capture its self-reported version
+		// string.  This is best-effort: if the binary does not implement the flag
+		// the probe simply returns an empty string and loading continues normally.
+		plg.pluginVersion = probePluginVersion(binPath, DefaultPluginTimeout)
+
+		reg.replace(name, plg)
 		loaded++
 	}
 	return loaded, nil
+}
+
+// probePluginVersion runs the plugin binary with a single "--version" argument
+// and returns the first non-empty line of stdout, trimmed.
+// The call is subject to timeout; on any error an empty string is returned.
+//
+// Convention for plugin authors: when invoked with "--version" the binary
+// should print one line to stdout in the form:
+//
+//	<name> <semver> wire/<maxWireVersion>
+//
+// Example:
+//
+//	plugin-connection-storm 1.2.0 wire/1
+//
+// Repman logs this string when loading the plugin so stale binaries are easy
+// to spot in the log.  The flag is optional — plugins that do not implement it
+// simply produce no output and the version field is left empty.
+func probePluginVersion(binPath string, timeout time.Duration) string {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, binPath, "--version").Output() // #nosec G204
+	if err != nil {
+		return "" // plugin does not support --version — that is fine
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 // PluginDir returns the canonical plugin directory for a cluster given its
