@@ -75,6 +75,9 @@ func (cluster *Cluster) ReconcileSecretVersionStore() {
 		return
 	}
 
+	cluster.secretVersionStoreMu.Lock()
+	defer cluster.secretVersionStoreMu.Unlock()
+
 	storePath := SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name)
 	store, err := loadSecretVersionStore(storePath)
 	if err != nil {
