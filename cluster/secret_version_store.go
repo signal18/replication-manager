@@ -27,6 +27,15 @@ type trackedSecretValue struct {
 	CompareValue string
 }
 
+type SecretVersionStorePruneSummary struct {
+	StorePath       string
+	KeysTotal       int
+	KeysPruned      int
+	VersionsRemoved int
+	Changed         bool
+	DryRun          bool
+}
+
 // ReconcileSecretVersionStore keeps the per-cluster secret_store.json in sync
 // with currently tracked secrets for this cluster.
 //
@@ -239,4 +248,70 @@ func sortedTrackedSecretKeys(values map[string]trackedSecretValue) []string {
 	}
 	slices.Sort(keys)
 	return keys
+}
+
+func SecretVersionStorePath(workingDir string, clusterName string) string {
+	return filepath.Join(workingDir, clusterName, secretVersionStoreFilename)
+}
+
+func PruneSecretVersionStoreFile(path string, keepLast int, dryRun bool) (SecretVersionStorePruneSummary, error) {
+	summary := SecretVersionStorePruneSummary{StorePath: path, DryRun: dryRun}
+
+	if keepLast < 1 {
+		return summary, fmt.Errorf("keep-last must be >= 1")
+	}
+
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return summary, fmt.Errorf("secret version store not found: %s", path)
+		}
+		return summary, err
+	}
+
+	store, err := loadSecretVersionStore(path)
+	if err != nil {
+		return summary, err
+	}
+
+	prunedStore, keysPruned, versionsRemoved := pruneSecretVersionStore(store, keepLast)
+	summary.KeysTotal = len(store)
+	summary.KeysPruned = keysPruned
+	summary.VersionsRemoved = versionsRemoved
+	summary.Changed = versionsRemoved > 0
+
+	if !summary.Changed || dryRun {
+		return summary, nil
+	}
+
+	if err := writeSecretVersionStoreAtomic(path, prunedStore); err != nil {
+		return summary, err
+	}
+
+	return summary, nil
+}
+
+func pruneSecretVersionStore(store secretVersionStore, keepLast int) (secretVersionStore, int, int) {
+	if store == nil {
+		store = make(secretVersionStore)
+	}
+
+	pruned := make(secretVersionStore, len(store))
+	keysPruned := 0
+	versionsRemoved := 0
+
+	for key, versions := range store {
+		if len(versions) <= keepLast {
+			copied := append([]secretVersion(nil), versions...)
+			pruned[key] = copied
+			continue
+		}
+
+		start := len(versions) - keepLast
+		copied := append([]secretVersion(nil), versions[start:]...)
+		pruned[key] = copied
+		keysPruned++
+		versionsRemoved += start
+	}
+
+	return pruned, keysPruned, versionsRemoved
 }

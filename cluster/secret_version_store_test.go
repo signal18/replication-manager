@@ -185,6 +185,96 @@ func TestTrackedSecretCompareSnapshotIncludesOnlyTrackedSecrets(t *testing.T) {
 	}
 }
 
+func TestPruneSecretVersionStoreFileKeepLast(t *testing.T) {
+	root := t.TempDir()
+	storePath := filepath.Join(root, secretVersionStoreFilename)
+
+	store := secretVersionStore{
+		"db-servers-credential": {
+			{Version: 1, HashValue: "h1", RotatedAt: "2026-01-01T00:00:00Z"},
+			{Version: 2, HashValue: "h2", RotatedAt: "2026-01-02T00:00:00Z"},
+			{Version: 3, HashValue: "h3", RotatedAt: "2026-01-03T00:00:00Z"},
+			{Version: 4, HashValue: "h4", RotatedAt: "2026-01-04T00:00:00Z"},
+		},
+		"mail-smtp-password": {
+			{Version: 1, HashValue: "m1", RotatedAt: "2026-01-01T00:00:00Z"},
+		},
+	}
+
+	if err := writeSecretVersionStoreAtomic(storePath, store); err != nil {
+		t.Fatalf("seed store failed: %v", err)
+	}
+
+	summary, err := PruneSecretVersionStoreFile(storePath, 2, false)
+	if err != nil {
+		t.Fatalf("prune failed: %v", err)
+	}
+
+	if !summary.Changed {
+		t.Fatalf("expected summary changed=true")
+	}
+	if summary.KeysTotal != 2 {
+		t.Fatalf("expected keys total 2, got %d", summary.KeysTotal)
+	}
+	if summary.KeysPruned != 1 {
+		t.Fatalf("expected keys pruned 1, got %d", summary.KeysPruned)
+	}
+	if summary.VersionsRemoved != 2 {
+		t.Fatalf("expected versions removed 2, got %d", summary.VersionsRemoved)
+	}
+
+	pruned := readSecretStoreForTest(t, storePath)
+	if len(pruned["db-servers-credential"]) != 2 {
+		t.Fatalf("expected 2 retained versions, got %d", len(pruned["db-servers-credential"]))
+	}
+	if pruned["db-servers-credential"][0].Version != 3 || pruned["db-servers-credential"][1].Version != 4 {
+		t.Fatalf("expected retained versions [3,4], got [%d,%d]",
+			pruned["db-servers-credential"][0].Version,
+			pruned["db-servers-credential"][1].Version)
+	}
+}
+
+func TestPruneSecretVersionStoreFileDryRun(t *testing.T) {
+	root := t.TempDir()
+	storePath := filepath.Join(root, secretVersionStoreFilename)
+
+	store := secretVersionStore{
+		"db-servers-credential": {
+			{Version: 1, HashValue: "h1", RotatedAt: "2026-01-01T00:00:00Z"},
+			{Version: 2, HashValue: "h2", RotatedAt: "2026-01-02T00:00:00Z"},
+			{Version: 3, HashValue: "h3", RotatedAt: "2026-01-03T00:00:00Z"},
+		},
+	}
+
+	if err := writeSecretVersionStoreAtomic(storePath, store); err != nil {
+		t.Fatalf("seed store failed: %v", err)
+	}
+
+	summary, err := PruneSecretVersionStoreFile(storePath, 1, true)
+	if err != nil {
+		t.Fatalf("dry-run prune failed: %v", err)
+	}
+
+	if !summary.Changed {
+		t.Fatalf("expected dry-run summary changed=true")
+	}
+	if !summary.DryRun {
+		t.Fatalf("expected dry-run summary dryRun=true")
+	}
+
+	after := readSecretStoreForTest(t, storePath)
+	if len(after["db-servers-credential"]) != 3 {
+		t.Fatalf("expected store untouched in dry-run, got %d versions", len(after["db-servers-credential"]))
+	}
+}
+
+func TestPruneSecretVersionStoreFileInvalidKeepLast(t *testing.T) {
+	_, err := PruneSecretVersionStoreFile("/tmp/secret_store.json", 0, false)
+	if err == nil {
+		t.Fatalf("expected validation error for keep-last=0")
+	}
+}
+
 func readSecretStoreForTest(t *testing.T, path string) secretVersionStore {
 	t.Helper()
 	data, err := os.ReadFile(path)
