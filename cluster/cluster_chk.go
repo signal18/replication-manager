@@ -1238,18 +1238,25 @@ func (cluster *Cluster) loadPluginSigningKey() ed25519.PublicKey {
 }
 
 // verifyPluginSignature verifies the Ed25519 signature of a plugin binary.
-// sigPath is expected to be binPath + ".sig".
+//
+// The signature file is looked up in sigDir (NOT next to the binary) so that
+// the .sig cannot be forged by whoever controls the .pull directory.
+// Canonical usage:
+//
+//	binary:    .pull/<cluster>/plugins/plugin-x          (untrusted source)
+//	signature: <ShareDir>/plugins/plugin-x.sig           (trusted — part of repman release)
+//
 // Returns nil on success, a descriptive error otherwise.
-func verifyPluginSignature(binPath string, pub ed25519.PublicKey) error {
+func verifyPluginSignature(binPath, sigDir string, pub ed25519.PublicKey) error {
 	binData, err := os.ReadFile(binPath)
 	if err != nil {
 		return fmt.Errorf("cannot read binary: %w", err)
 	}
-	sigPath := binPath + ".sig"
+	sigPath := filepath.Join(sigDir, filepath.Base(binPath)+".sig")
 	sig, err := os.ReadFile(sigPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("missing signature file %s", sigPath)
+			return fmt.Errorf("missing signature file %s — add it to ShareDir/plugins/", sigPath)
 		}
 		return fmt.Errorf("cannot read signature file %s: %w", sigPath, err)
 	}
@@ -1306,13 +1313,8 @@ func (cluster *Cluster) CheckPullPlugins() {
 		if !strings.HasPrefix(e.Name(), "plugin-") {
 			continue // ignore non-plugin files, READMEs, etc.
 		}
-		// Skip .sig files — they are side-car files read by verifyPluginSignature
-		// when processing the matching binary.  Treating them as binaries would
-		// cause a spurious WARN0204 (verifyPluginSignature would look for
-		// plugin-x.sig.sig which never exists).
-		if strings.HasSuffix(e.Name(), ".sig") {
-			continue
-		}
+		// .sig files are never placed in .pull — signatures live exclusively in
+		// ShareDir/plugins/ as part of the repman release.  Nothing to skip here.
 		info, err := e.Info()
 		if err != nil || !info.Mode().IsRegular() {
 			continue
@@ -1322,12 +1324,19 @@ func (cluster *Cluster) CheckPullPlugins() {
 		dstPath := dstDir + "/" + e.Name()
 
 		// ── Signature verification ────────────────────────────────────────────
+		// The .sig is read from ShareDir/plugins/ — a directory that is part of
+		// the repman release and NOT writable via .pull.  This means an attacker
+		// who controls .pull cannot forge a valid signature by also dropping a
+		// .sig file there; they would need to compromise the repman installation
+		// itself to replace a signature.
+		//
 		// Must happen BEFORE the mtime short-circuit so a tampered binary that
 		// happens to keep the same size+mtime is still caught.
 		if signingEnabled {
-			if err := verifyPluginSignature(srcPath, pubKey); err != nil {
+			sigDir := filepath.Join(cluster.GetShareDir(), "plugins")
+			if err := verifyPluginSignature(srcPath, sigDir, pubKey); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlErr,
-					"[logplugin] WARN0204 refusing unsigned/invalid plugin %s: %v", e.Name(), err)
+					"[logplugin] WARN0204 refusing plugin %s: %v", e.Name(), err)
 				continue // do not copy — treat as if the file does not exist
 			}
 		}
