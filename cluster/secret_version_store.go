@@ -87,11 +87,29 @@ func (cluster *Cluster) ReconcileSecretVersionStore() {
 	}
 }
 
+// TrackedSecretCompareSnapshot returns the current tracked secret semantic
+// values (decrypted/plaintext compare form) keyed by secret name.
+//
+// This is intended for cheap change detection in call paths (for example API
+// setting updates) that need to know if a tracked secret changed and should
+// trigger immediate reconciliation.
+func (cluster *Cluster) TrackedSecretCompareSnapshot() map[string]string {
+	snapshot := make(map[string]string)
+	for key, value := range cluster.getTrackedSecretStoreValuesWithWarnings(false) {
+		snapshot[key] = value.CompareValue
+	}
+	return snapshot
+}
+
 // getTrackedSecretStoreValues builds the per-key current snapshot used by
 // reconciliation:
 //   - StoredValue: encrypted/hash form to persist into secret_store.json
 //   - CompareValue: plaintext semantic value used only for change detection
 func (cluster *Cluster) getTrackedSecretStoreValues() map[string]trackedSecretValue {
+	return cluster.getTrackedSecretStoreValuesWithWarnings(true)
+}
+
+func (cluster *Cluster) getTrackedSecretStoreValuesWithWarnings(logWarnings bool) map[string]trackedSecretValue {
 	values := make(map[string]trackedSecretValue)
 	if cluster == nil || cluster.Conf == nil {
 		return values
@@ -112,6 +130,9 @@ func (cluster *Cluster) getTrackedSecretStoreValues() map[string]trackedSecretVa
 		}
 
 		if !strings.Contains(storedValue, "hash_") {
+			if !logWarnings {
+				continue
+			}
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 				"Skipping secret versioning for key %s: value is not encrypted hash format", key)
 			continue

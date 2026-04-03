@@ -3066,6 +3066,7 @@ func decodeBase64LogValue(value string) (string, bool) {
 func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, name string, value string) error {
 	var isactive = setIsActive(value)
 	var err error
+	trackedSecretsBefore := mycluster.TrackedSecretCompareSnapshot()
 
 	fmtlog, logargs := GetApiChangeLogFormat(name, value)
 
@@ -4481,8 +4482,26 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 		return errors.New("setting not found")
 	}
+	if trackedSecretSnapshotChanged(trackedSecretsBefore, mycluster.TrackedSecretCompareSnapshot()) {
+		mycluster.ReconcileSecretVersionStore()
+	}
+
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	return nil
+}
+
+func trackedSecretSnapshotChanged(before, after map[string]string) bool {
+	if len(before) != len(after) {
+		return true
+	}
+
+	for k, v := range before {
+		if after[k] != v {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (repman *ReplicationManager) setRepmanSetting(name string, value string) error {

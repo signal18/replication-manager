@@ -164,6 +164,27 @@ func TestReconcileSecretVersionStoreDoesNotAppendForEquivalentEncryptedValues(t 
 	assertSecretVersionCount(t, store, "proxysql-password", 1)
 }
 
+func TestTrackedSecretCompareSnapshotIncludesOnlyTrackedSecrets(t *testing.T) {
+	cl := &Cluster{
+		Conf: &config.Config{
+			Secrets: map[string]config.Secret{
+				"db-servers-credential": {Value: "dbuser:hash_pass_1"},
+				"custom-secret":         {Value: "plain-text-value"},
+			},
+		},
+	}
+
+	snapshot := cl.TrackedSecretCompareSnapshot()
+
+	if _, ok := snapshot["db-servers-credential"]; !ok {
+		t.Fatalf("expected tracked snapshot to include db-servers-credential")
+	}
+
+	if _, ok := snapshot["custom-secret"]; ok {
+		t.Fatalf("expected tracked snapshot to skip non-hash custom-secret")
+	}
+}
+
 func readSecretStoreForTest(t *testing.T, path string) secretVersionStore {
 	t.Helper()
 	data, err := os.ReadFile(path)
