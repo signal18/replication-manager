@@ -48,6 +48,13 @@ type SecretVersionStoreCopySummary struct {
 	Reason          string
 }
 
+type SecretVersionStoreRestoreEntry struct {
+	Key       string
+	Version   int
+	HashValue string
+	RotatedAt string
+}
+
 // ReconcileSecretVersionStore keeps the per-cluster secret_store.json in sync
 // with currently tracked secrets for this cluster.
 //
@@ -290,6 +297,62 @@ func CopySecretVersionStoreFile(srcPath string, dstPath string, dryRun bool, ove
 	return summary, nil
 }
 
+func ResolveSecretVersionStoreEntries(path string, keys []string, secretVersion int, at *time.Time) ([]SecretVersionStoreRestoreEntry, error) {
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("at least one key is required")
+	}
+	if secretVersion > 0 && at != nil {
+		return nil, fmt.Errorf("secret-version and at are mutually exclusive")
+	}
+	if secretVersion <= 0 && at == nil {
+		return nil, fmt.Errorf("either secret-version or at must be set")
+	}
+
+	store, err := loadSecretVersionStore(path)
+	if err != nil {
+		return nil, err
+	}
+
+	resolved := make([]SecretVersionStoreRestoreEntry, 0, len(keys))
+	for _, key := range keys {
+		versions, ok := store[key]
+		if !ok || len(versions) == 0 {
+			return nil, fmt.Errorf("key %s not found in secret store", key)
+		}
+
+		if secretVersion > 0 {
+			entry, err := resolveSecretStoreEntryByVersion(key, versions, secretVersion)
+			if err != nil {
+				return nil, err
+			}
+			resolved = append(resolved, entry)
+			continue
+		}
+
+		entry, err := resolveSecretStoreEntryByTime(key, versions, *at)
+		if err != nil {
+			return nil, err
+		}
+		resolved = append(resolved, entry)
+	}
+
+	return resolved, nil
+}
+
+func ListSecretVersionStoreKeys(path string) ([]string, error) {
+	store, err := loadSecretVersionStore(path)
+	if err != nil {
+		return nil, err
+	}
+
+	keys := make([]string, 0, len(store))
+	for key := range store {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys, nil
+}
+
 func PruneSecretVersionStoreFile(path string, keepLast int, dryRun bool) (SecretVersionStorePruneSummary, error) {
 	summary := SecretVersionStorePruneSummary{StorePath: path, DryRun: dryRun}
 
@@ -350,6 +413,51 @@ func pruneSecretVersionStore(store secretVersionStore, keepLast int) (secretVers
 	}
 
 	return pruned, keysPruned, versionsRemoved
+}
+
+func resolveSecretStoreEntryByVersion(key string, versions []secretVersion, requestedVersion int) (SecretVersionStoreRestoreEntry, error) {
+	for _, version := range versions {
+		if version.Version == requestedVersion {
+			return SecretVersionStoreRestoreEntry{
+				Key:       key,
+				Version:   version.Version,
+				HashValue: version.HashValue,
+				RotatedAt: version.RotatedAt,
+			}, nil
+		}
+	}
+
+	return SecretVersionStoreRestoreEntry{}, fmt.Errorf("key %s does not contain version %d", key, requestedVersion)
+}
+
+func resolveSecretStoreEntryByTime(key string, versions []secretVersion, at time.Time) (SecretVersionStoreRestoreEntry, error) {
+	var selected *secretVersion
+	var selectedTs time.Time
+
+	for i := range versions {
+		ts, err := time.Parse(time.RFC3339, versions[i].RotatedAt)
+		if err != nil {
+			return SecretVersionStoreRestoreEntry{}, fmt.Errorf("invalid rotated_at for key %s version %d: %v", key, versions[i].Version, err)
+		}
+		if ts.After(at) {
+			continue
+		}
+		if selected == nil || ts.After(selectedTs) {
+			selected = &versions[i]
+			selectedTs = ts
+		}
+	}
+
+	if selected == nil {
+		return SecretVersionStoreRestoreEntry{}, fmt.Errorf("key %s has no version at or before %s", key, at.Format(time.RFC3339))
+	}
+
+	return SecretVersionStoreRestoreEntry{
+		Key:       key,
+		Version:   selected.Version,
+		HashValue: selected.HashValue,
+		RotatedAt: selected.RotatedAt,
+	}, nil
 }
 
 func writeFileAtomic(path string, payload []byte, tempPattern string) error {

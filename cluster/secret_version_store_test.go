@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -390,6 +391,92 @@ func TestCopySecretVersionStoreFileDryRun(t *testing.T) {
 	}
 	if string(after) != string(dstPayload) {
 		t.Fatalf("destination should not change in dry-run")
+	}
+}
+
+func TestResolveSecretVersionStoreEntriesByVersion(t *testing.T) {
+	root := t.TempDir()
+	storePath := filepath.Join(root, secretVersionStoreFilename)
+	store := secretVersionStore{
+		"db-servers-credential": {
+			{Version: 1, HashValue: "h1", RotatedAt: "2026-01-01T00:00:00Z"},
+			{Version: 2, HashValue: "h2", RotatedAt: "2026-01-02T00:00:00Z"},
+		},
+		"replication-credential": {
+			{Version: 2, HashValue: "r2", RotatedAt: "2026-01-02T00:00:00Z"},
+		},
+	}
+
+	if err := writeSecretVersionStoreAtomic(storePath, store); err != nil {
+		t.Fatalf("seed store failed: %v", err)
+	}
+
+	entries, err := ResolveSecretVersionStoreEntries(storePath, []string{"db-servers-credential", "replication-credential"}, 2, nil)
+	if err != nil {
+		t.Fatalf("resolve by version failed: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 resolved entries, got %d", len(entries))
+	}
+	if entries[0].Version != 2 || entries[1].Version != 2 {
+		t.Fatalf("expected version 2 for all resolved entries")
+	}
+}
+
+func TestResolveSecretVersionStoreEntriesByDate(t *testing.T) {
+	root := t.TempDir()
+	storePath := filepath.Join(root, secretVersionStoreFilename)
+	store := secretVersionStore{
+		"db-servers-credential": {
+			{Version: 1, HashValue: "h1", RotatedAt: "2026-01-01T00:00:00Z"},
+			{Version: 3, HashValue: "h3", RotatedAt: "2026-01-03T00:00:00Z"},
+		},
+		"replication-credential": {
+			{Version: 2, HashValue: "r2", RotatedAt: "2026-01-02T00:00:00Z"},
+			{Version: 4, HashValue: "r4", RotatedAt: "2026-01-04T00:00:00Z"},
+		},
+	}
+
+	if err := writeSecretVersionStoreAtomic(storePath, store); err != nil {
+		t.Fatalf("seed store failed: %v", err)
+	}
+
+	at := time.Date(2026, 1, 3, 12, 0, 0, 0, time.UTC)
+	entries, err := ResolveSecretVersionStoreEntries(storePath, []string{"db-servers-credential", "replication-credential"}, 0, &at)
+	if err != nil {
+		t.Fatalf("resolve by date failed: %v", err)
+	}
+	if entries[0].Version != 3 {
+		t.Fatalf("expected db-servers-credential version 3, got %d", entries[0].Version)
+	}
+	if entries[1].Version != 2 {
+		t.Fatalf("expected replication-credential version 2, got %d", entries[1].Version)
+	}
+}
+
+func TestListSecretVersionStoreKeys(t *testing.T) {
+	root := t.TempDir()
+	storePath := filepath.Join(root, secretVersionStoreFilename)
+	store := secretVersionStore{
+		"mail-smtp-password":    {{Version: 1, HashValue: "m1", RotatedAt: "2026-01-01T00:00:00Z"}},
+		"db-servers-credential": {{Version: 1, HashValue: "d1", RotatedAt: "2026-01-01T00:00:00Z"}},
+	}
+	if err := writeSecretVersionStoreAtomic(storePath, store); err != nil {
+		t.Fatalf("seed store failed: %v", err)
+	}
+
+	keys, err := ListSecretVersionStoreKeys(storePath)
+	if err != nil {
+		t.Fatalf("list keys failed: %v", err)
+	}
+	want := []string{"db-servers-credential", "mail-smtp-password"}
+	if len(keys) != len(want) {
+		t.Fatalf("unexpected keys length: got=%d want=%d", len(keys), len(want))
+	}
+	for i := range want {
+		if keys[i] != want[i] {
+			t.Fatalf("unexpected key[%d]: got=%s want=%s", i, keys[i], want[i])
+		}
 	}
 }
 
