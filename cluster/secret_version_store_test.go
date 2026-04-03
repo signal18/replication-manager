@@ -275,6 +275,124 @@ func TestPruneSecretVersionStoreFileInvalidKeepLast(t *testing.T) {
 	}
 }
 
+func TestCopySecretVersionStoreFileCopiesWhenDestinationMissing(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "src_secret_store.json")
+	dst := filepath.Join(root, "cluster.d", "cluster-a_secret_store.json")
+
+	payload := []byte(`{"db-servers-credential":[{"version":1,"hash_value":"h1","rotated_at":"2026-01-01T00:00:00Z"}]}`)
+	if err := os.WriteFile(src, payload, 0o644); err != nil {
+		t.Fatalf("write source failed: %v", err)
+	}
+
+	summary, err := CopySecretVersionStoreFile(src, dst, false, false)
+	if err != nil {
+		t.Fatalf("copy failed: %v", err)
+	}
+	if !summary.Copied {
+		t.Fatalf("expected copied=true")
+	}
+
+	written, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("read destination failed: %v", err)
+	}
+	if string(written) != string(payload) {
+		t.Fatalf("destination payload mismatch")
+	}
+}
+
+func TestCopySecretVersionStoreFileSkipsWhenUpToDate(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "src_secret_store.json")
+	dst := filepath.Join(root, "cluster.d", "cluster-a_secret_store.json")
+
+	payload := []byte(`{"db-servers-credential":[{"version":1,"hash_value":"h1","rotated_at":"2026-01-01T00:00:00Z"}]}`)
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		t.Fatalf("mkdir destination dir failed: %v", err)
+	}
+	if err := os.WriteFile(src, payload, 0o644); err != nil {
+		t.Fatalf("write source failed: %v", err)
+	}
+	if err := os.WriteFile(dst, payload, 0o644); err != nil {
+		t.Fatalf("write destination failed: %v", err)
+	}
+
+	summary, err := CopySecretVersionStoreFile(src, dst, false, false)
+	if err != nil {
+		t.Fatalf("copy failed: %v", err)
+	}
+	if !summary.Skipped || summary.Reason != "destination already up to date" {
+		t.Fatalf("expected skipped due to up-to-date destination")
+	}
+}
+
+func TestCopySecretVersionStoreFileRequiresOverwriteWhenDifferent(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "src_secret_store.json")
+	dst := filepath.Join(root, "cluster.d", "cluster-a_secret_store.json")
+
+	srcPayload := []byte(`{"db-servers-credential":[{"version":2,"hash_value":"h2","rotated_at":"2026-01-02T00:00:00Z"}]}`)
+	dstPayload := []byte(`{"db-servers-credential":[{"version":1,"hash_value":"h1","rotated_at":"2026-01-01T00:00:00Z"}]}`)
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		t.Fatalf("mkdir destination dir failed: %v", err)
+	}
+	if err := os.WriteFile(src, srcPayload, 0o644); err != nil {
+		t.Fatalf("write source failed: %v", err)
+	}
+	if err := os.WriteFile(dst, dstPayload, 0o644); err != nil {
+		t.Fatalf("write destination failed: %v", err)
+	}
+
+	if _, err := CopySecretVersionStoreFile(src, dst, false, false); err == nil {
+		t.Fatalf("expected overwrite required error")
+	}
+
+	summary, err := CopySecretVersionStoreFile(src, dst, false, true)
+	if err != nil {
+		t.Fatalf("copy with overwrite failed: %v", err)
+	}
+	if !summary.Copied {
+		t.Fatalf("expected copied=true with overwrite")
+	}
+}
+
+func TestCopySecretVersionStoreFileDryRun(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "src_secret_store.json")
+	dst := filepath.Join(root, "cluster.d", "cluster-a_secret_store.json")
+
+	srcPayload := []byte(`{"db-servers-credential":[{"version":2,"hash_value":"h2","rotated_at":"2026-01-02T00:00:00Z"}]}`)
+	dstPayload := []byte(`{"db-servers-credential":[{"version":1,"hash_value":"h1","rotated_at":"2026-01-01T00:00:00Z"}]}`)
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		t.Fatalf("mkdir destination dir failed: %v", err)
+	}
+	if err := os.WriteFile(src, srcPayload, 0o644); err != nil {
+		t.Fatalf("write source failed: %v", err)
+	}
+	if err := os.WriteFile(dst, dstPayload, 0o644); err != nil {
+		t.Fatalf("write destination failed: %v", err)
+	}
+
+	summary, err := CopySecretVersionStoreFile(src, dst, true, false)
+	if err != nil {
+		t.Fatalf("dry-run copy failed: %v", err)
+	}
+	if !summary.Skipped || summary.Reason != "dry run" {
+		t.Fatalf("expected dry-run skip")
+	}
+
+	after, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("read destination failed: %v", err)
+	}
+	if string(after) != string(dstPayload) {
+		t.Fatalf("destination should not change in dry-run")
+	}
+}
+
 func readSecretStoreForTest(t *testing.T, path string) secretVersionStore {
 	t.Helper()
 	data, err := os.ReadFile(path)

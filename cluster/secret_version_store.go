@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -34,6 +35,17 @@ type SecretVersionStorePruneSummary struct {
 	VersionsRemoved int
 	Changed         bool
 	DryRun          bool
+}
+
+type SecretVersionStoreCopySummary struct {
+	SourcePath      string
+	DestinationPath string
+	SourceHash      string
+	DestinationHash string
+	Copied          bool
+	Skipped         bool
+	DryRun          bool
+	Reason          string
 }
 
 // ReconcileSecretVersionStore keeps the per-cluster secret_store.json in sync
@@ -201,44 +213,12 @@ func writeSecretVersionStoreAtomic(path string, store secretVersionStore) error 
 		store = make(secretVersionStore)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
-		return err
-	}
-
 	payload, err := json.MarshalIndent(store, "", "  ")
 	if err != nil {
 		return err
 	}
 
-	tmpFile, err := os.CreateTemp(filepath.Dir(path), "secret_store-*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmpFile.Name()
-
-	defer func() {
-		_ = os.Remove(tmpPath)
-	}()
-
-	if _, err := tmpFile.Write(payload); err != nil {
-		_ = tmpFile.Close()
-		return err
-	}
-
-	if err := tmpFile.Sync(); err != nil {
-		_ = tmpFile.Close()
-		return err
-	}
-
-	if err := tmpFile.Close(); err != nil {
-		return err
-	}
-
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("atomic rename failed: %w", err)
-	}
-
-	return nil
+	return writeFileAtomic(path, payload, "secret_store-*.tmp")
 }
 
 func sortedTrackedSecretKeys(values map[string]trackedSecretValue) []string {
@@ -252,6 +232,62 @@ func sortedTrackedSecretKeys(values map[string]trackedSecretValue) []string {
 
 func SecretVersionStorePath(workingDir string, clusterName string) string {
 	return filepath.Join(workingDir, clusterName, secretVersionStoreFilename)
+}
+
+func SecretVersionStoreExportPath(confDir string, clusterName string) string {
+	return filepath.Join(confDir, "cluster.d", clusterName+"_secret_store.json")
+}
+
+func CopySecretVersionStoreFile(srcPath string, dstPath string, dryRun bool, overwrite bool) (SecretVersionStoreCopySummary, error) {
+	summary := SecretVersionStoreCopySummary{
+		SourcePath:      srcPath,
+		DestinationPath: dstPath,
+		DryRun:          dryRun,
+	}
+
+	if _, err := loadSecretVersionStore(srcPath); err != nil {
+		if os.IsNotExist(err) {
+			return summary, fmt.Errorf("secret version store not found: %s", srcPath)
+		}
+		return summary, err
+	}
+
+	srcPayload, err := os.ReadFile(srcPath)
+	if err != nil {
+		return summary, err
+	}
+	summary.SourceHash = hashBytes(srcPayload)
+
+	dstPayload, err := os.ReadFile(dstPath)
+	if err == nil {
+		summary.DestinationHash = hashBytes(dstPayload)
+		if summary.SourceHash == summary.DestinationHash {
+			summary.Skipped = true
+			summary.Reason = "destination already up to date"
+			return summary, nil
+		}
+		if !overwrite && !dryRun {
+			return summary, fmt.Errorf("destination exists and differs; use --overwrite to replace it")
+		}
+	} else if !os.IsNotExist(err) {
+		return summary, err
+	}
+
+	if dryRun {
+		summary.Skipped = true
+		summary.Reason = "dry run"
+		return summary, nil
+	}
+
+	if err := writeFileAtomic(dstPath, srcPayload, "secret_store_export-*.tmp"); err != nil {
+		return summary, err
+	}
+
+	summary.Copied = true
+	if summary.Reason == "" {
+		summary.Reason = "copied"
+	}
+	return summary, nil
 }
 
 func PruneSecretVersionStoreFile(path string, keepLast int, dryRun bool) (SecretVersionStorePruneSummary, error) {
@@ -314,4 +350,45 @@ func pruneSecretVersionStore(store secretVersionStore, keepLast int) (secretVers
 	}
 
 	return pruned, keysPruned, versionsRemoved
+}
+
+func writeFileAtomic(path string, payload []byte, tempPattern string) error {
+	if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
+		return err
+	}
+
+	tmpFile, err := os.CreateTemp(filepath.Dir(path), tempPattern)
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+
+	defer func() {
+		_ = os.Remove(tmpPath)
+	}()
+
+	if _, err := tmpFile.Write(payload); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+
+	if err := tmpFile.Sync(); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("atomic rename failed: %w", err)
+	}
+
+	return nil
+}
+
+func hashBytes(payload []byte) string {
+	sum := sha256.Sum256(payload)
+	return fmt.Sprintf("%x", sum)
 }
