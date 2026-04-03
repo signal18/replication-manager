@@ -84,13 +84,31 @@ PLUGIN_SRC_DIRS := $(shell find cluster/logplugin/plugins -mindepth 2 -maxdepth 
 PLUGIN_NAMES    := $(notdir $(PLUGIN_SRC_DIRS))
 PLUGIN_BINDIR   := build/plugins
 
-# Path to the Ed25519 private key used to sign plugin binaries.
-# Set this on your build/CI machine — leave unset for local dev builds.
-# Example:  make plugins PLUGIN_SIGNING_KEY=/etc/repman-build/plugin-signing.key
-# The .sig files are written to share/plugins/ so they can be shipped as
-# part of the repman release package alongside the main binary.
-PLUGIN_SIGNING_KEY ?=
-PLUGIN_SIG_DIR     := share/plugins
+# ---- Plugin signing keys ----------------------------------------------------
+# The Ed25519 signing keypair is fetched from a private GitHub repo at build
+# time.  Set PLUGIN_SIGNER_USER + PLUGIN_SIGNER_TOKEN (GitHub PAT with
+# repo:read scope) to pull the official Signal18 keys.
+#
+# If credentials are absent the target generates a fresh local keypair so
+# developers and users building from source still get signed plugins — they
+# just sign with their own local key.
+#
+# Keys are stored in PLUGIN_KEY_DIR (~/.replication-manager by default) and
+# reused across builds without being committed to source.
+#
+# Override paths if you manage keys differently:
+#   make plugins PLUGIN_SIGNING_KEY=/path/to/plugin-signing.key
+#
+# .sig files land in share/plugins/ and ship with the repman release package.
+# They are NOT placed in .pull repos — that separation is the security guarantee.
+
+PLUGIN_SIGNER_REPO ?= https://github.com/signal18/replication-manager-plugin-signer
+PLUGIN_SIGNER_USER  ?=
+PLUGIN_SIGNER_TOKEN ?=
+PLUGIN_KEY_DIR      ?= $(HOME)/.replication-manager
+PLUGIN_SIGNING_KEY  ?= $(PLUGIN_KEY_DIR)/plugin-signing.key
+PLUGIN_SIGNING_PUB  ?= $(PLUGIN_KEY_DIR)/plugin-signing.pub
+PLUGIN_SIG_DIR      := share/plugins
 
 plugins: $(PLUGIN_NAMES:%=$(PLUGIN_BINDIR)/%) plugin-sigs
 
@@ -103,30 +121,53 @@ $(PLUGIN_BINDIR)/%:
 	    -o $(PLUGIN_BINDIR)/$* \
 	    ./cluster/logplugin/plugins/$*/...
 
-# Sign all built plugin binaries if PLUGIN_SIGNING_KEY is set.
-# Each .sig is written to share/plugins/<name>.sig so it ships with the
-# repman release and is NOT placed alongside the binary in .pull repos.
-# Skipped silently when PLUGIN_SIGNING_KEY is not set (local dev builds).
-plugin-sigs:
-ifdef PLUGIN_SIGNING_KEY
+# Fetch or generate the plugin signing keypair.
+#
+# Priority:
+#   1. Keys already present at PLUGIN_SIGNING_KEY/PUB paths — reuse, no fetch.
+#   2. PLUGIN_SIGNER_USER + TOKEN set — clone private repo, copy keys.
+#   3. Neither — generate a fresh local keypair (dev / source builds).
+plugin-keys:
+	@mkdir -p $(PLUGIN_KEY_DIR)
+	@if [ -f "$(PLUGIN_SIGNING_KEY)" ] && [ -f "$(PLUGIN_SIGNING_PUB)" ]; then \
+		echo "Plugin signing keys already present — reusing $(PLUGIN_KEY_DIR)"; \
+	elif [ -n "$(PLUGIN_SIGNER_USER)" ] && [ -n "$(PLUGIN_SIGNER_TOKEN)" ]; then \
+		echo "Fetching plugin signing keys from $(PLUGIN_SIGNER_REPO)"; \
+		TMPDIR=$$(mktemp -d); \
+		AUTH_URL=$$(echo "$(PLUGIN_SIGNER_REPO)" | sed "s|https://|https://$(PLUGIN_SIGNER_USER):$(PLUGIN_SIGNER_TOKEN)@|"); \
+		git clone --depth 1 --quiet "$$AUTH_URL" "$$TMPDIR/signer" && \
+		cp "$$TMPDIR/signer/plugin-signing.key" "$(PLUGIN_SIGNING_KEY)" && \
+		cp "$$TMPDIR/signer/plugin-signing.pub" "$(PLUGIN_SIGNING_PUB)" && \
+		chmod 600 "$(PLUGIN_SIGNING_KEY)" && \
+		rm -rf "$$TMPDIR" && \
+		echo "Keys fetched successfully"; \
+	else \
+		echo "No credentials set and no existing keys — generating local keypair"; \
+		echo "Set PLUGIN_SIGNER_USER + PLUGIN_SIGNER_TOKEN to use the official Signal18 key."; \
+		./$(BINDIR)/$(BIN) plugin-keygen \
+			--plugin-private-key "$(PLUGIN_SIGNING_KEY)" \
+			--plugin-public-key  "$(PLUGIN_SIGNING_PUB)"; \
+	fi
+
+# Sign all built plugin binaries using the key resolved by plugin-keys.
+# .sig files go to share/plugins/ to ship with the repman release.
+plugin-sigs: plugin-keys
 	@mkdir -p $(PLUGIN_SIG_DIR)
 	@echo "Signing plugins with key $(PLUGIN_SIGNING_KEY)"
 	@for name in $(PLUGIN_NAMES); do \
 		bin=$(PLUGIN_BINDIR)/$$name; \
 		if [ -f $$bin ]; then \
 			./$(BINDIR)/$(BIN) plugin-sign \
-				--plugin-private-key $(PLUGIN_SIGNING_KEY) \
-				--sig-output-dir $(PLUGIN_SIG_DIR) \
+				--plugin-private-key "$(PLUGIN_SIGNING_KEY)" \
+				--sig-output-dir    "$(PLUGIN_SIG_DIR)" \
 				$$bin && echo "  signed $$name"; \
 		fi; \
 	done
-else
-	@echo "PLUGIN_SIGNING_KEY not set — skipping plugin signing (dev build)"
-endif
 
 plugins-clean:
 	rm -rf $(PLUGIN_BINDIR)
 	rm -f $(PLUGIN_SIG_DIR)/plugin-*.sig
+
 
 clean:
 	find $(BINDIR) -type f | xargs rm
