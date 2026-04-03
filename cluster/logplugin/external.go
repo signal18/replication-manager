@@ -28,8 +28,11 @@ package logplugin
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -169,6 +172,10 @@ type ExternalLogPlugin struct {
 	binPath       string
 	timeout       time.Duration
 	pluginVersion string // reported by the binary via --version, empty if unsupported
+	// sha256Hex is the hex-encoded SHA-256 of the binary at load time.
+	// Re-verified on every Evaluate() call to detect in-place replacement
+	// (TOCTOU attack: attacker swaps binary after LoadPluginsFromDir).
+	sha256Hex     string
 }
 
 // NewExternalLogPlugin creates a wrapper for the executable at binPath.
@@ -180,6 +187,22 @@ func (p *ExternalLogPlugin) Name() string          { return p.name }
 func (p *ExternalLogPlugin) Version() string       { return p.pluginVersion }
 
 func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
+	// Re-verify the binary hash before every execution.
+	// If the file on disk no longer matches what we loaded and hashed at
+	// startup, refuse to run it — an attacker may have swapped it in place
+	// after LoadPluginsFromDir ran (TOCTOU).
+	if p.sha256Hex != "" {
+		current, err := sha256File(p.binPath)
+		if err != nil {
+			return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL,
+				fmt.Sprintf("cannot re-read binary for hash check: %v", err))}
+		}
+		if current != p.sha256Hex {
+			return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL,
+				"WARN0205 binary hash mismatch — plugin file was modified after load, refusing execution")}
+		}
+	}
+
 	req := StdioRequest{
 		// Tell the plugin which wire protocol version we are speaking.
 		// Populated from the wire package constant so it stays in sync.
@@ -290,6 +313,12 @@ func LoadPluginsFromDir(pluginDir string, reg *Registry) (int, error) {
 		// the probe simply returns an empty string and loading continues normally.
 		plg.pluginVersion = probePluginVersion(binPath, DefaultPluginTimeout)
 
+		// Record the SHA-256 of the binary at load time so Evaluate() can
+		// detect if it has been swapped since (TOCTOU protection).
+		if h, err := sha256File(binPath); err == nil {
+			plg.sha256Hex = h
+		}
+
 		reg.replace(name, plg)
 		loaded++
 	}
@@ -369,6 +398,20 @@ func processToWire(procs []StdioProcess) []StdioProcess {
 
 func mdlToWire(mdls []StdioMDL) []StdioMDL {
 	return mdls // already in wire format
+}
+
+// sha256File returns the hex-encoded SHA-256 digest of the file at path.
+func sha256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func pluginErrFinding(pluginName, serverURL, msg string) []Finding {

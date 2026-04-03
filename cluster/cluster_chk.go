@@ -1277,7 +1277,9 @@ func (cluster *Cluster) CheckPullPlugins() {
 		return
 	}
 
-	if err := os.MkdirAll(dstDir, 0755); err != nil {
+	// 0700: only the repman process user may read or execute plugins.
+	// World-readable (0755) would let any local user drop a replacement binary.
+	if err := os.MkdirAll(dstDir, 0700); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlErr,
 			"[logplugin] cannot create plugin dir %s: %v", dstDir, err)
 		return
@@ -1359,7 +1361,7 @@ func (cluster *Cluster) CheckPullPlugins() {
 // copyPluginAtomic writes src to a temp file in the same directory as dst,
 // then renames it to dst — ensuring the destination is never left in a
 // partially-written state even if the process is killed mid-copy.
-// The destination is chmod'd 0755 (executable) and its mtime is set to
+// The destination is chmod'd 0700 (executable by owner only) and its mtime is set to
 // srcMtime so subsequent mtime comparisons work correctly.
 func copyPluginAtomic(src, dst string, srcMtime time.Time) error {
 	dir := filepath.Dir(dst)
@@ -1384,7 +1386,8 @@ func copyPluginAtomic(src, dst string, srcMtime time.Time) error {
 	if _, err := io.Copy(tmp, in); err != nil {
 		return fmt.Errorf("copy data: %w", err)
 	}
-	if err := tmp.Chmod(0755); err != nil {
+	// 0700: executable only by the repman process owner.
+	if err := tmp.Chmod(0700); err != nil {
 		return fmt.Errorf("chmod: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
