@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	toml "github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/config"
+	s18crypto "github.com/signal18/replication-manager/utils/crypto"
 )
 
 func TestPruneSecretStoreForCluster(t *testing.T) {
@@ -158,7 +160,7 @@ func TestRestoreSecretStoreForClusterConfigByVersion(t *testing.T) {
 		},
 	}
 
-	summary, err := restoreSecretStoreForCluster(repman, clusterName, []string{"db-servers-credential"}, false, 2, nil, false, false)
+	summary, err := restoreSecretStoreForCluster(repman, clusterName, []string{"db-servers-credential"}, false, "2", nil, "", false, false)
 	if err != nil {
 		t.Fatalf("restore failed: %v", err)
 	}
@@ -204,7 +206,7 @@ func TestRestoreSecretStoreForClusterConfigByDateDryRun(t *testing.T) {
 	}
 
 	at := time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)
-	summary, err := restoreSecretStoreForCluster(repman, clusterName, []string{"db-servers-credential"}, false, 0, &at, true, false)
+	summary, err := restoreSecretStoreForCluster(repman, clusterName, []string{"db-servers-credential"}, false, "", &at, "", true, false)
 	if err != nil {
 		t.Fatalf("dry-run restore failed: %v", err)
 	}
@@ -256,7 +258,7 @@ func TestRestoreSecretStoreForClusterAllSecretsConfigOnly(t *testing.T) {
 		},
 	}
 
-	summary, err := restoreSecretStoreForCluster(repman, clusterName, nil, true, 2, nil, false, false)
+	summary, err := restoreSecretStoreForCluster(repman, clusterName, nil, true, "2", nil, "", false, false)
 	if err != nil {
 		t.Fatalf("restore all-secrets failed: %v", err)
 	}
@@ -300,8 +302,114 @@ func TestRestoreSecretStoreForClusterApplyRuntimeRejectsUnsupportedKey(t *testin
 		},
 	}
 
-	_, err := restoreSecretStoreForCluster(repman, clusterName, []string{"mail-smtp-password"}, false, 1, nil, false, true)
+	_, err := restoreSecretStoreForCluster(repman, clusterName, []string{"mail-smtp-password"}, false, "1", nil, "", false, true)
 	if err == nil {
 		t.Fatalf("expected runtime-apply rejection for unsupported key")
+	}
+}
+
+func TestRestoreSecretStoreForClusterLatestVersion(t *testing.T) {
+	root := t.TempDir()
+	clusterName := "cluster-a"
+	workingDir := filepath.Join(root, "data")
+	confDir := filepath.Join(root, "etc", "replication-manager")
+
+	storePath := filepath.Join(workingDir, clusterName, "secret_store.json")
+	if err := os.MkdirAll(filepath.Dir(storePath), 0o755); err != nil {
+		t.Fatalf("mkdir source dir failed: %v", err)
+	}
+	seedStore := []byte(`{
+	  "db-servers-credential": [
+	    {"version": 1, "hash_value": "hash_db_v1", "rotated_at": "2026-01-01T00:00:00Z"},
+	    {"version": 3, "hash_value": "hash_db_v3", "rotated_at": "2026-01-03T00:00:00Z"}
+	  ]
+	}`)
+	if err := os.WriteFile(storePath, seedStore, 0o644); err != nil {
+		t.Fatalf("write store failed: %v", err)
+	}
+
+	repman := &ReplicationManager{Confs: map[string]config.Config{clusterName: {WorkingDir: workingDir, ConfDir: confDir}}}
+
+	summary, err := restoreSecretStoreForCluster(repman, clusterName, []string{"db-servers-credential"}, false, "latest", nil, "", false, false)
+	if err != nil {
+		t.Fatalf("restore latest failed: %v", err)
+	}
+	if summary.Mode != "version" || summary.RequestedVersion != "latest" {
+		t.Fatalf("unexpected summary mode/version: %+v", summary)
+	}
+	if len(summary.Entries) != 1 || summary.Entries[0].Version != 3 {
+		t.Fatalf("expected resolved latest version 3, got %+v", summary.Entries)
+	}
+}
+
+func TestRestoreSecretStoreForClusterWithLegacyKeyPath(t *testing.T) {
+	root := t.TempDir()
+	clusterName := "cluster-a"
+	workingDir := filepath.Join(root, "data")
+	confDir := filepath.Join(root, "etc", "replication-manager")
+
+	legacyKeyPath := filepath.Join(root, "legacy.key")
+	currentKeyPath := filepath.Join(root, "current.key")
+
+	legacyKey, err := s18crypto.Keygen()
+	if err != nil {
+		t.Fatalf("legacy keygen failed: %v", err)
+	}
+	currentKey, err := s18crypto.Keygen()
+	if err != nil {
+		t.Fatalf("current keygen failed: %v", err)
+	}
+	if err := s18crypto.WriteKey(legacyKey, legacyKeyPath, false); err != nil {
+		t.Fatalf("write legacy key failed: %v", err)
+	}
+	if err := s18crypto.WriteKey(currentKey, currentKeyPath, false); err != nil {
+		t.Fatalf("write current key failed: %v", err)
+	}
+
+	legacyCipher := s18crypto.Password{Key: legacyKey, PlainText: "secret-pass"}
+	legacyCipher.Encrypt()
+	legacyStoredValue := "dbuser:" + "hash_" + legacyCipher.CipherText
+
+	storePath := filepath.Join(workingDir, clusterName, "secret_store.json")
+	if err := os.MkdirAll(filepath.Dir(storePath), 0o755); err != nil {
+		t.Fatalf("mkdir source dir failed: %v", err)
+	}
+	seedStore := []byte(`{
+	  "db-servers-credential": [
+	    {"version": 1, "hash_value": "` + legacyStoredValue + `", "rotated_at": "2026-01-01T00:00:00Z"}
+	  ]
+	}`)
+	if err := os.WriteFile(storePath, seedStore, 0o644); err != nil {
+		t.Fatalf("write store failed: %v", err)
+	}
+
+	repman := &ReplicationManager{Confs: map[string]config.Config{clusterName: {WorkingDir: workingDir, ConfDir: confDir, MonitoringKeyPath: currentKeyPath}}}
+
+	_, err = restoreSecretStoreForCluster(repman, clusterName, []string{"db-servers-credential"}, false, "1", nil, legacyKeyPath, false, false)
+	if err != nil {
+		t.Fatalf("restore with legacy key-path failed: %v", err)
+	}
+
+	configPath := filepath.Join(confDir, "cluster.d", clusterName+".toml")
+	loaded, err := toml.LoadFile(configPath)
+	if err != nil {
+		t.Fatalf("load restored toml failed: %v", err)
+	}
+	v := loaded.Get(clusterName + ".db-servers-credential")
+	restoredValue, ok := v.(string)
+	if !ok {
+		t.Fatalf("restored value type invalid: %T", v)
+	}
+	if restoredValue == legacyStoredValue {
+		t.Fatalf("expected transformed value with current key, got unchanged value")
+	}
+
+	verifyConf := &config.Config{MonitoringKeyPath: currentKeyPath}
+	if _, err := verifyConf.LoadEncrytionKey(); err != nil {
+		t.Fatalf("load current key failed: %v", err)
+	}
+	plaintext := verifyConf.DecryptSecretValue("db-servers-credential", restoredValue)
+	if plaintext != "dbuser:secret-pass" {
+		t.Fatalf("unexpected decrypted restored value: %s", plaintext)
 	}
 }

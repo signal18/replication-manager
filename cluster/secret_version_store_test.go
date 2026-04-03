@@ -411,7 +411,7 @@ func TestResolveSecretVersionStoreEntriesByVersion(t *testing.T) {
 		t.Fatalf("seed store failed: %v", err)
 	}
 
-	entries, err := ResolveSecretVersionStoreEntries(storePath, []string{"db-servers-credential", "replication-credential"}, 2, nil)
+	entries, err := ResolveSecretVersionStoreEntries(storePath, []string{"db-servers-credential", "replication-credential"}, "2", nil)
 	if err != nil {
 		t.Fatalf("resolve by version failed: %v", err)
 	}
@@ -442,7 +442,7 @@ func TestResolveSecretVersionStoreEntriesByDate(t *testing.T) {
 	}
 
 	at := time.Date(2026, 1, 3, 12, 0, 0, 0, time.UTC)
-	entries, err := ResolveSecretVersionStoreEntries(storePath, []string{"db-servers-credential", "replication-credential"}, 0, &at)
+	entries, err := ResolveSecretVersionStoreEntries(storePath, []string{"db-servers-credential", "replication-credential"}, "", &at)
 	if err != nil {
 		t.Fatalf("resolve by date failed: %v", err)
 	}
@@ -477,6 +477,44 @@ func TestListSecretVersionStoreKeys(t *testing.T) {
 		if keys[i] != want[i] {
 			t.Fatalf("unexpected key[%d]: got=%s want=%s", i, keys[i], want[i])
 		}
+	}
+}
+
+func TestResolveSecretVersionStoreEntriesLatest(t *testing.T) {
+	root := t.TempDir()
+	storePath := filepath.Join(root, secretVersionStoreFilename)
+	store := secretVersionStore{
+		"db-servers-credential": {
+			{Version: 1, HashValue: "h1", RotatedAt: "2026-01-01T00:00:00Z"},
+			{Version: 2, HashValue: "h2", RotatedAt: "2026-01-02T00:00:00Z"},
+			{Version: 4, HashValue: "h4", RotatedAt: "2026-01-04T00:00:00Z"},
+		},
+	}
+	if err := writeSecretVersionStoreAtomic(storePath, store); err != nil {
+		t.Fatalf("seed store failed: %v", err)
+	}
+
+	entries, err := ResolveSecretVersionStoreEntries(storePath, []string{"db-servers-credential"}, SecretVersionLatest, nil)
+	if err != nil {
+		t.Fatalf("resolve latest failed: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Version != 4 {
+		t.Fatalf("expected latest version 4, got %+v", entries)
+	}
+}
+
+func TestResolveSecretVersionStoreEntriesInvalidVersionSelector(t *testing.T) {
+	root := t.TempDir()
+	storePath := filepath.Join(root, secretVersionStoreFilename)
+	store := secretVersionStore{
+		"db-servers-credential": {{Version: 1, HashValue: "h1", RotatedAt: "2026-01-01T00:00:00Z"}},
+	}
+	if err := writeSecretVersionStoreAtomic(storePath, store); err != nil {
+		t.Fatalf("seed store failed: %v", err)
+	}
+
+	if _, err := ResolveSecretVersionStoreEntries(storePath, []string{"db-servers-credential"}, "newest", nil); err == nil {
+		t.Fatalf("expected invalid selector error")
 	}
 }
 

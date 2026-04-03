@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 )
 
 const secretVersionStoreFilename = "secret_store.json"
+const SecretVersionLatest = "latest"
 
 type secretVersion struct {
 	Version   int    `json:"version"`
@@ -297,15 +299,31 @@ func CopySecretVersionStoreFile(srcPath string, dstPath string, dryRun bool, ove
 	return summary, nil
 }
 
-func ResolveSecretVersionStoreEntries(path string, keys []string, secretVersion int, at *time.Time) ([]SecretVersionStoreRestoreEntry, error) {
+func ResolveSecretVersionStoreEntries(path string, keys []string, versionSelector string, at *time.Time) ([]SecretVersionStoreRestoreEntry, error) {
 	if len(keys) == 0 {
 		return nil, fmt.Errorf("at least one key is required")
 	}
-	if secretVersion > 0 && at != nil {
+	hasVersionSelector := strings.TrimSpace(versionSelector) != ""
+	if hasVersionSelector && at != nil {
 		return nil, fmt.Errorf("secret-version and at are mutually exclusive")
 	}
-	if secretVersion <= 0 && at == nil {
+	if !hasVersionSelector && at == nil {
 		return nil, fmt.Errorf("either secret-version or at must be set")
+	}
+
+	requestedVersion := 0
+	isLatest := false
+	if hasVersionSelector {
+		sel := strings.TrimSpace(versionSelector)
+		if strings.EqualFold(sel, SecretVersionLatest) {
+			isLatest = true
+		} else {
+			parsed, err := strconv.Atoi(sel)
+			if err != nil || parsed <= 0 {
+				return nil, fmt.Errorf("invalid secret-version %q: expected positive integer or %q", versionSelector, SecretVersionLatest)
+			}
+			requestedVersion = parsed
+		}
 	}
 
 	store, err := loadSecretVersionStore(path)
@@ -320,8 +338,19 @@ func ResolveSecretVersionStoreEntries(path string, keys []string, secretVersion 
 			return nil, fmt.Errorf("key %s not found in secret store", key)
 		}
 
-		if secretVersion > 0 {
-			entry, err := resolveSecretStoreEntryByVersion(key, versions, secretVersion)
+		if isLatest {
+			entry := versions[len(versions)-1]
+			resolved = append(resolved, SecretVersionStoreRestoreEntry{
+				Key:       key,
+				Version:   entry.Version,
+				HashValue: entry.HashValue,
+				RotatedAt: entry.RotatedAt,
+			})
+			continue
+		}
+
+		if requestedVersion > 0 {
+			entry, err := resolveSecretStoreEntryByVersion(key, versions, requestedVersion)
 			if err != nil {
 				return nil, err
 			}

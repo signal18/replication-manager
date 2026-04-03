@@ -7,28 +7,33 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	toml "github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	s18crypto "github.com/signal18/replication-manager/utils/crypto"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var (
-	secretStorePruneKeepLast int
-	secretStorePruneDryRun   bool
-	secretStoreCopyDryRun    bool
-	secretStoreCopyOverwrite bool
-	secretStoreRestoreKeys   string
-	secretStoreRestoreAll    bool
-	secretStoreRestoreVer    int
-	secretStoreRestoreAt     string
-	secretStoreRestoreDryRun bool
-	secretStoreApplyRuntime  bool
+	secretStorePruneKeepLast         int
+	secretStorePruneDryRun           bool
+	secretStoreCopyDryRun            bool
+	secretStoreCopyOverwrite         bool
+	secretStoreRestoreKeys           string
+	secretStoreRestoreAll            bool
+	secretStoreRestoreVer            string
+	secretStoreRestoreAt             string
+	secretStoreRestoreDecryptKeyPath string
+	secretStoreRestoreDryRun         bool
+	secretStoreApplyRuntime          bool
 )
+
+var secretHashTokenRegex = regexp.MustCompile(`hash_[^,:\s]+`)
 
 func init() {
 	if RepMan == nil {
@@ -40,10 +45,11 @@ func init() {
 	secretStorePruneCmd.Flags().BoolVar(&secretStorePruneDryRun, "dry-run", false, "Preview pruning without writing secret_store.json")
 	secretStoreCopyCmd.Flags().BoolVar(&secretStoreCopyDryRun, "dry-run", false, "Preview copy without writing destination file")
 	secretStoreCopyCmd.Flags().BoolVar(&secretStoreCopyOverwrite, "overwrite", false, "Overwrite destination when content differs")
-	secretStoreRestoreCmd.Flags().StringVar(&secretStoreRestoreKeys, "key", "", "Comma-separated secret keys to restore")
+	secretStoreRestoreCmd.Flags().StringVar(&secretStoreRestoreKeys, "secret-key", "", "Comma-separated secret keys to restore")
 	secretStoreRestoreCmd.Flags().BoolVar(&secretStoreRestoreAll, "all-secrets", false, "Restore all secrets present in secret_store.json")
-	secretStoreRestoreCmd.Flags().IntVar(&secretStoreRestoreVer, "secret-version", 0, "Restore an exact secret version for all selected keys")
+	secretStoreRestoreCmd.Flags().StringVar(&secretStoreRestoreVer, "secret-version", "", "Restore an exact secret version for all selected keys, or use 'latest'")
 	secretStoreRestoreCmd.Flags().StringVar(&secretStoreRestoreAt, "at", "", "Restore latest version at or before RFC3339 timestamp for each selected key")
+	secretStoreRestoreCmd.Flags().StringVar(&secretStoreRestoreDecryptKeyPath, "decrypt-key-path", "", "Legacy encryption key path used for decrypting stored values before re-encrypting with current cluster key")
 	secretStoreRestoreCmd.Flags().BoolVar(&secretStoreRestoreDryRun, "dry-run", false, "Preview restore without writing configuration")
 	secretStoreRestoreCmd.Flags().BoolVar(&secretStoreApplyRuntime, "apply-runtime", false, "Also apply restored secrets to in-process runtime cluster state")
 	rootCmd.AddCommand(secretStorePruneCmd)
@@ -140,10 +146,10 @@ var secretStoreRestoreCmd = &cobra.Command{
 		}
 
 		if strings.TrimSpace(secretStoreRestoreKeys) != "" && secretStoreRestoreAll {
-			return fmt.Errorf("--key and --all-secrets are mutually exclusive")
+			return fmt.Errorf("--secret-key and --all-secrets are mutually exclusive")
 		}
 		if strings.TrimSpace(secretStoreRestoreKeys) == "" && !secretStoreRestoreAll {
-			return fmt.Errorf("either --key or --all-secrets is required")
+			return fmt.Errorf("either --secret-key or --all-secrets is required")
 		}
 
 		var keys []string
@@ -164,17 +170,17 @@ var secretStoreRestoreCmd = &cobra.Command{
 			at = &parsed
 		}
 
-		if secretStoreRestoreVer > 0 && at != nil {
+		if strings.TrimSpace(secretStoreRestoreVer) != "" && at != nil {
 			return fmt.Errorf("--secret-version and --at are mutually exclusive")
 		}
-		if secretStoreRestoreVer <= 0 && at == nil {
+		if strings.TrimSpace(secretStoreRestoreVer) == "" && at == nil {
 			return fmt.Errorf("either --secret-version or --at is required")
 		}
 
 		RepMan.SetDefaultFlags(viper.GetViper())
 		RepMan.InitConfig(conf, false)
 
-		summary, err := restoreSecretStoreForCluster(RepMan, cfgGroup, keys, secretStoreRestoreAll, secretStoreRestoreVer, at, secretStoreRestoreDryRun, secretStoreApplyRuntime)
+		summary, err := restoreSecretStoreForCluster(RepMan, cfgGroup, keys, secretStoreRestoreAll, secretStoreRestoreVer, at, secretStoreRestoreDecryptKeyPath, secretStoreRestoreDryRun, secretStoreApplyRuntime)
 		if err != nil {
 			return err
 		}
@@ -182,7 +188,7 @@ var secretStoreRestoreCmd = &cobra.Command{
 		fmt.Printf("Cluster: %s\n", cfgGroup)
 		fmt.Printf("Target: %s\n", summary.ConfigPath)
 		if summary.Mode == "version" {
-			fmt.Printf("Mode: secret-version=%d\n", summary.RequestedVersion)
+			fmt.Printf("Mode: secret-version=%s\n", summary.RequestedVersion)
 		} else {
 			fmt.Printf("Mode: at=%s\n", summary.RequestedAt)
 		}
@@ -252,14 +258,14 @@ type secretStoreRestoreSummary struct {
 	ConfigPath       string
 	Selection        string
 	Mode             string
-	RequestedVersion int
+	RequestedVersion string
 	RequestedAt      string
 	Entries          []cluster.SecretVersionStoreRestoreEntry
 	DryRun           bool
 	RuntimeApplied   bool
 }
 
-func restoreSecretStoreForCluster(repman *ReplicationManager, clusterName string, keys []string, allSecrets bool, secretVersion int, at *time.Time, dryRun bool, applyRuntime bool) (secretStoreRestoreSummary, error) {
+func restoreSecretStoreForCluster(repman *ReplicationManager, clusterName string, keys []string, allSecrets bool, versionSelector string, at *time.Time, legacyKeyPath string, dryRun bool, applyRuntime bool) (secretStoreRestoreSummary, error) {
 	if repman == nil {
 		return secretStoreRestoreSummary{}, fmt.Errorf("replication manager is not initialized")
 	}
@@ -295,9 +301,16 @@ func restoreSecretStoreForCluster(repman *ReplicationManager, clusterName string
 		}
 	}
 
-	entries, err := cluster.ResolveSecretVersionStoreEntries(storePath, keys, secretVersion, at)
+	entries, err := cluster.ResolveSecretVersionStoreEntries(storePath, keys, versionSelector, at)
 	if err != nil {
 		return secretStoreRestoreSummary{}, err
+	}
+
+	if strings.TrimSpace(legacyKeyPath) != "" {
+		entries, err = reencryptRestoreEntriesWithLegacyKey(entries, legacyKeyPath, clusterConf, repman.Conf)
+		if err != nil {
+			return secretStoreRestoreSummary{}, err
+		}
 	}
 
 	confDir := clusterConf.ConfDir
@@ -313,11 +326,11 @@ func restoreSecretStoreForCluster(repman *ReplicationManager, clusterName string
 	summary := secretStoreRestoreSummary{
 		ConfigPath:       configPath,
 		Selection:        selection,
-		RequestedVersion: secretVersion,
+		RequestedVersion: versionSelector,
 		Entries:          entries,
 		DryRun:           dryRun,
 	}
-	if secretVersion > 0 {
+	if strings.TrimSpace(versionSelector) != "" {
 		summary.Mode = "version"
 	}
 	if at != nil {
@@ -341,6 +354,82 @@ func restoreSecretStoreForCluster(repman *ReplicationManager, clusterName string
 	}
 
 	return summary, nil
+}
+
+func reencryptRestoreEntriesWithLegacyKey(entries []cluster.SecretVersionStoreRestoreEntry, legacyKeyPath string, clusterConf config.Config, globalConf *config.Config) ([]cluster.SecretVersionStoreRestoreEntry, error) {
+	legacyKey, err := s18crypto.ReadKey(legacyKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read legacy key from %s: %w", legacyKeyPath, err)
+	}
+
+	currentConf := clusterConf
+	if currentConf.MonitoringKeyPath == "" && globalConf != nil {
+		currentConf.MonitoringKeyPath = globalConf.MonitoringKeyPath
+	}
+	if currentConf.MonitoringKeyPath == "" {
+		return nil, fmt.Errorf("current cluster monitoring key path is not configured")
+	}
+	if _, err := currentConf.LoadEncrytionKey(); err != nil {
+		return nil, fmt.Errorf("cannot load current cluster key from %s: %w", currentConf.MonitoringKeyPath, err)
+	}
+
+	transformed := make([]cluster.SecretVersionStoreRestoreEntry, len(entries))
+	copy(transformed, entries)
+
+	for i := range transformed {
+		newValue, err := reencryptStoredHashTokens(transformed[i].HashValue, legacyKey, &currentConf)
+		if err != nil {
+			return nil, fmt.Errorf("failed to transform key %s: %w", transformed[i].Key, err)
+		}
+		transformed[i].HashValue = newValue
+	}
+
+	return transformed, nil
+}
+
+func reencryptStoredHashTokens(value string, legacyKey []byte, currentConf *config.Config) (string, error) {
+	if value == "" {
+		return value, nil
+	}
+
+	matches := secretHashTokenRegex.FindAllStringIndex(value, -1)
+	if len(matches) == 0 {
+		return value, nil
+	}
+
+	var out strings.Builder
+	last := 0
+	for _, m := range matches {
+		out.WriteString(value[last:m[0]])
+		token := value[m[0]:m[1]]
+
+		plain, err := decryptHashTokenWithKey(token, legacyKey)
+		if err != nil {
+			return "", err
+		}
+
+		encrypted := currentConf.GetEncryptedString(plain)
+		if !strings.HasPrefix(encrypted, "hash_") {
+			return "", fmt.Errorf("failed to encrypt token with current cluster key")
+		}
+		out.WriteString(encrypted)
+		last = m[1]
+	}
+	out.WriteString(value[last:])
+
+	return out.String(), nil
+}
+
+func decryptHashTokenWithKey(token string, key []byte) (string, error) {
+	if !strings.HasPrefix(token, "hash_") {
+		return token, nil
+	}
+
+	p := s18crypto.Password{Key: key, CipherText: strings.TrimPrefix(token, "hash_")}
+	if err := p.Decrypt(); err != nil {
+		return "", err
+	}
+	return p.PlainText, nil
 }
 
 func applyRestoreEntriesToClusterConfigFile(configPath string, clusterName string, entries []cluster.SecretVersionStoreRestoreEntry) error {
@@ -408,7 +497,7 @@ var supportedRuntimeApplySecretKeys = map[string]bool{
 
 func parseRestoreKeys(raw string) ([]string, error) {
 	if strings.TrimSpace(raw) == "" {
-		return nil, fmt.Errorf("missing required --key value")
+		return nil, fmt.Errorf("missing required --secret-key value")
 	}
 
 	seen := make(map[string]struct{})
@@ -416,7 +505,7 @@ func parseRestoreKeys(raw string) ([]string, error) {
 	for _, part := range strings.Split(raw, ",") {
 		key := strings.TrimSpace(part)
 		if key == "" {
-			return nil, fmt.Errorf("invalid empty key in --key list")
+			return nil, fmt.Errorf("invalid empty key in --secret-key list")
 		}
 		if _, ok := seen[key]; ok {
 			continue
