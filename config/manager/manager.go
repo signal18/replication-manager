@@ -682,64 +682,65 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 
 	// Check if .git directory exists
 	if _, err := os.Stat(filepath.Join(path, ".git")); os.IsNotExist(err) {
+		dirEntries, readErr := os.ReadDir(path)
+		if readErr != nil {
+			cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot read workdir %s: %s", path, readErr)
+			return readErr
+		}
+
 		cloneopt := &git.CloneOptions{
 			URL:               url,
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 			Auth:              auth,
 			Depth:             1, // Shallow clone
+			NoCheckout:        true,
+			SingleBranch:      true,
+			ReferenceName:     plumbing.NewBranchReferenceName("master"),
 		}
 
-		if !conf.ConfRestoreOnStart {
-			cloneopt.NoCheckout = true
+		cloneRepo := func(targetPath string) (*git.Repository, error) {
+			repo, cloneErr := git.PlainClone(targetPath, false, cloneopt)
+			if cloneErr == transport.ErrRepositoryNotFound {
+				conf.CreateGitlabProjects()
+				repo, cloneErr = git.PlainClone(targetPath, false, cloneopt)
+			}
+			return repo, cloneErr
 		}
 
-		// Perform shallow clone for better performance
-		r, err = git.PlainClone(path, false, cloneopt)
+		if len(dirEntries) == 0 {
+			// Empty dir: clone directly into working dir.
+			r, err = cloneRepo(path)
+		} else {
+			// Non-empty dir: preserve local files by cloning in a temp path and moving only .git.
+			tmpBase := filepath.Join(path, ".tmp")
+			if mkErr := os.MkdirAll(tmpBase, 0o755); mkErr != nil {
+				cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot create temp dir %s: %s", tmpBase, mkErr)
+				return mkErr
+			}
+
+			tmpClonePath, mkErr := os.MkdirTemp(tmpBase, "repman-git-clone-*")
+			if mkErr != nil {
+				cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot create temp clone dir: %s", mkErr)
+				return mkErr
+			}
+			defer os.RemoveAll(tmpClonePath)
+
+			if _, err = cloneRepo(tmpClonePath); err == nil {
+				renameErr := os.Rename(filepath.Join(tmpClonePath, ".git"), filepath.Join(path, ".git"))
+				if renameErr != nil {
+					cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot move .git into workdir: %s", renameErr)
+					return renameErr
+				}
+				r, err = git.PlainOpen(path)
+			}
+		}
 
 		cm.logger.Debugf("none", config.ConstLogModGit, "Clone took: %s", time.Since(start))
 
 		// Handle repository not found
 		if err != nil {
-			if err == transport.ErrRepositoryNotFound {
-				conf.CreateGitlabProjects()
-				r, err = git.PlainClone(path, false, cloneopt)
-			}
-			if err != nil {
-				cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot clone %s: %s", url, err)
-				return err
-			}
-		}
-
-		// After cloning with NoCheckout, create local master branch and checkout to fix push issues
-		if !conf.ConfRestoreOnStart && err == nil {
-			// Get remote master HEAD
-			remoteRef, refErr := r.Reference("refs/remotes/origin/master", true)
-			if refErr == nil {
-				// Create local master branch pointing to remote HEAD
-				localRef := plumbing.NewHashReference("refs/heads/master", remoteRef.Hash())
-				setErr := r.Storer.SetReference(localRef)
-				if setErr == nil {
-					w, wtErr := r.Worktree()
-					if wtErr == nil {
-						// Checkout to set HEAD to local master branch, Keep=true preserves local files
-						checkoutErr := w.Checkout(&git.CheckoutOptions{
-							Branch: "refs/heads/master",
-							Keep:   true,
-						})
-						if checkoutErr != nil {
-							cm.logger.Warnf("none", config.ConstLogModGit, "Git checkout warning (non-fatal): %s", checkoutErr)
-						} else {
-							cm.logger.Debugf("none", config.ConstLogModGit, "Created local master branch and checked out successfully")
-						}
-					} else {
-						cm.logger.Warnf("none", config.ConstLogModGit, "Git worktree warning (non-fatal): %s", wtErr)
-					}
-				} else {
-					cm.logger.Warnf("none", config.ConstLogModGit, "Git set reference warning (non-fatal): %s", setErr)
-				}
-			} else {
-				cm.logger.Warnf("none", config.ConstLogModGit, "Git remote reference warning (non-fatal): %s", refErr)
-			}
+			cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot clone %s: %s", url, err)
+			return err
 		}
 	} else {
 		// Open existing repository
