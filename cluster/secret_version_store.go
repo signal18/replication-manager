@@ -75,7 +75,7 @@ func (cluster *Cluster) ReconcileSecretVersionStore() {
 		return
 	}
 
-	storePath := filepath.Join(cluster.WorkingDir, secretVersionStoreFilename)
+	storePath := SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name)
 	store, err := loadSecretVersionStore(storePath)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
