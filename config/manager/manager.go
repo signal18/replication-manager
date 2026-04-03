@@ -121,6 +121,7 @@ func NewCommitManager(workerMin, workerLimit int, logger *config.LogrusWrapper) 
 }
 
 func (cmm *CommitManager) Start() {
+	cmm.wg.Add(1)
 	go cmm.processCommitQueue()
 }
 
@@ -162,6 +163,7 @@ func (cmm *CommitManager) processCommitQueue() {
 			cmm.commitQueue = cmm.commitQueue[1:]
 			cmm.mu.Unlock()
 
+			cmm.logger.Infof("none", config.ConstLogModGit, "CommitManager processing file: %s", task.Filename)
 			cmm.addFileToCommit(task)
 		}
 	}
@@ -511,6 +513,8 @@ func (cm *ConfigManager) Stop() {
 		cm.logger.Infof("none", config.ConstLogModGeneral, "[Shutdown] Waiting for active saves to finish...")
 		cm.configWg.Wait()
 
+		cm.gitManager.CommitManager.Stop()
+
 		close(cm.gitManager.stopCh) // Send stop signal to the push manager
 		cm.gitManager.cond.Signal() // Wake up the push manager
 		cm.logger.Infof("none", config.ConstLogModGeneral, "[Shutdown] Config manager stopped.")
@@ -806,6 +810,9 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		}
 	}
 
+	if errors.Is(err, git.NoErrAlreadyUpToDate) {
+		err = nil
+	}
 	return err
 }
 
