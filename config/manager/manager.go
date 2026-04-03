@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	git_obj "github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
@@ -706,6 +707,38 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 			if err != nil {
 				cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot clone %s: %s", url, err)
 				return err
+			}
+		}
+
+		// After cloning with NoCheckout, create local master branch and checkout to fix push issues
+		if !conf.ConfRestoreOnStart && err == nil {
+			// Get remote master HEAD
+			remoteRef, refErr := r.Reference("refs/remotes/origin/master", true)
+			if refErr == nil {
+				// Create local master branch pointing to remote HEAD
+				localRef := plumbing.NewHashReference("refs/heads/master", remoteRef.Hash())
+				setErr := r.Storer.SetReference(localRef)
+				if setErr == nil {
+					w, wtErr := r.Worktree()
+					if wtErr == nil {
+						// Checkout to set HEAD to local master branch, Keep=true preserves local files
+						checkoutErr := w.Checkout(&git.CheckoutOptions{
+							Branch: "refs/heads/master",
+							Keep:   true,
+						})
+						if checkoutErr != nil {
+							cm.logger.Warnf("none", config.ConstLogModGit, "Git checkout warning (non-fatal): %s", checkoutErr)
+						} else {
+							cm.logger.Debugf("none", config.ConstLogModGit, "Created local master branch and checked out successfully")
+						}
+					} else {
+						cm.logger.Warnf("none", config.ConstLogModGit, "Git worktree warning (non-fatal): %s", wtErr)
+					}
+				} else {
+					cm.logger.Warnf("none", config.ConstLogModGit, "Git set reference warning (non-fatal): %s", setErr)
+				}
+			} else {
+				cm.logger.Warnf("none", config.ConstLogModGit, "Git remote reference warning (non-fatal): %s", refErr)
 			}
 		}
 	} else {
