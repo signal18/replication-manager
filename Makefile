@@ -84,7 +84,15 @@ PLUGIN_SRC_DIRS := $(shell find cluster/logplugin/plugins -mindepth 2 -maxdepth 
 PLUGIN_NAMES    := $(notdir $(PLUGIN_SRC_DIRS))
 PLUGIN_BINDIR   := build/plugins
 
-plugins: $(PLUGIN_NAMES:%=$(PLUGIN_BINDIR)/%)
+# Path to the Ed25519 private key used to sign plugin binaries.
+# Set this on your build/CI machine — leave unset for local dev builds.
+# Example:  make plugins PLUGIN_SIGNING_KEY=/etc/repman-build/plugin-signing.key
+# The .sig files are written to share/plugins/ so they can be shipped as
+# part of the repman release package alongside the main binary.
+PLUGIN_SIGNING_KEY ?=
+PLUGIN_SIG_DIR     := share/plugins
+
+plugins: $(PLUGIN_NAMES:%=$(PLUGIN_BINDIR)/%) plugin-sigs
 
 $(PLUGIN_BINDIR)/%:
 	@mkdir -p $(PLUGIN_BINDIR)
@@ -95,8 +103,30 @@ $(PLUGIN_BINDIR)/%:
 	    -o $(PLUGIN_BINDIR)/$* \
 	    ./cluster/logplugin/plugins/$*/...
 
+# Sign all built plugin binaries if PLUGIN_SIGNING_KEY is set.
+# Each .sig is written to share/plugins/<name>.sig so it ships with the
+# repman release and is NOT placed alongside the binary in .pull repos.
+# Skipped silently when PLUGIN_SIGNING_KEY is not set (local dev builds).
+plugin-sigs:
+ifdef PLUGIN_SIGNING_KEY
+	@mkdir -p $(PLUGIN_SIG_DIR)
+	@echo "Signing plugins with key $(PLUGIN_SIGNING_KEY)"
+	@for name in $(PLUGIN_NAMES); do \
+		bin=$(PLUGIN_BINDIR)/$$name; \
+		if [ -f $$bin ]; then \
+			./$(BINDIR)/$(BIN) plugin-sign \
+				--plugin-private-key $(PLUGIN_SIGNING_KEY) \
+				--sig-output-dir $(PLUGIN_SIG_DIR) \
+				$$bin && echo "  signed $$name"; \
+		fi; \
+	done
+else
+	@echo "PLUGIN_SIGNING_KEY not set — skipping plugin signing (dev build)"
+endif
+
 plugins-clean:
 	rm -rf $(PLUGIN_BINDIR)
+	rm -f $(PLUGIN_SIG_DIR)/plugin-*.sig
 
 clean:
 	find $(BINDIR) -type f | xargs rm
