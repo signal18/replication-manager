@@ -74,17 +74,50 @@ emb:
 # ---- External log-tailer plugins --------------------------------------------
 # Each subdirectory under cluster/logplugin/plugins/ that contains a main.go
 # is built as a standalone plugin binary under build/plugins/.
-# Subscription plugins delivered via GitLab follow the same pattern.
 #
 # Usage:  make plugins
 #         make plugins GOOS=linux GOARCH=amd64
-#
-# Find only dirs that contain a main.go (i.e. actual plugin binaries, not library packages)
+
 PLUGIN_SRC_DIRS := $(shell find cluster/logplugin/plugins -mindepth 2 -maxdepth 2 -name "main.go" -exec dirname {} \; 2>/dev/null)
 PLUGIN_NAMES    := $(notdir $(PLUGIN_SRC_DIRS))
 PLUGIN_BINDIR   := build/plugins
 
-plugins: $(PLUGIN_NAMES:%=$(PLUGIN_BINDIR)/%)
+# Wire protocol version — read directly from source so it never drifts.
+WIRE_VERSION := $(shell grep -m1 'WireVersion = ' cluster/logplugin/plugins/wire/wire.go | awk '{print $$NF}')
+
+# ---- Plugin signing keys & distribution repo --------------------------------
+# PLUGIN_SIGNER_REPO is both the key store AND the distribution registry:
+#
+#   replication-manager-plugin-signer/
+#   ├── plugin-signing.key          (private — never leaves CI)
+#   ├── plugin-signing.pub          (public  — deployed to repman servers)
+#   ├── wire1/                      (binaries built against wire protocol v1)
+#   │   ├── plugin-connection-storm
+#   │   └── plugin-slow-query-regression ...
+#   ├── wire2/                      (future — when wire protocol breaks)
+#   └── 3.2.1 -> wire1             (symlink: repman release → wire dir)
+#   └── 3.3.0 -> wire2
+#
+# Your back office reads the client repman version, follows the symlink and
+# pulls that wire<n>/ directory into .pull/<cluster>/plugins/.
+#
+# Set PLUGIN_SIGNER_USER + PLUGIN_SIGNER_TOKEN (GitHub PAT, repo:read+write)
+# to fetch keys AND push the built binaries back.
+# Without credentials a fresh local keypair is generated — dev builds still
+# get signed plugins, just with a local key.
+
+PLUGIN_SIGNER_REPO  ?= https://github.com/signal18/replication-manager-plugin-signer
+PLUGIN_SIGNER_USER  ?=
+PLUGIN_SIGNER_TOKEN ?=
+PLUGIN_KEY_DIR      ?= $(HOME)/.replication-manager
+PLUGIN_SIGNING_KEY  ?= $(PLUGIN_KEY_DIR)/plugin-signing.key
+PLUGIN_SIGNING_PUB  ?= $(PLUGIN_KEY_DIR)/plugin-signing.pub
+PLUGIN_SIG_DIR      := share/plugins
+
+# Temporary clone of the signer repo — populated by plugin-keys, reused by plugin-push.
+PLUGIN_SIGNER_CLONE := $(PLUGIN_KEY_DIR)/signer-repo
+
+plugins: $(PLUGIN_NAMES:%=$(PLUGIN_BINDIR)/%) plugin-sigs plugin-push
 
 $(PLUGIN_BINDIR)/%:
 	@mkdir -p $(PLUGIN_BINDIR)
@@ -95,8 +128,90 @@ $(PLUGIN_BINDIR)/%:
 	    -o $(PLUGIN_BINDIR)/$* \
 	    ./cluster/logplugin/plugins/$*/...
 
+# Fetch or generate the plugin signing keypair.
+# Leaves the repo clone in PLUGIN_SIGNER_CLONE for plugin-push to reuse.
+#
+# Priority:
+#   1. Keys already present — reuse, skip clone if not needed for push.
+#   2. Credentials set — clone repo, copy keys.
+#   3. No credentials — generate fresh local keypair.
+plugin-keys:
+	@mkdir -p $(PLUGIN_KEY_DIR)
+	@if [ -n "$(PLUGIN_SIGNER_USER)" ] && [ -n "$(PLUGIN_SIGNER_TOKEN)" ]; then \
+		if [ ! -d "$(PLUGIN_SIGNER_CLONE)/.git" ]; then \
+			echo "Cloning plugin signer repo..."; \
+			AUTH_URL=$$(echo "$(PLUGIN_SIGNER_REPO)" | sed "s|https://|https://$(PLUGIN_SIGNER_USER):$(PLUGIN_SIGNER_TOKEN)@|"); \
+			git clone --depth 1 --quiet "$$AUTH_URL" "$(PLUGIN_SIGNER_CLONE)"; \
+		else \
+			echo "Updating plugin signer repo..."; \
+			cd "$(PLUGIN_SIGNER_CLONE)" && git pull --quiet; \
+		fi; \
+		cp "$(PLUGIN_SIGNER_CLONE)/plugin-signing.key" "$(PLUGIN_SIGNING_KEY)"; \
+		cp "$(PLUGIN_SIGNER_CLONE)/plugin-signing.pub" "$(PLUGIN_SIGNING_PUB)"; \
+		chmod 600 "$(PLUGIN_SIGNING_KEY)"; \
+		echo "Keys fetched from signer repo (wire$(WIRE_VERSION))"; \
+	elif [ -f "$(PLUGIN_SIGNING_KEY)" ] && [ -f "$(PLUGIN_SIGNING_PUB)" ]; then \
+		echo "Plugin signing keys already present — reusing $(PLUGIN_KEY_DIR)"; \
+	else \
+		echo "No credentials and no existing keys — generating local keypair"; \
+		echo "Set PLUGIN_SIGNER_USER + PLUGIN_SIGNER_TOKEN to use the official Signal18 key."; \
+		./$(BINDIR)/$(BIN) plugin-keygen \
+			--plugin-private-key "$(PLUGIN_SIGNING_KEY)" \
+			--plugin-public-key  "$(PLUGIN_SIGNING_PUB)"; \
+	fi
+
+# Sign all built plugin binaries using the key resolved by plugin-keys.
+plugin-sigs: plugin-keys
+	@mkdir -p $(PLUGIN_SIG_DIR)
+	@echo "Signing plugins → $(PLUGIN_SIG_DIR)  [wire$(WIRE_VERSION)]"
+	@for name in $(PLUGIN_NAMES); do \
+		bin=$(PLUGIN_BINDIR)/$$name; \
+		if [ -f $$bin ]; then \
+			./$(BINDIR)/$(BIN) plugin-sign \
+				--plugin-private-key "$(PLUGIN_SIGNING_KEY)" \
+				--sig-output-dir    "$(PLUGIN_SIG_DIR)" \
+				$$bin && echo "  signed $$name"; \
+		fi; \
+	done
+
+# Push built plugins + sigs back to the signer repo under:
+#   wire$(WIRE_VERSION)/          — binaries for this wire protocol version
+#   $(VERSION) -> wire$(WIRE_VERSION)  — symlink: repman release → wire dir
+#
+# Only runs when PLUGIN_SIGNER_USER + TOKEN are set (i.e. CI builds).
+# Skipped silently for dev/source builds.
+plugin-push:
+	@if [ -n "$(PLUGIN_SIGNER_USER)" ] && [ -n "$(PLUGIN_SIGNER_TOKEN)" ] && [ -d "$(PLUGIN_SIGNER_CLONE)/.git" ]; then \
+		echo "Publishing plugins to signer repo [$(VERSION) → wire$(WIRE_VERSION)]"; \
+		WIREDIR="$(PLUGIN_SIGNER_CLONE)/wire$(WIRE_VERSION)"; \
+		mkdir -p "$$WIREDIR"; \
+		for name in $(PLUGIN_NAMES); do \
+			bin=$(PLUGIN_BINDIR)/$$name; \
+			if [ -f $$bin ]; then \
+				cp $$bin "$$WIREDIR/$$name"; \
+				cp "$(PLUGIN_SIG_DIR)/$$name.sig" "$$WIREDIR/$$name.sig" 2>/dev/null || true; \
+				echo "  published $$name → wire$(WIRE_VERSION)/"; \
+			fi; \
+		done; \
+		cd "$(PLUGIN_SIGNER_CLONE)" && \
+		ln -sfn "wire$(WIRE_VERSION)" "$(VERSION)" && \
+		git config user.email "ci@signal18.io" && \
+		git config user.name  "replication-manager CI" && \
+		git add -A && \
+		git diff --cached --quiet || \
+		  git commit -m "plugins: $(VERSION) → wire$(WIRE_VERSION) [$(FULLVERSION)]" && \
+		AUTH_URL=$$(echo "$(PLUGIN_SIGNER_REPO)" | sed "s|https://|https://$(PLUGIN_SIGNER_USER):$(PLUGIN_SIGNER_TOKEN)@|"); \
+		git push "$$AUTH_URL" HEAD:main && \
+		echo "Pushed $(VERSION) → wire$(WIRE_VERSION) to signer repo"; \
+	else \
+		echo "Skipping plugin-push (no credentials or dev build)"; \
+	fi
+
 plugins-clean:
 	rm -rf $(PLUGIN_BINDIR)
+	rm -f $(PLUGIN_SIG_DIR)/plugin-*.sig
+	rm -rf $(PLUGIN_SIGNER_CLONE)
+
 
 clean:
 	find $(BINDIR) -type f | xargs rm
