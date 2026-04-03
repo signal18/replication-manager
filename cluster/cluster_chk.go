@@ -1302,7 +1302,14 @@ func (cluster *Cluster) CheckPullPlugins() {
 			continue
 		}
 		if !strings.HasPrefix(e.Name(), "plugin-") {
-			continue // ignore non-plugin files, .sig files, READMEs, etc.
+			continue // ignore non-plugin files, READMEs, etc.
+		}
+		// Skip .sig files — they are side-car files read by verifyPluginSignature
+		// when processing the matching binary.  Treating them as binaries would
+		// cause a spurious WARN0204 (verifyPluginSignature would look for
+		// plugin-x.sig.sig which never exists).
+		if strings.HasSuffix(e.Name(), ".sig") {
+			continue
 		}
 		info, err := e.Info()
 		if err != nil || !info.Mode().IsRegular() {
