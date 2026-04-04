@@ -398,20 +398,20 @@ configured.
 ### Key management
 
 ```bash
-# Generate a keypair (once — store the private key securely)
+# Generate a keypair (once — store the private key securely, never in source control)
 replication-manager plugin-keygen \
-  --plugin-private-key /etc/repman-build/plugin-signing.key \
+  --plugin-private-key /path/to/private/plugin-signing.key \
   --plugin-public-key  /etc/replication-manager/plugin-signing.pub
 ```
 
-- Private key: 64-byte raw Ed25519 key, mode 0600. Keep in CI secrets only.
-- Public key: 32-byte raw Ed25519 key, mode 0644. Deploy to all repman servers.
+- Private key: Ed25519 private key, mode 0600. Store only in CI secret storage — never on disk of any server that runs repman.
+- Public key: Ed25519 public key, mode 0644. Deploy to all repman servers.
 
 ### Signing a binary
 
 ```bash
 replication-manager plugin-sign \
-  --plugin-private-key /etc/repman-build/plugin-signing.key \
+  --plugin-private-key /path/to/private/plugin-signing.key \
   --sig-output-dir     share/plugins \
   build/plugins/plugin-mycheck
 # produces share/plugins/plugin-mycheck.sig
@@ -438,8 +438,13 @@ Additionally, the SHA-256 of each binary is recorded at load time and
 (TOCTOU attack). If the hash changes after load, execution is refused and
 `WARN0205` is raised.
 
-When `plugin-public-key` is empty (default in dev mode) all verification is
-skipped and any executable `plugin-*` binary in the plugins directory is loaded.
+When `plugin-public-key` is empty, all verification is skipped and any
+executable `plugin-*` binary in the plugins directory is loaded.
+
+> **Production warning:** leaving `plugin-public-key` unconfigured means any
+> executable placed in the plugins directory will run with repman's privileges.
+> Always set `plugin-public-key` on production servers. Repman logs a warning
+> at startup if plugins are present but no public key is configured.
 
 ---
 
@@ -519,21 +524,9 @@ Choose a key in the WARN0400+ range for custom plugins to avoid collisions.
 
 ## Signing and Distribution (CI)
 
-Official plugins are signed and distributed via the private GitHub signer
-repository `signal18/replication-manager-plugin-signer`.
-
-The repository layout maps repman releases to wire protocol versions:
-
-```
-replication-manager-plugin-signer/
-├── plugin-signing.key          (private — CI only, never distributed)
-├── plugin-signing.pub          (public key deployed to repman servers)
-├── wire1/                      (binaries for wire protocol v1)
-│   ├── plugin-connection-storm
-│   ├── plugin-connection-storm.sig
-│   └── ...
-└── 3.2.1 -> wire1              (symlink: repman version → wire dir)
-```
+Official plugins are built and signed in CI on every release, then pushed to a
+private distribution repository. The CI pipeline and distribution repo details
+are documented separately in internal operations documentation.
 
 The wire version is read at build time directly from source so it never drifts:
 
@@ -545,7 +538,7 @@ const WireVersion = 1
 ### CI Makefile targets
 
 ```bash
-make plugins       # build + sign + push (requires PLUGIN_SIGNER_USER + TOKEN)
+make plugins       # build + sign + push (requires CI credentials)
 make plugin-sigs   # sign already-built binaries only
 make plugins-clean # remove build/plugins/, share/plugins/*.sig, and signer clone
 ```
@@ -553,34 +546,12 @@ make plugins-clean # remove build/plugins/, share/plugins/*.sig, and signer clon
 For dev builds without credentials, a local keypair is generated automatically
 in `~/.replication-manager/`.
 
-### GitHub Actions
-
-The workflow `.github/workflows/build-plugins.yml` triggers on every published
-release. It builds all plugins for `linux/amd64`, fetches the official signing
-key from the signer repo using the `PLUGIN_SIGNER_USER` + `PLUGIN_SIGNER_TOKEN`
-secrets, signs the binaries, and pushes them back to the signer repo under the
-appropriate `wire<N>/` directory with a version symlink.
-
 ### Backoffice pull
 
-The backoffice pulls plugins from the signer repo and distributes them to each
-cluster's plugins directory:
-
-```bash
-# Clone or update the signer repo
-git clone <signer-repo-url> /opt/repman-plugins || git -C /opt/repman-plugins pull
-
-# Follow the symlink for the installed repman version
-REPMAN_VERSION=$(replication-manager version | awk '{print $3}')
-WIRE_DIR=$(readlink /opt/repman-plugins/$REPMAN_VERSION)  # e.g. wire1
-
-# Copy binaries + sigs and deploy the public key
-cp /opt/repman-plugins/plugin-signing.pub /etc/replication-manager/
-for CLUSTER_DIR in /var/lib/replication-manager/*/; do
-  install -m 0755 /opt/repman-plugins/$WIRE_DIR/plugin-* "$CLUSTER_DIR/plugins/"
-  cp /opt/repman-plugins/$WIRE_DIR/*.sig "$CLUSTER_DIR/plugins/"
-done
-```
+The backoffice pulls the signed plugin distribution and copies binaries and
+signature files into each cluster's `plugins/` directory, then deploys the
+public key to `/etc/replication-manager/plugin-signing.pub`. The repman
+hot-reload picks up new binaries without restart.
 
 ---
 

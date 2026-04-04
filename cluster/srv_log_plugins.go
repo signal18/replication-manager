@@ -271,13 +271,23 @@ func (cluster *Cluster) ReloadLogPlugins() {
 		return
 	}
 	if n > 0 {
-		cluster.LogModulePrintf(
-			cluster.Conf.Verbose,
-			config.ConstLogModPlugin,
-			config.LvlInfo,
-			"[logplugin] loaded %d external plugin(s) from %s",
-			n, dir,
-		)
+		if cluster.Conf.PluginPublicKey == "" {
+			cluster.LogModulePrintf(
+				cluster.Conf.Verbose,
+				config.ConstLogModPlugin,
+				config.LvlWarn,
+				"[logplugin] %d external plugin(s) loaded from %s without signature verification — set plugin-public-key in production",
+				n, dir,
+			)
+		} else {
+			cluster.LogModulePrintf(
+				cluster.Conf.Verbose,
+				config.ConstLogModPlugin,
+				config.LvlInfo,
+				"[logplugin] loaded %d external plugin(s) from %s",
+				n, dir,
+			)
+		}
 	} else {
 		cluster.LogModulePrintf(
 			cluster.Conf.Verbose,
