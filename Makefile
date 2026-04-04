@@ -86,25 +86,28 @@ PLUGIN_BINDIR   := build/plugins
 WIRE_VERSION := $(shell grep -m1 'WireVersion = ' cluster/logplugin/plugins/wire/wire.go | awk '{print $$NF}')
 
 # ---- Plugin signing keys & distribution repo --------------------------------
-# PLUGIN_SIGNER_REPO is both the key store AND the distribution registry:
+# The Ed25519 signing keypair is fetched from a private GitHub repo at build
+# time.  Set PLUGIN_SIGNER_USER + PLUGIN_SIGNER_TOKEN (GitHub PAT with
+# repo:read+write scope) to pull the official Signal18 keys and push back
+# signed binaries.
 #
+# If credentials are absent the target generates a fresh local keypair so
+# developers and users building from source still get signed plugins — they
+# just sign with their own local key.
+#
+# Keys are stored in PLUGIN_KEY_DIR (~/.replication-manager by default) and
+# reused across builds without being committed to source.
+#
+# Override paths if you manage keys differently:
+#   make plugins PLUGIN_SIGNING_KEY=/path/to/plugin-signing.key
+#
+# .sig files land in share/plugins/ and ship with the repman release package.
+# The signer repo layout maps releases to wire protocol versions:
 #   replication-manager-plugin-signer/
-#   ├── plugin-signing.key          (private — never leaves CI)
-#   ├── plugin-signing.pub          (public  — deployed to repman servers)
-#   ├── wire1/                      (binaries built against wire protocol v1)
-#   │   ├── plugin-connection-storm
-#   │   └── plugin-slow-query-regression ...
-#   ├── wire2/                      (future — when wire protocol breaks)
-#   └── 3.2.1 -> wire1             (symlink: repman release → wire dir)
-#   └── 3.3.0 -> wire2
-#
-# Your back office reads the client repman version, follows the symlink and
-# pulls that wire<n>/ directory into .pull/<cluster>/plugins/.
-#
-# Set PLUGIN_SIGNER_USER + PLUGIN_SIGNER_TOKEN (GitHub PAT, repo:read+write)
-# to fetch keys AND push the built binaries back.
-# Without credentials a fresh local keypair is generated — dev builds still
-# get signed plugins, just with a local key.
+#   ├── plugin-signing.key      (private — never leaves CI)
+#   ├── plugin-signing.pub      (public  — deployed to repman servers)
+#   ├── wire1/                  (binaries for wire protocol v1)
+#   └── 3.2.1 -> wire1          (symlink: repman release → wire dir)
 
 PLUGIN_SIGNER_REPO  ?= https://github.com/signal18/replication-manager-plugin-signer
 PLUGIN_SIGNER_USER  ?=
@@ -129,31 +132,30 @@ $(PLUGIN_BINDIR)/%:
 	    ./cluster/logplugin/plugins/$*/...
 
 # Fetch or generate the plugin signing keypair.
-# Leaves the repo clone in PLUGIN_SIGNER_CLONE for plugin-push to reuse.
+# Clones into PLUGIN_SIGNER_CLONE so plugin-push can reuse the checkout.
 #
 # Priority:
-#   1. Keys already present — reuse, skip clone if not needed for push.
-#   2. Credentials set — clone repo, copy keys.
-#   3. No credentials — generate fresh local keypair.
+#   1. Keys already present at PLUGIN_SIGNING_KEY/PUB paths — reuse, no fetch.
+#   2. PLUGIN_SIGNER_USER + TOKEN set — clone private repo, copy keys.
+#   3. Neither — generate a fresh local keypair (dev / source builds).
 plugin-keys:
 	@mkdir -p $(PLUGIN_KEY_DIR)
-	@if [ -n "$(PLUGIN_SIGNER_USER)" ] && [ -n "$(PLUGIN_SIGNER_TOKEN)" ]; then \
+	@if [ -f "$(PLUGIN_SIGNING_KEY)" ] && [ -f "$(PLUGIN_SIGNING_PUB)" ]; then \
+		echo "Plugin signing keys already present — reusing $(PLUGIN_KEY_DIR)"; \
+	elif [ -n "$(PLUGIN_SIGNER_USER)" ] && [ -n "$(PLUGIN_SIGNER_TOKEN)" ]; then \
+		echo "Fetching plugin signing keys from $(PLUGIN_SIGNER_REPO)"; \
 		if [ ! -d "$(PLUGIN_SIGNER_CLONE)/.git" ]; then \
-			echo "Cloning plugin signer repo..."; \
 			AUTH_URL=$$(echo "$(PLUGIN_SIGNER_REPO)" | sed "s|https://|https://$(PLUGIN_SIGNER_USER):$(PLUGIN_SIGNER_TOKEN)@|"); \
 			git clone --depth 1 --quiet "$$AUTH_URL" "$(PLUGIN_SIGNER_CLONE)"; \
 		else \
-			echo "Updating plugin signer repo..."; \
 			cd "$(PLUGIN_SIGNER_CLONE)" && git pull --quiet; \
 		fi; \
 		cp "$(PLUGIN_SIGNER_CLONE)/plugin-signing.key" "$(PLUGIN_SIGNING_KEY)"; \
 		cp "$(PLUGIN_SIGNER_CLONE)/plugin-signing.pub" "$(PLUGIN_SIGNING_PUB)"; \
 		chmod 600 "$(PLUGIN_SIGNING_KEY)"; \
 		echo "Keys fetched from signer repo (wire$(WIRE_VERSION))"; \
-	elif [ -f "$(PLUGIN_SIGNING_KEY)" ] && [ -f "$(PLUGIN_SIGNING_PUB)" ]; then \
-		echo "Plugin signing keys already present — reusing $(PLUGIN_KEY_DIR)"; \
 	else \
-		echo "No credentials and no existing keys — generating local keypair"; \
+		echo "No credentials set and no existing keys — generating local keypair"; \
 		echo "Set PLUGIN_SIGNER_USER + PLUGIN_SIGNER_TOKEN to use the official Signal18 key."; \
 		./$(BINDIR)/$(BIN) plugin-keygen \
 			--plugin-private-key "$(PLUGIN_SIGNING_KEY)" \
@@ -161,6 +163,7 @@ plugin-keys:
 	fi
 
 # Sign all built plugin binaries using the key resolved by plugin-keys.
+# .sig files go to share/plugins/ and ship with the repman release package.
 plugin-sigs: plugin-keys
 	@mkdir -p $(PLUGIN_SIG_DIR)
 	@echo "Signing plugins → $(PLUGIN_SIG_DIR)  [wire$(WIRE_VERSION)]"

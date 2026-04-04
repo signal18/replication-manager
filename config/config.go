@@ -113,6 +113,13 @@ type Config struct {
 	MonitorPFSQueriesExplainDelay             int    `mapstructure:"monitoring-performance-schema-queries-explain-delay" toml:"monitoring-performance-schema-queries-explain-delay" json:"monitoringPerformanceSchemaQueriesExplainDelay"`
 	MonitorPFSQueriesExplainPurgePeriod       int    `mapstructure:"monitoring-performance-schema-queries-explain-purge-period" toml:"monitoring-performance-schema-queries-explain-purge-period" json:"monitoringPerformanceSchemaQueriesExplainPurgePeriod"`
 	MonitorPlugins                            bool   `mapstructure:"monitoring-plugins" toml:"monitoring-plugins" json:"monitoringPlugins"`
+	// PluginSigningPublicKey is the path to the Ed25519 public key used to verify
+	// plugin binaries copied from .pull. When set, every plugin-* file in
+	// .pull/<cluster>/plugins/ must have a corresponding .sig file whose
+	// Ed25519 signature over the binary verifies against this key.
+	// Plugins without a valid .sig are refused and logged as WARN0204.
+	// Leave empty to disable signature verification (not recommended in production).
+	PluginSigningPublicKey                    string `mapstructure:"plugin-signing-public-key" toml:"plugin-signing-public-key" json:"pluginSigningPublicKey"`
 	MonitorInnoDBStatus                       bool   `mapstructure:"monitoring-innodb-status" toml:"monitoring-innodb-status" json:"monitoringInnoDBStatus"`
 	MonitorLongQueryWithProcess               bool   `mapstructure:"monitoring-long-query-with-process" toml:"monitoring-long-query-with-process" json:"monitoringLongQueryWithProcess"`
 	MonitorLongQueryTime                      int    `mapstructure:"monitoring-long-query-time" toml:"monitoring-long-query-time" json:"monitoringLongQueryTime"`

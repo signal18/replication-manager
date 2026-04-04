@@ -106,6 +106,25 @@ function syncMeta(value, dark) {
   }
 }
 
+// joinWeightColor — maps 0‥100 % onto a yellow→orange→red gradient.
+// At 0 % (no workload data) the edge falls back to its source colour so
+// existing FK / name-match colours still appear for non-workload edges.
+function joinWeightColor(pct) {
+  if (!pct || pct <= 0) return null          // no data — caller uses source colour
+  const t = Math.min(pct / 100, 1)           // 0..1
+  // Yellow #F5C542 → Orange #F07C1A → Red #D93025
+  const r = Math.round(245 + t * (217 - 245))
+  const g = Math.round(197 + t * (48  - 197))
+  const b = Math.round(66  + t * (37  - 66))
+  return `rgb(${r},${g},${b})`
+}
+
+// joinWeightStroke — base stroke width grows with workload pressure.
+function joinWeightStroke(pct, hovered) {
+  const base = pct > 0 ? 1.2 + Math.min(pct / 100, 1) * 2.8 : 1.2
+  return hovered ? base + 1 : base
+}
+
 function edgeColor(src) {
   return src === 'foreign_key' ? T.edgeFk
        : src === 'column_name_match' ? T.edgeNm
@@ -410,12 +429,59 @@ export default function SchemaGraph({
   activeRelationSources,   // Set<string> — controlled by index.jsx
   onChecksum,
   onRepair,
+  clusterName,             // required for time-machine API calls
+  serverName,              // required for time-machine API calls
+  baseURL = '',            // API base URL (from Redux store or prop)
 }) {
   const { theme } = useTheme()
   const dark = theme === 'dark'
 
   const [graphMode,  setGraphMode]  = useState('simple')
   const [weightMode, setWeightMode] = useState('size')
+
+  // ── Time machine state ─────────────────────────────────────────────────────
+  // snapshots: array of { timestamp, snapshotFile, links[] } sorted oldest→newest
+  // historyIdx: index into snapshots (-1 = live / current data)
+  const [snapshots,   setSnapshots]   = useState([])
+  const [historyIdx,  setHistoryIdx]  = useState(-1)   // -1 = live
+  const [tmLoading,   setTmLoading]   = useState(false)
+  const [tmError,     setTmError]     = useState(null)
+
+  // Fetch available snapshot history once on mount (when clusterName+serverName known).
+  useEffect(() => {
+    if (!clusterName || !serverName) return
+    setTmLoading(true)
+    setTmError(null)
+    const url = `${baseURL}/api/clusters/${clusterName}/servers/${serverName}/pfs-join-weights`
+    fetch(url, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } })
+      .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
+      .then(data => { setSnapshots(Array.isArray(data) ? data : []); setTmLoading(false) })
+      .catch(e  => { setTmError(String(e)); setTmLoading(false) })
+  }, [clusterName, serverName, baseURL])
+
+  // Build a lookup map from the currently selected historical snapshot.
+  // Key: "tableA|tableB" (canonical, a ≤ b) → joinWeightPct
+  const historicalWeights = useMemo(() => {
+    if (historyIdx < 0 || historyIdx >= snapshots.length) return null
+    const snap = snapshots[historyIdx]
+    const map  = new Map()
+    for (const lk of (snap.links || [])) {
+      const key = lk.tableA <= lk.tableB
+        ? `${lk.tableA}|${lk.tableB}`
+        : `${lk.tableB}|${lk.tableA}`
+      map.set(key, lk.joinWeightPct)
+    }
+    return map
+  }, [snapshots, historyIdx])
+
+  // Resolve join weight for an edge — historical overrides live when active.
+  const resolveJoinWeight = useCallback((e) => {
+    if (!historicalWeights) return e.joinWeight || 0
+    const ka = `${e.childSchema}.${e.childTable}`
+    const kb = `${e.parentSchema}.${e.parentTable}`
+    const key = ka <= kb ? `${ka}|${kb}` : `${kb}|${ka}`
+    return historicalWeights.get(key) ?? 0
+  }, [historicalWeights])
 
   const schemas = useMemo(() => [...new Set(tables.map(t => t.table_schema))], [tables])
 
@@ -503,11 +569,11 @@ export default function SchemaGraph({
           </div>
         )}
 
-        {/* Edge legend — reflects only the active sources */}
+        {/* Edge legend — static source types + heat gradient swatch */}
         {[
-          { src: 'foreign_key',       col: T.edgeFk, dash: null,  label: 'Foreign key' },
-          { src: 'column_name_match', col: T.edgeNm, dash: '7 4', label: 'Name match'  },
-          { src: 'workload_query',    col: T.edgeWq, dash: '3 6', label: 'Workload'     },
+          { src: 'foreign_key',       col: T.edgeFk, dash: null,  label: 'FK'        },
+          { src: 'column_name_match', col: T.edgeNm, dash: '7 4', label: 'Name match' },
+          { src: 'workload_query',    col: T.edgeWq, dash: '3 6', label: 'Workload'   },
         ]
           .filter(it => !activeRelationSources || activeRelationSources.has(it.src))
           .map(it => (
@@ -521,6 +587,24 @@ export default function SchemaGraph({
             </div>
           ))}
 
+        {/* Heat gradient legend — always shown so the user can read the colour scale */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <svg width="64" height="10" style={{ overflow: 'visible' }}>
+            <defs>
+              <linearGradient id="heat-legend-grad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%"   stopColor="#F5C542" />
+                <stop offset="50%"  stopColor="#F07C1A" />
+                <stop offset="100%" stopColor="#D93025" />
+              </linearGradient>
+            </defs>
+            <rect x="0" y="2" width="56" height="6" rx="3" fill="url(#heat-legend-grad)" />
+            <polygon points="52,1.5 56,4 52,6.5" fill="#D93025" />
+          </svg>
+          <span style={{ fontSize: 10, color: 'var(--darkgray-color)', whiteSpace: 'nowrap' }}>
+            Join heat (low → high)
+          </span>
+        </div>
+
         <div style={{ width: 1, height: 14, background: 'var(--gray-color)' }} />
         {[{l:'1:1',c:'#1D9E75'},{l:'1:N',c:'#3B8ADD'},{l:'N:N',c:'#D85A30'}].map(b => (
           <span key={b.l} style={{
@@ -529,6 +613,16 @@ export default function SchemaGraph({
           }}>{b.l}</span>
         ))}
       </div>
+
+      {/* ── Time machine bar ──────────────────────────────────────────── */}
+      <TimeMachineBar
+        snapshots={snapshots}
+        historyIdx={historyIdx}
+        onSelect={setHistoryIdx}
+        loading={tmLoading}
+        error={tmError}
+        dark={dark}
+      />
 
       {/* ── Graph canvas ───────────────────────────────────────────────── */}
       <GraphCanvas
@@ -540,6 +634,9 @@ export default function SchemaGraph({
         dark={dark}
         onChecksum={onChecksum}
         onRepair={onRepair}
+        resolveJoinWeight={resolveJoinWeight}
+        isHistorical={historyIdx >= 0}
+        historicalTimestamp={historyIdx >= 0 ? snapshots[historyIdx]?.timestamp : null}
       />
 
       {/* ── Attribute list ─────────────────────────────────────────────── */}
@@ -555,7 +652,7 @@ export default function SchemaGraph({
 }
 
 // ─── Graph canvas ─────────────────────────────────────────────────────────────
-function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onChecksum, onRepair }) {
+function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onChecksum, onRepair, resolveJoinWeight, isHistorical, historicalTimestamp }) {
   // Initial zoom 1.4 so nodes appear at readable text size (same as other
   // components) and the user sees only part of the canvas, inviting exploration.
   const INIT_ZOOM = 1.4
@@ -700,6 +797,23 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
         {Math.round(zoom * 100)}%
       </div>
 
+      {/* Historical mode banner */}
+      {isHistorical && historicalTimestamp && (
+        <div data-nopan style={{
+          position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 20, display: 'flex', alignItems: 'center', gap: 6,
+          padding: '4px 12px',
+          background: '#D93025ee',
+          color: '#fff',
+          borderRadius: 20,
+          fontSize: 11, fontWeight: 700,
+          boxShadow: '0 2px 8px rgba(217,48,37,0.35)',
+          pointerEvents: 'none',
+        }}>
+          🕐 {new Date(historicalTimestamp).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}
+        </div>
+      )}
+
       {/* Selection panel */}
       {selTable && (
         <SelectionPanel
@@ -727,10 +841,23 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
                 strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </marker>
           ))}
+          {/* Heat-map arrow markers — one per 10 % bucket so the arrowhead
+              colour always matches the edge stroke colour. */}
+          {Array.from({ length: 11 }, (_, i) => {
+            const pct = i * 10
+            const col = joinWeightColor(pct === 0 ? 1 : pct) || T.edgeWq
+            return (
+              <marker key={`heat-${i}`} id={`arr-heat-${i}`}
+                viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M2 2L8 5L2 8" fill="none" stroke={col}
+                  strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </marker>
+            )
+          })}
         </defs>
 
         <g transform={`translate(${pan.x * zoom},${pan.y * zoom}) scale(${zoom})`}>
-          {/* Edges */}
+          {/* Edges — heat-coloured when join_weight_pct is present */}
           {edges.map((e, i) => {
             const ap = pos[e.childTable], bp = pos[e.parentTable]
             if (!ap || !bp) return null
@@ -744,12 +871,32 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
             )
             const isSel = selected && (e.childTable === selected || e.parentTable === selected)
             const isHov = hoveredE === i
-            const op    = selected ? (isSel ? 0.9 : 0.07) : (isHov ? 1 : 0.38)
-            const col   = edgeColor(e.source)
+            // Resolve weight: historical snapshot overrides live join_weight_pct.
+            const effectiveWeight = resolveJoinWeight ? resolveJoinWeight(e) : (e.joinWeight || 0)
+            const op    = selected ? (isSel ? 0.92 : 0.06) : (isHov ? 1 : (effectiveWeight > 0 ? 0.72 : 0.32))
+
+            // Heat colour: use gradient when workload data is present,
+            // otherwise fall back to the source-type colour.
+            const heatCol   = joinWeightColor(effectiveWeight)
+            const col       = heatCol || edgeColor(e.source)
+            const sw        = joinWeightStroke(effectiveWeight, isHov)
+
+            // Arrow marker: heat bucket (0-10) or source-type.
+            const heatBucket = heatCol ? Math.min(10, Math.round(effectiveWeight / 10)) : null
+            const markerRef  = heatBucket !== null
+              ? `url(#arr-heat-${heatBucket})`
+              : `url(#arr-${edgeMid(e.source)})`
+
             // SVG fill/stroke can't use CSS vars — resolve to concrete colour
-            const nodeBg  = dark ? '#2a3048' : '#f7f8fe'
-            const textSec = dark ? '#778899' : '#666460'
+            const nodeBg  = dark ? '#1e2436' : '#ffffff'
+            const labelBd = dark ? col + '88' : col + '66'
+            const textSec = dark ? '#b0b8cc' : '#555555'
             const textMut = dark ? '#778899' : '#a0a09a'
+
+            // Weight label always visible when joinWeight > 0 (not just on hover).
+            const showWeightLabel = effectiveWeight > 0
+            // Offset the weight pill above / below the cardinality badge.
+            const pillY = my - 26
 
             return (
               <g key={i}
@@ -757,39 +904,59 @@ function GraphCanvas({ tables, edges, graphMode, weightMode, schemas, dark, onCh
                 onMouseLeave={() => setHoveredE(null)}
                 style={{ cursor: 'pointer' }}
               >
-                <path d={d} fill="none" stroke="transparent" strokeWidth={14} />
+                {/* Fat transparent hit area so thin lines are easy to hover */}
+                <path d={d} fill="none" stroke="transparent" strokeWidth={18} />
+
+                {/* Main edge stroke */}
                 <path d={d} fill="none" stroke={col}
-                  strokeWidth={isHov ? 2.2 : 1.2}
-                  strokeDasharray={edgeDash(e.source) || undefined}
+                  strokeWidth={sw}
+                  strokeDasharray={heatCol ? undefined : (edgeDash(e.source) || undefined)}
                   opacity={op}
-                  markerEnd={`url(#arr-${edgeMid(e.source)})`}
-                  style={{ transition: 'opacity .15s' }}
+                  markerEnd={markerRef}
+                  style={{ transition: 'opacity .15s, stroke-width .15s' }}
                 />
+
+                {/* ── Always-visible join-weight pill ── */}
+                {showWeightLabel && (
+                  <g>
+                    {/* Coloured pill background */}
+                    <rect
+                      x={mx - 22} y={pillY - 9}
+                      width={44} height={17} rx={8}
+                      fill={col} opacity={selected ? (isSel ? 0.92 : 0.08) : 0.88}
+                    />
+                    {/* Percentage text */}
+                    <text x={mx} y={pillY + 3.5} textAnchor="middle"
+                      fontSize={9} fontWeight={700}
+                      fill="#ffffff"
+                      fontFamily="system-ui"
+                      opacity={selected ? (isSel ? 1 : 0.15) : 1}
+                    >
+                      {effectiveWeight.toFixed(1)}%
+                    </text>
+                  </g>
+                )}
+
+                {/* ── Cardinality badge (hover or selection only) ── */}
                 {(isHov || isSel) && (
                   <g>
-                    <rect x={mx - 14} y={my - 9} width={28} height={17} rx={4}
-                      fill={nodeBg} stroke={col} strokeWidth={0.6} opacity={0.96} />
+                    <rect x={mx - 15} y={my - 9} width={30} height={17} rx={4}
+                      fill={nodeBg} stroke={labelBd} strokeWidth={0.8} opacity={0.97} />
                     <text x={mx} y={my + 4.5} textAnchor="middle"
                       fontSize={9} fontWeight={700} fill={col} fontFamily="system-ui">
                       {cardLabel(e.cardinality)}
                     </text>
                   </g>
                 )}
-                {isHov && e.joinWeight > 0 && (
-                  <g>
-                    <rect x={mx - 28} y={my + 11} width={56} height={14} rx={3} fill={nodeBg} opacity={0.90} />
-                    <text x={mx} y={my + 22} textAnchor="middle"
-                      fontSize={9} fill={textSec} fontFamily="system-ui">
-                      {e.joinWeight.toFixed(1)}% joins
-                    </text>
-                  </g>
-                )}
+
+                {/* ── Column names tooltip (hover only) ── */}
                 {isHov && e.childCols.length > 0 && (
                   <g>
-                    <rect x={mx - 62} y={my + 28} width={124} height={14} rx={3} fill={nodeBg} opacity={0.88} />
-                    <text x={mx} y={my + 39} textAnchor="middle"
+                    <rect x={mx - 64} y={my + 10} width={128} height={15} rx={3}
+                      fill={nodeBg} stroke={labelBd} strokeWidth={0.5} opacity={0.92} />
+                    <text x={mx} y={my + 21} textAnchor="middle"
                       fontSize={8} fill={textMut} fontFamily="monospace">
-                      {e.childCols.join(', ').slice(0, 24)}{e.childCols.join(', ').length > 24 ? '…' : ''}
+                      {e.childCols.join(', ').slice(0, 26)}{e.childCols.join(', ').length > 26 ? '…' : ''}
                     </text>
                   </g>
                 )}
@@ -1153,12 +1320,22 @@ function AttributeList({ tables, schemas, dark, onChecksum, onRepair }) {
                   <>
                     <SectionLabel label="Relations" />
                     {parents.map((lk, i) => {
-                      const cl = (lk.local_columns || []).join(', ')
+                      const cl      = (lk.local_columns || []).join(', ')
+                      const heatCol = joinWeightColor(lk.join_weight_pct)
+                      const relCol  = heatCol || edgeColor(lk.relation_source)
                       return (
                         <div key={`p${i}`} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '3px 13px' }}>
-                          <span style={{ color: edgeColor(lk.relation_source), fontSize: 12, fontWeight: 700 }}>→</span>
+                          <span style={{ color: relCol, fontSize: 12, fontWeight: 700 }}>→</span>
                           <span style={{ flex: 1, color: 'var(--darkgray-color)' }}>{lk.linked_table}</span>
                           <span style={{ fontSize: 9, color: 'var(--darkgray-color)' }}>{cardLabel(lk.cardinality)}</span>
+                          {lk.join_weight_pct > 0 && (
+                            <span style={{
+                              fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 6,
+                              background: relCol, color: '#fff',
+                            }}>
+                              {lk.join_weight_pct.toFixed(1)}%
+                            </span>
+                          )}
                           {cl && (
                             <span style={{ fontSize: 9, color: 'var(--darkgray-color)', fontFamily: 'monospace' }}>
                               ({cl.slice(0, 18)}{cl.length > 18 ? '…' : ''})
@@ -1168,12 +1345,22 @@ function AttributeList({ tables, schemas, dark, onChecksum, onRepair }) {
                       )
                     })}
                     {children.map((lk, i) => {
-                      const cl = (lk.remote_columns || []).join(', ')
+                      const cl      = (lk.remote_columns || []).join(', ')
+                      const heatCol = joinWeightColor(lk.join_weight_pct)
+                      const relCol  = heatCol || edgeColor(lk.relation_source)
                       return (
                         <div key={`c${i}`} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '3px 13px' }}>
-                          <span style={{ color: edgeColor(lk.relation_source), fontSize: 12, fontWeight: 700 }}>←</span>
+                          <span style={{ color: relCol, fontSize: 12, fontWeight: 700 }}>←</span>
                           <span style={{ flex: 1, color: 'var(--darkgray-color)' }}>{lk.linked_table}</span>
                           <span style={{ fontSize: 9, color: 'var(--darkgray-color)' }}>{cardLabel(lk.cardinality)}</span>
+                          {lk.join_weight_pct > 0 && (
+                            <span style={{
+                              fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 6,
+                              background: relCol, color: '#fff',
+                            }}>
+                              {lk.join_weight_pct.toFixed(1)}%
+                            </span>
+                          )}
                           {cl && (
                             <span style={{ fontSize: 9, color: 'var(--darkgray-color)', fontFamily: 'monospace' }}>
                               ({cl.slice(0, 18)}{cl.length > 18 ? '…' : ''})
@@ -1199,6 +1386,324 @@ function AttributeList({ tables, schemas, dark, onChecksum, onRepair }) {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// ─── Time Machine Bar ─────────────────────────────────────────────────────────
+// Renders a horizontal scrubber showing all available PFS snapshots.
+// - Left end  = oldest snapshot
+// - Right end = 🔴 LIVE (current data, historyIdx === -1)
+// - Clicking a tick or dragging the knob scrubs to that hour.
+function TimeMachineBar({ snapshots, historyIdx, onSelect, loading, error, dark }) {
+  const trackRef = useRef(null)
+  const isDragging = useRef(false)
+
+  // Total positions = snapshots.length ticks + 1 LIVE position at the end.
+  const total = snapshots.length + 1          // indices 0..snapshots.length-1 + LIVE
+  const liveIdx = snapshots.length            // virtual index for live
+  const currentIdx = historyIdx < 0 ? liveIdx : historyIdx
+
+  // Map a clientX position on the track to a snapshot index.
+  const posToIdx = useCallback((clientX) => {
+    const rect = trackRef.current?.getBoundingClientRect()
+    if (!rect || rect.width === 0) return liveIdx
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+    const raw = Math.round(pct * (total - 1))
+    return Math.min(raw, liveIdx)
+  }, [total, liveIdx])
+
+  const commitIdx = useCallback((idx) => {
+    onSelect(idx >= liveIdx ? -1 : idx)
+  }, [onSelect, liveIdx])
+
+  const onTrackClick = useCallback((e) => {
+    commitIdx(posToIdx(e.clientX))
+  }, [commitIdx, posToIdx])
+
+  const onKnobMouseDown = useCallback((e) => {
+    e.stopPropagation()
+    isDragging.current = true
+    const onMove = (me) => {
+      if (!isDragging.current) return
+      commitIdx(posToIdx(me.clientX))
+    }
+    const onUp = () => {
+      isDragging.current = false
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [commitIdx, posToIdx])
+
+  // Keyboard: arrow keys move the scrubber.
+  const onKeyDown = useCallback((e) => {
+    if (e.key === 'ArrowLeft')  commitIdx(Math.max(0, currentIdx - 1))
+    if (e.key === 'ArrowRight') commitIdx(Math.min(liveIdx, currentIdx + 1))
+    if (e.key === 'Home')       commitIdx(0)
+    if (e.key === 'End')        commitIdx(liveIdx)
+  }, [commitIdx, currentIdx, liveIdx])
+
+  const isLive     = historyIdx < 0
+  const trackBg    = dark ? '#2a2a38' : '#e8e6e0'
+  const fillColor  = isLive ? '#27a244' : '#D93025'
+  const knobColor  = fillColor
+  const labelColor = dark ? '#b0b8cc' : '#555'
+  const tickColor  = dark ? '#444' : '#ccc'
+
+  // Knob position as a percentage along the track.
+  const knobPct = total <= 1 ? 100 : (currentIdx / (total - 1)) * 100
+
+  // Tick labels: show one every N hours so they don't crowd.
+  // We want at most ~8 labels on the track.
+  const maxLabels = 8
+  const labelStep = Math.max(1, Math.ceil(snapshots.length / maxLabels))
+
+  const formatHour = (ts) => {
+    try {
+      const d = new Date(ts)
+      return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    } catch { return ts }
+  }
+
+  if (loading) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '8px 14px',
+        background: 'var(--secondary-gray-color)',
+        border: '1px solid var(--gray-color)',
+        borderRadius: 10, fontSize: 12, color: 'var(--darkgray-color)',
+      }}>
+        <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span>
+        Loading snapshot history…
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div style={{
+        padding: '6px 14px',
+        background: 'var(--secondary-gray-color)',
+        border: '1px solid var(--gray-color)',
+        borderRadius: 10, fontSize: 11, color: '#D93025',
+      }}>
+        ⚠ Could not load snapshot history: {error}
+      </div>
+    )
+  }
+
+  if (snapshots.length === 0) {
+    return (
+      <div style={{
+        padding: '6px 14px',
+        background: 'var(--secondary-gray-color)',
+        border: '1px solid var(--gray-color)',
+        borderRadius: 10, fontSize: 11, color: 'var(--darkgray-color)',
+      }}>
+        🕐 No historical snapshots yet — join weights will appear here once the first PFS capture completes.
+      </div>
+    )
+  }
+
+  return (
+    <div style={{
+      padding: '10px 14px 12px',
+      background: 'var(--secondary-gray-color)',
+      border: `1px solid ${isLive ? 'var(--gray-color)' : '#D93025aa'}`,
+      borderRadius: 10,
+      transition: 'border-color .25s',
+    }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <span style={{ fontSize: 13 }}>🕐</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-color)' }}>
+          Join-weight time machine
+        </span>
+        <span style={{
+          fontSize: 10, padding: '2px 8px', borderRadius: 10,
+          background: isLive ? '#27a24422' : '#D9302522',
+          color: isLive ? '#27a244' : '#D93025',
+          border: `1px solid ${isLive ? '#27a24466' : '#D9302566'}`,
+          fontWeight: 700,
+        }}>
+          {isLive ? '● LIVE' : `🔴 ${formatHour(snapshots[historyIdx]?.timestamp)}`}
+        </span>
+        {!isLive && (
+          <button
+            onClick={() => onSelect(-1)}
+            style={{
+              marginLeft: 'auto', padding: '2px 10px',
+              border: '1px solid #27a24466', borderRadius: 8,
+              background: '#27a24418', color: '#27a244',
+              fontSize: 11, fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            ↩ Return to live
+          </button>
+        )}
+      </div>
+
+      {/* Track */}
+      <div style={{ position: 'relative', padding: '0 8px' }}>
+        {/* Clickable track */}
+        <div
+          ref={trackRef}
+          onClick={onTrackClick}
+          onKeyDown={onKeyDown}
+          tabIndex={0}
+          role="slider"
+          aria-valuemin={0}
+          aria-valuemax={liveIdx}
+          aria-valuenow={currentIdx}
+          style={{
+            position: 'relative', height: 6, borderRadius: 3,
+            background: trackBg, cursor: 'pointer', outline: 'none',
+          }}
+        >
+          {/* Filled portion */}
+          <div style={{
+            position: 'absolute', left: 0, top: 0, height: '100%',
+            width: `${knobPct}%`, borderRadius: 3,
+            background: fillColor, opacity: 0.7,
+            transition: 'width .12s, background .25s',
+          }} />
+
+          {/* Snapshot ticks */}
+          {snapshots.map((_, i) => {
+            const pct = total <= 1 ? 0 : (i / (total - 1)) * 100
+            const isActive = i === currentIdx
+            return (
+              <div
+                key={i}
+                onClick={(e) => { e.stopPropagation(); commitIdx(i) }}
+                style={{
+                  position: 'absolute', top: -3,
+                  left: `calc(${pct}% - 2px)`,
+                  width: 4, height: 12, borderRadius: 2,
+                  background: isActive ? fillColor : tickColor,
+                  cursor: 'pointer',
+                  transition: 'background .15s',
+                  zIndex: 2,
+                }}
+              />
+            )
+          })}
+
+          {/* LIVE dot at the far right */}
+          <div
+            onClick={(e) => { e.stopPropagation(); commitIdx(liveIdx) }}
+            style={{
+              position: 'absolute', top: -4, right: -4,
+              width: 14, height: 14, borderRadius: '50%',
+              background: isLive ? '#27a244' : tickColor,
+              border: `2px solid ${dark ? '#1a1a24' : '#fff'}`,
+              cursor: 'pointer', zIndex: 3,
+              boxShadow: isLive ? '0 0 0 3px #27a24433' : 'none',
+              transition: 'background .25s, box-shadow .25s',
+            }}
+          />
+
+          {/* Draggable knob */}
+          <div
+            onMouseDown={onKnobMouseDown}
+            style={{
+              position: 'absolute', top: -7,
+              left: `calc(${knobPct}% - 8px)`,
+              width: 20, height: 20, borderRadius: '50%',
+              background: knobColor,
+              border: `2px solid ${dark ? '#1a1a24' : '#fff'}`,
+              boxShadow: `0 1px 4px rgba(0,0,0,0.28), 0 0 0 2px ${knobColor}44`,
+              cursor: 'grab', zIndex: 10,
+              transition: 'left .12s, background .25s',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff', opacity: 0.85 }} />
+          </div>
+        </div>
+
+        {/* Tick labels — sparse so they don't overlap */}
+        <div style={{ position: 'relative', height: 22, marginTop: 4 }}>
+          {snapshots.map((snap, i) => {
+            if (i % labelStep !== 0 && i !== snapshots.length - 1) return null
+            const pct = total <= 1 ? 0 : (i / (total - 1)) * 100
+            const d   = new Date(snap.timestamp)
+            const label = isNaN(d)
+              ? snap.snapshotFile.replace('log_pfs_queries_', '').replace('.jsonl', '')
+              : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit' })
+            return (
+              <span
+                key={i}
+                style={{
+                  position: 'absolute',
+                  left: `${pct}%`,
+                  transform: 'translateX(-50%)',
+                  fontSize: 9,
+                  color: i === currentIdx ? fillColor : labelColor,
+                  fontWeight: i === currentIdx ? 700 : 400,
+                  whiteSpace: 'nowrap',
+                  userSelect: 'none',
+                }}
+              >
+                {label}
+              </span>
+            )
+          })}
+          {/* LIVE label */}
+          <span style={{
+            position: 'absolute', right: 0,
+            fontSize: 9, fontWeight: isLive ? 700 : 400,
+            color: isLive ? '#27a244' : labelColor,
+            userSelect: 'none',
+          }}>
+            LIVE
+          </span>
+        </div>
+
+        {/* Snapshot summary for currently selected historical point */}
+        {!isLive && snapshots[historyIdx]?.links?.length > 0 && (
+          <div style={{
+            marginTop: 8, padding: '6px 10px',
+            background: dark ? '#1e1e2a' : '#f8f6f0',
+            border: `1px solid ${dark ? '#333' : '#e0ddd5'}`,
+            borderRadius: 7,
+            display: 'flex', gap: 12, flexWrap: 'wrap',
+            fontSize: 11, color: labelColor,
+          }}>
+            <span style={{ fontWeight: 700, color: 'var(--text-color)' }}>
+              Top joins at this snapshot:
+            </span>
+            {snapshots[historyIdx].links.slice(0, 5).map((lk, i) => {
+              const pct  = lk.joinWeightPct
+              const col  = (() => {
+                const t = Math.min(pct / 100, 1)
+                const r = Math.round(245 + t * (217 - 245))
+                const g = Math.round(197 + t * (48  - 197))
+                const b = Math.round(66  + t * (37  - 66))
+                return `rgb(${r},${g},${b})`
+              })()
+              const tA = lk.tableA.split('.').pop()
+              const tB = lk.tableB.split('.').pop()
+              return (
+                <span key={i} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  padding: '1px 7px', borderRadius: 8,
+                  background: col + '22', border: `1px solid ${col}66`,
+                  color: col, fontWeight: 700, fontSize: 10,
+                }}>
+                  {tA} ↔ {tB}
+                  <span style={{ fontWeight: 400, color: labelColor }}>
+                    {pct.toFixed(1)}%
+                  </span>
+                </span>
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
