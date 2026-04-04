@@ -1,0 +1,125 @@
+name: Build and sign plugins
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build plugins for (e.g., v3.2.1)'
+        required: true
+        type: string
+
+jobs:
+  build-plugins:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(git describe --abbrev=0 --tags)
+          FULLVERSION=$(git describe --tags)
+          BUILD=$(date +%FT%T%z)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "fullversion=$FULLVERSION" >> $GITHUB_OUTPUT
+          echo "build=$BUILD" >> $GITHUB_OUTPUT
+
+      - name: Build replication-manager binary (needed for plugin-keygen / plugin-sign)
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          mkdir -p build/binaries
+          go build -v --tags "server" \
+            --ldflags "-w -s \
+              -X github.com/signal18/replication-manager/server.Version=${{ steps.version.outputs.version }} \
+              -X github.com/signal18/replication-manager/server.FullVersion=${{ steps.version.outputs.fullversion }} \
+              -X github.com/signal18/replication-manager/server.Build=${{ steps.version.outputs.build }}" \
+            -o build/binaries/replication-manager
+
+      - name: Build plugins (linux/amd64)
+        run: |
+          mkdir -p build/plugins
+          for dir in cluster/logplugin/plugins/plugin-*/; do
+            name=$(basename "$dir")
+            echo "Building $name"
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+              --ldflags "-extldflags '-static' -w -s" \
+              -o "build/plugins/$name" \
+              "./$dir/..."
+          done
+
+      - name: Sign plugins
+        env:
+          PLUGIN_SIGNER_USER: ${{ secrets.PLUGIN_SIGNER_USER }}
+          PLUGIN_SIGNER_TOKEN: ${{ secrets.PLUGIN_SIGNER_TOKEN }}
+          PLUGIN_SIGNING_KEY: ${{ runner.temp }}/plugin-signing.key
+          PLUGIN_SIGNING_PUB: ${{ runner.temp }}/plugin-signing.pub
+        run: |
+          # Clone the signer repo to fetch the private key
+          AUTH_URL=$(echo "${{ vars.PLUGIN_SIGNER_REPO || 'https://github.com/signal18/replication-manager-plugin-signer' }}" \
+            | sed "s|https://|https://${PLUGIN_SIGNER_USER}:${PLUGIN_SIGNER_TOKEN}@|")
+          git clone --depth 1 --quiet "$AUTH_URL" "${{ runner.temp }}/signer-repo"
+          cp "${{ runner.temp }}/signer-repo/plugin-signing.key" "$PLUGIN_SIGNING_KEY"
+          cp "${{ runner.temp }}/signer-repo/plugin-signing.pub" "$PLUGIN_SIGNING_PUB"
+          chmod 600 "$PLUGIN_SIGNING_KEY"
+
+          # Sign each plugin binary
+          mkdir -p share/plugins
+          for bin in build/plugins/plugin-*; do
+            ./build/binaries/replication-manager plugin-sign \
+              --plugin-private-key "$PLUGIN_SIGNING_KEY" \
+              --sig-output-dir share/plugins \
+              "$bin"
+            echo "  signed $(basename $bin)"
+          done
+
+      - name: Push plugins to signer repo
+        env:
+          PLUGIN_SIGNER_USER: ${{ secrets.PLUGIN_SIGNER_USER }}
+          PLUGIN_SIGNER_TOKEN: ${{ secrets.PLUGIN_SIGNER_TOKEN }}
+        run: |
+          REPMAN_VERSION="${{ steps.version.outputs.version }}"
+          SIGNER_REPO="${{ vars.PLUGIN_SIGNER_REPO || 'https://github.com/signal18/replication-manager-plugin-signer' }}"
+
+          # Derive wire version from source
+          WIRE_VERSION=$(grep -m1 'WireVersion = ' cluster/logplugin/plugins/wire/wire.go | awk '{print $NF}')
+          WIRE_DIR="wire${WIRE_VERSION}"
+
+          CLONE_DIR="${{ runner.temp }}/signer-repo"
+          AUTH_URL=$(echo "$SIGNER_REPO" | sed "s|https://|https://${PLUGIN_SIGNER_USER}:${PLUGIN_SIGNER_TOKEN}@|")
+
+          # Copy binaries and sigs into wire<N>/ directory
+          mkdir -p "$CLONE_DIR/$WIRE_DIR"
+          for bin in build/plugins/plugin-*; do
+            name=$(basename "$bin")
+            cp "$bin" "$CLONE_DIR/$WIRE_DIR/$name"
+            cp "share/plugins/$name.sig" "$CLONE_DIR/$WIRE_DIR/$name.sig"
+          done
+
+          # Create version symlink
+          cd "$CLONE_DIR"
+          ln -sfn "$WIRE_DIR" "$REPMAN_VERSION"
+
+          git config user.email "ci@signal18.io"
+          git config user.name  "replication-manager CI"
+          git add -A
+          git diff --cached --quiet || \
+            git commit -m "plugins: ${REPMAN_VERSION} → ${WIRE_DIR}"
+          git push "$AUTH_URL" HEAD:main
+          echo "Pushed ${REPMAN_VERSION} → ${WIRE_DIR} to signer repo"

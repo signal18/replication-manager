@@ -259,7 +259,7 @@ func (cluster *Cluster) GetLogPluginStates(serverURL string) []state.State {
 
 func (cluster *Cluster) ReloadLogPlugins() {
 	dir := logplugin.PluginDir(cluster.WorkingDir)
-	n, err := logplugin.LoadPluginsFromDir(dir, logplugin.GlobalRegistry)
+	n, err := logplugin.LoadPluginsFromDir(dir, logplugin.GlobalRegistry, cluster.Conf.PluginPublicKey)
 	if err != nil {
 		cluster.LogModulePrintf(
 			cluster.Conf.Verbose,

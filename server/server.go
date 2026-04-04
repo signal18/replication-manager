@@ -437,6 +437,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.LogLevelDatabaseAudit, "log-level-database-audit", 3, "Log Level for fetcher audit log")
 	flags.BoolVar(&conf.LogPlugin, "log-plugin", false, "Enable generic log-tailer plugin checks (errorlog, sqlerrorlog, slowlog 24h windows)")
 	flags.IntVar(&conf.LogPluginLevel, "log-level-plugin", 2, "Log verbosity level for log-tailer plugins (1=error,2=warn,3=info,4=debug)")
+	flags.StringVar(&conf.PluginPublicKey, "plugin-public-key", "/etc/replication-manager/plugin-signing.pub", "Path to Ed25519 public key for plugin signature verification (empty = skip verification)")
 
 	// DB Credentials
 	flags.StringVar(&conf.User, "db-servers-credential", "root:mariadb", "Database login, specified in the [user]:[password] format")

@@ -28,7 +28,10 @@ package logplugin
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -223,14 +226,52 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 
 // ---- loader -----------------------------------------------------------------
 
+// VerifyPluginSignature verifies the Ed25519 signature of a plugin binary.
+// pubKeyPath is the path to the raw 32-byte public key file.
+// The signature file is expected at binPath + ".sig".
+// Returns nil when the signature is valid.
+func VerifyPluginSignature(pubKeyPath, binPath string) error {
+	pubBytes, err := os.ReadFile(pubKeyPath)
+	if err != nil {
+		return fmt.Errorf("read public key %s: %w", pubKeyPath, err)
+	}
+	if len(pubBytes) != ed25519.PublicKeySize {
+		return fmt.Errorf("invalid public key size: got %d bytes, want %d", len(pubBytes), ed25519.PublicKeySize)
+	}
+
+	sigPath := binPath + ".sig"
+	sig, err := os.ReadFile(sigPath)
+	if err != nil {
+		return fmt.Errorf("read signature %s: %w", sigPath, err)
+	}
+	if len(sig) != ed25519.SignatureSize {
+		return fmt.Errorf("invalid signature size: got %d bytes, want %d", len(sig), ed25519.SignatureSize)
+	}
+
+	content, err := os.ReadFile(binPath)
+	if err != nil {
+		return fmt.Errorf("read binary %s: %w", binPath, err)
+	}
+
+	hash := sha256.Sum256(content)
+	if !ed25519.Verify(ed25519.PublicKey(pubBytes), hash[:], sig) {
+		return errors.New("signature verification failed")
+	}
+	return nil
+}
+
 // LoadPluginsFromDir scans pluginDir for executable files, creates an
 // ExternalLogPlugin for each one, and registers/replaces it in reg.
 // Returns the number of plugins loaded and any scan error.
 //
+// If pubKeyPath is non-empty, each plugin binary is verified against its
+// corresponding .sig file before registration. Plugins that fail verification
+// are skipped with a warning logged to stderr.
+//
 // Rules:
 //   - Non-executable files and dotfiles are silently skipped.
 //   - A plugin whose name already exists in reg is hot-replaced in place.
-func LoadPluginsFromDir(pluginDir string, reg *Registry) (int, error) {
+func LoadPluginsFromDir(pluginDir string, reg *Registry, pubKeyPath string) (int, error) {
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -252,6 +293,10 @@ func LoadPluginsFromDir(pluginDir string, reg *Registry) (int, error) {
 		if !strings.HasPrefix(e.Name(), "plugin-") {
 			continue
 		}
+		// Skip .sig files — they are not plugin binaries.
+		if strings.HasSuffix(e.Name(), ".sig") {
+			continue
+		}
 		info, err := e.Info()
 		if err != nil {
 			continue
@@ -260,6 +305,15 @@ func LoadPluginsFromDir(pluginDir string, reg *Registry) (int, error) {
 			continue
 		}
 		binPath := filepath.Join(pluginDir, e.Name())
+
+		// Signature verification (skipped when pubKeyPath is empty — dev mode).
+		if pubKeyPath != "" {
+			if err := VerifyPluginSignature(pubKeyPath, binPath); err != nil {
+				fmt.Fprintf(os.Stderr, "plugin %s rejected: %v\n", e.Name(), err)
+				continue
+			}
+		}
+
 		name := pluginNameFromBinary(e.Name())
 		reg.replace(name, NewExternalLogPlugin(name, binPath, DefaultPluginTimeout))
 		loaded++

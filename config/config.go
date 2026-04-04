@@ -187,6 +187,7 @@ type Config struct {
 	LogPlugin                                 bool                       `mapstructure:"log-plugin" toml:"log-plugin" json:"logPlugin"`
 	LogPluginLevel                            int                        `mapstructure:"log-level-plugin" toml:"log-level-plugin" json:"logPluginLevel"`
 	PluginConfig                              map[string]map[string]string `mapstructure:"plugin-config" toml:"plugin-config" json:"pluginConfig"`
+	PluginPublicKey                           string                     `mapstructure:"plugin-public-key" toml:"plugin-public-key" json:"pluginPublicKey"`
 	User                                      string `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	DbServersChangeStateScript                string `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`

@@ -96,7 +96,7 @@ func TestPluginDir(t *testing.T) {
 // ---- LoadPluginsFromDir -----------------------------------------------------
 
 func TestLoadPluginsFromDir_NonExistent(t *testing.T) {
-	n, err := LoadPluginsFromDir("/does/not/exist", &Registry{})
+	n, err := LoadPluginsFromDir("/does/not/exist", &Registry{}, "")
 	if err != nil {
 		t.Errorf("expected nil error for missing dir, got %v", err)
 	}
@@ -109,7 +109,7 @@ func TestLoadPluginsFromDir_SkipsNonExecutable(t *testing.T) {
 	dir := t.TempDir()
 	writeNonExecFile(t, dir, "notaplugin.txt")
 	reg := &Registry{}
-	n, err := LoadPluginsFromDir(dir, reg)
+	n, err := LoadPluginsFromDir(dir, reg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestLoadPluginsFromDir_LoadsExecutables(t *testing.T) {
 	writeNonExecFile(t, dir, "readme.txt")
 
 	reg := &Registry{}
-	n, err := LoadPluginsFromDir(dir, reg)
+	n, err := LoadPluginsFromDir(dir, reg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,12 +155,12 @@ func TestLoadPluginsFromDir_ReplacesExisting(t *testing.T) {
 
 	reg := &Registry{}
 	// First load
-	LoadPluginsFromDir(dir, reg)
+	LoadPluginsFromDir(dir, reg, "")
 	if len(reg.All()) != 1 {
 		t.Fatal("expected 1 plugin after first load")
 	}
 	// Second load — same name, should replace not append
-	LoadPluginsFromDir(dir, reg)
+	LoadPluginsFromDir(dir, reg, "")
 	if len(reg.All()) != 1 {
 		t.Errorf("expected 1 plugin after reload, got %d", len(reg.All()))
 	}
