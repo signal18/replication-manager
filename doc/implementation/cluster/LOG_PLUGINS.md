@@ -54,12 +54,26 @@ exit ≠0 = error    (repman logs WARN0203 and skips state injection)
 The plugin has **5 seconds** to complete. If it exceeds this deadline the server
 kills it and records a timeout finding (WARN0203).
 
+### Wire versioning
+
+The `Request` carries a `wire_version` integer field set to the current protocol
+version (`WireVersion = 1` in `cluster/logplugin/plugins/wire/wire.go`).
+Plugins should check this value and return an error finding — rather than
+crashing — if `wire_version` exceeds `MaxSupportedWireVersion`.
+
+Adding new optional fields to `Request` is **not** a breaking change and does
+not increment `WireVersion`. `WireVersion` is only incremented when existing
+fields are removed or their semantics change in an incompatible way.
+
 ### Request
 
 Defined in `cluster/logplugin/plugins/wire/wire.go`:
 
 ```go
 type Request struct {
+    // WireVersion lets plugins detect incompatible repman upgrades.
+    WireVersion      int        `json:"wire_version"`
+
     ServerURL        string     `json:"server_url"`
     GraphiteAPIURL   string     `json:"graphite_api_url"`
     GraphiteHostname string     `json:"graphite_hostname"`
@@ -79,6 +93,7 @@ type Request struct {
 
 | Field | Populated when | Content |
 |-------|----------------|---------|
+| `wire_version` | Always | Protocol version (currently `1`) |
 | `server_url` | Always | `host:port` of the monitored server |
 | `graphite_api_url` | Graphite configured | Base URL of the render API, e.g. `http://127.0.0.1:10002` |
 | `graphite_hostname` | Graphite configured | Hostname key used in metric names (dots → dashes) |
@@ -175,6 +190,13 @@ type MDL struct {
 ```go
 type Response struct {
     Findings []Finding `json:"findings"`
+
+    // Optional: plugin's own semver string, logged by repman to detect stale binaries.
+    PluginVersion string `json:"plugin_version,omitempty"`
+
+    // Optional: highest wire version this plugin understands.
+    // Omitting it is treated as version 1 (backward compatible).
+    MaxSupportedWireVersion int `json:"max_supported_wire_version,omitempty"`
 }
 
 type Finding struct {
@@ -188,14 +210,37 @@ Return an empty `findings` array (or omit the field entirely) when no issue is
 detected. Return a non-zero exit code only for fatal plugin errors — not for
 "no findings".
 
+If repman's `WireVersion` exceeds `MaxSupportedWireVersion`, repman will emit
+a warning finding (`WARN0203`) and skip execution rather than passing data the
+plugin was not written to handle.
+
+---
+
+## The `--version` Flag Convention
+
+When invoked with a single `--version` argument (no stdin), a plugin should
+print one line to stdout and exit 0:
+
+```
+plugin-connection-storm 1.2.0 wire/1
+```
+
+Format: `<binary-name> <semver> wire/<maxWireVersion>`
+
+Repman calls this at load time (`probePluginVersion` in `cluster/logplugin/external.go`)
+and logs the result so stale binaries are easy to spot. Implementing this flag
+is optional — if the binary exits non-zero or prints nothing, the version is
+left blank.
+
 ---
 
 ## Writing a Plugin
 
 ### Option A — copy the wire types
 
-The simplest approach. No dependency on the repman module. Copy the wire types
-directly into your `main.go`:
+The simplest approach. No dependency on the repman module. Copy only the types
+you need directly into your `main.go`. Always include `WireVersion` in `Request`
+and honour `MaxSupportedWireVersion` in `Response`:
 
 ```go
 package main
@@ -207,9 +252,12 @@ import (
     "strings"
 )
 
+const myMaxWireVersion = 1
+
 type Request struct {
-    ServerURL string   `json:"server_url"`
-    ErrorLog  []Msg    `json:"error_log"`
+    WireVersion int    `json:"wire_version"`
+    ServerURL   string `json:"server_url"`
+    ErrorLog    []Msg  `json:"error_log"`
     // add other fields as needed
 }
 
@@ -220,7 +268,9 @@ type Msg struct {
 }
 
 type Response struct {
-    Findings []Finding `json:"findings"`
+    Findings                []Finding `json:"findings"`
+    PluginVersion           string    `json:"plugin_version,omitempty"`
+    MaxSupportedWireVersion int       `json:"max_supported_wire_version,omitempty"`
 }
 
 type Finding struct {
@@ -230,10 +280,29 @@ type Finding struct {
 }
 
 func main() {
+    // Implement --version probe
+    if len(os.Args) == 2 && os.Args[1] == "--version" {
+        fmt.Printf("plugin-mycheck 1.0.0 wire/%d\n", myMaxWireVersion)
+        return
+    }
+
     var req Request
     if err := json.NewDecoder(os.Stdin).Decode(&req); err != nil {
         fmt.Fprintf(os.Stderr, "decode error: %v\n", err)
         os.Exit(1)
+    }
+
+    // Reject incompatible wire versions
+    if req.WireVersion > myMaxWireVersion {
+        json.NewEncoder(os.Stdout).Encode(Response{
+            MaxSupportedWireVersion: myMaxWireVersion,
+            Findings: []Finding{{
+                ErrKey:      "WARN0400",
+                Severity:    "ERROR",
+                Description: fmt.Sprintf("plugin-mycheck: wire version %d not supported (max %d)", req.WireVersion, myMaxWireVersion),
+            }},
+        })
+        return
     }
 
     // --- analysis ---
@@ -244,7 +313,10 @@ func main() {
         }
     }
 
-    resp := Response{}
+    resp := Response{
+        PluginVersion:           "1.0.0",
+        MaxSupportedWireVersion: myMaxWireVersion,
+    }
     if count > 0 {
         resp.Findings = []Finding{{
             ErrKey:      "WARN0400",
@@ -266,10 +338,17 @@ wire package:
 import "github.com/signal18/replication-manager/cluster/logplugin/plugins/wire"
 
 func main() {
+    if len(os.Args) == 2 && os.Args[1] == "--version" {
+        fmt.Printf("plugin-mycheck 1.0.0 wire/%d\n", wire.WireVersion)
+        return
+    }
     var req wire.Request
     json.NewDecoder(os.Stdin).Decode(&req)
     // ...
-    json.NewEncoder(os.Stdout).Encode(wire.Response{...})
+    json.NewEncoder(os.Stdout).Encode(wire.Response{
+        MaxSupportedWireVersion: wire.WireVersion,
+        // ...
+    })
 }
 ```
 
@@ -281,9 +360,9 @@ example.
 ## Naming Convention
 
 Binaries **must** be named `plugin-<name>` (no extension). The loader at
-`cluster/logplugin/external.go` skips any file that does not match this prefix.
-The name (e.g. `plugin-innodb-corruption`) becomes the plugin's identifier in
-the registry and in log messages.
+`cluster/logplugin/external.go` skips any file that does not match this prefix
+or that ends in `.sig`. The name (e.g. `plugin-innodb-corruption`) becomes the
+plugin's identifier in the registry and in log messages.
 
 ---
 
@@ -302,7 +381,7 @@ Makefile will build it automatically:
 
 ```bash
 make plugins
-# produces build/plugins/plugin-mycheck
+# produces build/plugins/plugin-mycheck (and its .sig file in share/plugins/)
 ```
 
 The Makefile discovers plugins by scanning for `main.go` files under
@@ -310,22 +389,92 @@ The Makefile discovers plugins by scanning for `main.go` files under
 
 ---
 
-## Deployment
+## Signing
 
-Copy the binary to the per-cluster plugins directory and make it executable:
+Every plugin binary must be accompanied by an Ed25519 signature file
+(`<plugin-name>.sig`) for repman to load it when `plugin-public-key` is
+configured.
+
+### Key management
 
 ```bash
-install -m 0755 plugin-mycheck /var/lib/replication-manager/<cluster-name>/plugins/
+# Generate a keypair (once — store the private key securely)
+replication-manager plugin-keygen \
+  --plugin-private-key /etc/repman-build/plugin-signing.key \
+  --plugin-public-key  /etc/replication-manager/plugin-signing.pub
+```
+
+- Private key: 64-byte raw Ed25519 key, mode 0600. Keep in CI secrets only.
+- Public key: 32-byte raw Ed25519 key, mode 0644. Deploy to all repman servers.
+
+### Signing a binary
+
+```bash
+replication-manager plugin-sign \
+  --plugin-private-key /etc/repman-build/plugin-signing.key \
+  --sig-output-dir     share/plugins \
+  build/plugins/plugin-mycheck
+# produces share/plugins/plugin-mycheck.sig
+```
+
+The Makefile `plugin-sigs` target runs this for all built plugins automatically.
+
+### How signatures are verified at load time
+
+When `plugin-public-key` is set in repman's configuration,
+`LoadPluginsFromDir` calls `VerifyPluginSignature` for each `plugin-*`
+binary before registering it. Verification:
+
+1. Reads the public key from the configured path.
+2. Computes `SHA-256(binary content)`.
+3. Reads the companion `.sig` file (`<binary-path>.sig`).
+4. Calls `ed25519.Verify(pubKey, sha256, sig)`.
+
+A plugin with a missing or invalid signature is **skipped** with a warning
+logged to stderr. It is not executed.
+
+Additionally, the SHA-256 of each binary is recorded at load time and
+**re-verified on every execution** to detect in-place binary replacement
+(TOCTOU attack). If the hash changes after load, execution is refused and
+`WARN0205` is raised.
+
+When `plugin-public-key` is empty (default in dev mode) all verification is
+skipped and any executable `plugin-*` binary in the plugins directory is loaded.
+
+---
+
+## Deployment
+
+Copy both the binary **and** its `.sig` file to the per-cluster plugins
+directory:
+
+```bash
+install -m 0755 plugin-mycheck         /var/lib/replication-manager/<cluster>/plugins/
+install -m 0644 plugin-mycheck.sig     /var/lib/replication-manager/<cluster>/plugins/
+```
+
+Set the public key path in the cluster config:
+
+```toml
+[mycluster]
+plugin-public-key = "/etc/replication-manager/plugin-signing.pub"
+```
+
+Or as a server-wide flag:
+
+```
+replication-manager monitor --plugin-public-key /etc/replication-manager/plugin-signing.pub
 ```
 
 Replication-manager hot-reloads plugins at runtime via `ReloadLogPlugins()`.
 No restart is required. If a plugin with the same name is already registered it
-is replaced in place.
+is replaced in place (and its hash re-recorded).
 
 The canonical path is:
 
 ```
 <Conf.WorkingDir>/<cluster-name>/plugins/plugin-<name>
+<Conf.WorkingDir>/<cluster-name>/plugins/plugin-<name>.sig
 ```
 
 ---
@@ -348,10 +497,7 @@ protocol. External plugins should read their settings from environment variables
 or embed sensible defaults.
 
 The `enabled` key is honoured for all built-in plugins. Setting it to `false`,
-`0`, or `no` prevents the plugin from being called on each tick. External
-plugins do not currently receive `enabled` via the wire protocol but the loader
-will skip calling them if the key resolves to false in the server's config
-lookup (future work).
+`0`, or `no` prevents the plugin from being called on each tick.
 
 ---
 
@@ -362,7 +508,8 @@ Error keys follow the pattern `WARN<NNNN>`. The ranges in use are:
 | Range | Owner |
 |-------|-------|
 | WARN0201–WARN0209 | Built-in log plugins |
-| WARN0203 | Reserved — plugin execution error (timeout, bad JSON, non-zero exit) |
+| WARN0203 | Reserved — plugin execution error (timeout, bad JSON, non-zero exit, wire mismatch) |
+| WARN0205 | Reserved — binary hash mismatch after load (TOCTOU detection) |
 | WARN0300–WARN0399 | Official external plugins (Signal18) |
 | WARN0400+ | Custom / third-party plugins |
 
@@ -372,17 +519,14 @@ Choose a key in the WARN0400+ range for custom plugins to avoid collisions.
 
 ## Signing and Distribution (CI)
 
-Official plugins are signed and distributed via the signer repository:
-
-```
-https://github.com/signal18/replication-manager-plugin-signer
-```
+Official plugins are signed and distributed via the private GitHub signer
+repository `signal18/replication-manager-plugin-signer`.
 
 The repository layout maps repman releases to wire protocol versions:
 
 ```
 replication-manager-plugin-signer/
-├── plugin-signing.key          (private — CI only)
+├── plugin-signing.key          (private — CI only, never distributed)
 ├── plugin-signing.pub          (public key deployed to repman servers)
 ├── wire1/                      (binaries for wire protocol v1)
 │   ├── plugin-connection-storm
@@ -391,22 +535,52 @@ replication-manager-plugin-signer/
 └── 3.2.1 -> wire1              (symlink: repman version → wire dir)
 ```
 
-The wire version is read directly from source:
+The wire version is read at build time directly from source so it never drifts:
 
 ```go
 // cluster/logplugin/plugins/wire/wire.go
-WireVersion = 1
+const WireVersion = 1
 ```
 
-Makefile targets:
+### CI Makefile targets
 
 ```bash
-make plugins       # build + sign + push (CI, requires PLUGIN_SIGNER_USER + TOKEN)
-make plugin-sigs   # sign already-built binaries
-make plugins-clean # remove build artifacts
+make plugins       # build + sign + push (requires PLUGIN_SIGNER_USER + TOKEN)
+make plugin-sigs   # sign already-built binaries only
+make plugins-clean # remove build/plugins/, share/plugins/*.sig, and signer clone
 ```
 
-For dev builds without credentials, a local keypair is generated automatically.
+For dev builds without credentials, a local keypair is generated automatically
+in `~/.replication-manager/`.
+
+### GitHub Actions
+
+The workflow `.github/workflows/build-plugins.yml` triggers on every published
+release. It builds all plugins for `linux/amd64`, fetches the official signing
+key from the signer repo using the `PLUGIN_SIGNER_USER` + `PLUGIN_SIGNER_TOKEN`
+secrets, signs the binaries, and pushes them back to the signer repo under the
+appropriate `wire<N>/` directory with a version symlink.
+
+### Backoffice pull
+
+The backoffice pulls plugins from the signer repo and distributes them to each
+cluster's plugins directory:
+
+```bash
+# Clone or update the signer repo
+git clone <signer-repo-url> /opt/repman-plugins || git -C /opt/repman-plugins pull
+
+# Follow the symlink for the installed repman version
+REPMAN_VERSION=$(replication-manager version | awk '{print $3}')
+WIRE_DIR=$(readlink /opt/repman-plugins/$REPMAN_VERSION)  # e.g. wire1
+
+# Copy binaries + sigs and deploy the public key
+cp /opt/repman-plugins/plugin-signing.pub /etc/replication-manager/
+for CLUSTER_DIR in /var/lib/replication-manager/*/; do
+  install -m 0755 /opt/repman-plugins/$WIRE_DIR/plugin-* "$CLUSTER_DIR/plugins/"
+  cp /opt/repman-plugins/$WIRE_DIR/*.sig "$CLUSTER_DIR/plugins/"
+done
+```
 
 ---
 
@@ -443,9 +617,11 @@ For dev builds without credentials, a local keypair is generated automatically.
 | File | Purpose |
 |------|---------|
 | `cluster/logplugin/logplugin.go` | `LogPlugin` interface, `LogSource`, `EvaluateResult`, spike detection |
-| `cluster/logplugin/external.go` | External binary loader, wire type definitions, 5s timeout |
-| `cluster/logplugin/plugins/wire/wire.go` | Shared JSON wire types (import or copy) |
+| `cluster/logplugin/external.go` | External binary loader, signature verification, TOCTOU hash check, wire versioning, `probePluginVersion` |
+| `cluster/logplugin/plugins/wire/wire.go` | Shared JSON wire types including `WireVersion` constant |
+| `server/plugin_cmd.go` | `plugin-keygen` and `plugin-sign` cobra commands |
 | `cluster/logplugin/example/plugin-innodb-corruption/main.go` | Minimal self-contained example |
 | `cluster/logplugin/plugins/plugin-*/main.go` | Official plugin implementations |
 | `cluster/srv_log_plugins.go` | Server integration: snapshot creation, tick loop, state injection |
-| `Makefile` (lines 74–212) | Build, sign, and distribution targets |
+| `Makefile` (lines 74–220) | Build, sign, and distribution targets |
+| `.github/workflows/build-plugins.yml` | CI workflow: build → sign → push to signer repo |
