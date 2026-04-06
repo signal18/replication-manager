@@ -10,6 +10,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-git/go-git/v5"
@@ -107,7 +108,7 @@ type CommitManager struct {
 	mu          sync.Mutex   // Mutex to protect commitQueue
 	stopCh      chan struct{}
 	wg          sync.WaitGroup
-	IsStopping  bool
+	IsStopping  atomic.Bool
 }
 
 func NewCommitManager(workerMin, workerLimit int, logger *config.LogrusWrapper) *CommitManager {
@@ -184,9 +185,20 @@ func (cmm *CommitManager) addFileToCommit(task GitAddTask) {
 }
 
 func (cmm *CommitManager) Stop() {
-	close(cmm.stopCh)
-	cmm.IsStopping = true
-	for _, task := range cmm.commitQueue {
+	cmm.IsStopping.Store(true)
+	select {
+	case <-cmm.stopCh:
+		// already closed
+	default:
+		close(cmm.stopCh)
+	}
+
+	cmm.mu.Lock()
+	pending := cmm.commitQueue
+	cmm.commitQueue = make([]GitAddTask, 0)
+	cmm.mu.Unlock()
+
+	for _, task := range pending {
 		if task.WaitGroup != nil {
 			task.WaitGroup.Done()
 		}
@@ -201,7 +213,7 @@ type ConfigManager struct {
 	configWg    *sync.WaitGroup            // Tracks ongoing config saves
 	gitMutex    *sync.Mutex                // Blocks new saves during Git push
 	stopOnce    sync.Once                  // Ensures Stop() runs only once
-	isStopping  bool                       // Prevents new saves after stopping
+	isStopping  atomic.Bool                // Prevents new saves after stopping
 	clusterData map[string]*ClusterManager // Map of clusters and their respective managers
 	gitManager  *GitManager                // Pull Push manager
 }
@@ -245,7 +257,7 @@ func (cm *ConfigManager) SaveConfig(cluster ClusterConfig, wait bool) {
 	configSaveTask := &ConfigSaveTask{Cluster: cluster}
 	clustername := cluster.GetName()
 
-	if cm.isStopping {
+	if cm.isStopping.Load() {
 		cm.logger.Debugf(clustername, config.ConstLogModGeneral, "[%s] Save blocked: system is stopping.\n", configSaveTask.Cluster)
 		return
 	}
@@ -256,7 +268,7 @@ func (cm *ConfigManager) SaveConfig(cluster ClusterConfig, wait bool) {
 		cm.logger.Debugf(clustername, config.ConstLogModConfigLoad, "[%s] Save with wait requested.\n", configSaveTask.Cluster)
 	}
 
-	if cm.isStopping {
+	if cm.isStopping.Load() {
 		cm.logger.Debugf(clustername, config.ConstLogModConfigLoad, "[%s] Save blocked: system is stopping.\n", configSaveTask.Cluster)
 		return
 	}
@@ -275,6 +287,18 @@ func (cm *ConfigManager) SaveConfig(cluster ClusterConfig, wait bool) {
 
 	// Lock the cluster's mutex to safely add to the task slice
 	cm.clusterData[clustername].mutex.Lock()
+	if cm.isStopping.Load() {
+		cm.clusterData[clustername].mutex.Unlock()
+		cm.logger.Debugf(clustername, config.ConstLogModConfigLoad, "[%s] Save blocked while queueing: system is stopping.\n", configSaveTask.Cluster)
+		return
+	}
+	select {
+	case <-cm.clusterData[clustername].stopCh:
+		cm.clusterData[clustername].mutex.Unlock()
+		cm.logger.Debugf(clustername, config.ConstLogModConfigLoad, "[%s] Save blocked: cluster manager is stopping.\n", configSaveTask.Cluster)
+		return
+	default:
+	}
 	cm.logger.Debugf(clustername, config.ConstLogModConfigLoad, "[%s] Appending to save queue.\n", clustername)
 
 	cm.clusterData[clustername].tasks = append(cm.clusterData[clustername].tasks, configSaveTask)
@@ -319,7 +343,17 @@ func (cm *ConfigManager) processClusterQueue(cluster string) {
 		select {
 		case <-cm.clusterData[cluster].stopCh: // Stop signal for the goroutine
 			cm.clusterData[cluster].isStopping = true
+			drained := 0
+			for _, task := range cm.clusterData[cluster].tasks {
+				if task.WaitGroup != nil {
+					task.WaitGroup.Done()
+				}
+				drained++
+			}
+			cm.clusterData[cluster].tasks = make([]*ConfigSaveTask, 0)
+			cm.logger.Infof(cluster, config.ConstLogModGeneral, "[%s] Stop observed, drained %d queued save task(s).", cluster, drained)
 			cm.clusterData[cluster].mutex.Unlock()
+			return
 		default:
 			// Process the first task in the queue
 			configSaveTask := cm.clusterData[cluster].tasks[0]
@@ -375,6 +409,18 @@ func (cm *ConfigManager) GitPush(conf *config.Config, clusterList []string, wait
 	cm.logger.Debugln("none", config.ConstLogModGit, "Locking push mutex")
 	// Lock the cluster's mutex to safely add to the task slice
 	cm.gitManager.mutex.Lock()
+	if cm.isStopping.Load() {
+		cm.logger.Debugln("none", config.ConstLogModGit, "Rejecting push queue append: manager is stopping")
+		cm.gitManager.mutex.Unlock()
+		return
+	}
+	select {
+	case <-cm.gitManager.stopCh:
+		cm.logger.Debugln("none", config.ConstLogModGit, "Rejecting push queue append: git manager is stopped")
+		cm.gitManager.mutex.Unlock()
+		return
+	default:
+	}
 	cm.logger.Debugln("none", config.ConstLogModGit, "Appending to push queue")
 	cm.gitManager.tasks = append(cm.gitManager.tasks, configGitTask)
 	// Signal the goroutine that a new task is available
@@ -399,6 +445,18 @@ func (cm *ConfigManager) GitPullDir() {
 	cm.logger.Debugln("none", config.ConstLogModGit, "Locking pull mutex")
 	// Lock the cluster's mutex to safely add to the task slice
 	cm.gitManager.mutex.Lock()
+	if cm.isStopping.Load() {
+		cm.logger.Debugln("none", config.ConstLogModGit, "Rejecting pull queue append: manager is stopping")
+		cm.gitManager.mutex.Unlock()
+		return
+	}
+	select {
+	case <-cm.gitManager.stopCh:
+		cm.logger.Debugln("none", config.ConstLogModGit, "Rejecting pull queue append: git manager is stopped")
+		cm.gitManager.mutex.Unlock()
+		return
+	default:
+	}
 	cm.logger.Debugln("none", config.ConstLogModGit, "Appending to pull queue")
 	cm.gitManager.tasks = append(cm.gitManager.tasks, configGitTask)
 	// Signal the goroutine that a new task is available
@@ -432,8 +490,18 @@ func (cm *ConfigManager) processGitPush() {
 		select {
 		case <-cm.gitManager.stopCh: // Stop signal for the goroutine
 			cm.gitManager.isStopping = true
+			drained := 0
+			for _, task := range cm.gitManager.tasks {
+				if task.WaitGroup != nil {
+					task.WaitGroup.Done()
+				}
+				drained++
+			}
+			cm.gitManager.tasks = make([]*ConfigGitTask, 0)
+			cm.logger.Infof("none", config.ConstLogModGit, "[Git] Stop observed, drained %d queued git task(s).", drained)
 			cm.logger.Debugf("none", config.ConstLogModGit, "[Git] Stopping goroutine.")
 			cm.gitManager.mutex.Unlock()
+			return
 		default:
 			// Process the first task in the queue and skip same type tasks
 			configGitTask, pull, push := cm.gitManager.SplitTaskQueue()
@@ -500,7 +568,7 @@ func (cm *ConfigManager) Stop() {
 	cm.stopOnce.Do(func() {
 		cm.logger.Infof("none", config.ConstLogModGeneral, "[Shutdown] Stopping...")
 
-		cm.isStopping = true // Prevent new saves
+		cm.isStopping.Store(true) // Prevent new saves
 
 		cm.gitMutex.Lock()
 		defer cm.gitMutex.Unlock()
@@ -540,8 +608,12 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf *config.Config, clusterList []
 
 	err := cm.PushConfigToGit(conf, clusterList)
 	if err != nil {
-		if err == transport.ErrRepositoryNotFound || err == io.EOF {
-			os.RemoveAll(conf.WorkingDir + "/.git")
+		if recoverable, reason := cm.classifyRecoverablePushError(err); recoverable {
+			cm.logger.Warnf("none", config.ConstLogModGit, "Recoverable git push failure (%s): %v. Refreshing repository metadata and retrying once.", reason, err)
+			if refreshErr := cm.RefreshGitMetadata(conf); refreshErr != nil {
+				cm.logger.Errorf("none", config.ConstLogModGit, "Git metadata refresh failed after recoverable push error: %v", refreshErr)
+				return refreshErr
+			}
 			err = cm.PushConfigToGit(conf, clusterList)
 		}
 		if err != nil {
@@ -558,14 +630,155 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf *config.Config, clusterList []
 	}
 
 	if commits >= 10 {
-		os.RemoveAll(conf.WorkingDir + "/.git")
-		err := cm.ShallowClone(conf)
+		cm.logger.Infof("none", config.ConstLogModGit, "Refreshing git metadata after %d commits to keep repository shallow", commits)
+		err := cm.RefreshGitMetadata(conf)
 		if err != nil {
-			cm.logger.Errorf("none", config.ConstLogModGit, "Error shallow cloning: %v", err)
+			cm.logger.Errorf("none", config.ConstLogModGit, "Error refreshing git metadata: %v", err)
 			return err
 		}
 	}
 
+	return nil
+}
+
+func (cm *ConfigManager) classifyRecoverablePushError(err error) (bool, string) {
+	if err == nil {
+		return false, ""
+	}
+
+	if errors.Is(err, transport.ErrRepositoryNotFound) {
+		return true, "repository not found"
+	}
+	if errors.Is(err, io.EOF) {
+		return true, "unexpected EOF"
+	}
+	if errors.Is(err, plumbing.ErrObjectNotFound) {
+		return true, "object not found"
+	}
+	if errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return true, "reference not found"
+	}
+
+	msg := strings.ToLower(err.Error())
+	recoverableSubstrings := []struct {
+		reason string
+		match  string
+	}{
+		{reason: "object not found", match: "object not found"},
+		{reason: "missing object", match: "missing object"},
+		{reason: "reference not found", match: "reference not found"},
+		{reason: "missing remote ref", match: "couldn't find remote ref"},
+		{reason: "reference does not exist", match: "reference does not exist"},
+		{reason: "cannot resolve reference", match: "unable to resolve reference"},
+	}
+
+	for _, candidate := range recoverableSubstrings {
+		if strings.Contains(msg, candidate.match) {
+			return true, candidate.reason
+		}
+	}
+
+	return false, ""
+}
+
+func (cm *ConfigManager) cloneRepositoryWithBootstrap(path string, conf *config.Config, cloneopt *git.CloneOptions) (*git.Repository, error) {
+	repo, cloneErr := git.PlainClone(path, false, cloneopt)
+	if cloneErr == transport.ErrRepositoryNotFound {
+		cm.logger.Warnf("none", config.ConstLogModGit, "Remote repository not found. Attempting project bootstrap before retrying clone")
+		conf.CreateGitlabProjects()
+		repo, cloneErr = git.PlainClone(path, false, cloneopt)
+	}
+
+	return repo, cloneErr
+}
+
+func (cm *ConfigManager) swapGitMetadata(workDir, stagedGitDir string) error {
+	activeGitDir := filepath.Join(workDir, ".git")
+
+	if _, err := os.Stat(stagedGitDir); err != nil {
+		return fmt.Errorf("staged git metadata missing at %s: %w", stagedGitDir, err)
+	}
+
+	backupGitDir := filepath.Join(workDir, fmt.Sprintf(".git.backup.%d", time.Now().UnixNano()))
+	hasOriginalMetadata := false
+
+	if _, err := os.Stat(activeGitDir); err == nil {
+		hasOriginalMetadata = true
+		cm.logger.Infof("none", config.ConstLogModGit, "Backing up existing .git metadata to %s", backupGitDir)
+		if err := os.Rename(activeGitDir, backupGitDir); err != nil {
+			return fmt.Errorf("cannot backup existing git metadata: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("cannot inspect current git metadata: %w", err)
+	}
+
+	cm.logger.Infof("none", config.ConstLogModGit, "Installing refreshed .git metadata into %s", activeGitDir)
+	if err := os.Rename(stagedGitDir, activeGitDir); err != nil {
+		if hasOriginalMetadata {
+			cm.logger.Warnf("none", config.ConstLogModGit, "Failed to install refreshed metadata, rolling back .git backup: %v", err)
+			if rollbackErr := os.Rename(backupGitDir, activeGitDir); rollbackErr != nil {
+				cm.logger.Errorf("none", config.ConstLogModGit, "Rollback failed: original .git backup still at %s: %v", backupGitDir, rollbackErr)
+			} else {
+				cm.logger.Infof("none", config.ConstLogModGit, "Rollback succeeded. Original .git metadata restored")
+			}
+		}
+		return fmt.Errorf("cannot install refreshed git metadata: %w", err)
+	}
+
+	if hasOriginalMetadata {
+		if err := os.RemoveAll(backupGitDir); err != nil {
+			cm.logger.Warnf("none", config.ConstLogModGit, "Refreshed .git installed but cleanup of backup metadata failed (%s): %v", backupGitDir, err)
+		}
+	}
+
+	return nil
+}
+
+func (cm *ConfigManager) RefreshGitMetadata(conf *config.Config) error {
+	url := conf.GitUrl
+	tok := conf.GetDecryptedValue("git-acces-token")
+	user := conf.GitUsername
+	path := conf.WorkingDir
+
+	if url == "" {
+		return nil
+	}
+
+	auth := &git_https.BasicAuth{
+		Username: user,
+		Password: tok,
+	}
+
+	tmpBase := filepath.Join(path, ".tmp")
+	if err := os.MkdirAll(tmpBase, 0o755); err != nil {
+		return fmt.Errorf("cannot create metadata temp base %s: %w", tmpBase, err)
+	}
+
+	tmpClonePath, err := os.MkdirTemp(tmpBase, "repman-git-refresh-*")
+	if err != nil {
+		return fmt.Errorf("cannot create metadata temp clone dir: %w", err)
+	}
+	defer os.RemoveAll(tmpClonePath)
+
+	cloneopt := &git.CloneOptions{
+		URL:               url,
+		RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+		Auth:              auth,
+		Depth:             1,
+		NoCheckout:        true,
+		SingleBranch:      true,
+	}
+
+	cm.logger.Infof("none", config.ConstLogModGit, "Cloning fresh git metadata into temporary directory for in-place refresh")
+	if _, err := cm.cloneRepositoryWithBootstrap(tmpClonePath, conf, cloneopt); err != nil {
+		return fmt.Errorf("cannot clone refreshed metadata: %w", err)
+	}
+
+	if err := cm.swapGitMetadata(path, filepath.Join(tmpClonePath, ".git")); err != nil {
+		return err
+	}
+
+	cm.logger.Infof("none", config.ConstLogModGit, "Git metadata refresh complete. Working tree files preserved in place")
 	return nil
 }
 
@@ -695,21 +908,11 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 			Depth:             1, // Shallow clone
 			NoCheckout:        true,
 			SingleBranch:      true,
-			ReferenceName:     plumbing.NewBranchReferenceName("master"),
-		}
-
-		cloneRepo := func(targetPath string) (*git.Repository, error) {
-			repo, cloneErr := git.PlainClone(targetPath, false, cloneopt)
-			if cloneErr == transport.ErrRepositoryNotFound {
-				conf.CreateGitlabProjects()
-				repo, cloneErr = git.PlainClone(targetPath, false, cloneopt)
-			}
-			return repo, cloneErr
 		}
 
 		if len(dirEntries) == 0 {
 			// Empty dir: clone directly into working dir.
-			r, err = cloneRepo(path)
+			r, err = cm.cloneRepositoryWithBootstrap(path, conf, cloneopt)
 		} else {
 			// Non-empty dir: preserve local files by cloning in a temp path and moving only .git.
 			tmpBase := filepath.Join(path, ".tmp")
@@ -725,11 +928,10 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 			}
 			defer os.RemoveAll(tmpClonePath)
 
-			if _, err = cloneRepo(tmpClonePath); err == nil {
-				renameErr := os.Rename(filepath.Join(tmpClonePath, ".git"), filepath.Join(path, ".git"))
-				if renameErr != nil {
-					cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot move .git into workdir: %s", renameErr)
-					return renameErr
+			if _, err = cm.cloneRepositoryWithBootstrap(tmpClonePath, conf, cloneopt); err == nil {
+				if swapErr := cm.swapGitMetadata(path, filepath.Join(tmpClonePath, ".git")); swapErr != nil {
+					cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot install cloned .git metadata: %s", swapErr)
+					return swapErr
 				}
 				r, err = git.PlainOpen(path)
 			}
@@ -810,7 +1012,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 
 	cm.logger.Debugf("none", config.ConstLogModGit, "Total file add took: %s", time.Since(allstart))
 
-	if cm.gitManager.CommitManager.IsStopping {
+	if cm.gitManager.CommitManager.IsStopping.Load() {
 		cm.logger.Info("none", config.ConstLogModGit, "CommitManager is stopping, cancelling commit")
 		return nil
 	}

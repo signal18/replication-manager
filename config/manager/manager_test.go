@@ -2,9 +2,11 @@ package manager
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -251,5 +253,93 @@ func TestPushConfigToGit_ShallowClonePreservesLocalFilesThenPushMaster(t *testin
 	}
 	if !strings.Contains(string(remoteState), marker) {
 		t.Fatalf("remote clusterstate.json does not contain marker %q", marker)
+	}
+}
+
+func TestCommitManagerStop_DrainsPendingTasksAndRejectsNewOnes(t *testing.T) {
+	workDir := t.TempDir()
+
+	r, err := git.PlainInit(workDir, false)
+	if err != nil {
+		t.Fatalf("failed to init repo: %v", err)
+	}
+
+	w, err := r.Worktree()
+	if err != nil {
+		t.Fatalf("failed to get worktree: %v", err)
+	}
+
+	conf := &config.Config{}
+	logger := logrus.New()
+	cm := NewConfigManager(config.NewLogrusWrapper(conf, logger))
+	t.Cleanup(cm.Stop)
+
+	cmm := cm.gitManager.CommitManager
+
+	const taskCount = 200
+	var waitQueued sync.WaitGroup
+	waitQueued.Add(taskCount)
+
+	for i := 0; i < taskCount; i++ {
+		fileName := filepath.Join(workDir, fmt.Sprintf("file-%03d.txt", i))
+		if err := os.WriteFile(fileName, []byte("payload"), 0o644); err != nil {
+			t.Fatalf("failed to create file %s: %v", fileName, err)
+		}
+
+		relPath, err := filepath.Rel(workDir, fileName)
+		if err != nil {
+			t.Fatalf("failed to create relative path: %v", err)
+		}
+
+		cmm.AddFileToCommit(GitAddTask{Filename: relPath, W: w, WaitGroup: &waitQueued})
+	}
+
+	stopDone := make(chan struct{})
+	go func() {
+		cmm.Stop()
+		close(stopDone)
+	}()
+
+	select {
+	case <-stopDone:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("CommitManager.Stop() timed out")
+	}
+
+	queuedDone := make(chan struct{})
+	go func() {
+		waitQueued.Wait()
+		close(queuedDone)
+	}()
+
+	select {
+	case <-queuedDone:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("queued commit waiters were not released")
+	}
+
+	postStopFile := filepath.Join(workDir, "post-stop.txt")
+	if err := os.WriteFile(postStopFile, []byte("after-stop"), 0o644); err != nil {
+		t.Fatalf("failed to create post-stop file: %v", err)
+	}
+	postStopRel, err := filepath.Rel(workDir, postStopFile)
+	if err != nil {
+		t.Fatalf("failed to create post-stop relative path: %v", err)
+	}
+
+	var waitRejected sync.WaitGroup
+	waitRejected.Add(1)
+	cmm.AddFileToCommit(GitAddTask{Filename: postStopRel, W: w, WaitGroup: &waitRejected})
+
+	rejectedDone := make(chan struct{})
+	go func() {
+		waitRejected.Wait()
+		close(rejectedDone)
+	}()
+
+	select {
+	case <-rejectedDone:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("post-stop task was not rejected/done promptly")
 	}
 }
