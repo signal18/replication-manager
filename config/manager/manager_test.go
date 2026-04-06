@@ -2,20 +2,39 @@ package manager
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/signal18/replication-manager/config"
 	"github.com/sirupsen/logrus"
 )
+
+type testClusterConfig struct {
+	name   string
+	saveFn func() error
+}
+
+func (tc *testClusterConfig) GetName() string {
+	return tc.name
+}
+
+func (tc *testClusterConfig) Save() error {
+	if tc.saveFn != nil {
+		return tc.saveFn()
+	}
+	return nil
+}
 
 func testWorkDir(t *testing.T) string {
 	t.Helper()
@@ -341,5 +360,228 @@ func TestCommitManagerStop_DrainsPendingTasksAndRejectsNewOnes(t *testing.T) {
 	case <-rejectedDone:
 	case <-time.After(2 * time.Second):
 		t.Fatalf("post-stop task was not rejected/done promptly")
+	}
+}
+
+func TestSaveConfigWaitDuringStoppingReturnsPromptly(t *testing.T) {
+	conf := &config.Config{}
+	logger := logrus.New()
+	cm := NewConfigManager(config.NewLogrusWrapper(conf, logger))
+
+	cluster := &testClusterConfig{name: "stopping-cluster"}
+
+	cm.Stop()
+
+	done := make(chan struct{})
+	go func() {
+		cm.SaveConfig(cluster, true)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("SaveConfig(wait=true) blocked while manager is stopping")
+	}
+}
+
+func TestSaveConfigWaitWhenClusterQueueStoppedReturnsPromptly(t *testing.T) {
+	conf := &config.Config{}
+	logger := logrus.New()
+	cm := NewConfigManager(config.NewLogrusWrapper(conf, logger))
+	t.Cleanup(cm.Stop)
+
+	cluster := &testClusterConfig{name: "queue-stop-cluster"}
+	clmgr, ok := cm.getOrCreateClusterManager(cluster.GetName())
+	if !ok {
+		t.Fatalf("expected cluster manager creation to succeed")
+	}
+
+	close(clmgr.stopCh)
+	clmgr.cond.Signal()
+
+	done := make(chan struct{})
+	go func() {
+		cm.SaveConfig(cluster, true)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatalf("SaveConfig(wait=true) blocked when cluster queue is stopped")
+	}
+}
+
+func TestSaveConfigConcurrentClusterCreateAndAccess(t *testing.T) {
+	conf := &config.Config{}
+	logger := logrus.New()
+	cm := NewConfigManager(config.NewLogrusWrapper(conf, logger))
+	t.Cleanup(cm.Stop)
+
+	const clusters = 8
+	const requests = 200
+
+	clusterList := make([]*testClusterConfig, 0, clusters)
+	counters := make([]*atomic.Int64, 0, clusters)
+	for i := 0; i < clusters; i++ {
+		counter := &atomic.Int64{}
+		counters = append(counters, counter)
+		clusterName := fmt.Sprintf("cluster-%d", i)
+		clusterList = append(clusterList, &testClusterConfig{
+			name: clusterName,
+			saveFn: func() error {
+				counter.Add(1)
+				time.Sleep(2 * time.Millisecond)
+				return nil
+			},
+		})
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(requests)
+	for i := 0; i < requests; i++ {
+		cluster := clusterList[i%clusters]
+		go func(c *testClusterConfig) {
+			defer wg.Done()
+			cm.SaveConfig(c, true)
+		}(cluster)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("concurrent SaveConfig calls timed out")
+	}
+
+	totalSaves := int64(0)
+	for _, counter := range counters {
+		totalSaves += counter.Load()
+	}
+	if totalSaves == 0 {
+		t.Fatalf("expected at least one successful save")
+	}
+}
+
+func TestSaveConfigWaitWithSavePanicReturnsPromptly(t *testing.T) {
+	conf := &config.Config{}
+	logger := logrus.New()
+	cm := NewConfigManager(config.NewLogrusWrapper(conf, logger))
+	t.Cleanup(cm.Stop)
+
+	cluster := &testClusterConfig{
+		name: "panic-cluster",
+		saveFn: func() error {
+			panic("save panic")
+		},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		cm.SaveConfig(cluster, true)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("SaveConfig(wait=true) blocked when Save panicked")
+	}
+}
+
+func TestSaveConfigWorkerSurvivesSavePanic(t *testing.T) {
+	conf := &config.Config{}
+	logger := logrus.New()
+	cm := NewConfigManager(config.NewLogrusWrapper(conf, logger))
+	t.Cleanup(cm.Stop)
+
+	var calls atomic.Int64
+	cluster := &testClusterConfig{
+		name: "panic-recover-cluster",
+		saveFn: func() error {
+			if calls.Add(1) == 1 {
+				panic("first save panic")
+			}
+			return nil
+		},
+	}
+
+	firstDone := make(chan struct{})
+	go func() {
+		cm.SaveConfig(cluster, true)
+		close(firstDone)
+	}()
+
+	select {
+	case <-firstDone:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("first SaveConfig(wait=true) blocked when Save panicked")
+	}
+
+	secondDone := make(chan struct{})
+	go func() {
+		cm.SaveConfig(cluster, true)
+		close(secondDone)
+	}()
+
+	select {
+	case <-secondDone:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("second SaveConfig(wait=true) blocked after panic")
+	}
+
+	if calls.Load() < 2 {
+		t.Fatalf("expected save worker to continue processing after panic")
+	}
+}
+
+func TestSaveConfigConcurrentStopAndCreateDoesNotBlock(t *testing.T) {
+	conf := &config.Config{}
+	logger := logrus.New()
+	cm := NewConfigManager(config.NewLogrusWrapper(conf, logger))
+
+	const requests = 100
+	var wg sync.WaitGroup
+	wg.Add(requests)
+
+	for i := 0; i < requests; i++ {
+		idx := i
+		go func() {
+			defer wg.Done()
+			cluster := &testClusterConfig{name: fmt.Sprintf("stop-race-%d", idx)}
+			cm.SaveConfig(cluster, true)
+		}()
+	}
+
+	cm.Stop()
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatalf("concurrent SaveConfig + Stop blocked")
+	}
+}
+
+func TestIsRepositoryNotFoundError_MatchesWrappedError(t *testing.T) {
+	err := fmt.Errorf("clone failed: %w", transport.ErrRepositoryNotFound)
+	if !isRepositoryNotFoundError(err) {
+		t.Fatalf("expected wrapped ErrRepositoryNotFound to match")
+	}
+
+	nonMatchErr := errors.New("different error")
+	if isRepositoryNotFoundError(nonMatchErr) {
+		t.Fatalf("unexpected match for unrelated error")
 	}
 }
