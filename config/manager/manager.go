@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/go-git/go-git/v5"
@@ -784,6 +786,10 @@ func (cm *ConfigManager) cloneRepositoryWithBootstrap(path string, conf *config.
 }
 
 func (cm *ConfigManager) swapGitMetadata(workDir, stagedGitDir string) error {
+	return cm.swapGitMetadataWithRenamer(workDir, stagedGitDir, os.Rename)
+}
+
+func (cm *ConfigManager) swapGitMetadataWithRenamer(workDir, stagedGitDir string, renameFn func(oldpath, newpath string) error) error {
 	activeGitDir := filepath.Join(workDir, ".git")
 
 	if _, err := os.Stat(stagedGitDir); err != nil {
@@ -796,7 +802,7 @@ func (cm *ConfigManager) swapGitMetadata(workDir, stagedGitDir string) error {
 	if _, err := os.Stat(activeGitDir); err == nil {
 		hasOriginalMetadata = true
 		cm.logger.Infof("none", config.ConstLogModGit, "Backing up existing .git metadata to %s", backupGitDir)
-		if err := os.Rename(activeGitDir, backupGitDir); err != nil {
+		if err := renameFn(activeGitDir, backupGitDir); err != nil {
 			return fmt.Errorf("cannot backup existing git metadata: %w", err)
 		}
 	} else if !os.IsNotExist(err) {
@@ -804,10 +810,29 @@ func (cm *ConfigManager) swapGitMetadata(workDir, stagedGitDir string) error {
 	}
 
 	cm.logger.Infof("none", config.ConstLogModGit, "Installing refreshed .git metadata into %s", activeGitDir)
-	if err := os.Rename(stagedGitDir, activeGitDir); err != nil {
+	if err := renameFn(stagedGitDir, activeGitDir); err != nil {
+		if errors.Is(err, syscall.EXDEV) {
+			cm.logger.Warnf("none", config.ConstLogModGit, "Cross-filesystem install detected while moving refreshed .git (%v). Falling back to recursive copy", err)
+			if copyErr := copyDirRecursive(stagedGitDir, activeGitDir); copyErr != nil {
+				if hasOriginalMetadata {
+					if rollbackErr := rollbackGitMetadata(backupGitDir, activeGitDir, renameFn); rollbackErr != nil {
+						cm.logger.Errorf("none", config.ConstLogModGit, "Rollback failed after EXDEV fallback failure. Backup retained at %s: %v", backupGitDir, rollbackErr)
+					}
+				}
+				return fmt.Errorf("cannot install refreshed git metadata via EXDEV fallback copy: %w", copyErr)
+			}
+
+			if hasOriginalMetadata {
+				if rmErr := os.RemoveAll(backupGitDir); rmErr != nil {
+					cm.logger.Warnf("none", config.ConstLogModGit, "Refreshed .git copied successfully after EXDEV, but cleanup of backup metadata failed (%s): %v", backupGitDir, rmErr)
+				}
+			}
+			return nil
+		}
+
 		if hasOriginalMetadata {
 			cm.logger.Warnf("none", config.ConstLogModGit, "Failed to install refreshed metadata, rolling back .git backup: %v", err)
-			if rollbackErr := os.Rename(backupGitDir, activeGitDir); rollbackErr != nil {
+			if rollbackErr := rollbackGitMetadata(backupGitDir, activeGitDir, renameFn); rollbackErr != nil {
 				cm.logger.Errorf("none", config.ConstLogModGit, "Rollback failed: original .git backup still at %s: %v", backupGitDir, rollbackErr)
 			} else {
 				cm.logger.Infof("none", config.ConstLogModGit, "Rollback succeeded. Original .git metadata restored")
@@ -823,6 +848,119 @@ func (cm *ConfigManager) swapGitMetadata(workDir, stagedGitDir string) error {
 	}
 
 	return nil
+}
+
+func rollbackGitMetadata(backupGitDir, activeGitDir string, renameFn func(oldpath, newpath string) error) error {
+	if _, statErr := os.Stat(activeGitDir); statErr == nil {
+		if rmErr := os.RemoveAll(activeGitDir); rmErr != nil {
+			return fmt.Errorf("cannot remove partial active git metadata before rollback: %w", rmErr)
+		}
+	} else if !os.IsNotExist(statErr) {
+		return fmt.Errorf("cannot inspect active git metadata before rollback: %w", statErr)
+	}
+
+	if err := renameFn(backupGitDir, activeGitDir); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func copyDirRecursive(src, dst string) error {
+	if err := os.RemoveAll(dst); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("cannot prepare destination %s: %w", dst, err)
+	}
+
+	return filepath.WalkDir(src, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
+			return os.MkdirAll(target, info.Mode().Perm())
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+
+		if info.Mode()&os.ModeSymlink != 0 {
+			linkTarget, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			return os.Symlink(linkTarget, target)
+		}
+
+		return copyFile(path, target, info.Mode().Perm())
+	})
+}
+
+func copyFile(src, dst string, mode os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+
+	return out.Sync()
+}
+
+func resolveCurrentLocalBranch(workDir string) (plumbing.ReferenceName, bool) {
+	r, err := git.PlainOpen(workDir)
+	if err != nil {
+		return "", false
+	}
+
+	headRef, err := r.Head()
+	if err == nil && headRef.Name().IsBranch() {
+		return headRef.Name(), true
+	}
+
+	if _, err := r.Reference(plumbing.NewBranchReferenceName("master"), true); err == nil {
+		return plumbing.NewBranchReferenceName("master"), true
+	}
+
+	return "", false
+}
+
+func isReferenceNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "couldn't find remote ref") || strings.Contains(msg, "reference not found")
 }
 
 func (cm *ConfigManager) RefreshGitMetadata(conf *config.Config) error {
@@ -860,9 +998,35 @@ func (cm *ConfigManager) RefreshGitMetadata(conf *config.Config) error {
 		SingleBranch:      true,
 	}
 
+	if refName, ok := resolveCurrentLocalBranch(path); ok {
+		cloneopt.ReferenceName = refName
+		cloneopt.SingleBranch = true
+		cm.logger.Infof("none", config.ConstLogModGit, "Refreshing git metadata using current local branch reference %s", refName)
+	} else {
+		fallbackRef := plumbing.NewBranchReferenceName("master")
+		cloneopt.ReferenceName = fallbackRef
+		cloneopt.SingleBranch = true
+		cm.logger.Warnf("none", config.ConstLogModGit, "Could not determine current local branch for metadata refresh, falling back to %s", fallbackRef)
+	}
+
 	cm.logger.Infof("none", config.ConstLogModGit, "Cloning fresh git metadata into temporary directory for in-place refresh")
 	if _, err := cm.cloneRepositoryWithBootstrap(tmpClonePath, conf, cloneopt); err != nil {
-		return fmt.Errorf("cannot clone refreshed metadata: %w", err)
+		if cloneopt.ReferenceName != "" && isReferenceNotFoundError(err) {
+			cm.logger.Warnf("none", config.ConstLogModGit, "Refresh metadata clone with reference %s failed (%v). Retrying with remote default branch", cloneopt.ReferenceName, err)
+			if rmErr := os.RemoveAll(tmpClonePath); rmErr != nil {
+				return fmt.Errorf("cannot reset temporary clone dir before refresh retry: %w", rmErr)
+			}
+			if mkErr := os.MkdirAll(tmpClonePath, 0o755); mkErr != nil {
+				return fmt.Errorf("cannot recreate temporary clone dir before refresh retry: %w", mkErr)
+			}
+			cloneopt.ReferenceName = ""
+			cloneopt.SingleBranch = false
+			if _, retryErr := cm.cloneRepositoryWithBootstrap(tmpClonePath, conf, cloneopt); retryErr != nil {
+				return fmt.Errorf("cannot clone refreshed metadata: %w", retryErr)
+			}
+		} else {
+			return fmt.Errorf("cannot clone refreshed metadata: %w", err)
+		}
 	}
 
 	if err := cm.swapGitMetadata(path, filepath.Join(tmpClonePath, ".git")); err != nil {
@@ -997,7 +1161,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 			Auth:              auth,
 			Depth:             1, // Shallow clone
-			NoCheckout:        true,
+			NoCheckout:        !conf.ConfRestoreOnStart,
 			SingleBranch:      true,
 		}
 
@@ -1152,7 +1316,10 @@ func (cm *ConfigManager) CountAllCommits(conf *config.Config) (int, error) {
 		return 0, fmt.Errorf("failed to open repository at %s: %w", mainPath, err)
 	}
 
-	r.Fetch(&git.FetchOptions{Force: true, Auth: &git_https.BasicAuth{Username: conf.GitUsername, Password: conf.GetDecryptedValue("git-acces-token")}})
+	fetchErr := r.Fetch(&git.FetchOptions{Force: true, Auth: &git_https.BasicAuth{Username: conf.GitUsername, Password: conf.GetDecryptedValue("git-acces-token")}})
+	if fetchErr != nil && !errors.Is(fetchErr, git.NoErrAlreadyUpToDate) {
+		cm.logger.Warnf("none", config.ConstLogModGit, "CountAllCommits: fetch failed, counting local commits only: %v", fetchErr)
+	}
 
 	commitIter, err := r.Log(&git.LogOptions{All: true})
 	if err != nil {
