@@ -8,22 +8,26 @@ import styles from './styles.module.scss'
 import parentStyles from '../styles.module.scss'
 import { useTheme } from '../../../ThemeProvider'
 
-function AlertModal({ type, isOpen, closeModal }) {
+function AlertModal({ type, isOpen, closeModal, alerts }) {
   const { theme } = useTheme()
   const {
     common: { isMobile, isTablet, isDesktop },
     cluster: { clusterAlerts }
   } = useSelector((state) => state)
 
+  const source = alerts ?? clusterAlerts
+
   const [data, setData] = useState([])
 
   useEffect(() => {
-    if (type === 'error' && clusterAlerts?.errors?.length > 0) {
-      setData(clusterAlerts.errors)
-    } else if (type === 'warning' && clusterAlerts?.warnings?.length > 0) {
-      setData(clusterAlerts.warnings)
+    if (type === 'error' && source?.errors?.length > 0) {
+      setData(source.errors)
+    } else if (type === 'warning' && source?.warnings?.length > 0) {
+      setData(source.warnings)
+    } else {
+      setData([])
     }
-  }, [clusterAlerts])
+  }, [source, type])
 
   const columnHelper = createColumnHelper()
   const columns = useMemo(

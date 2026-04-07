@@ -61,7 +61,6 @@ function AppCredit({ clusterName, appId, config, appConfig, user }) {
                         width={220}
                         height={150}
                         hideMinMax={false}
-                        isGaugeSizeCustomized={false}
                         appendTextToValue='MB'
                         textOverlayClassName={styles.textOverlay}
                     />
@@ -74,7 +73,6 @@ function AppCredit({ clusterName, appId, config, appConfig, user }) {
                         width={220}
                         height={150}
                         hideMinMax={false}
-                        isGaugeSizeCustomized={false}
                         appendTextToValue='GB'
                         textOverlayClassName={styles.textOverlay}
                     />
@@ -87,7 +85,6 @@ function AppCredit({ clusterName, appId, config, appConfig, user }) {
                         width={220}
                         height={150}
                         hideMinMax={false}
-                        isGaugeSizeCustomized={false}
                         textOverlayClassName={styles.textOverlay}
                     />
                 </Flex>

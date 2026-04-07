@@ -983,6 +983,28 @@ definitions:
       whitelist:
         type: string
     type: object
+  cluster.PFSExplainRecord:
+    properties:
+      capturedAt:
+        description: RFC3339 timestamp of first EXPLAIN
+        type: string
+      digest:
+        description: PFS digest hash
+        type: string
+      digestText:
+        description: normalised template  e.g. SELECT * FROM t WHERE id = ?
+        type: string
+      plan:
+        description: rows returned by EXPLAIN
+        items:
+          $ref: '#/definitions/dbhelper.Explain'
+        type: array
+      sampleQuery:
+        description: concrete SQL instance used for EXPLAIN
+        type: string
+      schemaName:
+        type: string
+    type: object
   cluster.Proxy:
     properties:
       DatabaseProxy: {}
@@ -1270,6 +1292,8 @@ definitions:
         type: boolean
       isConfigGen:
         type: boolean
+      isDataDiverge:
+        type: boolean
       isDelayed:
         type: boolean
       isFull:
@@ -1348,6 +1372,21 @@ definitions:
         type: boolean
       pfsInstruments:
         $ref: '#/definitions/config.StringsMap'
+      pfsexplainCache:
+        additionalProperties:
+          $ref: '#/definitions/cluster.PFSExplainRecord'
+        description: digest → cached explain plan, keyed by digest hash
+        type: object
+      pfsexplainCacheMu:
+        allOf:
+        - $ref: '#/definitions/sync.Mutex'
+        description: protects PFSExplainCache against goroutine/monitor-loop races
+      pfslastExplainPurge:
+        description: timestamp of last explain cache purge run
+        type: string
+      pfslastSnapshot:
+        description: timestamp of last periodic PFS digest snapshot flush
+        type: string
       pointInTimeMeta:
         $ref: '#/definitions/backupmgr.PointInTimeMeta'
       port:
@@ -2006,6 +2045,29 @@ definitions:
       status:
         type: integer
     type: object
+  dbhelper.Explain:
+    properties:
+      extra:
+        $ref: '#/definitions/sql.NullString'
+      id:
+        type: integer
+      key:
+        $ref: '#/definitions/sql.NullString'
+      keyLen:
+        $ref: '#/definitions/sql.NullString'
+      possibleKeys:
+        $ref: '#/definitions/sql.NullString'
+      ref:
+        $ref: '#/definitions/sql.NullString'
+      rows:
+        $ref: '#/definitions/sql.NullString'
+      selectType:
+        $ref: '#/definitions/sql.NullString'
+      table:
+        $ref: '#/definitions/sql.NullString'
+      type:
+        $ref: '#/definitions/sql.NullString'
+    type: object
   dbhelper.MasterStatus:
     properties:
       binlogDoDB:
@@ -2174,6 +2236,8 @@ definitions:
         type: integer
       app:
         type: boolean
+      appErrorDebounceThreshold:
+        type: integer
       appHosts:
         type: string
       appHostsIpv6:
@@ -2663,6 +2727,8 @@ definitions:
         type: boolean
       failoverCheckDelayStat:
         type: boolean
+      failoverDivergentData:
+        type: boolean
       failoverEventScheduler:
         type: boolean
       failoverEventStatus:
@@ -2921,6 +2987,10 @@ definitions:
         type: boolean
       logOrchestratorLevel:
         type: integer
+      logPlugin:
+        type: boolean
+      logPluginLevel:
+        type: integer
       logProxy:
         type: boolean
       logProxyLevel:
@@ -3041,6 +3111,12 @@ definitions:
         type: string
       monitoringCheckGrants:
         type: boolean
+      monitoringChecksumIngoreTables:
+        type: string
+      monitoringChecksumScheduler:
+        type: boolean
+      monitoringChecksumSchedulerCron:
+        type: string
       monitoringCloseStateScript:
         type: string
       monitoringConfdir:
@@ -3057,6 +3133,10 @@ definitions:
         type: integer
       monitoringErrorLogLength:
         type: integer
+      monitoringGlobalHeartbeatStallThreshold:
+        type: integer
+      monitoringGlobalHeartbeatSupervision:
+        type: boolean
       monitoringIgnoreErrors:
         type: string
       monitoringInnoDBStatus:
@@ -3091,6 +3171,16 @@ definitions:
         type: boolean
       monitoringPerformanceSchemaMutex:
         type: boolean
+      monitoringPerformanceSchemaQueries:
+        type: boolean
+      monitoringPerformanceSchemaQueriesExplain:
+        type: boolean
+      monitoringPerformanceSchemaQueriesExplainDelay:
+        type: integer
+      monitoringPerformanceSchemaQueriesExplainPurgePeriod:
+        type: integer
+      monitoringPerformanceSchemaQueriesPeriod:
+        type: integer
       monitoringPlugins:
         type: boolean
       monitoringProcesslist:
@@ -3231,6 +3321,12 @@ definitions:
         type: string
       optimizeUseSql:
         type: boolean
+      pluginConfig:
+        additionalProperties:
+          additionalProperties:
+            type: string
+          type: object
+        type: object
       printDelayStat:
         type: boolean
       printDelayStatHistory:
@@ -3776,6 +3872,7 @@ definitions:
       sysbenchTime:
         type: integer
       sysbenchV1:
+        description: deprecated, version is now detected by binary
         type: boolean
       templateStrict:
         type: boolean
@@ -4497,6 +4594,8 @@ definitions:
         type: object
       spitBrain:
         type: boolean
+      stateMachine:
+        $ref: '#/definitions/state.StateMachine'
       status:
         type: string
       termsDT:
@@ -4560,6 +4659,64 @@ definitions:
         type: string
       useTempDir:
         type: boolean
+    type: object
+  server.globalAlertsResponse:
+    properties:
+      errors:
+        items:
+          $ref: '#/definitions/state.StateHttp'
+        type: array
+      warnings:
+        items:
+          $ref: '#/definitions/state.StateHttp'
+        type: array
+    type: object
+  server.globalMetricsHostInfo:
+    properties:
+      cpuCores:
+        type: integer
+      cpuPercent:
+        type: number
+      diskError:
+        type: string
+      diskPath:
+        type: string
+      diskTotalBytes:
+        type: integer
+      diskUsedBytes:
+        type: integer
+      diskUsedPercent:
+        type: number
+      hostname:
+        type: string
+      memoryTotalBytes:
+        type: integer
+      memoryUsedBytes:
+        type: integer
+      memoryUsedPercent:
+        type: number
+    type: object
+  server.globalMetricsProcessInfo:
+    properties:
+      goroutines:
+        type: integer
+      heapAllocBytes:
+        type: integer
+      heapSysBytes:
+        type: integer
+      pid:
+        type: integer
+      rssBytes:
+        type: integer
+      uptimeSeconds:
+        type: integer
+    type: object
+  server.globalMetricsResponse:
+    properties:
+      host:
+        $ref: '#/definitions/server.globalMetricsHostInfo'
+      process:
+        $ref: '#/definitions/server.globalMetricsProcessInfo'
     type: object
   server.resticSnapshotResponse:
     properties:
@@ -5180,6 +5337,42 @@ paths:
           schema:
             type: string
       summary: Calculate checksum for all tables in a specific cluster
+      tags:
+      - ClusterSchema
+  /api/clusters/{clusterName}/actions/checksum-repair-all-tables:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint triggers the checksum calculation for all tables
+        in the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully triggered checksum calculation for all tables
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Compute Repair for all tables in a specific cluster
       tags:
       - ClusterSchema
   /api/clusters/{clusterName}/actions/failover:
@@ -8223,6 +8416,26 @@ paths:
       summary: Get OpenSVC Daemon Status
       tags:
       - ClusterGateway
+  /api/clusters/{clusterName}/plugins:
+    get:
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+      summary: List active log-tailer plugins for a cluster
+      tags:
+      - ClusterSettings
   /api/clusters/{clusterName}/proxies/{proxyName}:
     get:
       description: Shows the proxies for that specific named cluster
@@ -9412,6 +9625,52 @@ paths:
           schema:
             type: string
       summary: Calculate analyze for a specific table in a specific cluster
+      tags:
+      - ClusterSchema
+  /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/checksum-repair-table:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint triggers the checksum calculation for a specific
+        table in the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Schema Name
+        in: path
+        name: schemaName
+        required: true
+        type: string
+      - description: Table Name
+        in: path
+        name: tableName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully triggered checksum calculation for the table
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Repair checksum error for a specific table in a specific cluster
       tags:
       - ClusterSchema
   /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/checksum-table:
@@ -13670,6 +13929,54 @@ paths:
       summary: Explain a query using PFS on a server
       tags:
       - DatabaseQueries
+  /api/clusters/{clusterName}/servers/{serverName}/queries/{queryDigest}/actions/explain-pfs-cached:
+    get:
+      description: Returns the explain plan that was captured at snapshot time for
+        the given digest.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Query Digest
+        in: path
+        name: queryDigest
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Cached explain plan
+          schema:
+            $ref: '#/definitions/cluster.PFSExplainRecord'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: Digest not found in explain cache
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Encoding error
+          schema:
+            type: string
+      summary: Get cached EXPLAIN plan for a PFS digest
+      tags:
+      - DatabaseQueries
   /api/clusters/{clusterName}/servers/{serverName}/queries/{queryDigest}/actions/explain-slowlog:
     get:
       description: Explains a query identified by its digest on a specified server
@@ -13801,6 +14108,47 @@ paths:
           schema:
             type: string
       summary: Kill a thread on a server
+      tags:
+      - DatabaseQueries
+  /api/clusters/{clusterName}/servers/{serverName}/queries/explain-pfs-cached:
+    get:
+      description: Returns every explain plan stored in the server's on-disk PFS explain
+        cache.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: All cached explain plans
+          schema:
+            items:
+              $ref: '#/definitions/cluster.PFSExplainRecord'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Encoding error
+          schema:
+            type: string
+      summary: List all cached EXPLAIN plans for a server
       tags:
       - DatabaseQueries
   /api/clusters/{clusterName}/servers/{serverName}/query-response-time:
@@ -16793,6 +17141,55 @@ paths:
       summary: Send Email
       tags:
       - AlertMailer
+  /api/global/alerts:
+    get:
+      description: Returns server-level errors and warnings from the ReplicationManager
+        state machine.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.globalAlertsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+      summary: Get global alerts
+      tags:
+      - Global
+  /api/global/metrics:
+    get:
+      description: Returns host CPU/memory/disk and repman process metrics.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.globalMetricsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+      summary: Get global metrics
+      tags:
+      - Global
   /api/health:
     get:
       consumes:
@@ -17000,6 +17397,11 @@ paths:
         name: Authorization
         required: true
         type: string
+      - description: 'OpenSVC server bash terminal container RID (allowed: container#db,
+          container#jobs)'
+        in: query
+        name: rid
+        type: string
       produces:
       - application/json
       responses:
@@ -17037,6 +17439,11 @@ paths:
       - description: Server Name
         in: path
         name: serverName
+        type: string
+      - description: 'OpenSVC server bash terminal container RID (allowed: container#db,
+          container#jobs)'
+        in: query
+        name: rid
         type: string
       produces:
       - application/json
@@ -17076,6 +17483,11 @@ paths:
         in: path
         name: serverName
         type: string
+      - description: 'OpenSVC server bash terminal container RID (allowed: container#db,
+          container#jobs)'
+        in: query
+        name: rid
+        type: string
       produces:
       - application/json
       responses:
@@ -17114,6 +17526,11 @@ paths:
         in: path
         name: serverName
         type: string
+      - description: 'OpenSVC server bash terminal container RID (allowed: container#db,
+          container#jobs)'
+        in: query
+        name: rid
+        type: string
       produces:
       - application/json
       responses:
@@ -17151,6 +17568,11 @@ paths:
       - description: Server Name
         in: path
         name: serverName
+        type: string
+      - description: 'OpenSVC server bash terminal container RID (allowed: container#db,
+          container#jobs)'
+        in: query
+        name: rid
         type: string
       produces:
       - application/json

@@ -173,13 +173,11 @@ function DBConfigs({ selectedCluster, user }) {
             maxValue={10000}
             value={selectedCluster?.config?.provDbMaxConnections}
             text={'Connections'}
-            width={220}
-            height={150}
+            width={150}
+            height={105}
             hideMinMax={false}
-            isGaugeSizeCustomized={false}
             showStep={true}
             step={200}
-            textOverlayClassName={styles.textOverlay}
             handleStepChange={(value) => {
               setConfirmTitle(`Confirm connections change to ${value}`)
               setIsConfirmModalOpen(true)
@@ -200,14 +198,12 @@ function DBConfigs({ selectedCluster, user }) {
             minValue={0}
             maxValue={90}
             value={selectedCluster?.config?.provDbExpireLogDays}
-            text={'Expire Binglog days'}
-            width={220}
-            height={150}
+            text={'Expire Binlog days'}
+            width={150}
+            height={105}
             hideMinMax={false}
-            isGaugeSizeCustomized={false}
             showStep={true}
             step={1}
-            textOverlayClassName={styles.textOverlay}
             handleStepChange={(value) => {
               setConfirmTitle(`Confirm expire binlog days change to ${value}`)
               setIsConfirmModalOpen(true)
@@ -236,14 +232,12 @@ function DBConfigs({ selectedCluster, user }) {
             maxValue={25600}
             value={convertSize(selectedCluster?.config?.provDbMemory,"M","M")}
             text={'Memory'}
-            width={220}
-            height={150}
+            width={150}
+            height={105}
             hideMinMax={false}
-            isGaugeSizeCustomized={false}
             showStep={true}
             step={256}
             appendTextToValue='MB'
-            textOverlayClassName={styles.textOverlay}
             handleStepChange={(value) => {
               setConfirmTitle(`Confirm memory change to ${value}`)
               setIsConfirmModalOpen(true)
@@ -265,14 +259,12 @@ function DBConfigs({ selectedCluster, user }) {
             maxValue={10000}
             value={convertSize(selectedCluster?.config?.provDbDiskSize,"G","G")}
             text={'Disk size'}
-            width={220}
-            height={150}
+            width={150}
+            height={105}
             hideMinMax={false}
-            isGaugeSizeCustomized={false}
             showStep={true}
             step={10}
             appendTextToValue='GB'
-            textOverlayClassName={styles.textOverlay}
             handleStepChange={(value) => {
               setConfirmTitle(`Confirm disk size change to ${value}`)
               setIsConfirmModalOpen(true)
@@ -294,13 +286,11 @@ function DBConfigs({ selectedCluster, user }) {
             maxValue={100000}
             value={selectedCluster?.config?.provDbDiskIops}
             text={'Disk IO/s'}
-            width={220}
-            height={150}
+            width={150}
+            height={105}
             hideMinMax={false}
-            isGaugeSizeCustomized={false}
             showStep={true}
             step={100}
-            textOverlayClassName={styles.textOverlay}
             handleStepChange={(value) => {
               setConfirmTitle(`Confirm disk io/s change to ${value}`)
               setIsConfirmModalOpen(true)
@@ -322,13 +312,11 @@ function DBConfigs({ selectedCluster, user }) {
             maxValue={256}
             value={selectedCluster?.config?.provDbCpuCores}
             text={'Cores'}
-            width={220}
-            height={150}
+            width={150}
+            height={105}
             hideMinMax={false}
-            isGaugeSizeCustomized={false}
             showStep={true}
             step={1}
-            textOverlayClassName={styles.textOverlay}
             handleStepChange={(value) => {
               setConfirmTitle(`Confirm cpu cores change to ${value}`)
               setIsConfirmModalOpen(true)

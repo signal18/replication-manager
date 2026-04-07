@@ -57,7 +57,7 @@ function NewClusterModal({ plans, orchestrators, defaultOrchestrator, isOpen, cl
     closeModal()
   }
 
-  const getOrchestatorOptions = (orcs = []) => [{ name: "No Orchestrator", value: '' } ,...orcs?.filter((obj) => obj.available).map((obj) => ({ name: obj.name, value: obj.name }))]
+  const getOrchestratorOptions = (orcs = []) => [{ name: "No Orchestrator", value: '' } ,...orcs?.filter((obj) => obj.available).map((obj) => ({ name: obj.name, value: obj.name }))]
   const getPlanOptions = (plist = []) => [{ name: "No Plan", value: '' } ,...plist?.map((obj) => ({ name: obj.plan, value: obj.plan }))]
 
   const onPlanChange = (option) => {
@@ -67,7 +67,7 @@ function NewClusterModal({ plans, orchestrators, defaultOrchestrator, isOpen, cl
   }
 
   useEffect(() => {
-    if (orchestrators) setOrchestratorOptions(getOrchestatorOptions(orchestrators));
+    if (orchestrators) setOrchestratorOptions(getOrchestratorOptions(orchestrators));
     if (plans) setPlanOptions(getPlanOptions(plans));
   },[plans,orchestrators])
 

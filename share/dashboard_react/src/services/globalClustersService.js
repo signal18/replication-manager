@@ -6,6 +6,9 @@ export const globalClustersService = {
   getClusterForSale,
   getMonitoredData,
   getTermsData,
+  getGlobalAlerts,
+  getGlobalMetrics,
+  getGlobalLogs,
   switchGlobalSetting,
   setGlobalSetting,
   clearGlobalSetting,
@@ -23,6 +26,18 @@ function getClusters(baseURL) {
 
 function getMonitoredData(baseURL) {
   return getApi(baseURL).get('monitor')
+}
+
+function getGlobalAlerts(baseURL) {
+  return getApi(baseURL).get('global/alerts')
+}
+
+function getGlobalMetrics(baseURL) {
+  return getApi(baseURL).get('global/metrics')
+}
+
+function getGlobalLogs(baseURL) {
+  return getApi(baseURL).get('global/http-logs')
 }
 
 function getTermsData(baseURL) {
