@@ -1,12 +1,13 @@
-import React from 'react'
+import { useState } from 'react'
 import { useSelector } from 'react-redux'
-import { Box, Flex, Text, Divider, Spinner } from '@chakra-ui/react'
+import { Box, Flex, Text, Divider, Spinner, Button } from '@chakra-ui/react'
 import Card from '../../components/Card'
 import Gauge from '../../components/Gauge'
 import TagPill from '../../components/TagPill'
 import styles from './styles.module.scss'
 import Logs from '../Dashboard/components/Logs'
 import AccordionComponent from '../../components/AccordionComponent'
+import AlertModal from '../../components/Modals/AlertModal'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -236,6 +237,65 @@ function GlobalLogs() {
   return <Logs logs={logs?.buffer} searchable={true} className={styles.logContainer} />
 }
 
+function AlertSection({ title, items, colorScheme, onOpenModal }) {
+  const previewItems = items.slice(0, 3)
+  const remainingCount = Math.max(items.length - previewItems.length, 0)
+
+  return (
+    <AccordionComponent
+      heading={
+        <Flex align='center' gap='8px'>
+          <Text>{title}</Text>
+          <TagPill colorScheme={colorScheme} text={`${items.length}`} />
+        </Flex>
+      }
+      body={
+        <Flex direction='column' gap='8px' p='8px'>
+          {items.length === 0 ? (
+            <Text fontSize='sm' opacity={0.7}>No active {title.toLowerCase()}.</Text>
+          ) : (
+            <>
+              <Text fontSize='xs' opacity={0.7}>Showing latest {previewItems.length} of {items.length}.</Text>
+              {previewItems.map((item, index) => (
+                <Box key={`${item?.number ?? 'alert'}-${index}`} p='8px' borderRadius='6px' bg='gray.50'>
+                  <Text fontSize='xs' opacity={0.7}>{item?.number ?? 'N/A'} • {item?.from ?? 'N/A'}</Text>
+                  <Text fontSize='sm'>{item?.desc ?? 'N/A'}</Text>
+                </Box>
+              ))}
+              {remainingCount > 0 && (
+                <Text fontSize='xs' opacity={0.7}>
+                  +{remainingCount} more {title.toLowerCase()} in navbar alert modal.
+                </Text>
+              )}
+              <Box pt='4px'>
+                <Button
+                  size='xs'
+                  variant='outline'
+                  colorScheme={colorScheme}
+                  onClick={() => onOpenModal(title === 'Errors' ? 'error' : 'warning')}>
+                  Open in modal
+                </Button>
+              </Box>
+            </>
+          )}
+        </Flex>
+      }
+    />
+  )
+}
+
+function GlobalAlertsBody({ globalAlerts, onOpenModal }) {
+  const warnings = globalAlerts?.warnings ?? []
+  const errors = globalAlerts?.errors ?? []
+
+  return (
+    <Flex direction='column' gap='12px' p='12px'>
+      <AlertSection title='Errors' items={errors} colorScheme='red' onOpenModal={onOpenModal} />
+      <AlertSection title='Warnings' items={warnings} colorScheme='orange' onOpenModal={onOpenModal} />
+    </Flex>
+  )
+}
+
 // ─── metrics body ────────────────────────────────────────────────────────────
 
 function MetricsBody({ globalMetrics, isDesktop }) {
@@ -258,7 +318,9 @@ function MetricsBody({ globalMetrics, isDesktop }) {
 // ─── main ────────────────────────────────────────────────────────────────────
 
 function GlobalItems() {
+  const [globalAlertModalType, setGlobalAlertModalType] = useState('')
   const globalMetrics = useSelector((state) => state.globalClusters.globalMetrics)
+  const globalAlerts = useSelector((state) => state.globalClusters.globalAlerts)
   const isDesktop = useSelector((state) => state.common.isDesktop)
 
   return (
@@ -267,7 +329,17 @@ function GlobalItems() {
         heading='Server Metrics'
         body={<MetricsBody globalMetrics={globalMetrics} isDesktop={isDesktop} />}
       />
+      <AccordionComponent
+        heading='Global Alerts'
+        body={<GlobalAlertsBody globalAlerts={globalAlerts} onOpenModal={setGlobalAlertModalType} />}
+      />
       <AccordionComponent heading='Global Logs' body={<GlobalLogs />} />
+      <AlertModal
+        type={globalAlertModalType}
+        isOpen={globalAlertModalType.length !== 0}
+        closeModal={() => setGlobalAlertModalType('')}
+        alerts={globalAlerts}
+      />
     </Flex>
   )
 }

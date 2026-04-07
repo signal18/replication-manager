@@ -184,8 +184,8 @@ func (repman *ReplicationManager) handlerMuxGlobalMetrics(w http.ResponseWriter,
 		resp.Host.CPUCores = cores
 	}
 
-	// Short sample for near-real-time CPU percent.
-	if percents, err := cpu.Percent(200*time.Millisecond, false); err == nil && len(percents) > 0 {
+	// Use non-blocking CPU percent to avoid handler latency on each poll.
+	if percents, err := cpu.Percent(0, false); err == nil && len(percents) > 0 {
 		resp.Host.CPUPercent = percents[0]
 	}
 
