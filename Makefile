@@ -26,7 +26,7 @@ non-cgo: cli osc tst pro arb emb plugins
 
 tar: osc-basedir tst-basedir pro-basedir osc-cgo-basedir
 
-pro osc emb pro-basedir : react plugins
+pro osc emb pro-basedir : react
 
 react:
 	$(Building react frontend $(REACT))
@@ -85,6 +85,14 @@ PLUGIN_BINDIR   := build/plugins
 # Wire protocol version — read directly from source so it never drifts.
 WIRE_VERSION := $(shell grep -m1 'WireVersion = ' cluster/logplugin/plugins/wire/wire.go | awk '{print $$NF}')
 
+# First available repman binary — used to run plugin-keygen and plugin-sign.
+# osc is tried first (always built), then pro, then the embedded binary.
+PLUGIN_BIN := $(shell \
+	if   [ -x "$(BINDIR)/$(BIN-OSC)" ]; then echo "$(BINDIR)/$(BIN-OSC)"; \
+	elif [ -x "$(BINDIR)/$(BIN-PRO)" ]; then echo "$(BINDIR)/$(BIN-PRO)"; \
+	elif [ -x "$(BINDIR)/$(BIN)"     ]; then echo "$(BINDIR)/$(BIN)"; \
+	fi)
+
 # ---- Plugin signing keys & distribution repo --------------------------------
 # PLUGIN_SIGNER_REPO is both the key store AND the distribution registry:
 #
@@ -132,9 +140,9 @@ $(PLUGIN_BINDIR)/%:
 # Leaves the repo clone in PLUGIN_SIGNER_CLONE for plugin-push to reuse.
 #
 # Priority:
-#   1. Keys already present — reuse, skip clone if not needed for push.
-#   2. Credentials set — clone repo, copy keys.
-#   3. No credentials — generate fresh local keypair.
+#   1. Keys already present — reuse.
+#   2. Credentials set — clone/pull signer repo, copy keys.
+#   3. No credentials — generate fresh local keypair using the already-built binary.
 plugin-keys:
 	@mkdir -p $(PLUGIN_KEY_DIR)
 	@if [ -n "$(PLUGIN_SIGNER_USER)" ] && [ -n "$(PLUGIN_SIGNER_TOKEN)" ]; then \
@@ -153,9 +161,9 @@ plugin-keys:
 	elif [ -f "$(PLUGIN_SIGNING_KEY)" ] && [ -f "$(PLUGIN_SIGNING_PUB)" ]; then \
 		echo "Plugin signing keys already present — reusing $(PLUGIN_KEY_DIR)"; \
 	else \
-		echo "No credentials and no existing keys — generating local keypair"; \
+		echo "No credentials — generating local keypair with $(PLUGIN_BIN)"; \
 		echo "Set PLUGIN_SIGNER_USER + PLUGIN_SIGNER_TOKEN to use the official Signal18 key."; \
-		./$(BINDIR)/$(BIN) plugin-keygen \
+		$(PLUGIN_BIN) plugin-keygen \
 			--plugin-private-key "$(PLUGIN_SIGNING_KEY)" \
 			--plugin-public-key  "$(PLUGIN_SIGNING_PUB)"; \
 	fi
@@ -167,7 +175,7 @@ plugin-sigs: plugin-keys
 	@for name in $(PLUGIN_NAMES); do \
 		bin=$(PLUGIN_BINDIR)/$$name; \
 		if [ -f $$bin ]; then \
-			./$(BINDIR)/$(BIN) plugin-sign \
+			$(PLUGIN_BIN) plugin-sign \
 				--plugin-private-key "$(PLUGIN_SIGNING_KEY)" \
 				--sig-output-dir    "$(PLUGIN_SIG_DIR)" \
 				$$bin && echo "  signed $$name"; \
