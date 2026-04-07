@@ -69,8 +69,28 @@ type GitManager struct {
 	cond          *sync.Cond       // Condition variable for waiting and notifying tasks
 	stopCh        chan struct{}    // Stop channel to signal the goroutine to stop
 	PullCh        chan struct{}    // Signal to start pull
-	DonePullCh    chan struct{}    // Signal to finish pull
-	CommitManager *CommitManager   // Commit manager
+	DonePullCh    chan struct{}    // Signal pull completion
+	pullResultMu  *sync.Mutex
+	pullResultErr error
+	CommitManager *CommitManager // Commit manager
+}
+
+type GitOperationHealth struct {
+	HasFailure  bool
+	Recoverable bool
+	Reason      string
+	Details     string
+	UpdatedAt   time.Time
+}
+
+const (
+	gitOperationPush = "push"
+	gitOperationPull = "pull"
+)
+
+type GitHealthSnapshot struct {
+	Push GitOperationHealth
+	Pull GitOperationHealth
 }
 
 func NewGitManager(logger *config.LogrusWrapper) *GitManager {
@@ -81,8 +101,23 @@ func NewGitManager(logger *config.LogrusWrapper) *GitManager {
 		stopCh:        make(chan struct{}), // Initialize stop channel for the push manager
 		PullCh:        make(chan struct{}),
 		DonePullCh:    make(chan struct{}),
+		pullResultMu:  &sync.Mutex{},
 		CommitManager: NewCommitManager(1, 10, logger),
 	}
+}
+
+func (gm *GitManager) SetPullResult(err error) {
+	gm.pullResultMu.Lock()
+	defer gm.pullResultMu.Unlock()
+	gm.pullResultErr = err
+}
+
+func (gm *GitManager) ConsumePullResult() error {
+	gm.pullResultMu.Lock()
+	defer gm.pullResultMu.Unlock()
+	err := gm.pullResultErr
+	gm.pullResultErr = nil
+	return err
 }
 
 func (gm *GitManager) SplitTaskQueue() (*ConfigGitTask, []*ConfigGitTask, []*ConfigGitTask) {
@@ -226,6 +261,8 @@ type ConfigManager struct {
 	logger      *config.LogrusWrapper
 	configWg    *sync.WaitGroup            // Tracks ongoing config saves
 	gitMutex    *sync.Mutex                // Blocks new saves during Git push
+	gitStatusMu sync.RWMutex               // Protects gitStatus
+	gitStatus   GitHealthSnapshot          // Latest git health snapshot
 	stopOnce    sync.Once                  // Ensures Stop() runs only once
 	isStopping  atomic.Bool                // Prevents new saves after stopping
 	clusterMu   *sync.RWMutex              // Protects clusterData map access
@@ -253,6 +290,72 @@ func NewConfigManager(logger *config.LogrusWrapper) *ConfigManager {
 
 func (cm *ConfigManager) GetGitManager() *GitManager {
 	return cm.gitManager
+}
+
+func (cm *ConfigManager) GetGitHealthSnapshot() GitHealthSnapshot {
+	cm.gitStatusMu.RLock()
+	defer cm.gitStatusMu.RUnlock()
+
+	return cm.gitStatus
+}
+
+func (cm *ConfigManager) setGitOperationSuccess(operation string) {
+	cm.gitStatusMu.Lock()
+	defer cm.gitStatusMu.Unlock()
+
+	now := time.Now()
+	switch operation {
+	case "push":
+		cm.gitStatus.Push = GitOperationHealth{UpdatedAt: now}
+	case "pull":
+		cm.gitStatus.Pull = GitOperationHealth{UpdatedAt: now}
+	}
+}
+
+func (cm *ConfigManager) setGitOperationFailure(operation string, recoverable bool, reason string, err error) {
+	cm.gitStatusMu.Lock()
+	defer cm.gitStatusMu.Unlock()
+
+	status := GitOperationHealth{
+		HasFailure:  true,
+		Recoverable: recoverable,
+		Reason:      reason,
+		UpdatedAt:   time.Now(),
+	}
+	if err != nil {
+		status.Details = err.Error()
+	}
+
+	switch operation {
+	case "push":
+		cm.gitStatus.Push = status
+	case "pull":
+		cm.gitStatus.Pull = status
+	}
+}
+
+func (cm *ConfigManager) UpdateGitOperationStatus(operation string, err error) {
+	if err == nil {
+		cm.setGitOperationSuccess(operation)
+		return
+	}
+
+	recoverable := false
+	reason := ""
+
+	switch operation {
+	case gitOperationPush:
+		recoverable, reason = cm.classifyRecoverablePushError(err)
+		if !recoverable {
+			recoverable, reason = classifyRecoverableGitSyncError(err)
+		}
+	case gitOperationPull:
+		recoverable, reason = classifyRecoverableGitSyncError(err)
+	default:
+		return
+	}
+
+	cm.setGitOperationFailure(operation, recoverable, reason, err)
 }
 
 func (cm *ConfigManager) UpdateLoggerConfig(clustername string, conf *config.Config) {
@@ -605,16 +708,37 @@ func (cm *ConfigManager) processGitPush() {
 
 				// Wait for the pull process to finish
 				<-cm.gitManager.DonePullCh
-
-				cm.logger.Infof("none", config.ConstLogModGit, "[Git] Git pull completed successfully.")
+				pullErr := cm.gitManager.ConsumePullResult()
+				if pullErr != nil {
+					cm.UpdateGitOperationStatus(gitOperationPull, pullErr)
+					recoverable, reason := classifyRecoverableGitSyncError(pullErr)
+					if recoverable {
+						cm.logger.Warnf("none", config.ConstLogModGit, "[Git] Warning-class pull failure (%s): %v", reason, pullErr)
+					} else {
+						cm.logger.Errorf("none", config.ConstLogModGit, "[Git] Persistent pull failure (%s): %v", reason, pullErr)
+					}
+				} else {
+					cm.UpdateGitOperationStatus(gitOperationPull, nil)
+					cm.logger.Infof("none", config.ConstLogModGit, "[Git] Git pull completed successfully.")
+				}
 
 			} else {
 				cm.logger.Debugf("none", config.ConstLogModGit, "[Git] Starting Git push...")
 				// Execute the save function and handle potential errors
 				if err := cm.PushAllConfigsToGit(configGitTask.conf, configGitTask.clusterList); err != nil {
+					cm.UpdateGitOperationStatus(gitOperationPush, err)
+					recoverable, reason := cm.classifyRecoverablePushError(err)
+					if !recoverable {
+						recoverable, reason = classifyRecoverableGitSyncError(err)
+					}
 					// Execute the Git push function and handle potential errors
-					cm.logger.Errorf("none", config.ConstLogModGit, "[Git] Error during push: %v\n", err)
+					if recoverable {
+						cm.logger.Warnf("none", config.ConstLogModGit, "[Git] Warning-class push failure (%s): %v", reason, err)
+					} else {
+						cm.logger.Errorf("none", config.ConstLogModGit, "[Git] Error during push: %v\n", err)
+					}
 				} else {
+					cm.UpdateGitOperationStatus(gitOperationPush, nil)
 					cm.logger.Infof("none", config.ConstLogModGit, "[Git] Git push completed successfully.")
 				}
 			}
@@ -765,6 +889,76 @@ func (cm *ConfigManager) classifyRecoverablePushError(err error) (bool, string) 
 		if strings.Contains(msg, candidate.match) {
 			return true, candidate.reason
 		}
+	}
+
+	return false, ""
+}
+
+func classifyRecoverableGitSyncError(err error) (bool, string) {
+	if err == nil {
+		return false, ""
+	}
+
+	if errors.Is(err, io.EOF) {
+		return true, "unexpected EOF"
+	}
+	if errors.Is(err, plumbing.ErrObjectNotFound) {
+		return true, "object not found"
+	}
+	if errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return true, "reference not found"
+	}
+
+	msg := strings.ToLower(err.Error())
+
+	persistentSubstrings := []string{
+		"authentication required",
+		"authorization failed",
+		"unauthorized",
+		"permission denied",
+		"rejected",
+		"non-fast-forward",
+		"fetch first",
+	}
+	for _, sub := range persistentSubstrings {
+		if strings.Contains(msg, sub) {
+			return false, sub
+		}
+	}
+
+	recoverableSubstrings := []string{
+		"object not found",
+		"missing object",
+		"reference not found",
+		"couldn't find remote ref",
+		"reference does not exist",
+		"unable to resolve reference",
+		"connection reset",
+		"connection refused",
+		"connection timed out",
+		"timeout",
+		"temporary",
+		"eof",
+		"tls handshake timeout",
+		"network is unreachable",
+		"no route to host",
+	}
+	for _, sub := range recoverableSubstrings {
+		if strings.Contains(msg, sub) {
+			return true, sub
+		}
+	}
+
+	if errors.Is(err, transport.ErrRepositoryNotFound) {
+		return false, "repository not found"
+	}
+
+	if errors.Is(err, transport.ErrEmptyRemoteRepository) {
+		return true, "empty remote repository"
+	}
+
+	if errors.Is(err, transport.ErrAuthenticationRequired) || errors.Is(err, transport.ErrAuthorizationFailed) {
+		return false, "authentication/authorization"
 	}
 
 	return false, ""

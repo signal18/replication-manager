@@ -12,12 +12,17 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
 const (
 	clusterHeartbeatWarnErrKey                  = "GWARN001"
 	clusterHeartbeatCriticalErrKey              = "GERR001"
+	gitPushWarnErrKey                           = "GWARN002"
+	gitPushErrErrKey                            = "GERR002"
+	gitPullWarnErrKey                           = "GWARN003"
+	gitPullErrErrKey                            = "GERR003"
 	defaultMonitorGlobalHeartbeatStallThreshold = 5
 	heartbeatCriticalThresholdMultiplier        = int64(3)
 )
@@ -115,6 +120,41 @@ func (repman *ReplicationManager) ProcessAlertStateLifecycle() {
 	}
 
 	repman.StateMachine.ClearState()
+}
+
+func (repman *ReplicationManager) ProduceGitSupervisionStates() {
+	if repman == nil || repman.StateMachine == nil || repman.ConfigManager == nil {
+		return
+	}
+
+	snapshot := repman.ConfigManager.GetGitHealthSnapshot()
+	repman.produceGitOperationSupervisionState("git", "push", snapshot.Push, gitPushWarnErrKey, gitPushErrErrKey)
+	repman.produceGitOperationSupervisionState("git", "pull", snapshot.Pull, gitPullWarnErrKey, gitPullErrErrKey)
+}
+
+func (repman *ReplicationManager) produceGitOperationSupervisionState(scope string, operation string, operationStatus manager.GitOperationHealth, warnErrKey, errErrKey string) {
+	if !operationStatus.HasFailure {
+		return
+	}
+
+	severity := "ERROR"
+	errKey := errErrKey
+	if operationStatus.Recoverable {
+		severity = "WARNING"
+		errKey = warnErrKey
+	}
+
+	reason := operationStatus.Reason
+	if reason == "" {
+		reason = operationStatus.Details
+	}
+	errDesc := fmt.Sprintf(config.GlobalError[errKey], operation, reason)
+	repman.SetState(fmt.Sprintf("%s@%s", errKey, scope), state.State{
+		ErrType: severity,
+		ErrKey:  errKey,
+		ErrDesc: errDesc,
+		ErrFrom: "REPMAN",
+	})
 }
 
 // ProduceClusterHeartbeatSupervisionStates inspects per-cluster state-machine

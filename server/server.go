@@ -2599,6 +2599,7 @@ func (repman *ReplicationManager) Run() error {
 		}
 
 		repman.ProduceClusterHeartbeatSupervisionStates()
+		repman.ProduceGitSupervisionStates()
 		repman.ProcessAlertStateLifecycle()
 
 		counter++
