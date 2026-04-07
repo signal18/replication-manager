@@ -176,8 +176,6 @@ function Home() {
         if (!isAutoReloadPaused) {
           dispatch(getMonitoredData({}))
           dispatch(getClusters({}))
-          dispatch(getGlobalAlerts({}))
-          dispatch(getGlobalMetrics({}))
         }
       }
       if (

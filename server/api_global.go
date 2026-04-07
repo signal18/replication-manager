@@ -16,6 +16,7 @@ import (
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/mem"
+	"github.com/shirou/gopsutil/process"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -59,7 +60,7 @@ func (repman *ReplicationManager) handlerMuxGlobalLogs(w http.ResponseWriter, r 
 
 	buf := make([]s18log.HttpMessage, 0, len(raw))
 	for _, msg := range raw {
-		if msg.Timestamp != "" && msg.Group == "none" {
+		if msg.Timestamp != "" && msg.Group == s18log.GroupNone {
 			buf = append(buf, msg)
 		}
 	}
@@ -217,8 +218,12 @@ func (repman *ReplicationManager) handlerMuxGlobalMetrics(w http.ResponseWriter,
 	runtime.ReadMemStats(&ms)
 	resp.Process.HeapAllocBytes = ms.HeapAlloc
 	resp.Process.HeapSysBytes = ms.HeapSys
-	// RSS is not available via runtime; use HeapSys as best-effort approximation.
-	resp.Process.RSSBytes = ms.Sys
+
+	if p, err := process.NewProcess(int32(resp.Process.PID)); err == nil {
+		if mi, err := p.MemoryInfo(); err == nil && mi != nil {
+			resp.Process.RSSBytes = mi.RSS
+		}
+	}
 
 	out, err := json.Marshal(resp)
 	if err != nil {

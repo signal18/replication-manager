@@ -10,14 +10,32 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
 const (
-	clusterHeartbeatStalledStatePrefix   = "WARN_RM_CLUSTER_HEARTBEAT_STALLED"
-	defaultHeartbeatStallThresholdCycles = int64(5)
+	clusterHeartbeatWarnErrKey                  = "GWARN001"
+	clusterHeartbeatCriticalErrKey              = "GERR001"
+	defaultMonitorGlobalHeartbeatStallThreshold = 5
+	heartbeatCriticalThresholdMultiplier        = int64(3)
 )
+
+type clusterHeartbeatTracker struct {
+	Snapshot      int64
+	StalledCycles int64
+}
+
+type clusterHeartbeatObservation struct {
+	currentHeartbeat int64
+	stalledCycles    int64
+	shouldLogWarn    bool
+	shouldSetWarn    bool
+	shouldLogCrit    bool
+	shouldSetCrit    bool
+	shouldLogResume  bool
+}
 
 // InitAlertStateMachine initializes the global alert state machine on ReplicationManager.
 // It is safe to call multiple times and follows the same initialization pattern as cluster.
@@ -79,7 +97,7 @@ func (repman *ReplicationManager) ProcessAlertStateLifecycle() {
 	for _, key := range resolvedKeys {
 		if repman.Conf != nil {
 			st := resolvedStates[key]
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, "STATE", "RESOLV %s : %s", st.ErrKey, st.ErrDesc)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "RESOLV %s : %s", st.ErrKey, st.ErrDesc)
 		}
 	}
 
@@ -92,7 +110,7 @@ func (repman *ReplicationManager) ProcessAlertStateLifecycle() {
 	for _, key := range openedKeys {
 		if repman.Conf != nil {
 			st := openedStates[key]
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, "STATE", "OPENED %s : %s", st.ErrKey, st.ErrDesc)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "OPENED %s : %s", st.ErrKey, st.ErrDesc)
 		}
 	}
 
@@ -112,86 +130,156 @@ func (repman *ReplicationManager) ProduceClusterHeartbeatSupervisionStates() {
 		return
 	}
 
-	if repman.ClusterHeartbeatSnapshot == nil {
-		repman.ClusterHeartbeatSnapshot = make(map[string]int64)
-	}
-	if repman.ClusterHeartbeatLastChange == nil {
-		repman.ClusterHeartbeatLastChange = make(map[string]int64)
-	}
-
-	// Take a snapshot of cluster names under lock to avoid concurrent map access
+	// Take a snapshot of clusters under repman lock to avoid concurrent map access.
 	repman.Lock()
-	var clusterNames []string
+	clusterSnapshot := make(map[string]*cluster.Cluster)
 	if repman.Clusters != nil {
-		for name := range repman.Clusters {
-			clusterNames = append(clusterNames, name)
+		for name, cl := range repman.Clusters {
+			clusterSnapshot[name] = cl
 		}
 	}
 	repman.Unlock()
 
-	if len(clusterNames) == 0 {
-		for clusterName := range repman.ClusterHeartbeatSnapshot {
-			delete(repman.ClusterHeartbeatSnapshot, clusterName)
-		}
-		for clusterName := range repman.ClusterHeartbeatLastChange {
-			delete(repman.ClusterHeartbeatLastChange, clusterName)
-		}
+	if len(clusterSnapshot) == 0 {
+		repman.resetClusterHeartbeatTracking()
 		return
 	}
 
 	threshold := repman.getClusterHeartbeatStallThresholdCycles()
-	trackedClusters := make(map[string]struct{}, len(clusterNames))
+	criticalThreshold := repman.getClusterHeartbeatCriticalThresholdCycles(threshold)
+	trackedClusters := make(map[string]struct{}, len(clusterSnapshot))
 
-	for _, clusterName := range clusterNames {
-		repman.Lock()
-		cl := repman.Clusters[clusterName]
-		repman.Unlock()
+	for clusterName, cl := range clusterSnapshot {
 		if cl == nil || cl.GetStateMachine() == nil {
 			continue
 		}
 
 		trackedClusters[clusterName] = struct{}{}
 		currentHeartbeat := cl.GetStateMachine().GetHeartbeats()
-		previousHeartbeat, seen := repman.ClusterHeartbeatSnapshot[clusterName]
+		observation := repman.observeClusterHeartbeat(clusterName, currentHeartbeat, threshold, criticalThreshold)
 
-		if !seen {
-			repman.ClusterHeartbeatSnapshot[clusterName] = currentHeartbeat
-			repman.ClusterHeartbeatLastChange[clusterName] = 0
-			continue
+		if observation.shouldLogResume && repman.Conf != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "HB_SUPERVISION_RESUME cluster=%s heartbeat=%d", clusterName, observation.currentHeartbeat)
 		}
 
-		if currentHeartbeat != previousHeartbeat {
-			if repman.ClusterHeartbeatLastChange[clusterName] >= threshold && repman.Conf != nil {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "HB_SUPERVISION_RESUME cluster=%s heartbeat=%d", clusterName, currentHeartbeat)
-			}
-			repman.ClusterHeartbeatSnapshot[clusterName] = currentHeartbeat
-			repman.ClusterHeartbeatLastChange[clusterName] = 0
-			continue
+		if observation.shouldLogWarn && repman.Conf != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "HB_SUPERVISION_STALLED cluster=%s heartbeat=%d stalled_intervals=%d threshold=%d", clusterName, observation.currentHeartbeat, observation.stalledCycles, threshold)
 		}
 
-		stalledIntervals := repman.ClusterHeartbeatLastChange[clusterName] + 1
-		repman.ClusterHeartbeatLastChange[clusterName] = stalledIntervals
+		if observation.shouldLogCrit && repman.Conf != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "HB_SUPERVISION_CRITICAL cluster=%s heartbeat=%d stalled_intervals=%d critical_threshold=%d", clusterName, observation.currentHeartbeat, observation.stalledCycles, criticalThreshold)
+		}
 
-		if stalledIntervals >= threshold {
-			if stalledIntervals == threshold && repman.Conf != nil {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "HB_SUPERVISION_STALLED cluster=%s heartbeat=%d stalled_intervals=%d threshold=%d", clusterName, currentHeartbeat, stalledIntervals, threshold)
-			}
-
-			stateKey := fmt.Sprintf("%s@%s", clusterHeartbeatStalledStatePrefix, clusterName)
+		if observation.shouldSetWarn {
+			stateKey := fmt.Sprintf("%s@%s", clusterHeartbeatWarnErrKey, clusterName)
+			errDesc := fmt.Sprintf(config.GlobalError[clusterHeartbeatWarnErrKey], clusterName)
 			repman.SetState(stateKey, state.State{
 				ErrType: "WARNING",
-				ErrDesc: fmt.Sprintf("ReplicationManager detected stalled cluster heartbeat for %s", clusterName),
+				ErrKey:  clusterHeartbeatWarnErrKey,
+				ErrDesc: errDesc,
+				ErrFrom: "REPMAN",
+			})
+		}
+
+		if observation.shouldSetCrit {
+			stateKey := fmt.Sprintf("%s@%s", clusterHeartbeatCriticalErrKey, clusterName)
+			errDesc := fmt.Sprintf(config.GlobalError[clusterHeartbeatCriticalErrKey], clusterName)
+			repman.SetState(stateKey, state.State{
+				ErrType: "ERROR",
+				ErrKey:  clusterHeartbeatCriticalErrKey,
+				ErrDesc: errDesc,
 				ErrFrom: "REPMAN",
 			})
 		}
 	}
 
-	for clusterName := range repman.ClusterHeartbeatSnapshot {
-		if _, exists := trackedClusters[clusterName]; !exists {
-			delete(repman.ClusterHeartbeatSnapshot, clusterName)
-			delete(repman.ClusterHeartbeatLastChange, clusterName)
+	repman.pruneClusterHeartbeatTracking(trackedClusters)
+}
+
+func (repman *ReplicationManager) ensureClusterHeartbeatTrackingInitLocked() {
+	if repman.clusterHeartbeatTracking == nil {
+		repman.clusterHeartbeatTracking = make(map[string]clusterHeartbeatTracker)
+	}
+}
+
+func (repman *ReplicationManager) observeClusterHeartbeat(clusterName string, currentHeartbeat, threshold, criticalThreshold int64) clusterHeartbeatObservation {
+	repman.clusterHeartbeatTrackingLock.Lock()
+	defer repman.clusterHeartbeatTrackingLock.Unlock()
+
+	repman.ensureClusterHeartbeatTrackingInitLocked()
+
+	tracker, seen := repman.clusterHeartbeatTracking[clusterName]
+	if !seen {
+		repman.clusterHeartbeatTracking[clusterName] = clusterHeartbeatTracker{Snapshot: currentHeartbeat}
+		return clusterHeartbeatObservation{currentHeartbeat: currentHeartbeat}
+	}
+
+	if currentHeartbeat != tracker.Snapshot {
+		shouldLogResume := tracker.StalledCycles >= threshold
+		repman.clusterHeartbeatTracking[clusterName] = clusterHeartbeatTracker{Snapshot: currentHeartbeat}
+		return clusterHeartbeatObservation{
+			currentHeartbeat: currentHeartbeat,
+			shouldLogResume:  shouldLogResume,
 		}
 	}
+
+	tracker.StalledCycles++
+	repman.clusterHeartbeatTracking[clusterName] = tracker
+
+	return clusterHeartbeatObservation{
+		currentHeartbeat: currentHeartbeat,
+		stalledCycles:    tracker.StalledCycles,
+		shouldLogWarn:    tracker.StalledCycles == threshold,
+		shouldSetWarn:    tracker.StalledCycles >= threshold && tracker.StalledCycles < criticalThreshold,
+		shouldLogCrit:    tracker.StalledCycles == criticalThreshold,
+		shouldSetCrit:    tracker.StalledCycles >= criticalThreshold,
+	}
+}
+
+func (repman *ReplicationManager) getClusterHeartbeatCriticalThresholdCycles(warnThreshold int64) int64 {
+	if warnThreshold <= 0 {
+		warnThreshold = int64(defaultMonitorGlobalHeartbeatStallThreshold)
+	}
+
+	return warnThreshold * heartbeatCriticalThresholdMultiplier
+}
+
+func (repman *ReplicationManager) resetClusterHeartbeatTracking() {
+	repman.clusterHeartbeatTrackingLock.Lock()
+	defer repman.clusterHeartbeatTrackingLock.Unlock()
+
+	repman.ensureClusterHeartbeatTrackingInitLocked()
+	for clusterName := range repman.clusterHeartbeatTracking {
+		delete(repman.clusterHeartbeatTracking, clusterName)
+	}
+}
+
+func (repman *ReplicationManager) pruneClusterHeartbeatTracking(trackedClusters map[string]struct{}) {
+	repman.clusterHeartbeatTrackingLock.Lock()
+	defer repman.clusterHeartbeatTrackingLock.Unlock()
+
+	repman.ensureClusterHeartbeatTrackingInitLocked()
+	for clusterName := range repman.clusterHeartbeatTracking {
+		if _, exists := trackedClusters[clusterName]; !exists {
+			delete(repman.clusterHeartbeatTracking, clusterName)
+		}
+	}
+}
+
+func (repman *ReplicationManager) clusterHeartbeatTrackingSnapshotForTest() map[string]clusterHeartbeatTracker {
+	repman.clusterHeartbeatTrackingLock.RLock()
+	defer repman.clusterHeartbeatTrackingLock.RUnlock()
+
+	if repman.clusterHeartbeatTracking == nil {
+		return map[string]clusterHeartbeatTracker{}
+	}
+
+	copyTracking := make(map[string]clusterHeartbeatTracker, len(repman.clusterHeartbeatTracking))
+	for clusterName, tracker := range repman.clusterHeartbeatTracking {
+		copyTracking[clusterName] = tracker
+	}
+
+	return copyTracking
 }
 
 func (repman *ReplicationManager) getClusterHeartbeatStallThresholdCycles() int64 {
@@ -201,5 +289,5 @@ func (repman *ReplicationManager) getClusterHeartbeatStallThresholdCycles() int6
 		}
 	}
 
-	return defaultHeartbeatStallThresholdCycles
+	return int64(defaultMonitorGlobalHeartbeatStallThreshold)
 }

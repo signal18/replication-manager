@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/signal18/replication-manager/cluster"
@@ -30,7 +31,7 @@ func TestProduceClusterHeartbeatSupervisionStatesDisabledYieldsNoAlert(t *testin
 		runSupervisionCycle(repman)
 	}
 
-	key := "WARN_RM_CLUSTER_HEARTBEAT_STALLED@alpha"
+	key := heartbeatStalledStateKey("alpha")
 	if repman.StateMachine.IsInState(key) {
 		t.Fatalf("expected no stalled heartbeat alert when supervision is disabled for %s", key)
 	}
@@ -39,6 +40,14 @@ func TestProduceClusterHeartbeatSupervisionStatesDisabledYieldsNoAlert(t *testin
 func runSupervisionCycle(repman *ReplicationManager) {
 	repman.ProduceClusterHeartbeatSupervisionStates()
 	repman.ProcessAlertStateLifecycle()
+}
+
+func heartbeatStalledStateKey(clusterName string) string {
+	return fmt.Sprintf("%s@%s", clusterHeartbeatWarnErrKey, clusterName)
+}
+
+func heartbeatCriticalStateKey(clusterName string) string {
+	return fmt.Sprintf("%s@%s", clusterHeartbeatCriticalErrKey, clusterName)
 }
 
 func TestProduceClusterHeartbeatSupervisionStatesStartupBaselineNoAlert(t *testing.T) {
@@ -50,7 +59,7 @@ func TestProduceClusterHeartbeatSupervisionStatesStartupBaselineNoAlert(t *testi
 
 	runSupervisionCycle(repman)
 
-	key := "WARN_RM_CLUSTER_HEARTBEAT_STALLED@alpha"
+	key := heartbeatStalledStateKey("alpha")
 	if repman.StateMachine.IsInState(key) {
 		t.Fatalf("expected no stalled heartbeat alert on first observation for %s", key)
 	}
@@ -66,7 +75,7 @@ func TestProduceClusterHeartbeatSupervisionStatesThresholdedStallDetection(t *te
 	// Cycle 1: baseline
 	runSupervisionCycle(repman)
 
-	key := "WARN_RM_CLUSTER_HEARTBEAT_STALLED@alpha"
+	key := heartbeatStalledStateKey("alpha")
 	if repman.StateMachine.IsInState(key) {
 		t.Fatalf("unexpected stalled alert during baseline for %s", key)
 	}
@@ -102,7 +111,7 @@ func TestProduceClusterHeartbeatSupervisionStatesResumeResolvesViaLifecycle(t *t
 	// Baseline cycle.
 	runSupervisionCycle(repman)
 
-	key := "WARN_RM_CLUSTER_HEARTBEAT_STALLED@alpha"
+	key := heartbeatStalledStateKey("alpha")
 
 	// First unchanged cycle (threshold=1) opens warning.
 	runSupervisionCycle(repman)
@@ -143,8 +152,8 @@ func TestProduceClusterHeartbeatSupervisionStatesMultiClusterIndependence(t *tes
 	beta.GetStateMachine().SetMasterUpAndSync(true, true, true)
 	runSupervisionCycle(repman)
 
-	alphaKey := "WARN_RM_CLUSTER_HEARTBEAT_STALLED@alpha"
-	betaKey := "WARN_RM_CLUSTER_HEARTBEAT_STALLED@beta"
+	alphaKey := heartbeatStalledStateKey("alpha")
+	betaKey := heartbeatStalledStateKey("beta")
 
 	if !repman.StateMachine.IsInState(alphaKey) {
 		t.Fatalf("expected stalled warning for %s", alphaKey)
@@ -167,35 +176,33 @@ func TestProduceClusterHeartbeatSupervisionStatesNilSafeAndPrunesRemovedClusters
 
 	// Should not panic with nil cluster entries; should only track valid ones.
 	runSupervisionCycle(repman)
+	tracking := repman.clusterHeartbeatTrackingSnapshotForTest()
 
-	if got := len(repman.ClusterHeartbeatSnapshot); got != 1 {
+	if got := len(tracking); got != 1 {
 		t.Fatalf("expected one tracked cluster after nil-safe pass, got %d", got)
 	}
-	if _, ok := repman.ClusterHeartbeatSnapshot["live"]; !ok {
+	if _, ok := tracking["live"]; !ok {
 		t.Fatal("expected live cluster baseline to be tracked")
 	}
 
 	delete(repman.Clusters, "live")
 	runSupervisionCycle(repman)
+	tracking = repman.clusterHeartbeatTrackingSnapshotForTest()
 
-	if got := len(repman.ClusterHeartbeatSnapshot); got != 0 {
-		t.Fatalf("expected snapshot map to prune removed clusters, got %d", got)
-	}
-	if got := len(repman.ClusterHeartbeatLastChange); got != 0 {
-		t.Fatalf("expected last-change map to prune removed clusters, got %d", got)
+	if got := len(tracking); got != 0 {
+		t.Fatalf("expected tracking map to prune removed clusters, got %d", got)
 	}
 
 	// Nil Clusters map should also be safe and clear tracking state.
-	repman.ClusterHeartbeatSnapshot["ghost"] = 1
-	repman.ClusterHeartbeatLastChange["ghost"] = 5
+	warnThreshold := repman.getClusterHeartbeatStallThresholdCycles()
+	critThreshold := repman.getClusterHeartbeatCriticalThresholdCycles(warnThreshold)
+	repman.observeClusterHeartbeat("ghost", 1, warnThreshold, critThreshold)
 	repman.Clusters = nil
 	repman.ProduceClusterHeartbeatSupervisionStates()
+	tracking = repman.clusterHeartbeatTrackingSnapshotForTest()
 
-	if got := len(repman.ClusterHeartbeatSnapshot); got != 0 {
-		t.Fatalf("expected empty snapshot map when clusters is nil, got %d", got)
-	}
-	if got := len(repman.ClusterHeartbeatLastChange); got != 0 {
-		t.Fatalf("expected empty last-change map when clusters is nil, got %d", got)
+	if got := len(tracking); got != 0 {
+		t.Fatalf("expected empty tracking map when clusters is nil, got %d", got)
 	}
 }
 
@@ -211,8 +218,39 @@ func TestProduceClusterHeartbeatSupervisionStatesWarningKeyScopedByCluster(t *te
 	runSupervisionCycle(repman)
 	runSupervisionCycle(repman)
 
-	wantKey := "WARN_RM_CLUSTER_HEARTBEAT_STALLED@cluster-a"
+	wantKey := heartbeatStalledStateKey("cluster-a")
 	if !repman.StateMachine.IsInState(wantKey) {
 		t.Fatalf("expected warning key %s to be open", wantKey)
+	}
+}
+
+func TestProduceClusterHeartbeatSupervisionStatesEscalatesToCritical(t *testing.T) {
+	repman := &ReplicationManager{
+		Conf: &config.Config{MonitorGlobalHeartbeatSupervision: true, MonitorGlobalHeartbeatStallThreshold: 1},
+		Clusters: map[string]*cluster.Cluster{
+			"alpha": newHeartbeatTestCluster(1),
+		},
+	}
+	repman.InitAlertStateMachine()
+
+	// Baseline then warning threshold reached.
+	runSupervisionCycle(repman)
+	runSupervisionCycle(repman)
+
+	warnKey := heartbeatStalledStateKey("alpha")
+	if !repman.StateMachine.IsInState(warnKey) {
+		t.Fatalf("expected warning key %s to be open", warnKey)
+	}
+
+	// Advance enough unchanged cycles to exceed critical threshold (warn*3).
+	runSupervisionCycle(repman)
+	runSupervisionCycle(repman)
+
+	critKey := heartbeatCriticalStateKey("alpha")
+	if !repman.StateMachine.IsInState(critKey) {
+		t.Fatalf("expected critical key %s to be open", critKey)
+	}
+	if repman.StateMachine.IsInState(warnKey) {
+		t.Fatalf("expected warning key %s to resolve after critical escalation", warnKey)
 	}
 }

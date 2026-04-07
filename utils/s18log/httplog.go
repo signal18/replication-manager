@@ -11,6 +11,11 @@ package s18log
 
 import "sync"
 
+const (
+	// GroupNone is the sentinel used for non-cluster/global log entries.
+	GroupNone = "none"
+)
+
 // Collection of log messages
 // swagger:response httplog
 type HttpLog struct {

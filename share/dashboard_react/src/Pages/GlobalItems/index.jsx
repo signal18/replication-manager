@@ -51,12 +51,6 @@ function usageColor(percent) {
   return 'red'
 }
 
-function tagColor(percent) {
-  if (percent < 70) return 'green'
-  if (percent < 90) return 'orange'
-  return 'red'
-}
-
 // ─── sub-components ─────────────────────────────────────────────────────────
 
 function ProgressRow({ label, value, total, valueLabel, totalLabel }) {
@@ -106,7 +100,7 @@ function HostCard({ host, isDesktop }) {
         <>
           <Text>Host: {host?.hostname ?? '—'}</Text>
           <Box ml='auto'>
-            <TagPill colorScheme={tagColor(Math.max(cpuPct, memPct, diskPct))} text={`${host?.cpuCores ?? '?'} cores`} />
+            <TagPill colorScheme={usageColor(Math.max(cpuPct, memPct, diskPct))} text={`${host?.cpuCores ?? '?'} cores`} />
           </Box>
         </>
       }
