@@ -28,7 +28,7 @@ import {
   getBackups,
   getResticCurrentTask
 } from '../../redux/clusterSlice'
-import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale, getGlobalAlerts, getGlobalMetrics } from '../../redux/globalClustersSlice'
+import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale, getGlobalAlerts, getGlobalMetrics, getGlobalLogs } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
 import styles from './styles.module.scss'
 import { useHref, useParams } from 'react-router-dom'
@@ -191,6 +191,7 @@ function Home() {
         if (!isAutoReloadPaused) {
           dispatch(getGlobalAlerts({}))
           dispatch(getGlobalMetrics({}))
+          dispatch(getGlobalLogs({}))
         }
       }
     } else if (selectedClusterNameRef.current) {

@@ -210,6 +210,18 @@ export const getGlobalMetrics = createGuardedAsyncThunk('globalClusters/getGloba
   }
 })
 
+export const getGlobalLogs = createGuardedAsyncThunk('globalClusters/getGlobalLogs', async ({ baseURL = '' } = {}, thunkAPI) => {
+  try {
+    const { data, status } = await globalClustersService.getGlobalLogs(baseURL)
+    if (status !== 200) {
+      throw new Error(data)
+    }
+    return { data, status }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
 export const getGlobalAlerts = createGuardedAsyncThunk('globalClusters/getGlobalAlerts', async ({ baseURL = '' } = {}, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getGlobalAlerts(baseURL)
@@ -252,7 +264,8 @@ const initialState = {
   monitor: null,
   terms: ``,
   globalAlerts: { errors: [], warnings: [] },
-  globalMetrics: null
+  globalMetrics: null,
+  globalLogs: { general: { buffer: [], len: 0, line: 0 } }
 }
 
 export const globalClustersSlice = createSlice({
@@ -327,6 +340,12 @@ export const globalClustersSlice = createSlice({
         state.globalMetrics = action.payload.data
       })
       .addCase(getGlobalMetrics.rejected, (state, action) => {
+        state.error = action.error
+      })
+      .addCase(getGlobalLogs.fulfilled, (state, action) => {
+        state.globalLogs = action.payload.data ?? { general: { buffer: [], len: 0, line: 0 } }
+      })
+      .addCase(getGlobalLogs.rejected, (state, action) => {
         state.error = action.error
       })
 

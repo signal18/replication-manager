@@ -16,11 +16,71 @@ import (
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/mem"
+	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
 // processStartTime is set once at package init to compute uptime.
 var processStartTime = time.Now()
+
+// globalLogsSnapshot is a mutex-free snapshot of an HttpLog used for JSON encoding.
+type globalLogsSnapshot struct {
+	Buffer []s18log.HttpMessage `json:"buffer"`
+	Len    int                  `json:"len"`
+	Line   int                  `json:"line"`
+}
+
+// globalLogsResponse is the JSON payload for GET /api/global/http-logs.
+// It uses the same general→HttpLog shape as the cluster log endpoint so the
+// frontend can reuse the existing Logs component without modification.
+type globalLogsResponse struct {
+	General globalLogsSnapshot `json:"general"`
+}
+
+// handlerMuxGlobalLogs returns server-level logs from repman.Logs.
+//
+// @Summary Get global logs
+// @Description Returns server-level log entries from the ReplicationManager in-memory ring buffer.
+// @Tags Global
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Success 200 {object} globalLogsResponse
+// @Failure 401 {string} string "Unauthorized"
+// @Router /api/global/http-logs [get]
+func (repman *ReplicationManager) handlerMuxGlobalLogs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	repman.Logs.L.Lock()
+	raw := make([]s18log.HttpMessage, len(repman.Logs.Buffer))
+	copy(raw, repman.Logs.Buffer)
+	logLen := repman.Logs.Len
+	logLine := repman.Logs.Line
+	repman.Logs.L.Unlock()
+
+	buf := make([]s18log.HttpMessage, 0, len(raw))
+	for _, msg := range raw {
+		if msg.Timestamp != "" && msg.Group == "none" {
+			buf = append(buf, msg)
+		}
+	}
+
+	resp := globalLogsResponse{
+		General: globalLogsSnapshot{
+			Buffer: buf,
+			Len:    logLen,
+			Line:   logLine,
+		},
+	}
+
+	out, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(out)
+}
 
 // globalAlertsResponse is the JSON payload for GET /api/global/alerts.
 // It mirrors the cluster alert shape (errors/warnings) so the frontend

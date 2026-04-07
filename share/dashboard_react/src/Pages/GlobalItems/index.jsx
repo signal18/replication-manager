@@ -4,8 +4,9 @@ import { Box, Flex, Text, Divider, Spinner } from '@chakra-ui/react'
 import Card from '../../components/Card'
 import Gauge from '../../components/Gauge'
 import TagPill from '../../components/TagPill'
-import { useTheme } from '../../ThemeProvider'
 import styles from './styles.module.scss'
+import Logs from '../Dashboard/components/Logs'
+import AccordionComponent from '../../components/AccordionComponent'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -234,30 +235,46 @@ function ProcessCard({ proc, isDesktop }) {
   )
 }
 
+// ─── global logs ─────────────────────────────────────────────────────────────
+
+function GlobalLogs() {
+  const logs = useSelector((state) => state.globalClusters.globalLogs?.general)
+  return <Logs logs={logs?.buffer} searchable={true} className={styles.logContainer} />
+}
+
+// ─── metrics body ────────────────────────────────────────────────────────────
+
+function MetricsBody({ globalMetrics, isDesktop }) {
+  if (!globalMetrics) {
+    return (
+      <Flex align='center' gap={2} p={4}>
+        <Spinner size='sm' />
+        <Text fontSize='sm'>Loading metrics…</Text>
+      </Flex>
+    )
+  }
+  return (
+    <Flex wrap='wrap' gap='12px' p='12px'>
+      <HostCard host={globalMetrics.host} isDesktop={isDesktop} />
+      <ProcessCard proc={globalMetrics.process} isDesktop={isDesktop} />
+    </Flex>
+  )
+}
+
 // ─── main ────────────────────────────────────────────────────────────────────
 
 function GlobalItems() {
-  const { theme } = useTheme()
   const globalMetrics = useSelector((state) => state.globalClusters.globalMetrics)
   const isDesktop = useSelector((state) => state.common.isDesktop)
 
-  const host = globalMetrics?.host
-  const proc = globalMetrics?.process
-
   return (
-    <Box className={`${styles.container} ${theme === 'light' ? styles.light : styles.dark}`}>
-      {!globalMetrics ? (
-        <Flex align='center' gap={2} py={4}>
-          <Spinner size='sm' />
-          <Text fontSize='sm'>Loading metrics…</Text>
-        </Flex>
-      ) : (
-        <Flex wrap='wrap' gap='12px' justify='space-between'>
-          <HostCard host={host} isDesktop={isDesktop} />
-          <ProcessCard proc={proc} isDesktop={isDesktop} />
-        </Flex>
-      )}
-    </Box>
+    <Flex direction='column' gap='8px' className={styles.container}>
+      <AccordionComponent
+        heading='Server Metrics'
+        body={<MetricsBody globalMetrics={globalMetrics} isDesktop={isDesktop} />}
+      />
+      <AccordionComponent heading='Global Logs' body={<GlobalLogs />} />
+    </Flex>
   )
 }
 
