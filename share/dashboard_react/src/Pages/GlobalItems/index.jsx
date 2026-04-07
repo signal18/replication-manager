@@ -1,0 +1,264 @@
+import React from 'react'
+import { useSelector } from 'react-redux'
+import { Box, Flex, Text, Divider, Spinner } from '@chakra-ui/react'
+import Card from '../../components/Card'
+import Gauge from '../../components/Gauge'
+import TagPill from '../../components/TagPill'
+import { useTheme } from '../../ThemeProvider'
+import styles from './styles.module.scss'
+
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+function bytesToGB(b) {
+  return b ? b / 1073741824 : 0
+}
+
+function bytesToMB(b) {
+  return b ? b / 1048576 : 0
+}
+
+function fmtGB(b) {
+  const v = bytesToGB(b)
+  return v < 1 ? `${(v * 1024).toFixed(0)} MB` : `${v.toFixed(2)} GB`
+}
+
+function fmtMB(b) {
+  const v = bytesToMB(b)
+  return v < 1024 ? `${v.toFixed(0)} MB` : `${(v / 1024).toFixed(2)} GB`
+}
+
+function fmtUptime(s) {
+  if (!s && s !== 0) return 'N/A'
+  const d = Math.floor(s / 86400)
+  const h = Math.floor((s % 86400) / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  if (d > 0) return `${d}d ${h}h ${m}m`
+  if (h > 0) return `${h}h ${m}m ${sec}s`
+  if (m > 0) return `${m}m ${sec}s`
+  return `${sec}s`
+}
+
+function pct(used, total) {
+  if (!total) return 0
+  return Math.min((used / total) * 100, 100)
+}
+
+function usageColor(percent) {
+  if (percent < 70) return 'green'
+  if (percent < 90) return 'orange'
+  return 'red'
+}
+
+function tagColor(percent) {
+  if (percent < 70) return 'green'
+  if (percent < 90) return 'orange'
+  return 'red'
+}
+
+// ─── sub-components ─────────────────────────────────────────────────────────
+
+function ProgressRow({ label, value, total, valueLabel, totalLabel }) {
+  const percent = pct(value, total)
+  const color = usageColor(percent)
+  return (
+    <Flex direction='column' gap='4px'>
+      <Flex justify='space-between' align='center'>
+        <Text fontSize='sm'>{label}</Text>
+        <Text fontSize='sm' fontWeight='semibold'>
+          {valueLabel} / {totalLabel} ({percent.toFixed(1)}%)
+        </Text>
+      </Flex>
+      <Box w='100%' h='8px' bg='gray.200' borderRadius='4px' overflow='hidden'>
+        <Box
+          h='100%'
+          bg={color}
+          w={`${percent}%`}
+          transition='width 0.3s ease-in-out'
+          borderRadius='4px'
+        />
+      </Box>
+    </Flex>
+  )
+}
+
+function MetaRow({ label, value }) {
+  return (
+    <Flex justify='space-between' align='center' py='2px'>
+      <Text fontSize='xs' opacity={0.65}>{label}</Text>
+      <Text fontSize='xs' fontWeight='medium' maxW='60%' textAlign='right' wordBreak='break-all'>
+        {value ?? 'N/A'}
+      </Text>
+    </Flex>
+  )
+}
+
+function HostCard({ host, isDesktop }) {
+  const cpuPct = host?.cpuPercent ?? 0
+  const memPct = host?.memoryUsedPercent ?? 0
+  const diskPct = host?.diskUsedPercent ?? 0
+
+  return (
+    <Card
+      width={isDesktop ? '48%' : '100%'}
+      header={
+        <>
+          <Text>Host: {host?.hostname ?? '—'}</Text>
+          <Box ml='auto'>
+            <TagPill colorScheme={tagColor(Math.max(cpuPct, memPct, diskPct))} text={`${host?.cpuCores ?? '?'} cores`} />
+          </Box>
+        </>
+      }
+      body={
+        <Flex direction='column' gap='10px' p='8px'>
+          {/* Progress bars */}
+          <Flex direction='column' gap='10px'>
+            <ProgressRow
+              label='CPU'
+              value={cpuPct}
+              total={100}
+              valueLabel={`${cpuPct.toFixed(1)}%`}
+              totalLabel='100%'
+            />
+            <ProgressRow
+              label='Memory'
+              value={host?.memoryUsedBytes ?? 0}
+              total={host?.memoryTotalBytes ?? 1}
+              valueLabel={fmtGB(host?.memoryUsedBytes)}
+              totalLabel={fmtGB(host?.memoryTotalBytes)}
+            />
+            <ProgressRow
+              label='Disk'
+              value={host?.diskUsedBytes ?? 0}
+              total={host?.diskTotalBytes ?? 1}
+              valueLabel={fmtGB(host?.diskUsedBytes)}
+              totalLabel={fmtGB(host?.diskTotalBytes)}
+            />
+          </Flex>
+
+          <Divider />
+
+          {/* Gauges */}
+          <Flex wrap='wrap' justify='space-evenly' gap='0'>
+            <Gauge minValue={0} maxValue={100} value={cpuPct} text={'CPU %'} width={110} height={70} />
+            <Gauge
+              minValue={0}
+              maxValue={Math.max(bytesToGB(host?.memoryTotalBytes), 1)}
+              value={bytesToGB(host?.memoryUsedBytes ?? 0)}
+              text={'Mem GB'}
+              width={110}
+              height={70}
+            />
+            <Gauge
+              minValue={0}
+              maxValue={Math.max(bytesToGB(host?.diskTotalBytes), 1)}
+              value={bytesToGB(host?.diskUsedBytes ?? 0)}
+              text={'Disk GB'}
+              width={110}
+              height={70}
+            />
+          </Flex>
+
+          <Divider />
+
+          {/* Metadata */}
+          {host?.diskError && (
+            <Text fontSize='xs' color='red.400'>Disk error: {host.diskError}</Text>
+          )}
+          <MetaRow label='Disk path' value={host?.diskPath} />
+        </Flex>
+      }
+    />
+  )
+}
+
+function ProcessCard({ proc, isDesktop }) {
+  const heapMB = bytesToMB(proc?.heapAllocBytes ?? 0)
+  const rssMB = bytesToMB(proc?.rssBytes ?? 0)
+  const goroutines = proc?.goroutines ?? 0
+
+  return (
+    <Card
+      width={isDesktop ? '48%' : '100%'}
+      header={
+        <>
+          <Text>Repman Process</Text>
+          <Box ml='auto' display='flex' gap='4px'>
+            <TagPill colorScheme='blue' text={`PID ${proc?.pid ?? '?'}`} />
+            <TagPill colorScheme='purple' text={fmtUptime(proc?.uptimeSeconds)} />
+          </Box>
+        </>
+      }
+      body={
+        <Flex direction='column' gap='10px' p='8px'>
+          {/* Gauges */}
+          <Flex wrap='wrap' justify='space-evenly' gap='0'>
+            <Gauge
+              minValue={0}
+              maxValue={1000}
+              value={goroutines}
+              text={'Goroutines'}
+              width={110}
+              height={70}
+            />
+            <Gauge
+              minValue={0}
+              maxValue={Math.max(rssMB * 1.5, 512)}
+              value={rssMB}
+              text={'RSS MB'}
+              width={110}
+              height={70}
+            />
+            <Gauge
+              minValue={0}
+              maxValue={Math.max(heapMB * 1.5, 256)}
+              value={heapMB}
+              text={'Heap MB'}
+              width={110}
+              height={70}
+            />
+          </Flex>
+
+          <Divider />
+
+          {/* Metadata */}
+          <MetaRow label='PID' value={proc?.pid} />
+          <MetaRow label='Uptime' value={fmtUptime(proc?.uptimeSeconds)} />
+          <MetaRow label='Goroutines' value={goroutines} />
+          <MetaRow label='RSS' value={fmtMB(proc?.rssBytes)} />
+          <MetaRow label='Heap alloc' value={fmtMB(proc?.heapAllocBytes)} />
+          <MetaRow label='Heap sys' value={fmtMB(proc?.heapSysBytes)} />
+        </Flex>
+      }
+    />
+  )
+}
+
+// ─── main ────────────────────────────────────────────────────────────────────
+
+function GlobalItems() {
+  const { theme } = useTheme()
+  const globalMetrics = useSelector((state) => state.globalClusters.globalMetrics)
+  const isDesktop = useSelector((state) => state.common.isDesktop)
+
+  const host = globalMetrics?.host
+  const proc = globalMetrics?.process
+
+  return (
+    <Box className={`${styles.container} ${theme === 'light' ? styles.light : styles.dark}`}>
+      {!globalMetrics ? (
+        <Flex align='center' gap={2} py={4}>
+          <Spinner size='sm' />
+          <Text fontSize='sm'>Loading metrics…</Text>
+        </Flex>
+      ) : (
+        <Flex wrap='wrap' gap='12px' justify='space-between'>
+          <HostCard host={host} isDesktop={isDesktop} />
+          <ProcessCard proc={proc} isDesktop={isDesktop} />
+        </Flex>
+      )}
+    </Box>
+  )
+}
+
+export default GlobalItems

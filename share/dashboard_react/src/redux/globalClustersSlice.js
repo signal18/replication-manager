@@ -198,6 +198,30 @@ export const getTermsData = createGuardedAsyncThunk('globalClusters/getTermsData
   }
 })
 
+export const getGlobalMetrics = createGuardedAsyncThunk('globalClusters/getGlobalMetrics', async ({ baseURL = '' } = {}, thunkAPI) => {
+  try {
+    const { data, status } = await globalClustersService.getGlobalMetrics(baseURL)
+    if (status !== 200) {
+      throw new Error(data)
+    }
+    return { data, status }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const getGlobalAlerts = createGuardedAsyncThunk('globalClusters/getGlobalAlerts', async ({ baseURL = '' } = {}, thunkAPI) => {
+  try {
+    const { data, status } = await globalClustersService.getGlobalAlerts(baseURL)
+    if (status !== 200) {
+      throw new Error(data)
+    }
+    return { data, status }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
 export const refreshAppTemplateRepo = createGuardedAsyncThunk(
   'globalClusters/refreshAppTemplateRepo',
   async ({ clusterName }, thunkAPI) => {
@@ -226,7 +250,9 @@ const initialState = {
   clusterPeers: null,
   clusterForSale: null,
   monitor: null,
-  terms: ``
+  terms: ``,
+  globalAlerts: { errors: [], warnings: [] },
+  globalMetrics: null
 }
 
 export const globalClustersSlice = createSlice({
@@ -286,6 +312,21 @@ export const globalClustersSlice = createSlice({
         state.monitor.serviceTemplates = action.payload.data
       })
       .addCase(refreshAppTemplateRepo.rejected, (state, action) => {
+        state.error = action.error
+      })
+      .addCase(getGlobalAlerts.fulfilled, (state, action) => {
+        state.globalAlerts = {
+          errors: action.payload.data?.errors ?? [],
+          warnings: action.payload.data?.warnings ?? []
+        }
+      })
+      .addCase(getGlobalAlerts.rejected, (state, action) => {
+        state.error = action.error
+      })
+      .addCase(getGlobalMetrics.fulfilled, (state, action) => {
+        state.globalMetrics = action.payload.data
+      })
+      .addCase(getGlobalMetrics.rejected, (state, action) => {
         state.error = action.error
       })
 

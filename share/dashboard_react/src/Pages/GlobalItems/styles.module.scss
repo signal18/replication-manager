@@ -1,0 +1,69 @@
+.container {
+  padding: 16px;
+  width: 100%;
+}
+
+.light {
+  background: #fff;
+  color: #1a202c;
+}
+
+.dark {
+  background: #1a202c;
+  color: #e2e8f0;
+}
+
+.summary {
+  flex-wrap: wrap;
+}
+
+.badge {
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.errorBadge {
+  background: #fed7d7;
+  color: #c53030;
+}
+
+.warningBadge {
+  background: #fefcbf;
+  color: #744210;
+}
+
+.section {
+  width: 100%;
+}
+
+.sectionTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+  padding: 6px 0;
+  border-bottom: 2px solid;
+}
+
+.errorTitle {
+  border-color: #fc8181;
+  color: #c53030;
+}
+
+.warningTitle {
+  border-color: #f6e05e;
+  color: #744210;
+}
+
+.table {
+  width: 100%;
+}
+
+.errorTable {
+  border-left: 3px solid #fc8181;
+}
+
+.warningTable {
+  border-left: 3px solid #f6e05e;
+}

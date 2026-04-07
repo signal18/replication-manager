@@ -92,7 +92,7 @@ type ReplicationManager struct {
 	UUID                       string                            `json:"uuid"`
 	Hostname                   string                            `json:"hostname"`
 	Status                     string                            `json:"status"`
-	SplitBrain                 bool                              `json:"spitBrain"`
+	SplitBrain                 bool                              `json:"splitBrain"`
 	ClusterList                []string                          `json:"clusters"`
 	ImmutableClusterList       []string                          `json:"-"`
 	DeprecatedKeys             map[string]map[string]bool        `json:"-"`

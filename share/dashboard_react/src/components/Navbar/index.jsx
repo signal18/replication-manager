@@ -25,6 +25,7 @@ function Navbar({ username }) {
   const dispatch = useDispatch()
   const { theme } = useTheme()
   const [alertModalType, setAlertModalType] = useState('')
+  const [globalAlertModalType, setGlobalAlertModalType] = useState('')
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
@@ -36,6 +37,7 @@ function Navbar({ username }) {
   const { isMobile, isDesktop } = useSelector((state) => state.common)
   const clusterAlerts = useSelector((state) => state?.cluster?.clusterAlerts)
   const clusterData = useSelector((state) => state?.cluster?.clusterData)
+  const globalAlerts = useSelector((state) => state?.globalClusters?.globalAlerts)
   const isLogged = useSelector((state) => state?.auth?.isLogged)
   const monitor = useSelector((state) => state?.globalClusters?.monitor)
 
@@ -136,6 +138,24 @@ function Navbar({ username }) {
           
 
 
+          {isAuthorized() && !clusterData && (
+            <Flex className={styles.alerts}>
+              <AlertBadge
+                isBlocking={true}
+                text='G-Blockers'
+                count={globalAlerts?.errors?.length || 0}
+                onClick={() => setGlobalAlertModalType('error')}
+                showText={!isMobile}
+              />
+              <AlertBadge
+                text='G-Warnings'
+                count={globalAlerts?.warnings?.length || 0}
+                onClick={() => setGlobalAlertModalType('warning')}
+                showText={!isMobile}
+              />
+            </Flex>
+          )}
+
           {isAuthorized() && clusterData && (
             <Flex className={styles.alerts}>
               <AlertBadge
@@ -204,6 +224,9 @@ function Navbar({ username }) {
       )}
       {alertModalType && (
         <AlertModal type={alertModalType} isOpen={alertModalType.length !== 0} closeModal={closeAlertModal} />
+      )}
+      {globalAlertModalType && (
+        <AlertModal type={globalAlertModalType} isOpen={globalAlertModalType.length !== 0} closeModal={() => setGlobalAlertModalType('')} alerts={globalAlerts} />
       )}
       {isLogoutModalOpen && (
         <ConfirmModal

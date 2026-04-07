@@ -1156,6 +1156,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/checksum-repair-all-tables": {
+            "post": {
+                "description": "This endpoint triggers the checksum calculation for all tables in the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSchema"
+                ],
+                "summary": "Compute Repair for all tables in a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully triggered checksum calculation for all tables",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/failover": {
             "post": {
                 "description": "This endpoint triggers a master failover for the specified cluster.",
@@ -5585,6 +5637,37 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/plugins": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSettings"
+                ],
+                "summary": "List active log-tailer plugins for a cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/proxies/{proxyName}": {
             "get": {
                 "description": "Shows the proxies for that specific named cluster",
@@ -7434,6 +7517,72 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "Successfully triggered analyze calculation for the table",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/checksum-repair-table": {
+            "post": {
+                "description": "This endpoint triggers the checksum calculation for a specific table in the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSchema"
+                ],
+                "summary": "Repair checksum error for a specific table in a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Schema Name",
+                        "name": "schemaName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Table Name",
+                        "name": "tableName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully triggered checksum calculation for the table",
                         "schema": {
                             "type": "string"
                         }
@@ -11550,6 +11699,65 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/queries/explain-pfs-cached": {
+            "get": {
+                "description": "Returns every explain plan stored in the server's on-disk PFS explain cache.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseQueries"
+                ],
+                "summary": "List all cached EXPLAIN plans for a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "All cached explain plans",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/cluster.PFSExplainRecord"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Encoding error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/queries/{queryDigest}/actions/analyze-pfs": {
             "get": {
                 "description": "Analyzes a query identified by its digest on a specified server within a cluster using PFS.",
@@ -11727,6 +11935,75 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Encoding error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/queries/{queryDigest}/actions/explain-pfs-cached": {
+            "get": {
+                "description": "Returns the explain plan that was captured at snapshot time for the given digest.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseQueries"
+                ],
+                "summary": "Get cached EXPLAIN plan for a PFS digest",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Query Digest",
+                        "name": "queryDigest",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Cached explain plan",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.PFSExplainRecord"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Digest not found in explain cache",
                         "schema": {
                             "type": "string"
                         }
@@ -17529,6 +17806,78 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/global/alerts": {
+            "get": {
+                "description": "Returns server-level errors and warnings from the ReplicationManager state machine.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Global"
+                ],
+                "summary": "Get global alerts",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.globalAlertsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/global/metrics": {
+            "get": {
+                "description": "Returns host CPU/memory/disk and repman process metrics.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Global"
+                ],
+                "summary": "Get global metrics",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.globalMetricsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/health": {
             "get": {
                 "description": "Returns the health status of all privileged clusters.",
@@ -17840,6 +18189,12 @@ const docTemplate = `{
                         "name": "Authorization",
                         "in": "header",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "OpenSVC server bash terminal container RID (allowed: container#db, container#jobs)",
+                        "name": "rid",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -17897,6 +18252,12 @@ const docTemplate = `{
                         "description": "Server Name",
                         "name": "serverName",
                         "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "OpenSVC server bash terminal container RID (allowed: container#db, container#jobs)",
+                        "name": "rid",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -17954,6 +18315,12 @@ const docTemplate = `{
                         "description": "Server Name",
                         "name": "serverName",
                         "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "OpenSVC server bash terminal container RID (allowed: container#db, container#jobs)",
+                        "name": "rid",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -18011,6 +18378,12 @@ const docTemplate = `{
                         "description": "Server Name",
                         "name": "serverName",
                         "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "OpenSVC server bash terminal container RID (allowed: container#db, container#jobs)",
+                        "name": "rid",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -18068,6 +18441,12 @@ const docTemplate = `{
                         "description": "Server Name",
                         "name": "serverName",
                         "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "OpenSVC server bash terminal container RID (allowed: container#db, container#jobs)",
+                        "name": "rid",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -20882,6 +21261,37 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.PFSExplainRecord": {
+            "type": "object",
+            "properties": {
+                "capturedAt": {
+                    "description": "RFC3339 timestamp of first EXPLAIN",
+                    "type": "string"
+                },
+                "digest": {
+                    "description": "PFS digest hash",
+                    "type": "string"
+                },
+                "digestText": {
+                    "description": "normalised template  e.g. SELECT * FROM t WHERE id = ?",
+                    "type": "string"
+                },
+                "plan": {
+                    "description": "rows returned by EXPLAIN",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dbhelper.Explain"
+                    }
+                },
+                "sampleQuery": {
+                    "description": "concrete SQL instance used for EXPLAIN",
+                    "type": "string"
+                },
+                "schemaName": {
+                    "type": "string"
+                }
+            }
+        },
         "cluster.Proxy": {
             "type": "object",
             "properties": {
@@ -21311,6 +21721,9 @@ const docTemplate = `{
                 "isConfigGen": {
                     "type": "boolean"
                 },
+                "isDataDiverge": {
+                    "type": "boolean"
+                },
                 "isDelayed": {
                     "type": "boolean"
                 },
@@ -21426,6 +21839,29 @@ const docTemplate = `{
                 },
                 "pfsInstruments": {
                     "$ref": "#/definitions/config.StringsMap"
+                },
+                "pfsexplainCache": {
+                    "description": "digest → cached explain plan, keyed by digest hash",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/cluster.PFSExplainRecord"
+                    }
+                },
+                "pfsexplainCacheMu": {
+                    "description": "protects PFSExplainCache against goroutine/monitor-loop races",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/sync.Mutex"
+                        }
+                    ]
+                },
+                "pfslastExplainPurge": {
+                    "description": "timestamp of last explain cache purge run",
+                    "type": "string"
+                },
+                "pfslastSnapshot": {
+                    "description": "timestamp of last periodic PFS digest snapshot flush",
+                    "type": "string"
                 },
                 "pointInTimeMeta": {
                     "$ref": "#/definitions/backupmgr.PointInTimeMeta"
@@ -22410,6 +22846,41 @@ const docTemplate = `{
                 }
             }
         },
+        "dbhelper.Explain": {
+            "type": "object",
+            "properties": {
+                "extra": {
+                    "$ref": "#/definitions/sql.NullString"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "key": {
+                    "$ref": "#/definitions/sql.NullString"
+                },
+                "keyLen": {
+                    "$ref": "#/definitions/sql.NullString"
+                },
+                "possibleKeys": {
+                    "$ref": "#/definitions/sql.NullString"
+                },
+                "ref": {
+                    "$ref": "#/definitions/sql.NullString"
+                },
+                "rows": {
+                    "$ref": "#/definitions/sql.NullString"
+                },
+                "selectType": {
+                    "$ref": "#/definitions/sql.NullString"
+                },
+                "table": {
+                    "$ref": "#/definitions/sql.NullString"
+                },
+                "type": {
+                    "$ref": "#/definitions/sql.NullString"
+                }
+            }
+        },
         "dbhelper.MasterStatus": {
             "type": "object",
             "properties": {
@@ -22662,6 +23133,9 @@ const docTemplate = `{
                 },
                 "app": {
                     "type": "boolean"
+                },
+                "appErrorDebounceThreshold": {
+                    "type": "integer"
                 },
                 "appHosts": {
                     "type": "string"
@@ -23390,6 +23864,9 @@ const docTemplate = `{
                 "failoverCheckDelayStat": {
                     "type": "boolean"
                 },
+                "failoverDivergentData": {
+                    "type": "boolean"
+                },
                 "failoverEventScheduler": {
                     "type": "boolean"
                 },
@@ -23777,6 +24254,12 @@ const docTemplate = `{
                 "logOrchestratorLevel": {
                     "type": "integer"
                 },
+                "logPlugin": {
+                    "type": "boolean"
+                },
+                "logPluginLevel": {
+                    "type": "integer"
+                },
                 "logProxy": {
                     "type": "boolean"
                 },
@@ -23956,6 +24439,15 @@ const docTemplate = `{
                 "monitoringCheckGrants": {
                     "type": "boolean"
                 },
+                "monitoringChecksumIngoreTables": {
+                    "type": "string"
+                },
+                "monitoringChecksumScheduler": {
+                    "type": "boolean"
+                },
+                "monitoringChecksumSchedulerCron": {
+                    "type": "string"
+                },
                 "monitoringCloseStateScript": {
                     "type": "string"
                 },
@@ -23979,6 +24471,12 @@ const docTemplate = `{
                 },
                 "monitoringErrorLogLength": {
                     "type": "integer"
+                },
+                "monitoringGlobalHeartbeatStallThreshold": {
+                    "type": "integer"
+                },
+                "monitoringGlobalHeartbeatSupervision": {
+                    "type": "boolean"
                 },
                 "monitoringIgnoreErrors": {
                     "type": "string"
@@ -24030,6 +24528,21 @@ const docTemplate = `{
                 },
                 "monitoringPerformanceSchemaMutex": {
                     "type": "boolean"
+                },
+                "monitoringPerformanceSchemaQueries": {
+                    "type": "boolean"
+                },
+                "monitoringPerformanceSchemaQueriesExplain": {
+                    "type": "boolean"
+                },
+                "monitoringPerformanceSchemaQueriesExplainDelay": {
+                    "type": "integer"
+                },
+                "monitoringPerformanceSchemaQueriesExplainPurgePeriod": {
+                    "type": "integer"
+                },
+                "monitoringPerformanceSchemaQueriesPeriod": {
+                    "type": "integer"
                 },
                 "monitoringPlugins": {
                     "type": "boolean"
@@ -24240,6 +24753,15 @@ const docTemplate = `{
                 },
                 "optimizeUseSql": {
                     "type": "boolean"
+                },
+                "pluginConfig": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "string"
+                        }
+                    }
                 },
                 "printDelayStat": {
                     "type": "boolean"
@@ -25058,6 +25580,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "sysbenchV1": {
+                    "description": "deprecated, version is now detected by binary",
                     "type": "boolean"
                 },
                 "templateStrict": {
@@ -26141,8 +26664,11 @@ const docTemplate = `{
                         "type": "boolean"
                     }
                 },
-                "spitBrain": {
+                "splitBrain": {
                     "type": "boolean"
+                },
+                "stateMachine": {
+                    "$ref": "#/definitions/state.StateMachine"
                 },
                 "status": {
                     "type": "string"
@@ -26241,6 +26767,95 @@ const docTemplate = `{
                 },
                 "useTempDir": {
                     "type": "boolean"
+                }
+            }
+        },
+        "server.globalAlertsResponse": {
+            "type": "object",
+            "properties": {
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/state.StateHttp"
+                    }
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/state.StateHttp"
+                    }
+                }
+            }
+        },
+        "server.globalMetricsHostInfo": {
+            "type": "object",
+            "properties": {
+                "cpuCores": {
+                    "type": "integer"
+                },
+                "cpuPercent": {
+                    "type": "number"
+                },
+                "diskError": {
+                    "type": "string"
+                },
+                "diskPath": {
+                    "type": "string"
+                },
+                "diskTotalBytes": {
+                    "type": "integer"
+                },
+                "diskUsedBytes": {
+                    "type": "integer"
+                },
+                "diskUsedPercent": {
+                    "type": "number"
+                },
+                "hostname": {
+                    "type": "string"
+                },
+                "memoryTotalBytes": {
+                    "type": "integer"
+                },
+                "memoryUsedBytes": {
+                    "type": "integer"
+                },
+                "memoryUsedPercent": {
+                    "type": "number"
+                }
+            }
+        },
+        "server.globalMetricsProcessInfo": {
+            "type": "object",
+            "properties": {
+                "goroutines": {
+                    "type": "integer"
+                },
+                "heapAllocBytes": {
+                    "type": "integer"
+                },
+                "heapSysBytes": {
+                    "type": "integer"
+                },
+                "pid": {
+                    "type": "integer"
+                },
+                "rssBytes": {
+                    "type": "integer"
+                },
+                "uptimeSeconds": {
+                    "type": "integer"
+                }
+            }
+        },
+        "server.globalMetricsResponse": {
+            "type": "object",
+            "properties": {
+                "host": {
+                    "$ref": "#/definitions/server.globalMetricsHostInfo"
+                },
+                "process": {
+                    "$ref": "#/definitions/server.globalMetricsProcessInfo"
                 }
             }
         },
