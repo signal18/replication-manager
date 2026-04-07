@@ -259,8 +259,11 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 	<-gm.PullCh
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Pulling Cloud18 Configs")
 
+	var pullErr error
+
 	defer func() {
 		// Inform the GitManager that the pull is done
+		gm.SetPullResult(pullErr)
 		gm.DonePullCh <- struct{}{}
 	}()
 
@@ -271,7 +274,12 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 		err := repman.Conf.CloneConfigFromGit(repman.Conf.GitUrlPull, repman.Conf.GitUsername, repman.Conf.Secrets["git-acces-token"].Value, pullDir)
 		if err != nil {
 			os.RemoveAll(pullDir + "/.git")
-			repman.Conf.CloneConfigFromGit(repman.Conf.GitUrlPull, repman.Conf.GitUsername, repman.Conf.Secrets["git-acces-token"].Value, pullDir)
+			err = repman.Conf.CloneConfigFromGit(repman.Conf.GitUrlPull, repman.Conf.GitUsername, repman.Conf.Secrets["git-acces-token"].Value, pullDir)
+			if err != nil {
+				pullErr = err
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Error pulling cloud18 git config: %v", err)
+				return
+			}
 		}
 
 		//to check cloud18.toml for the first time

@@ -2,11 +2,15 @@ package server
 
 import (
 	"fmt"
+	"io"
 	"testing"
 
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/sirupsen/logrus"
 )
 
 func newHeartbeatTestCluster(heartbeats int) *cluster.Cluster {
@@ -252,5 +256,91 @@ func TestProduceClusterHeartbeatSupervisionStatesEscalatesToCritical(t *testing.
 	}
 	if repman.StateMachine.IsInState(warnKey) {
 		t.Fatalf("expected warning key %s to resolve after critical escalation", warnKey)
+	}
+}
+
+func newGitSupervisionTestConfigManager(t *testing.T) *manager.ConfigManager {
+	t.Helper()
+	cm := manager.NewConfigManager(config.NewLogrusWrapper(&config.Config{}, logrus.New()))
+	t.Cleanup(cm.Stop)
+	return cm
+}
+
+func TestProduceGitSupervisionStatesWarningForTransientPushFailure(t *testing.T) {
+	cm := newGitSupervisionTestConfigManager(t)
+	cm.UpdateGitOperationStatus("push", io.EOF)
+
+	repman := &ReplicationManager{Conf: &config.Config{}, ConfigManager: cm}
+	repman.InitAlertStateMachine()
+	repman.ProduceGitSupervisionStates()
+	repman.ProcessAlertStateLifecycle()
+
+	warnKey := fmt.Sprintf("%s@git", gitPushWarnErrKey)
+	errKey := fmt.Sprintf("%s@git", gitPushErrErrKey)
+	if !repman.StateMachine.IsInState(warnKey) {
+		t.Fatalf("expected warning git push supervision state %s", warnKey)
+	}
+	if repman.StateMachine.IsInState(errKey) {
+		t.Fatalf("did not expect persistent git push supervision state %s", errKey)
+	}
+}
+
+func TestProduceGitSupervisionStatesErrorForPersistentPushFailure(t *testing.T) {
+	cm := newGitSupervisionTestConfigManager(t)
+	cm.UpdateGitOperationStatus("push", transport.ErrAuthenticationRequired)
+
+	repman := &ReplicationManager{Conf: &config.Config{}, ConfigManager: cm}
+	repman.InitAlertStateMachine()
+	repman.ProduceGitSupervisionStates()
+	repman.ProcessAlertStateLifecycle()
+
+	errKey := fmt.Sprintf("%s@git", gitPushErrErrKey)
+	if !repman.StateMachine.IsInState(errKey) {
+		t.Fatalf("expected persistent git push supervision state %s", errKey)
+	}
+}
+
+func TestProduceGitSupervisionStatesUsesDistinctPushPullErrorCodes(t *testing.T) {
+	cm := newGitSupervisionTestConfigManager(t)
+	cm.UpdateGitOperationStatus("pull", io.EOF)
+
+	repman := &ReplicationManager{Conf: &config.Config{}, ConfigManager: cm}
+	repman.InitAlertStateMachine()
+	repman.ProduceGitSupervisionStates()
+	repman.ProcessAlertStateLifecycle()
+
+	pullWarnKey := fmt.Sprintf("%s@git", gitPullWarnErrKey)
+	pushWarnKey := fmt.Sprintf("%s@git", gitPushWarnErrKey)
+	if !repman.StateMachine.IsInState(pullWarnKey) {
+		t.Fatalf("expected pull warning state using pull-specific code %s", pullWarnKey)
+	}
+	if repman.StateMachine.IsInState(pushWarnKey) {
+		t.Fatalf("did not expect push warning state code %s when only pull failed", pushWarnKey)
+	}
+}
+
+func TestProduceGitSupervisionStatesResolvesAfterSuccess(t *testing.T) {
+	cm := newGitSupervisionTestConfigManager(t)
+	cm.UpdateGitOperationStatus("push", io.EOF)
+
+	repman := &ReplicationManager{Conf: &config.Config{}, ConfigManager: cm}
+	repman.InitAlertStateMachine()
+
+	warnKey := fmt.Sprintf("%s@git", gitPushWarnErrKey)
+	repman.ProduceGitSupervisionStates()
+	repman.ProcessAlertStateLifecycle()
+	if !repman.StateMachine.IsInState(warnKey) {
+		t.Fatalf("expected active warning state %s before recovery", warnKey)
+	}
+
+	cm.UpdateGitOperationStatus("push", nil)
+	repman.ProduceGitSupervisionStates()
+	if got := len(repman.StateMachine.GetLastResolvedStates()); got == 0 {
+		t.Fatalf("expected resolved transition after successful git push status")
+	}
+	repman.ProcessAlertStateLifecycle()
+
+	if repman.StateMachine.IsInState(warnKey) {
+		t.Fatalf("expected warning state %s to resolve after success", warnKey)
 	}
 }

@@ -258,5 +258,9 @@ var AppError = map[string]string{}
 // server-level supervision workflows.
 var GlobalError = map[string]string{
 	"GWARN001": "ReplicationManager detected stalled cluster heartbeat for %s",
+	"GWARN002": "ReplicationManager git push reported warning-level failure: %s",
+	"GWARN003": "ReplicationManager git pull reported warning-level failure: %s",
 	"GERR001":  "ReplicationManager detected prolonged stalled cluster heartbeat for %s",
+	"GERR002":  "ReplicationManager git push reported persistent failure: %s",
+	"GERR003":  "ReplicationManager git pull reported persistent failure: %s",
 }

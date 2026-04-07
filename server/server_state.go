@@ -12,12 +12,17 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
 const (
 	clusterHeartbeatWarnErrKey                  = "GWARN001"
 	clusterHeartbeatCriticalErrKey              = "GERR001"
+	gitPushWarnErrKey                           = "GWARN002"
+	gitPushErrErrKey                            = "GERR002"
+	gitPullWarnErrKey                           = "GWARN003"
+	gitPullErrErrKey                            = "GERR003"
 	defaultMonitorGlobalHeartbeatStallThreshold = 5
 	heartbeatCriticalThresholdMultiplier        = int64(3)
 )
@@ -115,6 +120,58 @@ func (repman *ReplicationManager) ProcessAlertStateLifecycle() {
 	}
 
 	repman.StateMachine.ClearState()
+}
+
+func (repman *ReplicationManager) ProduceGitSupervisionStates() {
+	if repman == nil || repman.StateMachine == nil || repman.ConfigManager == nil {
+		return
+	}
+
+	snapshot := repman.ConfigManager.GetGitHealthSnapshot()
+	// Keep a single global key scope (@git) and distinguish push vs pull
+	// with dedicated error codes (GWARN/GERR 002 for push, 003 for pull).
+	repman.produceGitOperationSupervisionState("push", snapshot.Push, gitPushWarnErrKey, gitPushErrErrKey)
+	repman.produceGitOperationSupervisionState("pull", snapshot.Pull, gitPullWarnErrKey, gitPullErrErrKey)
+}
+
+func (repman *ReplicationManager) produceGitOperationSupervisionState(operation string, operationStatus manager.GitOperationHealth, warnErrKey, errErrKey string) {
+	if !operationStatus.HasFailure {
+		return
+	}
+
+	severity := "ERROR"
+	errKey := errErrKey
+	if operationStatus.Recoverable {
+		severity = "WARNING"
+		errKey = warnErrKey
+	}
+
+	reason := operationStatus.Reason
+	if reason == "" {
+		reason = operationStatus.Details
+	}
+	// Guard template lookup so alert descriptions stay valid even if a future
+	// refactor removes/renames a GlobalError key. When mapping exists, use the
+	// operation-specific template from config/error.go; otherwise fall back.
+	tmpl, ok := config.GlobalError[errKey]
+	errDesc := ""
+	if ok && tmpl != "" {
+		errDesc = fmt.Sprintf(tmpl, reason)
+	} else {
+		if operationStatus.Recoverable {
+			tmpl = "ReplicationManager git %s reported warning-level failure: %s"
+		} else {
+			tmpl = "ReplicationManager git %s reported persistent failure: %s"
+		}
+		errDesc = fmt.Sprintf(tmpl, operation, reason)
+	}
+
+	repman.SetState(fmt.Sprintf("%s@git", errKey), state.State{
+		ErrType: severity,
+		ErrKey:  errKey,
+		ErrDesc: errDesc,
+		ErrFrom: "REPMAN",
+	})
 }
 
 // ProduceClusterHeartbeatSupervisionStates inspects per-cluster state-machine
