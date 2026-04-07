@@ -300,7 +300,7 @@ func TestProduceGitSupervisionStatesErrorForPersistentPushFailure(t *testing.T) 
 	}
 }
 
-func TestProduceGitSupervisionStatesUsesSeparatePullKeys(t *testing.T) {
+func TestProduceGitSupervisionStatesUsesDistinctPushPullErrorCodes(t *testing.T) {
 	cm := newGitSupervisionTestConfigManager(t)
 	cm.UpdateGitOperationStatus("pull", io.EOF)
 
@@ -312,10 +312,10 @@ func TestProduceGitSupervisionStatesUsesSeparatePullKeys(t *testing.T) {
 	pullWarnKey := fmt.Sprintf("%s@git", gitPullWarnErrKey)
 	pushWarnKey := fmt.Sprintf("%s@git", gitPushWarnErrKey)
 	if !repman.StateMachine.IsInState(pullWarnKey) {
-		t.Fatalf("expected pull warning state %s", pullWarnKey)
+		t.Fatalf("expected pull warning state using pull-specific code %s", pullWarnKey)
 	}
 	if repman.StateMachine.IsInState(pushWarnKey) {
-		t.Fatalf("did not expect push warning key %s when only pull failed", pushWarnKey)
+		t.Fatalf("did not expect push warning state code %s when only pull failed", pushWarnKey)
 	}
 }
 

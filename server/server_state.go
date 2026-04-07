@@ -128,11 +128,11 @@ func (repman *ReplicationManager) ProduceGitSupervisionStates() {
 	}
 
 	snapshot := repman.ConfigManager.GetGitHealthSnapshot()
-	repman.produceGitOperationSupervisionState("git", "push", snapshot.Push, gitPushWarnErrKey, gitPushErrErrKey)
-	repman.produceGitOperationSupervisionState("git", "pull", snapshot.Pull, gitPullWarnErrKey, gitPullErrErrKey)
+	repman.produceGitOperationSupervisionState("git", snapshot.Push, gitPushWarnErrKey, gitPushErrErrKey)
+	repman.produceGitOperationSupervisionState("git", snapshot.Pull, gitPullWarnErrKey, gitPullErrErrKey)
 }
 
-func (repman *ReplicationManager) produceGitOperationSupervisionState(scope string, operation string, operationStatus manager.GitOperationHealth, warnErrKey, errErrKey string) {
+func (repman *ReplicationManager) produceGitOperationSupervisionState(scope string, operationStatus manager.GitOperationHealth, warnErrKey, errErrKey string) {
 	if !operationStatus.HasFailure {
 		return
 	}
@@ -148,7 +148,7 @@ func (repman *ReplicationManager) produceGitOperationSupervisionState(scope stri
 	if reason == "" {
 		reason = operationStatus.Details
 	}
-	errDesc := fmt.Sprintf(config.GlobalError[errKey], operation, reason)
+	errDesc := fmt.Sprintf(config.GlobalError[errKey], reason)
 	repman.SetState(fmt.Sprintf("%s@%s", errKey, scope), state.State{
 		ErrType: severity,
 		ErrKey:  errKey,

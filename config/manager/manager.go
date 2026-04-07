@@ -80,7 +80,6 @@ type GitOperationHealth struct {
 	Recoverable bool
 	Reason      string
 	Details     string
-	UpdatedAt   time.Time
 }
 
 const (
@@ -303,28 +302,17 @@ func (cm *ConfigManager) setGitOperationSuccess(operation string) {
 	cm.gitStatusMu.Lock()
 	defer cm.gitStatusMu.Unlock()
 
-	now := time.Now()
 	switch operation {
 	case "push":
-		cm.gitStatus.Push = GitOperationHealth{UpdatedAt: now}
+		cm.gitStatus.Push = GitOperationHealth{}
 	case "pull":
-		cm.gitStatus.Pull = GitOperationHealth{UpdatedAt: now}
+		cm.gitStatus.Pull = GitOperationHealth{}
 	}
 }
 
-func (cm *ConfigManager) setGitOperationFailure(operation string, recoverable bool, reason string, err error) {
+func (cm *ConfigManager) setGitOperationFailure(operation string, status GitOperationHealth) {
 	cm.gitStatusMu.Lock()
 	defer cm.gitStatusMu.Unlock()
-
-	status := GitOperationHealth{
-		HasFailure:  true,
-		Recoverable: recoverable,
-		Reason:      reason,
-		UpdatedAt:   time.Now(),
-	}
-	if err != nil {
-		status.Details = err.Error()
-	}
 
 	switch operation {
 	case "push":
@@ -334,28 +322,41 @@ func (cm *ConfigManager) setGitOperationFailure(operation string, recoverable bo
 	}
 }
 
-func (cm *ConfigManager) UpdateGitOperationStatus(operation string, err error) {
-	if err == nil {
-		cm.setGitOperationSuccess(operation)
-		return
+func (cm *ConfigManager) classifyGitOperationError(operation string, err error) GitOperationHealth {
+	status := GitOperationHealth{HasFailure: true}
+	if err != nil {
+		status.Details = err.Error()
 	}
-
-	recoverable := false
-	reason := ""
 
 	switch operation {
 	case gitOperationPush:
-		recoverable, reason = cm.classifyRecoverablePushError(err)
-		if !recoverable {
-			recoverable, reason = classifyRecoverableGitSyncError(err)
+		status.Recoverable, status.Reason = cm.classifyRecoverablePushError(err)
+		if !status.Recoverable {
+			status.Recoverable, status.Reason = classifyRecoverableGitSyncError(err)
 		}
 	case gitOperationPull:
-		recoverable, reason = classifyRecoverableGitSyncError(err)
-	default:
-		return
+		status.Recoverable, status.Reason = classifyRecoverableGitSyncError(err)
 	}
 
-	cm.setGitOperationFailure(operation, recoverable, reason, err)
+	if status.Reason == "" {
+		status.Reason = status.Details
+	}
+
+	return status
+}
+
+func (cm *ConfigManager) UpdateGitOperationStatus(operation string, err error) GitOperationHealth {
+	if err == nil {
+		cm.setGitOperationSuccess(operation)
+		return GitOperationHealth{}
+	}
+	if operation != gitOperationPush && operation != gitOperationPull {
+		return GitOperationHealth{}
+	}
+
+	status := cm.classifyGitOperationError(operation, err)
+	cm.setGitOperationFailure(operation, status)
+	return status
 }
 
 func (cm *ConfigManager) UpdateLoggerConfig(clustername string, conf *config.Config) {
@@ -710,12 +711,11 @@ func (cm *ConfigManager) processGitPush() {
 				<-cm.gitManager.DonePullCh
 				pullErr := cm.gitManager.ConsumePullResult()
 				if pullErr != nil {
-					cm.UpdateGitOperationStatus(gitOperationPull, pullErr)
-					recoverable, reason := classifyRecoverableGitSyncError(pullErr)
-					if recoverable {
-						cm.logger.Warnf("none", config.ConstLogModGit, "[Git] Warning-class pull failure (%s): %v", reason, pullErr)
+					status := cm.UpdateGitOperationStatus(gitOperationPull, pullErr)
+					if status.Recoverable {
+						cm.logger.Warnf("none", config.ConstLogModGit, "[Git] Warning-class pull failure (%s): %v", status.Reason, pullErr)
 					} else {
-						cm.logger.Errorf("none", config.ConstLogModGit, "[Git] Persistent pull failure (%s): %v", reason, pullErr)
+						cm.logger.Errorf("none", config.ConstLogModGit, "[Git] Persistent pull failure (%s): %v", status.Reason, pullErr)
 					}
 				} else {
 					cm.UpdateGitOperationStatus(gitOperationPull, nil)
@@ -726,14 +726,10 @@ func (cm *ConfigManager) processGitPush() {
 				cm.logger.Debugf("none", config.ConstLogModGit, "[Git] Starting Git push...")
 				// Execute the save function and handle potential errors
 				if err := cm.PushAllConfigsToGit(configGitTask.conf, configGitTask.clusterList); err != nil {
-					cm.UpdateGitOperationStatus(gitOperationPush, err)
-					recoverable, reason := cm.classifyRecoverablePushError(err)
-					if !recoverable {
-						recoverable, reason = classifyRecoverableGitSyncError(err)
-					}
+					status := cm.UpdateGitOperationStatus(gitOperationPush, err)
 					// Execute the Git push function and handle potential errors
-					if recoverable {
-						cm.logger.Warnf("none", config.ConstLogModGit, "[Git] Warning-class push failure (%s): %v", reason, err)
+					if status.Recoverable {
+						cm.logger.Warnf("none", config.ConstLogModGit, "[Git] Warning-class push failure (%s): %v", status.Reason, err)
 					} else {
 						cm.logger.Errorf("none", config.ConstLogModGit, "[Git] Error during push: %v\n", err)
 					}
@@ -899,6 +895,18 @@ func classifyRecoverableGitSyncError(err error) (bool, string) {
 		return false, ""
 	}
 
+	if errors.Is(err, transport.ErrAuthenticationRequired) || errors.Is(err, transport.ErrAuthorizationFailed) {
+		return false, "authentication/authorization"
+	}
+
+	if errors.Is(err, transport.ErrRepositoryNotFound) {
+		return false, "repository not found"
+	}
+
+	if errors.Is(err, transport.ErrEmptyRemoteRepository) {
+		return true, "empty remote repository"
+	}
+
 	if errors.Is(err, io.EOF) {
 		return true, "unexpected EOF"
 	}
@@ -947,18 +955,6 @@ func classifyRecoverableGitSyncError(err error) (bool, string) {
 		if strings.Contains(msg, sub) {
 			return true, sub
 		}
-	}
-
-	if errors.Is(err, transport.ErrRepositoryNotFound) {
-		return false, "repository not found"
-	}
-
-	if errors.Is(err, transport.ErrEmptyRemoteRepository) {
-		return true, "empty remote repository"
-	}
-
-	if errors.Is(err, transport.ErrAuthenticationRequired) || errors.Is(err, transport.ErrAuthorizationFailed) {
-		return false, "authentication/authorization"
 	}
 
 	return false, ""
