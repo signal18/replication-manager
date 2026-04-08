@@ -18,22 +18,25 @@ type MonitoringConfig struct {
 	ConfDirExtra  string `mapstructure:"monitoring-confdir-extra" toml:"monitoring-confdir-extra" json:"monitoringConfdirExtra" scope:"server"`
 
 	// Configuration Management
-	ConfRewrite              bool `mapstructure:"monitoring-save-config" toml:"monitoring-save-config" json:"monitoringSaveConfig" scope:"server"`
-	ConfRestoreOnStart       bool `mapstructure:"monitoring-restore-config-on-start" toml:"monitoring-restore-config-on-start" json:"monitoringRestoreConfigOnStart" scope:"server"`
-	MergeConfigOnStart       bool `mapstructure:"monitoring-merge-config-on-start" toml:"monitoring-merge-config-on-start" json:"monitoringMergeConfigOnStart" scope:"server"`
+	ConfRewrite        bool `mapstructure:"monitoring-save-config" toml:"monitoring-save-config" json:"monitoringSaveConfig" scope:"server"`
+	ConfRestoreOnStart bool `mapstructure:"monitoring-restore-config-on-start" toml:"monitoring-restore-config-on-start" json:"monitoringRestoreConfigOnStart" scope:"server"`
+	MergeConfigOnStart bool `mapstructure:"monitoring-merge-config-on-start" toml:"monitoring-merge-config-on-start" json:"monitoringMergeConfigOnStart" scope:"server"`
 
 	// SSL/TLS
-	SSLCert string `mapstructure:"monitoring-ssl-cert" toml:"monitoring-ssl-cert" json:"monitoringSSLCert" scope:"server"`
-	SSLKey  string `mapstructure:"monitoring-ssl-key" toml:"monitoring-ssl-key" json:"monitoringSSLKey" scope:"server"`
-	KeyPath string `mapstructure:"monitoring-key-path" toml:"monitoring-key-path" json:"monitoringKeyPath" scope:"server"`
-	KeyPathGitOverwrite bool `mapstructure:"monitoring-key-path-git-overwrite" toml:"monitoring-key-path-git-overwrite" json:"monitoringKeyPathGitOverwrite" scope:"server"`
+	SSLCert             string `mapstructure:"monitoring-ssl-cert" toml:"monitoring-ssl-cert" json:"monitoringSSLCert" scope:"server"`
+	SSLKey              string `mapstructure:"monitoring-ssl-key" toml:"monitoring-ssl-key" json:"monitoringSSLKey" scope:"server"`
+	KeyPath             string `mapstructure:"monitoring-key-path" toml:"monitoring-key-path" json:"monitoringKeyPath" scope:"server"`
+	KeyPathGitOverwrite bool   `mapstructure:"monitoring-key-path-git-overwrite" toml:"monitoring-key-path-git-overwrite" json:"monitoringKeyPathGitOverwrite" scope:"server"`
 
 	// Monitoring Behavior
-	Ticker         int64  `mapstructure:"monitoring-ticker" toml:"monitoring-ticker" json:"monitoringTicker" validate:"min=1,max=60"`
-	WaitRetry      int64  `mapstructure:"monitoring-wait-retry" toml:"monitoring-wait-retry" json:"monitorWaitRetry" validate:"min=1,max=999999"`
-	Address        string `mapstructure:"monitoring-address" toml:"monitoring-address" json:"monitoringAddress" scope:"server"`
-	Pause          bool   `mapstructure:"monitoring-pause" toml:"monitoring-pause" json:"monitoringPause"`
-	QueryTimeout   int    `mapstructure:"monitoring-query-timeout" toml:"monitoring-query-timeout" json:"monitoringQueryTimeout" validate:"min=100,max=300000"`
+	SecretVersioning          bool   `mapstructure:"monitoring-secret-versioning" toml:"monitoring-secret-versioning" json:"monitoringSecretVersioning"`
+	SecretVersioningAutoPrune bool   `mapstructure:"monitoring-secret-versioning-auto-prune" toml:"monitoring-secret-versioning-auto-prune" json:"monitoringSecretVersioningAutoPrune"`
+	SecretVersioningKeepLast  int    `mapstructure:"monitoring-secret-versioning-keep-last" toml:"monitoring-secret-versioning-keep-last" json:"monitoringSecretVersioningKeepLast" validate:"min=0"`
+	Ticker                    int64  `mapstructure:"monitoring-ticker" toml:"monitoring-ticker" json:"monitoringTicker" validate:"min=1,max=60"`
+	WaitRetry                 int64  `mapstructure:"monitoring-wait-retry" toml:"monitoring-wait-retry" json:"monitorWaitRetry" validate:"min=1,max=999999"`
+	Address                   string `mapstructure:"monitoring-address" toml:"monitoring-address" json:"monitoringAddress" scope:"server"`
+	Pause                     bool   `mapstructure:"monitoring-pause" toml:"monitoring-pause" json:"monitoringPause"`
+	QueryTimeout              int    `mapstructure:"monitoring-query-timeout" toml:"monitoring-query-timeout" json:"monitoringQueryTimeout" validate:"min=100,max=300000"`
 
 	// Tunnel Configuration
 	Socket           string `mapstructure:"monitoring-socket" toml:"monitoring-socket" json:"monitoringSocket"`
@@ -46,21 +49,21 @@ type MonitoringConfig struct {
 	WriteHeartbeatCredential string `mapstructure:"monitoring-write-heartbeat-credential" toml:"monitoring-write-heartbeat-credential" json:"monitoringWriteHeartbeatCredential"`
 
 	// Feature Monitoring
-	VariableDiff    bool   `mapstructure:"monitoring-variable-diff" toml:"monitoring-variable-diff" json:"monitoringVariableDiff"`
-	SchemaChange    bool   `mapstructure:"monitoring-schema-change" toml:"monitoring-schema-change" json:"monitoringSchemaChange"`
+	VariableDiff       bool   `mapstructure:"monitoring-variable-diff" toml:"monitoring-variable-diff" json:"monitoringVariableDiff"`
+	SchemaChange       bool   `mapstructure:"monitoring-schema-change" toml:"monitoring-schema-change" json:"monitoringSchemaChange"`
 	SchemaChangeScript string `mapstructure:"monitoring-schema-change-script" toml:"monitoring-schema-change-script" json:"monitoringSchemaChangeScript"`
-	CheckGrants     bool   `mapstructure:"monitoring-check-grants" toml:"monitoring-check-grants" json:"monitoringCheckGrants"`
-	QueryRules      bool   `mapstructure:"monitoring-query-rules" toml:"monitoring-query-rules" json:"monitoringQueryRules"`
-	Queries         bool   `mapstructure:"monitoring-queries" toml:"monitoring-queries" json:"monitoringQueries"`
-	Plugins         bool   `mapstructure:"monitoring-plugins" toml:"monitoring-plugins" json:"monitoringPlugins"`
-	InnoDBStatus    bool   `mapstructure:"monitoring-innodb-status" toml:"monitoring-innodb-status" json:"monitoringInnoDBStatus"`
+	CheckGrants        bool   `mapstructure:"monitoring-check-grants" toml:"monitoring-check-grants" json:"monitoringCheckGrants"`
+	QueryRules         bool   `mapstructure:"monitoring-query-rules" toml:"monitoring-query-rules" json:"monitoringQueryRules"`
+	Queries            bool   `mapstructure:"monitoring-queries" toml:"monitoring-queries" json:"monitoringQueries"`
+	Plugins            bool   `mapstructure:"monitoring-plugins" toml:"monitoring-plugins" json:"monitoringPlugins"`
+	InnoDBStatus       bool   `mapstructure:"monitoring-innodb-status" toml:"monitoring-innodb-status" json:"monitoringInnoDBStatus"`
 
 	// Performance Schema
-	PFS             bool `mapstructure:"monitoring-performance-schema" toml:"monitoring-performance-schema" json:"monitoringPerformanceSchema"`
-	PFSInstruments  bool `mapstructure:"monitoring-performance-schema-instruments" toml:"monitoring-performance-schema-instruments" json:"monitoringPerformanceSchemaInstruments"`
-	PFSMutex        bool `mapstructure:"monitoring-performance-schema-mutex" toml:"monitoring-performance-schema-mutex" json:"monitoringPerformanceSchemaMutex"`
-	PFSLatch        bool `mapstructure:"monitoring-performance-schema-latch" toml:"monitoring-performance-schema-latch" json:"monitoringPerformanceSchemaLatch"`
-	PFSMemory       bool `mapstructure:"monitoring-performance-schema-memory" toml:"monitoring-performance-schema-memory" json:"monitoringPerformanceSchemaMemory"`
+	PFS            bool `mapstructure:"monitoring-performance-schema" toml:"monitoring-performance-schema" json:"monitoringPerformanceSchema"`
+	PFSInstruments bool `mapstructure:"monitoring-performance-schema-instruments" toml:"monitoring-performance-schema-instruments" json:"monitoringPerformanceSchemaInstruments"`
+	PFSMutex       bool `mapstructure:"monitoring-performance-schema-mutex" toml:"monitoring-performance-schema-mutex" json:"monitoringPerformanceSchemaMutex"`
+	PFSLatch       bool `mapstructure:"monitoring-performance-schema-latch" toml:"monitoring-performance-schema-latch" json:"monitoringPerformanceSchemaLatch"`
+	PFSMemory      bool `mapstructure:"monitoring-performance-schema-memory" toml:"monitoring-performance-schema-memory" json:"monitoringPerformanceSchemaMemory"`
 
 	// Process List Monitoring
 	ProcessList                  bool   `mapstructure:"monitoring-processlist" toml:"monitoring-processlist" json:"monitoringProcesslist"`
@@ -82,9 +85,9 @@ type MonitoringConfig struct {
 	AuditLogLength    int `mapstructure:"monitoring-audit-log-length" toml:"monitoring-audit-log-length" json:"monitoringAuditLogLength" validate:"min=0,max=10000"`
 
 	// Capture
-	Capture          bool   `mapstructure:"monitoring-capture" toml:"monitoring-capture" json:"monitoringCapture"`
-	CaptureFileKeep  int    `mapstructure:"monitoring-capture-file-keep" toml:"monitoring-capture-file-keep" json:"monitoringCaptureFileKeep" validate:"min=0,max=100"`
-	CaptureTrigger   string `mapstructure:"monitoring-capture-trigger" toml:"monitoring-capture-trigger" json:"monitoringCaptureTrigger"`
+	Capture         bool   `mapstructure:"monitoring-capture" toml:"monitoring-capture" json:"monitoringCapture"`
+	CaptureFileKeep int    `mapstructure:"monitoring-capture-file-keep" toml:"monitoring-capture-file-keep" json:"monitoringCaptureFileKeep" validate:"min=0,max=100"`
+	CaptureTrigger  string `mapstructure:"monitoring-capture-trigger" toml:"monitoring-capture-trigger" json:"monitoringCaptureTrigger"`
 
 	// Disk Usage
 	DiskUsage    bool `mapstructure:"monitoring-disk-usage" toml:"monitoring-disk-usage" json:"monitoringDiskUsage"`
@@ -104,6 +107,10 @@ func (m *MonitoringConfig) Validate() error {
 	// Ticker must be reasonable
 	if m.Ticker < 1 || m.Ticker > 60 {
 		return NewValidationError("monitoring-ticker", m.Ticker, "must be between 1 and 60 seconds")
+	}
+
+	if m.SecretVersioningKeepLast < 0 {
+		return NewValidationError("monitoring-secret-versioning-keep-last", m.SecretVersioningKeepLast, "must be >= 0")
 	}
 
 	// Query timeout must be positive and reasonable

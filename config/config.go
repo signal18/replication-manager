@@ -71,6 +71,9 @@ type Config struct {
 	MonitoringSSLKey                          string                       `scope:"server" mapstructure:"monitoring-ssl-key" toml:"monitoring-ssl-key" json:"monitoringSSLKey"`
 	MonitoringKeyPath                         string                       `scope:"server" mapstructure:"monitoring-key-path" toml:"monitoring-key-path" json:"monitoringKeyPath"`
 	MonitoringKeyPathGitOverwrite             bool                         `scope:"server" mapstructure:"monitoring-key-path-git-overwrite" toml:"monitoring-key-path-git-overwrite" json:"monitoringKeyPathGitOverwrite"`
+	MonitoringSecretVersioning                bool                         `mapstructure:"monitoring-secret-versioning" toml:"monitoring-secret-versioning" json:"monitoringSecretVersioning"`
+	MonitoringSecretVersioningAutoPrune       bool                         `mapstructure:"monitoring-secret-versioning-auto-prune" toml:"monitoring-secret-versioning-auto-prune" json:"monitoringSecretVersioningAutoPrune"`
+	MonitoringSecretVersioningKeepLast        int                          `mapstructure:"monitoring-secret-versioning-keep-last" toml:"monitoring-secret-versioning-keep-last" json:"monitoringSecretVersioningKeepLast"`
 	MonitoringTicker                          int64                        `mapstructure:"monitoring-ticker" toml:"monitoring-ticker" json:"monitoringTicker"`
 	MonitorWaitRetry                          int64                        `mapstructure:"monitoring-wait-retry" toml:"monitoring-wait-retry" json:"monitoringWaitRetry"`
 	Socket                                    string                       `mapstructure:"monitoring-socket" toml:"monitoring-socket" json:"monitoringSocket"`
@@ -1604,27 +1607,32 @@ func (conf *Config) DecryptSecretsFromConfig() {
 			log.WithFields(log.Fields{"cluster": "none", "type": "log", "module": "config"}).Infof("DecryptSecretsFromConfig: %s", secret.Value)
 		}
 
-		lst_cred := strings.Split(secret.Value, ",")
-		var tab_cred []string
-		for _, cred := range lst_cred {
-			if strings.Contains(cred, ":") {
-				user, pass := misc.SplitPair(cred)
-				tab_cred = append(tab_cred, user+":"+conf.GetDecryptedPassword(k, pass))
-			} else {
-				if len(cred) > 1 {
-					tab_cred = append(tab_cred, conf.GetDecryptedPassword(k, cred))
-				} else {
-					//Show warnings on empty credentials
-					if conf.IsEligibleForPrinting(ConstLogModConfigLoad, LvlWarn) {
-						log.WithFields(log.Fields{"cluster": "none", "type": "log", "module": "config"}).Warnf("Empty credential do not decrypt key: %s", k)
-					}
-				}
-			}
-		}
-		secret.Value = strings.Join(tab_cred, ",")
+		secret.Value = conf.DecryptSecretValue(k, secret.Value)
 		//log.Printf("Decrypting secret variable %s=%s", k, secret.Value)
 		conf.Secrets[k] = secret
 	}
+}
+
+// DecryptSecretValue decrypts a secret payload while preserving composite
+// credential structure such as "user:hash_..." and comma-separated lists.
+func (conf *Config) DecryptSecretValue(key string, value string) string {
+	lst_cred := strings.Split(value, ",")
+	var tab_cred []string
+	for _, cred := range lst_cred {
+		if strings.Contains(cred, ":") {
+			user, pass := misc.SplitPair(cred)
+			tab_cred = append(tab_cred, user+":"+conf.GetDecryptedPassword(key, pass))
+		} else {
+			if len(cred) > 1 {
+				tab_cred = append(tab_cred, conf.GetDecryptedPassword(key, cred))
+			} else {
+				if conf.IsEligibleForPrinting(ConstLogModConfigLoad, LvlWarn) {
+					log.WithFields(log.Fields{"cluster": "none", "type": "log", "module": "config"}).Warnf("Empty credential do not decrypt key: %s", key)
+				}
+			}
+		}
+	}
+	return strings.Join(tab_cred, ",")
 }
 
 func (conf *Config) GetVaultCredentials(client *vault.Client, path string, key string) (string, error) {
@@ -1787,6 +1795,14 @@ func (conf *Config) IsVaultUsed() bool {
 		return false
 	}
 	return true
+}
+
+func (conf *Config) IsMonitoringSecretVersioningEnabled() bool {
+	if conf == nil {
+		return false
+	}
+
+	return conf.MonitoringSecretVersioning
 }
 
 func (conf *Config) GenerateKey(Logger *logrus.Logger) error {

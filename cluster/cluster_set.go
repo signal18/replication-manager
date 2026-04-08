@@ -710,6 +710,7 @@ func (cluster *Cluster) SetClusterCredentialsFromConfig() {
 }
 
 func (cluster *Cluster) SetClusterProxyCredentialsFromConfig() {
+	secretsUpdated := false
 
 	if cluster.Conf.IsVaultUsed() {
 		client, err := cluster.GetVaultConnection()
@@ -724,12 +725,14 @@ func (cluster *Cluster) SetClusterProxyCredentialsFromConfig() {
 				newSecret.OldValue = cluster.Conf.Secrets["proxysql-password"].Value
 				newSecret.Value = pass
 				cluster.Conf.Secrets["proxysql-password"] = newSecret
+				secretsUpdated = true
 			}
 
 			if user != "" {
 				newSecret.OldValue = cluster.Conf.Secrets["proxysql-user"].Value
 				newSecret.Value = user
 				cluster.Conf.Secrets["proxysql-user"] = newSecret
+				secretsUpdated = true
 			}
 
 		}
@@ -741,9 +744,14 @@ func (cluster *Cluster) SetClusterProxyCredentialsFromConfig() {
 				newSecret.OldValue = cluster.Conf.Secrets["shardproxy-credential"].Value
 				newSecret.Value = user + ":" + pass
 				cluster.Conf.Secrets["shardproxy-credential"] = newSecret
+				secretsUpdated = true
 			}
 		}
 
+	}
+
+	if secretsUpdated {
+		cluster.MarkSecretVersionStoreDirty()
 	}
 }
 
@@ -780,6 +788,7 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 		newSecret.OldValue = cluster.Conf.Secrets["db-servers-credential"].Value
 		newSecret.Value = user + ":" + pass
 		cluster.Conf.Secrets["db-servers-credential"] = newSecret
+		cluster.MarkSecretVersionStoreDirty()
 
 	}
 
@@ -825,6 +834,7 @@ func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
 		newSecret.OldValue = cluster.Conf.Secrets["replication-credential"].Value
 		newSecret.Value = user + ":" + pass
 		cluster.Conf.Secrets["replication-credential"] = newSecret
+		cluster.MarkSecretVersionStoreDirty()
 
 	}
 }
@@ -1089,6 +1099,7 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 		newSecret.OldValue = cluster.Conf.Secrets["shardproxy-credential"].Value
 		newSecret.Value = credential
 		cluster.Conf.Secrets["shardproxy-credential"] = newSecret
+		cluster.MarkSecretVersionStoreDirty()
 
 		for _, pri := range cluster.Proxies {
 			_, pass := misc.SplitPair(credential)
@@ -1116,6 +1127,7 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 		newSecret.OldValue = cluster.Conf.Secrets["proxysql-user"].Value
 		newSecret.Value = user
 		cluster.Conf.Secrets["proxysql-user"] = newSecret
+		cluster.MarkSecretVersionStoreDirty()
 		for _, pri := range cluster.Proxies {
 			_, pass := misc.SplitPair(credential)
 			if prx, ok := pri.(*ProxySQLProxy); ok {
@@ -1225,6 +1237,7 @@ func (cluster *Cluster) SetReplicationCredential(credential string) {
 	new_secret.Value = cluster.Conf.RplUser
 	new_secret.OldValue = cluster.Conf.GetDecryptedValue("replication-credential")
 	cluster.Conf.Secrets["replication-credential"] = new_secret
+	cluster.MarkSecretVersionStoreDirty()
 	cluster.SetClusterReplicationCredentialsFromConfig()
 	cluster.SetUnDiscovered()
 }
@@ -2377,6 +2390,7 @@ func (cluster *Cluster) SetDatabaseCredentials(role string, cred string) error {
 
 		cluster.Conf.Cloud18DbaUserCredentials = cred
 		cluster.Conf.Secrets["cloud18-dba-user-credentials"] = new_secret
+		cluster.MarkSecretVersionStoreDirty()
 	case "sponsor":
 		var new_secret config.Secret
 		new_secret.Value = cred
@@ -2384,6 +2398,7 @@ func (cluster *Cluster) SetDatabaseCredentials(role string, cred string) error {
 
 		cluster.Conf.Cloud18SponsorUserCredentials = cred
 		cluster.Conf.Secrets["cloud18-sponsor-user-credentials"] = new_secret
+		cluster.MarkSecretVersionStoreDirty()
 	default:
 		return errors.New("Unknown secret role")
 	}
@@ -2397,6 +2412,7 @@ func (cluster *Cluster) SetResticPassword(cred string) {
 	new_secret.Value = cluster.Conf.BackupResticPassword
 	new_secret.OldValue = cluster.Conf.GetDecryptedValue("backup-restic-password")
 	cluster.Conf.Secrets["backup-restic-password"] = new_secret
+	cluster.MarkSecretVersionStoreDirty()
 }
 
 func (cluster *Cluster) SetStagingServer(srv *ServerMonitor) {
