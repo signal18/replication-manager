@@ -226,7 +226,7 @@ plugin-push:
 		git diff --cached --quiet || \
 		  git commit -m "plugins: $(VERSION) [$(PLUGIN_PLATFORM)] → wire-v$(WIRE_VERSION) [$(FULLVERSION)]" && \
 		AUTH_URL=$$(echo "$(PLUGIN_SIGNER_REPO)" | sed "s|https://|https://$(PLUGIN_SIGNER_USER):$(PLUGIN_SIGNER_TOKEN)@|"); \
-		git push "$$AUTH_URL" HEAD:main && \
+		git -c http.postBuffer=104857600 push "$$AUTH_URL" HEAD:main && \
 		echo "Pushed $(VERSION) → $(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION) to signer repo"; \
 	else \
 		echo "Skipping plugin-push (no credentials or dev build)"; \
