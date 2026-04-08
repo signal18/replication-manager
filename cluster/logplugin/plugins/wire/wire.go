@@ -5,16 +5,25 @@ package wire
 
 // Request is written to the plugin's stdin as a single JSON object.
 type Request struct {
-	ServerURL        string     `json:"server_url"`
-	GraphiteAPIURL   string     `json:"graphite_api_url"`
-	GraphiteHostname string     `json:"graphite_hostname"`
-	ErrorLog         []Msg      `json:"error_log"`
-	SqlErrorLog      []Msg      `json:"sql_error_log"`
-	SlowLog          []SlowMsg  `json:"slow_log"`
-	AuditLog         []Msg      `json:"audit_log"`
-	PFSQueries       []PFSQuery `json:"pfs_queries"`
-	ProcessList      []Process  `json:"process_list"`
-	MetaDataLocks    []MDL      `json:"metadata_locks"`
+	ServerURL        string        `json:"server_url"`
+	GraphiteAPIURL   string        `json:"graphite_api_url"`
+	GraphiteHostname string        `json:"graphite_hostname"`
+	ErrorLog         []Msg         `json:"error_log"`
+	SqlErrorLog      []Msg         `json:"sql_error_log"`
+	SlowLog          []SlowMsg     `json:"slow_log"`
+	AuditLog         []Msg         `json:"audit_log"`
+	PFSQueries       []PFSQuery    `json:"pfs_queries"`
+	ProcessList      []Process     `json:"process_list"`
+	MetaDataLocks    []MDL         `json:"metadata_locks"`
+	BinlogEvents     []BinlogEvent `json:"binlog_events"`
+}
+
+// BinlogEvent is a single QUERY_EVENT captured from a server's binary log.
+type BinlogEvent struct {
+	Timestamp string `json:"timestamp"` // "2006-01-02 15:04:05" UTC
+	Schema    string `json:"schema"`    // default schema at query time
+	Query     string `json:"query"`     // raw SQL statement text
+	ServerID  uint32 `json:"server_id"` // originating server-id
 }
 
 type Msg struct {

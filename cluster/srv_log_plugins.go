@@ -82,6 +82,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			PFSQueries:       snapshotPFSQueries(server),
 			ProcessList:      snapshotProcessList(server),
 			MetaDataLocks:    snapshotMetaDataLocks(server),
+			BinlogEvents:     snapshotBinlogEvents(server),
 		}
 
 		if !src.IsEnabled() {
@@ -234,6 +235,10 @@ func (cluster *Cluster) CheckLogPlugins() {
 		if server == nil || server.IsDown() || server.IsIgnored() {
 			continue
 		}
+		// Refresh binlog QUERY events before running plugins that inspect them.
+		if cluster.Conf.LogPluginBinlogScan && server.HaveBinlog {
+			server.ScanBinlogQueryEvents()
+		}
 		server.RunLogPlugins(cluster.pluginSpikeCache)
 	}
 }
@@ -363,6 +368,25 @@ func snapshotProcessList(server *ServerMonitor) []logplugin.StdioProcess {
 			RowsExamined:  p.RowsExamined,
 			TrxTime:       p.TrxTime,
 			TrxRowsLocked: p.TrxRowsLocked,
+		})
+	}
+	return out
+}
+
+// snapshotBinlogEvents returns a lock-free copy of the binlog event ring buffer.
+func snapshotBinlogEvents(server *ServerMonitor) []logplugin.StdioBinlogEvent {
+	server.BinlogEventLog.L.Lock()
+	defer server.BinlogEventLog.L.Unlock()
+	out := make([]logplugin.StdioBinlogEvent, 0, len(server.BinlogEventLog.Buffer))
+	for _, e := range server.BinlogEventLog.Buffer {
+		if e.Query == "" {
+			continue
+		}
+		out = append(out, logplugin.StdioBinlogEvent{
+			Timestamp: e.Timestamp,
+			Schema:    e.Schema,
+			Query:     e.Query,
+			ServerID:  e.ServerID,
 		})
 	}
 	return out

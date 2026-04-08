@@ -27,6 +27,7 @@ import (
 
 	_ "github.com/lib/pq"
 
+	"github.com/go-mysql-org/go-mysql/replication"
 	"github.com/go-sql-driver/mysql"
 	"github.com/hpcloud/tail"
 	"github.com/jmoiron/sqlx"
@@ -184,6 +185,10 @@ type ServerMonitor struct {
 	SlowLogTailer               *tail.Tail                 `json:"-"`
 	SqlErrorLogTailer           *tail.Tail                 `json:"-"`
 	AuditLogTailer              *tail.Tail                 `json:"-"`
+	BinlogEventLog              s18log.BinlogEventLog      `json:"-"` // recent binlog QUERY events for security plugins
+	binlogEventSyncer           *replication.BinlogSyncer  // persistent syncer for security event scanning
+	binlogEventStreamer         *replication.BinlogStreamer // stream open on the current binlog file
+	binlogEventFile             string                     // binlog filename the streamer is attached to
 	MonitorTime                 int64                      `json:"-"`
 	PrevMonitorTime             int64                      `json:"-"`
 	maxConn                     string                     `json:"maxConn"` // used to back max connection for failover
@@ -457,6 +462,7 @@ func (server *ServerMonitor) InitLogTailers() {
 	server.SlowLog = s18log.NewSlowLog(cluster.Conf.MonitorLongQueryLogLength)
 	server.SqlErrorLog = s18log.NewHttpLog(cluster.Conf.MonitorSqlErrorLogLength)
 	server.AuditLog = s18log.NewHttpLog(cluster.Conf.MonitorAuditLogLength)
+	server.BinlogEventLog = s18log.NewBinlogEventLog(cluster.Conf.MonitorBinlogEventLogLength)
 }
 
 func (server *ServerMonitor) NewLogTailer(logtype string) (*tail.Tail, error) {
@@ -1366,6 +1372,7 @@ func (server *ServerMonitor) LogReplPostion() {
 }
 
 func (server *ServerMonitor) Close() {
+	server.CloseBinlogEventSyncer()
 	server.Conn.Close()
 }
 

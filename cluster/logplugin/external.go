@@ -73,6 +73,9 @@ type StdioRequest struct {
 
 	// Metadata lock waits (populated when METADATA_LOCK_INFO plugin is installed)
 	MetaDataLocks []StdioMDL `json:"metadata_locks"`
+
+	// BinlogEvents contains recent binlog QUERY events (populated when log-plugin-binlog-scan is on)
+	BinlogEvents []StdioBinlogEvent `json:"binlog_events"`
 }
 
 // stdioMsg is a generic log entry (error log, SQL error log, audit log).
@@ -180,6 +183,7 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 		PFSQueries:       pfsToWire(src.PFSQueries),
 		ProcessList:      processToWire(src.ProcessList),
 		MetaDataLocks:    mdlToWire(src.MetaDataLocks),
+		BinlogEvents:     src.BinlogEvents,
 	}
 
 	payload, err := json.Marshal(req)

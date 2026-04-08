@@ -124,6 +124,7 @@ type Config struct {
 	MonitorErrorLogLength                     int                          `mapstructure:"monitoring-error-log-length" toml:"monitoring-error-log-length" json:"monitoringErrorLogLength"`
 	MonitorSqlErrorLogLength                  int                          `mapstructure:"monitoring-sql-error-log-length" toml:"monitoring-sql-error-log-length" json:"monitoringSqlErrorLogLength"`
 	MonitorAuditLogLength                     int                          `mapstructure:"monitoring-audit-log-length" toml:"monitoring-audit-log-length" json:"monitoringAuditLogLength"`
+	MonitorBinlogEventLogLength               int                          `mapstructure:"monitoring-binlog-event-log-length" toml:"monitoring-binlog-event-log-length" json:"monitoringBinlogEventLogLength"`
 	MonitorCapture                            bool                         `mapstructure:"monitoring-capture" toml:"monitoring-capture" json:"monitoringCapture"`
 	MonitorCaptureFileKeep                    int                          `mapstructure:"monitoring-capture-file-keep" toml:"monitoring-capture-file-keep" json:"monitoringCaptureFileKeep"`
 	MonitorDiskUsage                          bool                         `mapstructure:"monitoring-disk-usage" toml:"monitoring-disk-usage" json:"monitoringDiskUsage"`
@@ -187,6 +188,7 @@ type Config struct {
 	LogLevelDatabaseOptimize                  int                          `mapstructure:"log-level-database-optimize" toml:"log-level-database-optimize" json:"logLevelDatabaseOptimize"`
 	LogLevelDatabaseAudit                     int                          `mapstructure:"log-level-database-audit" toml:"log-level-database-audit" json:"logLevelDatabaseAudit"`
 	LogPlugin                                 bool                         `mapstructure:"log-plugin" toml:"log-plugin" json:"logPlugin"`
+	LogPluginBinlogScan                       bool                         `mapstructure:"log-plugin-binlog-scan" toml:"log-plugin-binlog-scan" json:"logPluginBinlogScan"`
 	LogPluginLevel                            int                          `mapstructure:"log-level-plugin" toml:"log-level-plugin" json:"logPluginLevel"`
 	PluginConfig                              map[string]map[string]string `mapstructure:"plugin-config" toml:"plugin-config" json:"pluginConfig"`
 	User                                      string                       `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`

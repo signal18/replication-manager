@@ -114,6 +114,15 @@ func (c *SpikeCache) IsFresh() bool {
 	return time.Since(c.CheckedAt) < SpikeCheckInterval
 }
 
+// StdioBinlogEvent is a single QUERY_EVENT captured from a server's binary log.
+// Passed to plugins that inspect binlog content (e.g. cleartext-password, credit-card).
+type StdioBinlogEvent struct {
+	Timestamp string `json:"timestamp"` // "2006-01-02 15:04:05" UTC
+	Schema    string `json:"schema"`    // default schema at query time
+	Query     string `json:"query"`     // raw SQL statement text
+	ServerID  uint32 `json:"server_id"` // originating server-id
+}
+
 // LogSource is passed to every plugin Evaluate() call.
 // All buffer fields are lock-free value copies.
 type LogSource struct {
@@ -144,6 +153,9 @@ type LogSource struct {
 	// MetaDataLocks is a snapshot of current MDL waits.
 	// Populated when METADATA_LOCK_INFO plugin is installed.
 	MetaDataLocks []StdioMDL
+	// BinlogEvents is a snapshot of recent binlog QUERY events.
+	// Populated when Conf.LogPluginBinlogScan is enabled.
+	BinlogEvents []StdioBinlogEvent
 }
 
 // IsEnabled returns false only when config explicitly sets enabled=false/0/no.

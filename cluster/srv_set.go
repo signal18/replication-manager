@@ -87,6 +87,8 @@ func (server *ServerMonitor) SetPrevState(state string) {
 
 func (server *ServerMonitor) SetFailed() {
 	server.SetState(stateFailed)
+	// Release the persistent binlog streamer so the TCP connection is freed promptly.
+	server.CloseBinlogEventSyncer()
 }
 
 func (server *ServerMonitor) SetMaster() {
