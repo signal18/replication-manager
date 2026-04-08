@@ -32,6 +32,7 @@ import (
 
 	"github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/cluster/configurator"
+	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/manager"
@@ -52,7 +53,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	logsql "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
-	"github.com/signal18/replication-manager/cluster/logplugin"
 )
 
 var clusterError = config.ClusterError
@@ -267,6 +267,8 @@ type Cluster struct {
 	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}
 	preservedVarsLoaded         bool                       `json:"-"`
 	preservedVarsMutex          sync.RWMutex               `json:"-"`
+	secretVersionStoreMu        sync.Mutex                 `json:"-"`
+	secretVersionStoreDirty     bool                       `json:"-"`
 	// pluginSpikeCache holds the last DetectSpike result per server+plugin pair.
 	// Keyed as "serverURL:pluginName". Prevents graphite HTTP on every tick.
 	pluginSpikeCache map[string]*logplugin.SpikeCache `json:"-"`
@@ -693,9 +695,11 @@ func (cluster *Cluster) Run() {
 	cluster.Lock()
 	cluster.Topology = config.TopoUnknown
 	cluster.Unlock()
+	cluster.MarkSecretVersionStoreDirty()
 
 	for !cluster.exit {
 		if !cluster.Conf.MonitorPause {
+			cluster.ReconcileSecretVersionStore()
 			cluster.ServerIdList = cluster.GetDBServerIdList()
 			cluster.ProxyIdList = cluster.GetProxyServerIdList()
 			cluster.AppIdList = cluster.GetAppServerIdList()
@@ -1072,11 +1076,12 @@ func (cluster *Cluster) SetIsSavingConfig(val bool) {
 }
 
 type ClusterState struct {
-	Servers    string      `json:"servers"`
-	Crashes    crashList   `json:"crashes"`
-	SLA        state.Sla   `json:"sla"`
-	SLAHistory []state.Sla `json:"slaHistory"`
-	IsAllDbUp  bool        `json:"provisioned"`
+	Servers       string      `json:"servers"`
+	Crashes       crashList   `json:"crashes"`
+	SLA           state.Sla   `json:"sla"`
+	SLAHistory    []state.Sla `json:"slaHistory"`
+	IsAllDbUp     bool        `json:"provisioned"`
+	RepmgrVersion string      `json:"repmgrVersion"`
 }
 
 func (cluster *Cluster) Save() error {
@@ -1092,6 +1097,7 @@ func (cluster *Cluster) Save() error {
 	clsave.SLA = cluster.StateMachine.GetSla()
 	clsave.IsAllDbUp = cluster.IsAllDbUp
 	clsave.SLAHistory = cluster.SLAHistory
+	clsave.RepmgrVersion = cluster.RepMgrVersion
 
 	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
 	err := os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)

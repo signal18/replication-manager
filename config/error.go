@@ -241,15 +241,26 @@ var ClusterError = map[string]string{
 	"WARN0166":  "Restic reseed queued on server %s (snapshot %s, method %s, strategy %s)",
 	"WARN0167":  "Failed to get sysbench version on repman: %s",
 	// Log-tailer plugin state codes (WARN0200-WARN0299 reserved for logplugin)
-	"WARN0200": "Server %s has recent ERROR entries in database error log (last 24h)",
-	"WARN0201": "Server %s has recent SQL errors in SQL error log (last 24h)",
-	"WARN0202": "Server %s has recent slow queries in slow query log (last 24h)",
-	"WARN0203": "Log plugin execution error",
-	"WARN0204": "Server %s has new query templates in audit log not seen in baseline window",
-	"WARN0205": "Server %s has a log event spike detected vs dynamic multi-granularity baseline",
+	"WARN0200":  "Server %s has recent ERROR entries in database error log (last 24h)",
+	"WARN0201":  "Server %s has recent SQL errors in SQL error log (last 24h)",
+	"WARN0202":  "Server %s has recent slow queries in slow query log (last 24h)",
+	"WARN0203":  "Log plugin execution error",
+	"WARN0204":  "Server %s has new query templates in audit log not seen in baseline window",
+	"WARN0205":  "Server %s has a log event spike detected vs dynamic multi-granularity baseline",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",
 }
 
 var AppError = map[string]string{}
+
+// GlobalError stores ReplicationManager-wide alert templates emitted by
+// server-level supervision workflows.
+var GlobalError = map[string]string{
+	"GWARN001": "ReplicationManager detected stalled cluster heartbeat for %s",
+	"GWARN002": "ReplicationManager git push reported warning-level failure: %s",
+	"GWARN003": "ReplicationManager git pull reported warning-level failure: %s",
+	"GERR001":  "ReplicationManager detected prolonged stalled cluster heartbeat for %s",
+	"GERR002":  "ReplicationManager git push reported persistent failure: %s",
+	"GERR003":  "ReplicationManager git pull reported persistent failure: %s",
+}

@@ -37,8 +37,8 @@ func init() {
 		RepMan = new(ReplicationManager)
 		RepMan.MessageChan = make(chan sharedlog.Message, 1000)
 		RepMan.StartMessageChanListener()
-
 		RepMan.InitUser()
+		RepMan.InitAlertStateMachine()
 	}
 
 	RepMan.AddFlags(monitorCmd.Flags(), &conf, false)

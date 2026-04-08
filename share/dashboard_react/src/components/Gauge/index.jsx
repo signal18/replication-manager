@@ -1,5 +1,5 @@
-import { Box, Flex, HStack, Text } from '@chakra-ui/react'
-import React, { useCallback, useEffect, useRef } from 'react'
+import { Flex, HStack, Text } from '@chakra-ui/react'
+import { memo, useCallback, useMemo } from 'react'
 import GaugeComponent from 'react-gauge-component'
 import styles from './styles.module.scss'
 import RMButton from '../RMButton'
@@ -13,7 +13,6 @@ function Gauge({
   textOverlayClassName,
   minValue = 0,
   maxValue = 100,
-  isGaugeSizeCustomized = true,
   appendTextToValue = '',
   hideMinMax = true,
   showStep = false,
@@ -21,108 +20,114 @@ function Gauge({
   handleStepChange,
   isDisabled = false,
 }) {
-  const svgRef = useRef(null)
-  const updateGaugePosition = useCallback(() => {
-    const svgElement = svgRef.current.querySelector('svg')
-    if (svgElement) {
-      svgElement.setAttribute('width', width)
-      svgElement.setAttribute('height', height)
+  const safeValue = !isFinite(value) || value < minValue ? minValue : value > maxValue ? maxValue : value
 
-      const gElements = svgElement.querySelectorAll('g')
-      gElements.forEach((g) => {
-        const transform = g.getAttribute('transform')
-        const translateMatch = /translate\(([^,]+),\s*([^)]+)\)/.exec(transform)
+  const formatValue = useCallback((v) => {
+    const formatted = typeof v === 'number' && !Number.isInteger(v) ? v.toFixed(1) : String(v)
+    return appendTextToValue ? `${formatted} ${appendTextToValue}` : formatted
+  }, [appendTextToValue])
 
-        if (translateMatch) {
-          const [_, x, y] = translateMatch
-          if (isGaugeSizeCustomized) {
-            g.setAttribute('transform', `translate(${x}, 30)`)
-          }
-        }
-      })
-    }
-  }, [width, height, isGaugeSizeCustomized])
+  const arcConfig = useMemo(() => ({
+    width: 0.18,
+    cornerRadius: 3,
+    padding: 0.02,
+    subArcs: [
+      { length: 0.33, color: '#5BE12C' },
+      { length: 0.33, color: '#F5CD19' },
+      { length: 0.34, color: '#EA4228' },
+    ],
+  }), [])
 
-  useEffect(() => {
-    updateGaugePosition()
-  }, [value, updateGaugePosition])
+  const pointerConfig = useMemo(() => ({
+    animate: true,
+    animationDuration: 500,
+    elastic: false,
+    length: 0.65,
+    width: 12,
+    color: '#9ca3af',
+  }), [])
 
-  useEffect(() => {
-    updateGaugePosition()
-    window.addEventListener('resize', updateGaugePosition)
-    return () => {
-      window.removeEventListener('resize', updateGaugePosition)
-    }
-  }, [updateGaugePosition])
+  const labelsConfig = useMemo(() => ({
+    valueLabel: {
+      formatTextValue: formatValue,
+      style: {
+        fontSize: '28px',
+        fontWeight: 'bold',
+        textShadow: 'none',
+        fill: '#9ca3af',
+      },
+    },
+    tickLabels: {
+      hideMinMax: hideMinMax,
+      type: 'inner',
+      defaultTickValueConfig: {
+        style: { fontSize: '8px', fill: '#9ca3af' },
+      },
+      defaultTickLineConfig: {
+        color: '#9ca3af',
+        length: 5,
+      },
+    },
+  }), [hideMinMax, formatValue])
 
-  const formatValue = (value) => {
-    if (typeof value === 'number' && !Number.isInteger(value)) {
-      return value.toFixed(3)
-    }
-    return value
-  }
+  const gaugeStyle = useMemo(() => ({
+    width: `${width}px`,
+    height: `${height}px`,
+  }), [width, height])
 
   const handleMinValue = (value, minValue) => {
     let newValue = parseInt(value) - parseInt(step)
-    if (newValue < minValue) {
-      newValue = minValue
-    }
+    if (newValue < minValue) newValue = minValue
     handleStepChange(newValue)
   }
 
   const handleMaxValue = (value, maxValue) => {
     let newValue = parseInt(value) + parseInt(step)
-    if (newValue > maxValue) {
-      newValue = maxValue
-    }
+    if (newValue > maxValue) newValue = maxValue
     handleStepChange(newValue)
   }
 
   return (
-    <Flex direction='column' justify='center' position='relative'>
-      <Box width={width} height={height} className={`${styles.container} ${className}`} ref={svgRef}>
-        <GaugeComponent
-            minValue={minValue}
-            maxValue={maxValue}
-            className={styles.guage}
-            arc={{
-              subArcs: [
-                { length: 0.33, color: '#5BE12C' },
-                { length: 0.33, color: '#F5CD19' },
-                { length: 0.34, color: '#EA4228' }
-              ]
-            }}
-            style={isGaugeSizeCustomized ? {} : { width: `${width}px`, height: `${height}px` }}
-            value={!isFinite(value) || value < minValue ? minValue : value > maxValue ? maxValue : value}
-            labels={{
-              valueLabel: {
-                formatTextValue: () => '',
-                maxDecimalDigits: 3
-              },
-              tickLabels: { hideMinMax: hideMinMax, type: 'inner' }
-            }}
-          />
-        <Box className={`${styles.textOverlay} ${textOverlayClassName}`}>
-          <Text className={styles.valueText}>{`${formatValue(value)} ${appendTextToValue}`}</Text>
-          <Text className={styles.labelText}>{text}</Text>
-        </Box>
-      </Box>
+    <Flex direction='column' align='center' justify='center' className={className}>
+      <GaugeComponent
+        minValue={minValue}
+        maxValue={maxValue}
+        value={safeValue}
+        style={gaugeStyle}
+        arc={arcConfig}
+        pointer={pointerConfig}
+        labels={labelsConfig}
+      />
+      <Text
+        fontSize='xs'
+        fontWeight='semibold'
+        textAlign='center'
+        className={`${styles.labelText} ${textOverlayClassName ?? ''}`}
+        mt='-6px'
+        opacity={0.75}
+      >
+        {text}
+      </Text>
       {showStep && (
-        <HStack className={styles.stepButtons} gap={2} margin='auto'>
+        <HStack className={styles.stepButtons} gap={2} margin='auto' mt='4px'>
           <RMButton
             isDisabled={isDisabled}
             variant='outline'
             className={styles.decreaseButton}
-            onClick={() => handleMinValue(value, minValue)}>{`-${step}`}</RMButton>
+            onClick={() => handleMinValue(value, minValue)}>
+            {`-${step}`}
+          </RMButton>
           <RMButton
             isDisabled={isDisabled}
             variant='outline'
             className={styles.increaseButton}
-            onClick={() => handleMaxValue(value, maxValue)}>{`+${step}`}</RMButton>
+            onClick={() => handleMaxValue(value, maxValue)}>
+            {`+${step}`}
+          </RMButton>
         </HStack>
       )}
     </Flex>
   )
 }
 
-export default Gauge
+export default memo(Gauge)

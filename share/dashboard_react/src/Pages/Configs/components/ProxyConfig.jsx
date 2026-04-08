@@ -122,14 +122,12 @@ function ProxyConfig({ selectedCluster, user }) {
             maxValue={25600}
             value={convertSize(selectedCluster?.config?.provProxyMemory, "M", "M")}
             text={'Memory'}
-            width={220}
-            height={150}
+            width={150}
+            height={105}
             hideMinMax={false}
-            isGaugeSizeCustomized={false}
             showStep={true}
             step={256}
             appendTextToValue='MB'
-            textOverlayClassName={styles.textOverlay}
             handleStepChange={(value) => {
               setConfirmTitle(`Confirm proxy memory change to ${value}`)
               setIsConfirmModalOpen(true)
@@ -151,14 +149,12 @@ function ProxyConfig({ selectedCluster, user }) {
             maxValue={10000}
             value={convertSize(selectedCluster?.config?.provProxyDiskSize, "G", "G")}
             text={'Disk size'}
-            width={220}
-            height={150}
+            width={150}
+            height={105}
             hideMinMax={false}
-            isGaugeSizeCustomized={false}
             showStep={true}
             step={10}
             appendTextToValue='GB'
-            textOverlayClassName={styles.textOverlay}
             handleStepChange={(value) => {
               setConfirmTitle(`Confirm proxy disk size change to ${value}`)
               setIsConfirmModalOpen(true)
@@ -180,13 +176,11 @@ function ProxyConfig({ selectedCluster, user }) {
             maxValue={256}
             value={selectedCluster?.config?.provProxyCpuCores}
             text={'Cores'}
-            width={220}
-            height={150}
+            width={150}
+            height={105}
             hideMinMax={false}
-            isGaugeSizeCustomized={false}
             showStep={true}
             step={1}
-            textOverlayClassName={styles.textOverlay}
             handleStepChange={(value) => {
               setConfirmTitle(`Confirm proxy cpu cores change to ${value}`)
               setIsConfirmModalOpen(true)
