@@ -453,7 +453,7 @@ func applyRestoreEntriesToClusterConfigFile(configPath string, clusterName strin
 }
 
 func writeConfigFileAtomic(path string, payload []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	tmpFile, err := os.CreateTemp(filepath.Dir(path), "cluster_restore-*.tmp")

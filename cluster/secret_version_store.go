@@ -561,7 +561,7 @@ func resolveSecretStoreEntryByTime(key string, versions []secretVersion, at time
 }
 
 func writeFileAtomic(path string, payload []byte, tempPattern string) error {
-	if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 
