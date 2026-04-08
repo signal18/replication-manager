@@ -18,6 +18,11 @@ PROTO_DIR = signal18/replication-manager/v3
 EMBED = -X github.com/signal18/replication-manager/server.WithEmbed=ON
 WITH_REACT = ON
 
+.PHONY: all bin non-cgo tar react osc osc-bin osc-basedir osc-cgo osc-cgo-basedir \
+        tst tst-basedir pro pro-bin pro-basedir cli arb emb \
+        plugins plugin-keys plugin-sigs plugin-push plugin-repo-init plugins-clean \
+        clean proto
+
 all: cli bin tar arb
 
 bin: osc tst pro osc-cgo emb
@@ -150,28 +155,69 @@ $(PLUGIN_BINDIR)/%:
 	    -o $(PLUGIN_BINDIR)/$* \
 	    ./cluster/logplugin/plugins/$*/...
 
+# Bootstrap an empty signer repo: generate keypair, commit both keys, push.
+# Run once before the first 'make plugins' with credentials.
+plugin-repo-init: $(PLUGIN_SIGNER_BIN)
+	@if [ -z "$(PLUGIN_SIGNER_USER)" ] || [ -z "$(PLUGIN_SIGNER_TOKEN)" ]; then \
+		echo "ERROR: set PLUGIN_SIGNER_USER and PLUGIN_SIGNER_TOKEN"; exit 1; \
+	fi
+	@mkdir -p $(PLUGIN_KEY_DIR)
+	@AUTH_URL=$$(echo "$(PLUGIN_SIGNER_REPO)" | sed "s|https://|https://$(PLUGIN_SIGNER_USER):$(PLUGIN_SIGNER_TOKEN)@|"); \
+	if [ ! -d "$(PLUGIN_SIGNER_CLONE)/.git" ]; then \
+		echo "Cloning signer repo..."; \
+		git clone --quiet "$$AUTH_URL" "$(PLUGIN_SIGNER_CLONE)" 2>/dev/null || \
+		  { mkdir -p "$(PLUGIN_SIGNER_CLONE)" && cd "$(PLUGIN_SIGNER_CLONE)" \
+		    && git init && git remote add origin "$$AUTH_URL"; }; \
+	fi; \
+	if [ ! -f "$(PLUGIN_SIGNING_KEY)" ]; then \
+		echo "Generating keypair..."; \
+		$(PLUGIN_SIGNER_BIN) keygen \
+			--private-key "$(PLUGIN_SIGNING_KEY)" \
+			--public-key  "$(PLUGIN_SIGNING_PUB)"; \
+	else \
+		echo "Keys already present — reusing $(PLUGIN_KEY_DIR)"; \
+	fi; \
+	cp "$(PLUGIN_SIGNING_KEY)" "$(PLUGIN_SIGNER_CLONE)/plugin-signing.key"; \
+	cp "$(PLUGIN_SIGNING_PUB)" "$(PLUGIN_SIGNER_CLONE)/plugin-signing.pub"; \
+	cd "$(PLUGIN_SIGNER_CLONE)" && \
+	git config user.email "ci@signal18.io" && \
+	git config user.name  "replication-manager CI" && \
+	git add plugin-signing.key plugin-signing.pub && \
+	git diff --cached --quiet || \
+	  git commit -m "init: add plugin signing keypair" && \
+	git -c http.postBuffer=104857600 push "$$AUTH_URL" HEAD:main && \
+	echo "Signer repo initialised with keypair."
+
 # Fetch or generate the plugin signing keypair.
 # Leaves the repo clone in PLUGIN_SIGNER_CLONE for plugin-push to reuse.
 #
 # Priority:
-#   1. Keys already present — reuse.
-#   2. Credentials set — clone/pull signer repo, copy keys.
-#   3. No credentials — generate fresh local keypair using the already-built binary.
-plugin-keys:
+#   1. Credentials set — clone/pull signer repo, copy keys.
+#      Fails with a clear message if the repo is empty (run plugin-repo-init first).
+#   2. Keys already present locally — reuse.
+#   3. No credentials — generate a fresh local keypair (dev build).
+plugin-keys: $(PLUGIN_SIGNER_BIN)
 	@mkdir -p $(PLUGIN_KEY_DIR)
 	@if [ -n "$(PLUGIN_SIGNER_USER)" ] && [ -n "$(PLUGIN_SIGNER_TOKEN)" ]; then \
+		AUTH_URL=$$(echo "$(PLUGIN_SIGNER_REPO)" | sed "s|https://|https://$(PLUGIN_SIGNER_USER):$(PLUGIN_SIGNER_TOKEN)@|"); \
 		if [ ! -d "$(PLUGIN_SIGNER_CLONE)/.git" ]; then \
 			echo "Cloning plugin signer repo..."; \
-			AUTH_URL=$$(echo "$(PLUGIN_SIGNER_REPO)" | sed "s|https://|https://$(PLUGIN_SIGNER_USER):$(PLUGIN_SIGNER_TOKEN)@|"); \
 			git clone --depth 1 --quiet "$$AUTH_URL" "$(PLUGIN_SIGNER_CLONE)"; \
 		else \
 			echo "Updating plugin signer repo..."; \
-			cd "$(PLUGIN_SIGNER_CLONE)" && git pull --quiet; \
+			cd "$(PLUGIN_SIGNER_CLONE)" && \
+			  git fetch --quiet "$$AUTH_URL" main && \
+			  git merge --ff-only FETCH_HEAD --quiet 2>/dev/null || true; \
+		fi; \
+		if [ ! -f "$(PLUGIN_SIGNER_CLONE)/plugin-signing.key" ]; then \
+			echo "ERROR: signer repo contains no keys yet."; \
+			echo "  Run: make plugin-repo-init PLUGIN_SIGNER_USER=$(PLUGIN_SIGNER_USER) PLUGIN_SIGNER_TOKEN=<token>"; \
+			exit 1; \
 		fi; \
 		cp "$(PLUGIN_SIGNER_CLONE)/plugin-signing.key" "$(PLUGIN_SIGNING_KEY)"; \
 		cp "$(PLUGIN_SIGNER_CLONE)/plugin-signing.pub" "$(PLUGIN_SIGNING_PUB)"; \
 		chmod 600 "$(PLUGIN_SIGNING_KEY)"; \
-		echo "Keys fetched from signer repo (wire$(WIRE_VERSION))"; \
+		echo "Keys fetched from signer repo [wire-v$(WIRE_VERSION)]"; \
 	elif [ -f "$(PLUGIN_SIGNING_KEY)" ] && [ -f "$(PLUGIN_SIGNING_PUB)" ]; then \
 		echo "Plugin signing keys already present — reusing $(PLUGIN_KEY_DIR)"; \
 	else \
