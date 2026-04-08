@@ -20,7 +20,7 @@ WITH_REACT = ON
 
 all: cli bin tar arb
 
-bin: osc tst pro osc-cgo emb plugins
+bin: osc tst pro osc-cgo emb
 
 non-cgo: cli osc tst pro arb emb plugins
 
@@ -32,7 +32,9 @@ react:
 	$(Building react frontend $(REACT))
 	@if [ $(WITH_REACT) = "ON" ]; then rm -r ./share/dashboard/assets; npm --prefix=./share/dashboard_react install; npm --prefix=./share/dashboard_react run build; cp -rp ./share/dashboard_react/dist/* ./share/dashboard/; fi
 
-osc:
+osc: osc-bin plugins
+
+osc-bin:
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -v --tags "server" --ldflags "-extldflags '-static' -w -s -X github.com/signal18/replication-manager/server.Version=$(VERSION) -X github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/server.Build=$(BUILD) -X github.com/signal18/replication-manager/server.WithProvisioning=OFF "  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC)
 
 osc-basedir:
