@@ -14,8 +14,9 @@ import (
 	"fmt"
 	"io"
 	"crypto/ed25519"
-	"path/filepath"
+	"crypto/sha256"
 	"net/http"
+	"path/filepath"
 	"os"
 	"strconv"
 	"strings"
@@ -1215,10 +1216,10 @@ func (cluster *Cluster) CheckInjectConfig() {
 // so it fires on every config-rewrite tick — cheap because the mtime check
 // short-circuits the copy when nothing has changed.
 // loadPluginSigningKey reads the Ed25519 public key from the path configured
-// in PluginSigningPublicKey.  Returns nil when the path is empty (verification
+// in PluginPublicKey.  Returns nil when the path is empty (verification
 // disabled) or when the file cannot be read (error is logged).
 func (cluster *Cluster) loadPluginSigningKey() ed25519.PublicKey {
-	path := cluster.Conf.PluginSigningPublicKey
+	path := cluster.Conf.PluginPublicKey
 	if path == "" {
 		return nil // signing not configured — permissive mode
 	}
@@ -1237,7 +1238,8 @@ func (cluster *Cluster) loadPluginSigningKey() ed25519.PublicKey {
 	return ed25519.PublicKey(data)
 }
 
-// verifyPluginSignature verifies the Ed25519 signature of a plugin binary.
+// verifyPluginSignatureFromShareDir verifies the Ed25519 signature of a plugin
+// binary using the same SHA-256-then-sign scheme as plugin-sign.
 //
 // The signature file is looked up in sigDir (NOT next to the binary) so that
 // the .sig cannot be forged by whoever controls the .pull directory.
@@ -1247,7 +1249,7 @@ func (cluster *Cluster) loadPluginSigningKey() ed25519.PublicKey {
 //	signature: <ShareDir>/plugins/plugin-x.sig           (trusted — part of repman release)
 //
 // Returns nil on success, a descriptive error otherwise.
-func verifyPluginSignature(binPath, sigDir string, pub ed25519.PublicKey) error {
+func verifyPluginSignatureFromShareDir(binPath, sigDir string, pub ed25519.PublicKey) error {
 	binData, err := os.ReadFile(binPath)
 	if err != nil {
 		return fmt.Errorf("cannot read binary: %w", err)
@@ -1264,7 +1266,9 @@ func verifyPluginSignature(binPath, sigDir string, pub ed25519.PublicKey) error 
 		return fmt.Errorf("signature file %s has wrong length %d (expected %d)",
 			sigPath, len(sig), ed25519.SignatureSize)
 	}
-	if !ed25519.Verify(pub, binData, sig) {
+	// plugin-sign signs SHA-256(binary), not the raw bytes — must match here.
+	hash := sha256.Sum256(binData)
+	if !ed25519.Verify(pub, hash[:], sig) {
 		return fmt.Errorf("signature verification FAILED for %s — binary may have been tampered with", binPath)
 	}
 	return nil
@@ -1295,11 +1299,11 @@ func (cluster *Cluster) CheckPullPlugins() {
 	pubKey := cluster.loadPluginSigningKey()
 	signingEnabled := pubKey != nil
 
-	if !signingEnabled && cluster.Conf.PluginSigningPublicKey != "" {
+	if !signingEnabled && cluster.Conf.PluginPublicKey != "" {
 		// Key path configured but unreadable — already logged in loadPluginSigningKey.
 		// Refuse all copies rather than silently running unsigned plugins.
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
-			"[logplugin] plugin-signing-public-key is set but key could not be loaded — no plugins will be deployed")
+			"[logplugin] plugin-public-key is set but key could not be loaded — no plugins will be deployed")
 		return
 	}
 
@@ -1332,9 +1336,9 @@ func (cluster *Cluster) CheckPullPlugins() {
 		// happens to keep the same size+mtime is still caught.
 		if signingEnabled {
 			sigDir := filepath.Join(cluster.GetShareDir(), "plugins")
-			if err := verifyPluginSignature(srcPath, sigDir, pubKey); err != nil {
+			if err := verifyPluginSignatureFromShareDir(srcPath, sigDir, pubKey); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlErr,
-					"[logplugin] WARN0204 refusing plugin %s: %v", e.Name(), err)
+					"[logplugin] WARN0203 refusing plugin %s: %v", e.Name(), err)
 				continue // do not copy — treat as if the file does not exist
 			}
 		}
