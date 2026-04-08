@@ -158,18 +158,62 @@ type stdioFinding struct {
 
 // ExternalLogPlugin wraps a downloaded plugin binary as a LogPlugin.
 // It is created by LoadPluginsFromDir and registered in the GlobalRegistry.
+//
+// If a sidecar file <binary-name>.prerequisites.json exists alongside the
+// binary, its contents are parsed and the plugin implements
+// LogPluginWithPrerequisites so the orchestrator can raise WARN0312 when a
+// required monitoring feed is disabled.
 type ExternalLogPlugin struct {
-	name    string
-	binPath string
-	timeout time.Duration
+	name         string
+	binPath      string
+	timeout      time.Duration
+	prerequisites []Prerequisite // loaded from <binary>.prerequisites.json, may be nil
+}
+
+// prerequisitesSidecar is the JSON structure of the sidecar file.
+type prerequisitesSidecar struct {
+	Prerequisites []struct {
+		ConfigKey   string `json:"config_key"`
+		Description string `json:"description"`
+	} `json:"prerequisites"`
 }
 
 // NewExternalLogPlugin creates a wrapper for the executable at binPath.
+// If a <binPath>.prerequisites.json sidecar exists, prerequisites are loaded
+// from it; errors reading the sidecar are silently ignored.
 func NewExternalLogPlugin(name, binPath string, timeout time.Duration) *ExternalLogPlugin {
-	return &ExternalLogPlugin{name: name, binPath: binPath, timeout: timeout}
+	p := &ExternalLogPlugin{name: name, binPath: binPath, timeout: timeout}
+	p.prerequisites = loadPrerequisitesSidecar(binPath + ".prerequisites.json")
+	return p
+}
+
+// loadPrerequisitesSidecar reads and parses a prerequisites sidecar file.
+// Returns nil if the file does not exist or cannot be parsed.
+func loadPrerequisitesSidecar(path string) []Prerequisite {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var s prerequisitesSidecar
+	if err := json.Unmarshal(data, &s); err != nil {
+		return nil
+	}
+	if len(s.Prerequisites) == 0 {
+		return nil
+	}
+	out := make([]Prerequisite, 0, len(s.Prerequisites))
+	for _, p := range s.Prerequisites {
+		if p.ConfigKey != "" {
+			out = append(out, Prerequisite{ConfigKey: p.ConfigKey, Description: p.Description})
+		}
+	}
+	return out
 }
 
 func (p *ExternalLogPlugin) Name() string { return p.name }
+
+// Prerequisites implements LogPluginWithPrerequisites when the sidecar was loaded.
+func (p *ExternalLogPlugin) Prerequisites() []Prerequisite { return p.prerequisites }
 
 func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	req := StdioRequest{

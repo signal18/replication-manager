@@ -63,6 +63,11 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 	apiURL := cluster.graphiteAPIURL()
 	hostname := server.graphiteHostname()
 
+	// monitoringFlags is a snapshot of all boolean monitoring-* config keys,
+	// passed to the prerequisite checker so plugins can declare their dependencies
+	// without importing the cluster config package.
+	monitoringFlags := buildMonitoringFlags(cluster)
+
 	for _, p := range logplugin.GlobalRegistry.All() {
 		cacheKey := spikeCacheKey(server.URL, p.Name())
 		// Allocate a cache entry on first use so DetectSpike can write back into it.
@@ -94,6 +99,38 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 				p.Name(), server.URL,
 			)
 			continue
+		}
+
+		// Check prerequisites: if the plugin declares required monitoring feeds
+		// and any are disabled, raise WARN0312 and skip Evaluate so findings are
+		// not silently absent.
+		if pp, ok := p.(logplugin.LogPluginWithPrerequisites); ok {
+			missingFeed := false
+			for _, prereq := range pp.Prerequisites() {
+				if enabled, known := monitoringFlags[prereq.ConfigKey]; known && !enabled {
+					compositeKey := fmt.Sprintf("%s@%s", logplugin.ErrKeyMissingMonitoringFeed, server.URL)
+					if !cluster.StateMachine.IsInState(compositeKey) {
+						cluster.LogModulePrintf(
+							cluster.Conf.Verbose,
+							config.ConstLogModPlugin,
+							config.LvlWarn,
+							"[logplugin:%s] %s on server %s: plugin enabled but monitoring feed disabled — %s (set %s=true)",
+							p.Name(), logplugin.ErrKeyMissingMonitoringFeed, server.URL,
+							prereq.Description, prereq.ConfigKey,
+						)
+					}
+					cluster.SetState(logplugin.ErrKeyMissingMonitoringFeed, state.State{
+						ErrType:   "WARNING",
+						ErrDesc:   fmt.Sprintf("plugin %s is enabled but required monitoring feed is disabled: %s (set %s=true)", p.Name(), prereq.Description, prereq.ConfigKey),
+						ErrFrom:   "PLUGIN",
+						ServerUrl: server.URL,
+					})
+					missingFeed = true
+				}
+			}
+			if missingFeed {
+				continue
+			}
 		}
 
 		result := p.Evaluate(src)
@@ -236,7 +273,7 @@ func (cluster *Cluster) CheckLogPlugins() {
 			continue
 		}
 		// Refresh binlog QUERY events before running plugins that inspect them.
-		if cluster.Conf.LogPluginBinlogScan && server.HaveBinlog {
+		if cluster.Conf.MonitorBinlogEvents && server.HaveBinlog {
 			server.ScanBinlogQueryEvents()
 		}
 		server.RunLogPlugins(cluster.pluginSpikeCache)
@@ -247,11 +284,12 @@ func (cluster *Cluster) GetLogPluginStates(serverURL string) []state.State {
 	SM := cluster.GetStateMachine()
 	opened := SM.GetLastOpenedStates()
 	keys := map[string]bool{
-		logplugin.ErrKeyDBError24h:  true,
-		logplugin.ErrKeySQLError24h: true,
-		logplugin.ErrKeySlowLog24h:  true,
-		logplugin.ErrKeyAuditDrift:  true,
-		"WARN0205":                   true,
+		logplugin.ErrKeyDBError24h:          true,
+		logplugin.ErrKeySQLError24h:         true,
+		logplugin.ErrKeySlowLog24h:          true,
+		logplugin.ErrKeyAuditDrift:          true,
+		"WARN0205":                           true,
+		logplugin.ErrKeyMissingMonitoringFeed: true,
 	}
 	var out []state.State
 	for _, st := range opened {
@@ -430,4 +468,17 @@ func snapshotMetaDataLocks(server *ServerMonitor) []logplugin.StdioMDL {
 		})
 	}
 	return out
+}
+
+// buildMonitoringFlags returns a map of monitoring-* config key → enabled status
+// for use by the prerequisite checker in RunLogPlugins.
+// Add new entries here whenever a new monitoring feed is introduced.
+func buildMonitoringFlags(cluster *Cluster) map[string]bool {
+	return map[string]bool{
+		"monitoring-binlog-events":                  cluster.Conf.MonitorBinlogEvents,
+		"monitoring-performance-schema":             cluster.Conf.MonitorPFS,
+		"monitoring-performance-schema-queries":     cluster.Conf.MonitorPFSQueries,
+		"monitoring-processlist":                    cluster.Conf.MonitorProcessList,
+		"monitoring-performance-schema-instruments": cluster.Conf.MonitorPFSInstruments,
+	}
 }

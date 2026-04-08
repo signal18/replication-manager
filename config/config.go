@@ -188,7 +188,7 @@ type Config struct {
 	LogLevelDatabaseOptimize                  int                          `mapstructure:"log-level-database-optimize" toml:"log-level-database-optimize" json:"logLevelDatabaseOptimize"`
 	LogLevelDatabaseAudit                     int                          `mapstructure:"log-level-database-audit" toml:"log-level-database-audit" json:"logLevelDatabaseAudit"`
 	LogPlugin                                 bool                         `mapstructure:"log-plugin" toml:"log-plugin" json:"logPlugin"`
-	LogPluginBinlogScan                       bool                         `mapstructure:"log-plugin-binlog-scan" toml:"log-plugin-binlog-scan" json:"logPluginBinlogScan"`
+	MonitorBinlogEvents                       bool                         `mapstructure:"monitoring-binlog-events" toml:"monitoring-binlog-events" json:"monitoringBinlogEvents"`
 	LogPluginLevel                            int                          `mapstructure:"log-level-plugin" toml:"log-level-plugin" json:"logPluginLevel"`
 	PluginConfig                              map[string]map[string]string `mapstructure:"plugin-config" toml:"plugin-config" json:"pluginConfig"`
 	User                                      string                       `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`

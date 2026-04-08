@@ -168,6 +168,30 @@ func (src LogSource) HasGraphite() bool {
 	return src.GraphiteAPIURL != "" && src.GraphiteHostname != ""
 }
 
+// ErrKeyMissingMonitoringFeed is raised when a plugin is enabled but the
+// monitoring feed it depends on (e.g. monitoring-binlog-events) is disabled.
+const ErrKeyMissingMonitoringFeed = "WARN0312"
+
+// Prerequisite declares that a plugin requires a named monitoring feature to
+// be active in order to produce findings.
+type Prerequisite struct {
+	// ConfigKey is the monitoring flag name as it appears in the TOML /
+	// CLI, e.g. "monitoring-binlog-events".
+	ConfigKey string
+	// Description is a human-readable explanation embedded in the WARN0312
+	// finding, e.g. "binlog QUERY event scanning must be enabled".
+	Description string
+}
+
+// LogPluginWithPrerequisites is an optional extension of LogPlugin.
+// Plugins that depend on a specific monitoring feed implement this interface
+// so the RunLogPlugins orchestrator can emit WARN0312 when the feed is off,
+// rather than silently producing no findings.
+type LogPluginWithPrerequisites interface {
+	LogPlugin
+	Prerequisites() []Prerequisite
+}
+
 // LogPlugin is the interface every log-tailer plugin must implement.
 type LogPlugin interface {
 	Name() string
