@@ -304,7 +304,11 @@ func (cluster *Cluster) GetLogPluginStates(serverURL string) []state.State {
 
 func (cluster *Cluster) ReloadLogPlugins() {
 	dir := logplugin.PluginDir(cluster.WorkingDir)
-	n, err := logplugin.LoadPluginsFromDir(dir, logplugin.GlobalRegistry)
+	opts := logplugin.LoadOptions{
+		PubKeyPath: cluster.Conf.PluginSigningPublicKey,
+		SigDir:     cluster.Conf.ShareDir + "/plugins",
+	}
+	n, rejections, err := logplugin.LoadPluginsFromDir(dir, logplugin.GlobalRegistry, opts)
 	if err != nil {
 		cluster.LogModulePrintf(
 			cluster.Conf.Verbose,
@@ -315,6 +319,15 @@ func (cluster *Cluster) ReloadLogPlugins() {
 		)
 		return
 	}
+	for _, msg := range rejections {
+		cluster.LogModulePrintf(
+			cluster.Conf.Verbose,
+			config.ConstLogModPlugin,
+			config.LvlErr,
+			"[logplugin] rejected plugin (signature verification failed): %s",
+			msg,
+		)
+	}
 	if n > 0 {
 		cluster.LogModulePrintf(
 			cluster.Conf.Verbose,
@@ -323,7 +336,7 @@ func (cluster *Cluster) ReloadLogPlugins() {
 			"[logplugin] loaded %d external plugin(s) from %s",
 			n, dir,
 		)
-	} else {
+	} else if len(rejections) == 0 {
 		cluster.LogModulePrintf(
 			cluster.Conf.Verbose,
 			config.ConstLogModPlugin,

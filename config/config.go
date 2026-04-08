@@ -61,6 +61,7 @@ type Config struct {
 	BaseDir                                   string                       `scope:"server" mapstructure:"monitoring-basedir" toml:"monitoring-basedir" json:"monitoringBasedir"`
 	WorkingDir                                string                       `scope:"server" mapstructure:"monitoring-datadir" toml:"monitoring-datadir" json:"monitoringDatadir"`
 	ShareDir                                  string                       `mapstructure:"monitoring-sharedir" toml:"monitoring-sharedir" json:"monitoringSharedir"`
+	PluginSigningPublicKey                    string                       `scope:"server" mapstructure:"plugin-signing-public-key" toml:"plugin-signing-public-key" json:"pluginSigningPublicKey"`
 	ConfDir                                   string                       `scope:"server" mapstructure:"monitoring-confdir" toml:"monitoring-confdir" json:"monitoringConfdir"`
 	ConfDirBackup                             string                       `scope:"server" mapstructure:"monitoring-confdir-backup" toml:"monitoring-confdir-backup" json:"monitoringConfdirBackup"`
 	ConfDirExtra                              string                       `scope:"server" mapstructure:"monitoring-confdir-extra" toml:"monitoring-confdir-extra" json:"monitoringConfdirExtra"`

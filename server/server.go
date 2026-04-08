@@ -315,6 +315,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		}
 	}
 
+	flags.StringVar(&conf.PluginSigningPublicKey, "plugin-signing-public-key", "", "Path to the Ed25519 public key used to verify external log plugin binaries (leave empty to skip verification)")
+
 	// Important flags for monitoring
 	flags.BoolVar(&conf.ConfRewrite, "monitoring-save-config", true, "Save configuration changes to <monitoring-datadir>/<cluster_name> ")
 	flags.BoolVar(&conf.ConfRestoreOnStart, "monitoring-restore-config-on-start", false, "Wipe working directory and restore config")

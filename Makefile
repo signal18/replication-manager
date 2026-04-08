@@ -257,7 +257,6 @@ plugin-push:
 			bin=$(PLUGIN_BINDIR)/$$name; \
 			if [ -f $$bin ]; then \
 				cp $$bin "$$WIREDIR/$$name"; \
-				cp "$(PLUGIN_SIG_DIR)/$$name.sig" "$$WIREDIR/$$name.sig" 2>/dev/null || true; \
 				echo "  published $$name → plugins/$(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)/"; \
 			fi; \
 		done; \

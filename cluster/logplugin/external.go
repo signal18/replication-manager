@@ -28,6 +28,7 @@ package logplugin
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -277,34 +278,83 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	return EvaluateResult{Findings: findings}
 }
 
+// ---- signature verification -------------------------------------------------
+
+// VerifyPluginSignature checks the Ed25519 signature of a plugin binary.
+// sigDir is the directory that holds <plugin-name>.sig files (ShareDir/plugins/).
+// pubKeyPath is the path to the raw 32-byte Ed25519 public key file.
+// Returns nil when the signature is valid.
+func VerifyPluginSignature(binPath, sigDir, pubKeyPath string) error {
+	pubBytes, err := os.ReadFile(pubKeyPath)
+	if err != nil {
+		return fmt.Errorf("cannot read public key %s: %w", pubKeyPath, err)
+	}
+	if len(pubBytes) != ed25519.PublicKeySize {
+		return fmt.Errorf("invalid public key length %d (expected %d)", len(pubBytes), ed25519.PublicKeySize)
+	}
+
+	data, err := os.ReadFile(binPath)
+	if err != nil {
+		return fmt.Errorf("cannot read plugin binary %s: %w", binPath, err)
+	}
+
+	name := filepath.Base(binPath)
+	sigPath := filepath.Join(sigDir, name+".sig")
+	sig, err := os.ReadFile(sigPath)
+	if err != nil {
+		return fmt.Errorf("cannot read signature %s: %w", sigPath, err)
+	}
+
+	if !ed25519.Verify(ed25519.PublicKey(pubBytes), data, sig) {
+		return fmt.Errorf("signature mismatch for plugin %s — binary may have been tampered with", name)
+	}
+	return nil
+}
+
 // ---- loader -----------------------------------------------------------------
+
+// LoadOptions controls optional behaviour of LoadPluginsFromDir.
+type LoadOptions struct {
+	// PubKeyPath is the path to the Ed25519 public key used to verify plugin
+	// signatures. When non-empty, every plugin binary must have a valid .sig
+	// sidecar in SigDir; plugins that fail verification are rejected and logged.
+	// When empty, signature verification is skipped (dev/unsigned builds).
+	PubKeyPath string
+
+	// SigDir is the directory containing <plugin-name>.sig files.
+	// Defaults to pluginDir when empty (sig files next to binaries).
+	// In production this is typically <ShareDir>/plugins/.
+	SigDir string
+}
 
 // LoadPluginsFromDir scans pluginDir for executable files, creates an
 // ExternalLogPlugin for each one, and registers/replaces it in reg.
-// Returns the number of plugins loaded and any scan error.
+// Returns the number of plugins loaded, a slice of rejection messages for
+// plugins that failed signature verification, and any scan error.
 //
 // Rules:
 //   - Non-executable files and dotfiles are silently skipped.
 //   - A plugin whose name already exists in reg is hot-replaced in place.
-func LoadPluginsFromDir(pluginDir string, reg *Registry) (int, error) {
+//   - When opts.PubKeyPath is set, plugins without a valid signature are
+//     skipped and their names are returned in the rejections slice.
+func LoadPluginsFromDir(pluginDir string, reg *Registry, opts LoadOptions) (loaded int, rejections []string, err error) {
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return 0, nil
+			return 0, nil, nil
 		}
-		return 0, fmt.Errorf("scan plugin dir %s: %w", pluginDir, err)
+		return 0, nil, fmt.Errorf("scan plugin dir %s: %w", pluginDir, err)
 	}
 
-	loaded := 0
+	sigDir := opts.SigDir
+	if sigDir == "" {
+		sigDir = pluginDir
+	}
+
 	for _, e := range entries {
-		// Skip directories, dotfiles, and known non-binary names (e.g. the
-		// "wire" library package which lives alongside the plugin sources).
 		if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-		// Convention: all plugin binaries are named plugin-*.
-		// Anything that doesn't match is silently skipped so library packages
-		// or helper scripts in the same directory don't cause exec errors.
 		if !strings.HasPrefix(e.Name(), "plugin-") {
 			continue
 		}
@@ -316,11 +366,19 @@ func LoadPluginsFromDir(pluginDir string, reg *Registry) (int, error) {
 			continue
 		}
 		binPath := filepath.Join(pluginDir, e.Name())
+
+		if opts.PubKeyPath != "" {
+			if verr := VerifyPluginSignature(binPath, sigDir, opts.PubKeyPath); verr != nil {
+				rejections = append(rejections, fmt.Sprintf("%s: %v", e.Name(), verr))
+				continue
+			}
+		}
+
 		name := pluginNameFromBinary(e.Name())
 		reg.replace(name, NewExternalLogPlugin(name, binPath, DefaultPluginTimeout))
 		loaded++
 	}
-	return loaded, nil
+	return loaded, rejections, nil
 }
 
 // PluginDir returns the canonical plugin directory for a cluster given its
