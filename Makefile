@@ -89,13 +89,8 @@ PLUGIN_BINDIR   := build/plugins
 # Wire protocol version — read directly from source so it never drifts.
 WIRE_VERSION := $(shell grep -m1 'WireVersion = ' cluster/logplugin/plugins/wire/wire.go | awk '{print $$NF}')
 
-# First available repman binary — used to run plugin-keygen and plugin-sign.
-# osc is tried first (always built), then pro, then the embedded binary.
-PLUGIN_BIN = $(shell \
-	if   [ -x "$(BINDIR)/$(BIN-OSC)" ]; then echo "$(BINDIR)/$(BIN-OSC)"; \
-	elif [ -x "$(BINDIR)/$(BIN-PRO)" ]; then echo "$(BINDIR)/$(BIN-PRO)"; \
-	elif [ -x "$(BINDIR)/$(BIN)"     ]; then echo "$(BINDIR)/$(BIN)"; \
-	fi)
+# Standalone plugin signing tool — no repman-server dependency.
+PLUGIN_SIGNER_BIN := build/tools/plugin-signer
 
 # ---- Plugin signing keys & distribution repo --------------------------------
 # PLUGIN_SIGNER_REPO is both the key store AND the distribution registry:
@@ -129,7 +124,12 @@ PLUGIN_SIG_DIR      := share/plugins
 # Temporary clone of the signer repo — populated by plugin-keys, reused by plugin-push.
 PLUGIN_SIGNER_CLONE := $(PLUGIN_KEY_DIR)/signer-repo
 
-plugins: $(PLUGIN_NAMES:%=$(PLUGIN_BINDIR)/%) plugin-sigs plugin-push
+plugins: $(PLUGIN_SIGNER_BIN) $(PLUGIN_NAMES:%=$(PLUGIN_BINDIR)/%) plugin-sigs plugin-push
+
+$(PLUGIN_SIGNER_BIN):
+	@mkdir -p $(dir $(PLUGIN_SIGNER_BIN))
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
+	  go build -v -o $(PLUGIN_SIGNER_BIN) ./tools/plugin-signer/...
 
 $(PLUGIN_BINDIR)/%:
 	@mkdir -p $(PLUGIN_BINDIR)
@@ -165,11 +165,11 @@ plugin-keys:
 	elif [ -f "$(PLUGIN_SIGNING_KEY)" ] && [ -f "$(PLUGIN_SIGNING_PUB)" ]; then \
 		echo "Plugin signing keys already present — reusing $(PLUGIN_KEY_DIR)"; \
 	else \
-		echo "No credentials — generating local keypair with $(PLUGIN_BIN)"; \
+		echo "No credentials — generating local keypair with $(PLUGIN_SIGNER_BIN)"; \
 		echo "Set PLUGIN_SIGNER_USER + PLUGIN_SIGNER_TOKEN to use the official Signal18 key."; \
-		$(PLUGIN_BIN) plugin-keygen \
-			--plugin-private-key "$(PLUGIN_SIGNING_KEY)" \
-			--plugin-public-key  "$(PLUGIN_SIGNING_PUB)"; \
+		$(PLUGIN_SIGNER_BIN) keygen \
+			--private-key "$(PLUGIN_SIGNING_KEY)" \
+			--public-key  "$(PLUGIN_SIGNING_PUB)"; \
 	fi
 
 # Sign all built plugin binaries using the key resolved by plugin-keys.
@@ -179,9 +179,9 @@ plugin-sigs: plugin-keys
 	@for name in $(PLUGIN_NAMES); do \
 		bin=$(PLUGIN_BINDIR)/$$name; \
 		if [ -f $$bin ]; then \
-			$(PLUGIN_BIN) plugin-sign \
-				--plugin-private-key "$(PLUGIN_SIGNING_KEY)" \
-				--sig-output-dir    "$(PLUGIN_SIG_DIR)" \
+			$(PLUGIN_SIGNER_BIN) sign \
+				--private-key "$(PLUGIN_SIGNING_KEY)" \
+				--sig-dir     "$(PLUGIN_SIG_DIR)" \
 				$$bin && echo "  signed $$name"; \
 		fi; \
 	done
@@ -221,6 +221,7 @@ plugin-push:
 
 plugins-clean:
 	rm -rf $(PLUGIN_BINDIR)
+	rm -f $(PLUGIN_SIGNER_BIN)
 	rm -f $(PLUGIN_SIG_DIR)/plugin-*.sig
 	rm -rf $(PLUGIN_SIGNER_CLONE)
 
