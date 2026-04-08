@@ -29,7 +29,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
     <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} iconFontsize='1rem' variant='ghost' style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }} />
   )
 
-  const { settings: { monSaveConfigLoading, monPauseLoading, monCaptureLoading, monSchemaChangeLoading, monInnoDBLoading, monVarDiffLoading, monProcessListLoading, captureTriggerLoading, monIgnoreErrLoading } } = useSelector((state) => state)
+  const { settings: { monSaveConfigLoading, monPauseLoading, monCaptureLoading, monSchemaChangeLoading, monInnoDBLoading, monVarDiffLoading, monProcessListLoading, captureTriggerLoading, monIgnoreErrLoading, monBinlogEventsLoading } } = useSelector((state) => state)
 
   const sw = (setting, configKey, loading) =>
     <RMSwitch confirmTitle={`Confirm switch settings for ${setting}?`} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.[configKey]} loading={loading} />
@@ -60,6 +60,9 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
   const hPFSDelay = `**Monitoring Performance Schema Queries Explain Delay (ms)**\n\nMilliseconds to sleep between consecutive EXPLAIN calls to spread optimizer load.\nDefault: **200 ms**. Set to 0 to disable throttling.\n\nConfig: \`monitoring-performance-schema-queries-explain-delay\``
   const hPFSPurge = `**Monitoring Performance Schema Queries Explain Purge Period (days)**\n\nAge in days after which a cached explain plan is evicted from memory and disk.\nDefault: **30 days**. Set to 0 to keep plans forever.\n\nConfig: \`monitoring-performance-schema-queries-explain-purge-period\``
 
+  const hBinlogEvents = `**Monitoring Binlog Events**\n\nEnables incremental scanning of the server binary log for QUERY events.\nRequired by the binlog security plugins (cleartext-password detection, credit-card leak detection).\nUses a persistent BinlogSyncer connection — no extra polling load.\n\nConfig: \`monitoring-binlog-events\``
+  const hBinlogEventLogLength = `**Monitoring Binlog Event Log Length**\n\nNumber of QUERY events to keep in the in-memory ring buffer fed to log plugins on each evaluation cycle.\nDefault: **256**. Increase for high-throughput servers where the DDL/DML rate is high.\n\nConfig: \`monitoring-binlog-event-log-length\``
+
   const hRepStatCapture = `**Monitoring Replication Statistics**\n\nEnables collection of replication lag measurements at regular intervals averaged per hour.\nUsed to detect degrading replica performance over time.\nRequired for Failover Candidate Rate Using Statistics to function.\n\nConfig: \`delay-stat-capture\``
   const hRepStatRotate = `**Monitoring Replication Statistics Rotate**\n\nNumber of hours of delay statistics to retain before rotating.\nDefault: 24 hours. Maximum: 72 hours.\n\nConfig: \`delay-stat-rotate\``
 
@@ -86,6 +89,12 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
     { key: 'Monitoring InnoDB Status', help: h(hInnoDB, 'Monitoring InnoDB Status'), value: sw('monitoring-innodb-status', 'monitoringInnoDBStatus', monInnoDBLoading) },
     { key: 'Monitoring InnoDB Mutex', help: h(hMutex, 'Monitoring InnoDB Mutex'), value: sw('monitoring-performance-schema-mutex', 'monitoringPerformanceSchemaMutex', monProcessListLoading) },
     { key: 'Monitoring InnoDB Latch', help: h(hLatch, 'Monitoring InnoDB Latch'), value: sw('monitoring-performance-schema-latch', 'monitoringPerformanceSchemaLatch', monProcessListLoading) },
+    {
+      key: 'Monitoring Binlog Events', value: [
+        { key: 'Monitoring Binlog Events', help: h(hBinlogEvents, 'Monitoring Binlog Events'), value: sw('monitoring-binlog-events', 'monitoringBinlogEvents', monBinlogEventsLoading) },
+        { key: 'Monitoring Binlog Event Log Length', help: h(hBinlogEventLogLength, 'Monitoring Binlog Event Log Length'), value: <NumberInput value={selectedCluster?.config?.monitoringBinlogEventLogLength} min={32} max={4096} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-binlog-event-log-length' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-binlog-event-log-length', value: v.length === 0 ? '256' : v }))} /> },
+      ]
+    },
     { key: 'Monitoring Replication Statistics', help: h(hRepStatCapture, 'Monitoring Replication Statistics'), value: sw('delay-stat-capture', 'delayStatCapture') },
     { key: 'Monitoring Replication Statistics Rotate', help: h(hRepStatRotate, 'Monitoring Replication Statistics Rotate'), value: (<RMSlider value={selectedCluster?.config?.delayStatRotate} max={72} showMarkAtInterval={12} confirmTitle='Confirm change replication statistics rotate to: ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'delay-stat-rotate', value: val }))} />) },
     {
