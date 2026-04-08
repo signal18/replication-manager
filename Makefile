@@ -54,7 +54,9 @@ tst:
 tst-basedir:
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server"  --ldflags "-w -s $(TAR) -X github.com/signal18/replication-manager/server.Version=$(VERSION) -X github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/server.Build=$(BUILD)   -X github.com/signal18/replication-manager/server.WithDeprecate=OFF"  $(LDFLAGS) -o $(BINDIR)/$(BIN-TST)-basedir
 
-pro:
+pro: pro-bin plugins
+
+pro-bin:
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server" --ldflags " -w -s -X 'github.com/signal18/replication-manager/server.Version=$(VERSION)' -X 'github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION)' -X 'github.com/signal18/replication-manager/server.Build=$(BUILD)' -X github.com/signal18/replication-manager/server.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN-PRO)
 
 pro-basedir:
@@ -87,7 +89,7 @@ WIRE_VERSION := $(shell grep -m1 'WireVersion = ' cluster/logplugin/plugins/wire
 
 # First available repman binary — used to run plugin-keygen and plugin-sign.
 # osc is tried first (always built), then pro, then the embedded binary.
-PLUGIN_BIN := $(shell \
+PLUGIN_BIN = $(shell \
 	if   [ -x "$(BINDIR)/$(BIN-OSC)" ]; then echo "$(BINDIR)/$(BIN-OSC)"; \
 	elif [ -x "$(BINDIR)/$(BIN-PRO)" ]; then echo "$(BINDIR)/$(BIN-PRO)"; \
 	elif [ -x "$(BINDIR)/$(BIN)"     ]; then echo "$(BINDIR)/$(BIN)"; \

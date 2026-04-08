@@ -3,6 +3,11 @@
 // No replication-manager dependency is required at runtime.
 package wire
 
+// WireVersion is the version of the stdin/stdout JSON protocol.
+// Increment this when a breaking change is made to Request or Response.
+// The Makefile reads this value to organise the plugin distribution repository.
+const WireVersion = 1
+
 // Request is written to the plugin's stdin as a single JSON object.
 type Request struct {
 	ServerURL        string            `json:"server_url"`
