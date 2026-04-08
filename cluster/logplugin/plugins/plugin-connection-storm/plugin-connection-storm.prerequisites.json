@@ -1,0 +1,8 @@
+{
+  "prerequisites": [
+    {
+      "config_key": "monitoring-processlist",
+      "description": "processlist monitoring must be enabled (monitoring-processlist=true)"
+    }
+  ]
+}

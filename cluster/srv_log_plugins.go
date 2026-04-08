@@ -63,10 +63,10 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 	apiURL := cluster.graphiteAPIURL()
 	hostname := server.graphiteHostname()
 
-	// monitoringFlags is a snapshot of all boolean monitoring-* config keys,
+	// monitoringFlags is a snapshot of monitoring-* config keys for this server,
 	// passed to the prerequisite checker so plugins can declare their dependencies
 	// without importing the cluster config package.
-	monitoringFlags := buildMonitoringFlags(cluster)
+	monitoringFlags := buildMonitoringFlags(cluster, server)
 
 	for _, p := range logplugin.GlobalRegistry.All() {
 		cacheKey := spikeCacheKey(server.URL, p.Name())
@@ -470,15 +470,22 @@ func snapshotMetaDataLocks(server *ServerMonitor) []logplugin.StdioMDL {
 	return out
 }
 
-// buildMonitoringFlags returns a map of monitoring-* config key → enabled status
-// for use by the prerequisite checker in RunLogPlugins.
-// Add new entries here whenever a new monitoring feed is introduced.
-func buildMonitoringFlags(cluster *Cluster) map[string]bool {
+// buildMonitoringFlags returns a map of monitoring-* key → enabled status for
+// a specific server, used by the prerequisite checker in RunLogPlugins.
+//
+// Some entries reflect cluster-wide config flags; others (marked "auto-detected")
+// reflect per-server capability detection (e.g. whether a MySQL plugin is
+// installed).  Add new entries here whenever a new monitoring feed is introduced.
+func buildMonitoringFlags(cluster *Cluster, server *ServerMonitor) map[string]bool {
 	return map[string]bool{
-		"monitoring-binlog-events":                  cluster.Conf.MonitorBinlogEvents,
-		"monitoring-performance-schema":             cluster.Conf.MonitorPFS,
-		"monitoring-performance-schema-queries":     cluster.Conf.MonitorPFSQueries,
-		"monitoring-processlist":                    cluster.Conf.MonitorProcessList,
-		"monitoring-performance-schema-instruments": cluster.Conf.MonitorPFSInstruments,
+		// User-configurable cluster flags
+		"monitoring-binlog-events":              cluster.Conf.MonitorBinlogEvents,
+		"monitoring-performance-schema":         cluster.Conf.MonitorPFS,
+		"monitoring-performance-schema-queries": cluster.Conf.MonitorPFSQueries,
+		"monitoring-processlist":                cluster.Conf.MonitorProcessList,
+
+		// Auto-detected per-server capability: true only when the MySQL
+		// METADATA_LOCK_INFO plugin is installed and active on this server.
+		"monitoring-metadata-lock-info": server.HaveMetaDataLocksLog,
 	}
 }

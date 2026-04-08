@@ -1,0 +1,8 @@
+{
+  "prerequisites": [
+    {
+      "config_key": "monitoring-performance-schema-queries",
+      "description": "Performance Schema query digest monitoring must be enabled for PFS-based regression detection (monitoring-performance-schema-queries=true)"
+    }
+  ]
+}
