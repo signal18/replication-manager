@@ -93,23 +93,30 @@ WIRE_VERSION := $(shell grep -m1 'WireVersion = ' cluster/logplugin/plugins/wire
 PLUGIN_SIGNER_BIN := build/tools/plugin-signer
 
 # ---- Plugin signing keys & distribution repo --------------------------------
-# PLUGIN_SIGNER_REPO is both the key store AND the distribution registry:
+# PLUGIN_SIGNER_REPO layout (per OS/arch, per wire protocol version):
 #
 #   replication-manager-plugin-signer/
-#   ├── plugin-signing.key          (private — never leaves CI)
-#   ├── plugin-signing.pub          (public  — deployed to repman servers)
-#   ├── wire1/                      (binaries built against wire protocol v1)
-#   │   ├── plugin-connection-storm
-#   │   └── plugin-slow-query-regression ...
-#   ├── wire2/                      (future — when wire protocol breaks)
-#   └── 3.2.1 -> wire1             (symlink: repman release → wire dir)
-#   └── 3.3.0 -> wire2
+#   ├── plugin-signing.key                        (private — never leaves CI)
+#   ├── plugin-signing.pub                        (public  — deployed to repman servers)
+#   ├── plugins/
+#   │   ├── linux-amd64/
+#   │   │   └── wire-v1/
+#   │   │       ├── plugin-connection-storm
+#   │   │       ├── plugin-connection-storm.sig
+#   │   │       └── plugin-slow-query-regression ...
+#   │   ├── linux-arm64/
+#   │   │   └── wire-v1/ ...
+#   │   └── darwin-arm64/
+#   │       └── wire-v1/ ...
+#   └── linux-amd64/
+#       └── replication-manager-v3.2.1 -> ../plugins/linux-amd64/wire-v1/
 #
-# Your back office reads the client repman version, follows the symlink and
-# pulls that wire<n>/ directory into .pull/<cluster>/plugins/.
+# The back office reads the repman version and OS/arch of the server, resolves
+# the symlink, and downloads the entire wire-v<N>/ directory into
+# .pull/<cluster>/plugins/.
 #
 # Set PLUGIN_SIGNER_USER + PLUGIN_SIGNER_TOKEN (GitHub PAT, repo:read+write)
-# to fetch keys AND push the built binaries back.
+# to fetch keys AND push built binaries.
 # Without credentials a fresh local keypair is generated — dev builds still
 # get signed plugins, just with a local key.
 
@@ -120,6 +127,9 @@ PLUGIN_KEY_DIR      ?= $(HOME)/.replication-manager
 PLUGIN_SIGNING_KEY  ?= $(PLUGIN_KEY_DIR)/plugin-signing.key
 PLUGIN_SIGNING_PUB  ?= $(PLUGIN_KEY_DIR)/plugin-signing.pub
 PLUGIN_SIG_DIR      := share/plugins
+
+# Combined OS-arch string used as the per-platform subdirectory in the signer repo.
+PLUGIN_PLATFORM     := $(OS)-$(ARCH)
 
 # Temporary clone of the signer repo — populated by plugin-keys, reused by plugin-push.
 PLUGIN_SIGNER_CLONE := $(PLUGIN_KEY_DIR)/signer-repo
@@ -187,34 +197,37 @@ plugin-sigs: plugin-keys
 	done
 
 # Push built plugins + sigs back to the signer repo under:
-#   wire$(WIRE_VERSION)/          — binaries for this wire protocol version
-#   $(VERSION) -> wire$(WIRE_VERSION)  — symlink: repman release → wire dir
+#   plugins/$(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)/   — binaries + .sig files
+#   $(PLUGIN_PLATFORM)/replication-manager-$(VERSION)   — symlink → ../plugins/…/wire-v$(WIRE_VERSION)/
 #
 # Only runs when PLUGIN_SIGNER_USER + TOKEN are set (i.e. CI builds).
 # Skipped silently for dev/source builds.
 plugin-push:
 	@if [ -n "$(PLUGIN_SIGNER_USER)" ] && [ -n "$(PLUGIN_SIGNER_TOKEN)" ] && [ -d "$(PLUGIN_SIGNER_CLONE)/.git" ]; then \
-		echo "Publishing plugins to signer repo [$(VERSION) → wire$(WIRE_VERSION)]"; \
-		WIREDIR="$(PLUGIN_SIGNER_CLONE)/wire$(WIRE_VERSION)"; \
+		echo "Publishing plugins to signer repo [$(VERSION) → $(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)]"; \
+		WIREDIR="$(PLUGIN_SIGNER_CLONE)/plugins/$(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)"; \
 		mkdir -p "$$WIREDIR"; \
 		for name in $(PLUGIN_NAMES); do \
 			bin=$(PLUGIN_BINDIR)/$$name; \
 			if [ -f $$bin ]; then \
 				cp $$bin "$$WIREDIR/$$name"; \
 				cp "$(PLUGIN_SIG_DIR)/$$name.sig" "$$WIREDIR/$$name.sig" 2>/dev/null || true; \
-				echo "  published $$name → wire$(WIRE_VERSION)/"; \
+				echo "  published $$name → plugins/$(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)/"; \
 			fi; \
 		done; \
+		SYMLINK_DIR="$(PLUGIN_SIGNER_CLONE)/$(PLUGIN_PLATFORM)"; \
+		mkdir -p "$$SYMLINK_DIR"; \
 		cd "$(PLUGIN_SIGNER_CLONE)" && \
-		ln -sfn "wire$(WIRE_VERSION)" "$(VERSION)" && \
+		ln -sfn "../plugins/$(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)" \
+		        "$(PLUGIN_PLATFORM)/replication-manager-$(VERSION)" && \
 		git config user.email "ci@signal18.io" && \
 		git config user.name  "replication-manager CI" && \
 		git add -A && \
 		git diff --cached --quiet || \
-		  git commit -m "plugins: $(VERSION) → wire$(WIRE_VERSION) [$(FULLVERSION)]" && \
+		  git commit -m "plugins: $(VERSION) [$(PLUGIN_PLATFORM)] → wire-v$(WIRE_VERSION) [$(FULLVERSION)]" && \
 		AUTH_URL=$$(echo "$(PLUGIN_SIGNER_REPO)" | sed "s|https://|https://$(PLUGIN_SIGNER_USER):$(PLUGIN_SIGNER_TOKEN)@|"); \
 		git push "$$AUTH_URL" HEAD:main && \
-		echo "Pushed $(VERSION) → wire$(WIRE_VERSION) to signer repo"; \
+		echo "Pushed $(VERSION) → $(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION) to signer repo"; \
 	else \
 		echo "Skipping plugin-push (no credentials or dev build)"; \
 	fi
