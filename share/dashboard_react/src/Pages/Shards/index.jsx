@@ -162,6 +162,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
 
   // ── Redux selectors ────────────────────────────────────────────────────────
   const shardSchema = useSelector((state) => state.cluster.shardSchema)
+  const baseURL     = useSelector((state) => state.auth?.baseURL || '')
 
   // pauseAutoReload (clusterSlice) writes ONLY to localStorage, never to Redux
   // state. There is no state.cluster.refreshing field. The correct check —
@@ -181,6 +182,22 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
   const [checksumTimeout, setChecksumTimeout]                       = useState(false)
   const [checksumRepairTimeout, setChecksumRepairTimeout]           = useState(false)
   const mountedRef = useRef(true)
+
+  // ── Master server name — needed for time-machine PFS API calls ────────────
+  // The cluster object carries master info in different shapes depending on
+  // the backend version; we try the most-specific field first.
+  const masterServerName = useMemo(() => {
+    if (!selectedCluster) return ''
+    // Prefer explicit master object.
+    if (selectedCluster.master?.name) return selectedCluster.master.name
+    // Fall back to first server marked as master in the servers list.
+    const masterSrv = (selectedCluster.servers || []).find(
+      s => s.isMaster || s.state === 'Master' || s.state === 'master'
+    )
+    if (masterSrv?.name) return masterSrv.name
+    // Last resort: use host:port of the master.
+    return selectedCluster.masterHost || ''
+  }, [selectedCluster])
 
   // ── View / filter state ────────────────────────────────────────────────────
   const [view,       setView]       = useState('table')
@@ -709,6 +726,9 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
           activeRelationSources={activeRelationSources}
           onChecksum={handleChecksum}
           onRepair={handleChecksumRepair}
+          clusterName={selectedCluster?.name || ''}
+          serverName={masterServerName}
+          baseURL={baseURL}
         />
       )}
 
