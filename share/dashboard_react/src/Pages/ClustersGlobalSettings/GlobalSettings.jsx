@@ -219,18 +219,6 @@ function GlobalSettings({ config }) {
       )
     },
     {
-      key: 'Plugin Signing Public Key',
-      value: (
-        <TextForm
-          value={config?.pluginSigningPublicKey}
-          confirmTitle={`Confirm change 'plugin-signing-public-key' to `}
-          onSave={(value) => {
-            dispatch(setGlobalSetting({ setting: 'plugin-signing-public-key', value: value.length === 0 ? '{undefined}' : value }))
-          }}
-        />
-      )
-    },
-    {
       key: 'Enable API Swagger',
       value: (
         <HStack>

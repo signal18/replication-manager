@@ -6,6 +6,7 @@ import ConfirmModal from '../../components/Modals/ConfirmModal'
 import MonitoringSettings from './MonitoringSettings'
 import AccordionComponent from '../../components/AccordionComponent'
 import LogsSettings from './LogsSettings'
+import PluginsSettings from './PluginsSettings'
 import RejoinSettings from './RejoinSettings'
 import ProxySettings from './ProxySettings'
 import GraphSettings from './GraphSettings'
@@ -57,6 +58,9 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   const { isOpen: isCloud18Open, onToggle: onCloud18Toggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isCloud18Open')) || false
   })
+  const { isOpen: isPluginsOpen, onToggle: onPluginsToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isPluginsOpen')) || false
+  })
 
   useEffect(() => {
     localStorage.setItem('isBackupOpen', JSON.stringify(isBackupOpen))
@@ -97,7 +101,9 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   useEffect(() => {
     localStorage.setItem('isCloud18Open', JSON.stringify(isCloud18Open))
   }, [isCloud18Open])
-
+  useEffect(() => {
+    localStorage.setItem('isPluginsOpen', JSON.stringify(isPluginsOpen))
+  }, [isPluginsOpen])
 
   const openConfirmModal = (title, handler) => {
     setIsConfirmModalOpen(true)
@@ -158,6 +164,14 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<LogsSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+      />
+      <AccordionComponent
+        heading={'Plugins'}
+        onToggle={onPluginsToggle}
+        isOpen={isPluginsOpen}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        body={<PluginsSettings selectedCluster={selectedCluster} user={user} />}
       />
       <AccordionComponent
         heading={'Rejoin'}
