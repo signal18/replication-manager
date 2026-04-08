@@ -229,9 +229,11 @@ plugin-keys: $(PLUGIN_SIGNER_BIN)
 	fi
 
 # Sign all built plugin binaries using the key resolved by plugin-keys.
+# The public key is copied into share/plugins/ so it is included in every
+# package/Docker image and can be used for runtime signature verification.
 plugin-sigs: plugin-keys
 	@mkdir -p $(PLUGIN_SIG_DIR)
-	@echo "Signing plugins → $(PLUGIN_SIG_DIR)  [wire$(WIRE_VERSION)]"
+	@echo "Signing plugins → $(PLUGIN_SIG_DIR)  [wire-v$(WIRE_VERSION)]"
 	@for name in $(PLUGIN_NAMES); do \
 		bin=$(PLUGIN_BINDIR)/$$name; \
 		if [ -f $$bin ]; then \
@@ -241,6 +243,8 @@ plugin-sigs: plugin-keys
 				$$bin && echo "  signed $$name"; \
 		fi; \
 	done
+	@cp "$(PLUGIN_SIGNING_PUB)" "$(PLUGIN_SIG_DIR)/plugin-signing.pub"
+	@echo "Public key → $(PLUGIN_SIG_DIR)/plugin-signing.pub"
 
 # Push built plugins + sigs back to the signer repo under:
 #   plugins/$(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)/   — binaries + .sig files

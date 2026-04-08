@@ -320,13 +320,23 @@ func (cluster *Cluster) ReloadLogPlugins() {
 		return
 	}
 	for _, msg := range rejections {
-		cluster.LogModulePrintf(
-			cluster.Conf.Verbose,
-			config.ConstLogModPlugin,
-			config.LvlErr,
-			"[logplugin] rejected plugin (signature verification failed): %s",
-			msg,
-		)
+		if strings.HasPrefix(msg, "pubKeyMissing:") {
+			cluster.LogModulePrintf(
+				cluster.Conf.Verbose,
+				config.ConstLogModPlugin,
+				config.LvlWarn,
+				"[logplugin] %s",
+				strings.TrimPrefix(msg, "pubKeyMissing: "),
+			)
+		} else {
+			cluster.LogModulePrintf(
+				cluster.Conf.Verbose,
+				config.ConstLogModPlugin,
+				config.LvlErr,
+				"[logplugin] rejected plugin (bad signature): %s",
+				msg,
+			)
+		}
 	}
 	if n > 0 {
 		cluster.LogModulePrintf(

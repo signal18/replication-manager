@@ -335,8 +335,12 @@ type LoadOptions struct {
 // Rules:
 //   - Non-executable files and dotfiles are silently skipped.
 //   - A plugin whose name already exists in reg is hot-replaced in place.
-//   - When opts.PubKeyPath is set, plugins without a valid signature are
-//     skipped and their names are returned in the rejections slice.
+//   - When opts.PubKeyPath is set AND the key file exists, every plugin must
+//     have a valid .sig in SigDir; plugins that fail are rejected.
+//   - When opts.PubKeyPath is set but the file does not exist yet (e.g. first
+//     boot before the package is fully installed), verification is skipped and
+//     a "pubKeyMissing" message is returned as the first rejection entry so the
+//     caller can log a warning.
 func LoadPluginsFromDir(pluginDir string, reg *Registry, opts LoadOptions) (loaded int, rejections []string, err error) {
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
@@ -344,6 +348,17 @@ func LoadPluginsFromDir(pluginDir string, reg *Registry, opts LoadOptions) (load
 			return 0, nil, nil
 		}
 		return 0, nil, fmt.Errorf("scan plugin dir %s: %w", pluginDir, err)
+	}
+
+	// Resolve whether signature verification is active for this run.
+	verifyEnabled := false
+	if opts.PubKeyPath != "" {
+		if _, statErr := os.Stat(opts.PubKeyPath); statErr == nil {
+			verifyEnabled = true
+		} else {
+			// Key path configured but file absent — warn and proceed without verification.
+			rejections = append(rejections, fmt.Sprintf("pubKeyMissing: %s not found — signature verification skipped", opts.PubKeyPath))
+		}
 	}
 
 	sigDir := opts.SigDir
@@ -367,7 +382,7 @@ func LoadPluginsFromDir(pluginDir string, reg *Registry, opts LoadOptions) (load
 		}
 		binPath := filepath.Join(pluginDir, e.Name())
 
-		if opts.PubKeyPath != "" {
+		if verifyEnabled {
 			if verr := VerifyPluginSignature(binPath, sigDir, opts.PubKeyPath); verr != nil {
 				rejections = append(rejections, fmt.Sprintf("%s: %v", e.Name(), verr))
 				continue
