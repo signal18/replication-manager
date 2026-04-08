@@ -76,31 +76,34 @@ import (
 var RepMan *ReplicationManager
 
 type ReplicationManager struct {
-	OpenSVC              opensvc.Collector                 `json:"-"`
-	Version              string                            `json:"version"`
-	Fullversion          string                            `json:"fullVersion"`
-	Os                   string                            `json:"os"`
-	OsUser               *user.User                        `json:"osUser"`
-	Arch                 string                            `json:"arch"`
-	MemProfile           string                            `json:"memprofile"`
-	CpuProfile           string                            `json:"cpuprofile"`
-	Clusters             map[string]*cluster.Cluster       `json:"-"`
-	PeerManager          *peer.PeerManager                 `json:"-"`
-	Partners             []config.Partner                  `json:"partners"`
-	Partner              config.Partner                    `json:"partner"`
-	Agents               []opensvc.Host                    `json:"agents"`
-	UUID                 string                            `json:"uuid"`
-	Hostname             string                            `json:"hostname"`
-	Status               string                            `json:"status"`
-	SplitBrain           bool                              `json:"spitBrain"`
-	ClusterList          []string                          `json:"clusters"`
-	ImmutableClusterList []string                          `json:"-"`
-	DeprecatedKeys       map[string]map[string]bool        `json:"-"`
-	Tests                []string                          `json:"tests"`
-	Conf                 *config.Config                    `json:"config"`
-	ImmuableFlagMaps     map[string]map[string]interface{} `json:"-"`
-	DynamicFlagMaps      map[string]map[string]interface{} `json:"-"`
-	DefaultFlagMap       map[string]interface{}            `json:"-"`
+	OpenSVC                      opensvc.Collector                  `json:"-"`
+	Version                      string                             `json:"version"`
+	Fullversion                  string                             `json:"fullVersion"`
+	Os                           string                             `json:"os"`
+	OsUser                       *user.User                         `json:"osUser"`
+	Arch                         string                             `json:"arch"`
+	MemProfile                   string                             `json:"memprofile"`
+	CpuProfile                   string                             `json:"cpuprofile"`
+	Clusters                     map[string]*cluster.Cluster        `json:"-"`
+	PeerManager                  *peer.PeerManager                  `json:"-"`
+	Partners                     []config.Partner                   `json:"partners"`
+	Partner                      config.Partner                     `json:"partner"`
+	Agents                       []opensvc.Host                     `json:"agents"`
+	UUID                         string                             `json:"uuid"`
+	Hostname                     string                             `json:"hostname"`
+	Status                       string                             `json:"status"`
+	SplitBrain                   bool                               `json:"splitBrain"`
+	ClusterList                  []string                           `json:"clusters"`
+	ImmutableClusterList         []string                           `json:"-"`
+	DeprecatedKeys               map[string]map[string]bool         `json:"-"`
+	Tests                        []string                           `json:"tests"`
+	Conf                         *config.Config                     `json:"config"`
+	ImmuableFlagMaps             map[string]map[string]interface{}  `json:"-"`
+	DynamicFlagMaps              map[string]map[string]interface{}  `json:"-"`
+	DefaultFlagMap               map[string]interface{}             `json:"-"`
+	StateMachine                 *state.StateMachine                `json:"stateMachine" groups:"web"`
+	clusterHeartbeatTrackingLock sync.RWMutex                       `json:"-"`
+	clusterHeartbeatTracking     map[string]clusterHeartbeatTracker `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag                                  []string                    `json:"-"`
 	ConfigPathList                                   []string                    `json:"-"`
@@ -367,6 +370,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorScheduler, "monitoring-scheduler", false, "Enable internal scheduler")
 	flags.BoolVar(&conf.MonitorCheckGrants, "monitoring-check-grants", true, "Check grants for replication and monitoring users, it use DNS Lookup")
 	flags.BoolVar(&conf.MonitorPause, "monitoring-pause", false, "Disable monitoring")
+	flags.BoolVar(&conf.MonitorGlobalHeartbeatSupervision, "monitoring-global-heartbeat-supervision", true, "Enable global heartbeat supervision for stalled cluster detection")
+	flags.IntVar(&conf.MonitorGlobalHeartbeatStallThreshold, "monitoring-global-heartbeat-stall-threshold", defaultMonitorGlobalHeartbeatStallThreshold, "Number of stalled heartbeat cycles before opening global warning")
 	flags.BoolVar(&conf.MonitorProcessList, "monitoring-processlist", true, "Enable capture monitoring-processlist-limit longuest queries or trx via processlist")
 	flags.StringVar(&conf.MonitorProcessListLimit, "monitoring-processlist-limit", "50", " limit impact on monitoring bandwidth")
 	flags.BoolVar(&conf.MonitorProcessListInactive, "monitoring-processlist-inactive", false, " Show innactive transactions or queries in process")
@@ -2593,6 +2598,10 @@ func (repman *ReplicationManager) Run() error {
 			go repman.GetAppTemplates()
 			repman.RefreshDiskStats()
 		}
+
+		repman.ProduceClusterHeartbeatSupervisionStates()
+		repman.ProduceGitSupervisionStates()
+		repman.ProcessAlertStateLifecycle()
 
 		counter++
 	}

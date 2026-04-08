@@ -28,7 +28,7 @@ function HADetail({ selectedCluster }) {
 
       setSLAData([
         { key: 'Master Up', value: `${selectedCluster.uptime}%` },
-        { key: 'Slaves Catch', value: `${selectedCluster.uptimeFailable}%` },
+        { key: 'Slaves Catch Up', value: `${selectedCluster.uptimeFailable}%` },
         { key: 'Slaves Sync', value: `${selectedCluster.uptimeSemisync}%` }
       ])
     }

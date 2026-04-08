@@ -1074,11 +1074,12 @@ func (cluster *Cluster) SetIsSavingConfig(val bool) {
 }
 
 type ClusterState struct {
-	Servers    string      `json:"servers"`
-	Crashes    crashList   `json:"crashes"`
-	SLA        state.Sla   `json:"sla"`
-	SLAHistory []state.Sla `json:"slaHistory"`
-	IsAllDbUp  bool        `json:"provisioned"`
+	Servers       string      `json:"servers"`
+	Crashes       crashList   `json:"crashes"`
+	SLA           state.Sla   `json:"sla"`
+	SLAHistory    []state.Sla `json:"slaHistory"`
+	IsAllDbUp     bool        `json:"provisioned"`
+	RepmgrVersion string      `json:"repmgrVersion"`
 }
 
 func (cluster *Cluster) Save() error {
@@ -1094,6 +1095,7 @@ func (cluster *Cluster) Save() error {
 	clsave.SLA = cluster.StateMachine.GetSla()
 	clsave.IsAllDbUp = cluster.IsAllDbUp
 	clsave.SLAHistory = cluster.SLAHistory
+	clsave.RepmgrVersion = cluster.RepMgrVersion
 
 	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
 	err := os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)

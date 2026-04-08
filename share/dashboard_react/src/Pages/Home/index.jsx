@@ -28,7 +28,7 @@ import {
   getBackups,
   getResticCurrentTask
 } from '../../redux/clusterSlice'
-import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale } from '../../redux/globalClustersSlice'
+import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale, getGlobalAlerts, getGlobalMetrics, getGlobalLogs } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
 import styles from './styles.module.scss'
 import { useHref, useParams } from 'react-router-dom'
@@ -46,6 +46,7 @@ import Shards from '../Shards'
 import QueryRules from '../QueryRules'
 import PeerClusterList from '../PeerClusterList'
 import ClustersGlobalSettings from '../ClustersGlobalSettings'
+import GlobalItems from '../GlobalItems'
 import NewClusterModal from '../../components/Modals/NewClusterModal'
 import { FaPlus } from 'react-icons/fa'
 import { setBaseURL } from '../../redux/authSlice'
@@ -88,6 +89,7 @@ function Home() {
     if (loggedUser?.User == "admin") {
       globalTabsRef.current.push('Settings')
     }
+    globalTabsRef.current.push('Dashboard')
   }, [monitor?.config?.cloud18,loggedUser?.User])
 
   useEffect(() => {
@@ -182,6 +184,13 @@ function Home() {
       ) {
         dispatch(getClusterPeers({}))
         dispatch(getClusterForSale({}))
+      }
+      if (globalTabsRef.current[selectedTabRef.current] === 'Dashboard') {
+        if (!isAutoReloadPaused) {
+          dispatch(getGlobalAlerts({}))
+          dispatch(getGlobalMetrics({}))
+          dispatch(getGlobalLogs({}))
+        }
       }
     } else if (selectedClusterNameRef.current) {
       if (!isAutoReloadPaused) {
@@ -307,9 +316,15 @@ function Home() {
                 ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} user={user} onOpenSchedulerSettings={openMaintenanceScheduler} />] : []),
                 ...(user?.grants['cluster-grant'] ? [<Users selectedCluster={selectedCluster} user={user} />] : [])
               ]
-              : globalTabsRef.current.includes('Clusters Peer') // monitor?.config?.cloud18 is false, do not show "Peer Clusters" tab
-                ? [<PeerClusterList onLogin={setDashboardTab} />, <PeerClusterList mode='shared' />, <ClustersGlobalSettings />]
-                : [<ClustersGlobalSettings />])
+              : [
+                  ...(globalTabsRef.current.includes('Clusters Peer')
+                    ? [<PeerClusterList onLogin={setDashboardTab} />, <PeerClusterList mode='shared' />]
+                    : []),
+                  ...(globalTabsRef.current.includes('Settings')
+                    ? [<ClustersGlobalSettings />]
+                    : []),
+                  <GlobalItems />
+                ])
           ]}
         />
         {

@@ -62,9 +62,9 @@ const OpenSVCNodeCard = ({ nodeData, width }) => {
               width={180}
               height={135}
               isDisabled={true}
-              isGaugeSizeCustomized={false}
+
               hideMinMax={false}
-              textOverlayClassName={styles.textOverlay}
+
             />
             <Gauge
               minValue={0}
@@ -74,9 +74,9 @@ const OpenSVCNodeCard = ({ nodeData, width }) => {
               width={180}
               height={135}
               isDisabled={true}
-              isGaugeSizeCustomized={false}
+
               hideMinMax={false}
-              textOverlayClassName={styles.textOverlay}
+
             />
           </Flex>
         </Flex>

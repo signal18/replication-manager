@@ -57,12 +57,9 @@
 .resources {
   width: 100%;
   flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: rem(32);
-  .textOverlay {
-    bottom: rem(10);
-  }
-  //  height: rem(120);
+  justify-content: space-evenly;
+  align-items: flex-start;
+  gap: rem(8);
 }
 
 .configTagContainer {

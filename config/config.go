@@ -81,6 +81,8 @@ type Config struct {
 	MonitorAddress                            string                       `scope:"server" mapstructure:"monitoring-address" toml:"monitoring-address" json:"monitoringAddress"`
 	MonitorWriteHeartbeat                     bool                         `mapstructure:"monitoring-write-heartbeat" toml:"monitoring-write-heartbeat" json:"monitoringWriteHeartbeat"`
 	MonitorPause                              bool                         `mapstructure:"monitoring-pause" toml:"monitoring-pause" json:"monitoringPause"`
+	MonitorGlobalHeartbeatSupervision         bool                         `scope:"server" mapstructure:"monitoring-global-heartbeat-supervision" toml:"monitoring-global-heartbeat-supervision" json:"monitoringGlobalHeartbeatSupervision"`
+	MonitorGlobalHeartbeatStallThreshold      int                          `scope:"server" mapstructure:"monitoring-global-heartbeat-stall-threshold" toml:"monitoring-global-heartbeat-stall-threshold" json:"monitoringGlobalHeartbeatStallThreshold"`
 	MonitorWriteHeartbeatCredential           string                       `mapstructure:"monitoring-write-heartbeat-credential" toml:"monitoring-write-heartbeat-credential" json:"monitoringWriteHeartbeatCredential"`
 	MonitorVariableDiff                       bool                         `mapstructure:"monitoring-variable-diff" toml:"monitoring-variable-diff" json:"monitoringVariableDiff"`
 	MonitorSchemaChange                       bool                         `mapstructure:"monitoring-schema-change" toml:"monitoring-schema-change" json:"monitoringSchemaChange"`
