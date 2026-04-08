@@ -548,6 +548,7 @@ func applyRestoreEntriesToRuntime(repman *ReplicationManager, clusterName string
 		}
 	}
 
+	cl.MarkSecretVersionStoreDirty()
 	cl.ReconcileSecretVersionStore()
 	return nil
 }

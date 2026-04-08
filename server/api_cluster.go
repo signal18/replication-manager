@@ -4483,6 +4483,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		return errors.New("setting not found")
 	}
 	if trackedSecretSnapshotChanged(trackedSecretsBefore, mycluster.TrackedSecretCompareSnapshot()) {
+		mycluster.MarkSecretVersionStoreDirty()
 		mycluster.ReconcileSecretVersionStore()
 	}
 

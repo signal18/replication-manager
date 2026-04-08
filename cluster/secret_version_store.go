@@ -57,6 +57,20 @@ type SecretVersionStoreRestoreEntry struct {
 	RotatedAt string
 }
 
+const secretHashPrefix = "hash_"
+
+// MarkSecretVersionStoreDirty marks cluster secret version reconciliation as
+// needed on the next reconciliation call.
+func (cluster *Cluster) MarkSecretVersionStoreDirty() {
+	if cluster == nil {
+		return
+	}
+
+	cluster.secretVersionStoreMu.Lock()
+	cluster.secretVersionStoreDirty = true
+	cluster.secretVersionStoreMu.Unlock()
+}
+
 // ReconcileSecretVersionStore keeps the per-cluster secret_store.json in sync
 // with currently tracked secrets for this cluster.
 //
@@ -77,6 +91,9 @@ func (cluster *Cluster) ReconcileSecretVersionStore() {
 
 	cluster.secretVersionStoreMu.Lock()
 	defer cluster.secretVersionStoreMu.Unlock()
+	if !cluster.secretVersionStoreDirty {
+		return
+	}
 
 	storePath := SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name)
 	store, err := loadSecretVersionStore(storePath)
@@ -110,14 +127,42 @@ func (cluster *Cluster) ReconcileSecretVersionStore() {
 		hasChanges = true
 	}
 
+	if autoPruneEnabled, keepLast := cluster.getSecretVersionStoreAutoPruneSettings(); autoPruneEnabled {
+		prunedStore, _, versionsRemoved := pruneSecretVersionStore(store, keepLast)
+		if versionsRemoved > 0 {
+			store = prunedStore
+			hasChanges = true
+		}
+	}
+
 	if !hasChanges {
+		cluster.secretVersionStoreDirty = false
 		return
 	}
 
 	if err := writeSecretVersionStoreAtomic(storePath, store); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 			"Failed to persist secret version store %s: %v", storePath, err)
+		return
 	}
+
+	cluster.secretVersionStoreDirty = false
+}
+
+func (cluster *Cluster) getSecretVersionStoreAutoPruneSettings() (bool, int) {
+	if cluster == nil || cluster.Conf == nil {
+		return false, 0
+	}
+
+	if !cluster.Conf.MonitoringSecretVersioningAutoPrune {
+		return false, 0
+	}
+
+	if cluster.Conf.MonitoringSecretVersioningKeepLast < 1 {
+		return false, 0
+	}
+
+	return true, cluster.Conf.MonitoringSecretVersioningKeepLast
 }
 
 // TrackedSecretCompareSnapshot returns the current tracked secret semantic
@@ -154,7 +199,7 @@ func (cluster *Cluster) getTrackedSecretStoreValuesWithWarnings(logWarnings bool
 		}
 
 		storedValue := cluster.GetEncryptedValueFromMemory(key)
-		if storedValue == "" || !strings.Contains(storedValue, "hash_") {
+		if storedValue == "" || !containsHashPrefixToken(storedValue) {
 			storedValue = secret.Value
 		}
 
@@ -162,7 +207,7 @@ func (cluster *Cluster) getTrackedSecretStoreValuesWithWarnings(logWarnings bool
 			continue
 		}
 
-		if !strings.Contains(storedValue, "hash_") {
+		if !containsHashPrefixToken(storedValue) {
 			if !logWarnings {
 				continue
 			}
@@ -178,6 +223,29 @@ func (cluster *Cluster) getTrackedSecretStoreValuesWithWarnings(logWarnings bool
 	}
 
 	return values
+}
+
+func containsHashPrefixToken(value string) bool {
+	if strings.TrimSpace(value) == "" {
+		return false
+	}
+
+	tokens := strings.FieldsFunc(value, func(r rune) bool {
+		switch r {
+		case ',', ':', ' ', '\t', '\n', '\r':
+			return true
+		default:
+			return false
+		}
+	})
+
+	for _, token := range tokens {
+		if strings.HasPrefix(token, secretHashPrefix) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // getStoredSecretCompareValue converts a stored encrypted/hash payload into the

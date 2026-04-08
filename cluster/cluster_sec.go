@@ -244,6 +244,7 @@ func (cluster *Cluster) RotatePasswords() error {
 			new_Secret.OldValue = cluster.Conf.Secrets["replication-credential"].Value
 			new_Secret.Value = cluster.GetRplUser() + ":" + new_password_rpl
 			cluster.Conf.Secrets["replication-credential"] = new_Secret
+			cluster.MarkSecretVersionStoreDirty()
 
 			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && !cluster.IsVariableImmutable("proxysql-password") {
 				new_Secret.OldValue = cluster.Conf.Secrets["proxysql-password"].Value

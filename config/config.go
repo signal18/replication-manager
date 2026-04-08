@@ -72,6 +72,8 @@ type Config struct {
 	MonitoringKeyPath                         string                       `scope:"server" mapstructure:"monitoring-key-path" toml:"monitoring-key-path" json:"monitoringKeyPath"`
 	MonitoringKeyPathGitOverwrite             bool                         `scope:"server" mapstructure:"monitoring-key-path-git-overwrite" toml:"monitoring-key-path-git-overwrite" json:"monitoringKeyPathGitOverwrite"`
 	MonitoringSecretVersioning                bool                         `mapstructure:"monitoring-secret-versioning" toml:"monitoring-secret-versioning" json:"monitoringSecretVersioning"`
+	MonitoringSecretVersioningAutoPrune       bool                         `mapstructure:"monitoring-secret-versioning-auto-prune" toml:"monitoring-secret-versioning-auto-prune" json:"monitoringSecretVersioningAutoPrune"`
+	MonitoringSecretVersioningKeepLast        int                          `mapstructure:"monitoring-secret-versioning-keep-last" toml:"monitoring-secret-versioning-keep-last" json:"monitoringSecretVersioningKeepLast"`
 	MonitoringTicker                          int64                        `mapstructure:"monitoring-ticker" toml:"monitoring-ticker" json:"monitoringTicker"`
 	MonitorWaitRetry                          int64                        `mapstructure:"monitoring-wait-retry" toml:"monitoring-wait-retry" json:"monitoringWaitRetry"`
 	Socket                                    string                       `mapstructure:"monitoring-socket" toml:"monitoring-socket" json:"monitoringSocket"`
@@ -1800,11 +1802,7 @@ func (conf *Config) IsMonitoringSecretVersioningEnabled() bool {
 		return false
 	}
 
-	if conf.IsVaultUsed() {
-		return conf.MonitoringSecretVersioning
-	}
-
-	return true
+	return conf.MonitoringSecretVersioning
 }
 
 func (conf *Config) GenerateKey(Logger *logrus.Logger) error {

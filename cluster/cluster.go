@@ -268,6 +268,7 @@ type Cluster struct {
 	preservedVarsLoaded         bool                       `json:"-"`
 	preservedVarsMutex          sync.RWMutex               `json:"-"`
 	secretVersionStoreMu        sync.Mutex                 `json:"-"`
+	secretVersionStoreDirty     bool                       `json:"-"`
 	// pluginSpikeCache holds the last DetectSpike result per server+plugin pair.
 	// Keyed as "serverURL:pluginName". Prevents graphite HTTP on every tick.
 	pluginSpikeCache map[string]*logplugin.SpikeCache `json:"-"`
@@ -694,6 +695,7 @@ func (cluster *Cluster) Run() {
 	cluster.Lock()
 	cluster.Topology = config.TopoUnknown
 	cluster.Unlock()
+	cluster.MarkSecretVersionStoreDirty()
 
 	for !cluster.exit {
 		if !cluster.Conf.MonitorPause {

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,31 +23,37 @@ func TestReconcileSecretVersionStoreBootstrapReconcileAndDedupe(t *testing.T) {
 		Name:       "cluster-a",
 		WorkingDir: workingDir,
 		Conf: &config.Config{
-			WorkingDir: root,
+			WorkingDir:                 root,
+			MonitoringSecretVersioning: true,
 			Secrets: map[string]config.Secret{
 				"db-servers-credential": {Value: "dbuser:hash_pass_1"},
 			},
 		},
 	}
 
+	cl.MarkSecretVersionStoreDirty()
 	cl.ReconcileSecretVersionStore()
 	store := readSecretStoreForTest(t, filepath.Join(workingDir, secretVersionStoreFilename))
 	assertSecretVersionCount(t, store, "db-servers-credential", 1)
 
+	cl.MarkSecretVersionStoreDirty()
 	cl.ReconcileSecretVersionStore()
 	store = readSecretStoreForTest(t, filepath.Join(workingDir, secretVersionStoreFilename))
 	assertSecretVersionCount(t, store, "db-servers-credential", 1)
 
 	cl.Conf.Secrets["db-servers-credential"] = config.Secret{Value: "dbuser:hash_pass_2"}
+	cl.MarkSecretVersionStoreDirty()
 	cl.ReconcileSecretVersionStore()
 	store = readSecretStoreForTest(t, filepath.Join(workingDir, secretVersionStoreFilename))
 	assertSecretVersionCount(t, store, "db-servers-credential", 2)
 
+	cl.MarkSecretVersionStoreDirty()
 	cl.ReconcileSecretVersionStore()
 	store = readSecretStoreForTest(t, filepath.Join(workingDir, secretVersionStoreFilename))
 	assertSecretVersionCount(t, store, "db-servers-credential", 2)
 
 	cl.Conf.Secrets["proxysql-password"] = config.Secret{Value: "hash_proxy_pass"}
+	cl.MarkSecretVersionStoreDirty()
 	cl.ReconcileSecretVersionStore()
 	store = readSecretStoreForTest(t, filepath.Join(workingDir, secretVersionStoreFilename))
 	assertSecretVersionCount(t, store, "proxysql-password", 1)
@@ -72,6 +79,7 @@ func TestReconcileSecretVersionStoreDisabledWhenVaultConfigured(t *testing.T) {
 		},
 	}
 
+	cl.MarkSecretVersionStoreDirty()
 	cl.ReconcileSecretVersionStore()
 	if _, err := os.Stat(filepath.Join(workingDir, secretVersionStoreFilename)); !os.IsNotExist(err) {
 		t.Fatalf("expected no secret store file when feature is disabled, got err=%v", err)
@@ -122,13 +130,15 @@ func TestReconcileSecretVersionStoreSkipsNonEncryptedValues(t *testing.T) {
 		Name:       "cluster-c",
 		WorkingDir: workingDir,
 		Conf: &config.Config{
-			WorkingDir: root,
+			WorkingDir:                 root,
+			MonitoringSecretVersioning: true,
 			Secrets: map[string]config.Secret{
 				"custom-secret": {Value: "plain-text-value"},
 			},
 		},
 	}
 
+	cl.MarkSecretVersionStoreDirty()
 	cl.ReconcileSecretVersionStore()
 	if _, err := os.Stat(filepath.Join(workingDir, secretVersionStoreFilename)); !os.IsNotExist(err) {
 		t.Fatalf("expected no store file when values are not encrypted hash format, got err=%v", err)
@@ -146,23 +156,48 @@ func TestReconcileSecretVersionStoreDoesNotAppendForEquivalentEncryptedValues(t 
 		Name:       "cluster-d",
 		WorkingDir: workingDir,
 		Conf: &config.Config{
-			WorkingDir: root,
-			SecretKey:  []byte("01234567890123456789012345678901"),
+			WorkingDir:                 root,
+			MonitoringSecretVersioning: true,
+			SecretKey:                  []byte("01234567890123456789012345678901"),
 			Secrets: map[string]config.Secret{
 				"proxysql-password": {Value: "same-secret"},
 			},
 		},
 	}
 
+	cl.MarkSecretVersionStoreDirty()
 	cl.ReconcileSecretVersionStore()
 	store := readSecretStoreForTest(t, filepath.Join(workingDir, secretVersionStoreFilename))
 	assertSecretVersionCount(t, store, "proxysql-password", 1)
 
 	// GetEncryptedString may generate different encrypted hash tokens for same plaintext.
 	// Reconciliation must compare semantic decrypted value and avoid false version bumps.
+	cl.MarkSecretVersionStoreDirty()
 	cl.ReconcileSecretVersionStore()
 	store = readSecretStoreForTest(t, filepath.Join(workingDir, secretVersionStoreFilename))
 	assertSecretVersionCount(t, store, "proxysql-password", 1)
+}
+
+func TestContainsHashPrefixToken(t *testing.T) {
+	testCases := []struct {
+		name  string
+		value string
+		want  bool
+	}{
+		{name: "plain hash token", value: "hash_value_1", want: true},
+		{name: "credential with hash token", value: "dbuser:hash_value_1", want: true},
+		{name: "comma separated hash token", value: "db1:hash_one,db2:hash_two", want: true},
+		{name: "substring only should not match", value: "dbuser:myhash_value_1", want: false},
+		{name: "prefix-like plain text should not match", value: "prefixhash_value_1", want: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := containsHashPrefixToken(tc.value); got != tc.want {
+				t.Fatalf("containsHashPrefixToken(%q)=%v, want %v", tc.value, got, tc.want)
+			}
+		})
+	}
 }
 
 func TestTrackedSecretCompareSnapshotIncludesOnlyTrackedSecrets(t *testing.T) {
@@ -515,6 +550,214 @@ func TestResolveSecretVersionStoreEntriesInvalidVersionSelector(t *testing.T) {
 
 	if _, err := ResolveSecretVersionStoreEntries(storePath, []string{"db-servers-credential"}, "newest", nil); err == nil {
 		t.Fatalf("expected invalid selector error")
+	}
+}
+
+func TestReconcileSecretVersionStoreAutoPruneDisabledKeepsHistory(t *testing.T) {
+	root := t.TempDir()
+	workingDir := filepath.Join(root, "cluster-e")
+	if err := os.MkdirAll(workingDir, os.ModePerm); err != nil {
+		t.Fatalf("mkdir working dir: %v", err)
+	}
+
+	storePath := filepath.Join(workingDir, secretVersionStoreFilename)
+	seed := secretVersionStore{
+		"db-servers-credential": {
+			{Version: 1, HashValue: "hash_v1", RotatedAt: "2026-01-01T00:00:00Z"},
+			{Version: 2, HashValue: "hash_v2", RotatedAt: "2026-01-02T00:00:00Z"},
+			{Version: 3, HashValue: "hash_v3", RotatedAt: "2026-01-03T00:00:00Z"},
+		},
+	}
+	if err := writeSecretVersionStoreAtomic(storePath, seed); err != nil {
+		t.Fatalf("seed store failed: %v", err)
+	}
+
+	cl := &Cluster{
+		Name:       "cluster-e",
+		WorkingDir: workingDir,
+		Conf: &config.Config{
+			WorkingDir:                          root,
+			MonitoringSecretVersioning:          true,
+			MonitoringSecretVersioningAutoPrune: false,
+			MonitoringSecretVersioningKeepLast:  1,
+			Secrets:                             map[string]config.Secret{"db-servers-credential": {Value: "hash_v3"}},
+		},
+	}
+
+	cl.MarkSecretVersionStoreDirty()
+	cl.ReconcileSecretVersionStore()
+
+	after := readSecretStoreForTest(t, storePath)
+	if len(after["db-servers-credential"]) != 3 {
+		t.Fatalf("expected history untouched when auto-prune disabled, got %d", len(after["db-servers-credential"]))
+	}
+}
+
+func TestReconcileSecretVersionStoreAutoPruneKeepsOriginalVersionNumbers(t *testing.T) {
+	root := t.TempDir()
+	workingDir := filepath.Join(root, "cluster-f")
+	if err := os.MkdirAll(workingDir, os.ModePerm); err != nil {
+		t.Fatalf("mkdir working dir: %v", err)
+	}
+
+	storePath := filepath.Join(workingDir, secretVersionStoreFilename)
+	seed := secretVersionStore{
+		"db-servers-credential": {
+			{Version: 1, HashValue: "hash_v1", RotatedAt: "2026-01-01T00:00:00Z"},
+			{Version: 2, HashValue: "hash_v2", RotatedAt: "2026-01-02T00:00:00Z"},
+			{Version: 3, HashValue: "hash_v3", RotatedAt: "2026-01-03T00:00:00Z"},
+		},
+	}
+	if err := writeSecretVersionStoreAtomic(storePath, seed); err != nil {
+		t.Fatalf("seed store failed: %v", err)
+	}
+
+	cl := &Cluster{
+		Name:       "cluster-f",
+		WorkingDir: workingDir,
+		Conf: &config.Config{
+			WorkingDir:                          root,
+			MonitoringSecretVersioning:          true,
+			MonitoringSecretVersioningAutoPrune: true,
+			MonitoringSecretVersioningKeepLast:  2,
+			Secrets:                             map[string]config.Secret{"db-servers-credential": {Value: "hash_v3"}},
+		},
+	}
+
+	cl.MarkSecretVersionStoreDirty()
+	cl.ReconcileSecretVersionStore()
+
+	after := readSecretStoreForTest(t, storePath)
+	versions := after["db-servers-credential"]
+	if len(versions) != 2 {
+		t.Fatalf("expected 2 retained versions, got %d", len(versions))
+	}
+	if versions[0].Version != 2 || versions[1].Version != 3 {
+		t.Fatalf("expected retained versions [2,3], got [%d,%d]", versions[0].Version, versions[1].Version)
+	}
+}
+
+func TestReconcileSecretVersionStoreAutoPruneKeepLastZeroHasNoEffect(t *testing.T) {
+	root := t.TempDir()
+	workingDir := filepath.Join(root, "cluster-g")
+	if err := os.MkdirAll(workingDir, os.ModePerm); err != nil {
+		t.Fatalf("mkdir working dir: %v", err)
+	}
+
+	storePath := filepath.Join(workingDir, secretVersionStoreFilename)
+	seed := secretVersionStore{
+		"db-servers-credential": {
+			{Version: 1, HashValue: "hash_v1", RotatedAt: "2026-01-01T00:00:00Z"},
+			{Version: 2, HashValue: "hash_v2", RotatedAt: "2026-01-02T00:00:00Z"},
+		},
+	}
+	if err := writeSecretVersionStoreAtomic(storePath, seed); err != nil {
+		t.Fatalf("seed store failed: %v", err)
+	}
+
+	cl := &Cluster{
+		Name:       "cluster-g",
+		WorkingDir: workingDir,
+		Conf: &config.Config{
+			WorkingDir:                          root,
+			MonitoringSecretVersioning:          true,
+			MonitoringSecretVersioningAutoPrune: true,
+			MonitoringSecretVersioningKeepLast:  0,
+			Secrets:                             map[string]config.Secret{"db-servers-credential": {Value: "hash_v2"}},
+		},
+	}
+
+	cl.MarkSecretVersionStoreDirty()
+	cl.ReconcileSecretVersionStore()
+
+	after := readSecretStoreForTest(t, storePath)
+	if len(after["db-servers-credential"]) != 2 {
+		t.Fatalf("expected history untouched with keep-last=0, got %d", len(after["db-servers-credential"]))
+	}
+}
+
+func TestReconcileSecretVersionStoreSkipsWhenNotDirty(t *testing.T) {
+	root := t.TempDir()
+	workingDir := filepath.Join(root, "cluster-h")
+	if err := os.MkdirAll(workingDir, os.ModePerm); err != nil {
+		t.Fatalf("mkdir working dir: %v", err)
+	}
+
+	cl := &Cluster{
+		Name:       "cluster-h",
+		WorkingDir: workingDir,
+		Conf: &config.Config{
+			WorkingDir:                 root,
+			MonitoringSecretVersioning: true,
+			Secrets: map[string]config.Secret{
+				"db-servers-credential": {Value: "hash_v1"},
+			},
+		},
+	}
+
+	storePath := filepath.Join(workingDir, secretVersionStoreFilename)
+	cl.MarkSecretVersionStoreDirty()
+	cl.ReconcileSecretVersionStore()
+
+	if err := os.Remove(storePath); err != nil {
+		t.Fatalf("remove store failed: %v", err)
+	}
+
+	cl.ReconcileSecretVersionStore()
+	if _, err := os.Stat(storePath); !os.IsNotExist(err) {
+		t.Fatalf("expected reconcile to skip when not dirty, stat err=%v", err)
+	}
+
+	cl.MarkSecretVersionStoreDirty()
+	cl.ReconcileSecretVersionStore()
+	if _, err := os.Stat(storePath); err != nil {
+		t.Fatalf("expected reconcile to run when dirty, got err=%v", err)
+	}
+}
+
+func TestReconcileSecretVersionStoreConcurrentCallsAppendSingleVersion(t *testing.T) {
+	root := t.TempDir()
+	workingDir := filepath.Join(root, "cluster-i")
+	if err := os.MkdirAll(workingDir, os.ModePerm); err != nil {
+		t.Fatalf("mkdir working dir: %v", err)
+	}
+
+	cl := &Cluster{
+		Name:       "cluster-i",
+		WorkingDir: workingDir,
+		Conf: &config.Config{
+			WorkingDir:                 root,
+			MonitoringSecretVersioning: true,
+			Secrets: map[string]config.Secret{
+				"proxysql-password": {Value: "hash_v1"},
+			},
+		},
+	}
+
+	storePath := filepath.Join(workingDir, secretVersionStoreFilename)
+	cl.MarkSecretVersionStoreDirty()
+	cl.ReconcileSecretVersionStore()
+
+	cl.Conf.Secrets["proxysql-password"] = config.Secret{Value: "hash_v2"}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cl.MarkSecretVersionStoreDirty()
+			cl.ReconcileSecretVersionStore()
+		}()
+	}
+	wg.Wait()
+
+	after := readSecretStoreForTest(t, storePath)
+	versions := after["proxysql-password"]
+	if len(versions) != 2 {
+		t.Fatalf("expected a single appended version under concurrent reconcile, got %d", len(versions))
+	}
+	if versions[1].Version != 2 {
+		t.Fatalf("expected latest version number 2, got %d", versions[1].Version)
 	}
 }
 
