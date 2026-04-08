@@ -189,7 +189,7 @@ func (cluster *Cluster) getTrackedSecretStoreValues() map[string]trackedSecretVa
 
 func (cluster *Cluster) getTrackedSecretStoreValuesWithWarnings(logWarnings bool) map[string]trackedSecretValue {
 	values := make(map[string]trackedSecretValue)
-	if cluster == nil || cluster.Conf == nil {
+	if cluster.Conf == nil {
 		return values
 	}
 
