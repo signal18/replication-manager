@@ -2707,6 +2707,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.BackupResticRepoAppendCluster = !mycluster.Conf.BackupResticRepoAppendCluster
 	case "log-plugin":
 		mycluster.Conf.LogPlugin = !mycluster.Conf.LogPlugin
+	case "monitoring-binlog-events":
+		mycluster.SwitchMonitorBinlogEvents()
 	default:
 		return errors.New("setting not found")
 	}
