@@ -624,14 +624,19 @@ func SetUserGrants(ctx context.Context, conn *sqlx.Conn, myver *version.Version,
 
 // Additional functions extracted from backup - some contain SQL injection risks marked with TODO
 
-// GetUsers retrieves all users from the database
+// GetUsers retrieves all users from the database.
+// The Plugin field is populated on MySQL 5.7.6+ and all MariaDB versions.
+// It is left empty for PostgreSQL and pre-5.7.6 MySQL.
 func GetUsers(db *sqlx.DB, myver *version.Version) (map[string]*Grant, string, error) {
 	vars := make(map[string]*Grant)
-	query := "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10) FROM mysql.user where host<>'localhost'"
+	// Default: old MariaDB / MySQL < 5.7.6 — no plugin column, exclude localhost
+	query := "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), '' as plugin FROM mysql.user where host<>'localhost'"
 	if myver.IsPostgreSQL() {
-		query = "SELECT usename as user, '%' as host, 'unknow' as password, 0 FROM pg_catalog.pg_user"
+		query = "SELECT usename as user, '%' as host, 'unknow' as password, 0, '' as plugin FROM pg_catalog.pg_user"
 	} else if myver.IsMySQLOrPercona() && myver.GreaterEqual("5.7.6") {
-		query = "SELECT user, host, authentication_string as password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10) FROM mysql.user"
+		query = "SELECT user, host, authentication_string as password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), IFNULL(plugin,'') as plugin FROM mysql.user"
+	} else if myver.IsMariaDB() {
+		query = "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), IFNULL(plugin,'') as plugin FROM mysql.user"
 	}
 
 	rows, err := db.Queryx(query)
@@ -641,7 +646,7 @@ func GetUsers(db *sqlx.DB, myver *version.Version) (map[string]*Grant, string, e
 	defer rows.Close()
 	for rows.Next() {
 		var g Grant
-		err = rows.Scan(&g.User, &g.Host, &g.Password, &g.Hash)
+		err = rows.Scan(&g.User, &g.Host, &g.Password, &g.Hash, &g.Plugin)
 		if err != nil {
 			return vars, query, err
 		}

@@ -88,6 +88,8 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			ProcessList:      snapshotProcessList(server),
 			MetaDataLocks:    snapshotMetaDataLocks(server),
 			BinlogEvents:     snapshotBinlogEvents(server),
+			ServerVariables:  snapshotServerVariables(server),
+			DatabaseUsers:    snapshotDatabaseUsers(server),
 		}
 
 		if !src.IsEnabled() {
@@ -488,4 +490,38 @@ func buildMonitoringFlags(cluster *Cluster, server *ServerMonitor) map[string]bo
 		// METADATA_LOCK_INFO plugin is installed and active on this server.
 		"monitoring-metadata-lock-info": server.HaveMetaDataLocksLog,
 	}
+}
+
+// snapshotServerVariables returns a copy of the server's global variable map
+// for consumption by security plugins.  The SensitiveVariables map (passwords,
+// keys) is intentionally excluded.
+func snapshotServerVariables(server *ServerMonitor) map[string]string {
+	if server.Variables == nil {
+		return nil
+	}
+	raw := server.Variables.ToNewMap()
+	if len(raw) == 0 {
+		return nil
+	}
+	return raw
+}
+
+// snapshotDatabaseUsers returns a wire-safe view of mysql.user rows —
+// credential hashes are stripped; only user, host, plugin, and password_empty
+// are exposed to plugins.
+func snapshotDatabaseUsers(server *ServerMonitor) []logplugin.StdioDBUser {
+	if server.Users == nil {
+		return nil
+	}
+	users := server.Users.ToNewMap()
+	out := make([]logplugin.StdioDBUser, 0, len(users))
+	for _, g := range users {
+		out = append(out, logplugin.StdioDBUser{
+			User:          g.User,
+			Host:          g.Host,
+			Plugin:        g.Plugin,
+			PasswordEmpty: g.Password == "",
+		})
+	}
+	return out
 }

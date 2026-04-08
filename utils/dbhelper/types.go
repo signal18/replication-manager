@@ -438,6 +438,7 @@ type Grant struct {
 	Host     string `json:"host"`
 	Password string `json:"-"`
 	Hash     uint64 `json:"hash"`
+	Plugin   string `json:"plugin"` // authentication plugin name (mysql_native_password, ed25519, caching_sha2_password, …)
 }
 
 // Event represents a scheduled event

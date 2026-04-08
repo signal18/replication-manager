@@ -38,8 +38,12 @@ import (
 type Severity string
 
 const (
-	SeverityWarning Severity = "WARNING"
-	SeverityError   Severity = "ERROR"
+	SeverityWarning  Severity = "WARNING"
+	SeverityError    Severity = "ERROR"
+	// SeveritySecurity is used by security-audit plugins (SEC0xxx error keys).
+	// It is rendered distinctly from operational WARNING/ERROR in the UI and
+	// API responses, allowing operators to filter security findings separately.
+	SeveritySecurity Severity = "SECURITY"
 )
 
 // Finding is a single alert raised by a plugin evaluation.
@@ -114,6 +118,15 @@ func (c *SpikeCache) IsFresh() bool {
 	return time.Since(c.CheckedAt) < SpikeCheckInterval
 }
 
+// StdioDBUser is one row from mysql.user, stripped of sensitive credential data.
+// Used by security plugins to audit authentication configuration.
+type StdioDBUser struct {
+	User          string `json:"user"`
+	Host          string `json:"host"`
+	Plugin        string `json:"plugin"`         // e.g. "mysql_native_password", "ed25519", "caching_sha2_password"
+	PasswordEmpty bool   `json:"password_empty"` // true when authentication_string / password is empty
+}
+
 // StdioBinlogEvent is a single QUERY_EVENT captured from a server's binary log.
 // Passed to plugins that inspect binlog content (e.g. cleartext-password, credit-card).
 type StdioBinlogEvent struct {
@@ -154,8 +167,14 @@ type LogSource struct {
 	// Populated when METADATA_LOCK_INFO plugin is installed.
 	MetaDataLocks []StdioMDL
 	// BinlogEvents is a snapshot of recent binlog QUERY events.
-	// Populated when Conf.LogPluginBinlogScan is enabled.
+	// Populated when Conf.MonitorBinlogEvents is enabled.
 	BinlogEvents []StdioBinlogEvent
+	// ServerVariables is a snapshot of SHOW GLOBAL VARIABLES (non-sensitive).
+	// Always populated when the server is reachable.
+	ServerVariables map[string]string
+	// DatabaseUsers is a snapshot of mysql.user rows (no password hashes).
+	// Always populated when the server is reachable.
+	DatabaseUsers []StdioDBUser
 }
 
 // IsEnabled returns false only when config explicitly sets enabled=false/0/no.

@@ -5,17 +5,27 @@ package wire
 
 // Request is written to the plugin's stdin as a single JSON object.
 type Request struct {
-	ServerURL        string        `json:"server_url"`
-	GraphiteAPIURL   string        `json:"graphite_api_url"`
-	GraphiteHostname string        `json:"graphite_hostname"`
-	ErrorLog         []Msg         `json:"error_log"`
-	SqlErrorLog      []Msg         `json:"sql_error_log"`
-	SlowLog          []SlowMsg     `json:"slow_log"`
-	AuditLog         []Msg         `json:"audit_log"`
-	PFSQueries       []PFSQuery    `json:"pfs_queries"`
-	ProcessList      []Process     `json:"process_list"`
-	MetaDataLocks    []MDL         `json:"metadata_locks"`
-	BinlogEvents     []BinlogEvent `json:"binlog_events"`
+	ServerURL        string            `json:"server_url"`
+	GraphiteAPIURL   string            `json:"graphite_api_url"`
+	GraphiteHostname string            `json:"graphite_hostname"`
+	ErrorLog         []Msg             `json:"error_log"`
+	SqlErrorLog      []Msg             `json:"sql_error_log"`
+	SlowLog          []SlowMsg         `json:"slow_log"`
+	AuditLog         []Msg             `json:"audit_log"`
+	PFSQueries       []PFSQuery        `json:"pfs_queries"`
+	ProcessList      []Process         `json:"process_list"`
+	MetaDataLocks    []MDL             `json:"metadata_locks"`
+	BinlogEvents     []BinlogEvent     `json:"binlog_events"`
+	ServerVariables  map[string]string `json:"server_variables"` // SHOW GLOBAL VARIABLES snapshot
+	DatabaseUsers    []DBUser          `json:"database_users"`   // mysql.user snapshot (no hashes)
+}
+
+// DBUser is one row from mysql.user, stripped of credential data.
+type DBUser struct {
+	User          string `json:"user"`
+	Host          string `json:"host"`
+	Plugin        string `json:"plugin"`         // e.g. "mysql_native_password", "ed25519"
+	PasswordEmpty bool   `json:"password_empty"` // true when authentication_string is empty
 }
 
 // BinlogEvent is a single QUERY_EVENT captured from a server's binary log.
@@ -92,6 +102,6 @@ type Response struct {
 
 type Finding struct {
 	ErrKey      string `json:"err_key"`
-	Severity    string `json:"severity"` // "WARNING" or "ERROR"
+	Severity    string `json:"severity"` // "WARNING", "ERROR", or "SECURITY"
 	Description string `json:"description"`
 }

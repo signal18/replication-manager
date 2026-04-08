@@ -74,8 +74,14 @@ type StdioRequest struct {
 	// Metadata lock waits (populated when METADATA_LOCK_INFO plugin is installed)
 	MetaDataLocks []StdioMDL `json:"metadata_locks"`
 
-	// BinlogEvents contains recent binlog QUERY events (populated when log-plugin-binlog-scan is on)
+	// BinlogEvents contains recent binlog QUERY events (populated when monitoring-binlog-events is on)
 	BinlogEvents []StdioBinlogEvent `json:"binlog_events"`
+
+	// ServerVariables is a snapshot of SHOW GLOBAL VARIABLES (non-sensitive).
+	ServerVariables map[string]string `json:"server_variables"`
+
+	// DatabaseUsers is a snapshot of mysql.user rows (no password hashes).
+	DatabaseUsers []StdioDBUser `json:"database_users"`
 }
 
 // stdioMsg is a generic log entry (error log, SQL error log, audit log).
@@ -228,6 +234,8 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 		ProcessList:      processToWire(src.ProcessList),
 		MetaDataLocks:    mdlToWire(src.MetaDataLocks),
 		BinlogEvents:     src.BinlogEvents,
+		ServerVariables:  src.ServerVariables,
+		DatabaseUsers:    src.DatabaseUsers,
 	}
 
 	payload, err := json.Marshal(req)
@@ -257,7 +265,7 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	findings := make([]Finding, 0, len(resp.Findings))
 	for _, sf := range resp.Findings {
 		sev := Severity(strings.ToUpper(sf.Severity))
-		if sev != SeverityWarning && sev != SeverityError {
+		if sev != SeverityWarning && sev != SeverityError && sev != SeveritySecurity {
 			sev = SeverityWarning
 		}
 		findings = append(findings, Finding{
