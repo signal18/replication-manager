@@ -1,7 +1,8 @@
 {
   "updated": "2026-04-09",
+  "comment": "MariaDB LTS: 10.6 (EOL Jul 2026), 10.11 (EOL Feb 2028), 11.4 (EOL May 2029), 11.8 (EOL TBD)",
   "lts": {
-    "mariadb": ["10.6", "10.11", "11.4"],
+    "mariadb": ["10.6", "10.11", "11.4", "11.8"],
     "mysql":   ["8.0",  "8.4"],
     "percona": ["8.0",  "8.4"]
   }
