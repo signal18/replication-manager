@@ -9,7 +9,12 @@ import { Link } from 'react-router-dom'
 import { clearCluster } from '../../redux/clusterSlice'
 import AlertBadge from '../AlertBadge'
 import AlertModal from '../Modals/AlertModal'
+import SecurityScoreModal from '../Modals/SecurityScoreModal'
+import WorkloadModal from '../Modals/WorkloadModal'
 import { FaPowerOff, FaUserPlus } from 'react-icons/fa'
+import { MdSecurity } from 'react-icons/md'
+import { RiSpeedFill } from 'react-icons/ri'
+import { Badge, Tooltip } from '@chakra-ui/react'
 import ConfirmModal from '../Modals/ConfirmModal'
 import styles from './styles.module.scss'
 import RMButton from '../RMButton'
@@ -27,6 +32,8 @@ function Navbar({ username }) {
   const [alertModalType, setAlertModalType] = useState('')
   const [globalAlertModalType, setGlobalAlertModalType] = useState('')
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
+  const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false)
+  const [isWorkloadModalOpen, setIsWorkloadModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
   const [isChatOpen, setIsChatOpen] = useState(() => { return localStorage.getItem('chatOpen') === 'true'; });
@@ -171,6 +178,16 @@ function Navbar({ username }) {
                 onClick={() => openAlertModal('warning')}
                 showText={!isMobile}
               />
+              <SecurityScoreBadge
+                score={clusterData?.securityScore}
+                onClick={() => setIsSecurityModalOpen(true)}
+                showText={!isMobile}
+              />
+              <WorkloadBadge
+                stateCount={Object.keys(clusterData?.workloadStateMachine?.CurState || {}).length}
+                onClick={() => setIsWorkloadModalOpen(true)}
+                showText={!isMobile}
+              />
             </Flex>
           )}
 
@@ -239,7 +256,61 @@ function Navbar({ username }) {
       {isAddUserModalOpen && (
         <AddUserModal clusterName={clusterData?.name} isOpen={isAddUserModalOpen} closeModal={closeAddUserModal} />
       )}
+      {isSecurityModalOpen && (
+        <SecurityScoreModal isOpen={isSecurityModalOpen} closeModal={() => setIsSecurityModalOpen(false)} />
+      )}
+      {isWorkloadModalOpen && (
+        <WorkloadModal isOpen={isWorkloadModalOpen} closeModal={() => setIsWorkloadModalOpen(false)} />
+      )}
     </>
+  )
+}
+
+const GRADE_COLOR = { A: 'green', B: 'teal', C: 'yellow', D: 'orange', F: 'red' }
+
+function SecurityScoreBadge({ score, onClick, showText }) {
+  if (!score) return null
+  const gradeColor = GRADE_COLOR[score.grade] || 'gray'
+  return (
+    <Tooltip label={`Security compliance score: ${score.score}/100`} placement='bottom'>
+      <Badge
+        as='button'
+        onClick={onClick}
+        colorScheme={gradeColor}
+        display='flex'
+        alignItems='center'
+        gap='1'
+        px='2'
+        py='1'
+        borderRadius='md'
+        cursor='pointer'>
+        <Box as={MdSecurity} />
+        {showText && <span>Security</span>}
+        <span style={{ fontWeight: 'bold', marginLeft: '2px' }}>{score.grade}</span>
+      </Badge>
+    </Tooltip>
+  )
+}
+
+function WorkloadBadge({ stateCount, onClick, showText }) {
+  return (
+    <Tooltip label='Active workload / performance spike detections' placement='bottom'>
+      <Badge
+        as='button'
+        onClick={onClick}
+        colorScheme={stateCount > 0 ? 'purple' : 'gray'}
+        display='flex'
+        alignItems='center'
+        gap='1'
+        px='2'
+        py='1'
+        borderRadius='md'
+        cursor='pointer'>
+        <Box as={RiSpeedFill} />
+        {showText && <span>Workload</span>}
+        <span style={{ fontWeight: 'bold', marginLeft: '2px' }}>{stateCount}</span>
+      </Badge>
+    </Tooltip>
   )
 }
 
