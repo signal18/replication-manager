@@ -174,15 +174,15 @@ type ReplicationManager struct {
 	// SecurityLogrus is a dedicated logger that writes security events to
 	// security.log (path derived from log-file by inserting "-security" before
 	// the extension). Nil when log-file is not configured.
-	SecurityLogrus                                   *log.Logger
+	SecurityLogrus                                   *log.Logger    `json:"-"`
 	// WorkloadLogrus is a dedicated logger that writes workload/performance spike
 	// events to workload.log (path derived from log-file by inserting "-workload"
 	// before the extension). Nil when log-file is not configured.
-	WorkloadLogrus                                   *log.Logger
+	WorkloadLogrus                                   *log.Logger    `json:"-"`
 	// MaintenanceLogrus is a dedicated logger that writes planned-operations events
 	// (backup, SST, task execution, purge, orchestrator) to maintenance.log.
 	// Nil when log-file is not configured.
-	MaintenanceLogrus                                *log.Logger
+	MaintenanceLogrus                                *log.Logger    `json:"-"`
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
