@@ -866,7 +866,8 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 
 	res, err := json.Marshal(repman)
 	if err != nil {
-		http.Error(w, "Error Marshal", http.StatusInternalServerError)
+		log.Errorf("handlerMuxReplicationManager marshal error: %v", err)
+		http.Error(w, "Error Marshal: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
