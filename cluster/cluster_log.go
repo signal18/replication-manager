@@ -418,10 +418,38 @@ func (cluster *Cluster) LogPrintAllStates() {
 	}
 }
 
+func (cluster *Cluster) LogPrintAllWorkloadStates() {
+	SM := cluster.WorkloadStateMachine
+	if !cluster.runOnceAfterTopology {
+		for _, st := range SM.GetLastResolvedStates() {
+			cluster.logPrintStateTo(st, true, &cluster.LogWorkload)
+		}
+	}
+	for _, st := range SM.GetLastOpenedStates() {
+		cluster.logPrintStateTo(st, false, &cluster.LogWorkload)
+	}
+}
+
+func (cluster *Cluster) LogPrintAllSecurityStates() {
+	SM := cluster.SecurityStateMachine
+	if !cluster.runOnceAfterTopology {
+		for _, st := range SM.GetLastResolvedStates() {
+			cluster.logPrintStateTo(st, true, &cluster.LogSecurity)
+		}
+	}
+	for _, st := range SM.GetLastOpenedStates() {
+		cluster.logPrintStateTo(st, false, &cluster.LogSecurity)
+	}
+}
+
 /*
 This function is for printing state
 */
 func (cluster *Cluster) LogPrintState(st state.State, resolved bool) int {
+	return cluster.logPrintStateTo(st, resolved, cluster.htlog)
+}
+
+func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18log.HttpLog) int {
 	var format string
 	level := "STATE"
 	line := 0
@@ -457,7 +485,7 @@ func (cluster *Cluster) LogPrintState(st state.State, resolved bool) int {
 			Timestamp: stamp,
 			Text:      httpmsg,
 		}
-		line = cluster.htlog.Add(msg)
+		line = buf.Add(msg)
 		cluster.Log.Add(msg)
 	}
 

@@ -1028,6 +1028,8 @@ func (cluster *Cluster) StateProcessing() {
 
 		//Replace old state print
 		cluster.LogPrintAllStates()
+		cluster.LogPrintAllWorkloadStates()
+		cluster.LogPrintAllSecurityStates()
 
 		// trigger action on resolving states
 		ostates := cluster.StateMachine.GetOpenStates()
