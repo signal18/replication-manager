@@ -2,9 +2,10 @@
 //
 //	HasLastLTS — the server version is a known active LTS release
 //
-// The plugin reads lts-versions.json from PluginDataDir. This file ships
-// with the repman package and is periodically refreshed from the Signal18
-// back-office so the LTS list stays current without a repman upgrade.
+// The plugin has a built-in LTS list compiled in via go:embed (lts-versions.json
+// next to this file). When PluginDataDir contains a newer lts-versions.json —
+// refreshed periodically from the Signal18 back-office — that file takes
+// priority so the LTS list stays current without a repman upgrade.
 //
 // lts-versions.json format:
 //
@@ -19,6 +20,7 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -27,6 +29,9 @@ import (
 
 	"github.com/signal18/replication-manager/cluster/logplugin/plugins/wire"
 )
+
+//go:embed lts-versions.json
+var defaultLTSData []byte
 
 type ltsData struct {
 	Updated string              `json:"updated"`
@@ -40,22 +45,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	dataFile := filepath.Join(req.PluginDataDir, "lts-versions.json")
-	raw, err := os.ReadFile(dataFile)
-	if err != nil {
-		// Can't read data file — emit unknown rather than false negative
-		json.NewEncoder(os.Stdout).Encode(wire.Response{ScoreChecks: []wire.ScoreCheck{
-			{Tag: "HasLastLTS", Pass: false,
-				Detail: fmt.Sprintf("cannot read %s: %v", dataFile, err)},
-		}})
-		return
+	// Prefer the on-disk file (periodically refreshed) over the compiled-in default.
+	raw := defaultLTSData
+	source := "built-in"
+	if req.PluginDataDir != "" {
+		dataFile := filepath.Join(req.PluginDataDir, "lts-versions.json")
+		if disk, err := os.ReadFile(dataFile); err == nil {
+			raw = disk
+			source = dataFile
+		}
 	}
 
 	var data ltsData
 	if err := json.Unmarshal(raw, &data); err != nil {
 		json.NewEncoder(os.Stdout).Encode(wire.Response{ScoreChecks: []wire.ScoreCheck{
 			{Tag: "HasLastLTS", Pass: false,
-				Detail: fmt.Sprintf("bad lts-versions.json: %v", err)},
+				Detail: fmt.Sprintf("bad lts-versions.json (%s): %v", source, err)},
 		}})
 		return
 	}
@@ -83,8 +88,8 @@ func main() {
 		}
 	}
 
-	detail := fmt.Sprintf("flavor=%s version=%s lts=%v (data updated %s)",
-		flavor, version, ltsList, data.Updated)
+	detail := fmt.Sprintf("flavor=%s version=%s lts=%v (data: %s, updated %s)",
+		flavor, version, ltsList, source, data.Updated)
 
 	json.NewEncoder(os.Stdout).Encode(wire.Response{ScoreChecks: []wire.ScoreCheck{
 		{Tag: "HasLastLTS", Pass: pass, Detail: detail},

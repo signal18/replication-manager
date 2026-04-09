@@ -148,7 +148,7 @@ $(PLUGIN_SIGNER_BIN):
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
 	  go build -v -o $(PLUGIN_SIGNER_BIN) ./tools/plugin-signer/...
 
-$(PLUGIN_BINDIR)/%: $(wildcard cluster/logplugin/plugins/%/*.go) $(PLUGIN_COMMON_SRCS)
+$(PLUGIN_BINDIR)/%: $(wildcard cluster/logplugin/plugins/%/*.go) $(wildcard cluster/logplugin/plugins/%/*.json) $(PLUGIN_COMMON_SRCS)
 	@mkdir -p $(PLUGIN_BINDIR)
 	@echo "Building plugin: $*"
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
