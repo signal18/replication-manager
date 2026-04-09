@@ -1,0 +1,4 @@
+# Do not ignore static plugin data files shipped with repman.
+# The root .gitignore has "data/" which would otherwise exclude this directory.
+!.gitignore
+!*.json

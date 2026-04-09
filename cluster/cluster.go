@@ -178,6 +178,12 @@ type Cluster struct {
 	//proxysqlUser              string                      `json:"-"`
 	//proxysqlPass              string                      `json:"-"`
 	StateMachine                        *state.StateMachine         `json:"stateMachine" groups:"web"`
+	SecurityStateMachine                *state.StateMachine         `json:"securityStateMachine" groups:"web"`
+	SecurityScore                       SecurityScore               `json:"securityScore" groups:"web"`
+	// Set by dbjob SSH scripts scanning my.cnf/.my.cnf on DB servers
+	SecurityClearPwdConfig              bool                        `json:"securityClearPwdConfig"`
+	// Set by dbjob SSH scripts scanning .bash_history/.mysql_history on DB servers
+	SecurityClearPwdHistory             bool                        `json:"securityClearPwdHistory"`
 	runOnceAfterTopology                bool                        `json:"-"`
 	logPtr                              *os.File                    `json:"-"`
 	termlength                          int                         `json:"-"`
@@ -449,6 +455,8 @@ func (cluster *Cluster) InitFromConf() {
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.StateMachine = new(state.StateMachine)
 	cluster.StateMachine.Init()
+	cluster.SecurityStateMachine = new(state.StateMachine)
+	cluster.SecurityStateMachine.Init()
 
 	// k, _ := cluster.Conf.LoadEncrytionKey()
 	// if k == nil {
@@ -1069,6 +1077,80 @@ func (cluster *Cluster) Stop() {
 
 func (cluster *Cluster) SetIsSavingConfig(val bool) {
 	cluster.IsSavingConfig = val
+}
+
+// SecurityScore holds the compliance status for each security check.
+// Each field maps to a tag that can be contributed by an external plugin
+// via ScoreCheck.Tag. Score (0-100) is the percentage of passing checks.
+type SecurityScore struct {
+	HasSSL              bool   `json:"hasSSL"`
+	HasZeroSSL          bool   `json:"hasZeroSSL"`
+	HasTableEncryption  bool   `json:"hasTableEncryption"`
+	HasBinlogEncryption bool   `json:"hasBinlogEncryption"`
+	HasTmpEncryption    bool   `json:"hasTmpEncryption"`
+	HasBackupEncryption bool   `json:"hasBackupEncryption"`
+	HasAuditPlugins     bool   `json:"hasAuditPlugins"`
+	NoEmptyPassword     bool   `json:"noEmptyPassword"`
+	HasPrepareStatement bool   `json:"hasPrepareStatement"`
+	HasStrongPwd        bool   `json:"hasStrongPwd"`
+	HasProxies          bool   `json:"hasProxies"`
+	HasParsecPlugins    bool   `json:"hasParsecPlugins"`
+	HasPasswordRotation bool   `json:"hasPasswordRotation"`
+	NoClearPwdConfigs   bool   `json:"noClearPwdConfigs"`
+	NoClearPwdHistory   bool   `json:"noClearPwdHistory"`
+	NoClearPwdBinlogs   bool   `json:"noClearPwdBinlogs"`
+	HasLastLTS          bool   `json:"hasLastLTS"`
+	Score               int    `json:"score"` // 0-100
+	Grade               string `json:"grade"` // A/B/C/D/F
+}
+
+// ApplyCheck sets the field matching tag to pass.
+// Unknown tags are silently ignored so new plugins don't break old repman builds.
+func (s *SecurityScore) ApplyCheck(tag string, pass bool) {
+	switch tag {
+	case "HasSSL":              s.HasSSL = pass
+	case "HasZeroSSL":         s.HasZeroSSL = pass
+	case "HasTableEncryption": s.HasTableEncryption = pass
+	case "HasBinlogEncryption":s.HasBinlogEncryption = pass
+	case "HasTmpEncryption":   s.HasTmpEncryption = pass
+	case "HasBackupEncryption":s.HasBackupEncryption = pass
+	case "HasAuditPlugins":    s.HasAuditPlugins = pass
+	case "NoEmptyPassword":    s.NoEmptyPassword = pass
+	case "HasPrepareStatement":s.HasPrepareStatement = pass
+	case "HasStrongPwd":       s.HasStrongPwd = pass
+	case "HasProxies":         s.HasProxies = pass
+	case "HasParsecPlugins":   s.HasParsecPlugins = pass
+	case "HasPasswordRotation":s.HasPasswordRotation = pass
+	case "NoClearPwdConfigs":  s.NoClearPwdConfigs = pass
+	case "NoClearPwdHistory":  s.NoClearPwdHistory = pass
+	case "NoClearPwdBinlogs":  s.NoClearPwdBinlogs = pass
+	case "HasLastLTS":         s.HasLastLTS = pass
+	}
+}
+
+// Compute recalculates Score and Grade from the boolean fields.
+func (s *SecurityScore) Compute() {
+	checks := []bool{
+		s.HasSSL, s.HasZeroSSL, s.HasTableEncryption, s.HasBinlogEncryption,
+		s.HasTmpEncryption, s.HasBackupEncryption, s.HasAuditPlugins,
+		s.NoEmptyPassword, s.HasPrepareStatement, s.HasStrongPwd, s.HasProxies,
+		s.HasParsecPlugins, s.HasPasswordRotation, s.NoClearPwdConfigs,
+		s.NoClearPwdHistory, s.NoClearPwdBinlogs, s.HasLastLTS,
+	}
+	passed := 0
+	for _, c := range checks {
+		if c {
+			passed++
+		}
+	}
+	s.Score = passed * 100 / len(checks)
+	switch {
+	case s.Score >= 90: s.Grade = "A"
+	case s.Score >= 75: s.Grade = "B"
+	case s.Score >= 60: s.Grade = "C"
+	case s.Score >= 40: s.Grade = "D"
+	default:            s.Grade = "F"
+	}
 }
 
 type ClusterState struct {

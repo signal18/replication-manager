@@ -21,8 +21,19 @@ type Request struct {
 	ProcessList      []Process         `json:"process_list"`
 	MetaDataLocks    []MDL             `json:"metadata_locks"`
 	BinlogEvents     []BinlogEvent     `json:"binlog_events"`
-	ServerVariables  map[string]string `json:"server_variables"` // SHOW GLOBAL VARIABLES snapshot
-	DatabaseUsers    []DBUser          `json:"database_users"`   // mysql.user snapshot (no hashes)
+	ServerVariables  map[string]string `json:"server_variables"`  // SHOW GLOBAL VARIABLES snapshot
+	DatabaseUsers    []DBUser          `json:"database_users"`    // mysql.user snapshot (no hashes)
+	ClusterContext   ClusterContext    `json:"cluster_context"`   // cluster-level facts
+	PluginDataDir    string            `json:"plugin_data_dir"`   // path to plugin sidecar data files
+}
+
+// ClusterContext carries cluster-level facts that cannot be derived from
+// a single server snapshot.
+type ClusterContext struct {
+	HasProxies      bool `json:"has_proxies"`       // cluster has at least one proxy configured
+	BackupEncrypted bool `json:"backup_encrypted"`  // backup configured with encryption
+	ConfigClearPwd  bool `json:"config_clear_pwd"`  // cleartext passwords detected in TOML config
+	HistoryClearPwd bool `json:"history_clear_pwd"` // previous binlog scan found cleartext passwords
 }
 
 // DBUser is one row from mysql.user, stripped of credential data.
@@ -103,11 +114,20 @@ type MDL struct {
 }
 
 type Response struct {
-	Findings []Finding `json:"findings"`
+	Findings    []Finding    `json:"findings"`
+	ScoreChecks []ScoreCheck `json:"score_checks,omitempty"`
 }
 
 type Finding struct {
 	ErrKey      string `json:"err_key"`
 	Severity    string `json:"severity"` // "WARNING", "ERROR", or "SECURITY"
 	Description string `json:"description"`
+}
+
+// ScoreCheck is a single compliance check result.
+// Tag matches a SecurityScore field name (e.g. "HasSSL", "NoEmptyPassword").
+type ScoreCheck struct {
+	Tag    string `json:"tag"`
+	Pass   bool   `json:"pass"`
+	Detail string `json:"detail,omitempty"`
 }

@@ -83,6 +83,12 @@ type StdioRequest struct {
 
 	// DatabaseUsers is a snapshot of mysql.user rows (no password hashes).
 	DatabaseUsers []StdioDBUser `json:"database_users"`
+
+	// ClusterContext carries cluster-level facts (proxies, backup encryption, etc.)
+	ClusterContext ClusterContext `json:"cluster_context"`
+
+	// PluginDataDir is the directory where plugin sidecar data files live.
+	PluginDataDir string `json:"plugin_data_dir"`
 }
 
 // stdioMsg is a generic log entry (error log, SQL error log, audit log).
@@ -152,7 +158,8 @@ type StdioMDL struct {
 
 // stdioResponse is read from the plugin's stdout.
 type stdioResponse struct {
-	Findings []stdioFinding `json:"findings"`
+	Findings    []stdioFinding    `json:"findings"`
+	ScoreChecks []ScoreCheck      `json:"score_checks"`
 }
 
 type stdioFinding struct {
@@ -237,6 +244,8 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 		BinlogEvents:     src.BinlogEvents,
 		ServerVariables:  src.ServerVariables,
 		DatabaseUsers:    src.DatabaseUsers,
+		ClusterContext:   src.ClusterContext,
+		PluginDataDir:    src.PluginDataDir,
 	}
 
 	payload, err := json.Marshal(req)
@@ -275,7 +284,7 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 			Description: sf.Description,
 		})
 	}
-	return EvaluateResult{Findings: findings}
+	return EvaluateResult{Findings: findings, ScoreChecks: resp.ScoreChecks}
 }
 
 // ---- signature verification -------------------------------------------------

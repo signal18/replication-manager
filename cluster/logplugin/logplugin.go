@@ -66,11 +66,20 @@ func (f Finding) ToState(from string) state.State {
 // EvaluateResult is returned by Evaluate.
 type EvaluateResult struct {
 	Findings      []Finding
-	CurrentCount  int     // events counted in current window
-	PreviousCount int     // events in previous same-length window (for fallback when graphite unavailable)
+	ScoreChecks   []ScoreCheck // compliance score contributions, may be nil
+	CurrentCount  int          // events counted in current window
+	PreviousCount int          // events in previous same-length window (for fallback when graphite unavailable)
 	// MetricName is the graphite metric name this plugin writes its count under.
 	// Empty if graphite is not configured.
-	MetricName    string
+	MetricName string
+}
+
+// ScoreCheck is a single compliance check result returned by a score plugin.
+// The Tag matches one of the SecurityScore boolean fields (e.g. "HasSSL").
+type ScoreCheck struct {
+	Tag    string `json:"tag"`              // e.g. "HasSSL", "NoEmptyPassword"
+	Pass   bool   `json:"pass"`             // true = check passed
+	Detail string `json:"detail,omitempty"` // human-readable explanation
 }
 
 // SpikeCheckInterval is how often DetectSpike is actually called.
@@ -176,6 +185,21 @@ type LogSource struct {
 	// DatabaseUsers is a snapshot of mysql.user rows (no password hashes).
 	// Always populated when the server is reachable.
 	DatabaseUsers []StdioDBUser
+	// ClusterContext carries cluster-level facts that cannot be derived from
+	// a single server snapshot (e.g. whether proxies are configured, whether
+	// backups are encrypted). Populated by srv_log_plugins.go.
+	ClusterContext ClusterContext
+	// PluginDataDir is the directory where plugin sidecar data files are stored
+	// (e.g. lts-versions.json). Plugins should read data files from this path.
+	PluginDataDir string
+}
+
+// ClusterContext carries cluster-level facts passed to every plugin.
+type ClusterContext struct {
+	HasProxies      bool `json:"has_proxies"`      // cluster has at least one proxy configured
+	BackupEncrypted bool `json:"backup_encrypted"` // backup configured with encryption (e.g. restic password set)
+	ConfigClearPwd  bool `json:"config_clear_pwd"` // repman detected cleartext passwords in TOML config
+	HistoryClearPwd bool `json:"history_clear_pwd"`// previous binlog scan found cleartext passwords
 }
 
 // IsEnabled returns false only when config explicitly sets enabled=false/0/no.

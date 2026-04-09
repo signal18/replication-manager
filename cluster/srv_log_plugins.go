@@ -90,6 +90,8 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			BinlogEvents:     snapshotBinlogEvents(server),
 			ServerVariables:  snapshotServerVariables(server),
 			DatabaseUsers:    snapshotDatabaseUsers(server),
+			ClusterContext:   buildClusterContext(cluster),
+			PluginDataDir:    cluster.Conf.ShareDir + "/plugins/data",
 		}
 
 		if !src.IsEnabled() {
@@ -160,12 +162,22 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			st.ServerUrl = server.URL
 			compositeKey := fmt.Sprintf("%s@%s", f.ErrKey, server.URL)
 
-			if !cluster.StateMachine.IsInState(compositeKey) {
+			isSecurity := f.Severity == logplugin.SeveritySecurity
+			sm := cluster.StateMachine
+			if isSecurity {
+				sm = cluster.SecurityStateMachine
+			}
+
+			if !sm.IsInState(compositeKey) {
+				lvl := config.LvlWarn
+				if isSecurity {
+					lvl = config.LvlInfo
+				}
 				cluster.LogModulePrintf(
 					cluster.Conf.Verbose,
 					config.ConstLogModPlugin,
-					config.LvlWarn,
-					"[logplugin:%s] %s on server %s: %s",
+					lvl,
+					"[security:%s] %s on server %s: %s",
 					p.Name(), f.ErrKey, server.URL, f.Description,
 				)
 			} else {
@@ -177,7 +189,15 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 					p.Name(), f.ErrKey, server.URL,
 				)
 			}
-			cluster.SetState(f.ErrKey, st)
+			sm.AddState(compositeKey, st)
+			if !isSecurity {
+				cluster.SetState(f.ErrKey, st)
+			}
+		}
+
+		// Apply compliance score checks from score plugins.
+		for _, sc := range result.ScoreChecks {
+			cluster.SecurityScore.ApplyCheck(sc.Tag, sc.Pass)
 		}
 
 		cache := spikeCache[cacheKey]
@@ -212,6 +232,10 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			)
 		}
 	}
+
+	// Recompute compliance score after all plugins have run on this server.
+	cluster.SecurityScore.Compute()
+	cluster.SecurityStateMachine.ClearState()
 }
 
 func resolvePluginConfig(cluster *Cluster, pluginName string) map[string]string {
@@ -548,4 +572,19 @@ func snapshotDatabaseUsers(server *ServerMonitor) []logplugin.StdioDBUser {
 		})
 	}
 	return out
+}
+
+// buildClusterContext assembles the cluster-level facts passed to every plugin.
+//
+// ConfigClearPwd and HistoryClearPwd are populated by dbjob SSH scripts that
+// scan my.cnf/.my.cnf and .bash_history/.mysql_history on DB servers.
+// The scripts write their findings back via cluster.SecurityClearPwdConfig /
+// cluster.SecurityClearPwdHistory flags (set when the dbjob completes).
+func buildClusterContext(cluster *Cluster) logplugin.ClusterContext {
+	return logplugin.ClusterContext{
+		HasProxies:      len(cluster.Proxies) > 0,
+		BackupEncrypted: cluster.Conf.BackupRestic && cluster.Conf.BackupResticPassword != "",
+		ConfigClearPwd:  cluster.SecurityClearPwdConfig,
+		HistoryClearPwd: cluster.SecurityClearPwdHistory,
+	}
 }
