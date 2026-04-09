@@ -175,6 +175,10 @@ type ReplicationManager struct {
 	// security.log (path derived from log-file by inserting "-security" before
 	// the extension). Nil when log-file is not configured.
 	SecurityLogrus                                   *log.Logger
+	// WorkloadLogrus is a dedicated logger that writes workload/performance spike
+	// events to workload.log (path derived from log-file by inserting "-workload"
+	// before the extension). Nil when log-file is not configured.
+	WorkloadLogrus                                   *log.Logger
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
@@ -2362,6 +2366,31 @@ func (repman *ReplicationManager) Run() error {
 			repman.SecurityLogrus = secLogger
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Security log to file: %s", secLogFile)
 		}
+
+		// Workload log — same rotation settings, separate file for performance spike events.
+		wrkLogFile := workloadLogPath(repman.Conf.LogFile)
+		wrkLogger := log.New()
+		wrkLogger.SetLevel(log.InfoLevel)
+		wrkLogger.SetFormatter(&log.TextFormatter{DisableColors: true})
+		wrkHook, wrkErr := s18log.NewRotateFileHook(s18log.RotateFileConfig{
+			Filename:   wrkLogFile,
+			MaxSize:    repman.Conf.LogRotateMaxSize,
+			MaxBackups: repman.Conf.LogRotateMaxBackup,
+			MaxAge:     repman.Conf.LogRotateMaxAge,
+			Level:      log.InfoLevel,
+			Formatter: &log.TextFormatter{
+				DisableColors:   true,
+				TimestampFormat: "2006-01-02 15:04:05",
+				FullTimestamp:   true,
+			},
+		})
+		if wrkErr != nil {
+			repman.Logrus.WithError(wrkErr).Warn("Can't init workload log file, workload events will only appear in main log")
+		} else {
+			wrkLogger.AddHook(wrkHook)
+			repman.WorkloadLogrus = wrkLogger
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Workload log to file: %s", wrkLogFile)
+		}
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No log file defined. Writing logs to stdout. Use journalctl to view logs.")
 	}
@@ -2655,6 +2684,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster = new(cluster.Cluster)
 	repman.currentCluster.Logrus = repman.Logrus
 	repman.currentCluster.SecurityLogrus = repman.SecurityLogrus
+	repman.currentCluster.WorkloadLogrus = repman.WorkloadLogrus
 	repman.currentCluster.Partner = &repman.Partner
 	repman.currentCluster.ConfigManager = repman.ConfigManager
 
@@ -3064,6 +3094,18 @@ func securityLogPath(logFile string) string {
 	ext := filepath.Ext(logFile)
 	base := strings.TrimSuffix(logFile, ext)
 	return base + "-security" + ext
+}
+
+// workloadLogPath derives the workload log file path from the main log file path
+// by inserting "-workload" before the file extension.
+// Examples:
+//
+//	/var/log/replication-manager.log  →  /var/log/replication-manager-workload.log
+//	/var/log/repman                   →  /var/log/repman-workload
+func workloadLogPath(logFile string) string {
+	ext := filepath.Ext(logFile)
+	base := strings.TrimSuffix(logFile, ext)
+	return base + "-workload" + ext
 }
 
 func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string {

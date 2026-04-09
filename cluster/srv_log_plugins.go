@@ -202,6 +202,13 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 						"[workload:%s] %s on server %s: %s",
 						p.Name(), f.ErrKey, server.URL, f.Description,
 					)
+					if cluster.WorkloadLogrus != nil {
+						cluster.WorkloadLogrus.WithFields(log.Fields{
+							"plugin": p.Name(),
+							"server": server.URL,
+							"errkey": f.ErrKey,
+						}).Warn(f.Description)
+					}
 				default:
 					cluster.LogModulePrintf(
 						cluster.Conf.Verbose,
