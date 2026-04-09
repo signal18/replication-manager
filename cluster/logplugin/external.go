@@ -275,7 +275,7 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	findings := make([]Finding, 0, len(resp.Findings))
 	for _, sf := range resp.Findings {
 		sev := Severity(strings.ToUpper(sf.Severity))
-		if sev != SeverityWarning && sev != SeverityError && sev != SeveritySecurity {
+		if sev != SeverityWarning && sev != SeverityError && sev != SeveritySecurity && sev != SeverityWorkload {
 			sev = SeverityWarning
 		}
 		findings = append(findings, Finding{
