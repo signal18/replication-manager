@@ -1,4 +1,4 @@
-import { Box, Flex, Image, Spacer, Text, HStack, VStack, Button, useDisclosure, Badge, Tooltip } from '@chakra-ui/react'
+import { Box, Flex, Image, Spacer, Text, HStack, VStack, Button, useDisclosure } from '@chakra-ui/react'
 import React, { useState, useEffect} from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../redux/authSlice'
@@ -177,13 +177,31 @@ function Navbar({ username }) {
                 onClick={() => openAlertModal('warning')}
                 showText={!isMobile}
               />
-              <SecurityScoreBadge
-                score={clusterData?.securityScore}
-                onClick={() => setIsSecurityModalOpen(true)}
-                showText={!isMobile}
-              />
-              <WorkloadBadge
-                stateCount={(clusterData?.workloadStates || []).length}
+              {clusterData?.securityScore?.grade && (
+                <AlertBadge
+                  colorScheme={GRADE_COLOR[clusterData.securityScore.grade] || 'gray'}
+                  icon={MdSecurity}
+                  text='Security'
+                  count={clusterData.securityScore.grade}
+                  bubbleStyle={{
+                    background: `var(--chakra-colors-${GRADE_COLOR[clusterData.securityScore.grade] || 'gray'}-600)`,
+                    color: 'white',
+                    fontSize: '10px',
+                    fontWeight: 'bold',
+                  }}
+                  onClick={() => setIsSecurityModalOpen(true)}
+                  showText={!isMobile}
+                />
+              )}
+              <AlertBadge
+                colorScheme={(clusterData?.workloadStates || []).length > 0 ? 'purple' : 'gray'}
+                icon={RiSpeedFill}
+                text='Workload'
+                count={(clusterData?.workloadStates || []).length}
+                bubbleStyle={{
+                  background: `var(--chakra-colors-${(clusterData?.workloadStates || []).length > 0 ? 'purple' : 'gray'}-500)`,
+                  color: 'white',
+                }}
                 onClick={() => setIsWorkloadModalOpen(true)}
                 showText={!isMobile}
               />
@@ -266,52 +284,6 @@ function Navbar({ username }) {
 }
 
 const GRADE_COLOR = { A: 'green', B: 'teal', C: 'yellow', D: 'orange', F: 'red' }
-
-function SecurityScoreBadge({ score, onClick, showText }) {
-  if (!score) return null
-  const gradeColor = GRADE_COLOR[score.grade] || 'gray'
-  return (
-    <Tooltip label={`Security compliance score: ${score.score}/100`} placement='bottom'>
-      <Badge
-        as='button'
-        onClick={onClick}
-        colorScheme={gradeColor}
-        display='flex'
-        alignItems='center'
-        gap='1'
-        px='2'
-        py='1'
-        borderRadius='md'
-        cursor='pointer'>
-        <Box as={MdSecurity} />
-        {showText && <span>Security</span>}
-        <span style={{ fontWeight: 'bold', marginLeft: '2px' }}>{score.grade}</span>
-      </Badge>
-    </Tooltip>
-  )
-}
-
-function WorkloadBadge({ stateCount, onClick, showText }) {
-  return (
-    <Tooltip label='Active workload / performance spike detections' placement='bottom'>
-      <Badge
-        as='button'
-        onClick={onClick}
-        colorScheme={stateCount > 0 ? 'purple' : 'gray'}
-        display='flex'
-        alignItems='center'
-        gap='1'
-        px='2'
-        py='1'
-        borderRadius='md'
-        cursor='pointer'>
-        <Box as={RiSpeedFill} />
-        {showText && <span>Workload</span>}
-        <span style={{ fontWeight: 'bold', marginLeft: '2px' }}>{stateCount}</span>
-      </Badge>
-    </Tooltip>
-  )
-}
 
 export default Navbar
 
