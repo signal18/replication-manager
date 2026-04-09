@@ -179,6 +179,10 @@ type ReplicationManager struct {
 	// events to workload.log (path derived from log-file by inserting "-workload"
 	// before the extension). Nil when log-file is not configured.
 	WorkloadLogrus                                   *log.Logger
+	// MaintenanceLogrus is a dedicated logger that writes planned-operations events
+	// (backup, SST, task execution, purge, orchestrator) to maintenance.log.
+	// Nil when log-file is not configured.
+	MaintenanceLogrus                                *log.Logger
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
@@ -2391,6 +2395,31 @@ func (repman *ReplicationManager) Run() error {
 			repman.WorkloadLogrus = wrkLogger
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Workload log to file: %s", wrkLogFile)
 		}
+
+		// Maintenance log — backup, SST, task execution, purge, orchestrator events.
+		mntLogFile := maintenanceLogPath(repman.Conf.LogFile)
+		mntLogger := log.New()
+		mntLogger.SetLevel(log.InfoLevel)
+		mntLogger.SetFormatter(&log.TextFormatter{DisableColors: true})
+		mntHook, mntErr := s18log.NewRotateFileHook(s18log.RotateFileConfig{
+			Filename:   mntLogFile,
+			MaxSize:    repman.Conf.LogRotateMaxSize,
+			MaxBackups: repman.Conf.LogRotateMaxBackup,
+			MaxAge:     repman.Conf.LogRotateMaxAge,
+			Level:      log.InfoLevel,
+			Formatter: &log.TextFormatter{
+				DisableColors:   true,
+				TimestampFormat: "2006-01-02 15:04:05",
+				FullTimestamp:   true,
+			},
+		})
+		if mntErr != nil {
+			repman.Logrus.WithError(mntErr).Warn("Can't init maintenance log file, maintenance events will only appear in main log")
+		} else {
+			mntLogger.AddHook(mntHook)
+			repman.MaintenanceLogrus = mntLogger
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Maintenance log to file: %s", mntLogFile)
+		}
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No log file defined. Writing logs to stdout. Use journalctl to view logs.")
 	}
@@ -2685,6 +2714,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster.Logrus = repman.Logrus
 	repman.currentCluster.SecurityLogrus = repman.SecurityLogrus
 	repman.currentCluster.WorkloadLogrus = repman.WorkloadLogrus
+	repman.currentCluster.MaintenanceLogrus = repman.MaintenanceLogrus
 	repman.currentCluster.Partner = &repman.Partner
 	repman.currentCluster.ConfigManager = repman.ConfigManager
 
@@ -3106,6 +3136,18 @@ func workloadLogPath(logFile string) string {
 	ext := filepath.Ext(logFile)
 	base := strings.TrimSuffix(logFile, ext)
 	return base + "-workload" + ext
+}
+
+// maintenanceLogPath derives the maintenance log file path from the main log file path
+// by inserting "-maintenance" before the file extension.
+// Examples:
+//
+//	/var/log/replication-manager.log  →  /var/log/replication-manager-maintenance.log
+//	/var/log/repman                   →  /var/log/repman-maintenance
+func maintenanceLogPath(logFile string) string {
+	ext := filepath.Ext(logFile)
+	base := strings.TrimSuffix(logFile, ext)
+	return base + "-maintenance" + ext
 }
 
 func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string {

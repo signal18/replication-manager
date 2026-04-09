@@ -177,46 +177,37 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			}
 
 			if !sm.IsInState(compositeKey) {
+				fields := log.Fields{
+					"plugin": p.Name(),
+					"server": server.URL,
+					"errkey": f.ErrKey,
+				}
 				switch {
 				case isSecurity:
-					// Security findings: INFO in main log, also write to dedicated security.log
-					cluster.LogModulePrintf(
-						cluster.Conf.Verbose,
-						config.ConstLogModPlugin,
-						config.LvlInfo,
-						"[security:%s] %s on server %s: %s",
-						p.Name(), f.ErrKey, server.URL, f.Description,
-					)
+					// Security findings go exclusively to security.log.
+					// Fall back to main log only when the dedicated logger is not configured.
 					if cluster.SecurityLogrus != nil {
-						cluster.SecurityLogrus.WithFields(log.Fields{
-							"plugin": p.Name(),
-							"server": server.URL,
-							"errkey": f.ErrKey,
-						}).Warn(f.Description)
+						cluster.SecurityLogrus.WithFields(fields).Warn(f.Description)
+					} else {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin,
+							config.LvlInfo, "[security:%s] %s on server %s: %s",
+							p.Name(), f.ErrKey, server.URL, f.Description)
 					}
 				case isWorkload:
-					cluster.LogModulePrintf(
-						cluster.Conf.Verbose,
-						config.ConstLogModPlugin,
-						config.LvlWarn,
-						"[workload:%s] %s on server %s: %s",
-						p.Name(), f.ErrKey, server.URL, f.Description,
-					)
+					// Workload findings go exclusively to workload.log.
+					// Fall back to main log only when the dedicated logger is not configured.
 					if cluster.WorkloadLogrus != nil {
-						cluster.WorkloadLogrus.WithFields(log.Fields{
-							"plugin": p.Name(),
-							"server": server.URL,
-							"errkey": f.ErrKey,
-						}).Warn(f.Description)
+						cluster.WorkloadLogrus.WithFields(fields).Warn(f.Description)
+					} else {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin,
+							config.LvlWarn, "[workload:%s] %s on server %s: %s",
+							p.Name(), f.ErrKey, server.URL, f.Description)
 					}
 				default:
-					cluster.LogModulePrintf(
-						cluster.Conf.Verbose,
-						config.ConstLogModPlugin,
-						config.LvlWarn,
-						"[logplugin:%s] %s on server %s: %s",
-						p.Name(), f.ErrKey, server.URL, f.Description,
-					)
+					// HA/operational findings stay in the main log.
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin,
+						config.LvlWarn, "[logplugin:%s] %s on server %s: %s",
+						p.Name(), f.ErrKey, server.URL, f.Description)
 				}
 			} else {
 				cluster.LogModulePrintf(

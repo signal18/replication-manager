@@ -194,6 +194,10 @@ type Cluster struct {
 	// WorkloadLogrus is a dedicated logrus.Logger that writes to workload.log.
 	// Set by the server on cluster init. Nil when no log-file is configured.
 	WorkloadLogrus                      *log.Logger                 `json:"-"`
+	// MaintenanceLogrus is a dedicated logrus.Logger that writes to maintenance.log.
+	// Receives ConstLogModMaintenance events: backup, SST, task execution, purge, etc.
+	// Set by the server on cluster init. Nil when no log-file is configured.
+	MaintenanceLogrus                   *log.Logger                 `json:"-"`
 	runOnceAfterTopology                bool                        `json:"-"`
 	logPtr                              *os.File                    `json:"-"`
 	termlength                          int                         `json:"-"`

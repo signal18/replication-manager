@@ -240,36 +240,55 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 		}
 
 		if cluster.Conf.Daemon {
+			// Route to dedicated logger when configured:
+			//   ConstLogModMaintenance + maintenance-adjacent modules → MaintenanceLogrus
+			// ALERT/ALERTOK/START always go to the main logger regardless of module
+			// since they represent operational events the on-call operator must see.
+			isMaintenance := module == config.ConstLogModMaintenance ||
+				module == config.ConstLogModTask ||
+				module == config.ConstLogModRestic ||
+				module == config.ConstLogModSST ||
+				module == config.ConstLogModBackupStream ||
+				module == config.ConstLogModPurge
+			targetLogger := cluster.Logrus
+			if isMaintenance && cluster.MaintenanceLogrus != nil {
+				targetLogger = cluster.MaintenanceLogrus
+			}
+
 			// wrap logrus levels
 			switch level {
 			case "ERROR":
-				cluster.Logrus.WithFields(printfields).Errorf(cliformat, args...)
-				if cluster.Conf.SlackURL != "" {
-					cluster.LogSlack.WithFields(slackFields).Errorf(cliformat, args...)
-				}
-				if cluster.Conf.TeamsUrl != "" {
-					go cluster.sendMsTeams(level, format, args...)
+				targetLogger.WithFields(printfields).Errorf(cliformat, args...)
+				if !isMaintenance {
+					if cluster.Conf.SlackURL != "" {
+						cluster.LogSlack.WithFields(slackFields).Errorf(cliformat, args...)
+					}
+					if cluster.Conf.TeamsUrl != "" {
+						go cluster.sendMsTeams(level, format, args...)
+					}
 				}
 			case "INFO":
-				cluster.Logrus.WithFields(printfields).Infof(cliformat, args...)
+				targetLogger.WithFields(printfields).Infof(cliformat, args...)
 			case "DEBUG":
-				cluster.Logrus.WithFields(printfields).Debugf(cliformat, args...)
+				targetLogger.WithFields(printfields).Debugf(cliformat, args...)
 			case "WARN":
-				cluster.Logrus.WithFields(printfields).Warnf(cliformat, args...)
-				if cluster.Conf.SlackURL != "" {
-					cluster.LogSlack.WithFields(slackFields).Warnf(cliformat, args...)
-				}
-				if cluster.Conf.TeamsUrl != "" {
-					go cluster.sendMsTeams(level, format, args...)
+				targetLogger.WithFields(printfields).Warnf(cliformat, args...)
+				if !isMaintenance {
+					if cluster.Conf.SlackURL != "" {
+						cluster.LogSlack.WithFields(slackFields).Warnf(cliformat, args...)
+					}
+					if cluster.Conf.TeamsUrl != "" {
+						go cluster.sendMsTeams(level, format, args...)
+					}
 				}
 			case "TEST":
 				printfields["type"] = "test"
 				printfields["channel"] = "StdOut"
-				cluster.Logrus.WithFields(printfields).Infof(cliformat, args...)
+				targetLogger.WithFields(printfields).Infof(cliformat, args...)
 			case "BENCH":
 				printfields["type"] = "benchmark"
 				printfields["channel"] = "StdOut"
-				cluster.Logrus.WithFields(printfields).Infof(cliformat, args...)
+				targetLogger.WithFields(printfields).Infof(cliformat, args...)
 			case "ALERT":
 				printfields["type"] = "alert"
 				printfields["channel"] = "StdOut"
@@ -314,7 +333,7 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 					go cluster.sendMsTeams(level, format, args...)
 				}
 			default:
-				cluster.Logrus.WithFields(printfields).Printf(cliformat, args...)
+				targetLogger.WithFields(printfields).Printf(cliformat, args...)
 			}
 		}
 	}

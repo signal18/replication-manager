@@ -1455,6 +1455,10 @@ const (
 	ConstLogModDbAudit        = 28
 	ConstLogModDbSqlErrors    = 29
 	ConstLogModPlugin         = 30 // generic log-tailer plugin module
+	// ConstLogModMaintenance covers planned-operations modules (backup, SST,
+	// task execution, purge, orchestrator provisioning). Routed to maintenance.log
+	// when configured so operational noise does not pollute the HA main log.
+	ConstLogModMaintenance    = 31
 )
 
 /*
@@ -3427,6 +3431,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			if conf.LogPlugin {
 				return conf.LogPluginLevel >= lvl
 			}
+		case module == ConstLogModMaintenance:
+			return true // always eligible; routing is handled by MaintenanceLogrus
 		}
 	}
 
@@ -3614,6 +3620,8 @@ func GetTagsForLog(module int) string {
 		return "auditlog"
 	case ConstLogModPlugin:
 		return "plugin"
+	case ConstLogModMaintenance:
+		return "maintenance"
 	}
 	return ""
 }
