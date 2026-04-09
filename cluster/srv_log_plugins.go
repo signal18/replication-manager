@@ -344,15 +344,13 @@ func (cluster *Cluster) CheckLogPlugins() {
 		}
 		server.RunLogPlugins(cluster.pluginSpikeCache)
 	}
-	// Snapshot states for the dashboard BEFORE calling ClearState so that
-	// CurState (this tick's complete set of findings from all servers) is
-	// captured into the serialisable slices that appear in clusterData JSON.
+	// Snapshot states for the dashboard. CurState holds this tick's complete
+	// set of findings from all servers. ClearState is intentionally NOT called
+	// here — it is called in the main monitor loop after LogPrintAllWorkloadStates
+	// / LogPrintAllSecurityStates so that OPENED/RESOLV diffs are computed
+	// correctly before OldState is overwritten.
 	cluster.SecurityStates = cluster.SecurityStateMachine.GetOpenStates()
 	cluster.WorkloadStates = cluster.WorkloadStateMachine.GetOpenStates()
-	// Promote CurState → OldState once per monitoring tick (after all servers).
-	// IsInState() reads OldState so subsequent ticks suppress duplicate log lines.
-	cluster.SecurityStateMachine.ClearState()
-	cluster.WorkloadStateMachine.ClearState()
 }
 
 func (cluster *Cluster) GetLogPluginStates(serverURL string) []state.State {
