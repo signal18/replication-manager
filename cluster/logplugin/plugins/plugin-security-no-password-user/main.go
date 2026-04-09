@@ -47,6 +47,9 @@ func main() {
 		if !u.PasswordEmpty {
 			continue
 		}
+		if u.AccountLocked {
+			continue // locked account cannot be used to log in regardless of password
+		}
 		if socketPlugins[strings.ToLower(u.Plugin)] {
 			continue // socket auth — no password needed, not a risk
 		}

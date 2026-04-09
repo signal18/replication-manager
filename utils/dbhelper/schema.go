@@ -629,14 +629,20 @@ func SetUserGrants(ctx context.Context, conn *sqlx.Conn, myver *version.Version,
 // It is left empty for PostgreSQL and pre-5.7.6 MySQL.
 func GetUsers(db *sqlx.DB, myver *version.Version) (map[string]*Grant, string, error) {
 	vars := make(map[string]*Grant)
-	// Default: old MariaDB / MySQL < 5.7.6 — no plugin column, exclude localhost
-	query := "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), '' as plugin FROM mysql.user where host<>'localhost'"
+	// account_locked column availability:
+	//   MySQL/Percona  >= 5.7.6   (introduced with ALTER USER ... ACCOUNT LOCK)
+	//   MariaDB        >= 10.4.2  (introduced in MDEV-7397)
+	//   Older versions / PostgreSQL: use literal 'N' as placeholder
+	query := "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), '' as plugin, 'N' as account_locked FROM mysql.user where host<>'localhost'"
 	if myver.IsPostgreSQL() {
-		query = "SELECT usename as user, '%' as host, 'unknow' as password, 0, '' as plugin FROM pg_catalog.pg_user"
+		query = "SELECT usename as user, '%' as host, 'unknow' as password, 0, '' as plugin, 'N' as account_locked FROM pg_catalog.pg_user"
 	} else if myver.IsMySQLOrPercona() && myver.GreaterEqual("5.7.6") {
-		query = "SELECT user, host, authentication_string as password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), IFNULL(plugin,'') as plugin FROM mysql.user"
+		query = "SELECT user, host, authentication_string as password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), IFNULL(plugin,'') as plugin, IFNULL(account_locked,'N') as account_locked FROM mysql.user"
+	} else if myver.IsMariaDB() && myver.GreaterEqual("10.4.2") {
+		query = "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), IFNULL(plugin,'') as plugin, IFNULL(account_locked,'N') as account_locked FROM mysql.user"
 	} else if myver.IsMariaDB() {
-		query = "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), IFNULL(plugin,'') as plugin FROM mysql.user"
+		// MariaDB < 10.4.2: no account_locked column — plugin column exists from 5.2+
+		query = "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), IFNULL(plugin,'') as plugin, 'N' as account_locked FROM mysql.user"
 	}
 
 	rows, err := db.Queryx(query)
@@ -646,10 +652,12 @@ func GetUsers(db *sqlx.DB, myver *version.Version) (map[string]*Grant, string, e
 	defer rows.Close()
 	for rows.Next() {
 		var g Grant
-		err = rows.Scan(&g.User, &g.Host, &g.Password, &g.Hash, &g.Plugin)
+		var accountLocked string
+		err = rows.Scan(&g.User, &g.Host, &g.Password, &g.Hash, &g.Plugin, &accountLocked)
 		if err != nil {
 			return vars, query, err
 		}
+		g.AccountLocked = strings.EqualFold(accountLocked, "Y")
 		vars["'"+g.User+"'@'"+g.Host+"'"] = &g
 	}
 	return vars, query, nil

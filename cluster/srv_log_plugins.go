@@ -544,6 +544,7 @@ func snapshotDatabaseUsers(server *ServerMonitor) []logplugin.StdioDBUser {
 			Host:          g.Host,
 			Plugin:        g.Plugin,
 			PasswordEmpty: g.Password == "",
+			AccountLocked: g.AccountLocked,
 		})
 	}
 	return out

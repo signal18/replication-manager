@@ -434,11 +434,12 @@ type Disk struct {
 
 // Grant represents a database user grant
 type Grant struct {
-	User     string `json:"user"`
-	Host     string `json:"host"`
-	Password string `json:"-"`
-	Hash     uint64 `json:"hash"`
-	Plugin   string `json:"plugin"` // authentication plugin name (mysql_native_password, ed25519, caching_sha2_password, …)
+	User          string `json:"user"`
+	Host          string `json:"host"`
+	Password      string `json:"-"`
+	Hash          uint64 `json:"hash"`
+	Plugin        string `json:"plugin"`        // authentication plugin name (mysql_native_password, ed25519, caching_sha2_password, …)
+	AccountLocked bool   `json:"accountLocked"` // true when account_locked = 'Y' (MariaDB 10.4+ / MySQL 5.7.6+)
 }
 
 // Event represents a scheduled event

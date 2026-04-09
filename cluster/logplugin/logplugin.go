@@ -123,8 +123,9 @@ func (c *SpikeCache) IsFresh() bool {
 type StdioDBUser struct {
 	User          string `json:"user"`
 	Host          string `json:"host"`
-	Plugin        string `json:"plugin"`         // e.g. "mysql_native_password", "ed25519", "caching_sha2_password"
-	PasswordEmpty bool   `json:"password_empty"` // true when authentication_string / password is empty
+	Plugin        string `json:"plugin"`          // e.g. "mysql_native_password", "ed25519", "caching_sha2_password"
+	PasswordEmpty bool   `json:"password_empty"`  // true when authentication_string / password is empty
+	AccountLocked bool   `json:"account_locked"`  // true when account_locked = 'Y' — account cannot be used to log in
 }
 
 // StdioBinlogEvent is a single QUERY_EVENT captured from a server's binary log.

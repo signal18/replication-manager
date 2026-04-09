@@ -68,6 +68,9 @@ func main() {
 		if ignored[key] || ignored[u.User] {
 			continue
 		}
+		if u.AccountLocked {
+			continue // locked account cannot be used to log in
+		}
 		if strongPlugins[plugin] {
 			continue
 		}
