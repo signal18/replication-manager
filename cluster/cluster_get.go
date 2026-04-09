@@ -327,19 +327,12 @@ func (cluster *Cluster) GetDomainHeadCluster() string {
 
 func (cluster *Cluster) GetPersitentState() error {
 
-	type Save struct {
-		Servers    string      `json:"servers"`
-		Crashes    crashList   `json:"crashes"`
-		SLA        state.Sla   `json:"sla"`
-		SLAHistory []state.Sla `json:"slaHistory"`
-	}
-
-	var clsave Save
 	file, err := os.ReadFile(cluster.WorkingDir + "/clusterstate.json")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No file found: %v\n", err)
 		return err
 	}
+	var clsave ClusterState
 	err = json.Unmarshal(file, &clsave)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "File error: %v\n", err)
@@ -348,9 +341,20 @@ func (cluster *Cluster) GetPersitentState() error {
 	if len(clsave.Crashes) > 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json")
 	}
-	cluster.SLAHistory = clsave.SLAHistory
 	cluster.Crashes = clsave.Crashes
-	cluster.StateMachine.SetSla(clsave.SLA)
+
+	slaFile, err := os.ReadFile(cluster.WorkingDir + "/sla.json")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No sla.json found, starting fresh: %v\n", err)
+	} else {
+		var slasave ClusterSLAState
+		if err = json.Unmarshal(slaFile, &slasave); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "sla.json parse error: %v\n", err)
+		} else {
+			cluster.SLAHistory = slasave.SLAHistory
+			cluster.StateMachine.SetSla(slasave.SLA)
+		}
+	}
 	cluster.StateMachine.SetMasterUpAndSyncRestart()
 
 	return nil

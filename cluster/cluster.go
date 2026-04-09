@@ -1072,12 +1072,17 @@ func (cluster *Cluster) SetIsSavingConfig(val bool) {
 }
 
 type ClusterState struct {
-	Servers       string      `json:"servers"`
-	Crashes       crashList   `json:"crashes"`
-	SLA           state.Sla   `json:"sla"`
-	SLAHistory    []state.Sla `json:"slaHistory"`
-	IsAllDbUp     bool        `json:"provisioned"`
-	RepmgrVersion string      `json:"repmgrVersion"`
+	Servers       string    `json:"servers"`
+	Crashes       crashList `json:"crashes"`
+	IsAllDbUp     bool      `json:"provisioned"`
+	RepmgrVersion string    `json:"repmgrVersion"`
+	RepmgrArch    string    `json:"repmgrArch"`
+	RepmgrOS      string    `json:"repmgrOS"`
+}
+
+type ClusterSLAState struct {
+	SLA        state.Sla   `json:"sla"`
+	SLAHistory []state.Sla `json:"slaHistory"`
 }
 
 func (cluster *Cluster) Save() error {
@@ -1090,13 +1095,23 @@ func (cluster *Cluster) Save() error {
 	var clsave ClusterState
 	clsave.Crashes = cluster.Crashes
 	clsave.Servers = cluster.Conf.Hosts
-	clsave.SLA = cluster.StateMachine.GetSla()
 	clsave.IsAllDbUp = cluster.IsAllDbUp
-	clsave.SLAHistory = cluster.SLAHistory
 	clsave.RepmgrVersion = cluster.RepMgrVersion
+	clsave.RepmgrArch = cluster.Conf.GoArch
+	clsave.RepmgrOS = cluster.Conf.GoOS
 
 	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
 	err := os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)
+	if err != nil {
+		return err
+	}
+
+	var slasave ClusterSLAState
+	slasave.SLA = cluster.StateMachine.GetSla()
+	slasave.SLAHistory = cluster.SLAHistory
+
+	saveSLAJson, _ := json.MarshalIndent(slasave, "", "\t")
+	err = os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/sla.json", saveSLAJson, 0644)
 	if err != nil {
 		return err
 	}
