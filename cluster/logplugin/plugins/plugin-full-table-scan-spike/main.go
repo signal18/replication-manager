@@ -73,7 +73,7 @@ func main() {
 		}
 		findings = append(findings, wire.Finding{
 			ErrKey:   "WARN0304",
-			Severity: "WARNING",
+			Severity: "WORKLOAD",
 			Description: fmt.Sprintf(
 				"Server %s: full-table-scan spike — %.0f%% of queries (%d/%d executions) use full scan. Top offenders: %s",
 				req.ServerURL, ratio*100, fullScanExec, totalExec,

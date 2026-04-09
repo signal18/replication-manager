@@ -179,11 +179,18 @@ type Cluster struct {
 	//proxysqlPass              string                      `json:"-"`
 	StateMachine                        *state.StateMachine         `json:"stateMachine" groups:"web"`
 	SecurityStateMachine                *state.StateMachine         `json:"securityStateMachine" groups:"web"`
+	// WorkloadStateMachine tracks workload/performance findings from Graphite spike-detection
+	// plugins (WORKLOAD severity). Kept separate from the HA StateMachine so performance
+	// noise does not obscure operational cluster health or trigger false failover gates.
+	WorkloadStateMachine                *state.StateMachine         `json:"workloadStateMachine" groups:"web"`
 	SecurityScore                       SecurityScore               `json:"securityScore" groups:"web"`
 	// Set by dbjob SSH scripts scanning my.cnf/.my.cnf on DB servers
 	SecurityClearPwdConfig              bool                        `json:"securityClearPwdConfig"`
 	// Set by dbjob SSH scripts scanning .bash_history/.mysql_history on DB servers
 	SecurityClearPwdHistory             bool                        `json:"securityClearPwdHistory"`
+	// SecurityLogrus is a dedicated logrus.Logger that writes to security.log.
+	// Set by the server on cluster init. Nil when no log-file is configured.
+	SecurityLogrus                      *log.Logger                 `json:"-"`
 	runOnceAfterTopology                bool                        `json:"-"`
 	logPtr                              *os.File                    `json:"-"`
 	termlength                          int                         `json:"-"`
@@ -457,6 +464,8 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.StateMachine.Init()
 	cluster.SecurityStateMachine = new(state.StateMachine)
 	cluster.SecurityStateMachine.Init()
+	cluster.WorkloadStateMachine = new(state.StateMachine)
+	cluster.WorkloadStateMachine.Init()
 
 	// k, _ := cluster.Conf.LoadEncrytionKey()
 	// if k == nil {

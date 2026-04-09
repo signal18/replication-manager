@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/graphite"
@@ -163,23 +164,53 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			compositeKey := fmt.Sprintf("%s@%s", f.ErrKey, server.URL)
 
 			isSecurity := f.Severity == logplugin.SeveritySecurity
-			sm := cluster.StateMachine
-			if isSecurity {
+			isWorkload := f.Severity == logplugin.SeverityWorkload
+
+			var sm *state.StateMachine
+			switch {
+			case isSecurity:
 				sm = cluster.SecurityStateMachine
+			case isWorkload:
+				sm = cluster.WorkloadStateMachine
+			default:
+				sm = cluster.StateMachine
 			}
 
 			if !sm.IsInState(compositeKey) {
-				lvl := config.LvlWarn
-				if isSecurity {
-					lvl = config.LvlInfo
+				switch {
+				case isSecurity:
+					// Security findings: INFO in main log, also write to dedicated security.log
+					cluster.LogModulePrintf(
+						cluster.Conf.Verbose,
+						config.ConstLogModPlugin,
+						config.LvlInfo,
+						"[security:%s] %s on server %s: %s",
+						p.Name(), f.ErrKey, server.URL, f.Description,
+					)
+					if cluster.SecurityLogrus != nil {
+						cluster.SecurityLogrus.WithFields(log.Fields{
+							"plugin": p.Name(),
+							"server": server.URL,
+							"errkey": f.ErrKey,
+						}).Warn(f.Description)
+					}
+				case isWorkload:
+					cluster.LogModulePrintf(
+						cluster.Conf.Verbose,
+						config.ConstLogModPlugin,
+						config.LvlWarn,
+						"[workload:%s] %s on server %s: %s",
+						p.Name(), f.ErrKey, server.URL, f.Description,
+					)
+				default:
+					cluster.LogModulePrintf(
+						cluster.Conf.Verbose,
+						config.ConstLogModPlugin,
+						config.LvlWarn,
+						"[logplugin:%s] %s on server %s: %s",
+						p.Name(), f.ErrKey, server.URL, f.Description,
+					)
 				}
-				cluster.LogModulePrintf(
-					cluster.Conf.Verbose,
-					config.ConstLogModPlugin,
-					lvl,
-					"[security:%s] %s on server %s: %s",
-					p.Name(), f.ErrKey, server.URL, f.Description,
-				)
 			} else {
 				cluster.LogModulePrintf(
 					cluster.Conf.Verbose,
@@ -190,7 +221,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 				)
 			}
 			sm.AddState(compositeKey, st)
-			if !isSecurity {
+			if !isSecurity && !isWorkload {
 				cluster.SetState(f.ErrKey, st)
 			}
 		}
@@ -236,6 +267,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 	// Recompute compliance score after all plugins have run on this server.
 	cluster.SecurityScore.Compute()
 	cluster.SecurityStateMachine.ClearState()
+	cluster.WorkloadStateMachine.ClearState()
 }
 
 func resolvePluginConfig(cluster *Cluster, pluginName string) map[string]string {

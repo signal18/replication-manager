@@ -44,6 +44,11 @@ const (
 	// It is rendered distinctly from operational WARNING/ERROR in the UI and
 	// API responses, allowing operators to filter security findings separately.
 	SeveritySecurity Severity = "SECURITY"
+	// SeverityWorkload is used by workload/performance spike detection plugins.
+	// These detect Graphite-based anomalies (slow query regressions, connection
+	// storms, tmp-table storms, etc.) and are tracked in the WorkloadStateMachine
+	// separately from HA findings so performance noise does not pollute the HA view.
+	SeverityWorkload Severity = "WORKLOAD"
 )
 
 // Finding is a single alert raised by a plugin evaluation.

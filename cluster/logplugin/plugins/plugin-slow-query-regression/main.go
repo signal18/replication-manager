@@ -100,7 +100,7 @@ func main() {
 		if ratio >= factor {
 			findings = append(findings, wire.Finding{
 				ErrKey:   "WARN0301",
-				Severity: "WARNING",
+				Severity: "WORKLOAD",
 				Description: fmt.Sprintf(
 					"Server %s: query regression detected — current avg %.0fms vs PFS baseline %.0fms (%.1f× — %d occurrences in last %dh): %s",
 					req.ServerURL, currentAvgMs, pfs.execTimeAvgMs, ratio,

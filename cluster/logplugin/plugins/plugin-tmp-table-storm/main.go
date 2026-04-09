@@ -81,7 +81,7 @@ func main() {
 		}
 		findings = append(findings, wire.Finding{
 			ErrKey:   "WARN0306",
-			Severity: "WARNING",
+			Severity: "WORKLOAD",
 			Description: fmt.Sprintf(
 				"Server %s: on-disk tmp table storm — %d disk / %d mem (%.0f%% on disk). Top queries: %s",
 				req.ServerURL, totalDisk, totalMem, ratio*100,

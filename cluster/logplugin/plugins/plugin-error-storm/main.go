@@ -78,7 +78,7 @@ func main() {
 		if count >= threshold {
 			findings = append(findings, wire.Finding{
 				ErrKey:   "WARN0302",
-				Severity: "WARNING",
+				Severity: "WORKLOAD",
 				Description: fmt.Sprintf(
 					"Server %s: error storm — %d occurrences in last %dmin: %s",
 					req.ServerURL, count, windowMins,

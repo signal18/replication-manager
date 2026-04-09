@@ -171,6 +171,10 @@ type ReplicationManager struct {
 	inFetchOpenSVCStats                              bool                           `json:"-"`
 	MessageChan                                      chan sharedlog.Message         `json:"-"`
 	fileHook                                         log.Hook
+	// SecurityLogrus is a dedicated logger that writes security events to
+	// security.log (path derived from log-file by inserting "-security" before
+	// the extension). Nil when log-file is not configured.
+	SecurityLogrus                                   *log.Logger
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
@@ -2332,6 +2336,32 @@ func (repman *ReplicationManager) Run() error {
 		repman.Logrus.AddHook(hook)
 		repman.fileHook = hook
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Log to file: %s", repman.Conf.LogFile)
+
+		// Security log — same rotation settings, separate file alongside the main log.
+		// Path is derived by inserting "-security" before the log file extension.
+		secLogFile := securityLogPath(repman.Conf.LogFile)
+		secLogger := log.New()
+		secLogger.SetLevel(log.InfoLevel)
+		secLogger.SetFormatter(&log.TextFormatter{DisableColors: true})
+		secHook, secErr := s18log.NewRotateFileHook(s18log.RotateFileConfig{
+			Filename:   secLogFile,
+			MaxSize:    repman.Conf.LogRotateMaxSize,
+			MaxBackups: repman.Conf.LogRotateMaxBackup,
+			MaxAge:     repman.Conf.LogRotateMaxAge,
+			Level:      log.InfoLevel,
+			Formatter: &log.TextFormatter{
+				DisableColors:   true,
+				TimestampFormat: "2006-01-02 15:04:05",
+				FullTimestamp:   true,
+			},
+		})
+		if secErr != nil {
+			repman.Logrus.WithError(secErr).Warn("Can't init security log file, security events will only appear in main log")
+		} else {
+			secLogger.AddHook(secHook)
+			repman.SecurityLogrus = secLogger
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Security log to file: %s", secLogFile)
+		}
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No log file defined. Writing logs to stdout. Use journalctl to view logs.")
 	}
@@ -2624,6 +2654,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 
 	repman.currentCluster = new(cluster.Cluster)
 	repman.currentCluster.Logrus = repman.Logrus
+	repman.currentCluster.SecurityLogrus = repman.SecurityLogrus
 	repman.currentCluster.Partner = &repman.Partner
 	repman.currentCluster.ConfigManager = repman.ConfigManager
 
@@ -3005,6 +3036,34 @@ func (repman *ReplicationManager) ReloadTerms() error {
 func IsDefault(p string, v *viper.Viper) bool {
 
 	return false
+}
+
+// logSecurityEvent writes a structured security event to the dedicated security
+// log file (when configured) AND to the main repman log at WARN level.
+// event is a short machine-readable label (e.g. "api_auth_failure"),
+// user is the username involved, remoteAddr is the HTTP remote address.
+func (repman *ReplicationManager) logSecurityEvent(event, user, remoteAddr, msg string) {
+	fields := log.Fields{
+		"event":       event,
+		"user":        user,
+		"remote_addr": remoteAddr,
+	}
+	repman.Logrus.WithFields(fields).Warn(msg)
+	if repman.SecurityLogrus != nil {
+		repman.SecurityLogrus.WithFields(fields).Warn(msg)
+	}
+}
+
+// securityLogPath derives the security log file path from the main log file path
+// by inserting "-security" before the file extension.
+// Examples:
+//
+//	/var/log/replication-manager.log  →  /var/log/replication-manager-security.log
+//	/var/log/repman                   →  /var/log/repman-security
+func securityLogPath(logFile string) string {
+	ext := filepath.Ext(logFile)
+	base := strings.TrimSuffix(logFile, ext)
+	return base + "-security" + ext
 }
 
 func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string {

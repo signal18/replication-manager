@@ -72,7 +72,7 @@ func main() {
 	if ratio >= sleepRatio {
 		findings = append(findings, wire.Finding{
 			ErrKey:   "WARN0307",
-			Severity: "WARNING",
+			Severity: "WORKLOAD",
 			Description: fmt.Sprintf(
 				"Server %s: connection pool saturation — %d/%d connections sleeping (%.0f%%), possible connection leak",
 				req.ServerURL, sleeping, total, ratio*100),
@@ -89,7 +89,7 @@ func main() {
 		}
 		findings = append(findings, wire.Finding{
 			ErrKey:   "WARN0307",
-			Severity: "WARNING",
+			Severity: "WORKLOAD",
 			Description: fmt.Sprintf(
 				"Server %s: %d thread(s) waiting on locks: %s",
 				req.ServerURL, lockWaiting, strings.Join(sample, " | ")),

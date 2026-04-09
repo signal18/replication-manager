@@ -78,7 +78,7 @@ func main() {
 		}
 		findings = append(findings, wire.Finding{
 			ErrKey:   "WARN0305",
-			Severity: "WARNING",
+			Severity: "WORKLOAD",
 			Description: fmt.Sprintf(
 				"Server %s: %d MDL wait(s) exceeding %dms: %s",
 				req.ServerURL, len(longWaits), waitThresholdMs,
@@ -87,7 +87,7 @@ func main() {
 	} else if len(allLocks) >= countThreshold {
 		findings = append(findings, wire.Finding{
 			ErrKey:   "WARN0305",
-			Severity: "WARNING",
+			Severity: "WORKLOAD",
 			Description: fmt.Sprintf(
 				"Server %s: %d concurrent metadata lock waits (threshold: %d)",
 				req.ServerURL, len(allLocks), countThreshold),

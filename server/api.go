@@ -564,6 +564,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		if auth_try.Try == 3 {
 			if time.Now().Before(auth_try.Time.Add(3 * time.Minute)) {
 				response := "3 authentication errors for the user " + user.Username + ", please try again in 3 minutes"
+				repman.logSecurityEvent("api_account_locked", user.Username, r.RemoteAddr, "API account locked for 3 min after repeated authentication failures")
 				http.Error(w, response, http.StatusTooManyRequests)
 				return
 			} else {
@@ -637,6 +638,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			}
 
 			if !loggedIn {
+				repman.logSecurityEvent("api_auth_failure", user.Username, r.RemoteAddr, "API authentication failure: invalid credentials")
 				http.Error(w, "Error logging in: Invalid credentials", http.StatusUnauthorized)
 				return
 			}
@@ -682,6 +684,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		}
 
 		if !loggedIn {
+			repman.logSecurityEvent("api_auth_failure", user.Username, r.RemoteAddr, "API authentication failure: invalid credentials")
 			http.Error(w, "Error logging in: Invalid credentials", http.StatusUnauthorized)
 			return
 		}

@@ -68,7 +68,7 @@ func main() {
 	if int(dmlRate) >= threshold {
 		findings = append(findings, wire.Finding{
 			ErrKey:   "WARN0303",
-			Severity: "WARNING",
+			Severity: "WORKLOAD",
 			Description: fmt.Sprintf(
 				"Server %s: write burst detected — %.0f DML queries/min (%d in %dmin), replication lag likely",
 				req.ServerURL, dmlRate, dmlCount, windowMins),
