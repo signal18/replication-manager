@@ -639,11 +639,11 @@ func GetUsers(db *sqlx.DB, myver *version.Version) (map[string]*Grant, string, e
 	} else if myver.IsMySQLOrPercona() && myver.GreaterEqual("5.7.6") {
 		query = "SELECT user, host, authentication_string as password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), IFNULL(plugin,'') as plugin, IFNULL(account_locked,'N') as account_locked FROM mysql.user"
 	} else if myver.IsMariaDB() && myver.GreaterEqual("10.4.2") {
-		// MariaDB 10.4+: account_locked is stored as JSON in mysql.global_priv.
-		// JSON_VALUE available from MariaDB 10.2.3; global_priv from 10.4.0.
-		// Using a JOIN avoids dependency on the mysql.user view column which may be
-		// absent in some builds/forks and always reads 'N' regardless of actual state.
-		query = "SELECT u.user, u.host, u.password, CONV(LEFT(MD5(concat(u.user,u.host)), 16), 16, 10), IFNULL(u.plugin,'') as plugin, CASE WHEN JSON_VALUE(g.priv, '$.account_locked') = 'true' THEN 'Y' ELSE 'N' END as account_locked FROM mysql.user u LEFT JOIN mysql.global_priv g ON u.user = g.user AND u.host = g.host"
+		// MariaDB 10.4+: account_locked is stored as JSON boolean in mysql.global_priv.
+		// JSON_EXTRACT returns the native JSON boolean (truthy in IF()); this is more
+		// reliable than JSON_VALUE()='true' which can return NULL on some 11.x builds
+		// when the JSON path is missing or the value is formatted differently.
+		query = "SELECT u.user, u.host, u.password, CONV(LEFT(MD5(concat(u.user,u.host)), 16), 16, 10), IFNULL(u.plugin,'') as plugin, IF(JSON_EXTRACT(g.priv, '$.account_locked'), 'Y', 'N') as account_locked FROM mysql.user u LEFT JOIN mysql.global_priv g ON u.user = g.user AND u.host = g.host"
 	} else if myver.IsMariaDB() {
 		// MariaDB < 10.4.2: no account_locked column — plugin column exists from 5.2+
 		query = "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), IFNULL(plugin,'') as plugin, 'N' as account_locked FROM mysql.user"
