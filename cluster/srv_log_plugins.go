@@ -251,7 +251,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 				}
 			}
 			if !hasSpikeInFindings {
-				cluster.StateMachine.PreserveState("WARN0205")
+				cluster.WorkloadStateMachine.PreserveState("WARN0205")
 				cluster.LogModulePrintf(
 					cluster.Conf.Verbose,
 					config.ConstLogModPlugin,
@@ -276,8 +276,6 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 
 	// Recompute compliance score after all plugins have run on this server.
 	cluster.SecurityScore.Compute()
-	cluster.SecurityStateMachine.ClearState()
-	cluster.WorkloadStateMachine.ClearState()
 }
 
 func resolvePluginConfig(cluster *Cluster, pluginName string) map[string]string {
@@ -346,6 +344,15 @@ func (cluster *Cluster) CheckLogPlugins() {
 		}
 		server.RunLogPlugins(cluster.pluginSpikeCache)
 	}
+	// Snapshot states for the dashboard BEFORE calling ClearState so that
+	// CurState (this tick's complete set of findings from all servers) is
+	// captured into the serialisable slices that appear in clusterData JSON.
+	cluster.SecurityStates = cluster.SecurityStateMachine.GetOpenStates()
+	cluster.WorkloadStates = cluster.WorkloadStateMachine.GetOpenStates()
+	// Promote CurState → OldState once per monitoring tick (after all servers).
+	// IsInState() reads OldState so subsequent ticks suppress duplicate log lines.
+	cluster.SecurityStateMachine.ClearState()
+	cluster.WorkloadStateMachine.ClearState()
 }
 
 func (cluster *Cluster) GetLogPluginStates(serverURL string) []state.State {

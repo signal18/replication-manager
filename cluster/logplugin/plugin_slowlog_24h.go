@@ -69,7 +69,7 @@ func (p *SlowLogPlugin) Evaluate(src LogSource) EvaluateResult {
 
 	res.Findings = append(res.Findings, Finding{
 		ErrKey:   ErrKeySlowLog24h,
-		Severity: SeverityWarning,
+		Severity: SeverityWorkload,
 		Description: fmt.Sprintf(
 			"Server %s: %d slow query/queries in last %dh",
 			src.ServerURL, current, hours),
@@ -89,7 +89,7 @@ func (p *SlowLogPlugin) Evaluate(src LogSource) EvaluateResult {
 			}
 			res.Findings = append(res.Findings, Finding{
 				ErrKey:      "WARN0205",
-				Severity:    SeverityWarning,
+				Severity:    SeverityWorkload,
 				Description: FormatSpikeDescription(src.ServerURL, metricName, spike),
 			})
 			break // one spike finding per plugin per tick

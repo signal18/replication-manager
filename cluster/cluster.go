@@ -185,6 +185,13 @@ type Cluster struct {
 	// plugins (WORKLOAD severity). Kept separate from the HA StateMachine so performance
 	// noise does not obscure operational cluster health or trigger false failover gates.
 	WorkloadStateMachine                *state.StateMachine         `json:"workloadStateMachine" groups:"web"`
+	// SecurityStates is a snapshot of all open security findings from the current monitoring
+	// tick, serialised into the cluster JSON for the dashboard (SecurityStateMachine.CurState
+	// has json:"-" so it cannot be read directly). Updated by CheckLogPlugins.
+	SecurityStates                      []state.State               `json:"securityStates" groups:"web"`
+	// WorkloadStates is a snapshot of all open workload findings from the current monitoring
+	// tick. Updated by CheckLogPlugins after all servers have been evaluated.
+	WorkloadStates                      []state.State               `json:"workloadStates" groups:"web"`
 	SecurityScore                       SecurityScore               `json:"securityScore" groups:"web"`
 	// Set by dbjob SSH scripts scanning my.cnf/.my.cnf on DB servers
 	SecurityClearPwdConfig              bool                        `json:"securityClearPwdConfig"`

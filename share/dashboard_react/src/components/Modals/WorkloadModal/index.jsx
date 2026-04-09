@@ -14,8 +14,7 @@ function WorkloadModal({ isOpen, closeModal }) {
   const { isMobile, isTablet, isDesktop } = useSelector((state) => state.common)
   const clusterData = useSelector((state) => state.cluster.clusterData)
 
-  const workloadStates = clusterData?.workloadStateMachine?.CurState || {}
-  const statesArray = useMemo(() => Object.values(workloadStates), [workloadStates])
+  const statesArray = clusterData?.workloadStates || []
 
   const columnHelper = createColumnHelper()
   const columns = useMemo(() => [

@@ -38,9 +38,7 @@ function SecurityScoreModal({ isOpen, closeModal }) {
   const clusterData = useSelector((state) => state.cluster.clusterData)
 
   const score = clusterData?.securityScore
-  const securityStates = clusterData?.securityStateMachine?.CurState || {}
-
-  const statesArray = useMemo(() => Object.values(securityStates), [securityStates])
+  const statesArray = clusterData?.securityStates || []
 
   const columnHelper = createColumnHelper()
   const stateColumns = useMemo(() => [

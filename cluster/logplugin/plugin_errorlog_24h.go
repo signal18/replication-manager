@@ -77,7 +77,7 @@ func (p *ErrorLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	minLevel := ConfigStr(src.Config, "min-log-level", "Warning")
 	res.Findings = append(res.Findings, Finding{
 		ErrKey:   ErrKeyDBError24h,
-		Severity: SeverityWarning,
+		Severity: SeverityWorkload,
 		Description: fmt.Sprintf(
 			"Server %s: %d %s+ entry/entries in error log in last %dh",
 			src.ServerURL, current, minLevel, hours),
@@ -90,7 +90,7 @@ func (p *ErrorLogPlugin) Evaluate(src LogSource) EvaluateResult {
 		if err == nil && spike != nil {
 			res.Findings = append(res.Findings, Finding{
 				ErrKey:      "WARN0205",
-				Severity:    SeverityWarning,
+				Severity:    SeverityWorkload,
 				Description: FormatSpikeDescription(src.ServerURL, metricName, spike),
 			})
 		}

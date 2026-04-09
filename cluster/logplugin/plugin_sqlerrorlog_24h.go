@@ -63,7 +63,7 @@ func (p *SqlErrorLogPlugin) Evaluate(src LogSource) EvaluateResult {
 
 	res.Findings = append(res.Findings, Finding{
 		ErrKey:   ErrKeySQLError24h,
-		Severity: SeverityWarning,
+		Severity: SeverityWorkload,
 		Description: fmt.Sprintf(
 			"Server %s: %d SQL error(s) in last %dh",
 			src.ServerURL, current, hours),
@@ -75,7 +75,7 @@ func (p *SqlErrorLogPlugin) Evaluate(src LogSource) EvaluateResult {
 		if err == nil && spike != nil {
 			res.Findings = append(res.Findings, Finding{
 				ErrKey:      "WARN0205",
-				Severity:    SeverityWarning,
+				Severity:    SeverityWorkload,
 				Description: FormatSpikeDescription(src.ServerURL, metricName, spike),
 			})
 		}

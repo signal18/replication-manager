@@ -183,7 +183,7 @@ function Navbar({ username }) {
                 showText={!isMobile}
               />
               <WorkloadBadge
-                stateCount={Object.keys(clusterData?.workloadStateMachine?.CurState || {}).length}
+                stateCount={(clusterData?.workloadStates || []).length}
                 onClick={() => setIsWorkloadModalOpen(true)}
                 showText={!isMobile}
               />
