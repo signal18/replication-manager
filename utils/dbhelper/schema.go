@@ -640,10 +640,10 @@ func GetUsers(db *sqlx.DB, myver *version.Version) (map[string]*Grant, string, e
 		query = "SELECT user, host, authentication_string as password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), IFNULL(plugin,'') as plugin, IFNULL(account_locked,'N') as account_locked FROM mysql.user"
 	} else if myver.IsMariaDB() && myver.GreaterEqual("10.4.2") {
 		// MariaDB 10.4+: account_locked is stored as JSON boolean in mysql.global_priv.
-		// JSON_EXTRACT returns the native JSON boolean (truthy in IF()); this is more
-		// reliable than JSON_VALUE()='true' which can return NULL on some 11.x builds
-		// when the JSON path is missing or the value is formatted differently.
-		query = "SELECT u.user, u.host, u.password, CONV(LEFT(MD5(concat(u.user,u.host)), 16), 16, 10), IFNULL(u.plugin,'') as plugin, IF(JSON_EXTRACT(g.priv, '$.account_locked'), 'Y', 'N') as account_locked FROM mysql.user u LEFT JOIN mysql.global_priv g ON u.user = g.user AND u.host = g.host"
+		// JSON_EXTRACT returns the string "true" for JSON boolean true. We must use
+		// = 'true' for the comparison — IF(JSON_EXTRACT(...)) treats "true" as numeric
+		// 0 in MariaDB's implicit cast, making every account appear unlocked.
+		query = "SELECT u.user, u.host, u.password, CONV(LEFT(MD5(concat(u.user,u.host)), 16), 16, 10), IFNULL(u.plugin,'') as plugin, IF(JSON_EXTRACT(g.priv, '$.account_locked') = 'true', 'Y', 'N') as account_locked FROM mysql.user u LEFT JOIN mysql.global_priv g ON u.user = g.user AND u.host = g.host"
 	} else if myver.IsMariaDB() {
 		// MariaDB < 10.4.2: no account_locked column — plugin column exists from 5.2+
 		query = "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), IFNULL(plugin,'') as plugin, 'N' as account_locked FROM mysql.user"
