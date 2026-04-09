@@ -89,6 +89,8 @@ emb:
 
 PLUGIN_SRC_DIRS := $(shell find cluster/logplugin/plugins -mindepth 2 -maxdepth 2 -name "main.go" -exec dirname {} \; 2>/dev/null)
 PLUGIN_NAMES    := $(notdir $(PLUGIN_SRC_DIRS))
+# Common sources shared by all plugins — any change here triggers a full rebuild.
+PLUGIN_COMMON_SRCS := $(wildcard cluster/logplugin/*.go) $(wildcard cluster/logplugin/plugins/wire/*.go)
 PLUGIN_BINDIR   := build/plugins
 
 # Wire protocol version — read directly from source so it never drifts.
@@ -146,7 +148,7 @@ $(PLUGIN_SIGNER_BIN):
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
 	  go build -v -o $(PLUGIN_SIGNER_BIN) ./tools/plugin-signer/...
 
-$(PLUGIN_BINDIR)/%:
+$(PLUGIN_BINDIR)/%: $(wildcard cluster/logplugin/plugins/%/*.go) $(PLUGIN_COMMON_SRCS)
 	@mkdir -p $(PLUGIN_BINDIR)
 	@echo "Building plugin: $*"
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
