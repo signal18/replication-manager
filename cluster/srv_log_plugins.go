@@ -184,8 +184,14 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 				}
 				switch {
 				case isSecurity:
-					// Security findings go exclusively to security.log.
+					// Security findings go exclusively to security.log + LogSecurity HTTP buffer.
 					// Fall back to main log only when the dedicated logger is not configured.
+					cluster.LogSecurity.Add(s18log.HttpMessage{
+						Group:     cluster.Name,
+						Level:     "WARN",
+						Timestamp: time.Now().Format("2006/01/02 15:04:05"),
+						Text:      fmt.Sprintf("[%s] %s %s: %s", p.Name(), f.ErrKey, server.URL, f.Description),
+					})
 					if cluster.SecurityLogrus != nil {
 						cluster.SecurityLogrus.WithFields(fields).Warn(f.Description)
 					} else {
@@ -194,8 +200,14 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 							p.Name(), f.ErrKey, server.URL, f.Description)
 					}
 				case isWorkload:
-					// Workload findings go exclusively to workload.log.
+					// Workload findings go exclusively to workload.log + LogWorkload HTTP buffer.
 					// Fall back to main log only when the dedicated logger is not configured.
+					cluster.LogWorkload.Add(s18log.HttpMessage{
+						Group:     cluster.Name,
+						Level:     "WARN",
+						Timestamp: time.Now().Format("2006/01/02 15:04:05"),
+						Text:      fmt.Sprintf("[%s] %s %s: %s", p.Name(), f.ErrKey, server.URL, f.Description),
+					})
 					if cluster.WorkloadLogrus != nil {
 						cluster.WorkloadLogrus.WithFields(fields).Warn(f.Description)
 					} else {

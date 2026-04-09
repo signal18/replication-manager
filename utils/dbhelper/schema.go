@@ -646,6 +646,12 @@ func GetUsers(db *sqlx.DB, myver *version.Version) (map[string]*Grant, string, e
 	}
 
 	rows, err := db.Queryx(query)
+	if err != nil && myver.IsMariaDB() && myver.GreaterEqual("10.4.2") {
+		// account_locked column may be absent in some MariaDB 10.4.2+ builds/forks;
+		// fall back to the safe query with a literal 'N' placeholder.
+		query = "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), IFNULL(plugin,'') as plugin, 'N' as account_locked FROM mysql.user"
+		rows, err = db.Queryx(query)
+	}
 	if err != nil {
 		return nil, query, errors.New("Could not get DB user list")
 	}

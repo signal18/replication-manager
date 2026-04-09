@@ -141,6 +141,8 @@ type Cluster struct {
 	LogPushover                   *log.Logger                `json:"-"`
 	Log                           s18log.HttpLog             `json:"-" groups:"web"`
 	LogTask                       s18log.HttpLog             `json:"-" groups:"web"`
+	LogSecurity                   s18log.HttpLog             `json:"-" groups:"web"`
+	LogWorkload                   s18log.HttpLog             `json:"-" groups:"web"`
 	LogSlack                      *slackman.SlackManager     `json:"-"`
 	JobResults                    *config.TasksMap           `json:"jobResults" groups:"web"`
 	FalsePositiveChecks           map[string]bool            `json:"falsePositiveChecks" groups:"web"`
@@ -446,6 +448,8 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.benchmarkType = "sysbench"
 	cluster.Log = s18log.NewHttpLog(200)
 	cluster.LogTask = s18log.NewHttpLog(200)
+	cluster.LogSecurity = s18log.NewHttpLog(200)
+	cluster.LogWorkload = s18log.NewHttpLog(200)
 
 	cluster.MonitorType = config.GetMonitorType()
 	cluster.TopologyType = config.GetTopologyType()

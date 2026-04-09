@@ -1785,6 +1785,10 @@ func (cluster *Cluster) GetWebLogsByType(logtype string) any {
 		return &cluster.LogTask
 	case "general":
 		return &cluster.Log
+	case "security":
+		return &cluster.LogSecurity
+	case "workload":
+		return &cluster.LogWorkload
 	default:
 		return nil
 	}
@@ -1794,6 +1798,8 @@ func (cluster *Cluster) GetAllWebLogs() map[string]any {
 	logs := make(map[string]any)
 	logs["general"] = &cluster.Log
 	logs["task"] = &cluster.LogTask
+	logs["security"] = &cluster.LogSecurity
+	logs["workload"] = &cluster.LogWorkload
 	return logs
 }
 
