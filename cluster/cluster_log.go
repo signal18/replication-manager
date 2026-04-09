@@ -486,7 +486,12 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 			Text:      httpmsg,
 		}
 		line = buf.Add(msg)
-		cluster.Log.Add(msg)
+		// Only mirror to the general log when writing to the general buffer.
+		// Workload/security states have their own buffers and must not bleed
+		// into the general cluster log.
+		if buf == cluster.htlog {
+			cluster.Log.Add(msg)
+		}
 	}
 
 	slackFields := make(log.Fields)
