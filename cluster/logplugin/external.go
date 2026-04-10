@@ -162,10 +162,21 @@ type stdioResponse struct {
 	ScoreChecks []ScoreCheck      `json:"score_checks"`
 }
 
-type stdioFinding struct {
-	ErrKey      string `json:"err_key"`
-	Severity    string `json:"severity"`
+type stdioRemediation struct {
+	Type        string `json:"type"`
 	Description string `json:"description"`
+	SQL         string `json:"sql,omitempty"`
+	MyCnf       string `json:"my_cnf,omitempty"`
+	ConfigKey   string `json:"config_key,omitempty"`
+	ConfigValue string `json:"config_value,omitempty"`
+	Risk        string `json:"risk"`
+}
+
+type stdioFinding struct {
+	ErrKey       string             `json:"err_key"`
+	Severity     string             `json:"severity"`
+	Description  string             `json:"description"`
+	Remediations []stdioRemediation `json:"remediations,omitempty"`
 }
 
 // ---- ExternalLogPlugin ------------------------------------------------------
@@ -278,10 +289,23 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 		if sev != SeverityWarning && sev != SeverityError && sev != SeveritySecurity && sev != SeverityWorkload {
 			sev = SeverityWarning
 		}
+		remeds := make([]Remediation, 0, len(sf.Remediations))
+		for _, sr := range sf.Remediations {
+			remeds = append(remeds, Remediation{
+				Type:        sr.Type,
+				Description: sr.Description,
+				SQL:         sr.SQL,
+				MyCnf:       sr.MyCnf,
+				ConfigKey:   sr.ConfigKey,
+				ConfigValue: sr.ConfigValue,
+				Risk:        sr.Risk,
+			})
+		}
 		findings = append(findings, Finding{
-			ErrKey:      sf.ErrKey,
-			Severity:    sev,
-			Description: sf.Description,
+			ErrKey:       sf.ErrKey,
+			Severity:     sev,
+			Description:  sf.Description,
+			Remediations: remeds,
 		})
 	}
 	return EvaluateResult{Findings: findings, ScoreChecks: resp.ScoreChecks}

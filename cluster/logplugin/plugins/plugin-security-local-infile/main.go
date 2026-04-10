@@ -7,6 +7,9 @@
 // deployments unless a specific, controlled use-case requires it.
 //
 // Reference: CVE-2016-3440, CIS MySQL Benchmark control 4.5
+//
+// Remediations for SEC0102 are derived at plan-generation time from the
+// compliance module (with_sec_localinfile tag) — no SQL is hardcoded here.
 package main
 
 import (

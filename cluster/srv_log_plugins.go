@@ -629,9 +629,10 @@ func snapshotDatabaseUsers(server *ServerMonitor) []logplugin.StdioDBUser {
 // cluster.SecurityClearPwdHistory flags (set when the dbjob completes).
 func buildClusterContext(cluster *Cluster) logplugin.ClusterContext {
 	return logplugin.ClusterContext{
-		HasProxies:      len(cluster.Proxies) > 0,
-		BackupEncrypted: cluster.Conf.BackupRestic && cluster.Conf.BackupResticPassword != "",
-		ConfigClearPwd:  cluster.SecurityClearPwdConfig,
-		HistoryClearPwd: cluster.SecurityClearPwdHistory,
+		HasProxies:       len(cluster.Proxies) > 0,
+		BackupEncrypted:  cluster.Conf.BackupRestic && cluster.Conf.BackupResticPassword != "",
+		ConfigClearPwd:   cluster.SecurityClearPwdConfig,
+		HistoryClearPwd:  cluster.SecurityClearPwdHistory,
+		DockerDeployment: cluster.Configurator.IsFilterInDBTags("docker"),
 	}
 }

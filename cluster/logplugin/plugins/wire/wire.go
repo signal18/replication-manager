@@ -30,10 +30,11 @@ type Request struct {
 // ClusterContext carries cluster-level facts that cannot be derived from
 // a single server snapshot.
 type ClusterContext struct {
-	HasProxies      bool `json:"has_proxies"`       // cluster has at least one proxy configured
-	BackupEncrypted bool `json:"backup_encrypted"`  // backup configured with encryption
-	ConfigClearPwd  bool `json:"config_clear_pwd"`  // cleartext passwords detected in TOML config
-	HistoryClearPwd bool `json:"history_clear_pwd"` // previous binlog scan found cleartext passwords
+	HasProxies        bool `json:"has_proxies"`         // cluster has at least one proxy configured
+	BackupEncrypted   bool `json:"backup_encrypted"`    // backup configured with encryption
+	ConfigClearPwd    bool `json:"config_clear_pwd"`    // cleartext passwords detected in TOML config
+	HistoryClearPwd   bool `json:"history_clear_pwd"`   // previous binlog scan found cleartext passwords
+	DockerDeployment  bool `json:"docker_deployment"`   // servers run as Docker containers (DNS-based discovery, dynamic IPs)
 }
 
 // DBUser is one row from mysql.user, stripped of credential data.
@@ -118,10 +119,24 @@ type Response struct {
 	ScoreChecks []ScoreCheck `json:"score_checks,omitempty"`
 }
 
-type Finding struct {
-	ErrKey      string `json:"err_key"`
-	Severity    string `json:"severity"` // "WARNING", "ERROR", or "SECURITY"
+// Remediation is a machine-readable fix proposal attached to a Finding.
+// Type is one of "sql", "my_cnf", or "repman_config".
+// Risk is one of "safe", "moderate", or "disruptive".
+type Remediation struct {
+	Type        string `json:"type"`
 	Description string `json:"description"`
+	SQL         string `json:"sql,omitempty"`
+	MyCnf       string `json:"my_cnf,omitempty"`
+	ConfigKey   string `json:"config_key,omitempty"`
+	ConfigValue string `json:"config_value,omitempty"`
+	Risk        string `json:"risk"`
+}
+
+type Finding struct {
+	ErrKey       string        `json:"err_key"`
+	Severity     string        `json:"severity"` // "WARNING", "ERROR", or "SECURITY"
+	Description  string        `json:"description"`
+	Remediations []Remediation `json:"remediations,omitempty"`
 }
 
 // ScoreCheck is a single compliance check result.

@@ -750,6 +750,20 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 
 	// Register restic-specific routes
 	repman.RegisterResticRoutes(router)
+
+	// Security remediation endpoints
+	router.Handle("/api/clusters/{clusterName}/security/remediation-plan", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecurityRemediationPlan)),
+	))
+	router.Handle("/api/clusters/{clusterName}/security/apply-fix", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecurityApplyFix)),
+	))
+	router.Handle("/api/clusters/{clusterName}/security/fix-state/{errKey}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecurityFixState)),
+	))
 }
 
 // @Summary Retrieve servers for a specific cluster
@@ -8920,3 +8934,127 @@ func (repman *ReplicationManager) handlerMuxSavePreservedVarsCnf(w http.Response
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(fmt.Sprintf("Successfully saved preserved variables CNF to %s", mycluster.GetPreservedVarsPath())))
 }
+
+// handlerMuxSecurityRemediationPlan returns the remediation plan for all open
+// security findings in a cluster.
+//
+// Each RemediationEntry has one or more RemediationFix items. Fix types:
+//
+//	add_tag      — add a compliance module tag (deploys .cnf + runs mariadb_command SQL)
+//	drop_tag     — remove a compliance module tag (runs mariadb_default SQL)
+//	fix_db_user  — named action on a database account; no raw SQL from client
+//	cnf_template — suggested .cnf content to add to the compliance module (no tag yet)
+//
+// @Summary Get security remediation plan
+// @Tags ClusterSecurity
+// @Produce json
+// @Param Authorization header string true "Bearer token"
+// @Param clusterName path string true "Cluster name"
+// @Success 200 {object} cluster.RemediationPlan
+// @Failure 404 {string} string "Cluster not found"
+// @Router /api/clusters/{clusterName}/security/remediation-plan [get]
+func (repman *ReplicationManager) handlerMuxSecurityRemediationPlan(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster not found", http.StatusNotFound)
+		return
+	}
+	plan := mycluster.GetRemediationPlan()
+	data, err := json.Marshal(plan)
+	if err != nil {
+		http.Error(w, "Encoding error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+}
+
+// handlerMuxSecurityApplyFix applies a tag-based security remediation fix
+// (add_tag or drop_tag).  The cluster's AddDBTag / DropDBTag mechanism deploys
+// the compliance .cnf file to all servers and executes the embedded
+// mariadb_command / mariadb_default SQL automatically — no direct SQL execution.
+//
+// Per-account findings (SEC0100, SEC0107, SEC0108) must be handled manually.
+//
+// @Summary Apply a tag-based security remediation fix
+// @Tags ClusterSecurity
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Bearer token"
+// @Param clusterName path string true "Cluster name"
+// @Param body body object true "{\"action\":\"add_tag\"|\"drop_tag\", \"tag\":\"<tag_name>\"}"
+// @Success 200 {string} string "Fix applied"
+// @Failure 400 {string} string "Bad request"
+// @Failure 404 {string} string "Cluster not found"
+// @Failure 500 {string} string "Execution error"
+// @Router /api/clusters/{clusterName}/security/apply-fix [post]
+func (repman *ReplicationManager) handlerMuxSecurityApplyFix(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster not found", http.StatusNotFound)
+		return
+	}
+	var req struct {
+		Action string `json:"action"`
+		Tag    string `json:"tag"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Action == "" {
+		http.Error(w, `Body must be JSON with non-empty "action" and "tag" fields`, http.StatusBadRequest)
+		return
+	}
+	if req.Tag == "" {
+		http.Error(w, `"tag" field is required`, http.StatusBadRequest)
+		return
+	}
+	if err := mycluster.ApplyRemediationTag(req.Action, req.Tag); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok"}`))
+}
+
+// handlerMuxSecurityFixState applies the automated remediation for a single SEC
+// error key across all servers in the cluster.  No request body is required —
+// the server knows exactly what to do for each supported code.
+//
+// Supported codes (AutoFixable=true in the remediation plan):
+//
+//	SEC0100 — ACCOUNT LOCK all no-password, non-socket accounts
+//	SEC0102 — drop compliance tag with_sec_localinfile (SET GLOBAL local_infile=0)
+//	SEC0104 — drop compliance tag with_log_general    (SET GLOBAL general_log=0)
+//	SEC0107 — DROP all anonymous user accounts
+//
+// @Summary Apply automated fix for a security finding
+// @Tags ClusterSecurity
+// @Produce json
+// @Param Authorization header string true "Bearer token"
+// @Param clusterName path string true "Cluster name"
+// @Param errKey path string true "SEC error key (e.g. SEC0102)"
+// @Success 200 {string} string "Fix applied"
+// @Failure 400 {string} string "No automated fix for this code"
+// @Failure 404 {string} string "Cluster not found"
+// @Failure 500 {string} string "Execution error"
+// @Router /api/clusters/{clusterName}/security/fix-state/{errKey} [post]
+func (repman *ReplicationManager) handlerMuxSecurityFixState(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster not found", http.StatusNotFound)
+		return
+	}
+	errKey := vars["errKey"]
+	if err := mycluster.FixSecState(errKey); err != nil {
+		// FixSecState returns a specific error when the code has no automated fix.
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok"}`))
+}
+

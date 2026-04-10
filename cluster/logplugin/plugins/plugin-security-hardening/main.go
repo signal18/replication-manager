@@ -13,6 +13,10 @@
 //
 // All findings use Severity "SECURITY" so they are visually distinct from
 // operational WARNING/ERROR states in the dashboard.
+//
+// SEC0104 remediations are derived at plan-generation time from the compliance
+// module (with_log_general tag).  SEC0103, SEC0105, SEC0106, SEC0107, SEC0108
+// carry hardcoded remediations here since they have no module-tag equivalent.
 package main
 
 import (
@@ -49,11 +53,33 @@ func main() {
 					"Server %s: require_secure_transport=OFF — unencrypted client connections are permitted."+
 						" Set require_secure_transport=ON to enforce TLS for all connections.",
 					req.ServerURL),
+				Remediations: []wire.Remediation{
+					{
+						Type:        "sql",
+						Description: "Enforce TLS at runtime (takes effect immediately, lost on restart without my.cnf change)",
+						SQL:         "SET GLOBAL require_secure_transport = ON;",
+						Risk:        "moderate",
+					},
+					{
+						Type:        "sql",
+						Description: "Enforce TLS persistently without restart (MariaDB 10.3.5+ / MySQL 8.0+)",
+						SQL:         "SET PERSIST require_secure_transport = ON;",
+						Risk:        "moderate",
+					},
+					{
+						Type:        "my_cnf",
+						Description: "Add to [mysqld] section for permanent enforcement (requires restart)",
+						MyCnf:       "require_secure_transport=ON",
+						Risk:        "safe",
+					},
+				},
 			})
 		}
 	}
 
 	// SEC0104 — general_log
+	// Remediations are derived from the compliance module (with_log_general tag) at
+	// plan-generation time — no SQL hardcoded here.
 	if val, ok := v["general_log"]; ok {
 		if strings.ToUpper(strings.TrimSpace(val)) == "ON" {
 			findings = append(findings, wire.Finding{
@@ -80,21 +106,58 @@ func main() {
 						" can access any path on the server filesystem."+
 						" Set secure_file_priv to a dedicated, restricted directory.",
 					req.ServerURL),
+				Remediations: []wire.Remediation{
+					{
+						Type:        "my_cnf",
+						Description: "Restrict file operations to a dedicated directory (requires restart)",
+						MyCnf:       "secure_file_priv=/var/lib/mysql-files",
+						Risk:        "disruptive",
+					},
+				},
 			})
 		}
 	}
 
 	// SEC0106 — skip_name_resolve
+	// In Docker deployments DNS is the primary service-discovery mechanism and
+	// container IPs are reassigned on every restart, so skip_name_resolve=ON
+	// would break all DNS-based grants without providing meaningful security
+	// benefit (IPs are not stable either).  The finding is still raised — DNS
+	// spoofing is a real risk — but the description and remediation differ
+	// depending on whether the cluster runs on Docker.
 	if val, ok := v["skip_name_resolve"]; ok {
 		if strings.ToUpper(strings.TrimSpace(val)) == "OFF" {
-			findings = append(findings, wire.Finding{
-				ErrKey:   "SEC0106",
-				Severity: "SECURITY",
-				Description: fmt.Sprintf(
+			var desc string
+			var remediations []wire.Remediation
+			if req.ClusterContext.DockerDeployment {
+				desc = fmt.Sprintf(
+					"Server %s: skip_name_resolve=OFF — DNS lookups are enabled."+
+						" In a Docker deployment container IPs are dynamic and DNS is used for"+
+						" service discovery, so enabling skip_name_resolve would break DNS-based"+
+						" grants without improving security (IPs rotate on restart)."+
+						" Mitigate via network policies and Docker network segmentation instead.",
+					req.ServerURL)
+				// No my_cnf remediation for Docker — applying skip_name_resolve would be harmful.
+			} else {
+				desc = fmt.Sprintf(
 					"Server %s: skip_name_resolve=OFF — MySQL performs DNS lookups for connecting"+
 						" clients, which can be slow and is vulnerable to DNS spoofing."+
-						" Consider setting skip_name_resolve=ON and using IP-based grants.",
-					req.ServerURL),
+						" Set skip_name_resolve=ON and convert all hostname grants to IP addresses.",
+					req.ServerURL)
+				remediations = []wire.Remediation{
+					{
+						Type:        "my_cnf",
+						Description: "Disable DNS lookups (requires restart; convert hostname grants to IPs first)",
+						MyCnf:       "skip_name_resolve=ON",
+						Risk:        "disruptive",
+					},
+				}
+			}
+			findings = append(findings, wire.Finding{
+				ErrKey:       "SEC0106",
+				Severity:     "SECURITY",
+				Description:  desc,
+				Remediations: remediations,
 			})
 		}
 	}
@@ -102,6 +165,7 @@ func main() {
 	// SEC0107 — anonymous users (empty username)
 	for _, u := range req.DatabaseUsers {
 		if u.User == "" {
+			anonKey := fmt.Sprintf("''@'%s'", u.Host)
 			findings = append(findings, wire.Finding{
 				ErrKey:   "SEC0107",
 				Severity: "SECURITY",

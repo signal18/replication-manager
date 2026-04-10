@@ -34,6 +34,9 @@ export const clusterService = {
   getResticMountStatus,
   resticInitRepo,
 
+  // Security remediation APIs
+  fixSecState,
+
   // Cluster management APIs
   checksumAllTables,
   checksumRepairAllTables,
@@ -822,13 +825,17 @@ function getResticMountStatus(clusterName, baseURL) {
 }
 
 function resticInitRepo(clusterName, force, options, baseURL) {
-  const endpoint = force 
+  const endpoint = force
     ? `clusters/${clusterName}/restic/init/force`
     : `clusters/${clusterName}/restic/init`
   const payload = options?.allowEmptyPrefix
     ? { allow_empty_prefix: true }
     : undefined
   return getApi(baseURL).post(endpoint, payload)
+}
+
+function fixSecState(clusterName, errKey, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/security/fix-state/${encodeURIComponent(errKey)}`)
 }
 
 // Utility functions

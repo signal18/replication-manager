@@ -5,6 +5,10 @@
 // An account without a password and without socket auth can be logged into
 // from any host that can reach the MySQL port with no credentials at all.
 //
+// Remediations for SEC0100 are generated at plan-generation time from live
+// server.Users data (lock / drop actions via /security/fix-db-user API) —
+// no SQL is hardcoded here.
+//
 // Config (env):
 //
 //	REPMAN_IGNORED_USERS  string  default: ""
@@ -25,11 +29,11 @@ import (
 // they authenticate via OS identity and are considered safe even with an
 // empty authentication_string.
 var socketPlugins = map[string]bool{
-	"unix_socket":  true,
-	"auth_socket":  true,
-	"gssapi":       true,
+	"unix_socket":        true,
+	"auth_socket":        true,
+	"gssapi":             true,
 	"authentication_pam": true,
-	"auth_pam":     true,
+	"auth_pam":           true,
 }
 
 func main() {

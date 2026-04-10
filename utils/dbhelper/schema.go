@@ -576,6 +576,56 @@ func SetUserPassword(db *sqlx.DB, myver *version.Version, user_host string, user
 	return query, nil
 }
 
+// validateDBHost validates a MySQL host string.
+// MySQL hosts may contain letters, digits, dots, hyphens, colons (IPv6), and '%'.
+// Backtick and NUL are disallowed to prevent identifier injection.
+func validateDBHost(host string) error {
+	if host == "" {
+		return fmt.Errorf("host cannot be empty")
+	}
+	for _, c := range host {
+		if c == '`' || c == 0 {
+			return fmt.Errorf("invalid host: contains disallowed character")
+		}
+	}
+	return nil
+}
+
+// LockDBUser locks a database account so it cannot be used to log in.
+// Uses ALTER USER ... ACCOUNT LOCK (MariaDB 10.4+ / MySQL 5.7.6+).
+func LockDBUser(db *sqlx.DB, user, host string) (string, error) {
+	if err := ValidateIdentifier(user); err != nil {
+		return "", fmt.Errorf("invalid username: %w", err)
+	}
+	if err := validateDBHost(host); err != nil {
+		return "", fmt.Errorf("invalid host: %w", err)
+	}
+	query := fmt.Sprintf("ALTER USER %s@%s ACCOUNT LOCK",
+		QuoteMySQLIdentifier(user),
+		QuoteMySQLIdentifier(host))
+	_, err := db.Exec(query)
+	return query, err
+}
+
+// DropDBUser removes a database account.
+// Uses DROP USER IF EXISTS to be idempotent.
+// user may be empty string (anonymous accounts have user='').
+func DropDBUser(db *sqlx.DB, user, host string) (string, error) {
+	if user != "" {
+		if err := ValidateIdentifier(user); err != nil {
+			return "", fmt.Errorf("invalid username: %w", err)
+		}
+	}
+	if err := validateDBHost(host); err != nil {
+		return "", fmt.Errorf("invalid host: %w", err)
+	}
+	query := fmt.Sprintf("DROP USER IF EXISTS %s@%s",
+		QuoteMySQLIdentifier(user),
+		QuoteMySQLIdentifier(host))
+	_, err := db.Exec(query)
+	return query, err
+}
+
 // RenameUserPassword renames a user
 func RenameUserPassword(db *sqlx.DB, myver *version.Version, user_host string, old_user_name string, new_password string, new_user_name string) (string, error) {
 	// Validate usernames

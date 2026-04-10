@@ -51,11 +51,26 @@ const (
 	SeverityWorkload Severity = "WORKLOAD"
 )
 
+// Remediation is a machine-readable fix proposal attached to a Finding.
+// Type is one of "sql", "my_cnf", or "repman_config".
+// Risk is one of "safe" (non-disruptive), "moderate" (may affect connections),
+// or "disruptive" (requires restart or may break workloads).
+type Remediation struct {
+	Type        string `json:"type"`
+	Description string `json:"description"`
+	SQL         string `json:"sql,omitempty"`
+	MyCnf       string `json:"my_cnf,omitempty"`
+	ConfigKey   string `json:"config_key,omitempty"`
+	ConfigValue string `json:"config_value,omitempty"`
+	Risk        string `json:"risk"`
+}
+
 // Finding is a single alert raised by a plugin evaluation.
 type Finding struct {
-	ErrKey      string
-	Severity    Severity
-	Description string
+	ErrKey       string
+	Severity     Severity
+	Description  string
+	Remediations []Remediation
 }
 
 // ToState converts a Finding to a cluster state.State.
@@ -201,10 +216,11 @@ type LogSource struct {
 
 // ClusterContext carries cluster-level facts passed to every plugin.
 type ClusterContext struct {
-	HasProxies      bool `json:"has_proxies"`      // cluster has at least one proxy configured
-	BackupEncrypted bool `json:"backup_encrypted"` // backup configured with encryption (e.g. restic password set)
-	ConfigClearPwd  bool `json:"config_clear_pwd"` // repman detected cleartext passwords in TOML config
-	HistoryClearPwd bool `json:"history_clear_pwd"`// previous binlog scan found cleartext passwords
+	HasProxies       bool `json:"has_proxies"`        // cluster has at least one proxy configured
+	BackupEncrypted  bool `json:"backup_encrypted"`   // backup configured with encryption (e.g. restic password set)
+	ConfigClearPwd   bool `json:"config_clear_pwd"`   // repman detected cleartext passwords in TOML config
+	HistoryClearPwd  bool `json:"history_clear_pwd"`  // previous binlog scan found cleartext passwords
+	DockerDeployment bool `json:"docker_deployment"`  // servers run as Docker containers (DNS-based discovery, dynamic IPs)
 }
 
 // IsEnabled returns false only when config explicitly sets enabled=false/0/no.

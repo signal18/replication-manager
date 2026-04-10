@@ -484,7 +484,6 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.SecurityStateMachine.Init()
 	cluster.WorkloadStateMachine = new(state.StateMachine)
 	cluster.WorkloadStateMachine.Init()
-
 	// k, _ := cluster.Conf.LoadEncrytionKey()
 	// if k == nil {
 	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key")

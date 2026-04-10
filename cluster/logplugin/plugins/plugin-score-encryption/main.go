@@ -4,6 +4,12 @@
 //	HasBinlogEncryption — binary log encryption enabled
 //	HasTmpEncryption    — temporary file/table encryption enabled
 //	HasBackupEncryption — backups are configured with encryption (from cluster context)
+//
+// Security findings (require adding with_sec_keyfileencrypt compliance tag + restart):
+//
+//	SEC0109  innodb_encrypt_tables/aria_encrypt_tables both OFF — table data unencrypted at rest
+//	SEC0110  encrypt_binlog/binlog_encryption both OFF — binary logs unencrypted at rest
+//	SEC0111  encrypt_tmp_files/encrypt_tmp_disk_tables both OFF — temp files unencrypted at rest
 package main
 
 import (
@@ -49,5 +55,46 @@ func main() {
 			Detail: "restic backup with password configured"},
 	}
 
-	json.NewEncoder(os.Stdout).Encode(wire.Response{ScoreChecks: checks})
+	var findings []wire.Finding
+
+	// SEC0109 — table encryption disabled
+	if !hasTableEnc {
+		findings = append(findings, wire.Finding{
+			ErrKey:   "SEC0109",
+			Severity: "SECURITY",
+			Description: fmt.Sprintf(
+				"Server %s: table encryption is disabled (innodb_encrypt_tables=%s, aria_encrypt_tables=%s)"+
+					" — InnoDB/Aria data files are stored unencrypted on disk."+
+					" Enable the with_sec_keyfileencrypt compliance tag to activate file-key encryption (requires restart).",
+				req.ServerURL, get("innodb_encrypt_tables"), get("aria_encrypt_tables")),
+		})
+	}
+
+	// SEC0110 — binlog encryption disabled
+	if !hasBinlogEnc {
+		findings = append(findings, wire.Finding{
+			ErrKey:   "SEC0110",
+			Severity: "SECURITY",
+			Description: fmt.Sprintf(
+				"Server %s: binary log encryption is disabled (encrypt_binlog=%s, binlog_encryption=%s)"+
+					" — binary logs contain row-level data changes in plaintext."+
+					" Enable the with_sec_keyfileencrypt compliance tag to activate binlog encryption (requires restart).",
+				req.ServerURL, get("encrypt_binlog"), get("binlog_encryption")),
+		})
+	}
+
+	// SEC0111 — tmp file encryption disabled
+	if !hasTmpEnc {
+		findings = append(findings, wire.Finding{
+			ErrKey:   "SEC0111",
+			Severity: "SECURITY",
+			Description: fmt.Sprintf(
+				"Server %s: temporary file encryption is disabled (encrypt_tmp_files=%s, encrypt_tmp_disk_tables=%s)"+
+					" — temporary tables and sort buffers spilled to disk are stored in plaintext."+
+					" Enable the with_sec_keyfileencrypt compliance tag to activate tmp encryption (requires restart).",
+				req.ServerURL, get("encrypt_tmp_files"), get("encrypt_tmp_disk_tables")),
+		})
+	}
+
+	json.NewEncoder(os.Stdout).Encode(wire.Response{ScoreChecks: checks, Findings: findings})
 }

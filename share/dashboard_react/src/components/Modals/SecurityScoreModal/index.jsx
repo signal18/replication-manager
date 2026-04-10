@@ -1,13 +1,30 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import {
   Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay,
-  Box, Grid, GridItem, Text, Badge, HStack, VStack, Divider
+  Box, Grid, GridItem, Text, Badge, HStack, VStack, Divider,
+  Button, Tooltip
 } from '@chakra-ui/react'
-import { useSelector } from 'react-redux'
+import { useSelector, useDispatch } from 'react-redux'
 import { DataTable } from '../../DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
 import parentStyles from '../styles.module.scss'
 import { useTheme } from '../../../ThemeProvider'
+import { clusterService } from '../../../services/clusterService'
+import { showSuccessToast, showErrorToast } from '../../../redux/toastSlice'
+
+// SEC codes that support one-click automated fix via POST /security/fix-state/{errKey}
+const AUTO_FIXABLE = new Set(['SEC0100', 'SEC0102', 'SEC0104', 'SEC0107', 'SEC0109', 'SEC0110', 'SEC0111'])
+
+// Risk level for each auto-fixable code — shown in the tooltip
+const FIX_RISK = {
+  SEC0100: 'safe',
+  SEC0102: 'safe',
+  SEC0104: 'safe',
+  SEC0107: 'safe',
+  SEC0109: 'disruptive — triggers rolling restart',
+  SEC0110: 'disruptive — triggers rolling restart',
+  SEC0111: 'disruptive — triggers rolling restart',
+}
 
 // Label map for the 17 security check tags
 const CHECK_LABELS = {
@@ -34,11 +51,39 @@ const GRADE_COLOR = { A: 'green', B: 'teal', C: 'yellow', D: 'orange', F: 'red' 
 
 function SecurityScoreModal({ isOpen, closeModal }) {
   const { theme } = useTheme()
+  const dispatch = useDispatch()
   const { isMobile, isTablet, isDesktop } = useSelector((state) => state.common)
   const clusterData = useSelector((state) => state.cluster.clusterData)
+  const baseURL = useSelector((state) => state.auth?.baseURL || '')
+  const [fixing, setFixing] = useState({})
 
   const score = clusterData?.securityScore
   const statesArray = clusterData?.securityStates || []
+  const clusterName = clusterData?.name
+
+  const handleFix = async (errKey) => {
+    setFixing((prev) => ({ ...prev, [errKey]: true }))
+    try {
+      const { status, data } = await clusterService.fixSecState(clusterName, errKey, baseURL)
+      if (status === 200) {
+        dispatch(showSuccessToast({
+          title: `Fix applied: ${errKey}`,
+          description: FIX_RISK[errKey]?.includes('disruptive')
+            ? 'Config deployed. Rolling restart in progress…'
+            : 'Fix applied successfully.',
+        }))
+      } else {
+        dispatch(showErrorToast({
+          title: `Fix failed: ${errKey}`,
+          description: typeof data === 'string' ? data : 'Unexpected error',
+        }))
+      }
+    } catch (err) {
+      dispatch(showErrorToast({ title: `Fix failed: ${errKey}`, description: String(err) }))
+    } finally {
+      setFixing((prev) => ({ ...prev, [errKey]: false }))
+    }
+  }
 
   const columnHelper = createColumnHelper()
   const stateColumns = useMemo(() => [
@@ -59,7 +104,29 @@ function SecurityScoreModal({ isOpen, closeModal }) {
       header: () => <span>Code</span>,
       maxWidth: '120',
     }),
-  ], [])
+    columnHelper.accessor((row) => row.ErrKey, {
+      id: 'fix',
+      header: () => <span>Fix</span>,
+      maxWidth: '100',
+      cell: (info) => {
+        const errKey = info.getValue()
+        if (!AUTO_FIXABLE.has(errKey)) return null
+        const risk = FIX_RISK[errKey] || 'safe'
+        const isDisruptive = risk.includes('disruptive')
+        return (
+          <Tooltip label={`Risk: ${risk}`} placement='left'>
+            <Button
+              size='xs'
+              colorScheme={isDisruptive ? 'orange' : 'green'}
+              isLoading={!!fixing[errKey]}
+              onClick={() => handleFix(errKey)}>
+              Fix
+            </Button>
+          </Tooltip>
+        )
+      },
+    }),
+  ], [fixing, clusterName, baseURL])
 
   if (!score) return null
 
