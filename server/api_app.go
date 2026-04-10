@@ -2365,6 +2365,70 @@ func (repman *ReplicationManager) handlerMuxAppRefreshTemplateFromRepo(w http.Re
 	}
 }
 
+// @Summary App Template Preview
+// @Description Returns raw app template content and detected defaults for app-host, app-port, and docker image.
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param templateName path string true "Template Name"
+// @Success 200 {object} map[string]interface{} "Template preview payload"
+// @Failure 400 {string} string "Template name is required"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "Template not found"
+// @Failure 500 {string} string "Unable to parse template"
+// @Router /api/clusters/{clusterName}/actions/app-template/{templateName} [get]
+func (repman *ReplicationManager) handlerMuxAppTemplatePreview(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	templateName := strings.TrimSpace(vars["templateName"])
+	if templateName == "" {
+		http.Error(w, "Template name is required", http.StatusBadRequest)
+		return
+	}
+
+	content, err := mycluster.GetTemplateContent(templateName)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Template not found: %v", err), http.StatusNotFound)
+		return
+	}
+
+	templateViper, err := mycluster.LoadTemplateToViper(content)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Unable to parse template: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"template": templateName,
+		"content":  string(content),
+		"defaults": map[string]string{
+			"host":        strings.TrimSpace(templateViper.GetString("app-host")),
+			"port":        strings.TrimSpace(templateViper.GetString("app-port")),
+			"dockerImage": strings.TrimSpace(templateViper.GetString("prov-app-docker-img")),
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, fmt.Sprintf("Error encoding response: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
 // @Summary Drop App Monitor
 // @Description Drops the monitoring configuration for a specific app in a cluster.
 // @Tags Apps

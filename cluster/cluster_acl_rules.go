@@ -152,6 +152,7 @@ var clusterACLRules = []ACLRule{
 	// SLA and Monitoring
 	{"/actions/reset-sla", nil, []string{config.GrantClusterResetSLA}},
 	{"/actions/addserver", nil, []string{config.GrantClusterCreateMonitor, config.GrantAppDeployment}},
+	{"/actions/app-template", nil, []string{config.GrantAppDeployment}},
 	{"/actions/dropserver", nil, []string{config.GrantClusterDropMonitor}},
 
 	// Cluster Actions

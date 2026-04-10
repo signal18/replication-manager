@@ -1,4 +1,5 @@
 import {
+  Box,
   Checkbox,
   Flex,
   FormControl,
@@ -13,9 +14,10 @@ import {
   ModalFooter,
   ModalHeader,
   ModalOverlay,
-  Stack
+  Stack,
+  Textarea
 } from '@chakra-ui/react'
-import { useEffect, useReducer } from 'react'
+import { useEffect, useReducer, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { addServer, connectDockerRegistry } from '../../redux/clusterSlice'
 import Dropdown from '../Dropdown'
@@ -27,6 +29,7 @@ import RMIconButton from '../RMIconButton'
 import { HiRefresh } from 'react-icons/hi'
 import { refreshAppTemplateRepo } from '../../redux/globalClustersSlice'
 import PropTypes from 'prop-types'
+import { getApi } from '../../services/apiHelper'
 
 const parsePortValue = (value) => {
   if (value === undefined || value === null || value === '') return null
@@ -182,14 +185,79 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
   const dispatch = useDispatch()
   const { theme } = useTheme()
   const { globalClusters: { monitor, clusters } } = useSelector((state) => state)
+  const baseURL = useSelector((state) => state?.auth?.baseURL || '')
   const [formState, formDispatch] = useReducer(formReducer, initialState)
   const { formData, tagOptions, templateOptions, errors } = formState
   const { host, port, monitorType, dockerImage, tag, dockerRegistry } = formData
   const { private: isPrivateRegistry, url, username, password, authType, template } = dockerRegistry
   const isAppMonitor = monitorType === 'app'
   const isPortReadOnly = Boolean(monitorType) && !isAppMonitor
+  const [hostTouched, setHostTouched] = useState(false)
+  const [portTouched, setPortTouched] = useState(false)
+  const [templatePreview, setTemplatePreview] = useState({
+    loading: false,
+    error: '',
+    content: '',
+    defaults: null,
+    dynamicHost: false,
+  })
   const selectedCluster = clusters?.find((cluster) => cluster?.name === clusterName)
   const clusterConfig = selectedCluster?.config || {}
+
+  const detectDynamicValue = (value) => {
+    const val = (value || '').trim()
+    return val.includes('{{') || val.includes('}}')
+  }
+
+  const fetchTemplatePreview = async (templateName) => {
+    if (!templateName) {
+      setTemplatePreview({ loading: false, error: '', content: '', defaults: null, dynamicHost: false })
+      return
+    }
+
+    setTemplatePreview((prev) => ({ ...prev, loading: true, error: '' }))
+
+    try {
+      const encodedTemplateName = encodeURIComponent(templateName)
+      const { data, status } = await getApi(baseURL || '').get(`clusters/${clusterName}/actions/app-template/${encodedTemplateName}`)
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' ? data : 'Failed to load template preview')
+      }
+
+      const defaults = data?.defaults || {}
+      const templateHost = (defaults.host || '').trim()
+      const isDynamicHost = detectDynamicValue(templateHost)
+
+      const updates = {}
+      if (!hostTouched && !host?.trim() && templateHost && !isDynamicHost) {
+        updates.host = templateHost
+      }
+
+      const defaultPort = parsePortValue(defaults.port)
+      if (!portTouched && (port === '' || port === null || port === undefined) && defaultPort) {
+        updates.port = defaultPort
+      }
+
+      const templateDockerImage = (defaults.dockerImage || '').trim()
+      if (!dockerImage?.trim() && templateDockerImage) {
+        updates.dockerImage = templateDockerImage
+      }
+
+      if (Object.keys(updates).length > 0) {
+        formDispatch({ type: 'SET_FORM_DATA', payload: updates })
+      }
+
+      setTemplatePreview({
+        loading: false,
+        error: '',
+        content: data?.content || '',
+        defaults,
+        dynamicHost: isDynamicHost,
+      })
+    } catch (error) {
+      setTemplatePreview({ loading: false, error: error?.message || 'Unable to load template preview', content: '', defaults: null, dynamicHost: false })
+    }
+  }
 
   const getDefaultPortForType = (type) => {
     switch (type) {
@@ -328,6 +396,9 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
   useEffect(() => {
     if (!isOpen) {
       formDispatch({ type: 'RESET_FORM' })
+      setHostTouched(false)
+      setPortTouched(false)
+      setTemplatePreview({ loading: false, error: '', content: '', defaults: null, dynamicHost: false })
     }
   }, [isOpen])
 
@@ -348,6 +419,11 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                   const selectedType = option?.value || ''
                   const defaultPort = getDefaultPortForType(selectedType)
                   formDispatch({ type: 'FILL_VERSION_DROPDOWN', payload: { type: selectedType, defaultPort } })
+                  if (selectedType !== 'app') {
+                    setHostTouched(false)
+                    setPortTouched(false)
+                    setTemplatePreview({ loading: false, error: '', content: '', defaults: null, dynamicHost: false })
+                  }
                 }}
                 options={serviceTypes}
                 selectedValue={monitorType}
@@ -365,10 +441,27 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                   <Dropdown
                     id='template'
                     isMenuPortalTarget={false}
-                    onChange={(option) => { formDispatch({ type: 'SET_DOCKER_TEMPLATE', payload: option?.value }) }}
+                    onChange={(option) => {
+                      const selectedTemplate = option?.value || ''
+                      formDispatch({ type: 'SET_DOCKER_TEMPLATE', payload: selectedTemplate })
+                      fetchTemplatePreview(selectedTemplate)
+                    }}
                     options={templateOptions}
                     selectedValue={template}
                   />
+                  {templatePreview.loading && <FormHelperText className={parentStyles.portHintText}>Loading template preview...</FormHelperText>}
+                  {templatePreview.error && <FormHelperText className={parentStyles.templateErrorText}>{templatePreview.error}</FormHelperText>}
+                  {templatePreview.dynamicHost && <FormHelperText className={parentStyles.portHintText}>Template host uses dynamic variables. Please set host manually.</FormHelperText>}
+                  {templatePreview.content && (
+                    <Box className={parentStyles.templatePreviewBox}>
+                      <Textarea
+                        value={templatePreview.content}
+                        readOnly
+                        size='sm'
+                        className={parentStyles.templatePreviewText}
+                      />
+                    </Box>
+                  )}
                 </FormControl>
 
                 {!template && (
@@ -411,6 +504,9 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                 isRequired={true}
                 value={host}
                 onChange={(e) => {
+                  if (isAppMonitor) {
+                    setHostTouched(true)
+                  }
                   formDispatch({ type: 'SET_FORM_DATA', payload: { host: e.target.value } })
 
                   if (errors.host) {
@@ -434,6 +530,9 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                 className={isPortReadOnly ? parentStyles.readOnlyPortInput : ''}
                 onChange={(e) => {
                   if (isPortReadOnly) return
+                  if (isAppMonitor) {
+                    setPortTouched(true)
+                  }
                   formDispatch({ type: 'SET_FORM_DATA', payload: { port: e.target.value ? parseInt(e.target.value, 10) : '' } })
                   if (errors.port) {
                     formDispatch({ type: 'SET_ERRORS', payload: { port: '' } })

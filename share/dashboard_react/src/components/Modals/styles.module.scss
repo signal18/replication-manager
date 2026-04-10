@@ -262,3 +262,18 @@
   color: var(--text-color);
   opacity: 0.8;
 }
+
+.templateErrorText {
+  font-size: rem(12);
+  color: var(--danger-color);
+}
+
+.templatePreviewBox {
+  margin-top: rem(8);
+}
+
+.templatePreviewText {
+  min-height: rem(180);
+  font-family: monospace;
+  font-size: rem(12);
+}
