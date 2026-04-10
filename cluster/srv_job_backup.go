@@ -1018,10 +1018,21 @@ func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, ba
 		if meta.Dest != "" {
 			pathsMatch, err := comparePaths(meta.Dest, backupPath)
 			if err != nil {
+				if meta.Encrypted {
+					return fmt.Errorf("encrypted restore metadata path validation failed for %s: %w", backupPath, err)
+				}
 				meta = nil
 			} else if !pathsMatch {
+				if meta.Encrypted {
+					return fmt.Errorf("encrypted restore metadata path mismatch for %s (metadata dest: %s)", backupPath, meta.Dest)
+				}
 				meta = nil
 			}
+		}
+	}
+	if meta != nil && meta.Encrypted {
+		if err := server.ClusterGroup.runEncryptedSingleFileRestorePipeline(backupPath, meta); err != nil {
+			return err
 		}
 	}
 	if meta != nil && (meta.SplitDump || isSplitDumpName(meta.Dest)) {
@@ -1175,6 +1186,10 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+
+	if err := cluster.runEncryptedDirectoryRestorePipeline(backupPath); err != nil {
+		return err
 	}
 
 	cmdstring, sqlLogBin, err := server.buildLogicalRestorePreamble()
@@ -1468,6 +1483,15 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 	cluster := server.ClusterGroup
 	start := time.Now()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (myloader) started at %s for: %s", start.Format(time.RFC3339), server.URL)
+
+	// Decrypt encrypted directory artifacts before restore if a manifest is present.
+	// Pass-through (no error) when no manifest is found (non-encrypted backup).
+	if err := cluster.runEncryptedDirectoryRestorePipeline(backupdir); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+			"Encrypted directory restore pipeline failed for %s: %v", backupdir, err)
+		return err
+	}
+
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalLoadThreads)
 
 	if restoreUser {
@@ -2113,6 +2137,18 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 		return combinedErr
 	}
 
+	if splitDumpPipeline == nil {
+		if err := server.finalizeMysqldumpSingleFileEncryption(filename); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed to encrypt mysqldump backup artifact %s: %s", filename, err)
+			return err
+		}
+	} else if cluster.Conf.BackupEncryption {
+		if err := server.finalizeDirectoryEncryption(filename, "splitdump"); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed to encrypt splitdump chunks in %s: %s", filename, err)
+			return err
+		}
+	}
+
 	server.backupMetaMutex.Lock()
 	if server.LastBackupMeta.Logical != nil {
 		if server.LastBackupMeta.Logical.BinLogGtid == "" && bgtid != "" {
@@ -2605,6 +2641,12 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 			}
 
 			err = server.JobBackupDumpling(outputdir + "/")
+			if err == nil && cluster.Conf.BackupEncryption {
+				if encErr := server.finalizeDirectoryEncryption(outputdir, config.ConstBackupLogicalTypeDumpling); encErr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Dumpling backup encryption failed: %s", encErr)
+					err = encErr
+				}
+			}
 			if err != nil {
 				if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
@@ -2639,6 +2681,12 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 				exec.Command("mv", outputdir, outputdir+".old").Run()
 			}
 			err = server.JobBackupMyDumper(outputdir + "/")
+			if err == nil && cluster.Conf.BackupEncryption {
+				if encErr := server.finalizeDirectoryEncryption(outputdir, config.ConstBackupLogicalTypeMydumper); encErr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Mydumper backup encryption failed: %s", encErr)
+					err = encErr
+				}
+			}
 			if err != nil {
 				if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
@@ -3816,6 +3864,18 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", server.URL)
 
+	// Apply encryption pipeline for encrypted physical single-file artifacts.
+	// Preflight, HMAC verification, and decryption happen before SST to ensure
+	// tool-specific restore steps only proceed after successful verification.
+	physicalMeta := resolvePhysicalBackupMetaFromPath(backupfile, backupType)
+	if physicalMeta != nil && physicalMeta.Encrypted {
+		if err := cluster.runEncryptedSingleFileRestorePipeline(backupfile, physicalMeta); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+				"Physical backup decryption pipeline failed for %s on %s: %v", backupfile, server.URL, err)
+			return err
+		}
+	}
+
 	uncompress := cluster.shouldUncompressOnSenderForReseed()
 	go func() {
 		err := server.WaitAndSendSST(task, backupfile, uncompress, 0)
@@ -3942,15 +4002,26 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 
 	if task.State == 3 || task.State == 4 {
 		//Wait for binlog metadata sent by writelog API
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Waiting for binlog info: %v", lastmeta)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Waiting for binlog info for metadata id=%d tool=%s dest=%s", lastmeta.Id, lastmeta.BackupTool, lastmeta.Dest)
 		for lastmeta.BinLogFileName == "" {
 			time.Sleep(time.Second)
 		}
 		lastmeta.Completed = true
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Metadata completed: %v", lastmeta)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Metadata completed for id=%d tool=%s dest=%s", lastmeta.Id, lastmeta.BackupTool, lastmeta.Dest)
 		cluster.BackupPostScript(server, backtype, lastmeta.Dest)
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Error occured in backup, writing incomplete metadata for backup in %s", server.URL)
+	}
+
+	if err := lastmeta.EnsureNoPlaintextEncryptionKey(); err != nil {
+		if lastmeta.Encrypted {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Encrypted backup metadata rejected for %s: invalid encryption key reference: %s", server.URL, err)
+			return
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Skipping invalid encryption key metadata for backup in %s: %s", server.URL, err)
+	}
+	if lastmeta.Encrypted && strings.TrimSpace(lastmeta.EncryptionKeyCluster) == "" {
+		lastmeta.EncryptionKeyCluster = cluster.Name
 	}
 
 	bjson, err := json.MarshalIndent(lastmeta, "", "\t")
@@ -4037,6 +4108,16 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 			}
 			elapsed := time.Since(server.LastBackupMeta.Physical.StartTime).Round(time.Second)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Physical backup %s completed in %s (started at %s) for: %s", backupTool, elapsed, server.LastBackupMeta.Physical.StartTime.Format(time.RFC3339), server.URL)
+		}
+
+		// Encrypt the physical backup artifact in-place when backup-encryption is enabled.
+		if cluster.Conf.BackupEncryption && server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.Dest != "" {
+			if encErr := server.finalizePhysicalSingleFileEncryption(server.LastBackupMeta.Physical.Dest); encErr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+					"Physical backup encryption failed for %s: %v", server.LastBackupMeta.Physical.Dest, encErr)
+			} else {
+				server.WriteBackupMetadata(backupmgr.BackupMethodPhysical)
+			}
 		}
 
 		// CRITICAL: Transition from traditional backup lock to Restic lock atomically

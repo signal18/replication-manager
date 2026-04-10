@@ -1003,7 +1003,7 @@ func TestIsURLPassACLComprehensiveCoverage(t *testing.T) {
 		// Maintenance
 		{"Maintenance", "/api/clusters/test/actions/checksum-all-tables", true},
 		{"Maintenance", "/api/clusters/test/actions/analyze-all-tables", true},
-		{"Maintenance", "/api/clusters/test/actions/repair-all-tables", true},
+		{"Maintenance", "/api/clusters/test/actions/checksum-repair-all-tables", true},
 	}
 
 	for _, tt := range tests {

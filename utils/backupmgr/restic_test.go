@@ -102,6 +102,7 @@ func newPausedRepo(t *testing.T) *ResticManager {
 
 func newResticRepo(t *testing.T, withBackup bool) (*ResticManager, string, string, string) {
 	t.Helper()
+	requireIntegration(t)
 
 	repoDir, cacheDir, dataDir := getTestingDirs(t)
 	resetSharedDirs(t)
@@ -137,6 +138,110 @@ func newResticRepo(t *testing.T, withBackup bool) (*ResticManager, string, strin
 	}
 
 	return repo, repoDir, cacheDir, dataDir
+}
+
+// newIsolatedResticRepo creates a repo using per-test temp dirs so sub-tests
+// can run in parallel without conflicting on the package-level shared dirs.
+func newIsolatedResticRepo(t *testing.T, withBackup bool) (*ResticManager, string, string, string) {
+	t.Helper()
+	requireIntegration(t)
+
+	base := t.TempDir()
+	repoDir := filepath.Join(base, "repo")
+	cacheDir := filepath.Join(base, "cache")
+	dataDir := filepath.Join(base, "data")
+	for _, d := range []string{repoDir, cacheDir, dataDir} {
+		if err := os.MkdirAll(d, 0755); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+	}
+
+	repo := NewResticRepo(getResticBinaryPath(t), testMsgChan, 0)
+	repo.PauseWorker()
+	t.Cleanup(func() { repo.ShutdownWorker() })
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=" + repoDir,
+		"RESTIC_CACHE_DIR=" + cacheDir,
+	})
+
+	if err := repo.InitRepo(true); err != nil {
+		t.Fatalf("init repo: %v", err)
+	}
+
+	if withBackup {
+		if err := os.MkdirAll(dataDir, 0755); err != nil {
+			t.Fatalf("mkdir data: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dataDir, "file.txt"), []byte("payload"), 0644); err != nil {
+			t.Fatalf("write data file: %v", err)
+		}
+		if _, err := repo.Backup(dataDir, []string{"tag1"}); err != nil {
+			t.Fatalf("backup: %v", err)
+		}
+		if err := repo.FetchRepo(); err != nil {
+			t.Fatalf("fetch repo: %v", err)
+		}
+	}
+
+	return repo, repoDir, cacheDir, dataDir
+}
+
+func requireIntegration(t *testing.T) {
+	t.Helper()
+
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+}
+
+func hasSnapshotID(backups []BackupSnapshot, id string) bool {
+	for _, snap := range backups {
+		if snap.Id == id || snap.ShortId == id || strings.HasPrefix(snap.Id, id) {
+			return true
+		}
+	}
+	return false
+}
+
+func logSnapshots(t *testing.T, label string, repo *ResticManager) {
+	t.Helper()
+
+	t.Logf("%s: %d", label, len(repo.Backups))
+	for _, snap := range repo.Backups {
+		t.Logf("snapshot %s tags=%v", snap.Id, snap.Tags)
+	}
+}
+
+func createTaggedSnapshots(t *testing.T, repo *ResticManager, dataDir string, tags [][]string) []string {
+	t.Helper()
+
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("mkdir data: %v", err)
+	}
+
+	ids := make([]string, 0, len(tags))
+	for idx, snapshotTags := range tags {
+		payload := []byte(fmt.Sprintf("payload-%d", idx))
+		if err := os.WriteFile(filepath.Join(dataDir, "file.txt"), payload, 0644); err != nil {
+			t.Fatalf("write data file: %v", err)
+		}
+
+		snapshotID, err := repo.Backup(dataDir, snapshotTags)
+		if err != nil {
+			t.Fatalf("backup %d: %v", idx, err)
+		}
+
+		ids = append(ids, snapshotID)
+		t.Logf("created snapshot %s tags=%v", snapshotID, snapshotTags)
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	if err := repo.FetchRepo(); err != nil {
+		t.Fatalf("fetch repo: %v", err)
+	}
+
+	return ids
 }
 
 func waitFor(t *testing.T, timeout time.Duration, fn func() bool) {
@@ -182,6 +287,58 @@ func waitForMountReady(t *testing.T, repo *ResticManager, mountDir string, timeo
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatalf("timeout waiting for mount readiness")
+}
+
+func newTestMountDir(t *testing.T) string {
+	t.Helper()
+
+	mountDir := filepath.Join(t.TempDir(), "mnt")
+	if err := os.MkdirAll(mountDir, 0755); err != nil {
+		t.Fatalf("mkdir mount dir: %v", err)
+	}
+
+	return mountDir
+}
+
+func registerUnmountCleanup(t *testing.T, repo *ResticManager, mountDir string) {
+	t.Helper()
+
+	t.Cleanup(func() {
+		if err := repo.UnmountRepo(); err != nil {
+			if strings.Contains(err.Error(), "signal") || strings.Contains(err.Error(), "terminated") {
+				// Continue with best-effort path cleanup below.
+			} else {
+				t.Errorf("unmount repo: %v", err)
+			}
+		}
+
+		deadline := time.Now().Add(5 * time.Second)
+		forcedUnmount := false
+		for {
+			err := os.RemoveAll(mountDir)
+			if err == nil || os.IsNotExist(err) {
+				return
+			}
+			if strings.Contains(err.Error(), "transport endpoint is not connected") {
+				if !forcedUnmount {
+					if cmdErr := exec.Command("fusermount", "-uz", mountDir).Run(); cmdErr != nil {
+						_ = exec.Command("umount", "-l", mountDir).Run()
+					}
+					forcedUnmount = true
+				}
+				if time.Now().Before(deadline) {
+					time.Sleep(50 * time.Millisecond)
+					continue
+				}
+			}
+
+			if time.Now().After(deadline) || !strings.Contains(err.Error(), "transport endpoint is not connected") {
+				t.Errorf("remove mount dir %s: %v", mountDir, err)
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	})
 }
 
 func TestGetOldestSnapshot(t *testing.T) {
@@ -404,21 +561,24 @@ func TestCheckRepoFiles(t *testing.T) {
 		"RESTIC_REPOSITORY=" + repoDir,
 	})
 
-	if err := repo.CheckRepoFiles(); err != nil {
-		t.Fatalf("expected init on missing config: %v", err)
+	err := repo.CheckRepoFiles()
+	if err == nil {
+		t.Fatalf("expected error when config is missing")
 	}
-	if _, err := os.Stat(filepath.Join(repoDir, "config")); err != nil {
-		t.Fatalf("expected config after init: %v", err)
+	if !strings.Contains(err.Error(), "repo config is missing") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(repoDir, "config")); !os.IsNotExist(statErr) {
+		t.Fatalf("config should not be created implicitly")
 	}
 
-	if err := os.Remove(filepath.Join(repoDir, "config")); err != nil {
-		t.Fatalf("remove config: %v", err)
-	}
 	if err := os.MkdirAll(filepath.Join(repoDir, "data"), 0755); err != nil {
 		t.Fatalf("mkdir data: %v", err)
 	}
 	if err := repo.CheckRepoFiles(); err == nil {
 		t.Fatalf("expected error when config missing but data exists")
+	} else if !strings.Contains(err.Error(), "repo config is missing but data exists") {
+		t.Fatalf("unexpected error when data exists without config: %v", err)
 	}
 }
 
@@ -498,57 +658,21 @@ func TestResticPurgeDryRunSingleSnapshot(t *testing.T) {
 	if err := repo.FetchRepo(); err != nil {
 		t.Fatalf("fetch repo after dry-run: %v", err)
 	}
-	t.Logf("snapshots after dry-run: %d", len(repo.Backups))
-	for _, snap := range repo.Backups {
-		t.Logf("snapshot %s tags=%v", snap.Id, snap.Tags)
-	}
+	logSnapshots(t, "snapshots after dry-run", repo)
 
-	hasSnapshot := func(id string) bool {
-		for _, snap := range repo.Backups {
-			if snap.Id == id || snap.ShortId == id || strings.HasPrefix(snap.Id, id) {
-				return true
-			}
-		}
-		return false
-	}
-
-	if !hasSnapshot(snapshotID) {
+	if !hasSnapshotID(repo.Backups, snapshotID) {
 		t.Fatalf("expected snapshot to remain after dry-run: %s", snapshotID)
 	}
 }
 
 func TestResticPurgeDryRunPolicy(t *testing.T) {
 	repo, _, _, dataDir := newResticRepo(t, false)
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		t.Fatalf("mkdir data: %v", err)
-	}
-
-	ids := make([]string, 0, 3)
-	makeBackup := func(idx int, tags []string) {
-		payload := []byte(fmt.Sprintf("payload-%d", idx))
-		if err := os.WriteFile(filepath.Join(dataDir, "file.txt"), payload, 0644); err != nil {
-			t.Fatalf("write data file: %v", err)
-		}
-		snapshotID, err := repo.Backup(dataDir, tags)
-		if err != nil {
-			t.Fatalf("backup %d: %v", idx, err)
-		}
-		ids = append(ids, snapshotID)
-		t.Logf("created snapshot %s tags=%v", snapshotID, tags)
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	makeBackup(0, []string{"line:default"})
-	makeBackup(1, []string{"line:adhoc"})
-	makeBackup(2, []string{"line:default"})
-
-	if err := repo.FetchRepo(); err != nil {
-		t.Fatalf("fetch repo: %v", err)
-	}
-	t.Logf("snapshots before dry-run: %d", len(repo.Backups))
-	for _, snap := range repo.Backups {
-		t.Logf("snapshot %s tags=%v", snap.Id, snap.Tags)
-	}
+	ids := createTaggedSnapshots(t, repo, dataDir, [][]string{
+		{"line:default"},
+		{"line:adhoc"},
+		{"line:default"},
+	})
+	logSnapshots(t, "snapshots before dry-run", repo)
 
 	opt := ResticPurgeOption{
 		KeepLast: 1,
@@ -564,22 +688,10 @@ func TestResticPurgeDryRunPolicy(t *testing.T) {
 	if err := repo.FetchRepo(); err != nil {
 		t.Fatalf("fetch repo after dry-run: %v", err)
 	}
-	t.Logf("snapshots after dry-run: %d", len(repo.Backups))
-	for _, snap := range repo.Backups {
-		t.Logf("snapshot %s tags=%v", snap.Id, snap.Tags)
-	}
-
-	hasSnapshot := func(id string) bool {
-		for _, snap := range repo.Backups {
-			if snap.Id == id || snap.ShortId == id || strings.HasPrefix(snap.Id, id) {
-				return true
-			}
-		}
-		return false
-	}
+	logSnapshots(t, "snapshots after dry-run", repo)
 
 	for _, id := range ids {
-		if !hasSnapshot(id) {
+		if !hasSnapshotID(repo.Backups, id) {
 			t.Fatalf("expected snapshot to remain after dry-run: %s", id)
 		}
 	}
@@ -590,41 +702,12 @@ func TestResticPurgeDryRunPolicy(t *testing.T) {
 
 func TestResticPurgeKeepTagAndPrune(t *testing.T) {
 	repo, _, _, dataDir := newResticRepo(t, false)
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		t.Fatalf("mkdir data: %v", err)
-	}
-
-	type snapInfo struct {
-		id   string
-		tags []string
-	}
-	snapshots := make([]snapInfo, 0, 3)
-
-	makeBackup := func(idx int, tags []string) {
-		payload := []byte(fmt.Sprintf("payload-%d", idx))
-		if err := os.WriteFile(filepath.Join(dataDir, "file.txt"), payload, 0644); err != nil {
-			t.Fatalf("write data file: %v", err)
-		}
-		snapshotID, err := repo.Backup(dataDir, tags)
-		if err != nil {
-			t.Fatalf("backup %d: %v", idx, err)
-		}
-		t.Logf("created snapshot %s tags=%v", snapshotID, tags)
-		snapshots = append(snapshots, snapInfo{id: snapshotID, tags: tags})
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	makeBackup(0, []string{"line:default"})
-	makeBackup(1, []string{"line:adhoc"})
-	makeBackup(2, []string{"line:default"})
-
-	if err := repo.FetchRepo(); err != nil {
-		t.Fatalf("fetch repo: %v", err)
-	}
-	t.Logf("snapshots before purge: %d", len(repo.Backups))
-	for _, snap := range repo.Backups {
-		t.Logf("snapshot %s tags=%v", snap.Id, snap.Tags)
-	}
+	snapshots := createTaggedSnapshots(t, repo, dataDir, [][]string{
+		{"line:default"},
+		{"line:adhoc"},
+		{"line:default"},
+	})
+	logSnapshots(t, "snapshots before purge", repo)
 
 	opt := ResticPurgeOption{
 		KeepLast: 1,
@@ -640,28 +723,16 @@ func TestResticPurgeKeepTagAndPrune(t *testing.T) {
 	if err := repo.FetchRepo(); err != nil {
 		t.Fatalf("fetch repo after purge: %v", err)
 	}
-	t.Logf("snapshots after purge: %d", len(repo.Backups))
-	for _, snap := range repo.Backups {
-		t.Logf("snapshot %s tags=%v", snap.Id, snap.Tags)
-	}
+	logSnapshots(t, "snapshots after purge", repo)
 
-	hasSnapshot := func(id string) bool {
-		for _, snap := range repo.Backups {
-			if snap.Id == id || snap.ShortId == id || strings.HasPrefix(snap.Id, id) {
-				return true
-			}
-		}
-		return false
+	if hasSnapshotID(repo.Backups, snapshots[0]) {
+		t.Fatalf("expected oldest default snapshot to be purged: %s", snapshots[0])
 	}
-
-	if hasSnapshot(snapshots[0].id) {
-		t.Fatalf("expected oldest default snapshot to be purged: %s", snapshots[0].id)
+	if !hasSnapshotID(repo.Backups, snapshots[1]) {
+		t.Fatalf("expected adhoc snapshot to be kept: %s", snapshots[1])
 	}
-	if !hasSnapshot(snapshots[1].id) {
-		t.Fatalf("expected adhoc snapshot to be kept: %s", snapshots[1].id)
-	}
-	if !hasSnapshot(snapshots[2].id) {
-		t.Fatalf("expected newest default snapshot to be kept: %s", snapshots[2].id)
+	if !hasSnapshotID(repo.Backups, snapshots[2]) {
+		t.Fatalf("expected newest default snapshot to be kept: %s", snapshots[2])
 	}
 	if len(repo.Backups) != 2 {
 		t.Fatalf("expected 2 snapshots after purge, got %d", len(repo.Backups))
@@ -713,52 +784,21 @@ func TestResticPurgeGroupByPolicies(t *testing.T) {
 	createRepoWithSnapshots := func(t *testing.T) (*ResticManager, []string) {
 		t.Helper()
 
-		repo, _, _, dataDir := newResticRepo(t, false)
-		if err := os.MkdirAll(dataDir, 0755); err != nil {
-			t.Fatalf("mkdir data: %v", err)
-		}
-
-		ids := make([]string, 0, 3)
-		writeBackup := func(idx int, tags []string) {
-			payload := []byte(fmt.Sprintf("payload-%d", idx))
-			if err := os.WriteFile(filepath.Join(dataDir, "file.txt"), payload, 0644); err != nil {
-				t.Fatalf("write data file: %v", err)
-			}
-			snapshotID, err := repo.Backup(dataDir, tags)
-			if err != nil {
-				t.Fatalf("backup %d: %v", idx, err)
-			}
-			ids = append(ids, snapshotID)
-			t.Logf("created snapshot %s tags=%v", snapshotID, tags)
-			time.Sleep(200 * time.Millisecond)
-		}
-
-		writeBackup(0, []string{"line:default"})
-		writeBackup(1, []string{"line:adhoc"})
-		writeBackup(2, []string{"line:default"})
-
-		if err := repo.FetchRepo(); err != nil {
-			t.Fatalf("fetch repo: %v", err)
-		}
-		t.Logf("snapshots before purge: %d", len(repo.Backups))
-		for _, snap := range repo.Backups {
-			t.Logf("snapshot %s tags=%v", snap.Id, snap.Tags)
-		}
+		repo, _, _, dataDir := newIsolatedResticRepo(t, false)
+		ids := createTaggedSnapshots(t, repo, dataDir, [][]string{
+			{"line:default"},
+			{"line:adhoc"},
+			{"line:default"},
+		})
+		logSnapshots(t, "snapshots before purge", repo)
 
 		return repo, ids
 	}
 
-	hasSnapshot := func(repo *ResticManager, id string) bool {
-		for _, snap := range repo.Backups {
-			if snap.Id == id || snap.ShortId == id || strings.HasPrefix(snap.Id, id) {
-				return true
-			}
-		}
-		return false
-	}
-
 	for _, sc := range scenarios {
+		sc := sc
 		t.Run(sc.name, func(t *testing.T) {
+			t.Parallel()
 			repo, ids := createRepoWithSnapshots(t)
 
 			opt := ResticPurgeOption{
@@ -778,21 +818,18 @@ func TestResticPurgeGroupByPolicies(t *testing.T) {
 			if err := repo.FetchRepo(); err != nil {
 				t.Fatalf("fetch repo after purge: %v", err)
 			}
-			t.Logf("snapshots after purge: %d", len(repo.Backups))
-			for _, snap := range repo.Backups {
-				t.Logf("snapshot %s tags=%v", snap.Id, snap.Tags)
-			}
+			logSnapshots(t, "snapshots after purge", repo)
 
 			if len(repo.Backups) == 0 {
 				t.Fatalf("expected snapshots to remain after purge")
 			}
 			if len(sc.policy.keepTag) > 0 {
-				if !hasSnapshot(repo, ids[1]) {
+				if !hasSnapshotID(repo.Backups, ids[1]) {
 					t.Fatalf("expected adhoc snapshot to be kept: %s", ids[1])
 				}
 			}
 			if sc.policy.keepLast > 0 {
-				if !hasSnapshot(repo, ids[2]) && len(sc.policy.keepTag) == 0 {
+				if !hasSnapshotID(repo.Backups, ids[2]) && len(sc.policy.keepTag) == 0 {
 					t.Fatalf("expected newest default snapshot to be kept: %s", ids[2])
 				}
 			}
@@ -900,10 +937,7 @@ func TestRestoreDumpMountUnmount(t *testing.T) {
 		t.Fatalf("expected dump output")
 	}
 
-	mountDir := filepath.Join(sharedData, "mnt")
-	if err := os.RemoveAll(mountDir); err != nil {
-		t.Fatalf("remove mount dir: %v", err)
-	}
+	mountDir := newTestMountDir(t)
 	err := repo.MountRepoWithOptions(NewResticMountOption(mountDir))
 	if err != nil {
 		if strings.Contains(err.Error(), "fuse") || strings.Contains(err.Error(), "operation not permitted") {
@@ -912,6 +946,7 @@ func TestRestoreDumpMountUnmount(t *testing.T) {
 		}
 		t.Fatalf("%s", err.Error())
 	}
+	registerUnmountCleanup(t, repo, mountDir)
 	waitForMountReady(t, repo, mountDir, 5*time.Second)
 	var mountEntries []string
 	err = filepath.WalkDir(mountDir, func(path string, d os.DirEntry, err error) error {
@@ -922,18 +957,10 @@ func TestRestoreDumpMountUnmount(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		_ = repo.UnmountRepo()
 		t.Fatalf("walk mount dir: %v", err)
 	}
 	if len(mountEntries) == 0 {
-		_ = repo.UnmountRepo()
 		t.Fatalf("expected mounted entries")
-	}
-	if err := repo.UnmountRepo(); err != nil {
-		if strings.Contains(err.Error(), "signal") || strings.Contains(err.Error(), "terminated") {
-			return
-		}
-		t.Fatalf("unmount repo: %v", err)
 	}
 }
 
@@ -1345,6 +1372,9 @@ func TestMountDisabledWorkflow(t *testing.T) {
 	// Mount should be allowed now (even if it fails due to missing FUSE/restic binary)
 	// We just verify it doesn't fail with "disabled" error
 	err = repo.MountRepoWithOptions(NewResticMountOption(tempDir))
+	if err == nil {
+		registerUnmountCleanup(t, repo, tempDir)
+	}
 	// Error is expected (no restic binary), but shouldn't be "disabled" error
 	if err != nil && strings.Contains(err.Error(), "operations are disabled") {
 		t.Errorf("MountRepoWithOptions should not fail with 'disabled' error when enabled, got: %v", err)
@@ -1680,11 +1710,7 @@ func TestBuildMountArgs(t *testing.T) {
 func TestMountRepoWithOptions(t *testing.T) {
 	repo, _, _, _ := newResticRepo(t, true)
 
-	mountDir := filepath.Join(getTestingDirs(t))
-	mountDir = filepath.Join(mountDir, "mount-options-test")
-	if err := os.RemoveAll(mountDir); err != nil {
-		t.Fatalf("remove mount dir: %v", err)
-	}
+	mountDir := newTestMountDir(t)
 
 	// Test with empty target directory (should fail)
 	opt := ResticMountOption{}
@@ -1706,6 +1732,7 @@ func TestMountRepoWithOptions(t *testing.T) {
 		}
 		t.Fatalf("MountRepoWithOptions failed: %v", err)
 	}
+	registerUnmountCleanup(t, repo, mountDir)
 
 	waitForMountReady(t, repo, mountDir, 5*time.Second)
 
@@ -1717,13 +1744,6 @@ func TestMountRepoWithOptions(t *testing.T) {
 		t.Errorf("expected mount path %s, got %s", mountDir, repo.GetMountPath())
 	}
 
-	// Cleanup
-	if err := repo.UnmountRepo(); err != nil {
-		if strings.Contains(err.Error(), "signal") || strings.Contains(err.Error(), "terminated") {
-			return
-		}
-		t.Fatalf("unmount repo: %v", err)
-	}
 }
 
 // TestMountRepoWithFilters tests mounting with host/tag/path filters
@@ -1770,11 +1790,7 @@ func TestMountRepoWithFilters(t *testing.T) {
 	}
 
 	// Test mount with host filter
-	mountDir := filepath.Join(getTestingDirs(t))
-	mountDir = filepath.Join(mountDir, "mount-filter-test")
-	if err := os.RemoveAll(mountDir); err != nil {
-		t.Fatalf("remove mount dir: %v", err)
-	}
+	mountDir := newTestMountDir(t)
 
 	mountOpt := ResticMountOption{
 		TargetDir: mountDir,
@@ -1791,6 +1807,7 @@ func TestMountRepoWithFilters(t *testing.T) {
 		}
 		t.Fatalf("MountRepoWithOptions with filters failed: %v", err)
 	}
+	registerUnmountCleanup(t, repo, mountDir)
 
 	waitForMountReady(t, repo, mountDir, 5*time.Second)
 
@@ -1799,24 +1816,13 @@ func TestMountRepoWithFilters(t *testing.T) {
 		t.Fatal("expected mount to be active")
 	}
 
-	// Cleanup
-	if err := repo.UnmountRepo(); err != nil {
-		if strings.Contains(err.Error(), "signal") || strings.Contains(err.Error(), "terminated") {
-			return
-		}
-		t.Fatalf("unmount repo: %v", err)
-	}
 }
 
 // TestMountRepoBackwardCompatibility tests that MountRepoWithOptions behaves consistently
 func TestMountRepoBackwardCompatibility(t *testing.T) {
 	repo, _, _, _ := newResticRepo(t, true)
 
-	mountDir := filepath.Join(getTestingDirs(t))
-	mountDir = filepath.Join(mountDir, "mount-compat-test")
-	if err := os.RemoveAll(mountDir); err != nil {
-		t.Fatalf("remove mount dir: %v", err)
-	}
+	mountDir := newTestMountDir(t)
 
 	// Use MountRepoWithOptions (same defaults as MountRepo)
 	err := repo.MountRepoWithOptions(NewResticMountOption(mountDir))
@@ -1827,6 +1833,7 @@ func TestMountRepoBackwardCompatibility(t *testing.T) {
 		}
 		t.Fatalf("MountRepoWithOptions failed: %v", err)
 	}
+	registerUnmountCleanup(t, repo, mountDir)
 
 	waitForMountReady(t, repo, mountDir, 5*time.Second)
 
@@ -1835,13 +1842,6 @@ func TestMountRepoBackwardCompatibility(t *testing.T) {
 		t.Fatal("expected mount to be active")
 	}
 
-	// Cleanup
-	if err := repo.UnmountRepo(); err != nil {
-		if strings.Contains(err.Error(), "signal") || strings.Contains(err.Error(), "terminated") {
-			return
-		}
-		t.Fatalf("unmount repo: %v", err)
-	}
 }
 
 // TestParseS3URL tests S3 URL parsing for various formats
