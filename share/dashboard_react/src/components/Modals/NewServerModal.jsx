@@ -47,13 +47,11 @@ const parseFirstHostPort = (hosts) => {
 
 const initialState = {
   formData: {
-    name: '',
     host: '',
     port: '',
     monitorType: '',
     dockerImage: '',
     tag: '',
-    hostTouched: false,
     dockerRegistry: {
       private: false,
       authType: 'password',
@@ -68,7 +66,6 @@ const initialState = {
   tagOptions: [],
   errors: {
     monitorType: '',
-    name: '',
     host: '',
     port: '',
     dockerImage: '',
@@ -88,24 +85,6 @@ const formReducer = (state, action) => {
       return { ...state, templateOptions: action.payload }
     case 'SET_TAG_OPTIONS':
       return { ...state, tagOptions: action.payload }
-    case 'SET_APP_NAME':
-      return {
-        ...state,
-        formData: {
-          ...state.formData,
-          name: action.payload,
-          host: state.formData.hostTouched ? state.formData.host : action.payload
-        }
-      }
-    case 'SET_APP_HOST':
-      return {
-        ...state,
-        formData: {
-          ...state.formData,
-          host: action.payload,
-          hostTouched: true
-        }
-      }
     case 'FILL_VERSION_DROPDOWN': {
       const selectedType = action.payload?.type || ''
       const defaultPort = action.payload?.defaultPort
@@ -120,9 +99,7 @@ const formReducer = (state, action) => {
           monitorType: selectedType,
           dockerImage: selectedType === 'app' ? state.formData.dockerImage : (repo?.image || ''),
           tag: '',
-          name: selectedType === 'app' ? state.formData.name : '',
           port: defaultPort ?? state.formData.port,
-          hostTouched: selectedType === 'app' ? state.formData.hostTouched : false,
           dockerRegistry: {
             ...state.formData.dockerRegistry,
             template
@@ -207,7 +184,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
   const { globalClusters: { monitor, clusters } } = useSelector((state) => state)
   const [formState, formDispatch] = useReducer(formReducer, initialState)
   const { formData, tagOptions, templateOptions, errors } = formState
-  const { name, host, port, monitorType, dockerImage, tag, dockerRegistry } = formData
+  const { host, port, monitorType, dockerImage, tag, dockerRegistry } = formData
   const { private: isPrivateRegistry, url, username, password, authType, template } = dockerRegistry
   const isAppMonitor = monitorType === 'app'
   const isPortReadOnly = Boolean(monitorType) && !isAppMonitor
@@ -265,7 +242,6 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
 
   const handleCreateNewServer = () => {
     const monitorTypeError = monitorType?.length > 0 ? '' : 'Monitor type is required'
-    const appNameError = isAppMonitor && name?.trim().length === 0 ? 'Name is required' : ''
     const hostError = host?.trim().length > 0 ? '' : 'Host is required'
     const parsedPort = Number(port)
     const hasValidPort = Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535
@@ -277,7 +253,6 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
 
     const nextErrors = {
       monitorType: monitorTypeError,
-      name: appNameError,
       host: hostError,
       port: portError,
       dockerImage: '',
@@ -382,24 +357,6 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
 
             {isAppMonitor ? (
               <>
-                <FormControl isInvalid={Boolean(errors.name)}>
-                  <FormLabel htmlFor='name'>Name</FormLabel>
-                  <Input
-                    id='name'
-                    type='text'
-                    isRequired={true}
-                    value={name}
-                    onChange={(e) => {
-                      formDispatch({ type: 'SET_APP_NAME', payload: e.target.value })
-                      if (errors.name || errors.host) {
-                        formDispatch({ type: 'SET_ERRORS', payload: { name: '', host: '' } })
-                      }
-                    }}
-                  />
-                  <FormErrorMessage>{errors.name}</FormErrorMessage>
-                  <FormHelperText className={parentStyles.portHintText}>Used to prefill host. Host is saved as app identity.</FormHelperText>
-                </FormControl>
-
                 <FormControl>
                   <Flex className={parentStyles.modalFieldWithAction}>
                     <FormLabel htmlFor='template' mb={0}>Template</FormLabel>
@@ -454,11 +411,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                 isRequired={true}
                 value={host}
                 onChange={(e) => {
-                  if (isAppMonitor) {
-                    formDispatch({ type: 'SET_APP_HOST', payload: e.target.value })
-                  } else {
-                    formDispatch({ type: 'SET_FORM_DATA', payload: { host: e.target.value } })
-                  }
+                  formDispatch({ type: 'SET_FORM_DATA', payload: { host: e.target.value } })
 
                   if (errors.host) {
                     formDispatch({ type: 'SET_ERRORS', payload: { host: '' } })
