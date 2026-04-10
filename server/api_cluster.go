@@ -3018,7 +3018,7 @@ var base64LogValueSettings = map[string]struct{}{
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
-	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
+	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
 		logValue := value
@@ -3683,6 +3683,16 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		new_secret.Value = mycluster.Conf.Cloud18GitPassword
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("cloud18-gitlab-password")
 		mycluster.Conf.Secrets["cloud18-gitlab-password"] = new_secret
+	case "cloud18-domain-secret":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		mycluster.Conf.Cloud18DomainSecret = string(val)
+		var new_secret config.Secret
+		new_secret.Value = mycluster.Conf.Cloud18DomainSecret
+		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("cloud18-domain-secret")
+		mycluster.Conf.Secrets["cloud18-domain-secret"] = new_secret
 	case "cloud18-platform-description":
 		mycluster.Conf.Cloud18PlatformDescription = value
 	case "log-level-file":
@@ -4566,6 +4576,26 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		new_secret.Value = repman.Conf.Cloud18GitPassword
 		new_secret.OldValue = repman.Conf.GetDecryptedValue("cloud18-gitlab-password")
 		repman.Conf.Secrets["cloud18-gitlab-password"] = new_secret
+	case "cloud18-gateway-domain-name":
+		repman.Conf.Cloud18GatewayDomainName = value
+	case "cloud18-gateway-service":
+		repman.Conf.Cloud18GatewayService = value
+	case "cloud18-domain-add-script":
+		repman.Conf.Cloud18DomainAddScript = value
+	case "cloud18-domain-drop-script":
+		repman.Conf.Cloud18DomainDropScript = value
+	case "cloud18-domain-user":
+		repman.Conf.Cloud18DomainUser = value
+	case "cloud18-domain-secret":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		repman.Conf.Cloud18DomainSecret = string(val)
+		var new_secret config.Secret
+		new_secret.Value = repman.Conf.Cloud18DomainSecret
+		new_secret.OldValue = repman.Conf.GetDecryptedValue("cloud18-domain-secret")
+		repman.Conf.Secrets["cloud18-domain-secret"] = new_secret
 	case "api-bind":
 		repman.Conf.APIBind = value
 	case "api-port ":
