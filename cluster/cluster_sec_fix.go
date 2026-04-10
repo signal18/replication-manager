@@ -78,6 +78,16 @@ var secTagMap = map[string]secTagEntry{
 		Description: "Drop 'with_log_general' tag — executes SET GLOBAL general_log=0 and removes general_log=1 from my.cnf",
 		Risk:        "safe",
 	},
+	// with_log_audit installs the MariaDB server_audit plugin and enables
+	// audit logging via INSTALL SONAME + SET GLOBAL server_audit_logging=ON.
+	// The mariadb_command: line in the .cnf runs these at runtime so no
+	// restart is needed.
+	"SEC0112": {
+		Action:      "add_tag",
+		Tag:         "with_log_audit",
+		Description: "Add 'with_log_audit' tag — installs server_audit.so at runtime and enables audit logging (CONNECT,QUERY,TABLE events to syslog)",
+		Risk:        "safe",
+	},
 	// with_sec_keyfileencrypt enables InnoDB/Aria/binlog/tmp encryption via
 	// the file-key-management plugin.  The tag deploys the .cnf and sets a
 	// restart cookie — no mariadb_command: line is present because all
@@ -160,6 +170,7 @@ var autoFixable = map[string]bool{
 	"SEC0102": true,
 	"SEC0104": true,
 	"SEC0107": true,
+	"SEC0112": true, // audit plugin: add_tag with_log_audit (runtime install, no restart)
 	// Encryption findings: add_tag triggers .cnf deploy + restart cookie.
 	// Marked auto-fixable so the UI shows a Fix button, but the risk is
 	// "disruptive" — the operator must confirm restart separately.
@@ -286,6 +297,8 @@ func (cluster *Cluster) FixSecState(errKey string) error {
 		return cluster.fixNoPasswordUsers()
 	case "SEC0102":
 		return cluster.ApplyRemediationTag("drop_tag", "with_sec_localinfile")
+	case "SEC0112":
+		return cluster.ApplyRemediationTag("add_tag", "with_log_audit")
 	case "SEC0104":
 		return cluster.ApplyRemediationTag("drop_tag", "with_log_general")
 	case "SEC0107":

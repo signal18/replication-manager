@@ -13,7 +13,7 @@ import { clusterService } from '../../../services/clusterService'
 import { showSuccessToast, showErrorToast } from '../../../redux/toastSlice'
 
 // SEC codes that support one-click automated fix via POST /security/fix-state/{errKey}
-const AUTO_FIXABLE = new Set(['SEC0100', 'SEC0102', 'SEC0104', 'SEC0107', 'SEC0109', 'SEC0110', 'SEC0111'])
+const AUTO_FIXABLE = new Set(['SEC0100', 'SEC0102', 'SEC0104', 'SEC0107', 'SEC0112', 'SEC0109', 'SEC0110', 'SEC0111'])
 
 // Risk level for each auto-fixable code — shown in the tooltip
 const FIX_RISK = {
@@ -21,6 +21,7 @@ const FIX_RISK = {
   SEC0102: 'safe',
   SEC0104: 'safe',
   SEC0107: 'safe',
+  SEC0112: 'safe — installs audit plugin at runtime, no restart',
   SEC0109: 'disruptive — triggers rolling restart',
   SEC0110: 'disruptive — triggers rolling restart',
   SEC0111: 'disruptive — triggers rolling restart',

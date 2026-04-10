@@ -1,6 +1,11 @@
 // plugin-score-audit evaluates:
 //
 //	HasAuditPlugins — a recognized audit plugin is active on the server
+//
+// Security finding:
+//
+//	SEC0112  no audit plugin active — database activity is not being logged
+//	         Fix: add the 'with_log_audit' compliance tag (installs server_audit.so at runtime)
 package main
 
 import (
@@ -37,11 +42,23 @@ func main() {
 			break
 		}
 	}
+	var findings []wire.Finding
 	if !hasAudit {
 		detail = "no audit plugin variable found active"
+		findings = append(findings, wire.Finding{
+			ErrKey:   "SEC0112",
+			Severity: "SECURITY",
+			Description: fmt.Sprintf(
+				"Server %s: no audit plugin is active — database connections and queries are not being logged."+
+					" Add the 'with_log_audit' compliance tag to install and enable the MariaDB server_audit plugin.",
+				req.ServerURL),
+		})
 	}
 
-	json.NewEncoder(os.Stdout).Encode(wire.Response{ScoreChecks: []wire.ScoreCheck{
-		{Tag: "HasAuditPlugins", Pass: hasAudit, Detail: detail},
-	}})
+	json.NewEncoder(os.Stdout).Encode(wire.Response{
+		ScoreChecks: []wire.ScoreCheck{
+			{Tag: "HasAuditPlugins", Pass: hasAudit, Detail: detail},
+		},
+		Findings: findings,
+	})
 }
