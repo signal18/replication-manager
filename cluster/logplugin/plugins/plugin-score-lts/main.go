@@ -28,6 +28,7 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/cluster/logplugin/plugins/wire"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 //go:embed lts-versions.json
@@ -65,29 +66,13 @@ func main() {
 		return
 	}
 
-	// Detect flavor and parse version the same way the server does in
-	// utils/version.NewMySQLVersion: check for "MariaDB" (case-sensitive,
-	// capital M) in either the version or version_comment string, then
-	// strip everything from the first "-" onward to get a clean
-	// "Major.Minor.Release" number for prefix matching.
-	rawVersion := strings.TrimSpace(req.ServerVariables["version"])
-	versionComment := req.ServerVariables["version_comment"]
+	mv, _ := version.NewMySQLVersion(
+		req.ServerVariables["version"],
+		req.ServerVariables["version_comment"],
+	)
 
-	var flavor string
-	switch {
-	case strings.Contains(rawVersion, "MariaDB") || strings.Contains(versionComment, "MariaDB"):
-		flavor = "mariadb"
-	case strings.Contains(versionComment, "Percona") || strings.Contains(rawVersion, "Percona"):
-		flavor = "percona"
-	default:
-		flavor = "mysql"
-	}
-
-	// Strip distribution suffix (e.g. "11.8.6-MariaDB-ubu2404-log" → "11.8.6")
-	cleanVersion := rawVersion
-	if idx := strings.IndexByte(rawVersion, '-'); idx >= 0 {
-		cleanVersion = rawVersion[:idx]
-	}
+	flavor := strings.ToLower(mv.Flavor) // "mariadb", "mysql", "percona"
+	cleanVersion := fmt.Sprintf("%d.%d.%d", mv.Major, mv.Minor, mv.Release)
 
 	ltsList := data.LTS[flavor]
 	pass := false
