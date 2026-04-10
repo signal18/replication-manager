@@ -30,7 +30,7 @@ func (cluster *Cluster) NewAppConfig(apphost, port string) *config.AppConfig {
 		ProvAppDisk:       cluster.GetAppDisk(nil),
 		ProvAppAgents:     cluster.GetAppAgents(nil),
 		ProvAppHATopology: cluster.GetAppHATopology(nil),
-		Deployment:        new(config.Deployment),
+		Deployment:        config.NewDeploymentConfig(),
 	}
 }
 
@@ -75,7 +75,7 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 
 	// Create a new configuration struct
 	var appcnf config.AppConfig
-	appcnf.Deployment = new(config.Deployment)
+	appcnf.Deployment = config.NewDeploymentConfig()
 
 	filename := filepath.Join(dirname, appname+".toml")
 

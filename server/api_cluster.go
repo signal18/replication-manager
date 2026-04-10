@@ -5444,12 +5444,10 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 				return
 			}
 
-			if port != "" && port != "0" {
-				portNumber, convErr := strconv.Atoi(port)
-				if convErr != nil || portNumber < 1 || portNumber > 65535 {
-					http.Error(w, "Port must be between 1 and 65535", http.StatusBadRequest)
-					return
-				}
+			portNumber, convErr := strconv.Atoi(port)
+			if convErr != nil || portNumber < 1 || portNumber > 65535 {
+				http.Error(w, "Port must be between 1 and 65535", http.StatusBadRequest)
+				return
 			}
 
 			var formData DockerRegistryLoginForm

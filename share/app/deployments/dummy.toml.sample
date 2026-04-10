@@ -5,8 +5,6 @@ prov-app-ha-topology = "flex"
 
 [deployment]
 
-  [deployment.Mutex]
-
   [[deployment.routes]]
     cname = "{{app.name}}.{{name}}.{{config.cloud18SubDomain}}-{{config.cloud18SubDomainZone}}.{{config.cloud18Domain}}.cloud18.io"
     port = "{{app.port}}"
