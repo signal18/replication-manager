@@ -12,6 +12,8 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"slices"
+
 	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/graphite"
@@ -350,7 +352,25 @@ func (cluster *Cluster) CheckLogPlugins() {
 	// / LogPrintAllSecurityStates so that OPENED/RESOLV diffs are computed
 	// correctly before OldState is overwritten.
 	cluster.SecurityStates = cluster.SecurityStateMachine.GetOpenStates()
+	slices.SortStableFunc(cluster.SecurityStates, func(a, b state.State) int {
+		ak, bk := a.ErrKey+"\x00"+a.ServerUrl, b.ErrKey+"\x00"+b.ServerUrl
+		if ak < bk {
+			return -1
+		} else if ak > bk {
+			return 1
+		}
+		return 0
+	})
 	cluster.WorkloadStates = cluster.WorkloadStateMachine.GetOpenStates()
+	slices.SortStableFunc(cluster.WorkloadStates, func(a, b state.State) int {
+		ak, bk := a.ErrKey+"\x00"+a.ServerUrl, b.ErrKey+"\x00"+b.ServerUrl
+		if ak < bk {
+			return -1
+		} else if ak > bk {
+			return 1
+		}
+		return 0
+	})
 }
 
 func (cluster *Cluster) GetLogPluginStates(serverURL string) []state.State {
@@ -589,6 +609,11 @@ func buildMonitoringFlags(cluster *Cluster, server *ServerMonitor) map[string]bo
 // snapshotServerVariables returns a copy of the server's global variable map
 // for consumption by security plugins.  The SensitiveVariables map (passwords,
 // keys) is intentionally excluded.
+//
+// Keys are lowercased here: GetVariables stores them as UPPER(Variable_name) so
+// that server-side code can do case-insensitive lookups, but plugins use the
+// MySQL/MariaDB convention of lowercase names (e.g. "have_ssl", "tls_version").
+// Normalising at the snapshot boundary means plugins never need to guess casing.
 func snapshotServerVariables(server *ServerMonitor) map[string]string {
 	if server.Variables == nil {
 		return nil
@@ -597,7 +622,11 @@ func snapshotServerVariables(server *ServerMonitor) map[string]string {
 	if len(raw) == 0 {
 		return nil
 	}
-	return raw
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		out[strings.ToLower(k)] = v
+	}
+	return out
 }
 
 // snapshotDatabaseUsers returns a wire-safe view of mysql.user rows —

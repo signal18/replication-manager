@@ -87,10 +87,32 @@ function SecurityScoreModal({ isOpen, closeModal }) {
 
   const columnHelper = createColumnHelper()
   const stateColumns = useMemo(() => [
-    columnHelper.accessor((row) => row.ErrDesc, {
+    columnHelper.accessor((row) => row, {
       id: 'desc',
-      cell: (info) => info.getValue()?.replace(/,(?!\s)/g, ', ') || '',
       header: () => <span>Finding</span>,
+      cell: (info) => {
+        const row = info.getValue()
+        const errKey = row.ErrKey
+        const desc = row.ErrDesc?.replace(/,(?!\s)/g, ', ') || ''
+        if (!AUTO_FIXABLE.has(errKey)) return <span>{desc}</span>
+        const risk = FIX_RISK[errKey] || 'safe'
+        const isDisruptive = risk.includes('disruptive')
+        return (
+          <HStack spacing={2} align='start'>
+            <Tooltip label={`Risk: ${risk}`} placement='top'>
+              <Button
+                size='xs'
+                colorScheme={isDisruptive ? 'orange' : 'green'}
+                flexShrink={0}
+                isLoading={!!fixing[errKey]}
+                onClick={() => handleFix(errKey)}>
+                Fix
+              </Button>
+            </Tooltip>
+            <span>{desc}</span>
+          </HStack>
+        )
+      },
     }),
     columnHelper.accessor((row) => row.ServerUrl, {
       id: 'server',
@@ -103,28 +125,6 @@ function SecurityScoreModal({ isOpen, closeModal }) {
       cell: (info) => info.getValue() || '',
       header: () => <span>Code</span>,
       maxWidth: '120',
-    }),
-    columnHelper.accessor((row) => row.ErrKey, {
-      id: 'fix',
-      header: () => <span>Fix</span>,
-      maxWidth: '100',
-      cell: (info) => {
-        const errKey = info.getValue()
-        if (!AUTO_FIXABLE.has(errKey)) return null
-        const risk = FIX_RISK[errKey] || 'safe'
-        const isDisruptive = risk.includes('disruptive')
-        return (
-          <Tooltip label={`Risk: ${risk}`} placement='left'>
-            <Button
-              size='xs'
-              colorScheme={isDisruptive ? 'orange' : 'green'}
-              isLoading={!!fixing[errKey]}
-              onClick={() => handleFix(errKey)}>
-              Fix
-            </Button>
-          </Tooltip>
-        )
-      },
     }),
   ], [fixing, clusterName, baseURL])
 
