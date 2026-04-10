@@ -98,6 +98,7 @@ Start create an account in https://gitlab.signal18.io
       key: 'Gitlab Password',
       value: (
         <TextForm
+          type={"password"}
           value={config?.cloud18GitlabPassword}
           confirmTitle={`Confirm gitlab password to `}
           onSave={(value) => {
@@ -150,6 +151,79 @@ Start create an account in https://gitlab.signal18.io
           confirmTitle={`Confirm platform description to `}
           onSave={(value) => {
             dispatch(setGlobalSetting({ setting: 'cloud18-platform-description', value }))
+          }}
+        />
+      )
+    },
+    {
+      key: 'Gateway Domain Name',
+      value: (
+        <TextForm
+          value={config?.cloud18GatewayDomainName}
+          confirmTitle={`Confirm gateway domain name to `}
+          onSave={(value) => {
+            dispatch(setGlobalSetting({ setting: 'cloud18-gateway-domain-name', value }))
+          }}
+        />
+      )
+    },
+    {
+      key: 'Gateway Service',
+      value: (
+        <TextForm
+          value={config?.cloud18GatewayService}
+          confirmTitle={`Confirm gateway service to `}
+          onSave={(value) => {
+            dispatch(setGlobalSetting({ setting: 'cloud18-gateway-service', value }))
+          }}
+        />
+      )
+    },
+    {
+      key: 'Domain Add Script',
+      value: (
+        <TextForm
+          value={config?.cloud18DomainAddScript}
+          confirmTitle={`Confirm domain add script to `}
+          onSave={(value) => {
+            dispatch(setGlobalSetting({ setting: 'cloud18-domain-add-script', value }))
+          }}
+        />
+      )
+    },
+    {
+      key: 'Domain Drop Script',
+      value: (
+        <TextForm
+          value={config?.cloud18DomainDropScript}
+          confirmTitle={`Confirm domain drop script to `}
+          onSave={(value) => {
+            dispatch(setGlobalSetting({ setting: 'cloud18-domain-drop-script', value }))
+          }}
+        />
+      )
+    },
+    {
+      key: 'Domain User',
+      value: (
+        <TextForm
+          value={config?.cloud18DomainUser}
+          confirmTitle={`Confirm domain user to `}
+          onSave={(value) => {
+            dispatch(setGlobalSetting({ setting: 'cloud18-domain-user', value }))
+          }}
+        />
+      )
+    },
+    {
+      key: 'Domain Secret',
+      value: (
+        <TextForm
+          type={"password"}
+          value={config?.cloud18DomainSecret}
+          confirmTitle={`Confirm domain secret to `}
+          onSave={(value) => {
+            dispatch(setGlobalSetting({ setting: 'cloud18-domain-secret', value: btoa(value) }))
           }}
         />
       )
