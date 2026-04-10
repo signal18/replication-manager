@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -300,6 +301,27 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 	var newViper *viper.Viper
 	var content []byte
 	var err error
+
+	srv = strings.TrimSpace(srv)
+	port = strings.TrimSpace(port)
+	dockerImg = strings.TrimSpace(dockerImg)
+	template = strings.TrimSpace(template)
+
+	if srv == "" {
+		return errors.New("app host is required")
+	}
+
+	if dockerImg == "" && template == "" {
+		return errors.New("docker image or template is required")
+	}
+
+	if port != "" && port != "0" {
+		portNumber, convErr := strconv.Atoi(port)
+		if convErr != nil || portNumber < 1 || portNumber > 65535 {
+			return errors.New("app port must be between 1 and 65535")
+		}
+	}
+
 	if template != "" {
 		content, err = cluster.GetTemplateContent(template)
 		if err != nil {
@@ -324,6 +346,15 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 				return errors.New("Docker image is required in the template")
 			}
 		}
+	}
+
+	if port == "" || port == "0" {
+		return errors.New("app port is required")
+	}
+
+	portNumber, convErr := strconv.Atoi(port)
+	if convErr != nil || portNumber < 1 || portNumber > 65535 {
+		return errors.New("app port must be between 1 and 65535")
 	}
 
 	for _, app := range cluster.Conf.Apps {

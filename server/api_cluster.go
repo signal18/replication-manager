@@ -5423,9 +5423,9 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive new %s monitor to be added %s", vars["type"], vars["host"]+":"+vars["port"])
 		var srvtype, host, port, tag, template string
 		srvtype = vars["type"]
-		host = vars["host"]
-		port = vars["port"]
-		tag = vars["tag"]
+		host = strings.TrimSpace(vars["host"])
+		port = strings.TrimSpace(vars["port"])
+		tag = strings.TrimSpace(vars["tag"])
 
 		if srvtype == "" {
 			if port == "0" || port == "" {
@@ -5434,6 +5434,19 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 			err = mycluster.AddSeededServer(host + ":" + port)
 		} else if srvtype == "app" {
 			// Add app monitor
+			if host == "" {
+				http.Error(w, "Host is required for app monitor", http.StatusBadRequest)
+				return
+			}
+
+			if port != "" && port != "0" {
+				portNumber, convErr := strconv.Atoi(port)
+				if convErr != nil || portNumber < 1 || portNumber > 65535 {
+					http.Error(w, "Port must be between 1 and 65535", http.StatusBadRequest)
+					return
+				}
+			}
+
 			var formData DockerRegistryLoginForm
 			if r.Body != nil {
 				decoder := json.NewDecoder(r.Body)
@@ -5446,6 +5459,17 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 				}
 
 				if formData.IsPrivate {
+					formData.URL = strings.TrimSpace(formData.URL)
+					formData.Username = strings.TrimSpace(formData.Username)
+					if formData.URL == "" {
+						http.Error(w, "Registry URL is required for private registry", http.StatusBadRequest)
+						return
+					}
+					if formData.Password == "" {
+						http.Error(w, "Registry credential is required for private registry", http.StatusBadRequest)
+						return
+					}
+
 					err := mycluster.AddDockerPrivateRegistryCredentials(formData.URL, formData.Username, formData.Password, formData.Update)
 					if err != nil {
 						// Only warn don't exit if error is not nil
@@ -5454,7 +5478,7 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 				}
 
 				if formData.Template != "" {
-					template = formData.Template
+					template = strings.TrimSpace(formData.Template)
 				}
 			}
 
