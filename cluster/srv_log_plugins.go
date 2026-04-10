@@ -607,18 +607,23 @@ func buildMonitoringFlags(cluster *Cluster, server *ServerMonitor) map[string]bo
 }
 
 // snapshotServerVariables returns a copy of the server's global variable map
-// for consumption by security plugins.  The SensitiveVariables map (passwords,
-// keys) is intentionally excluded.
+// for consumption by plugins.
 //
-// Keys are lowercased here: GetVariables stores them as UPPER(Variable_name) so
-// that server-side code can do case-insensitive lookups, but plugins use the
-// MySQL/MariaDB convention of lowercase names (e.g. "have_ssl", "tls_version").
-// Normalising at the snapshot boundary means plugins never need to guess casing.
+// Source: SensitiveVariables (populated by GetVariablesCase("LOWER")) which
+// stores all global variables with their original-case values — e.g. the
+// version string is "11.8.0-MariaDB-ubu2404-log" not "11.8.0-MARIADB-...".
+// This matters because version.NewMySQLVersion uses a case-sensitive
+// strings.Contains("MariaDB") check for flavor detection.
+//
+// Keys are lowercased to match the MySQL/MariaDB convention used by all
+// plugins (have_ssl, tls_version, require_secure_transport, …).
+// GetVariablesCase still uppercases variable names via UPPER(Variable_name),
+// so key normalisation is required here regardless of the value source.
 func snapshotServerVariables(server *ServerMonitor) map[string]string {
-	if server.Variables == nil {
+	if server.SensitiveVariables == nil {
 		return nil
 	}
-	raw := server.Variables.ToNewMap()
+	raw := server.SensitiveVariables.ToNewMap()
 	if len(raw) == 0 {
 		return nil
 	}
