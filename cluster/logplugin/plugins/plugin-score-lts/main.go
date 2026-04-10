@@ -65,31 +65,41 @@ func main() {
 		return
 	}
 
-	// Detect flavor from version_comment server variable
-	versionComment := strings.ToLower(req.ServerVariables["version_comment"])
-	version := strings.TrimSpace(req.ServerVariables["version"])
+	// Detect flavor and parse version the same way the server does in
+	// utils/version.NewMySQLVersion: check for "MariaDB" (case-sensitive,
+	// capital M) in either the version or version_comment string, then
+	// strip everything from the first "-" onward to get a clean
+	// "Major.Minor.Release" number for prefix matching.
+	rawVersion := strings.TrimSpace(req.ServerVariables["version"])
+	versionComment := req.ServerVariables["version_comment"]
 
 	var flavor string
 	switch {
-	case strings.Contains(versionComment, "mariadb") || strings.Contains(version, "mariadb"):
+	case strings.Contains(rawVersion, "MariaDB") || strings.Contains(versionComment, "MariaDB"):
 		flavor = "mariadb"
-	case strings.Contains(versionComment, "percona"):
+	case strings.Contains(versionComment, "Percona") || strings.Contains(rawVersion, "Percona"):
 		flavor = "percona"
 	default:
 		flavor = "mysql"
 	}
 
+	// Strip distribution suffix (e.g. "11.8.6-MariaDB-ubu2404-log" → "11.8.6")
+	cleanVersion := rawVersion
+	if idx := strings.IndexByte(rawVersion, '-'); idx >= 0 {
+		cleanVersion = rawVersion[:idx]
+	}
+
 	ltsList := data.LTS[flavor]
 	pass := false
 	for _, lts := range ltsList {
-		if strings.HasPrefix(version, lts+".") || version == lts {
+		if strings.HasPrefix(cleanVersion, lts+".") || cleanVersion == lts {
 			pass = true
 			break
 		}
 	}
 
 	detail := fmt.Sprintf("flavor=%s version=%s lts=%v (data: %s, updated %s)",
-		flavor, version, ltsList, source, data.Updated)
+		flavor, cleanVersion, ltsList, source, data.Updated)
 
 	json.NewEncoder(os.Stdout).Encode(wire.Response{ScoreChecks: []wire.ScoreCheck{
 		{Tag: "HasLastLTS", Pass: pass, Detail: detail},
