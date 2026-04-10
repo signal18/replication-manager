@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
@@ -249,7 +250,7 @@ func (cluster *Cluster) ApplyRemediationTag(action, tag string) error {
 	default:
 		return fmt.Errorf("unknown tag action %q: must be add_tag or drop_tag", action)
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, "SECURITY", "INFO",
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"security remediation: %s %s", action, tag)
 	return nil
 }
@@ -296,7 +297,7 @@ func (cluster *Cluster) FixSecState(errKey string) error {
 		if err := cluster.ApplyRemediationTag("add_tag", "with_sec_keyfileencrypt"); err != nil {
 			return err
 		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, "SECURITY", "INFO",
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"security remediation %s: config deployed, launching rolling restart", errKey)
 		go cluster.RollingRestart()
 		return nil
@@ -322,7 +323,7 @@ func (cluster *Cluster) fixAnonUsers() error {
 				errs = append(errs, fmt.Sprintf("%s: drop ''@'%s': %v", srv.URL, g.Host, err))
 				continue
 			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose, "SECURITY", "INFO",
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 				"dropped anonymous account ''@'%s' on %s", g.Host, srv.URL)
 		}
 	}
@@ -354,7 +355,7 @@ func (cluster *Cluster) fixNoPasswordUsers() error {
 				errs = append(errs, fmt.Sprintf("%s: lock '%s'@'%s': %v", srv.URL, g.User, g.Host, err))
 				continue
 			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose, "SECURITY", "INFO",
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 				"locked no-password account '%s'@'%s' on %s", g.User, g.Host, srv.URL)
 		}
 	}
