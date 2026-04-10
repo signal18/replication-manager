@@ -5439,6 +5439,11 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 				return
 			}
 
+			if port == "" || port == "0" {
+				http.Error(w, "Port is required for app monitor", http.StatusBadRequest)
+				return
+			}
+
 			if port != "" && port != "0" {
 				portNumber, convErr := strconv.Atoi(port)
 				if convErr != nil || portNumber < 1 || portNumber > 65535 {

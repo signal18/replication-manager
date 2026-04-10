@@ -174,6 +174,7 @@ const formReducer = (state, action) => {
         ...initialState,
         serviceRepos: state.serviceRepos,
         templateOptions: state.templateOptions,
+        tagOptions: state.tagOptions,
       }
     case 'RESET':
       return initialState
@@ -267,7 +268,12 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
     const appNameError = isAppMonitor && name?.trim().length === 0 ? 'Name is required' : ''
     const hostError = host?.trim().length > 0 ? '' : 'Host is required'
     const parsedPort = Number(port)
-    const portError = Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535 ? '' : 'Port is required (1-65535)'
+    const hasValidPort = Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535
+    const portError = hasValidPort
+      ? ''
+      : (isPortReadOnly
+        ? 'Port could not be resolved from cluster config for this monitor type'
+        : 'Port is required (1-65535)')
 
     const nextErrors = {
       monitorType: monitorTypeError,
@@ -391,6 +397,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                     }}
                   />
                   <FormErrorMessage>{errors.name}</FormErrorMessage>
+                  <FormHelperText className={parentStyles.portHintText}>Used to prefill host. Host is saved as app identity.</FormHelperText>
                 </FormControl>
 
                 <FormControl>

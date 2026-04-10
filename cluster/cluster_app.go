@@ -315,13 +315,6 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		return errors.New("docker image or template is required")
 	}
 
-	if port != "" && port != "0" {
-		portNumber, convErr := strconv.Atoi(port)
-		if convErr != nil || portNumber < 1 || portNumber > 65535 {
-			return errors.New("app port must be between 1 and 65535")
-		}
-	}
-
 	if template != "" {
 		content, err = cluster.GetTemplateContent(template)
 		if err != nil {

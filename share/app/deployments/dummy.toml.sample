@@ -1,12 +1,28 @@
+app-host = "{{app.name}}"
+app-port = "80"
+prov-app-docker-img = "phpmyadmin:latest"
+prov-app-ha-topology = "flex"
+
 [deployment]
+
+  [deployment.Mutex]
+
+  [[deployment.routes]]
+    cname = "{{app.name}}.{{name}}.{{config.cloud18SubDomain}}-{{config.cloud18SubDomainZone}}.{{config.cloud18Domain}}.cloud18.io"
+    port = "{{app.port}}"
+    primary = true
+    protocol = "https"
+
+  [deployment.storages]
+
   [[deployment.variables]]
     locked = false
     name = "PMA_HOSTS"
     type = "env"
-    value = "{{ proxies.#.host }}"
+    value = "{{proxies.#.name}}"
 
   [[deployment.variables]]
     locked = false
     name = "PMA_ABSOLUTE_URI"
     type = "env"
-    value = "https://{{ app.config.deployment.primaryRoute.cname }}/"
+    value = "https://{{app.name}}.{{name}}.{{config.cloud18SubDomain}}-{{config.cloud18SubDomainZone}}.{{config.cloud18Domain}}.cloud18.io/"
