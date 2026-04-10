@@ -165,7 +165,6 @@ func main() {
 	// SEC0107 — anonymous users (empty username)
 	for _, u := range req.DatabaseUsers {
 		if u.User == "" {
-			anonKey := fmt.Sprintf("''@'%s'", u.Host)
 			findings = append(findings, wire.Finding{
 				ErrKey:   "SEC0107",
 				Severity: "SECURITY",
