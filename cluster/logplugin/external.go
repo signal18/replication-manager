@@ -30,6 +30,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -295,9 +296,14 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	cmd := exec.CommandContext(ctx, p.binPath) // #nosec G204 — path validated in LoadPluginsFromDir
 	cmd.Stdin = bytes.NewReader(payload)
 	cmd.Stderr = &stderrBuf
+	// WaitDelay ensures cmd.Output() returns promptly after the context deadline
+	// fires even when the plugin subprocess has spawned children that inherited
+	// the stdout/stderr pipes.  Without this, cmd.Wait() blocks forever waiting
+	// for pipe EOF from those orphaned children, hanging the monitoring loop.
+	cmd.WaitDelay = 2 * time.Second
 
 	out, err := cmd.Output()
-	if ctx.Err() == context.DeadlineExceeded {
+	if ctx.Err() == context.DeadlineExceeded || errors.Is(err, exec.ErrWaitDelay) {
 		return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL, "plugin timed out")}
 	}
 	if stderrBuf.Len() > 0 {
