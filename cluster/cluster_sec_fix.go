@@ -307,16 +307,13 @@ func (cluster *Cluster) FixSecState(errKey string) error {
 	case "SEC0107":
 		return cluster.fixAnonUsers()
 	case "SEC0109", "SEC0110", "SEC0111":
-		// Encryption variables are read-only — no mariadb_command: SQL can be
-		// executed at runtime.  Use dynamic=false so AddDBTag follows the same
-		// path as the UI add-tag API: it adds the tag to the config, sets the
-		// per-server config + restart cookies, and lets the monitoring loop
-		// deploy the new config.tar.gz BEFORE processing the restart cookie.
-		// Calling RollingRestart() directly would race against config deployment
-		// and restart servers with the old (un-encrypted) configuration.
+		// Encryption variables are read-only — the dynamic SQL path sets restart
+		// cookies per server; AddDBTag also calls SetConfigChangeCookie so the
+		// config is updated before the rolling restart runs.
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"security remediation %s: adding with_sec_keyfileencrypt tag — rolling restart will follow config deployment", errKey)
-		cluster.AddDBTag("keyfileencrypt", false)
+			"security remediation %s: adding keyfileencrypt tag then triggering rolling restart", errKey)
+		cluster.AddDBTag("keyfileencrypt", true)
+		go cluster.RollingRestart()
 		return nil
 	default:
 		return fmt.Errorf("no automated fix available for %s", errKey)
