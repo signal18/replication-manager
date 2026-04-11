@@ -66,12 +66,17 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 	apiURL := cluster.graphiteAPIURL()
 	hostname := server.graphiteHostname()
 
+	// Lazy init in case cluster was loaded from saved state without init
+	if cluster.pluginRegistry == nil {
+		cluster.pluginRegistry = logplugin.NewRegistry()
+	}
+
 	// monitoringFlags is a snapshot of monitoring-* config keys for this server,
 	// passed to the prerequisite checker so plugins can declare their dependencies
 	// without importing the cluster config package.
 	monitoringFlags := buildMonitoringFlags(cluster, server)
 
-	for _, p := range logplugin.GlobalRegistry.All() {
+	for _, p := range cluster.pluginRegistry.All() {
 		cacheKey := spikeCacheKey(server.URL, p.Name())
 		// Allocate a cache entry on first use so DetectSpike can write back into it.
 		if spikeCache[cacheKey] == nil {
@@ -381,6 +386,9 @@ func (cluster *Cluster) CheckLogPlugins() {
 	if cluster.pluginSpikeCache == nil {
 		cluster.pluginSpikeCache = make(map[string]*logplugin.SpikeCache)
 	}
+	if cluster.pluginRegistry == nil {
+		cluster.pluginRegistry = logplugin.NewRegistry()
+	}
 	for _, server := range cluster.Servers {
 		if server == nil || server.IsDown() || server.IsIgnored() {
 			continue
@@ -448,7 +456,10 @@ func (cluster *Cluster) ReloadLogPlugins() {
 		PubKeyPath: cluster.Conf.PluginSigningPublicKey,
 		SigDir:     cluster.Conf.ShareDir + "/plugins",
 	}
-	n, rejections, err := logplugin.LoadPluginsFromDir(dir, logplugin.GlobalRegistry, opts)
+	// Reset to a fresh registry seeded with built-in plugins so that removed
+	// external binaries do not persist across hot-reloads.
+	cluster.pluginRegistry = logplugin.NewRegistry()
+	n, rejections, err := logplugin.LoadPluginsFromDir(dir, cluster.pluginRegistry, opts)
 	if err != nil {
 		cluster.LogModulePrintf(
 			cluster.Conf.Verbose,

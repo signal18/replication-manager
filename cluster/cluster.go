@@ -304,6 +304,11 @@ type Cluster struct {
 	// pluginSpikeCache holds the last DetectSpike result per server+plugin pair.
 	// Keyed as "serverURL:pluginName". Prevents graphite HTTP on every tick.
 	pluginSpikeCache map[string]*logplugin.SpikeCache `json:"-"`
+	// pluginRegistry is a per-cluster plugin registry seeded with built-in plugins
+	// and extended with external plugins loaded from cluster.WorkingDir/plugins/.
+	// Kept separate from GlobalRegistry so that one cluster's external plugins do
+	// not pollute the monitoring loop of other clusters.
+	pluginRegistry *logplugin.Registry `json:"-"`
 }
 
 type SlavesOldestMasterFile struct {
@@ -452,6 +457,7 @@ func (cluster *Cluster) InitFromConf() {
 
 	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
 	cluster.pluginSpikeCache = make(map[string]*logplugin.SpikeCache)
+	cluster.pluginRegistry = logplugin.NewRegistry()
 	if cluster.Conf.Arbitration {
 		cluster.Status = ConstMonitorStandby
 	} else {

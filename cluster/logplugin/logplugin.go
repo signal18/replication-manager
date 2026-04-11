@@ -329,6 +329,10 @@ type Registry struct {
 	plugins []LogPlugin
 }
 
+// GlobalRegistry is the process-wide registry seeded by init() functions in each
+// built-in plugin file.  It must only contain built-in (in-process) plugins.
+// External (subprocess) plugins must be loaded into per-cluster registries via
+// NewRegistry() so that one cluster's plugins do not pollute another's monitoring loop.
 var GlobalRegistry = &Registry{}
 
 func Register(p LogPlugin) {
@@ -339,6 +343,16 @@ func (r *Registry) All() []LogPlugin {
 	out := make([]LogPlugin, len(r.plugins))
 	copy(out, r.plugins)
 	return out
+}
+
+// NewRegistry returns a new per-cluster registry pre-seeded with the built-in
+// plugins from GlobalRegistry.  External plugins are then added to this registry
+// by LoadPluginsFromDir, keeping each cluster's set of external plugins isolated.
+func NewRegistry() *Registry {
+	reg := &Registry{}
+	reg.plugins = make([]LogPlugin, len(GlobalRegistry.plugins))
+	copy(reg.plugins, GlobalRegistry.plugins)
+	return reg
 }
 
 // ---- Config helpers ---------------------------------------------------------
