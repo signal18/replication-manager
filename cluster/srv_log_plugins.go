@@ -97,6 +97,10 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			ClusterContext:   buildClusterContext(cluster),
 			PluginDataDir:    cluster.Conf.ShareDir + "/plugins/data",
 		}
+		sv := src.ServerVersion
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
+			"[logplugin:%s] server=%s DBVersion flavor=%q major=%d minor=%d release=%d variables=%d",
+			p.Name(), server.URL, sv.Flavor, sv.Major, sv.Minor, sv.Release, len(src.ServerVariables))
 
 		if !src.IsEnabled() {
 			cluster.LogModulePrintf(
@@ -241,6 +245,9 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 
 		// Apply compliance score checks from score plugins.
 		for _, sc := range result.ScoreChecks {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
+				"[logplugin:%s] server=%s score_check tag=%s pass=%v detail=%q",
+				p.Name(), server.URL, sc.Tag, sc.Pass, sc.Detail)
 			cluster.SecurityScore.ApplyCheck(sc.Tag, sc.Pass)
 		}
 

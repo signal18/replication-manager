@@ -148,14 +148,21 @@ $(PLUGIN_SIGNER_BIN):
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
 	  go build -v -o $(PLUGIN_SIGNER_BIN) ./tools/plugin-signer/...
 
-$(PLUGIN_BINDIR)/%: $(wildcard cluster/logplugin/plugins/%/*.go) $(wildcard cluster/logplugin/plugins/%/*.json) $(PLUGIN_COMMON_SRCS)
+# Generate an explicit rule per plugin so that $(wildcard) is evaluated with
+# the concrete plugin name — pattern rules evaluate $(wildcard ...) at parse
+# time with a literal '%', so per-plugin source changes are never detected.
+define PLUGIN_RULE
+$(PLUGIN_BINDIR)/$(1): $$(wildcard cluster/logplugin/plugins/$(1)/*.go) $$(wildcard cluster/logplugin/plugins/$(1)/*.json) $(PLUGIN_COMMON_SRCS)
 	@mkdir -p $(PLUGIN_BINDIR)
-	@echo "Building plugin: $*"
+	@echo "Building plugin: $(1)"
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
 	  go build -v \
 	    --ldflags "-extldflags '-static' -w -s" \
-	    -o $(PLUGIN_BINDIR)/$* \
-	    ./cluster/logplugin/plugins/$*/...
+	    -o $(PLUGIN_BINDIR)/$(1) \
+	    ./cluster/logplugin/plugins/$(1)/...
+endef
+
+$(foreach plugin,$(PLUGIN_NAMES),$(eval $(call PLUGIN_RULE,$(plugin))))
 
 # Bootstrap an empty signer repo: generate keypair, commit both keys, push.
 # Run once before the first 'make plugins' with credentials.

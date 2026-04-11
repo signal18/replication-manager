@@ -270,12 +270,19 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
 
+	var stderrBuf bytes.Buffer
 	cmd := exec.CommandContext(ctx, p.binPath) // #nosec G204 — path validated in LoadPluginsFromDir
 	cmd.Stdin = bytes.NewReader(payload)
+	cmd.Stderr = &stderrBuf
 
 	out, err := cmd.Output()
 	if ctx.Err() == context.DeadlineExceeded {
 		return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL, "plugin timed out")}
+	}
+	if stderrBuf.Len() > 0 {
+		// Plugin wrote to stderr — surface it as a finding so it appears in the log
+		return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL,
+			fmt.Sprintf("plugin stderr: %s", strings.TrimSpace(stderrBuf.String())))}
 	}
 	if err != nil {
 		return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL, fmt.Sprintf("exec error: %v", err))}
