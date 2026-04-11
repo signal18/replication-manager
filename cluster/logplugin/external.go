@@ -242,6 +242,27 @@ func (p *ExternalLogPlugin) Name() string { return p.name }
 // Prerequisites implements LogPluginWithPrerequisites when the sidecar was loaded.
 func (p *ExternalLogPlugin) Prerequisites() []Prerequisite { return p.prerequisites }
 
+// DefaultSeverity implements LogPluginWithDefaultSeverity.
+// Used by RunLogPlugins to route debug messages to the correct dedicated log
+// when Evaluate returns zero findings (compliant server — no issue detected).
+//
+// Naming conventions used for inference:
+//   plugin-security-* and plugin-score-*  → SeveritySecurity (security/compliance audit)
+//   plugin-binlog-*                        → SeveritySecurity (binlog audit for cleartext creds / PII)
+//   plugin-*privilege* or plugin-*off-hours* → SeveritySecurity (access-control auditing)
+//   everything else                        → SeverityWorkload  (performance / spike detection)
+func (p *ExternalLogPlugin) DefaultSeverity() Severity {
+	n := p.name
+	if strings.HasPrefix(n, "plugin-security-") ||
+		strings.HasPrefix(n, "plugin-score-") ||
+		strings.HasPrefix(n, "plugin-binlog-") ||
+		strings.Contains(n, "privilege") ||
+		strings.Contains(n, "off-hours") {
+		return SeveritySecurity
+	}
+	return SeverityWorkload
+}
+
 func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	req := StdioRequest{
 		ServerURL:        src.ServerURL,
