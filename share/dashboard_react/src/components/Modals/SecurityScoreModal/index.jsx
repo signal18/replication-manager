@@ -93,7 +93,8 @@ function SecurityScoreModal({ isOpen, closeModal }) {
       header: () => <span>Finding</span>,
       cell: (info) => {
         const row = info.getValue()
-        const errKey = row.ErrKey
+        // ErrKey is stored as composite "SEC0109@server:3306" — extract the code
+        const errKey = (row.ErrKey || '').split('@')[0]
         const desc = row.ErrDesc?.replace(/,(?!\s)/g, ', ') || ''
         if (!AUTO_FIXABLE.has(errKey)) return <span>{desc}</span>
         const risk = FIX_RISK[errKey] || 'safe'
@@ -121,7 +122,7 @@ function SecurityScoreModal({ isOpen, closeModal }) {
       header: () => <span>Server</span>,
       maxWidth: '200',
     }),
-    columnHelper.accessor((row) => row.ErrKey, {
+    columnHelper.accessor((row) => (row.ErrKey || '').split('@')[0], {
       id: 'code',
       cell: (info) => info.getValue() || '',
       header: () => <span>Code</span>,

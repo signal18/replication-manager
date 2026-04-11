@@ -91,6 +91,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			ProcessList:      snapshotProcessList(server),
 			MetaDataLocks:    snapshotMetaDataLocks(server),
 			BinlogEvents:     snapshotBinlogEvents(server),
+			ServerVersion:    snapshotServerVersion(server),
 			ServerVariables:  snapshotServerVariables(server),
 			DatabaseUsers:    snapshotDatabaseUsers(server),
 			ClusterContext:   buildClusterContext(cluster),
@@ -606,24 +607,31 @@ func buildMonitoringFlags(cluster *Cluster, server *ServerMonitor) map[string]bo
 	}
 }
 
+// snapshotServerVersion returns the pre-parsed database version from
+// server.DBVersion (populated via GetDBVersion from the live connection).
+// This has correct Flavor casing ("MariaDB" not "MARIADB") and avoids
+// any re-parsing of the raw version string from ServerVariables.
+func snapshotServerVersion(server *ServerMonitor) logplugin.StdioServerVersion {
+	if server.DBVersion == nil {
+		return logplugin.StdioServerVersion{}
+	}
+	return logplugin.StdioServerVersion{
+		Flavor:  server.DBVersion.Flavor,
+		Major:   server.DBVersion.Major,
+		Minor:   server.DBVersion.Minor,
+		Release: server.DBVersion.Release,
+	}
+}
+
 // snapshotServerVariables returns a copy of the server's global variable map
-// for consumption by plugins.
-//
-// Source: SensitiveVariables (populated by GetVariablesCase("LOWER")) which
-// stores all global variables with their original-case values — e.g. the
-// version string is "11.8.0-MariaDB-ubu2404-log" not "11.8.0-MARIADB-...".
-// This matters because version.NewMySQLVersion uses a case-sensitive
-// strings.Contains("MariaDB") check for flavor detection.
-//
-// Keys are lowercased to match the MySQL/MariaDB convention used by all
-// plugins (have_ssl, tls_version, require_secure_transport, …).
-// GetVariablesCase still uppercases variable names via UPPER(Variable_name),
-// so key normalisation is required here regardless of the value source.
+// for consumption by plugins.  Keys are lowercased to match the MySQL/MariaDB
+// convention used by all plugins (have_ssl, tls_version, …).
+// GetVariables stores keys as UPPER(Variable_name), so normalisation is required.
 func snapshotServerVariables(server *ServerMonitor) map[string]string {
-	if server.SensitiveVariables == nil {
+	if server.Variables == nil {
 		return nil
 	}
-	raw := server.SensitiveVariables.ToNewMap()
+	raw := server.Variables.ToNewMap()
 	if len(raw) == 0 {
 		return nil
 	}

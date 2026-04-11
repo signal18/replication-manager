@@ -8,6 +8,16 @@ package wire
 // The Makefile reads this value to organise the plugin distribution repository.
 const WireVersion = 1
 
+// ServerVersion carries the already-parsed database version so plugins
+// do not need to re-parse the raw version string from ServerVariables.
+// Populated from server.DBVersion which is derived from the live connection.
+type ServerVersion struct {
+	Flavor  string `json:"flavor"`  // "MariaDB", "MySQL", "Percona", "PostgreSQL"
+	Major   int    `json:"major"`
+	Minor   int    `json:"minor"`
+	Release int    `json:"release"`
+}
+
 // Request is written to the plugin's stdin as a single JSON object.
 type Request struct {
 	ServerURL        string            `json:"server_url"`
@@ -21,6 +31,7 @@ type Request struct {
 	ProcessList      []Process         `json:"process_list"`
 	MetaDataLocks    []MDL             `json:"metadata_locks"`
 	BinlogEvents     []BinlogEvent     `json:"binlog_events"`
+	ServerVersion    ServerVersion     `json:"server_version"`    // pre-parsed version (use instead of ServerVariables["version"])
 	ServerVariables  map[string]string `json:"server_variables"`  // SHOW GLOBAL VARIABLES snapshot
 	DatabaseUsers    []DBUser          `json:"database_users"`    // mysql.user snapshot (no hashes)
 	ClusterContext   ClusterContext    `json:"cluster_context"`   // cluster-level facts

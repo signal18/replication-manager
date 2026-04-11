@@ -78,8 +78,10 @@ type StdioRequest struct {
 	// BinlogEvents contains recent binlog QUERY events (populated when monitoring-binlog-events is on)
 	BinlogEvents []StdioBinlogEvent `json:"binlog_events"`
 
+	// ServerVersion is the pre-parsed database version derived from the live connection.
+	ServerVersion   StdioServerVersion `json:"server_version"`
 	// ServerVariables is a snapshot of SHOW GLOBAL VARIABLES (non-sensitive).
-	ServerVariables map[string]string `json:"server_variables"`
+	ServerVariables map[string]string  `json:"server_variables"`
 
 	// DatabaseUsers is a snapshot of mysql.user rows (no password hashes).
 	DatabaseUsers []StdioDBUser `json:"database_users"`
@@ -253,6 +255,7 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 		ProcessList:      processToWire(src.ProcessList),
 		MetaDataLocks:    mdlToWire(src.MetaDataLocks),
 		BinlogEvents:     src.BinlogEvents,
+		ServerVersion:    src.ServerVersion,
 		ServerVariables:  src.ServerVariables,
 		DatabaseUsers:    src.DatabaseUsers,
 		ClusterContext:   src.ClusterContext,

@@ -28,7 +28,6 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/cluster/logplugin/plugins/wire"
-	"github.com/signal18/replication-manager/utils/version"
 )
 
 //go:embed lts-versions.json
@@ -66,13 +65,9 @@ func main() {
 		return
 	}
 
-	mv, _ := version.NewMySQLVersion(
-		req.ServerVariables["version"],
-		req.ServerVariables["version_comment"],
-	)
-
-	flavor := strings.ToLower(mv.Flavor) // "mariadb", "mysql", "percona"
-	cleanVersion := fmt.Sprintf("%d.%d.%d", mv.Major, mv.Minor, mv.Release)
+	sv := req.ServerVersion
+	flavor := strings.ToLower(sv.Flavor) // "mariadb", "mysql", "percona"
+	cleanVersion := fmt.Sprintf("%d.%d.%d", sv.Major, sv.Minor, sv.Release)
 
 	ltsList := data.LTS[flavor]
 	pass := false

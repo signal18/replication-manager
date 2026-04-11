@@ -157,6 +157,14 @@ type StdioDBUser struct {
 	AccountLocked bool   `json:"account_locked"`  // true when account_locked = 'Y' — account cannot be used to log in
 }
 
+// StdioServerVersion carries the pre-parsed database version.
+type StdioServerVersion struct {
+	Flavor  string `json:"flavor"`
+	Major   int    `json:"major"`
+	Minor   int    `json:"minor"`
+	Release int    `json:"release"`
+}
+
 // StdioBinlogEvent is a single QUERY_EVENT captured from a server's binary log.
 // Passed to plugins that inspect binlog content (e.g. cleartext-password, credit-card).
 type StdioBinlogEvent struct {
@@ -199,6 +207,9 @@ type LogSource struct {
 	// BinlogEvents is a snapshot of recent binlog QUERY events.
 	// Populated when Conf.MonitorBinlogEvents is enabled.
 	BinlogEvents []StdioBinlogEvent
+	// ServerVersion is the pre-parsed database version derived from the live connection.
+	// Use this instead of parsing ServerVariables["version"] — it has correct flavor/case.
+	ServerVersion   StdioServerVersion
 	// ServerVariables is a snapshot of SHOW GLOBAL VARIABLES (non-sensitive).
 	// Always populated when the server is reachable.
 	ServerVariables map[string]string
