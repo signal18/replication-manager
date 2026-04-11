@@ -97,11 +97,6 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			ClusterContext:   buildClusterContext(cluster),
 			PluginDataDir:    cluster.Conf.ShareDir + "/plugins/data",
 		}
-		sv := src.ServerVersion
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
-			"[logplugin:%s] server=%s DBVersion flavor=%q major=%d minor=%d release=%d variables=%d",
-			p.Name(), server.URL, sv.Flavor, sv.Major, sv.Minor, sv.Release, len(src.ServerVariables))
-
 		if !src.IsEnabled() {
 			cluster.LogModulePrintf(
 				cluster.Conf.Verbose,
@@ -146,6 +141,30 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 		}
 
 		result := p.Evaluate(src)
+
+		// Determine result type for log routing.
+		isScorePlugin    := len(result.ScoreChecks) > 0
+		isWorkloadPlugin := false
+		for _, f := range result.Findings {
+			if f.Severity == logplugin.SeverityWorkload {
+				isWorkloadPlugin = true
+				break
+			}
+		}
+
+		// DBVersion debug: routed to the appropriate dedicated log now that we
+		// know whether this is a security/score or workload plugin.
+		sv := src.ServerVersion
+		dbvMsg := fmt.Sprintf("[logplugin:%s] server=%s DBVersion flavor=%q major=%d minor=%d release=%d variables=%d",
+			p.Name(), server.URL, sv.Flavor, sv.Major, sv.Minor, sv.Release, len(src.ServerVariables))
+		switch {
+		case isScorePlugin && cluster.SecurityLogrus != nil:
+			cluster.SecurityLogrus.WithField("plugin", p.Name()).Debug(dbvMsg)
+		case isWorkloadPlugin && cluster.WorkloadLogrus != nil:
+			cluster.WorkloadLogrus.WithField("plugin", p.Name()).Debug(dbvMsg)
+		default:
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg, "%s", dbvMsg)
+		}
 
 		// Send synthetic graphite metric if the plugin produced one.
 		// This ensures history accumulates even before any spike is detected.
@@ -229,13 +248,15 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 						p.Name(), f.ErrKey, server.URL, f.Description)
 				}
 			} else {
-				cluster.LogModulePrintf(
-					cluster.Conf.Verbose,
-					config.ConstLogModPlugin,
-					config.LvlDbg,
-					"[logplugin:%s] %s still open on server %s",
-					p.Name(), f.ErrKey, server.URL,
-				)
+				stillMsg := fmt.Sprintf("[logplugin:%s] %s still open on server %s", p.Name(), f.ErrKey, server.URL)
+				switch {
+				case isSecurity && cluster.SecurityLogrus != nil:
+					cluster.SecurityLogrus.WithField("plugin", p.Name()).Debug(stillMsg)
+				case isWorkload && cluster.WorkloadLogrus != nil:
+					cluster.WorkloadLogrus.WithField("plugin", p.Name()).Debug(stillMsg)
+				default:
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg, "%s", stillMsg)
+				}
 			}
 			sm.AddState(compositeKey, st)
 			if !isSecurity && !isWorkload {
@@ -244,10 +265,15 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 		}
 
 		// Apply compliance score checks from score plugins.
+		// Score checks are always security-related → route debug to security.log.
 		for _, sc := range result.ScoreChecks {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
-				"[logplugin:%s] server=%s score_check tag=%s pass=%v detail=%q",
+			scMsg := fmt.Sprintf("[logplugin:%s] server=%s score_check tag=%s pass=%v detail=%q",
 				p.Name(), server.URL, sc.Tag, sc.Pass, sc.Detail)
+			if cluster.SecurityLogrus != nil {
+				cluster.SecurityLogrus.WithField("plugin", p.Name()).Debug(scMsg)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg, "%s", scMsg)
+			}
 			cluster.SecurityScore.ApplyCheck(sc.Tag, sc.Pass)
 		}
 
@@ -262,25 +288,27 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			}
 			if !hasSpikeInFindings {
 				cluster.WorkloadStateMachine.PreserveState("WARN0205")
-				cluster.LogModulePrintf(
-					cluster.Conf.Verbose,
-					config.ConstLogModPlugin,
-					config.LvlDbg,
-					"[logplugin:%s] WARN0205 held for server %s (%.0fs remaining)",
+				heldMsg := fmt.Sprintf("[logplugin:%s] WARN0205 held for server %s (%.0fs remaining)",
 					p.Name(), server.URL,
-					logplugin.SpikeHoldDuration.Seconds()-time.Since(cache.OpenedAt).Seconds(),
-				)
+					logplugin.SpikeHoldDuration.Seconds()-time.Since(cache.OpenedAt).Seconds())
+				if cluster.WorkloadLogrus != nil {
+					cluster.WorkloadLogrus.WithField("plugin", p.Name()).Debug(heldMsg)
+				} else {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg, "%s", heldMsg)
+				}
 			}
 		}
 
 		if len(result.Findings) == 0 {
-			cluster.LogModulePrintf(
-				cluster.Conf.Verbose,
-				config.ConstLogModPlugin,
-				config.LvlDbg,
-				"[logplugin:%s] no findings for server %s",
-				p.Name(), server.URL,
-			)
+			noFindMsg := fmt.Sprintf("[logplugin:%s] no findings for server %s", p.Name(), server.URL)
+			switch {
+			case isScorePlugin && cluster.SecurityLogrus != nil:
+				cluster.SecurityLogrus.WithField("plugin", p.Name()).Debug(noFindMsg)
+			case isWorkloadPlugin && cluster.WorkloadLogrus != nil:
+				cluster.WorkloadLogrus.WithField("plugin", p.Name()).Debug(noFindMsg)
+			default:
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg, "%s", noFindMsg)
+			}
 		}
 	}
 
