@@ -487,8 +487,15 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.StateMachine.Init()
 	cluster.SecurityStateMachine = new(state.StateMachine)
 	cluster.SecurityStateMachine.Init()
+	// Prime the heartbeat counter so AddState does not pre-populate OldState on
+	// the first call.  The main StateMachine gets heartbeats>0 naturally via
+	// SetMasterUpAndSync, but Security/Workload SMs never have SLA methods called
+	// on them — leaving heartbeats==0 forever causes GetLastOpenedStates() to
+	// always return empty, silencing security.log and workload.log entirely.
+	cluster.SecurityStateMachine.SetMasterUpAndSync(false, false, false)
 	cluster.WorkloadStateMachine = new(state.StateMachine)
 	cluster.WorkloadStateMachine.Init()
+	cluster.WorkloadStateMachine.SetMasterUpAndSync(false, false, false)
 	// k, _ := cluster.Conf.LoadEncrytionKey()
 	// if k == nil {
 	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key")
