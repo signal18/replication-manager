@@ -2,8 +2,9 @@ import React, { useMemo, useState } from 'react'
 import {
   Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay,
   Box, Grid, GridItem, Text, Badge, HStack, VStack, Divider,
-  Button, Tooltip
+  Button, Tooltip, Menu, MenuButton, MenuList, MenuItem
 } from '@chakra-ui/react'
+import { ChevronDownIcon } from '@chakra-ui/icons'
 import { useSelector, useDispatch } from 'react-redux'
 import { DataTable } from '../../DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
@@ -11,21 +12,6 @@ import parentStyles from '../styles.module.scss'
 import { useTheme } from '../../../ThemeProvider'
 import { clusterService } from '../../../services/clusterService'
 import { showSuccessToast, showErrorToast } from '../../../redux/toastSlice'
-
-// SEC codes that support one-click automated fix via POST /security/fix-state/{errKey}
-const AUTO_FIXABLE = new Set(['SEC0100', 'SEC0102', 'SEC0104', 'SEC0107', 'SEC0112', 'SEC0109', 'SEC0110', 'SEC0111'])
-
-// Risk level for each auto-fixable code — shown in the tooltip
-const FIX_RISK = {
-  SEC0100: 'safe',
-  SEC0102: 'safe',
-  SEC0104: 'safe',
-  SEC0107: 'safe',
-  SEC0112: 'safe — installs audit plugin at runtime, no restart',
-  SEC0109: 'disruptive — triggers rolling restart',
-  SEC0110: 'disruptive — triggers rolling restart',
-  SEC0111: 'disruptive — triggers rolling restart',
-}
 
 // Label map for the 17 security check tags
 const CHECK_LABELS = {
@@ -62,14 +48,29 @@ function SecurityScoreModal({ isOpen, closeModal }) {
   const statesArray = clusterData?.securityStates || []
   const clusterName = clusterData?.name
 
-  const handleFix = async (errKey) => {
-    setFixing((prev) => ({ ...prev, [errKey]: true }))
+  // Build a lookup from err_key → RemediationEntry using the server-provided plan.
+  // This is the single source of truth — no AUTO_FIXABLE / FIX_RISK duplication here.
+  const remediationByKey = useMemo(() => {
+    const map = {}
+    for (const entry of clusterData?.securityRemediations?.remediations || []) {
+      if (!map[entry.err_key]) map[entry.err_key] = entry
+    }
+    return map
+  }, [clusterData?.securityRemediations])
+
+  const handleFix = async (errKey, tag) => {
+    const fixKey = tag ? `${errKey}:${tag}` : errKey
+    setFixing((prev) => ({ ...prev, [fixKey]: true }))
     try {
-      const { status, data } = await clusterService.fixSecState(clusterName, errKey, baseURL)
+      const { status, data } = await clusterService.fixSecState(clusterName, errKey, baseURL, tag)
       if (status === 200) {
+        const fixes = remediationByKey[errKey]?.fixes || []
+        const risk = tag
+          ? (fixes.find((f) => f.tag === tag)?.risk ?? '')
+          : (fixes[0]?.risk ?? '')
         dispatch(showSuccessToast({
           title: `Fix applied: ${errKey}`,
-          description: FIX_RISK[errKey]?.includes('disruptive')
+          description: risk === 'disruptive'
             ? 'Config deployed. Rolling restart in progress…'
             : 'Fix applied successfully.',
         }))
@@ -82,7 +83,7 @@ function SecurityScoreModal({ isOpen, closeModal }) {
     } catch (err) {
       dispatch(showErrorToast({ title: `Fix failed: ${errKey}`, description: String(err) }))
     } finally {
-      setFixing((prev) => ({ ...prev, [errKey]: false }))
+      setFixing((prev) => ({ ...prev, [fixKey]: false }))
     }
   }
 
@@ -96,21 +97,54 @@ function SecurityScoreModal({ isOpen, closeModal }) {
         // ErrKey is stored as composite "SEC0109@server:3306" — extract the code
         const errKey = (row.ErrKey || '').split('@')[0]
         const desc = row.ErrDesc?.replace(/,(?!\s)/g, ', ') || ''
-        if (!AUTO_FIXABLE.has(errKey)) return <span>{desc}</span>
-        const risk = FIX_RISK[errKey] || 'safe'
-        const isDisruptive = risk.includes('disruptive')
+        const entry = remediationByKey[errKey]
+        if (!entry?.auto_fixable) return <span>{desc}</span>
+
+        // Fixes with type=add_tag are actionable; collect only those for the menu.
+        const tagFixes = (entry.fixes || []).filter((f) => f.type === 'add_tag')
+        const isMulti = tagFixes.length > 1
+        const primaryRisk = tagFixes[0]?.risk ?? entry.fixes?.[0]?.risk ?? 'safe'
+        const isDisruptive = primaryRisk === 'disruptive'
+
         return (
           <HStack spacing={2} align='start'>
-            <Tooltip label={`Risk: ${risk}`} placement='top'>
-              <Button
-                size='xs'
-                colorScheme={isDisruptive ? 'orange' : 'green'}
-                flexShrink={0}
-                isLoading={!!fixing[errKey]}
-                onClick={() => handleFix(errKey)}>
-                Fix
-              </Button>
-            </Tooltip>
+            {isMulti ? (
+              // Multiple tag options — render a dropdown so the operator can choose.
+              <Menu size='xs'>
+                <Tooltip label={`Risk: ${primaryRisk}`} placement='top'>
+                  <MenuButton
+                    as={Button}
+                    size='xs'
+                    colorScheme={isDisruptive ? 'orange' : 'green'}
+                    flexShrink={0}
+                    rightIcon={<ChevronDownIcon />}>
+                    Fix
+                  </MenuButton>
+                </Tooltip>
+                <MenuList fontSize='sm'>
+                  {tagFixes.map((fix) => (
+                    <MenuItem
+                      key={fix.tag}
+                      isDisabled={!!fixing[`${errKey}:${fix.tag}`]}
+                      onClick={() => handleFix(errKey, fix.tag)}>
+                      {fix.tag}
+                      {fix.risk === 'disruptive' && <Badge ml={2} colorScheme='orange' fontSize='xs'>restart</Badge>}
+                    </MenuItem>
+                  ))}
+                </MenuList>
+              </Menu>
+            ) : (
+              <Tooltip label={`Risk: ${primaryRisk}`} placement='top'>
+                <Button
+                  size='xs'
+                  colorScheme={isDisruptive ? 'orange' : 'green'}
+                  flexShrink={0}
+                  isLoading={!!fixing[errKey]}
+                  onClick={() => handleFix(errKey)}>
+                  Fix
+                </Button>
+              </Tooltip>
+            )}
             <span>{desc}</span>
           </HStack>
         )
@@ -128,7 +162,7 @@ function SecurityScoreModal({ isOpen, closeModal }) {
       header: () => <span>Code</span>,
       maxWidth: '120',
     }),
-  ], [fixing, clusterName, baseURL])
+  ], [fixing, clusterName, baseURL, remediationByKey])
 
   if (!score) return null
 

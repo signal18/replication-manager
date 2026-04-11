@@ -189,6 +189,11 @@ type Cluster struct {
 	// tick, serialised into the cluster JSON for the dashboard (SecurityStateMachine.CurState
 	// has json:"-" so it cannot be read directly). Updated by CheckLogPlugins.
 	SecurityStates                      []state.State               `json:"securityStates" groups:"web"`
+	// SecurityRemediations is the current remediation plan for all open security findings.
+	// Populated alongside SecurityStates in CheckLogPlugins so the dashboard gets
+	// AutoFixable flags, fix tags, and risk levels without a separate API call.
+	// This is the authoritative source — the UI must not duplicate autoFixable logic.
+	SecurityRemediations                RemediationPlan             `json:"securityRemediations" groups:"web"`
 	// WorkloadStates is a snapshot of all open workload findings from the current monitoring
 	// tick. Updated by CheckLogPlugins after all servers have been evaluated.
 	WorkloadStates                      []state.State               `json:"workloadStates" groups:"web"`

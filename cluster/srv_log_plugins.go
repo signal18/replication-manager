@@ -402,6 +402,10 @@ func (cluster *Cluster) CheckLogPlugins() {
 		}
 		return 0
 	})
+	// Keep the remediation plan in sync with SecurityStates so the dashboard can
+	// render Fix buttons and option menus without a separate API call or any
+	// duplicated auto-fixable / risk logic on the frontend.
+	cluster.SecurityRemediations = cluster.GetRemediationPlan()
 	cluster.WorkloadStates = cluster.WorkloadStateMachine.GetOpenStates()
 	slices.SortStableFunc(cluster.WorkloadStates, func(a, b state.State) int {
 		ak, bk := a.ErrKey+"\x00"+a.ServerUrl, b.ErrKey+"\x00"+b.ServerUrl
