@@ -278,9 +278,9 @@ var socketPlugins = map[string]bool{
 // across all servers in the cluster.  Returns an error if the code has no
 // automated fix or if any server-level operation fails.
 //
-// For disruptive fixes (SEC0109/0110/0111) the compliance tag is applied
-// synchronously and then a rolling restart is launched in the background
-// so the API returns immediately while the restart proceeds.
+// For disruptive fixes (SEC0109/0110/0111) the compliance tag is added via
+// AddDBTag(false), which mirrors the UI add-tag path: cookies are set and
+// the monitoring loop deploys the new config before applying the restart.
 //
 // Supported codes:
 //
@@ -304,15 +304,16 @@ func (cluster *Cluster) FixSecState(errKey string) error {
 	case "SEC0107":
 		return cluster.fixAnonUsers()
 	case "SEC0109", "SEC0110", "SEC0111":
-		// All three encryption findings are resolved by adding the same tag.
-		// AddDBTag deploys the .cnf; encryption variables are read-only so
-		// no mariadb_command: SQL runs — the restart activates the settings.
-		if err := cluster.ApplyRemediationTag("add_tag", "with_sec_keyfileencrypt"); err != nil {
-			return err
-		}
+		// Encryption variables are read-only — no mariadb_command: SQL can be
+		// executed at runtime.  Use dynamic=false so AddDBTag follows the same
+		// path as the UI add-tag API: it adds the tag to the config, sets the
+		// per-server config + restart cookies, and lets the monitoring loop
+		// deploy the new config.tar.gz BEFORE processing the restart cookie.
+		// Calling RollingRestart() directly would race against config deployment
+		// and restart servers with the old (un-encrypted) configuration.
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"security remediation %s: config deployed, launching rolling restart", errKey)
-		go cluster.RollingRestart()
+			"security remediation %s: adding with_sec_keyfileencrypt tag — rolling restart will follow config deployment", errKey)
+		cluster.AddDBTag("with_sec_keyfileencrypt", false)
 		return nil
 	default:
 		return fmt.Errorf("no automated fix available for %s", errKey)
