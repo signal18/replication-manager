@@ -61,59 +61,62 @@ type secTagEntry struct {
 //
 // Per-account findings (SEC0100, SEC0107, SEC0108) are intentionally excluded:
 // user account changes are too risky to automate and must be handled manually.
+// Tag names must match the fset_name suffix in the compliance module JSON
+// (share/opensvc/moduleset_mariadb.svc.mrm.db.json).  The configurator uses
+// strings.HasSuffix(fset_name, tag) for file generation and
+// strings.Contains(fset_name, tag) for SQL execution — both require the tag
+// to be a suffix/substring of the fset_name, not an arbitrary label.
 var secTagMap = map[string]secTagEntry{
-	// with_sec_localinfile enables local_infile; dropping it runs:
-	//   mariadb_default: SET GLOBAL local_infile=0
+	// fset_name: mariadb.security.localinfile
+	// mariadb_default: SET GLOBAL local_infile=0
 	"SEC0102": {
 		Action:      "drop_tag",
-		Tag:         "with_sec_localinfile",
-		Description: "Drop 'with_sec_localinfile' tag — executes SET GLOBAL local_infile=0 and removes local-infile=1 from my.cnf",
+		Tag:         "localinfile",
+		Description: "Drop 'localinfile' tag — executes SET GLOBAL local_infile=0 and removes local-infile=1 from my.cnf",
 		Risk:        "safe",
 	},
-	// with_log_general enables the general query log; dropping it runs:
-	//   mariadb_default: SET GLOBAL general_log=0
+	// fset_name: mariadb.log.general
+	// mariadb_default: SET GLOBAL general_log=0
 	"SEC0104": {
 		Action:      "drop_tag",
-		Tag:         "with_log_general",
-		Description: "Drop 'with_log_general' tag — executes SET GLOBAL general_log=0 and removes general_log=1 from my.cnf",
+		Tag:         "general",
+		Description: "Drop 'general' tag — executes SET GLOBAL general_log=0 and removes general_log=1 from my.cnf",
 		Risk:        "safe",
 	},
-	// with_log_audit installs the MariaDB server_audit plugin and enables
-	// audit logging via INSTALL SONAME + SET GLOBAL server_audit_logging=ON.
-	// The mariadb_command: line in the .cnf runs these at runtime so no
-	// restart is needed.
+	// fset_name: mariadb.log.audit
+	// mariadb_command: INSTALL SONAME 'server_audit'; SET GLOBAL server_audit_logging=ON
+	// No restart required — plugin loads at runtime.
 	"SEC0112": {
 		Action:      "add_tag",
-		Tag:         "with_log_audit",
-		Description: "Add 'with_log_audit' tag — installs server_audit.so at runtime and enables audit logging (CONNECT,QUERY,TABLE events to syslog)",
+		Tag:         "audit",
+		Description: "Add 'audit' tag — installs server_audit.so at runtime and enables audit logging (CONNECT,QUERY,TABLE events to syslog)",
 		Risk:        "safe",
 	},
-	// with_sec_keyfileencrypt enables InnoDB/Aria/binlog/tmp encryption via
-	// the file-key-management plugin.  The tag deploys the .cnf and sets a
-	// restart cookie — no mariadb_command: line is present because all
-	// encryption variables are read-only at runtime.
-	// SEC0109, SEC0110, SEC0111 all map to the same tag; applying it once
-	// covers all three findings.
+	// fset_name: mariadb.security.keyfileencrypt
+	// All encryption variables are read-only — no mariadb_command SQL runs.
+	// Config is deployed and a restart cookie is set; the monitoring loop
+	// deploys config.tar.gz before processing the restart.
+	// SEC0109, SEC0110, SEC0111 all map to the same tag.
 	"SEC0109": {
 		Action: "add_tag",
-		Tag:    "with_sec_keyfileencrypt",
-		Description: "Add 'with_sec_keyfileencrypt' tag — deploys file-key-management plugin config " +
+		Tag:    "keyfileencrypt",
+		Description: "Add 'keyfileencrypt' tag — deploys file-key-management plugin config " +
 			"(innodb_encrypt_tables, encrypt_binlog, encrypt_tmp_files) then triggers a rolling restart. " +
 			"Requires pre-configured encryption key file.",
 		Risk: "disruptive",
 	},
 	"SEC0110": {
 		Action: "add_tag",
-		Tag:    "with_sec_keyfileencrypt",
-		Description: "Add 'with_sec_keyfileencrypt' tag — deploys file-key-management plugin config " +
+		Tag:    "keyfileencrypt",
+		Description: "Add 'keyfileencrypt' tag — deploys file-key-management plugin config " +
 			"(innodb_encrypt_tables, encrypt_binlog, encrypt_tmp_files) then triggers a rolling restart. " +
 			"Requires pre-configured encryption key file.",
 		Risk: "disruptive",
 	},
 	"SEC0111": {
 		Action: "add_tag",
-		Tag:    "with_sec_keyfileencrypt",
-		Description: "Add 'with_sec_keyfileencrypt' tag — deploys file-key-management plugin config " +
+		Tag:    "keyfileencrypt",
+		Description: "Add 'keyfileencrypt' tag — deploys file-key-management plugin config " +
 			"(innodb_encrypt_tables, encrypt_binlog, encrypt_tmp_files) then triggers a rolling restart. " +
 			"Requires pre-configured encryption key file.",
 		Risk: "disruptive",
@@ -296,11 +299,11 @@ func (cluster *Cluster) FixSecState(errKey string) error {
 	case "SEC0100":
 		return cluster.fixNoPasswordUsers()
 	case "SEC0102":
-		return cluster.ApplyRemediationTag("drop_tag", "with_sec_localinfile")
+		return cluster.ApplyRemediationTag("drop_tag", "localinfile")
 	case "SEC0112":
-		return cluster.ApplyRemediationTag("add_tag", "with_log_audit")
+		return cluster.ApplyRemediationTag("add_tag", "audit")
 	case "SEC0104":
-		return cluster.ApplyRemediationTag("drop_tag", "with_log_general")
+		return cluster.ApplyRemediationTag("drop_tag", "general")
 	case "SEC0107":
 		return cluster.fixAnonUsers()
 	case "SEC0109", "SEC0110", "SEC0111":
@@ -313,7 +316,7 @@ func (cluster *Cluster) FixSecState(errKey string) error {
 		// and restart servers with the old (un-encrypted) configuration.
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"security remediation %s: adding with_sec_keyfileencrypt tag — rolling restart will follow config deployment", errKey)
-		cluster.AddDBTag("with_sec_keyfileencrypt", false)
+		cluster.AddDBTag("keyfileencrypt", false)
 		return nil
 	default:
 		return fmt.Errorf("no automated fix available for %s", errKey)
