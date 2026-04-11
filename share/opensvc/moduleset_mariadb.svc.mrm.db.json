@@ -4268,8 +4268,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_srictssl.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL require_secure_transport = ON;\\n# mariadb_default: SET GLOBAL require_secure_transport = OFF;\\n\\n# mysql_command: SET GLOBAL require_secure_transport = ON;\\n# mysql_default: SET GLOBAL loose_require_secure_transport = OFF;\\n\\n[mysqld]\\nloose_require_secure_transport = ON\"}",
-                    "var_updated": "2026-04-11 12:36:47",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_strictssl.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL require_secure_transport = ON;\\n# mariadb_default: SET GLOBAL require_secure_transport = OFF;\\n\\n# mysql_command: SET GLOBAL require_secure_transport = ON;\\n# mysql_default: SET GLOBAL loose_require_secure_transport = OFF;\\n\\n[mysqld]\\nloose_require_secure_transport = ON\"}",
+                    "var_updated": "2026-04-12 01:31:04",
                     "var_name": "db_cnf_sec_strictssl",
                     "id": 6357
                 },
