@@ -98,13 +98,10 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			PluginDataDir:    cluster.Conf.ShareDir + "/plugins/data",
 		}
 		if !src.IsEnabled() {
-			cluster.LogModulePrintf(
-				cluster.Conf.Verbose,
-				config.ConstLogModPlugin,
-				config.LvlDbg,
-				"[logplugin:%s] disabled for server %s",
-				p.Name(), server.URL,
-			)
+			// Plugin type is not known yet (Evaluate hasn't run), so we cannot
+			// route this to the correct dedicated log. Drop silently — a disabled
+			// plugin fires every tick for every server and must not flood the HA
+			// cluster log. Diagnose disabled plugins via the plugin config, not logs.
 			continue
 		}
 
@@ -143,12 +140,31 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 		result := p.Evaluate(src)
 
 		// Determine result type for log routing.
+		// isSecurityPlugin covers score plugins AND pure-security plugins
+		// (hardening, local-infile, no-password-user, weak-auth) that emit
+		// SeveritySecurity findings but carry no ScoreChecks.
 		isScorePlugin    := len(result.ScoreChecks) > 0
+		isSecurityPlugin := isScorePlugin
 		isWorkloadPlugin := false
 		for _, f := range result.Findings {
-			if f.Severity == logplugin.SeverityWorkload {
+			switch f.Severity {
+			case logplugin.SeveritySecurity:
+				isSecurityPlugin = true
+			case logplugin.SeverityWorkload:
 				isWorkloadPlugin = true
-				break
+			}
+		}
+		// When the plugin is compliant (zero findings, no ScoreChecks), fall back
+		// to its declared default severity so debug messages still route to the
+		// correct dedicated log rather than the main cluster log.
+		if !isSecurityPlugin && !isWorkloadPlugin {
+			if ps, ok := p.(logplugin.LogPluginWithDefaultSeverity); ok {
+				switch ps.DefaultSeverity() {
+				case logplugin.SeveritySecurity:
+					isSecurityPlugin = true
+				case logplugin.SeverityWorkload:
+					isWorkloadPlugin = true
+				}
 			}
 		}
 
@@ -158,7 +174,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 		sv := src.ServerVersion
 		dbvMsg := fmt.Sprintf("[logplugin:%s] server=%s DBVersion flavor=%q major=%d minor=%d release=%d variables=%d",
 			p.Name(), server.URL, sv.Flavor, sv.Major, sv.Minor, sv.Release, len(src.ServerVariables))
-		if isScorePlugin {
+		if isSecurityPlugin {
 			cluster.logPluginDebugSec(p.Name(), dbvMsg)
 		} else if isWorkloadPlugin {
 			cluster.logPluginDebugWork(p.Name(), dbvMsg)
@@ -173,13 +189,14 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 				time.Now().Unix(),
 			)
 			cluster.ClusterGraphite.AddMetrics([]graphite.Metric{m})
-			cluster.LogModulePrintf(
-				cluster.Conf.Verbose,
-				config.ConstLogModPlugin,
-				config.LvlDbg,
-				"[logplugin:%s] queued graphite metric %s=%d",
-				p.Name(), result.MetricName, result.CurrentCount,
-			)
+			gMsg := fmt.Sprintf("[logplugin:%s] queued graphite metric %s=%d",
+				p.Name(), result.MetricName, result.CurrentCount)
+			if isSecurityPlugin {
+				cluster.logPluginDebugSec(p.Name(), gMsg)
+			} else if isWorkloadPlugin {
+				cluster.logPluginDebugWork(p.Name(), gMsg)
+			}
+			// HA/operational plugins with graphite metrics keep their debug in the main log.
 		}
 
 		for _, f := range result.Findings {
@@ -290,7 +307,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 
 		if len(result.Findings) == 0 {
 			noFindMsg := fmt.Sprintf("[logplugin:%s] no findings for server %s", p.Name(), server.URL)
-			if isScorePlugin {
+			if isSecurityPlugin {
 				cluster.logPluginDebugSec(p.Name(), noFindMsg)
 			} else if isWorkloadPlugin {
 				cluster.logPluginDebugWork(p.Name(), noFindMsg)

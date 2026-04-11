@@ -268,6 +268,16 @@ type LogPluginWithPrerequisites interface {
 	Prerequisites() []Prerequisite
 }
 
+// LogPluginWithDefaultSeverity is an optional extension of LogPlugin.
+// Pure security plugins (hardening, local-infile, no-password-user, weak-auth)
+// implement this so RunLogPlugins can route debug messages to the correct
+// dedicated log even when Evaluate returns zero findings (compliant server).
+// Score plugins do not need this — they always return ScoreChecks.
+type LogPluginWithDefaultSeverity interface {
+	LogPlugin
+	DefaultSeverity() Severity
+}
+
 // LogPlugin is the interface every log-tailer plugin must implement.
 type LogPlugin interface {
 	Name() string
