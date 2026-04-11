@@ -99,6 +99,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterPlugins)),
 	))
+	router.Handle("/api/clusters/{clusterName}/plugins/reload", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterPluginsReload)),
+	))
 
 	router.Handle("/api/clusters/{clusterName}/tags", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -5952,6 +5956,32 @@ func (repman *ReplicationManager) handlerMuxClusterPlugins(w http.ResponseWriter
 	if err := e.Encode(result); err != nil {
 		http.Error(w, "Encoding error", http.StatusInternalServerError)
 	}
+}
+
+// handlerMuxClusterPluginsReload forces a rescan of the cluster's plugin directory
+// and reloads the global registry.  Useful after deploying new plugin binaries
+// without restarting the server or triggering a topology reset.
+//
+// @Summary  Reload external log plugins for a cluster
+// @Tags     ClusterSettings
+// @Param    clusterName path string true "Cluster Name"
+// @Success  200
+// @Router   /api/clusters/{clusterName}/plugins/reload [post]
+func (repman *ReplicationManager) handlerMuxClusterPluginsReload(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	mycluster.ReloadLogPlugins()
+	w.WriteHeader(http.StatusOK)
 }
 
 // handlerMuxClusterSendVaultToken sends the Vault token to the specified cluster via email.

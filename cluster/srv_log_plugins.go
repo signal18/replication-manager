@@ -371,6 +371,10 @@ func snapshotSlowLog(sl s18log.SlowLog) []logplugin.StdioSlowMsg {
 
 func (cluster *Cluster) CheckLogPlugins() {
 	if !cluster.Conf.LogPlugin {
+		// Log once so operators know plugin evaluation is disabled — silent exit
+		// here is the #1 reason plugins appear to "stop working" after a config change.
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
+			"[logplugin] log-plugin=false — plugin evaluation disabled; set log-plugin=true to enable")
 		return
 	}
 	// Lazy init in case cluster was loaded from saved state without init
