@@ -9049,7 +9049,8 @@ func (repman *ReplicationManager) handlerMuxSecurityFixState(w http.ResponseWrit
 		return
 	}
 	errKey := vars["errKey"]
-	if err := mycluster.FixSecState(errKey); err != nil {
+	tag := r.URL.Query().Get("tag") // optional: selects among multiple fix options (e.g. SEC0113 pwdcheck)
+	if err := mycluster.FixSecState(errKey, tag); err != nil {
 		// FixSecState returns a specific error when the code has no automated fix.
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

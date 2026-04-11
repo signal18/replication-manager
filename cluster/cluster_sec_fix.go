@@ -173,13 +173,16 @@ var autoFixable = map[string]bool{
 	"SEC0102": true,
 	"SEC0104": true,
 	"SEC0107": true,
-	"SEC0112": true, // audit plugin: add_tag with_log_audit (runtime install, no restart)
+	"SEC0112": true, // audit plugin: add_tag (runtime install, no restart)
 	// Encryption findings: add_tag triggers .cnf deploy + restart cookie.
 	// Marked auto-fixable so the UI shows a Fix button, but the risk is
 	// "disruptive" — the operator must confirm restart separately.
 	"SEC0109": true,
 	"SEC0110": true,
 	"SEC0111": true,
+	// Password strength: deploys plugin_load_add via compliance tag + rolling restart.
+	// Multiple tag options (pwdchecksimple / pwdcheckcracklib); UI passes ?tag= to choose.
+	"SEC0113": true,
 }
 
 // GetRemediationPlan assembles the current remediation plan from all open security findings.
@@ -228,6 +231,42 @@ func (cluster *Cluster) GetRemediationPlan() RemediationPlan {
 				Description: "Lock all no-password, non-socket accounts on this server (ACCOUNT LOCK — reversible)",
 				Risk:        "safe",
 			})
+		} else if st.ErrKey == "SEC0113" {
+			// Three mutually exclusive options — operator chooses one.
+			// pwdchecksimple and pwdcheckcracklib are in the compliance module:
+			//   fset_name: mariadb.security.pwdchecksimple  → plugin_load_add=simple_password_check
+			//   fset_name: mariadb.security.pwdcheckcracklib → plugin_load_add=cracklib_password_check
+			// pwdcheckreuse is not yet in the module — provide a cnf_template.
+			// All three require a restart (plugin_load_add is read at startup).
+			fixes = append(fixes,
+				RemediationFix{
+					Type: "add_tag",
+					Tag:  "pwdchecksimple",
+					Description: "Add 'pwdchecksimple' tag — deploys plugin_load_add=simple_password_check " +
+						"to my.cnf then triggers rolling restart. " +
+						"Enforces minimum length, digit, and mixed-case requirements on new passwords.",
+					Risk: "disruptive",
+				},
+				RemediationFix{
+					Type: "add_tag",
+					Tag:  "pwdcheckcracklib",
+					Description: "Add 'pwdcheckcracklib' tag — deploys plugin_load_add=cracklib_password_check " +
+						"to my.cnf then triggers rolling restart. " +
+						"Checks passwords against a cracklib dictionary (requires cracklib OS package).",
+					Risk: "disruptive",
+				},
+				RemediationFix{
+					Type:     "cnf_template",
+					FileName: "with_sec_pwdcheckreuse.cnf",
+					Description: "No compliance module tag exists yet for password_reuse_check. " +
+						"Create 'with_sec_pwdcheckreuse' in the module with this content " +
+						"(requires server restart), then add the tag to db-servers-tags.",
+					MyCnf: "# password_reuse_check — prevent password reuse (MariaDB 10.7+)\n" +
+						"# (read-only at runtime; requires server restart)\n\n" +
+						"[mariadb]\nplugin_load_add=password_reuse_check\n",
+					Risk: "disruptive",
+				},
+			)
 		}
 		// SEC0108 (wildcard host) — no automated fix, informational only.
 
@@ -288,13 +327,17 @@ var socketPlugins = map[string]bool{
 // Supported codes:
 //
 //	SEC0100 — lock all no-password, non-socket accounts (ACCOUNT LOCK — reversible)
-//	SEC0102 — drop with_sec_localinfile tag  (SET GLOBAL local_infile=0)
-//	SEC0104 — drop with_log_general tag      (SET GLOBAL general_log=0)
+//	SEC0102 — drop localinfile tag     (SET GLOBAL local_infile=0)
+//	SEC0104 — drop general tag         (SET GLOBAL general_log=0)
 //	SEC0107 — drop all anonymous (user='') accounts
-//	SEC0109 — add with_sec_keyfileencrypt tag + rolling restart (table encryption)
-//	SEC0110 — add with_sec_keyfileencrypt tag + rolling restart (binlog encryption)
-//	SEC0111 — add with_sec_keyfileencrypt tag + rolling restart (tmp encryption)
-func (cluster *Cluster) FixSecState(errKey string) error {
+//	SEC0109 — add keyfileencrypt tag + rolling restart (table encryption)
+//	SEC0110 — add keyfileencrypt tag + rolling restart (binlog encryption)
+//	SEC0111 — add keyfileencrypt tag + rolling restart (tmp encryption)
+//	SEC0112 — add audit tag            (runtime INSTALL SONAME)
+//	SEC0113 — add pwdcheck tag + rolling restart (password strength plugin, MariaDB)
+//	          tag selects which plugin: "pwdchecksimple" (default) or "pwdcheckcracklib"
+//	          Pass tag via the optional second argument or ?tag= query param.
+func (cluster *Cluster) FixSecState(errKey string, preferredTag ...string) error {
 	switch errKey {
 	case "SEC0100":
 		return cluster.fixNoPasswordUsers()
@@ -313,6 +356,21 @@ func (cluster *Cluster) FixSecState(errKey string) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"security remediation %s: adding keyfileencrypt tag then triggering rolling restart", errKey)
 		cluster.AddDBTag("keyfileencrypt", true)
+		go cluster.RollingRestart()
+		return nil
+	case "SEC0113":
+		// Multiple pwdcheck tags are available — caller picks via preferredTag.
+		// Default to pwdchecksimple (no OS dependency, safe for all MariaDB installs).
+		tag := "pwdchecksimple"
+		if len(preferredTag) > 0 && preferredTag[0] != "" {
+			tag = preferredTag[0]
+		}
+		if tag != "pwdchecksimple" && tag != "pwdcheckcracklib" {
+			return fmt.Errorf("SEC0113: unknown tag %q — valid options: pwdchecksimple, pwdcheckcracklib", tag)
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"security remediation SEC0113: adding %s tag then triggering rolling restart", tag)
+		cluster.AddDBTag(tag, true)
 		go cluster.RollingRestart()
 		return nil
 	default:
