@@ -25,7 +25,8 @@ func init() { Register(&SlowLogPlugin{}) }
 
 type SlowLogPlugin struct{}
 
-func (p *SlowLogPlugin) Name() string { return "slowlog" }
+func (p *SlowLogPlugin) Name() string            { return "slowlog" }
+func (p *SlowLogPlugin) DefaultSeverity() Severity { return SeverityWorkload }
 
 func (p *SlowLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	hours := ConfigInt(src.Config, "timeframe-hours", 24)

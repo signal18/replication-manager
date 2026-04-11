@@ -32,7 +32,8 @@ func init() { Register(&AuditLogDriftPlugin{}) }
 
 type AuditLogDriftPlugin struct{}
 
-func (p *AuditLogDriftPlugin) Name() string { return "auditlog" }
+func (p *AuditLogDriftPlugin) Name() string            { return "auditlog" }
+func (p *AuditLogDriftPlugin) DefaultSeverity() Severity { return SeverityWorkload }
 
 func (p *AuditLogDriftPlugin) Evaluate(src LogSource) EvaluateResult {
 	currentHours := ConfigInt(src.Config, "current-window-hours", 1)

@@ -23,7 +23,8 @@ func init() { Register(&SqlErrorLogPlugin{}) }
 
 type SqlErrorLogPlugin struct{}
 
-func (p *SqlErrorLogPlugin) Name() string { return "sqlerrorlog" }
+func (p *SqlErrorLogPlugin) Name() string            { return "sqlerrorlog" }
+func (p *SqlErrorLogPlugin) DefaultSeverity() Severity { return SeverityWorkload }
 
 func (p *SqlErrorLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	hours := ConfigInt(src.Config, "timeframe-hours", 24)

@@ -31,7 +31,8 @@ func init() { Register(&ErrorLogPlugin{}) }
 
 type ErrorLogPlugin struct{}
 
-func (p *ErrorLogPlugin) Name() string { return "errorlog" }
+func (p *ErrorLogPlugin) Name() string            { return "errorlog" }
+func (p *ErrorLogPlugin) DefaultSeverity() Severity { return SeverityWorkload }
 
 func (p *ErrorLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	hours := ConfigInt(src.Config, "timeframe-hours", 24)
