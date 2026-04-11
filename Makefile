@@ -141,28 +141,26 @@ PLUGIN_PLATFORM     := $(OS)-$(ARCH)
 # Temporary clone of the signer repo — populated by plugin-keys, reused by plugin-push.
 PLUGIN_SIGNER_CLONE := $(PLUGIN_KEY_DIR)/signer-repo
 
-plugins: $(PLUGIN_SIGNER_BIN) $(PLUGIN_NAMES:%=$(PLUGIN_BINDIR)/%) plugin-sigs plugin-push
+# plugins is always rebuilt unconditionally (.PHONY).
+# Incremental builds are handled by Go's own build cache, which is more
+# reliable than Make timestamp tracking (Docker COPY flattens all mtimes).
+.PHONY: plugins
+plugins: $(PLUGIN_SIGNER_BIN)
+	@mkdir -p $(PLUGIN_BINDIR)
+	@for name in $(PLUGIN_NAMES); do \
+		echo "Building plugin: $$name"; \
+		env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
+		  go build -v \
+		    --ldflags "-extldflags '-static' -w -s" \
+		    -o $(PLUGIN_BINDIR)/$$name \
+		    ./cluster/logplugin/plugins/$$name/... || exit 1; \
+	done
+	$(MAKE) plugin-sigs plugin-push
 
 $(PLUGIN_SIGNER_BIN):
 	@mkdir -p $(dir $(PLUGIN_SIGNER_BIN))
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
 	  go build -v -o $(PLUGIN_SIGNER_BIN) ./tools/plugin-signer/...
-
-# Generate an explicit rule per plugin so that $(wildcard) is evaluated with
-# the concrete plugin name — pattern rules evaluate $(wildcard ...) at parse
-# time with a literal '%', so per-plugin source changes are never detected.
-define PLUGIN_RULE
-$(PLUGIN_BINDIR)/$(1): $$(wildcard cluster/logplugin/plugins/$(1)/*.go) $$(wildcard cluster/logplugin/plugins/$(1)/*.json) $(PLUGIN_COMMON_SRCS)
-	@mkdir -p $(PLUGIN_BINDIR)
-	@echo "Building plugin: $(1)"
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
-	  go build -v \
-	    --ldflags "-extldflags '-static' -w -s" \
-	    -o $(PLUGIN_BINDIR)/$(1) \
-	    ./cluster/logplugin/plugins/$(1)/...
-endef
-
-$(foreach plugin,$(PLUGIN_NAMES),$(eval $(call PLUGIN_RULE,$(plugin))))
 
 # Bootstrap an empty signer repo: generate keypair, commit both keys, push.
 # Run once before the first 'make plugins' with credentials.
