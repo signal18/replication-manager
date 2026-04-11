@@ -819,7 +819,7 @@ func (configurator *Configurator) WriteDatabaseConfigFile(Datadir string, Remote
 		}
 	}
 
-	if fpath[len(fpath)-1:] != "/" && (configurator.IsFilterInDBTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic") {
+	if len(fpath) > 0 && fpath[len(fpath)-1:] != "/" && (configurator.IsFilterInDBTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic") {
 		content := misc.ExtractKey(f.Content, TemplateEnv)
 
 		if configurator.IsFilterInDBTags("docker") && configurator.ClusterConfig.ProvOrchestrator != config.ConstOrchestratorLocalhost {
