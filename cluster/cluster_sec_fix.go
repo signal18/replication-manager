@@ -197,17 +197,25 @@ func (cluster *Cluster) GetRemediationPlan() RemediationPlan {
 	for _, st := range openStates {
 		var fixes []RemediationFix
 
-		if entry, ok := secTagMap[st.ErrKey]; ok {
+		// ErrKey is stored as the composite key "SEC0103@server:3306" because
+		// AddState(compositeKey, st) sets s.ErrKey = compositeKey.  Strip the
+		// server suffix so map lookups against secTagMap / autoFixable work.
+		baseKey := st.ErrKey
+		if i := strings.Index(baseKey, "@"); i >= 0 {
+			baseKey = baseKey[:i]
+		}
+
+		if entry, ok := secTagMap[baseKey]; ok {
 			fixes = append(fixes, RemediationFix{
 				Type:        entry.Action,
 				Tag:         entry.Tag,
 				Description: entry.Description,
 				Risk:        entry.Risk,
 			})
-		} else if tmpl, ok := secCnfTemplates[st.ErrKey]; ok {
+		} else if tmpl, ok := secCnfTemplates[baseKey]; ok {
 			// SEC0106 (skip_name_resolve) must not be applied in Docker:
 			// containers use DNS for discovery and IPs are reassigned on restart.
-			if st.ErrKey == "SEC0106" && cluster.Configurator.IsFilterInDBTags("docker") {
+			if baseKey == "SEC0106" && cluster.Configurator.IsFilterInDBTags("docker") {
 				fixes = append(fixes, RemediationFix{
 					Type: "informational",
 					Description: "skip_name_resolve=ON is not recommended in Docker deployments — " +
@@ -218,19 +226,19 @@ func (cluster *Cluster) GetRemediationPlan() RemediationPlan {
 			} else {
 				fixes = append(fixes, tmpl)
 			}
-		} else if st.ErrKey == "SEC0107" {
+		} else if baseKey == "SEC0107" {
 			fixes = append(fixes, RemediationFix{
 				Type:        "drop_anon_users",
 				Description: "Drop all anonymous (user='') accounts on this server",
 				Risk:        "safe",
 			})
-		} else if st.ErrKey == "SEC0100" {
+		} else if baseKey == "SEC0100" {
 			fixes = append(fixes, RemediationFix{
 				Type:        "lock_no_password_users",
 				Description: "Lock all no-password, non-socket accounts on this server (ACCOUNT LOCK — reversible)",
 				Risk:        "safe",
 			})
-		} else if st.ErrKey == "SEC0113" {
+		} else if baseKey == "SEC0113" {
 			// Three mutually exclusive options — operator chooses one.
 			// pwdchecksimple and pwdcheckcracklib are in the compliance module:
 			//   fset_name: mariadb.security.pwdchecksimple  → plugin_load_add=simple_password_check
@@ -274,10 +282,10 @@ func (cluster *Cluster) GetRemediationPlan() RemediationPlan {
 		}
 
 		entries = append(entries, RemediationEntry{
-			ErrKey:      st.ErrKey,
+			ErrKey:      baseKey,
 			Server:      st.ServerUrl,
 			Description: st.ErrDesc,
-			AutoFixable: autoFixable[st.ErrKey],
+			AutoFixable: autoFixable[baseKey],
 			Fixes:       fixes,
 		})
 	}
