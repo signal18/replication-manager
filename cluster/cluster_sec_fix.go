@@ -67,6 +67,16 @@ type secTagEntry struct {
 // strings.Contains(fset_name, tag) for SQL execution — both require the tag
 // to be a suffix/substring of the fset_name, not an arbitrary label.
 var secTagMap = map[string]secTagEntry{
+	// fset_name: mariadb.security.strictssl
+	// mariadb_command: SET GLOBAL require_secure_transport = ON
+	// mariadb_default: SET GLOBAL require_secure_transport = OFF
+	// Deploys cnf at runtime and executes SET GLOBAL — no restart needed.
+	"SEC0103": {
+		Action:      "add_tag",
+		Tag:         "strictssl",
+		Description: "Add 'strictssl' tag — executes SET GLOBAL require_secure_transport=ON and deploys loose_require_secure_transport=ON to my.cnf",
+		Risk:        "moderate",
+	},
 	// fset_name: mariadb.security.localinfile
 	// mariadb_default: SET GLOBAL local_infile=0
 	"SEC0102": {
@@ -128,18 +138,6 @@ var secTagMap = map[string]secTagEntry{
 // compliance module using the provided content, then adds it to db-servers-tags.
 // These are informational only — no automatic action is taken.
 var secCnfTemplates = map[string]RemediationFix{
-	"SEC0103": {
-		Type:     "cnf_template",
-		FileName: "with_sec_securetransport.cnf",
-		Description: "No compliance module tag exists for require_secure_transport. " +
-			"Create 'with_sec_securetransport' in the module with this content, " +
-			"then add the tag to db-servers-tags.",
-		MyCnf: "# require_secure_transport — enforce TLS for all client connections\n" +
-			"# mariadb_command: SET GLOBAL require_secure_transport = ON;\n" +
-			"# mariadb_default: SET GLOBAL require_secure_transport = OFF;\n\n" +
-			"[mysqld]\nrequire_secure_transport = ON\n",
-		Risk: "moderate",
-	},
 	"SEC0105": {
 		Type:     "cnf_template",
 		FileName: "with_sec_securefilepriv.cnf",
@@ -171,7 +169,7 @@ var secCnfTemplates = map[string]RemediationFix{
 var autoFixable = map[string]bool{
 	"SEC0100": true,
 	"SEC0102": true,
-	"SEC0103": true, // SET GLOBAL require_secure_transport=ON at runtime (moderate — may drop plain connections)
+	"SEC0103": true, // add_tag strictssl: SET GLOBAL require_secure_transport=ON + cnf deploy (moderate)
 	"SEC0104": true,
 	"SEC0107": true,
 	"SEC0112": true, // audit plugin: add_tag (runtime install, no restart)
@@ -217,18 +215,6 @@ func (cluster *Cluster) GetRemediationPlan() RemediationPlan {
 						"Mitigate via Docker network segmentation and network policies instead.",
 					Risk: "safe",
 				})
-			} else if st.ErrKey == "SEC0103" {
-				// require_secure_transport can be set at runtime — no restart needed.
-				// Prepend the runtime fix so the UI Fix button fires it; the cnf_template
-				// is also included so the operator knows to persist it in my.cnf.
-				fixes = append(fixes,
-					RemediationFix{
-						Type:        "set_global",
-						Description: "SET GLOBAL require_secure_transport=ON on all reachable servers (takes effect immediately; add to my.cnf to persist across restarts)",
-						Risk:        "moderate",
-					},
-					tmpl,
-				)
 			} else {
 				fixes = append(fixes, tmpl)
 			}
@@ -355,7 +341,7 @@ func (cluster *Cluster) FixSecState(errKey string, preferredTag ...string) error
 	case "SEC0100":
 		return cluster.fixNoPasswordUsers()
 	case "SEC0103":
-		return cluster.fixRequireSecureTransport()
+		return cluster.ApplyRemediationTag("add_tag", "strictssl")
 	case "SEC0102":
 		return cluster.ApplyRemediationTag("drop_tag", "localinfile")
 	case "SEC0112":
@@ -452,27 +438,3 @@ func (cluster *Cluster) fixNoPasswordUsers() error {
 	return nil
 }
 
-// fixRequireSecureTransport enables require_secure_transport at runtime on every
-// reachable server.  The variable is dynamic (MariaDB 10.3.5+) so no restart
-// is needed.  Risk: moderate — existing plain-text connections are not killed
-// but new ones will be refused.  The operator should also persist the change
-// in my.cnf using the cnf_template provided in the remediation plan.
-func (cluster *Cluster) fixRequireSecureTransport() error {
-	var errs []string
-	for _, srv := range cluster.Servers {
-		if srv == nil {
-			continue
-		}
-		err, _ := srv.ExecScriptSQL([]string{"SET GLOBAL require_secure_transport = ON"})
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", srv.URL, err))
-			continue
-		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"set require_secure_transport=ON on %s", srv.URL)
-	}
-	if len(errs) > 0 {
-		return fmt.Errorf("fixRequireSecureTransport: %s", strings.Join(errs, "; "))
-	}
-	return nil
-}
