@@ -79,10 +79,10 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 		}
 		src := logplugin.LogSource{
 			ServerURL:        server.URL,
-			ErrorLog:         snapshotHttpLog(server.ErrorLog),
-			SqlErrorLog:      snapshotHttpLog(server.SqlErrorLog),
-			SlowLog:          snapshotSlowLog(server.SlowLog),
-			AuditLog:         snapshotHttpLog(server.AuditLog),
+			ErrorLog:         snapshotHttpLog(&server.ErrorLog),
+			SqlErrorLog:      snapshotHttpLog(&server.SqlErrorLog),
+			SlowLog:          snapshotSlowLog(&server.SlowLog),
+			AuditLog:         snapshotHttpLog(&server.AuditLog),
 			Config:           resolvePluginConfig(cluster, p.Name()),
 			GraphiteAPIURL:   apiURL,
 			GraphiteHostname: hostname,
@@ -336,7 +336,7 @@ func resolvePluginConfig(cluster *Cluster, pluginName string) map[string]string 
 	return out
 }
 
-func snapshotHttpLog(log s18log.HttpLog) []s18log.HttpMessage {
+func snapshotHttpLog(log *s18log.HttpLog) []s18log.HttpMessage {
 	log.L.Lock()
 	defer log.L.Unlock()
 	out := make([]s18log.HttpMessage, 0, len(log.Buffer))
@@ -348,7 +348,7 @@ func snapshotHttpLog(log s18log.HttpLog) []s18log.HttpMessage {
 	return out
 }
 
-func snapshotSlowLog(sl s18log.SlowLog) []logplugin.StdioSlowMsg {
+func snapshotSlowLog(sl *s18log.SlowLog) []logplugin.StdioSlowMsg {
 	sl.L.Lock()
 	defer sl.L.Unlock()
 	out := make([]logplugin.StdioSlowMsg, 0, len(sl.Buffer))
