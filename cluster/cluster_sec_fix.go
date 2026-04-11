@@ -171,6 +171,7 @@ var secCnfTemplates = map[string]RemediationFix{
 var autoFixable = map[string]bool{
 	"SEC0100": true,
 	"SEC0102": true,
+	"SEC0103": true, // SET GLOBAL require_secure_transport=ON at runtime (moderate — may drop plain connections)
 	"SEC0104": true,
 	"SEC0107": true,
 	"SEC0112": true, // audit plugin: add_tag (runtime install, no restart)
@@ -216,6 +217,18 @@ func (cluster *Cluster) GetRemediationPlan() RemediationPlan {
 						"Mitigate via Docker network segmentation and network policies instead.",
 					Risk: "safe",
 				})
+			} else if st.ErrKey == "SEC0103" {
+				// require_secure_transport can be set at runtime — no restart needed.
+				// Prepend the runtime fix so the UI Fix button fires it; the cnf_template
+				// is also included so the operator knows to persist it in my.cnf.
+				fixes = append(fixes,
+					RemediationFix{
+						Type:        "set_global",
+						Description: "SET GLOBAL require_secure_transport=ON on all reachable servers (takes effect immediately; add to my.cnf to persist across restarts)",
+						Risk:        "moderate",
+					},
+					tmpl,
+				)
 			} else {
 				fixes = append(fixes, tmpl)
 			}
@@ -341,6 +354,8 @@ func (cluster *Cluster) FixSecState(errKey string, preferredTag ...string) error
 	switch errKey {
 	case "SEC0100":
 		return cluster.fixNoPasswordUsers()
+	case "SEC0103":
+		return cluster.fixRequireSecureTransport()
 	case "SEC0102":
 		return cluster.ApplyRemediationTag("drop_tag", "localinfile")
 	case "SEC0112":
@@ -433,6 +448,31 @@ func (cluster *Cluster) fixNoPasswordUsers() error {
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("fixNoPasswordUsers: %s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+// fixRequireSecureTransport enables require_secure_transport at runtime on every
+// reachable server.  The variable is dynamic (MariaDB 10.3.5+) so no restart
+// is needed.  Risk: moderate — existing plain-text connections are not killed
+// but new ones will be refused.  The operator should also persist the change
+// in my.cnf using the cnf_template provided in the remediation plan.
+func (cluster *Cluster) fixRequireSecureTransport() error {
+	var errs []string
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+		err, _ := srv.ExecScriptSQL([]string{"SET GLOBAL require_secure_transport = ON"})
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", srv.URL, err))
+			continue
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"set require_secure_transport=ON on %s", srv.URL)
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("fixRequireSecureTransport: %s", strings.Join(errs, "; "))
 	}
 	return nil
 }
