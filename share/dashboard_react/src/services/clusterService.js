@@ -834,8 +834,9 @@ function resticInitRepo(clusterName, force, options, baseURL) {
   return getApi(baseURL).post(endpoint, payload)
 }
 
-function fixSecState(clusterName, errKey, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/security/fix-state/${encodeURIComponent(errKey)}`)
+function fixSecState(clusterName, errKey, baseURL, tag) {
+  const url = `clusters/${clusterName}/security/fix-state/${encodeURIComponent(errKey)}`
+  return getApi(baseURL).post(tag ? `${url}?tag=${encodeURIComponent(tag)}` : url)
 }
 
 // Utility functions
