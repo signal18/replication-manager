@@ -4,7 +4,6 @@ import {
   Box, Grid, GridItem, Text, Badge, HStack, VStack, Divider,
   Button, Tooltip, Menu, MenuButton, MenuList, MenuItem
 } from '@chakra-ui/react'
-import { ChevronDownIcon } from '@chakra-ui/icons'
 import { useSelector, useDispatch } from 'react-redux'
 import { DataTable } from '../../DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
@@ -117,7 +116,7 @@ function SecurityScoreModal({ isOpen, closeModal }) {
                     size='xs'
                     colorScheme={isDisruptive ? 'orange' : 'green'}
                     flexShrink={0}
-                    rightIcon={<ChevronDownIcon />}>
+                    rightIcon={<span>▾</span>}>
                     Fix
                   </MenuButton>
                 </Tooltip>
