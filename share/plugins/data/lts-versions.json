@@ -1,8 +1,8 @@
 {
   "_comment": "Known LTS releases. Fetched from the Signal18 back-office and updated periodically.",
-  "updated": "2026-04-09",
+  "updated": "2026-04-11",
   "lts": {
-    "mariadb":  ["10.6", "10.11", "11.4"],
+    "mariadb":  ["10.6", "10.11", "11.4", "11.8", "12.3"],
     "mysql":    ["8.0",  "8.4"],
     "percona":  ["8.0",  "8.4"]
   }
