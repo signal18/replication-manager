@@ -207,6 +207,34 @@ func main() {
 		})
 	}
 
+	// SEC0113 — no password strength validation plugin loaded (MariaDB only)
+	//
+	// Checks for the characteristic system variables exposed by each plugin:
+	//   simple_password_check     → simple_password_check_minimal_length
+	//   cracklib_password_check   → cracklib_password_check_dictionary
+	//   password_reuse_check      → password_reuse_check_interval
+	//
+	// These variables only appear in SHOW GLOBAL VARIABLES when the plugin is
+	// loaded.  MySQL uses validate_password instead — checked separately by
+	// plugin-score-auth; this finding is MariaDB-specific.
+	if req.ServerVersion.Flavor == "MariaDB" {
+		_, hasSimple   := v["simple_password_check_minimal_length"]
+		_, hasCracklib := v["cracklib_password_check_dictionary"]
+		_, hasReuse    := v["password_reuse_check_interval"]
+		if !hasSimple && !hasCracklib && !hasReuse {
+			findings = append(findings, wire.Finding{
+				ErrKey:   "SEC0113",
+				Severity: "SECURITY",
+				Description: fmt.Sprintf(
+					"Server %s: no password strength validation plugin is loaded "+
+						"(simple_password_check, cracklib_password_check, or password_reuse_check). "+
+						"Without a password plugin any password — including single-character ones — "+
+						"is accepted for new accounts.",
+					req.ServerURL),
+			})
+		}
+	}
+
 	json.NewEncoder(os.Stdout).Encode(wire.Response{Findings: findings})
 }
 
