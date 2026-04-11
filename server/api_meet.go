@@ -161,8 +161,6 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 		return
 	}
 
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "MeetInfo: Success to get meetInfo")
-
 }
 
 // @Summary Retrieve messages from a channel
@@ -229,8 +227,6 @@ func (repman *ReplicationManager) ReadMeetMessageHandler(w http.ResponseWriter, 
 		http.Error(w, "Encoding error", http.StatusInternalServerError)
 		return
 	}
-
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "MeetInfo: Success to get message from channel %s", channelID)
 
 }
 
