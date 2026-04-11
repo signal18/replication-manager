@@ -448,6 +448,11 @@ func (r *graphiteSeriesResponse) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// graphiteHTTPClient is shared by FetchGraphiteMetric and correlateGraphiteSpike.
+// A 10-second timeout prevents the monitoring loop from blocking indefinitely
+// when the Graphite host is unreachable or slow to respond.
+var graphiteHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
 // FetchGraphiteMetric queries the graphite render API and returns datapoints.
 // from/until use graphite relative syntax: "-7d", "-1h", "now".
 func FetchGraphiteMetric(apiURL, target, from, until string) ([]graphiteDatapoint, error) {
@@ -463,7 +468,7 @@ func FetchGraphiteMetric(apiURL, target, from, until string) ([]graphiteDatapoin
 	q.Set("noCache", "1")
 	u.RawQuery = q.Encode()
 
-	resp, err := http.Get(u.String())
+	resp, err := graphiteHTTPClient.Get(u.String())
 	if err != nil {
 		return nil, fmt.Errorf("graphite fetch error: %w", err)
 	}
@@ -791,7 +796,7 @@ func correlateGraphiteSpike(apiURL, prefix, from string, spikeTime time.Time, si
 	q.Set("format", "treejson")
 	u.RawQuery = q.Encode()
 
-	resp, err := http.Get(u.String())
+	resp, err := graphiteHTTPClient.Get(u.String())
 	if err != nil {
 		return nil
 	}
