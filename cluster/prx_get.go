@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"time"
 
+	mysqldrv "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
@@ -36,41 +37,81 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 		return nil, errors.New("No proxies defined")
 	}
 	prx := cluster.Proxies[0]
-
-	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
-
-	dsn := cluster.GetDbUser() + ":" + cluster.GetDbPass() + "@"
-	if prx.GetHost() != "" {
-		dsn += "tcp(" + prx.GetHost() + ":" + strconv.Itoa(prx.GetWritePort()) + ")/" + params
-	} else {
-
+	if prx.GetHost() == "" {
 		return nil, errors.New("No proxies definition")
 	}
+
+	buildDSN := func(tls bool) string {
+		params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
+		if tls {
+			params += ConstTLSSkipVerify
+		}
+		return cluster.GetDbUser() + ":" + cluster.GetDbPass() + "@" +
+			"tcp(" + prx.GetHost() + ":" + strconv.Itoa(prx.GetWritePort()) + ")/" + params
+	}
+
+	dsn := buildDSN(cluster.HaveAutoTLS || cluster.HaveDBTLSCert)
 	conn, err := sqlx.Open("mysql", dsn)
+	if err == nil {
+		return conn, nil
+	}
+	// Auto-detect error 3159: server requires TLS — upgrade and remember for next calls.
+	if driverErr, ok := err.(*mysqldrv.MySQLError); ok && driverErr.Number == 3159 && !cluster.HaveAutoTLS && !cluster.HaveDBTLSCert {
+		cluster.HaveAutoTLS = true
+		conn, err = sqlx.Open("mysql", buildDSN(true))
+		if err != nil {
+			cluster.HaveAutoTLS = false
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo,
+				"Auto-enabled TLS skip-verify for proxy cluster connection (error 3159)")
+		}
+	}
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't get a proxy %s connection: %s", dsn, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Can't get a proxy %s connection: %s", dsn, err)
 	}
 	return conn, err
-
 }
 
 func (prx *Proxy) GetClusterConnection() (*sqlx.DB, error) {
 	cluster := prx.ClusterGroup
-	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
-	dsn := cluster.GetDbUser() + ":" + cluster.GetDbPass() + "@"
-	if cluster.Conf.MonitorWriteHeartbeatCredential != "" {
-		dsn = cluster.Conf.GetDecryptedValue("monitoring-write-heartbeat-credential") + "@"
+
+	buildDSN := func(tls bool) string {
+		params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
+		if tls {
+			params += ConstTLSSkipVerify
+		}
+		creds := cluster.GetDbUser() + ":" + cluster.GetDbPass()
+		if cluster.Conf.MonitorWriteHeartbeatCredential != "" {
+			creds = cluster.Conf.GetDecryptedValue("monitoring-write-heartbeat-credential")
+		}
+		dsn := creds + "@"
+		if prx.Host != "" {
+			if prx.Tunnel {
+				dsn += "tcp(localhost:" + strconv.Itoa(prx.TunnelWritePort) + ")/" + params
+			} else {
+				dsn += "tcp(" + prx.Host + ":" + strconv.Itoa(prx.WritePort) + ")/" + params
+			}
+		}
+		return dsn
 	}
 
-	if prx.Host != "" {
-		if prx.Tunnel {
-			dsn += "tcp(localhost:" + strconv.Itoa(prx.TunnelWritePort) + ")/" + params
+	conn, err := sqlx.Open("mysql", buildDSN(cluster.HaveAutoTLS || cluster.HaveDBTLSCert))
+	if err == nil {
+		return conn, nil
+	}
+	// Auto-detect error 3159: server requires TLS — upgrade and remember for next calls.
+	if driverErr, ok := err.(*mysqldrv.MySQLError); ok && driverErr.Number == 3159 && !cluster.HaveAutoTLS && !cluster.HaveDBTLSCert {
+		cluster.HaveAutoTLS = true
+		conn, err = sqlx.Open("mysql", buildDSN(true))
+		if err != nil {
+			cluster.HaveAutoTLS = false
 		} else {
-			dsn += "tcp(" + prx.Host + ":" + strconv.Itoa(prx.WritePort) + ")/" + params
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo,
+				"Auto-enabled TLS skip-verify for proxy connection %s (error 3159)", prx.Host)
 		}
 	}
-	return sqlx.Open("mysql", dsn)
-
+	return conn, err
 }
 
 func (proxy *Proxy) GetJanitorWeight() string {
