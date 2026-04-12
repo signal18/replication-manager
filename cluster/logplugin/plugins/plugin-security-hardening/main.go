@@ -231,9 +231,10 @@ func main() {
 	// strict_password_validation=ON AND (simple_password_check OR cracklib) is loaded.
 	// password_reuse_check (SEC0115) is a separate complementary requirement.
 	if req.ServerVersion.Flavor == "MariaDB" {
+		// isOn handles both ON/OFF and 1/0 representations — information_schema can
+		// return "1" instead of "ON" for boolean variables on some MariaDB versions.
 		strictVal := strings.ToUpper(strings.TrimSpace(v["strict_password_validation"]))
-		// Default for strict_password_validation is OFF when the variable is absent.
-		strictOn := strictVal == "ON"
+		strictOn := strictVal == "ON" || strictVal == "1"
 
 		_, hasSimple   := v["simple_password_check_minimal_length"]
 		_, hasCracklib := v["cracklib_password_check_dictionary"]

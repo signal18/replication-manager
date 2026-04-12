@@ -52,39 +52,57 @@ func main() {
 		}
 	}
 
+	// isOn handles both ON/OFF and 1/0 representations of boolean variables.
+	// MariaDB's information_schema.global_variables can return "1" instead of "ON"
+	// for some boolean variables depending on version and variable type.
+	isOn := func(key string) bool {
+		val := strings.ToUpper(strings.TrimSpace(get(key)))
+		return val == "ON" || val == "1"
+	}
+
 	// HasStrongPwd: password validation plugin is active and enforced.
 	//
-	// MySQL: validate_password / validate_password_policy must be active.
+	// MySQL: validate_password plugin (5.x) or component (8.0+) must be loaded.
+	//        Detected via presence of validate_password_policy (plugin, underscore)
+	//        or validate_password.policy (component, dot).
 	// MariaDB: strict_password_validation=ON AND at least one complexity plugin
 	//          (simple_password_check OR cracklib_password_check) must be loaded.
-	//          The characteristic variable for each plugin is present in SHOW GLOBAL
-	//          VARIABLES only when the plugin is loaded.
+	//          Plugin presence is detected via characteristic system variables that
+	//          only appear in SHOW GLOBAL VARIABLES when the plugin is loaded.
+	//          mysql_native_password accounts are intentionally NOT penalised here —
+	//          auth plugin strength is a separate concern from password policy enforcement.
 	var validatePwd bool
 	if req.ServerVersion.Flavor == "MariaDB" {
-		strictOn := strings.ToUpper(get("strict_password_validation")) == "ON"
 		_, hasSimple   := v["simple_password_check_minimal_length"]
 		_, hasCracklib := v["cracklib_password_check_dictionary"]
-		validatePwd = strictOn && (hasSimple || hasCracklib)
+		validatePwd = isOn("strict_password_validation") && (hasSimple || hasCracklib)
 	} else {
 		// MySQL 5.x plugin: exposes validate_password_policy (underscore)
 		// MySQL 8.0+ component: exposes validate_password.policy (dot)
-		// Both are absent when the plugin/component is not loaded.
 		_, hasPlugin    := v["validate_password_policy"]
 		_, hasComponent := v["validate_password.policy"]
 		validatePwd = hasPlugin || hasComponent
 	}
-	// Also fail if any non-locked account uses a weak plugin
-	weakFound := false
-	for _, u := range req.DatabaseUsers {
-		if u.AccountLocked || socketPlugins[strings.ToLower(u.Plugin)] {
-			continue
+
+	// HasStrongPwd for MariaDB is purely about the password validation plugin.
+	// For MySQL we also require that no non-locked account uses a legacy weak-auth
+	// plugin, since validate_password + caching_sha2 are designed to go together.
+	var hasStrongPwd bool
+	if req.ServerVersion.Flavor == "MariaDB" {
+		hasStrongPwd = validatePwd
+	} else {
+		weakFound := false
+		for _, u := range req.DatabaseUsers {
+			if u.AccountLocked || socketPlugins[strings.ToLower(u.Plugin)] {
+				continue
+			}
+			if !strongPlugins[strings.ToLower(u.Plugin)] {
+				weakFound = true
+				break
+			}
 		}
-		if !strongPlugins[strings.ToLower(u.Plugin)] {
-			weakFound = true
-			break
-		}
+		hasStrongPwd = validatePwd && !weakFound
 	}
-	hasStrongPwd := validatePwd && !weakFound
 
 	// HasParsecPlugins: at least one account uses parsec
 	hasParsec := false
