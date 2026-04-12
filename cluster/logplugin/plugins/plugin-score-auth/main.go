@@ -124,7 +124,7 @@ func main() {
 	checks := []wire.ScoreCheck{
 		{Tag: "NoEmptyPassword", Pass: noEmpty, Detail: emptyDetail},
 		{Tag: "HasStrongPwd", Pass: hasStrongPwd,
-			Detail: fmt.Sprintf("validate_password=%s weak_accounts=%v", get("validate_password"), weakFound)},
+			Detail: fmt.Sprintf("validate_password=%s strict_password_validation=%s", get("validate_password"), get("strict_password_validation"))},
 		{Tag: "HasParsecPlugins", Pass: hasParsec, Detail: "parsec plugin user found"},
 		{Tag: "HasPasswordRotation", Pass: hasRotation,
 			Detail: fmt.Sprintf("default_password_lifetime=%d", lifetime)},
