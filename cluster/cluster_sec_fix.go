@@ -136,6 +136,30 @@ var secTagMap = map[string]secTagEntry{
 			"Prevents users from immediately reusing old passwords.",
 		Risk: "safe",
 	},
+	// SEC0116 — MySQL: validate_password plugin/component not loaded.
+	// Same pwdchecksimple tag as MariaDB — the compliance module handles the flavor
+	// difference (installs validate_password for MySQL, simple_password_check for MariaDB).
+	// MySQL 5.6+: plugin (INSTALL PLUGIN ... SONAME). MySQL 8.0+: component (INSTALL COMPONENT).
+	"SEC0116": {
+		Action: "add_tag",
+		Tag:    "pwdchecksimple",
+		Description: "Add 'pwdchecksimple' tag — deploys validate_password configuration for MySQL " +
+			"(MySQL 5.6+: plugin via INSTALL PLUGIN; MySQL 8.0+: component via INSTALL COMPONENT). " +
+			"The compliance module handles the flavor difference automatically.",
+		Risk: "safe",
+	},
+	// SEC0117 — MySQL 8.0+: password_history=0 and password_reuse_interval=0.
+	// Same pwdcheckreuse tag as MariaDB — the compliance module deploys the appropriate
+	// my.cnf settings for MySQL (password_history / password_reuse_interval) vs MariaDB
+	// (INSTALL SONAME 'password_reuse_check').
+	"SEC0117": {
+		Action: "add_tag",
+		Tag:    "pwdcheckreuse",
+		Description: "Add 'pwdcheckreuse' tag — deploys password_history and password_reuse_interval " +
+			"settings for MySQL 8.0+ to prevent immediate password reuse. " +
+			"The compliance module handles the flavor difference automatically.",
+		Risk: "safe",
+	},
 	// fset_name: mariadb.security.keyfileencrypt
 	// All encryption variables are read-only — no mariadb_command SQL runs.
 	// Config is deployed and a restart cookie is set; the monitoring loop
@@ -218,6 +242,8 @@ var autoFixable = map[string]bool{
 	"SEC0113": true, // simple_password_check (MariaDB 10.1+)
 	"SEC0114": true, // cracklib_password_check (MariaDB 10.1+, requires cracklib OS package)
 	"SEC0115": true, // password_reuse_check (MariaDB 10.7+)
+	"SEC0116": true, // validate_password plugin/component not loaded (MySQL — same pwdchecksimple tag)
+	"SEC0117": true, // password_history + password_reuse_interval both 0 (MySQL 8.0+ — same pwdcheckreuse tag)
 }
 
 // GetRemediationPlan assembles the current remediation plan from all open security findings.
@@ -344,6 +370,8 @@ var socketPlugins = map[string]bool{
 //	SEC0113 — add pwdchecksimple tag   (simple_password_check, MariaDB 10.1+)
 //	SEC0114 — add pwdcheckcracklib tag (cracklib_password_check, MariaDB 10.1+, requires cracklib OS lib)
 //	SEC0115 — add pwdcheckreuse tag    (password_reuse_check, MariaDB 10.7+)
+//	SEC0116 — add pwdchecksimple tag   (validate_password, MySQL 5.6+ — same tag, module handles flavor)
+//	SEC0117 — add pwdcheckreuse tag    (password_history/reuse_interval, MySQL 8.0+ — same tag)
 func (cluster *Cluster) FixSecState(errKey string, preferredTag ...string) error {
 	switch errKey {
 	case "SEC0100":
@@ -378,6 +406,14 @@ func (cluster *Cluster) FixSecState(errKey string, preferredTag ...string) error
 	case "SEC0115":
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"security remediation SEC0115: adding pwdcheckreuse tag (dynamic INSTALL SONAME, no restart required)")
+		return cluster.installPasswordPlugin("pwdcheckreuse")
+	case "SEC0116":
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"security remediation SEC0116: adding pwdchecksimple tag (MySQL validate_password, compliance module handles flavor)")
+		return cluster.installPasswordPlugin("pwdchecksimple")
+	case "SEC0117":
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"security remediation SEC0117: adding pwdcheckreuse tag (MySQL password_history/reuse_interval, compliance module handles flavor)")
 		return cluster.installPasswordPlugin("pwdcheckreuse")
 	default:
 		return fmt.Errorf("no automated fix available for %s", errKey)
@@ -443,51 +479,73 @@ func (cluster *Cluster) fixNoPasswordUsers() error {
 	return nil
 }
 
-// pwdPluginSpec maps tag names to their SONAME library and minimum MariaDB version.
-// The mariadb_command in the compliance cnf file already runs INSTALL SONAME; this
-// map is used only for the per-server version gate in installPasswordPlugin.
+// pwdPluginSpec maps tag names to their minimum supported version per flavor.
+// The compliance cnf file handles the actual install command (INSTALL SONAME for
+// MariaDB, INSTALL PLUGIN/COMPONENT for MySQL); this map is used only for the
+// per-server version gate in installPasswordPlugin.
+//
+// MySQL version gates:
+//   pwdchecksimple  → MySQL 5.6+ (validate_password plugin/component)
+//   pwdcheckreuse   → MySQL 8.0+ (password_history / password_reuse_interval built-in)
+//   pwdcheckcracklib → MariaDB only (no MySQL equivalent)
 var pwdPluginSpec = map[string]struct {
-	soname   string
-	minMajor int
-	minMinor int
+	mariaMinMajor, mariaMinMinor int // MariaDB minimum (0 = not supported)
+	mysqlMinMajor, mysqlMinMinor int // MySQL minimum   (0 = not supported)
 }{
-	"pwdchecksimple":   {soname: "simple_password_check", minMajor: 10, minMinor: 1},
-	"pwdcheckcracklib": {soname: "cracklib_password_check", minMajor: 10, minMinor: 1},
-	"pwdcheckreuse":    {soname: "password_reuse_check", minMajor: 10, minMinor: 7},
+	"pwdchecksimple":   {mariaMinMajor: 10, mariaMinMinor: 1, mysqlMinMajor: 5, mysqlMinMinor: 6},
+	"pwdcheckcracklib": {mariaMinMajor: 10, mariaMinMinor: 1, mysqlMinMajor: 0, mysqlMinMinor: 0},
+	"pwdcheckreuse":    {mariaMinMajor: 10, mariaMinMinor: 7, mysqlMinMajor: 8, mysqlMinMinor: 0},
 }
 
-// installPasswordPlugin version-gates the tag before applying it.
-// Servers below the minimum version are skipped with a warning so they don't
-// receive a plugin_load_add for a library that doesn't exist on that release.
-// Servers that meet the requirement get the tag applied with dynamic=true, which
-// deploys plugin_load_add to my.cnf (persistence) and runs INSTALL SONAME
-// immediately via the mariadb_command embedded in the compliance cnf file.
+// installPasswordPlugin version-gates the tag per server flavor before applying it.
+// Servers below the minimum version (or of an unsupported flavor) are skipped with a
+// warning.  Returns an error only when ALL reachable servers were skipped.
+// AddDBTag with dynamic=true deploys the cnf file and runs the install command
+// embedded in the compliance cnf (mariadb_command for MariaDB; the equivalent for MySQL).
 func (cluster *Cluster) installPasswordPlugin(tag string) error {
 	spec := pwdPluginSpec[tag]
 
 	allSkipped := true
 	for _, srv := range cluster.Servers {
-		if srv == nil || srv.IsDown() || !srv.IsMariaDB() {
+		if srv == nil || srv.IsDown() {
 			continue
 		}
 		maj, min := srv.DBVersion.Major, srv.DBVersion.Minor
-		if maj < spec.minMajor || (maj == spec.minMajor && min < spec.minMinor) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-				"password plugin %s: skipping %s — requires MariaDB %d.%d+, server is %d.%d",
-				tag, srv.URL, spec.minMajor, spec.minMinor, maj, min)
-			continue
+		if srv.IsMariaDB() {
+			if spec.mariaMinMajor == 0 {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"password plugin %s: skipping %s — tag has no MariaDB equivalent", tag, srv.URL)
+				continue
+			}
+			if maj < spec.mariaMinMajor || (maj == spec.mariaMinMajor && min < spec.mariaMinMinor) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"password plugin %s: skipping %s — requires MariaDB %d.%d+, server is %d.%d",
+					tag, srv.URL, spec.mariaMinMajor, spec.mariaMinMinor, maj, min)
+				continue
+			}
+		} else {
+			if spec.mysqlMinMajor == 0 {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"password plugin %s: skipping %s — tag has no MySQL equivalent", tag, srv.URL)
+				continue
+			}
+			if maj < spec.mysqlMinMajor || (maj == spec.mysqlMinMajor && min < spec.mysqlMinMinor) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"password plugin %s: skipping %s — requires MySQL %d.%d+, server is %d.%d",
+					tag, srv.URL, spec.mysqlMinMajor, spec.mysqlMinMinor, maj, min)
+				continue
+			}
 		}
 		allSkipped = false
 	}
 
 	if allSkipped {
-		return fmt.Errorf("password plugin %s: no servers meet the minimum version requirement (MariaDB %d.%d+)",
-			tag, spec.minMajor, spec.minMinor)
+		return fmt.Errorf("password plugin %s: no servers meet the minimum version requirement", tag)
 	}
 
-	// AddDBTag with dynamic=true deploys the cnf and runs INSTALL SONAME on all
+	// AddDBTag with dynamic=true deploys the cnf and runs the install command on all
 	// reachable servers. Servers below the version threshold logged above will still
-	// receive the cnf but INSTALL SONAME will fail gracefully (plugin not found).
+	// receive the cnf but the install command will fail gracefully.
 	cluster.AddDBTag(tag, true)
 	return nil
 }

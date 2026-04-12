@@ -66,9 +66,12 @@ func main() {
 		_, hasCracklib := v["cracklib_password_check_dictionary"]
 		validatePwd = strictOn && (hasSimple || hasCracklib)
 	} else {
-		validatePwd = strings.ToUpper(get("validate_password")) == "ON" ||
-			get("validate_password_policy") != "" ||
-			strings.ToUpper(get("validate_password_plugin")) == "ON"
+		// MySQL 5.x plugin: exposes validate_password_policy (underscore)
+		// MySQL 8.0+ component: exposes validate_password.policy (dot)
+		// Both are absent when the plugin/component is not loaded.
+		_, hasPlugin    := v["validate_password_policy"]
+		_, hasComponent := v["validate_password.policy"]
+		validatePwd = hasPlugin || hasComponent
 	}
 	// Also fail if any non-locked account uses a weak plugin
 	weakFound := false

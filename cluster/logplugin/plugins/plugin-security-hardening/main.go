@@ -10,6 +10,11 @@
 //	SEC0106  skip_name_resolve=OFF — DNS lookups enabled; hostname spoofing possible
 //	SEC0107  Anonymous user account exists ('') — anyone can connect without a username
 //	SEC0108  User with wildcard host '%' and elevated privilege (SUPER/ADMIN/ALL)
+//	SEC0113  simple_password_check not loaded or not enforced       (MariaDB only)
+//	SEC0114  cracklib_password_check not loaded or not enforced     (MariaDB only)
+//	SEC0115  password_reuse_check not loaded or not enforced        (MariaDB only)
+//	SEC0116  validate_password plugin/component not loaded          (MySQL only)
+//	SEC0117  password_history and password_reuse_interval both 0    (MySQL 8.0+ only)
 //
 // All findings use Severity "SECURITY" so they are visually distinct from
 // operational WARNING/ERROR states in the dashboard.
@@ -23,6 +28,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/signal18/replication-manager/cluster/logplugin/plugins/wire"
@@ -318,6 +324,56 @@ func main() {
 				ErrKey:      "SEC0115",
 				Severity:    "SECURITY",
 				Description: desc,
+			})
+		}
+	}
+
+	// SEC0116 — validate_password plugin/component not loaded (MySQL only)
+	//
+	// MySQL 5.x uses the validate_password plugin (INSTALL PLUGIN ... SONAME).
+	// MySQL 8.0+ uses the validate_password component (INSTALL COMPONENT).
+	// The two differ in variable naming:
+	//   plugin    → validate_password_policy   (underscore)
+	//   component → validate_password.policy   (dot)
+	// Unlike MariaDB there is no strict_password_validation gate — the plugin/
+	// component always enforces once loaded.
+	if req.ServerVersion.Flavor != "MariaDB" {
+		_, hasPlugin    := v["validate_password_policy"]   // MySQL 5.x plugin
+		_, hasComponent := v["validate_password.policy"]   // MySQL 8.0+ component
+		if !hasPlugin && !hasComponent {
+			findings = append(findings, wire.Finding{
+				ErrKey:   "SEC0116",
+				Severity: "SECURITY",
+				Description: fmt.Sprintf(
+					"Server %s: validate_password plugin/component is not loaded. "+
+						"Without it, any password — including empty ones — is accepted. "+
+						"MySQL 5.x: INSTALL PLUGIN validate_password SONAME 'validate_password.so'; "+
+						"MySQL 8.0+: INSTALL COMPONENT 'file://component_validate_password'.",
+					req.ServerURL),
+			})
+		}
+	}
+
+	// SEC0117 — password reuse not restricted (MySQL 8.0+ only)
+	//
+	// MySQL 8.0 introduced server-level password history controls:
+	//   password_history         — number of recent passwords that cannot be reused (0 = disabled)
+	//   password_reuse_interval  — days before a password can be reused (0 = disabled)
+	// Both being 0 means users can immediately reuse the same password.
+	// These are my.cnf / SET PERSIST variables — no plugin required.
+	if req.ServerVersion.Flavor != "MariaDB" && req.ServerVersion.Major >= 8 {
+		history, _  := strconv.Atoi(strings.TrimSpace(v["password_history"]))
+		interval, _ := strconv.Atoi(strings.TrimSpace(v["password_reuse_interval"]))
+		if history == 0 && interval == 0 {
+			findings = append(findings, wire.Finding{
+				ErrKey:   "SEC0117",
+				Severity: "SECURITY",
+				Description: fmt.Sprintf(
+					"Server %s: password reuse is not restricted (password_history=0 and "+
+						"password_reuse_interval=0). Users can immediately reuse old passwords. "+
+						"Set password_history > 0 or password_reuse_interval > 0 in my.cnf "+
+						"(or use SET PERSIST on MySQL 8.0+).",
+					req.ServerURL),
 			})
 		}
 	}
