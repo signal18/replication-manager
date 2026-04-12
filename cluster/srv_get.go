@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -1065,6 +1066,22 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 
 	}
 	conn, err := sqlx.Connect("mysql", server.DSN)
+	if err != nil && !server.ClusterGroup.HaveDBTLSCert && !server.ForceTLSSkipVerify {
+		if driverErr, ok := err.(*mysql.MySQLError); ok && driverErr.Number == 3159 {
+			// Server has require_secure_transport=ON but we connected without SSL.
+			// Auto-upgrade to skip-verify TLS and persist so future connections skip this retry.
+			server.ForceTLSSkipVerify = true
+			server.SetDSN()
+			conn, err = sqlx.Connect("mysql", server.DSN)
+			if err != nil {
+				server.ForceTLSSkipVerify = false
+				server.SetDSN()
+			} else {
+				server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Auto-enabled TLS skip-verify for %s (require_secure_transport=ON detected)", server.URL)
+			}
+			return conn, err
+		}
+	}
 	if err != nil && server.ClusterGroup.HaveDBTLSCert {
 		// Possible can't connect because of SSL key rotation try old key until server rebooted or key reloaded
 		server.TLSConfigUsed = ConstTLSOldConfig

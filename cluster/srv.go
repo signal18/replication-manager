@@ -197,6 +197,7 @@ type ServerMonitor struct {
 	PostgressDB                 string                     `json:"postgressDB"`
 	TLSConfigUsed               string                     `json:"tlsConfigUsed"` //used to track TLS config during key rotation
 	LastTLSConfig               string                     `json:"lastTLSConfig"` //used to track last working TLS config
+	ForceTLSSkipVerify          bool                       `json:"forceTLSSkipVerify"` // auto-detected when server returns error 3159 (require_secure_transport=ON)
 	SSTPort                     string                     `json:"sstPort"`       //used to send data to dbjobs
 	Agent                       string                     `json:"agent"`         //used to provision service in orchestrator
 	BinaryLogFiles              *dbhelper.BinaryLogMetaMap `json:"binaryLogFiles"`
@@ -315,6 +316,7 @@ const (
 	ConstTLSCurrentConfig     string = "&tls=tlsconfig"
 	ConstTLSCurrentConfigName string = "tlsconfig"
 	ConstTLSOldConfigName     string = "tlsconfigold"
+	ConstTLSSkipVerify        string = "&tls=skip-verify"
 )
 
 /* Initializes a server object compute if spider node*/
