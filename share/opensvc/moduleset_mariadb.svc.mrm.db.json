@@ -1,26 +1,4 @@
 {
-    "modulesets": [
-        {
-            "modules": [
-                {
-                    "autofix": false,
-                    "modset_mod_name": "mariadb.svc.mrm.db.cnf"
-                }
-            ],
-            "rulesets": [
-                "mariadb.svc.mrm.db.cnf"
-            ],
-            "modset_name": "mariadb.svc.mrm.db.cnf",
-            "modulesets": [],
-            "publications": [
-                "replication-manager"
-            ],
-            "id": 351,
-            "responsibles": [
-                "replication-manager"
-            ]
-        }
-    ],
     "filtersets": [
         {
             "fset_stats": false,
@@ -3428,16 +3406,16 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_pwdchecksimple.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'simple_password_check';\\n# mariadb_default: UNINSTALL SONAME 'simple_password_check';\\n\\n\\n[mariadb]\\nplugin_load_add=simple_password_check\"}",
-                    "var_updated": "2026-04-11 13:47:27",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_pwdchecksimple.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'simple_password_check';SET GLOBAL strict_password_validation=ON;\\n# mariadb_default: UNINSTALL SONAME 'simple_password_check';\\n# mysql_command: /*!80001 INSTALL COMPONENT 'file://component_validate_password'*/ ; INSTALL PLUGIN validate_password SONAME 'validate_password.so'; SET GLOBAL validate_password.policy = MEDIUM; SET GLOBAL validate_password.length = 8; SET GLOBAL validate_password.mixed_case_count = 1; SET GLOBAL validate_password.number_count = 1 ; SET GLOBAL validate_password.special_char_count = 1;\\n\\n[mariadb]\\nplugin_load_add=simple_password_check\\nloose_strict_password_validation=ON\\n\\n[mysqld]\\nplugin-load-add=validate_password\\nloose_validate_password.policy = MEDIUM\\nloose_validate_password.length = 8\\nloose_validate_password.mixed_case_count = 1\\nloose_validate_password.number_count = 1\\nloose_validate_password.special_char_count = 1\"}",
+                    "var_updated": "2026-04-12 16:04:16",
                     "var_name": "db_cnf_sec_with_checkpwdsimple",
                     "id": 6077
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_pwdcheckcracklib.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'cracklib_password_check';\\n# mariadb_default: UNINSTALL SONAME 'cracklib_password_check';\\n\\n[mariadb]\\nplugin_load_add=cracklib_password_check\"}",
-                    "var_updated": "2026-04-11 13:47:07",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_pwdcheckcracklib.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'cracklib_password_check'; SET GLOBAL strict_password_validation=ON;\\n# mariadb_default: UNINSTALL SONAME 'cracklib_password_check';\\n\\n[mariadb]\\nplugin_load_add=cracklib_password_check\\nstrict_password_validation=ON\\n\"}",
+                    "var_updated": "2026-04-12 15:07:15",
                     "var_name": "db_cnf_sec_with_checkpwdcracklib",
                     "id": 6078
                 },
@@ -4276,8 +4254,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_pwdcheckreuse.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'password_reuse_check';\\n# mariadb_default: UNINSTALL SONAME 'password_reuse_check';\\n\\n\\n[mariadb]\\nplugin_load_add=password_reuse_check\"}",
-                    "var_updated": "2026-04-11 13:49:06",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_pwdcheckreuse.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'password_reuse_check';SET GLOBAL strict_password_validation=ON;\\n# mariadb_default: UNINSTALL SONAME 'password_reuse_check';\\n# mysql_command: /*!80001 password_reuse_interval=365*/; /*!80001 SET GLOBAL password_history=5*/;\\n\\n[mariadb]\\nplugin_load_add=password_reuse_check\\nloose_strict_password_validation=ON\\n\\n[mysqld]\\nloose_password_history=5\\nloose_password_reuse_interval = 365\\n\"}",
+                    "var_updated": "2026-04-12 16:03:28",
                     "var_name": "db_cnf_sec_with_checkpwdreuse",
                     "id": 6359
                 }
