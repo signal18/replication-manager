@@ -1146,6 +1146,7 @@ type SecurityScore struct {
 	HasParsecPlugins    bool   `json:"hasParsecPlugins"`
 	HasPasswordRotation bool   `json:"hasPasswordRotation"`
 	NoWeakAuthPlugin    bool   `json:"noWeakAuthPlugin"`
+	NoHostnameGrants    bool   `json:"noHostnameGrants"`
 	NoClearPwdConfigs   bool   `json:"noClearPwdConfigs"`
 	NoClearPwdHistory   bool   `json:"noClearPwdHistory"`
 	NoClearPwdBinlogs   bool   `json:"noClearPwdBinlogs"`
@@ -1172,6 +1173,7 @@ func (s *SecurityScore) ApplyCheck(tag string, pass bool) {
 	case "HasParsecPlugins":   s.HasParsecPlugins = pass
 	case "HasPasswordRotation":s.HasPasswordRotation = pass
 	case "NoWeakAuthPlugin":   s.NoWeakAuthPlugin = pass
+	case "NoHostnameGrants":   s.NoHostnameGrants = pass
 	case "NoClearPwdConfigs":  s.NoClearPwdConfigs = pass
 	case "NoClearPwdHistory":  s.NoClearPwdHistory = pass
 	case "NoClearPwdBinlogs":  s.NoClearPwdBinlogs = pass
@@ -1185,7 +1187,7 @@ func (s *SecurityScore) Compute() {
 		s.HasSSL, s.HasZeroSSL, s.HasTableEncryption, s.HasBinlogEncryption,
 		s.HasTmpEncryption, s.HasBackupEncryption, s.HasAuditPlugins,
 		s.NoEmptyPassword, s.HasPrepareStatement, s.HasStrongPwd, s.HasProxies,
-		s.HasParsecPlugins, s.HasPasswordRotation, s.NoWeakAuthPlugin, s.NoClearPwdConfigs,
+		s.HasParsecPlugins, s.HasPasswordRotation, s.NoWeakAuthPlugin, s.NoHostnameGrants, s.NoClearPwdConfigs,
 		s.NoClearPwdHistory, s.NoClearPwdBinlogs, s.HasLastLTS,
 	}
 	passed := 0

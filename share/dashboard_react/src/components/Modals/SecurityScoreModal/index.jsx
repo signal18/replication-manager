@@ -12,7 +12,7 @@ import { useTheme } from '../../../ThemeProvider'
 import { clusterService } from '../../../services/clusterService'
 import { showSuccessToast, showErrorToast } from '../../../redux/toastSlice'
 
-// Label map for the 17 security check tags
+// Label map for security check tags — order controls display order in the grid.
 const CHECK_LABELS = {
   hasSSL:              'SSL/TLS transport encryption',
   hasZeroSSL:          'Require secure transport (zero plain-text)',
@@ -22,11 +22,13 @@ const CHECK_LABELS = {
   hasBackupEncryption: 'Backup encryption',
   hasAuditPlugins:     'Audit plugin active',
   noEmptyPassword:     'No empty-password accounts',
-  hasPrepareStatement: 'Prepared statements supported',
+  noWeakAuthPlugin:    'No weak auth plugin (mysql_native_password / old_password)',
   hasStrongPwd:        'Strong password validation plugin',
-  hasProxies:          'Proxy layer configured',
-  hasParsecPlugins:    'PARSEC authentication (MariaDB 11.6+)',
   hasPasswordRotation: 'Password rotation (default_password_lifetime > 0)',
+  hasParsecPlugins:    'PARSEC authentication (MariaDB 11.6+)',
+  hasPrepareStatement: 'Prepared statements supported',
+  hasProxies:          'Proxy layer configured',
+  noHostnameGrants:    'No DNS hostname grants (IP-based grants only)',
   noClearPwdConfigs:   'No clear-text passwords in DB server config files',
   noClearPwdHistory:   'No clear-text passwords in shell/MySQL history',
   noClearPwdBinlogs:   'No clear-text passwords in binary logs',
@@ -186,7 +188,7 @@ function SecurityScoreModal({ isOpen, closeModal }) {
         </ModalHeader>
         <ModalCloseButton color='white' />
         <ModalBody overflowY='auto' pb={6}>
-          {/* 17 check grid */}
+          {/* security check grid */}
           <Grid templateColumns={isDesktop ? 'repeat(2, 1fr)' : '1fr'} gap={2} mb={4}>
             {checks.map(({ label, pass }) => (
               <GridItem key={label}>
