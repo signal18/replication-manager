@@ -36,6 +36,15 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+// isMySQLError3159 reports whether err is MySQL/MariaDB error 3159
+// (Connections using insecure transport prohibited; require_secure_transport=ON).
+func isMySQLError3159(err error) bool {
+	if e, ok := err.(*mysql.MyError); ok {
+		return e.Code == 3159
+	}
+	return false
+}
+
 // binlogSyncerTLSConfig returns the TLS config for BinlogSyncerConfig.
 // Returns cluster.tlsconf when full cert material is available, a minimal
 // skip-verify config when the server auto-detected require_secure_transport=ON,
@@ -1089,9 +1098,7 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 			User:     server.User,
 			Password: server.Pass,
 		}
-		if cluster.HaveDBTLSCert {
-			cfg.TLSConfig = cluster.tlsconf
-		}
+		cfg.TLSConfig = server.binlogSyncerTLSConfig()
 
 		syncer := replication.NewBinlogSyncer(cfg)
 		// Start from the beginning of the current file so we see all events
@@ -1100,9 +1107,25 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 		streamer, err := syncer.StartSync(mysql.Position{Name: currentFile, Pos: 4})
 		if err != nil {
 			syncer.Close()
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
-				"[binlog-scan] StartSync failed on %s file %s: %v", server.URL, currentFile, err)
-			return
+			// If the server requires SSL and we haven't detected it yet via the
+			// monitoring connection, set ForceTLSSkipVerify and retry once.
+			if isMySQLError3159(err) && !server.ForceTLSSkipVerify && !cluster.HaveDBTLSCert {
+				server.ForceTLSSkipVerify = true
+				server.SetDSN()
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlInfo,
+					"[binlog-scan] auto-enabling TLS skip-verify for %s (require_secure_transport=ON)", server.URL)
+				cfg.TLSConfig = server.binlogSyncerTLSConfig()
+				syncer = replication.NewBinlogSyncer(cfg)
+				streamer, err = syncer.StartSync(mysql.Position{Name: currentFile, Pos: 4})
+				if err != nil {
+					syncer.Close()
+				}
+			}
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
+					"[binlog-scan] StartSync failed on %s file %s: %v", server.URL, currentFile, err)
+				return
+			}
 		}
 
 		server.binlogEventSyncer = syncer

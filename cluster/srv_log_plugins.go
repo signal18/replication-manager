@@ -394,7 +394,9 @@ func (cluster *Cluster) CheckLogPlugins() {
 			continue
 		}
 		// Refresh binlog QUERY events before running plugins that inspect them.
-		if cluster.Conf.MonitorBinlogEvents && server.HaveBinlog {
+		// Only scan the master: replicas receive the same events via replication,
+		// so scanning them would produce duplicate findings and waste connections.
+		if cluster.Conf.MonitorBinlogEvents && server.HaveBinlog && cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL {
 			server.ScanBinlogQueryEvents()
 		}
 		server.RunLogPlugins(cluster.pluginSpikeCache)
