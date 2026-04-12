@@ -1083,6 +1083,8 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 					server.Conn.Close()
 					server.Conn = nil
 				}
+				// Propagate to cluster so proxies also enable SSL on their backends.
+				server.ClusterGroup.HaveAutoTLS = true
 				server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Auto-enabled TLS skip-verify for %s (require_secure_transport=ON detected)", server.URL)
 			}
 			return conn, err

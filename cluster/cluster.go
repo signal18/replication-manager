@@ -238,6 +238,7 @@ type Cluster struct {
 	benchmarkType                       string                      `json:"-"`
 	HaveDBTLSCert                       bool                        `json:"haveDBTLSCert" groups:"web"`
 	HaveDBTLSOldCert                    bool                        `json:"haveDBTLSOldCert" groups:"web"`
+	HaveAutoTLS                         bool                        `json:"haveAutoTLS" groups:"web"` // set when any server auto-detected require_secure_transport=ON via error 3159
 	tlsconf                             *tls.Config                 `json:"-"`
 	tlsoldconf                          *tls.Config                 `json:"-"`
 	tunnel                              *ssh.Client                 `json:"-"`

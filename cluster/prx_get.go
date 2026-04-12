@@ -124,7 +124,7 @@ func (proxy *Proxy) GetBindAddressExtraIPV6() string {
 	return ""
 }
 func (proxy *Proxy) GetUseSSL() string {
-	if proxy.ClusterGroup.Configurator.IsFilterInProxyTags("ssl") {
+	if proxy.ClusterGroup.Configurator.IsFilterInProxyTags("ssl") || proxy.ClusterGroup.HaveDBTLSCert || proxy.ClusterGroup.HaveAutoTLS {
 		return "true"
 	}
 	return "false"
