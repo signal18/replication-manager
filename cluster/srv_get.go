@@ -1077,6 +1077,12 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 				server.ForceTLSSkipVerify = false
 				server.SetDSN()
 			} else {
+				// Close the persistent pool (server.Conn) so Ping() replaces it with
+				// this TLS-enabled conn immediately, avoiding further plaintext attempts.
+				if server.Conn != nil {
+					server.Conn.Close()
+					server.Conn = nil
+				}
 				server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Auto-enabled TLS skip-verify for %s (require_secure_transport=ON detected)", server.URL)
 			}
 			return conn, err
