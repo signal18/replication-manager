@@ -52,10 +52,24 @@ func main() {
 		}
 	}
 
-	// HasStrongPwd: validate_password / validate_password_policy active
-	validatePwd := strings.ToUpper(get("validate_password")) == "ON" ||
-		get("validate_password_policy") != "" ||
-		strings.ToUpper(get("validate_password_plugin")) == "ON"
+	// HasStrongPwd: password validation plugin is active and enforced.
+	//
+	// MySQL: validate_password / validate_password_policy must be active.
+	// MariaDB: strict_password_validation=ON AND at least one complexity plugin
+	//          (simple_password_check OR cracklib_password_check) must be loaded.
+	//          The characteristic variable for each plugin is present in SHOW GLOBAL
+	//          VARIABLES only when the plugin is loaded.
+	var validatePwd bool
+	if req.ServerVersion.Flavor == "MariaDB" {
+		strictOn := strings.ToUpper(get("strict_password_validation")) == "ON"
+		_, hasSimple   := v["simple_password_check_minimal_length"]
+		_, hasCracklib := v["cracklib_password_check_dictionary"]
+		validatePwd = strictOn && (hasSimple || hasCracklib)
+	} else {
+		validatePwd = strings.ToUpper(get("validate_password")) == "ON" ||
+			get("validate_password_policy") != "" ||
+			strings.ToUpper(get("validate_password_plugin")) == "ON"
+	}
 	// Also fail if any non-locked account uses a weak plugin
 	weakFound := false
 	for _, u := range req.DatabaseUsers {

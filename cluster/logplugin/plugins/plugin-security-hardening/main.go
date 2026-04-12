@@ -207,30 +207,117 @@ func main() {
 		})
 	}
 
-	// SEC0113 — no password strength validation plugin loaded (MariaDB only)
+	// SEC0113 / SEC0114 / SEC0115 — password strength validation plugins (MariaDB only)
 	//
-	// Checks for the characteristic system variables exposed by each plugin:
-	//   simple_password_check     → simple_password_check_minimal_length
-	//   cracklib_password_check   → cracklib_password_check_dictionary
-	//   password_reuse_check      → password_reuse_check_interval
+	// Each plugin exposes a characteristic system variable when loaded:
+	//   simple_password_check     → simple_password_check_minimal_length   (SEC0113)
+	//   cracklib_password_check   → cracklib_password_check_dictionary     (SEC0114)
+	//   password_reuse_check      → password_reuse_check_interval          (SEC0115)
 	//
-	// These variables only appear in SHOW GLOBAL VARIABLES when the plugin is
-	// loaded.  MySQL uses validate_password instead — checked separately by
-	// plugin-score-auth; this finding is MariaDB-specific.
+	// These variables only appear in SHOW GLOBAL VARIABLES when the plugin is loaded.
+	// MySQL uses validate_password instead — checked separately by plugin-score-auth.
+	//
+	// A state is also opened when strict_password_validation=OFF: in that mode
+	// plugin failures are advisory only (users can still set non-compliant passwords),
+	// so having a plugin loaded but validation not enforced is as bad as no plugin.
+	//
+	// Password validation is considered secured (HasStrongPwd score check) when
+	// strict_password_validation=ON AND (simple_password_check OR cracklib) is loaded.
+	// password_reuse_check (SEC0115) is a separate complementary requirement.
 	if req.ServerVersion.Flavor == "MariaDB" {
+		strictVal := strings.ToUpper(strings.TrimSpace(v["strict_password_validation"]))
+		// Default for strict_password_validation is OFF when the variable is absent.
+		strictOn := strictVal == "ON"
+
 		_, hasSimple   := v["simple_password_check_minimal_length"]
 		_, hasCracklib := v["cracklib_password_check_dictionary"]
 		_, hasReuse    := v["password_reuse_check_interval"]
-		if !hasSimple && !hasCracklib && !hasReuse {
+
+		// SEC0113 — simple_password_check
+		if !hasSimple || !strictOn {
+			var desc string
+			switch {
+			case !hasSimple && !strictOn:
+				desc = fmt.Sprintf(
+					"Server %s: simple_password_check is not loaded and strict_password_validation=OFF "+
+						"— no password complexity is checked or enforced. "+
+						"Install SONAME 'simple_password_check' (MariaDB 10.1+) and set strict_password_validation=ON.",
+					req.ServerURL)
+			case hasSimple && !strictOn:
+				desc = fmt.Sprintf(
+					"Server %s: strict_password_validation=OFF — simple_password_check is loaded "+
+						"but validation failures are advisory only; users can still set non-compliant passwords. "+
+						"Set strict_password_validation=ON to enforce the policy.",
+					req.ServerURL)
+			default:
+				desc = fmt.Sprintf(
+					"Server %s: simple_password_check plugin is not loaded. "+
+						"Without it, passwords have no minimum length or complexity requirements. "+
+						"Install via INSTALL SONAME 'simple_password_check' (MariaDB 10.1+).",
+					req.ServerURL)
+			}
 			findings = append(findings, wire.Finding{
-				ErrKey:   "SEC0113",
-				Severity: "SECURITY",
-				Description: fmt.Sprintf(
-					"Server %s: no password strength validation plugin is loaded "+
-						"(simple_password_check, cracklib_password_check, or password_reuse_check). "+
-						"Without a password plugin any password — including single-character ones — "+
-						"is accepted for new accounts.",
-					req.ServerURL),
+				ErrKey:      "SEC0113",
+				Severity:    "SECURITY",
+				Description: desc,
+			})
+		}
+
+		// SEC0114 — cracklib_password_check
+		if !hasCracklib || !strictOn {
+			var desc string
+			switch {
+			case !hasCracklib && !strictOn:
+				desc = fmt.Sprintf(
+					"Server %s: cracklib_password_check is not loaded and strict_password_validation=OFF "+
+						"— dictionary-based weak passwords are neither detected nor rejected. "+
+						"Requires cracklib OS library. Install SONAME 'cracklib_password_check' (MariaDB 10.1+) and set strict_password_validation=ON.",
+					req.ServerURL)
+			case hasCracklib && !strictOn:
+				desc = fmt.Sprintf(
+					"Server %s: strict_password_validation=OFF — cracklib_password_check is loaded "+
+						"but validation failures are advisory only. Set strict_password_validation=ON.",
+					req.ServerURL)
+			default:
+				desc = fmt.Sprintf(
+					"Server %s: cracklib_password_check plugin is not loaded. "+
+						"Without it, dictionary-based weak passwords are not rejected. "+
+						"Requires cracklib OS library. Install via INSTALL SONAME 'cracklib_password_check' (MariaDB 10.1+).",
+					req.ServerURL)
+			}
+			findings = append(findings, wire.Finding{
+				ErrKey:      "SEC0114",
+				Severity:    "SECURITY",
+				Description: desc,
+			})
+		}
+
+		// SEC0115 — password_reuse_check
+		if !hasReuse || !strictOn {
+			var desc string
+			switch {
+			case !hasReuse && !strictOn:
+				desc = fmt.Sprintf(
+					"Server %s: password_reuse_check is not loaded and strict_password_validation=OFF "+
+						"— password reuse is neither tracked nor rejected. "+
+						"Install SONAME 'password_reuse_check' (MariaDB 10.7+) and set strict_password_validation=ON.",
+					req.ServerURL)
+			case hasReuse && !strictOn:
+				desc = fmt.Sprintf(
+					"Server %s: strict_password_validation=OFF — password_reuse_check is loaded "+
+						"but reuse policy is advisory only. Set strict_password_validation=ON.",
+					req.ServerURL)
+			default:
+				desc = fmt.Sprintf(
+					"Server %s: password_reuse_check plugin is not loaded. "+
+						"Without it, users can immediately reuse old passwords. "+
+						"Install via INSTALL SONAME 'password_reuse_check' (MariaDB 10.7+).",
+					req.ServerURL)
+			}
+			findings = append(findings, wire.Finding{
+				ErrKey:      "SEC0115",
+				Severity:    "SECURITY",
+				Description: desc,
 			})
 		}
 	}

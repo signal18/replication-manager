@@ -9058,6 +9058,9 @@ func (repman *ReplicationManager) handlerMuxSecurityApplyFix(w http.ResponseWrit
 //	SEC0102 — drop compliance tag with_sec_localinfile (SET GLOBAL local_infile=0)
 //	SEC0104 — drop compliance tag with_log_general    (SET GLOBAL general_log=0)
 //	SEC0107 — DROP all anonymous user accounts
+//	SEC0113 — INSTALL SONAME 'simple_password_check'   (MariaDB 10.1+)
+//	SEC0114 — INSTALL SONAME 'cracklib_password_check' (MariaDB 10.1+, requires cracklib OS lib)
+//	SEC0115 — INSTALL SONAME 'password_reuse_check'    (MariaDB 10.7+)
 //
 // @Summary Apply automated fix for a security finding
 // @Tags ClusterSecurity

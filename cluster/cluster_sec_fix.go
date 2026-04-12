@@ -102,6 +102,40 @@ var secTagMap = map[string]secTagEntry{
 		Description: "Add 'audit' tag — installs server_audit.so at runtime and enables audit logging (CONNECT,QUERY,TABLE events to syslog)",
 		Risk:        "safe",
 	},
+	// fset_name: mariadb.security.pwdchecksimple
+	// mariadb_command: INSTALL SONAME 'simple_password_check'
+	// No restart required — plugin loads at runtime. MariaDB 10.1+.
+	"SEC0113": {
+		Action: "add_tag",
+		Tag:    "pwdchecksimple",
+		Description: "Add 'pwdchecksimple' tag — runs INSTALL SONAME 'simple_password_check' " +
+			"immediately (MariaDB 10.1+) and deploys plugin_load_add to my.cnf for persistence. " +
+			"Enforces minimum length, digit, and mixed-case requirements on new passwords.",
+		Risk: "safe",
+	},
+	// fset_name: mariadb.security.pwdcheckcracklib
+	// mariadb_command: INSTALL SONAME 'cracklib_password_check'
+	// No restart required — plugin loads at runtime. MariaDB 10.1+. Requires cracklib OS library.
+	"SEC0114": {
+		Action: "add_tag",
+		Tag:    "pwdcheckcracklib",
+		Description: "Add 'pwdcheckcracklib' tag — runs INSTALL SONAME 'cracklib_password_check' " +
+			"immediately (MariaDB 10.1+) and deploys plugin_load_add to my.cnf for persistence. " +
+			"Requires cracklib OS library (libcracklib2 / cracklib-dicts). " +
+			"INSTALL SONAME will fail silently if the library is absent.",
+		Risk: "safe",
+	},
+	// fset_name: mariadb.security.pwdcheckreuse
+	// mariadb_command: INSTALL SONAME 'password_reuse_check'
+	// No restart required — plugin loads at runtime. MariaDB 10.7+.
+	"SEC0115": {
+		Action: "add_tag",
+		Tag:    "pwdcheckreuse",
+		Description: "Add 'pwdcheckreuse' tag — runs INSTALL SONAME 'password_reuse_check' " +
+			"immediately (MariaDB 10.7+) and deploys plugin_load_add to my.cnf for persistence. " +
+			"Prevents users from immediately reusing old passwords.",
+		Risk: "safe",
+	},
 	// fset_name: mariadb.security.keyfileencrypt
 	// All encryption variables are read-only — no mariadb_command SQL runs.
 	// Config is deployed and a restart cookie is set; the monitoring loop
@@ -179,9 +213,11 @@ var autoFixable = map[string]bool{
 	"SEC0109": true,
 	"SEC0110": true,
 	"SEC0111": true,
-	// Password strength: deploys plugin_load_add via compliance tag + rolling restart.
-	// Multiple tag options (pwdchecksimple / pwdcheckcracklib); UI passes ?tag= to choose.
-	"SEC0113": true,
+	// Password strength plugins: each raises its own finding.
+	// All use INSTALL SONAME at runtime (no restart needed) + plugin_load_add for persistence.
+	"SEC0113": true, // simple_password_check (MariaDB 10.1+)
+	"SEC0114": true, // cracklib_password_check (MariaDB 10.1+, requires cracklib OS package)
+	"SEC0115": true, // password_reuse_check (MariaDB 10.7+)
 }
 
 // GetRemediationPlan assembles the current remediation plan from all open security findings.
@@ -238,37 +274,6 @@ func (cluster *Cluster) GetRemediationPlan() RemediationPlan {
 				Description: "Lock all no-password, non-socket accounts on this server (ACCOUNT LOCK — reversible)",
 				Risk:        "safe",
 			})
-		} else if baseKey == "SEC0113" {
-			// Three mutually exclusive options — operator chooses one.
-			// All three use INSTALL SONAME at runtime (no restart needed for immediate effect)
-			// plus plugin_load_add in my.cnf for persistence across restarts.
-			// Version constraints are enforced at apply time in FixSecState.
-			fixes = append(fixes,
-				RemediationFix{
-					Type: "add_tag",
-					Tag:  "pwdchecksimple",
-					Description: "Add 'pwdchecksimple' tag — runs INSTALL SONAME 'simple_password_check' " +
-						"immediately (MariaDB 10.1+) and deploys plugin_load_add to my.cnf for persistence. " +
-						"Enforces minimum length, digit, and mixed-case requirements on new passwords.",
-					Risk: "safe",
-				},
-				RemediationFix{
-					Type: "add_tag",
-					Tag:  "pwdcheckcracklib",
-					Description: "Add 'pwdcheckcracklib' tag — runs INSTALL SONAME 'cracklib_password_check' " +
-						"immediately (MariaDB 10.1+) and deploys plugin_load_add to my.cnf for persistence. " +
-						"Checks passwords against a cracklib dictionary (requires cracklib OS package).",
-					Risk: "safe",
-				},
-				RemediationFix{
-					Type: "add_tag",
-					Tag:  "pwdcheckreuse",
-					Description: "Add 'pwdcheckreuse' tag — runs INSTALL SONAME 'password_reuse_check' " +
-						"immediately (MariaDB 10.7+) and deploys plugin_load_add to my.cnf for persistence. " +
-						"Prevents users from reusing recent passwords.",
-					Risk: "safe",
-				},
-			)
 		}
 		// SEC0108 (wildcard host) — no automated fix, informational only.
 
@@ -336,9 +341,9 @@ var socketPlugins = map[string]bool{
 //	SEC0110 — add keyfileencrypt tag + rolling restart (binlog encryption)
 //	SEC0111 — add keyfileencrypt tag + rolling restart (tmp encryption)
 //	SEC0112 — add audit tag            (runtime INSTALL SONAME)
-//	SEC0113 — add pwdcheck tag + rolling restart (password strength plugin, MariaDB)
-//	          tag selects which plugin: "pwdchecksimple" (default) or "pwdcheckcracklib"
-//	          Pass tag via the optional second argument or ?tag= query param.
+//	SEC0113 — add pwdchecksimple tag   (simple_password_check, MariaDB 10.1+)
+//	SEC0114 — add pwdcheckcracklib tag (cracklib_password_check, MariaDB 10.1+, requires cracklib OS lib)
+//	SEC0115 — add pwdcheckreuse tag    (password_reuse_check, MariaDB 10.7+)
 func (cluster *Cluster) FixSecState(errKey string, preferredTag ...string) error {
 	switch errKey {
 	case "SEC0100":
@@ -363,19 +368,17 @@ func (cluster *Cluster) FixSecState(errKey string, preferredTag ...string) error
 		go cluster.RollingRestart()
 		return nil
 	case "SEC0113":
-		tag := "pwdchecksimple"
-		if len(preferredTag) > 0 && preferredTag[0] != "" {
-			tag = preferredTag[0]
-		}
-		if _, ok := pwdPluginSpec[tag]; !ok {
-			return fmt.Errorf("SEC0113: unknown tag %q — valid options: pwdchecksimple, pwdcheckcracklib, pwdcheckreuse", tag)
-		}
-		// AddDBTag with dynamic=true deploys the cnf (plugin_load_add for persistence)
-		// AND executes the mariadb_command from the file (INSTALL SONAME — no restart needed).
-		// Version checking is done per-server inside; incompatible servers are skipped.
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"security remediation SEC0113: adding %s tag (dynamic INSTALL SONAME, no restart required)", tag)
-		return cluster.installPasswordPlugin(tag)
+			"security remediation SEC0113: adding pwdchecksimple tag (dynamic INSTALL SONAME, no restart required)")
+		return cluster.installPasswordPlugin("pwdchecksimple")
+	case "SEC0114":
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"security remediation SEC0114: adding pwdcheckcracklib tag (dynamic INSTALL SONAME, requires cracklib OS library)")
+		return cluster.installPasswordPlugin("pwdcheckcracklib")
+	case "SEC0115":
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"security remediation SEC0115: adding pwdcheckreuse tag (dynamic INSTALL SONAME, no restart required)")
+		return cluster.installPasswordPlugin("pwdcheckreuse")
 	default:
 		return fmt.Errorf("no automated fix available for %s", errKey)
 	}
@@ -470,7 +473,7 @@ func (cluster *Cluster) installPasswordPlugin(tag string) error {
 		maj, min := srv.DBVersion.Major, srv.DBVersion.Minor
 		if maj < spec.minMajor || (maj == spec.minMajor && min < spec.minMinor) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-				"SEC0113 %s: skipping %s — requires MariaDB %d.%d+, server is %d.%d",
+				"password plugin %s: skipping %s — requires MariaDB %d.%d+, server is %d.%d",
 				tag, srv.URL, spec.minMajor, spec.minMinor, maj, min)
 			continue
 		}
@@ -478,7 +481,7 @@ func (cluster *Cluster) installPasswordPlugin(tag string) error {
 	}
 
 	if allSkipped {
-		return fmt.Errorf("SEC0113 %s: no servers meet the minimum version requirement (MariaDB %d.%d+)",
+		return fmt.Errorf("password plugin %s: no servers meet the minimum version requirement (MariaDB %d.%d+)",
 			tag, spec.minMajor, spec.minMinor)
 	}
 
