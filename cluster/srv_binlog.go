@@ -12,6 +12,7 @@ package cluster
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,6 +35,21 @@ import (
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 )
+
+// binlogSyncerTLSConfig returns the TLS config for BinlogSyncerConfig.
+// Returns cluster.tlsconf when full cert material is available, a minimal
+// skip-verify config when the server auto-detected require_secure_transport=ON,
+// or nil when plain-text is fine.
+func (server *ServerMonitor) binlogSyncerTLSConfig() *tls.Config {
+	cluster := server.ClusterGroup
+	if cluster.HaveDBTLSCert {
+		return cluster.tlsconf
+	}
+	if server.ForceTLSSkipVerify {
+		return &tls.Config{InsecureSkipVerify: true}
+	}
+	return nil
+}
 
 func (server *ServerMonitor) RefreshBinaryLogs() error {
 	var err error
@@ -110,9 +126,7 @@ func (server *ServerMonitor) RefreshBinlogMetaGoMySQL(meta *dbhelper.BinaryLogMe
 		Password: server.Pass,
 	}
 
-	if cluster.HaveDBTLSCert {
-		cfg.TLSConfig = cluster.tlsconf
-	}
+	cfg.TLSConfig = server.binlogSyncerTLSConfig()
 
 	syncer := replication.NewBinlogSyncer(cfg)
 	defer syncer.Close()
@@ -886,9 +900,7 @@ func (server *ServerMonitor) GetBinlogPositionFromTimestamp(start uint32, end *b
 		Password: server.Pass,
 	}
 
-	if cluster.HaveDBTLSCert {
-		cfg.TLSConfig = cluster.tlsconf
-	}
+	cfg.TLSConfig = server.binlogSyncerTLSConfig()
 
 	syncer := replication.NewBinlogSyncer(cfg)
 	defer syncer.Close()
