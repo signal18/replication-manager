@@ -5,6 +5,7 @@
 //	HasParsecPlugins   — at least one account uses the PARSEC plugin (MariaDB 11.6+)
 //	HasPasswordRotation — default_password_lifetime > 0 (passwords expire)
 //	HasPrepareStatement — server is configured to support prepared statements
+//	NoWeakAuthPlugin   — no non-locked account uses a weak auth plugin (mysql_native_password, mysql_old_password)
 package main
 
 import (
@@ -26,6 +27,11 @@ var strongPlugins = map[string]bool{
 	"ed25519": true, "caching_sha2_password": true,
 	"authentication_fido": true, "parsec": true,
 	"auth_gssapi": true, "gssapi": true,
+}
+
+var weakPlugins = map[string]bool{
+	"mysql_native_password": true,
+	"mysql_old_password":    true,
 }
 
 func main() {
@@ -121,6 +127,22 @@ func main() {
 	maxPS, _ := strconv.Atoi(get("max_prepared_stmt_count"))
 	hasPrepare := maxPS > 0
 
+	// NoWeakAuthPlugin: no non-locked, non-socket account uses a weak auth plugin.
+	// mysql_native_password (SHA-1) and mysql_old_password (DES) are considered weak.
+	// Socket/PAM/GSSAPI accounts are excluded — they delegate auth externally.
+	noWeakAuth := true
+	var weakAuthDetail string
+	for _, u := range req.DatabaseUsers {
+		if u.AccountLocked || socketPlugins[strings.ToLower(u.Plugin)] {
+			continue
+		}
+		if weakPlugins[strings.ToLower(u.Plugin)] {
+			noWeakAuth = false
+			weakAuthDetail = fmt.Sprintf("account '%s'@'%s' uses weak plugin %q", u.User, u.Host, u.Plugin)
+			break
+		}
+	}
+
 	checks := []wire.ScoreCheck{
 		{Tag: "NoEmptyPassword", Pass: noEmpty, Detail: emptyDetail},
 		{Tag: "HasStrongPwd", Pass: hasStrongPwd,
@@ -130,6 +152,7 @@ func main() {
 			Detail: fmt.Sprintf("default_password_lifetime=%d", lifetime)},
 		{Tag: "HasPrepareStatement", Pass: hasPrepare,
 			Detail: fmt.Sprintf("max_prepared_stmt_count=%d", maxPS)},
+		{Tag: "NoWeakAuthPlugin", Pass: noWeakAuth, Detail: weakAuthDetail},
 	}
 
 	json.NewEncoder(os.Stdout).Encode(wire.Response{ScoreChecks: checks})

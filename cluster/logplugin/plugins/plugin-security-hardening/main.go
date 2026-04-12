@@ -15,6 +15,7 @@
 //	SEC0115  password_reuse_check not loaded or not enforced        (MariaDB only)
 //	SEC0116  validate_password plugin/component not loaded          (MySQL only)
 //	SEC0117  password_history and password_reuse_interval both 0    (MySQL 8.0+ only)
+//	SEC0118  skip_name_resolve=ON but hostname-based user grants exist — silent login breakage
 //
 // All findings use Severity "SECURITY" so they are visually distinct from
 // operational WARNING/ERROR states in the dashboard.
@@ -27,6 +28,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -132,7 +134,8 @@ func main() {
 	// spoofing is a real risk — but the description and remediation differ
 	// depending on whether the cluster runs on Docker.
 	if val, ok := v["skip_name_resolve"]; ok {
-		if strings.ToUpper(strings.TrimSpace(val)) == "OFF" {
+		snrVal := strings.ToUpper(strings.TrimSpace(val))
+		if snrVal == "OFF" || snrVal == "0" {
 			var desc string
 			var remediations []wire.Remediation
 			if req.ClusterContext.DockerDeployment {
@@ -211,6 +214,30 @@ func main() {
 					" Restrict to specific hosts or CIDR ranges where possible.",
 				req.ServerURL, key),
 		})
+	}
+
+	// SEC0118 — skip_name_resolve=ON but hostname-based user grants exist
+	//
+	// When skip_name_resolve is enabled, MySQL/MariaDB skips all DNS lookups.
+	// Any account whose Host is a DNS hostname (not an IP, not '%', not 'localhost')
+	// will silently fail every connection attempt — the server never resolves the
+	// hostname to match the connecting client IP.  These grants are effectively dead.
+	snrOnVal := strings.ToUpper(strings.TrimSpace(v["skip_name_resolve"]))
+	if snrOnVal == "ON" || snrOnVal == "1" {
+		for _, u := range req.DatabaseUsers {
+			if isHostname(u.Host) {
+				findings = append(findings, wire.Finding{
+					ErrKey:   "SEC0118",
+					Severity: "SECURITY",
+					Description: fmt.Sprintf(
+						"Server %s: skip_name_resolve=ON but account '%s'@'%s' uses a DNS hostname as"+
+							" host — with DNS resolution disabled this account can never be used to"+
+							" connect. Convert the grant to an IP address:"+
+							" RENAME USER '%s'@'%s' TO '%s'@'<ip>';",
+						req.ServerURL, u.User, u.Host, u.User, u.Host, u.User),
+				})
+			}
+		}
 	}
 
 	// SEC0113 / SEC0114 / SEC0115 — password strength validation plugins (MariaDB only)
@@ -380,6 +407,19 @@ func main() {
 	}
 
 	json.NewEncoder(os.Stdout).Encode(wire.Response{Findings: findings})
+}
+
+// isHostname returns true if host appears to be a DNS hostname rather than
+// an IP address, a wildcard ('%'), or a local alias ('localhost').
+// Accounts with DNS hostname grants silently fail to connect when skip_name_resolve=ON.
+func isHostname(host string) bool {
+	if host == "" || host == "%" || strings.EqualFold(host, "localhost") {
+		return false
+	}
+	if net.ParseIP(host) != nil {
+		return false
+	}
+	return true
 }
 
 func parseList(raw string) map[string]bool {

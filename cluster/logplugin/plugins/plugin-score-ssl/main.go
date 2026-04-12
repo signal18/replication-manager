@@ -44,7 +44,9 @@ func main() {
 		(get("ssl_ca") != "" && get("ssl_cert") != "" && get("ssl_key") != "")
 
 	// HasZeroSSL: require_secure_transport enforces TLS for every connection.
-	hasZeroSSL := upper(get("require_secure_transport")) == "ON"
+	// information_schema can return "1" instead of "ON" on some MariaDB versions.
+	rstVal := upper(get("require_secure_transport"))
+	hasZeroSSL := rstVal == "ON" || rstVal == "1"
 
 	detail := fmt.Sprintf("have_ssl=%s have_openssl=%s tls_version=%q ssl_cert=%q",
 		get("have_ssl"), get("have_openssl"), get("tls_version"), get("ssl_cert"))
