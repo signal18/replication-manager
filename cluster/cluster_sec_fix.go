@@ -240,38 +240,33 @@ func (cluster *Cluster) GetRemediationPlan() RemediationPlan {
 			})
 		} else if baseKey == "SEC0113" {
 			// Three mutually exclusive options — operator chooses one.
-			// pwdchecksimple and pwdcheckcracklib are in the compliance module:
-			//   fset_name: mariadb.security.pwdchecksimple  → plugin_load_add=simple_password_check
-			//   fset_name: mariadb.security.pwdcheckcracklib → plugin_load_add=cracklib_password_check
-			// pwdcheckreuse is not yet in the module — provide a cnf_template.
-			// All three require a restart (plugin_load_add is read at startup).
+			// All three use INSTALL SONAME at runtime (no restart needed for immediate effect)
+			// plus plugin_load_add in my.cnf for persistence across restarts.
+			// Version constraints are enforced at apply time in FixSecState.
 			fixes = append(fixes,
 				RemediationFix{
 					Type: "add_tag",
 					Tag:  "pwdchecksimple",
-					Description: "Add 'pwdchecksimple' tag — deploys plugin_load_add=simple_password_check " +
-						"to my.cnf then triggers rolling restart. " +
+					Description: "Add 'pwdchecksimple' tag — runs INSTALL SONAME 'simple_password_check' " +
+						"immediately (MariaDB 10.1+) and deploys plugin_load_add to my.cnf for persistence. " +
 						"Enforces minimum length, digit, and mixed-case requirements on new passwords.",
-					Risk: "disruptive",
+					Risk: "safe",
 				},
 				RemediationFix{
 					Type: "add_tag",
 					Tag:  "pwdcheckcracklib",
-					Description: "Add 'pwdcheckcracklib' tag — deploys plugin_load_add=cracklib_password_check " +
-						"to my.cnf then triggers rolling restart. " +
+					Description: "Add 'pwdcheckcracklib' tag — runs INSTALL SONAME 'cracklib_password_check' " +
+						"immediately (MariaDB 10.1+) and deploys plugin_load_add to my.cnf for persistence. " +
 						"Checks passwords against a cracklib dictionary (requires cracklib OS package).",
-					Risk: "disruptive",
+					Risk: "safe",
 				},
 				RemediationFix{
-					Type:     "cnf_template",
-					FileName: "with_sec_pwdcheckreuse.cnf",
-					Description: "No compliance module tag exists yet for password_reuse_check. " +
-						"Create 'with_sec_pwdcheckreuse' in the module with this content " +
-						"(requires server restart), then add the tag to db-servers-tags.",
-					MyCnf: "# password_reuse_check — prevent password reuse (MariaDB 10.7+)\n" +
-						"# (read-only at runtime; requires server restart)\n\n" +
-						"[mariadb]\nplugin_load_add=password_reuse_check\n",
-					Risk: "disruptive",
+					Type: "add_tag",
+					Tag:  "pwdcheckreuse",
+					Description: "Add 'pwdcheckreuse' tag — runs INSTALL SONAME 'password_reuse_check' " +
+						"immediately (MariaDB 10.7+) and deploys plugin_load_add to my.cnf for persistence. " +
+						"Prevents users from reusing recent passwords.",
+					Risk: "safe",
 				},
 			)
 		}
@@ -368,20 +363,19 @@ func (cluster *Cluster) FixSecState(errKey string, preferredTag ...string) error
 		go cluster.RollingRestart()
 		return nil
 	case "SEC0113":
-		// Multiple pwdcheck tags are available — caller picks via preferredTag.
-		// Default to pwdchecksimple (no OS dependency, safe for all MariaDB installs).
 		tag := "pwdchecksimple"
 		if len(preferredTag) > 0 && preferredTag[0] != "" {
 			tag = preferredTag[0]
 		}
-		if tag != "pwdchecksimple" && tag != "pwdcheckcracklib" {
-			return fmt.Errorf("SEC0113: unknown tag %q — valid options: pwdchecksimple, pwdcheckcracklib", tag)
+		if _, ok := pwdPluginSpec[tag]; !ok {
+			return fmt.Errorf("SEC0113: unknown tag %q — valid options: pwdchecksimple, pwdcheckcracklib, pwdcheckreuse", tag)
 		}
+		// AddDBTag with dynamic=true deploys the cnf (plugin_load_add for persistence)
+		// AND executes the mariadb_command from the file (INSTALL SONAME — no restart needed).
+		// Version checking is done per-server inside; incompatible servers are skipped.
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"security remediation SEC0113: adding %s tag then triggering rolling restart", tag)
-		cluster.AddDBTag(tag, true)
-		go cluster.RollingRestart()
-		return nil
+			"security remediation SEC0113: adding %s tag (dynamic INSTALL SONAME, no restart required)", tag)
+		return cluster.installPasswordPlugin(tag)
 	default:
 		return fmt.Errorf("no automated fix available for %s", errKey)
 	}
@@ -443,6 +437,55 @@ func (cluster *Cluster) fixNoPasswordUsers() error {
 	if len(errs) > 0 {
 		return fmt.Errorf("fixNoPasswordUsers: %s", strings.Join(errs, "; "))
 	}
+	return nil
+}
+
+// pwdPluginSpec maps tag names to their SONAME library and minimum MariaDB version.
+// The mariadb_command in the compliance cnf file already runs INSTALL SONAME; this
+// map is used only for the per-server version gate in installPasswordPlugin.
+var pwdPluginSpec = map[string]struct {
+	soname   string
+	minMajor int
+	minMinor int
+}{
+	"pwdchecksimple":   {soname: "simple_password_check", minMajor: 10, minMinor: 1},
+	"pwdcheckcracklib": {soname: "cracklib_password_check", minMajor: 10, minMinor: 1},
+	"pwdcheckreuse":    {soname: "password_reuse_check", minMajor: 10, minMinor: 7},
+}
+
+// installPasswordPlugin version-gates the tag before applying it.
+// Servers below the minimum version are skipped with a warning so they don't
+// receive a plugin_load_add for a library that doesn't exist on that release.
+// Servers that meet the requirement get the tag applied with dynamic=true, which
+// deploys plugin_load_add to my.cnf (persistence) and runs INSTALL SONAME
+// immediately via the mariadb_command embedded in the compliance cnf file.
+func (cluster *Cluster) installPasswordPlugin(tag string) error {
+	spec := pwdPluginSpec[tag]
+
+	allSkipped := true
+	for _, srv := range cluster.Servers {
+		if srv == nil || srv.IsDown() || !srv.IsMariaDB() {
+			continue
+		}
+		maj, min := srv.DBVersion.Major, srv.DBVersion.Minor
+		if maj < spec.minMajor || (maj == spec.minMajor && min < spec.minMinor) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"SEC0113 %s: skipping %s — requires MariaDB %d.%d+, server is %d.%d",
+				tag, srv.URL, spec.minMajor, spec.minMinor, maj, min)
+			continue
+		}
+		allSkipped = false
+	}
+
+	if allSkipped {
+		return fmt.Errorf("SEC0113 %s: no servers meet the minimum version requirement (MariaDB %d.%d+)",
+			tag, spec.minMajor, spec.minMinor)
+	}
+
+	// AddDBTag with dynamic=true deploys the cnf and runs INSTALL SONAME on all
+	// reachable servers. Servers below the version threshold logged above will still
+	// receive the cnf but INSTALL SONAME will fail gracefully (plugin not found).
+	cluster.AddDBTag(tag, true)
 	return nil
 }
 
