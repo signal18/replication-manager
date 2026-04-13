@@ -593,8 +593,9 @@ type SnapshotMetadataSummary struct {
 	EncryptionAlgo       string    `json:"encryptionAlgo,omitempty"`
 	EncryptionIV         string    `json:"encryptionIV,omitempty"`
 	EncryptionMAC        string    `json:"encryptionMAC,omitempty"`
-	EncryptionKey        string    `json:"encryptionKey,omitempty"`
-	EncryptionKeyCluster string    `json:"encryptionKeyCluster,omitempty"`
+	EncryptionKey          string    `json:"encryptionKey,omitempty"`
+	EncryptionKeyCluster   string    `json:"encryptionKeyCluster,omitempty"`
+	EncryptionStreamFormat bool      `json:"encryptionStreamFormat,omitempty"` // true when encrypted using stream container format (AEAD per-frame)
 }
 
 type snapshotMetadataCandidate struct {
@@ -642,12 +643,13 @@ func buildSnapshotMetadataSummary(meta *backupmgr.BackupMetadata, method backupm
 		BackupSessionID:      meta.BackupSessionID,
 		ResticSnapshotID:     meta.ResticSnapshotID,
 		ResticBasePath:       strings.TrimSpace(basepath),
-		Encrypted:            meta.Encrypted,
-		EncryptionAlgo:       strings.TrimSpace(meta.EncryptionAlgo),
-		EncryptionIV:         strings.TrimSpace(meta.EncryptionIV),
-		EncryptionMAC:        strings.TrimSpace(meta.EncryptionMAC),
-		EncryptionKey:        strings.TrimSpace(meta.EncryptionKey),
-		EncryptionKeyCluster: strings.TrimSpace(meta.EncryptionKeyCluster),
+		Encrypted:              meta.Encrypted,
+		EncryptionAlgo:         strings.TrimSpace(meta.EncryptionAlgo),
+		EncryptionIV:           strings.TrimSpace(meta.EncryptionIV),
+		EncryptionMAC:          strings.TrimSpace(meta.EncryptionMAC),
+		EncryptionKey:          strings.TrimSpace(meta.EncryptionKey),
+		EncryptionKeyCluster:   strings.TrimSpace(meta.EncryptionKeyCluster),
+		EncryptionStreamFormat: meta.EncryptionStreamFormat,
 	}
 }
 

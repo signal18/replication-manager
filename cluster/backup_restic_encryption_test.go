@@ -42,6 +42,31 @@ func cacheEncryptedSummary(t *testing.T, cluster *Cluster, snapshotID string, en
 	})
 }
 
+// cacheStreamFormatEncryptedSummary stores a stream-format encrypted summary in the cluster's
+// metadata cache. backupTool and backupMethod allow testing different backup type scenarios.
+func cacheStreamFormatEncryptedSummary(t *testing.T, cluster *Cluster, snapshotID, backupTool, backupMethod string) {
+	t.Helper()
+	manager := cluster.getSnapshotMetadataManager()
+	summary := &SnapshotMetadataSummary{
+		Dest:                   "/backups/cluster1/" + backupTool + ".gz",
+		BackupMethod:           backupMethod,
+		BackupTool:             backupTool,
+		BackupLine:             backupmgr.BackupLineDefault,
+		StartTime:              time.Now(),
+		ResticSnapshotID:       snapshotID,
+		ResticBasePath:         "/backups/cluster1",
+		Encrypted:              true,
+		EncryptionKey:          "cloud18-sponsor-user-credentials:v1",
+		EncryptionKeyCluster:   "test-cluster",
+		EncryptionStreamFormat: true,
+	}
+	key := backupMethod + "|default"
+	manager.cache.Update(snapshotID, func(entry *snapshotMetadataCacheEntry) {
+		entry.Status = snapshotMetadataStatusReady
+		entry.Summaries = map[string]*SnapshotMetadataSummary{key: summary}
+	})
+}
+
 // ---- Task 1: SnapshotMetadataSummary encryption fields ----------------------
 
 func TestBuildSnapshotMetadataSummaryPreservesEncryptionFields(t *testing.T) {
@@ -273,5 +298,185 @@ func TestBuildEncryptedRestoreMetaFromSummaryPopulatesFields(t *testing.T) {
 	}
 	if m.Dest != "/target/file.sql.gz" {
 		t.Errorf("unexpected Dest %q", m.Dest)
+	}
+}
+
+// ---- Story 3.7: stream-format strategy matrix --------------------------------
+
+// TestResolveResticReseedStrategyLegacyEncryptedForcesRestore verifies that non-stream-format
+// encrypted snapshots are always forced to the restore strategy (unchanged legacy behavior).
+func TestResolveResticReseedStrategyLegacyEncryptedForcesRestore(t *testing.T) {
+	cluster := newResticEncryptionCluster(t)
+	// Default cacheEncryptedSummary does NOT set EncryptionStreamFormat (legacy format).
+	cacheEncryptedSummary(t, cluster, "snap-legacy-enc", true, "cloud18-sponsor-user-credentials:v1", "test-cluster")
+
+	strategy := resolveResticReseedStrategy("", "logical", "snap-legacy-enc", cluster)
+	if strategy != "restore" {
+		t.Errorf("expected restore for legacy-encrypted snapshot, got %q", strategy)
+	}
+}
+
+// TestResolveResticReseedStrategyStreamFormatMysqldumpSelectsDump verifies that a
+// stream-format encrypted mysqldump snapshot selects the dump strategy (in-flight FrameReader
+// decryption is possible for single-file logical backups).
+func TestResolveResticReseedStrategyStreamFormatMysqldumpSelectsDump(t *testing.T) {
+	cluster := newResticEncryptionCluster(t)
+	cacheStreamFormatEncryptedSummary(t, cluster, "snap-stream-mysqldump", config.ConstBackupLogicalTypeMysqldump, "logical")
+
+	strategy := resolveResticReseedStrategy("", "logical", "snap-stream-mysqldump", cluster)
+	if strategy != "dump" {
+		t.Errorf("expected dump for stream-format encrypted mysqldump snapshot, got %q", strategy)
+	}
+}
+
+// TestResolveResticReseedStrategyStreamFormatPhysicalWithFuseSelectsMount verifies that a
+// stream-format encrypted physical snapshot selects the mount strategy when FUSE is available.
+func TestResolveResticReseedStrategyStreamFormatPhysicalWithFuseSelectsMount(t *testing.T) {
+	cluster := newResticEncryptionCluster(t)
+	// Attach a properly-initialized ResticManager with mount enabled (FUSE available).
+	rm := backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
+	// MountDisabled defaults to false (FUSE available).
+	cluster.ResticManager = rm
+	cacheStreamFormatEncryptedSummary(t, cluster, "snap-stream-physical-fuse", config.ConstBackupPhysicalTypeXtrabackup, "physical")
+
+	strategy := resolveResticReseedStrategy("", "physical", "snap-stream-physical-fuse", cluster)
+	if strategy != "mount" {
+		t.Errorf("expected mount for stream-format encrypted physical snapshot with FUSE, got %q", strategy)
+	}
+}
+
+// TestResolveResticReseedStrategyStreamFormatPhysicalNoFuseFallsBackToRestore verifies that a
+// stream-format encrypted physical snapshot falls back to restore when FUSE is unavailable.
+func TestResolveResticReseedStrategyStreamFormatPhysicalNoFuseFallsBackToRestore(t *testing.T) {
+	cluster := newResticEncryptionCluster(t)
+	// No ResticManager → fuseAvailable = false.
+	cacheStreamFormatEncryptedSummary(t, cluster, "snap-stream-physical-nofuse", config.ConstBackupPhysicalTypeXtrabackup, "physical")
+
+	strategy := resolveResticReseedStrategy("", "physical", "snap-stream-physical-nofuse", cluster)
+	if strategy != "restore" {
+		t.Errorf("expected restore fallback for stream-format encrypted physical snapshot without FUSE, got %q", strategy)
+	}
+}
+
+// TestReseedFromResticDumpAllowsStreamFormatEncrypted verifies that the dump strategy guard
+// does not reject stream-format encrypted snapshots (AEAD frames can be decrypted in-flight).
+func TestReseedFromResticDumpAllowsStreamFormatEncrypted(t *testing.T) {
+	cluster := newResticEncryptionCluster(t)
+	cacheStreamFormatEncryptedSummary(t, cluster, "snap-stream-dump-allow", config.ConstBackupLogicalTypeMysqldump, "logical")
+	// Use a properly-initialized ResticManager so internal mutexes don't panic.
+	cluster.ResticManager = backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
+
+	server := &ServerMonitor{ClusterGroup: cluster}
+	err := server.reseedFromResticDump(nil, "snap-stream-dump-allow", "logical")
+	// The encryption guard must NOT fire; we expect a different error (snapshot not found).
+	if err != nil && strings.Contains(err.Error(), "dump strategy does not support encrypted artifacts") {
+		t.Errorf("dump guard incorrectly rejected stream-format encrypted snapshot: %v", err)
+	}
+}
+
+// TestReseedFromResticMountAllowsStreamFormatEncrypted verifies that the mount strategy guard
+// does not reject stream-format encrypted snapshots (AEAD frames can be read via FrameReader
+// after mounting).
+func TestReseedFromResticMountAllowsStreamFormatEncrypted(t *testing.T) {
+	cluster := newResticEncryptionCluster(t)
+	cacheStreamFormatEncryptedSummary(t, cluster, "snap-stream-mount-allow", config.ConstBackupPhysicalTypeXtrabackup, "physical")
+	// Use a properly-initialized ResticManager so IsMountDisabled() doesn't panic.
+	rm := backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
+	rm.SetMountDisabled(true) // Disable mount so we get a clear non-guard error.
+	cluster.ResticManager = rm
+
+	server := &ServerMonitor{ClusterGroup: cluster}
+	err := server.reseedFromResticMount(nil, "snap-stream-mount-allow", "physical")
+	// The encryption guard must NOT fire; we expect a different error (mount disabled or snapshot not found).
+	if err != nil && strings.Contains(err.Error(), "mount strategy does not support encrypted artifacts") {
+		t.Errorf("mount guard incorrectly rejected stream-format encrypted snapshot: %v", err)
+	}
+}
+
+// ---- SnapshotMetadataSummary stream format field propagation -----------------
+
+// TestBuildSnapshotMetadataSummaryPreservesStreamFormat verifies that EncryptionStreamFormat
+// is correctly propagated from BackupMetadata into SnapshotMetadataSummary.
+func TestBuildSnapshotMetadataSummaryPreservesStreamFormat(t *testing.T) {
+	meta := &backupmgr.BackupMetadata{
+		BackupTool:             config.ConstBackupLogicalTypeMysqldump,
+		Dest:                   "/backups/mysqldump.sql.gz",
+		Encrypted:              true,
+		EncryptionStreamFormat: true,
+		EncryptionKey:          "cloud18-sponsor-user-credentials:v3",
+		EncryptionKeyCluster:   "test-cluster",
+	}
+	summary := buildSnapshotMetadataSummary(meta, backupmgr.BackupMethodLogical, "/backups")
+	if !summary.EncryptionStreamFormat {
+		t.Error("expected EncryptionStreamFormat=true in summary")
+	}
+}
+
+// TestBuildSnapshotMetadataSummaryStreamFormatFalseWhenNotSet verifies that
+// EncryptionStreamFormat defaults to false for legacy encrypted backups.
+func TestBuildSnapshotMetadataSummaryStreamFormatFalseWhenNotSet(t *testing.T) {
+	meta := &backupmgr.BackupMetadata{
+		BackupTool:   config.ConstBackupLogicalTypeMysqldump,
+		Dest:         "/backups/mysqldump.sql.gz",
+		Encrypted:    true,
+		EncryptionKey: "cloud18-sponsor-user-credentials:v1",
+	}
+	summary := buildSnapshotMetadataSummary(meta, backupmgr.BackupMethodLogical, "/backups")
+	if summary.EncryptionStreamFormat {
+		t.Error("expected EncryptionStreamFormat=false for legacy encrypted meta")
+	}
+}
+
+// TestBuildEncryptedRestoreMetaFromSummaryPreservesStreamFormat verifies that
+// EncryptionStreamFormat is propagated to the restore metadata.
+func TestBuildEncryptedRestoreMetaFromSummaryPreservesStreamFormat(t *testing.T) {
+	s := &SnapshotMetadataSummary{
+		Encrypted:              true,
+		EncryptionKey:          "cloud18-sponsor-user-credentials:v3",
+		EncryptionKeyCluster:   "test-cluster",
+		EncryptionStreamFormat: true,
+	}
+	m := buildEncryptedRestoreMetaFromSummary(s, "/target/file.sql.gz")
+	if m == nil {
+		t.Fatal("expected non-nil BackupMetadata")
+	}
+	if !m.EncryptionStreamFormat {
+		t.Error("expected EncryptionStreamFormat=true in restore metadata")
+	}
+}
+
+// ---- ResticBackupOption StdinFromCommand field --------------------------------
+
+// TestResticBackupOptionStdinFromCommandFields verifies the StdinFromCommand and
+// StdinFilename fields are present and correctly typed on ResticBackupOption.
+func TestResticBackupOptionStdinFromCommandFields(t *testing.T) {
+	opt := backupmgr.ResticBackupOption{
+		StdinFromCommand: []string{"mysqldump", "--all-databases"},
+		StdinFilename:    "mysqldump.sql",
+		Tags:             []string{"logical", "mysqldump"},
+	}
+	if len(opt.StdinFromCommand) != 2 {
+		t.Errorf("expected 2 StdinFromCommand parts, got %d", len(opt.StdinFromCommand))
+	}
+	if opt.StdinFromCommand[0] != "mysqldump" {
+		t.Errorf("expected first command part to be 'mysqldump', got %q", opt.StdinFromCommand[0])
+	}
+	if opt.StdinFilename != "mysqldump.sql" {
+		t.Errorf("unexpected StdinFilename %q", opt.StdinFilename)
+	}
+}
+
+// TestResticBackupOptionStdinFromCommandEmptyPreservesLegacyPath verifies that an option
+// without StdinFromCommand still uses the DirPath-based (legacy) backup path.
+func TestResticBackupOptionStdinFromCommandEmptyPreservesLegacyPath(t *testing.T) {
+	opt := backupmgr.ResticBackupOption{
+		DirPath: "/var/lib/mysql/backup",
+		Tags:    []string{"physical"},
+	}
+	if len(opt.StdinFromCommand) != 0 {
+		t.Errorf("expected no StdinFromCommand for directory backup, got %v", opt.StdinFromCommand)
+	}
+	if opt.DirPath != "/var/lib/mysql/backup" {
+		t.Errorf("unexpected DirPath %q", opt.DirPath)
 	}
 }

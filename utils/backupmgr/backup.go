@@ -47,9 +47,10 @@ type BackupMetadata struct {
 	EncryptionAlgo       string         `json:"encryptionAlgo"`
 	EncryptionIV         string         `json:"encryptionIV,omitempty"`
 	EncryptionMAC        string         `json:"encryptionMAC,omitempty"`
-	EncryptionKey        string         `json:"encryptionKey"`
-	EncryptionKeyCluster string         `json:"encryptionKeyCluster,omitempty"`
-	Checksum             string         `json:"checksum"`
+	EncryptionKey          string         `json:"encryptionKey"`
+	EncryptionKeyCluster   string         `json:"encryptionKeyCluster,omitempty"`
+	EncryptionStreamFormat bool           `json:"encryptionStreamFormat,omitempty"` // true when encrypted using stream container format (AEAD per-frame)
+	Checksum               string         `json:"checksum"`
 	RetentionDays        int            `json:"retentionDays"`
 	RetentionDuration    string         `json:"retentionDuration,omitempty"`
 	BackupLine           string         `json:"backupLine,omitempty"`

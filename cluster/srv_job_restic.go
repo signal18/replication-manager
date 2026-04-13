@@ -194,22 +194,68 @@ func resolveResticReseedStrategy(requestedStrategy, method, snapshotID string, c
 			backupTool := strings.ToLower(strings.TrimSpace(metadata.BackupTool))
 			backupMethod := strings.ToLower(strings.TrimSpace(metadata.BackupMethod))
 
-			// Encrypted artifacts must use the restore (extract) strategy so that HMAC
-			// verification and in-place decryption can be applied to the extracted files
-			// before handing off to the restore pipeline. Dump streams cannot be verified
-			// or decrypted in-flight; FUSE-mounted files are read-only.
+			// Encrypted artifacts: behavior depends on encryption format.
+			//
+			// Legacy file-based encrypted artifacts (EncryptionStreamFormat==false) must use the
+			// restore (extract) strategy so that HMAC verification and in-place decryption can be
+			// applied to the extracted files. Dump streams cannot verify or decrypt legacy
+			// ciphertext in-flight; FUSE-mounted files are read-only.
+			//
+			// Stream-format encrypted artifacts (EncryptionStreamFormat==true) use AEAD per-frame
+			// authentication and can be decrypted in-flight via FrameReader. For single-file
+			// logical backups (mysqldump) the dump strategy can stream-decrypt directly. For
+			// directory-based backups, mount is preferred when FUSE is available; otherwise
+			// fallback to restore.
 			if metadata.Encrypted {
-				strategy = "restore"
-				if cluster != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose,
-						config.ConstLogModRestic,
-						config.LvlInfo,
-						"Snapshot %s is encrypted; forcing restore strategy for pre-decrypt HMAC verification",
-						resticLogSnapshotID(cluster, snapshotID))
+				if !metadata.EncryptionStreamFormat {
+					// Legacy file encryption: must extract first for HMAC + decryption.
+					strategy = "restore"
+					if cluster != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose,
+							config.ConstLogModRestic,
+							config.LvlInfo,
+							"Snapshot %s uses legacy file encryption; forcing restore strategy for pre-decrypt HMAC verification",
+							resticLogSnapshotID(cluster, snapshotID))
+					}
+				} else {
+					// Stream-format encryption: AEAD frames can be decrypted in-flight.
+					// Select strategy based on backup type and source capabilities.
+					if backupTool == config.ConstBackupLogicalTypeMysqldump &&
+						(normalizedMethod == "logical" || (normalizedMethod == "" && backupMethod == "logical")) {
+						// Single-file mysqldump stream: FrameReader decrypts in-flight via dump.
+						strategy = "dump"
+						if cluster != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose,
+								config.ConstLogModRestic,
+								config.LvlInfo,
+								"Snapshot %s uses stream encryption; selecting dump strategy for in-flight frame decryption",
+								resticLogSnapshotID(cluster, snapshotID))
+						}
+					} else if fuseAvailable {
+						// Directory backup with FUSE: mount enables parallel restore with frame decryption.
+						strategy = "mount"
+						if cluster != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose,
+								config.ConstLogModRestic,
+								config.LvlInfo,
+								"Snapshot %s uses stream encryption with FUSE available; selecting mount strategy for parallel frame decryption",
+								resticLogSnapshotID(cluster, snapshotID))
+						}
+					} else {
+						// Stream-format but no FUSE and non-mysqldump: fall back to restore.
+						strategy = "restore"
+						if cluster != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose,
+								config.ConstLogModRestic,
+								config.LvlWarn,
+								"Snapshot %s uses stream encryption but FUSE is unavailable for directory restore; falling back to restore strategy",
+								resticLogSnapshotID(cluster, snapshotID))
+						}
+					}
 				}
 			}
 
-			// Prefer mysqldump streaming when it is a logical, single-file snapshot.
+			// Prefer mysqldump streaming when it is a logical, single-file snapshot (non-encrypted).
 			if strategy == "" && backupTool == config.ConstBackupLogicalTypeMysqldump {
 				if normalizedMethod == "logical" || (normalizedMethod == "" && backupMethod == "logical") {
 					strategy = "dump"
@@ -627,13 +673,14 @@ func buildEncryptedRestoreMetaFromSummary(summary *SnapshotMetadataSummary, targ
 		return nil
 	}
 	return &backupmgr.BackupMetadata{
-		Encrypted:            summary.Encrypted,
-		EncryptionAlgo:       summary.EncryptionAlgo,
-		EncryptionIV:         summary.EncryptionIV,
-		EncryptionMAC:        summary.EncryptionMAC,
-		EncryptionKey:        summary.EncryptionKey,
-		EncryptionKeyCluster: summary.EncryptionKeyCluster,
-		Dest:                 targetPath,
+		Encrypted:              summary.Encrypted,
+		EncryptionAlgo:         summary.EncryptionAlgo,
+		EncryptionIV:           summary.EncryptionIV,
+		EncryptionMAC:          summary.EncryptionMAC,
+		EncryptionKey:          summary.EncryptionKey,
+		EncryptionKeyCluster:   summary.EncryptionKeyCluster,
+		EncryptionStreamFormat: summary.EncryptionStreamFormat,
+		Dest:                   targetPath,
 	}
 }
 
@@ -1617,9 +1664,12 @@ func (server *ServerMonitor) reseedFromResticDump(ctx context.Context, snapshotI
 		return fmt.Errorf("restic manager not available")
 	}
 
-	// Dump strategy streams artifacts directly from restic; AES-256-CBC ciphertext cannot be
-	// verified or decrypted in-flight. Use the restore (extract) strategy for encrypted snapshots.
-	if encMeta := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil); encMeta != nil && encMeta.Encrypted {
+	// Dump strategy streams artifacts directly from restic.
+	// Legacy file-encrypted artifacts (AES-256-CBC) cannot be verified or decrypted in-flight;
+	// they must use the restore (extract) strategy. Stream-format encrypted artifacts use AEAD
+	// per-frame authentication and can be decrypted in-flight via FrameReader, so they are
+	// allowed through the dump path.
+	if encMeta := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil); encMeta != nil && encMeta.Encrypted && !encMeta.EncryptionStreamFormat {
 		logID := snapshotID
 		if len(logID) > 8 {
 			logID = logID[:8]
@@ -1938,10 +1988,13 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 
 	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
 
-	// FUSE-mounted restic snapshots are read-only; encrypted files cannot be decrypted in-place.
+	// FUSE-mounted restic snapshots are read-only.
+	// Legacy file-encrypted artifacts cannot be decrypted in-place; they require the restore
+	// (extract) strategy. Stream-format encrypted artifacts use AEAD per-frame authentication
+	// and can be read via FrameReader after mounting, so they are allowed through the mount path.
 	// Check this before IsMountDisabled so tests can exercise the encryption guard without a
 	// fully-initialized ResticManager.
-	if encMeta := getSnapshotMetadataForMethod(cluster, snapshotID, normalizedMethod, nil); encMeta != nil && encMeta.Encrypted {
+	if encMeta := getSnapshotMetadataForMethod(cluster, snapshotID, normalizedMethod, nil); encMeta != nil && encMeta.Encrypted && !encMeta.EncryptionStreamFormat {
 		logID := snapshotID
 		if len(logID) > 8 {
 			logID = logID[:8]
