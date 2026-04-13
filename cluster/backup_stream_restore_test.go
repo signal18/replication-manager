@@ -288,3 +288,70 @@ func TestOpenStreamContainerEntry_ContextCancellation(t *testing.T) {
 		t.Fatalf("expected context.Canceled, got: %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Story 3.9: Negative test matrix additions
+// ---------------------------------------------------------------------------
+
+// TestOpenStreamContainerEntry_KeyResolutionSentinelInErrorChain verifies that
+// when the resolved secret source does not match the key reference source,
+// the returned error wraps ErrKeyResolutionFailed. This validates the sentinel
+// wrapping added for structured log categorisation in logStreamLifecycleFailure.
+func TestOpenStreamContainerEntry_KeyResolutionSentinelInErrorChain(t *testing.T) {
+	t.Parallel()
+
+	// Build a container with sponsor-source key reference.
+	plaintext := []byte("payload")
+	sponsorCreds := "sponsor:s3cr3t"
+	data := buildStreamContainer(t, plaintext, sponsorCreds, "")
+
+	// Provide only admin credentials — source mismatch triggers ErrKeyResolutionFailed.
+	_, _, err := openStreamContainerEntry(context.Background(), bytes.NewReader(data), "", "dba:pass,admin:adminpass")
+	if err == nil {
+		t.Fatal("expected error when resolved source does not match key reference source")
+	}
+	if !errors.Is(err, backupmgr.ErrKeyResolutionFailed) {
+		t.Errorf("expected ErrKeyResolutionFailed in error chain, got: %v", err)
+	}
+}
+
+// TestOpenStreamContainerEntry_EmptySingleFileContainerRejected verifies that
+// a single-file stream container whose preflight declares zero entries is
+// rejected before any frame decryption begins, satisfying the "missing entry
+// metadata" failure-closed requirement.
+func TestOpenStreamContainerEntry_EmptySingleFileContainerRejected(t *testing.T) {
+	t.Parallel()
+
+	// Build a preflight with 0 entries in single-file mode. EncodePreflight
+	// permits this (it only rejects >1 entries for single-file); the rejection
+	// must therefore happen in openStreamContainerEntry.
+	preflight := &backupmgr.StreamPreflight{
+		Magic:       backupmgr.StreamContainerMagic,
+		Version:     backupmgr.StreamContainerVersionV1,
+		Mode:        backupmgr.StreamModeSingleFile,
+		CipherSuite: backupmgr.StreamCipherSuiteAES256GCMHKDFSHA256,
+		FrameSize:   64 * 1024,
+		KeyRef: backupmgr.StreamKeyReference{
+			KeyID:          "cloud18-sponsor-user-credentials:v1",
+			KeyCluster:     "test-cluster",
+			VersionContext: backupmgr.BackupKeyContextStreamContainerV1,
+		},
+		Entries: nil, // zero entries — missing entry metadata
+	}
+
+	header, err := backupmgr.EncodePreflight(preflight)
+	if err != nil {
+		t.Fatalf("EncodePreflight: %v", err)
+	}
+
+	// Supply only the preflight with no frame data; a frame would never be
+	// reached because the entry check fires first.
+	_, _, err = openStreamContainerEntry(context.Background(), bytes.NewReader(header), "sponsor:s3cr3t", "")
+	if err == nil {
+		t.Fatal("expected error for single-file container with no entries")
+	}
+	// The error must not be a preflight sentinel — it is caught after ReadPreflight succeeds.
+	if isPreflightError(err) {
+		t.Errorf("expected a non-preflight error (caught in openStreamContainerEntry), got preflight error: %v", err)
+	}
+}

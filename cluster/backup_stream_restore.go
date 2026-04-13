@@ -2,9 +2,11 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
@@ -25,10 +27,10 @@ func isStreamContainerFile(path string) (bool, error) {
 	buf := make([]byte, streamContainerMagicLen)
 	n, err := io.ReadFull(f, buf)
 	if n < streamContainerMagicLen {
-		return false, nil // file too short
-	}
-	if err != nil {
-		return false, nil
+		if err == nil || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return false, nil // file too short — not a stream container
+		}
+		return false, err // real I/O error — propagate to caller
 	}
 	return string(buf) == backupmgr.StreamContainerMagic, nil
 }
@@ -55,17 +57,17 @@ func openStreamContainerEntry(ctx context.Context, r io.Reader, sponsorCreds, ap
 
 	rootSecret, _, err := backupmgr.ResolveStreamRootSecretForReference(sponsorCreds, apiCreds, preflight.KeyRef.KeyID)
 	if err != nil {
-		return nil, preflight, fmt.Errorf("stream container key resolution: %w", err)
+		return nil, preflight, fmt.Errorf("stream container key resolution: %w: %w", backupmgr.ErrKeyResolutionFailed, err)
 	}
 
 	containerKey, err := backupmgr.DeriveStreamContainerKey(rootSecret, preflight.KeyRef.KeyCluster)
 	if err != nil {
-		return nil, preflight, fmt.Errorf("stream container key derivation: %w", err)
+		return nil, preflight, fmt.Errorf("stream container key derivation: %w: %w", backupmgr.ErrKeyDerivationFailed, err)
 	}
 
 	entryKey, err := backupmgr.DeriveStreamEntryKey(containerKey, preflight.Entries[0].Path)
 	if err != nil {
-		return nil, preflight, fmt.Errorf("stream entry key derivation: %w", err)
+		return nil, preflight, fmt.Errorf("stream entry key derivation: %w: %w", backupmgr.ErrKeyDerivationFailed, err)
 	}
 
 	frameReader, err := backupmgr.NewFrameReader(ctx, r, entryKey, preflight.CipherSuite)
@@ -93,14 +95,42 @@ func (cluster *Cluster) openSingleFileStreamContainerReader(ctx context.Context,
 	frameReader, preflight, err := openStreamContainerEntry(ctx, f, sponsorCreds, apiCreds)
 	if err != nil {
 		_ = f.Close()
+		cluster.logStreamLifecycleFailure(filepath.Base(path), err)
 		return nil, err
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo,
-		"Stream container restore: opened %s (cipher=%s, entry=%s)",
-		path, preflight.CipherSuite, preflight.Entries[0].Path)
+		"Stream container restore: opened %s (cipher=%s, entry=%s, version=%d)",
+		path, preflight.CipherSuite, preflight.Entries[0].Path, preflight.Version)
 
 	return &streamContainerReadCloser{FrameReader: frameReader, file: f}, nil
+}
+
+// logStreamLifecycleFailure emits a structured log event that categorises the
+// error type so operators can distinguish preflight, key-derivation, and
+// frame-authentication failures without parsing error strings.
+func (cluster *Cluster) logStreamLifecycleFailure(basename string, err error) {
+	switch {
+	case errors.Is(err, backupmgr.ErrMalformedHeader),
+		errors.Is(err, backupmgr.ErrUnsupportedVersion),
+		errors.Is(err, backupmgr.ErrInvalidAlgorithm),
+		errors.Is(err, backupmgr.ErrTruncatedHeader),
+		errors.Is(err, backupmgr.ErrMissingKeyReference):
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlErr,
+			"Stream container preflight failed for %s: %v", basename, err)
+	case errors.Is(err, backupmgr.ErrFrameAuthFailed):
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlErr,
+			"Stream container frame authentication failed for %s: %v", basename, err)
+	case errors.Is(err, backupmgr.ErrKeyResolutionFailed):
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlErr,
+			"Stream container key resolution failed for %s: %v", basename, err)
+	case errors.Is(err, backupmgr.ErrKeyDerivationFailed):
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlErr,
+			"Stream container key derivation failed for %s: %v", basename, err)
+	default:
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlErr,
+			"Stream container open failed for %s: %v", basename, err)
+	}
 }
 
 // makeStreamContainerSSTOpener returns a SSTStreamOpener backed by the stream

@@ -918,6 +918,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupMysqldumpPath, "backup-mysqldump-path", "", "Path to mysqldump binary")
 	flags.StringVar(&conf.BackupMysqldumpOptions, "backup-mysqldump-options", "--hex-blob --single-transaction --verbose --all-databases --routines=true --triggers=true --system=all", "Extra options")
 	flags.BoolVar(&conf.BackupEncryption, "backup-encryption", false, "Encrypt backup artifacts with AES-256-CBC + HMAC-SHA256 (applies to mysqldump, mydumper, dumpling, and splitdump)")
+	flags.BoolVar(&conf.BackupEncryptionStreamTransport, "backup-encryption-stream-transport", false, "Use stream container format (AEAD per-frame) instead of AES-256-CBC for new encrypted backups; requires backup-encryption=true")
 	flags.StringVar(&conf.BackupMysqlbinlogPath, "backup-mysqlbinlog-path", "", "Path to mysqlbinlog binary")
 	flags.StringVar(&conf.BackupMysqlclientPath, "backup-mysqlclient-path", "", "Path to mysql client binary")
 	flags.StringVar(&conf.BackupMysqlclientOptions, "backup-mysqlclient-options", "--force --batch", "Extra options")

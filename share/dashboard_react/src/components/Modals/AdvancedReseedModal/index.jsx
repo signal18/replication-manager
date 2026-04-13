@@ -29,8 +29,10 @@ import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
 import {
   extractServerInfoFromPath,
+  getEncryptionModeLabel,
   formatLocalDateTime,
   formatMetadataTimestamp,
+  getMetadataEncryptionMode,
   getPreferredMetadata,
   getSnapshotMetadataByMethod,
   parseSnapshotTags
@@ -119,7 +121,7 @@ function AdvancedReseedModal({ isOpen, closeModal, onConfirm, operationType, clu
   const handleConfirm = useCallback(() => {
     onConfirm({
       useRestic: useResticSnapshot,
-      snapshotId: selectedSnapshot,
+      snapshotId: useResticSnapshot ? selectedSnapshot : undefined,
       strategy: useResticSnapshot ? resticStrategy : undefined,
       cleanup: useResticSnapshot && resticStrategy === 'restore' && resticUseTempDir ? resticCleanup : undefined,
       useTempDir: useResticSnapshot ? resticUseTempDir : undefined,
@@ -200,7 +202,9 @@ function AdvancedReseedModal({ isOpen, closeModal, onConfirm, operationType, clu
         selectedMetadataReady: false,
         selectedMetadataStatus: 'unknown',
         selectedMetadataError: '',
-        dumpAllowed: dumpAllowedFallback
+        dumpAllowed: dumpAllowedFallback,
+        selectedEncryptionMode: null,
+        selectedEncryptionModeLabel: null
       }
     }
 
@@ -225,6 +229,8 @@ function AdvancedReseedModal({ isOpen, closeModal, onConfirm, operationType, clu
     const selectedMetadataReady = selectedSnapshotObj.metadataReady ?? false
     const selectedMetadataStatus = selectedSnapshotObj.metadataStatus || 'unknown'
     const selectedMetadataError = selectedSnapshotObj.metadataError || ''
+    const selectedEncryptionMode = getMetadataEncryptionMode(preferredMetadata)
+    const selectedEncryptionModeLabel = getEncryptionModeLabel(selectedEncryptionMode)
     const normalizedBackupTool = (resolvedBackupTool || '').toLowerCase()
     const isDirectoryBackupTool = ['mydumper', 'dumpling'].includes(normalizedBackupTool)
     const isStreamableBackupTool = Boolean(normalizedBackupTool) && !isDirectoryBackupTool
@@ -242,7 +248,9 @@ function AdvancedReseedModal({ isOpen, closeModal, onConfirm, operationType, clu
       selectedMetadataReady,
       selectedMetadataStatus,
       selectedMetadataError,
-      dumpAllowed
+      dumpAllowed,
+      selectedEncryptionMode,
+      selectedEncryptionModeLabel
     }
   }, [backupType, operationType, selectedSnapshotObj])
 
@@ -258,7 +266,9 @@ function AdvancedReseedModal({ isOpen, closeModal, onConfirm, operationType, clu
     selectedMetadataReady,
     selectedMetadataStatus,
     selectedMetadataError,
-    dumpAllowed
+    dumpAllowed,
+    selectedEncryptionMode,
+    selectedEncryptionModeLabel
   } = snapshotDerived
 
   const isMetadataLoading = useMemo(() => {
@@ -423,6 +433,26 @@ function AdvancedReseedModal({ isOpen, closeModal, onConfirm, operationType, clu
                           dumpAllowed={dumpAllowed}
                         />
 
+                        {useResticSnapshot && selectedSnapshotObj && selectedEncryptionMode === 'stream-encrypted' && (
+                          <Alert status='info' borderRadius='md' size='sm' mb={3}>
+                            <AlertIcon />
+                            <AlertDescription fontSize='sm'>
+                              Snapshot is <strong>Stream Encrypted</strong>. Mount and dump strategies may be usable
+                              when the selected backup format and runtime support streaming decryption.
+                            </AlertDescription>
+                          </Alert>
+                        )}
+
+                        {useResticSnapshot && selectedSnapshotObj && selectedEncryptionMode === 'legacy-encrypted' && (
+                          <Alert status='warning' borderRadius='md' size='sm' mb={3}>
+                            <AlertIcon />
+                            <AlertDescription fontSize='sm'>
+                              Snapshot is <strong>Legacy Encrypted</strong>. Expect restore/extraction fallback behavior
+                              before reseed operations continue.
+                            </AlertDescription>
+                          </Alert>
+                        )}
+
                         {useResticSnapshot && selectedSnapshotObj && (
                           <SnapshotDetailsPanel
                             theme={theme}
@@ -438,6 +468,8 @@ function AdvancedReseedModal({ isOpen, closeModal, onConfirm, operationType, clu
                             resolvedMethod={resolvedMethod}
                             logicalMetadata={logicalMetadata}
                             physicalMetadata={physicalMetadata}
+                            encryptionMode={selectedEncryptionMode}
+                            encryptionModeLabel={selectedEncryptionModeLabel}
                           />
                         )}
                       </>

@@ -16,8 +16,13 @@ function SnapshotDetailsPanel({
   pathInfo,
   resolvedMethod,
   logicalMetadata,
-  physicalMetadata
+  physicalMetadata,
+  encryptionMode,
+  encryptionModeLabel
 }) {
+  const encryptionColorScheme =
+    encryptionMode === 'stream-encrypted' ? 'blue' : encryptionMode === 'legacy-encrypted' ? 'orange' : 'gray'
+
   return (
     <Box borderWidth='1px' borderRadius='md' p={4} bg={theme === 'light' ? 'gray.50' : 'gray.700'}>
       <Text fontWeight='bold' mb={3} fontSize='sm' color={theme === 'light' ? 'gray.700' : 'gray.200'}>
@@ -114,6 +119,17 @@ function SnapshotDetailsPanel({
             <Text fontSize='sm' fontFamily='monospace'>
               {resolvedMethod}
             </Text>
+          </HStack>
+        )}
+
+        {encryptionModeLabel && (
+          <HStack>
+            <Text fontWeight='semibold' fontSize='sm' minW='130px'>
+              Encryption Mode:
+            </Text>
+            <Badge colorScheme={encryptionColorScheme} variant='subtle' fontSize='0.65rem'>
+              {encryptionModeLabel}
+            </Badge>
           </HStack>
         )}
 

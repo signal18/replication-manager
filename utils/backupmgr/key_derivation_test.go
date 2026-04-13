@@ -2,6 +2,8 @@ package backupmgr
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"testing"
 )
 
@@ -206,4 +208,90 @@ func TestResolveStreamRootSecretForReference(t *testing.T) {
 			t.Fatalf("expected invalid key reference to fail")
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Story 3.9: Key sentinel errors and wrong-context key derivation
+// ---------------------------------------------------------------------------
+
+// TestErrKeyResolutionFailedAndDerivationFailedSentinelsExported verifies that
+// the sentinel error variables added for structured log categorisation are
+// exported and non-nil.
+func TestErrKeyResolutionFailedAndDerivationFailedSentinelsExported(t *testing.T) {
+	t.Parallel()
+
+	if ErrKeyResolutionFailed == nil {
+		t.Error("ErrKeyResolutionFailed must not be nil")
+	}
+	if ErrKeyDerivationFailed == nil {
+		t.Error("ErrKeyDerivationFailed must not be nil")
+	}
+	if ErrKeyResolutionFailed == ErrKeyDerivationFailed {
+		t.Error("ErrKeyResolutionFailed and ErrKeyDerivationFailed must be distinct sentinel values")
+	}
+}
+
+// TestWrongClusterKeyDerivationContextCausesFrameAuthFailure validates that
+// using a container key derived for a different cluster name produces an
+// authentication failure during frame decryption. This verifies that the
+// HKDF domain separation for cluster names is enforced end-to-end and that
+// a wrong-context key derivation fails closed (ErrFrameAuthFailed) rather
+// than producing silent garbage plaintext.
+func TestWrongClusterKeyDerivationContextCausesFrameAuthFailure(t *testing.T) {
+	t.Parallel()
+
+	rootSecret := []byte("root-secret-material-for-context-test!!")
+
+	// Derive keys for two different clusters from the same root secret.
+	containerKeyA, err := DeriveStreamContainerKey(rootSecret, "cluster-a")
+	if err != nil {
+		t.Fatalf("derive container key cluster-a: %v", err)
+	}
+	containerKeyB, err := DeriveStreamContainerKey(rootSecret, "cluster-b")
+	if err != nil {
+		t.Fatalf("derive container key cluster-b: %v", err)
+	}
+
+	// Sanity: the two container keys must be distinct.
+	if bytes.Equal(containerKeyA, containerKeyB) {
+		t.Fatal("cluster-a and cluster-b container keys must differ (domain separation)")
+	}
+
+	entryPath := "backup.sql"
+	entryKeyA, err := DeriveStreamEntryKey(containerKeyA, entryPath)
+	if err != nil {
+		t.Fatalf("derive entry key for cluster-a: %v", err)
+	}
+	entryKeyB, err := DeriveStreamEntryKey(containerKeyB, entryPath)
+	if err != nil {
+		t.Fatalf("derive entry key for cluster-b: %v", err)
+	}
+
+	plaintext := []byte("sensitive backup payload — must not leak on wrong-context decrypt")
+
+	// Encrypt with cluster-a's entry key.
+	var buf bytes.Buffer
+	w, err := NewFrameWriter(&buf, entryKeyA, StreamCipherSuiteAES256GCMHKDFSHA256, 64*1024)
+	if err != nil {
+		t.Fatalf("NewFrameWriter: %v", err)
+	}
+	if _, err := w.Write(plaintext); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	ciphertext := buf.Bytes()
+
+	// Decrypt with cluster-b's entry key — wrong derivation context.
+	r, err := NewFrameReader(context.Background(), bytes.NewReader(ciphertext), entryKeyB, StreamCipherSuiteAES256GCMHKDFSHA256)
+	if err != nil {
+		t.Fatalf("NewFrameReader: %v", err)
+	}
+
+	_, readErr := r.Read(make([]byte, 4096))
+	if !errors.Is(readErr, ErrFrameAuthFailed) {
+		t.Errorf("expected ErrFrameAuthFailed when decrypting with wrong cluster key, got: %v", readErr)
+	}
 }

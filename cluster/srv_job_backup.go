@@ -1017,7 +1017,12 @@ func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, ba
 
 	// Stream container format: preflight → streaming AEAD decrypt → mysql client.
 	// Checked before the legacy in-place decrypt path to avoid any temp-file writes.
-	if ok, _ := isStreamContainerFile(backupPath); ok {
+	streamOk, streamErr := isStreamContainerFile(backupPath)
+	if streamErr != nil {
+		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn,
+			"Stream container detection failed for %s, falling through to legacy restore: %v", backupPath, streamErr)
+	}
+	if streamOk {
 		return server.reseedMysqldumpFromStreamContainer(ctx, backupPath, restoreUser)
 	}
 
@@ -1076,7 +1081,14 @@ func (server *ServerMonitor) reseedMysqldumpFromStreamContainer(ctx context.Cont
 		reader = io.MultiReader(bytes.NewBufferString(preamble), r)
 	}
 
-	return server.executeMysqlRestoreContext(ctx, reader, false)
+	if err := server.executeMysqlRestoreContext(ctx, reader, false); err != nil {
+		if errors.Is(err, backupmgr.ErrFrameAuthFailed) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlErr,
+				"Stream container frame authentication failure during mysqldump restore of %s", backupPath)
+		}
+		return fmt.Errorf("stream container mysqldump restore: %w", err)
+	}
+	return nil
 }
 
 func (server *ServerMonitor) restoreSplitdumpFileContextWithPreamble(ctx context.Context, path, preamble string) error {
@@ -3901,13 +3913,22 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 
 	// Stream container format: preflight → streaming AEAD decrypt → SST receiver.
 	// Checked before the legacy in-place decrypt path so no temp file is written.
-	if ok, _ := isStreamContainerFile(backupfile); ok {
+	streamOk, streamErr := isStreamContainerFile(backupfile)
+	if streamErr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn,
+			"Stream container detection failed for %s, falling through to legacy restore: %v", backupfile, streamErr)
+	}
+	if streamOk {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo,
 			"Stream container physical restore: %s for %s", backupfile, server.URL)
 		opener := cluster.makeStreamContainerSSTOpener(context.Background(), backupfile)
 		go func() {
 			err := server.WaitAndSendSSTStream(context.Background(), task, backupfile, false, 0, opener)
 			if err != nil {
+				if errors.Is(err, backupmgr.ErrFrameAuthFailed) {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlErr,
+						"Stream container frame authentication failure during physical restore of %s for %s", backupfile, server.URL)
+				}
 				if server.HasReseedingState(task) {
 					server.SetInReseedBackup("")
 				}

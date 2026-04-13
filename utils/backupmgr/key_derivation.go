@@ -2,11 +2,22 @@ package backupmgr
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 
 	"golang.org/x/crypto/hkdf"
+)
+
+var (
+	// ErrKeyResolutionFailed is returned when the root secret cannot be resolved
+	// from the provided credentials (e.g. missing, wrong source, or parse error).
+	ErrKeyResolutionFailed = errors.New("stream container key resolution failed")
+
+	// ErrKeyDerivationFailed is returned when HKDF key derivation fails for a
+	// container-level or entry-level key.
+	ErrKeyDerivationFailed = errors.New("stream container key derivation failed")
 )
 
 const (

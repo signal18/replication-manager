@@ -834,6 +834,7 @@ type Config struct {
 	BackupMysqldumpPath                    string                 `mapstructure:"backup-mysqldump-path" toml:"backup-mysqldump-path" json:"backupMysqldumpPath"`
 	BackupMysqldumpOptions                 string                 `mapstructure:"backup-mysqldump-options" toml:"backup-mysqldump-options" json:"backupMysqldumpOptions"`
 	BackupEncryption                       bool                   `mapstructure:"backup-encryption" toml:"backup-encryption" json:"backupEncryption"`
+	BackupEncryptionStreamTransport        bool                   `mapstructure:"backup-encryption-stream-transport" toml:"backup-encryption-stream-transport" json:"backupEncryptionStreamTransport"`
 	BackupMyDumperPath                     string                 `mapstructure:"backup-mydumper-path" toml:"backup-mydumper-path" json:"backupMydumperPath"`
 	BackupMyLoaderPath                     string                 `mapstructure:"backup-myloader-path" toml:"backup-myloader-path" json:"backupMyloaderPath"`
 	BackupMyLoaderOptions                  string                 `mapstructure:"backup-myloader-options" toml:"backup-myloader-options" json:"backupMyLoaderOptions"`

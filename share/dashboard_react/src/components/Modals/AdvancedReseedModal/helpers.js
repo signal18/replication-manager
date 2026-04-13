@@ -18,6 +18,78 @@ const getPreferredMetadata = (snapshot, operationType) => {
   return getSnapshotMetadataByMethod(snapshot, preferredMethod) || getSnapshotMetadataByMethod(snapshot, fallbackMethod)
 }
 
+const normalizeBoolean = (value) => {
+  if (typeof value === 'boolean') {
+    return value
+  }
+  if (typeof value === 'number') {
+    if (value === 1) return true
+    if (value === 0) return false
+    return null
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (!normalized) return false
+    if (['1', 'true', 'yes', 'on', 'enabled'].includes(normalized)) return true
+    if (['0', 'false', 'no', 'off', 'disabled'].includes(normalized)) return false
+  }
+  return null
+}
+
+const getMetadataEncryptionMode = (metadata) => {
+  if (!metadata) {
+    return null
+  }
+
+  const encrypted = normalizeBoolean(metadata.encrypted)
+  if (encrypted === false) {
+    return 'unencrypted'
+  }
+  if (encrypted !== true) {
+    return null
+  }
+
+  const format = metadata.encryptionStreamFormat
+  const normalizedFormatBool = normalizeBoolean(format)
+  if (normalizedFormatBool === true) {
+    return 'stream-encrypted'
+  }
+  if (normalizedFormatBool === false) {
+    return 'legacy-encrypted'
+  }
+
+  if (typeof format === 'string') {
+    const normalizedFormat = format.trim().toLowerCase()
+    if (normalizedFormat === 'legacy') {
+      return 'legacy-encrypted'
+    }
+    if (normalizedFormat === 'stream' || normalizedFormat === 'stream-transport' || normalizedFormat === 'v2') {
+      return 'stream-encrypted'
+    }
+  }
+
+  // Unknown/ambiguous format: avoid unsafe assumptions.
+  return null
+}
+
+const getEncryptionModeLabel = (mode) => {
+  switch (mode) {
+    case 'stream-encrypted':
+      return 'Stream Encrypted'
+    case 'legacy-encrypted':
+      return 'Legacy Encrypted'
+    case 'unencrypted':
+      return 'Unencrypted'
+    default:
+      return null
+  }
+}
+
+const getSnapshotEncryptionMode = (snapshot, operationType) => {
+  const preferredMetadata = getPreferredMetadata(snapshot, operationType)
+  return getMetadataEncryptionMode(preferredMetadata)
+}
+
 const formatMetadataTimestamp = (meta, formatter) => {
   if (!meta) {
     return null
@@ -201,7 +273,10 @@ export {
   formatEpochDateTime,
   formatLocalDateTime,
   formatMetadataTimestamp,
+  getEncryptionModeLabel,
+  getMetadataEncryptionMode,
   getPreferredMetadata,
+  getSnapshotEncryptionMode,
   getSnapshotMetadataByMethod,
   parseSnapshotTags
 }

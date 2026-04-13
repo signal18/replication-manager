@@ -132,6 +132,8 @@ function BackupSettings({ selectedCluster, user }) {
   const hBinlogBackup = `**Binlog Backup**\n\nSelects the method used to back up binary logs (mysqlbinlog, script, etc.).\nBinary log backups enable point-in-time recovery between full backup snapshots.\n\nConfig: \`binlog-copy-mode\``
   const hBinlogParseMode = `**Binlog Parse Mode**\n\nSelects the parser used to read binary logs during recovery or flashback operations.\n\nConfig: \`binlog-parse-mode\``
   const hCompression = `**Use Compression**\n\nEnables compression of backup files using pgzip.\nReduces storage space at the cost of additional CPU during backup and restore.\n\nConfig: \`compress-backups\``
+  const hBackupEncryption = `**Backup Encryption**\n\nEnables encryption for supported backup workflows.\n\n- When enabled, newly created backups use encrypted artifacts for supported backup flows.\n- Existing unencrypted backups are unchanged.\n\nConfig: \`backup-encryption\``
+  const hEncryptionStreamTransport = `**Use Stream Transport for Encrypted Backups**\n\nControls which format is used for **newly created encrypted backups**.\n\n- Requires **Backup Encryption** to be enabled.\n- When disabled, encrypted backups use the **legacy encrypted format**.\n- Existing backups remain restorable, allowing progressive rollout.\n- Rollout is **reversible** by switching this setting off for future backups.\n\nConfig: \`backup-encryption-stream-transport\``
   const hCompressionLevel = `**Compression Level**\n\nCompression level from 1 (fastest, largest files) to 9 (slowest, smallest files).\nDefault: 6. For most workloads, 1–3 provides a good speed/size tradeoff.\n\nConfig: \`compress-backups-compression-level\``
   const hParallelBlocks = `**Parallel Blocks**\n\nNumber of parallel blocks used during decompression (restore).\nHigher values speed up restore at the cost of more CPU and memory.\n\nConfig: \`compress-backups-parallel-blocks\``
   const hDecompressBuffer = `**Decompress Buffer Size**\n\nBlock size used by pgzip during decompression. Must match the size used during compression.\nDefault: ~244 KiB.\n\nConfig: \`compress-backups-decompress-buffer-size\``
@@ -350,6 +352,41 @@ function BackupSettings({ selectedCluster, user }) {
           isDisabled={user?.grants['cluster-settings'] == false}
           confirmTitle={'Confirm switch settings for compress-backups?'}
           onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'compress-backups' }))} />
+      )
+    },
+    {
+      key: 'Backup Encryption',
+      help: h(hBackupEncryption, 'Backup Encryption'),
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.backupEncryption}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for backup-encryption?'}
+          onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-encryption' }))}
+        />
+      )
+    },
+    {
+      key: 'Use Stream Transport for Encrypted Backups',
+      help: h(hEncryptionStreamTransport, 'Use Stream Transport for Encrypted Backups'),
+      value: (
+        <Stack spacing={1} align='start'>
+          <RMSwitch
+            isChecked={selectedCluster?.config?.backupEncryptionStreamTransport}
+            isDisabled={user?.grants['cluster-settings'] == false || !selectedCluster?.config?.backupEncryption}
+            confirmTitle={'Confirm switch settings for backup-encryption-stream-transport?'}
+            onChange={() =>
+              dispatch(
+                switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-encryption-stream-transport' })
+              )
+            }
+          />
+          {!selectedCluster?.config?.backupEncryption && (
+            <Text fontSize='xs' color='orange.400'>
+              Requires Backup Encryption. Inactive until backup-encryption is enabled.
+            </Text>
+          )}
+        </Stack>
       )
     },
     {

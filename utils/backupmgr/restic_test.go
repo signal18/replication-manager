@@ -195,6 +195,140 @@ func requireIntegration(t *testing.T) {
 	}
 }
 
+func newFakeResticBinary(t *testing.T) string {
+	t.Helper()
+
+	script := `#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -n "${TEST_ARGS_OUT:-}" ]]; then
+  : > "$TEST_ARGS_OUT"
+  for a in "$@"; do
+    printf '%s\n' "$a" >> "$TEST_ARGS_OUT"
+  done
+fi
+
+# Simulate upstream command failure when stdin-from-command mode is used.
+if [[ "${RESTIC_FAKE_FAIL_STDIN_CMD:-0}" == "1" ]]; then
+  for a in "$@"; do
+    if [[ "$a" == "--stdin-from-command" ]]; then
+      echo "upstream command failed: exit status 7" >&2
+      exit 7
+    fi
+  done
+fi
+
+# Minimal JSON summary output expected by parseBackupSummary.
+echo '{"message_type":"summary","snapshot_id":"abcdef1234567890"}'
+`
+
+	path := filepath.Join(t.TempDir(), "fake-restic.sh")
+	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
+		t.Fatalf("write fake restic script: %v", err)
+	}
+	return path
+}
+
+func readArgsFile(t *testing.T, path string) []string {
+	t.Helper()
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read args file: %v", err)
+	}
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" {
+		return nil
+	}
+	return strings.Split(trimmed, "\n")
+}
+
+func hasArg(args []string, want string) bool {
+	for _, a := range args {
+		if a == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestBackupWithOptions_UsesStdinFromCommandAndIgnoresDirPath(t *testing.T) {
+	t.Parallel()
+
+	argsFile := filepath.Join(t.TempDir(), "args.txt")
+	repo := NewResticRepo(newFakeResticBinary(t), testMsgChan, 0)
+	repo.SetEnv([]string{"TEST_ARGS_OUT=" + argsFile})
+
+	opt := ResticBackupOption{
+		DirPath:          "/tmp/should-not-be-used",
+		StdinFromCommand: []string{"sh", "-c", "printf hello"},
+		StdinFilename:    "dump.sql.gz",
+	}
+
+	snapshotID, err := repo.BackupWithOptions(opt)
+	if err != nil {
+		t.Fatalf("BackupWithOptions failed: %v", err)
+	}
+	if snapshotID != "abcdef1234567890" {
+		t.Fatalf("unexpected snapshot id: %q", snapshotID)
+	}
+
+	args := readArgsFile(t, argsFile)
+	if !hasArg(args, "--stdin-from-command") {
+		t.Fatalf("expected --stdin-from-command in args: %v", args)
+	}
+	if !hasArg(args, "--") {
+		t.Fatalf("expected command separator -- in args: %v", args)
+	}
+	if !hasArg(args, "--stdin-filename") || !hasArg(args, "dump.sql.gz") {
+		t.Fatalf("expected --stdin-filename dump.sql.gz in args: %v", args)
+	}
+	if hasArg(args, opt.DirPath) {
+		t.Fatalf("did not expect dir path %q when StdinFromCommand is set: %v", opt.DirPath, args)
+	}
+}
+
+func TestBackupWithOptions_UsesDirPathWhenStdinFromCommandEmpty(t *testing.T) {
+	t.Parallel()
+
+	argsFile := filepath.Join(t.TempDir(), "args.txt")
+	repo := NewResticRepo(newFakeResticBinary(t), testMsgChan, 0)
+	repo.SetEnv([]string{"TEST_ARGS_OUT=" + argsFile})
+
+	opt := ResticBackupOption{DirPath: "/tmp/data-dir"}
+	if _, err := repo.BackupWithOptions(opt); err != nil {
+		t.Fatalf("BackupWithOptions failed: %v", err)
+	}
+
+	args := readArgsFile(t, argsFile)
+	if hasArg(args, "--stdin-from-command") {
+		t.Fatalf("did not expect --stdin-from-command when StdinFromCommand is empty: %v", args)
+	}
+	if !hasArg(args, opt.DirPath) {
+		t.Fatalf("expected dir path %q in args: %v", opt.DirPath, args)
+	}
+}
+
+func TestBackupWithOptions_PropagatesStdinFromCommandFailure(t *testing.T) {
+	t.Parallel()
+
+	repo := NewResticRepo(newFakeResticBinary(t), testMsgChan, 0)
+	repo.SetEnv([]string{"RESTIC_FAKE_FAIL_STDIN_CMD=1"})
+
+	_, err := repo.BackupWithOptions(ResticBackupOption{
+		StdinFromCommand: []string{"sh", "-c", "exit 7"},
+	})
+	if err == nil {
+		t.Fatal("expected BackupWithOptions to fail when stdin-from-command fails")
+	}
+	if !strings.Contains(err.Error(), "failed to backup repo") {
+		t.Fatalf("expected wrapped backup failure, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "upstream command failed") {
+		t.Fatalf("expected stderr context about upstream command failure, got: %v", err)
+	}
+}
+
 func hasSnapshotID(backups []BackupSnapshot, id string) bool {
 	for _, snap := range backups {
 		if snap.Id == id || snap.ShortId == id || strings.HasPrefix(snap.Id, id) {

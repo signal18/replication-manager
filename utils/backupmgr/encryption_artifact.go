@@ -6,11 +6,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 )
+
+// StreamContainerDefaultFrameSize is the per-frame plaintext chunk size used when
+// creating new stream container backups.
+const StreamContainerDefaultFrameSize = 64 * 1024 // 64 KiB
 
 func deriveBackupEncryptionKey(secret string) []byte {
 	sum := sha256.Sum256([]byte("enc:" + secret))
@@ -59,6 +64,125 @@ func EncryptBackupFileAES256CBC(path string, secret string) (string, error) {
 	}
 
 	return "hex:" + ivHex, nil
+}
+
+// EncryptFileAsStreamContainer encrypts a file in-place using the RMSC stream
+// container format (AEAD per-frame, AES-256-GCM + HKDF-SHA256). The encrypted
+// file replaces the original atomically via a temp-file rename.
+//
+// Parameters:
+//   - path: path of the plaintext file to encrypt
+//   - rootSecret: resolved root secret bytes (from ResolveBackupEncryptionKeyMaterial)
+//   - clusterName: cluster identifier used in key derivation
+//   - entryPath: logical name of the entry inside the container (e.g. "backup.sql")
+//   - keyID: formatted key reference produced by FormatBackupSecretKeyReference
+//
+// The resulting file can be decoded with ReadPreflight → DeriveStreamContainerKey
+// → DeriveStreamEntryKey → NewFrameReader.
+func EncryptFileAsStreamContainer(path string, rootSecret []byte, clusterName, entryPath, keyID string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("stream container encryption: path is empty")
+	}
+	if len(rootSecret) == 0 {
+		return fmt.Errorf("stream container encryption: root secret is empty")
+	}
+	if strings.TrimSpace(clusterName) == "" {
+		return fmt.Errorf("stream container encryption: cluster name is empty")
+	}
+	if strings.TrimSpace(entryPath) == "" {
+		return fmt.Errorf("stream container encryption: entry path is empty")
+	}
+	if err := ValidateBackupSecretKeyReference(keyID); err != nil {
+		return fmt.Errorf("stream container encryption: invalid key ID: %w", err)
+	}
+
+	containerKey, err := DeriveStreamContainerKey(rootSecret, clusterName)
+	if err != nil {
+		return fmt.Errorf("stream container encryption: container key derivation: %w", err)
+	}
+	entryKey, err := DeriveStreamEntryKey(containerKey, entryPath)
+	if err != nil {
+		return fmt.Errorf("stream container encryption: entry key derivation: %w", err)
+	}
+
+	origInfo, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stream container encryption: stat %s: %w", path, err)
+	}
+
+	preflight := &StreamPreflight{
+		Magic:       StreamContainerMagic,
+		Version:     StreamContainerVersionV1,
+		Mode:        StreamModeSingleFile,
+		CipherSuite: StreamCipherSuiteAES256GCMHKDFSHA256,
+		FrameSize:   StreamContainerDefaultFrameSize,
+		KeyRef: StreamKeyReference{
+			KeyID:          keyID,
+			KeyCluster:     strings.TrimSpace(clusterName),
+			VersionContext: BackupKeyContextStreamContainerV1,
+		},
+		Entries: []StreamEntryIndex{
+			{
+				Path:      strings.TrimSpace(entryPath),
+				Class:     StreamEntryClassData,
+				SizeBytes: uint64(origInfo.Size()),
+				OrderHint: 1,
+				GroupHint: "full",
+			},
+		},
+	}
+
+	header, err := EncodePreflight(preflight)
+	if err != nil {
+		return fmt.Errorf("stream container encryption: encode preflight: %w", err)
+	}
+
+	tmpFile, err := os.CreateTemp(filepath.Dir(path), "stream-container-*.tmp")
+	if err != nil {
+		return fmt.Errorf("stream container encryption: create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	committed := false
+	defer func() {
+		if !committed {
+			os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := tmpFile.Write(header); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("stream container encryption: write preflight: %w", err)
+	}
+
+	src, err := os.Open(path)
+	if err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("stream container encryption: open source %s: %w", path, err)
+	}
+	defer src.Close()
+
+	fw, err := NewFrameWriter(tmpFile, entryKey, StreamCipherSuiteAES256GCMHKDFSHA256, StreamContainerDefaultFrameSize)
+	if err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("stream container encryption: create frame writer: %w", err)
+	}
+	if _, err := io.Copy(fw, src); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("stream container encryption: encrypt frames: %w", err)
+	}
+	if err := fw.Close(); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("stream container encryption: finalize frames: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("stream container encryption: close temp file: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("stream container encryption: rename to %s: %w", path, err)
+	}
+	committed = true
+	return nil
 }
 
 // DecryptBackupFileAES256CBC decrypts a backup file in-place using AES-256-CBC.
