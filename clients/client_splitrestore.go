@@ -21,12 +21,13 @@ import (
 )
 
 var (
-	cliSplitRestoreDir           string
-	cliSplitRestoreMysql         string
-	cliSplitRestoreMysqlArg      string
-	cliSplitRestoreParallel      int
-	cliSplitRestoreUser          bool
-	cliSplitRestoreDisableBinlog bool
+	cliSplitRestoreDir              string
+	cliSplitRestoreMysql            string
+	cliSplitRestoreMysqlArg         string
+	cliSplitRestoreParallel         int
+	cliSplitRestoreUser             bool
+	cliSplitRestoreDisableBinlog    bool
+	cliSplitRestoreCreateDatabases  bool
 )
 
 var splitRestoreCmd = &cobra.Command{
@@ -48,6 +49,7 @@ func initSplitRestoreFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&cliSplitRestoreParallel, "parallel", 1, "Parallel workers for splitdump restore")
 	cmd.Flags().BoolVar(&cliSplitRestoreUser, "restore-user", true, "Restore mysql.system-all file when present")
 	cmd.Flags().BoolVar(&cliSplitRestoreDisableBinlog, "disable-binlog", false, "Disable binary logging for splitdump restore")
+	cmd.Flags().BoolVar(&cliSplitRestoreCreateDatabases, "splitdump-create-databases", false, "Create databases before restore (opt-in for manual CLI use)")
 }
 
 func runSplitrestore(ctx context.Context) error {
@@ -116,6 +118,31 @@ func runSplitrestore(ctx context.Context) error {
 			return fmt.Errorf("mysql restore failed for %s: %s", path, errOutput)
 		}
 		return nil
+	}
+
+	if cliSplitRestoreCreateDatabases {
+		schemas, schemaErr := splitdump.ListSchemas(cliSplitRestoreDir)
+		if schemaErr != nil {
+			logger(splitdump.LogWarn, "Could not list schemas for CREATE DATABASE: %v", schemaErr)
+		} else {
+			createArgs, argErr := splitMysqlArgs(cliSplitRestoreMysqlArg)
+			if argErr != nil {
+				logger(splitdump.LogWarn, "Invalid mysql-args, skipping CREATE DATABASE: %v", argErr)
+			} else {
+				for _, schema := range schemas {
+					escaped := strings.ReplaceAll(schema, "`", "``")
+					sql := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`;\n", escaped)
+					createCmd := exec.CommandContext(ctx, cliSplitRestoreMysql, createArgs...)
+					createCmd.Stdin = strings.NewReader(sql)
+					var createStderr bytes.Buffer
+					createCmd.Stderr = &createStderr
+					if err := createCmd.Run(); err != nil {
+						logger(splitdump.LogWarn, "CREATE DATABASE failed for %s: %s",
+							schema, strings.TrimSpace(createStderr.String()))
+					}
+				}
+			}
+		}
 	}
 
 	if err := splitdump.Restore(cliSplitRestoreDir, splitdump.RestoreOptions{

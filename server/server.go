@@ -922,10 +922,12 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupMysqlclientOptions, "backup-mysqlclient-options", "--force --batch", "Extra options")
 	flags.BoolVar(&conf.BackupMysqldumpSplitDump, "backup-mysqldump-splitdump", false, "Split mysqldump output using splitdump")
 	flags.StringVar(&conf.BackupSplitdumpFileSize, "backup-splitdump-file-size", "1G", "Max file size before sharding splitdump output (e.g. 16MiB, 1G; 0 disables sharding)")
+	flags.BoolVar(&conf.BackupSplitdumpCreateDatabases, "backup-splitdump-create-databases", true, "Auto-create databases before splitdump restore (server-orchestrated)")
 	flags.StringVar(&conf.BackupMytopPath, "backup-mytop-path", "", "Path to mytop binary")
 	flags.StringVar(&conf.BackupGottyClientPath, "backup-gotty-client-path", "", "Path to gotty client binary")
 	flags.StringVar(&conf.ReplicationManagerCliPath, "replication-manager-cli-path", "", "Path to replication-manager-cli binary")
 	flags.BoolVar(&conf.BackupRestoreVersionStrict, "backup-restore-version-strict", false, "During restore, check backup version against tools version. False will just issue a warning. True will abort restore")
+	flags.BoolVar(&conf.BackupRestoreDefinerStrict, "backup-restore-definer-strict", false, "During restore, fail closed when an incompatible DEFINER clause is encountered. False (default) applies non-strict fallback and continues.")
 
 	flags.BoolVar(&conf.BackupBinlogs, "backup-binlogs", false, "Archive binlogs")
 	flags.IntVar(&conf.BackupBinlogsKeep, "backup-binlogs-keep", 10, "Number of master binlog to keep")

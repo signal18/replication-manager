@@ -965,6 +965,9 @@ func resolveLogicalBackupPathFromMeta(server *ServerMonitor, backtype string) (s
 	return dest, true
 }
 
+// definerStripRegex matches DEFINER=`user`@`host` clauses (case-insensitive) in SQL output.
+var definerStripRegex = regexp.MustCompile("(?i)DEFINER\\s*=\\s*`[^`]+`@`[^`]+`")
+
 func isSplitDumpDir(path string) (bool, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -1071,7 +1074,7 @@ func (server *ServerMonitor) restoreSplitdumpFileContextWithPreamble(ctx context
 			force = true
 		}
 
-		if table != "" {
+		if table != "" && splitdump.IsMysqlTableCheckEligible(path) {
 			// Server path proactively checks information_schema; CLI path reacts to mysql error output instead.
 			exists, err := server.tableExists(schema, table)
 			if err != nil {
@@ -1092,6 +1095,44 @@ func (server *ServerMonitor) restoreSplitdumpFileContextWithPreamble(ctx context
 	}
 
 	return server.executeMysqlRestoreContext(ctx, reader, force)
+}
+
+// restoreSplitdumpFileContextStripDefiner reads path (handling gzip), strips DEFINER clauses
+// using definerStripRegex, prepends preamble, and pipes the result to the mysql client.
+// It is used as the non-strict DEFINER fallback when backup-restore-definer-strict=false.
+func (server *ServerMonitor) restoreSplitdumpFileContextStripDefiner(ctx context.Context, path, preamble string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	cluster := server.ClusterGroup
+	var reader io.Reader = file
+	if strings.HasSuffix(strings.ToLower(path), ".gz") {
+		parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
+		bufferSize := cluster.getSanitizedDecompressBufferSize(config.ConstLogModTask)
+		gzReader, err := gzip.NewReaderN(file, bufferSize, parallelBlocks)
+		if err != nil {
+			return err
+		}
+		defer gzReader.Close()
+		reader = gzReader
+	}
+
+	content, err := io.ReadAll(reader)
+	if err != nil {
+		return err
+	}
+	stripped := definerStripRegex.ReplaceAll(content, nil)
+
+	var finalReader io.Reader = bytes.NewReader(stripped)
+	if preamble != "" {
+		finalReader = io.MultiReader(bytes.NewBufferString(preamble), finalReader)
+	}
+
+	force := splitdump.IsMysqlSystemAll(path)
+	return server.executeMysqlRestoreContext(ctx, finalReader, force)
 }
 
 func (server *ServerMonitor) tableExists(schema, table string) (bool, error) {
@@ -1213,9 +1254,30 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 
 	defer server.SetInReseedBackup("")
 
+	if cluster.Conf.BackupSplitdumpCreateDatabases {
+		schemas, schemaErr := splitdump.ListSchemas(backupPath)
+		if schemaErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream,
+				config.LvlWarn, "Could not list schemas for CREATE DATABASE: %v", schemaErr)
+		} else {
+			for _, schema := range schemas {
+				escaped := strings.ReplaceAll(schema, "`", "``")
+				sql := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`;\n", escaped)
+				if err := server.executeMysqlRestoreContext(ctx, strings.NewReader(sql), false); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream,
+						config.LvlWarn, "CREATE DATABASE failed for %s: %v", schema, err)
+				}
+			}
+		}
+	}
+
 	restoreFile := func(ctx context.Context, path string) error {
 		preamble := server.buildSplitdumpRestorePreamble(path, sqlLogBin)
 		return server.restoreSplitdumpFileContextWithPreamble(ctx, path, preamble)
+	}
+	restoreFileWithoutDefiner := func(ctx context.Context, path string) error {
+		preamble := server.buildSplitdumpRestorePreamble(path, sqlLogBin)
+		return server.restoreSplitdumpFileContextStripDefiner(ctx, path, preamble)
 	}
 
 	restoreErr := splitdump.Restore(backupPath, splitdump.RestoreOptions{
@@ -1224,8 +1286,10 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 		Logger: func(level, format string, args ...any) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, level, format, args...)
 		},
-		Context:                ctx,
-		RestoreFileWithContext: restoreFile,
+		Context:                   ctx,
+		RestoreFileWithContext:     restoreFile,
+		RestoreFileWithoutDefiner: restoreFileWithoutDefiner,
+		DefinerStrict:             cluster.Conf.BackupRestoreDefinerStrict,
 	})
 	if restoreErr != nil {
 		return restoreErr

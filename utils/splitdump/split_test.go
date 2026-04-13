@@ -575,3 +575,150 @@ func TestSplitDumpLineParserSplitsAtStatementBoundary(t *testing.T) {
 		t.Fatalf("expected shard to start with INSERT statement, got: %s", firstLine)
 	}
 }
+
+func TestSplitDumpLineParserWritesRoutinesTriggersEventsAndSystemFiles(t *testing.T) {
+	bus := NewSplitDumpChannelBus()
+	outputDir := filepath.Join(t.TempDir(), "splitdump")
+
+	go SplitDumpLineParser(bus, outputDir, SplitDumpOptions{})
+
+	lines := []string{
+		"USE `db`\n",
+		"-- Table structure for table `tbl`\n",
+		"CREATE TABLE `tbl` (id int);\n",
+		"-- Final view structure for view `v_tbl`\n",
+		"CREATE VIEW `v_tbl` AS SELECT `tbl`.`id` AS `id` FROM `tbl`;\n",
+		"-- Dumping routines for database 'db'\n",
+		"CREATE FUNCTION `f_tbl`() RETURNS int RETURN 1;\n",
+		"-- Dumping data for table `tbl`\n",
+		"LOCK TABLES `tbl` WRITE;\n",
+		"INSERT INTO `tbl` VALUES (1);\n",
+		"UNLOCK TABLES;\n",
+		"-- Dumping triggers for table `tbl`\n",
+		"CREATE TRIGGER `trg_tbl` BEFORE INSERT ON `tbl` FOR EACH ROW SET NEW.id = NEW.id;\n",
+		"-- Dumping events for database 'db'\n",
+		"CREATE EVENT `ev_tbl` ON SCHEDULE EVERY 1 DAY DO SELECT 1;\n",
+		"CREATE USER 'app'@'%' IDENTIFIED BY 'x';\n",
+		"INSTALL PLUGIN validate_password SONAME 'validate_password.so';\n",
+	}
+	for _, line := range lines {
+		bus.CurrentLine <- line
+	}
+	close(bus.CurrentLine)
+
+	select {
+	case <-bus.Finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for splitdump to finish")
+	}
+
+	readGzip := func(path string) string {
+		file, err := os.Open(path)
+		if err != nil {
+			t.Fatalf("failed to open %s: %v", path, err)
+		}
+		defer file.Close()
+		reader, err := gzip.NewReader(file)
+		if err != nil {
+			t.Fatalf("failed to open gzip %s: %v", path, err)
+		}
+		defer reader.Close()
+		content, err := io.ReadAll(reader)
+		if err != nil {
+			t.Fatalf("failed to read gzip %s: %v", path, err)
+		}
+		return string(content)
+	}
+
+	routinePath := filepath.Join(outputDir, "db.__routines-schema-routine.sql.gz")
+	if _, err := os.Stat(routinePath); err != nil {
+		t.Fatalf("expected routines file: %v", err)
+	}
+	if got := readGzip(routinePath); !strings.Contains(got, "CREATE FUNCTION") {
+		t.Fatalf("expected routines file to contain function definition")
+	}
+
+	triggerPath := filepath.Join(outputDir, "db.tbl-schema-trigger.sql.gz")
+	if _, err := os.Stat(triggerPath); err != nil {
+		t.Fatalf("expected trigger file: %v", err)
+	}
+	if got := readGzip(triggerPath); !strings.Contains(got, "CREATE TRIGGER") {
+		t.Fatalf("expected trigger file to contain trigger definition")
+	}
+
+	eventPath := filepath.Join(outputDir, "db.__events-schema-event.sql.gz")
+	if _, err := os.Stat(eventPath); err != nil {
+		t.Fatalf("expected event file: %v", err)
+	}
+	if got := readGzip(eventPath); !strings.Contains(got, "CREATE EVENT") {
+		t.Fatalf("expected event file to contain event definition")
+	}
+
+	systemPath := filepath.Join(outputDir, "mysql.system-all.sql.gz")
+	if _, err := os.Stat(systemPath); err != nil {
+		t.Fatalf("expected mysql system file: %v", err)
+	}
+	systemContent := readGzip(systemPath)
+	if !strings.Contains(systemContent, "CREATE USER") {
+		t.Fatalf("expected system file to contain CREATE USER")
+	}
+	if !strings.Contains(systemContent, "INSTALL PLUGIN") {
+		t.Fatalf("expected system file to contain INSTALL PLUGIN")
+	}
+}
+
+func TestSplitDumpLineParserTruncatesSystemFileOnFirstWriteInRun(t *testing.T) {
+	bus := NewSplitDumpChannelBus()
+	outputDir := filepath.Join(t.TempDir(), "splitdump")
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		t.Fatalf("failed to create output dir: %v", err)
+	}
+
+	preexisting := filepath.Join(outputDir, "mysql.system-all.sql.gz")
+	func() {
+		f, err := os.Create(preexisting)
+		if err != nil {
+			t.Fatalf("failed to create preexisting file: %v", err)
+		}
+		defer f.Close()
+		zw := gzip.NewWriter(f)
+		if _, err := zw.Write([]byte("OLD SYSTEM CONTENT\n")); err != nil {
+			t.Fatalf("failed to write preexisting gzip content: %v", err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatalf("failed to close preexisting gzip writer: %v", err)
+		}
+	}()
+
+	go SplitDumpLineParser(bus, outputDir, SplitDumpOptions{})
+	bus.CurrentLine <- "CREATE USER 'new'@'%' IDENTIFIED BY 'x';\n"
+	close(bus.CurrentLine)
+
+	select {
+	case <-bus.Finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for splitdump to finish")
+	}
+
+	f, err := os.Open(preexisting)
+	if err != nil {
+		t.Fatalf("failed to open system file: %v", err)
+	}
+	defer f.Close()
+	r, err := gzip.NewReader(f)
+	if err != nil {
+		t.Fatalf("failed to open system gzip: %v", err)
+	}
+	defer r.Close()
+	content, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("failed to read system gzip: %v", err)
+	}
+	got := string(content)
+	if strings.Contains(got, "OLD SYSTEM CONTENT") {
+		t.Fatalf("expected old system content to be truncated, got: %s", got)
+	}
+	if !strings.Contains(got, "CREATE USER") {
+		t.Fatalf("expected new system content in file, got: %s", got)
+	}
+}
