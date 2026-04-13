@@ -1015,17 +1015,6 @@ func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, ba
 		ctx = context.Background()
 	}
 
-	// Stream container format: preflight → streaming AEAD decrypt → mysql client.
-	// Checked before the legacy in-place decrypt path to avoid any temp-file writes.
-	streamOk, streamErr := isStreamContainerFile(backupPath)
-	if streamErr != nil {
-		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn,
-			"Stream container detection failed for %s, falling through to legacy restore: %v", backupPath, streamErr)
-	}
-	if streamOk {
-		return server.reseedMysqldumpFromStreamContainer(ctx, backupPath, restoreUser)
-	}
-
 	if meta != nil {
 		if meta.Dest != "" {
 			pathsMatch, err := comparePaths(meta.Dest, backupPath)
@@ -1042,16 +1031,39 @@ func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, ba
 			}
 		}
 	}
+
+	isSplitPath, err := isSplitDumpDir(backupPath)
+	if err != nil {
+		return err
+	}
+	isSplitMeta := meta != nil && (meta.SplitDump || isSplitDumpName(meta.Dest))
+	if isSplitPath || isSplitMeta {
+		cluster := server.ClusterGroup
+		if isSplitPath {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+				"Splitdump detected at %s; restoring with mysql client", backupPath)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+				"Splitdump metadata detected for %s; restoring with mysql client", backupPath)
+		}
+		return server.JobReseedSplitdumpWithMysql(ctx, backupPath, restoreUser)
+	}
+
+	// Stream container format: preflight → streaming AEAD decrypt → mysql client.
+	// Checked before the legacy in-place decrypt path to avoid any temp-file writes.
+	streamOk, streamErr := isStreamContainerFile(backupPath)
+	if streamErr != nil {
+		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn,
+			"Stream container detection failed for %s, falling through to legacy restore: %v", backupPath, streamErr)
+	}
+	if streamOk {
+		return server.reseedMysqldumpFromStreamContainer(ctx, backupPath, restoreUser)
+	}
+
 	if meta != nil && meta.Encrypted {
 		if err := server.ClusterGroup.runEncryptedSingleFileRestorePipeline(backupPath, meta); err != nil {
 			return err
 		}
-	}
-	if meta != nil && (meta.SplitDump || isSplitDumpName(meta.Dest)) {
-		cluster := server.ClusterGroup
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-			"Splitdump metadata detected for %s; restoring with mysql client", backupPath)
-		return server.JobReseedSplitdumpWithMysql(ctx, backupPath, restoreUser)
 	}
 	return server.reseedMysqldumpWithSplitdump(ctx, backupPath, restoreUser)
 }

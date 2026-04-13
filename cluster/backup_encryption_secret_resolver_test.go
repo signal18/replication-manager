@@ -132,3 +132,39 @@ func TestReseedMysqldumpWithMetadataFailsClosedOnEncryptedPathMismatch(t *testin
 		t.Fatalf("expected path mismatch error, got: %v", err)
 	}
 }
+
+func TestReseedMysqldumpWithMetadataEncryptedSplitdumpSkipsSingleFileIVPreflight(t *testing.T) {
+	backupDir := filepath.Join(t.TempDir(), "splitdump")
+	if err := os.MkdirAll(backupDir, 0o700); err != nil {
+		t.Fatalf("mkdir splitdump dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(backupDir, "db.table.sql"), []byte("SELECT 1;\n"), 0o600); err != nil {
+		t.Fatalf("write splitdump chunk: %v", err)
+	}
+
+	cl := &Cluster{
+		Name: "clusterE",
+		Conf: &config.Config{Verbose: false},
+	}
+	server := &ServerMonitor{ClusterGroup: cl}
+
+	meta := &backupmgr.BackupMetadata{
+		Encrypted:      true,
+		SplitDump:      true,
+		Dest:           backupDir,
+		EncryptionAlgo: backupmgr.BackupEncryptionAlgorithm,
+		// No IV/MAC on purpose: splitdump directory encryption stores per-file IV/MAC
+		// in the manifest, and must not be validated as single-file metadata.
+	}
+
+	err := server.reseedMysqldumpWithMetadata(context.Background(), backupDir, false, meta)
+	if err == nil {
+		t.Fatalf("expected restore to fail later in splitdump path due missing master fixture")
+	}
+	if strings.Contains(err.Error(), "encrypted restore metadata missing encryption IV") {
+		t.Fatalf("unexpected single-file encrypted preflight error for splitdump path: %v", err)
+	}
+	if !strings.Contains(err.Error(), "No master found") {
+		t.Fatalf("expected splitdump restore path error context, got: %v", err)
+	}
+}
