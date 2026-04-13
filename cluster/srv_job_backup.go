@@ -1014,6 +1014,13 @@ func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, ba
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
+	// Stream container format: preflight → streaming AEAD decrypt → mysql client.
+	// Checked before the legacy in-place decrypt path to avoid any temp-file writes.
+	if ok, _ := isStreamContainerFile(backupPath); ok {
+		return server.reseedMysqldumpFromStreamContainer(ctx, backupPath, restoreUser)
+	}
+
 	if meta != nil {
 		if meta.Dest != "" {
 			pathsMatch, err := comparePaths(meta.Dest, backupPath)
@@ -1042,6 +1049,34 @@ func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, ba
 		return server.JobReseedSplitdumpWithMysql(ctx, backupPath, restoreUser)
 	}
 	return server.reseedMysqldumpWithSplitdump(ctx, backupPath, restoreUser)
+}
+
+// reseedMysqldumpFromStreamContainer restores a mysqldump backup stored in the
+// new stream container format. It streams decrypted plaintext directly to the
+// mysql client without writing a temp file.
+func (server *ServerMonitor) reseedMysqldumpFromStreamContainer(ctx context.Context, backupPath string, restoreUser bool) error {
+	cluster := server.ClusterGroup
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo,
+		"Stream container mysqldump restore: %s", backupPath)
+
+	r, err := cluster.openSingleFileStreamContainerReader(ctx, backupPath)
+	if err != nil {
+		return fmt.Errorf("stream container mysqldump restore: %w", err)
+	}
+	defer r.Close()
+
+	preamble, _, err := server.buildLogicalRestorePreamble()
+	if err != nil {
+		return err
+	}
+
+	var reader io.Reader = r
+	if preamble != "" {
+		reader = io.MultiReader(bytes.NewBufferString(preamble), r)
+	}
+
+	return server.executeMysqlRestoreContext(ctx, reader, false)
 }
 
 func (server *ServerMonitor) restoreSplitdumpFileContextWithPreamble(ctx context.Context, path, preamble string) error {
@@ -3863,6 +3898,23 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", server.URL)
+
+	// Stream container format: preflight → streaming AEAD decrypt → SST receiver.
+	// Checked before the legacy in-place decrypt path so no temp file is written.
+	if ok, _ := isStreamContainerFile(backupfile); ok {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo,
+			"Stream container physical restore: %s for %s", backupfile, server.URL)
+		opener := cluster.makeStreamContainerSSTOpener(context.Background(), backupfile)
+		go func() {
+			err := server.WaitAndSendSSTStream(context.Background(), task, backupfile, false, 0, opener)
+			if err != nil {
+				if server.HasReseedingState(task) {
+					server.SetInReseedBackup("")
+				}
+			}
+		}()
+		return nil
+	}
 
 	// Apply encryption pipeline for encrypted physical single-file artifacts.
 	// Preflight, HMAC verification, and decryption happen before SST to ensure

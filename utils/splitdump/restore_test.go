@@ -8,7 +8,9 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestReadMetadataAllowsMissingGTID(t *testing.T) {
@@ -401,5 +403,214 @@ func TestRestorePreambleEscapesSchema(t *testing.T) {
 	want := "SET FOREIGN_KEY_CHECKS=0;\nUSE `db``name`;\n"
 	if got := RestorePreamble(name); got != want {
 		t.Fatalf("RestorePreamble(%q) = %q, want %q", name, got, want)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RestoreFromSource — stream container source
+// ---------------------------------------------------------------------------
+
+func TestRestoreFromSource_StreamSource_SchemaBeforeData(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	var order []string
+
+	restoreCtx := func(_ interface{}, path string) error {
+		mu.Lock()
+		order = append(order, filepath.Base(path))
+		mu.Unlock()
+		return nil
+	}
+
+	src := &StreamContainerSource{
+		StreamEntries: []StreamEntry{
+			{Path: "data/tbl.sql", IsSchema: false, GroupKey: "tbl", ShardIdx: 1},
+			{Path: "schema/db.sql", IsSchema: true, GroupKey: "db", ShardIdx: 0},
+		},
+	}
+
+	err := RestoreFromSource(src, RestoreOptions{
+		Parallel: 1,
+		RestoreFile: func(path string) error {
+			return restoreCtx(nil, path)
+		},
+	})
+	if err != nil {
+		t.Fatalf("RestoreFromSource: %v", err)
+	}
+
+	mu.Lock()
+	got := append([]string(nil), order...)
+	mu.Unlock()
+
+	if len(got) != 2 {
+		t.Fatalf("expected 2 restored, got %d: %v", len(got), got)
+	}
+	if got[0] != "db.sql" {
+		t.Fatalf("expected schema first, got %q", got[0])
+	}
+	if got[1] != "tbl.sql" {
+		t.Fatalf("expected data second, got %q", got[1])
+	}
+}
+
+func TestRestoreFromSource_StreamSource_GroupParallelism(t *testing.T) {
+	t.Parallel()
+
+	// Two independent data groups should run concurrently
+	src := &StreamContainerSource{
+		StreamEntries: []StreamEntry{
+			{Path: "data/tbl1.sql", IsSchema: false, GroupKey: "tbl1", ShardIdx: 1},
+			{Path: "data/tbl2.sql", IsSchema: false, GroupKey: "tbl2", ShardIdx: 1},
+		},
+	}
+
+	started := make(chan string, 2)
+	gate := make(chan struct{})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- RestoreFromSource(src, RestoreOptions{
+			Parallel: 2,
+			RestoreFile: func(path string) error {
+				started <- filepath.Base(path)
+				<-gate
+				return nil
+			},
+		})
+	}()
+
+	seen := make(map[string]bool)
+	timeout := time.After(5 * time.Second)
+	for len(seen) < 2 {
+		select {
+		case name := <-started:
+			seen[name] = true
+		case <-timeout:
+			close(gate)
+			t.Fatalf("timeout: only %d/2 groups started — suggests sequential execution", len(seen))
+		}
+	}
+	close(gate)
+
+	if err := <-done; err != nil {
+		t.Fatalf("RestoreFromSource: %v", err)
+	}
+}
+
+func TestRestoreFromSource_StreamSource_WithinGroupShardOrder(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	var order []string
+
+	src := &StreamContainerSource{
+		StreamEntries: []StreamEntry{
+			{Path: "data/tbl.0003.sql", IsSchema: false, GroupKey: "tbl", ShardIdx: 3},
+			{Path: "data/tbl.0001.sql", IsSchema: false, GroupKey: "tbl", ShardIdx: 1},
+			{Path: "data/tbl.0002.sql", IsSchema: false, GroupKey: "tbl", ShardIdx: 2},
+		},
+	}
+
+	err := RestoreFromSource(src, RestoreOptions{
+		Parallel: 1,
+		RestoreFile: func(path string) error {
+			mu.Lock()
+			order = append(order, filepath.Base(path))
+			mu.Unlock()
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("RestoreFromSource: %v", err)
+	}
+
+	mu.Lock()
+	got := append([]string(nil), order...)
+	mu.Unlock()
+
+	want := []string{"data/tbl.0001.sql", "data/tbl.0002.sql", "data/tbl.0003.sql"}
+	for i, wantPath := range want {
+		if got[i] != filepath.Base(wantPath) {
+			t.Fatalf("order[%d]: expected %q, got %q", i, filepath.Base(wantPath), got[i])
+		}
+	}
+}
+
+func TestRestoreFromSource_StreamSource_ErrorPropagation(t *testing.T) {
+	t.Parallel()
+
+	sentinel := errors.New("restore failed")
+	var callCount int64
+
+	src := &StreamContainerSource{
+		StreamEntries: []StreamEntry{
+			{Path: "schema/db.sql", IsSchema: true, GroupKey: "db", ShardIdx: 0},
+			{Path: "data/tbl.sql", IsSchema: false, GroupKey: "tbl", ShardIdx: 1},
+		},
+	}
+
+	err := RestoreFromSource(src, RestoreOptions{
+		Parallel: 1,
+		RestoreFile: func(path string) error {
+			atomic.AddInt64(&callCount, 1)
+			if filepath.Base(path) == "db.sql" {
+				return sentinel
+			}
+			return nil
+		},
+	})
+
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("expected sentinel error, got: %v", err)
+	}
+	if n := atomic.LoadInt64(&callCount); n != 1 {
+		t.Fatalf("expected 1 call (schema only), got %d", n)
+	}
+}
+
+func TestRestoreFromSource_FilesystemCompatibility(t *testing.T) {
+	t.Parallel()
+
+	// RestoreFromSource with FilesystemSource should behave identically to Restore()
+	dir := t.TempDir()
+	for _, f := range []string{"db.tbl-schema.sql.gz", "db.tbl.sql.gz"} {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("test"), 0644); err != nil {
+			t.Fatalf("write %s: %v", f, err)
+		}
+	}
+
+	var mu sync.Mutex
+	var restoredA, restoredB []string
+
+	restoreFile := func(order *[]string) func(string) error {
+		return func(path string) error {
+			mu.Lock()
+			*order = append(*order, filepath.Base(path))
+			mu.Unlock()
+			return nil
+		}
+	}
+
+	if err := Restore(dir, RestoreOptions{Parallel: 1, RestoreFile: restoreFile(&restoredA)}); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if err := RestoreFromSource(&FilesystemSource{BackupPath: dir}, RestoreOptions{Parallel: 1, RestoreFile: restoreFile(&restoredB)}); err != nil {
+		t.Fatalf("RestoreFromSource: %v", err)
+	}
+
+	mu.Lock()
+	a := append([]string(nil), restoredA...)
+	b := append([]string(nil), restoredB...)
+	mu.Unlock()
+
+	if len(a) != len(b) {
+		t.Fatalf("result mismatch: Restore=%v RestoreFromSource=%v", a, b)
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			t.Fatalf("result[%d]: Restore=%q RestoreFromSource=%q", i, a[i], b[i])
+		}
 	}
 }

@@ -133,7 +133,19 @@ func ListFiles(backupPath string, restoreUser bool) (FileSet, error) {
 	return set, nil
 }
 
+// Restore restores a splitdump backup from backupPath using opts.
+// It delegates to RestoreFromSource using a FilesystemSource, preserving all
+// existing filesystem restore behavior.
 func Restore(backupPath string, opts RestoreOptions) error {
+	return RestoreFromSource(&FilesystemSource{BackupPath: backupPath}, opts)
+}
+
+// RestoreFromSource restores entries provided by the given RestoreSource using opts.
+// It is the canonical restore implementation shared by both filesystem-backed and
+// stream-container-backed restores. Schema entries are restored sequentially before
+// data entries, which are dispatched to parallel workers grouped by GroupKey with
+// shard ordering preserved within each group.
+func RestoreFromSource(source RestoreSource, opts RestoreOptions) error {
 	if opts.RestoreFile == nil && opts.RestoreFileWithContext == nil {
 		return fmt.Errorf("splitdump restore requires RestoreFile")
 	}
@@ -148,7 +160,8 @@ func Restore(backupPath string, opts RestoreOptions) error {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	meta, err := ReadMetadata(backupPath)
+
+	meta, err := source.Metadata()
 	if err != nil {
 		if opts.StrictMetadata {
 			return err
@@ -161,51 +174,62 @@ func Restore(backupPath string, opts RestoreOptions) error {
 		default:
 			return err
 		}
-	} else {
+	} else if meta != nil {
 		logf(LogInfo, "Splitdump metadata loaded (file=%s pos=%d)", meta.File, meta.Position)
 	}
 
-	files, err := ListFiles(backupPath, opts.RestoreUser)
+	entries, err := source.Entries(opts.RestoreUser)
 	if err != nil {
 		return err
 	}
-	logf(LogInfo, "Splitdump restore files listed (schema=%d data=%d)", len(files.Schema), len(files.Data))
 
-	for _, schemaFile := range files.Schema {
+	var schemaEntries []SourceEntry
+	var dataEntries []SourceEntry
+	for _, e := range entries {
+		if e.IsSchema {
+			schemaEntries = append(schemaEntries, e)
+		} else {
+			dataEntries = append(dataEntries, e)
+		}
+	}
+	logf(LogInfo, "Splitdump restore files listed (schema=%d data=%d)", len(schemaEntries), len(dataEntries))
+
+	doRestoreFile := func(ctx context.Context, path string) error {
+		if opts.RestoreFileWithContext != nil {
+			return opts.RestoreFileWithContext(ctx, path)
+		}
+		return opts.RestoreFile(path)
+	}
+
+	for _, e := range schemaEntries {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		logf(LogDebug, "Splitdump restoring schema (%s)", filepath.Base(schemaFile))
-		var err error
-		if opts.RestoreFileWithContext != nil {
-			err = opts.RestoreFileWithContext(ctx, schemaFile)
-		} else {
-			err = opts.RestoreFile(schemaFile)
-		}
-		if err != nil {
-			logf(LogError, "Splitdump schema restore failed (%s): %v", filepath.Base(schemaFile), err)
+		logf(LogDebug, "Splitdump restoring schema (%s)", filepath.Base(e.Path))
+		if err := doRestoreFile(ctx, e.Path); err != nil {
+			logf(LogError, "Splitdump schema restore failed (%s): %v", filepath.Base(e.Path), err)
 			cancel()
 			return err
 		}
+	}
+
+	if len(dataEntries) == 0 {
+		logf(LogInfo, "Splitdump restore completed (no data files)")
+		return nil
+	}
+
+	dataGroups := groupSourceDataEntries(dataEntries)
+	if len(dataGroups) == 0 {
+		logf(LogInfo, "Splitdump restore completed (no data files)")
+		return nil
 	}
 
 	parallel := opts.Parallel
 	if parallel < 1 {
 		parallel = 1
 	}
-	if parallel > len(files.Data) && len(files.Data) > 0 {
-		parallel = len(files.Data)
-	}
-
-	if len(files.Data) == 0 {
-		logf(LogInfo, "Splitdump restore completed (no data files)")
-		return nil
-	}
-
-	dataGroups := groupSplitdumpDataFiles(files.Data)
-	if len(dataGroups) == 0 {
-		logf(LogInfo, "Splitdump restore completed (no data files)")
-		return nil
+	if parallel > len(dataGroups) {
+		parallel = len(dataGroups)
 	}
 
 	var wg sync.WaitGroup
@@ -237,13 +261,7 @@ func Restore(backupPath string, opts RestoreOptions) error {
 					default:
 					}
 					logf(LogDebug, "Splitdump restoring data (%s)", filepath.Base(path))
-					var err error
-					if opts.RestoreFileWithContext != nil {
-						err = opts.RestoreFileWithContext(ctx, path)
-					} else {
-						err = opts.RestoreFile(path)
-					}
-					if err != nil {
+					if err := doRestoreFile(ctx, path); err != nil {
 						logf(LogError, "Splitdump data restore failed (%s): %v", filepath.Base(path), err)
 						setErr(err)
 						return
@@ -253,16 +271,12 @@ func Restore(backupPath string, opts RestoreOptions) error {
 		}
 	}
 
-	if parallel > len(dataGroups) {
-		parallel = len(dataGroups)
-	}
-
 	for i := 0; i < parallel; i++ {
 		wg.Add(1)
 		go groupWorker()
 	}
 
-	logf(LogInfo, "Splitdump restoring data files (count=%d parallel=%d)", len(files.Data), parallel)
+	logf(LogInfo, "Splitdump restoring data files (count=%d parallel=%d)", len(dataEntries), parallel)
 
 sendLoop:
 	for _, group := range dataGroups {
