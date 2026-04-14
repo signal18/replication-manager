@@ -4155,10 +4155,8 @@ func (repo *ResticManager) CheckResticLocks() error {
 
 // ResticUnlockRepo unlocks the repository
 func (repo *ResticManager) UnlockRepo() error {
-
-	if !repo.GetCanFetch() {
+	for !repo.GetCanFetch() {
 		time.Sleep(time.Second)
-		return repo.UnlockRepo()
 	}
 
 	repo.SetCanFetch(false)
@@ -4174,7 +4172,8 @@ func (repo *ResticManager) UnlockRepo() error {
 		return fmt.Errorf("failed to check repo locks: %v, stderr: %s", err, stderr)
 	}
 
-	if !strings.Contains(string(stdout), "successfully removed locks") {
+	output := string(stdout) + "\n" + string(stderr)
+	if !strings.Contains(output, "successfully removed") && !strings.Contains(output, "no locks were found") {
 		return fmt.Errorf("failed to unlock repo: %s. stderr: %s", stdout, stderr)
 	}
 

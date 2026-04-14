@@ -809,9 +809,6 @@ func TestCheckResticLocksAndUnlock(t *testing.T) {
 
 	err := repo.UnlockRepo()
 	if err != nil {
-		if strings.Contains(err.Error(), "no locks") {
-			t.Skip("restic unlock reports no locks")
-		}
 		t.Fatalf("unlock repo: %v", err)
 	}
 }
