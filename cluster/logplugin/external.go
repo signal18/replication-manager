@@ -451,6 +451,11 @@ func LoadPluginsFromDir(pluginDir string, reg *Registry, opts LoadOptions) (load
 		if !strings.HasPrefix(e.Name(), "plugin-") {
 			continue
 		}
+		// Plugin binaries have no file extension. Skip .sig, .pub, and any
+		// other extension so non-binary files are never executed.
+		if filepath.Ext(e.Name()) != "" {
+			continue
+		}
 		info, err := e.Info()
 		if err != nil {
 			continue

@@ -383,7 +383,11 @@ func (repman *ReplicationManager) syncPluginsFromPull(pullDir string) {
 					"[logplugin] failed to copy plugin file %s: %v", e.Name(), err)
 				continue
 			}
-			os.Chmod(dst, 0755) // #nosec G302 — plugin binaries must be executable
+			// Only set executable bit on actual binaries (no extension).
+			// .pub and .sig files must not be made executable.
+			if filepath.Ext(e.Name()) == "" {
+				os.Chmod(dst, 0755) // #nosec G302 — plugin binaries must be executable
+			}
 			changed++
 		}
 		if changed > 0 {
