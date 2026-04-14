@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,14 +29,16 @@ var ErrNotSplitdump = errors.New("not a splitdump backup layout")
 // ErrDefinerStrict is returned when strict DEFINER enforcement blocks a restore.
 var ErrDefinerStrict = errors.New("strict DEFINER enforcement blocked restore")
 
+// definerErrRe matches the MySQL/MariaDB DEFINER compatibility error. The pattern targets the
+// canonical error number (1449) and the distinctive phrase in the error message, avoiding false
+// positives from passwords, row counts, or unrelated messages that happen to contain "1449" or
+// "definer" as substrings.
+var definerErrRe = regexp.MustCompile(`(?i)(ERROR 1449|the user specified as a definer)`)
+
 // IsDefinerError reports whether err indicates a MySQL/MariaDB DEFINER compatibility failure
 // (typically error 1449: the definer user does not exist on the target server).
 func IsDefinerError(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := strings.ToLower(err.Error())
-	return strings.Contains(s, "1449") || strings.Contains(s, "definer")
+	return err != nil && definerErrRe.MatchString(err.Error())
 }
 
 type Metadata struct {
@@ -188,7 +191,12 @@ func ListSchemas(backupPath string) ([]string, error) {
 	}
 	seen := make(map[string]bool)
 	var schemas []string
-	allFiles := append(append(files.Schema, files.Data...), files.Post...)
+	// Explicit allocation avoids the append-aliasing pitfall where a first append with spare
+	// capacity in files.Schema would write files.Data entries into its backing array.
+	allFiles := make([]string, 0, len(files.Schema)+len(files.Data)+len(files.Post))
+	allFiles = append(allFiles, files.Schema...)
+	allFiles = append(allFiles, files.Data...)
+	allFiles = append(allFiles, files.Post...)
 	for _, path := range allFiles {
 		schema := SchemaFromFilename(path)
 		if schema == "" || systemSchemas[strings.ToLower(schema)] {
@@ -534,6 +542,10 @@ func TableFromFilename(name string) string {
 	return table
 }
 
+// IsSchemaFile reports whether name is a schema-phase file (tables, mysql.system-all, routines,
+// views). Trigger and event files are post-phase artifacts (see IsPostFile) and are intentionally
+// excluded here so that callers gating schema-phase behaviour (table existence checks, ordering)
+// do not accidentally include them.
 func IsSchemaFile(name string) bool {
 	base := filepath.Base(name)
 	if IsMysqlSystemAll(base) {
@@ -549,8 +561,14 @@ func IsSchemaFile(name string) bool {
 		strings.HasSuffix(lower, "-schema-function.sql.gz") ||
 		strings.HasSuffix(lower, "-schema-function.sql") ||
 		strings.HasSuffix(lower, "-schema-procedure.sql.gz") ||
-		strings.HasSuffix(lower, "-schema-procedure.sql") ||
-		strings.HasSuffix(lower, "-schema-trigger.sql.gz") ||
+		strings.HasSuffix(lower, "-schema-procedure.sql")
+}
+
+// IsPostFile reports whether name is a post-data-phase file (triggers or events).
+// These are distinct from schema-phase files even though their filenames carry a "-schema-" infix.
+func IsPostFile(name string) bool {
+	lower := strings.ToLower(filepath.Base(name))
+	return strings.HasSuffix(lower, "-schema-trigger.sql.gz") ||
 		strings.HasSuffix(lower, "-schema-trigger.sql") ||
 		strings.HasSuffix(lower, "-schema-event.sql.gz") ||
 		strings.HasSuffix(lower, "-schema-event.sql")
@@ -656,12 +674,19 @@ func BuildRestorePlan(backupPath string, restoreUser bool) (*FileSet, error) {
 	return &fs, nil
 }
 
+// IsMysqlTableCheckEligible reports whether a tableExists check makes sense before restoring name.
+// Trigger files reference a table but are post-phase objects: running a table-existence guard on
+// them would skip legitimate trigger restores. Views, routines, events, and mysql.system-all are
+// also excluded because they have their own ordering or existence semantics.
 func IsMysqlTableCheckEligible(name string) bool {
 	lower := strings.ToLower(filepath.Base(name))
 	if !strings.HasSuffix(lower, ".sql.gz") && !strings.HasSuffix(lower, ".sql") {
 		return false
 	}
 	if IsMysqlSystemAll(lower) {
+		return false
+	}
+	if strings.HasSuffix(lower, "-schema-trigger.sql.gz") || strings.HasSuffix(lower, "-schema-trigger.sql") {
 		return false
 	}
 	if strings.HasSuffix(lower, "-schema-view.sql.gz") || strings.HasSuffix(lower, "-schema-view.sql") {

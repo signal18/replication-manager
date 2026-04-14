@@ -1097,8 +1097,9 @@ func (server *ServerMonitor) restoreSplitdumpFileContextWithPreamble(ctx context
 	return server.executeMysqlRestoreContext(ctx, reader, force)
 }
 
-// restoreSplitdumpFileContextStripDefiner reads path (handling gzip), strips DEFINER clauses
-// using definerStripRegex, prepends preamble, and pipes the result to the mysql client.
+// restoreSplitdumpFileContextStripDefiner opens path (handling gzip), strips DEFINER clauses
+// line-by-line using definerStripRegex, prepends preamble, and pipes the result to the mysql
+// client. Streaming avoids loading the full decompressed file into memory.
 // It is used as the non-strict DEFINER fallback when backup-restore-definer-strict=false.
 func (server *ServerMonitor) restoreSplitdumpFileContextStripDefiner(ctx context.Context, path, preamble string) error {
 	file, err := os.Open(path)
@@ -1120,19 +1121,35 @@ func (server *ServerMonitor) restoreSplitdumpFileContextStripDefiner(ctx context
 		reader = gzReader
 	}
 
-	content, err := io.ReadAll(reader)
-	if err != nil {
-		return err
-	}
-	stripped := definerStripRegex.ReplaceAll(content, nil)
+	// Stream line-by-line through an io.Pipe so we never buffer the whole file.
+	// DEFINER clauses in mysqldump output never span lines, so per-line replacement is safe.
+	pr, pw := io.Pipe()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		scanner := bufio.NewScanner(reader)
+		// Use a 4 MiB buffer to handle long INSERT lines in trigger/routine files.
+		scanner.Buffer(make([]byte, 4*1024*1024), 4*1024*1024)
+		for scanner.Scan() {
+			line := definerStripRegex.ReplaceAllString(scanner.Text(), "") + "\n"
+			if _, writeErr := pw.Write([]byte(line)); writeErr != nil {
+				return // pr was closed (error path); goroutine exits without blocking
+			}
+		}
+		pw.CloseWithError(scanner.Err())
+	}()
 
-	var finalReader io.Reader = bytes.NewReader(stripped)
+	var finalReader io.Reader = pr
 	if preamble != "" {
-		finalReader = io.MultiReader(bytes.NewBufferString(preamble), finalReader)
+		finalReader = io.MultiReader(bytes.NewBufferString(preamble), pr)
 	}
 
 	force := splitdump.IsMysqlSystemAll(path)
-	return server.executeMysqlRestoreContext(ctx, finalReader, force)
+	execErr := server.executeMysqlRestoreContext(ctx, finalReader, force)
+	pr.CloseWithError(execErr) // unblock goroutine if blocked in pw.Write
+	wg.Wait()                  // wait for goroutine before deferred file.Close fires
+	return execErr
 }
 
 func (server *ServerMonitor) tableExists(schema, table string) (bool, error) {

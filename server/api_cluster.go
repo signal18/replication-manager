@@ -2562,6 +2562,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.BackupMysqldumpSplitDump = !mycluster.Conf.BackupMysqldumpSplitDump
 	case "backup-splitdump-create-databases":
 		mycluster.Conf.BackupSplitdumpCreateDatabases = !mycluster.Conf.BackupSplitdumpCreateDatabases
+	case "backup-restore-definer-strict":
+		mycluster.Conf.BackupRestoreDefinerStrict = !mycluster.Conf.BackupRestoreDefinerStrict
 	case "backup-check-free-space":
 		mycluster.Conf.BackupCheckFreeSpace = !mycluster.Conf.BackupCheckFreeSpace
 	case "backup-estimate-size":
@@ -3136,6 +3138,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupSplitdumpFileSize = trimmed
 	case "backup-splitdump-create-databases":
 		mycluster.Conf.BackupSplitdumpCreateDatabases = applyIsActive(mycluster.Conf.BackupSplitdumpCreateDatabases, isactive)
+	case "backup-restore-definer-strict":
+		mycluster.Conf.BackupRestoreDefinerStrict = applyIsActive(mycluster.Conf.BackupRestoreDefinerStrict, isactive)
 	case "backup-keep-within-hourly":
 		err = mycluster.SetBackupKeepWithinHourly(value)
 		if err != nil {

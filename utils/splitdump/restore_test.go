@@ -514,8 +514,9 @@ func TestIsSchemaFile(t *testing.T) {
 		{name: "db.tbl-schema-view.sql.gz", want: true},
 		{name: "db.tbl-schema-view.sql", want: true},
 		{name: "db.__routines-schema-routine.sql.gz", want: true},
-		{name: "db.tbl-schema-trigger.sql.gz", want: true},
-		{name: "db.__events-schema-event.sql.gz", want: true},
+		// triggers and events are post-phase, not schema-phase
+		{name: "db.tbl-schema-trigger.sql.gz", want: false},
+		{name: "db.__events-schema-event.sql.gz", want: false},
 		{name: "mysql.system-all.sql.gz", want: true},
 		{name: "mysql.system-all.sql", want: true},
 		{name: "mysql.system-all", want: true},
@@ -758,8 +759,12 @@ func TestIsDefinerError(t *testing.T) {
 		want bool
 	}{
 		{name: "nil", err: nil, want: false},
-		{name: "error 1449", err: fmt.Errorf("mysql restore failed: ERROR 1449 (HY000): The user specified as a definer ('bad'@'localhost') does not exist"), want: true},
-		{name: "definer text", err: fmt.Errorf("definer 'user'@'host' problem"), want: true},
+		{name: "error 1449 full", err: fmt.Errorf("mysql restore failed: ERROR 1449 (HY000): The user specified as a definer ('bad'@'localhost') does not exist"), want: true},
+		{name: "error 1449 number only", err: fmt.Errorf("ERROR 1449 something"), want: true},
+		{name: "the user specified as a definer phrase", err: fmt.Errorf("The user specified as a definer does not exist"), want: true},
+		// bare "definer" or "1449" as substring must not trigger false positives
+		{name: "definer in column name", err: fmt.Errorf("column 'definer_id' not found"), want: false},
+		{name: "1449 in row count", err: fmt.Errorf("inserted 1449 rows"), want: false},
 		{name: "other mysql error", err: fmt.Errorf("mysql restore failed: ERROR 1146 (42S02): Table does not exist"), want: false},
 		{name: "context canceled", err: context.Canceled, want: false},
 		{name: "generic error", err: fmt.Errorf("connection refused"), want: false},
@@ -1421,7 +1426,8 @@ func TestIsMysqlTableCheckEligible(t *testing.T) {
 	}{
 		{name: "mysql.tbl-schema.sql.gz", want: true},
 		{name: "mysql.tbl.sql.gz", want: true},
-		{name: "mysql.tbl-schema-trigger.sql.gz", want: true},
+		// trigger files reference a table but are post-phase; table-existence guard is wrong for them
+		{name: "mysql.tbl-schema-trigger.sql.gz", want: false},
 		{name: "mysql.tbl-schema-view.sql.gz", want: false},
 		{name: "mysql.__routines-schema-routine.sql.gz", want: false},
 		{name: "mysql.__events-schema-event.sql.gz", want: false},
