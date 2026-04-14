@@ -484,6 +484,7 @@ func (cluster *Cluster) GetLogPluginStates(serverURL string) []state.State {
 
 func (cluster *Cluster) ReloadLogPlugins() {
 	dir := logplugin.PluginDir(cluster.WorkingDir)
+
 	opts := logplugin.LoadOptions{
 		PubKeyPath: cluster.Conf.PluginSigningPublicKey,
 		SigDir:     cluster.Conf.ShareDir + "/plugins",
