@@ -8,6 +8,7 @@
 package dbhelper
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
@@ -578,6 +579,99 @@ func TestSkipBinlogEvent_CommandGeneration(t *testing.T) {
 
 			if !strings.Contains(cmd, tt.wantCmd) {
 				t.Errorf("Generated command %q doesn't contain expected %q", cmd, tt.wantCmd)
+			}
+		})
+	}
+}
+
+func TestRelayLogSpaceNullUint64Scan(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     any
+		wantVal   uint64
+		wantValid bool
+		wantErr   bool
+	}{
+		{
+			name:      "NULL",
+			input:     nil,
+			wantVal:   0,
+			wantValid: false,
+		},
+		{
+			name:      "normal uint64",
+			input:     uint64(42),
+			wantVal:   42,
+			wantValid: true,
+		},
+		{
+			name:      "huge uint64 exceeding MaxInt64",
+			input:     uint64(math.MaxUint64),
+			wantVal:   math.MaxUint64,
+			wantValid: true,
+		},
+		{
+			name:      "positive int64",
+			input:     int64(100),
+			wantVal:   100,
+			wantValid: true,
+		},
+		{
+			name:    "negative int64 rejected",
+			input:   int64(-1),
+			wantErr: true,
+		},
+		// []byte and string are the shapes many DB drivers send for TEXT/BIGINT columns.
+		{
+			name:      "byte slice numeric",
+			input:     []byte("9999999999999999999"),
+			wantVal:   9999999999999999999,
+			wantValid: true,
+		},
+		{
+			name:      "string max uint64",
+			input:     "18446744073709551615",
+			wantVal:   math.MaxUint64,
+			wantValid: true,
+		},
+		{
+			name:      "zero value explicit (Valid=true)",
+			input:     uint64(0),
+			wantVal:   0,
+			wantValid: true,
+		},
+		// Values that exceed uint64 max must be rejected at parse time.
+		{
+			name:    "byte slice overflow",
+			input:   []byte("18446744073709551616"),
+			wantErr: true,
+		},
+		{
+			name:    "string non-numeric",
+			input:   "abc",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var rs ReplicaStatus
+			err := rs.RelayLogSpace.Scan(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Scan(%v) expected error, got nil", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("Scan(%v) unexpected error: %v", tt.input, err)
+				return
+			}
+			if rs.RelayLogSpace.Valid != tt.wantValid {
+				t.Errorf("Scan(%v) Valid = %v, want %v", tt.input, rs.RelayLogSpace.Valid, tt.wantValid)
+			}
+			if rs.RelayLogSpace.V != tt.wantVal {
+				t.Errorf("Scan(%v) V = %v, want %v", tt.input, rs.RelayLogSpace.V, tt.wantVal)
 			}
 		})
 	}

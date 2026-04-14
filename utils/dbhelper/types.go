@@ -621,7 +621,10 @@ type ReplicaStatus struct {
 	LastError                      sql.NullString `db:"Last_Error" json:"lastError"`
 	SkipCounter                    sql.NullInt64  `db:"Skip_Counter" json:"skipCounter"`
 	ExecSourceLogPos               sql.NullString `db:"Exec_Source_Log_Pos" json:"execSourceLogPos"`
-	RelayLogSpace                  sql.NullInt64  `db:"Relay_Log_Space" json:"relayLogSpace"`
+	// RelayLogSpace uses sql.Null[uint64] (not sql.NullInt64) because Percona/MySQL 8.4 can
+	// return values exceeding int64 max, causing a scan overflow. JSON encoding changes from
+	// {"Int64":…,"Valid":…} (sql.NullInt64) to {"V":…,"Valid":…} (sql.Null[uint64]).
+	RelayLogSpace sql.Null[uint64] `db:"Relay_Log_Space" json:"relayLogSpace"`
 	UntilCondition                 sql.NullString `db:"Until_Condition" json:"untilCondition"`
 	UntilLogFile                   sql.NullString `db:"Until_Log_File" json:"untilLogFile"`
 	UntilLogPos                    sql.NullString `db:"Until_Log_Pos" json:"untilLogPos"`
