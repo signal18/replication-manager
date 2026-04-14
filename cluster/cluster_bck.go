@@ -541,13 +541,13 @@ func (cluster *Cluster) StartResticManager() error {
 	resticManager.AllowUnsafeMount = cluster.Conf.BackupResticAllowUnsafeMount
 	resticManager.MountRecoveryEnabled = cluster.Conf.BackupResticMountRecoveryEnabled
 	resticManager.AutoDetectAndDisableMount()
-	resticManager.AddUnlockTask() // Unlock repo on startup to prevent stale locks (e.g. after crash). No need to add wait since it will be checked each monitor loop.
 	cluster.ResticManager = resticManager
 	cluster.ReloadResticEnv()
 	if cluster.ResticManager.RecoverMountStateOnStartup() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Recovered restic mount state on startup")
 	}
 	go cluster.ResticFetchRepo()
+	resticManager.AddUnlockTask() // Unlock repo on startup to prevent stale locks (e.g. after crash). No need to add wait since it will be checked each monitor loop.
 	return nil
 }
 
