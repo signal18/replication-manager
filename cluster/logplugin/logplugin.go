@@ -258,6 +258,13 @@ const ErrKeyNoExternalPlugins = "WARN0313"
 // The advisory includes a direct API link to toggle log-plugin on.
 const ErrKeyLogPluginDisabled = "WARN0314"
 
+// ErrKeyMoreWorkloadPlugins is an informational nudge raised on the workload
+// state machine when log-plugin=true but no external plugins are loaded.
+// Built-in workload plugins are already running; this advisory signals that
+// additional workload analysis plugins are available after signing up at
+// gitlab.signal18.io.  Uses ErrType "INFO" — not a warning, just an upsell.
+const ErrKeyMoreWorkloadPlugins = "INFO0315"
+
 // Prerequisite declares that a plugin requires a named monitoring feature to
 // be active in order to produce findings.
 type Prerequisite struct {

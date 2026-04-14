@@ -436,26 +436,42 @@ func (cluster *Cluster) CheckLogPlugins() {
 	newScore.Compute()
 	cluster.SecurityScore = newScore
 
-	// WARN0313 — no external plugins installed.
-	// Raise in both security and workload state machines so the advisory appears
-	// in both dashboard tabs and encourages operators to sign up for plugins.
 	if cluster.pluginRegistry.ExternalCount() == 0 {
-		const msg = "No external log-analysis plugins are installed for this cluster. " +
-			"Sign up at https://gitlab.signal18.io to access security, workload and binlog plugins. " +
+		// WARN0313 — security machine: no external security plugins installed.
+		// This is a genuine gap: built-in plugins do not cover security analysis.
+		const secMsg = "No external security plugins are installed for this cluster. " +
+			"Sign up at https://gitlab.signal18.io to access security and binlog analysis plugins. " +
 			"Once registered, download plugins to the cluster plugin directory and reload."
-		noPluginState := state.State{
+		secState := state.State{
 			ErrType:   "WARNING",
 			ErrKey:    logplugin.ErrKeyNoExternalPlugins,
-			ErrDesc:   msg,
+			ErrDesc:   secMsg,
 			ErrFrom:   "PLUGIN",
 			ServerUrl: "",
 		}
 		if !cluster.SecurityStateMachine.IsInState(logplugin.ErrKeyNoExternalPlugins) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
-				"[logplugin] WARN0313: no external plugins installed — register at https://gitlab.signal18.io")
+				"[logplugin] WARN0313: no external security plugins installed — register at https://gitlab.signal18.io")
 		}
-		cluster.SecurityStateMachine.AddState(logplugin.ErrKeyNoExternalPlugins, noPluginState)
-		cluster.WorkloadStateMachine.AddState(logplugin.ErrKeyNoExternalPlugins, noPluginState)
+		cluster.SecurityStateMachine.AddState(logplugin.ErrKeyNoExternalPlugins, secState)
+
+		// INFO0315 — workload machine: built-in workload plugins are already running
+		// (error-log 24h, slow-query 24h, etc.).  External plugins add deeper spike
+		// detection and regression analysis.  This is informational, not a warning.
+		const wrkMsg = "Built-in workload analysis is active. " +
+			"Additional workload plugins (spike detection, query regression, lock contention) " +
+			"are available after signing up at https://gitlab.signal18.io."
+		cluster.WorkloadStateMachine.AddState(logplugin.ErrKeyMoreWorkloadPlugins, state.State{
+			ErrType:   "INFO",
+			ErrKey:    logplugin.ErrKeyMoreWorkloadPlugins,
+			ErrDesc:   wrkMsg,
+			ErrFrom:   "PLUGIN",
+			ServerUrl: "",
+		})
+	} else {
+		// External plugins loaded — clear both advisory states.
+		cluster.SecurityStateMachine.DeleteState(logplugin.ErrKeyNoExternalPlugins)
+		cluster.WorkloadStateMachine.DeleteState(logplugin.ErrKeyMoreWorkloadPlugins)
 	}
 
 	// Snapshot states for the dashboard. CurState holds this tick's complete
