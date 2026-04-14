@@ -63,12 +63,18 @@ function SecurityScoreModal({ isOpen, closeModal }) {
     const fixKey = tag ? `${errKey}:${tag}` : errKey
     setFixing((prev) => ({ ...prev, [fixKey]: true }))
     try {
-      const { status, data } = await clusterService.fixSecState(clusterName, errKey, baseURL, tag)
+      const entry = remediationByKey[errKey]
+      const fix = tag ? entry?.fixes?.find((f) => f.tag === tag) : entry?.fixes?.[0]
+
+      let status, data
+      if (fix?.type === 'settings_switch' && fix?.url) {
+        ;({ status, data } = await clusterService.switchClusterSetting(fix.url, baseURL))
+      } else {
+        ;({ status, data } = await clusterService.fixSecState(clusterName, errKey, baseURL, tag))
+      }
+
       if (status === 200) {
-        const fixes = remediationByKey[errKey]?.fixes || []
-        const risk = tag
-          ? (fixes.find((f) => f.tag === tag)?.risk ?? '')
-          : (fixes[0]?.risk ?? '')
+        const risk = fix?.risk ?? ''
         dispatch(showSuccessToast({
           title: `Fix applied: ${errKey}`,
           description: risk === 'disruptive'
@@ -101,8 +107,8 @@ function SecurityScoreModal({ isOpen, closeModal }) {
         const entry = remediationByKey[errKey]
         if (!entry?.auto_fixable) return <span>{desc}</span>
 
-        // Fixes with type=add_tag are actionable; collect only those for the menu.
-        const tagFixes = (entry.fixes || []).filter((f) => f.type === 'add_tag')
+        // Fixes with type=add_tag or settings_switch are actionable; collect for the menu.
+        const tagFixes = (entry.fixes || []).filter((f) => f.type === 'add_tag' || f.type === 'settings_switch')
         const isMulti = tagFixes.length > 1
         const primaryRisk = tagFixes[0]?.risk ?? entry.fixes?.[0]?.risk ?? 'safe'
         const isDisruptive = primaryRisk === 'disruptive'

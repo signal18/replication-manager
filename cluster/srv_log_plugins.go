@@ -402,7 +402,9 @@ func (cluster *Cluster) CheckLogPlugins() {
 			"[logplugin] log-plugin=false — plugin evaluation disabled; set log-plugin=true to enable")
 		// Flush state machines into the exported slices so the dashboard shows WARN0314.
 		cluster.SecurityStates = cluster.SecurityStateMachine.GetOpenStates()
+		cluster.SecurityRemediations = cluster.GetRemediationPlan()
 		cluster.WorkloadStates = cluster.WorkloadStateMachine.GetOpenStates()
+		cluster.WorkloadRemediations = cluster.GetWorkloadRemediationPlan()
 		return
 	}
 	// Clear WARN0314 if log-plugin was just enabled.
@@ -493,6 +495,7 @@ func (cluster *Cluster) CheckLogPlugins() {
 	// render Fix buttons and option menus without a separate API call or any
 	// duplicated auto-fixable / risk logic on the frontend.
 	cluster.SecurityRemediations = cluster.GetRemediationPlan()
+	cluster.WorkloadRemediations = cluster.GetWorkloadRemediationPlan()
 	cluster.WorkloadStates = cluster.WorkloadStateMachine.GetOpenStates()
 	slices.SortStableFunc(cluster.WorkloadStates, func(a, b state.State) int {
 		ak, bk := a.ErrKey+"\x00"+a.ServerUrl, b.ErrKey+"\x00"+b.ServerUrl

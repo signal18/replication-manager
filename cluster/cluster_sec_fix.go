@@ -13,9 +13,11 @@ import (
 //
 // Type values:
 //
-//	"add_tag"      — add a compliance module tag (deploys .cnf + runs mariadb_command SQL)
-//	"drop_tag"     — remove a compliance module tag (runs mariadb_default SQL)
-//	"cnf_template" — informational: suggested .cnf file to add to the compliance module
+//	"add_tag"         — add a compliance module tag (deploys .cnf + runs mariadb_command SQL)
+//	"drop_tag"        — remove a compliance module tag (runs mariadb_default SQL)
+//	"cnf_template"    — informational: suggested .cnf file to add to the compliance module
+//	"settings_switch" — toggle a cluster setting via the settings/actions/switch API;
+//	                    URL carries the full relative API path to call.
 type RemediationFix struct {
 	Type        string `json:"type"`
 	Description string `json:"description"`
@@ -27,6 +29,9 @@ type RemediationFix struct {
 	// cnf_template
 	FileName string `json:"file_name,omitempty"` // suggested filename (e.g. with_sec_xxx.cnf)
 	MyCnf    string `json:"my_cnf,omitempty"`    // suggested file content
+
+	// settings_switch
+	URL string `json:"url,omitempty"` // relative API path, e.g. clusters/{name}/settings/actions/switch/log-plugin
 }
 
 // RemediationEntry groups all fix options for one open security finding.
@@ -293,6 +298,16 @@ func (cluster *Cluster) GetRemediationPlan() RemediationPlan {
 		}
 		// SEC0108 (wildcard host) — no automated fix, informational only.
 
+		// WARN0314 — plugins present but log-plugin disabled: one-click settings switch.
+		if baseKey == "WARN0314" {
+			fixes = append(fixes, RemediationFix{
+				Type:        "settings_switch",
+				Description: "Enable log-plugin to activate security and workload analysis",
+				Risk:        "safe",
+				URL:         fmt.Sprintf("clusters/%s/settings/actions/switch/log-plugin", cluster.Name),
+			})
+		}
+
 		if len(fixes) == 0 {
 			continue
 		}
@@ -302,6 +317,50 @@ func (cluster *Cluster) GetRemediationPlan() RemediationPlan {
 			Server:      st.ServerUrl,
 			Description: st.ErrDesc,
 			AutoFixable: autoFixable[baseKey],
+			Fixes:       fixes,
+		})
+	}
+
+	return RemediationPlan{
+		Cluster:      cluster.Name,
+		GeneratedAt:  time.Now().UTC().Format(time.RFC3339),
+		OpenFindings: len(openStates),
+		Remediations: entries,
+	}
+}
+
+// GetWorkloadRemediationPlan builds a remediation plan for open workload states.
+// Currently handles WARN0314 (plugins present, log-plugin disabled) which also
+// appears on the workload state machine so operators can fix it from either tab.
+func (cluster *Cluster) GetWorkloadRemediationPlan() RemediationPlan {
+	openStates := cluster.WorkloadStateMachine.GetOpenStates()
+	entries := make([]RemediationEntry, 0)
+
+	for _, st := range openStates {
+		baseKey := st.ErrKey
+		if i := strings.Index(baseKey, "@"); i >= 0 {
+			baseKey = baseKey[:i]
+		}
+
+		var fixes []RemediationFix
+		if baseKey == "WARN0314" {
+			fixes = append(fixes, RemediationFix{
+				Type:        "settings_switch",
+				Description: "Enable log-plugin to activate security and workload analysis",
+				Risk:        "safe",
+				URL:         fmt.Sprintf("clusters/%s/settings/actions/switch/log-plugin", cluster.Name),
+			})
+		}
+
+		if len(fixes) == 0 {
+			continue
+		}
+
+		entries = append(entries, RemediationEntry{
+			ErrKey:      baseKey,
+			Server:      st.ServerUrl,
+			Description: st.ErrDesc,
+			AutoFixable: true,
 			Fixes:       fixes,
 		})
 	}

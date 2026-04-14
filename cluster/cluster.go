@@ -194,6 +194,9 @@ type Cluster struct {
 	// AutoFixable flags, fix tags, and risk levels without a separate API call.
 	// This is the authoritative source — the UI must not duplicate autoFixable logic.
 	SecurityRemediations                RemediationPlan             `json:"securityRemediations" groups:"web"`
+	// WorkloadRemediations is the current remediation plan for actionable workload advisories.
+	// Populated alongside WorkloadStates in CheckLogPlugins.
+	WorkloadRemediations                RemediationPlan             `json:"workloadRemediations" groups:"web"`
 	// WorkloadStates is a snapshot of all open workload findings from the current monitoring
 	// tick. Updated by CheckLogPlugins after all servers have been evaluated.
 	WorkloadStates                      []state.State               `json:"workloadStates" groups:"web"`

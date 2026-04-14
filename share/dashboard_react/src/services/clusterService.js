@@ -34,8 +34,9 @@ export const clusterService = {
   getResticMountStatus,
   resticInitRepo,
 
-  // Security remediation APIs
+  // Security / workload remediation APIs
   fixSecState,
+  switchClusterSetting,
 
   // Cluster management APIs
   checksumAllTables,
@@ -837,6 +838,10 @@ function resticInitRepo(clusterName, force, options, baseURL) {
 function fixSecState(clusterName, errKey, baseURL, tag) {
   const url = `clusters/${clusterName}/security/fix-state/${encodeURIComponent(errKey)}`
   return getApi(baseURL).post(tag ? `${url}?tag=${encodeURIComponent(tag)}` : url)
+}
+
+function switchClusterSetting(settingURL, baseURL) {
+  return getApi(baseURL).get(settingURL)
 }
 
 // Utility functions
