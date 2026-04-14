@@ -67,9 +67,12 @@ type RestoreOptions struct {
 }
 
 type FileSet struct {
-	Schema []string
-	Data   []string
-	Post   []string
+	Schema     []string
+	Data       []string
+	Post       []string
+	// PrunedData holds data-phase files removed during conflict resolution.
+	// Callers can inspect this to understand what was excluded and why.
+	PrunedData []string
 }
 
 type dataGroup struct {
@@ -249,6 +252,9 @@ func Restore(backupPath string, opts RestoreOptions) error {
 	}
 	files := *plan
 	logf(LogInfo, "Splitdump detection: compatible backup layout confirmed at %s", backupPath)
+	if len(files.PrunedData) > 0 {
+		logf(LogWarn, "Splitdump mysql.proc data phase excluded (%d file(s)): mysql routines artifact present (restoring both causes duplicate-key errors)", len(files.PrunedData))
+	}
 	logf(LogInfo, "Splitdump restore files listed (schema=%d data=%d post=%d)", len(files.Schema), len(files.Data), len(files.Post))
 
 	restoreOneFile := func(path string) error {
@@ -654,11 +660,50 @@ func Detect(backupPath string) (bool, error) {
 	return false, nil
 }
 
+// isMysqlRoutinesSchemaPresent reports whether any path in schema is a mysql-schema
+// routine artifact. It recognises all three suffix variants that the restore classifier
+// accepts (-schema-routine, -schema-function, -schema-procedure), constrained to the
+// mysql schema, so dump tools that separate procedures from functions are covered.
+func isMysqlRoutinesSchemaPresent(schema []string) bool {
+	for _, p := range schema {
+		lower := strings.ToLower(filepath.Base(p))
+		if !strings.HasPrefix(lower, "mysql.") {
+			continue
+		}
+		if strings.HasSuffix(lower, "-schema-routine.sql.gz") ||
+			strings.HasSuffix(lower, "-schema-routine.sql") ||
+			strings.HasSuffix(lower, "-schema-function.sql.gz") ||
+			strings.HasSuffix(lower, "-schema-function.sql") ||
+			strings.HasSuffix(lower, "-schema-procedure.sql.gz") ||
+			strings.HasSuffix(lower, "-schema-procedure.sql") {
+			return true
+		}
+	}
+	return false
+}
+
+// isMysqlProcDataFile reports whether path is a data-phase artifact for the mysql.proc
+// table (mysql.proc.sql[.gz] or sharded variants mysql.proc.NNNNN.sql[.gz]).
+// Schema-phase files (mysql.proc-schema.sql.gz) are excluded.
+func isMysqlProcDataFile(path string) bool {
+	if IsSchemaFile(path) {
+		return false
+	}
+	return strings.ToLower(SchemaFromFilename(path)) == "mysql" &&
+		strings.ToLower(TableFromFilename(path)) == "proc"
+}
+
 // BuildRestorePlan classifies the files in backupPath into typed restore phases:
 // schema (tables, mysql.system-all, routines, views), data, and post-data (triggers, events).
 // Phase ordering is fixed before any replay begins: schema files are ordered by type priority,
 // data files by table and shard, post-data files with triggers before events.
 // Returns ErrNotSplitdump if the directory does not contain a splitdump-compatible layout.
+//
+// Conflict pruning: when any mysql routine artifact (-schema-routine, -schema-function, or
+// -schema-procedure) is present in the schema phase, all mysql.proc data-phase files are
+// removed from the plan and recorded in FileSet.PrunedData. mysqldump emits both a routines
+// DDL artifact and a raw mysql.proc table dump; restoring both causes duplicate-key errors
+// because the CREATE PROCEDURE/FUNCTION statements implicitly populate mysql.proc.
 func BuildRestorePlan(backupPath string, restoreUser bool) (*FileSet, error) {
 	ok, err := Detect(backupPath)
 	if err != nil {
@@ -670,6 +715,18 @@ func BuildRestorePlan(backupPath string, restoreUser bool) (*FileSet, error) {
 	fs, err := ListFiles(backupPath, restoreUser)
 	if err != nil {
 		return nil, err
+	}
+	if isMysqlRoutinesSchemaPresent(fs.Schema) {
+		var kept, pruned []string
+		for _, path := range fs.Data {
+			if isMysqlProcDataFile(path) {
+				pruned = append(pruned, path)
+			} else {
+				kept = append(kept, path)
+			}
+		}
+		fs.Data = kept
+		fs.PrunedData = pruned
 	}
 	return &fs, nil
 }

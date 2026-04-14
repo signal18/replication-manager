@@ -1442,3 +1442,255 @@ func TestIsMysqlTableCheckEligible(t *testing.T) {
 		})
 	}
 }
+
+// ---- mysql.proc / routines-schema conflict pruning tests ----
+
+// TestBuildRestorePlanPrunesMysqlProcWhenMysqlRoutineSchemaPresent is a table-driven test
+// covering all three mysql routine artifact suffixes (-schema-routine, -schema-function,
+// -schema-procedure). Each variant should independently trigger pruning of mysql.proc data
+// files and populate FileSet.PrunedData.
+func TestBuildRestorePlanPrunesMysqlProcWhenMysqlRoutineSchemaPresent(t *testing.T) {
+	routineArtifacts := []string{
+		"mysql.__routines-schema-routine.sql.gz",  // standard splitdump artifact
+		"mysql.__routines-schema-routine.sql",     // uncompressed variant
+		"mysql.__funcs-schema-function.sql.gz",    // function-only variant (mydumper style)
+		"mysql.__procs-schema-procedure.sql.gz",   // procedure-only variant (mydumper style)
+	}
+
+	for _, artifact := range routineArtifacts {
+		artifact := artifact
+		t.Run(artifact, func(t *testing.T) {
+			dir := t.TempDir()
+			fixtures := []string{
+				artifact,                  // trigger artifact — must trigger pruning
+				"mysql.proc.00000.sql.gz", // sharded mysql.proc data — must be pruned
+				"mysql.proc.sql.gz",       // unsharded mysql.proc data — must be pruned
+				"db.tbl.sql.gz",           // normal user data — must be kept
+				"db.tbl-schema.sql.gz",    // schema file — must be kept
+			}
+			for _, f := range fixtures {
+				if err := os.WriteFile(filepath.Join(dir, f), []byte("test"), 0644); err != nil {
+					t.Fatalf("write %s: %v", f, err)
+				}
+			}
+
+			plan, err := BuildRestorePlan(dir, false)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			// mysql.proc files must not appear in the data phase.
+			for _, p := range plan.Data {
+				base := filepath.Base(p)
+				if strings.HasPrefix(strings.ToLower(base), "mysql.proc") {
+					t.Errorf("mysql.proc file should have been pruned but found in data phase: %s", base)
+				}
+			}
+
+			// PrunedData must record the removed files (both sharded and unsharded).
+			if len(plan.PrunedData) != 2 {
+				t.Fatalf("expected 2 pruned files, got %d: %v", len(plan.PrunedData), plan.PrunedData)
+			}
+			for _, p := range plan.PrunedData {
+				base := strings.ToLower(filepath.Base(p))
+				if !strings.HasPrefix(base, "mysql.proc") {
+					t.Errorf("PrunedData contains unexpected file: %s", base)
+				}
+			}
+
+			// Normal user data must still be present.
+			foundUserData := false
+			for _, p := range plan.Data {
+				if filepath.Base(p) == "db.tbl.sql.gz" {
+					foundUserData = true
+					break
+				}
+			}
+			if !foundUserData {
+				t.Fatalf("db.tbl.sql.gz should remain in data phase after pruning, got: %v", plan.Data)
+			}
+		})
+	}
+}
+
+// TestBuildRestorePlanKeepsMysqlProcWithoutMysqlRoutineSchema verifies that mysql.proc
+// data files are NOT pruned when no mysql routines schema artifact is present. This is
+// the common case for backups generated without --routines, where mysql.proc is the only
+// representation of stored procedures. PrunedData must be empty.
+func TestBuildRestorePlanKeepsMysqlProcWithoutMysqlRoutineSchema(t *testing.T) {
+	dir := t.TempDir()
+	fixtures := []string{
+		"mysql.proc.00000.sql.gz",
+		"db.tbl.sql.gz",
+		"db.tbl-schema.sql.gz",
+	}
+	for _, f := range fixtures {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("test"), 0644); err != nil {
+			t.Fatalf("write %s: %v", f, err)
+		}
+	}
+
+	plan, err := BuildRestorePlan(dir, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	foundProc := false
+	for _, p := range plan.Data {
+		if filepath.Base(p) == "mysql.proc.00000.sql.gz" {
+			foundProc = true
+			break
+		}
+	}
+	if !foundProc {
+		t.Fatalf("mysql.proc.00000.sql.gz should remain in data phase when no routines artifact present, got: %v", plan.Data)
+	}
+	if len(plan.PrunedData) != 0 {
+		t.Fatalf("PrunedData must be empty when no pruning occurred, got: %v", plan.PrunedData)
+	}
+}
+
+// TestRestoreSkipsMysqlProcWhenRoutinesSchemaPresent is an end-to-end test through
+// Restore() that verifies:
+//   - the mysql routines schema artifact IS restored (in schema phase)
+//   - mysql.proc data files are NOT passed to the restore callback
+//   - normal user data IS restored
+//   - a warning log is emitted identifying the exclusion
+func TestRestoreSkipsMysqlProcWhenRoutinesSchemaPresent(t *testing.T) {
+	dir := t.TempDir()
+	// Write a valid metadata file so Restore() does not log a metadata warning.
+	meta := "[source]\nFile = mysql-bin.000001\nPosition = 4\n"
+	if err := os.WriteFile(filepath.Join(dir, "metadata"), []byte(meta), 0644); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	fixtures := []string{
+		"mysql.__routines-schema-routine.sql.gz",
+		"mysql.proc.00000.sql.gz",
+		"db.tbl-schema.sql.gz",
+		"db.tbl.sql.gz",
+	}
+	for _, f := range fixtures {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("test"), 0644); err != nil {
+			t.Fatalf("write %s: %v", f, err)
+		}
+	}
+
+	var mu sync.Mutex
+	var restored []string
+	var warnLogs []string
+
+	logger := func(level, format string, args ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		if level == LogWarn {
+			warnLogs = append(warnLogs, fmt.Sprintf(format, args...))
+		}
+	}
+	restoreFile := func(path string) error {
+		mu.Lock()
+		restored = append(restored, filepath.Base(path))
+		mu.Unlock()
+		return nil
+	}
+
+	if err := Restore(dir, RestoreOptions{Parallel: 1, Logger: logger, RestoreFile: restoreFile}); err != nil {
+		t.Fatalf("unexpected restore error: %v", err)
+	}
+
+	mu.Lock()
+	gotRestored := append([]string(nil), restored...)
+	gotWarn := append([]string(nil), warnLogs...)
+	mu.Unlock()
+
+	// mysql.proc must not appear in restored files.
+	for _, name := range gotRestored {
+		if strings.HasPrefix(strings.ToLower(name), "mysql.proc") {
+			t.Errorf("mysql.proc should not have been restored, but got: %s", name)
+		}
+	}
+
+	// Routines schema artifact must have been restored.
+	foundRoutines := false
+	for _, name := range gotRestored {
+		if strings.Contains(strings.ToLower(name), "routines-schema-routine") {
+			foundRoutines = true
+			break
+		}
+	}
+	if !foundRoutines {
+		t.Fatalf("mysql.__routines-schema-routine was not restored, got: %v", gotRestored)
+	}
+
+	// Normal user data must have been restored.
+	foundUserData := false
+	for _, name := range gotRestored {
+		if name == "db.tbl.sql.gz" {
+			foundUserData = true
+			break
+		}
+	}
+	if !foundUserData {
+		t.Fatalf("db.tbl.sql.gz was not restored, got: %v", gotRestored)
+	}
+
+	// A warning log must identify the exclusion with a count.
+	foundWarn := false
+	for _, l := range gotWarn {
+		lower := strings.ToLower(l)
+		if strings.Contains(lower, "mysql.proc") && strings.Contains(lower, "excluded") {
+			foundWarn = true
+			break
+		}
+	}
+	if !foundWarn {
+		t.Fatalf("expected warning log about mysql.proc exclusion, got: %v", gotWarn)
+	}
+}
+
+// TestRestoreNoSpuriousWarnWhenNoMysqlProcFiles verifies that no mysql.proc warning is
+// emitted when a mysql routines artifact is present but no mysql.proc data files exist.
+// The log was previously gated on isMysqlRoutinesSchemaPresent (always true when artifact
+// exists); now it is gated on len(PrunedData) > 0 so no misleading log appears.
+func TestRestoreNoSpuriousWarnWhenNoMysqlProcFiles(t *testing.T) {
+	dir := t.TempDir()
+	meta := "[source]\nFile = mysql-bin.000001\nPosition = 4\n"
+	if err := os.WriteFile(filepath.Join(dir, "metadata"), []byte(meta), 0644); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	// Routines artifact present, but NO mysql.proc data files.
+	fixtures := []string{
+		"mysql.__routines-schema-routine.sql.gz",
+		"db.tbl-schema.sql.gz",
+		"db.tbl.sql.gz",
+	}
+	for _, f := range fixtures {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("test"), 0644); err != nil {
+			t.Fatalf("write %s: %v", f, err)
+		}
+	}
+
+	var mu sync.Mutex
+	var warnLogs []string
+	logger := func(level, format string, args ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		if level == LogWarn {
+			warnLogs = append(warnLogs, fmt.Sprintf(format, args...))
+		}
+	}
+
+	if err := Restore(dir, RestoreOptions{Parallel: 1, Logger: logger, RestoreFile: func(string) error { return nil }}); err != nil {
+		t.Fatalf("unexpected restore error: %v", err)
+	}
+
+	mu.Lock()
+	gotWarn := append([]string(nil), warnLogs...)
+	mu.Unlock()
+
+	for _, l := range gotWarn {
+		lower := strings.ToLower(l)
+		if strings.Contains(lower, "mysql.proc") && strings.Contains(lower, "excluded") {
+			t.Fatalf("spurious mysql.proc exclusion warning when no mysql.proc files existed: %s", l)
+		}
+	}
+}
