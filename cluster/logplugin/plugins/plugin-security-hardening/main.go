@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -172,18 +173,26 @@ func main() {
 	}
 
 	// SEC0107 — anonymous users (empty username)
+	var anonHosts []string
 	for _, u := range req.DatabaseUsers {
 		if u.User == "" {
-			findings = append(findings, wire.Finding{
-				ErrKey:   "SEC0107",
-				Severity: "SECURITY",
-				Description: fmt.Sprintf(
-					"Server %s: anonymous user account ''@'%s' exists —"+
-						" any client can connect without specifying a username."+
-						" DROP USER ''@'%s' to remove it.",
-					req.ServerURL, u.Host, u.Host),
-			})
+			anonHosts = append(anonHosts, u.Host)
 		}
+	}
+	if len(anonHosts) > 0 {
+		sort.Strings(anonHosts)
+		hosts := make([]string, len(anonHosts))
+		for i, h := range anonHosts {
+			hosts[i] = fmt.Sprintf("''@'%s'", h)
+		}
+		findings = append(findings, wire.Finding{
+			ErrKey:   "SEC0107",
+			Severity: "SECURITY",
+			Description: fmt.Sprintf(
+				"Server %s: %d anonymous user account(s) exist — any client can connect without a username."+
+					" DROP USER each: %s",
+				req.ServerURL, len(anonHosts), strings.Join(hosts, ", ")),
+		})
 	}
 
 	// SEC0108 — wildcard-host users with elevated plugins
@@ -195,6 +204,7 @@ func main() {
 		"unix_socket": true, "auth_socket": true, "gssapi": true,
 		"authentication_pam": true, "auth_pam": true,
 	}
+	var wildcardAccounts []string
 	for _, u := range req.DatabaseUsers {
 		if u.Host != "%" {
 			continue
@@ -206,13 +216,18 @@ func main() {
 		if elevatedPrivsWildcardIgnored[key] || elevatedPrivsWildcardIgnored[u.User] {
 			continue
 		}
+		wildcardAccounts = append(wildcardAccounts, key)
+	}
+	if len(wildcardAccounts) > 0 {
+		// Sort for a stable description across monitoring ticks.
+		sort.Strings(wildcardAccounts)
 		findings = append(findings, wire.Finding{
 			ErrKey:   "SEC0108",
 			Severity: "SECURITY",
 			Description: fmt.Sprintf(
-				"Server %s: account %s uses wildcard host '%%' — it can connect from any IP address."+
-					" Restrict to specific hosts or CIDR ranges where possible.",
-				req.ServerURL, key),
+				"Server %s: %d account(s) use wildcard host '%%' and can connect from any IP address —"+
+					" restrict to specific hosts or CIDR ranges where possible: %s",
+				req.ServerURL, len(wildcardAccounts), strings.Join(wildcardAccounts, ", ")),
 		})
 	}
 
@@ -224,19 +239,23 @@ func main() {
 	// hostname to match the connecting client IP.  These grants are effectively dead.
 	snrOnVal := strings.ToUpper(strings.TrimSpace(v["skip_name_resolve"]))
 	if snrOnVal == "ON" || snrOnVal == "1" {
+		var hostnameAccounts []string
 		for _, u := range req.DatabaseUsers {
 			if isHostname(u.Host) {
-				findings = append(findings, wire.Finding{
-					ErrKey:   "SEC0118",
-					Severity: "SECURITY",
-					Description: fmt.Sprintf(
-						"Server %s: skip_name_resolve=ON but account '%s'@'%s' uses a DNS hostname as"+
-							" host — with DNS resolution disabled this account can never be used to"+
-							" connect. Convert the grant to an IP address:"+
-							" RENAME USER '%s'@'%s' TO '%s'@'<ip>';",
-						req.ServerURL, u.User, u.Host, u.User, u.Host, u.User),
-				})
+				hostnameAccounts = append(hostnameAccounts, fmt.Sprintf("'%s'@'%s'", u.User, u.Host))
 			}
+		}
+		if len(hostnameAccounts) > 0 {
+			sort.Strings(hostnameAccounts)
+			findings = append(findings, wire.Finding{
+				ErrKey:   "SEC0118",
+				Severity: "SECURITY",
+				Description: fmt.Sprintf(
+					"Server %s: skip_name_resolve=ON but %d account(s) use DNS hostnames as host —"+
+						" with DNS resolution disabled these accounts can never connect."+
+						" Convert each grant to an IP address (RENAME USER ... TO ...@'<ip>'): %s",
+					req.ServerURL, len(hostnameAccounts), strings.Join(hostnameAccounts, ", ")),
+			})
 		}
 	}
 

@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/signal18/replication-manager/cluster/logplugin/plugins/wire"
@@ -59,7 +60,12 @@ func main() {
 	ignored := parseList(os.Getenv("REPMAN_IGNORED_USERS"))
 	includeEmpty := envBool("REPMAN_INCLUDE_EMPTY", true)
 
-	var findings []wire.Finding
+	// Collect affected accounts so we can sort them for a stable description.
+	type weakEntry struct {
+		key    string
+		reason string
+	}
+	var affected []weakEntry
 
 	for _, u := range req.DatabaseUsers {
 		plugin := strings.ToLower(strings.TrimSpace(u.Plugin))
@@ -81,19 +87,31 @@ func main() {
 			if !includeEmpty {
 				continue
 			}
-			reason = "no authentication plugin set (falls back to server default, typically mysql_native_password)"
+			reason = "no plugin (falls back to server default)"
 		case weakPlugins[plugin]:
-			reason = fmt.Sprintf("uses weak/deprecated plugin %q — migrate to ed25519 (MariaDB) or caching_sha2_password (MySQL 8+)", plugin)
+			reason = plugin
 		default:
 			continue // unknown plugin — do not flag
 		}
 
+		affected = append(affected, weakEntry{key: key, reason: reason})
+	}
+
+	var findings []wire.Finding
+	if len(affected) > 0 {
+		// Sort by account key for a deterministic description across monitoring ticks.
+		sort.Slice(affected, func(i, j int) bool { return affected[i].key < affected[j].key })
+
+		parts := make([]string, len(affected))
+		for i, e := range affected {
+			parts[i] = fmt.Sprintf("%s (%s)", e.key, e.reason)
+		}
 		findings = append(findings, wire.Finding{
 			ErrKey:   "SEC0101",
 			Severity: "SECURITY",
 			Description: fmt.Sprintf(
-				"Server %s: account %s has weak authentication: %s",
-				req.ServerURL, key, reason),
+				"Server %s: %d account(s) use weak/deprecated authentication — migrate to ed25519 (MariaDB) or caching_sha2_password (MySQL 8+): %s",
+				req.ServerURL, len(affected), strings.Join(parts, ", ")),
 		})
 	}
 
