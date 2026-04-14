@@ -655,6 +655,21 @@ func (repo *ResticManager) GetCanFetch() bool {
 	return repo.CanFetch
 }
 
+// waitCanFetch waits until fetch lock is available or times out.
+func (repo *ResticManager) waitCanFetch() error {
+	timeout := repo.GetOperationTimeout()
+	deadline := time.Now().Add(timeout)
+
+	for !repo.GetCanFetch() {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout waiting for restic fetch lock after %v", timeout)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return nil
+}
+
 // SetPermissions sets the permission modes for restic operations
 // dirMode: Directory permission mode (e.g., 0700 for owner-only)
 // fileMode: File permission mode (e.g., 0600 for owner-only)
@@ -4155,10 +4170,8 @@ func (repo *ResticManager) CheckResticLocks() error {
 
 // ResticUnlockRepo unlocks the repository
 func (repo *ResticManager) UnlockRepo() error {
-
-	if !repo.GetCanFetch() {
-		time.Sleep(time.Second)
-		return repo.UnlockRepo()
+	if err := repo.waitCanFetch(); err != nil {
+		return err
 	}
 
 	repo.SetCanFetch(false)
@@ -4174,7 +4187,8 @@ func (repo *ResticManager) UnlockRepo() error {
 		return fmt.Errorf("failed to check repo locks: %v, stderr: %s", err, stderr)
 	}
 
-	if !strings.Contains(string(stdout), "successfully removed locks") {
+	output := string(stdout) + "\n" + string(stderr)
+	if !strings.Contains(output, "successfully removed") && !strings.Contains(output, "no locks were found") {
 		return fmt.Errorf("failed to unlock repo: %s. stderr: %s", stdout, stderr)
 	}
 
