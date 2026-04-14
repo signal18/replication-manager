@@ -32,7 +32,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -304,7 +303,7 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	var stderrBuf bytes.Buffer
 	cmd := exec.CommandContext(ctx, p.binPath) // #nosec G204 — path validated in LoadPluginsFromDir
 	cmd.Stdin = bytes.NewReader(payload)
-	cmd.Stderr = io.LimitWriter(&stderrBuf, 4096) // cap stderr — misbehaving plugin cannot OOM the process
+	cmd.Stderr = &limitWriter{w: &stderrBuf, remaining: 4096} // cap stderr — misbehaving plugin cannot OOM the process
 	// WaitDelay ensures cmd.Output() returns promptly after the context deadline
 	// fires even when the plugin subprocess has spawned children that inherited
 	// the stdout/stderr pipes.  Without this, cmd.Wait() blocks forever waiting
@@ -524,4 +523,24 @@ func pluginErrFinding(pluginName, serverURL, msg string) []Finding {
 		Severity:    SeverityError,
 		Description: fmt.Sprintf("Plugin %s on %s: %s", pluginName, serverURL, msg),
 	}}
+}
+
+// limitWriter caps writes to a fixed number of bytes so a misbehaving plugin
+// subprocess cannot grow the stderr buffer unboundedly on every monitoring tick.
+// Replaces io.LimitWriter (added Go 1.22) for compatibility with older toolchains.
+type limitWriter struct {
+	w         *bytes.Buffer
+	remaining int64
+}
+
+func (lw *limitWriter) Write(p []byte) (int, error) {
+	if lw.remaining <= 0 {
+		return len(p), nil // silently discard once cap is reached
+	}
+	if int64(len(p)) > lw.remaining {
+		p = p[:lw.remaining]
+	}
+	n, err := lw.w.Write(p)
+	lw.remaining -= int64(n)
+	return n, err
 }
