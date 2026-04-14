@@ -67,8 +67,11 @@ func splitSchemaBuckets(paths []string) (tableSchemas, mysqlSystemAll, routineSc
 func appendReferencedTablesFromSQL(sqlText, defaultSchema string, seen map[string]bool, refs *[]string) {
 	// Fast path: mysqldump always emits REFERENCES in uppercase, so a case-sensitive
 	// check avoids allocating a full-text uppercase copy — especially important in the
-	// large-parser path where sqlText can be several megabytes. The regex handles any
-	// edge case where case differs via its (?i) flag.
+	// large-parser path where sqlText can be several megabytes.
+	// NOTE: This is a mysqldump-specific optimisation. If the SQL was produced by a tool
+	// that emits lowercase "references", this early return will fire and FK dependencies
+	// will be silently missed (the regex is never reached). Only use this function with
+	// mysqldump output.
 	if !strings.Contains(sqlText, "REFERENCES") {
 		return
 	}
@@ -317,17 +320,20 @@ func orderTableSchemasByForeignKeys(paths []string, logf func(level, format stri
 	}
 
 	// Any unprocessed node is part of a dependency cycle.
-	hasCycle := false
+	var cycleKeys []string
 	for i := range nodes {
 		if !processed[i] {
-			if !hasCycle {
-				hasCycle = true
-				if logf != nil {
-					logf(LogWarn, "Splitdump FK ordering: unresolvable dependency cycle detected; affected tables appended in original input order")
-				}
+			if nodes[i].key != "" {
+				cycleKeys = append(cycleKeys, nodes[i].key)
+			} else {
+				cycleKeys = append(cycleKeys, filepath.Base(nodes[i].path))
 			}
 			result = append(result, nodes[i].path)
 		}
+	}
+	if len(cycleKeys) > 0 && logf != nil {
+		logf(LogWarn, "Splitdump FK ordering: unresolvable dependency cycle detected; affected tables appended in original input order: %s",
+			strings.Join(cycleKeys, ", "))
 	}
 
 	return result

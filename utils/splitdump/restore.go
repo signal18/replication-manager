@@ -716,9 +716,9 @@ func applyRestorePlanPruning(fs *FileSet) {
 
 // buildFileSetFromManifest constructs a FileSet from a validated Manifest, preserving the
 // emission order recorded at split time. Files listed in the manifest but absent from disk
-// are silently skipped. mysql.system-all is filtered when restoreUser is false, matching the
-// behaviour of ListFiles.
-func buildFileSetFromManifest(backupPath string, m *Manifest, restoreUser bool) (*FileSet, error) {
+// are skipped with a warning via logf. mysql.system-all is filtered when restoreUser is false,
+// matching the behaviour of ListFiles.
+func buildFileSetFromManifest(backupPath string, m *Manifest, restoreUser bool, logf func(level, format string, args ...any)) (*FileSet, error) {
 	fs := &FileSet{}
 	for _, name := range m.Schema {
 		_, ok := classifyFile(name, restoreUser)
@@ -727,13 +727,15 @@ func buildFileSetFromManifest(backupPath string, m *Manifest, restoreUser bool) 
 		}
 		fullPath := filepath.Join(backupPath, name)
 		if _, statErr := os.Stat(fullPath); statErr != nil {
-			continue // file missing — skip silently
+			logf(LogWarn, "Splitdump manifest: schema file listed in manifest but missing on disk, skipping: %s", name)
+			continue
 		}
 		fs.Schema = append(fs.Schema, fullPath)
 	}
 	for _, name := range m.Data {
 		fullPath := filepath.Join(backupPath, name)
 		if _, statErr := os.Stat(fullPath); statErr != nil {
+			logf(LogWarn, "Splitdump manifest: data file listed in manifest but missing on disk, skipping: %s", name)
 			continue
 		}
 		fs.Data = append(fs.Data, fullPath)
@@ -741,6 +743,7 @@ func buildFileSetFromManifest(backupPath string, m *Manifest, restoreUser bool) 
 	for _, name := range m.Post {
 		fullPath := filepath.Join(backupPath, name)
 		if _, statErr := os.Stat(fullPath); statErr != nil {
+			logf(LogWarn, "Splitdump manifest: post file listed in manifest but missing on disk, skipping: %s", name)
 			continue
 		}
 		fs.Post = append(fs.Post, fullPath)
@@ -781,7 +784,7 @@ func BuildRestorePlan(backupPath string, restoreUser bool, logf func(level, form
 	manifest, readErr := ReadManifest(backupPath)
 	if readErr == nil {
 		if validateErr := ValidateManifest(manifest); validateErr == nil {
-			mfs, buildErr := buildFileSetFromManifest(backupPath, manifest, restoreUser)
+			mfs, buildErr := buildFileSetFromManifest(backupPath, manifest, restoreUser, logf)
 			if buildErr == nil {
 				applyRestorePlanPruning(mfs)
 				return mfs, nil

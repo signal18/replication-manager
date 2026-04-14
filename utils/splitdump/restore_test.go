@@ -1916,6 +1916,68 @@ func TestRestoreUsesManifestParentBeforeChild(t *testing.T) {
 	}
 }
 
+// TestBuildRestorePlanManifestWarnsMissingFiles verifies that when a manifest lists files
+// that are absent from disk, BuildRestorePlan emits a LogWarn for each missing file and
+// still returns a valid plan containing only the files that are present.
+func TestBuildRestorePlanManifestWarnsMissingFiles(t *testing.T) {
+	dir := t.TempDir()
+	// Write only the schema file; data and post files are intentionally absent.
+	if err := os.WriteFile(filepath.Join(dir, "db.tbl-schema.sql.gz"), []byte("test"), 0644); err != nil {
+		t.Fatalf("write schema file: %v", err)
+	}
+	writeManifestFile(t, dir, &Manifest{
+		Version: 1,
+		Schema:  []string{"db.tbl-schema.sql.gz", "db.missing-schema.sql.gz"},
+		Data:    []string{"db.tbl.00000.sql.gz"},
+		Post:    []string{"db.tbl-schema-trigger.sql.gz"},
+	})
+
+	var mu sync.Mutex
+	var warnings []string
+	logf := func(level, format string, args ...any) {
+		if level == LogWarn {
+			mu.Lock()
+			warnings = append(warnings, fmt.Sprintf(format, args...))
+			mu.Unlock()
+		}
+	}
+
+	plan, err := BuildRestorePlan(dir, false, logf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Only the present schema file should appear in the plan.
+	if len(plan.Schema) != 1 || filepath.Base(plan.Schema[0]) != "db.tbl-schema.sql.gz" {
+		t.Fatalf("unexpected schema files in plan: %v", plan.Schema)
+	}
+	if len(plan.Data) != 0 {
+		t.Fatalf("expected no data files in plan, got: %v", plan.Data)
+	}
+	if len(plan.Post) != 0 {
+		t.Fatalf("expected no post files in plan, got: %v", plan.Post)
+	}
+
+	// A warning must have been emitted for each missing file.
+	mu.Lock()
+	got := append([]string(nil), warnings...)
+	mu.Unlock()
+
+	wantSubstrings := []string{"db.missing-schema.sql.gz", "db.tbl.00000.sql.gz", "db.tbl-schema-trigger.sql.gz"}
+	for _, sub := range wantSubstrings {
+		found := false
+		for _, w := range got {
+			if strings.Contains(w, sub) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected warning mentioning %q; warnings were: %v", sub, got)
+		}
+	}
+}
+
 // ---- ValidateManifest phase-classification tests ----
 
 func TestValidateManifestAcceptsWellFormedManifest(t *testing.T) {
