@@ -248,6 +248,10 @@ func (src LogSource) HasGraphite() bool {
 // monitoring feed it depends on (e.g. monitoring-binlog-events) is disabled.
 const ErrKeyMissingMonitoringFeed = "WARN0312"
 
+// ErrKeyNoExternalPlugins is raised when log-plugin=true but no external plugins
+// are installed for the cluster.  It points operators to the plugin marketplace.
+const ErrKeyNoExternalPlugins = "WARN0313"
+
 // Prerequisite declares that a plugin requires a named monitoring feature to
 // be active in order to produce findings.
 type Prerequisite struct {
@@ -343,6 +347,18 @@ func (r *Registry) All() []LogPlugin {
 	out := make([]LogPlugin, len(r.plugins))
 	copy(out, r.plugins)
 	return out
+}
+
+// ExternalCount returns the number of external (subprocess) plugins in the registry.
+// A zero count means no plugins have been loaded from disk for this cluster.
+func (r *Registry) ExternalCount() int {
+	n := 0
+	for _, p := range r.plugins {
+		if _, ok := p.(*ExternalLogPlugin); ok {
+			n++
+		}
+	}
+	return n
 }
 
 // NewRegistry returns a new per-cluster registry pre-seeded with the built-in

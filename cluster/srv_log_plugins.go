@@ -408,6 +408,29 @@ func (cluster *Cluster) CheckLogPlugins() {
 	// Compute final score from all servers' aggregated checks, then publish atomically.
 	newScore.Compute()
 	cluster.SecurityScore = newScore
+
+	// WARN0313 — no external plugins installed.
+	// Raise in both security and workload state machines so the advisory appears
+	// in both dashboard tabs and encourages operators to sign up for plugins.
+	if cluster.pluginRegistry.ExternalCount() == 0 {
+		const msg = "No external log-analysis plugins are installed for this cluster. " +
+			"Sign up at https://gitlab.signal18.io to access security, workload and binlog plugins. " +
+			"Once registered, download plugins to the cluster plugin directory and reload."
+		noPluginState := state.State{
+			ErrType:   "WARNING",
+			ErrKey:    logplugin.ErrKeyNoExternalPlugins,
+			ErrDesc:   msg,
+			ErrFrom:   "PLUGIN",
+			ServerUrl: "",
+		}
+		if !cluster.SecurityStateMachine.IsInState(logplugin.ErrKeyNoExternalPlugins) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+				"[logplugin] WARN0313: no external plugins installed — register at https://gitlab.signal18.io")
+		}
+		cluster.SecurityStateMachine.AddState(logplugin.ErrKeyNoExternalPlugins, noPluginState)
+		cluster.WorkloadStateMachine.AddState(logplugin.ErrKeyNoExternalPlugins, noPluginState)
+	}
+
 	// Snapshot states for the dashboard. CurState holds this tick's complete
 	// set of findings from all servers. ClearState is intentionally NOT called
 	// here — it is called in the main monitor loop after LogPrintAllWorkloadStates
