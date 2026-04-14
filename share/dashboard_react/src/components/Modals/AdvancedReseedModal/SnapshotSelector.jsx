@@ -4,14 +4,15 @@ import {
   extractServerInfoFromPath,
   formatLocalDateTime,
   formatMetadataTimestamp,
+  getEncryptionModeLabel,
   getPreferredMetadata,
+  getSnapshotEncryptionMode,
   parseSnapshotTags
 } from './helpers'
 
 function SnapshotSelector({ snapshots, selectedSnapshot, setSelectedSnapshot, operationType, theme, filterLabel }) {
   const formattedTimesById = new Map()
   const dedupedSnapshots = []
-  const seenTimes = new Set()
   const operationMethod = operationType === 'physical-backup' ? 'physical' : 'logical'
 
   snapshots.forEach((snapshot) => {
@@ -31,13 +32,6 @@ function SnapshotSelector({ snapshots, selectedSnapshot, setSelectedSnapshot, op
 
     if (!(shouldKeepByMethod || shouldKeepByMetadata || shouldKeepWithoutTimestamp)) {
       return
-    }
-
-    if (formattedTime) {
-      if (seenTimes.has(formattedTime)) {
-        return
-      }
-      seenTimes.add(formattedTime)
     }
 
     dedupedSnapshots.push(snapshot)
@@ -72,6 +66,8 @@ function SnapshotSelector({ snapshots, selectedSnapshot, setSelectedSnapshot, op
             snapshot.tags || []
           )
           const tagMeta = parseSnapshotTags(snapshot.tags || [])
+          const encryptionMode = getSnapshotEncryptionMode(snapshot, operationType)
+          const encryptionLabel = getEncryptionModeLabel(encryptionMode)
           let displayText = `${snapshot.short_id}`
           if (hasFormattedTime) {
             displayText += ` - ${formattedTime}`
@@ -90,6 +86,9 @@ function SnapshotSelector({ snapshots, selectedSnapshot, setSelectedSnapshot, op
           }
           if (!snapshot.metadataReady) {
             displayText += ' [metadata pending]'
+          }
+          if (encryptionLabel) {
+            displayText += ` [${encryptionLabel}]`
           }
 
           return (

@@ -73,19 +73,27 @@ func GetTaskName(taskType TaskType) string {
 type ResticBackupOption struct {
 	DirPath           string   `json:"dir_path"`
 	Tags              []string `json:"tags"`
-	Exclude           []string `json:"exclude,omitempty"`             // Exclude patterns
-	ExcludeFile       []string `json:"exclude_file,omitempty"`        // Files containing exclude patterns
-	ExcludeCaches     bool     `json:"exclude_caches,omitempty"`      // Exclude cache directories
-	ExcludeIfPresent  []string `json:"exclude_if_present,omitempty"`  // Exclude dirs containing these files
-	ExcludeLargerThan string   `json:"exclude_larger_than,omitempty"` // Max file size (e.g., "100M")
-	FilesFrom         []string `json:"files_from,omitempty"`          // Read files to backup from file
-	Host              string   `json:"host,omitempty"`                // Override hostname
-	Parent            string   `json:"parent,omitempty"`              // Parent snapshot for incremental
-	OneFileSystem     bool     `json:"one_file_system,omitempty"`     // Don't cross filesystem boundaries
-	IgnoreCtime       bool     `json:"ignore_ctime,omitempty"`        // Ignore ctime changes
-	IgnoreInode       bool     `json:"ignore_inode,omitempty"`        // Ignore inode changes
-	Time              string   `json:"time,omitempty"`                // Backup timestamp (e.g., '2012-11-01 22:08:41')
-	DryRun            bool     `json:"dry_run,omitempty"`             // Don't upload, just show what would be done
+	Exclude           []string `json:"exclude,omitempty"`              // Exclude patterns
+	ExcludeFile       []string `json:"exclude_file,omitempty"`         // Files containing exclude patterns
+	ExcludeCaches     bool     `json:"exclude_caches,omitempty"`       // Exclude cache directories
+	ExcludeIfPresent  []string `json:"exclude_if_present,omitempty"`   // Exclude dirs containing these files
+	ExcludeLargerThan string   `json:"exclude_larger_than,omitempty"`  // Max file size (e.g., "100M")
+	FilesFrom         []string `json:"files_from,omitempty"`           // Read files to backup from file
+	Host              string   `json:"host,omitempty"`                 // Override hostname
+	Parent            string   `json:"parent,omitempty"`               // Parent snapshot for incremental
+	OneFileSystem     bool     `json:"one_file_system,omitempty"`      // Don't cross filesystem boundaries
+	IgnoreCtime       bool     `json:"ignore_ctime,omitempty"`         // Ignore ctime changes
+	IgnoreInode       bool     `json:"ignore_inode,omitempty"`         // Ignore inode changes
+	Time              string   `json:"time,omitempty"`                 // Backup timestamp (e.g., '2012-11-01 22:08:41')
+	DryRun            bool     `json:"dry_run,omitempty"`              // Don't upload, just show what would be done
+	// StdinFromCommand specifies a command (and args) whose stdout is captured as the backup
+	// stream. When set, restic uses --stdin-from-command instead of raw --stdin, which allows
+	// restic to observe the command's exit code and fail if the upstream producer fails.
+	// DirPath is ignored when StdinFromCommand is non-empty.
+	StdinFromCommand []string `json:"stdin_from_command,omitempty"`
+	// StdinFilename overrides the filename used for the stdin stream inside the restic snapshot.
+	// Only used when StdinFromCommand is set (corresponds to --stdin-filename).
+	StdinFilename string `json:"stdin_filename,omitempty"`
 }
 
 // ResticUnlockOption holds the configuration for unlock
@@ -3864,8 +3872,20 @@ func (repo *ResticManager) BackupWithOptions(opt ResticBackupOption) (string, er
 		args = append(args, "--dry-run")
 	}
 
-	// Add the directory path
-	args = append(args, opt.DirPath)
+	if len(opt.StdinFromCommand) > 0 {
+		// Prefer --stdin-from-command over raw --stdin when the backup stream is produced by
+		// a local command. restic will run the command and capture its stdout, allowing restic
+		// to observe the command's exit code and propagate upstream failures. DirPath is
+		// ignored in this mode.
+		if opt.StdinFilename != "" {
+			args = append(args, "--stdin-filename", opt.StdinFilename)
+		}
+		args = append(args, "--stdin-from-command", "--")
+		args = append(args, opt.StdinFromCommand...)
+	} else {
+		// Add the directory path (standard file-based backup).
+		args = append(args, opt.DirPath)
+	}
 
 	// Execute the Restic "backup" command with streaming to minimize memory usage
 	lastLine, stderr, err := repo.runBackupCommand(args)

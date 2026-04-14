@@ -31,37 +31,41 @@ const (
 )
 
 type BackupMetadata struct {
-	Id                int64          `json:"id"`
-	StartTime         time.Time      `json:"startTime"`
-	EndTime           time.Time      `json:"endTime"`
-	BackupMethod      BackupMethod   `json:"backupMethod"`
-	BackupTool        string         `json:"backupTool"`
-	BackupToolVersion string         `json:"backupToolVersion"`
-	BackupStrategy    BackupStrategy `json:"backupStrategy"`
-	Source            string         `json:"source"` // server URL
-	Dest              string         `json:"dest"`   // backup destination path
-	Size              int64          `json:"size"`   // in bytes
-	FileCount         int64          `json:"fileCount"`
-	Compressed        bool           `json:"compressed"`
-	Encrypted         bool           `json:"encrypted"`
-	EncryptionAlgo    string         `json:"encryptionAlgo"`
-	EncryptionKey     string         `json:"encryptionKey"`
-	Checksum          string         `json:"checksum"`
-	RetentionDays     int            `json:"retentionDays"`
-	RetentionDuration string         `json:"retentionDuration,omitempty"`
-	BackupLine        string         `json:"backupLine,omitempty"`
-	MetaFile          string         `json:"metaFile,omitempty"`
-	BinLogFileName    string         `json:"binLogFileName"`
-	BinLogFilePos     uint64         `json:"binLogFilePos"`
-	BinLogGtid        string         `json:"binLogUuid"`
-	Completed         bool           `json:"completed"`
-	SplitUser         bool           `json:"splitUser"`
-	SplitDump         bool           `json:"splitDump"`
-	Previous          int64          `json:"previous"`
-	ResticEnabled     bool           `json:"resticEnabled,omitempty"`
-	ResticSnapshotID  string         `json:"resticSnapshotID"`
-	ResticFilePath    string         `json:"resticFilePath"`
-	BackupSessionID   string         `json:"backupSessionID,omitempty"`
+	Id                   int64          `json:"id"`
+	StartTime            time.Time      `json:"startTime"`
+	EndTime              time.Time      `json:"endTime"`
+	BackupMethod         BackupMethod   `json:"backupMethod"`
+	BackupTool           string         `json:"backupTool"`
+	BackupToolVersion    string         `json:"backupToolVersion"`
+	BackupStrategy       BackupStrategy `json:"backupStrategy"`
+	Source               string         `json:"source"` // server URL
+	Dest                 string         `json:"dest"`   // backup destination path
+	Size                 int64          `json:"size"`   // in bytes
+	FileCount            int64          `json:"fileCount"`
+	Compressed           bool           `json:"compressed"`
+	Encrypted            bool           `json:"encrypted"`
+	EncryptionAlgo       string         `json:"encryptionAlgo"`
+	EncryptionIV         string         `json:"encryptionIV,omitempty"`
+	EncryptionMAC        string         `json:"encryptionMAC,omitempty"`
+	EncryptionKey          string         `json:"encryptionKey"`
+	EncryptionKeyCluster   string         `json:"encryptionKeyCluster,omitempty"`
+	EncryptionStreamFormat bool           `json:"encryptionStreamFormat,omitempty"` // true when encrypted using stream container format (AEAD per-frame)
+	Checksum               string         `json:"checksum"`
+	RetentionDays        int            `json:"retentionDays"`
+	RetentionDuration    string         `json:"retentionDuration,omitempty"`
+	BackupLine           string         `json:"backupLine,omitempty"`
+	MetaFile             string         `json:"metaFile,omitempty"`
+	BinLogFileName       string         `json:"binLogFileName"`
+	BinLogFilePos        uint64         `json:"binLogFilePos"`
+	BinLogGtid           string         `json:"binLogUuid"`
+	Completed            bool           `json:"completed"`
+	SplitUser            bool           `json:"splitUser"`
+	SplitDump            bool           `json:"splitDump"`
+	Previous             int64          `json:"previous"`
+	ResticEnabled        bool           `json:"resticEnabled,omitempty"`
+	ResticSnapshotID     string         `json:"resticSnapshotID"`
+	ResticFilePath       string         `json:"resticFilePath"`
+	BackupSessionID      string         `json:"backupSessionID,omitempty"`
 }
 
 type PointInTimeMeta struct {

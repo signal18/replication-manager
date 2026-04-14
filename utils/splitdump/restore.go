@@ -49,17 +49,17 @@ type Metadata struct {
 }
 
 type RestoreOptions struct {
-	Parallel               int
-	RestoreUser            bool
-	StrictMetadata         bool
+	Parallel       int
+	RestoreUser    bool
+	StrictMetadata bool
 	// DefinerStrict causes restore to fail closed when an incompatible DEFINER clause is
 	// encountered. When false (default), non-strict fallback is applied: RestoreFileWithoutDefiner
 	// is called if provided, otherwise the file is skipped with a warning.
-	DefinerStrict             bool
-	Logger                    func(level, format string, args ...any)
-	RestoreFile               func(path string) error
-	Context                   context.Context
-	RestoreFileWithContext     func(ctx context.Context, path string) error
+	DefinerStrict          bool
+	Logger                 func(level, format string, args ...any)
+	RestoreFile            func(path string) error
+	Context                context.Context
+	RestoreFileWithContext func(ctx context.Context, path string) error
 	// RestoreFileWithoutDefiner is called instead of RestoreFileWithContext when a DEFINER
 	// error is detected and DefinerStrict is false. The implementation is responsible for
 	// stripping DEFINER clauses before execution.
@@ -67,9 +67,9 @@ type RestoreOptions struct {
 }
 
 type FileSet struct {
-	Schema     []string
-	Data       []string
-	Post       []string
+	Schema []string
+	Data   []string
+	Post   []string
 	// PrunedData holds data-phase files removed during conflict resolution.
 	// Callers can inspect this to understand what was excluded and why.
 	PrunedData []string
@@ -214,6 +214,7 @@ func ListSchemas(backupPath string) ([]string, error) {
 	return schemas, nil
 }
 
+// Restore restores a filesystem-backed splitdump backup from backupPath.
 func Restore(backupPath string, opts RestoreOptions) error {
 	if opts.RestoreFile == nil && opts.RestoreFileWithContext == nil {
 		return fmt.Errorf("splitdump restore requires RestoreFile")
@@ -388,6 +389,206 @@ func Restore(backupPath string, opts RestoreOptions) error {
 		err := restoreOneFile(postFile)
 		if err != nil {
 			logf(LogError, "Splitdump post-data restore failed (%s): %v", filepath.Base(postFile), err)
+			cancel()
+			return err
+		}
+	}
+
+	logf(LogInfo, "Splitdump restore completed")
+	return nil
+}
+
+// RestoreFromSource restores splitdump artifacts from an abstract source.
+//
+// For filesystem sources, it delegates to Restore to preserve the full
+// splitdump behavior already implemented there (detection, manifest handling,
+// mysql.proc pruning, schema/data/post phases, and DEFINER handling).
+//
+// For non-filesystem sources (e.g. stream containers), it performs phase-aware
+// orchestration using the entries provided by source.
+func RestoreFromSource(source RestoreSource, opts RestoreOptions) error {
+	if fs, ok := source.(*FilesystemSource); ok {
+		return Restore(fs.BackupPath, opts)
+	}
+
+	if opts.RestoreFile == nil && opts.RestoreFileWithContext == nil {
+		return fmt.Errorf("splitdump restore requires RestoreFile")
+	}
+
+	logf := func(level, format string, args ...any) {
+		if opts.Logger != nil {
+			opts.Logger(level, format, args...)
+		}
+	}
+
+	ctx := opts.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	meta, err := source.Metadata()
+	if err != nil {
+		if opts.StrictMetadata {
+			return err
+		}
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			logf(LogWarn, "Splitdump metadata not found; continuing without binlog info")
+		case errors.Is(err, ErrMetadataInvalid):
+			logf(LogWarn, "Splitdump metadata malformed; continuing without binlog info: %v", err)
+		default:
+			return err
+		}
+	} else if meta != nil {
+		logf(LogInfo, "Splitdump metadata loaded (file=%s pos=%d)", meta.File, meta.Position)
+	}
+
+	entries, err := source.Entries(opts.RestoreUser)
+	if err != nil {
+		return err
+	}
+
+	var schemaEntries []SourceEntry
+	var dataEntries []SourceEntry
+	var postEntries []SourceEntry
+	for _, e := range entries {
+		if IsPostFile(filepath.Base(e.Path)) {
+			postEntries = append(postEntries, e)
+			continue
+		}
+		if e.IsSchema {
+			schemaEntries = append(schemaEntries, e)
+			continue
+		}
+		dataEntries = append(dataEntries, e)
+	}
+
+	logf(LogInfo, "Splitdump restore files listed (schema=%d data=%d post=%d)", len(schemaEntries), len(dataEntries), len(postEntries))
+
+	restoreOneFile := func(path string) error {
+		var restoreErr error
+		if opts.RestoreFileWithContext != nil {
+			restoreErr = opts.RestoreFileWithContext(ctx, path)
+		} else {
+			restoreErr = opts.RestoreFile(path)
+		}
+		if restoreErr == nil || !IsDefinerError(restoreErr) {
+			return restoreErr
+		}
+		if opts.DefinerStrict {
+			logf(LogError, "Splitdump strict DEFINER enforcement blocked restore of %s: %v", filepath.Base(path), restoreErr)
+			return fmt.Errorf("%w: %s: %v", ErrDefinerStrict, filepath.Base(path), restoreErr)
+		}
+		if opts.RestoreFileWithoutDefiner != nil {
+			logf(LogWarn, "Splitdump DEFINER fallback for %s (retrying without DEFINER)", filepath.Base(path))
+			return opts.RestoreFileWithoutDefiner(ctx, path)
+		}
+		logf(LogWarn, "Splitdump DEFINER skipped for %s: incompatible DEFINER clause, no fallback function provided", filepath.Base(path))
+		return nil
+	}
+
+	logf(LogInfo, "Splitdump restore phase: schema (%d files)", len(schemaEntries))
+	for _, e := range schemaEntries {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		logf(LogDebug, "Splitdump restoring schema (%s)", filepath.Base(e.Path))
+		if err := restoreOneFile(e.Path); err != nil {
+			logf(LogError, "Splitdump schema restore failed (%s): %v", filepath.Base(e.Path), err)
+			cancel()
+			return err
+		}
+	}
+
+	parallel := opts.Parallel
+	if parallel < 1 {
+		parallel = 1
+	}
+
+	logf(LogInfo, "Splitdump restore phase: data (%d files)", len(dataEntries))
+	dataGroups := groupSourceDataEntries(dataEntries)
+	if len(dataGroups) == 0 {
+		logf(LogInfo, "Splitdump restoring data files skipped (none)")
+	} else {
+		if parallel > len(dataGroups) {
+			parallel = len(dataGroups)
+		}
+
+		var wg sync.WaitGroup
+		var firstErr error
+		var errOnce sync.Once
+
+		setErr := func(err error) {
+			errOnce.Do(func() {
+				firstErr = err
+				cancel()
+			})
+		}
+
+		groupJobs := make(chan dataGroup)
+		groupWorker := func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case group, ok := <-groupJobs:
+					if !ok {
+						return
+					}
+					for _, path := range group.paths {
+						select {
+						case <-ctx.Done():
+							return
+						default:
+						}
+						logf(LogDebug, "Splitdump restoring data (%s)", filepath.Base(path))
+						if err := restoreOneFile(path); err != nil {
+							logf(LogError, "Splitdump data restore failed (%s): %v", filepath.Base(path), err)
+							setErr(err)
+							return
+						}
+					}
+				}
+			}
+		}
+
+		for i := 0; i < parallel; i++ {
+			wg.Add(1)
+			go groupWorker()
+		}
+
+		logf(LogInfo, "Splitdump restoring data files (count=%d parallel=%d)", len(dataEntries), parallel)
+
+	sendLoop:
+		for _, group := range dataGroups {
+			select {
+			case <-ctx.Done():
+				break sendLoop
+			case groupJobs <- group:
+			}
+		}
+		close(groupJobs)
+		wg.Wait()
+
+		if firstErr != nil {
+			return firstErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+
+	logf(LogInfo, "Splitdump restore phase: post-data (%d files)", len(postEntries))
+	for _, e := range postEntries {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		logf(LogDebug, "Splitdump restoring post-data (%s)", filepath.Base(e.Path))
+		if err := restoreOneFile(e.Path); err != nil {
+			logf(LogError, "Splitdump post-data restore failed (%s): %v", filepath.Base(e.Path), err)
 			cancel()
 			return err
 		}

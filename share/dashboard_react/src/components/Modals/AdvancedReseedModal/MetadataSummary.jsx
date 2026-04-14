@@ -1,11 +1,14 @@
 import React from 'react'
 import { Box, HStack, Text, VStack } from '@chakra-ui/react'
-import { formatLocalDateTime, formatMetadataTimestamp } from './helpers'
+import { formatLocalDateTime, formatMetadataTimestamp, getEncryptionModeLabel, getMetadataEncryptionMode } from './helpers'
 
 function MetadataSummary({ label, metadata, theme }) {
   if (!metadata) {
     return null
   }
+  const encryptionMode = getMetadataEncryptionMode(metadata)
+  const encryptionModeLabel = getEncryptionModeLabel(encryptionMode)
+
   return (
     <Box borderWidth='1px' borderRadius='md' p={3} bg={theme === 'light' ? 'white' : 'gray.800'} width='100%'>
       <Text fontWeight='bold' fontSize='sm' mb={2}>
@@ -42,6 +45,14 @@ function MetadataSummary({ label, metadata, theme }) {
             <Text fontSize='xs' fontFamily='monospace' wordBreak='break-all'>
               {metadata.backupSessionID}
             </Text>
+          </HStack>
+        )}
+        {encryptionModeLabel && (
+          <HStack>
+            <Text fontWeight='semibold' minW='100px'>
+              Encryption:
+            </Text>
+            <Text>{encryptionModeLabel}</Text>
           </HStack>
         )}
       </VStack>

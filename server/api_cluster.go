@@ -2552,6 +2552,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupBinlogs()
 	case "compress-backups":
 		mycluster.SwitchCompressBackups()
+	case "backup-encryption":
+		mycluster.Conf.BackupEncryption = !mycluster.Conf.BackupEncryption
+	case "backup-encryption-stream-transport":
+		mycluster.Conf.BackupEncryptionStreamTransport = !mycluster.Conf.BackupEncryptionStreamTransport
 	case "backup-reseed-remote-decompress":
 		mycluster.Conf.BackupReseedRemoteDecompress = !mycluster.Conf.BackupReseedRemoteDecompress
 	case "backup-split-mysql-user":
@@ -4148,6 +4152,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 	case "compress-backups":
 		mycluster.Conf.CompressBackups = applyIsActive(mycluster.Conf.CompressBackups, isactive)
+	case "backup-encryption":
+		mycluster.Conf.BackupEncryption = applyIsActive(mycluster.Conf.BackupEncryption, isactive)
+	case "backup-encryption-stream-transport":
+		mycluster.Conf.BackupEncryptionStreamTransport = applyIsActive(mycluster.Conf.BackupEncryptionStreamTransport, isactive)
 	case "backup-split-mysql-user":
 		mycluster.Conf.BackupSplitMysqlUser = applyIsActive(mycluster.Conf.BackupSplitMysqlUser, isactive)
 	case "backup-restore-mysql-user":

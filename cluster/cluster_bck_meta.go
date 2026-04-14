@@ -579,16 +579,23 @@ type ReconciliationReport struct {
 
 // SnapshotMetadataSummary captures lightweight backup metadata associated with a restic snapshot.
 type SnapshotMetadataSummary struct {
-	Dest             string    `json:"dest,omitempty"`
-	BackupMethod     string    `json:"backupMethod"`
-	BackupTool       string    `json:"backupTool"`
-	BackupLine       string    `json:"backupLine"`
-	StartTime        time.Time `json:"startTime"`
-	EndTime          time.Time `json:"endTime"`
-	Compressed       bool      `json:"compressed,omitempty"`
-	BackupSessionID  string    `json:"backupSessionID,omitempty"`
-	ResticSnapshotID string    `json:"resticSnapshotID,omitempty"`
-	ResticBasePath   string    `json:"resticBasePath,omitempty"`
+	Dest                 string    `json:"dest,omitempty"`
+	BackupMethod         string    `json:"backupMethod"`
+	BackupTool           string    `json:"backupTool"`
+	BackupLine           string    `json:"backupLine"`
+	StartTime            time.Time `json:"startTime"`
+	EndTime              time.Time `json:"endTime"`
+	Compressed           bool      `json:"compressed,omitempty"`
+	BackupSessionID      string    `json:"backupSessionID,omitempty"`
+	ResticSnapshotID     string    `json:"resticSnapshotID,omitempty"`
+	ResticBasePath       string    `json:"resticBasePath,omitempty"`
+	Encrypted            bool      `json:"encrypted,omitempty"`
+	EncryptionAlgo       string    `json:"encryptionAlgo,omitempty"`
+	EncryptionIV         string    `json:"encryptionIV,omitempty"`
+	EncryptionMAC        string    `json:"encryptionMAC,omitempty"`
+	EncryptionKey          string    `json:"encryptionKey,omitempty"`
+	EncryptionKeyCluster   string    `json:"encryptionKeyCluster,omitempty"`
+	EncryptionStreamFormat bool      `json:"encryptionStreamFormat,omitempty"` // true when encrypted using stream container format (AEAD per-frame)
 }
 
 type snapshotMetadataCandidate struct {
@@ -626,16 +633,23 @@ func buildSnapshotMetadataSummary(meta *backupmgr.BackupMetadata, method backupm
 		compressed = true
 	}
 	return &SnapshotMetadataSummary{
-		Dest:             strings.TrimSpace(meta.Dest),
-		BackupMethod:     backupMethodToString(method),
-		BackupTool:       meta.BackupTool,
-		BackupLine:       meta.BackupLine,
-		StartTime:        meta.StartTime,
-		EndTime:          meta.EndTime,
-		Compressed:       compressed,
-		BackupSessionID:  meta.BackupSessionID,
-		ResticSnapshotID: meta.ResticSnapshotID,
-		ResticBasePath:   strings.TrimSpace(basepath),
+		Dest:                 strings.TrimSpace(meta.Dest),
+		BackupMethod:         backupMethodToString(method),
+		BackupTool:           meta.BackupTool,
+		BackupLine:           meta.BackupLine,
+		StartTime:            meta.StartTime,
+		EndTime:              meta.EndTime,
+		Compressed:           compressed,
+		BackupSessionID:      meta.BackupSessionID,
+		ResticSnapshotID:     meta.ResticSnapshotID,
+		ResticBasePath:       strings.TrimSpace(basepath),
+		Encrypted:              meta.Encrypted,
+		EncryptionAlgo:         strings.TrimSpace(meta.EncryptionAlgo),
+		EncryptionIV:           strings.TrimSpace(meta.EncryptionIV),
+		EncryptionMAC:          strings.TrimSpace(meta.EncryptionMAC),
+		EncryptionKey:          strings.TrimSpace(meta.EncryptionKey),
+		EncryptionKeyCluster:   strings.TrimSpace(meta.EncryptionKeyCluster),
+		EncryptionStreamFormat: meta.EncryptionStreamFormat,
 	}
 }
 
