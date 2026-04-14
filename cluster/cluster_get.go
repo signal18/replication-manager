@@ -354,7 +354,7 @@ func (cluster *Cluster) GetPersitentState() error {
 		}
 		var legacy legacyClusterState
 		if legacyFile, lerr := os.ReadFile(cluster.WorkingDir + "/clusterstate.json"); lerr == nil {
-			if jerr := json.Unmarshal(legacyFile, &legacy); jerr == nil && (len(legacy.SLAHistory) > 0 || legacy.SLA.UptimeNow > 0) {
+			if jerr := json.Unmarshal(legacyFile, &legacy); jerr == nil && (len(legacy.SLAHistory) > 0 || legacy.SLA.Uptime > 0) {
 				cluster.SLAHistory = legacy.SLAHistory
 				cluster.StateMachine.SetSla(legacy.SLA)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
