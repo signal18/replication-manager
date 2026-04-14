@@ -655,6 +655,21 @@ func (repo *ResticManager) GetCanFetch() bool {
 	return repo.CanFetch
 }
 
+// waitCanFetch waits until fetch lock is available or times out.
+func (repo *ResticManager) waitCanFetch() error {
+	timeout := repo.GetOperationTimeout()
+	deadline := time.Now().Add(timeout)
+
+	for !repo.GetCanFetch() {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout waiting for restic fetch lock after %v", timeout)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return nil
+}
+
 // SetPermissions sets the permission modes for restic operations
 // dirMode: Directory permission mode (e.g., 0700 for owner-only)
 // fileMode: File permission mode (e.g., 0600 for owner-only)
@@ -4155,8 +4170,8 @@ func (repo *ResticManager) CheckResticLocks() error {
 
 // ResticUnlockRepo unlocks the repository
 func (repo *ResticManager) UnlockRepo() error {
-	for !repo.GetCanFetch() {
-		time.Sleep(time.Second)
+	if err := repo.waitCanFetch(); err != nil {
+		return err
 	}
 
 	repo.SetCanFetch(false)

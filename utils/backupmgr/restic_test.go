@@ -813,6 +813,24 @@ func TestCheckResticLocksAndUnlock(t *testing.T) {
 	}
 }
 
+func TestUnlockRepoTimeoutWhenCanFetchBlocked(t *testing.T) {
+	repo := newPausedRepo(t)
+	repo.SetOperationTimeout(500 * time.Millisecond)
+	repo.SetCanFetch(false)
+
+	start := time.Now()
+	err := repo.UnlockRepo()
+	if err == nil {
+		t.Fatalf("expected timeout error when CanFetch remains false")
+	}
+	if !strings.Contains(err.Error(), "timeout waiting for restic fetch lock") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Fatalf("unlock timeout took too long: %v", time.Since(start))
+	}
+}
+
 func TestKeyManagementAndPassword(t *testing.T) {
 	repo, _, _, _ := newResticRepo(t, false)
 

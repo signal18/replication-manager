@@ -546,8 +546,8 @@ func (cluster *Cluster) StartResticManager() error {
 	if cluster.ResticManager.RecoverMountStateOnStartup() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Recovered restic mount state on startup")
 	}
+	resticManager.AddUnlockTask() // Queue unlock first to avoid fetch-before-unlock race on startup.
 	go cluster.ResticFetchRepo()
-	resticManager.AddUnlockTask() // Unlock repo on startup to prevent stale locks (e.g. after crash). No need to add wait since it will be checked each monitor loop.
 	return nil
 }
 
