@@ -121,6 +121,8 @@ function BackupSettings({ selectedCluster, user }) {
   const hMysqldumpOptions = `**Mysqldump Options**\n\nAdditional command-line flags passed to mysqldump.\nExample: \`--single-transaction --triggers --routines\`\n\nConfig: \`backup-mysqldump-options\``
   const hSplitDump = `**Mysqldump Splitdump Output**\n\nSends mysqldump output through replication-manager-cli splitdump instead of a single .sql.gz file.\nOutput is written to a splitdump directory (uncompressed).\nRequires the CLI to be available in PATH or configured below.\n\nConfig: \`backup-mysqldump-splitdump\``
   const hSplitDumpSize = `**Splitdump Shard Size**\n\nMaximum shard size for splitdump output. Default: 1G. Set to 0 to disable sharding.\n\nConfig: \`backup-splitdump-file-size\``
+  const hSplitDumpCreateDatabases = `**Auto-create databases for splitdump restore**\n\nWhen enabled, missing databases are automatically created before applying splitdump schema files during restore.\n\nConfig: \`backup-splitdump-create-databases\``
+  const hRestoreDefinerStrict = `**Strict DEFINER enforcement on restore**\n\nWhen enabled, restore fails if an incompatible DEFINER clause is detected (e.g. the definer user does not exist on the target). When disabled (default), the file is re-imported with DEFINER clauses stripped and a warning is logged.\n\nConfig: \`backup-restore-definer-strict\``
   const hCliPath = `**Replication Manager CLI Path**\n\nPath to the replication-manager-cli binary used for splitdump processing.\nLeave empty to use PATH lookup.\n\nConfig: \`replication-manager-cli-path\``
   const hMydumperOptions = `**Mydumper Options**\n\nAdditional command-line flags passed to mydumper.\n\nConfig: \`backup-mydumper-options\``
   const hMydumperRegex = `**Mydumper Regex**\n\nRegular expression to filter which tables mydumper includes in the backup.\n\nConfig: \`backup-mydumper-regex\``
@@ -231,6 +233,38 @@ function BackupSettings({ selectedCluster, user }) {
           selectedValue={selectedCluster?.config?.backupSplitdumpFileSize || '1G'}
           confirmTitle={`Confirm backup-splitdump-file-size to `}
           onChange={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-splitdump-file-size', value }))} />
+      )
+    },
+    {
+      key: 'Auto-create databases for splitdump restore',
+      help: h(hSplitDumpCreateDatabases, 'Auto-create databases for splitdump restore'),
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.backupSplitdumpCreateDatabases}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for backup-splitdump-create-databases?'}
+          onChange={() =>
+            dispatch(
+              switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-splitdump-create-databases' })
+            )
+          }
+        />
+      )
+    },
+    {
+      key: 'Strict DEFINER enforcement on restore',
+      help: h(hRestoreDefinerStrict, 'Strict DEFINER enforcement on restore'),
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.backupRestoreDefinerStrict}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for backup-restore-definer-strict?'}
+          onChange={() =>
+            dispatch(
+              switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-restore-definer-strict' })
+            )
+          }
+        />
       )
     },
     {

@@ -845,6 +845,7 @@ type Config struct {
 	BackupMysqlclientPath                  string                 `mapstructure:"backup-mysqlclient-path" toml:"backup-mysqlclient-path" json:"backupMysqlclientPath"`
 	BackupMysqlclientOptions               string                 `mapstructure:"backup-mysqlclient-options" toml:"backup-mysqlclient-options" json:"backupMysqlclientOptions"`
 	BackupMysqldumpSplitDump               bool                   `mapstructure:"backup-mysqldump-splitdump" toml:"backup-mysqldump-splitdump" json:"backupMysqldumpSplitDump"`
+	BackupSplitdumpCreateDatabases         bool                   `mapstructure:"backup-splitdump-create-databases" toml:"backup-splitdump-create-databases" json:"backupSplitdumpCreateDatabases"`
 	BackupMytopPath                        string                 `mapstructure:"backup-mytop-path" toml:"backup-mytop-path" json:"backupMytopPath"`
 	BackupGottyClientPath                  string                 `mapstructure:"backup-gotty-client-path" toml:"backup-gotty-client-path" json:"backupGottyClientPath"`
 	ReplicationManagerCliPath              string                 `mapstructure:"replication-manager-cli-path" toml:"replication-manager-cli-path" json:"replicationManagerCliPath"`
@@ -852,6 +853,7 @@ type Config struct {
 	BackupBinlogsKeep                      int                    `mapstructure:"backup-binlogs-keep" toml:"backup-binlogs-keep" json:"backupBinlogsKeep"`
 	BackupLockDDL                          bool                   `mapstructure:"backup-lockddl" toml:"backup-lockddl" json:"backupLockDDL"`
 	BackupRestoreVersionStrict             bool                   `mapstructure:"backup-restore-version-strict" toml:"backup-restore-version-strict" json:"backupRestoreVersionStrict"`
+	BackupRestoreDefinerStrict             bool                   `mapstructure:"backup-restore-definer-strict" toml:"backup-restore-definer-strict" json:"backupRestoreDefinerStrict"`
 	BinlogCopyMode                         string                 `mapstructure:"binlog-copy-mode" toml:"binlog-copy-mode" json:"binlogCopyMode"`
 	BinlogCopyScript                       string                 `mapstructure:"binlog-copy-script" toml:"binlog-copy-script" json:"binlogCopyScript"`
 	BinlogRotationScript                   string                 `mapstructure:"binlog-rotation-script" toml:"binlog-rotation-script" json:"binlogRotationScript"`

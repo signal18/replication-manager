@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,6 +22,25 @@ const (
 
 var ErrMetadataInvalid = errors.New("splitdump metadata invalid")
 
+// ErrNotSplitdump is returned by BuildRestorePlan when the backup directory
+// does not contain a splitdump-compatible artifact layout.
+var ErrNotSplitdump = errors.New("not a splitdump backup layout")
+
+// ErrDefinerStrict is returned when strict DEFINER enforcement blocks a restore.
+var ErrDefinerStrict = errors.New("strict DEFINER enforcement blocked restore")
+
+// definerErrRe matches the MySQL/MariaDB DEFINER compatibility error. The pattern targets the
+// canonical error number (1449) and the distinctive phrase in the error message, avoiding false
+// positives from passwords, row counts, or unrelated messages that happen to contain "1449" or
+// "definer" as substrings.
+var definerErrRe = regexp.MustCompile(`(?i)(ERROR 1449|the user specified as a definer)`)
+
+// IsDefinerError reports whether err indicates a MySQL/MariaDB DEFINER compatibility failure
+// (typically error 1449: the definer user does not exist on the target server).
+func IsDefinerError(err error) bool {
+	return err != nil && definerErrRe.MatchString(err.Error())
+}
+
 type Metadata struct {
 	File       string
 	Position   uint64
@@ -32,21 +52,41 @@ type RestoreOptions struct {
 	Parallel               int
 	RestoreUser            bool
 	StrictMetadata         bool
-	Logger                 func(level, format string, args ...any)
-	RestoreFile            func(path string) error
-	Context                context.Context
-	RestoreFileWithContext func(ctx context.Context, path string) error
+	// DefinerStrict causes restore to fail closed when an incompatible DEFINER clause is
+	// encountered. When false (default), non-strict fallback is applied: RestoreFileWithoutDefiner
+	// is called if provided, otherwise the file is skipped with a warning.
+	DefinerStrict             bool
+	Logger                    func(level, format string, args ...any)
+	RestoreFile               func(path string) error
+	Context                   context.Context
+	RestoreFileWithContext     func(ctx context.Context, path string) error
+	// RestoreFileWithoutDefiner is called instead of RestoreFileWithContext when a DEFINER
+	// error is detected and DefinerStrict is false. The implementation is responsible for
+	// stripping DEFINER clauses before execution.
+	RestoreFileWithoutDefiner func(ctx context.Context, path string) error
 }
 
 type FileSet struct {
-	Schema []string
-	Data   []string
+	Schema     []string
+	Data       []string
+	Post       []string
+	// PrunedData holds data-phase files removed during conflict resolution.
+	// Callers can inspect this to understand what was excluded and why.
+	PrunedData []string
 }
 
 type dataGroup struct {
 	key   string
 	paths []string
 }
+
+type fileCategory int
+
+const (
+	fileCategorySchema fileCategory = iota
+	fileCategoryData
+	fileCategoryPost
+)
 
 func ReadMetadata(backupPath string) (*Metadata, error) {
 	metadataPath := filepath.Join(backupPath, "metadata")
@@ -117,20 +157,61 @@ func ListFiles(backupPath string, restoreUser bool) (FileSet, error) {
 			continue
 		}
 		name := entry.Name()
-		isSchema, ok := classifyFile(name, restoreUser)
+		category, ok := classifyFile(name, restoreUser)
 		if !ok {
 			continue
 		}
 		fullPath := filepath.Join(backupPath, name)
-		if isSchema {
+		switch category {
+		case fileCategorySchema:
 			set.Schema = append(set.Schema, fullPath)
-		} else {
+		case fileCategoryPost:
+			set.Post = append(set.Post, fullPath)
+		default:
 			set.Data = append(set.Data, fullPath)
 		}
 	}
-	sort.Strings(set.Schema)
+	sortSplitdumpSchemaFiles(set.Schema)
 	sortSplitdumpDataFiles(set.Data)
+	sortSplitdumpPostFiles(set.Post)
 	return set, nil
+}
+
+var systemSchemas = map[string]bool{
+	"mysql":              true,
+	"information_schema": true,
+	"performance_schema": true,
+	"sys":                true,
+}
+
+// ListSchemas returns the sorted list of unique user-defined schema names found
+// in the backup directory, excluding system schemas (mysql, information_schema,
+// performance_schema, sys).
+func ListSchemas(backupPath string) ([]string, error) {
+	files, err := ListFiles(backupPath, false)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool)
+	var schemas []string
+	// Explicit allocation avoids the append-aliasing pitfall where a first append with spare
+	// capacity in files.Schema would write files.Data entries into its backing array.
+	allFiles := make([]string, 0, len(files.Schema)+len(files.Data)+len(files.Post))
+	allFiles = append(allFiles, files.Schema...)
+	allFiles = append(allFiles, files.Data...)
+	allFiles = append(allFiles, files.Post...)
+	for _, path := range allFiles {
+		schema := SchemaFromFilename(path)
+		if schema == "" || systemSchemas[strings.ToLower(schema)] {
+			continue
+		}
+		if !seen[schema] {
+			seen[schema] = true
+			schemas = append(schemas, schema)
+		}
+	}
+	sort.Strings(schemas)
+	return schemas, nil
 }
 
 func Restore(backupPath string, opts RestoreOptions) error {
@@ -165,23 +246,49 @@ func Restore(backupPath string, opts RestoreOptions) error {
 		logf(LogInfo, "Splitdump metadata loaded (file=%s pos=%d)", meta.File, meta.Position)
 	}
 
-	files, err := ListFiles(backupPath, opts.RestoreUser)
+	plan, err := BuildRestorePlan(backupPath, opts.RestoreUser)
 	if err != nil {
 		return err
 	}
-	logf(LogInfo, "Splitdump restore files listed (schema=%d data=%d)", len(files.Schema), len(files.Data))
+	files := *plan
+	logf(LogInfo, "Splitdump detection: compatible backup layout confirmed at %s", backupPath)
+	if len(files.PrunedData) > 0 {
+		logf(LogWarn, "Splitdump mysql.proc data phase excluded (%d file(s)): mysql routines artifact present (restoring both causes duplicate-key errors)", len(files.PrunedData))
+	}
+	logf(LogInfo, "Splitdump restore files listed (schema=%d data=%d post=%d)", len(files.Schema), len(files.Data), len(files.Post))
 
+	restoreOneFile := func(path string) error {
+		var restoreErr error
+		if opts.RestoreFileWithContext != nil {
+			restoreErr = opts.RestoreFileWithContext(ctx, path)
+		} else {
+			restoreErr = opts.RestoreFile(path)
+		}
+		if restoreErr == nil || !IsDefinerError(restoreErr) {
+			return restoreErr
+		}
+		// DEFINER compatibility error detected.
+		if opts.DefinerStrict {
+			logf(LogError, "Splitdump strict DEFINER enforcement blocked restore of %s: %v", filepath.Base(path), restoreErr)
+			return fmt.Errorf("%w: %s: %v", ErrDefinerStrict, filepath.Base(path), restoreErr)
+		}
+		// Non-strict fallback: try without DEFINER if a fallback function is provided.
+		if opts.RestoreFileWithoutDefiner != nil {
+			logf(LogWarn, "Splitdump DEFINER fallback for %s (retrying without DEFINER)", filepath.Base(path))
+			return opts.RestoreFileWithoutDefiner(ctx, path)
+		}
+		// No fallback function — skip the file and log the omission.
+		logf(LogWarn, "Splitdump DEFINER skipped for %s: incompatible DEFINER clause, no fallback function provided", filepath.Base(path))
+		return nil
+	}
+
+	logf(LogInfo, "Splitdump restore phase: schema (%d files)", len(files.Schema))
 	for _, schemaFile := range files.Schema {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		logf(LogDebug, "Splitdump restoring schema (%s)", filepath.Base(schemaFile))
-		var err error
-		if opts.RestoreFileWithContext != nil {
-			err = opts.RestoreFileWithContext(ctx, schemaFile)
-		} else {
-			err = opts.RestoreFile(schemaFile)
-		}
+		err := restoreOneFile(schemaFile)
 		if err != nil {
 			logf(LogError, "Splitdump schema restore failed (%s): %v", filepath.Base(schemaFile), err)
 			cancel()
@@ -197,114 +304,130 @@ func Restore(backupPath string, opts RestoreOptions) error {
 		parallel = len(files.Data)
 	}
 
-	if len(files.Data) == 0 {
-		logf(LogInfo, "Splitdump restore completed (no data files)")
-		return nil
-	}
-
+	logf(LogInfo, "Splitdump restore phase: data (%d files)", len(files.Data))
 	dataGroups := groupSplitdumpDataFiles(files.Data)
 	if len(dataGroups) == 0 {
-		logf(LogInfo, "Splitdump restore completed (no data files)")
-		return nil
-	}
+		logf(LogInfo, "Splitdump restoring data files skipped (none)")
+	} else {
+		var wg sync.WaitGroup
+		var firstErr error
+		var errOnce sync.Once
 
-	var wg sync.WaitGroup
-	var firstErr error
-	var errOnce sync.Once
+		setErr := func(err error) {
+			errOnce.Do(func() {
+				firstErr = err
+				cancel()
+			})
+		}
 
-	setErr := func(err error) {
-		errOnce.Do(func() {
-			firstErr = err
-			cancel()
-		})
-	}
-
-	groupJobs := make(chan dataGroup)
-	groupWorker := func() {
-		defer wg.Done()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case group, ok := <-groupJobs:
-				if !ok {
+		groupJobs := make(chan dataGroup)
+		groupWorker := func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
 					return
-				}
-				for _, path := range group.paths {
-					select {
-					case <-ctx.Done():
+				case group, ok := <-groupJobs:
+					if !ok {
 						return
-					default:
 					}
-					logf(LogDebug, "Splitdump restoring data (%s)", filepath.Base(path))
-					var err error
-					if opts.RestoreFileWithContext != nil {
-						err = opts.RestoreFileWithContext(ctx, path)
-					} else {
-						err = opts.RestoreFile(path)
-					}
-					if err != nil {
-						logf(LogError, "Splitdump data restore failed (%s): %v", filepath.Base(path), err)
-						setErr(err)
-						return
+					for _, path := range group.paths {
+						select {
+						case <-ctx.Done():
+							return
+						default:
+						}
+						logf(LogDebug, "Splitdump restoring data (%s)", filepath.Base(path))
+						err := restoreOneFile(path)
+						if err != nil {
+							logf(LogError, "Splitdump data restore failed (%s): %v", filepath.Base(path), err)
+							setErr(err)
+							return
+						}
 					}
 				}
 			}
 		}
-	}
 
-	if parallel > len(dataGroups) {
-		parallel = len(dataGroups)
-	}
-
-	for i := 0; i < parallel; i++ {
-		wg.Add(1)
-		go groupWorker()
-	}
-
-	logf(LogInfo, "Splitdump restoring data files (count=%d parallel=%d)", len(files.Data), parallel)
-
-sendLoop:
-	for _, group := range dataGroups {
-		select {
-		case <-ctx.Done():
-			break sendLoop
-		case groupJobs <- group:
+		if parallel > len(dataGroups) {
+			parallel = len(dataGroups)
 		}
-	}
-	close(groupJobs)
-	wg.Wait()
 
-	if firstErr == nil {
+		for i := 0; i < parallel; i++ {
+			wg.Add(1)
+			go groupWorker()
+		}
+
+		logf(LogInfo, "Splitdump restoring data files (count=%d parallel=%d)", len(files.Data), parallel)
+
+	sendLoop:
+		for _, group := range dataGroups {
+			select {
+			case <-ctx.Done():
+				break sendLoop
+			case groupJobs <- group:
+			}
+		}
+		close(groupJobs)
+		wg.Wait()
+
+		if firstErr != nil {
+			return firstErr
+		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		logf(LogInfo, "Splitdump restore completed")
 	}
-	return firstErr
+
+	logf(LogInfo, "Splitdump restore phase: post-data (%d files)", len(files.Post))
+	for _, postFile := range files.Post {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		logf(LogDebug, "Splitdump restoring post-data (%s)", filepath.Base(postFile))
+		err := restoreOneFile(postFile)
+		if err != nil {
+			logf(LogError, "Splitdump post-data restore failed (%s): %v", filepath.Base(postFile), err)
+			cancel()
+			return err
+		}
+	}
+
+	logf(LogInfo, "Splitdump restore completed")
+	return nil
 }
 
-func classifyFile(name string, restoreUser bool) (isSchema bool, ok bool) {
+func classifyFile(name string, restoreUser bool) (category fileCategory, ok bool) {
 	lower := strings.ToLower(name)
 	if lower == "metadata" {
-		return false, false
+		return fileCategoryData, false
 	}
 	if strings.HasSuffix(lower, ".sql.gz") || strings.HasSuffix(lower, ".sql") {
 		switch {
 		case strings.HasSuffix(lower, "-schema.sql.gz") || strings.HasSuffix(lower, "-schema.sql"):
-			return true, true
+			return fileCategorySchema, true
 		case strings.HasSuffix(lower, "-schema-view.sql.gz") || strings.HasSuffix(lower, "-schema-view.sql"):
-			return true, true
+			return fileCategorySchema, true
+		case strings.HasSuffix(lower, "-schema-routine.sql.gz") || strings.HasSuffix(lower, "-schema-routine.sql"):
+			return fileCategorySchema, true
+		case strings.HasSuffix(lower, "-schema-function.sql.gz") || strings.HasSuffix(lower, "-schema-function.sql"):
+			return fileCategorySchema, true
+		case strings.HasSuffix(lower, "-schema-procedure.sql.gz") || strings.HasSuffix(lower, "-schema-procedure.sql"):
+			return fileCategorySchema, true
+		case strings.HasSuffix(lower, "-schema-trigger.sql.gz") || strings.HasSuffix(lower, "-schema-trigger.sql"):
+			return fileCategoryPost, true
+		case strings.HasSuffix(lower, "-schema-event.sql.gz") || strings.HasSuffix(lower, "-schema-event.sql"):
+			return fileCategoryPost, true
 		case lower == "mysql.system-all.sql.gz" || lower == "mysql.system-all.sql":
 			if !restoreUser {
-				return false, false
+				return fileCategoryData, false
 			}
-			return true, true
+			return fileCategorySchema, true
 		default:
-			return false, true
+			return fileCategoryData, true
 		}
 	}
-	return false, false
+	return fileCategoryData, false
 }
 
 func sortSplitdumpDataFiles(paths []string) {
@@ -318,6 +441,62 @@ func sortSplitdumpDataFiles(paths []string) {
 		}
 		return leftKey < rightKey
 	})
+}
+
+func sortSplitdumpSchemaFiles(paths []string) {
+	sort.SliceStable(paths, func(i, j int) bool {
+		left := filepath.Base(paths[i])
+		right := filepath.Base(paths[j])
+		leftPriority := splitdumpSchemaPriority(left)
+		rightPriority := splitdumpSchemaPriority(right)
+		if leftPriority == rightPriority {
+			return left < right
+		}
+		return leftPriority < rightPriority
+	})
+}
+
+func splitdumpSchemaPriority(name string) int {
+	lower := strings.ToLower(filepath.Base(name))
+	switch {
+	case strings.HasSuffix(lower, "-schema.sql.gz") || strings.HasSuffix(lower, "-schema.sql"):
+		return 0
+	case IsMysqlSystemAll(lower):
+		return 1
+	case strings.HasSuffix(lower, "-schema-routine.sql.gz") || strings.HasSuffix(lower, "-schema-routine.sql") ||
+		strings.HasSuffix(lower, "-schema-function.sql.gz") || strings.HasSuffix(lower, "-schema-function.sql") ||
+		strings.HasSuffix(lower, "-schema-procedure.sql.gz") || strings.HasSuffix(lower, "-schema-procedure.sql"):
+		return 2
+	case strings.HasSuffix(lower, "-schema-view.sql.gz") || strings.HasSuffix(lower, "-schema-view.sql"):
+		return 3
+	default:
+		return 4
+	}
+}
+
+func sortSplitdumpPostFiles(paths []string) {
+	sort.SliceStable(paths, func(i, j int) bool {
+		left := filepath.Base(paths[i])
+		right := filepath.Base(paths[j])
+		leftPriority := splitdumpPostPriority(left)
+		rightPriority := splitdumpPostPriority(right)
+		if leftPriority == rightPriority {
+			return left < right
+		}
+		return leftPriority < rightPriority
+	})
+}
+
+func splitdumpPostPriority(name string) int {
+	lower := strings.ToLower(filepath.Base(name))
+	switch {
+	case strings.HasSuffix(lower, "-schema-trigger.sql.gz") || strings.HasSuffix(lower, "-schema-trigger.sql"):
+		return 0
+	case strings.HasSuffix(lower, "-schema-event.sql.gz") || strings.HasSuffix(lower, "-schema-event.sql"):
+		return 1
+	default:
+		return 2
+	}
 }
 
 func groupSplitdumpDataFiles(paths []string) []dataGroup {
@@ -369,6 +548,10 @@ func TableFromFilename(name string) string {
 	return table
 }
 
+// IsSchemaFile reports whether name is a schema-phase file (tables, mysql.system-all, routines,
+// views). Trigger and event files are post-phase artifacts (see IsPostFile) and are intentionally
+// excluded here so that callers gating schema-phase behaviour (table existence checks, ordering)
+// do not accidentally include them.
 func IsSchemaFile(name string) bool {
 	base := filepath.Base(name)
 	if IsMysqlSystemAll(base) {
@@ -378,7 +561,23 @@ func IsSchemaFile(name string) bool {
 	return strings.HasSuffix(lower, "-schema.sql.gz") ||
 		strings.HasSuffix(lower, "-schema.sql") ||
 		strings.HasSuffix(lower, "-schema-view.sql.gz") ||
-		strings.HasSuffix(lower, "-schema-view.sql")
+		strings.HasSuffix(lower, "-schema-view.sql") ||
+		strings.HasSuffix(lower, "-schema-routine.sql.gz") ||
+		strings.HasSuffix(lower, "-schema-routine.sql") ||
+		strings.HasSuffix(lower, "-schema-function.sql.gz") ||
+		strings.HasSuffix(lower, "-schema-function.sql") ||
+		strings.HasSuffix(lower, "-schema-procedure.sql.gz") ||
+		strings.HasSuffix(lower, "-schema-procedure.sql")
+}
+
+// IsPostFile reports whether name is a post-data-phase file (triggers or events).
+// These are distinct from schema-phase files even though their filenames carry a "-schema-" infix.
+func IsPostFile(name string) bool {
+	lower := strings.ToLower(filepath.Base(name))
+	return strings.HasSuffix(lower, "-schema-trigger.sql.gz") ||
+		strings.HasSuffix(lower, "-schema-trigger.sql") ||
+		strings.HasSuffix(lower, "-schema-event.sql.gz") ||
+		strings.HasSuffix(lower, "-schema-event.sql")
 }
 
 func IsGtidSlavePosDataFile(name string) bool {
@@ -415,6 +614,11 @@ func splitdumpSchemaTable(name string) (string, string) {
 
 	trimmed := strings.TrimSuffix(base, ".sql.gz")
 	trimmed = strings.TrimSuffix(trimmed, ".sql")
+	trimmed = strings.TrimSuffix(trimmed, "-schema-event")
+	trimmed = strings.TrimSuffix(trimmed, "-schema-trigger")
+	trimmed = strings.TrimSuffix(trimmed, "-schema-routine")
+	trimmed = strings.TrimSuffix(trimmed, "-schema-function")
+	trimmed = strings.TrimSuffix(trimmed, "-schema-procedure")
 	trimmed = strings.TrimSuffix(trimmed, "-schema-view")
 	trimmed = strings.TrimSuffix(trimmed, "-schema")
 	trimmed, _ = splitdumpDataKey(trimmed)
@@ -431,4 +635,131 @@ func splitdumpSchemaTable(name string) (string, string) {
 func IsMysqlSystemAll(name string) bool {
 	lower := strings.ToLower(name)
 	return lower == "mysql.system-all.sql.gz" || lower == "mysql.system-all.sql" || lower == "mysql.system-all"
+}
+
+// Detect reports whether backupPath contains a splitdump-compatible artifact layout.
+// A directory is splitdump-compatible if it contains at least one file whose name
+// follows the schema.table naming convention used by splitdump (e.g. db.tbl-schema.sql.gz,
+// mysql.system-all.sql.gz). Directories with only generic SQL files (no schema.table prefix)
+// or only non-SQL files are not considered splitdump-compatible.
+// Returns (true, nil) for compatible layouts, (false, nil) for incompatible layouts,
+// and (false, err) for I/O errors.
+func Detect(backupPath string) (bool, error) {
+	entries, err := os.ReadDir(backupPath)
+	if err != nil {
+		return false, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if SchemaFromFilename(entry.Name()) != "" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// isMysqlRoutinesSchemaPresent reports whether any path in schema is a mysql-schema
+// routine artifact. It recognises all three suffix variants that the restore classifier
+// accepts (-schema-routine, -schema-function, -schema-procedure), constrained to the
+// mysql schema, so dump tools that separate procedures from functions are covered.
+func isMysqlRoutinesSchemaPresent(schema []string) bool {
+	for _, p := range schema {
+		lower := strings.ToLower(filepath.Base(p))
+		if !strings.HasPrefix(lower, "mysql.") {
+			continue
+		}
+		if strings.HasSuffix(lower, "-schema-routine.sql.gz") ||
+			strings.HasSuffix(lower, "-schema-routine.sql") ||
+			strings.HasSuffix(lower, "-schema-function.sql.gz") ||
+			strings.HasSuffix(lower, "-schema-function.sql") ||
+			strings.HasSuffix(lower, "-schema-procedure.sql.gz") ||
+			strings.HasSuffix(lower, "-schema-procedure.sql") {
+			return true
+		}
+	}
+	return false
+}
+
+// isMysqlProcDataFile reports whether path is a data-phase artifact for the mysql.proc
+// table (mysql.proc.sql[.gz] or sharded variants mysql.proc.NNNNN.sql[.gz]).
+// Schema-phase files (mysql.proc-schema.sql.gz) are excluded.
+func isMysqlProcDataFile(path string) bool {
+	if IsSchemaFile(path) {
+		return false
+	}
+	return strings.ToLower(SchemaFromFilename(path)) == "mysql" &&
+		strings.ToLower(TableFromFilename(path)) == "proc"
+}
+
+// BuildRestorePlan classifies the files in backupPath into typed restore phases:
+// schema (tables, mysql.system-all, routines, views), data, and post-data (triggers, events).
+// Phase ordering is fixed before any replay begins: schema files are ordered by type priority,
+// data files by table and shard, post-data files with triggers before events.
+// Returns ErrNotSplitdump if the directory does not contain a splitdump-compatible layout.
+//
+// Conflict pruning: when any mysql routine artifact (-schema-routine, -schema-function, or
+// -schema-procedure) is present in the schema phase, all mysql.proc data-phase files are
+// removed from the plan and recorded in FileSet.PrunedData. mysqldump emits both a routines
+// DDL artifact and a raw mysql.proc table dump; restoring both causes duplicate-key errors
+// because the CREATE PROCEDURE/FUNCTION statements implicitly populate mysql.proc.
+func BuildRestorePlan(backupPath string, restoreUser bool) (*FileSet, error) {
+	ok, err := Detect(backupPath)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, ErrNotSplitdump
+	}
+	fs, err := ListFiles(backupPath, restoreUser)
+	if err != nil {
+		return nil, err
+	}
+	if isMysqlRoutinesSchemaPresent(fs.Schema) {
+		var kept, pruned []string
+		for _, path := range fs.Data {
+			if isMysqlProcDataFile(path) {
+				pruned = append(pruned, path)
+			} else {
+				kept = append(kept, path)
+			}
+		}
+		fs.Data = kept
+		fs.PrunedData = pruned
+	}
+	return &fs, nil
+}
+
+// IsMysqlTableCheckEligible reports whether a tableExists check makes sense before restoring name.
+// Trigger files reference a table but are post-phase objects: running a table-existence guard on
+// them would skip legitimate trigger restores. Views, routines, events, and mysql.system-all are
+// also excluded because they have their own ordering or existence semantics.
+func IsMysqlTableCheckEligible(name string) bool {
+	lower := strings.ToLower(filepath.Base(name))
+	if !strings.HasSuffix(lower, ".sql.gz") && !strings.HasSuffix(lower, ".sql") {
+		return false
+	}
+	if IsMysqlSystemAll(lower) {
+		return false
+	}
+	if strings.HasSuffix(lower, "-schema-trigger.sql.gz") || strings.HasSuffix(lower, "-schema-trigger.sql") {
+		return false
+	}
+	if strings.HasSuffix(lower, "-schema-view.sql.gz") || strings.HasSuffix(lower, "-schema-view.sql") {
+		return false
+	}
+	if strings.HasSuffix(lower, "-schema-routine.sql.gz") || strings.HasSuffix(lower, "-schema-routine.sql") {
+		return false
+	}
+	if strings.HasSuffix(lower, "-schema-function.sql.gz") || strings.HasSuffix(lower, "-schema-function.sql") {
+		return false
+	}
+	if strings.HasSuffix(lower, "-schema-procedure.sql.gz") || strings.HasSuffix(lower, "-schema-procedure.sql") {
+		return false
+	}
+	if strings.HasSuffix(lower, "-schema-event.sql.gz") || strings.HasSuffix(lower, "-schema-event.sql") {
+		return false
+	}
+	return true
 }
