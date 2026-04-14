@@ -57,13 +57,18 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 	}
 	// Auto-detect error 3159: server requires TLS — upgrade and remember for next calls.
 	if driverErr, ok := err.(*mysqldrv.MySQLError); ok && driverErr.Number == 3159 && !cluster.HaveAutoTLS && !cluster.HaveDBTLSCert {
+		cluster.Lock()
 		cluster.HaveAutoTLS = true
+		cluster.Unlock()
 		conn, err = sqlx.Open("mysql", buildDSN(true))
 		if err != nil {
+			cluster.Lock()
 			cluster.HaveAutoTLS = false
+			cluster.Unlock()
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo,
-				"Auto-enabled TLS skip-verify for proxy cluster connection (error 3159)")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlWarn,
+				"Auto-enabled TLS with InsecureSkipVerify=true for proxy cluster connection (error 3159)."+
+					" Certificate authenticity is NOT verified — configure monitoring-ssl-ca/cert/key for full TLS validation.")
 		}
 	}
 	if err != nil {
@@ -102,13 +107,18 @@ func (prx *Proxy) GetClusterConnection() (*sqlx.DB, error) {
 	}
 	// Auto-detect error 3159: server requires TLS — upgrade and remember for next calls.
 	if driverErr, ok := err.(*mysqldrv.MySQLError); ok && driverErr.Number == 3159 && !cluster.HaveAutoTLS && !cluster.HaveDBTLSCert {
+		cluster.Lock()
 		cluster.HaveAutoTLS = true
+		cluster.Unlock()
 		conn, err = sqlx.Open("mysql", buildDSN(true))
 		if err != nil {
+			cluster.Lock()
 			cluster.HaveAutoTLS = false
+			cluster.Unlock()
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo,
-				"Auto-enabled TLS skip-verify for proxy connection %s (error 3159)", prx.Host)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlWarn,
+				"Auto-enabled TLS with InsecureSkipVerify=true for proxy %s (error 3159)."+
+					" Certificate authenticity is NOT verified — configure monitoring-ssl-ca/cert/key for full TLS validation.", prx.Host)
 		}
 	}
 	return conn, err

@@ -55,6 +55,17 @@ type secTagEntry struct {
 	Risk        string
 }
 
+// keyfileEncryptFix is shared by SEC0109, SEC0110, and SEC0111 — they all deploy
+// the same file-key-management tag and trigger a rolling restart.
+var keyfileEncryptFix = secTagEntry{
+	Action: "add_tag",
+	Tag:    "keyfileencrypt",
+	Description: "Add 'keyfileencrypt' tag — deploys file-key-management plugin config " +
+		"(innodb_encrypt_tables, encrypt_binlog, encrypt_tmp_files) then triggers a rolling restart. " +
+		"Requires pre-configured encryption key file.",
+	Risk: "disruptive",
+}
+
 // secTagMap maps server-level SEC error keys to compliance module tag actions.
 // AddDBTag / DropDBTag deploy the .cnf file to each server AND execute the
 // mariadb_command / mariadb_default SQL automatically — no direct Exec() needed.
@@ -164,31 +175,10 @@ var secTagMap = map[string]secTagEntry{
 	// All encryption variables are read-only — no mariadb_command SQL runs.
 	// Config is deployed and a restart cookie is set; the monitoring loop
 	// deploys config.tar.gz before processing the restart.
-	// SEC0109, SEC0110, SEC0111 all map to the same tag.
-	"SEC0109": {
-		Action: "add_tag",
-		Tag:    "keyfileencrypt",
-		Description: "Add 'keyfileencrypt' tag — deploys file-key-management plugin config " +
-			"(innodb_encrypt_tables, encrypt_binlog, encrypt_tmp_files) then triggers a rolling restart. " +
-			"Requires pre-configured encryption key file.",
-		Risk: "disruptive",
-	},
-	"SEC0110": {
-		Action: "add_tag",
-		Tag:    "keyfileencrypt",
-		Description: "Add 'keyfileencrypt' tag — deploys file-key-management plugin config " +
-			"(innodb_encrypt_tables, encrypt_binlog, encrypt_tmp_files) then triggers a rolling restart. " +
-			"Requires pre-configured encryption key file.",
-		Risk: "disruptive",
-	},
-	"SEC0111": {
-		Action: "add_tag",
-		Tag:    "keyfileencrypt",
-		Description: "Add 'keyfileencrypt' tag — deploys file-key-management plugin config " +
-			"(innodb_encrypt_tables, encrypt_binlog, encrypt_tmp_files) then triggers a rolling restart. " +
-			"Requires pre-configured encryption key file.",
-		Risk: "disruptive",
-	},
+	// SEC0109, SEC0110, SEC0111 all map to the same tag — share a single entry.
+	"SEC0109": keyfileEncryptFix,
+	"SEC0110": keyfileEncryptFix,
+	"SEC0111": keyfileEncryptFix,
 }
 
 // secCnfTemplates holds suggested .cnf file templates for SEC findings that

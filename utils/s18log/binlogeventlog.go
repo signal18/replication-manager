@@ -16,12 +16,14 @@ type BinlogEvent struct {
 }
 
 // BinlogEventLog is a fixed-size ring buffer of BinlogEvent entries.
-// Thread-safe via the embedded mutex.
+// Thread-safe via the embedded read-write mutex.
+// Writers (Add) take a full write lock; readers (snapshot) take a read lock so
+// multiple concurrent plugin snapshots do not block each other or ScanBinlogQueryEvents.
 type BinlogEventLog struct {
-	Buffer []BinlogEvent `json:"buffer"`
-	Len    int           `json:"len"`
-	Line   int           `json:"line"`
-	L      sync.Mutex    `json:"-"`
+	Buffer []BinlogEvent  `json:"buffer"`
+	Len    int            `json:"len"`
+	Line   int            `json:"line"`
+	L      sync.RWMutex   `json:"-"`
 }
 
 // NewBinlogEventLog allocates a ring buffer that holds at most sz entries.

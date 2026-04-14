@@ -118,7 +118,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			for _, prereq := range pp.Prerequisites() {
 				if enabled, known := monitoringFlags[prereq.ConfigKey]; known && !enabled {
 					compositeKey := fmt.Sprintf("%s@%s", logplugin.ErrKeyMissingMonitoringFeed, server.URL)
-					if !cluster.StateMachine.IsInState(compositeKey) {
+					if !cluster.SecurityStateMachine.IsInState(compositeKey) {
 						cluster.LogModulePrintf(
 							cluster.Conf.Verbose,
 							config.ConstLogModPlugin,
@@ -128,8 +128,11 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 							prereq.Description, prereq.ConfigKey,
 						)
 					}
-					cluster.SetState(logplugin.ErrKeyMissingMonitoringFeed, state.State{
+					// Route WARN0312 to SecurityStateMachine — it originates from a security/binlog
+					// plugin, not from HA topology monitoring, so it must not pollute HA state.
+					cluster.SecurityStateMachine.AddState(compositeKey, state.State{
 						ErrType:   "WARNING",
+						ErrKey:    logplugin.ErrKeyMissingMonitoringFeed,
 						ErrDesc:   fmt.Sprintf("plugin %s is enabled but required monitoring feed is disabled: %s (set %s=true)", p.Name(), prereq.Description, prereq.ConfigKey),
 						ErrFrom:   "PLUGIN",
 						ServerUrl: server.URL,
@@ -148,8 +151,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 		// isSecurityPlugin covers score plugins AND pure-security plugins
 		// (hardening, local-infile, no-password-user, weak-auth) that emit
 		// SeveritySecurity findings but carry no ScoreChecks.
-		isScorePlugin    := len(result.ScoreChecks) > 0
-		isSecurityPlugin := isScorePlugin
+		isSecurityPlugin := len(result.ScoreChecks) > 0
 		isWorkloadPlugin := false
 		for _, f := range result.Findings {
 			switch f.Severity {
@@ -382,6 +384,10 @@ func (cluster *Cluster) CheckLogPlugins() {
 			"[logplugin] log-plugin=false — plugin evaluation disabled; set log-plugin=true to enable")
 		return
 	}
+	// Reset the security score at the start of each tick so that score checks from
+	// plugins that were removed or disabled do not persist from the previous cycle.
+	cluster.SecurityScore = SecurityScore{}
+
 	// Lazy init in case cluster was loaded from saved state without init
 	if cluster.pluginSpikeCache == nil {
 		cluster.pluginSpikeCache = make(map[string]*logplugin.SpikeCache)
@@ -589,10 +595,11 @@ func snapshotProcessList(server *ServerMonitor) []logplugin.StdioProcess {
 	return out
 }
 
-// snapshotBinlogEvents returns a lock-free copy of the binlog event ring buffer.
+// snapshotBinlogEvents returns a copy of the binlog event ring buffer.
+// Uses RLock so concurrent plugin snapshots and ScanBinlogQueryEvents do not serialise.
 func snapshotBinlogEvents(server *ServerMonitor) []logplugin.StdioBinlogEvent {
-	server.BinlogEventLog.L.Lock()
-	defer server.BinlogEventLog.L.Unlock()
+	server.BinlogEventLog.L.RLock()
+	defer server.BinlogEventLog.L.RUnlock()
 	out := make([]logplugin.StdioBinlogEvent, 0, len(server.BinlogEventLog.Buffer))
 	for _, e := range server.BinlogEventLog.Buffer {
 		if e.Query == "" {

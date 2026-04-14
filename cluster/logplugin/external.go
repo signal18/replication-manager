@@ -32,6 +32,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -284,6 +285,14 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 		PluginDataDir:    src.PluginDataDir,
 	}
 
+	// SECURITY NOTE: req (wire.Request) includes a full SHOW GLOBAL VARIABLES snapshot,
+	// user account data, binlog events, and cluster context.  This payload is passed to
+	// the plugin subprocess on stdin on every monitoring tick.  Only plugin binaries
+	// that have been verified against plugin-signing.pub are executed; when
+	// PluginSigningPublicKey is empty (dev/CI builds without credentials), signature
+	// verification is skipped and any plugin-* executable in the plugin directory will
+	// receive the full server configuration.  On production deployments always ensure
+	// the signing public key is deployed so untrusted binaries are rejected.
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL, fmt.Sprintf("marshal error: %v", err))}
@@ -295,7 +304,7 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	var stderrBuf bytes.Buffer
 	cmd := exec.CommandContext(ctx, p.binPath) // #nosec G204 — path validated in LoadPluginsFromDir
 	cmd.Stdin = bytes.NewReader(payload)
-	cmd.Stderr = &stderrBuf
+	cmd.Stderr = io.LimitWriter(&stderrBuf, 4096) // cap stderr — misbehaving plugin cannot OOM the process
 	// WaitDelay ensures cmd.Output() returns promptly after the context deadline
 	// fires even when the plugin subprocess has spawned children that inherited
 	// the stdout/stderr pipes.  Without this, cmd.Wait() blocks forever waiting

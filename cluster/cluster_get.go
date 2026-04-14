@@ -345,7 +345,26 @@ func (cluster *Cluster) GetPersitentState() error {
 
 	slaFile, err := os.ReadFile(cluster.WorkingDir + "/sla.json")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No sla.json found, starting fresh: %v\n", err)
+		// sla.json absent — attempt to migrate SLA data from old clusterstate.json format
+		// which embedded SLA fields before they were split into a dedicated file.
+		type legacyClusterState struct {
+			ClusterState
+			SLA        state.Sla   `json:"sla"`
+			SLAHistory []state.Sla `json:"slaHistory"`
+		}
+		var legacy legacyClusterState
+		if legacyFile, lerr := os.ReadFile(cluster.WorkingDir + "/clusterstate.json"); lerr == nil {
+			if jerr := json.Unmarshal(legacyFile, &legacy); jerr == nil && (len(legacy.SLAHistory) > 0 || legacy.SLA.UptimeNow > 0) {
+				cluster.SLAHistory = legacy.SLAHistory
+				cluster.StateMachine.SetSla(legacy.SLA)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+					"Migrated SLA history (%d entries) from clusterstate.json to sla.json\n", len(legacy.SLAHistory))
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No sla.json found, starting fresh\n")
+			}
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No sla.json found, starting fresh\n")
+		}
 	} else {
 		var slasave ClusterSLAState
 		if err = json.Unmarshal(slaFile, &slasave); err != nil {
