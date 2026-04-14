@@ -1116,7 +1116,7 @@ func TestBuildRestorePlanReturnsPlanForSplitdumpDir(t *testing.T) {
 			t.Fatalf("failed to write file %s: %v", f, err)
 		}
 	}
-	plan, err := BuildRestorePlan(dir, false)
+	plan, err := BuildRestorePlan(dir, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1140,7 +1140,7 @@ func TestBuildRestorePlanReturnsErrNotSplitdump(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "backup.sql.gz"), []byte("test"), 0644); err != nil {
 		t.Fatalf("failed to write file: %v", err)
 	}
-	_, err := BuildRestorePlan(dir, false)
+	_, err := BuildRestorePlan(dir, false, nil)
 	if err == nil {
 		t.Fatalf("expected ErrNotSplitdump, got nil")
 	}
@@ -1151,7 +1151,7 @@ func TestBuildRestorePlanReturnsErrNotSplitdump(t *testing.T) {
 
 func TestBuildRestorePlanReturnsErrNotSplitdumpForEmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	_, err := BuildRestorePlan(dir, false)
+	_, err := BuildRestorePlan(dir, false, nil)
 	if err == nil {
 		t.Fatalf("expected ErrNotSplitdump for empty dir, got nil")
 	}
@@ -1176,7 +1176,7 @@ func TestBuildRestorePlanPhaseOrdering(t *testing.T) {
 		}
 	}
 
-	plan, err := BuildRestorePlan(dir, true)
+	plan, err := BuildRestorePlan(dir, true, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1222,7 +1222,7 @@ func TestBuildRestorePlanRespectsRestoreUser(t *testing.T) {
 	}
 
 	// With restoreUser=false, mysql.system-all should be excluded from schema phase
-	planNoUser, err := BuildRestorePlan(dir, false)
+	planNoUser, err := BuildRestorePlan(dir, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1233,7 +1233,7 @@ func TestBuildRestorePlanRespectsRestoreUser(t *testing.T) {
 	}
 
 	// With restoreUser=true, mysql.system-all should be included in schema phase
-	planWithUser, err := BuildRestorePlan(dir, true)
+	planWithUser, err := BuildRestorePlan(dir, true, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1474,7 +1474,7 @@ func TestBuildRestorePlanPrunesMysqlProcWhenMysqlRoutineSchemaPresent(t *testing
 				}
 			}
 
-			plan, err := BuildRestorePlan(dir, false)
+			plan, err := BuildRestorePlan(dir, false, nil)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -1530,7 +1530,7 @@ func TestBuildRestorePlanKeepsMysqlProcWithoutMysqlRoutineSchema(t *testing.T) {
 		}
 	}
 
-	plan, err := BuildRestorePlan(dir, false)
+	plan, err := BuildRestorePlan(dir, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1723,7 +1723,7 @@ func TestBuildRestorePlanPrefersManifestOrder(t *testing.T) {
 		Post:    nil,
 	})
 
-	plan, err := BuildRestorePlan(dir, false)
+	plan, err := BuildRestorePlan(dir, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1749,7 +1749,7 @@ func TestBuildRestorePlanFallsBackWithoutManifest(t *testing.T) {
 		}
 	}
 
-	plan, err := BuildRestorePlan(dir, false)
+	plan, err := BuildRestorePlan(dir, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error for backup without manifest: %v", err)
 	}
@@ -1780,7 +1780,7 @@ func TestBuildRestorePlanFallsBackOnInvalidManifest(t *testing.T) {
 	}
 
 	// BuildRestorePlan must not return an error — it should silently fall back.
-	plan, err := BuildRestorePlan(dir, false)
+	plan, err := BuildRestorePlan(dir, false, nil)
 	if err != nil {
 		t.Fatalf("expected fallback on invalid manifest, got error: %v", err)
 	}
@@ -1814,7 +1814,7 @@ func TestManifestPlanStillPrunesMysqlProcOverlap(t *testing.T) {
 		Post:    nil,
 	})
 
-	plan, err := BuildRestorePlan(dir, false)
+	plan, err := BuildRestorePlan(dir, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1845,7 +1845,7 @@ func TestBuildRestorePlanManifestRespectsRestoreUser(t *testing.T) {
 	})
 
 	// restoreUser=false — mysql.system-all must be excluded.
-	planNoUser, err := BuildRestorePlan(dir, false)
+	planNoUser, err := BuildRestorePlan(dir, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1856,7 +1856,7 @@ func TestBuildRestorePlanManifestRespectsRestoreUser(t *testing.T) {
 	}
 
 	// restoreUser=true — mysql.system-all must be included.
-	planWithUser, err := BuildRestorePlan(dir, true)
+	planWithUser, err := BuildRestorePlan(dir, true, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2030,7 +2030,7 @@ func TestBuildRestorePlanFallsBackOnPhaseMismatchManifest(t *testing.T) {
 	writeManifestFile(t, dir, badManifest)
 
 	// BuildRestorePlan must not return an error — it must silently fall back.
-	plan, err := BuildRestorePlan(dir, false)
+	plan, err := BuildRestorePlan(dir, false, nil)
 	if err != nil {
 		t.Fatalf("expected fallback on phase-mismatch manifest, got error: %v", err)
 	}
@@ -2047,5 +2047,70 @@ func TestBuildRestorePlanFallsBackOnPhaseMismatchManifest(t *testing.T) {
 	}
 	if !triggerFound {
 		t.Fatalf("expected trigger file in post phase after fallback, got post=%v", plan.Post)
+	}
+}
+
+// TestBuildRestorePlanLogsManifestValidationFailure verifies that when a manifest is
+// present but fails validation, BuildRestorePlan emits a WARN-level log message before
+// falling back to the legacy directory scan.
+func TestBuildRestorePlanLogsManifestValidationFailure(t *testing.T) {
+	dir := t.TempDir()
+	// Write a minimal splitdump layout.
+	if err := os.WriteFile(filepath.Join(dir, "db.tbl-schema.sql.gz"), []byte("test"), 0644); err != nil {
+		t.Fatalf("write schema: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "db.tbl.sql.gz"), []byte("test"), 0644); err != nil {
+		t.Fatalf("write data: %v", err)
+	}
+	// Manifest with a trigger in the schema phase — ValidateManifest will reject it.
+	writeManifestFile(t, dir, &Manifest{
+		Version: 1,
+		Schema:  []string{"db.tbl-schema.sql.gz", "db.tbl-schema-trigger.sql.gz"},
+		Data:    []string{"db.tbl.sql.gz"},
+	})
+
+	var warnLogs []string
+	logf := func(level, format string, args ...any) {
+		if level == LogWarn {
+			warnLogs = append(warnLogs, fmt.Sprintf(format, args...))
+		}
+	}
+
+	plan, err := BuildRestorePlan(dir, false, logf)
+	if err != nil {
+		t.Fatalf("expected fallback, got error: %v", err)
+	}
+	if plan == nil {
+		t.Fatalf("expected non-nil plan")
+	}
+	if len(warnLogs) == 0 {
+		t.Fatalf("expected a WARN log about manifest validation failure, got none")
+	}
+	found := false
+	for _, msg := range warnLogs {
+		if strings.Contains(strings.ToLower(msg), "manifest") && strings.Contains(strings.ToLower(msg), "valid") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected WARN log mentioning 'manifest' and 'valid', got: %v", warnLogs)
+	}
+}
+
+// TestParseManifestVersionTableNotDropped verifies that an artifact whose basename starts
+// with "version" (e.g. from a table named "versioncontrol") is correctly recorded in the
+// schema section and not misidentified as the version header line.
+func TestParseManifestVersionTableNotDropped(t *testing.T) {
+	content := "version = 1\n\n[schema]\nversioncontrol-schema.sql.gz\n\n[data]\n\n[post]\n"
+	m, err := parseManifest(content)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if m.Version != 1 {
+		t.Fatalf("expected version 1, got %d", m.Version)
+	}
+	if len(m.Schema) != 1 || m.Schema[0] != "versioncontrol-schema.sql.gz" {
+		t.Fatalf("expected versioncontrol-schema.sql.gz in Schema, got %v", m.Schema)
 	}
 }

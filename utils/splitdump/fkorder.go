@@ -65,8 +65,11 @@ func splitSchemaBuckets(paths []string) (tableSchemas, mysqlSystemAll, routineSc
 // SQL text and appends newly-seen "schema.table" keys to *refs, deduplicating via seen.
 // defaultSchema is used when no explicit schema qualifier is present.
 func appendReferencedTablesFromSQL(sqlText, defaultSchema string, seen map[string]bool, refs *[]string) {
-	// Fast path: skip text that cannot contain a REFERENCES keyword.
-	if !strings.Contains(strings.ToUpper(sqlText), "REFERENCES") {
+	// Fast path: mysqldump always emits REFERENCES in uppercase, so a case-sensitive
+	// check avoids allocating a full-text uppercase copy — especially important in the
+	// large-parser path where sqlText can be several megabytes. The regex handles any
+	// edge case where case differs via its (?i) flag.
+	if !strings.Contains(sqlText, "REFERENCES") {
 		return
 	}
 	for _, m := range referencesRe.FindAllStringSubmatch(sqlText, -1) {
@@ -97,12 +100,14 @@ func appendReferencedTablesFromSQL(sqlText, defaultSchema string, seen map[strin
 }
 
 // openAndDecompress opens path and, if the content is gzip-compressed, wraps it in a
-// gzip.Reader. Returns (reader, closer, nil) on success; (nil, nil, nil) when the file
-// cannot be opened or decompressed (caller treats as dependency-free).
-func openAndDecompress(path string) (io.Reader, func(), error) {
+// gzip.Reader. Returns (reader, closer) on success; (nil, nil) when the file cannot be
+// opened or decompressed — caller treats that as dependency-free. Errors are intentionally
+// swallowed here because both callers want the same nil-means-skip behaviour and a separate
+// error return would always be discarded.
+func openAndDecompress(path string) (io.Reader, func()) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, nil, nil //nolint:nilerr // treat unreadable file as dependency-free
+		return nil, nil //nolint:nilerr // treat unreadable file as dependency-free
 	}
 	bufR := bufio.NewReaderSize(f, 32*1024)
 	peek, peekErr := bufR.Peek(2)
@@ -110,11 +115,11 @@ func openAndDecompress(path string) (io.Reader, func(), error) {
 		gz, gzErr := gzip.NewReader(bufR)
 		if gzErr != nil {
 			f.Close()
-			return nil, nil, nil //nolint:nilerr // corrupt gzip header — treat as dependency-free
+			return nil, nil //nolint:nilerr // corrupt gzip header — treat as dependency-free
 		}
-		return gz, func() { gz.Close(); f.Close() }, nil
+		return gz, func() { gz.Close(); f.Close() }
 	}
-	return bufR, func() { f.Close() }, nil
+	return bufR, func() { f.Close() }
 }
 
 // parseReferencedTablesScanner reads a SQL file line-by-line using bufio.Scanner and
@@ -122,7 +127,7 @@ func openAndDecompress(path string) (io.Reader, func(), error) {
 // when a single line exceeds the 4 MiB token limit so the caller can retry via the
 // statement-accumulation path. On file-open or decompression errors it returns (nil, nil).
 func parseReferencedTablesScanner(path string, defaultSchema string) ([]string, error) {
-	r, closeAll, _ := openAndDecompress(path)
+	r, closeAll := openAndDecompress(path)
 	if r == nil {
 		return nil, nil
 	}
@@ -153,7 +158,7 @@ func parseReferencedTablesScanner(path string, defaultSchema string) ([]string, 
 // statement and searched for REFERENCES clauses. On file-open or decompression errors it
 // returns (nil, nil).
 func parseReferencedTablesLarge(path string, defaultSchema string) ([]string, error) {
-	r, closeAll, _ := openAndDecompress(path)
+	r, closeAll := openAndDecompress(path)
 	if r == nil {
 		return nil, nil
 	}

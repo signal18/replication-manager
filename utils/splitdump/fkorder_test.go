@@ -576,7 +576,7 @@ func TestBuildRestorePlanFKOrderParentBeforeChild(t *testing.T) {
 		t.Fatalf("write data: %v", err)
 	}
 
-	plan, err := BuildRestorePlan(dir, false)
+	plan, err := BuildRestorePlan(dir, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -616,7 +616,7 @@ func TestBuildRestorePlanManifestWinsOverFKOrdering(t *testing.T) {
 		Post:    nil,
 	})
 
-	plan, err := BuildRestorePlan(dir, false)
+	plan, err := BuildRestorePlan(dir, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -636,7 +636,7 @@ func TestBuildRestorePlanFKOrderEmptyFiles(t *testing.T) {
 		}
 	}
 
-	plan, err := BuildRestorePlan(dir, false)
+	plan, err := BuildRestorePlan(dir, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -675,7 +675,7 @@ func TestBuildRestorePlanFKChain(t *testing.T) {
 		t.Fatalf("write data: %v", err)
 	}
 
-	plan, err := BuildRestorePlan(dir, false)
+	plan, err := BuildRestorePlan(dir, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

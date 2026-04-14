@@ -74,7 +74,7 @@ func parseManifest(content string) (*Manifest, error) {
 			section = strings.ToLower(line[1 : len(line)-1])
 			continue
 		}
-		if strings.HasPrefix(line, "version") {
+		if section == "" && strings.HasPrefix(line, "version") {
 			parts := strings.SplitN(line, "=", 2)
 			if len(parts) == 2 {
 				v := strings.TrimSpace(parts[1])

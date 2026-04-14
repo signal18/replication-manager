@@ -246,7 +246,7 @@ func Restore(backupPath string, opts RestoreOptions) error {
 		logf(LogInfo, "Splitdump metadata loaded (file=%s pos=%d)", meta.File, meta.Position)
 	}
 
-	plan, err := BuildRestorePlan(backupPath, opts.RestoreUser)
+	plan, err := BuildRestorePlan(backupPath, opts.RestoreUser, logf)
 	if err != nil {
 		return err
 	}
@@ -756,13 +756,19 @@ func buildFileSetFromManifest(backupPath string, m *Manifest, restoreUser bool) 
 // manifest, or when the manifest is missing or malformed, the function falls back to the
 // legacy directory-scan behaviour (alphabetical within each phase, type-priority ordering).
 //
+// logf is used to emit operational warnings (manifest validation failures, FK cycle
+// detection). Pass nil to suppress all logging.
+//
 // Returns ErrNotSplitdump if the directory does not contain a splitdump-compatible layout.
 //
 // Conflict pruning: when any mysql routine artifact (-schema-routine, -schema-function, or
 // -schema-procedure) is present in the schema phase, all mysql.proc data-phase files are
 // removed from the plan and recorded in FileSet.PrunedData regardless of which path was used
 // to build the file set.
-func BuildRestorePlan(backupPath string, restoreUser bool) (*FileSet, error) {
+func BuildRestorePlan(backupPath string, restoreUser bool, logf func(level, format string, args ...any)) (*FileSet, error) {
+	if logf == nil {
+		logf = func(_, _ string, _ ...any) {}
+	}
 	ok, err := Detect(backupPath)
 	if err != nil {
 		return nil, err
@@ -780,11 +786,13 @@ func BuildRestorePlan(backupPath string, restoreUser bool) (*FileSet, error) {
 				applyRestorePlanPruning(mfs)
 				return mfs, nil
 			}
+			logf(LogWarn, "Splitdump manifest: buildFileSetFromManifest failed (%v); falling back to directory scan", buildErr)
+		} else {
+			logf(LogWarn, "Splitdump manifest: validation failed (%v); falling back to directory scan with FK ordering", validateErr)
 		}
-		// Manifest present but invalid — fall through to legacy path.
 	}
-	// readErr != nil covers both os.ErrNotExist (no manifest) and other I/O errors;
-	// either way we fall back to the directory scan.
+	// readErr != nil covers both os.ErrNotExist (no manifest, expected for old backups)
+	// and other I/O errors — either way fall back to the directory scan.
 
 	fs, err := ListFiles(backupPath, restoreUser)
 	if err != nil {
@@ -793,7 +801,7 @@ func BuildRestorePlan(backupPath string, restoreUser bool) (*FileSet, error) {
 	// Re-order plain table schemas by FK dependency graph so that parents are
 	// restored before children. This is a best-effort analysis: unresolvable cycles
 	// and references to tables outside the backup are silently tolerated.
-	fs.Schema = orderSchemaPhaseByForeignKeys(fs.Schema, nil)
+	fs.Schema = orderSchemaPhaseByForeignKeys(fs.Schema, logf)
 	applyRestorePlanPruning(&fs)
 	return &fs, nil
 }
