@@ -28,6 +28,7 @@ var (
 	cliSplitRestoreUser             bool
 	cliSplitRestoreDisableBinlog    bool
 	cliSplitRestoreCreateDatabases  bool
+	cliSplitRestoreDefinerStrict    bool
 )
 
 var splitRestoreCmd = &cobra.Command{
@@ -50,6 +51,7 @@ func initSplitRestoreFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&cliSplitRestoreUser, "restore-user", true, "Restore mysql.system-all file when present")
 	cmd.Flags().BoolVar(&cliSplitRestoreDisableBinlog, "disable-binlog", false, "Disable binary logging for splitdump restore")
 	cmd.Flags().BoolVar(&cliSplitRestoreCreateDatabases, "splitdump-create-databases", false, "Create databases before restore (opt-in for manual CLI use)")
+	cmd.Flags().BoolVar(&cliSplitRestoreDefinerStrict, "definer-strict", false, "Fail the restore when an incompatible DEFINER clause is encountered instead of retrying without it")
 }
 
 func runSplitrestore(ctx context.Context) error {
@@ -207,6 +209,7 @@ func runSplitrestore(ctx context.Context) error {
 		Context:                   ctx,
 		RestoreFileWithContext:    restoreFile,
 		RestoreFileWithoutDefiner: restoreFileWithoutDefiner,
+		DefinerStrict:             cliSplitRestoreDefinerStrict,
 	}); err != nil {
 		return err
 	}
