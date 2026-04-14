@@ -722,3 +722,206 @@ func TestSplitDumpLineParserTruncatesSystemFileOnFirstWriteInRun(t *testing.T) {
 		t.Fatalf("expected new system content in file, got: %s", got)
 	}
 }
+
+// ---- Manifest emission tests ----
+
+// TestSplitDumpWritesManifest verifies that a split run produces a manifest file.
+func TestSplitDumpWritesManifest(t *testing.T) {
+	bus := NewSplitDumpChannelBus()
+	outputDir := filepath.Join(t.TempDir(), "splitdump")
+
+	go SplitDumpLineParser(bus, outputDir, SplitDumpOptions{})
+
+	lines := []string{
+		"USE `db`\n",
+		"-- Table structure for table `tbl`\n",
+		"CREATE TABLE `tbl` (id int);\n",
+		"-- Dumping data for table `tbl`\n",
+		"LOCK TABLES `tbl` WRITE;\n",
+		"INSERT INTO `tbl` VALUES (1);\n",
+		"UNLOCK TABLES;\n",
+	}
+	for _, l := range lines {
+		bus.CurrentLine <- l
+	}
+	close(bus.CurrentLine)
+
+	select {
+	case <-bus.Finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout")
+	}
+
+	m, err := ReadManifest(outputDir)
+	if err != nil {
+		t.Fatalf("expected manifest to be readable: %v", err)
+	}
+	if err := ValidateManifest(m); err != nil {
+		t.Fatalf("expected manifest to be valid: %v", err)
+	}
+	if m.Version != 1 {
+		t.Fatalf("expected version 1, got %d", m.Version)
+	}
+}
+
+// TestSplitDumpManifestPreservesEmissionOrder verifies that the manifest records artifacts
+// in the order they were emitted rather than sorted alphabetically. When the splitter
+// processes parent before child (FK ordering), the manifest must reflect that order.
+func TestSplitDumpManifestPreservesEmissionOrder(t *testing.T) {
+	bus := NewSplitDumpChannelBus()
+	outputDir := filepath.Join(t.TempDir(), "splitdump")
+
+	go SplitDumpLineParser(bus, outputDir, SplitDumpOptions{})
+
+	// zparent sorts after achild alphabetically, but is emitted first.
+	lines := []string{
+		"USE `db`\n",
+		"-- Table structure for table `zparent`\n",
+		"CREATE TABLE `zparent` (id int);\n",
+		"-- Table structure for table `achild`\n",
+		"CREATE TABLE `achild` (id int);\n",
+	}
+	for _, l := range lines {
+		bus.CurrentLine <- l
+	}
+	close(bus.CurrentLine)
+
+	select {
+	case <-bus.Finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout")
+	}
+
+	m, err := ReadManifest(outputDir)
+	if err != nil {
+		t.Fatalf("expected manifest: %v", err)
+	}
+	if len(m.Schema) < 2 {
+		t.Fatalf("expected at least 2 schema entries, got %d: %v", len(m.Schema), m.Schema)
+	}
+	if !strings.Contains(m.Schema[0], "zparent") {
+		t.Fatalf("expected zparent first in manifest schema (emission order), got: %v", m.Schema)
+	}
+	if !strings.Contains(m.Schema[1], "achild") {
+		t.Fatalf("expected achild second in manifest schema, got: %v", m.Schema)
+	}
+}
+
+// TestSplitDumpManifestSeparatesSchemaDataPost verifies that table schema, data, trigger, and
+// event artifacts land in the correct manifest phase.
+func TestSplitDumpManifestSeparatesSchemaDataPost(t *testing.T) {
+	bus := NewSplitDumpChannelBus()
+	outputDir := filepath.Join(t.TempDir(), "splitdump")
+
+	go SplitDumpLineParser(bus, outputDir, SplitDumpOptions{})
+
+	lines := []string{
+		"USE `db`\n",
+		"-- Table structure for table `tbl`\n",
+		"CREATE TABLE `tbl` (id int);\n",
+		"-- Dumping data for table `tbl`\n",
+		"LOCK TABLES `tbl` WRITE;\n",
+		"INSERT INTO `tbl` VALUES (1);\n",
+		"UNLOCK TABLES;\n",
+		"-- Dumping triggers for table `tbl`\n",
+		"CREATE TRIGGER `trg` BEFORE INSERT ON `tbl` FOR EACH ROW SET NEW.id = NEW.id;\n",
+		"-- Dumping events for database 'db'\n",
+		"CREATE EVENT `ev` ON SCHEDULE EVERY 1 DAY DO SELECT 1;\n",
+	}
+	for _, l := range lines {
+		bus.CurrentLine <- l
+	}
+	close(bus.CurrentLine)
+
+	select {
+	case <-bus.Finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout")
+	}
+
+	m, err := ReadManifest(outputDir)
+	if err != nil {
+		t.Fatalf("expected manifest: %v", err)
+	}
+
+	// Schema phase must contain the table definition.
+	foundSchema := false
+	for _, e := range m.Schema {
+		if strings.HasSuffix(e, "-schema.sql.gz") {
+			foundSchema = true
+			break
+		}
+	}
+	if !foundSchema {
+		t.Fatalf("expected table schema in manifest schema phase, got schema=%v", m.Schema)
+	}
+
+	// Data phase must contain the data file.
+	if len(m.Data) == 0 {
+		t.Fatalf("expected data entries in manifest, got none")
+	}
+
+	// Post phase must contain trigger and event files.
+	hasTrigger, hasEvent := false, false
+	for _, e := range m.Post {
+		if strings.Contains(e, "-schema-trigger") {
+			hasTrigger = true
+		}
+		if strings.Contains(e, "-schema-event") {
+			hasEvent = true
+		}
+	}
+	if !hasTrigger {
+		t.Fatalf("expected trigger in manifest post phase, got post=%v", m.Post)
+	}
+	if !hasEvent {
+		t.Fatalf("expected event in manifest post phase, got post=%v", m.Post)
+	}
+}
+
+// TestSplitDumpManifestIncludesMysqlSystemAndRoutineArtifacts verifies that mysql.system-all
+// and routine artifacts are recorded in the manifest schema phase.
+func TestSplitDumpManifestIncludesMysqlSystemAndRoutineArtifacts(t *testing.T) {
+	bus := NewSplitDumpChannelBus()
+	outputDir := filepath.Join(t.TempDir(), "splitdump")
+
+	go SplitDumpLineParser(bus, outputDir, SplitDumpOptions{})
+
+	lines := []string{
+		"USE `db`\n",
+		"-- Dumping routines for database 'db'\n",
+		"CREATE PROCEDURE `sp`() BEGIN SELECT 1; END;\n",
+		"CREATE USER 'app'@'%' IDENTIFIED BY 'x';\n",
+	}
+	for _, l := range lines {
+		bus.CurrentLine <- l
+	}
+	close(bus.CurrentLine)
+
+	select {
+	case <-bus.Finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout")
+	}
+
+	m, err := ReadManifest(outputDir)
+	if err != nil {
+		t.Fatalf("expected manifest: %v", err)
+	}
+
+	hasRoutine, hasSystemAll := false, false
+	for _, e := range m.Schema {
+		if strings.Contains(e, "-schema-routine") {
+			hasRoutine = true
+		}
+		if strings.Contains(e, "mysql.system-all") {
+			hasSystemAll = true
+		}
+	}
+	if !hasRoutine {
+		t.Fatalf("expected routine artifact in manifest schema phase, got schema=%v", m.Schema)
+	}
+	if !hasSystemAll {
+		t.Fatalf("expected mysql.system-all in manifest schema phase, got schema=%v", m.Schema)
+	}
+}

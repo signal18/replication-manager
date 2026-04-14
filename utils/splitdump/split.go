@@ -139,6 +139,30 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 	dataTableName := ""
 	currentOutputName := ""
 	openedOutputs := make(map[string]bool)
+
+	// Manifest tracking: record each artifact on its first creation, preserving emission order.
+	var manifestSchema, manifestData, manifestPost []string
+	manifestSeen := make(map[string]bool)
+	recordManifestEntry := func(tableName string) {
+		sanitized := sanitizefilename.Sanitize(tableName) + ".sql.gz"
+		if manifestSeen[sanitized] {
+			return
+		}
+		manifestSeen[sanitized] = true
+		// Classify with restoreUser=true so mysql.system-all is recorded as schema.
+		cat, ok := classifyFile(sanitized, true)
+		if !ok {
+			return
+		}
+		switch cat {
+		case fileCategorySchema:
+			manifestSchema = append(manifestSchema, sanitized)
+		case fileCategoryPost:
+			manifestPost = append(manifestPost, sanitized)
+		default:
+			manifestData = append(manifestData, sanitized)
+		}
+	}
 	binlogRegexMariaDB := regexp.MustCompile(`CHANGE MASTER TO MASTER_LOG_FILE='(.+)', MASTER_LOG_POS=(\d+)`)
 	gtidRegexMariaDB := regexp.MustCompile(`SET GLOBAL gtid_slave_pos='(.+)'`)
 	binlogRegexMySQL := regexp.MustCompile(`CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='(.+)', SOURCE_LOG_POS=(\d+)`)
@@ -190,6 +214,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 		closeTableFile()
 		tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
 		flags := os.O_CREATE | os.O_WRONLY
+		isFirstOpen := !openedOutputs[tableName]
 		if appendMode && openedOutputs[tableName] {
 			flags |= os.O_APPEND
 		} else {
@@ -203,6 +228,9 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 		tableFile = gzip.NewWriter(f)
 		currentOutputName = tableName
 		openedOutputs[tableName] = true
+		if isFirstOpen {
+			recordManifestEntry(tableName)
+		}
 		pastHeader = true
 		return nil
 	}
@@ -435,6 +463,17 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 	line := strings.Join(metaLines, "\n")
 	_, _ = f.Write([]byte(line))
 	f.Close()
+
+	manifest := &Manifest{
+		Version: manifestVersion,
+		Schema:  manifestSchema,
+		Data:    manifestData,
+		Post:    manifestPost,
+	}
+	if err = WriteManifest(outputDir, manifest); err != nil {
+		finishWithError(err)
+		return
+	}
 
 	bus.Finished <- true
 }

@@ -693,17 +693,75 @@ func isMysqlProcDataFile(path string) bool {
 		strings.ToLower(TableFromFilename(path)) == "proc"
 }
 
+// applyRestorePlanPruning removes mysql.proc data-phase files from fs when a mysql routine
+// artifact is present in the schema phase, recording the removed files in fs.PrunedData.
+// mysqldump emits both a routines DDL artifact and a raw mysql.proc table dump; restoring
+// both causes duplicate-key errors because CREATE PROCEDURE/FUNCTION implicitly populates
+// mysql.proc.
+func applyRestorePlanPruning(fs *FileSet) {
+	if !isMysqlRoutinesSchemaPresent(fs.Schema) {
+		return
+	}
+	var kept, pruned []string
+	for _, path := range fs.Data {
+		if isMysqlProcDataFile(path) {
+			pruned = append(pruned, path)
+		} else {
+			kept = append(kept, path)
+		}
+	}
+	fs.Data = kept
+	fs.PrunedData = pruned
+}
+
+// buildFileSetFromManifest constructs a FileSet from a validated Manifest, preserving the
+// emission order recorded at split time. Files listed in the manifest but absent from disk
+// are silently skipped. mysql.system-all is filtered when restoreUser is false, matching the
+// behaviour of ListFiles.
+func buildFileSetFromManifest(backupPath string, m *Manifest, restoreUser bool) (*FileSet, error) {
+	fs := &FileSet{}
+	for _, name := range m.Schema {
+		_, ok := classifyFile(name, restoreUser)
+		if !ok {
+			continue // filtered (e.g. mysql.system-all when restoreUser=false)
+		}
+		fullPath := filepath.Join(backupPath, name)
+		if _, statErr := os.Stat(fullPath); statErr != nil {
+			continue // file missing — skip silently
+		}
+		fs.Schema = append(fs.Schema, fullPath)
+	}
+	for _, name := range m.Data {
+		fullPath := filepath.Join(backupPath, name)
+		if _, statErr := os.Stat(fullPath); statErr != nil {
+			continue
+		}
+		fs.Data = append(fs.Data, fullPath)
+	}
+	for _, name := range m.Post {
+		fullPath := filepath.Join(backupPath, name)
+		if _, statErr := os.Stat(fullPath); statErr != nil {
+			continue
+		}
+		fs.Post = append(fs.Post, fullPath)
+	}
+	return fs, nil
+}
+
 // BuildRestorePlan classifies the files in backupPath into typed restore phases:
 // schema (tables, mysql.system-all, routines, views), data, and post-data (triggers, events).
-// Phase ordering is fixed before any replay begins: schema files are ordered by type priority,
-// data files by table and shard, post-data files with triggers before events.
+//
+// When a manifest file is present and valid the artifact order it records is used directly,
+// preserving the FK-safe emission order produced by the splitter. For old backups without a
+// manifest, or when the manifest is missing or malformed, the function falls back to the
+// legacy directory-scan behaviour (alphabetical within each phase, type-priority ordering).
+//
 // Returns ErrNotSplitdump if the directory does not contain a splitdump-compatible layout.
 //
 // Conflict pruning: when any mysql routine artifact (-schema-routine, -schema-function, or
 // -schema-procedure) is present in the schema phase, all mysql.proc data-phase files are
-// removed from the plan and recorded in FileSet.PrunedData. mysqldump emits both a routines
-// DDL artifact and a raw mysql.proc table dump; restoring both causes duplicate-key errors
-// because the CREATE PROCEDURE/FUNCTION statements implicitly populate mysql.proc.
+// removed from the plan and recorded in FileSet.PrunedData regardless of which path was used
+// to build the file set.
 func BuildRestorePlan(backupPath string, restoreUser bool) (*FileSet, error) {
 	ok, err := Detect(backupPath)
 	if err != nil {
@@ -712,22 +770,31 @@ func BuildRestorePlan(backupPath string, restoreUser bool) (*FileSet, error) {
 	if !ok {
 		return nil, ErrNotSplitdump
 	}
+
+	// Try manifest-based plan first.
+	manifest, readErr := ReadManifest(backupPath)
+	if readErr == nil {
+		if validateErr := ValidateManifest(manifest); validateErr == nil {
+			mfs, buildErr := buildFileSetFromManifest(backupPath, manifest, restoreUser)
+			if buildErr == nil {
+				applyRestorePlanPruning(mfs)
+				return mfs, nil
+			}
+		}
+		// Manifest present but invalid — fall through to legacy path.
+	}
+	// readErr != nil covers both os.ErrNotExist (no manifest) and other I/O errors;
+	// either way we fall back to the directory scan.
+
 	fs, err := ListFiles(backupPath, restoreUser)
 	if err != nil {
 		return nil, err
 	}
-	if isMysqlRoutinesSchemaPresent(fs.Schema) {
-		var kept, pruned []string
-		for _, path := range fs.Data {
-			if isMysqlProcDataFile(path) {
-				pruned = append(pruned, path)
-			} else {
-				kept = append(kept, path)
-			}
-		}
-		fs.Data = kept
-		fs.PrunedData = pruned
-	}
+	// Re-order plain table schemas by FK dependency graph so that parents are
+	// restored before children. This is a best-effort analysis: unresolvable cycles
+	// and references to tables outside the backup are silently tolerated.
+	fs.Schema = orderSchemaPhaseByForeignKeys(fs.Schema, nil)
+	applyRestorePlanPruning(&fs)
 	return &fs, nil
 }
 
