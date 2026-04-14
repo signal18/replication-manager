@@ -400,6 +400,9 @@ func (cluster *Cluster) CheckLogPlugins() {
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
 			"[logplugin] log-plugin=false — plugin evaluation disabled; set log-plugin=true to enable")
+		// Flush state machines into the exported slices so the dashboard shows WARN0314.
+		cluster.SecurityStates = cluster.SecurityStateMachine.GetOpenStates()
+		cluster.WorkloadStates = cluster.WorkloadStateMachine.GetOpenStates()
 		return
 	}
 	// Clear WARN0314 if log-plugin was just enabled.
