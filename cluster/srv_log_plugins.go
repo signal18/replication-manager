@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -375,12 +376,35 @@ func snapshotSlowLog(sl *s18log.SlowLog) []logplugin.StdioSlowMsg {
 
 func (cluster *Cluster) CheckLogPlugins() {
 	if !cluster.Conf.LogPlugin {
-		// Log once so operators know plugin evaluation is disabled — silent exit
-		// here is the #1 reason plugins appear to "stop working" after a config change.
+		// WARN0314 — plugins are present on disk but log-plugin is disabled.
+		// Raise an advisory with a direct API link so the operator can enable
+		// evaluation with one click from the dashboard.
+		pluginDir := logplugin.PluginDir(cluster.WorkingDir)
+		if hasExecutables(pluginDir) {
+			apiLink := "/api/clusters/" + cluster.Name + "/settings/actions/switch/log-plugin"
+			msg := fmt.Sprintf(
+				"Plugin binaries are installed in %s but log-plugin is disabled. "+
+					"Enable log-plugin to activate security and workload analysis. "+
+					"API: %s",
+				pluginDir, apiLink,
+			)
+			disabledState := state.State{
+				ErrType:   "WARNING",
+				ErrKey:    logplugin.ErrKeyLogPluginDisabled,
+				ErrDesc:   msg,
+				ErrFrom:   "PLUGIN",
+				ServerUrl: "",
+			}
+			cluster.SecurityStateMachine.AddState(logplugin.ErrKeyLogPluginDisabled, disabledState)
+			cluster.WorkloadStateMachine.AddState(logplugin.ErrKeyLogPluginDisabled, disabledState)
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
 			"[logplugin] log-plugin=false — plugin evaluation disabled; set log-plugin=true to enable")
 		return
 	}
+	// Clear WARN0314 if log-plugin was just enabled.
+	cluster.SecurityStateMachine.DeleteState(logplugin.ErrKeyLogPluginDisabled)
+	cluster.WorkloadStateMachine.DeleteState(logplugin.ErrKeyLogPluginDisabled)
 	// Accumulate the new security score into a local variable so the cluster-level
 	// SecurityScore is never partially updated. The single assignment below is the
 	// only moment readers can see the score change — no intermediate all-false flash.
@@ -787,4 +811,27 @@ func buildClusterContext(cluster *Cluster) logplugin.ClusterContext {
 		HistoryClearPwd:  cluster.SecurityClearPwdHistory,
 		DockerDeployment: cluster.Configurator.IsFilterInDBTags("docker"),
 	}
+}
+
+// hasExecutables returns true when dir contains at least one executable file
+// named plugin-*.  Used to distinguish "no plugins installed" (WARN0313) from
+// "plugins present but log-plugin disabled" (WARN0314).
+func hasExecutables(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), "plugin-") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if info.Mode()&0111 != 0 {
+			return true
+		}
+	}
+	return false
 }

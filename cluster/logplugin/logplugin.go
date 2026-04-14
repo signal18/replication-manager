@@ -252,6 +252,12 @@ const ErrKeyMissingMonitoringFeed = "WARN0312"
 // are installed for the cluster.  It points operators to the plugin marketplace.
 const ErrKeyNoExternalPlugins = "WARN0313"
 
+// ErrKeyLogPluginDisabled is raised when plugin binaries are present in the
+// cluster plugin directory but log-plugin=false.  It means plugins were
+// delivered by the portal but the operator has not yet enabled evaluation.
+// The advisory includes a direct API link to toggle log-plugin on.
+const ErrKeyLogPluginDisabled = "WARN0314"
+
 // Prerequisite declares that a plugin requires a named monitoring feature to
 // be active in order to produce findings.
 type Prerequisite struct {
