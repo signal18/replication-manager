@@ -161,6 +161,10 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 			return ""
 		}
 		name := strings.TrimSpace(trimmed[len(marker):])
+		// strings.Trim removes any mix of backtick/single/double-quote characters from
+		// both ends. This is correct for mysqldump output: identifiers are wrapped in a
+		// single consistent quote style and do not contain literal unescaped trailing
+		// quote characters (e.g. `db name` → db name, not `db name`` → db name).
 		name = strings.Trim(name, "`'\"")
 		return strings.TrimSpace(name)
 	}

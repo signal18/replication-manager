@@ -1,8 +1,6 @@
 package cluster
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -16,6 +14,7 @@ import (
 
 	gzip "github.com/klauspost/pgzip"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/splitdump"
 	"github.com/sirupsen/logrus"
 )
 
@@ -296,7 +295,8 @@ func TestDefinerStripRegexStreaming(t *testing.T) {
 	}
 	f.Close()
 
-	// Apply definerStripRegex line-by-line (same logic as restoreSplitdumpFileContextStripDefiner).
+	// Stream through splitdump.NewDefinerStrippingReader (same code path as
+	// restoreSplitdumpFileContextStripDefiner) to verify DEFINER stripping.
 	rf, err := os.Open(gzPath)
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -308,17 +308,14 @@ func TestDefinerStripRegexStreaming(t *testing.T) {
 	}
 	defer gzr.Close()
 
-	var out bytes.Buffer
-	scanner := bufio.NewScanner(gzr)
-	for scanner.Scan() {
-		line := definerStripRegex.ReplaceAllString(scanner.Text(), "") + "\n"
-		out.WriteString(line)
-	}
-	if err := scanner.Err(); err != nil {
-		t.Fatalf("scan: %v", err)
+	strippedReader, done := splitdump.NewDefinerStrippingReader(gzr)
+	outBytes, readErr := io.ReadAll(strippedReader)
+	done(readErr)
+	if readErr != nil {
+		t.Fatalf("read stripped: %v", readErr)
 	}
 
-	result := out.String()
+	result := string(outBytes)
 	if strings.Contains(strings.ToUpper(result), "DEFINER=") {
 		t.Fatalf("DEFINER clause still present after strip:\n%s", result)
 	}

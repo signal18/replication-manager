@@ -120,6 +120,61 @@ func runSplitrestore(ctx context.Context) error {
 		return nil
 	}
 
+	// restoreFileWithoutDefiner is the non-strict DEFINER fallback: it re-opens the file,
+	// strips DEFINER clauses while streaming, and re-runs the mysql client. Without this, a
+	// DEFINER error would cause the file to be silently skipped, losing views, routines,
+	// triggers, or events without any indication to the user.
+	// splitdump.NewDefinerStrippingReader uses bufio.Reader.ReadString (no token ceiling)
+	// so lines of arbitrary length — including multi-megabyte INSERT rows — are handled
+	// correctly, unlike bufio.Scanner which returns ErrTooLong beyond its buffer limit.
+	restoreFileWithoutDefiner := func(ctx context.Context, path string) error {
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+
+		var reader io.Reader = file
+		if strings.HasSuffix(strings.ToLower(path), ".gz") {
+			gzReader, err := gzip.NewReader(file)
+			if err != nil {
+				return err
+			}
+			defer gzReader.Close()
+			reader = gzReader
+		}
+
+		strippedReader, done := splitdump.NewDefinerStrippingReader(reader)
+
+		args, err := splitMysqlArgs(cliSplitRestoreMysqlArg)
+		if err != nil {
+			done(fmt.Errorf("arg parse failed"))
+			return fmt.Errorf("invalid mysql-args: %w", err)
+		}
+		preamble := splitdump.RestorePreamble(path)
+		if cliSplitRestoreDisableBinlog {
+			preamble = "SET sql_log_bin=0;\n" + preamble
+		}
+		var finalReader io.Reader = strippedReader
+		if preamble != "" {
+			finalReader = io.MultiReader(bytes.NewBufferString(preamble), strippedReader)
+		}
+		cmd := exec.CommandContext(ctx, cliSplitRestoreMysql, args...)
+		cmd.Stdin = finalReader
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		execErr := cmd.Run()
+		done(execErr) // unblock goroutine and wait for it before deferred file.Close runs
+		if execErr != nil {
+			errOutput := strings.TrimSpace(stderr.String())
+			if errOutput == "" {
+				errOutput = execErr.Error()
+			}
+			return fmt.Errorf("mysql restore (no-definer) failed for %s: %s", path, errOutput)
+		}
+		return nil
+	}
+
 	if cliSplitRestoreCreateDatabases {
 		schemas, schemaErr := splitdump.ListSchemas(cliSplitRestoreDir)
 		if schemaErr != nil {
@@ -146,11 +201,12 @@ func runSplitrestore(ctx context.Context) error {
 	}
 
 	if err := splitdump.Restore(cliSplitRestoreDir, splitdump.RestoreOptions{
-		Parallel:               cliSplitRestoreParallel,
-		RestoreUser:            cliSplitRestoreUser,
-		Logger:                 logger,
-		Context:                ctx,
-		RestoreFileWithContext: restoreFile,
+		Parallel:                  cliSplitRestoreParallel,
+		RestoreUser:               cliSplitRestoreUser,
+		Logger:                    logger,
+		Context:                   ctx,
+		RestoreFileWithContext:    restoreFile,
+		RestoreFileWithoutDefiner: restoreFileWithoutDefiner,
 	}); err != nil {
 		return err
 	}
