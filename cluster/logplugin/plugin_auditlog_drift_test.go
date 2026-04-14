@@ -131,7 +131,7 @@ func TestAuditDrift_NoEntries(t *testing.T) {
 	p := &AuditLogDriftPlugin{}
 	src := LogSource{ServerURL: "127.0.0.1:3306"}
 	if r := p.Evaluate(src); len(r.Findings) != 0 {
-		t.Errorf("expected 0 findings for empty log, got %d", len(f))
+		t.Errorf("expected 0 findings for empty log, got %d", len(r.Findings))
 	}
 }
 
@@ -146,7 +146,7 @@ func TestAuditDrift_NoDivergence(t *testing.T) {
 		},
 	}
 	if r := p.Evaluate(src); len(r.Findings) != 0 {
-		t.Errorf("same template in both windows should produce no finding, got %d", len(f))
+		t.Errorf("same template in both windows should produce no finding, got %d", len(r.Findings))
 	}
 }
 
@@ -188,7 +188,7 @@ func TestAuditDrift_SkipsNonQueryOps(t *testing.T) {
 	// Only CONNECT in current window (no QUERY), baseline has QUERY.
 	// current_set is empty → no findings (not enough data).
 	if r := p.Evaluate(src); len(r.Findings) != 0 {
-		t.Errorf("CONNECT ops should be skipped, got %d findings", len(f))
+		t.Errorf("CONNECT ops should be skipped, got %d findings", len(r.Findings))
 	}
 }
 
@@ -226,7 +226,7 @@ func TestAuditDrift_OldEntriesIgnored(t *testing.T) {
 	}
 	// Both windows empty → no findings (not enough data)
 	if r := p.Evaluate(src); len(r.Findings) != 0 {
-		t.Errorf("old entries should be outside both windows, got %d findings", len(f))
+		t.Errorf("old entries should be outside both windows, got %d findings", len(r.Findings))
 	}
 }
 
@@ -242,7 +242,7 @@ func TestAuditDrift_NoTimestampConservativelyIncluded(t *testing.T) {
 		},
 	}
 	if r := p.Evaluate(src); len(r.Findings) != 0 {
-		t.Errorf("same template (no timestamp) should produce no finding, got %d", len(f))
+		t.Errorf("same template (no timestamp) should produce no finding, got %d", len(r.Findings))
 	}
 }
 
@@ -257,7 +257,7 @@ func TestAuditDrift_EmptyBaselineNoFalsePositive(t *testing.T) {
 		},
 	}
 	if r := p.Evaluate(src); len(r.Findings) != 0 {
-		t.Errorf("empty baseline should not raise a false positive, got %d findings", len(f))
+		t.Errorf("empty baseline should not raise a false positive, got %d findings", len(r.Findings))
 	}
 }
 

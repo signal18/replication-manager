@@ -5,6 +5,7 @@
 package logplugin
 
 import (
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -69,11 +70,13 @@ func writeNonExecFile(t *testing.T, dir, name string) string {
 // ---- pluginNameFromBinary ---------------------------------------------------
 
 func TestPluginNameFromBinary(t *testing.T) {
+	// pluginNameFromBinary strips the file extension only; the plugin- prefix is
+	// kept as part of the name (current behaviour).
 	cases := [][2]string{
-		{"plugin-innodb-corruption", "innodb-corruption"},
-		{"plugin-foo.exe", "foo"},
+		{"plugin-innodb-corruption", "plugin-innodb-corruption"},
+		{"plugin-foo.exe", "plugin-foo"},
 		{"myplugin", "myplugin"},
-		{"plugin-a-b-c", "a-b-c"},
+		{"plugin-a-b-c", "plugin-a-b-c"},
 	}
 	for _, tc := range cases {
 		got := pluginNameFromBinary(tc[0])
@@ -96,7 +99,7 @@ func TestPluginDir(t *testing.T) {
 // ---- LoadPluginsFromDir -----------------------------------------------------
 
 func TestLoadPluginsFromDir_NonExistent(t *testing.T) {
-	n, err := LoadPluginsFromDir("/does/not/exist", &Registry{})
+	n, _, err := LoadPluginsFromDir("/does/not/exist", &Registry{}, LoadOptions{})
 	if err != nil {
 		t.Errorf("expected nil error for missing dir, got %v", err)
 	}
@@ -109,7 +112,7 @@ func TestLoadPluginsFromDir_SkipsNonExecutable(t *testing.T) {
 	dir := t.TempDir()
 	writeNonExecFile(t, dir, "notaplugin.txt")
 	reg := &Registry{}
-	n, err := LoadPluginsFromDir(dir, reg)
+	n, _, err := LoadPluginsFromDir(dir, reg, LoadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +131,7 @@ func TestLoadPluginsFromDir_LoadsExecutables(t *testing.T) {
 	writeNonExecFile(t, dir, "readme.txt")
 
 	reg := &Registry{}
-	n, err := LoadPluginsFromDir(dir, reg)
+	n, _, err := LoadPluginsFromDir(dir, reg, LoadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +142,7 @@ func TestLoadPluginsFromDir_LoadsExecutables(t *testing.T) {
 	for _, p := range reg.All() {
 		names[p.Name()] = true
 	}
-	for _, want := range []string{"alpha", "beta"} {
+	for _, want := range []string{"plugin-alpha", "plugin-beta"} {
 		if !names[want] {
 			t.Errorf("plugin %q not registered", want)
 		}
@@ -155,12 +158,12 @@ func TestLoadPluginsFromDir_ReplacesExisting(t *testing.T) {
 
 	reg := &Registry{}
 	// First load
-	LoadPluginsFromDir(dir, reg)
+	LoadPluginsFromDir(dir, reg, LoadOptions{})
 	if len(reg.All()) != 1 {
 		t.Fatal("expected 1 plugin after first load")
 	}
 	// Second load — same name, should replace not append
-	LoadPluginsFromDir(dir, reg)
+	LoadPluginsFromDir(dir, reg, LoadOptions{})
 	if len(reg.All()) != 1 {
 		t.Errorf("expected 1 plugin after reload, got %d", len(reg.All()))
 	}
@@ -277,5 +280,78 @@ func TestExternalPlugin_UnknownSeverityDefaultsToWarning(t *testing.T) {
 	}
 	if findings[0].Severity != SeverityWarning {
 		t.Errorf("unknown severity should default to WARNING, got %s", findings[0].Severity)
+	}
+}
+
+// ---- VerifyPluginSignature --------------------------------------------------
+
+func TestVerifyPluginSignature_HappyPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ed25519 key generation not tested on Windows")
+	}
+	dir := t.TempDir()
+
+	// Generate a real Ed25519 keypair.
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write the plugin binary.
+	binData := []byte("fake plugin binary content")
+	binPath := filepath.Join(dir, "plugin-test")
+	if err := os.WriteFile(binPath, binData, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Sign and write the .sig file.
+	sig := ed25519.Sign(priv, binData)
+	sigPath := filepath.Join(dir, "plugin-test.sig")
+	if err := os.WriteFile(sigPath, sig, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write the public key.
+	pubPath := filepath.Join(dir, "plugin-signing.pub")
+	if err := os.WriteFile(pubPath, []byte(pub), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := VerifyPluginSignature(binPath, dir, pubPath); err != nil {
+		t.Errorf("expected valid signature, got error: %v", err)
+	}
+}
+
+func TestVerifyPluginSignature_TamperedBinary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ed25519 key generation not tested on Windows")
+	}
+	dir := t.TempDir()
+
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Sign original content.
+	original := []byte("original plugin binary")
+	sig := ed25519.Sign(priv, original)
+
+	// Write a tampered binary.
+	binPath := filepath.Join(dir, "plugin-test")
+	if err := os.WriteFile(binPath, []byte("tampered content"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	sigPath := filepath.Join(dir, "plugin-test.sig")
+	if err := os.WriteFile(sigPath, sig, 0644); err != nil {
+		t.Fatal(err)
+	}
+	pubPath := filepath.Join(dir, "plugin-signing.pub")
+	if err := os.WriteFile(pubPath, []byte(pub), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := VerifyPluginSignature(binPath, dir, pubPath); err == nil {
+		t.Error("expected signature mismatch error for tampered binary, got nil")
 	}
 }

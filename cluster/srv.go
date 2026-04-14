@@ -464,7 +464,13 @@ func (server *ServerMonitor) InitLogTailers() {
 	server.SlowLog = s18log.NewSlowLog(cluster.Conf.MonitorLongQueryLogLength)
 	server.SqlErrorLog = s18log.NewHttpLog(cluster.Conf.MonitorSqlErrorLogLength)
 	server.AuditLog = s18log.NewHttpLog(cluster.Conf.MonitorAuditLogLength)
-	server.BinlogEventLog = s18log.NewBinlogEventLog(cluster.Conf.MonitorBinlogEventLogLength)
+	// Only allocate the ring buffer when binlog scanning is enabled; otherwise a
+	// zero-length buffer still satisfies the API but wastes no heap per server.
+	sz := 0
+	if cluster.Conf.MonitorBinlogEvents {
+		sz = cluster.Conf.MonitorBinlogEventLogLength
+	}
+	server.BinlogEventLog = s18log.NewBinlogEventLog(sz)
 }
 
 func (server *ServerMonitor) NewLogTailer(logtype string) (*tail.Tail, error) {

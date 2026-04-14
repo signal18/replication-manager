@@ -325,7 +325,7 @@ func (cluster *Cluster) GetDomainHeadCluster() string {
 	return ""
 }
 
-func (cluster *Cluster) GetPersitentState() error {
+func (cluster *Cluster) GetPersistentState() error {
 
 	file, err := os.ReadFile(cluster.WorkingDir + "/clusterstate.json")
 	if err != nil {

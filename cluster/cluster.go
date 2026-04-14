@@ -526,7 +526,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.LoadAPIUsers()
 	cluster.SaveAcls()
 	cluster.InitMailer()
-	cluster.GetPersitentState()
+	cluster.GetPersistentState()
 
 	cluster.LogPushover = log.New()
 	cluster.LogPushover.SetFormatter(&log.TextFormatter{FullTimestamp: true})
