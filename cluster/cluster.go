@@ -1131,6 +1131,11 @@ func (cluster *Cluster) SetIsSavingConfig(val bool) {
 // SecurityScore holds the compliance status for each security check.
 // Each field maps to a tag that can be contributed by an external plugin
 // via ScoreCheck.Tag. Score (0-100) is the percentage of passing checks.
+//
+// When multiple servers in a cluster report the same tag (e.g. HasAuditPlugins),
+// the cluster-level result is the AND of all per-server results: every server
+// must pass for the check to count as passing. This prevents a replica that
+// has a feature from masking a master that does not.
 type SecurityScore struct {
 	HasSSL              bool   `json:"hasSSL"`
 	HasZeroSSL          bool   `json:"hasZeroSSL"`
@@ -1153,11 +1158,59 @@ type SecurityScore struct {
 	HasLastLTS          bool   `json:"hasLastLTS"`
 	Score               int    `json:"score"` // 0-100
 	Grade               string `json:"grade"` // A/B/C/D/F
+
+	// applied tracks which tags have received at least one result this tick.
+	// Not exported; reset to nil when SecurityScore is zeroed each tick.
+	applied map[string]struct{}
 }
 
-// ApplyCheck sets the field matching tag to pass.
+// ApplyCheck merges a per-server score result into the cluster-level score.
+//
+// AND semantics: the first call for a tag sets the value; subsequent calls
+// (from other servers in the same tick) AND with the accumulated value.
+// This ensures a cluster only passes a check when every server passes it —
+// a replica that has the audit plugin cannot mask a master that does not.
+//
 // Unknown tags are silently ignored so new plugins don't break old repman builds.
 func (s *SecurityScore) ApplyCheck(tag string, pass bool) {
+	if s.applied == nil {
+		s.applied = make(map[string]struct{})
+	}
+	_, seen := s.applied[tag]
+	if seen {
+		// AND: once any server fails this check the cluster fails it.
+		pass = s.getCheck(tag) && pass
+	}
+	s.applied[tag] = struct{}{}
+	s.setCheck(tag, pass)
+}
+
+func (s *SecurityScore) getCheck(tag string) bool {
+	switch tag {
+	case "HasSSL":              return s.HasSSL
+	case "HasZeroSSL":         return s.HasZeroSSL
+	case "HasTableEncryption": return s.HasTableEncryption
+	case "HasBinlogEncryption":return s.HasBinlogEncryption
+	case "HasTmpEncryption":   return s.HasTmpEncryption
+	case "HasBackupEncryption":return s.HasBackupEncryption
+	case "HasAuditPlugins":    return s.HasAuditPlugins
+	case "NoEmptyPassword":    return s.NoEmptyPassword
+	case "HasPrepareStatement":return s.HasPrepareStatement
+	case "HasStrongPwd":       return s.HasStrongPwd
+	case "HasProxies":         return s.HasProxies
+	case "HasParsecPlugins":   return s.HasParsecPlugins
+	case "HasPasswordRotation":return s.HasPasswordRotation
+	case "NoWeakAuthPlugin":   return s.NoWeakAuthPlugin
+	case "NoHostnameGrants":   return s.NoHostnameGrants
+	case "NoClearPwdConfigs":  return s.NoClearPwdConfigs
+	case "NoClearPwdHistory":  return s.NoClearPwdHistory
+	case "NoClearPwdBinlogs":  return s.NoClearPwdBinlogs
+	case "HasLastLTS":         return s.HasLastLTS
+	}
+	return false
+}
+
+func (s *SecurityScore) setCheck(tag string, pass bool) {
 	switch tag {
 	case "HasSSL":              s.HasSSL = pass
 	case "HasZeroSSL":         s.HasZeroSSL = pass

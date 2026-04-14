@@ -50,6 +50,35 @@ func TestSecurityScore_ApplyCheck_UnknownTagIgnored(t *testing.T) {
 	s.ApplyCheck("UnknownFutureTag", true) // must not panic
 }
 
+// TestSecurityScore_ApplyCheck_ANDSemantics verifies that when multiple servers
+// report the same tag in one tick, the cluster result is the AND — a replica
+// that passes cannot mask a master that fails (the flapping bug scenario).
+func TestSecurityScore_ApplyCheck_ANDSemantics(t *testing.T) {
+	// Scenario A: master fails, replica passes → cluster must FAIL
+	var s SecurityScore
+	s.ApplyCheck("HasAuditPlugins", false) // master: no audit
+	s.ApplyCheck("HasAuditPlugins", true)  // replica: has audit
+	if s.HasAuditPlugins {
+		t.Error("cluster should FAIL when master has no audit even if replica does")
+	}
+
+	// Scenario B: master passes, replica fails → cluster must FAIL
+	s = SecurityScore{}
+	s.ApplyCheck("HasAuditPlugins", true)  // master: has audit
+	s.ApplyCheck("HasAuditPlugins", false) // replica: no audit
+	if s.HasAuditPlugins {
+		t.Error("cluster should FAIL when replica has no audit even if master does")
+	}
+
+	// Scenario C: both pass → cluster must PASS
+	s = SecurityScore{}
+	s.ApplyCheck("HasAuditPlugins", true)
+	s.ApplyCheck("HasAuditPlugins", true)
+	if !s.HasAuditPlugins {
+		t.Error("cluster should PASS when all servers have audit")
+	}
+}
+
 // ---- SecurityScore.Compute --------------------------------------------------
 
 func TestSecurityScore_Compute_AllPass(t *testing.T) {
