@@ -61,7 +61,7 @@ func spikeCacheKey(serverURL, pluginName string) string {
 //
 // Logging is suppressed for findings already open in the previous tick so the
 // log is not flooded — only state transitions (new / resolved) produce a WARN.
-func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.SpikeCache) {
+func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.SpikeCache, score *SecurityScore) {
 	cluster := server.ClusterGroup
 	apiURL := cluster.graphiteAPIURL()
 	hostname := server.graphiteHostname()
@@ -291,7 +291,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			cluster.logPluginDebugSec(p.Name(), fmt.Sprintf(
 				"[logplugin:%s] server=%s score_check tag=%s pass=%v detail=%q",
 				p.Name(), server.URL, sc.Tag, sc.Pass, sc.Detail))
-			cluster.SecurityScore.ApplyCheck(sc.Tag, sc.Pass)
+			score.ApplyCheck(sc.Tag, sc.Pass)
 		}
 
 		cache := spikeCache[cacheKey]
@@ -323,9 +323,6 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			}
 		}
 	}
-
-	// Recompute compliance score after all plugins have run on this server.
-	cluster.SecurityScore.Compute()
 }
 
 func resolvePluginConfig(cluster *Cluster, pluginName string) map[string]string {
@@ -384,9 +381,10 @@ func (cluster *Cluster) CheckLogPlugins() {
 			"[logplugin] log-plugin=false — plugin evaluation disabled; set log-plugin=true to enable")
 		return
 	}
-	// Reset the security score at the start of each tick so that score checks from
-	// plugins that were removed or disabled do not persist from the previous cycle.
-	cluster.SecurityScore = SecurityScore{}
+	// Accumulate the new security score into a local variable so the cluster-level
+	// SecurityScore is never partially updated. The single assignment below is the
+	// only moment readers can see the score change — no intermediate all-false flash.
+	var newScore SecurityScore
 
 	// Lazy init in case cluster was loaded from saved state without init
 	if cluster.pluginSpikeCache == nil {
@@ -405,8 +403,11 @@ func (cluster *Cluster) CheckLogPlugins() {
 		if cluster.Conf.MonitorBinlogEvents && server.HaveBinlog && cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL {
 			server.ScanBinlogQueryEvents()
 		}
-		server.RunLogPlugins(cluster.pluginSpikeCache)
+		server.RunLogPlugins(cluster.pluginSpikeCache, &newScore)
 	}
+	// Compute final score from all servers' aggregated checks, then publish atomically.
+	newScore.Compute()
+	cluster.SecurityScore = newScore
 	// Snapshot states for the dashboard. CurState holds this tick's complete
 	// set of findings from all servers. ClearState is intentionally NOT called
 	// here — it is called in the main monitor loop after LogPrintAllWorkloadStates
