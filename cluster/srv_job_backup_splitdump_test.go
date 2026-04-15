@@ -234,26 +234,40 @@ func TestIsSplitDumpDir(t *testing.T) {
 		t.Fatalf("expected file path to be false, err=%v", err)
 	}
 
-	metadataDir := filepath.Join(base, "with-metadata")
-	if err := os.MkdirAll(metadataDir, 0755); err != nil {
+	metadataOnlyDir := filepath.Join(base, "with-metadata-only")
+	if err := os.MkdirAll(metadataOnlyDir, 0755); err != nil {
 		t.Fatalf("failed to create dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(metadataDir, "metadata"), []byte("meta"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(metadataOnlyDir, "metadata"), []byte("meta"), 0644); err != nil {
 		t.Fatalf("failed to write metadata: %v", err)
 	}
-	if ok, err := isSplitDumpDir(metadataDir); err != nil || !ok {
-		t.Fatalf("expected metadata dir to be true, err=%v", err)
+	if ok, err := isSplitDumpDir(metadataOnlyDir); err != nil || ok {
+		t.Fatalf("expected metadata-only dir to be false, err=%v", err)
 	}
 
-	dataDir := filepath.Join(base, "with-data")
+	genericSQLDir := filepath.Join(base, "with-generic-sql")
+	if err := os.MkdirAll(genericSQLDir, 0755); err != nil {
+		t.Fatalf("failed to create dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(genericSQLDir, "backup.sql.gz"), []byte("data"), 0644); err != nil {
+		t.Fatalf("failed to write generic sql file: %v", err)
+	}
+	if ok, err := isSplitDumpDir(genericSQLDir); err != nil || ok {
+		t.Fatalf("expected generic sql dir to be false, err=%v", err)
+	}
+
+	dataDir := filepath.Join(base, "splitdump.1700000000")
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		t.Fatalf("failed to create dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "metadata"), []byte("meta"), 0644); err != nil {
+		t.Fatalf("failed to write metadata: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(dataDir, "db.table.00000.sql.gz"), []byte("data"), 0644); err != nil {
 		t.Fatalf("failed to write data file: %v", err)
 	}
 	if ok, err := isSplitDumpDir(dataDir); err != nil || !ok {
-		t.Fatalf("expected data dir to be true, err=%v", err)
+		t.Fatalf("expected splitdump-compatible dir to be true, err=%v", err)
 	}
 
 	emptyDir := filepath.Join(base, "empty")

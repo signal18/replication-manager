@@ -973,24 +973,10 @@ func isSplitDumpDir(path string) (bool, error) {
 	if !info.IsDir() {
 		return false, nil
 	}
-	metadataPath := filepath.Join(path, "metadata")
-	if metaInfo, err := os.Stat(metadataPath); err == nil && !metaInfo.IsDir() {
-		return true, nil
-	}
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return false, err
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if strings.HasSuffix(name, ".sql") || strings.HasSuffix(name, ".sql.gz") {
-			return true, nil
-		}
-	}
-	return false, nil
+
+	// Use splitdump package detection to avoid weak heuristics that would
+	// classify generic SQL directories as splitdump backups.
+	return splitdump.Detect(path)
 }
 
 func (server *ServerMonitor) reseedMysqldumpWithSplitdump(ctx context.Context, backupPath string, restoreUser bool) error {
@@ -1001,12 +987,14 @@ func (server *ServerMonitor) reseedMysqldumpWithSplitdump(ctx context.Context, b
 	if err != nil {
 		return err
 	}
+	cluster := server.ClusterGroup
 	if isSplit {
-		cluster := server.ClusterGroup
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-			"Splitdump detected at %s; restoring with mysql client", backupPath)
+			"Splitdump detection: compatible layout at %s; restoring with splitdump+mysql", backupPath)
 		return server.JobReseedSplitdumpWithMysql(ctx, backupPath, restoreUser)
 	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+		"Splitdump detection: incompatible layout at %s; restoring with mysqldump path", backupPath)
 	return server.JobReseedMysqldump(backupPath, restoreUser)
 }
 
@@ -1037,16 +1025,15 @@ func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, ba
 		return err
 	}
 	isSplitMeta := meta != nil && (meta.SplitDump || isSplitDumpName(meta.Dest))
-	if isSplitPath || isSplitMeta {
+	if isSplitPath {
 		cluster := server.ClusterGroup
-		if isSplitPath {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-				"Splitdump detected at %s; restoring with mysql client", backupPath)
-		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-				"Splitdump metadata detected for %s; restoring with mysql client", backupPath)
-		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Splitdump detection: compatible layout at %s; restoring with splitdump+mysql", backupPath)
 		return server.JobReseedSplitdumpWithMysql(ctx, backupPath, restoreUser)
+	}
+	if isSplitMeta {
+		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"Splitdump metadata hint found for %s but layout is incompatible; restoring with mysqldump path", backupPath)
 	}
 
 	// Stream container format: preflight → streaming AEAD decrypt → mysql client.
@@ -1362,7 +1349,7 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, level, format, args...)
 		},
 		Context:                   ctx,
-		RestoreFileWithContext:     restoreFile,
+		RestoreFileWithContext:    restoreFile,
 		RestoreFileWithoutDefiner: restoreFileWithoutDefiner,
 		DefinerStrict:             cluster.Conf.BackupRestoreDefinerStrict,
 	})

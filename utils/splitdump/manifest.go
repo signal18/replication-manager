@@ -143,6 +143,30 @@ func ValidateManifest(m *Manifest) error {
 			}
 		}
 	}
+
+	// Enforce locked subgroup ordering inside schema/post phases so a malformed
+	// manifest cannot violate restore sequencing guarantees.
+	if err := validateManifestPhaseOrder(m.Schema, "schema", splitdumpSchemaPriority); err != nil {
+		return err
+	}
+	if err := validateManifestPhaseOrder(m.Post, "post", splitdumpPostPriority); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateManifestPhaseOrder(entries []string, phase string, priority func(string) int) error {
+	if len(entries) < 2 {
+		return nil
+	}
+	prevPriority := priority(entries[0])
+	for i := 1; i < len(entries); i++ {
+		currPriority := priority(entries[i])
+		if currPriority < prevPriority {
+			return fmt.Errorf("%w: entry %q appears after %q in phase %q, violating locked subgroup order", ErrManifestInvalid, entries[i], entries[i-1], phase)
+		}
+		prevPriority = currPriority
+	}
 	return nil
 }
 

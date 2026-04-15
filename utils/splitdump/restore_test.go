@@ -562,13 +562,13 @@ func TestRestorePhaseOrderAllSevenTypes(t *testing.T) {
 	dir := t.TempDir()
 	// All 7 artifact types: tables, mysql.system-all, routines, views, data, triggers, events
 	files := []string{
-		"db.tbl-schema-trigger.sql.gz",    // post: trigger
-		"db.__events-schema-event.sql.gz", // post: event
-		"db.tbl.00000.sql.gz",             // data
-		"db.tbl-schema.sql.gz",            // schema: table
-		"mysql.system-all.sql.gz",         // schema: system-all
+		"db.tbl-schema-trigger.sql.gz",        // post: trigger
+		"db.__events-schema-event.sql.gz",     // post: event
+		"db.tbl.00000.sql.gz",                 // data
+		"db.tbl-schema.sql.gz",                // schema: table
+		"mysql.system-all.sql.gz",             // schema: system-all
 		"db.__routines-schema-routine.sql.gz", // schema: routine
-		"db.a_view-schema-view.sql.gz",    // schema: view
+		"db.a_view-schema-view.sql.gz",        // schema: view
 	}
 	for _, f := range files {
 		if err := os.WriteFile(filepath.Join(dir, f), []byte("test"), 0644); err != nil {
@@ -1331,9 +1331,9 @@ func TestRestoreOrderingFailureDistinguishableFromDefinerFailure(t *testing.T) {
 			}
 			mu2.Unlock()
 		},
-		Context: context.Background(),
+		Context:                context.Background(),
 		RestoreFileWithContext: func(ctx context.Context, path string) error { return definerErr },
-		DefinerStrict: true,
+		DefinerStrict:          true,
 	})
 
 	mu1.Lock()
@@ -1451,10 +1451,10 @@ func TestIsMysqlTableCheckEligible(t *testing.T) {
 // files and populate FileSet.PrunedData.
 func TestBuildRestorePlanPrunesMysqlProcWhenMysqlRoutineSchemaPresent(t *testing.T) {
 	routineArtifacts := []string{
-		"mysql.__routines-schema-routine.sql.gz",  // standard splitdump artifact
-		"mysql.__routines-schema-routine.sql",     // uncompressed variant
-		"mysql.__funcs-schema-function.sql.gz",    // function-only variant (mydumper style)
-		"mysql.__procs-schema-procedure.sql.gz",   // procedure-only variant (mydumper style)
+		"mysql.__routines-schema-routine.sql.gz", // standard splitdump artifact
+		"mysql.__routines-schema-routine.sql",    // uncompressed variant
+		"mysql.__funcs-schema-function.sql.gz",   // function-only variant (mydumper style)
+		"mysql.__procs-schema-procedure.sql.gz",  // procedure-only variant (mydumper style)
 	}
 
 	for _, artifact := range routineArtifacts {
@@ -2072,6 +2072,40 @@ func TestValidateManifestRejectsEventInSchemaPhase(t *testing.T) {
 	}
 }
 
+func TestValidateManifestRejectsSchemaSubgroupOrderMismatch(t *testing.T) {
+	m := &Manifest{
+		Version: 1,
+		// routines before tables violates locked order
+		Schema: []string{"db.__routines-schema-routine.sql.gz", "db.tbl-schema.sql.gz"},
+		Data:   []string{"db.tbl.00000.sql.gz"},
+		Post:   nil,
+	}
+	err := ValidateManifest(m)
+	if err == nil {
+		t.Fatalf("expected error for schema subgroup order mismatch, got nil")
+	}
+	if !errors.Is(err, ErrManifestInvalid) {
+		t.Fatalf("expected ErrManifestInvalid, got: %v", err)
+	}
+}
+
+func TestValidateManifestRejectsPostSubgroupOrderMismatch(t *testing.T) {
+	m := &Manifest{
+		Version: 1,
+		Schema:  []string{"db.tbl-schema.sql.gz"},
+		Data:    []string{"db.tbl.00000.sql.gz"},
+		// events before triggers violates locked post-data order
+		Post: []string{"db.__events-schema-event.sql.gz", "db.tbl-schema-trigger.sql.gz"},
+	}
+	err := ValidateManifest(m)
+	if err == nil {
+		t.Fatalf("expected error for post subgroup order mismatch, got nil")
+	}
+	if !errors.Is(err, ErrManifestInvalid) {
+		t.Fatalf("expected ErrManifestInvalid, got: %v", err)
+	}
+}
+
 // TestBuildRestorePlanFallsBackOnPhaseMismatchManifest verifies that a manifest where an
 // entry is in the wrong phase (e.g. trigger declared under [schema]) causes BuildRestorePlan
 // to fall back to the legacy directory scan rather than trusting the bad manifest.
@@ -2109,6 +2143,69 @@ func TestBuildRestorePlanFallsBackOnPhaseMismatchManifest(t *testing.T) {
 	}
 	if !triggerFound {
 		t.Fatalf("expected trigger file in post phase after fallback, got post=%v", plan.Post)
+	}
+}
+
+func TestBuildRestorePlanFallsBackOnSchemaOrderMismatchManifest(t *testing.T) {
+	dir := t.TempDir()
+	for _, f := range []string{"db.tbl-schema.sql.gz", "db.__routines-schema-routine.sql.gz", "db.tbl.00000.sql.gz"} {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("test"), 0644); err != nil {
+			t.Fatalf("write %s: %v", f, err)
+		}
+	}
+
+	// Manifest violates schema subgroup order by placing routines before tables.
+	badManifest := &Manifest{
+		Version: 1,
+		Schema:  []string{"db.__routines-schema-routine.sql.gz", "db.tbl-schema.sql.gz"},
+		Data:    []string{"db.tbl.00000.sql.gz"},
+	}
+	writeManifestFile(t, dir, badManifest)
+
+	plan, err := BuildRestorePlan(dir, false, nil)
+	if err != nil {
+		t.Fatalf("expected fallback on schema-order mismatch manifest, got error: %v", err)
+	}
+	if plan == nil {
+		t.Fatalf("expected non-nil plan after fallback")
+	}
+	if len(plan.Schema) < 2 {
+		t.Fatalf("expected at least 2 schema files after fallback, got: %v", plan.Schema)
+	}
+	if got := filepath.Base(plan.Schema[0]); got != "db.tbl-schema.sql.gz" {
+		t.Fatalf("expected fallback schema order to start with table schema, got %q", got)
+	}
+}
+
+func TestBuildRestorePlanFallsBackOnPostOrderMismatchManifest(t *testing.T) {
+	dir := t.TempDir()
+	for _, f := range []string{"db.tbl-schema.sql.gz", "db.tbl.00000.sql.gz", "db.tbl-schema-trigger.sql.gz", "db.__events-schema-event.sql.gz"} {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("test"), 0644); err != nil {
+			t.Fatalf("write %s: %v", f, err)
+		}
+	}
+
+	// Manifest violates post subgroup order by placing events before triggers.
+	badManifest := &Manifest{
+		Version: 1,
+		Schema:  []string{"db.tbl-schema.sql.gz"},
+		Data:    []string{"db.tbl.00000.sql.gz"},
+		Post:    []string{"db.__events-schema-event.sql.gz", "db.tbl-schema-trigger.sql.gz"},
+	}
+	writeManifestFile(t, dir, badManifest)
+
+	plan, err := BuildRestorePlan(dir, false, nil)
+	if err != nil {
+		t.Fatalf("expected fallback on post-order mismatch manifest, got error: %v", err)
+	}
+	if plan == nil {
+		t.Fatalf("expected non-nil plan after fallback")
+	}
+	if len(plan.Post) < 2 {
+		t.Fatalf("expected at least 2 post files after fallback, got: %v", plan.Post)
+	}
+	if got := filepath.Base(plan.Post[0]); got != "db.tbl-schema-trigger.sql.gz" {
+		t.Fatalf("expected fallback post order to start with trigger, got %q", got)
 	}
 }
 
