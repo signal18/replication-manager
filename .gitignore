@@ -37,3 +37,5 @@ share/dashboard/index.html.gz
 _bmad
 _bmad-output
 .ignore
+node_modules
+tmp
