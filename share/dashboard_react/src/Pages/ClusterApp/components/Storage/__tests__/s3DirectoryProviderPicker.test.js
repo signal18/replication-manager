@@ -162,6 +162,49 @@ console.log("\nTest Suite: providerName included in saved payload");
   assert("providerName" in s3AfterSelection, "providerName key exists in payload");
 }
 
+console.log("\nTest Suite: copy-then-edit remains local when provider changes (AC: 2)");
+{
+  const copied = applyProviderToS3({ ...defaultS3, bucket: "my-bucket" }, "dev-minio", sampleProviders);
+  // User edits copied values locally after the copy event.
+  const edited = {
+    ...copied,
+    endpoint: "custom-edited-endpoint:9000",
+    region: "ap-south-1",
+  };
+
+  // Later, provider library changes (new endpoint/region), but existing mount state
+  // must remain unchanged until user explicitly chooses a provider again.
+  const updatedProviders = sampleProviders.map((p) =>
+    p.name === "dev-minio"
+      ? { ...p, providerApp: "new-minio-app:9000", region: "us-west-2" }
+      : p
+  );
+
+  assertEqual(edited.endpoint, "custom-edited-endpoint:9000", "edited endpoint remains local");
+  assertEqual(edited.region, "ap-south-1", "edited region remains local");
+  assertEqual(edited.providerName, "dev-minio", "providerName traceability remains present");
+
+  // Ensure provider list update by itself does not mutate current mount object.
+  assertEqual(updatedProviders.find((p) => p.name === "dev-minio").providerApp, "new-minio-app:9000", "provider library changed independently");
+  assertEqual(edited.endpoint, "custom-edited-endpoint:9000", "mount state unchanged after provider library update");
+}
+
+console.log("\nTest Suite: copy-then-edit survives provider deletion (AC: 2)");
+{
+  const copied = applyProviderToS3({ ...defaultS3, bucket: "archive" }, "dev-minio", sampleProviders);
+  const edited = { ...copied, region: "eu-central-1" };
+  const providersAfterDelete = sampleProviders.filter((p) => p.name !== "dev-minio");
+
+  // Provider no longer appears in options.
+  const opts = buildSavedProviderOptions(providersAfterDelete);
+  assert(!opts.some((o) => o.value === "dev-minio"), "deleted provider is not shown in picker options");
+
+  // Existing mount still carries edited effective values and providerName trace string.
+  assertEqual(edited.endpoint, "minio-app:9000", "existing mount endpoint remains unchanged after provider deletion");
+  assertEqual(edited.region, "eu-central-1", "existing mount edited region remains unchanged after provider deletion");
+  assertEqual(edited.providerName, "dev-minio", "providerName traceability string remains on existing mount");
+}
+
 console.log("\nTest Suite: region dispatch key for S3DirectoryRowForm (Blocker 1 fix)");
 {
   const dispatch = buildRegionDispatch("s3Mounts", 0, "us-west-2");

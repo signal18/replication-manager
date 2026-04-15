@@ -135,6 +135,11 @@ const S3DirectoryRowForm = React.memo(({ fieldName, s3ProvOptions, clusterS3Prov
       [clusterS3Providers]
     );
 
+    const selectedProviderMissing = useMemo(
+      () => !!s3.providerName && !savedProviderOptions.some((opt) => opt.value === s3.providerName),
+      [s3.providerName, savedProviderOptions]
+    );
+
     const onRowArrayChange = (fieldName, index, key, value) => {
         onChange(fieldName, index, key, value);
     };
@@ -172,6 +177,16 @@ const S3DirectoryRowForm = React.memo(({ fieldName, s3ProvOptions, clusterS3Prov
                       onChange={(option) => handleSavedProviderChange(option)}
                       options={savedProviderOptions}
                     />
+                  </Flex>
+                )}
+                {!!s3.providerName && (
+                  <Flex direction="column" flex="1">
+                    <Text mb={1}>Provider Trace:</Text>
+                    <Text fontSize="sm" color="gray.500">
+                      {selectedProviderMissing
+                        ? `Copied from provider "${s3.providerName}" (no longer in provider library). Values remain editable locally.`
+                        : `Values copied from provider "${s3.providerName}" — editable locally.`}
+                    </Text>
                   </Flex>
                 )}
                 <Flex direction="column" flex="1">
@@ -230,6 +245,11 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers 
       [clusterS3Providers]
     );
 
+    const selectedProviderMissing = useMemo(
+      () => !!s3.providerName && !savedProviderOptions.some((opt) => opt.value === s3.providerName),
+      [s3.providerName, savedProviderOptions]
+    );
+
     const handleArrayChange = (key, value) => {
         setS3((prev) => ({ ...prev, [key]: value }));
     }
@@ -282,6 +302,16 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers 
                       onChange={(option) => handleSavedProviderChange(option)}
                       options={savedProviderOptions}
                     />
+                  </Flex>
+                )}
+                {!!s3.providerName && (
+                  <Flex direction="column" flex="1">
+                    <Text mb={1}>Provider Trace:</Text>
+                    <Text fontSize="sm" color="gray.500">
+                      {selectedProviderMissing
+                        ? `Copied from provider "${s3.providerName}" (no longer in provider library). Values remain editable locally.`
+                        : `Values copied from provider "${s3.providerName}" — editable locally.`}
+                    </Text>
                   </Flex>
                 )}
                 <Flex direction="column" flex="1">
