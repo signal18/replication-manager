@@ -748,6 +748,24 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReseedFromParent)),
 	))
 
+	// S3 Provider CRUD routes
+	router.Handle("/api/clusters/{clusterName}/s3providers", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterS3ProvidersGet)),
+	))
+	router.Handle("/api/clusters/{clusterName}/s3providers/add", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterS3ProviderAdd)),
+	))
+	router.Handle("/api/clusters/{clusterName}/s3providers/{name}/modify", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterS3ProviderModify)),
+	))
+	router.Handle("/api/clusters/{clusterName}/s3providers/{name}/drop", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterS3ProviderDrop)),
+	))
+
 	// Register restic-specific routes
 	repman.RegisterResticRoutes(router)
 }
@@ -5894,6 +5912,39 @@ func (repman *ReplicationManager) handlerMuxClusterWaitDatabases(w http.Response
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName} [get]
+// buildClusterAPIPayload serialises mycluster into the JSON payload returned by
+// GET /api/clusters/{clusterName}. It replaces the clusterS3Providers field
+// with a safely-snapshotted copy (acquired under clusterS3ProvidersMu) so
+// concurrent CRUD mutations cannot produce a racy or inconsistent response.
+func buildClusterAPIPayload(mycluster *cluster.Cluster) ([]byte, error) {
+	cl, err := json.Marshal(mycluster)
+	if err != nil {
+		return nil, fmt.Errorf("marshal cluster: %w", err)
+	}
+
+	for crkey := range mycluster.Conf.Secrets {
+		cl, err = sjson.SetBytes(cl, "config."+strcase.ToLowerCamel(crkey), "*:*")
+		if err != nil {
+			return nil, fmt.Errorf("mask secret %s: %w", crkey, err)
+		}
+	}
+
+	// Reduce the content of the cluster object
+	cl, _ = sjson.DeleteBytes(cl, "config.apps")
+	cl, _ = sjson.DeleteBytes(cl, "servers")
+	cl, _ = sjson.DeleteBytes(cl, "proxies")
+	cl, _ = sjson.DeleteBytes(cl, "apps")
+
+	// Overwrite clusterS3Providers with a safe snapshot acquired under the mutex
+	// to prevent races with concurrent CRUD mutations (AddS3Provider, etc.).
+	s3snap := mycluster.GetS3ProvidersSnapshot()
+	if s3JSON, merr := json.Marshal(s3snap); merr == nil {
+		cl, _ = sjson.SetRawBytes(cl, "clusterS3Providers", s3JSON)
+	}
+
+	return cl, nil
+}
+
 func (repman *ReplicationManager) handlerMuxCluster(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -5904,25 +5955,11 @@ func (repman *ReplicationManager) handlerMuxCluster(w http.ResponseWriter, r *ht
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		cl, err := json.Marshal(mycluster)
+		cl, err := buildClusterAPIPayload(mycluster)
 		if err != nil {
 			http.Error(w, "Error Marshal", http.StatusInternalServerError)
 			return
 		}
-
-		for crkey := range mycluster.Conf.Secrets {
-			cl, err = sjson.SetBytes(cl, "config."+strcase.ToLowerCamel(crkey), "*:*")
-		}
-		if err != nil {
-			http.Error(w, "Encoding error", http.StatusInternalServerError)
-			return
-		}
-
-		// Reduce the content of the cluster object
-		cl, _ = sjson.DeleteBytes(cl, "config.apps")
-		cl, _ = sjson.DeleteBytes(cl, "servers")
-		cl, _ = sjson.DeleteBytes(cl, "proxies")
-		cl, _ = sjson.DeleteBytes(cl, "apps")
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(cl)
@@ -9002,4 +9039,296 @@ func (repman *ReplicationManager) handlerMuxSavePreservedVarsCnf(w http.Response
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(fmt.Sprintf("Successfully saved preserved variables CNF to %s", mycluster.GetPreservedVarsPath())))
+}
+
+// s3ProviderRequest is the JSON request body for S3 provider add and modify operations.
+// Unlike config.S3Provider, this struct exposes AccessKey and SecretKey so that
+// handler code can accept credentials from the request without bypassing MarshalJSON.
+type s3ProviderRequest struct {
+	Name           string                  `json:"name"`
+	ProviderSource config.S3ProviderSource `json:"providerSource"`
+	ProviderApp    string                  `json:"providerApp,omitempty"`
+	Endpoint       string                  `json:"endpoint,omitempty"`
+	Region         string                  `json:"region,omitempty"`
+	AccessKey      string                  `json:"accesskey,omitempty"`
+	SecretKey      string                  `json:"secretkey,omitempty"`
+}
+
+// s3ProviderResponse is the JSON read response struct. SecretKey is set to "****"
+// when a secret exists so the UI can indicate that credentials are configured
+// without exposing the plaintext value.
+type s3ProviderResponse struct {
+	Name           string                  `json:"name"`
+	ProviderSource config.S3ProviderSource `json:"providerSource"`
+	ProviderApp    string                  `json:"providerApp,omitempty"`
+	Endpoint       string                  `json:"endpoint,omitempty"`
+	Region         string                  `json:"region,omitempty"`
+	SecretKey      string                  `json:"secretkey,omitempty"`
+}
+
+// maskS3Provider builds a read-safe response from a provider, substituting a fixed
+// mask ("****") for any non-empty SecretKey.
+func maskS3Provider(p config.S3Provider) s3ProviderResponse {
+	resp := s3ProviderResponse{
+		Name:           p.Name,
+		ProviderSource: p.ProviderSource,
+		ProviderApp:    p.ProviderApp,
+		Endpoint:       p.Endpoint,
+		Region:         p.Region,
+	}
+	if p.SecretKey != "" {
+		resp.SecretKey = "****"
+	}
+	return resp
+}
+
+// validateS3ProviderAPIRequest performs API-layer validation beyond model-level
+// config.S3Provider.Validate():
+//   - app mode: verifies ProviderApp host:port exists in cluster.AppS3Providers
+//   - custom mode: requires non-empty AccessKey and SecretKey; validates Endpoint URL
+func validateS3ProviderAPIRequest(p config.S3Provider, mycluster *cluster.Cluster) error {
+	switch p.ProviderSource {
+	case config.S3ProviderSourceApp:
+		found := false
+		for _, a := range mycluster.AppS3Providers {
+			if a == p.ProviderApp {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("providerApp %q is not a known sibling app S3 provider", p.ProviderApp)
+		}
+	case config.S3ProviderSourceCustom:
+		if p.AccessKey == "" {
+			return fmt.Errorf("accesskey is required for custom mode")
+		}
+		if p.SecretKey == "" {
+			return fmt.Errorf("secretkey is required for custom mode")
+		}
+		if _, err := url.ParseRequestURI(p.Endpoint); err != nil {
+			return fmt.Errorf("endpoint is not a valid URL: %v", err)
+		}
+	}
+	return nil
+}
+
+// handlerMuxClusterS3ProvidersGet lists all S3 providers for a cluster with secrets masked.
+func (repman *ReplicationManager) handlerMuxClusterS3ProvidersGet(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	providers := mycluster.GetS3ProvidersSnapshot()
+	resp := make([]s3ProviderResponse, len(providers))
+	for i, p := range providers {
+		resp[i] = maskS3Provider(p)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	if err := e.Encode(resp); err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handlerMuxClusterS3ProviderAdd validates and adds a new S3 provider to the cluster library.
+func (repman *ReplicationManager) handlerMuxClusterS3ProviderAdd(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	var req s3ProviderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+	p := config.S3Provider{
+		Name:           req.Name,
+		ProviderSource: req.ProviderSource,
+		ProviderApp:    req.ProviderApp,
+		Endpoint:       req.Endpoint,
+		Region:         req.Region,
+		AccessKey:      req.AccessKey,
+		SecretKey:      req.SecretKey,
+	}
+	if err := p.Validate(); err != nil {
+		http.Error(w, fmt.Sprintf("Validation error: %v", err), http.StatusBadRequest)
+		return
+	}
+	if err := validateS3ProviderAPIRequest(p, mycluster); err != nil {
+		http.Error(w, fmt.Sprintf("Validation error: %v", err), http.StatusBadRequest)
+		return
+	}
+	if err := mycluster.AddS3Provider(p); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to add S3 provider: %v", err), http.StatusConflict)
+		return
+	}
+	if err := mycluster.SaveS3Providers(); err != nil {
+		// Rollback the in-memory add so state does not diverge from disk.
+		if rbErr := mycluster.RemoveS3Provider(p.Name); rbErr != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Rollback of in-memory add failed for %q: %v", p.Name, rbErr)
+		}
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Failed to persist S3 providers after add of %q: %v", p.Name, err)
+		http.Error(w, fmt.Sprintf("Failed to persist S3 provider: %v", err), http.StatusInternalServerError)
+		return
+	}
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"S3 provider %q added to cluster library", p.Name)
+	w.WriteHeader(http.StatusCreated)
+}
+
+// prepareModifyProvider builds a fully-validated S3Provider for the modify path.
+// It looks up the existing provider so it can (a) preserve blank credentials
+// ("no change" convention from the UI edit form) and (b) return the old state
+// for rollback on save failure. Validation runs after the credential merge so
+// that a blank AccessKey/SecretKey does not trigger "required" errors.
+// Returns the merged+validated provider, the pre-modification snapshot (may be
+// nil when the provider is not found), and any validation error.
+func prepareModifyProvider(req s3ProviderRequest, mycluster *cluster.Cluster) (config.S3Provider, *config.S3Provider, error) {
+	p := config.S3Provider{
+		Name:           req.Name,
+		ProviderSource: req.ProviderSource,
+		ProviderApp:    req.ProviderApp,
+		Endpoint:       req.Endpoint,
+		Region:         req.Region,
+		AccessKey:      req.AccessKey,
+		SecretKey:      req.SecretKey,
+	}
+
+	// Capture old state and merge blank credentials before validation.
+	var oldProvider *config.S3Provider
+	for _, sp := range mycluster.GetS3ProvidersSnapshot() {
+		if sp.Name == p.Name {
+			cp := sp
+			oldProvider = &cp
+			break
+		}
+	}
+	if oldProvider != nil {
+		if p.AccessKey == "" {
+			p.AccessKey = oldProvider.AccessKey
+		}
+		if p.SecretKey == "" {
+			p.SecretKey = oldProvider.SecretKey
+		}
+	}
+
+	if err := p.Validate(); err != nil {
+		return config.S3Provider{}, oldProvider, err
+	}
+	if err := validateS3ProviderAPIRequest(p, mycluster); err != nil {
+		return config.S3Provider{}, oldProvider, err
+	}
+	return p, oldProvider, nil
+}
+
+// handlerMuxClusterS3ProviderModify validates and updates an existing S3 provider.
+// The provider name is taken from the URL path; any name in the request body is ignored.
+func (repman *ReplicationManager) handlerMuxClusterS3ProviderModify(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	var req s3ProviderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+	// URL path name is authoritative to prevent accidental rename.
+	req.Name = vars["name"]
+	p, oldProvider, err := prepareModifyProvider(req, mycluster)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Validation error: %v", err), http.StatusBadRequest)
+		return
+	}
+	if err := mycluster.UpdateS3Provider(p); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to update S3 provider: %v", err), http.StatusNotFound)
+		return
+	}
+	if err := mycluster.SaveS3Providers(); err != nil {
+		// Rollback the in-memory update so state does not diverge from disk.
+		if oldProvider != nil {
+			if rbErr := mycluster.UpdateS3Provider(*oldProvider); rbErr != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+					"Rollback of in-memory modify failed for %q: %v", p.Name, rbErr)
+			}
+		}
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Failed to persist S3 providers after modify of %q: %v", p.Name, err)
+		http.Error(w, fmt.Sprintf("Failed to persist S3 provider: %v", err), http.StatusInternalServerError)
+		return
+	}
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"S3 provider %q modified in cluster library", p.Name)
+	w.WriteHeader(http.StatusOK)
+}
+
+// handlerMuxClusterS3ProviderDrop removes an S3 provider from the cluster library.
+func (repman *ReplicationManager) handlerMuxClusterS3ProviderDrop(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	name := vars["name"]
+	// Capture old state before removal so we can roll back if save fails.
+	var oldProvider *config.S3Provider
+	for _, sp := range mycluster.GetS3ProvidersSnapshot() {
+		if sp.Name == name {
+			cp := sp
+			oldProvider = &cp
+			break
+		}
+	}
+	if err := mycluster.RemoveS3Provider(name); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to remove S3 provider: %v", err), http.StatusNotFound)
+		return
+	}
+	if err := mycluster.SaveS3Providers(); err != nil {
+		// Rollback the in-memory removal so state does not diverge from disk.
+		if oldProvider != nil {
+			if rbErr := mycluster.AddS3Provider(*oldProvider); rbErr != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+					"Rollback of in-memory drop failed for %q: %v", name, rbErr)
+			}
+		}
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Failed to persist S3 providers after drop of %q: %v", name, err)
+		http.Error(w, fmt.Sprintf("Failed to persist S3 provider: %v", err), http.StatusInternalServerError)
+		return
+	}
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"S3 provider %q dropped from cluster library", name)
+	w.WriteHeader(http.StatusOK)
 }

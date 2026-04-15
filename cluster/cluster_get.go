@@ -1772,6 +1772,13 @@ func (cluster *Cluster) GetCompactJson() ([]byte, error) {
 		}
 	}
 
+	// Overwrite clusterS3Providers with a safe snapshot acquired under the mutex
+	// to prevent races with concurrent CRUD mutations.
+	s3snap := cluster.GetS3ProvidersSnapshot()
+	if s3JSON, merr := json.Marshal(s3snap); merr == nil {
+		result, _ = sjson.SetRawBytes(result, "clusterS3Providers", s3JSON)
+	}
+
 	return result, nil
 }
 

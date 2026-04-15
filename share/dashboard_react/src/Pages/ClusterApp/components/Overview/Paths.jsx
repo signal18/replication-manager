@@ -660,7 +660,7 @@ const PathNewForm = React.memo(({ clusterName, appId, parentRow, gitOptions, vol
             <Flex direction="column" flex="1">
               <Text mb={1}>Storage Path:</Text>
                 <InputGroup>
-                <Input key={`${srctype}-${srcname}`} name={`newpath.subpath`} placeholder="Storage Path (\"/\" for root)" value={subpath} onChange={(e) => handleArrayChange("subpath", e.target.value)} />
+                <Input key={`${srctype}-${srcname}`} name={`newpath.subpath`} placeholder={'Storage Path ("/" for root)'} value={subpath} onChange={(e) => handleArrayChange("subpath", e.target.value)} />
                 {srctype === "git" && (<RMIconButton icon={HiFolder} aria-label="Browse Path" onClick={handleBrowseSource} />)}
               </InputGroup>
               <Text mt={1} fontSize="sm" color="gray.500">Use "/" to map the source root.</Text>

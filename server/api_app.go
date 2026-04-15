@@ -1684,6 +1684,12 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					s3Mount.VolumeName = newValue
 
 					deployment.ResolveS3MountPaths(s3Mount.Name)
+				case "region":
+					s3Mount.Region = newValue
+
+				case "providername":
+					s3Mount.ProviderName = newValue
+
 				case "volumedir":
 					if s3Mount.VolumeDir == newValue {
 						http.Error(w, "VolumeDir is the same as the current volume dir", http.StatusInternalServerError)

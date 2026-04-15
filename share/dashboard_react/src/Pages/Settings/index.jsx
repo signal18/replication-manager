@@ -15,6 +15,7 @@ import RepConfigSettings from './RepConfigSettings'
 import AlertSettings from './AlertSettings'
 import BackupSettings from './BackupSettings'
 import SchedulerSettings from './SchedulerSettings'
+import S3ProvidersSettings from './S3ProvidersSettings'
 
 function Settings({ selectedCluster, user, onTabChange, monitor }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -57,6 +58,9 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   const { isOpen: isCloud18Open, onToggle: onCloud18Toggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isCloud18Open')) || false
   })
+  const { isOpen: isS3ProvidersOpen, onToggle: onS3ProvidersToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isS3ProvidersOpen')) || false
+  })
 
   useEffect(() => {
     localStorage.setItem('isBackupOpen', JSON.stringify(isBackupOpen))
@@ -97,6 +101,9 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   useEffect(() => {
     localStorage.setItem('isCloud18Open', JSON.stringify(isCloud18Open))
   }, [isCloud18Open])
+  useEffect(() => {
+    localStorage.setItem('isS3ProvidersOpen', JSON.stringify(isS3ProvidersOpen))
+  }, [isS3ProvidersOpen])
 
 
   const openConfirmModal = (title, handler) => {
@@ -206,6 +213,14 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<BackupSettings selectedCluster={selectedCluster} user={user} />}
+      />
+      <AccordionComponent
+        heading={'S3 Providers'}
+        onToggle={onS3ProvidersToggle}
+        isOpen={isS3ProvidersOpen}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        body={<S3ProvidersSettings selectedCluster={selectedCluster} user={user} />}
       />
 
       {isConfirmModalOpen && (

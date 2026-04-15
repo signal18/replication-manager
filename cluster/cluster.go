@@ -156,6 +156,10 @@ type Cluster struct {
 	DiskType                      map[string]string          `json:"diskType" groups:"web"`
 	VMType                        map[string]bool            `json:"vmType" groups:"web"`
 	AppS3Providers                []string                   `json:"appS3Providers" groups:"web"`
+	// ClusterS3Providers is excluded from automatic JSON marshal (json:"-") to
+	// prevent data races with concurrent CRUD mutations. API response paths must
+	// inject a safe snapshot via GetS3ProvidersSnapshot() + sjson.
+	ClusterS3Providers            []config.S3Provider        `json:"-"`
 	Agents                        []Agent                    `json:"agents" groups:"web"`
 	AgentMaxFreq                  map[string]int64           `json:"-"`
 	hostList                      []string                   `json:"-"`
@@ -267,6 +271,7 @@ type Cluster struct {
 	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}
 	preservedVarsLoaded         bool                       `json:"-"`
 	preservedVarsMutex          sync.RWMutex               `json:"-"`
+	clusterS3ProvidersMu        sync.RWMutex               `json:"-"`
 	secretVersionStoreMu        sync.Mutex                 `json:"-"`
 	secretVersionStoreDirty     bool                       `json:"-"`
 	// pluginSpikeCache holds the last DetectSpike result per server+plugin pair.
@@ -470,6 +475,7 @@ func (cluster *Cluster) InitFromConf() {
 		os.MkdirAll(cluster.WorkingDir, os.ModePerm)
 	}
 	cluster.initSnapshotMetadataPersistence()
+	cluster.LoadS3Providers()
 
 	cluster.SetClusterCredentialsFromConfig()
 	cluster.LoadAPIUsers()

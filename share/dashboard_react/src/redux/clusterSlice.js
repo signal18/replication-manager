@@ -2244,6 +2244,58 @@ export const monitorAllSchemas = createGuardedAsyncThunk(
   }
 )
 
+// S3 provider CRUD thunks
+export const addS3Provider = createGuardedAsyncThunk(
+  'cluster/addS3Provider',
+  async ({ clusterName, payload }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.addS3Provider(clusterName, payload, baseURL)
+      if (status !== 200 && status !== 201) {
+        throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+      }
+      thunkAPI.dispatch(getClusterData({ clusterName }))
+      return { data, status }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const modifyS3Provider = createGuardedAsyncThunk(
+  'cluster/modifyS3Provider',
+  async ({ clusterName, name, payload }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.modifyS3Provider(clusterName, name, payload, baseURL)
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+      }
+      thunkAPI.dispatch(getClusterData({ clusterName }))
+      return { data, status }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const dropS3Provider = createGuardedAsyncThunk(
+  'cluster/dropS3Provider',
+  async ({ clusterName, name }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.dropS3Provider(clusterName, name, baseURL)
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+      }
+      thunkAPI.dispatch(getClusterData({ clusterName }))
+      return { data, status }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 const initialState = {
   loading: false,
   pendingThunks: {},
@@ -2662,6 +2714,10 @@ export const clusterSlice = createSlice({
 })
 
 export const { setRefreshInterval, setCluster, clearCluster, pauseAutoReload } = clusterSlice.actions
+
+// Selector for cluster-level saved S3 providers (credentials already masked by backend).
+// Returns an empty array when cluster data is not yet loaded.
+export const selectClusterS3Providers = (state) => state.cluster?.clusterData?.clusterS3Providers ?? []
 
 // this is for configureStore
 export default clusterSlice.reducer

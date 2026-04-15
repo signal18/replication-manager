@@ -819,15 +819,16 @@ type S3Node interface {
 }
 
 type S3Mount struct {
-	Name       string `mapstructure:"name" toml:"name" json:"name"`
-	Endpoint   string `mapstructure:"endpoint" toml:"endpoint" json:"endpoint" groups:"apps"`
-	Bucket     string `mapstructure:"bucket" toml:"bucket" json:"bucket" groups:"apps"`
-	Region     string `mapstructure:"region" toml:"region" json:"region" groups:"apps"`
-	AccessKey  string `mapstructure:"accesskey" toml:"accesskey" json:"accesskey" groups:"apps"`
-	SecretKey  string `mapstructure:"secretkey" toml:"secretkey" json:"secretkey" groups:"apps"`
-	MountDir   string `mapstructure:"mountdir" toml:"mountdir" json:"mountdir" groups:"apps"`
-	VolumeName string `mapstructure:"volumename" toml:"volumename" json:"volumename" groups:"apps"`
-	VolumeDir  string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" groups:"apps"`
+	Name         string `mapstructure:"name" toml:"name" json:"name"`
+	Endpoint     string `mapstructure:"endpoint" toml:"endpoint" json:"endpoint" groups:"apps"`
+	Bucket       string `mapstructure:"bucket" toml:"bucket" json:"bucket" groups:"apps"`
+	Region       string `mapstructure:"region" toml:"region" json:"region" groups:"apps"`
+	AccessKey    string `mapstructure:"accesskey" toml:"accesskey" json:"accesskey" groups:"apps"`
+	SecretKey    string `mapstructure:"secretkey" toml:"secretkey" json:"secretkey" groups:"apps"`
+	MountDir     string `mapstructure:"mountdir" toml:"mountdir" json:"mountdir" groups:"apps"`
+	VolumeName   string `mapstructure:"volumename" toml:"volumename" json:"volumename" groups:"apps"`
+	VolumeDir    string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" groups:"apps"`
+	ProviderName string `mapstructure:"providername" toml:"providername" json:"providerName,omitempty" groups:"apps"`
 
 	Node   S3Node  `mapstructure:"-" toml:"-" json:"-"`
 	Volume *Volume `mapstructure:"-" toml:"-" json:"-"`
