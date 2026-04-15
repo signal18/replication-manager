@@ -26,23 +26,26 @@ export default defineConfig({
       scss: {
         silenceDeprecations: ["import", "legacy-js-api", "global-builtin"],
         additionalData: `@import '/src/styles/_mixins.scss';
-         @import '/src/styles/_variables.scss';
-         @import '/src/styles/_lighttheme.scss'; 
-         @import '/src/styles/_darktheme.scss';
-         @import '/src/styles/_global.scss';`
+         @import '/src/styles/_variables.scss';`
       }
     }
   },
   build: {
+    chunkSizeWarningLimit: 800,
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            let prefix = 'js'
-            if (id.endsWith("css")){
-              prefix = 'css'
-            }
-            return prefix+'/'+id.toString().split('node_modules/')[1].split('/')[0].toString();
+            const prefix = id.endsWith('css') ? 'css' : 'js'
+            const pkgPath = id.toString().split('node_modules/')[1]
+            if (!pkgPath) return
+
+            const parts = pkgPath.split('/')
+            const packageName = parts[0].startsWith('@') && parts.length > 1
+              ? `${parts[0]}/${parts[1]}`
+              : parts[0]
+
+            return `${prefix}/${packageName}`
           }
         } 
       }

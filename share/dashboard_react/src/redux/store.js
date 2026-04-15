@@ -7,13 +7,13 @@ import configReducer from '../redux/configSlice'
 import commonReducer from '../redux/commonSlice'
 import toastReducer from '../redux/toastSlice'
 import meetReducer from '../redux/meetSlice'
-import logger from 'redux-logger'
+import { createLogger } from 'redux-logger'
 import pathReducer from './pathSlice'
 
 const middleware = []
 
-if (process.env.NODE_ENV === 'development') {
-  middleware.push(logger)
+if (import.meta.env.DEV) {
+  middleware.push(createLogger())
 }
 
 export default configureStore({

@@ -38,3 +38,4 @@ _bmad
 _bmad-output
 .ignore
 node_modules
+tmp
