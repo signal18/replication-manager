@@ -256,10 +256,24 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 			}
 		}
 
-		// Only allow internal S3 mounts for now
-		s3_app, appidx := cluster.GetAppByURL(s3m.Endpoint)
-		if s3_app == nil || appidx < 0 {
-			return []byte(""), fmt.Errorf("S3 mount app %s not found in cluster %s", s3m.Endpoint, cluster.Name)
+		// Story 6.7 – compatibility fix: when s3m.Endpoint is non-empty the mount is treated as
+		// a custom-endpoint mount (credentials are already stored on the struct from the copy flow).
+		// We skip sibling-app resolution (GetAppByURL) entirely in that case.
+		// Legacy sibling-app mounts have an empty Endpoint but carry a pre-set Node; we check
+		// Node first before attempting GetAppByURL to avoid always-nil results on empty strings.
+		if s3m.Endpoint != "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg,
+				"S3 mount %s uses custom endpoint %s – skipping sibling-app resolution", s3m.Name, s3m.Endpoint)
+		} else {
+			// Legacy sibling-app mode: Endpoint is empty; Node must be pre-set or resolvable.
+			// Mirror the Node-first pattern used in OpenSVCCreateAppVariableMaps.
+			if s3m.Node == nil {
+				s3_app, appidx := cluster.GetAppByURL(s3m.Endpoint)
+				if s3_app == nil || appidx < 0 {
+					return []byte(""), fmt.Errorf("S3 mount %s: sibling-app not found in cluster %s (endpoint=%q)", s3m.Name, cluster.Name, s3m.Endpoint)
+				}
+				s3m.Node = s3_app
+			}
 		}
 
 		containernum++
@@ -653,19 +667,34 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 
 	// Create the s3 mount config keys
 	for _, s3m := range app.AppConfig.Deployment.Storages.S3Mounts {
-		if s3m.Node == nil {
-			node, _ := cluster.GetAppByURL(s3m.Endpoint)
-			if node == nil {
-				return fmt.Errorf("S3 mount node %s not found in cluster %s", s3m.Endpoint, cluster.Name)
+		// Story 6.7 – compatibility fix: compute the effective endpoint once, preferring the
+		// mount's own Endpoint field (custom-endpoint / copied-mount flow) over Node resolution
+		// (sibling-app / legacy flow). This ensures custom-endpoint mounts are not broken by
+		// GetAppByURL returning nil and that the endpoint env var is never overridden by a
+		// sibling app's network address when the mount carries its own effective value.
+		var effectiveEndpoint string
+		if s3m.Endpoint != "" {
+			effectiveEndpoint = s3m.Endpoint
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg,
+				"S3 mount %s using custom endpoint %s for provisioning", s3m.Name, effectiveEndpoint)
+		} else {
+			// Legacy sibling-app mode: Endpoint is empty, resolve Node via GetAppByURL.
+			if s3m.Node == nil {
+				node, _ := cluster.GetAppByURL(s3m.Endpoint)
+				if node == nil {
+					return fmt.Errorf("S3 mount node %s not found in cluster %s", s3m.Endpoint, cluster.Name)
+				}
+				s3m.Node = node
 			}
-			s3m.Node = node
+			effectiveEndpoint = "http://" + s3m.Node.GetS3Endpoint()
 		}
+
 		prefix := s3m.GetVariablePrefix()
 		envs := s3m.GetEnvVariables()
 		for k, val := range envs {
 			vName := prefix + k
 			if k == config.S3VarSuffixEndpoint {
-				val = "http://" + s3m.Node.GetS3Endpoint()
+				val = effectiveEndpoint
 			} else if k == config.S3VarSuffixMountDir {
 				// If the mount directory is not set, we use the default mount directory
 				if val == "" {

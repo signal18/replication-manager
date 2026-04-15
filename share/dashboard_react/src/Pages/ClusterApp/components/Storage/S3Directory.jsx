@@ -136,8 +136,8 @@ const S3DirectoryRowForm = React.memo(({ fieldName, s3ProvOptions, clusterS3Prov
     );
 
     const selectedProviderMissing = useMemo(
-      () => !!s3.providerName && !savedProviderOptions.some((opt) => opt.value === s3.providerName),
-      [s3.providerName, savedProviderOptions]
+      () => !!s3.providerName && !(clusterS3Providers || []).some((p) => p.name === s3.providerName),
+      [s3.providerName, clusterS3Providers]
     );
 
     const onRowArrayChange = (fieldName, index, key, value) => {
@@ -246,8 +246,8 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers 
     );
 
     const selectedProviderMissing = useMemo(
-      () => !!s3.providerName && !savedProviderOptions.some((opt) => opt.value === s3.providerName),
-      [s3.providerName, savedProviderOptions]
+      () => !!s3.providerName && !(clusterS3Providers || []).some((p) => p.name === s3.providerName),
+      [s3.providerName, clusterS3Providers]
     );
 
     const handleArrayChange = (key, value) => {

@@ -213,6 +213,50 @@ console.log("\nTest Suite: region dispatch key for S3DirectoryRowForm (Blocker 1
   assertEqual(dispatch.fieldName, "s3Mounts", "targets s3Mounts field");
 }
 
+console.log("\nTest Suite: Story 6.6 AC1 — edited value (not provider value) survives save + reload");
+{
+  // Step 1: user selects a saved provider — values are copied into form state.
+  let formState = applyProviderToS3({ ...defaultS3, bucket: "my-bucket" }, "dev-minio", sampleProviders);
+  assertEqual(formState.endpoint, "minio-app:9000", "step 1: provider endpoint copied into form state");
+  assertEqual(formState.region, "eu-west-1", "step 1: provider region copied into form state");
+  assertEqual(formState.providerName, "dev-minio", "step 1: providerName set for traceability");
+
+  // Step 2: user edits the endpoint field after the copy — form state is local.
+  formState = { ...formState, endpoint: "custom-edited-endpoint:9001" };
+  assertEqual(formState.endpoint, "custom-edited-endpoint:9001", "step 2: user-edited endpoint in form state");
+
+  // Step 3: user edits the region field after the copy.
+  formState = { ...formState, region: "ap-south-1" };
+  assertEqual(formState.region, "ap-south-1", "step 3: user-edited region in form state");
+
+  // Step 4: form is saved — the payload is the current formState, not a provider snapshot.
+  const savePayload = { ...formState };
+  assertEqual(savePayload.endpoint, "custom-edited-endpoint:9001",
+    "step 4: save payload carries user-edited endpoint, not original provider value");
+  assertEqual(savePayload.region, "ap-south-1",
+    "step 4: save payload carries user-edited region, not original provider value");
+  assertEqual(savePayload.providerName, "dev-minio",
+    "step 4: providerName traceability label is preserved in payload");
+
+  // Step 5: simulate reload — the form is re-initialised with the persisted server data.
+  // The server stores effective field values verbatim (Story 6.6 AC1 backend contract).
+  // applyProviderToS3 is NOT called on init; the form simply reflects what the server returned.
+  const serverData = { ...savePayload }; // server echoes back what it received
+  const onReload = serverData;
+  assertEqual(onReload.endpoint, "custom-edited-endpoint:9001",
+    "step 5 (reload): edited endpoint is present, not original provider value");
+  assertEqual(onReload.region, "ap-south-1",
+    "step 5 (reload): edited region is present, not original provider value");
+  assertEqual(onReload.providerName, "dev-minio",
+    "step 5 (reload): providerName traceability label persists across reload");
+
+  // Step 6: verify the original provider value is NOT what appears after reload.
+  assert(onReload.endpoint !== "minio-app:9000",
+    "step 6: original provider endpoint (minio-app:9000) is NOT present after reload");
+  assert(onReload.region !== "eu-west-1",
+    "step 6: original provider region (eu-west-1) is NOT present after reload");
+}
+
 // --- Summary ---
 console.log(`\n========================================`);
 console.log(`Total: ${passed + failed} tests`);

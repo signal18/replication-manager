@@ -1262,35 +1262,54 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			return
 		}
 
+		// Story 6.7 – compatibility fix: allow custom-endpoint mounts to be created even when
+		// GetAppByURL returns nil (i.e., the endpoint does not resolve to a sibling app in this cluster).
+		// This path is reached by mounts that carry their own credentials (copied from a saved provider
+		// or entered manually via the frontend). We only enforce sibling-app credential derivation when
+		// the endpoint *does* resolve to an app. When it doesn't but is non-empty, treat it as custom.
 		s3node, _ := mycluster.GetAppByURL(row.Endpoint)
-		if s3node == nil {
+		if s3node == nil && row.Endpoint != "" {
+			// Custom-endpoint mount: row.Endpoint is set but no sibling app found.
+			// row.AccessKey / row.SecretKey must already be populated (copied from saved provider or manual entry).
+			// Proceed to InsertS3Mount without credential derivation. row.ProviderName may be set for traceability.
+		} else if s3node == nil {
+			// Endpoint is empty and no sibling app found – require a valid app endpoint.
 			http.Error(w, "S3 endpoint app not found: "+row.Endpoint, http.StatusInternalServerError)
 			return
 		}
 
 		if row.Name == "" && row.Bucket != "" && row.Endpoint != "" {
-			// Generate a unique name for the S3 mount if not provided
-			row.Name = fmt.Sprintf("s3-%s-%s", s3node.Name, row.Bucket)
+			// Generate a unique name for the S3 mount if not provided.
+			// For sibling-app mounts s3node carries the app name; for custom-endpoint
+			// mounts s3node is nil so we derive the name from the bucket alone.
+			if s3node != nil {
+				row.Name = fmt.Sprintf("s3-%s-%s", s3node.Name, row.Bucket)
+			} else {
+				row.Name = fmt.Sprintf("s3-custom-%s", row.Bucket)
+			}
 		}
 
-		acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
-		if err != nil || acckey == nil {
-			http.Error(w, "S3 endpoint app does not have MINIO_ROOT_USER variable set", http.StatusInternalServerError)
-			return
-		}
-		row.AccessKey = acckey.Value
+		if s3node != nil {
+			// Derive credentials from sibling app only when endpoint resolved to an app.
+			acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
+			if err != nil || acckey == nil {
+				http.Error(w, "S3 endpoint app does not have MINIO_ROOT_USER variable set", http.StatusInternalServerError)
+				return
+			}
+			row.AccessKey = acckey.Value
 
-		secretkey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_PASSWORD", false)
-		if err != nil || secretkey == nil {
-			http.Error(w, "S3 endpoint app does not have MINIO_ROOT_PASSWORD variable set", http.StatusInternalServerError)
-			return
-		}
+			secretkey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_PASSWORD", false)
+			if err != nil || secretkey == nil {
+				http.Error(w, "S3 endpoint app does not have MINIO_ROOT_PASSWORD variable set", http.StatusInternalServerError)
+				return
+			}
 
-		row.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(row.Name, secretkey.Value))
+			row.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(row.Name, secretkey.Value))
 
-		region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
-		if region != nil {
-			row.Region = region.Value
+			region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
+			if region != nil {
+				row.Region = region.Value
+			}
 		}
 
 		if row.VolumeName == "" {
@@ -1621,33 +1640,36 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						return
 					}
 
+					// Story 6.7 – compatibility fix: when the new endpoint does not resolve to a sibling app
+					// (custom-endpoint mount), skip credential derivation and preserve the existing
+					// AccessKey/SecretKey on the mount. The mount's own Endpoint field carries the
+					// effective value for provisioning.
 					s3node, _ := mycluster.GetAppByURL(newValue)
-					if s3node == nil {
-						http.Error(w, "S3 endpoint app not found: "+newValue, http.StatusInternalServerError)
-						return
-					}
+					if s3node != nil {
+						// Sibling-app endpoint: derive credentials from the app's variables.
+						acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
+						if err != nil || acckey == nil {
+							http.Error(w, "S3 endpoint app does not have MINIO_ROOT_USER variable set", http.StatusInternalServerError)
+							return
+						}
 
-					acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
-					if err != nil || acckey == nil {
-						http.Error(w, "S3 endpoint app does not have MINIO_ROOT_USER variable set", http.StatusInternalServerError)
-						return
-					}
+						secretkey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_PASSWORD", false)
+						if err != nil || secretkey == nil {
+							http.Error(w, "S3 endpoint app does not have MINIO_ROOT_PASSWORD variable set", http.StatusInternalServerError)
+							return
+						}
 
-					secretkey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_PASSWORD", false)
-					if err != nil || secretkey == nil {
-						http.Error(w, "S3 endpoint app does not have MINIO_ROOT_PASSWORD variable set", http.StatusInternalServerError)
-						return
-					}
+						s3Mount.AccessKey = acckey.Value
+						s3Mount.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(s3Mount.Name, secretkey.Value))
 
-					s3Mount.AccessKey = acckey.Value
-					s3Mount.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(s3Mount.Name, secretkey.Value))
-
-					region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
-					if region != nil {
-						s3Mount.Region = region.Value
-					} else {
-						s3Mount.Region = ""
+						region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
+						if region != nil {
+							s3Mount.Region = region.Value
+						} else {
+							s3Mount.Region = ""
+						}
 					}
+					// When s3node is nil (custom endpoint): keep existing s3Mount.AccessKey/SecretKey.
 
 					s3Mount.Endpoint = newValue
 
