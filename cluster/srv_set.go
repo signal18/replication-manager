@@ -39,7 +39,10 @@ func (server *ServerMonitor) SetPlacement(k int, ProvAgents string, SlapOSDBPart
 	}
 	server.SSTPort = sstports[k%len(sstports)]
 
-	server.GetWorkingOrchestratorNode()
+	if err := server.GetWorkingOrchestratorNode(); err != nil {
+		cluster := server.GetCluster()
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not resolve working orchestrator node for %s: %s", server.URL, err)
+	}
 }
 
 func (server *ServerMonitor) SetSourceClusterName(name string) {

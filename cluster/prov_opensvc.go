@@ -9,7 +9,6 @@ package cluster
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"time"
 
@@ -32,6 +31,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 		err := svc.LoadCert(cluster.Conf.ProvOpensvcP12Certificate)
 		if err != nil {
 			cluster.failLoadP12Cert = true
+			cluster.SetState("WARN0099", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0099"], cluster.Conf.ProvOpensvcP12Certificate, err), ErrFrom: "OpenSVC"})
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot load OpenSVC cluster certificate %s ", err)
 		} else {
 			cluster.failLoadP12Cert = false
@@ -79,19 +79,21 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ContextTimeoutSecond = 10
 	svc.EventTimeoutSecond = cluster.Conf.ProvEventTimeout
 
-	if cluster.OrchestratorVersion == "v3" {
+	if cluster.GetOrchestratorVersion() == "v3" {
 		// Set collector to v3 if already detected
 		svc.SetV3()
 	} else {
-		// Try to detect v3
-		err := svc.GetAuthInfoV3()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Can not connect to OpenSVC v3 API: %s ", err)
-		}
+		// Try to detect v3, throttled to avoid probing every call.
+		if cluster.ShouldProbeOrchestratorVersion(30 * time.Second) {
+			err := svc.GetAuthInfoV3()
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Can not connect to OpenSVC v3 API: %s ", err)
+			}
 
-		// Set OrchestratorVersion if v3 detected
-		if svc.IsV3() {
-			cluster.OrchestratorVersion = "v3"
+			// Set OrchestratorVersion if v3 detected
+			if svc.IsV3() {
+				cluster.SetOrchestratorVersion("v3")
+			}
 		}
 	}
 
@@ -156,9 +158,16 @@ func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 	}
 
 	svc := cluster.OpenSVCConnect()
+	var allErr error
+
 	err := svc.CreateSecret(cluster.Name, "env", agent)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create secret: %s ", err)
+		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && cluster.Conf.ProvObjectAllowOverwrite {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Secret object exists. Reuse secret env on cluster to avoid truncation of keys")
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create secret: %s ", err)
+			allErr = errors.Join(allErr, fmt.Errorf("create secret env: %w", err))
+		}
 	}
 
 	errs := make(map[string]error)
@@ -177,11 +186,19 @@ func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 
 	if len(errs) > 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %v", errs)
+		for key, e := range errs {
+			allErr = errors.Join(allErr, fmt.Errorf("set secret key %s: %w", key, e))
+		}
 	}
 
 	err = svc.CreateConfig(cluster.Name, "env", agent)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create config: %s ", err)
+		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && cluster.Conf.ProvObjectAllowOverwrite {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Config object exists. Reuse config env on cluster to avoid truncation of keys")
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create config: %s ", err)
+			allErr = errors.Join(allErr, fmt.Errorf("create config env: %w", err))
+		}
 	}
 
 	errs = make(map[string]error)
@@ -199,6 +216,13 @@ func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 	}
 	if len(errs) > 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %v", errs)
+		for key, e := range errs {
+			allErr = errors.Join(allErr, fmt.Errorf("set config key %s: %w", key, e))
+		}
+	}
+
+	if allErr != nil {
+		return allErr
 	}
 
 	return nil
@@ -357,10 +381,6 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 		fs = fs + "[fs#01]\n"
 		fs = fs + "type = " + collector.ProvFSType + "\n"
 		if collector.ProvFSPool == "lvm" {
-			re := regexp.MustCompile("[0-9]+")
-			strlvsize := re.FindAllString(collector.ProvDisk, 1)
-			lvsize, _ := strconv.Atoi(strlvsize[0])
-			lvsize--
 			fs = fs + "dev = /dev/{namespace}-{svcname}\n"
 			fs = fs + "vg = {namespace}-{svcname}\n"
 			fs = fs + "size = 100%FREE\n"

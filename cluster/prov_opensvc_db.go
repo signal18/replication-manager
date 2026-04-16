@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -100,7 +99,10 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseV1(s *ServerMonitor, svc opensvc
 }
 
 func (cluster *Cluster) OpenSVCProvisionDatabaseV2(s *ServerMonitor, svc opensvc.Collector, agent opensvc.Host) error {
-	cluster.OpenSVCCreateMaps(s.Agent)
+	err := cluster.OpenSVCCreateMaps(s.Agent)
+	if err != nil {
+		return err
+	}
 	res, err := s.GenerateDBTemplateV2()
 	if err != nil {
 		return err
@@ -116,7 +118,10 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseV2(s *ServerMonitor, svc opensvc
 }
 
 func (cluster *Cluster) OpenSVCProvisionDatabaseV3(s *ServerMonitor, svc opensvc.Collector, agent opensvc.Host) error {
-	cluster.OpenSVCCreateMaps(s.Agent)
+	err := cluster.OpenSVCCreateMaps(s.Agent)
+	if err != nil {
+		return err
+	}
 	res, err := s.GenerateDBTemplateV3()
 	if err != nil {
 		return err
@@ -252,37 +257,37 @@ func (cluster *Cluster) OpenSVCRestartDatabaseService(server *ServerMonitor, nod
 }
 
 func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor) {
-	opensvc := cluster.OpenSVCConnect()
+	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		node, _ := cluster.OpenSVCFoundDatabaseAgent(server)
-		for _, svc := range node.Svc {
-			if cluster.Name+"/svc/"+server.Name == svc.Svc_name {
-				idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-				err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
+		for _, service := range node.Svc {
+			if cluster.Name+"/svc/"+server.Name == service.Svc_name {
+				idaction, _ := svc.UnprovisionService(node.Node_id, service.Svc_id)
+				err := cluster.OpenSVCWaitDequeue(svc, idaction)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't unprovision database %s, %s", cluster.Name+"/svc/"+server.Name, err)
 					cluster.errorChan <- err
 				}
 			}
 		}
-	} else if opensvc.IsV3() {
-		err := opensvc.PurgeServiceV3(cluster.Name, server.ServiceName)
+	} else if svc.IsV3() {
+		err := svc.PurgeServiceV3(cluster.Name, server.ServiceName)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database service:  %s ", err)
 			cluster.errorChan <- err
 		}
-		err = opensvc.PurgeServiceV3(cluster.Name, cluster.Name+"/vol/"+server.Name)
+		err = svc.PurgeServiceV3(cluster.Name, cluster.Name+"/vol/"+server.Name)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database volume:  %s ", err)
 			cluster.errorChan <- err
 		}
 	} else {
-		err := opensvc.PurgeServiceV2(cluster.Name, server.ServiceName, server.Agent)
+		err := svc.PurgeServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database service:  %s ", err)
 			cluster.errorChan <- err
 		}
-		err = opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+server.Name, server.Agent)
+		err = svc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+server.Name, server.Agent)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database volume:  %s ", err)
 			cluster.errorChan <- err
@@ -655,10 +660,6 @@ func (cluster *Cluster) OpenSVCGetFSPodSection() map[string]string {
 		}
 		svcfs["type"] = cluster.Conf.ProvDiskFS
 		if cluster.Conf.ProvDiskPool == "lvm" {
-			re := regexp.MustCompile("[0-9]+")
-			strlvsize := re.FindAllString(cluster.Conf.ProvDisk, 1)
-			lvsize, _ := strconv.Atoi(strlvsize[0])
-			lvsize--
 			svcfs["dev"] = " /dev/{namespace}-{svcname}_01"
 			svcfs["vg"] = "{namespace}-{svcname}_01"
 			svcfs["size"] = "100%FREE"

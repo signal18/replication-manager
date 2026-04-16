@@ -258,11 +258,13 @@ type Cluster struct {
 	SlavesConnected        int
 	clog                   *clog.Logger `json:"-"`
 	*ClusterGraphite
-	VersionsMap         *config.VersionsMap
-	SessionManager      *tty.SessionManager `json:"-"`
-	SysBenchTpcMResults []SysBenchTpcResultPerMinute
-	OpenSVCStats        atomic.Value `json:"-"`
-	OrchestratorVersion string       `json:"-"`
+	VersionsMap           *config.VersionsMap
+	SessionManager        *tty.SessionManager `json:"-"`
+	SysBenchTpcMResults   []SysBenchTpcResultPerMinute
+	OpenSVCStats          atomic.Value `json:"-"`
+	OrchestratorVersion   string       `json:"-"`
+	orchestratorVersionMu sync.RWMutex `json:"-"`
+	lastOrchestratorProbe time.Time    `json:"-"`
 	// Per-cluster preserved variables (replaces ProvDBConfigPreserveVars mechanism)
 	preservedVars               map[string]string          `json:"-"`
 	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}
