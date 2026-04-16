@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -194,6 +195,7 @@ type ServerMonitor struct {
 	LastTLSConfig               string                     `json:"lastTLSConfig"` //used to track last working TLS config
 	SSTPort                     string                     `json:"sstPort"`       //used to send data to dbjobs
 	Agent                       string                     `json:"agent"`         //used to provision service in orchestrator
+	WorkingAgent                string                     `json:"workingAgent"`  //used to track on which agent the server is running
 	BinaryLogFiles              *dbhelper.BinaryLogMetaMap `json:"binaryLogFiles"`
 	BinaryLogMetaToWrite        []string                   `json:"-"`
 	BinaryLogMetaToRemove       []string                   `json:"-"`
@@ -2075,4 +2077,32 @@ func (server *ServerMonitor) CpuFromStatWorkLoad(start_time time.Time) time.Time
 		server.WorkLoad.Set("current", current_workLoad)
 		return time.Now()
 	}
+}
+
+func (server *ServerMonitor) GetWorkingOrchestratorNode() error {
+	cluster := server.ClusterGroup
+	if cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
+		return nil
+	}
+
+	srvname := cluster.Name + "/svc/" + server.Name
+
+	svc := cluster.OpenSVCConnect()
+	agents, err := svc.GetServiceNodeFromState(srvname)
+	if err != nil {
+		return fmt.Errorf("unable to get database agent from OpenSVC: %v", err)
+	}
+
+	if len(agents) == 0 {
+		return fmt.Errorf("no database agents found for service %s", srvname)
+	}
+
+	if !slices.Contains(agents, server.Agent) {
+		// Fallback to the first agent in the list
+		server.WorkingAgent = agents[0]
+	} else {
+		server.WorkingAgent = server.Agent
+	}
+
+	return nil
 }

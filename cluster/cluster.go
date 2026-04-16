@@ -262,6 +262,7 @@ type Cluster struct {
 	SessionManager      *tty.SessionManager `json:"-"`
 	SysBenchTpcMResults []SysBenchTpcResultPerMinute
 	OpenSVCStats        atomic.Value `json:"-"`
+	OrchestratorVersion string       `json:"-"`
 	// Per-cluster preserved variables (replaces ProvDBConfigPreserveVars mechanism)
 	preservedVars               map[string]string          `json:"-"`
 	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}
@@ -806,6 +807,7 @@ func (cluster *Cluster) Run() {
 							cluster.JobsCheckSchedulerTable()
 							cluster.CheckGlobalDeprecatedKeys()
 							cluster.CheckClusterDeprecatedKeys()
+							cluster.CheckClusterServiceAgents()
 						} else {
 							cluster.StateMachine.PreserveState(pstates30...)
 						}

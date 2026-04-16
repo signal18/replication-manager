@@ -38,6 +38,8 @@ func (server *ServerMonitor) SetPlacement(k int, ProvAgents string, SlapOSDBPart
 		server.Agent = agents[k%len(agents)]
 	}
 	server.SSTPort = sstports[k%len(sstports)]
+
+	server.GetWorkingOrchestratorNode()
 }
 
 func (server *ServerMonitor) SetSourceClusterName(name string) {

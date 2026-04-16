@@ -439,3 +439,7 @@ func (p *Proxy) GetReadBackendDetail(srv *ServerMonitor) *Backend {
 
 	return nil
 }
+
+func (p *Proxy) GetWorkingAgent() string {
+	return p.Agent
+}
