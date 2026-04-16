@@ -33,7 +33,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
-	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dockerhelper"
@@ -5934,7 +5933,7 @@ func (repman *ReplicationManager) handlerMuxClusterPlugins(w http.ResponseWriter
 		Config  map[string]string `json:"config"`
 	}
 
-	plugins := logplugin.GlobalRegistry.All()
+	plugins := mycluster.PluginRegistry().All()
 	result := make([]PluginInfo, 0, len(plugins))
 	for _, p := range plugins {
 		var cfg map[string]string
@@ -5944,9 +5943,13 @@ func (repman *ReplicationManager) handlerMuxClusterPlugins(w http.ResponseWriter
 		if cfg == nil {
 			cfg = map[string]string{}
 		}
+		enabled := mycluster.Conf.LogPlugin
+		if v, ok := cfg["enabled"]; ok {
+			enabled = v != "false"
+		}
 		result = append(result, PluginInfo{
 			Name:    p.Name(),
-			Enabled: mycluster.Conf.LogPlugin,
+			Enabled: enabled,
 			Config:  cfg,
 		})
 	}

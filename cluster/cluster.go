@@ -315,6 +315,12 @@ type Cluster struct {
 	pluginRegistry *logplugin.Registry `json:"-"`
 }
 
+// PluginRegistry returns the per-cluster plugin registry, which contains both
+// built-in plugins and any external plugins loaded from the cluster's plugin dir.
+func (cluster *Cluster) PluginRegistry() *logplugin.Registry {
+	return cluster.pluginRegistry
+}
+
 type SlavesOldestMasterFile struct {
 	Prefix          string
 	Suffix          int
