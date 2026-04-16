@@ -259,12 +259,12 @@ type ServerMonitor struct {
 // One record per unique digest hash — written once, never overwritten,
 // so the file grows only when new query templates appear.
 type PFSExplainRecord struct {
-	CapturedAt  string               `json:"capturedAt"`  // RFC3339 timestamp of first EXPLAIN
-	Digest      string               `json:"digest"`      // PFS digest hash
-	DigestText  string               `json:"digestText"`  // normalised template  e.g. SELECT * FROM t WHERE id = ?
-	SampleQuery string               `json:"sampleQuery"` // concrete SQL instance used for EXPLAIN
-	SchemaName  string               `json:"schemaName"`
-	Plan        []dbhelper.Explain   `json:"plan"`        // rows returned by EXPLAIN
+	CapturedAt  string             `json:"capturedAt"`  // RFC3339 timestamp of first EXPLAIN
+	Digest      string             `json:"digest"`      // PFS digest hash
+	DigestText  string             `json:"digestText"`  // normalised template  e.g. SELECT * FROM t WHERE id = ?
+	SampleQuery string             `json:"sampleQuery"` // concrete SQL instance used for EXPLAIN
+	SchemaName  string             `json:"schemaName"`
+	Plan        []dbhelper.Explain `json:"plan"` // rows returned by EXPLAIN
 }
 
 type ServerBackupMeta struct {
@@ -2099,12 +2099,12 @@ func (server *ServerMonitor) GetWorkingOrchestratorNode() error {
 	}
 
 	server.workingAgentMu.Lock()
+	defer server.workingAgentMu.Unlock()
 	if !slices.Contains(agents, server.Agent) {
 		server.WorkingAgent = agents[0]
 	} else {
 		server.WorkingAgent = server.Agent
 	}
-	server.workingAgentMu.Unlock()
 
 	return nil
 }
