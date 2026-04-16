@@ -6,10 +6,10 @@
 //
 // Requires the MariaDB METADATA_LOCK_INFO plugin to be installed.
 //
-// Config (environment variables):
+// Config (TOML plugin-config or scoped env vars as fallback):
 //
-//	REPMAN_LOCK_WAIT_MS_THRESHOLD int  default: 5000  — 5 seconds
-//	REPMAN_LOCK_COUNT_THRESHOLD   int  default: 3
+//	lock-wait-ms-threshold  int  default: 5000  — single wait duration in ms to trigger  (env: REPMAN_METADATA_LOCK_CONTENTION_LOCK_WAIT_MS_THRESHOLD)
+//	lock-count-threshold    int  default: 3     — concurrent MDL waits to trigger         (env: REPMAN_METADATA_LOCK_CONTENTION_LOCK_COUNT_THRESHOLD)
 package main
 
 import (
@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/signal18/replication-manager/cluster/logplugin/plugins/wire"
@@ -30,8 +29,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	waitThresholdMs := envInt("REPMAN_LOCK_WAIT_MS_THRESHOLD", 5000)
-	countThreshold := envInt("REPMAN_LOCK_COUNT_THRESHOLD", 3)
+	waitThresholdMs := wire.CfgInt(req.Config, "lock-wait-ms-threshold", wire.EnvInt("REPMAN_METADATA_LOCK_CONTENTION_LOCK_WAIT_MS_THRESHOLD", 5000))
+	countThreshold := wire.CfgInt(req.Config, "lock-count-threshold", wire.EnvInt("REPMAN_METADATA_LOCK_CONTENTION_LOCK_COUNT_THRESHOLD", 3))
 
 	if len(req.MetaDataLocks) == 0 {
 		json.NewEncoder(os.Stdout).Encode(wire.Response{})
@@ -39,9 +38,9 @@ func main() {
 	}
 
 	type lockInfo struct {
-		table   string
-		mode    string
-		waitMs  int64
+		table  string
+		mode   string
+		waitMs int64
 	}
 
 	var longWaits []lockInfo
@@ -49,17 +48,9 @@ func main() {
 
 	for _, m := range req.MetaDataLocks {
 		table := m.Schema + "." + m.Table
-		allLocks = append(allLocks, lockInfo{
-			table:  table,
-			mode:   m.LockMode,
-			waitMs: m.LockTimeMs,
-		})
+		allLocks = append(allLocks, lockInfo{table: table, mode: m.LockMode, waitMs: m.LockTimeMs})
 		if m.LockTimeMs >= int64(waitThresholdMs) {
-			longWaits = append(longWaits, lockInfo{
-				table:  table,
-				mode:   m.LockMode,
-				waitMs: m.LockTimeMs,
-			})
+			longWaits = append(longWaits, lockInfo{table: table, mode: m.LockMode, waitMs: m.LockTimeMs})
 		}
 	}
 
@@ -95,13 +86,4 @@ func main() {
 	}
 
 	json.NewEncoder(os.Stdout).Encode(wire.Response{Findings: findings})
-}
-
-func envInt(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
-	}
-	return def
 }

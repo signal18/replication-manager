@@ -37,16 +37,14 @@ import (
 	"github.com/signal18/replication-manager/cluster/logplugin/plugins/wire"
 )
 
-// elevatedPrivPlugins are not privilege indicators but we check plugin as proxy
-// for privilege via a separate variable approach; see elevated user detection below.
-var elevatedPrivsWildcardIgnored = parseList(os.Getenv("REPMAN_WILDCARD_PRIV_IGNORED_USERS"))
-
 func main() {
 	var req wire.Request
 	if err := json.NewDecoder(os.Stdin).Decode(&req); err != nil {
 		fmt.Fprintf(os.Stderr, "decode error: %v\n", err)
 		os.Exit(1)
 	}
+
+	elevatedPrivsWildcardIgnored := parseList(wire.CfgStr(req.Config, "wildcard-priv-ignored-users", wire.EnvStr("REPMAN_SECURITY_HARDENING_WILDCARD_PRIV_IGNORED_USERS", "")))
 
 	var findings []wire.Finding
 

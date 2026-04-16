@@ -5,11 +5,11 @@
 // WARN0306 — raised when on-disk tmp table count exceeds disk-tmp-threshold
 // or when the disk-to-memory tmp table ratio exceeds ratio-threshold.
 //
-// Config (environment variables):
+// Config (TOML plugin-config or scoped env vars as fallback):
 //
-//	REPMAN_DISK_TMP_THRESHOLD int    default: 20
-//	REPMAN_RATIO_THRESHOLD    float  default: 0.20  — 20% of tmp tables go to disk
-//	REPMAN_MIN_EXEC_COUNT     int    default: 3
+//	disk-tmp-threshold  int    default: 20    — absolute on-disk tmp table count to trigger  (env: REPMAN_TMP_TABLE_STORM_DISK_TMP_THRESHOLD)
+//	ratio-threshold     float  default: 0.20  — disk/total tmp ratio to trigger              (env: REPMAN_TMP_TABLE_STORM_RATIO_THRESHOLD)
+//	min-exec-count      int    default: 3     — ignore low-frequency digests                 (env: REPMAN_TMP_TABLE_STORM_MIN_EXEC_COUNT)
 package main
 
 import (
@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/signal18/replication-manager/cluster/logplugin/plugins/wire"
@@ -30,15 +29,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	diskThreshold := envInt("REPMAN_DISK_TMP_THRESHOLD", 20)
-	ratioThreshold := envFloat("REPMAN_RATIO_THRESHOLD", 0.20)
-	minExec := envInt("REPMAN_MIN_EXEC_COUNT", 3)
+	diskThreshold := wire.CfgInt(req.Config, "disk-tmp-threshold", wire.EnvInt("REPMAN_TMP_TABLE_STORM_DISK_TMP_THRESHOLD", 20))
+	ratioThreshold := wire.CfgFloat(req.Config, "ratio-threshold", wire.EnvFloat("REPMAN_TMP_TABLE_STORM_RATIO_THRESHOLD", 0.20))
+	minExec := wire.CfgInt(req.Config, "min-exec-count", wire.EnvInt("REPMAN_TMP_TABLE_STORM_MIN_EXEC_COUNT", 3))
 
 	var totalDisk, totalMem int64
 	type offender struct {
-		digest   string
-		diskTmp  int64
-		memTmp   int64
+		digest    string
+		diskTmp   int64
+		memTmp    int64
 		execCount int64
 	}
 	var offenders []offender
@@ -97,22 +96,4 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
-}
-
-func envFloat(key string, def float64) float64 {
-	if v := os.Getenv(key); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			return f
-		}
-	}
-	return def
-}
-
-func envInt(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
-	}
-	return def
 }

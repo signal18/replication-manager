@@ -43,7 +43,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	ignored := parseList(os.Getenv("REPMAN_IGNORED_USERS"))
+	ignored := parseList(wire.CfgStr(req.Config, "ignored-users", wire.EnvStr("REPMAN_SECURITY_NO_PASSWORD_USER_IGNORED_USERS", "")))
 
 	var findings []wire.Finding
 

@@ -4,18 +4,16 @@
 //
 // WARN0308 — raised for each unauthorized privilege-changing operation found.
 //
-// Config (environment variables):
+// Config (TOML plugin-config or scoped env vars as fallback):
 //
-//	REPMAN_ALLOWED_ADMIN_USERS  string  default: "root,replication_manager"
-//	                                    — comma-separated whitelist
-//	REPMAN_TIMEFRAME_HOURS      int     default: 24
+//	allowed-admin-users  string  default: "root,replication_manager"  — comma-separated whitelist  (env: REPMAN_PRIVILEGE_ESCALATION_ALLOWED_ADMIN_USERS)
+//	timeframe-hours      int     default: 24                          — audit log window            (env: REPMAN_PRIVILEGE_ESCALATION_TIMEFRAME_HOURS)
 package main
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -34,8 +32,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	allowedRaw := envStr("REPMAN_ALLOWED_ADMIN_USERS", "root,replication_manager")
-	hours := envInt("REPMAN_TIMEFRAME_HOURS", 24)
+	allowedRaw := wire.CfgStr(req.Config, "allowed-admin-users", wire.EnvStr("REPMAN_PRIVILEGE_ESCALATION_ALLOWED_ADMIN_USERS", "root,replication_manager"))
+	hours := wire.CfgInt(req.Config, "timeframe-hours", wire.EnvInt("REPMAN_PRIVILEGE_ESCALATION_TIMEFRAME_HOURS", 24))
 	cutoff := time.Now().Add(-time.Duration(hours) * time.Hour)
 
 	allowed := make(map[string]bool)
@@ -54,7 +52,6 @@ func main() {
 				continue
 			}
 		}
-		// AuditLog .Text = "serverhost, username, host, connid, queryid, OPERATION, database, SQL,retcode"
 		parts := strings.SplitN(msg.Text, ", ", 8)
 		if len(parts) < 8 {
 			continue
@@ -107,20 +104,4 @@ func parseTS(s string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("unknown ts: %q", s)
-}
-
-func envStr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
-
-func envInt(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
-	}
-	return def
 }

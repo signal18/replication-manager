@@ -4,18 +4,17 @@
 // WARN0307 — raised when Sleep connections exceed sleep-ratio of total OR
 // when threads are seen in lock-wait states.
 //
-// Config (environment variables):
+// Config (TOML plugin-config or scoped env vars as fallback):
 //
-//	REPMAN_SLEEP_RATIO_THRESHOLD float  default: 0.60  — 60% sleeping
-//	REPMAN_LOCK_WAIT_COUNT       int    default: 3     — threads in lock-wait state
-//	REPMAN_MIN_CONNECTIONS       int    default: 10    — minimum total to trigger
+//	sleep-ratio-threshold  float  default: 0.60  — fraction of sleeping connections to trigger  (env: REPMAN_CONNECTION_STORM_SLEEP_RATIO_THRESHOLD)
+//	lock-wait-count        int    default: 3     — threads in lock-wait state to trigger        (env: REPMAN_CONNECTION_STORM_LOCK_WAIT_COUNT)
+//	min-connections        int    default: 10    — skip evaluation below this total             (env: REPMAN_CONNECTION_STORM_MIN_CONNECTIONS)
 package main
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/signal18/replication-manager/cluster/logplugin/plugins/wire"
@@ -36,9 +35,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	sleepRatio := envFloat("REPMAN_SLEEP_RATIO_THRESHOLD", 0.60)
-	lockWaitThreshold := envInt("REPMAN_LOCK_WAIT_COUNT", 3)
-	minConns := envInt("REPMAN_MIN_CONNECTIONS", 10)
+	sleepRatio := wire.CfgFloat(req.Config, "sleep-ratio-threshold", wire.EnvFloat("REPMAN_CONNECTION_STORM_SLEEP_RATIO_THRESHOLD", 0.60))
+	lockWaitThreshold := wire.CfgInt(req.Config, "lock-wait-count", wire.EnvInt("REPMAN_CONNECTION_STORM_LOCK_WAIT_COUNT", 3))
+	minConns := wire.CfgInt(req.Config, "min-connections", wire.EnvInt("REPMAN_CONNECTION_STORM_MIN_CONNECTIONS", 10))
 
 	total := len(req.ProcessList)
 	if total < minConns {
@@ -97,22 +96,4 @@ func main() {
 	}
 
 	json.NewEncoder(os.Stdout).Encode(wire.Response{Findings: findings})
-}
-
-func envFloat(key string, def float64) float64 {
-	if v := os.Getenv(key); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			return f
-		}
-	}
-	return def
-}
-
-func envInt(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
-	}
-	return def
 }

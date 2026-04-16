@@ -4479,21 +4479,32 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.LogPluginLevel = v
 	default:
 		// Check if this is a plugin-config key: "plugin-config-<pluginname>-<key>"
-		// e.g. "plugin-config-errorlog-timeframe-hours" → PluginConfig["errorlog"]["timeframe-hours"]
+		// e.g. "plugin-config-errorlog-timeframe-hours"      → PluginConfig["errorlog"]["timeframe-hours"]
+		//      "plugin-config-plugin-connection-storm-sleep-ratio-threshold"
+		//                                                     → PluginConfig["plugin-connection-storm"]["sleep-ratio-threshold"]
+		//
+		// SplitN(rest, "-", 2) is wrong for plugin names that contain hyphens (all external
+		// plugins are named "plugin-*").  Instead we match against the registered plugin names
+		// and pick the longest match so that the plugin name and config key are unambiguous.
 		if strings.HasPrefix(name, "plugin-config-") {
 			rest := strings.TrimPrefix(name, "plugin-config-")
-			// First segment is the plugin name, remainder is the config key
-			parts := strings.SplitN(rest, "-", 2)
-			if len(parts) == 2 {
-				pluginName := parts[0]
-				configKey := parts[1]
+			var matchedPlugin, matchedKey string
+			for _, p := range mycluster.PluginRegistry().All() {
+				pname := p.Name()
+				prefix := pname + "-"
+				if strings.HasPrefix(rest, prefix) && len(pname) > len(matchedPlugin) {
+					matchedPlugin = pname
+					matchedKey = strings.TrimPrefix(rest, prefix)
+				}
+			}
+			if matchedPlugin != "" && matchedKey != "" {
 				if mycluster.Conf.PluginConfig == nil {
 					mycluster.Conf.PluginConfig = make(map[string]map[string]string)
 				}
-				if mycluster.Conf.PluginConfig[pluginName] == nil {
-					mycluster.Conf.PluginConfig[pluginName] = make(map[string]string)
+				if mycluster.Conf.PluginConfig[matchedPlugin] == nil {
+					mycluster.Conf.PluginConfig[matchedPlugin] = make(map[string]string)
 				}
-				mycluster.Conf.PluginConfig[pluginName][configKey] = value
+				mycluster.Conf.PluginConfig[matchedPlugin][matchedKey] = value
 				mycluster.ConfigManager.SaveConfig(mycluster, false)
 				return nil
 			}

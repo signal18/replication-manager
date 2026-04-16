@@ -57,8 +57,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	ignored := parseList(os.Getenv("REPMAN_IGNORED_USERS"))
-	includeEmpty := envBool("REPMAN_INCLUDE_EMPTY", true)
+	ignored := parseList(wire.CfgStr(req.Config, "ignored-users", wire.EnvStr("REPMAN_SECURITY_WEAK_AUTH_IGNORED_USERS", "")))
+	includeEmpty := wire.CfgBool(req.Config, "include-empty", wire.EnvStr("REPMAN_SECURITY_WEAK_AUTH_INCLUDE_EMPTY", "true") != "false")
 
 	// Collect affected accounts so we can sort them for a stable description.
 	type weakEntry struct {
@@ -128,13 +128,3 @@ func parseList(raw string) map[string]bool {
 	return m
 }
 
-func envBool(key string, def bool) bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
-	if v == "false" || v == "0" || v == "no" {
-		return false
-	}
-	if v == "true" || v == "1" || v == "yes" {
-		return true
-	}
-	return def
-}

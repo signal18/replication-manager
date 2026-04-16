@@ -4,20 +4,19 @@
 // WARN0309 — raised when the audit log shows activity outside allowed hours
 // from accounts not in the always-allowed list.
 //
-// Config (environment variables):
+// Config (TOML plugin-config or scoped env vars as fallback):
 //
-//	REPMAN_ALLOWED_HOURS_START  int     default: 8   — 08:00 local time
-//	REPMAN_ALLOWED_HOURS_END    int     default: 20  — 20:00 local time
-//	REPMAN_ALWAYS_ALLOWED_USERS string  default: "root,replication_manager"
-//	REPMAN_ALLOWED_OPERATIONS   string  default: "QUERY,QUERY_DML,QUERY_DDL,CONNECT"
-//	REPMAN_TIMEFRAME_HOURS      int     default: 1
+//	allowed-hours-start    int     default: 8                              — business hours start (local time)  (env: REPMAN_OFF_HOURS_ACCESS_ALLOWED_HOURS_START)
+//	allowed-hours-end      int     default: 20                             — business hours end (local time)    (env: REPMAN_OFF_HOURS_ACCESS_ALLOWED_HOURS_END)
+//	always-allowed-users   string  default: "root,replication_manager"    — comma-separated exempt accounts    (env: REPMAN_OFF_HOURS_ACCESS_ALWAYS_ALLOWED_USERS)
+//	allowed-operations     string  default: "QUERY,QUERY_DML,QUERY_DDL,CONNECT" — audit op types to watch      (env: REPMAN_OFF_HOURS_ACCESS_ALLOWED_OPERATIONS)
+//	timeframe-hours        int     default: 1                              — audit log window to inspect        (env: REPMAN_OFF_HOURS_ACCESS_TIMEFRAME_HOURS)
 package main
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -31,11 +30,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	allowedStart := envInt("REPMAN_ALLOWED_HOURS_START", 8)
-	allowedEnd := envInt("REPMAN_ALLOWED_HOURS_END", 20)
-	alwaysAllowedRaw := envStr("REPMAN_ALWAYS_ALLOWED_USERS", "root,replication_manager")
-	opsRaw := envStr("REPMAN_ALLOWED_OPERATIONS", "QUERY,QUERY_DML,QUERY_DDL,CONNECT")
-	hours := envInt("REPMAN_TIMEFRAME_HOURS", 1)
+	allowedStart := wire.CfgInt(req.Config, "allowed-hours-start", wire.EnvInt("REPMAN_OFF_HOURS_ACCESS_ALLOWED_HOURS_START", 8))
+	allowedEnd := wire.CfgInt(req.Config, "allowed-hours-end", wire.EnvInt("REPMAN_OFF_HOURS_ACCESS_ALLOWED_HOURS_END", 20))
+	alwaysAllowedRaw := wire.CfgStr(req.Config, "always-allowed-users", wire.EnvStr("REPMAN_OFF_HOURS_ACCESS_ALWAYS_ALLOWED_USERS", "root,replication_manager"))
+	opsRaw := wire.CfgStr(req.Config, "allowed-operations", wire.EnvStr("REPMAN_OFF_HOURS_ACCESS_ALLOWED_OPERATIONS", "QUERY,QUERY_DML,QUERY_DDL,CONNECT"))
+	hours := wire.CfgInt(req.Config, "timeframe-hours", wire.EnvInt("REPMAN_OFF_HOURS_ACCESS_TIMEFRAME_HOURS", 1))
 	cutoff := time.Now().Add(-time.Duration(hours) * time.Hour)
 
 	alwaysAllowed := make(map[string]bool)
@@ -82,9 +81,7 @@ func main() {
 		}
 
 		h := ts.Hour()
-		isOffHours := h < allowedStart || h >= allowedEnd
-
-		if isOffHours {
+		if h < allowedStart || h >= allowedEnd {
 			violations = append(violations, violation{
 				user:      parts[1],
 				operation: operation,
@@ -100,7 +97,6 @@ func main() {
 
 	var findings []wire.Finding
 	if len(violations) > 0 {
-		// Group by user
 		byUser := make(map[string]int)
 		for _, v := range violations {
 			byUser[v.user]++
@@ -129,20 +125,4 @@ func parseTS(s string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("unknown ts: %q", s)
-}
-
-func envStr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
-
-func envInt(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
-	}
-	return def
 }

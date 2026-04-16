@@ -10,10 +10,10 @@
 //
 // WARN0311 — raised for each binlog event that contains at least one valid PAN.
 //
-// Config (TOML plugin-config or environment variables):
+// Config (TOML plugin-config or scoped env vars as fallback):
 //
-//	REPMAN_TIMEFRAME_HOURS   int     default: 1   — only inspect events within this window
-//	REPMAN_MAX_FINDINGS      int     default: 10  — cap on findings per evaluation
+//	timeframe-hours  int  default: 1   — inspect binlog events within this window  (env: REPMAN_BINLOG_CREDITCARD_LEAK_TIMEFRAME_HOURS)
+//	max-findings     int  default: 10  — cap findings per evaluation               (env: REPMAN_BINLOG_CREDITCARD_LEAK_MAX_FINDINGS)
 package main
 
 import (
@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -29,8 +28,6 @@ import (
 	"github.com/signal18/replication-manager/cluster/logplugin/plugins/wire"
 )
 
-// panRe matches potential credit-card PANs: 13–19 digits optionally separated
-// by spaces or dashes in groups (e.g. "4111 1111 1111 1111" or "4111-1111-1111-1111").
 var panRe = regexp.MustCompile(
 	`\b(?:\d[ -]?){12,18}\d\b`,
 )
@@ -42,8 +39,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	hours := envInt("REPMAN_TIMEFRAME_HOURS", 1)
-	maxFindings := envInt("REPMAN_MAX_FINDINGS", 10)
+	hours := wire.CfgInt(req.Config, "timeframe-hours", wire.EnvInt("REPMAN_BINLOG_CREDITCARD_LEAK_TIMEFRAME_HOURS", 1))
+	maxFindings := wire.CfgInt(req.Config, "max-findings", wire.EnvInt("REPMAN_BINLOG_CREDITCARD_LEAK_MAX_FINDINGS", 10))
 	cutoff := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
 
 	var findings []wire.Finding
@@ -66,7 +63,6 @@ func main() {
 			continue
 		}
 
-		// Validate each candidate with the Luhn algorithm.
 		var validPANs []string
 		seen := make(map[string]bool)
 		for _, m := range matches {
@@ -84,25 +80,20 @@ func main() {
 			continue
 		}
 
-		desc := fmt.Sprintf(
-			"Server %s: potential credit-card number(s) detected in binlog at %s (schema: %s, PANs: %s): %s",
-			req.ServerURL,
-			ev.Timestamp,
-			ev.Schema,
-			strings.Join(validPANs, ", "),
-			truncate(ev.Query, 300),
-		)
 		findings = append(findings, wire.Finding{
-			ErrKey:      "WARN0311",
-			Severity:    "ERROR",
-			Description: desc,
+			ErrKey:   "WARN0311",
+			Severity: "ERROR",
+			Description: fmt.Sprintf(
+				"Server %s: potential credit-card number(s) detected in binlog at %s (schema: %s, PANs: %s): %s",
+				req.ServerURL, ev.Timestamp, ev.Schema,
+				strings.Join(validPANs, ", "),
+				truncate(ev.Query, 300)),
 		})
 	}
 
 	json.NewEncoder(os.Stdout).Encode(wire.Response{Findings: findings})
 }
 
-// luhn returns true if the digit string passes the Luhn check.
 func luhn(digits string) bool {
 	if len(digits) < 13 || len(digits) > 19 {
 		return false
@@ -123,7 +114,6 @@ func luhn(digits string) bool {
 	return sum%10 == 0
 }
 
-// maskPAN returns the PAN with all but the last four digits replaced by '*'.
 func maskPAN(digits string) string {
 	if len(digits) <= 4 {
 		return strings.Repeat("*", len(digits))
@@ -131,7 +121,6 @@ func maskPAN(digits string) string {
 	return strings.Repeat("*", len(digits)-4) + digits[len(digits)-4:]
 }
 
-// stripNonDigits removes any character that is not an ASCII digit.
 func stripNonDigits(s string) string {
 	var b strings.Builder
 	for _, r := range s {
@@ -150,23 +139,10 @@ func truncate(s string, n int) string {
 }
 
 func parseTS(s string) (time.Time, error) {
-	for _, f := range []string{
-		"2006-01-02 15:04:05",
-		"2006-01-02T15:04:05.000000Z",
-		"2006-01-02T15:04:05Z",
-	} {
+	for _, f := range []string{"2006-01-02 15:04:05", "2006-01-02T15:04:05.000000Z", "2006-01-02T15:04:05Z"} {
 		if t, err := time.Parse(f, s); err == nil {
 			return t, nil
 		}
 	}
 	return time.Time{}, fmt.Errorf("unknown ts: %q", s)
-}
-
-func envInt(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
-	}
-	return def
 }

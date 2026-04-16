@@ -92,6 +92,11 @@ type StdioRequest struct {
 
 	// PluginDataDir is the directory where plugin sidecar data files live.
 	PluginDataDir string `json:"plugin_data_dir"`
+
+	// Config carries per-plugin settings from the cluster TOML / GUI.
+	// Keys are kebab-case (e.g. "timeframe-hours"). Plugins read these via
+	// wire.CfgInt / wire.CfgFloat / wire.CfgStr with REPMAN_* env var fallback.
+	Config map[string]string `json:"config,omitempty"`
 }
 
 // stdioMsg is a generic log entry (error log, SQL error log, audit log).
@@ -282,6 +287,7 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 		DatabaseUsers:    src.DatabaseUsers,
 		ClusterContext:   src.ClusterContext,
 		PluginDataDir:    src.PluginDataDir,
+		Config:           src.Config,
 	}
 
 	// SECURITY NOTE: req (wire.Request) includes a full SHOW GLOBAL VARIABLES snapshot,
