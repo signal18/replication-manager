@@ -2296,6 +2296,98 @@ export const dropS3Provider = createGuardedAsyncThunk(
   }
 )
 
+export const getS3ProviderReferences = createGuardedAsyncThunk(
+  'cluster/getS3ProviderReferences',
+  async ({ clusterName, providerName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.getS3ProviderReferences(clusterName, providerName, baseURL)
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+      }
+      return { data }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+// previewS3MountSync performs a dry-run diff for a single mount against its provider.
+// Payload: { clusterName, providerName, appId, mountName }
+// Returns the SyncPreviewResponse from the server.
+export const previewS3MountSync = createGuardedAsyncThunk(
+  'cluster/previewS3MountSync',
+  async ({ clusterName, providerName, appId, mountName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const targets = [{ appId, mountName }]
+      const { data, status } = await clusterService.syncS3ProviderPreview(clusterName, providerName, targets, baseURL)
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+      }
+      return { data }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+// applyS3MountSync applies provider-managed fields to a single mount.
+// Payload: { clusterName, providerName, appId, mountName }
+// Returns the SyncApplyResponse from the server.
+export const applyS3MountSync = createGuardedAsyncThunk(
+  'cluster/applyS3MountSync',
+  async ({ clusterName, providerName, appId, mountName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const targets = [{ appId, mountName }]
+      const { data, status } = await clusterService.syncS3ProviderApply(clusterName, providerName, targets, baseURL)
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+      }
+      return { data }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+// previewS3ProviderBulkSync performs a dry-run diff for selected mounts.
+// Payload: { clusterName, providerName, targets: [{ appId, mountName }] }
+export const previewS3ProviderBulkSync = createGuardedAsyncThunk(
+  'cluster/previewS3ProviderBulkSync',
+  async ({ clusterName, providerName, targets }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.syncS3ProviderPreview(clusterName, providerName, targets, baseURL)
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+      }
+      return { data }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+// applyS3ProviderBulkSync applies provider-managed fields for selected mounts.
+// Payload: { clusterName, providerName, targets: [{ appId, mountName }] }
+export const applyS3ProviderBulkSync = createGuardedAsyncThunk(
+  'cluster/applyS3ProviderBulkSync',
+  async ({ clusterName, providerName, targets }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.syncS3ProviderApply(clusterName, providerName, targets, baseURL)
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+      }
+      return { data }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 const initialState = {
   loading: false,
   pendingThunks: {},

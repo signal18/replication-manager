@@ -904,3 +904,223 @@ func TestPrepareModifyProvider_ValidationFailsInvalidEndpoint(t *testing.T) {
 		t.Error("expected validation error for invalid endpoint, got nil")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// handlerMuxClusterS3ProviderReferences tests
+// ---------------------------------------------------------------------------
+
+// newAppWithS3Mount returns a minimal *cluster.App whose AppConfig contains one
+// S3 mount referencing providerName. id and name are used for identity.
+func newAppWithS3Mount(id, name, mountName, mountEndpoint, mountRegion, mountBucket, providerName string) *cluster.App {
+	return &cluster.App{
+		Id:   id,
+		Name: name,
+		AppConfig: &config.AppConfig{
+			Deployment: &config.Deployment{
+				Storages: config.StorageMapping{
+					S3Mounts: config.S3Mounts{
+						{
+							Name:         mountName,
+							Endpoint:     mountEndpoint,
+							Region:       mountRegion,
+							Bucket:       mountBucket,
+							ProviderName: providerName,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// TestHandlerS3ProviderReferences_NoCluster verifies the handler returns 500
+// when the cluster does not exist (name validation runs before cluster lookup,
+// so p1 passes validation and reaches the missing-cluster check).
+func TestHandlerS3ProviderReferences_NoCluster(t *testing.T) {
+	repman := newTestRepmanWithCluster(t, "other", newTestClusterForAPI(t))
+	req := httptest.NewRequest("GET", "/api/clusters/missing/s3providers/p1/references", nil)
+	req = setMuxVars(req, map[string]string{"clusterName": "missing", "name": "p1"})
+	w := httptest.NewRecorder()
+	repman.handlerMuxClusterS3ProviderReferences(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 for missing cluster, got %d", w.Code)
+	}
+}
+
+// Business-logic tests call buildS3ProviderReferencesResponse directly,
+// matching the pattern used for maskS3Provider and validateS3ProviderAPIRequest.
+// This avoids the need for a JWT to pass IsValidClusterACL.
+
+// TestBuildS3ProviderReferences_ProviderNotFound_ProviderFoundFalse verifies
+// that providerFound is false when the named provider does not exist (F-3:
+// distinguishable from "provider exists with zero references").
+func TestBuildS3ProviderReferences_ProviderNotFound_ProviderFoundFalse(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	resp := buildS3ProviderReferencesResponse(cl, "nonexistent", nil)
+	if resp.ProviderFound {
+		t.Error("expected providerFound=false for unknown provider")
+	}
+	if resp.ReferenceCount != 0 {
+		t.Errorf("expected referenceCount=0, got %d", resp.ReferenceCount)
+	}
+	if len(resp.References) != 0 {
+		t.Errorf("expected empty references, got %d entries", len(resp.References))
+	}
+}
+
+// TestBuildS3ProviderReferences_ProviderExists_ZeroRefs verifies that
+// providerFound is true and count is zero when the provider exists but no mounts
+// reference it (F-3: distinct from "provider not found").
+func TestBuildS3ProviderReferences_ProviderExists_ZeroRefs(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	p := config.S3Provider{
+		Name:           "my-provider",
+		ProviderSource: config.S3ProviderSourceCustom,
+		Endpoint:       "https://s3.example.com",
+		AccessKey:      "AK",
+		SecretKey:      "SK",
+	}
+	resp := buildS3ProviderReferencesResponse(cl, "my-provider", &p)
+	if !resp.ProviderFound {
+		t.Error("expected providerFound=true when provider pointer is non-nil")
+	}
+	if resp.ReferenceCount != 0 {
+		t.Errorf("expected referenceCount=0, got %d", resp.ReferenceCount)
+	}
+}
+
+// TestBuildS3ProviderReferences_MatchesProvider verifies that a mount whose
+// endpoint and region equal the provider's effective values gets "matches_provider".
+func TestBuildS3ProviderReferences_MatchesProvider(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Apps = append(cl.Apps, newAppWithS3Mount("app-1", "MyApp", "backup", "https://s3.example.com", "us-east-1", "bkt", "my-provider"))
+	p := config.S3Provider{
+		Name:           "my-provider",
+		ProviderSource: config.S3ProviderSourceCustom,
+		Endpoint:       "https://s3.example.com",
+		Region:         "us-east-1",
+	}
+	resp := buildS3ProviderReferencesResponse(cl, "my-provider", &p)
+	if resp.ReferenceCount != 1 {
+		t.Fatalf("expected referenceCount=1, got %d", resp.ReferenceCount)
+	}
+	if resp.References[0].Status != "matches_provider" {
+		t.Errorf("expected status matches_provider, got %q", resp.References[0].Status)
+	}
+	if resp.References[0].AppID != "app-1" {
+		t.Errorf("expected appId app-1, got %q", resp.References[0].AppID)
+	}
+	if resp.References[0].MountName != "backup" {
+		t.Errorf("expected mountName backup, got %q", resp.References[0].MountName)
+	}
+}
+
+// TestBuildS3ProviderReferences_Customized verifies that a mount with a
+// different endpoint than the provider gets status "customized".
+func TestBuildS3ProviderReferences_Customized(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Apps = append(cl.Apps, newAppWithS3Mount("app-1", "MyApp", "backup", "https://other.example.com", "us-east-1", "bkt", "my-provider"))
+	p := config.S3Provider{
+		Name:           "my-provider",
+		ProviderSource: config.S3ProviderSourceCustom,
+		Endpoint:       "https://s3.example.com",
+		Region:         "us-east-1",
+	}
+	resp := buildS3ProviderReferencesResponse(cl, "my-provider", &p)
+	if resp.ReferenceCount != 1 {
+		t.Fatalf("expected referenceCount=1, got %d", resp.ReferenceCount)
+	}
+	if resp.References[0].Status != "customized" {
+		t.Errorf("expected status customized, got %q", resp.References[0].Status)
+	}
+}
+
+// TestBuildS3ProviderReferences_ProviderMissing verifies that mounts referencing
+// a deleted provider get status "provider_missing" (provider pointer is nil).
+func TestBuildS3ProviderReferences_ProviderMissing(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Apps = append(cl.Apps, newAppWithS3Mount("app-1", "MyApp", "backup", "https://s3.example.com", "us-east-1", "bkt", "deleted-provider"))
+	resp := buildS3ProviderReferencesResponse(cl, "deleted-provider", nil)
+	if resp.ProviderFound {
+		t.Error("expected providerFound=false when provider pointer is nil")
+	}
+	if resp.ReferenceCount != 1 {
+		t.Fatalf("expected referenceCount=1 for stale mount, got %d", resp.ReferenceCount)
+	}
+	if resp.References[0].Status != "provider_missing" {
+		t.Errorf("expected status provider_missing, got %q", resp.References[0].Status)
+	}
+}
+
+// TestBuildS3ProviderReferences_MultipleApps verifies that mounts across
+// multiple apps are all counted.
+func TestBuildS3ProviderReferences_MultipleApps(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Apps = append(cl.Apps,
+		newAppWithS3Mount("app-1", "Alpha", "mount-a", "https://s3.example.com", "eu-west-1", "bkt", "shared"),
+		newAppWithS3Mount("app-2", "Beta", "mount-b", "https://s3.example.com", "eu-west-1", "bkt", "shared"),
+	)
+	p := config.S3Provider{
+		Name:           "shared",
+		ProviderSource: config.S3ProviderSourceCustom,
+		Endpoint:       "https://s3.example.com",
+		Region:         "eu-west-1",
+	}
+	resp := buildS3ProviderReferencesResponse(cl, "shared", &p)
+	if resp.ReferenceCount != 2 {
+		t.Errorf("expected referenceCount=2, got %d", resp.ReferenceCount)
+	}
+}
+
+// TestBuildS3ProviderReferences_UnrelatedMountIgnored verifies that mounts
+// referencing a different provider are not included in the response.
+func TestBuildS3ProviderReferences_UnrelatedMountIgnored(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Apps = append(cl.Apps, newAppWithS3Mount("app-1", "MyApp", "backup", "https://s3.example.com", "us-east-1", "bkt", "other-provider"))
+	p := config.S3Provider{
+		Name:           "target",
+		ProviderSource: config.S3ProviderSourceCustom,
+		Endpoint:       "https://s3.example.com",
+		Region:         "us-east-1",
+	}
+	resp := buildS3ProviderReferencesResponse(cl, "target", &p)
+	if resp.ReferenceCount != 0 {
+		t.Errorf("expected referenceCount=0 when mount references different provider, got %d", resp.ReferenceCount)
+	}
+}
+
+// ---- Story 6.10: S3 Provider Sync API tests ----
+// Handler-level tests are limited to cases that return before the ACL check
+// (e.g. unknown cluster). Full sync logic tests live in cluster/sync_s3_provider_test.go.
+
+// TestHandlerMuxClusterS3ProviderSyncPreview_UnknownCluster verifies that
+// requests for an unknown cluster name return 500 before any ACL or body parsing.
+func TestHandlerMuxClusterS3ProviderSyncPreview_UnknownCluster(t *testing.T) {
+	repman := &ReplicationManager{}
+	repman.Clusters = make(map[string]*cluster.Cluster)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/clusters/no-such-cluster/s3providers/p/sync/preview",
+		strings.NewReader(`{"targets":[{"appId":"a","mountName":"m"}]}`))
+	req = mux.SetURLVars(req, map[string]string{"clusterName": "no-such-cluster", "name": "p"})
+	rr := httptest.NewRecorder()
+	repman.handlerMuxClusterS3ProviderSyncPreview(rr, req)
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 for unknown cluster, got %d", rr.Code)
+	}
+}
+
+// TestHandlerMuxClusterS3ProviderSyncApply_UnknownCluster verifies the same
+// behaviour for the apply endpoint.
+func TestHandlerMuxClusterS3ProviderSyncApply_UnknownCluster(t *testing.T) {
+	repman := &ReplicationManager{}
+	repman.Clusters = make(map[string]*cluster.Cluster)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/clusters/no-such-cluster/s3providers/p/sync/apply",
+		strings.NewReader(`{"targets":[{"appId":"a","mountName":"m"}]}`))
+	req = mux.SetURLVars(req, map[string]string{"clusterName": "no-such-cluster", "name": "p"})
+	rr := httptest.NewRecorder()
+	repman.handlerMuxClusterS3ProviderSyncApply(rr, req)
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 for unknown cluster, got %d", rr.Code)
+	}
+}

@@ -66,22 +66,44 @@ type App struct {
 type appList []*App
 
 func (cluster *Cluster) newAppList() error {
-	cluster.Apps = make([]*App, 0)
+	// Build into a temporary slice first, then swap atomically so that
+	// concurrent readers never observe a partially-populated list.
+	type pendingApp struct {
+		app      *App
+		hostport string
+		s3Prov   bool
+	}
+	pending := make([]pendingApp, 0, len(cluster.Conf.Apps))
 	news3providers := make([]string, 0)
 	cluster.Conf.Cloud18ApplicationCreditsUsed = 0
+
 	for k, appcnf := range cluster.Conf.Apps {
+		if appcnf.AppHost == "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+				"Skipping app config at index %d: AppHost is empty (file may be incomplete)", k)
+			continue
+		}
 		app := NewApp(k, cluster, appcnf.AppHost+":"+appcnf.AppPort)
 		hostport := app.GetHost() + ":" + app.GetPort()
-		cluster.AddApp(app)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg, "New HA App created: %s %s", app.GetHost(), app.GetPort())
-		if appcnf.AppS3Provider {
-			news3providers = append(news3providers, hostport)
-			if !slices.Contains(cluster.AppS3Providers, hostport) {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "Add app as S3 provider: %s", app.Name)
+		pending = append(pending, pendingApp{app: app, hostport: hostport, s3Prov: appcnf.AppS3Provider})
+	}
+
+	// All apps are constructed — now build the final slice and swap in one step.
+	newApps := make([]*App, 0, len(pending))
+	for _, p := range pending {
+		cluster.addAppToList(&newApps, p.app)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg,
+			"New HA App created: %s %s (id=%s)", p.app.GetHost(), p.app.GetPort(), p.app.Id)
+		if p.s3Prov {
+			news3providers = append(news3providers, p.hostport)
+			if !slices.Contains(cluster.AppS3Providers, p.hostport) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo,
+					"Add app as S3 provider: %s", p.app.Name)
 			}
 		}
 	}
 
+	cluster.Apps = newApps
 	cluster.AppS3Providers = news3providers
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "Loaded %d apps", len(cluster.Apps))
@@ -89,6 +111,24 @@ func (cluster *Cluster) newAppList() error {
 	cluster.LoadAllAppTemplateMD5Provisioned()
 
 	return nil
+}
+
+// addAppToList initialises an App and appends it to the supplied slice.
+// It mirrors AddApp but writes to the provided slice instead of cluster.Apps,
+// allowing newAppList to build the full list before the atomic swap.
+func (c *Cluster) addAppToList(list *[]*App, app *App) {
+	app.SetCluster(c)
+	app.SetID()
+	app.SetDataDir()
+	app.SetServiceName(c.Name)
+	app.SetDefaultRoute(c.Conf.Cloud18Domain, c.Conf.Cloud18SubDomain, c.Conf.Cloud18SubDomainZone, c.Name)
+	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"New application monitored %s: %s:%s", app.GetType(), app.GetHost(), app.GetPort())
+	app.SetState(stateSuspect)
+	*list = append(*list, app)
+	if app.AppConfig.ProvAppCreditPlanned == 0 {
+		app.AppConfig.ProvAppCreditPlanned = len(app.GetAppAgents())
+	}
 }
 
 func (app *App) FetchStats() {

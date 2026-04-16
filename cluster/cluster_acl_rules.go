@@ -202,6 +202,9 @@ var clusterACLRules = []ACLRule{
 	{"/settings/actions/discover", nil, []string{config.GrantClusterSettings}},
 	{"/actions/reset-failover-control", nil, []string{config.GrantClusterSettings}},
 
+	// S3 Provider Library (read: list + references; write: add/modify/drop)
+	{"/s3providers", nil, []string{config.GrantClusterSettings}},
+
 	// Config Management - MySQL Defaults and Preserved Variables (from origin/develop)
 	{"/settings/mysql-defaults-cnf", nil, []string{config.GrantClusterSettings}},
 	{"/settings/actions/save-mysql-defaults-cnf", nil, []string{config.GrantClusterSettings}},

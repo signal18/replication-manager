@@ -765,6 +765,18 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterS3ProviderDrop)),
 	))
+	router.Handle("/api/clusters/{clusterName}/s3providers/{name}/references", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterS3ProviderReferences)),
+	)).Methods(http.MethodGet)
+	router.Handle("/api/clusters/{clusterName}/s3providers/{name}/sync/preview", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterS3ProviderSyncPreview)),
+	)).Methods(http.MethodPost)
+	router.Handle("/api/clusters/{clusterName}/s3providers/{name}/sync/apply", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterS3ProviderSyncApply)),
+	)).Methods(http.MethodPost)
 
 	// Register restic-specific routes
 	repman.RegisterResticRoutes(router)
@@ -9331,4 +9343,234 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderDrop(w http.Respons
 	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"S3 provider %q dropped from cluster library", name)
 	w.WriteHeader(http.StatusOK)
+}
+
+// s3ProviderReference represents a single mount reference to a provider.
+type s3ProviderReference struct {
+	AppID        string `json:"appId"`
+	AppName      string `json:"appName"`
+	MountName    string `json:"mountName"`
+	ProviderName string `json:"providerName"`
+	Status       string `json:"status"`
+	Fields       struct {
+		Endpoint string `json:"endpoint,omitempty"`
+		Region   string `json:"region,omitempty"`
+		Bucket   string `json:"bucket,omitempty"`
+	} `json:"fields"`
+}
+
+// s3ProviderReferencesResponse is the API response for provider reference discovery.
+type s3ProviderReferencesResponse struct {
+	ProviderName   string                `json:"providerName"`
+	ProviderFound  bool                  `json:"providerFound"`
+	ReferenceCount int                   `json:"referenceCount"`
+	References     []s3ProviderReference `json:"references"`
+}
+
+// buildS3ProviderReferencesResponse scans mycluster.Apps for S3 mounts that
+// reference providerName and returns the populated response. provider may be nil
+// when the named provider no longer exists in the library (stale references are
+// still returned with status "provider_missing"). Extracted for testability.
+func buildS3ProviderReferencesResponse(mycluster *cluster.Cluster, providerName string, provider *config.S3Provider) s3ProviderReferencesResponse {
+	references := []s3ProviderReference{}
+	for _, app := range mycluster.Apps {
+		if app.AppConfig == nil || app.AppConfig.Deployment == nil || app.AppConfig.Deployment.Storages.S3Mounts == nil {
+			continue
+		}
+		for _, s3m := range app.AppConfig.Deployment.Storages.S3Mounts {
+			if s3m == nil || s3m.ProviderName != providerName {
+				continue
+			}
+
+			ref := s3ProviderReference{
+				AppID:        app.GetId(),
+				AppName:      app.Name,
+				MountName:    s3m.Name,
+				ProviderName: s3m.ProviderName,
+				Status:       "unknown",
+			}
+			ref.Fields.Endpoint = s3m.Endpoint
+			ref.Fields.Region = s3m.Region
+			ref.Fields.Bucket = s3m.Bucket
+
+			if provider == nil {
+				ref.Status = "provider_missing"
+			} else {
+				var providerEndpoint string
+				var providerRegion string
+				switch provider.ProviderSource {
+				case config.S3ProviderSourceApp:
+					if app2, _ := mycluster.GetAppByURL(provider.ProviderApp); app2 != nil && app2.Host != "" && app2.Port != "" {
+						providerEndpoint = app2.Host + ":" + app2.Port
+					}
+					providerRegion = provider.Region
+				case config.S3ProviderSourceCustom:
+					providerEndpoint = provider.Endpoint
+					providerRegion = provider.Region
+				default:
+					ref.Status = "unknown"
+					references = append(references, ref)
+					continue
+				}
+				if s3m.Endpoint == providerEndpoint && s3m.Region == providerRegion {
+					ref.Status = "matches_provider"
+				} else {
+					ref.Status = "customized"
+				}
+			}
+
+			references = append(references, ref)
+		}
+	}
+	return s3ProviderReferencesResponse{
+		ProviderName:   providerName,
+		ProviderFound:  provider != nil,
+		ReferenceCount: len(references),
+		References:     references,
+	}
+}
+
+// handlerMuxClusterS3ProviderReferences returns all app S3 mounts that reference a given provider.
+func (repman *ReplicationManager) handlerMuxClusterS3ProviderReferences(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	providerName := strings.TrimSpace(vars["name"])
+	if providerName == "" {
+		http.Error(w, "Provider name is required", http.StatusBadRequest)
+		return
+	}
+	if len(providerName) > 255 {
+		http.Error(w, "Provider name too long", http.StatusBadRequest)
+		return
+	}
+
+	providers := mycluster.GetS3ProvidersSnapshot()
+
+	// Find the provider; providerFound distinguishes "not found" from "zero references".
+	var provider *config.S3Provider
+	for i := range providers {
+		if providers[i].Name == providerName {
+			p := providers[i]
+			provider = &p
+			break
+		}
+	}
+
+	resp := buildS3ProviderReferencesResponse(mycluster, providerName, provider)
+
+	w.Header().Set("Content-Type", "application/json")
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	if err := e.Encode(resp); err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// s3SyncRequest is the shared JSON request body for the sync preview and apply endpoints.
+type s3SyncRequest struct {
+	Targets []cluster.SyncTarget `json:"targets"`
+}
+
+// parseS3SyncRequest validates the cluster, ACL, provider name, and decodes the
+// request body. It returns the cluster, provider name, and decoded targets, or
+// writes an HTTP error and returns false.
+func parseS3SyncRequest(repman *ReplicationManager, w http.ResponseWriter, r *http.Request) (*cluster.Cluster, string, []cluster.SyncTarget, bool) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return nil, "", nil, false
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return nil, "", nil, false
+	}
+
+	providerName := vars["name"]
+	if err := config.ValidateS3ProviderName(providerName); err != nil {
+		http.Error(w, "Invalid provider name: "+err.Error(), http.StatusBadRequest)
+		return nil, "", nil, false
+	}
+
+	var req s3SyncRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+		return nil, "", nil, false
+	}
+	// Reject trailing garbage after the first JSON value.
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		http.Error(w, "Invalid request body: unexpected trailing content", http.StatusBadRequest)
+		return nil, "", nil, false
+	}
+	if len(req.Targets) == 0 {
+		http.Error(w, "targets must not be empty", http.StatusBadRequest)
+		return nil, "", nil, false
+	}
+	if len(req.Targets) > cluster.SyncMaxTargets {
+		http.Error(w, fmt.Sprintf("too many targets: max %d", cluster.SyncMaxTargets), http.StatusBadRequest)
+		return nil, "", nil, false
+	}
+	for i, t := range req.Targets {
+		if strings.TrimSpace(t.AppId) == "" || strings.TrimSpace(t.MountName) == "" {
+			http.Error(w, fmt.Sprintf("invalid target at index %d: appId and mountName are required", i), http.StatusBadRequest)
+			return nil, "", nil, false
+		}
+	}
+	return mycluster, providerName, req.Targets, true
+}
+
+// handlerMuxClusterS3ProviderSyncPreview performs a dry-run preview of syncing
+// one or more mounts from a named provider. No state is mutated.
+//
+// POST /api/clusters/{clusterName}/s3providers/{name}/sync/preview
+func (repman *ReplicationManager) handlerMuxClusterS3ProviderSyncPreview(w http.ResponseWriter, r *http.Request) {
+	mycluster, providerName, targets, ok := parseS3SyncRequest(repman, w, r)
+	if !ok {
+		return
+	}
+
+	resp := mycluster.PreviewS3ProviderSync(providerName, targets)
+
+	w.Header().Set("Content-Type", "application/json")
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	if err := e.Encode(resp); err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+	}
+}
+
+// handlerMuxClusterS3ProviderSyncApply applies provider-managed field values to
+// one or more mounts. Only endpoint, region, accessKey, and secretKey are
+// overwritten; all mount-specific fields are preserved.
+//
+// POST /api/clusters/{clusterName}/s3providers/{name}/sync/apply
+func (repman *ReplicationManager) handlerMuxClusterS3ProviderSyncApply(w http.ResponseWriter, r *http.Request) {
+	mycluster, providerName, targets, ok := parseS3SyncRequest(repman, w, r)
+	if !ok {
+		return
+	}
+
+	resp := mycluster.ApplyS3ProviderSync(providerName, targets)
+
+	w.Header().Set("Content-Type", "application/json")
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	if err := e.Encode(resp); err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+	}
 }

@@ -9,7 +9,9 @@
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "test:terminal-rid": "node src/Pages/Terminal/__tests__/ridUtils.test.js",
-    "test:s3-provider-picker": "node src/Pages/ClusterApp/components/Storage/__tests__/s3DirectoryProviderPicker.test.js"
+    "test:s3-provider-picker": "node src/Pages/ClusterApp/components/Storage/__tests__/s3DirectoryProviderPicker.test.js",
+    "test:s3-provider-bulk-sync": "node src/Pages/Settings/__tests__/s3ProviderBulkSyncUtils.test.js",
+    "test:sync-diff-utils": "node src/components/__tests__/syncDiffUtils.test.js"
   },
   "dependencies": {
     "@chakra-ui/react": "^2.10.5",

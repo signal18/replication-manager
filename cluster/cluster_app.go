@@ -101,6 +101,26 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 		return err
 	}
 
+	// If app-host was not set in the TOML file (or was left as an unresolved template),
+	// fall back to the file name so the app gets a valid, stable Name and ID.
+	if appcnf.AppHost == "" || strings.Contains(appcnf.AppHost, "{{") {
+		appcnf.AppHost = appname
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+			"App config %q had no resolved app-host; using filename as host: %s", filename, appname)
+	}
+	if appcnf.AppPort == "" {
+		appcnf.AppPort = "80"
+	}
+
+	// Skip duplicate entries (same host+port already loaded, e.g. from main config).
+	for _, existing := range cluster.Conf.Apps {
+		if existing.AppHost == appcnf.AppHost && existing.AppPort == appcnf.AppPort {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg,
+				"App config %s:%s already loaded, skipping duplicate from %q", appcnf.AppHost, appcnf.AppPort, filename)
+			return nil
+		}
+	}
+
 	cluster.Conf.Apps = append(cluster.Conf.Apps, &appcnf)
 
 	errormap := config.ParseConfigMeasurement(&appcnf, cluster.Conf.DefaultFlagMap, cluster.Conf.MeasurementAutoClampLimit)
@@ -223,40 +243,79 @@ func (cluster *Cluster) SaveAppConfigFile(app *App, filePath, templatePath strin
 		return false, err
 	}
 
-	// Write sorted values to file
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-	if err != nil {
+	if err := cluster.writeTomlAtomically(t, filePath); err != nil {
 		if os.IsPermission(err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", filePath)
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error opening file: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error writing app file atomically: %s", err)
 		}
 		return false, err
 	}
-	defer file.Close()
-
-	t.WriteTo(file)
 
 	if templatePath != "" {
 		parentDir := filepath.Dir(templatePath)
 		if _, err := os.Stat(parentDir); os.IsNotExist(err) {
-			os.MkdirAll(parentDir, os.ModePerm)
+			if err := os.MkdirAll(parentDir, os.ModePerm); err != nil {
+				return false, err
+			}
 		}
-		tfile, err := os.OpenFile(templatePath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-		if err != nil {
+		if err := cluster.writeTomlAtomically(t, templatePath); err != nil {
 			if os.IsPermission(err) {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", templatePath)
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error opening file: %s", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error writing template file atomically: %s", err)
 			}
 			return false, err
 		}
-		defer tfile.Close()
-
-		t.WriteTo(tfile)
 	}
 
 	return true, nil
+}
+
+// writeTomlAtomically writes a TOML tree via temp-file + fsync + rename to avoid
+// truncating a target file on partial writes.
+func (cluster *Cluster) writeTomlAtomically(t *toml.Tree, filePath string) error {
+	parentDir := filepath.Dir(filePath)
+	if err := os.MkdirAll(parentDir, os.ModePerm); err != nil {
+		return err
+	}
+
+	perm := os.FileMode(0666)
+	if fi, err := os.Stat(filePath); err == nil {
+		perm = fi.Mode()
+	}
+
+	tmpFile, err := os.CreateTemp(parentDir, ".repman-toml-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := t.WriteTo(tmpFile); err != nil {
+		tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpPath, perm); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, filePath); err != nil {
+		return err
+	}
+
+	if dir, err := os.Open(parentDir); err == nil {
+		_ = dir.Sync()
+		_ = dir.Close()
+	}
+
+	return nil
 }
 
 // func (cluster *Cluster) SaveAppDeploymentsFile(app *App) (bool, error) {

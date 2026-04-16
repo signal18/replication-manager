@@ -170,7 +170,12 @@ export const clusterService = {
   // S3 provider CRUD APIs
   addS3Provider,
   modifyS3Provider,
-  dropS3Provider
+  dropS3Provider,
+  getS3ProviderReferences,
+
+  // S3 provider sync APIs
+  syncS3ProviderPreview,
+  syncS3ProviderApply,
 }
 
 //#region Cluster data APIs
@@ -847,6 +852,24 @@ function modifyS3Provider(clusterName, name, payload, baseURL) {
 
 function dropS3Provider(clusterName, name, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/s3providers/${encodeURIComponent(name)}/drop`)
+}
+
+function getS3ProviderReferences(clusterName, providerName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/s3providers/${encodeURIComponent(providerName)}/references`)
+}
+
+function syncS3ProviderPreview(clusterName, providerName, targets, baseURL) {
+  return getApi(baseURL).post(
+    `clusters/${clusterName}/s3providers/${encodeURIComponent(providerName)}/sync/preview`,
+    { targets }
+  )
+}
+
+function syncS3ProviderApply(clusterName, providerName, targets, baseURL) {
+  return getApi(baseURL).post(
+    `clusters/${clusterName}/s3providers/${encodeURIComponent(providerName)}/sync/apply`,
+    { targets }
+  )
 }
 //#endregion S3 provider CRUD APIs
 

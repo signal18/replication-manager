@@ -262,7 +262,7 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 		// Legacy sibling-app mounts have an empty Endpoint but carry a pre-set Node; we check
 		// Node first before attempting GetAppByURL to avoid always-nil results on empty strings.
 		if s3m.Endpoint != "" {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg,
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg,
 				"S3 mount %s uses custom endpoint %s – skipping sibling-app resolution", s3m.Name, s3m.Endpoint)
 		} else {
 			// Legacy sibling-app mode: Endpoint is empty; Node must be pre-set or resolvable.
@@ -675,14 +675,14 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		var effectiveEndpoint string
 		if s3m.Endpoint != "" {
 			effectiveEndpoint = s3m.Endpoint
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg,
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg,
 				"S3 mount %s using custom endpoint %s for provisioning", s3m.Name, effectiveEndpoint)
 		} else {
 			// Legacy sibling-app mode: Endpoint is empty, resolve Node via GetAppByURL.
 			if s3m.Node == nil {
 				node, _ := cluster.GetAppByURL(s3m.Endpoint)
 				if node == nil {
-					return fmt.Errorf("S3 mount node %s not found in cluster %s", s3m.Endpoint, cluster.Name)
+					return fmt.Errorf("S3 mount node %s not found in cluster %s", s3m.Name, cluster.Name)
 				}
 				s3m.Node = node
 			}

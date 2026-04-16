@@ -7,7 +7,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import AccordionComponent from "../../../../components/AccordionComponent";
 import ConfirmModal from "../../../../components/Modals/ConfirmModal";
-import { pauseAutoReload, selectClusterS3Providers, storageFieldChange, storageFieldIndexAdd, storageFieldIndexDrop } from "../../../../redux/clusterSlice";
+import { addS3Provider, pauseAutoReload, selectClusterS3Providers, storageFieldChange, storageFieldIndexAdd, storageFieldIndexDrop, previewS3MountSync, applyS3MountSync, getClusterData } from "../../../../redux/clusterSlice";
 
 export default function StoragePage({ clusterName, appId, user }) {
   const dispatch = useDispatch();
@@ -97,13 +97,50 @@ export default function StoragePage({ clusterName, appId, user }) {
     [dispatch]
   )
 
+  const handleSaveAsProvider = useCallback(
+    (name, s3, providerSource) => {  // P2: use providerSource from form
+      const source = providerSource || "custom";
+      const payload = { name, providerSource: source, region: s3.region || "" };
+      if (source === "app") {
+        payload.providerApp = s3.endpoint || "";
+      } else {
+        payload.endpoint = s3.endpoint || "";
+        payload.accesskey = s3.accesskey || s3.accessKey || "";
+        payload.secretkey = s3.secretkey || s3.secretKey || "";
+      }
+      return dispatch(addS3Provider({ clusterName, payload })).unwrap();
+    },
+    [clusterName, dispatch]
+  );
+
+  const handlePreviewSync = useCallback(
+    (providerName, mountName) =>
+      dispatch(previewS3MountSync({ clusterName, providerName, appId, mountName })).unwrap(),
+    [clusterName, appId, dispatch]
+  );
+
+  const handleApplySync = useCallback(
+    async (providerName, mountName) => {
+      const resp = await dispatch(applyS3MountSync({ clusterName, providerName, appId, mountName })).unwrap();
+      const changed = Number(resp?.data?.summary?.changed || 0);
+      if (changed > 0) {
+        await dispatch(getClusterData({ clusterName }));
+      }
+      return resp;
+    },
+    [clusterName, appId, dispatch]
+  );
+
   const actionProps = useMemo(() => ({
     onRowArrayChange: handleSaveArrayChange,
     onSaveAdd: handleSaveAddItem,
     onRowDropIndex: handleDropIndex,
     onPauseAutoReload: handlePauseAutoReload,
     onResumeAutoReload: handleResumeAutoReload,
-  }), [handleSaveArrayChange, handleSaveAddItem, handleDropIndex, handlePauseAutoReload, handleResumeAutoReload]);
+    onSaveAsProvider: handleSaveAsProvider,
+    onPreviewSync: handlePreviewSync,
+    onApplySync: handleApplySync,
+  }), [handleSaveArrayChange, handleSaveAddItem, handleDropIndex, handlePauseAutoReload, handleResumeAutoReload, handleSaveAsProvider, handlePreviewSync, handleApplySync]);
 
   const handleCloseConfirm = useCallback(() => {
     setModalState({ isOpen: false, field: null, index: null });
@@ -114,7 +151,7 @@ export default function StoragePage({ clusterName, appId, user }) {
       dispatch(storageFieldIndexDrop({ clusterName, appId, field, index }));
       handleCloseConfirm();
     }
-  }, [clusterName, appId, field, index, dispatch]);
+  }, [clusterName, appId, field, index, dispatch, handleCloseConfirm]);  // P5: add handleCloseConfirm
 
   const gitClones = storages?.gitClones || [];
   const volumes = storages?.volumes || [];
@@ -142,8 +179,8 @@ export default function StoragePage({ clusterName, appId, user }) {
   ), [volumes, actionProps]);
 
   const s3Component = useMemo(() => (
-      <S3DirectorySection rows={s3Mounts} s3ProvOptions={s3ProvOptions} clusterS3Providers={clusterS3Providers} {...actionProps} />
-  ), [s3Mounts, s3ProvOptions, clusterS3Providers, actionProps]);
+      <S3DirectorySection appId={appId} rows={s3Mounts} s3ProvOptions={s3ProvOptions} clusterS3Providers={clusterS3Providers} {...actionProps} />
+  ), [appId, s3Mounts, s3ProvOptions, clusterS3Providers, actionProps]);
 
   return (
     <Flex direction="column" className={styles.sectionWrapper}>
