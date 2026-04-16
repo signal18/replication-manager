@@ -850,7 +850,7 @@ type Config struct {
 	BackupSplitdumpCreateDatabases         bool                   `mapstructure:"backup-splitdump-create-databases" toml:"backup-splitdump-create-databases" json:"backupSplitdumpCreateDatabases"`
 	BackupMytopPath                        string                 `mapstructure:"backup-mytop-path" toml:"backup-mytop-path" json:"backupMytopPath"`
 	BackupGottyClientPath                  string                 `mapstructure:"backup-gotty-client-path" toml:"backup-gotty-client-path" json:"backupGottyClientPath"`
-	BackupTtySharePath                     string                 `mapstructure:"backup-tty-share-path" toml:"backup-tty-share-path" json:"backupTtySharePath"`
+	TtyShareBinaryPath                     string                 `mapstructure:"tty-share-binary-path" toml:"tty-share-binary-path" json:"ttyShareBinaryPath"`
 	ReplicationManagerCliPath              string                 `mapstructure:"replication-manager-cli-path" toml:"replication-manager-cli-path" json:"replicationManagerCliPath"`
 	BackupBinlogs                          bool                   `mapstructure:"backup-binlogs" toml:"backup-binlogs" json:"backupBinlogs"`
 	BackupBinlogsKeep                      int                    `mapstructure:"backup-binlogs-keep" toml:"backup-binlogs-keep" json:"backupBinlogsKeep"`
@@ -4459,5 +4459,6 @@ func GetKeyAliasMap() map[string]string {
 		"sphinx-log-level":          "log-level-sphinx",
 		"registry-consul-log-level": "log-level-registry-consul",
 		"log-vault-level":           "log-level-vault",
+		"backup-tty-share-path":     "tty-share-binary-path",
 	}
 }

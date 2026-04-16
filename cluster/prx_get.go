@@ -441,5 +441,5 @@ func (p *Proxy) GetReadBackendDetail(srv *ServerMonitor) *Backend {
 }
 
 func (p *Proxy) GetWorkingAgent() string {
-	return p.Agent
+	return p.WorkingAgent
 }

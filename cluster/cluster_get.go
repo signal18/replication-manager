@@ -290,14 +290,14 @@ func (cluster *Cluster) GetReplicationManagerCliPath() string {
 }
 
 func (cluster *Cluster) GetTtyShareClientPath() string {
-	if cluster.Conf.BackupTtySharePath == "" {
+	if cluster.Conf.TtyShareBinaryPath == "" {
 		if out, err := exec.Command("which", "tty-share").Output(); err == nil {
 			path := strings.Trim(string(out), "\r\n")
 			return path
 		}
 		return "" // Use embedded tty-share in tty package
 	}
-	return cluster.Conf.BackupTtySharePath
+	return cluster.Conf.TtyShareBinaryPath
 }
 
 func (cluster *Cluster) GetMysqlServerBinaryPath() string {
