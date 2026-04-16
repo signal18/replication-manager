@@ -627,7 +627,7 @@ func (collector *Collector) CreateSecretV2(namespace string, service string, age
 		return err
 	}
 	if exists {
-		return nil
+		return fmt.Errorf("%w: %s", ErrObjectAlreadyExists, path)
 	}
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
@@ -698,7 +698,7 @@ func (collector *Collector) CreateConfigV2(namespace string, service string, age
 		return err
 	}
 	if exists {
-		return nil
+		return fmt.Errorf("%w: %s", ErrObjectAlreadyExists, path)
 	}
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"

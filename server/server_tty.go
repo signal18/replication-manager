@@ -104,8 +104,8 @@ func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session,
 	session.Orchestrator = mycluster.GetOrchestrator()
 	session.ServiceName = mycluster.Name + "/svc/" + node.Name
 	session.ServiceContainerName = defaultServerServiceContainer
-	if node.WorkingAgent != "" {
-		session.ServiceAgentName = node.WorkingAgent
+	if wa := node.GetWorkingAgent(); wa != "" {
+		session.ServiceAgentName = wa
 	} else {
 		session.ServiceAgentName = node.Agent
 	}

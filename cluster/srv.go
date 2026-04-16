@@ -196,6 +196,7 @@ type ServerMonitor struct {
 	SSTPort                     string                     `json:"sstPort"`       //used to send data to dbjobs
 	Agent                       string                     `json:"agent"`         //used to provision service in orchestrator
 	WorkingAgent                string                     `json:"workingAgent"`  //used to track on which agent the server is running
+	workingAgentMu              sync.RWMutex               `json:"-"`
 	BinaryLogFiles              *dbhelper.BinaryLogMetaMap `json:"binaryLogFiles"`
 	BinaryLogMetaToWrite        []string                   `json:"-"`
 	BinaryLogMetaToRemove       []string                   `json:"-"`
@@ -2097,12 +2098,13 @@ func (server *ServerMonitor) GetWorkingOrchestratorNode() error {
 		return fmt.Errorf("no database agents found for service %s", srvname)
 	}
 
+	server.workingAgentMu.Lock()
 	if !slices.Contains(agents, server.Agent) {
-		// Fallback to the first agent in the list
 		server.WorkingAgent = agents[0]
 	} else {
 		server.WorkingAgent = server.Agent
 	}
+	server.workingAgentMu.Unlock()
 
 	return nil
 }

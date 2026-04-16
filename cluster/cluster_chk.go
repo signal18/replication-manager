@@ -1312,8 +1312,8 @@ func (cluster *Cluster) CheckClusterServiceAgents() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Cannot refresh working agent for server %s: %s", server.URL, err)
 			continue
 		}
-		if server.WorkingAgent != "" && server.WorkingAgent != server.Agent {
-			cluster.SetState("WARN0161", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0161"], server.URL, server.Agent, server.WorkingAgent), ErrFrom: "CLUSTER", ServerUrl: server.URL})
+		if wa := server.GetWorkingAgent(); wa != "" && wa != server.Agent {
+			cluster.SetState("WARN0161", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0161"], server.URL, server.Agent, wa), ErrFrom: "CLUSTER", ServerUrl: server.URL})
 		}
 	}
 

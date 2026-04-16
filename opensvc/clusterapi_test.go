@@ -2,6 +2,7 @@ package opensvc
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -158,8 +159,9 @@ func TestCreateV2_SkipsCreateWhenExists(t *testing.T) {
 			agent := "node-1"
 			expectedPath := namespace + "/" + tc.kind + "/" + service
 
-			if err := tc.createFn(collector, namespace, service, agent); err != nil {
-				t.Fatalf("create failed: %v", err)
+			err := tc.createFn(collector, namespace, service, agent)
+			if !errors.Is(err, ErrObjectAlreadyExists) {
+				t.Fatalf("expected ErrObjectAlreadyExists, got: %v", err)
 			}
 
 			snapshot := state.snapshot()
@@ -265,8 +267,8 @@ func TestCreateV2_DoesNotRecreateOnSecondProvision(t *testing.T) {
 			if err := tc.createFn(collector, namespace, service, agent); err != nil {
 				t.Fatalf("first create failed: %v", err)
 			}
-			if err := tc.createFn(collector, namespace, service, agent); err != nil {
-				t.Fatalf("second create failed: %v", err)
+			if err := tc.createFn(collector, namespace, service, agent); !errors.Is(err, ErrObjectAlreadyExists) {
+				t.Fatalf("expected ErrObjectAlreadyExists on second create, got: %v", err)
 			}
 
 			snapshot := state.snapshot()

@@ -1517,6 +1517,12 @@ func (server *ServerMonitor) GetStatusDeltaValue(name string) int {
 	return cur - prev
 }
 
+func (server *ServerMonitor) GetWorkingAgent() string {
+	server.workingAgentMu.RLock()
+	defer server.workingAgentMu.RUnlock()
+	return server.WorkingAgent
+}
+
 func (server *ServerMonitor) JobsGetEntries() config.ServerTaskList {
 	sTask := config.ServerTaskList{
 		ServerURL: server.URL,

@@ -116,7 +116,7 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 		return nil, err
 	}
 	endRead := time.Now()
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
+	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC Read response took: %s\n", endRead.Sub(startRead))
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
