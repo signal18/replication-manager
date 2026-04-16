@@ -66,6 +66,7 @@ type Proxy struct {
 	ServiceName     string               `json:"serviceName"`
 	Agent           string               `json:"agent"`
 	WorkingAgent    string               `json:"workingAgent"`
+	workingAgentMu  sync.RWMutex         `json:"-"`
 	Weight          string               `json:"weight"`
 	IsStaging       bool                 `json:"isStaging"`
 	Lock            sync.Mutex
@@ -494,11 +495,13 @@ func (proxy *Proxy) GetWorkingOrchestratorNode() error {
 		return fmt.Errorf("no database agents found for service %s", srvname)
 	}
 
+	proxy.workingAgentMu.Lock()
 	if !slices.Contains(agents, proxy.GetAgent()) {
 		proxy.WorkingAgent = agents[0]
 	} else {
 		proxy.WorkingAgent = proxy.GetAgent()
 	}
+	proxy.workingAgentMu.Unlock()
 
 	return nil
 }

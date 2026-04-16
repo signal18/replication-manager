@@ -3,6 +3,7 @@ package tty
 import (
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -255,14 +256,21 @@ func (sm *SessionManager) HandleTtyShare(s *Session) error {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("tty-share endpoint %s returned HTTP %d", s.ServiceTtyUrl, resp.StatusCode)
+	}
+
 	// Build the WS URL from the host part of the given http URL and the wsPath
 	wsScheme := "ws"
 	if httpURL.Scheme == "https" {
 		wsScheme = "wss"
 	}
 
-	// Get the path of the websockts route from the header
+	// Get the path of the websocket route from the header
 	ttyWsPath := resp.Header.Get("TTYSHARE-TTY-WSPATH")
+	if ttyWsPath == "" {
+		return fmt.Errorf("tty-share endpoint %s missing TTYSHARE-TTY-WSPATH header", s.ServiceTtyUrl)
+	}
 	ttyWsURL := wsScheme + "://" + httpURL.Host + ttyWsPath
 
 	dialer := websocket.DefaultDialer

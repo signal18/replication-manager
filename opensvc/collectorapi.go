@@ -156,6 +156,12 @@ type Collector struct {
 	MessageChan                 chan s18log.HttpMessage
 }
 
+// isLoggable returns false if ClusterConf is nil, preventing nil-deref panics
+// when a Collector is instantiated without a config (e.g. in tests or arbitration).
+func (c *Collector) isLoggable(module int, level string) bool {
+	return c.ClusterConf != nil && c.ClusterConf.IsEligibleForPrinting(module, level)
+}
+
 //Imput template URI [system|docker].[zfs|xfs|ext4|btrfs].[none|zpool|lvm].[loopback|physical].[path-to-file|/dev/xx]
 
 var (

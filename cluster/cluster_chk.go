@@ -1305,14 +1305,28 @@ func (cluster *Cluster) CheckClusterServiceAgents() {
 	}
 
 	for _, server := range cluster.Servers {
-		if server.HasProvisionCookie() && server.WorkingAgent != server.Agent {
+		if !server.HasProvisionCookie() {
+			continue
+		}
+		if err := server.GetWorkingOrchestratorNode(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Cannot refresh working agent for server %s: %s", server.URL, err)
+			continue
+		}
+		if server.WorkingAgent != "" && server.WorkingAgent != server.Agent {
 			cluster.SetState("WARN0161", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0161"], server.URL, server.Agent, server.WorkingAgent), ErrFrom: "CLUSTER", ServerUrl: server.URL})
 		}
 	}
 
 	for _, prx := range cluster.Proxies {
-		if prx.HasProvisionCookie() && prx.GetWorkingAgent() != prx.GetAgent() {
-			cluster.SetState("WARN0162", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0162"], prx.GetURL(), prx.GetAgent(), prx.GetWorkingAgent()), ErrFrom: "CLUSTER", ServerUrl: prx.GetURL()})
+		if !prx.HasProvisionCookie() {
+			continue
+		}
+		if err := prx.GetWorkingOrchestratorNode(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Cannot refresh working agent for proxy %s: %s", prx.GetURL(), err)
+			continue
+		}
+		if wa := prx.GetWorkingAgent(); wa != "" && wa != prx.GetAgent() {
+			cluster.SetState("WARN0162", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0162"], prx.GetURL(), prx.GetAgent(), wa), ErrFrom: "CLUSTER", ServerUrl: prx.GetURL()})
 		}
 	}
 }

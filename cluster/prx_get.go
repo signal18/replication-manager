@@ -441,5 +441,7 @@ func (p *Proxy) GetReadBackendDetail(srv *ServerMonitor) *Backend {
 }
 
 func (p *Proxy) GetWorkingAgent() string {
+	p.workingAgentMu.RLock()
+	defer p.workingAgentMu.RUnlock()
 	return p.WorkingAgent
 }

@@ -400,7 +400,9 @@ func (collector *Collector) CreateTemplateV3(cluster string, svc string, node st
 	kind := svcparts[1]
 	svcname := svcparts[2]
 
-	collector.CreateObjectV3(ns, kind, svcname, template)
+	if _, err := collector.CreateObjectV3(ns, kind, svcname, template); err != nil {
+		return fmt.Errorf("failed to create object %s/%s/%s: %w", ns, kind, svcname, err)
+	}
 
 	_, err := collector.handleObjectActionV3(ns, kind, svcname, "provision", nil)
 	return err
