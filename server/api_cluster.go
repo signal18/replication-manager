@@ -2577,6 +2577,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.BackupRestoreMysqlUser = !mycluster.Conf.BackupRestoreMysqlUser
 	case "backup-mysqldump-splitdump":
 		mycluster.Conf.BackupMysqldumpSplitDump = !mycluster.Conf.BackupMysqldumpSplitDump
+	case "backup-splitdump-create-databases":
+		mycluster.Conf.BackupSplitdumpCreateDatabases = !mycluster.Conf.BackupSplitdumpCreateDatabases
+	case "backup-restore-definer-strict":
+		mycluster.Conf.BackupRestoreDefinerStrict = !mycluster.Conf.BackupRestoreDefinerStrict
 	case "backup-check-free-space":
 		mycluster.Conf.BackupCheckFreeSpace = !mycluster.Conf.BackupCheckFreeSpace
 	case "backup-estimate-size":
@@ -3037,7 +3041,7 @@ var base64LogValueSettings = map[string]struct{}{
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
-	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
+	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
 		logValue := value
@@ -3085,6 +3089,7 @@ func decodeBase64LogValue(value string) (string, bool) {
 func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, name string, value string) error {
 	var isactive = setIsActive(value)
 	var err error
+	trackedSecretsBefore := mycluster.TrackedSecretCompareSnapshot()
 
 	fmtlog, logargs := GetApiChangeLogFormat(name, value)
 
@@ -3150,6 +3155,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			}
 		}
 		mycluster.Conf.BackupSplitdumpFileSize = trimmed
+	case "backup-splitdump-create-databases":
+		mycluster.Conf.BackupSplitdumpCreateDatabases = applyIsActive(mycluster.Conf.BackupSplitdumpCreateDatabases, isactive)
+	case "backup-restore-definer-strict":
+		mycluster.Conf.BackupRestoreDefinerStrict = applyIsActive(mycluster.Conf.BackupRestoreDefinerStrict, isactive)
 	case "backup-keep-within-hourly":
 		err = mycluster.SetBackupKeepWithinHourly(value)
 		if err != nil {
@@ -3701,6 +3710,16 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		new_secret.Value = mycluster.Conf.Cloud18GitPassword
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("cloud18-gitlab-password")
 		mycluster.Conf.Secrets["cloud18-gitlab-password"] = new_secret
+	case "cloud18-domain-secret":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		mycluster.Conf.Cloud18DomainSecret = string(val)
+		var new_secret config.Secret
+		new_secret.Value = mycluster.Conf.Cloud18DomainSecret
+		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("cloud18-domain-secret")
+		mycluster.Conf.Secrets["cloud18-domain-secret"] = new_secret
 	case "cloud18-platform-description":
 		mycluster.Conf.Cloud18PlatformDescription = value
 	case "log-level-file":
@@ -4511,8 +4530,27 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 		return errors.New("setting not found")
 	}
+	if trackedSecretSnapshotChanged(trackedSecretsBefore, mycluster.TrackedSecretCompareSnapshot()) {
+		mycluster.MarkSecretVersionStoreDirty()
+		mycluster.ReconcileSecretVersionStore()
+	}
+
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	return nil
+}
+
+func trackedSecretSnapshotChanged(before, after map[string]string) bool {
+	if len(before) != len(after) {
+		return true
+	}
+
+	for k, v := range before {
+		if after[k] != v {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (repman *ReplicationManager) setRepmanSetting(name string, value string) error {
@@ -4576,6 +4614,26 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		new_secret.Value = repman.Conf.Cloud18GitPassword
 		new_secret.OldValue = repman.Conf.GetDecryptedValue("cloud18-gitlab-password")
 		repman.Conf.Secrets["cloud18-gitlab-password"] = new_secret
+	case "cloud18-gateway-domain-name":
+		repman.Conf.Cloud18GatewayDomainName = value
+	case "cloud18-gateway-service":
+		repman.Conf.Cloud18GatewayService = value
+	case "cloud18-domain-add-script":
+		repman.Conf.Cloud18DomainAddScript = value
+	case "cloud18-domain-drop-script":
+		repman.Conf.Cloud18DomainDropScript = value
+	case "cloud18-domain-user":
+		repman.Conf.Cloud18DomainUser = value
+	case "cloud18-domain-secret":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		repman.Conf.Cloud18DomainSecret = string(val)
+		var new_secret config.Secret
+		new_secret.Value = repman.Conf.Cloud18DomainSecret
+		new_secret.OldValue = repman.Conf.GetDecryptedValue("cloud18-domain-secret")
+		repman.Conf.Secrets["cloud18-domain-secret"] = new_secret
 	case "api-bind":
 		repman.Conf.APIBind = value
 	case "api-port ":
@@ -5403,9 +5461,9 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive new %s monitor to be added %s", vars["type"], vars["host"]+":"+vars["port"])
 		var srvtype, host, port, tag, template string
 		srvtype = vars["type"]
-		host = vars["host"]
-		port = vars["port"]
-		tag = vars["tag"]
+		host = strings.TrimSpace(vars["host"])
+		port = strings.TrimSpace(vars["port"])
+		tag = strings.TrimSpace(vars["tag"])
 
 		if srvtype == "" {
 			if port == "0" || port == "" {
@@ -5414,6 +5472,22 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 			err = mycluster.AddSeededServer(host + ":" + port)
 		} else if srvtype == "app" {
 			// Add app monitor
+			if host == "" {
+				http.Error(w, "Host is required for app monitor", http.StatusBadRequest)
+				return
+			}
+
+			if port == "" || port == "0" {
+				http.Error(w, "Port is required for app monitor", http.StatusBadRequest)
+				return
+			}
+
+			portNumber, convErr := strconv.Atoi(port)
+			if convErr != nil || portNumber < 1 || portNumber > 65535 {
+				http.Error(w, "Port must be between 1 and 65535", http.StatusBadRequest)
+				return
+			}
+
 			var formData DockerRegistryLoginForm
 			if r.Body != nil {
 				decoder := json.NewDecoder(r.Body)
@@ -5426,6 +5500,17 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 				}
 
 				if formData.IsPrivate {
+					formData.URL = strings.TrimSpace(formData.URL)
+					formData.Username = strings.TrimSpace(formData.Username)
+					if formData.URL == "" {
+						http.Error(w, "Registry URL is required for private registry", http.StatusBadRequest)
+						return
+					}
+					if formData.Password == "" {
+						http.Error(w, "Registry credential is required for private registry", http.StatusBadRequest)
+						return
+					}
+
 					err := mycluster.AddDockerPrivateRegistryCredentials(formData.URL, formData.Username, formData.Password, formData.Update)
 					if err != nil {
 						// Only warn don't exit if error is not nil
@@ -5434,7 +5519,7 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 				}
 
 				if formData.Template != "" {
-					template = formData.Template
+					template = strings.TrimSpace(formData.Template)
 				}
 			}
 

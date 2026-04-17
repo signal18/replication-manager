@@ -21,12 +21,14 @@ import (
 )
 
 var (
-	cliSplitRestoreDir           string
-	cliSplitRestoreMysql         string
-	cliSplitRestoreMysqlArg      string
-	cliSplitRestoreParallel      int
-	cliSplitRestoreUser          bool
-	cliSplitRestoreDisableBinlog bool
+	cliSplitRestoreDir              string
+	cliSplitRestoreMysql            string
+	cliSplitRestoreMysqlArg         string
+	cliSplitRestoreParallel         int
+	cliSplitRestoreUser             bool
+	cliSplitRestoreDisableBinlog    bool
+	cliSplitRestoreCreateDatabases  bool
+	cliSplitRestoreDefinerStrict    bool
 )
 
 var splitRestoreCmd = &cobra.Command{
@@ -48,6 +50,8 @@ func initSplitRestoreFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&cliSplitRestoreParallel, "parallel", 1, "Parallel workers for splitdump restore")
 	cmd.Flags().BoolVar(&cliSplitRestoreUser, "restore-user", true, "Restore mysql.system-all file when present")
 	cmd.Flags().BoolVar(&cliSplitRestoreDisableBinlog, "disable-binlog", false, "Disable binary logging for splitdump restore")
+	cmd.Flags().BoolVar(&cliSplitRestoreCreateDatabases, "splitdump-create-databases", false, "Create databases before restore (opt-in for manual CLI use)")
+	cmd.Flags().BoolVar(&cliSplitRestoreDefinerStrict, "definer-strict", false, "Fail the restore when an incompatible DEFINER clause is encountered instead of retrying without it")
 }
 
 func runSplitrestore(ctx context.Context) error {
@@ -118,12 +122,94 @@ func runSplitrestore(ctx context.Context) error {
 		return nil
 	}
 
+	// restoreFileWithoutDefiner is the non-strict DEFINER fallback: it re-opens the file,
+	// strips DEFINER clauses while streaming, and re-runs the mysql client. Without this, a
+	// DEFINER error would cause the file to be silently skipped, losing views, routines,
+	// triggers, or events without any indication to the user.
+	// splitdump.NewDefinerStrippingReader uses bufio.Reader.ReadString (no token ceiling)
+	// so lines of arbitrary length — including multi-megabyte INSERT rows — are handled
+	// correctly, unlike bufio.Scanner which returns ErrTooLong beyond its buffer limit.
+	restoreFileWithoutDefiner := func(ctx context.Context, path string) error {
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+
+		var reader io.Reader = file
+		if strings.HasSuffix(strings.ToLower(path), ".gz") {
+			gzReader, err := gzip.NewReader(file)
+			if err != nil {
+				return err
+			}
+			defer gzReader.Close()
+			reader = gzReader
+		}
+
+		strippedReader, done := splitdump.NewDefinerStrippingReader(reader)
+
+		args, err := splitMysqlArgs(cliSplitRestoreMysqlArg)
+		if err != nil {
+			done(fmt.Errorf("arg parse failed"))
+			return fmt.Errorf("invalid mysql-args: %w", err)
+		}
+		preamble := splitdump.RestorePreamble(path)
+		if cliSplitRestoreDisableBinlog {
+			preamble = "SET sql_log_bin=0;\n" + preamble
+		}
+		var finalReader io.Reader = strippedReader
+		if preamble != "" {
+			finalReader = io.MultiReader(bytes.NewBufferString(preamble), strippedReader)
+		}
+		cmd := exec.CommandContext(ctx, cliSplitRestoreMysql, args...)
+		cmd.Stdin = finalReader
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		execErr := cmd.Run()
+		done(execErr) // unblock goroutine and wait for it before deferred file.Close runs
+		if execErr != nil {
+			errOutput := strings.TrimSpace(stderr.String())
+			if errOutput == "" {
+				errOutput = execErr.Error()
+			}
+			return fmt.Errorf("mysql restore (no-definer) failed for %s: %s", path, errOutput)
+		}
+		return nil
+	}
+
+	if cliSplitRestoreCreateDatabases {
+		schemas, schemaErr := splitdump.ListSchemas(cliSplitRestoreDir)
+		if schemaErr != nil {
+			logger(splitdump.LogWarn, "Could not list schemas for CREATE DATABASE: %v", schemaErr)
+		} else {
+			createArgs, argErr := splitMysqlArgs(cliSplitRestoreMysqlArg)
+			if argErr != nil {
+				logger(splitdump.LogWarn, "Invalid mysql-args, skipping CREATE DATABASE: %v", argErr)
+			} else {
+				for _, schema := range schemas {
+					escaped := strings.ReplaceAll(schema, "`", "``")
+					sql := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`;\n", escaped)
+					createCmd := exec.CommandContext(ctx, cliSplitRestoreMysql, createArgs...)
+					createCmd.Stdin = strings.NewReader(sql)
+					var createStderr bytes.Buffer
+					createCmd.Stderr = &createStderr
+					if err := createCmd.Run(); err != nil {
+						logger(splitdump.LogWarn, "CREATE DATABASE failed for %s: %s",
+							schema, strings.TrimSpace(createStderr.String()))
+					}
+				}
+			}
+		}
+	}
+
 	if err := splitdump.Restore(cliSplitRestoreDir, splitdump.RestoreOptions{
-		Parallel:               cliSplitRestoreParallel,
-		RestoreUser:            cliSplitRestoreUser,
-		Logger:                 logger,
-		Context:                ctx,
-		RestoreFileWithContext: restoreFile,
+		Parallel:                  cliSplitRestoreParallel,
+		RestoreUser:               cliSplitRestoreUser,
+		Logger:                    logger,
+		Context:                   ctx,
+		RestoreFileWithContext:    restoreFile,
+		RestoreFileWithoutDefiner: restoreFileWithoutDefiner,
+		DefinerStrict:             cliSplitRestoreDefinerStrict,
 	}); err != nil {
 		return err
 	}

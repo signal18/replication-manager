@@ -333,6 +333,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.ConfRewrite, "monitoring-save-config", true, "Save configuration changes to <monitoring-datadir>/<cluster_name> ")
 	flags.BoolVar(&conf.ConfRestoreOnStart, "monitoring-restore-config-on-start", false, "Wipe working directory and restore config")
 	flags.BoolVar(&conf.MonitoringMergeConfigOnStart, "monitoring-merge-config-on-start", false, "Merge configuration changes to source config.toml file (/etc or other source location) ")
+	flags.BoolVar(&conf.MonitoringSecretVersioning, "monitoring-secret-versioning", false, "Track cluster-local secret hash versions")
+	flags.BoolVar(&conf.MonitoringSecretVersioningAutoPrune, "monitoring-secret-versioning-auto-prune", false, "Automatically prune tracked secret versions during reconciliation")
+	flags.IntVar(&conf.MonitoringSecretVersioningKeepLast, "monitoring-secret-versioning-keep-last", 0, "Keep only the last N versions per secret key when auto-prune is enabled (0 = unlimited)")
 	flags.Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring interval in seconds")
 
 	//not working so far
@@ -935,10 +938,12 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupMysqlclientOptions, "backup-mysqlclient-options", "--force --batch", "Extra options")
 	flags.BoolVar(&conf.BackupMysqldumpSplitDump, "backup-mysqldump-splitdump", false, "Split mysqldump output using splitdump")
 	flags.StringVar(&conf.BackupSplitdumpFileSize, "backup-splitdump-file-size", "1G", "Max file size before sharding splitdump output (e.g. 16MiB, 1G; 0 disables sharding)")
+	flags.BoolVar(&conf.BackupSplitdumpCreateDatabases, "backup-splitdump-create-databases", true, "Auto-create databases before splitdump restore (server-orchestrated)")
 	flags.StringVar(&conf.BackupMytopPath, "backup-mytop-path", "", "Path to mytop binary")
 	flags.StringVar(&conf.BackupGottyClientPath, "backup-gotty-client-path", "", "Path to gotty client binary")
 	flags.StringVar(&conf.ReplicationManagerCliPath, "replication-manager-cli-path", "", "Path to replication-manager-cli binary")
 	flags.BoolVar(&conf.BackupRestoreVersionStrict, "backup-restore-version-strict", false, "During restore, check backup version against tools version. False will just issue a warning. True will abort restore")
+	flags.BoolVar(&conf.BackupRestoreDefinerStrict, "backup-restore-definer-strict", false, "During restore, fail closed when an incompatible DEFINER clause is encountered. False (default) applies non-strict fallback and continues.")
 
 	flags.BoolVar(&conf.BackupBinlogs, "backup-binlogs", false, "Archive binlogs")
 	flags.IntVar(&conf.BackupBinlogsKeep, "backup-binlogs-keep", 10, "Number of master binlog to keep")

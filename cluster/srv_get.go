@@ -499,6 +499,21 @@ func (server *ServerMonitor) GetPFSQueries() {
 		// Snapshot current digest table BEFORE truncating so we capture the full period.
 		server.FlushPFSSnapshotToLog()
 
+		// Enrich the in-memory table graph with join weights derived from the
+		// explain plans collected during the period that just ended.
+		// We reload the tablemap here (no columns/indexes needed — just the graph
+		// skeleton) so the workload links are written into a fresh structure that
+		// the cluster can attach to its next schema refresh.
+		if cluster.Conf.MonitorPFSQueriesExplain {
+			tablemap, _, _, tmErr := dbhelper.GetTables(server.Conn, server.DBVersion, false, false, 10)
+			if tmErr == nil {
+				server.ApplyPFSJoinLinksToSchema(tablemap)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+					"PFS join links: could not load tablemap for %s: %v", server.URL, tmErr)
+			}
+		}
+
 		// Build a fresh context for this period's explain goroutine.
 		// Stored on the server so the next snapshot (or a server shutdown) can cancel it.
 		ctx, cancel := context.WithCancel(context.Background())
@@ -1549,4 +1564,53 @@ func (server *ServerMonitor) IsInTask(taskname string) bool {
 	}
 
 	return false
+}
+
+// ── PFS join-link enrichment ──────────────────────────────────────────────────
+
+// ApplyPFSJoinLinksToSchema enriches a tablemap (keyed "schema.table") with
+// join-weight links derived from the explain plans cached during the last PFS
+// snapshot period.
+//
+// It is called once per snapshot cycle, right after FlushPFSSnapshotToLog,
+// so the cache always reflects the period that just ended.
+//
+// The function is safe to call from the monitoring goroutine: it only reads
+// PFSExplainCache (under its mutex) and PFSQueries (via ToNewMap snapshot),
+// and writes only to the caller-supplied tablemap which is not shared.
+func (server *ServerMonitor) ApplyPFSJoinLinksToSchema(tablemap map[string]*dbhelper.Table) {
+	cluster := server.ClusterGroup
+
+	// Collect all cached explain records — these are the plans for the
+	// digests seen during the last snapshot period.
+	cachedRecords := server.GetAllCachedExplainPFS()
+	if len(cachedRecords) == 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg,
+			"PFS join links: no cached explain records for %s — skipping", server.URL)
+		return
+	}
+
+	// Convert cluster.PFSExplainRecord → dbhelper.PFSQueryPlan.
+	// dbhelper cannot import cluster (cycle), so we project only the three
+	// fields that LoadPFSJoinLinks actually reads.
+	records := make([]dbhelper.PFSQueryPlan, 0, len(cachedRecords))
+	for _, r := range cachedRecords {
+		records = append(records, dbhelper.PFSQueryPlan{
+			Digest:     r.Digest,
+			SchemaName: r.SchemaName,
+			Plan:       r.Plan,
+		})
+	}
+
+	// Build execCount map from the live PFSQueriesMap.
+	// ToNewMap returns a point-in-time snapshot — safe to read without locking.
+	execCounts := make(map[string]int64, len(records))
+	for digest, q := range server.PFSQueries.ToNewMap() {
+		execCounts[digest] = q.Exec_count
+	}
+
+	dbhelper.LoadPFSJoinLinks(records, execCounts, tablemap)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+		"PFS join links: enriched table graph from %d explain records on %s", len(records), server.URL)
 }

@@ -137,6 +137,32 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 	shardpad, schema := "", ""
 	shard := 0
 	dataTableName := ""
+	currentOutputName := ""
+	openedOutputs := make(map[string]bool)
+
+	// Manifest tracking: record each artifact on its first creation, preserving emission order.
+	var manifestSchema, manifestData, manifestPost []string
+	manifestSeen := make(map[string]bool)
+	recordManifestEntry := func(tableName string) {
+		sanitized := sanitizefilename.Sanitize(tableName) + ".sql.gz"
+		if manifestSeen[sanitized] {
+			return
+		}
+		manifestSeen[sanitized] = true
+		// Classify with restoreUser=true so mysql.system-all is recorded as schema.
+		cat, ok := classifyFile(sanitized, true)
+		if !ok {
+			return
+		}
+		switch cat {
+		case fileCategorySchema:
+			manifestSchema = append(manifestSchema, sanitized)
+		case fileCategoryPost:
+			manifestPost = append(manifestPost, sanitized)
+		default:
+			manifestData = append(manifestData, sanitized)
+		}
+	}
 	binlogRegexMariaDB := regexp.MustCompile(`CHANGE MASTER TO MASTER_LOG_FILE='(.+)', MASTER_LOG_POS=(\d+)`)
 	gtidRegexMariaDB := regexp.MustCompile(`SET GLOBAL gtid_slave_pos='(.+)'`)
 	binlogRegexMySQL := regexp.MustCompile(`CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='(.+)', SOURCE_LOG_POS=(\d+)`)
@@ -153,6 +179,19 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 	var tableFile *gzip.Writer
 	var bgtid, bfile, bpos string
 	sourceDataDisabled := false
+	extractDumpSectionName := func(line, marker string) string {
+		trimmed := strings.TrimSpace(line)
+		if len(trimmed) < len(marker) || !strings.EqualFold(trimmed[:len(marker)], marker) {
+			return ""
+		}
+		name := strings.TrimSpace(trimmed[len(marker):])
+		// strings.Trim removes any mix of backtick/single/double-quote characters from
+		// both ends. This is correct for mysqldump output: identifiers are wrapped in a
+		// single consistent quote style and do not contain literal unescaped trailing
+		// quote characters (e.g. `db name` → db name, not `db name`` → db name).
+		name = strings.Trim(name, "`'\"")
+		return strings.TrimSpace(name)
+	}
 	closeTableWriter := func() {
 		if tableFile != nil {
 			_ = tableFile.Flush()
@@ -166,6 +205,34 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 			_ = f.Close()
 			f = nil
 		}
+		currentOutputName = ""
+	}
+	openOutputFile := func(tableName string, appendMode bool) error {
+		if tableFile != nil && currentOutputName == tableName {
+			return nil
+		}
+		closeTableFile()
+		tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
+		flags := os.O_CREATE | os.O_WRONLY
+		isFirstOpen := !openedOutputs[tableName]
+		if appendMode && openedOutputs[tableName] {
+			flags |= os.O_APPEND
+		} else {
+			flags |= os.O_TRUNC
+		}
+		var openErr error
+		f, openErr = os.OpenFile(tablePath, flags, 0644)
+		if openErr != nil {
+			return fmt.Errorf("splitdump: create file %s: %w", tablePath, openErr)
+		}
+		tableFile = gzip.NewWriter(f)
+		currentOutputName = tableName
+		openedOutputs[tableName] = true
+		if isFirstOpen {
+			recordManifestEntry(tableName)
+		}
+		pastHeader = true
+		return nil
 	}
 
 	streamSizeMax, err := normalizeSplitDumpOptions(opts)
@@ -188,17 +255,13 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 				splitReady = false
 			} else if onTableData && dataTableName != "" {
 				shard++
-				closeTableFile()
 				shardpad = fmt.Sprintf(".%05d", shard)
 				tableName := dataTableName + shardpad
 				fmt.Printf("Processing table data %s\n", tableName)
-				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
-				f, err = os.Create(tablePath)
-				if err != nil {
-					finishWithError(fmt.Errorf("splitdump: create file %s: %w", tablePath, err))
+				if err = openOutputFile(tableName, false); err != nil {
+					finishWithError(err)
 					return
 				}
-				tableFile = gzip.NewWriter(f)
 				tableFile.Write([]byte(headerMetaData))
 				if schema != "" {
 					tableFile.Write([]byte("USE `" + schema + "`;\n"))
@@ -256,14 +319,10 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 				onTableScheme, onTableData = true, false
 				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Table structure for table ", "", 1), "`", "", -1)) + "-schema"
 				fmt.Printf("Processing table schema %s\n", tableName)
-				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
-				f, err = os.Create(tablePath)
-				if err != nil {
-					finishWithError(fmt.Errorf("splitdump: create file %s: %w", tablePath, err))
+				if err = openOutputFile(tableName, false); err != nil {
+					finishWithError(err)
 					return
 				}
-				tableFile = gzip.NewWriter(f)
-				pastHeader = true
 			} else if strings.HasPrefix(line, "LOCK TABLES `") {
 				onTableData, onTableScheme = true, false
 			} else if strings.HasPrefix(line, "-- Dumping data for table") {
@@ -272,15 +331,11 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 					closeTableWriter()
 					tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table", "", 1), "`", "", -1)) + "-schema"
 					fmt.Printf("Processing table schema %s\n", tableName)
-					tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
-					f, err = os.Create(tablePath)
-					if err != nil {
-						finishWithError(fmt.Errorf("splitdump: create file %s: %w", tablePath, err))
+					if err = openOutputFile(tableName, false); err != nil {
+						finishWithError(err)
 						return
 					}
-					tableFile = gzip.NewWriter(f)
 					tableFile.Write([]byte("\n--\n" + line))
-					pastHeader = true
 
 				}
 				closeTableFile()
@@ -289,13 +344,10 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 				dataTableName = schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Dumping data for table ", "", 1), "`", "", -1))
 				tableName := dataTableName + shardpad
 				fmt.Printf("Processing table data %s\n", tableName)
-				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
-				f, err = os.Create(tablePath)
-				if err != nil {
-					finishWithError(fmt.Errorf("splitdump: create file %s: %w", tablePath, err))
+				if err = openOutputFile(tableName, false); err != nil {
+					finishWithError(err)
 					return
 				}
-				tableFile = gzip.NewWriter(f)
 				tableFile.Write([]byte(headerMetaData))
 				onTableScheme = false
 				onTableData = true
@@ -305,31 +357,65 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 				onTableScheme = false
 				dataTableName = ""
 				//	onView = true
-				closeTableFile()
 				tableName := schema + "." + strings.TrimSpace(strings.Replace(strings.Replace(line, "-- Final view structure for view ", "", 1), "`", "", -1)) + "-schema-view"
 				fmt.Printf("Processing view schema %s\n", tableName)
-				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
-				f, err = os.Create(tablePath)
-				if err != nil {
-					finishWithError(fmt.Errorf("splitdump: create file %s: %w", tablePath, err))
+				if err = openOutputFile(tableName, false); err != nil {
+					finishWithError(err)
 					return
 				}
-				tableFile = gzip.NewWriter(f)
 				//-- Dumping routines
+			} else if strings.HasPrefix(line, "-- Dumping routines for database ") {
+				onTableData = false
+				onTableScheme = false
+				dataTableName = ""
+				routineSchema := extractDumpSectionName(line, "-- Dumping routines for database ")
+				if routineSchema == "" {
+					routineSchema = schema
+				}
+				tableName := routineSchema + ".__routines-schema-routine"
+				fmt.Printf("Processing routines schema %s\n", tableName)
+				if err = openOutputFile(tableName, true); err != nil {
+					finishWithError(err)
+					return
+				}
+			} else if strings.HasPrefix(line, "-- Dumping events for database ") {
+				onTableData = false
+				onTableScheme = false
+				dataTableName = ""
+				eventSchema := extractDumpSectionName(line, "-- Dumping events for database ")
+				if eventSchema == "" {
+					eventSchema = schema
+				}
+				tableName := eventSchema + ".__events-schema-event"
+				fmt.Printf("Processing events schema %s\n", tableName)
+				if err = openOutputFile(tableName, true); err != nil {
+					finishWithError(err)
+					return
+				}
+			} else if strings.HasPrefix(line, "-- Dumping triggers for table ") {
+				onTableData = false
+				onTableScheme = false
+				dataTableName = ""
+				triggerTable := extractDumpSectionName(line, "-- Dumping triggers for table ")
+				if triggerTable == "" {
+					triggerTable = "__triggers"
+				}
+				tableName := schema + "." + triggerTable + "-schema-trigger"
+				fmt.Printf("Processing trigger schema %s\n", tableName)
+				if err = openOutputFile(tableName, true); err != nil {
+					finishWithError(err)
+					return
+				}
 			} else if strings.HasPrefix(line, "INSTALL PLUGIN") || strings.HasPrefix(line, "CREATE USER") {
 				onTableData = false
 				onTableScheme = false
 				dataTableName = ""
-				closeTableFile()
 				tableName := "mysql.system-all"
 				fmt.Printf("Processing system schema %s\n", tableName)
-				tablePath := filepath.Join(outputDir, sanitizefilename.Sanitize(tableName)+".sql.gz")
-				f, err = os.Create(tablePath)
-				if err != nil {
-					finishWithError(fmt.Errorf("splitdump: create file %s: %w", tablePath, err))
+				if err = openOutputFile(tableName, true); err != nil {
+					finishWithError(err)
 					return
 				}
-				tableFile = gzip.NewWriter(f)
 			}
 			if !sourceDataDisabled {
 				if matches := gtidRegexMariaDB.FindStringSubmatch(line); matches != nil {
@@ -377,6 +463,17 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 	line := strings.Join(metaLines, "\n")
 	_, _ = f.Write([]byte(line))
 	f.Close()
+
+	manifest := &Manifest{
+		Version: manifestVersion,
+		Schema:  manifestSchema,
+		Data:    manifestData,
+		Post:    manifestPost,
+	}
+	if err = WriteManifest(outputDir, manifest); err != nil {
+		finishWithError(err)
+		return
+	}
 
 	bus.Finished <- true
 }

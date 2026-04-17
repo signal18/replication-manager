@@ -1411,9 +1411,7 @@ func loadFKLinks(ext schemaExecutor, myver *version.Version, tablemap map[string
 //  3. No explicit FOREIGN KEY already exists between the pair.
 //
 // Result columns: child_schema, child_table, parent_schema, parent_table,
-//
-//	shared_cols (csv), child_pk_cols (int), child_fk_count (int), child_extra_cols (int)
-//
+//   shared_cols (csv), child_pk_cols (int), child_fk_count (int), child_extra_cols (int)
 // loadColumnMatchLinks detects implicit FK-like relationships from the
 // already-loaded tablemap — zero additional SQL queries.
 //
@@ -1782,4 +1780,218 @@ func parentIndexColsFor(t *Table, colName string) []string {
 		}
 	}
 	return nil
+}
+
+// ── PFS workload join-link discovery ─────────────────────────────────────────
+
+// LoadPFSJoinLinks analyses the EXPLAIN plans captured in the last PFS snapshot
+// and injects TableLink entries (Source = RelationWorkloadQuery) for every join
+// pair it detects.
+//
+// How join pairs are detected:
+//
+//	EXPLAIN returns one row per table access, in driving order.
+//	When a row's Ref column contains "schema.table.column" it means that row
+//	was joined against a previously-driven table.  We pair the current table
+//	with the referenced table to form one directed join edge.
+//
+// Weight formula:
+//
+//	raw(A,B) += execCount(digest) × rows_estimate(explain_row)
+//	JoinWeightPct = raw(A,B) / Σ raw × 100
+//
+// execCounts maps digest → Exec_count from the live PFSQueriesMap so that
+// high-frequency queries dominate the weight.
+//
+// If a link between the two tables already exists (FK or column-match),
+// JoinWeightPct is merged onto it rather than creating a duplicate edge.
+// New workload-only edges are created when no prior link exists.
+// PFSQueryPlan is the subset of a cached EXPLAIN record that LoadPFSJoinLinks
+// needs.  It is defined here in dbhelper so the function has no dependency on
+// the cluster package (which itself imports dbhelper — avoiding a cycle).
+// cluster.ApplyPFSJoinLinksToSchema converts []cluster.PFSExplainRecord into
+// []PFSQueryPlan before calling this function.
+type PFSQueryPlan struct {
+	Digest     string  // PFS digest hash — key into execCounts
+	SchemaName string  // default schema for unqualified table names
+	Plan       []Explain // EXPLAIN rows in driving order
+}
+
+func LoadPFSJoinLinks(
+	records []PFSQueryPlan,
+	execCounts map[string]int64,
+	tablemap map[string]*Table,
+) {
+	type pairKey struct{ a, b string } // always a ≤ b lexicographically
+
+	raw := make(map[pairKey]float64)
+
+	for _, rec := range records {
+		if len(rec.Plan) < 2 {
+			continue // single-table access — nothing to join
+		}
+		execCount := execCounts[rec.Digest] // 0 → weight 0, still safe
+		schema := rec.SchemaName
+
+		// Build a driving-order list of (resolvedKey, rowEstimate) from the plan.
+		type planRow struct {
+			key  string // "schema.table"
+			rows int64
+		}
+		driven := make([]planRow, 0, len(rec.Plan))
+		for _, ep := range rec.Plan {
+			tbl := ep.Table.String
+			if tbl == "" || strings.HasPrefix(tbl, "<") {
+				// Skip derived tables, subquery materialisations, UNION results.
+				continue
+			}
+			key := schema + "." + tbl
+			var rowEst int64
+			if ep.Rows.Valid && ep.Rows.String != "" {
+				fmt.Sscanf(ep.Rows.String, "%d", &rowEst)
+			}
+			driven = append(driven, planRow{key, rowEst})
+		}
+
+		// For each non-driving row, check whether its Ref column points back to
+		// a previously-seen table.  Ref format produced by MySQL/MariaDB:
+		//   "db.table.column"   — join to a specific column of a prior table
+		//   "const"             — constant comparison, not a join
+		//   "func"              — expression, not a join
+		//   ""                  — full scan / no reference
+		for i := 1; i < len(driven); i++ {
+			ep := rec.Plan[i]
+			ref := ep.Ref.String
+			if ref == "" || ref == "const" || ref == "func" {
+				continue
+			}
+
+			// Ref may be a comma-separated list when a composite key is used.
+			// Each component has the same "db.tbl.col" structure — we only need
+			// the table part, so take the first component.
+			firstRef := strings.SplitN(ref, ",", 2)[0]
+			parts := strings.Split(strings.TrimSpace(firstRef), ".")
+			if len(parts) < 2 {
+				continue // cannot resolve to a schema.table pair
+			}
+			refKey := parts[0] + "." + parts[1]
+
+			// Confirm both sides exist in tablemap before accumulating weight.
+			if _, ok := tablemap[refKey]; !ok {
+				continue
+			}
+			if _, ok := tablemap[driven[i].key]; !ok {
+				continue
+			}
+			if refKey == driven[i].key {
+				continue // self-join — skip
+			}
+
+			pk := pairKey{refKey, driven[i].key}
+			if pk.b < pk.a {
+				pk.a, pk.b = pk.b, pk.a
+			}
+
+			// Weight: number of executions × rows touched on this join side.
+			raw[pk] += float64(execCount) * float64(driven[i].rows)
+		}
+	}
+
+	if len(raw) == 0 {
+		return
+	}
+
+	// Normalise raw weights to a percentage of the total join workload.
+	total := 0.0
+	for _, w := range raw {
+		total += w
+	}
+	if total == 0 {
+		return
+	}
+	for pair, w := range raw {
+		attachJoinWeight(tablemap, pair.a, pair.b, w/total*100.0)
+	}
+}
+
+// attachJoinWeight sets JoinWeightPct on the TableLink edge between keyA and
+// keyB (both in "schema.table" form).
+//
+// Priority:
+//  1. Enrich an existing TableParents edge on tA pointing to tB, and mirror it
+//     on tB.TableChildren.
+//  2. Enrich an existing TableChildren edge on tA pointing to tB, and mirror it
+//     on tB.TableParents.
+//  3. Create brand-new RelationWorkloadQuery edges on both sides when no prior
+//     link exists (pure workload-discovered relationship).
+//
+// The function is intentionally idempotent: calling it twice with the same pair
+// overwrites the previous pct rather than doubling it.
+func attachJoinWeight(tablemap map[string]*Table, keyA, keyB string, pct float64) {
+	partsA := strings.SplitN(keyA, ".", 2)
+	partsB := strings.SplitN(keyB, ".", 2)
+	if len(partsA) < 2 || len(partsB) < 2 {
+		return
+	}
+	schemaA, tableA := partsA[0], partsA[1]
+	schemaB, tableB := partsB[0], partsB[1]
+
+	tA, okA := tablemap[keyA]
+	tB, okB := tablemap[keyB]
+	if !okA || !okB {
+		return
+	}
+
+	// ── 1. tA.TableParents → tB ──────────────────────────────────────────────
+	for i := range tA.TableParents {
+		lk := &tA.TableParents[i]
+		if lk.LinkedSchema == schemaB && lk.LinkedTable == tableB {
+			lk.JoinWeightPct = pct
+			// Mirror on tB.TableChildren.
+			for j := range tB.TableChildren {
+				mlk := &tB.TableChildren[j]
+				if mlk.LinkedSchema == schemaA && mlk.LinkedTable == tableA {
+					mlk.JoinWeightPct = pct
+					break
+				}
+			}
+			return
+		}
+	}
+
+	// ── 2. tA.TableChildren → tB ─────────────────────────────────────────────
+	for i := range tA.TableChildren {
+		lk := &tA.TableChildren[i]
+		if lk.LinkedSchema == schemaB && lk.LinkedTable == tableB {
+			lk.JoinWeightPct = pct
+			// Mirror on tB.TableParents.
+			for j := range tB.TableParents {
+				mlk := &tB.TableParents[j]
+				if mlk.LinkedSchema == schemaA && mlk.LinkedTable == tableA {
+					mlk.JoinWeightPct = pct
+					break
+				}
+			}
+			return
+		}
+	}
+
+	// ── 3. No prior link — create workload-only edges ─────────────────────────
+	relName := "workload_" + tableA + "_" + tableB
+	tA.TableChildren = append(tA.TableChildren, TableLink{
+		LinkedSchema:  schemaB,
+		LinkedTable:   tableB,
+		RelationName:  relName,
+		Source:        RelationWorkloadQuery,
+		Cardinality:   CardinalityOneToMany, // conservative default
+		JoinWeightPct: pct,
+	})
+	tB.TableParents = append(tB.TableParents, TableLink{
+		LinkedSchema:  schemaA,
+		LinkedTable:   tableA,
+		RelationName:  relName,
+		Source:        RelationWorkloadQuery,
+		Cardinality:   CardinalityOneToMany,
+		JoinWeightPct: pct,
+	})
 }

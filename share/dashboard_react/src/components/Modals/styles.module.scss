@@ -243,3 +243,22 @@
   flex-direction: column;
   gap: var(--info-modal-body-gap, #{rem(8)});
 }
+
+.modalFieldWithAction {
+  align-items: center;
+  justify-content: space-between;
+  gap: rem(8);
+  margin-bottom: rem(6);
+}
+
+.readOnlyPortInput {
+  background-color: var(--secondary-gray-color) !important;
+  border-color: var(--tertiary-color) !important;
+  cursor: not-allowed;
+}
+
+.portHintText {
+  font-size: rem(12);
+  color: var(--text-color);
+  opacity: 0.8;
+}

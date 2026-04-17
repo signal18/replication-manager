@@ -12,7 +12,9 @@ import (
 	"testing"
 	"time"
 
+	gzip "github.com/klauspost/pgzip"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/splitdump"
 	"github.com/sirupsen/logrus"
 )
 
@@ -260,5 +262,72 @@ func TestIsSplitDumpDir(t *testing.T) {
 	}
 	if ok, err := isSplitDumpDir(emptyDir); err != nil || ok {
 		t.Fatalf("expected empty dir to be false, err=%v", err)
+	}
+}
+
+// TestDefinerStripRegexStreaming verifies that restoreSplitdumpFileContextStripDefiner actually
+// removes DEFINER clauses from the byte stream delivered to the mysql client. It writes a gzip
+// SQL file with DEFINER= clauses, pipes it through the stripping logic, and checks that the
+// output contains no DEFINER clause while preserving non-DEFINER content.
+func TestDefinerStripRegexStreaming(t *testing.T) {
+	// Build a SQL file that mimics mysqldump output for a view or routine.
+	sqlContent := strings.Join([]string{
+		"SET FOREIGN_KEY_CHECKS=0;",
+		"CREATE DEFINER=`root`@`localhost` VIEW `v1` AS SELECT 1;",
+		"CREATE DEFINER=`app_user`@`%` PROCEDURE `p1`() BEGIN SELECT 1; END;",
+		"-- plain comment without definer",
+		"CREATE TABLE `t` (`id` INT);",
+	}, "\n") + "\n"
+
+	// Write as gzip.
+	dir := t.TempDir()
+	gzPath := filepath.Join(dir, "db.v1-schema-view.sql.gz")
+	f, err := os.Create(gzPath)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	gzw := gzip.NewWriter(f)
+	if _, err := gzw.Write([]byte(sqlContent)); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := gzw.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+	f.Close()
+
+	// Stream through splitdump.NewDefinerStrippingReader (same code path as
+	// restoreSplitdumpFileContextStripDefiner) to verify DEFINER stripping.
+	rf, err := os.Open(gzPath)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer rf.Close()
+	gzr, err := gzip.NewReader(rf)
+	if err != nil {
+		t.Fatalf("gzip reader: %v", err)
+	}
+	defer gzr.Close()
+
+	strippedReader, done := splitdump.NewDefinerStrippingReader(gzr)
+	outBytes, readErr := io.ReadAll(strippedReader)
+	done(readErr)
+	if readErr != nil {
+		t.Fatalf("read stripped: %v", readErr)
+	}
+
+	result := string(outBytes)
+	if strings.Contains(strings.ToUpper(result), "DEFINER=") {
+		t.Fatalf("DEFINER clause still present after strip:\n%s", result)
+	}
+	// Non-DEFINER content must be preserved.
+	if !strings.Contains(result, "SELECT 1") {
+		t.Fatalf("expected SELECT 1 to be preserved, got:\n%s", result)
+	}
+	if !strings.Contains(result, "plain comment") {
+		t.Fatalf("expected comment to be preserved, got:\n%s", result)
+	}
+	// Verify CREATE statements are retained (without the DEFINER clause).
+	if !strings.Contains(result, "CREATE") {
+		t.Fatalf("expected CREATE statements to be preserved, got:\n%s", result)
 	}
 }

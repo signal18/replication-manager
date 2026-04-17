@@ -1066,12 +1066,13 @@ func (server *ServerMonitor) restoreSplitdumpFileContextWithPreamble(ctx context
 			return nil
 		}
 
-		// We need force in system-all to prevent failed plugins
-		if splitdump.IsMysqlSystemAll(path) {
+		// We need force in system-all to prevent failed plugins.
+		// IsMysqlSystemAll compares basename only, so pass filepath.Base(path).
+		if splitdump.IsMysqlSystemAll(filepath.Base(path)) {
 			force = true
 		}
 
-		if table != "" {
+		if table != "" && splitdump.IsMysqlTableCheckEligible(path) {
 			// Server path proactively checks information_schema; CLI path reacts to mysql error output instead.
 			exists, err := server.tableExists(schema, table)
 			if err != nil {
@@ -1092,6 +1093,47 @@ func (server *ServerMonitor) restoreSplitdumpFileContextWithPreamble(ctx context
 	}
 
 	return server.executeMysqlRestoreContext(ctx, reader, force)
+}
+
+// restoreSplitdumpFileContextStripDefiner opens path (handling gzip), strips DEFINER clauses
+// while streaming via splitdump.NewDefinerStrippingReader, prepends preamble, and pipes the
+// result to the mysql client. It is used as the non-strict DEFINER fallback when
+// backup-restore-definer-strict=false.
+// splitdump.NewDefinerStrippingReader uses bufio.Reader.ReadString (no fixed token ceiling)
+// so lines of arbitrary length — including multi-megabyte INSERT rows — are handled without
+// the bufio.ErrTooLong failure that the old bufio.Scanner approach was susceptible to.
+func (server *ServerMonitor) restoreSplitdumpFileContextStripDefiner(ctx context.Context, path, preamble string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	cluster := server.ClusterGroup
+	var reader io.Reader = file
+	if strings.HasSuffix(strings.ToLower(path), ".gz") {
+		parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
+		bufferSize := cluster.getSanitizedDecompressBufferSize(config.ConstLogModTask)
+		gzReader, err := gzip.NewReaderN(file, bufferSize, parallelBlocks)
+		if err != nil {
+			return err
+		}
+		defer gzReader.Close()
+		reader = gzReader
+	}
+
+	strippedReader, done := splitdump.NewDefinerStrippingReader(reader)
+
+	var finalReader io.Reader = strippedReader
+	if preamble != "" {
+		finalReader = io.MultiReader(bytes.NewBufferString(preamble), strippedReader)
+	}
+
+	// IsMysqlSystemAll compares basename only, so pass filepath.Base(path).
+	force := splitdump.IsMysqlSystemAll(filepath.Base(path))
+	execErr := server.executeMysqlRestoreContext(ctx, finalReader, force)
+	done(execErr) // unblock goroutine and wait for it before deferred file.Close fires
+	return execErr
 }
 
 func (server *ServerMonitor) tableExists(schema, table string) (bool, error) {
@@ -1213,9 +1255,30 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 
 	defer server.SetInReseedBackup("")
 
+	if cluster.Conf.BackupSplitdumpCreateDatabases {
+		schemas, schemaErr := splitdump.ListSchemas(backupPath)
+		if schemaErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream,
+				config.LvlWarn, "Could not list schemas for CREATE DATABASE: %v", schemaErr)
+		} else {
+			for _, schema := range schemas {
+				escaped := strings.ReplaceAll(schema, "`", "``")
+				sql := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`;\n", escaped)
+				if err := server.executeMysqlRestoreContext(ctx, strings.NewReader(sql), false); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream,
+						config.LvlWarn, "CREATE DATABASE failed for %s: %v", schema, err)
+				}
+			}
+		}
+	}
+
 	restoreFile := func(ctx context.Context, path string) error {
 		preamble := server.buildSplitdumpRestorePreamble(path, sqlLogBin)
 		return server.restoreSplitdumpFileContextWithPreamble(ctx, path, preamble)
+	}
+	restoreFileWithoutDefiner := func(ctx context.Context, path string) error {
+		preamble := server.buildSplitdumpRestorePreamble(path, sqlLogBin)
+		return server.restoreSplitdumpFileContextStripDefiner(ctx, path, preamble)
 	}
 
 	restoreErr := splitdump.Restore(backupPath, splitdump.RestoreOptions{
@@ -1224,8 +1287,10 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 		Logger: func(level, format string, args ...any) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, level, format, args...)
 		},
-		Context:                ctx,
-		RestoreFileWithContext: restoreFile,
+		Context:                   ctx,
+		RestoreFileWithContext:     restoreFile,
+		RestoreFileWithoutDefiner: restoreFileWithoutDefiner,
+		DefinerStrict:             cluster.Conf.BackupRestoreDefinerStrict,
 	})
 	if restoreErr != nil {
 		return restoreErr

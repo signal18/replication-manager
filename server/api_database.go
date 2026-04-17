@@ -7,6 +7,7 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -494,6 +496,13 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/queries/explain-pfs-cached", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxQueryExplainPFSCachedAll)),
+	))
+	// PFS historical join-weight snapshots — time-machine endpoint.
+	// GET .../pfs-join-weights          → list all available snapshots + weights
+	// GET .../pfs-join-weights?from=YYYYMMDD_HH&to=YYYYMMDD_HH → bounded range
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/pfs-join-weights", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPFSJoinWeightsHistory)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/queries/{queryDigest}/actions/analyze-pfs", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -5423,4 +5432,321 @@ type ResticReseedRequest struct {
 	UseTempDir *bool  `json:"useTempDir,omitempty"`
 	Cleanup    *bool  `json:"cleanup,omitempty"`
 	Overwrite  string `json:"overwrite,omitempty"`
+}
+
+// ── PFS time-machine: historical join-weight snapshots ────────────────────────
+
+// pfsJoinLink is one weighted edge returned by the time-machine endpoint.
+// The pair is always stored in canonical order (tableA ≤ tableB) so the
+// frontend can key on it without worrying about direction.
+type pfsJoinLink struct {
+	TableA        string  `json:"tableA"`        // "schema.table"
+	TableB        string  `json:"tableB"`        // "schema.table"
+	JoinWeightPct float64 `json:"joinWeightPct"` // 0–100
+}
+
+// pfsSnapshotWeights is the response object for one hourly snapshot period.
+type pfsSnapshotWeights struct {
+	Timestamp    string        `json:"timestamp"`    // RFC3339 of the snapshot hour
+	SnapshotFile string        `json:"snapshotFile"` // basename of the .jsonl file
+	Links        []pfsJoinLink `json:"links"`        // computed join weights for this period
+}
+
+// handlerMuxPFSJoinWeightsHistory serves historical join-weight data derived
+// from the on-disk PFS snapshot JSONL files so the frontend can render a
+// "time-machine" view of how join patterns evolved across snapshot periods.
+//
+// Route: GET /api/clusters/{clusterName}/servers/{serverName}/pfs-join-weights
+//
+// Optional query parameters:
+//
+//	from=YYYYMMDD_HH  — earliest snapshot to include (inclusive, default: all)
+//	to=YYYYMMDD_HH    — latest  snapshot to include (inclusive, default: all)
+//
+// Response: JSON array of pfsSnapshotWeights, sorted oldest-first.
+//
+// @Summary      Historical PFS join weights
+// @Description  Returns per-snapshot join-weight data computed from on-disk PFS JSONL files.
+// @Tags         DatabaseSchema
+// @Produce      json
+// @Param        Authorization  header   string  true  "Bearer token"
+// @Param        clusterName    path     string  true  "Cluster name"
+// @Param        serverName     path     string  true  "Server name"
+// @Param        from           query    string  false "Start hour YYYYMMDD_HH"
+// @Param        to             query    string  false "End hour YYYYMMDD_HH"
+// @Success      200  {array}   pfsSnapshotWeights
+// @Failure      403  {string}  string "No valid ACL"
+// @Failure      500  {string}  string "error message"
+// @Router       /api/clusters/{clusterName}/servers/{serverName}/pfs-join-weights [get]
+func (repman *ReplicationManager) handlerMuxPFSJoinWeightsHistory(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "cluster not found", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	node := mycluster.GetServerFromName(vars["serverName"])
+	if node == nil {
+		http.Error(w, "server not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Resolve the datadir log directory for this server.
+	logDir := node.Datadir + "/log"
+
+	// List all JSONL snapshot files.
+	pattern := filepath.Join(logDir, "log_pfs_queries_*.jsonl")
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		// No snapshots yet — return an empty array, not an error.
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+		return
+	}
+
+	// Apply optional from/to filters (format: YYYYMMDD_HH).
+	fromStr := strings.TrimSpace(r.URL.Query().Get("from"))
+	toStr   := strings.TrimSpace(r.URL.Query().Get("to"))
+
+	sort.Strings(matches) // lexicographic == chronological for YYYYMMDD_HH
+
+	result := make([]pfsSnapshotWeights, 0, len(matches))
+	for _, fpath := range matches {
+		base := filepath.Base(fpath)
+		// Extract the YYYYMMDD_HH token: log_pfs_queries_YYYYMMDD_HH.jsonl
+		// token is everything between the last "_" before the date and ".jsonl"
+		token := strings.TrimPrefix(base, "log_pfs_queries_")
+		token = strings.TrimSuffix(token, ".jsonl")
+
+		if fromStr != "" && token < fromStr {
+			continue
+		}
+		if toStr != "" && token > toStr {
+			continue
+		}
+
+		sw, err := computeSnapshotWeights(fpath, base, token)
+		if err != nil {
+			// Log but don't abort — skip malformed files.
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose,
+				config.ConstLogModTask, config.LvlWarn,
+				"pfs-join-weights: skipping %s: %v", base, err)
+			continue
+		}
+		result = append(result, sw)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "\t")
+	if err := enc.Encode(result); err != nil {
+		http.Error(w, "encoding error", http.StatusInternalServerError)
+	}
+}
+
+// computeSnapshotWeights reads one JSONL snapshot file, reconstructs the
+// execCount map, then calls LoadPFSJoinLinks logic inline to produce a flat
+// list of (tableA, tableB, joinWeightPct) triples.
+//
+// We re-implement the weight computation here (without needing a live DB
+// connection) because PFSSnapshotEntry already contains ExecCount and the
+// explain cache is stored separately.  The join detection requires the explain
+// plans, which we read from the server's in-memory cache — already populated
+// when ApplyPFSJoinLinksToSchema ran.  For historical files we do a best-effort
+// approach: we use ExecCount × RowsScanned as a proxy weight (no per-row
+// explain data available offline), giving a heat map proportional to query
+// pressure rather than join selectivity.
+func computeSnapshotWeights(fpath, base, token string) (pfsSnapshotWeights, error) {
+	// Parse YYYYMMDD_HH → RFC3339 timestamp (UTC, on-the-hour).
+	// token format: "20260401_08"
+	ts, tsErr := parseSnapshotToken(token)
+	if tsErr != nil {
+		ts = token // fallback: use raw token as timestamp string
+	}
+
+	f, err := os.Open(fpath)
+	if err != nil {
+		return pfsSnapshotWeights{}, err
+	}
+	defer f.Close()
+
+	// Read all PFSSnapshotEntry lines.
+	type snapshotEntry struct {
+		Timestamp   string  `json:"timestamp"`
+		Digest      string  `json:"digest"`
+		DigestText  string  `json:"digestText"`
+		SchemaName  string  `json:"schemaName"`
+		ExecCount   int64   `json:"execCount"`
+		RowsScanned int64   `json:"rowsScanned"`
+	}
+
+	type pairKey struct{ a, b string }
+
+	raw := make(map[pairKey]float64)
+
+	scanner := bufio.NewScanner(f)
+	// Increase scanner buffer for long digest-text lines.
+	scanner.Buffer(make([]byte, 256*1024), 256*1024)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var entry snapshotEntry
+		if jsonErr := json.Unmarshal([]byte(line), &entry); jsonErr != nil {
+			continue // skip malformed lines
+		}
+		if entry.ExecCount == 0 || entry.RowsScanned == 0 {
+			continue
+		}
+
+		// Extract table names mentioned in the digest text.
+		// DigestText is a normalised SQL template like:
+		//   "SELECT ... FROM `orders` JOIN `customers` ON ..."
+		// We pull every back-quoted or bare identifier after FROM / JOIN keywords.
+		tables := extractTablesFromDigest(entry.DigestText, entry.SchemaName)
+		if len(tables) < 2 {
+			continue // no join detectable from digest text alone
+		}
+
+		// Weight: executions × rows scanned — proxy for join pressure.
+		weight := float64(entry.ExecCount) * float64(entry.RowsScanned)
+
+		// Emit one edge for every pair of tables in the query.
+		// For N tables this is O(N²) but N is very small in practice (2–6).
+		for i := 0; i < len(tables); i++ {
+			for j := i + 1; j < len(tables); j++ {
+				pk := pairKey{tables[i], tables[j]}
+				if pk.b < pk.a {
+					pk.a, pk.b = pk.b, pk.a
+				}
+				raw[pk] += weight
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return pfsSnapshotWeights{}, err
+	}
+
+	// Normalise to percentage.
+	total := 0.0
+	for _, w := range raw {
+		total += w
+	}
+
+	links := make([]pfsJoinLink, 0, len(raw))
+	for pair, w := range raw {
+		pct := 0.0
+		if total > 0 {
+			pct = w / total * 100.0
+		}
+		links = append(links, pfsJoinLink{
+			TableA:        pair.a,
+			TableB:        pair.b,
+			JoinWeightPct: pct,
+		})
+	}
+
+	// Sort by weight descending so the frontend can render a ranked list.
+	sort.Slice(links, func(i, j int) bool {
+		return links[i].JoinWeightPct > links[j].JoinWeightPct
+	})
+
+	return pfsSnapshotWeights{
+		Timestamp:    ts,
+		SnapshotFile: base,
+		Links:        links,
+	}, nil
+}
+
+// extractTablesFromDigest pulls schema-qualified table names out of a PFS
+// digest text.  It looks for identifiers immediately after FROM, JOIN, UPDATE,
+// INTO, and TABLE keywords, then qualifies them with schemaName when no schema
+// prefix is present.
+//
+// The digest text uses `backtick` quoting.  Examples:
+//
+//	"SELECT ... FROM `orders` JOIN `customers` ON ..."
+//	"SELECT ... FROM `mydb`.`orders` AS `o` JOIN `mydb`.`items` ..."
+func extractTablesFromDigest(digestText, defaultSchema string) []string {
+	if digestText == "" {
+		return nil
+	}
+
+	// Normalise: lower-case, strip backticks.
+	text := strings.ToLower(digestText)
+	text = strings.ReplaceAll(text, "`", "")
+
+	// Keywords that immediately precede a table reference.
+	const kwPattern = `\b(?:from|join|update|into|table)\s+`
+	// We use a simple word-boundary scan instead of regexp to avoid importing
+	// regexp here (it's already imported in the file but we keep this pure).
+	triggers := []string{"from ", "join ", "update ", "into ", "table "}
+
+	seen  := make(map[string]bool)
+	var out []string
+
+	for _, trigger := range triggers {
+		pos := 0
+		for {
+			idx := strings.Index(text[pos:], trigger)
+			if idx < 0 {
+				break
+			}
+			start := pos + idx + len(trigger)
+			// Skip leading whitespace.
+			for start < len(text) && text[start] == ' ' {
+				start++
+			}
+			// Read the identifier: stop at whitespace, comma, paren, or operator.
+			end := start
+			for end < len(text) && !strings.ContainsRune(" \t\n\r,()", rune(text[end])) {
+				end++
+			}
+			if end <= start {
+				pos = pos + idx + 1
+				continue
+			}
+			ident := text[start:end]
+			// Strip alias keyword: "orders as o" → just "orders"
+			if i := strings.Index(ident, " as "); i > 0 {
+				ident = ident[:i]
+			}
+			// Qualify with default schema if no dot present.
+			if !strings.Contains(ident, ".") && defaultSchema != "" {
+				ident = defaultSchema + "." + ident
+			}
+			// Skip PFS pseudo-tables and placeholders.
+			if strings.HasPrefix(ident, "?") || strings.HasPrefix(ident, "(") ||
+				ident == "dual" || ident == "" {
+				pos = pos + idx + 1
+				continue
+			}
+			if !seen[ident] {
+				seen[ident] = true
+				out = append(out, ident)
+			}
+			pos = pos + idx + 1
+		}
+	}
+	_ = kwPattern // referenced above in comment only
+	return out
+}
+
+// parseSnapshotToken converts a "YYYYMMDD_HH" token to an RFC3339 UTC string.
+func parseSnapshotToken(token string) (string, error) {
+	// Expected format: "20260401_08"
+	t, err := time.Parse("20060102_15", token)
+	if err != nil {
+		return "", err
+	}
+	return t.UTC().Format(time.RFC3339), nil
 }
