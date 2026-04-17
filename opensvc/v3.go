@@ -84,6 +84,10 @@ func (collector *Collector) GetAuthInfoV3() error {
 		return fmt.Errorf("failed to read response body: %w", err)
 	}
 
+	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC v3 auth info status=%d body=%q", resp.StatusCode, string(body))
+	}
+
 	if !handleSuccessGroup(resp.StatusCode) {
 		return fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 	}
@@ -199,6 +203,10 @@ func (collector *Collector) GetObjectV3(namespace, kind, service string, getFunc
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC v3 get object status=%d path=%s/%s/%s body=%q", resp.StatusCode, namespace, kind, service, string(body))
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
