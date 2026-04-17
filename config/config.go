@@ -547,7 +547,7 @@ type Config struct {
 	ProvOpensvcCollectorAccount               string                       `mapstructure:"opensvc-collector-account" toml:"opensvc-collector-account" json:"opensvcCollectorAccount"`
 	ProvUser                                  string                       `mapstructure:"opensvc-user" toml:"opensvc-user" json:"opensvcUser"`
 	ProvCodeApp                               string                       `mapstructure:"opensvc-codeapp" toml:"opensvc-codeapp" json:"opensvcCodeapp"`
-	ProvEventTimeout                          int                          `mapstructure:"prov-timeout" toml:"prov-timeout" json:"ProvEventTimeout"`
+	ProvEventTimeout                          int                          `mapstructure:"prov-timeout" toml:"prov-timeout" json:"provEventTimeout"`
 	ProvSerialized                            bool                         `mapstructure:"prov-serialized" toml:"prov-serialized" json:"provSerialized"`
 	ProvObjectAllowOverwrite                  bool                         `mapstructure:"prov-object-allow-overwrite" toml:"prov-object-allow-overwrite" json:"provObjectAllowOverwrite"`
 	ProvOrchestrator                          string                       `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`

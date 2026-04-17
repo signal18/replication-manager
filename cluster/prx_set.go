@@ -59,10 +59,14 @@ func (proxy *Proxy) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions st
 		proxy.HostIPV6 = ipv6hosts[k]
 	}
 
-	if err := proxy.GetWorkingOrchestratorNode(); err != nil {
-		cluster := proxy.ClusterGroup
-		if cluster != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not resolve working orchestrator node for proxy %s: %s", proxy.GetURL(), err)
+	// Only probe the working agent for already-provisioned services to avoid
+	// network calls (and spurious warnings) during initial placement.
+	if proxy.HasProvisionCookie() {
+		if err := proxy.GetWorkingOrchestratorNode(); err != nil {
+			cluster := proxy.ClusterGroup
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not resolve working orchestrator node for proxy %s: %s", proxy.GetURL(), err)
+			}
 		}
 	}
 }
