@@ -235,6 +235,8 @@ var ClusterError = map[string]string{
 	"WARN0158":  "Secret mismatch for job script on node %s. Err: %s",
 	"WARN0159":  "Replication Manager used a deprecated configuration variable in default config. Keys: %s",
 	"WARN0160":  "Replication Manager used a deprecated configuration variable in cluster %s. Keys: %s",
+	"WARN0161":  "Working orchestrator agent is different than configured agent on server %s. Configured: %s Working: %s",
+	"WARN0162":  "Working orchestrator agent is different than configured agent on proxy %s. Configured: %s Working: %s",
 	"WARN0163":  "Cluster %s is flagged for schema monitoring",
 	"WARN0164":  "Cluster %s has schema differences between master and slaves: %v",
 	"WARN0165":  "Restart container cookie deferred on %s: %s",
