@@ -86,10 +86,32 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 		return err
 	}
 
+	rawContent, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+
+	canonicalContent, canonicalRes, err := config.CanonicalizeAppTemplateTOML(rawContent)
+	if err != nil {
+		return err
+	}
+
+	if canonicalRes.Changed {
+		t, err := toml.LoadBytes(canonicalContent)
+		if err != nil {
+			return err
+		}
+		if err := cluster.writeTomlAtomically(t, filename); err != nil {
+			return err
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+			"Canonicalized legacy app config template in %q", filename)
+	}
+
 	// Open TOML file
 	appViper := viper.New()
-	appViper.SetConfigFile(filename)
-	err = appViper.ReadInConfig()
+	appViper.SetConfigType("toml")
+	err = appViper.ReadConfig(bytes.NewBuffer(canonicalContent))
 	if err != nil {
 		// If there is an error reading the TOML file don't change the configuration
 		return err
@@ -441,8 +463,22 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 	}
 
 	if template != "" {
-		resolvedContent, _ := cluster.ParseTemplateContent(app, content)
-		newViper, _ = cluster.LoadTemplateToViper(resolvedContent)
+		resolvedContent, err := cluster.ParseTemplateContent(app, content)
+		if err != nil {
+			return err
+		}
+
+		canonicalContent, _, err := config.CanonicalizeAppTemplateTOML(resolvedContent)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+				"Error canonicalizing parsed template content for %s: %s", template, err)
+			return err
+		}
+
+		newViper, err = cluster.LoadTemplateToViper(canonicalContent)
+		if err != nil {
+			return err
+		}
 		newViper.Set("app-host", srv)
 		newViper.Set("app-port", port)
 		newViper.Set("prov-app-docker-img", dockerImg)
@@ -780,7 +816,24 @@ func (cluster *Cluster) GetTemplateContent(template string) ([]byte, error) {
 
 	// Try local file
 	if content, err := cluster.loadLocalTemplate(localPath, template); err == nil {
-		return content, nil
+		canonicalContent, canonicalRes, canonErr := config.CanonicalizeAppTemplateTOML(content)
+		if canonErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+				"Error canonicalizing local template file %s: %s", localPath, canonErr)
+			return nil, canonErr
+		}
+		if canonicalRes.Changed {
+			t, err := toml.LoadBytes(canonicalContent)
+			if err != nil {
+				return nil, err
+			}
+			if err := cluster.writeTomlAtomically(t, localPath); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+					"Error writing canonical local template file %s: %s", localPath, err)
+				return nil, err
+			}
+		}
+		return canonicalContent, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
@@ -802,14 +855,25 @@ func (cluster *Cluster) GetTemplateContent(template string) ([]byte, error) {
 		}
 	}
 
+	canonicalContent, _, err := config.CanonicalizeAppTemplateTOML(content)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"Error canonicalizing template file %s: %s", template, err)
+		return nil, err
+	}
+
 	// Cache locally
-	if err := os.WriteFile(localPath, content, 0644); err != nil {
+	t, err := toml.LoadBytes(canonicalContent)
+	if err != nil {
+		return nil, err
+	}
+	if err := cluster.writeTomlAtomically(t, localPath); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
 			"Error writing local template file %s: %s", localPath, err)
 		return nil, err
 	}
 
-	return content, nil
+	return canonicalContent, nil
 }
 
 func (cluster *Cluster) LoadTemplateToViper(content []byte) (*viper.Viper, error) {

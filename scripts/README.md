@@ -4,6 +4,30 @@ This directory contains installation and utility scripts for replication-manager
 
 ## Available Scripts
 
+### convert_app_template.go
+
+Converter for app template canonicalization.
+
+Converts legacy template patterns to canonical structure:
+
+- `parentname` from parent `dockerpath` to parent path `name`
+- root `srcpath = "/"` to canonical `srcpath = "."`
+- empty `srcpath` for source-backed paths to canonical `"."`
+- computes/updates `level` (`0` for root paths, parent + 1 for child paths)
+
+**Usage:**
+
+```bash
+# Check templates without writing changes
+go run ./scripts/convert_app_template.go -in share/app/deployments -check
+
+# Rewrite templates in place
+go run ./scripts/convert_app_template.go -in share/app/deployments -write
+
+# Convert one file into a separate output file
+go run ./scripts/convert_app_template.go -in share/app/deployments/dolibarr.toml.sample -out /tmp/dolibarr.canonical.toml
+```
+
 ### install.sh
 
 One-liner installation script for the replication-manager embedded binary.

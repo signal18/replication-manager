@@ -489,8 +489,8 @@ func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc *confi
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer = cluster.OpenSVCGetAppGitInitDefaultSection(app)
 		svccontainer["volume_mounts"] = fmt.Sprintf("/etc/localtime:/etc/localtime:ro %s:/bootstrap", app.GetAppVolumeName(gc.GetSourcePoolName(), false))
-		svccontainer["secrets_environment"] = gc.GetVariableKeys(app.Name, "secret")
-		svccontainer["configs_environment"] = gc.GetVariableKeys(app.Name, "env")
+		svccontainer["secrets_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeSecret)
+		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
 		dirname := filepath.Join("/bootstrap", gc.GetSourcePath())
 
 		prefix := gc.GetVariablePrefix()
@@ -522,8 +522,8 @@ func (cluster *Cluster) OpenSVCGetAppS3MountContainerSection(app *App, s3m *conf
 		svccontainer["image"] = "signal18/nfsmixr:latest"
 		svccontainer["netns"] = "container#01"
 		svccontainer["privileged"] = "true"
-		svccontainer["secrets_environment"] = s3m.GetVariableKeys(app.Name, "secret")
-		svccontainer["configs_environment"] = s3m.GetVariableKeys(app.Name, "env")
+		svccontainer["secrets_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeSecret)
+		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
 		diskname := app.GetAppVolumeName(s3m.GetSourcePoolName(), false)
 		svccontainer["volume_mounts"] = fmt.Sprintf("%s:/mnt:rw,rshared", filepath.Join(diskname, s3m.VolumeDir))
 		svccontainer["run_command"] = "-o allow_other -o nonempty --use-content-type --uid 33 --gid 33 -f"

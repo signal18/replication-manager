@@ -257,15 +257,22 @@ func (p *App) GetSshEnv() string {
 }
 
 func (app *App) GetOpenSVCDeploymentAppEnv(vartype string) string {
-	result := make([]string, 0)
-
-	for _, s := range app.GetAppConfig().Deployment.Variables {
-		if s.Type == vartype {
-			result = append(result, app.Name+"/"+s.Name)
-		}
+	if app == nil {
+		return ""
 	}
 
-	return strings.Join(result, " ")
+	// Secrets/configs are provisioned in OpenSVCCreateAppVariableMaps.
+	// In service templates, reference the app map as a whole so newly
+	// registered keys are available without enumerating each key here.
+	switch vartype {
+	case config.VariableTypeSecret, config.VariableTypeEnv:
+		if app.Name == "" {
+			return ""
+		}
+		return app.Name + "/*"
+	default:
+		return ""
+	}
 }
 
 func (app *App) GetExternalFQDN() string {

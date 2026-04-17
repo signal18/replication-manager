@@ -549,23 +549,27 @@ func (pm PathMaps) Sort() {
 }
 
 func SorterFunc(pmA, pmB *PathMapping) bool {
-	if pmA.Parent == nil || pmB.Parent == nil {
-		if pmA.Parent == nil && pmB.Parent == nil {
-			return pmA.DockerPath < pmB.DockerPath
-		} else if pmA.Parent == nil {
-			return true // nil parent comes first
-		} else {
-			return false // nil parent comes last
-		}
-	} else {
-		parentI := pmA.Parent
-		parentJ := pmB.Parent
-		if parentI.DockerPath == parentJ.DockerPath {
-			return SorterFunc(parentI, parentJ)
-		} else {
-			return parentI.DockerPath < parentJ.DockerPath
-		}
+	if pmA == nil || pmB == nil {
+		return pmA != nil
 	}
+
+	if pmA.Level != pmB.Level {
+		return pmA.Level < pmB.Level
+	}
+
+	if pmA.ParentName != pmB.ParentName {
+		return pmA.ParentName < pmB.ParentName
+	}
+
+	if pmA.DockerPath != pmB.DockerPath {
+		return pmA.DockerPath < pmB.DockerPath
+	}
+
+	if pmA.SourceName != pmB.SourceName {
+		return pmA.SourceName < pmB.SourceName
+	}
+
+	return pmA.Name < pmB.Name
 }
 
 func (pms *PathMaps) GetVolumeDirs() map[string][]string {
@@ -600,6 +604,7 @@ type SourceInterface interface {
 
 type PathMapping struct {
 	Name       string     `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
+	Level      int        `mapstructure:"level" toml:"level" json:"level" groups:"apps"`
 	ParentName string     `mapstructure:"parentname" toml:"parentname" json:"parentname" groups:"apps"`
 	DockerPath string     `mapstructure:"dockerpath" toml:"dockerpath" json:"dockerpath" groups:"apps"`
 	SourceType SourceType `mapstructure:"srctype" toml:"srctype" json:"srctype" options:"volume|git|s3" groups:"apps"`
@@ -628,6 +633,11 @@ func (pm *PathMapping) ResolvePointers(volumes Volumes, gits GitClones, s3s S3Mo
 		if pm.Parent == nil {
 			return fmt.Errorf("parent path %q not found for path mapping %s", pm.ParentName, pm.DockerPath)
 		}
+		if pm.Level <= pm.Parent.Level {
+			pm.Level = pm.Parent.Level + 1
+		}
+	} else if pm.Level < 0 {
+		pm.Level = 0
 	}
 
 	// Resolve Volume
@@ -636,8 +646,10 @@ func (pm *PathMapping) ResolvePointers(volumes Volumes, gits GitClones, s3s S3Mo
 	}
 
 	if pm.SourceType != "" {
-		if pm.SourcePath == "" || pm.SourcePath == "/" {
+		if pm.SourcePath == "" {
 			pm.SourcePath = "."
+		} else if pm.SourcePath == "/" {
+			return fmt.Errorf("invalid source path '/' for path mapping %s: use '.'", pm.DockerPath)
 		}
 	} else {
 		return nil
