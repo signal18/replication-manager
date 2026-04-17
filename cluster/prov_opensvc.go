@@ -79,20 +79,28 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ContextTimeoutSecond = 10
 	svc.EventTimeoutSecond = cluster.Conf.ProvEventTimeout
 
-	if cluster.GetOrchestratorVersion() == "v3" {
-		// Set collector to v3 if already detected
-		svc.SetV3()
-	} else {
-		// Try to detect v3, throttled to avoid probing every call.
-		if cluster.ShouldProbeOrchestratorVersion(30 * time.Second) {
-			err := svc.GetAuthInfoV3()
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Can not connect to OpenSVC v3 API: %s ", err)
-			}
+	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
+		switch cluster.GetOrchestratorVersion() {
+		case "v3":
+			// Set collector to v3 if already detected.
+			svc.SetV3()
+		case "v2":
+			// v2 already selected, do not probe again.
+		default:
+			// Try to detect v3, throttled to avoid probing every call.
+			if cluster.ShouldProbeOrchestratorVersion(30 * time.Second) {
+				err := svc.GetAuthInfoV3()
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Can not connect to OpenSVC v3 API, using v2 API: %s ", err)
+				}
 
-			// Set OrchestratorVersion if v3 detected
-			if svc.IsV3() {
-				cluster.SetOrchestratorVersion("v3")
+				if svc.IsV3() {
+					cluster.SetOrchestratorVersion("v3")
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "OpenSVC API version selected: v3")
+				} else {
+					cluster.SetOrchestratorVersion("v2")
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "OpenSVC API version selected: v2")
+				}
 			}
 		}
 	}
