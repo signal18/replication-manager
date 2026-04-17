@@ -15,7 +15,7 @@ import (
 	apiv3 "github.com/opensvc/om3/v3/daemon/api"
 	"github.com/opensvc/om3/v3/util/funcopt"
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/s18log"
+	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
 
 	"github.com/tidwall/gjson"
 )
@@ -85,7 +85,7 @@ func (collector *Collector) GetAuthInfoV3() error {
 	}
 
 	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC v3 auth info status=%d body=%q", resp.StatusCode, string(body))
+		collector.LogModulePrintf(config.ConstLogModOrchestrator, config.LvlDbg, "OpenSVC v3 auth info status=%d body=%q", resp.StatusCode, string(body))
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
@@ -206,7 +206,7 @@ func (collector *Collector) GetObjectV3(namespace, kind, service string, getFunc
 	}
 
 	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC v3 get object status=%d path=%s/%s/%s body=%q", resp.StatusCode, namespace, kind, service, string(body))
+		collector.LogModulePrintf(config.ConstLogModOrchestrator, config.LvlDbg, "OpenSVC v3 get object status=%d path=%s/%s/%s body=%q", resp.StatusCode, namespace, kind, service, string(body))
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
@@ -635,11 +635,7 @@ func (collector *Collector) ReadNodeEventChannel(wg *sync.WaitGroup, client *cli
 
 	cev, err := evclient.Do()
 	if err != nil {
-		collector.MessageChan <- s18log.HttpMessage{
-			Level:     "ERROR",
-			Timestamp: time.Now().Format("2006/01/02 15:04:05"),
-			Text:      fmt.Sprintf("Failed to open event channel for node %s: %v", node, err),
-		}
+		collector.logToCluster(config.ConstLogModOrchestrator, config.LvlErr, fmt.Sprintf("Failed to open event channel for node %s: %v", node, err))
 		return
 	}
 
@@ -650,17 +646,24 @@ func (collector *Collector) ReadNodeEventChannel(wg *sync.WaitGroup, client *cli
 				return
 			}
 
-			msg := s18log.HttpMessage{
+			msg := sharedlog.Message{
+				Group:     "none",
 				Level:     "DEBUG",
 				Timestamp: e.At.Format("2006/01/02 15:04:05"),
 				Text:      string(e.Data),
+				Module:    config.ConstLogModOrchestrator,
 			}
 
 			if slices.Contains(kindClosers, e.Kind) {
 				msg.Level = "INFO"
 			}
 
-			collector.MessageChan <- msg
+			if collector.MessageChan != nil {
+				select {
+				case collector.MessageChan <- msg:
+				default:
+				}
+			}
 		}
 	}
 }

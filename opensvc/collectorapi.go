@@ -29,7 +29,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/s18log"
+	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
 	log "github.com/sirupsen/logrus"
 	pkcs12 "software.sslmate.com/src/go-pkcs12"
 	//"golang.org/x/crypto/pkcs12"
@@ -153,13 +153,57 @@ type Collector struct {
 	Verbose                     int
 	ContextTimeoutSecond        int
 	EventTimeoutSecond          int
-	MessageChan                 chan s18log.HttpMessage
+	MessageChan                 chan sharedlog.Message
 }
 
 // isLoggable returns false if ClusterConf is nil, preventing nil-deref panics
 // when a Collector is instantiated without a config (e.g. in tests or arbitration).
 func (c *Collector) isLoggable(module int, level string) bool {
 	return c.ClusterConf != nil && c.ClusterConf.IsEligibleForPrinting(module, level)
+}
+
+func (c *Collector) logToCluster(module int, level, text string) {
+	if c.MessageChan == nil {
+		return
+	}
+
+	msg := sharedlog.Message{
+		Group:     "none",
+		Level:     level,
+		Timestamp: time.Now().Format("2006/01/02 15:04:05"),
+		Text:      text,
+		Module:    module,
+	}
+
+	select {
+	case c.MessageChan <- msg:
+	default:
+		// Drop when channel is full to avoid blocking OpenSVC workers.
+	}
+}
+
+func (c *Collector) LogModulePrintf(module int, level string, format string, args ...interface{}) {
+	if !c.isLoggable(module, level) {
+		return
+	}
+
+	text := fmt.Sprintf(format, args...)
+
+	if c.Logrus != nil {
+		entry := c.Logrus.WithField("FROM", "OpenSVC")
+		switch level {
+		case config.LvlErr:
+			entry.Errorln(text)
+		case config.LvlWarn:
+			entry.Warnln(text)
+		case config.LvlInfo:
+			entry.Infoln(text)
+		default:
+			entry.Debugln(text)
+		}
+	}
+
+	c.logToCluster(module, level, text)
 }
 
 //Imput template URI [system|docker].[zfs|xfs|ext4|btrfs].[none|zpool|lvm].[loopback|physical].[path-to-file|/dev/xx]

@@ -78,6 +78,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.Verbose = cluster.GetLogLevel()
 	svc.ContextTimeoutSecond = 10
 	svc.EventTimeoutSecond = cluster.Conf.ProvEventTimeout
+	svc.MessageChan = cluster.MessageChan
 
 	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 		switch cluster.GetOrchestratorVersion() {
@@ -166,6 +167,62 @@ func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 	}
 
 	svc := cluster.OpenSVCConnect()
+	if !svc.IsV3() {
+		return cluster.openSVCCreateMapsV2(svc, agent)
+	}
+
+	return cluster.openSVCCreateMapsV3(svc, agent)
+}
+
+func (cluster *Cluster) openSVCCreateMapsV2(svc opensvc.Collector, agent string) error {
+	err := svc.CreateSecretV2(cluster.Name, "env", agent)
+	if err != nil {
+		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && cluster.Conf.ProvObjectAllowOverwrite {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Secret object exists. Reuse secret env on cluster to avoid truncation of keys")
+		} else {
+			return err
+		}
+	}
+
+	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "REPLICATION_MANAGER_PASSWORD", err)
+	}
+	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "MYSQL_ROOT_PASSWORD", err)
+	}
+	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "SHARDPROXY_ROOT_PASSWORD", err)
+	}
+
+	err = svc.CreateConfigV2(cluster.Name, "env", agent)
+	if err != nil {
+		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && cluster.Conf.ProvObjectAllowOverwrite {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Config object exists. Reuse config env on cluster to avoid truncation of keys")
+		} else {
+			return err
+		}
+	}
+
+	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_USER", "admin")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_USER", err)
+	}
+	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_URL", "https://"+cluster.Conf.MonitorAddress+":"+cluster.Conf.APIPort)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_URL", err)
+	}
+	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_CLUSTER_NAME", cluster.GetClusterName())
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_CLUSTER_NAME", err)
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) openSVCCreateMapsV3(svc opensvc.Collector, agent string) error {
 	var allErr error
 
 	err := svc.CreateSecret(cluster.Name, "env", agent)

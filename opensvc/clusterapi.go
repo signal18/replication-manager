@@ -24,6 +24,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"golang.org/x/net/http2"
 	//	pkcs12 "software.sslmate.com/src/go-pkcs12"
 )
 
@@ -49,11 +50,11 @@ func (collector *Collector) GetHttpClient() *http.Client {
 			Certificates:       []tls.Certificate{cert},
 			InsecureSkipVerify: true,
 		}
-		client.Transport = &http.Transport{
+		client.Transport = &http2.Transport{
 			TLSClientConfig: tlsConfig,
 		}
 	} else {
-		client.Transport = &http.Transport{
+		client.Transport = &http2.Transport{
 			TLSClientConfig: tlsConfig,
 		}
 	}
@@ -597,7 +598,11 @@ func (collector *Collector) KeysExists(path string, agent string) (bool, error) 
 
 	errbody := gjson.GetBytes(body, "error")
 	if errbody.Exists() {
-		return false, errors.New(errbody.String())
+		errMsg := errbody.String()
+		if errMsg == ErrUnknownService.Error() {
+			return false, ErrUnknownService
+		}
+		return false, errors.New(errMsg)
 	}
 
 	data := gjson.GetBytes(body, "data")
@@ -622,8 +627,8 @@ func (collector *Collector) CreateSecret(namespace string, service string, agent
 
 func (collector *Collector) CreateSecretV2(namespace string, service string, agent string) error {
 	path := fmt.Sprintf("%s/sec/%s", namespace, service)
-	exists, err := collector.ObjectExistsV2(path, agent)
-	if err != nil {
+	exists, err := collector.KeysExists(path, agent)
+	if err != nil && !errors.Is(err, ErrUnknownService) {
 		return err
 	}
 	if exists {
@@ -693,8 +698,8 @@ func (collector *Collector) CreateConfig(namespace string, service string, agent
 
 func (collector *Collector) CreateConfigV2(namespace string, service string, agent string) error {
 	path := fmt.Sprintf("%s/cfg/%s", namespace, service)
-	exists, err := collector.ObjectExistsV2(path, agent)
-	if err != nil {
+	exists, err := collector.KeysExists(path, agent)
+	if err != nil && !errors.Is(err, ErrUnknownService) {
 		return err
 	}
 	if exists {
