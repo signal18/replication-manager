@@ -46,6 +46,62 @@ function buildRegionDispatch(fieldName, index, region) {
   return { fieldName, index, key: "region", value: region };
 }
 
+/**
+ * Advisory-only duplicate indicator used by Save-as-Provider UX.
+ * Returns a warning message for local snapshot duplicates but does not block submit.
+ */
+function getDuplicateProviderAdvisory(providerName, clusterS3Providers) {
+  const trimmed = (providerName || "").trim();
+  if (!trimmed) return "";
+  const isDuplicate = (clusterS3Providers || []).some((p) => p.name === trimmed);
+  return isDuplicate
+    ? `A provider named "${trimmed}" already exists in your current snapshot. You can still submit to confirm with the server.`
+    : "";
+}
+
+/**
+ * Simulate save-as-provider submit behavior in S3Directory forms.
+ * Local duplicate checks are advisory-only: backend result remains authoritative.
+ */
+async function submitSaveAsProvider({
+  providerName,
+  s3,
+  providerSource,
+  onSaveAsProvider,
+  showSaveProviderUI = true,
+}) {
+  const trimmed = (providerName || "").trim();
+  const state = {
+    showSaveProviderUI,
+    providerName,
+    saveProviderError: "",
+    isSubmitting: false,
+  };
+
+  if (!trimmed) {
+    state.saveProviderError = "Provider name is required.";
+    return state;
+  }
+  if (!s3?.endpoint) {
+    state.saveProviderError = "Endpoint is required before saving as a provider.";
+    return state;
+  }
+
+  state.isSubmitting = true;
+  try {
+    await onSaveAsProvider(trimmed, s3, providerSource);
+    state.showSaveProviderUI = false;
+    state.providerName = "";
+    state.saveProviderError = "";
+  } catch (err) {
+    state.saveProviderError = typeof err === "string" ? err : err?.errorMessage || err?.message || "Failed to save provider.";
+  } finally {
+    state.isSubmitting = false;
+  }
+
+  return state;
+}
+
 // --- Test Data ---
 
 const sampleProviders = [
@@ -255,6 +311,76 @@ console.log("\nTest Suite: Story 6.6 AC1 — edited value (not provider value) s
     "step 6: original provider endpoint (minio-app:9000) is NOT present after reload");
   assert(onReload.region !== "eu-west-1",
     "step 6: original provider region (eu-west-1) is NOT present after reload");
+}
+
+console.log("\nTest Suite: Story 7.2 — local duplicate advisory is non-blocking");
+{
+  const advisory = getDuplicateProviderAdvisory("dev-minio", sampleProviders);
+  assert(advisory.includes("already exists"), "shows advisory when duplicate exists in local snapshot");
+}
+
+console.log("\nTest Suite: Story 7.2 — stale local state + backend conflict keeps save UI open");
+{
+  const staleLocalProviders = [
+    { name: "old-provider", providerSource: "app", providerApp: "old:9000" },
+  ];
+  const conflictMessage = 'Failed to add S3 provider: S3 provider with name "fresh-prod" already exists';
+
+  const advisory = getDuplicateProviderAdvisory("fresh-prod", staleLocalProviders);
+  assertEqual(advisory, "", "no local advisory for stale snapshot conflict");
+
+  let callCount = 0;
+  const onSaveAsProvider = async () => {
+    callCount += 1;
+    throw { errorMessage: conflictMessage };
+  };
+
+  const state = await submitSaveAsProvider({
+    providerName: "fresh-prod",
+    s3: { endpoint: "minio-app:9000", region: "us-east-1" },
+    providerSource: "app",
+    onSaveAsProvider,
+  });
+
+  assertEqual(callCount, 1, "submit hits backend even when local snapshot is stale");
+  assertEqual(state.showSaveProviderUI, true, "save UI stays open after backend conflict");
+  assertEqual(state.isSubmitting, false, "isSubmitting resets after backend conflict");
+  assertEqual(state.saveProviderError, conflictMessage, "backend conflict message is surfaced to operator");
+}
+
+console.log("\nTest Suite: Story 7.2 — retry succeeds without page reload");
+{
+  let callCount = 0;
+  const onSaveAsProvider = async (name) => {
+    callCount += 1;
+    if (name === "fresh-prod") {
+      throw { errorMessage: 'Failed to add S3 provider: S3 provider with name "fresh-prod" already exists' };
+    }
+    return { status: 201 };
+  };
+
+  const firstAttempt = await submitSaveAsProvider({
+    providerName: "fresh-prod",
+    s3: { endpoint: "minio-app:9000", region: "us-east-1" },
+    providerSource: "app",
+    onSaveAsProvider,
+  });
+  assertEqual(firstAttempt.showSaveProviderUI, true, "first conflict keeps UI open for retry");
+  assertEqual(firstAttempt.isSubmitting, false, "first conflict releases submit lock");
+
+  const secondAttempt = await submitSaveAsProvider({
+    providerName: "fresh-prod-2",
+    s3: { endpoint: "minio-app:9000", region: "us-east-1" },
+    providerSource: "app",
+    onSaveAsProvider,
+    showSaveProviderUI: firstAttempt.showSaveProviderUI,
+  });
+
+  assertEqual(callCount, 2, "operator can retry immediately without reload");
+  assertEqual(secondAttempt.showSaveProviderUI, false, "successful retry closes save UI");
+  assertEqual(secondAttempt.providerName, "", "successful retry clears provider input");
+  assertEqual(secondAttempt.isSubmitting, false, "isSubmitting resets after successful retry");
+  assertEqual(secondAttempt.saveProviderError, "", "error is cleared after successful retry");
 }
 
 // --- Summary ---

@@ -42,7 +42,6 @@ import PasswordControl from '../../components/PasswordControl'
 import SyncDiffTable from '../../components/SyncDiffTable'
 import {
   buildBulkApplyDisplaySummary,
-  buildEligibleApplyTargetsFromPreview,
   hasPendingPreviewChanges,
 } from '../../components/syncDiffUtils'
 import {
@@ -103,6 +102,7 @@ function S3ProvidersSettings({ selectedCluster }) {
   const [bulkApplyMeta, setBulkApplyMeta] = useState({ selectedTotal: 0, excludedFromApply: 0 })
   const [bulkSuccessMessageByProvider, setBulkSuccessMessageByProvider] = useState({})
   const [bulkPreviewTargetsFingerprint, setBulkPreviewTargetsFingerprint] = useState('')
+  const [bulkRevisionToken, setBulkRevisionToken] = useState('')
 
   const bulkSelectionVersionRef = useRef(0)
   const bulkPreviewRequestIdRef = useRef(0)
@@ -205,6 +205,7 @@ function S3ProvidersSettings({ selectedCluster }) {
     setBulkApplyError('')
     setBulkApplyMeta({ selectedTotal: 0, excludedFromApply: 0 })
     setBulkPreviewTargetsFingerprint('')
+    setBulkRevisionToken('')
   }
 
   const openBulkSyncModal = async (providerName) => {
@@ -271,6 +272,7 @@ function S3ProvidersSettings({ selectedCluster }) {
     setBulkApplyError('')
     setBulkApplyMeta({ selectedTotal: 0, excludedFromApply: 0 })
     setBulkPreviewTargetsFingerprint('')
+    setBulkRevisionToken('')
     bulkSelectionVersionRef.current += 1
   }
 
@@ -281,6 +283,9 @@ function S3ProvidersSettings({ selectedCluster }) {
     }
     if (data.providerName !== providerName) {
       return { ok: false, error: 'Invalid response from server: provider mismatch' }
+    }
+    if (typeof data.revisionToken !== 'string' || !data.revisionToken.trim()) {
+      return { ok: false, error: 'Invalid response from server: missing preview revision token' }
     }
     if (!data.summary || typeof data.summary !== 'object' || Array.isArray(data.summary)) {
       return { ok: false, error: 'Invalid response from server: missing summary' }
@@ -333,7 +338,7 @@ function S3ProvidersSettings({ selectedCluster }) {
   }
 
   const validateBulkApplyResponse = (data, providerName, expectedTargets) => {
-    const allowedStatuses = new Set(['changed', 'unchanged', 'provider_missing', 'error'])
+    const allowedStatuses = new Set(['changed', 'unchanged', 'provider_missing', 'error', 'stale_state'])
     if (!data || typeof data !== 'object' || Array.isArray(data)) {
       return { ok: false, error: 'Invalid response from server' }
     }
@@ -380,7 +385,7 @@ function S3ProvidersSettings({ selectedCluster }) {
 
     const changedFromResults = data.results.filter((r) => r.status === 'changed').length
     const unchangedFromResults = data.results.filter((r) => r.status === 'unchanged').length
-    const failedFromResults = data.results.filter((r) => r.status === 'provider_missing' || r.status === 'error').length
+    const failedFromResults = data.results.filter((r) => r.status === 'provider_missing' || r.status === 'error' || r.status === 'stale_state').length
     if (changedFromResults !== s.changed || unchangedFromResults !== s.unchanged || failedFromResults !== s.failed) {
       return { ok: false, error: 'Invalid response from server: apply summary count mismatch' }
     }
@@ -402,6 +407,7 @@ function S3ProvidersSettings({ selectedCluster }) {
     setBulkApplyError('')
     setBulkApplyMeta({ selectedTotal: 0, excludedFromApply: 0 })
     setBulkPreviewTargetsFingerprint('')
+    setBulkRevisionToken('')
     try {
       const { data } = await dispatch(
         previewS3ProviderBulkSync({
@@ -424,6 +430,7 @@ function S3ProvidersSettings({ selectedCluster }) {
       }
       setBulkPreviewData(validated.data)
       setBulkPreviewTargetsFingerprint(previewFingerprint)
+      setBulkRevisionToken(validated.data.revisionToken.trim())
     } catch (err) {
       const msg = err?.errorMessage || err?.message || String(err)
       setBulkPreviewError(msg)
@@ -438,6 +445,10 @@ function S3ProvidersSettings({ selectedCluster }) {
       setBulkApplyError('Selection changed since preview. Please run preview again before applying.')
       return
     }
+    if (!bulkRevisionToken) {
+      setBulkApplyError('Preview token is missing. Please run preview again before applying.')
+      return
+    }
     if (!hasPendingPreviewChanges(bulkPreviewData)) {
       setBulkApplyError('No pending changes. Selected mounts already match the provider.')
       return
@@ -445,23 +456,28 @@ function S3ProvidersSettings({ selectedCluster }) {
     setIsBulkApplyLoading(true)
     setBulkApplyError('')
     try {
-      const applyTargets = buildEligibleApplyTargetsFromPreview(bulkSelectedTargets, bulkPreviewData)
-      const excludedFromApply = Math.max(0, bulkSelectedTargets.length - applyTargets.length)
+      const applyTargets = bulkSelectedTargets
+      const excludedFromApply = 0
       setBulkApplyMeta({ selectedTotal: bulkSelectedTargets.length, excludedFromApply })
-      if (applyTargets.length === 0) {
-        setBulkApplyError('No eligible mounts to apply. Resolve preview errors first.')
-        return
-      }
       const { data } = await dispatch(
         applyS3ProviderBulkSync({
           clusterName,
           providerName: bulkSyncProviderName,
           targets: applyTargets,
+          revisionToken: bulkRevisionToken,
         })
       ).unwrap()
       const validated = validateBulkApplyResponse(data, bulkSyncProviderName, applyTargets)
       if (!validated.ok) {
         setBulkApplyError(validated.error)
+        return
+      }
+      if ((validated.data?.results || []).some((r) => r?.status === 'stale_state')) {
+        setBulkApplyData(validated.data)
+        setBulkPreviewData(null)
+        setBulkPreviewTargetsFingerprint('')
+        setBulkRevisionToken('')
+        setBulkApplyError('Preview became stale. Please run preview again before applying.')
         return
       }
       setBulkApplyData(validated.data)
@@ -600,7 +616,7 @@ function S3ProvidersSettings({ selectedCluster }) {
   const getApplyStatusColor = (status) => {
     if (status === 'changed') return 'blue'
     if (status === 'unchanged') return 'green'
-    if (status === 'provider_missing' || status === 'error') return 'red'
+    if (status === 'provider_missing' || status === 'error' || status === 'stale_state') return 'red'
     return 'gray'
   }
 
@@ -608,6 +624,7 @@ function S3ProvidersSettings({ selectedCluster }) {
     if (status === 'changed') return 'Changed'
     if (status === 'unchanged') return 'Unchanged'
     if (status === 'provider_missing') return 'Provider missing'
+    if (status === 'stale_state') return 'Stale preview'
     if (status === 'error') return 'Sync error'
     return 'Unknown'
   }
@@ -1112,7 +1129,7 @@ function S3ProvidersSettings({ selectedCluster }) {
                           </Badge>
                         </Td>
                         <Td>
-                          <Text fontSize='xs' color={result?.status === 'error' || result?.status === 'provider_missing' ? 'red.500' : 'gray.600'}>
+                          <Text fontSize='xs' color={result?.status === 'error' || result?.status === 'provider_missing' || result?.status === 'stale_state' ? 'red.500' : 'gray.600'}>
                             {result?.errorMessage || (result?.changesApplied || []).join(', ') || 'No changes applied.'}
                           </Text>
                         </Td>

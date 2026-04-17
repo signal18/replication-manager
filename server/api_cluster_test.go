@@ -1124,3 +1124,17 @@ func TestHandlerMuxClusterS3ProviderSyncApply_UnknownCluster(t *testing.T) {
 		t.Errorf("expected 500 for unknown cluster, got %d", rr.Code)
 	}
 }
+
+func TestValidateS3SyncApplyRevisionToken(t *testing.T) {
+	valid := "s3sync:v1:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+	if err := validateS3SyncApplyRevisionToken(valid); err != nil {
+		t.Fatalf("expected valid token to pass, got %v", err)
+	}
+	if err := validateS3SyncApplyRevisionToken(""); err == nil {
+		t.Fatalf("expected missing revisionToken to fail")
+	}
+	if err := validateS3SyncApplyRevisionToken("s3sync:v1:not-hex"); err == nil {
+		t.Fatalf("expected malformed revisionToken to fail")
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
@@ -520,6 +521,52 @@ func TestAddS3Provider_ValidationEnforced(t *testing.T) {
 	}
 }
 
+func TestAddS3Provider_ConcurrentDuplicate_OneSucceedsOneConflicts(t *testing.T) {
+	cl, _ := newTestClusterForS3(t)
+	cl.ClusterS3Providers = []config.S3Provider{}
+	p := config.S3Provider{Name: "race-dup", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com"}
+
+	start := make(chan struct{})
+	errCh := make(chan error, 2)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			errCh <- cl.AddS3Provider(p)
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	close(errCh)
+
+	var successCount int
+	var duplicateCount int
+	for err := range errCh {
+		if err == nil {
+			successCount++
+			continue
+		}
+		if strings.Contains(err.Error(), "already exists") {
+			duplicateCount++
+			continue
+		}
+		t.Fatalf("unexpected error type: %v", err)
+	}
+
+	if successCount != 1 {
+		t.Fatalf("expected exactly one successful add, got %d", successCount)
+	}
+	if duplicateCount != 1 {
+		t.Fatalf("expected exactly one duplicate conflict, got %d", duplicateCount)
+	}
+	if len(cl.GetS3ProvidersSnapshot()) != 1 {
+		t.Fatalf("expected exactly one provider in snapshot, got %d", len(cl.GetS3ProvidersSnapshot()))
+	}
+}
+
 // ---------- RemoveS3Provider tests ----------
 
 func TestRemoveS3Provider_Success(t *testing.T) {
@@ -964,6 +1011,205 @@ func TestS3Mount_LegacyInlineMount_ProvisioningPath_SiblingAppRespected(t *testi
 	wantEndpoint := "http://" + s3App.GetS3Endpoint()
 	if effectiveEndpoint != wantEndpoint {
 		t.Errorf("effectiveEndpoint: got %q, want %q (legacy sibling-app mode)", effectiveEndpoint, wantEndpoint)
+	}
+}
+
+// TestS3Mount_LegacyInlineMount_ProvisioningPath_PreSetNode_EmptyEndpoint verifies
+// the legacy branch where Endpoint == "" and Node is already pre-populated.
+// In this path, endpoint resolution must use Node.GetS3Endpoint() directly and must
+// not depend on GetAppByURL("") (which is documented to return nil).
+func TestS3Mount_LegacyInlineMount_ProvisioningPath_PreSetNode_EmptyEndpoint(t *testing.T) {
+	cl, _ := newTestClusterForS3(t)
+
+	preResolvedNode := &App{
+		Name: "s3-provider",
+		Host: "s3-provider",
+		Port: "9000",
+		AppConfig: &config.AppConfig{
+			AppHost: "s3-provider",
+			AppPort: "9000",
+		},
+	}
+
+	mount := &config.S3Mount{
+		Name:      "legacy-pre-set-node",
+		Endpoint:  "", // legacy branch under test
+		Bucket:    "legacy-bucket",
+		Region:    "us-east-1",
+		AccessKey: "LEGACY_ACCESS_KEY",
+		SecretKey: "LEGACY_SECRET_KEY",
+		MountDir:  "/mnt/legacy",
+		Node:      preResolvedNode,
+	}
+
+	// Guardrail assertion for this regression: empty endpoint cannot be resolved via URL lookup.
+	if app, _ := cl.GetAppByURL(mount.Endpoint); app != nil {
+		t.Fatalf("expected GetAppByURL(\"\") to be nil, got %v", app)
+	}
+
+	// Mirror OpenSVCCreateAppVariableMaps endpoint resolution for the legacy branch.
+	var effectiveEndpoint string
+	if mount.Endpoint != "" {
+		effectiveEndpoint = mount.Endpoint
+	} else {
+		if mount.Node == nil {
+			node, _ := cl.GetAppByURL(mount.Endpoint)
+			if node == nil {
+				t.Fatalf("GetAppByURL(%q) returned nil", mount.Endpoint)
+			}
+			mount.Node = node
+		}
+		effectiveEndpoint = "http://" + mount.Node.GetS3Endpoint()
+	}
+
+	envs := mount.GetEnvVariables()
+	envs[config.S3VarSuffixEndpoint] = effectiveEndpoint
+	secrets := mount.GetSecretVariables()
+
+	wantEndpoint := "http://" + preResolvedNode.GetS3Endpoint()
+	if envs[config.S3VarSuffixEndpoint] != wantEndpoint {
+		t.Errorf("ENDPOINT: got %q, want %q", envs[config.S3VarSuffixEndpoint], wantEndpoint)
+	}
+	if envs[config.S3VarSuffixBucket] != "legacy-bucket" {
+		t.Errorf("BUCKET: got %q, want %q", envs[config.S3VarSuffixBucket], "legacy-bucket")
+	}
+	if envs[config.S3VarSuffixRegion] != "us-east-1" {
+		t.Errorf("REGION: got %q, want %q", envs[config.S3VarSuffixRegion], "us-east-1")
+	}
+	if envs[config.S3VarSuffixAccessKey] != "LEGACY_ACCESS_KEY" {
+		t.Errorf("AWS_ACCESS_KEY: got %q, want %q", envs[config.S3VarSuffixAccessKey], "LEGACY_ACCESS_KEY")
+	}
+	if envs[config.S3VarSuffixMountDir] != "/mnt/legacy" {
+		t.Errorf("MOUNT_DIR: got %q, want %q", envs[config.S3VarSuffixMountDir], "/mnt/legacy")
+	}
+	if secrets[config.S3VarSuffixSecretKey] != "LEGACY_SECRET_KEY" {
+		t.Errorf("AWS_SECRET_KEY: got %q, want %q", secrets[config.S3VarSuffixSecretKey], "LEGACY_SECRET_KEY")
+	}
+
+	// Ensure the pre-set node was used as-is (no fallback replacement).
+	resolvedNode, ok := mount.Node.(*App)
+	if !ok || resolvedNode != preResolvedNode {
+		t.Fatalf("expected mount.Node to remain the pre-set node")
+	}
+}
+
+func TestResolveS3MountProvisioningEndpoint_LegacyNodePreset(t *testing.T) {
+	cl, _ := newTestClusterForS3(t)
+
+	s3App := &App{Name: "s3-provider", Host: "s3-provider", Port: "9000"}
+	consumerApp := &App{
+		Name:      "consumer",
+		AppConfig: &config.AppConfig{Deployment: &config.Deployment{}},
+	}
+
+	mount := &config.S3Mount{
+		Name:      "legacy-mount",
+		Endpoint:  "",
+		AccessKey: "LEGACY_ACCESS_KEY",
+		SecretKey: "LEGACY_SECRET_KEY",
+		Node:      s3App,
+	}
+
+	effectiveEndpoint, err := cl.resolveS3MountProvisioningEndpoint(consumerApp, mount)
+	if err != nil {
+		t.Fatalf("resolveS3MountProvisioningEndpoint returned error: %v", err)
+	}
+
+	wantEndpoint := "http://" + s3App.GetS3Endpoint()
+	if effectiveEndpoint != wantEndpoint {
+		t.Errorf("effectiveEndpoint: got %q, want %q", effectiveEndpoint, wantEndpoint)
+	}
+}
+
+func TestResolveS3MountProvisioningEndpoint_LegacySiblingResolvableFromMaterializedEndpoint(t *testing.T) {
+	cl, _ := newTestClusterForS3(t)
+
+	s3App := &App{Name: "s3-provider", Host: "s3-provider", Port: "9000"}
+	mount := &config.S3Mount{Name: "legacy-mount", Endpoint: ""}
+	prefix := mount.GetVariablePrefix()
+
+	consumerApp := &App{
+		Name: "consumer",
+		AppConfig: &config.AppConfig{
+			Deployment: &config.Deployment{
+				Variables: config.VariableMaps{
+					{Name: prefix + config.S3VarSuffixEndpoint, Value: "s3-provider:9000", Type: config.VariableTypeEnv},
+				},
+			},
+		},
+	}
+	cl.Apps = appList([]*App{s3App, consumerApp})
+
+	effectiveEndpoint, err := cl.resolveS3MountProvisioningEndpoint(consumerApp, mount)
+	if err != nil {
+		t.Fatalf("resolveS3MountProvisioningEndpoint returned error: %v", err)
+	}
+
+	wantEndpoint := "http://" + s3App.GetS3Endpoint()
+	if effectiveEndpoint != wantEndpoint {
+		t.Errorf("effectiveEndpoint: got %q, want %q", effectiveEndpoint, wantEndpoint)
+	}
+	if mount.Node == nil {
+		t.Fatalf("expected mount.Node to be resolved")
+	}
+}
+
+func TestResolveS3MountProvisioningEndpoint_LegacySiblingUnresolvedUsesFallbackCredentials(t *testing.T) {
+	cl, _ := newTestClusterForS3(t)
+
+	mount := &config.S3Mount{Name: "legacy-mount", Endpoint: "", AccessKey: "", SecretKey: ""}
+	prefix := mount.GetVariablePrefix()
+	consumerApp := &App{
+		Name: "consumer",
+		AppConfig: &config.AppConfig{
+			Deployment: &config.Deployment{
+				Variables: config.VariableMaps{
+					{Name: prefix + config.S3VarSuffixEndpoint, Value: "https://orphan-minio.example.com:9000", Type: config.VariableTypeEnv},
+					{Name: prefix + config.S3VarSuffixAccessKey, Value: "FALLBACK_ACCESS", Type: config.VariableTypeEnv},
+					{Name: prefix + config.S3VarSuffixSecretKey, Value: "fallback-secret", Type: config.VariableTypeSecret},
+				},
+			},
+		},
+	}
+
+	effectiveEndpoint, err := cl.resolveS3MountProvisioningEndpoint(consumerApp, mount)
+	if err != nil {
+		t.Fatalf("resolveS3MountProvisioningEndpoint returned error: %v", err)
+	}
+
+	if effectiveEndpoint != "https://orphan-minio.example.com:9000" {
+		t.Errorf("effectiveEndpoint: got %q, want %q", effectiveEndpoint, "https://orphan-minio.example.com:9000")
+	}
+	if mount.AccessKey != "FALLBACK_ACCESS" {
+		t.Errorf("mount.AccessKey: got %q, want %q", mount.AccessKey, "FALLBACK_ACCESS")
+	}
+	if mount.SecretKey != "fallback-secret" {
+		t.Errorf("mount.SecretKey: got %q, want %q", mount.SecretKey, "fallback-secret")
+	}
+}
+
+func TestResolveS3MountProvisioningEndpoint_LegacySiblingUnresolvedNoFallbackFailsClosed(t *testing.T) {
+	cl, _ := newTestClusterForS3(t)
+
+	mount := &config.S3Mount{Name: "legacy-mount", Endpoint: ""}
+	prefix := mount.GetVariablePrefix()
+	consumerApp := &App{
+		Name: "consumer",
+		AppConfig: &config.AppConfig{
+			Deployment: &config.Deployment{
+				Variables: config.VariableMaps{
+					{Name: prefix + config.S3VarSuffixEndpoint, Value: "ghost-s3:9000", Type: config.VariableTypeEnv},
+				},
+			},
+		},
+	}
+
+	_, err := cl.resolveS3MountProvisioningEndpoint(consumerApp, mount)
+	if err == nil {
+		t.Fatal("expected explicit fail-closed error, got nil")
+	}
+	if !strings.Contains(err.Error(), "no fallback credentials available") {
+		t.Fatalf("expected fail-closed fallback error, got: %v", err)
 	}
 }
 

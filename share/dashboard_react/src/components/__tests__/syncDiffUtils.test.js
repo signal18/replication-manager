@@ -2,6 +2,7 @@
 // Run with: node src/components/__tests__/syncDiffUtils.test.js
 
 import {
+  APPLY_STATUSES,
   buildBulkApplyDisplaySummary,
   buildEligibleApplyTargetsFromPreview,
   formatSyncValue,
@@ -39,6 +40,11 @@ console.log('\nTest Suite: formatSyncValue renders empty sentinel')
   assertEqual(formatSyncValue(''), '(empty)', 'empty string is rendered as (empty)')
   assertEqual(formatSyncValue(undefined), '(empty)', 'undefined is rendered as (empty)')
   assertEqual(formatSyncValue('***'), '***', 'masked values are preserved')
+}
+
+console.log('\nTest Suite: apply status constants expose stale_state')
+{
+  assertEqual(APPLY_STATUSES.STALE_STATE, 'stale_state', 'stale_state status is exported for UI handling')
 }
 
 console.log('\nTest Suite: hasPendingPreviewChanges detects will_change rows')

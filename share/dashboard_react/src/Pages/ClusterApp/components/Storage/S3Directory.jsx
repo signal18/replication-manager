@@ -9,6 +9,7 @@ import { DataTable } from "../../../../components/DataTable";
 import { HiTrash } from "react-icons/hi";
 import Dropdown from "../../../../components/Dropdown";
 import SyncDiffTable from "../../../../components/SyncDiffTable";
+import { extractApiErrorMessage, redactSensitiveInfo } from "../../../../utils/apiError";
 
 const defaultS3 = { name: "", endpoint: "", bucket: "", region: "", accesskey: "", secretkey: "", providerName: "" };
 const providerSourceOptions = [
@@ -18,6 +19,22 @@ const providerSourceOptions = [
 
 const endpointExistsInProviders = (endpoint, s3ProvOptions = []) =>
   !!endpoint && s3ProvOptions.some((opt) => opt.value === endpoint || opt.endpoint === endpoint);
+
+const getDuplicateProviderAdvisory = (name, clusterS3Providers = []) => {
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    return "";
+  }
+  const hasDuplicate = (clusterS3Providers || []).some((provider) => provider.name === trimmedName);
+  return hasDuplicate
+    ? `A provider named "${trimmedName}" already exists in your current snapshot. You can still submit to confirm with the server.`
+    : "";
+};
+
+const hasCustomBlankCredentials = (providerSource, s3 = {}) => {
+  if (providerSource !== "custom") return false;
+  return !s3.accesskey && !s3.secretkey;
+};
 
 const columnHelper = createColumnHelper()
 
@@ -136,10 +153,15 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, c
     const [providerName, setProviderName] = useState("");
     const [saveProviderError, setSaveProviderError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);  // P4
+    const duplicateProviderAdvisory = useMemo(
+      () => getDuplicateProviderAdvisory(providerName, clusterS3Providers),
+      [providerName, clusterS3Providers]
+    );
 
     // Sync state: 'idle' | 'loading' | 'preview' | 'applying' | 'done' | 'error'
     const [syncState, setSyncState] = useState('idle');
     const [syncPreview, setSyncPreview] = useState(null);   // SyncPreviewResult for this mount
+    const [syncRevisionToken, setSyncRevisionToken] = useState('');
     const [syncApplyResult, setSyncApplyResult] = useState(null);
     const [syncError, setSyncError] = useState("");
     const syncRequestIdRef = useRef(0);
@@ -173,7 +195,7 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, c
       if (!allowedStatuses.includes(result?.status)) {
         return { ok: false, error: "Invalid response from server: unknown sync status." };
       }
-      return { ok: true, result };
+      return { ok: true, result, data };
     };
 
     useEffect(() => {
@@ -181,6 +203,7 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, c
       syncRequestIdRef.current += 1;
       setSyncState('idle');
       setSyncPreview(null);
+      setSyncRevisionToken('');
       setSyncApplyResult(null);
       setSyncError("");
     }, [appId, index, s3.name, s3.providerName]);
@@ -245,11 +268,6 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, c
         setSaveProviderError("Endpoint is required before saving as a provider.");
         return;
       }
-      const isDuplicate = (clusterS3Providers || []).some((p) => p.name === providerName.trim());
-      if (isDuplicate) {
-        setSaveProviderError(`A provider named "${providerName.trim()}" already exists.`);
-        return;
-      }
       setIsSubmitting(true);  // P4
       onSaveAsProvider(providerName.trim(), s3, providerSource)  // P2: pass providerSource
         .then(() => {
@@ -258,8 +276,7 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, c
           setSaveProviderError("");
         })
         .catch((err) => {
-          const msg = typeof err === "string" ? err : err?.errorMessage || err?.message || "Failed to save provider.";
-          setSaveProviderError(msg);
+          setSaveProviderError(extractApiErrorMessage(err, "Failed to save provider."));
         })
         .finally(() => setIsSubmitting(false));  // P4
     };
@@ -269,6 +286,7 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, c
       const requestId = nextSyncRequestId();
       setSyncState('loading');
       setSyncPreview(null);
+      setSyncRevisionToken('');
       setSyncApplyResult(null);
       setSyncError("");
       onPreviewSync(s3.providerName, s3.name)
@@ -280,27 +298,46 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, c
             setSyncState('error');
             return;
           }
+          const revisionToken = typeof validated?.data?.revisionToken === 'string' ? validated.data.revisionToken.trim() : '';
+          if (!revisionToken) {
+            setSyncError('Invalid response from server: missing preview revision token.');
+            setSyncState('error');
+            return;
+          }
           setSyncPreview(validated.result);
+          setSyncRevisionToken(revisionToken);
           setSyncState('preview');
         })
         .catch((err) => {
           if (requestId !== syncRequestIdRef.current) return;
-          const msg = typeof err === "string" ? err : err?.errorMessage || err?.message || "Preview failed.";
-          setSyncError(msg);
+          setSyncError(extractApiErrorMessage(err, "Preview failed."));
           setSyncState('error');
         });
     };
 
     const handleSyncApply = () => {
       if (!s3.providerName) return;
+      if (!syncRevisionToken) {
+        setSyncError('Sync preview is missing a revision token. Please run preview again.');
+        setSyncState('error');
+        return;
+      }
       const requestId = nextSyncRequestId();
       setSyncState('applying');
-      onApplySync(s3.providerName, s3.name)
+      onApplySync(s3.providerName, s3.name, syncRevisionToken)
         .then((resp) => {
           if (requestId !== syncRequestIdRef.current) return;
-          const validated = validateSingleSyncResult(resp, s3.providerName, s3.name, appId, ['changed', 'unchanged', 'provider_missing', 'error']);
+          const validated = validateSingleSyncResult(resp, s3.providerName, s3.name, appId, ['changed', 'unchanged', 'provider_missing', 'error', 'stale_state']);
           if (!validated.ok) {
             setSyncError(validated.error);
+            setSyncState('error');
+            return;
+          }
+          if (validated.result.status === 'stale_state') {
+            setSyncPreview(null);
+            setSyncRevisionToken('');
+            setSyncApplyResult(null);
+            setSyncError(validated.result.errorMessage || 'Preview is stale. Please run preview again before applying.');
             setSyncState('error');
             return;
           }
@@ -309,8 +346,7 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, c
         })
         .catch((err) => {
           if (requestId !== syncRequestIdRef.current) return;
-          const msg = typeof err === "string" ? err : err?.errorMessage || err?.message || "Apply failed.";
-          setSyncError(msg);
+          setSyncError(extractApiErrorMessage(err, "Apply failed."));
           setSyncState('error');
         });
     };
@@ -320,6 +356,7 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, c
       syncRequestIdRef.current += 1;
       setSyncState('idle');
       setSyncPreview(null);
+      setSyncRevisionToken('');
       setSyncApplyResult(null);
       setSyncError("");
     };
@@ -379,6 +416,11 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, c
                         ? "Choose a sibling app configured as an S3 provider."
                         : "Define a custom endpoint (must be reachable and properly configured)."}
                     </Text>
+                    {hasCustomBlankCredentials(providerSource, s3) && (
+                      <Text mt={1} fontSize="sm" color="orange.400">
+                        Warning: custom endpoint is using blank credentials. This is only valid for public buckets.
+                      </Text>
+                    )}
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Bucket:</Text>
@@ -404,6 +446,9 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, c
                         />
                         {saveProviderError && (
                           <Text color="red.400" fontSize="sm">{saveProviderError}</Text>
+                        )}
+                        {!saveProviderError && duplicateProviderAdvisory && (
+                          <Text color="orange.400" fontSize="sm">{duplicateProviderAdvisory}</Text>
                         )}
                         <RMButton onClick={handleSaveAsProvider} isDisabled={isSubmitting}>  {/* P4 */}
                           {isSubmitting ? "Saving…" : "Save as Provider"}
@@ -464,7 +509,7 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, c
                           <Text fontSize="sm" color="red.400">Provider not found. Cannot apply sync.</Text>
                         )}
                         {syncApplyResult.status === 'error' && (
-                          <Text fontSize="sm" color="red.400">Sync error: {syncApplyResult.errorMessage || 'Apply failed.'}</Text>
+                          <Text fontSize="sm" color="red.400">Sync error: {redactSensitiveInfo(syncApplyResult.errorMessage || 'Apply failed.')}</Text>
                         )}
                       </Flex>
                     )}
@@ -482,6 +527,10 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers 
     const [providerName, setProviderName] = useState("");
     const [saveProviderError, setSaveProviderError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);  // P4
+    const duplicateProviderAdvisory = useMemo(
+      () => getDuplicateProviderAdvisory(providerName, clusterS3Providers),
+      [providerName, clusterS3Providers]
+    );
 
     const valid = useMemo(() => {
         return s3.endpoint && s3.bucket;
@@ -554,11 +603,6 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers 
         setSaveProviderError("Endpoint is required before saving as a provider.");
         return;
       }
-      const isDuplicate = (clusterS3Providers || []).some((p) => p.name === providerName.trim());
-      if (isDuplicate) {
-        setSaveProviderError(`A provider named "${providerName.trim()}" already exists.`);
-        return;
-      }
       setIsSubmitting(true);  // P4
       onSaveAsProvider(providerName.trim(), s3, providerSource)  // P2: pass providerSource
         .then(() => {
@@ -567,8 +611,7 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers 
           setSaveProviderError("");
         })
         .catch((err) => {
-          const msg = typeof err === "string" ? err : err?.errorMessage || err?.message || "Failed to save provider.";
-          setSaveProviderError(msg);
+          setSaveProviderError(extractApiErrorMessage(err, "Failed to save provider."));
         })
         .finally(() => setIsSubmitting(false));  // P4
     };
@@ -613,6 +656,11 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers 
                         ? "Choose a sibling app configured as an S3 provider."
                         : "Define a custom endpoint (must be reachable and properly configured)."}
                     </Text>
+                    {hasCustomBlankCredentials(providerSource, s3) && (
+                      <Text mt={1} fontSize="sm" color="orange.400">
+                        Warning: custom endpoint is using blank credentials. This is only valid for public buckets.
+                      </Text>
+                    )}
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Bucket:</Text>
@@ -655,6 +703,9 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers 
                         />
                         {saveProviderError && (
                           <Text color="red.400" fontSize="sm">{saveProviderError}</Text>
+                        )}
+                        {!saveProviderError && duplicateProviderAdvisory && (
+                          <Text color="orange.400" fontSize="sm">{duplicateProviderAdvisory}</Text>
                         )}
                         <RMButton onClick={handleSaveAsProvider} isDisabled={isSubmitting}>  {/* P4 */}
                           {isSubmitting ? "Saving…" : "Confirm Save as Provider"}

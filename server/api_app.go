@@ -149,6 +149,15 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 	))
 }
 
+func validateCustomEndpointCredentialPair(accessKey, secretKey string) error {
+	hasAccessKey := strings.TrimSpace(accessKey) != ""
+	hasSecretKey := strings.TrimSpace(secretKey) != ""
+	if hasAccessKey != hasSecretKey {
+		return fmt.Errorf("custom endpoint credentials must include both accesskey and secretkey")
+	}
+	return nil
+}
+
 // @Summary Shows the apps for that specific named cluster
 // @Description Shows the apps for that specific named cluster
 // @Tags Apps
@@ -1272,6 +1281,10 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			// Custom-endpoint mount: row.Endpoint is set but no sibling app found.
 			// row.AccessKey / row.SecretKey must already be populated (copied from saved provider or manual entry).
 			// Proceed to InsertS3Mount without credential derivation. row.ProviderName may be set for traceability.
+			if err := validateCustomEndpointCredentialPair(row.AccessKey, row.SecretKey); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 		} else if s3node == nil {
 			// Endpoint is empty and no sibling app found – require a valid app endpoint.
 			http.Error(w, "S3 endpoint app not found: "+row.Endpoint, http.StatusInternalServerError)
@@ -1670,6 +1683,12 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						}
 					}
 					// When s3node is nil (custom endpoint): keep existing s3Mount.AccessKey/SecretKey.
+					if s3node == nil {
+						if err := validateCustomEndpointCredentialPair(s3Mount.AccessKey, s3Mount.SecretKey); err != nil {
+							http.Error(w, err.Error(), http.StatusBadRequest)
+							return
+						}
+					}
 
 					s3Mount.Endpoint = newValue
 

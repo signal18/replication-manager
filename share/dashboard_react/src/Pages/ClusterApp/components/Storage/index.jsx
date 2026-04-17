@@ -120,8 +120,8 @@ export default function StoragePage({ clusterName, appId, user }) {
   );
 
   const handleApplySync = useCallback(
-    async (providerName, mountName) => {
-      const resp = await dispatch(applyS3MountSync({ clusterName, providerName, appId, mountName })).unwrap();
+    async (providerName, mountName, revisionToken) => {
+      const resp = await dispatch(applyS3MountSync({ clusterName, providerName, appId, mountName, revisionToken })).unwrap();
       const changed = Number(resp?.data?.summary?.changed || 0);
       if (changed > 0) {
         await dispatch(getClusterData({ clusterName }));

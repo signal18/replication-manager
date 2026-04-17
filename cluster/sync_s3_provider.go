@@ -7,7 +7,13 @@
 package cluster
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
+	"sync"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -24,8 +30,11 @@ const (
 const (
 	SyncApplyStatusChanged   = "changed"
 	SyncApplyStatusUnchanged = "unchanged"
+	SyncApplyStatusStale     = "stale_state"
 	// provider_missing and error are shared with preview; reuse the preview constants.
 )
+
+const syncRevisionTokenPrefix = "s3sync:v1:"
 
 // SyncMaxTargets is the maximum number of targets accepted in a single sync request.
 const SyncMaxTargets = 100
@@ -67,6 +76,8 @@ type SyncPreviewResult struct {
 // SyncApplyResult is the per-mount result for an apply operation.
 // Status values: SyncApplyStatusChanged | SyncApplyStatusUnchanged |
 //
+//	SyncApplyStatusStale |
+//
 //	SyncStatusProviderMissing | SyncStatusError
 type SyncApplyResult struct {
 	Target         SyncTarget `json:"target"`
@@ -93,10 +104,11 @@ type SyncApplySummary struct {
 
 // SyncPreviewResponse is the full response for a preview (dry-run) request.
 type SyncPreviewResponse struct {
-	ProviderName string              `json:"providerName"`
-	DryRun       bool                `json:"dryRun"`
-	Summary      SyncPreviewSummary  `json:"summary"`
-	Results      []SyncPreviewResult `json:"results"`
+	ProviderName  string              `json:"providerName"`
+	DryRun        bool                `json:"dryRun"`
+	RevisionToken string              `json:"revisionToken"`
+	Summary       SyncPreviewSummary  `json:"summary"`
+	Results       []SyncPreviewResult `json:"results"`
 }
 
 // SyncApplyResponse is the full response for an apply request.
@@ -105,6 +117,39 @@ type SyncApplyResponse struct {
 	DryRun       bool              `json:"dryRun"`
 	Summary      SyncApplySummary  `json:"summary"`
 	Results      []SyncApplyResult `json:"results"`
+}
+
+type syncRevisionProviderSnapshot struct {
+	Name               string `json:"name"`
+	ProviderSource     string `json:"providerSource"`
+	ProviderApp        string `json:"providerApp"`
+	Endpoint           string `json:"endpoint"`
+	Region             string `json:"region"`
+	AccessKey          string `json:"accessKey"`
+	SecretKey          string `json:"secretKey"`
+	EffectiveEndpoint  string `json:"effectiveEndpoint"`
+	EffectiveRegion    string `json:"effectiveRegion"`
+	EffectiveAccessKey string `json:"effectiveAccessKey"`
+	EffectiveSecretKey string `json:"effectiveSecretKey"`
+}
+
+type syncRevisionTargetSnapshot struct {
+	AppId             string `json:"appId"`
+	MountName         string `json:"mountName"`
+	AppState          string `json:"appState"`
+	MountState        string `json:"mountState"`
+	MountProviderName string `json:"mountProviderName"`
+	Endpoint          string `json:"endpoint"`
+	Region            string `json:"region"`
+	AccessKey         string `json:"accessKey"`
+	SecretKey         string `json:"secretKey"`
+}
+
+type syncRevisionSnapshot struct {
+	Version      string                        `json:"version"`
+	ProviderName string                        `json:"providerName"`
+	Provider     *syncRevisionProviderSnapshot `json:"provider,omitempty"`
+	Targets      []syncRevisionTargetSnapshot  `json:"targets"`
 }
 
 // credentialMask is substituted for the before/after values of credential fields
@@ -159,14 +204,112 @@ func maskChangeValue(field, value string) string {
 	return value
 }
 
-// planSingleMountPreview computes a preview diff for one target mount against the
-// given provider (which must already be resolved and non-nil). It returns the
-// result without touching any mutable state. Credential values in the Changes
-// array are masked; unchangedFields lists provider-managed fields already in sync.
-func (cluster *Cluster) planSingleMountPreview(provider *config.S3Provider, target SyncTarget) SyncPreviewResult {
-	result := SyncPreviewResult{Target: target}
+// IsValidS3SyncRevisionToken validates the expected revision token shape.
+func IsValidS3SyncRevisionToken(token string) bool {
+	t := strings.TrimSpace(token)
+	if !strings.HasPrefix(t, syncRevisionTokenPrefix) {
+		return false
+	}
+	h := strings.TrimPrefix(t, syncRevisionTokenPrefix)
+	if len(h) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(h)
+	return err == nil
+}
 
-	// Locate app.
+func normalizeSyncTargets(targets []SyncTarget) []SyncTarget {
+	normalized := make([]SyncTarget, len(targets))
+	copy(normalized, targets)
+	sort.SliceStable(normalized, func(i, j int) bool {
+		if normalized[i].AppId != normalized[j].AppId {
+			return normalized[i].AppId < normalized[j].AppId
+		}
+		return normalized[i].MountName < normalized[j].MountName
+	})
+	return normalized
+}
+
+func (cluster *Cluster) appByID(appID string) *App {
+	for _, app := range cluster.Apps {
+		if app.GetId() == appID {
+			return app
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) syncApplyLockAppIDs(provider *config.S3Provider, targets []SyncTarget) []string {
+	idSet := make(map[string]struct{})
+	for _, t := range normalizeSyncTargets(targets) {
+		if strings.TrimSpace(t.AppId) != "" {
+			idSet[t.AppId] = struct{}{}
+		}
+	}
+
+	if provider != nil && provider.ProviderSource == config.S3ProviderSourceApp && strings.TrimSpace(provider.ProviderApp) != "" {
+		if providerApp, _ := cluster.GetAppByURL(provider.ProviderApp); providerApp != nil {
+			idSet[providerApp.GetId()] = struct{}{}
+		}
+	}
+
+	orderedIDs := make([]string, 0, len(idSet))
+	for appID := range idSet {
+		orderedIDs = append(orderedIDs, appID)
+	}
+	sort.Strings(orderedIDs)
+	return orderedIDs
+}
+
+// lockAppsByID returns (locked app map, unlock callback) for app IDs locked in
+// deterministic AppId order to avoid deadlocks across concurrent callers.
+func (cluster *Cluster) lockAppsByID(orderedIDs []string) (map[string]*App, func()) {
+	appByID := make(map[string]*App)
+	for _, appID := range orderedIDs {
+		if app := cluster.appByID(appID); app != nil {
+			if app.Mutex == nil {
+				app.Mutex = &sync.Mutex{}
+			}
+			appByID[appID] = app
+		}
+	}
+
+	lockedApps := make([]*App, 0, len(orderedIDs))
+	for _, appID := range orderedIDs {
+		app, ok := appByID[appID]
+		if !ok {
+			continue
+		}
+		app.Lock()
+		lockedApps = append(lockedApps, app)
+	}
+
+	unlock := func() {
+		for i := len(lockedApps) - 1; i >= 0; i-- {
+			lockedApps[i].Unlock()
+		}
+	}
+
+	return appByID, unlock
+}
+
+func (cluster *Cluster) resolveSyncTargetMountInApp(targetApp *App, target SyncTarget) (*config.S3Mount, string) {
+	if targetApp == nil {
+		return nil, fmt.Sprintf("app %q not found", target.AppId)
+	}
+	if targetApp.AppConfig == nil || targetApp.AppConfig.Deployment == nil {
+		return nil, fmt.Sprintf("app %q has no deployment config", target.AppId)
+	}
+
+	for _, s3m := range targetApp.AppConfig.Deployment.Storages.S3Mounts {
+		if s3m != nil && s3m.Name == target.MountName {
+			return s3m, ""
+		}
+	}
+	return nil, fmt.Sprintf("mount %q not found in app %q", target.MountName, target.AppId)
+}
+
+func (cluster *Cluster) resolveSyncTargetMount(target SyncTarget) (*App, *config.S3Mount, string, bool) {
 	var targetApp *App
 	for _, app := range cluster.Apps {
 		if app.GetId() == target.AppId {
@@ -175,27 +318,97 @@ func (cluster *Cluster) planSingleMountPreview(provider *config.S3Provider, targ
 		}
 	}
 	if targetApp == nil {
-		result.Status = SyncStatusError
-		result.ErrorMessage = fmt.Sprintf("app %q not found", target.AppId)
-		return result
+		return nil, nil, fmt.Sprintf("app %q not found", target.AppId), false
 	}
 	if targetApp.AppConfig == nil || targetApp.AppConfig.Deployment == nil {
-		result.Status = SyncStatusError
-		result.ErrorMessage = fmt.Sprintf("app %q has no deployment config", target.AppId)
-		return result
+		return targetApp, nil, fmt.Sprintf("app %q has no deployment config", target.AppId), false
 	}
 
-	// Locate mount.
-	var targetMount *config.S3Mount
 	for _, s3m := range targetApp.AppConfig.Deployment.Storages.S3Mounts {
 		if s3m != nil && s3m.Name == target.MountName {
-			targetMount = s3m
-			break
+			return targetApp, s3m, "", true
 		}
 	}
-	if targetMount == nil {
+	return targetApp, nil, fmt.Sprintf("mount %q not found in app %q", target.MountName, target.AppId), true
+}
+
+func (cluster *Cluster) computeS3SyncRevisionTokenWithSnapshot(providerName string, targets []SyncTarget, providers []config.S3Provider) string {
+	normalizedTargets := normalizeSyncTargets(targets)
+	snapshot := syncRevisionSnapshot{
+		Version:      "v1",
+		ProviderName: providerName,
+		Targets:      make([]syncRevisionTargetSnapshot, 0, len(normalizedTargets)),
+	}
+
+	provider := findProviderByName(providers, providerName)
+	if provider != nil {
+		effectiveEndpoint, effectiveRegion, effectiveAccessKey, effectiveSecretKey := cluster.resolveProviderEffectiveValues(provider)
+		snapshot.Provider = &syncRevisionProviderSnapshot{
+			Name:               provider.Name,
+			ProviderSource:     string(provider.ProviderSource),
+			ProviderApp:        provider.ProviderApp,
+			Endpoint:           provider.Endpoint,
+			Region:             provider.Region,
+			AccessKey:          provider.AccessKey,
+			SecretKey:          provider.SecretKey,
+			EffectiveEndpoint:  effectiveEndpoint,
+			EffectiveRegion:    effectiveRegion,
+			EffectiveAccessKey: effectiveAccessKey,
+			EffectiveSecretKey: effectiveSecretKey,
+		}
+	}
+
+	for _, t := range normalizedTargets {
+		entry := syncRevisionTargetSnapshot{
+			AppId:      t.AppId,
+			MountName:  t.MountName,
+			AppState:   "ok",
+			MountState: "ok",
+		}
+		_, targetMount, errMessage, appResolved := cluster.resolveSyncTargetMount(t)
+		if errMessage != "" {
+			if !appResolved {
+				entry.AppState = "missing_or_invalid"
+				entry.MountState = "unknown"
+			} else {
+				entry.MountState = "missing_or_invalid"
+			}
+			snapshot.Targets = append(snapshot.Targets, entry)
+			continue
+		}
+
+		entry.MountProviderName = targetMount.ProviderName
+		entry.Endpoint = targetMount.Endpoint
+		entry.Region = targetMount.Region
+		entry.AccessKey = targetMount.AccessKey
+		entry.SecretKey = targetMount.SecretKey
+		snapshot.Targets = append(snapshot.Targets, entry)
+	}
+
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		sum := sha256.Sum256([]byte(snapshot.ProviderName))
+		return syncRevisionTokenPrefix + hex.EncodeToString(sum[:])
+	}
+	sum := sha256.Sum256(payload)
+	return syncRevisionTokenPrefix + hex.EncodeToString(sum[:])
+}
+
+func (cluster *Cluster) computeS3SyncRevisionToken(providerName string, targets []SyncTarget) string {
+	return cluster.computeS3SyncRevisionTokenWithSnapshot(providerName, targets, cluster.GetS3ProvidersSnapshot())
+}
+
+// planSingleMountPreview computes a preview diff for one target mount against the
+// given provider (which must already be resolved and non-nil). It returns the
+// result without touching any mutable state. Credential values in the Changes
+// array are masked; unchangedFields lists provider-managed fields already in sync.
+func (cluster *Cluster) planSingleMountPreview(provider *config.S3Provider, target SyncTarget) SyncPreviewResult {
+	result := SyncPreviewResult{Target: target}
+
+	_, targetMount, errMessage, _ := cluster.resolveSyncTargetMount(target)
+	if errMessage != "" {
 		result.Status = SyncStatusError
-		result.ErrorMessage = fmt.Sprintf("mount %q not found in app %q", target.MountName, target.AppId)
+		result.ErrorMessage = errMessage
 		return result
 	}
 	if targetMount.ProviderName != provider.Name {
@@ -270,13 +483,15 @@ func (cluster *Cluster) planSingleMountPreview(provider *config.S3Provider, targ
 // against the named provider. No state is mutated. When the provider does not
 // exist every target gets status SyncStatusProviderMissing.
 func (cluster *Cluster) PreviewS3ProviderSync(providerName string, targets []SyncTarget) SyncPreviewResponse {
+	providerSnapshot := cluster.GetS3ProvidersSnapshot()
 	resp := SyncPreviewResponse{
-		ProviderName: providerName,
-		DryRun:       true,
-		Results:      make([]SyncPreviewResult, 0, len(targets)),
+		ProviderName:  providerName,
+		DryRun:        true,
+		RevisionToken: cluster.computeS3SyncRevisionTokenWithSnapshot(providerName, targets, providerSnapshot),
+		Results:       make([]SyncPreviewResult, 0, len(targets)),
 	}
 
-	provider := findProviderByName(cluster.GetS3ProvidersSnapshot(), providerName)
+	provider := findProviderByName(providerSnapshot, providerName)
 
 	for _, t := range targets {
 		var r SyncPreviewResult
@@ -311,17 +526,65 @@ func (cluster *Cluster) PreviewS3ProviderSync(providerName string, targets []Syn
 // target mount. Mount-specific fields (name, bucket, mountdir, volumename,
 // volumedir, providerName) are never touched. After each successful mutation
 // the app is persisted via SaveApp.
-func (cluster *Cluster) ApplyS3ProviderSync(providerName string, targets []SyncTarget) SyncApplyResponse {
+func (cluster *Cluster) ApplyS3ProviderSync(providerName string, targets []SyncTarget, revisionToken string) SyncApplyResponse {
 	resp := SyncApplyResponse{
 		ProviderName: providerName,
 		DryRun:       false,
 		Results:      make([]SyncApplyResult, 0, len(targets)),
 	}
 
-	provider := findProviderByName(cluster.GetS3ProvidersSnapshot(), providerName)
+	if strings.TrimSpace(revisionToken) == "" {
+		for _, t := range targets {
+			resp.Results = append(resp.Results, SyncApplyResult{Target: t, Status: SyncStatusError, ErrorMessage: "revisionToken is required; run preview again"})
+		}
+		resp.Summary.Total = len(resp.Results)
+		resp.Summary.Failed = len(resp.Results)
+		return resp
+	}
+	if !IsValidS3SyncRevisionToken(revisionToken) {
+		for _, t := range targets {
+			resp.Results = append(resp.Results, SyncApplyResult{Target: t, Status: SyncStatusError, ErrorMessage: "revisionToken is malformed; run preview again"})
+		}
+		resp.Summary.Total = len(resp.Results)
+		resp.Summary.Failed = len(resp.Results)
+		return resp
+	}
+
+	// Serialize apply operations while avoiding a broad cluster lifecycle lock.
+	cluster.s3SyncApplyMu.Lock()
+	defer cluster.s3SyncApplyMu.Unlock()
+
+	// Keep provider set stable for token revalidation + apply.
+	cluster.clusterS3ProvidersMu.RLock()
+	defer cluster.clusterS3ProvidersMu.RUnlock()
+	providerSnapshot := make([]config.S3Provider, len(cluster.ClusterS3Providers))
+	copy(providerSnapshot, cluster.ClusterS3Providers)
+
+	provider := findProviderByName(providerSnapshot, providerName)
+	lockAppIDs := cluster.syncApplyLockAppIDs(provider, targets)
+	lockedApps, unlockApps := cluster.lockAppsByID(lockAppIDs)
+	defer unlockApps()
+
+	if cluster.computeS3SyncRevisionTokenWithSnapshot(providerName, targets, providerSnapshot) != strings.TrimSpace(revisionToken) {
+		for _, t := range targets {
+			resp.Results = append(resp.Results, SyncApplyResult{Target: t, Status: SyncApplyStatusStale, ErrorMessage: "sync preview is stale; run preview again before apply"})
+		}
+		resp.Summary.Total = len(resp.Results)
+		resp.Summary.Failed = len(resp.Results)
+		return resp
+	}
 
 	for _, t := range targets {
-		r := cluster.applySingleMountSync(provider, providerName, t)
+		targetApp := lockedApps[t.AppId]
+		if current := cluster.appByID(t.AppId); targetApp != nil && current != nil && current != targetApp {
+			resp.Results = append(resp.Results, SyncApplyResult{
+				Target:       t,
+				Status:       SyncApplyStatusStale,
+				ErrorMessage: "sync target app changed during apply; run preview again",
+			})
+			continue
+		}
+		r := cluster.applySingleMountSyncLocked(provider, providerName, targetApp, t)
 		resp.Results = append(resp.Results, r)
 	}
 
@@ -340,11 +603,13 @@ func (cluster *Cluster) ApplyS3ProviderSync(providerName string, targets []SyncT
 	return resp
 }
 
-// applySingleMountSync mutates one mount's provider-managed fields to match the
-// provider and persists the parent app. provider may be nil (provider_missing).
+// applySingleMountSyncLocked mutates one mount's provider-managed fields to
+// match the provider and persists the parent app. provider may be nil
+// (provider_missing). Caller must hold lockSyncTargetApps(targets) and
+// clusterS3ProvidersMu.RLock().
 // When SaveApp fails, provider-managed field mutations are rolled back and the
 // caller receives SyncStatusError with ErrorMessage.
-func (cluster *Cluster) applySingleMountSync(provider *config.S3Provider, providerName string, target SyncTarget) SyncApplyResult {
+func (cluster *Cluster) applySingleMountSyncLocked(provider *config.S3Provider, providerName string, targetApp *App, target SyncTarget) SyncApplyResult {
 	result := SyncApplyResult{Target: target}
 
 	if provider == nil {
@@ -353,41 +618,10 @@ func (cluster *Cluster) applySingleMountSync(provider *config.S3Provider, provid
 		return result
 	}
 
-	// Serialize mutate/save/rollback for sync operations to avoid interleaving
-	// updates on the same app/mount during concurrent apply requests.
-	cluster.Lock()
-	defer cluster.Unlock()
-
-	// Locate app.
-	var targetApp *App
-	for _, app := range cluster.Apps {
-		if app.GetId() == target.AppId {
-			targetApp = app
-			break
-		}
-	}
-	if targetApp == nil {
+	targetMount, errMessage := cluster.resolveSyncTargetMountInApp(targetApp, target)
+	if errMessage != "" {
 		result.Status = SyncStatusError
-		result.ErrorMessage = fmt.Sprintf("app %q not found", target.AppId)
-		return result
-	}
-	if targetApp.AppConfig == nil || targetApp.AppConfig.Deployment == nil {
-		result.Status = SyncStatusError
-		result.ErrorMessage = fmt.Sprintf("app %q has no deployment config", target.AppId)
-		return result
-	}
-
-	// Locate mount (pointer — mutations are in-place on the stored struct).
-	var targetMount *config.S3Mount
-	for _, s3m := range targetApp.AppConfig.Deployment.Storages.S3Mounts {
-		if s3m != nil && s3m.Name == target.MountName {
-			targetMount = s3m
-			break
-		}
-	}
-	if targetMount == nil {
-		result.Status = SyncStatusError
-		result.ErrorMessage = fmt.Sprintf("mount %q not found in app %q", target.MountName, target.AppId)
+		result.ErrorMessage = errMessage
 		return result
 	}
 	if targetMount.ProviderName != provider.Name {

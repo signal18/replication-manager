@@ -62,6 +62,10 @@ func newTestClusterForSync(t *testing.T) *Cluster {
 	return cl
 }
 
+func previewTokenForTargets(cl *Cluster, providerName string, targets []SyncTarget) string {
+	return cl.PreviewS3ProviderSync(providerName, targets).RevisionToken
+}
+
 // ---- Preview tests ----
 
 // TestPreviewS3ProviderSync_WillChange verifies that when mount values differ from
@@ -278,7 +282,8 @@ func TestPreviewS3ProviderSync_UnchangedFields(t *testing.T) {
 func TestApplyS3ProviderSync_ChangesProviderManagedFields(t *testing.T) {
 	cl := newTestClusterForSync(t)
 
-	resp := cl.ApplyS3ProviderSync("minio-prod", []SyncTarget{{AppId: "app-a", MountName: "media"}})
+	targets := []SyncTarget{{AppId: "app-a", MountName: "media"}}
+	resp := cl.ApplyS3ProviderSync("minio-prod", targets, previewTokenForTargets(cl, "minio-prod", targets))
 
 	if resp.DryRun != false {
 		t.Errorf("DryRun: got %v, want false", resp.DryRun)
@@ -319,7 +324,8 @@ func TestApplyS3ProviderSync_ChangesProviderManagedFields(t *testing.T) {
 func TestApplyS3ProviderSync_PreservesMountSpecificFields(t *testing.T) {
 	cl := newTestClusterForSync(t)
 
-	cl.ApplyS3ProviderSync("minio-prod", []SyncTarget{{AppId: "app-a", MountName: "media"}})
+	targets := []SyncTarget{{AppId: "app-a", MountName: "media"}}
+	cl.ApplyS3ProviderSync("minio-prod", targets, previewTokenForTargets(cl, "minio-prod", targets))
 
 	m := cl.Apps[0].AppConfig.Deployment.Storages.S3Mounts[0]
 	if m.Name != "media" {
@@ -353,7 +359,8 @@ func TestApplyS3ProviderSync_NoChangeWhenAlreadyMatches(t *testing.T) {
 	m.AccessKey = "AK_PROVIDER"
 	m.SecretKey = "SK_PROVIDER"
 
-	resp := cl.ApplyS3ProviderSync("minio-prod", []SyncTarget{{AppId: "app-a", MountName: "media"}})
+	targets := []SyncTarget{{AppId: "app-a", MountName: "media"}}
+	resp := cl.ApplyS3ProviderSync("minio-prod", targets, previewTokenForTargets(cl, "minio-prod", targets))
 
 	if len(resp.Results) != 1 {
 		t.Fatalf("Results len: got %d, want 1", len(resp.Results))
@@ -372,7 +379,8 @@ func TestApplyS3ProviderSync_ProviderMissing(t *testing.T) {
 	cl := newTestClusterForSync(t)
 	mountBefore := *cl.Apps[0].AppConfig.Deployment.Storages.S3Mounts[0]
 
-	resp := cl.ApplyS3ProviderSync("nonexistent", []SyncTarget{{AppId: "app-a", MountName: "media"}})
+	targets := []SyncTarget{{AppId: "app-a", MountName: "media"}}
+	resp := cl.ApplyS3ProviderSync("nonexistent", targets, previewTokenForTargets(cl, "nonexistent", targets))
 
 	if len(resp.Results) != 1 {
 		t.Fatalf("Results len: got %d, want 1", len(resp.Results))
@@ -408,7 +416,7 @@ func TestApplyS3ProviderSync_MultipleTargets(t *testing.T) {
 		{AppId: "app-a", MountName: "media"},   // will change
 		{AppId: "app-a", MountName: "archive"}, // already matches
 	}
-	resp := cl.ApplyS3ProviderSync("minio-prod", targets)
+	resp := cl.ApplyS3ProviderSync("minio-prod", targets, previewTokenForTargets(cl, "minio-prod", targets))
 
 	if resp.Summary.Total != 2 {
 		t.Errorf("Summary.Total: got %d, want 2", resp.Summary.Total)
@@ -435,7 +443,8 @@ func TestApplyS3ProviderSync_SaveFailureRollsBack(t *testing.T) {
 	// Force SaveApp failure by pointing WorkingDir to a path where /apps does not exist.
 	cl.WorkingDir = "/proc"
 
-	resp := cl.ApplyS3ProviderSync("minio-prod", []SyncTarget{{AppId: "app-a", MountName: "media"}})
+	targets := []SyncTarget{{AppId: "app-a", MountName: "media"}}
+	resp := cl.ApplyS3ProviderSync("minio-prod", targets, previewTokenForTargets(cl, "minio-prod", targets))
 
 	if len(resp.Results) != 1 {
 		t.Fatalf("Results len: got %d, want 1", len(resp.Results))
@@ -482,7 +491,8 @@ func TestApplyS3ProviderSync_SaveFailureThenRetry(t *testing.T) {
 
 	// First attempt: force SaveApp failure.
 	cl.WorkingDir = "/proc"
-	respFail := cl.ApplyS3ProviderSync("minio-prod", []SyncTarget{{AppId: "app-a", MountName: "media"}})
+	targets := []SyncTarget{{AppId: "app-a", MountName: "media"}}
+	respFail := cl.ApplyS3ProviderSync("minio-prod", targets, previewTokenForTargets(cl, "minio-prod", targets))
 	if len(respFail.Results) != 1 {
 		t.Fatalf("Results len: got %d, want 1", len(respFail.Results))
 	}
@@ -492,7 +502,7 @@ func TestApplyS3ProviderSync_SaveFailureThenRetry(t *testing.T) {
 
 	// Second attempt: restore writable dir; apply should now succeed (not unchanged).
 	cl.WorkingDir = initialWorkingDir
-	respRetry := cl.ApplyS3ProviderSync("minio-prod", []SyncTarget{{AppId: "app-a", MountName: "media"}})
+	respRetry := cl.ApplyS3ProviderSync("minio-prod", targets, previewTokenForTargets(cl, "minio-prod", targets))
 	if len(respRetry.Results) != 1 {
 		t.Fatalf("retry results len: got %d, want 1", len(respRetry.Results))
 	}
@@ -504,7 +514,7 @@ func TestApplyS3ProviderSync_SaveFailureThenRetry(t *testing.T) {
 	}
 
 	// Third attempt: now already in sync.
-	respThird := cl.ApplyS3ProviderSync("minio-prod", []SyncTarget{{AppId: "app-a", MountName: "media"}})
+	respThird := cl.ApplyS3ProviderSync("minio-prod", targets, previewTokenForTargets(cl, "minio-prod", targets))
 	if respThird.Results[0].Status != SyncApplyStatusUnchanged {
 		t.Fatalf("third apply status: got %q, want %q", respThird.Results[0].Status, SyncApplyStatusUnchanged)
 	}
@@ -532,5 +542,89 @@ func TestPreviewS3ProviderSync_ChangeFieldList(t *testing.T) {
 	}
 	if len(r.Changes) > 0 && r.Changes[0].Field != "endpoint" {
 		t.Errorf("Changes[0].Field: got %q, want %q", r.Changes[0].Field, "endpoint")
+	}
+}
+
+func TestPreviewS3ProviderSync_RevisionTokenDeterministic(t *testing.T) {
+	cl := newTestClusterForSync(t)
+	targetsA := []SyncTarget{{AppId: "app-a", MountName: "media"}}
+	targetsB := []SyncTarget{{MountName: "media", AppId: "app-a"}}
+
+	respA := cl.PreviewS3ProviderSync("minio-prod", targetsA)
+	respB := cl.PreviewS3ProviderSync("minio-prod", targetsB)
+
+	if respA.RevisionToken == "" || !IsValidS3SyncRevisionToken(respA.RevisionToken) {
+		t.Fatalf("expected a valid revision token, got %q", respA.RevisionToken)
+	}
+	if respA.RevisionToken != respB.RevisionToken {
+		t.Fatalf("expected deterministic revision token, got %q and %q", respA.RevisionToken, respB.RevisionToken)
+	}
+
+	cl.ClusterS3Providers[0].Region = "us-west-2"
+	respAfterProviderChange := cl.PreviewS3ProviderSync("minio-prod", targetsA)
+	if respAfterProviderChange.RevisionToken == respA.RevisionToken {
+		t.Fatalf("expected revision token to change after provider drift")
+	}
+}
+
+func TestApplyS3ProviderSync_StaleStateOnProviderDrift(t *testing.T) {
+	cl := newTestClusterForSync(t)
+	targets := []SyncTarget{{AppId: "app-a", MountName: "media"}}
+	token := previewTokenForTargets(cl, "minio-prod", targets)
+	mountBefore := *cl.Apps[0].AppConfig.Deployment.Storages.S3Mounts[0]
+
+	cl.ClusterS3Providers[0].Endpoint = "https://drifted.example.com"
+
+	resp := cl.ApplyS3ProviderSync("minio-prod", targets, token)
+	if len(resp.Results) != 1 {
+		t.Fatalf("Results len: got %d, want 1", len(resp.Results))
+	}
+	if resp.Results[0].Status != SyncApplyStatusStale {
+		t.Fatalf("status: got %q, want %q", resp.Results[0].Status, SyncApplyStatusStale)
+	}
+	if resp.Summary.Failed != 1 {
+		t.Fatalf("summary failed: got %d, want 1", resp.Summary.Failed)
+	}
+
+	mountAfter := *cl.Apps[0].AppConfig.Deployment.Storages.S3Mounts[0]
+	if mountAfter.Endpoint != mountBefore.Endpoint || mountAfter.Region != mountBefore.Region || mountAfter.AccessKey != mountBefore.AccessKey || mountAfter.SecretKey != mountBefore.SecretKey {
+		t.Fatalf("mount was mutated on stale-state apply")
+	}
+}
+
+func TestApplyS3ProviderSync_StaleStateOnMountDrift(t *testing.T) {
+	cl := newTestClusterForSync(t)
+	targets := []SyncTarget{{AppId: "app-a", MountName: "media"}}
+	token := previewTokenForTargets(cl, "minio-prod", targets)
+
+	cl.Apps[0].AppConfig.Deployment.Storages.S3Mounts[0].Region = "drifted-region"
+	resp := cl.ApplyS3ProviderSync("minio-prod", targets, token)
+
+	if len(resp.Results) != 1 {
+		t.Fatalf("Results len: got %d, want 1", len(resp.Results))
+	}
+	if resp.Results[0].Status != SyncApplyStatusStale {
+		t.Fatalf("status: got %q, want %q", resp.Results[0].Status, SyncApplyStatusStale)
+	}
+}
+
+func TestApplyS3ProviderSync_RejectsMissingOrMalformedRevisionToken(t *testing.T) {
+	cl := newTestClusterForSync(t)
+	targets := []SyncTarget{{AppId: "app-a", MountName: "media"}}
+	mountBefore := *cl.Apps[0].AppConfig.Deployment.Storages.S3Mounts[0]
+
+	respMissing := cl.ApplyS3ProviderSync("minio-prod", targets, "")
+	if respMissing.Results[0].Status != SyncStatusError {
+		t.Fatalf("missing token status: got %q, want %q", respMissing.Results[0].Status, SyncStatusError)
+	}
+
+	respMalformed := cl.ApplyS3ProviderSync("minio-prod", targets, "bad-token")
+	if respMalformed.Results[0].Status != SyncStatusError {
+		t.Fatalf("malformed token status: got %q, want %q", respMalformed.Results[0].Status, SyncStatusError)
+	}
+
+	mountAfter := *cl.Apps[0].AppConfig.Deployment.Storages.S3Mounts[0]
+	if mountAfter.Endpoint != mountBefore.Endpoint || mountAfter.Region != mountBefore.Region || mountAfter.AccessKey != mountBefore.AccessKey || mountAfter.SecretKey != mountBefore.SecretKey {
+		t.Fatalf("mount mutated despite invalid revision token")
 	}
 }

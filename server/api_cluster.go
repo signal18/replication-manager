@@ -9479,29 +9479,41 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderReferences(w http.R
 
 // s3SyncRequest is the shared JSON request body for the sync preview and apply endpoints.
 type s3SyncRequest struct {
-	Targets []cluster.SyncTarget `json:"targets"`
+	Targets       []cluster.SyncTarget `json:"targets"`
+	RevisionToken string               `json:"revisionToken,omitempty"`
+}
+
+func validateS3SyncApplyRevisionToken(revisionToken string) error {
+	token := strings.TrimSpace(revisionToken)
+	if token == "" {
+		return fmt.Errorf("revisionToken is required; run preview again before apply")
+	}
+	if !cluster.IsValidS3SyncRevisionToken(token) {
+		return fmt.Errorf("revisionToken is malformed; run preview again before apply")
+	}
+	return nil
 }
 
 // parseS3SyncRequest validates the cluster, ACL, provider name, and decodes the
 // request body. It returns the cluster, provider name, and decoded targets, or
 // writes an HTTP error and returns false.
-func parseS3SyncRequest(repman *ReplicationManager, w http.ResponseWriter, r *http.Request) (*cluster.Cluster, string, []cluster.SyncTarget, bool) {
+func parseS3SyncRequest(repman *ReplicationManager, w http.ResponseWriter, r *http.Request) (*cluster.Cluster, string, s3SyncRequest, bool) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
-		return nil, "", nil, false
+		return nil, "", s3SyncRequest{}, false
 	}
 	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 		http.Error(w, "No valid ACL", http.StatusForbidden)
-		return nil, "", nil, false
+		return nil, "", s3SyncRequest{}, false
 	}
 
 	providerName := vars["name"]
 	if err := config.ValidateS3ProviderName(providerName); err != nil {
 		http.Error(w, "Invalid provider name: "+err.Error(), http.StatusBadRequest)
-		return nil, "", nil, false
+		return nil, "", s3SyncRequest{}, false
 	}
 
 	var req s3SyncRequest
@@ -9509,29 +9521,29 @@ func parseS3SyncRequest(repman *ReplicationManager, w http.ResponseWriter, r *ht
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
 		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
-		return nil, "", nil, false
+		return nil, "", s3SyncRequest{}, false
 	}
 	// Reject trailing garbage after the first JSON value.
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {
 		http.Error(w, "Invalid request body: unexpected trailing content", http.StatusBadRequest)
-		return nil, "", nil, false
+		return nil, "", s3SyncRequest{}, false
 	}
 	if len(req.Targets) == 0 {
 		http.Error(w, "targets must not be empty", http.StatusBadRequest)
-		return nil, "", nil, false
+		return nil, "", s3SyncRequest{}, false
 	}
 	if len(req.Targets) > cluster.SyncMaxTargets {
 		http.Error(w, fmt.Sprintf("too many targets: max %d", cluster.SyncMaxTargets), http.StatusBadRequest)
-		return nil, "", nil, false
+		return nil, "", s3SyncRequest{}, false
 	}
 	for i, t := range req.Targets {
 		if strings.TrimSpace(t.AppId) == "" || strings.TrimSpace(t.MountName) == "" {
 			http.Error(w, fmt.Sprintf("invalid target at index %d: appId and mountName are required", i), http.StatusBadRequest)
-			return nil, "", nil, false
+			return nil, "", s3SyncRequest{}, false
 		}
 	}
-	return mycluster, providerName, req.Targets, true
+	return mycluster, providerName, req, true
 }
 
 // handlerMuxClusterS3ProviderSyncPreview performs a dry-run preview of syncing
@@ -9539,12 +9551,12 @@ func parseS3SyncRequest(repman *ReplicationManager, w http.ResponseWriter, r *ht
 //
 // POST /api/clusters/{clusterName}/s3providers/{name}/sync/preview
 func (repman *ReplicationManager) handlerMuxClusterS3ProviderSyncPreview(w http.ResponseWriter, r *http.Request) {
-	mycluster, providerName, targets, ok := parseS3SyncRequest(repman, w, r)
+	mycluster, providerName, req, ok := parseS3SyncRequest(repman, w, r)
 	if !ok {
 		return
 	}
 
-	resp := mycluster.PreviewS3ProviderSync(providerName, targets)
+	resp := mycluster.PreviewS3ProviderSync(providerName, req.Targets)
 
 	w.Header().Set("Content-Type", "application/json")
 	e := json.NewEncoder(w)
@@ -9560,12 +9572,16 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderSyncPreview(w http.
 //
 // POST /api/clusters/{clusterName}/s3providers/{name}/sync/apply
 func (repman *ReplicationManager) handlerMuxClusterS3ProviderSyncApply(w http.ResponseWriter, r *http.Request) {
-	mycluster, providerName, targets, ok := parseS3SyncRequest(repman, w, r)
+	mycluster, providerName, req, ok := parseS3SyncRequest(repman, w, r)
 	if !ok {
 		return
 	}
+	if err := validateS3SyncApplyRevisionToken(req.RevisionToken); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	resp := mycluster.ApplyS3ProviderSync(providerName, targets)
+	resp := mycluster.ApplyS3ProviderSync(providerName, req.Targets, req.RevisionToken)
 
 	w.Header().Set("Content-Type", "application/json")
 	e := json.NewEncoder(w)

@@ -865,10 +865,10 @@ function syncS3ProviderPreview(clusterName, providerName, targets, baseURL) {
   )
 }
 
-function syncS3ProviderApply(clusterName, providerName, targets, baseURL) {
+function syncS3ProviderApply(clusterName, providerName, targets, revisionToken, baseURL) {
   return getApi(baseURL).post(
     `clusters/${clusterName}/s3providers/${encodeURIComponent(providerName)}/sync/apply`,
-    { targets }
+    { targets, revisionToken }
   )
 }
 //#endregion S3 provider CRUD APIs

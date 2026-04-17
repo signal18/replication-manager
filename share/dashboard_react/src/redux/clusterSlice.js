@@ -2254,8 +2254,13 @@ export const addS3Provider = createGuardedAsyncThunk(
       if (status !== 200 && status !== 201) {
         throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
       }
-      thunkAPI.dispatch(getClusterData({ clusterName }))
-      return { data, status }
+      let refreshError = null
+      try {
+        await thunkAPI.dispatch(getClusterData({ clusterName })).unwrap()
+      } catch (err) {
+        refreshError = err?.errorMessage || err?.message || String(err)
+      }
+      return { data, status, refreshError }
     } catch (error) {
       return handleError(error, thunkAPI)
     }
@@ -2333,15 +2338,15 @@ export const previewS3MountSync = createGuardedAsyncThunk(
 )
 
 // applyS3MountSync applies provider-managed fields to a single mount.
-// Payload: { clusterName, providerName, appId, mountName }
+// Payload: { clusterName, providerName, appId, mountName, revisionToken }
 // Returns the SyncApplyResponse from the server.
 export const applyS3MountSync = createGuardedAsyncThunk(
   'cluster/applyS3MountSync',
-  async ({ clusterName, providerName, appId, mountName }, thunkAPI) => {
+  async ({ clusterName, providerName, appId, mountName, revisionToken }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const targets = [{ appId, mountName }]
-      const { data, status } = await clusterService.syncS3ProviderApply(clusterName, providerName, targets, baseURL)
+      const { data, status } = await clusterService.syncS3ProviderApply(clusterName, providerName, targets, revisionToken, baseURL)
       if (status !== 200) {
         throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
       }
@@ -2371,13 +2376,13 @@ export const previewS3ProviderBulkSync = createGuardedAsyncThunk(
 )
 
 // applyS3ProviderBulkSync applies provider-managed fields for selected mounts.
-// Payload: { clusterName, providerName, targets: [{ appId, mountName }] }
+// Payload: { clusterName, providerName, targets: [{ appId, mountName }], revisionToken }
 export const applyS3ProviderBulkSync = createGuardedAsyncThunk(
   'cluster/applyS3ProviderBulkSync',
-  async ({ clusterName, providerName, targets }, thunkAPI) => {
+  async ({ clusterName, providerName, targets, revisionToken }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.syncS3ProviderApply(clusterName, providerName, targets, baseURL)
+      const { data, status } = await clusterService.syncS3ProviderApply(clusterName, providerName, targets, revisionToken, baseURL)
       if (status !== 200) {
         throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
       }

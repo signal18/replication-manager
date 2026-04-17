@@ -5,6 +5,14 @@ export const PREVIEW_STATUSES = {
   ERROR: 'error',
 }
 
+export const APPLY_STATUSES = {
+  CHANGED: 'changed',
+  UNCHANGED: 'unchanged',
+  PROVIDER_MISSING: 'provider_missing',
+  STALE_STATE: 'stale_state',
+  ERROR: 'error',
+}
+
 const toTargetKey = (t) => JSON.stringify([String(t?.appId || '').trim(), String(t?.mountName || '').trim()])
 
 export const formatSyncValue = (value) => {
