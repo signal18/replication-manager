@@ -1,4 +1,4 @@
-import { Box, Flex, Spinner, Text } from '@chakra-ui/react'
+import { Box, Divider, Flex, Spinner, Text } from '@chakra-ui/react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useState, useEffect } from 'react'
 import PropTypes from 'prop-types'
@@ -86,14 +86,21 @@ function PluginsSettings({ selectedCluster, user }) {
     plugins.forEach((plugin) => {
       const isPluginEnabled = plugin.config?.['enabled'] !== 'false'
       const desc = pluginDescription(plugin.name)
+      const label = plugin.name.replace(/^plugin-/, '').replace(/-/g, ' ').toUpperCase()
+
+      // Divider before every plugin (including first — separates global settings from plugins)
+      rows.push({
+        fullWidth: true,
+        value: <Divider borderColor='whiteAlpha.300' mt={1} mb={1} />
+      })
 
       rows.push({
         key: (
-          <Text fontWeight='semibold' fontSize='sm' color='blue.300'>
-            {plugin.name}
+          <Text fontWeight='bold' fontSize='sm' color='blue.200' letterSpacing='wide'>
+            {label}
           </Text>
         ),
-        help: desc ? h(desc, plugin.name) : null,
+        help: desc ? h(desc, label) : null,
         value: (
           <RMSwitch
             confirmTitle={`Confirm ${isPluginEnabled ? 'disable' : 'enable'} plugin '${plugin.name}'?`}
