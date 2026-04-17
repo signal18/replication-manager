@@ -163,12 +163,12 @@ func newTestClusterForAPI(t *testing.T) *cluster.Cluster {
 // the sjson deletion passes have run (AC: 1 of Story 6.2).
 func TestBuildClusterAPIPayload_ClusterS3ProvidersPresent(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.ClusterS3Providers = []config.S3Provider{
-		{
-			Name:           "myprovider",
-			ProviderSource: config.S3ProviderSourceCustom,
-			Endpoint:       "https://s3.example.com",
-		},
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name:           "myprovider",
+		ProviderSource: config.S3ProviderSourceCustom,
+		Endpoint:       "https://s3.example.com",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
 	}
 
 	payload, err := buildClusterAPIPayload(cl)
@@ -188,14 +188,14 @@ func TestBuildClusterAPIPayload_ClusterS3ProvidersPresent(t *testing.T) {
 // are never present in the API response body, satisfying AC: 2 of Story 6.2.
 func TestBuildClusterAPIPayload_SecretsAbsent(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.ClusterS3Providers = []config.S3Provider{
-		{
-			Name:           "withsecrets",
-			ProviderSource: config.S3ProviderSourceCustom,
-			Endpoint:       "https://s3.example.com",
-			AccessKey:      "AKIAIOSFODNN7EXAMPLE",
-			SecretKey:      "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-		},
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name:           "withsecrets",
+		ProviderSource: config.S3ProviderSourceCustom,
+		Endpoint:       "https://s3.example.com",
+		AccessKey:      "AKIAIOSFODNN7EXAMPLE",
+		SecretKey:      "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
 	}
 
 	payload, err := buildClusterAPIPayload(cl)
@@ -224,9 +224,13 @@ func TestBuildClusterAPIPayload_SecretsAbsent(t *testing.T) {
 // GetS3ProvidersSnapshot returns.
 func TestBuildClusterAPIPayload_SnapshotUsed(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.ClusterS3Providers = []config.S3Provider{
+	for _, p := range []config.S3Provider{
 		{Name: "p1", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com"},
 		{Name: "p2", ProviderSource: config.S3ProviderSourceApp, ProviderApp: "app:9000"},
+	} {
+		if err := cl.AddS3Provider(p); err != nil {
+			t.Fatalf("AddS3Provider: %v", err)
+		}
 	}
 
 	payload, err := buildClusterAPIPayload(cl)
@@ -255,8 +259,7 @@ func TestBuildClusterAPIPayload_SnapshotUsed(t *testing.T) {
 // TestBuildClusterAPIPayload_EmptyProviders verifies that an empty (or nil)
 // ClusterS3Providers still produces a valid "clusterS3Providers":[] in the response.
 func TestBuildClusterAPIPayload_EmptyProviders(t *testing.T) {
-	cl := newTestClusterForAPI(t)
-	cl.ClusterS3Providers = nil
+	cl := newTestClusterForAPI(t) // providers are nil by default
 
 	payload, err := buildClusterAPIPayload(cl)
 	if err != nil {
@@ -278,8 +281,10 @@ func TestBuildClusterAPIPayload_EmptyProviders(t *testing.T) {
 // AddS3Provider/RemoveS3Provider could rewrite it, causing a data race.
 func TestBuildClusterAPIPayload_ConcurrentMutationNoRace(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.ClusterS3Providers = []config.S3Provider{
-		{Name: "initial", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com"},
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name: "initial", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
 	}
 
 	const iterations = 100
@@ -471,23 +476,17 @@ func TestValidateS3ProviderAPIRequest_CustomModeInvalidEndpoint(t *testing.T) {
 // that credentials are never returned in plaintext.
 func TestHandlerMuxClusterS3ProvidersGet_MasksSecrets(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.ClusterS3Providers = []config.S3Provider{
-		{
-			Name:           "p1",
-			ProviderSource: config.S3ProviderSourceCustom,
-			Endpoint:       "https://s3.example.com",
-			AccessKey:      "AKID",
-			SecretKey:      "SECRET123",
-		},
-		{
-			Name:           "p2",
-			ProviderSource: config.S3ProviderSourceApp,
-			ProviderApp:    "app:9000",
-		},
+	for _, p := range []config.S3Provider{
+		{Name: "p1", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com", AccessKey: "AKID", SecretKey: "SECRET123"},
+		{Name: "p2", ProviderSource: config.S3ProviderSourceApp, ProviderApp: "app:9000"},
+	} {
+		if err := cl.AddS3Provider(p); err != nil {
+			t.Fatalf("AddS3Provider: %v", err)
+		}
 	}
 
-	resp := make([]s3ProviderResponse, len(cl.ClusterS3Providers))
 	snapshot := cl.GetS3ProvidersSnapshot()
+	resp := make([]s3ProviderResponse, len(snapshot))
 	for i, p := range snapshot {
 		resp[i] = maskS3Provider(p)
 	}
@@ -515,8 +514,7 @@ func TestHandlerMuxClusterS3ProvidersGet_MasksSecrets(t *testing.T) {
 // TestHandlerMuxClusterS3ProvidersGet_EmptyList verifies that an empty provider
 // list produces a valid JSON array (not null).
 func TestHandlerMuxClusterS3ProvidersGet_EmptyList(t *testing.T) {
-	cl := newTestClusterForAPI(t)
-	cl.ClusterS3Providers = nil
+	cl := newTestClusterForAPI(t) // providers are nil by default
 
 	snapshot := cl.GetS3ProvidersSnapshot()
 	resp := make([]s3ProviderResponse, len(snapshot))

@@ -70,6 +70,8 @@ func (p S3Provider) MarshalJSON() ([]byte, error) {
 
 // ValidateS3ProviderName checks that name is non-empty, has no leading/trailing
 // whitespace, no path separators, and does not exceed S3ProviderNameMaxLen.
+// Name uniqueness is enforced case-sensitively throughout the system
+// ("Provider" and "provider" are treated as distinct names).
 func ValidateS3ProviderName(name string) error {
 	if name == "" {
 		return fmt.Errorf("provider name must not be empty")

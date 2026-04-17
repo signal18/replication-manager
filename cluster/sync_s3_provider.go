@@ -557,8 +557,8 @@ func (cluster *Cluster) ApplyS3ProviderSync(providerName string, targets []SyncT
 	// Keep provider set stable for token revalidation + apply.
 	cluster.clusterS3ProvidersMu.RLock()
 	defer cluster.clusterS3ProvidersMu.RUnlock()
-	providerSnapshot := make([]config.S3Provider, len(cluster.ClusterS3Providers))
-	copy(providerSnapshot, cluster.ClusterS3Providers)
+	providerSnapshot := make([]config.S3Provider, len(cluster.clusterS3Providers))
+	copy(providerSnapshot, cluster.clusterS3Providers)
 
 	provider := findProviderByName(providerSnapshot, providerName)
 	lockAppIDs := cluster.syncApplyLockAppIDs(provider, targets)

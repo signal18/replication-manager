@@ -21,15 +21,15 @@ func newTestClusterForSync(t *testing.T) *Cluster {
 	if err := os.MkdirAll(filepath.Join(cl.WorkingDir, "apps"), 0755); err != nil {
 		t.Fatalf("create apps dir: %v", err)
 	}
-	cl.ClusterS3Providers = []config.S3Provider{
-		{
-			Name:           "minio-prod",
-			ProviderSource: config.S3ProviderSourceCustom,
-			Endpoint:       "https://minio.example.com",
-			Region:         "us-east-1",
-			AccessKey:      "AK_PROVIDER",
-			SecretKey:      "SK_PROVIDER",
-		},
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name:           "minio-prod",
+		ProviderSource: config.S3ProviderSourceCustom,
+		Endpoint:       "https://minio.example.com",
+		Region:         "us-east-1",
+		AccessKey:      "AK_PROVIDER",
+		SecretKey:      "SK_PROVIDER",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
 	}
 	app := &App{
 		Id:   "app-a",
@@ -560,7 +560,11 @@ func TestPreviewS3ProviderSync_RevisionTokenDeterministic(t *testing.T) {
 		t.Fatalf("expected deterministic revision token, got %q and %q", respA.RevisionToken, respB.RevisionToken)
 	}
 
-	cl.ClusterS3Providers[0].Region = "us-west-2"
+	driftedRegion := cl.GetS3ProvidersSnapshot()[0]
+	driftedRegion.Region = "us-west-2"
+	if err := cl.UpdateS3Provider(driftedRegion); err != nil {
+		t.Fatalf("UpdateS3Provider (drift): %v", err)
+	}
 	respAfterProviderChange := cl.PreviewS3ProviderSync("minio-prod", targetsA)
 	if respAfterProviderChange.RevisionToken == respA.RevisionToken {
 		t.Fatalf("expected revision token to change after provider drift")
@@ -573,7 +577,11 @@ func TestApplyS3ProviderSync_StaleStateOnProviderDrift(t *testing.T) {
 	token := previewTokenForTargets(cl, "minio-prod", targets)
 	mountBefore := *cl.Apps[0].AppConfig.Deployment.Storages.S3Mounts[0]
 
-	cl.ClusterS3Providers[0].Endpoint = "https://drifted.example.com"
+	driftedEndpoint := cl.GetS3ProvidersSnapshot()[0]
+	driftedEndpoint.Endpoint = "https://drifted.example.com"
+	if err := cl.UpdateS3Provider(driftedEndpoint); err != nil {
+		t.Fatalf("UpdateS3Provider (drift): %v", err)
+	}
 
 	resp := cl.ApplyS3ProviderSync("minio-prod", targets, token)
 	if len(resp.Results) != 1 {

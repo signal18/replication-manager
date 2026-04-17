@@ -183,11 +183,12 @@ func TestS3ProviderValidate_InvalidName(t *testing.T) {
 func TestLoadS3Providers_EmptyWhenFileMissing(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
 	cl.LoadS3Providers()
-	if cl.ClusterS3Providers == nil {
+	snap := cl.GetS3ProvidersSnapshot()
+	if snap == nil {
 		t.Fatal("expected non-nil slice, got nil")
 	}
-	if len(cl.ClusterS3Providers) != 0 {
-		t.Fatalf("expected empty slice, got len=%d", len(cl.ClusterS3Providers))
+	if len(snap) != 0 {
+		t.Fatalf("expected empty slice, got len=%d", len(snap))
 	}
 }
 
@@ -198,8 +199,8 @@ func TestLoadS3Providers_EmptyWhenFileInvalid(t *testing.T) {
 		t.Fatal(err)
 	}
 	cl.LoadS3Providers()
-	if len(cl.ClusterS3Providers) != 0 {
-		t.Fatalf("expected empty slice on parse error, got len=%d", len(cl.ClusterS3Providers))
+	if snap := cl.GetS3ProvidersSnapshot(); len(snap) != 0 {
+		t.Fatalf("expected empty slice on parse error, got len=%d", len(snap))
 	}
 }
 
@@ -215,11 +216,12 @@ func TestLoadS3Providers_DeduplicatesNames_FirstWins(t *testing.T) {
 		t.Fatal(err)
 	}
 	cl.LoadS3Providers()
-	if len(cl.ClusterS3Providers) != 1 {
-		t.Fatalf("expected 1 provider (first-wins dedup), got %d", len(cl.ClusterS3Providers))
+	snap := cl.GetS3ProvidersSnapshot()
+	if len(snap) != 1 {
+		t.Fatalf("expected 1 provider (first-wins dedup), got %d", len(snap))
 	}
-	if cl.ClusterS3Providers[0].Endpoint != "https://first.example.com" {
-		t.Errorf("expected first occurrence to win, got endpoint %q", cl.ClusterS3Providers[0].Endpoint)
+	if snap[0].Endpoint != "https://first.example.com" {
+		t.Errorf("expected first occurrence to win, got endpoint %q", snap[0].Endpoint)
 	}
 }
 
@@ -236,11 +238,12 @@ func TestLoadS3Providers_SkipsInvalidRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	cl.LoadS3Providers()
-	if len(cl.ClusterS3Providers) != 1 {
-		t.Fatalf("expected 1 valid provider, got %d", len(cl.ClusterS3Providers))
+	snap := cl.GetS3ProvidersSnapshot()
+	if len(snap) != 1 {
+		t.Fatalf("expected 1 valid provider, got %d", len(snap))
 	}
-	if cl.ClusterS3Providers[0].Name != "good" {
-		t.Errorf("expected provider 'good', got %q", cl.ClusterS3Providers[0].Name)
+	if snap[0].Name != "good" {
+		t.Errorf("expected provider 'good', got %q", snap[0].Name)
 	}
 }
 
@@ -248,9 +251,13 @@ func TestLoadS3Providers_SkipsInvalidRecords(t *testing.T) {
 
 func TestSaveAndLoadS3Providers_RoundTrip(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{
+	for _, p := range []config.S3Provider{
 		{Name: "myprovider", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com", Region: "us-east-1"},
 		{Name: "appref", ProviderSource: config.S3ProviderSourceApp, ProviderApp: "myapp:8080"},
+	} {
+		if err := cl.AddS3Provider(p); err != nil {
+			t.Fatalf("AddS3Provider: %v", err)
+		}
 	}
 	if err := cl.SaveS3Providers(); err != nil {
 		t.Fatalf("SaveS3Providers: %v", err)
@@ -261,21 +268,24 @@ func TestSaveAndLoadS3Providers_RoundTrip(t *testing.T) {
 	cl2.WorkingDir = cl.WorkingDir
 	cl2.LoadS3Providers()
 
-	if len(cl2.ClusterS3Providers) != 2 {
-		t.Fatalf("expected 2 providers, got %d", len(cl2.ClusterS3Providers))
+	snap := cl2.GetS3ProvidersSnapshot()
+	if len(snap) != 2 {
+		t.Fatalf("expected 2 providers, got %d", len(snap))
 	}
-	if cl2.ClusterS3Providers[0].Name != "myprovider" {
-		t.Errorf("unexpected name: %q", cl2.ClusterS3Providers[0].Name)
+	if snap[0].Name != "myprovider" {
+		t.Errorf("unexpected name: %q", snap[0].Name)
 	}
-	if cl2.ClusterS3Providers[1].ProviderApp != "myapp:8080" {
-		t.Errorf("unexpected providerApp: %q", cl2.ClusterS3Providers[1].ProviderApp)
+	if snap[1].ProviderApp != "myapp:8080" {
+		t.Errorf("unexpected providerApp: %q", snap[1].ProviderApp)
 	}
 }
 
 func TestSaveS3Providers_FilePermissions(t *testing.T) {
 	cl, workDir := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{
-		{Name: "p1", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com", AccessKey: "key", SecretKey: "secret"},
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name: "p1", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com", AccessKey: "key", SecretKey: "secret",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
 	}
 	if err := cl.SaveS3Providers(); err != nil {
 		t.Fatalf("SaveS3Providers: %v", err)
@@ -292,8 +302,10 @@ func TestSaveS3Providers_FilePermissions(t *testing.T) {
 
 func TestSaveS3Providers_WritesValidJSON(t *testing.T) {
 	cl, workDir := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{
-		{Name: "p1", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com"},
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name: "p1", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
 	}
 	if err := cl.SaveS3Providers(); err != nil {
 		t.Fatalf("SaveS3Providers: %v", err)
@@ -313,8 +325,10 @@ func TestSaveS3Providers_WritesValidJSON(t *testing.T) {
 
 func TestSaveS3Providers_RejectsDuplicateNames(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
-	// Inject duplicates directly via public field (bypassing AddS3Provider).
-	cl.ClusterS3Providers = []config.S3Provider{
+	// Inject duplicates directly via unexported field (bypassing AddS3Provider).
+	// This is intentional: SaveS3Providers must validate even when internal state
+	// is corrupted by a direct field write (possible within the cluster package).
+	cl.clusterS3Providers = []config.S3Provider{
 		{Name: "dup", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com"},
 		{Name: "dup", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3-other.example.com"},
 	}
@@ -327,8 +341,10 @@ func TestSaveS3Providers_SecretKeyPersistedInFile(t *testing.T) {
 	// SaveS3Providers uses s3ProviderOnDisk (bypasses MarshalJSON) so secrets
 	// must appear in the file even though json.Marshal(S3Provider) omits them.
 	cl, workDir := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{
-		{Name: "p1", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com", SecretKey: "supersecret"},
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name: "p1", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com", SecretKey: "supersecret",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
 	}
 	if err := cl.SaveS3Providers(); err != nil {
 		t.Fatalf("SaveS3Providers: %v", err)
@@ -348,14 +364,14 @@ func TestSaveAndLoadS3Providers_SecretsRoundTrip(t *testing.T) {
 	// Verifies the full encrypt→persist→load→decrypt path is symmetric.
 	// Without a loaded encryption key the values are stored as-is (graceful degradation).
 	cl, _ := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{
-		{
-			Name:           "secure",
-			ProviderSource: config.S3ProviderSourceCustom,
-			Endpoint:       "https://s3.example.com",
-			AccessKey:      "myaccesskey",
-			SecretKey:      "mysecretkey",
-		},
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name:           "secure",
+		ProviderSource: config.S3ProviderSourceCustom,
+		Endpoint:       "https://s3.example.com",
+		AccessKey:      "myaccesskey",
+		SecretKey:      "mysecretkey",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
 	}
 	if err := cl.SaveS3Providers(); err != nil {
 		t.Fatalf("SaveS3Providers: %v", err)
@@ -365,10 +381,11 @@ func TestSaveAndLoadS3Providers_SecretsRoundTrip(t *testing.T) {
 	cl2.WorkingDir = cl.WorkingDir
 	cl2.LoadS3Providers()
 
-	if len(cl2.ClusterS3Providers) != 1 {
-		t.Fatalf("expected 1 provider after load, got %d", len(cl2.ClusterS3Providers))
+	snap2 := cl2.GetS3ProvidersSnapshot()
+	if len(snap2) != 1 {
+		t.Fatalf("expected 1 provider after load, got %d", len(snap2))
 	}
-	p := cl2.ClusterS3Providers[0]
+	p := snap2[0]
 	if p.AccessKey != "myaccesskey" {
 		t.Errorf("AccessKey round-trip failed: got %q", p.AccessKey)
 	}
@@ -411,16 +428,16 @@ func TestCluster_ClusterS3Providers_SecretsAbsentFromMarshal(t *testing.T) {
 	// Regression: marshaling the ClusterS3Providers slice (as done when marshaling
 	// the full Cluster struct) must not expose accesskey or secretkey.
 	cl, _ := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{
-		{
-			Name:           "provider",
-			ProviderSource: config.S3ProviderSourceCustom,
-			Endpoint:       "https://s3.example.com",
-			AccessKey:      "leak-ak",
-			SecretKey:      "leak-sk",
-		},
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name:           "provider",
+		ProviderSource: config.S3ProviderSourceCustom,
+		Endpoint:       "https://s3.example.com",
+		AccessKey:      "leak-ak",
+		SecretKey:      "leak-sk",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
 	}
-	data, err := json.Marshal(cl.ClusterS3Providers)
+	data, err := json.Marshal(cl.GetS3ProvidersSnapshot())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,24 +451,24 @@ func TestCluster_ClusterS3Providers_SecretsAbsentFromMarshal(t *testing.T) {
 }
 
 func TestCluster_ClusterS3ProvidersField_ExcludedFromDirectMarshal(t *testing.T) {
-	// ClusterS3Providers carries json:"-" so that json.Marshal(cluster) never
-	// reads the live slice during a concurrent write window. The API response
-	// path (buildClusterAPIPayload / GetCompactJson) injects a safe snapshot via
+	// clusterS3Providers is unexported, so json.Marshal(cluster) never reads the
+	// live slice during a concurrent write window. The API response path
+	// (buildClusterAPIPayload / GetCompactJson) injects a safe snapshot via
 	// GetS3ProvidersSnapshot() + sjson instead.
 	cl, _ := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{
-		{
-			Name:           "myprovider",
-			ProviderSource: config.S3ProviderSourceCustom,
-			Endpoint:       "https://s3.example.com",
-		},
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name:           "myprovider",
+		ProviderSource: config.S3ProviderSourceCustom,
+		Endpoint:       "https://s3.example.com",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
 	}
 	data, err := json.Marshal(cl)
 	if err != nil {
 		t.Fatalf("marshal Cluster: %v", err)
 	}
 	if strings.Contains(string(data), `"clusterS3Providers"`) {
-		t.Errorf("ClusterS3Providers must be excluded from direct json.Marshal (json:\"-\" tag required); found key in output")
+		t.Errorf("clusterS3Providers is unexported and must be excluded from direct json.Marshal; found key in output")
 	}
 }
 
@@ -459,16 +476,18 @@ func TestCluster_GetS3ProvidersSnapshot_ReturnsDeepCopy(t *testing.T) {
 	// Verifies GetS3ProvidersSnapshot returns a copy, not a reference, so callers
 	// cannot accidentally mutate the live slice.
 	cl, _ := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{
-		{Name: "p1", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com"},
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name: "p1", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
 	}
 	snap := cl.GetS3ProvidersSnapshot()
 	if len(snap) != 1 || snap[0].Name != "p1" {
 		t.Fatalf("unexpected snapshot: %+v", snap)
 	}
-	// Mutate the snapshot; live slice must not change.
+	// Mutate the snapshot; a second snapshot call must still return the original value.
 	snap[0].Name = "mutated"
-	if cl.ClusterS3Providers[0].Name != "p1" {
+	if live := cl.GetS3ProvidersSnapshot(); live[0].Name != "p1" {
 		t.Errorf("GetS3ProvidersSnapshot must return a deep copy; live slice was mutated")
 	}
 }
@@ -477,30 +496,32 @@ func TestCluster_GetS3ProvidersSnapshot_ReturnsDeepCopy(t *testing.T) {
 
 func TestAddS3Provider_Success(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{}
 	p := config.S3Provider{Name: "newprovider", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com"}
 	if err := cl.AddS3Provider(p); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(cl.ClusterS3Providers) != 1 {
-		t.Fatalf("expected 1 provider, got %d", len(cl.ClusterS3Providers))
+	if snap := cl.GetS3ProvidersSnapshot(); len(snap) != 1 {
+		t.Fatalf("expected 1 provider, got %d", len(snap))
 	}
 }
 
 func TestAddS3Provider_DuplicateNameRejected(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
 	p := config.S3Provider{Name: "dup", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com"}
-	cl.ClusterS3Providers = []config.S3Provider{p}
-	err := cl.AddS3Provider(p)
-	if err == nil {
+	if err := cl.AddS3Provider(p); err != nil {
+		t.Fatalf("first AddS3Provider: %v", err)
+	}
+	if err := cl.AddS3Provider(p); err == nil {
 		t.Fatal("expected error for duplicate name, got nil")
 	}
 }
 
 func TestAddS3Provider_DuplicateIsCaseSensitive(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{
-		{Name: "Provider", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com"},
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name: "Provider", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
 	}
 	// "provider" (lowercase) must NOT be rejected as a duplicate of "Provider".
 	if err := cl.AddS3Provider(config.S3Provider{Name: "provider", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com"}); err != nil {
@@ -510,20 +531,18 @@ func TestAddS3Provider_DuplicateIsCaseSensitive(t *testing.T) {
 
 func TestAddS3Provider_ValidationEnforced(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{}
 	// custom mode without endpoint should fail validation
 	p := config.S3Provider{Name: "bad", ProviderSource: config.S3ProviderSourceCustom}
 	if err := cl.AddS3Provider(p); err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
-	if len(cl.ClusterS3Providers) != 0 {
+	if snap := cl.GetS3ProvidersSnapshot(); len(snap) != 0 {
 		t.Fatal("invalid provider must not be added")
 	}
 }
 
 func TestAddS3Provider_ConcurrentDuplicate_OneSucceedsOneConflicts(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{}
 	p := config.S3Provider{Name: "race-dup", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com"}
 
 	start := make(chan struct{})
@@ -571,21 +590,25 @@ func TestAddS3Provider_ConcurrentDuplicate_OneSucceedsOneConflicts(t *testing.T)
 
 func TestRemoveS3Provider_Success(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{
+	for _, p := range []config.S3Provider{
 		{Name: "a", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com"},
 		{Name: "b", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com"},
+	} {
+		if err := cl.AddS3Provider(p); err != nil {
+			t.Fatalf("AddS3Provider: %v", err)
+		}
 	}
 	if err := cl.RemoveS3Provider("a"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(cl.ClusterS3Providers) != 1 || cl.ClusterS3Providers[0].Name != "b" {
-		t.Errorf("unexpected providers after remove: %+v", cl.ClusterS3Providers)
+	snap := cl.GetS3ProvidersSnapshot()
+	if len(snap) != 1 || snap[0].Name != "b" {
+		t.Errorf("unexpected providers after remove: %+v", snap)
 	}
 }
 
 func TestRemoveS3Provider_NotFound(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{}
 	if err := cl.RemoveS3Provider("ghost"); err == nil {
 		t.Fatal("expected error for missing provider, got nil")
 	}
@@ -595,21 +618,22 @@ func TestRemoveS3Provider_NotFound(t *testing.T) {
 
 func TestUpdateS3Provider_Success(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{
-		{Name: "p", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com", Region: "eu-west-1"},
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name: "p", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com", Region: "eu-west-1",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
 	}
 	updated := config.S3Provider{Name: "p", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com", Region: "us-east-2"}
 	if err := cl.UpdateS3Provider(updated); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cl.ClusterS3Providers[0].Region != "us-east-2" {
-		t.Errorf("region not updated: %q", cl.ClusterS3Providers[0].Region)
+	if snap := cl.GetS3ProvidersSnapshot(); snap[0].Region != "us-east-2" {
+		t.Errorf("region not updated: %q", snap[0].Region)
 	}
 }
 
 func TestUpdateS3Provider_NotFound(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{}
 	if err := cl.UpdateS3Provider(config.S3Provider{Name: "missing", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com"}); err == nil {
 		t.Fatal("expected error for missing provider, got nil")
 	}
@@ -617,8 +641,10 @@ func TestUpdateS3Provider_NotFound(t *testing.T) {
 
 func TestUpdateS3Provider_ValidationEnforced(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
-	cl.ClusterS3Providers = []config.S3Provider{
-		{Name: "p", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com"},
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name: "p", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
 	}
 	// Try to update with invalid payload (custom mode, no endpoint)
 	bad := config.S3Provider{Name: "p", ProviderSource: config.S3ProviderSourceCustom}
@@ -626,7 +652,7 @@ func TestUpdateS3Provider_ValidationEnforced(t *testing.T) {
 		t.Fatal("expected validation error, got nil")
 	}
 	// Original must be unchanged
-	if cl.ClusterS3Providers[0].Endpoint != "https://s3.example.com" {
+	if snap := cl.GetS3ProvidersSnapshot(); snap[0].Endpoint != "https://s3.example.com" {
 		t.Error("original provider was mutated despite validation failure")
 	}
 }
@@ -640,13 +666,13 @@ func TestProviderUpdateDoesNotMutateAppMounts(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
 
 	// Set up a provider in the library.
-	cl.ClusterS3Providers = []config.S3Provider{
-		{
-			Name:           "prod-minio",
-			ProviderSource: config.S3ProviderSourceCustom,
-			Endpoint:       "https://minio.example.com",
-			Region:         "eu-west-1",
-		},
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name:           "prod-minio",
+		ProviderSource: config.S3ProviderSourceCustom,
+		Endpoint:       "https://minio.example.com",
+		Region:         "eu-west-1",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
 	}
 
 	// Set up an app with an S3 mount that was initialized from that provider
@@ -696,8 +722,8 @@ func TestProviderUpdateDoesNotMutateAppMounts(t *testing.T) {
 	}
 
 	// Provider library must reflect the update.
-	if cl.ClusterS3Providers[0].Region != "us-east-1" {
-		t.Errorf("provider library region: got %q, want %q", cl.ClusterS3Providers[0].Region, "us-east-1")
+	if lib := cl.GetS3ProvidersSnapshot(); lib[0].Region != "us-east-1" {
+		t.Errorf("provider library region: got %q, want %q", lib[0].Region, "us-east-1")
 	}
 
 	// App mount effective values must be unchanged (no live propagation).
@@ -725,8 +751,10 @@ func TestProviderUpdateDoesNotMutateAppMounts(t *testing.T) {
 func TestProviderDeleteDoesNotMutateAppMounts(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
 
-	cl.ClusterS3Providers = []config.S3Provider{
-		{Name: "archive-s3", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://archive.example.com", Region: "us-east-1"},
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name: "archive-s3", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://archive.example.com", Region: "us-east-1",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
 	}
 	app := &App{
 		Name: "backup-app",
@@ -762,8 +790,8 @@ func TestProviderDeleteDoesNotMutateAppMounts(t *testing.T) {
 	}
 
 	// Provider library must be empty.
-	if len(cl.ClusterS3Providers) != 0 {
-		t.Fatalf("provider library: expected empty, got %d", len(cl.ClusterS3Providers))
+	if lib := cl.GetS3ProvidersSnapshot(); len(lib) != 0 {
+		t.Fatalf("provider library: expected empty, got %d", len(lib))
 	}
 
 	// App mount values must be unchanged.

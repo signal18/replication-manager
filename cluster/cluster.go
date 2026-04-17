@@ -156,10 +156,15 @@ type Cluster struct {
 	DiskType                      map[string]string      `json:"diskType" groups:"web"`
 	VMType                        map[string]bool        `json:"vmType" groups:"web"`
 	AppS3Providers                []string               `json:"appS3Providers" groups:"web"`
-	// ClusterS3Providers is excluded from automatic JSON marshal (json:"-") to
-	// prevent data races with concurrent CRUD mutations. API response paths must
-	// inject a safe snapshot via GetS3ProvidersSnapshot() + sjson.
-	ClusterS3Providers []config.S3Provider        `json:"-"`
+	// clusterS3Providers holds the in-memory S3 provider list for this cluster.
+	// LOCKING CONTRACT: all reads and writes MUST be performed under
+	// clusterS3ProvidersMu (RLock for reads, Lock for writes).
+	// Use the accessor methods AddS3Provider, RemoveS3Provider, UpdateS3Provider,
+	// and GetS3ProvidersSnapshot — do NOT assign to this field directly.
+	// The field is unexported so external packages are forced to use the
+	// accessors; JSON exclusion is automatic for unexported fields.
+	// API response paths must inject a snapshot via GetS3ProvidersSnapshot() + sjson.
+	clusterS3Providers []config.S3Provider
 	Agents             []Agent                    `json:"agents" groups:"web"`
 	AgentMaxFreq       map[string]int64           `json:"-"`
 	hostList           []string                   `json:"-"`
@@ -476,7 +481,10 @@ func (cluster *Cluster) InitFromConf() {
 		os.MkdirAll(cluster.WorkingDir, os.ModePerm)
 	}
 	cluster.initSnapshotMetadataPersistence()
-	cluster.LoadS3Providers()
+	if err := cluster.LoadS3Providers(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"LoadS3Providers: %v", err)
+	}
 
 	cluster.SetClusterCredentialsFromConfig()
 	cluster.LoadAPIUsers()

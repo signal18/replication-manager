@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -64,14 +65,23 @@ func (cluster *Cluster) s3ProvidersFilePath() string {
 
 // encryptS3Provider returns a copy of p with AccessKey and SecretKey encrypted
 // using the cluster encryption key. If no key is loaded the values are stored
-// unchanged (graceful degradation).
+// unchanged (graceful degradation) and a LvlWarn is emitted so operators are
+// aware that credentials will be written to disk in plaintext.
 func (cluster *Cluster) encryptS3Provider(p config.S3Provider) config.S3Provider {
 	out := p
 	if p.AccessKey != "" {
 		out.AccessKey = cluster.Conf.GetEncryptedString(p.AccessKey)
+		if !strings.HasPrefix(out.AccessKey, "hash_") {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"S3 provider %q: no encryption key loaded — AccessKey will be stored in plaintext", p.Name)
+		}
 	}
 	if p.SecretKey != "" {
 		out.SecretKey = cluster.Conf.GetEncryptedString(p.SecretKey)
+		if !strings.HasPrefix(out.SecretKey, "hash_") {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"S3 provider %q: no encryption key loaded — SecretKey will be stored in plaintext", p.Name)
+		}
 	}
 	return out
 }
@@ -90,10 +100,12 @@ func (cluster *Cluster) decryptS3Provider(p *config.S3Provider) {
 // LoadS3Providers reads the per-cluster JSON file into ClusterS3Providers under a
 // write lock. Secrets are decrypted after reading via s3ProviderOnDisk (which
 // bypasses S3Provider.MarshalJSON). If the file is absent the field is set to an
-// empty slice without error. Struct parse errors are logged at LvlWarn and yield
-// an empty slice. Individual records that fail Validate() are skipped with a
-// LvlWarn per record; valid records are still loaded. Startup is never blocked.
-func (cluster *Cluster) LoadS3Providers() {
+// empty slice and nil is returned. Struct parse errors are logged at LvlWarn and
+// yield an empty slice plus a non-nil error. Individual records that fail
+// Validate() or are duplicates are skipped (LvlWarn per record); valid records are
+// still loaded and a non-nil error is returned to signal partial data loss so
+// callers can decide whether to abort startup or alert. Startup is never blocked.
+func (cluster *Cluster) LoadS3Providers() error {
 	path := cluster.s3ProvidersFilePath()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -102,9 +114,11 @@ func (cluster *Cluster) LoadS3Providers() {
 		if !os.IsNotExist(err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 				"Failed to read S3 providers file %s: %v", path, err)
+			cluster.clusterS3Providers = []config.S3Provider{}
+			return fmt.Errorf("read S3 providers file %s: %w", path, err)
 		}
-		cluster.ClusterS3Providers = []config.S3Provider{}
-		return
+		cluster.clusterS3Providers = []config.S3Provider{}
+		return nil
 	}
 
 	var raw []s3ProviderOnDisk
@@ -113,26 +127,31 @@ func (cluster *Cluster) LoadS3Providers() {
 			"Failed to parse S3 providers file %s: %v", path, err)
 		cluster.clusterS3ProvidersMu.Lock()
 		defer cluster.clusterS3ProvidersMu.Unlock()
-		cluster.ClusterS3Providers = []config.S3Provider{}
-		return
+		cluster.clusterS3Providers = []config.S3Provider{}
+		return fmt.Errorf("parse S3 providers file %s: %w", path, err)
 	}
 
 	// Decrypt secrets, validate, and enforce first-wins name uniqueness.
 	// Invalid records and duplicate names are skipped with a LvlWarn per entry
 	// so a single corrupt entry does not wipe the rest of the provider set.
+	// Name uniqueness is enforced case-sensitively ("Provider" != "provider");
+	// this is intentional and documented in ValidateS3ProviderName.
 	seen := make(map[string]struct{}, len(raw))
 	valid := make([]config.S3Provider, 0, len(raw))
+	skipped := 0
 	for _, d := range raw {
 		p := fromOnDisk(d)
 		cluster.decryptS3Provider(&p)
 		if err := p.Validate(); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 				"Skipping invalid S3 provider %q in %s: %v", p.Name, path, err)
+			skipped++
 			continue
 		}
 		if _, dup := seen[p.Name]; dup {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 				"Skipping duplicate S3 provider name %q in %s: first occurrence retained", p.Name, path)
+			skipped++
 			continue
 		}
 		seen[p.Name] = struct{}{}
@@ -141,7 +160,12 @@ func (cluster *Cluster) LoadS3Providers() {
 
 	cluster.clusterS3ProvidersMu.Lock()
 	defer cluster.clusterS3ProvidersMu.Unlock()
-	cluster.ClusterS3Providers = valid
+	cluster.clusterS3Providers = valid
+
+	if skipped > 0 {
+		return fmt.Errorf("S3 providers file %s: %d record(s) skipped due to validation errors or duplicate names — check logs for details", path, skipped)
+	}
+	return nil
 }
 
 // SaveS3Providers validates all providers, encrypts secrets, and atomically writes
@@ -151,12 +175,13 @@ func (cluster *Cluster) LoadS3Providers() {
 // File permissions are 0600 (owner read/write only).
 func (cluster *Cluster) SaveS3Providers() error {
 	cluster.clusterS3ProvidersMu.RLock()
-	snapshot := make([]config.S3Provider, len(cluster.ClusterS3Providers))
-	copy(snapshot, cluster.ClusterS3Providers)
+	snapshot := make([]config.S3Provider, len(cluster.clusterS3Providers))
+	copy(snapshot, cluster.clusterS3Providers)
 	cluster.clusterS3ProvidersMu.RUnlock()
 
 	// Validate all providers and reject duplicate names before touching the file.
-	// This guards against state mutated directly via the public ClusterS3Providers field.
+	// This guards against state mutated directly via the unexported clusterS3Providers field
+	// (possible within the cluster package, e.g. in tests or internal helpers).
 	seen := make(map[string]struct{}, len(snapshot))
 	for i := range snapshot {
 		if err := snapshot[i].Validate(); err != nil {
@@ -195,8 +220,8 @@ func (cluster *Cluster) SaveS3Providers() error {
 func (cluster *Cluster) GetS3ProvidersSnapshot() []config.S3Provider {
 	cluster.clusterS3ProvidersMu.RLock()
 	defer cluster.clusterS3ProvidersMu.RUnlock()
-	snapshot := make([]config.S3Provider, len(cluster.ClusterS3Providers))
-	copy(snapshot, cluster.ClusterS3Providers)
+	snapshot := make([]config.S3Provider, len(cluster.clusterS3Providers))
+	copy(snapshot, cluster.clusterS3Providers)
 	return snapshot
 }
 
@@ -209,12 +234,13 @@ func (cluster *Cluster) AddS3Provider(p config.S3Provider) error {
 	}
 	cluster.clusterS3ProvidersMu.Lock()
 	defer cluster.clusterS3ProvidersMu.Unlock()
-	for _, existing := range cluster.ClusterS3Providers {
+	for _, existing := range cluster.clusterS3Providers {
 		if existing.Name == p.Name {
-			return fmt.Errorf("S3 provider with name %q already exists", p.Name)
+			// Name matching is case-sensitive: "Provider" and "provider" are distinct.
+			return fmt.Errorf("S3 provider with name %q already exists (name comparison is case-sensitive)", p.Name)
 		}
 	}
-	cluster.ClusterS3Providers = append(cluster.ClusterS3Providers, p)
+	cluster.clusterS3Providers = append(cluster.clusterS3Providers, p)
 	return nil
 }
 
@@ -222,11 +248,11 @@ func (cluster *Cluster) AddS3Provider(p config.S3Provider) error {
 func (cluster *Cluster) RemoveS3Provider(name string) error {
 	cluster.clusterS3ProvidersMu.Lock()
 	defer cluster.clusterS3ProvidersMu.Unlock()
-	for i, p := range cluster.ClusterS3Providers {
+	for i, p := range cluster.clusterS3Providers {
 		if p.Name == name {
-			cluster.ClusterS3Providers = append(
-				cluster.ClusterS3Providers[:i],
-				cluster.ClusterS3Providers[i+1:]...,
+			cluster.clusterS3Providers = append(
+				cluster.clusterS3Providers[:i],
+				cluster.clusterS3Providers[i+1:]...,
 			)
 			return nil
 		}
@@ -243,9 +269,9 @@ func (cluster *Cluster) UpdateS3Provider(p config.S3Provider) error {
 	}
 	cluster.clusterS3ProvidersMu.Lock()
 	defer cluster.clusterS3ProvidersMu.Unlock()
-	for i, existing := range cluster.ClusterS3Providers {
+	for i, existing := range cluster.clusterS3Providers {
 		if existing.Name == p.Name {
-			cluster.ClusterS3Providers[i] = p
+			cluster.clusterS3Providers[i] = p
 			return nil
 		}
 	}

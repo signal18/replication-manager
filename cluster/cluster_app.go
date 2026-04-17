@@ -42,7 +42,7 @@ func (cluster *Cluster) LoadAppConfigs() error {
 	_, err := os.Stat(dirname)
 	if os.IsNotExist(err) {
 		// Create the directory if it does not exist
-		err = os.MkdirAll(cluster.WorkingDir+"/apps", os.ModePerm)
+		err = os.MkdirAll(cluster.WorkingDir+"/apps", 0750)
 		if err != nil {
 			return err
 		}
@@ -288,7 +288,7 @@ func (cluster *Cluster) SaveAppConfigFile(app *App, filePath, templatePath strin
 	if templatePath != "" {
 		parentDir := filepath.Dir(templatePath)
 		if _, err := os.Stat(parentDir); os.IsNotExist(err) {
-			if err := os.MkdirAll(parentDir, os.ModePerm); err != nil {
+			if err := os.MkdirAll(parentDir, 0750); err != nil {
 				return false, err
 			}
 		}
@@ -309,7 +309,9 @@ func (cluster *Cluster) SaveAppConfigFile(app *App, filePath, templatePath strin
 // truncating a target file on partial writes.
 func (cluster *Cluster) writeTomlAtomically(t *toml.Tree, filePath string) error {
 	parentDir := filepath.Dir(filePath)
-	if err := os.MkdirAll(parentDir, os.ModePerm); err != nil {
+	// 0750: owner rwx, group rx, other none — more restrictive than os.ModePerm
+	// (0777) to protect config dirs that may hold database credentials.
+	if err := os.MkdirAll(parentDir, 0750); err != nil {
 		return err
 	}
 
@@ -344,8 +346,14 @@ func (cluster *Cluster) writeTomlAtomically(t *toml.Tree, filePath string) error
 	}
 
 	if dir, err := os.Open(parentDir); err == nil {
-		_ = dir.Sync()
-		_ = dir.Close()
+		if syncErr := dir.Sync(); syncErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"writeTomlAtomically: directory fsync failed for %s: %v (rename durability not guaranteed)", parentDir, syncErr)
+		}
+		if closeErr := dir.Close(); closeErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"writeTomlAtomically: directory close failed for %s: %v", parentDir, closeErr)
+		}
 	}
 
 	return nil
@@ -839,7 +847,7 @@ func (cluster *Cluster) GetTemplateContent(template string) ([]byte, error) {
 	}
 
 	// Ensure parent dir exists
-	if err := os.MkdirAll(filepath.Dir(localPath), os.ModePerm); err != nil {
+	if err := os.MkdirAll(filepath.Dir(localPath), 0750); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
 			"Error creating parent directory for %s: %s", localPath, err)
 		return nil, err
