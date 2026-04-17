@@ -310,7 +310,14 @@ func (d *Deployment) ResolvePaths() []error {
 
 	for _, p := range d.Paths {
 		// Resolve pointers for each path mapping
-		p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths)
+		err := p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths)
+		if err != nil {
+			if errs == nil {
+				errs = make([]error, 0)
+			}
+			errs = append(errs, err)
+			continue
+		}
 
 		if p.Parent != nil {
 			if p.VolumeName == "" {
@@ -613,16 +620,27 @@ func (pm *PathMapping) ResolvePointers(volumes Volumes, gits GitClones, s3s S3Mo
 	// Resolve Parent
 	if pm.ParentName != "" {
 		for _, parent := range parents {
-			if parent.DockerPath == pm.ParentName {
+			if parent.Name == pm.ParentName {
 				pm.Parent = parent
 				break
 			}
+		}
+		if pm.Parent == nil {
+			return fmt.Errorf("parent path %q not found for path mapping %s", pm.ParentName, pm.DockerPath)
 		}
 	}
 
 	// Resolve Volume
 	if pm.SourceType != "" && pm.SourceName == "" {
 		return fmt.Errorf("source name is required for path mapping %s", pm.DockerPath)
+	}
+
+	if pm.SourceType != "" {
+		if pm.SourcePath == "" || pm.SourcePath == "/" {
+			pm.SourcePath = "."
+		}
+	} else {
+		return nil
 	}
 
 	switch pm.SourceType {

@@ -619,8 +619,18 @@ func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
 	}
 
 	for _, path := range deployment.Paths {
+		if path.SourceType != "" && path.SourceName != "" && path.VolumeName == "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+				"Skipping unresolved deployment path mapping dockerpath=%q name=%q parentname=%q srctype=%q srcname=%q srcpath=%q volumename=%q",
+				path.DockerPath, path.Name, path.ParentName, path.SourceType, path.SourceName, path.SourcePath, path.VolumeName)
+			continue
+		}
+
 		vol, err := deployment.GetVolumeByName(path.VolumeName)
 		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+				"Skipping deployment path mapping dockerpath=%q name=%q volumename=%q srctype=%q srcname=%q: %v",
+				path.DockerPath, path.Name, path.VolumeName, path.SourceType, path.SourceName, err)
 			continue
 		}
 

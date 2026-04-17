@@ -3,6 +3,7 @@ package cluster
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -99,6 +100,16 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 	if err != nil {
 		// If there is an error decoding the TOML file don't change the configuration
 		return err
+	}
+
+	if appcnf.Deployment != nil {
+		if resolveErrs := appcnf.Deployment.ResolvePaths(); len(resolveErrs) > 0 {
+			for _, resolveErr := range resolveErrs {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
+					"App config %q deployment path resolution error: %v", filename, resolveErr)
+			}
+			return fmt.Errorf("invalid deployment path mapping in app config %q", filename)
+		}
 	}
 
 	// If app-host was not set in the TOML file (or was left as an unresolved template),
@@ -442,6 +453,16 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error unmarshalling parsed template file %s: %s", template, err)
 			return err
+		}
+
+		if appcnf.Deployment != nil {
+			if resolveErrs := appcnf.Deployment.ResolvePaths(); len(resolveErrs) > 0 {
+				for _, resolveErr := range resolveErrs {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
+						"App template %q deployment path resolution error: %v", template, resolveErr)
+				}
+				return fmt.Errorf("invalid deployment path mapping for template %q", template)
+			}
 		}
 	}
 	return nil
