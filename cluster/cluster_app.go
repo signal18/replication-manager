@@ -35,6 +35,33 @@ func (cluster *Cluster) NewAppConfig(apphost, port string) *config.AppConfig {
 	}
 }
 
+func (cluster *Cluster) appendConfAppIfAbsent(appcnf *config.AppConfig) bool {
+	if appcnf == nil {
+		return false
+	}
+	cluster.Lock()
+	defer cluster.Unlock()
+	for _, cnf := range cluster.Conf.Apps {
+		if cnf.AppHost == appcnf.AppHost && cnf.AppPort == appcnf.AppPort {
+			return false
+		}
+	}
+	cluster.Conf.Apps = append(cluster.Conf.Apps, appcnf)
+	return true
+}
+
+func (cluster *Cluster) removeConfApp(appcnf *config.AppConfig, srv, port string) bool {
+	cluster.Lock()
+	defer cluster.Unlock()
+	for i, cnf := range cluster.Conf.Apps {
+		if cnf == appcnf || (cnf.AppHost == srv && cnf.AppPort == port) {
+			cluster.Conf.Apps = append(cluster.Conf.Apps[:i], cluster.Conf.Apps[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) LoadAppConfigs() error {
 	dirname := filepath.Join(cluster.WorkingDir, "apps")
 
@@ -473,40 +500,27 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		return errors.New("app port must be between 1 and 65535")
 	}
 
-	for _, app := range cluster.Conf.Apps {
-		if app.AppHost == srv && app.AppPort == port {
-			return errors.New("App already exists. If you want to add new deployment, please use the app deployment menu")
-		}
-	}
-
-	appcnf := cluster.GetAppConfig(srv, port) // Get or initiate app config
+	appcnf := cluster.NewAppConfig(srv, port)
 	appcnf.ProvAppDockerImg = dockerImg
 	appcnf.ProvAppTemplate = template
-	cluster.Conf.Apps = append(cluster.Conf.Apps, appcnf)
+	if appended := cluster.appendConfAppIfAbsent(appcnf); !appended {
+		return errors.New("App already exists. If you want to add new deployment, please use the app deployment menu")
+	}
+
 	appAdded := true
 	rollbackAddedApp := func() {
 		if !appAdded {
 			return
 		}
-		for i, cnf := range cluster.Conf.Apps {
-			if cnf == appcnf || (cnf.AppHost == srv && cnf.AppPort == port) {
-				cluster.Conf.Apps = append(cluster.Conf.Apps[:i], cluster.Conf.Apps[i+1:]...)
-				break
-			}
-		}
-		cluster.Lock()
+		_ = cluster.removeConfApp(appcnf, srv, port)
 		_ = cluster.newAppList()
-		cluster.Unlock()
 		appAdded = false
 	}
 
-	cluster.Lock()
 	if err := cluster.newAppList(); err != nil {
-		cluster.Unlock()
 		rollbackAddedApp()
 		return err
 	}
-	cluster.Unlock()
 
 	app := cluster.GetAppByConfig(appcnf)
 	if app == nil {

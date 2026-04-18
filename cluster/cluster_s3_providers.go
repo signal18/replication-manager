@@ -224,6 +224,10 @@ func (cluster *Cluster) SaveS3Providers() error {
 	defer func() {
 		_ = os.Remove(tmpPath)
 	}()
+	if err := tmpFile.Chmod(0600); err != nil {
+		_ = tmpFile.Close()
+		return fmt.Errorf("chmod S3 providers temp file %s: %w", tmpPath, err)
+	}
 
 	if _, err := tmpFile.Write(data); err != nil {
 		_ = tmpFile.Close()
@@ -238,6 +242,9 @@ func (cluster *Cluster) SaveS3Providers() error {
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("rename S3 providers file to %s: %w", path, err)
+	}
+	if err := os.Chmod(path, 0600); err != nil {
+		return fmt.Errorf("chmod S3 providers file %s: %w", path, err)
 	}
 	return nil
 }
