@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import PageContainer from '../PageContainer'
 import styles from './styles.module.scss'
@@ -9,8 +9,10 @@ import CustomIcon from '../../components/Icons/CustomIcon'
 import { HiArrowNarrowLeft } from 'react-icons/hi'
 import { useDispatch, useSelector } from 'react-redux'
 import { getClusterData, getClusterApps, setRefreshInterval, getAppService } from '../../redux/clusterSlice'
+import { refreshAppTemplateRepo } from '../../redux/globalClustersSlice'
+import { AppSettings } from '../../AppSettings'
 
-function ClusterApp({ }) {
+function ClusterApp() {
   const params = useParams()
   const dispatch = useDispatch()
   const navigate = useNavigate()
@@ -18,8 +20,8 @@ function ClusterApp({ }) {
   const [selectedTab, setSelectedTab] = useState(1)
   const [user, setUser] = useState(null)
   const [selectedApp, setSelectedApp] = useState(null)
-  const [clusterName, setClusterName] = useState(params.cluster)
-  const [appId, setAppId] = useState(params.appname)
+	const clusterName = params.cluster
+	const appId = params.appname
   const tabs = useRef([])
 
   const loggedUser = useSelector((state) => state.auth.user)
@@ -41,6 +43,9 @@ function ClusterApp({ }) {
       }
       if (tabs.current[selectedTabRef.current] === 'Service OpenSVC') {
         dispatch(getAppService({ clusterName, serviceName: 'service-opensvc', appId }))
+      }
+      if (tabs.current[selectedTabRef.current] === 'Templates') {
+        dispatch(refreshAppTemplateRepo({ clusterName, silent: true }))
       }
     }
   }
@@ -89,6 +94,7 @@ function ClusterApp({ }) {
           authorizedTabs.push('App Overview')
           authorizedTabs.push('Storages')
           authorizedTabs.push('Service OpenSVC')
+          authorizedTabs.push('Templates')
           tabs.current = authorizedTabs
           setUser(apiUser)
         }
@@ -127,6 +133,7 @@ function ClusterApp({ }) {
           tabContents={[
             null,
             <ClusterAppTabContent
+              key='cluster-app-tab-overview'
               tab='overview'
               appId={appId}
               clusterName={clusterName}
@@ -135,6 +142,7 @@ function ClusterApp({ }) {
               config={clusterData?.config}
             />,
             <ClusterAppTabContent
+              key='cluster-app-tab-storages'
               tab='storages'
               appId={appId}
               clusterName={clusterName}
@@ -143,7 +151,17 @@ function ClusterApp({ }) {
               config={clusterData?.config}
             />,
             <ClusterAppTabContent
+              key='cluster-app-tab-opensvc'
               tab='opensvc'
+              appId={appId}
+              clusterName={clusterName}
+              user={user}
+              selectedApp={selectedApp}
+              config={clusterData?.config}
+            />,
+            <ClusterAppTabContent
+              key='cluster-app-tab-templates'
+              tab='templates'
               appId={appId}
               clusterName={clusterName}
               user={user}

@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { VStack, Input, HStack, Heading, Flex, Select, Box, Text } from "@chakra-ui/react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { VStack, Input, HStack, Heading, Flex, Box, Text } from "@chakra-ui/react";
 import styles from "./styles.module.scss";
 import TextForm from "../../../../components/TextForm";
 import { createColumnHelper } from "@tanstack/react-table";
@@ -8,37 +8,67 @@ import RMIconButton from "../../../../components/RMIconButton";
 import { DataTable } from "../../../../components/DataTable";
 import { HiTrash } from "react-icons/hi";
 import Dropdown from "../../../../components/Dropdown";
+import SyncDiffTable from "../../../../components/SyncDiffTable";
+import { extractApiErrorMessage, redactSensitiveInfo } from "../../../../utils/apiError";
 
-const defaultS3 = { name: "", endpoint:"", bucket: "" };
+const defaultS3 = { name: "", endpoint: "", bucket: "", region: "", accesskey: "", secretkey: "", providerName: "" };
+const providerSourceOptions = [
+  { value: "app", name: "Sibling App" },
+  { value: "custom", name: "Custom Endpoint" },
+];
+
+const endpointExistsInProviders = (endpoint, s3ProvOptions = []) =>
+  !!endpoint && s3ProvOptions.some((opt) => opt.value === endpoint || opt.endpoint === endpoint);
+
+const getDuplicateProviderAdvisory = (name, clusterS3Providers = []) => {
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    return "";
+  }
+  const hasDuplicate = (clusterS3Providers || []).some((provider) => provider.name === trimmedName);
+  return hasDuplicate
+    ? `A provider named "${trimmedName}" already exists in your current snapshot. You can still submit to confirm with the server.`
+    : "";
+};
+
+const hasCustomBlankCredentials = (providerSource, s3 = {}) => {
+  if (providerSource !== "custom") return false;
+  return !s3.accesskey && !s3.secretkey;
+};
 
 const columnHelper = createColumnHelper()
 
 const S3DirectorySection = ({
     rows = [],
+    appId = "",
     fieldName = "s3Mounts",
     s3ProvOptions = [],
+    clusterS3Providers = [],
     onRowArrayChange,
     onRowDropIndex,
     onSaveAdd,
+    onSaveAsProvider = () => Promise.resolve(),  // P3: must return a Promise
     onPauseAutoReload = () => { },
     onResumeAutoReload = () => { },
+    onPreviewSync = () => Promise.resolve(),
+    onApplySync = () => Promise.resolve(),
 }) => {
     const [isVisible, setIsVisible] = useState(false);
 
     const handleAddItem = () => {
         setIsVisible(true);
-        onPauseAutoReload(); // Pause auto-reload when adding a new item
+        onPauseAutoReload();
     };
 
     const handleCancel = () => {
-        setIsVisible(false); // Hide the form without saving
-        onResumeAutoReload(); // Resume auto-reload after canceling
+        setIsVisible(false);
+        onResumeAutoReload();
     };
 
     const handleSaveAdd = (formData) => {
       onSaveAdd(fieldName, formData).then(() => {
-        setIsVisible(false); // Hide the form after saving
-        onResumeAutoReload(); // Resume auto-reload after saving
+        setIsVisible(false);
+        onResumeAutoReload();
         return Promise.resolve();
       }, (error) => {
         return Promise.reject(error);
@@ -71,13 +101,13 @@ const S3DirectorySection = ({
                 header: '',
                 meta: {
                     renderExpansion: (row) => {
-                        return (<S3DirectoryRowForm fieldName={fieldName} s3ProvOptions={s3ProvOptions} s3directory={row.original} index={row.index} onChange={onRowArrayChange} />);
+                        return (<S3DirectoryRowForm appId={appId} fieldName={fieldName} s3ProvOptions={s3ProvOptions} clusterS3Providers={clusterS3Providers} s3directory={row.original} index={row.index} onChange={onRowArrayChange} onSaveAsProvider={onSaveAsProvider} onPreviewSync={onPreviewSync} onApplySync={onApplySync} />);
                     },
                 },
                 cell: () => null,
             }
         ],
-        [fieldName, onRowArrayChange, onRowDropIndex, s3ProvOptions]
+        [appId, fieldName, onRowArrayChange, onRowDropIndex, s3ProvOptions, clusterS3Providers, onSaveAsProvider, onPreviewSync, onApplySync]
     )
 
     return (
@@ -96,7 +126,7 @@ const S3DirectorySection = ({
                         Add New S3 Directory
                     </Heading>
                     <Box className={styles.tableContainer}>
-                        <S3DirectoryNewForm s3ProvOptions={s3ProvOptions} onSave={handleSaveAdd} onCancel={handleCancel} />
+                        <S3DirectoryNewForm s3ProvOptions={s3ProvOptions} clusterS3Providers={clusterS3Providers} onSave={handleSaveAdd} onCancel={handleCancel} onSaveAsProvider={onSaveAsProvider} />
                     </Box>
                 </VStack>
             ) : (
@@ -114,39 +144,442 @@ const S3DirectorySection = ({
 
 export default React.memo(S3DirectorySection);
 
-const S3DirectoryRowForm = React.memo(({ fieldName, s3ProvOptions, s3directory, index, onChange }) => {
+const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, clusterS3Providers = [], s3directory, index, onChange, onSaveAsProvider = () => Promise.resolve(), onPreviewSync = () => Promise.resolve(), onApplySync = () => Promise.resolve() }) => {  // P3
     const s3 = s3directory || defaultS3;
+    const [providerSource, setProviderSource] = useState(() =>
+      endpointExistsInProviders(s3.endpoint, s3ProvOptions) ? "app" : "custom"
+    );
+    const [showSaveProviderUI, setShowSaveProviderUI] = useState(false);
+    const [providerName, setProviderName] = useState("");
+    const [saveProviderError, setSaveProviderError] = useState("");
+    const [isSubmitting, setIsSubmitting] = useState(false);  // P4
+    const duplicateProviderAdvisory = useMemo(
+      () => getDuplicateProviderAdvisory(providerName, clusterS3Providers),
+      [providerName, clusterS3Providers]
+    );
+
+    // Sync state: 'idle' | 'loading' | 'preview' | 'applying' | 'done' | 'error'
+    const [syncState, setSyncState] = useState('idle');
+    const [syncPreview, setSyncPreview] = useState(null);   // SyncPreviewResult for this mount
+    const [syncRevisionToken, setSyncRevisionToken] = useState('');
+    const [syncApplyResult, setSyncApplyResult] = useState(null);
+    const [syncError, setSyncError] = useState("");
+    const syncRequestIdRef = useRef(0);
+
+    const nextSyncRequestId = () => {
+      syncRequestIdRef.current += 1;
+      return syncRequestIdRef.current;
+    };
+
+    const validateSingleSyncResult = (resp, expectedProviderName, expectedMountName, expectedAppId, allowedStatuses = []) => {
+      const data = resp?.data;
+      if (!data || typeof data !== "object" || Array.isArray(data)) {
+        return { ok: false, error: "Invalid response from server." };
+      }
+      if (data.providerName !== expectedProviderName) {
+        return { ok: false, error: "Invalid response from server: provider mismatch." };
+      }
+      const results = Array.isArray(data.results) ? data.results : null;
+      if (!results || results.length !== 1) {
+        return { ok: false, error: "Invalid response from server: expected one target result." };
+      }
+      const result = results[0];
+      const targetMount = result?.target?.mountName;
+      if (targetMount !== expectedMountName) {
+        return { ok: false, error: "Invalid response from server: target mismatch." };
+      }
+      const targetAppId = String(result?.target?.appId || '');
+      if (expectedAppId && targetAppId !== expectedAppId) {
+        return { ok: false, error: "Invalid response from server: app target mismatch." };
+      }
+      if (!allowedStatuses.includes(result?.status)) {
+        return { ok: false, error: "Invalid response from server: unknown sync status." };
+      }
+      return { ok: true, result, data };
+    };
+
+    useEffect(() => {
+      // Any identity change invalidates in-flight sync callbacks and stale snapshots.
+      syncRequestIdRef.current += 1;
+      setSyncState('idle');
+      setSyncPreview(null);
+      setSyncRevisionToken('');
+      setSyncApplyResult(null);
+      setSyncError("");
+    }, [appId, index, s3.name, s3.providerName]);
+
+    const savedProviderOptions = useMemo(() =>
+      (clusterS3Providers || [])
+        .map((p) => ({ value: p.name, name: p.name })),
+      [clusterS3Providers]
+    );
+
+    const selectedProviderMissing = useMemo(
+      () => !!s3.providerName && !(clusterS3Providers || []).some((p) => p.name === s3.providerName),
+      [s3.providerName, clusterS3Providers]
+    );
 
     const onRowArrayChange = (fieldName, index, key, value) => {
         onChange(fieldName, index, key, value);
     };
 
+    const handleProviderSourceChange = (option) => {
+      const nextSource = option?.value || option;
+      setProviderSource(nextSource);
+      if (nextSource === "app") {
+        if (!endpointExistsInProviders(s3.endpoint, s3ProvOptions) && s3ProvOptions?.length > 0) {
+          onRowArrayChange(fieldName, index, "endpoint", s3ProvOptions[0].value);
+        }
+        // P2: clear stale credentials on switch to app mode (mirror NewForm fix)
+        onRowArrayChange(fieldName, index, "accesskey", "");
+        onRowArrayChange(fieldName, index, "secretkey", "");
+      }
+    };
+
+    const handleSavedProviderChange = (option) => {
+      const name = option?.value || option;
+      if (!name) return;
+      const provider = (clusterS3Providers || []).find((p) => p.name === name);
+      if (!provider) return;
+      const endpoint = provider.endpoint || provider.providerApp || "";
+      onRowArrayChange(fieldName, index, "endpoint", endpoint);
+      if (provider.region) {
+        onRowArrayChange(fieldName, index, "region", provider.region);
+      }
+      onRowArrayChange(fieldName, index, "providerName", name);  // P1: fix casing typo
+      // Clear local credentials when switching to a saved provider to avoid
+      // stale secret carryover from previous local custom values.
+      onRowArrayChange(fieldName, index, "accesskey", "");
+      onRowArrayChange(fieldName, index, "secretkey", "");
+      // Sync providerSource to match the selected provider's type so the endpoint
+      // UI (app dropdown vs text input) stays consistent with the actual value.
+      if (provider.providerSource) {
+        setProviderSource(provider.providerSource);
+      }
+    };
+
+    const handleSaveAsProvider = () => {
+      if (!providerName.trim()) {
+        setSaveProviderError("Provider name is required.");
+        return;
+      }
+      // P5: validate endpoint before dispatch
+      if (!s3.endpoint) {
+        setSaveProviderError("Endpoint is required before saving as a provider.");
+        return;
+      }
+      setIsSubmitting(true);  // P4
+      onSaveAsProvider(providerName.trim(), s3, providerSource)  // P2: pass providerSource
+        .then(() => {
+          setShowSaveProviderUI(false);
+          setProviderName("");
+          setSaveProviderError("");
+        })
+        .catch((err) => {
+          setSaveProviderError(extractApiErrorMessage(err, "Failed to save provider."));
+        })
+        .finally(() => setIsSubmitting(false));  // P4
+    };
+
+    const handleSyncPreview = () => {
+      if (!s3.providerName) return;
+      const requestId = nextSyncRequestId();
+      setSyncState('loading');
+      setSyncPreview(null);
+      setSyncRevisionToken('');
+      setSyncApplyResult(null);
+      setSyncError("");
+      onPreviewSync(s3.providerName, s3.name)
+        .then((resp) => {
+          if (requestId !== syncRequestIdRef.current) return;
+          const validated = validateSingleSyncResult(resp, s3.providerName, s3.name, appId, ['will_change', 'no_change', 'provider_missing', 'error']);
+          if (!validated.ok) {
+            setSyncError(validated.error);
+            setSyncState('error');
+            return;
+          }
+          const revisionToken = typeof validated?.data?.revisionToken === 'string' ? validated.data.revisionToken.trim() : '';
+          if (!revisionToken) {
+            setSyncError('Invalid response from server: missing preview revision token.');
+            setSyncState('error');
+            return;
+          }
+          setSyncPreview(validated.result);
+          setSyncRevisionToken(revisionToken);
+          setSyncState('preview');
+        })
+        .catch((err) => {
+          if (requestId !== syncRequestIdRef.current) return;
+          setSyncError(extractApiErrorMessage(err, "Preview failed."));
+          setSyncState('error');
+        });
+    };
+
+    const handleSyncApply = () => {
+      if (!s3.providerName) return;
+      if (!syncRevisionToken) {
+        setSyncError('Sync preview is missing a revision token. Please run preview again.');
+        setSyncState('error');
+        return;
+      }
+      const requestId = nextSyncRequestId();
+      setSyncState('applying');
+      onApplySync(s3.providerName, s3.name, syncRevisionToken)
+        .then((resp) => {
+          if (requestId !== syncRequestIdRef.current) return;
+          const validated = validateSingleSyncResult(resp, s3.providerName, s3.name, appId, ['changed', 'unchanged', 'provider_missing', 'error', 'stale_state']);
+          if (!validated.ok) {
+            setSyncError(validated.error);
+            setSyncState('error');
+            return;
+          }
+          if (validated.result.status === 'stale_state') {
+            setSyncPreview(null);
+            setSyncRevisionToken('');
+            setSyncApplyResult(null);
+            setSyncError(validated.result.errorMessage || 'Preview is stale. Please run preview again before applying.');
+            setSyncState('error');
+            return;
+          }
+          setSyncApplyResult(validated.result);
+          setSyncState('done');
+        })
+        .catch((err) => {
+          if (requestId !== syncRequestIdRef.current) return;
+          setSyncError(extractApiErrorMessage(err, "Apply failed."));
+          setSyncState('error');
+        });
+    };
+
+    const handleSyncReset = () => {
+      // Invalidate in-flight preview/apply callbacks.
+      syncRequestIdRef.current += 1;
+      setSyncState('idle');
+      setSyncPreview(null);
+      setSyncRevisionToken('');
+      setSyncApplyResult(null);
+      setSyncError("");
+    };
+
     return (
         <Flex className={styles.variableRowForm} w="100%" align="flex-start" gap={4}>
             <Flex direction="column" flex="1" minW="300px" gap={2}>
+                {savedProviderOptions.length > 0 && (
+                  <Flex direction="column" flex="1">
+                    <Text mb={1}>Saved Provider (optional):</Text>
+                    <Dropdown
+                      placeholder="Select saved provider to copy settings"
+                      selectedValue={s3.providerName || ""}
+                      onChange={(option) => handleSavedProviderChange(option)}
+                      options={savedProviderOptions}
+                    />
+                  </Flex>
+                )}
+                {!!s3.providerName && (
+                  <Flex direction="column" flex="1">
+                    <Text mb={1}>Provider Trace:</Text>
+                    <Text fontSize="sm" color="gray.500">
+                      {selectedProviderMissing
+                        ? `Copied from provider "${s3.providerName}" (no longer in provider library). Values remain editable locally.`
+                        : `Values copied from provider "${s3.providerName}" — editable locally.`}
+                    </Text>
+                  </Flex>
+                )}
                 <Flex direction="column" flex="1">
-                    <Text mb={1}>Endpoint:</Text>
-                    <Dropdown confirmTitle={"Confirm endpoint change"} placeholder="Endpoint" selectedValue={s3.endpoint} onChange={(value) => onRowArrayChange(fieldName, index, "endpoint", value)} options={s3ProvOptions} />
+                    <Text mb={1}>Provider Source:</Text>
+                    <Dropdown
+                      placeholder="Select Provider Source"
+                      selectedValue={providerSource}
+                      onChange={(option) => handleProviderSourceChange(option)}
+                      options={providerSourceOptions}
+                    />
+                </Flex>
+                <Flex direction="column" flex="1">
+                    <Text mb={1}>{providerSource === "app" ? "S3 Provider App:" : "Endpoint:"}</Text>
+                    {providerSource === "app" ? (
+                      <Dropdown
+                        confirmTitle={"Confirm provider app change"}
+                        placeholder="S3 Provider App"
+                        selectedValue={s3.endpoint}
+                        onChange={(value) => onRowArrayChange(fieldName, index, "endpoint", value)}
+                        options={s3ProvOptions}
+                      />
+                    ) : (
+                      <TextForm
+                        placeholder="host:port or https://endpoint"
+                        value={s3.endpoint}
+                        onSave={(value) => onRowArrayChange(fieldName, index, "endpoint", value)}
+                      />
+                    )}
+                    <Text mt={1} fontSize="sm" color="gray.500">
+                      {providerSource === "app"
+                        ? "Choose a sibling app configured as an S3 provider."
+                        : "Define a custom endpoint (must be reachable and properly configured)."}
+                    </Text>
+                    {hasCustomBlankCredentials(providerSource, s3) && (
+                      <Text mt={1} fontSize="sm" color="orange.400">
+                        Warning: custom endpoint is using blank credentials. This is only valid for public buckets.
+                      </Text>
+                    )}
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Bucket:</Text>
                     <TextForm placeholder="Bucket" value={s3.bucket} onSave={(value) => onRowArrayChange(fieldName, index, "bucket", value)} />
                 </Flex>
+                <Flex direction="column" flex="1" gap={1}>
+                    <Text
+                      as="button"
+                      color="blue.400"
+                      cursor="pointer"
+                      fontSize="sm"
+                      textAlign="left"
+                      onClick={() => { if (!isSubmitting) { setShowSaveProviderUI((v) => !v); setSaveProviderError(""); } }}  // P3
+                    >
+                      Or save this mount as a new provider
+                    </Text>
+                    {showSaveProviderUI && (
+                      <Flex direction="column" gap={1} mt={1}>
+                        <Input
+                          placeholder="Provider name"
+                          value={providerName}
+                          onChange={(e) => { setProviderName(e.target.value); setSaveProviderError(""); }}
+                        />
+                        {saveProviderError && (
+                          <Text color="red.400" fontSize="sm">{saveProviderError}</Text>
+                        )}
+                        {!saveProviderError && duplicateProviderAdvisory && (
+                          <Text color="orange.400" fontSize="sm">{duplicateProviderAdvisory}</Text>
+                        )}
+                        <RMButton onClick={handleSaveAsProvider} isDisabled={isSubmitting}>  {/* P4 */}
+                          {isSubmitting ? "Saving…" : "Save as Provider"}
+                        </RMButton>
+                      </Flex>
+                    )}
+                </Flex>
+                {!!s3.providerName && (
+                  <Flex direction="column" flex="1" gap={1}>
+                    <Text
+                      as="button"
+                      color="teal.400"
+                      cursor="pointer"
+                      fontSize="sm"
+                      textAlign="left"
+                      onClick={() => { if (syncState === 'idle') { handleSyncPreview(); } else { handleSyncReset(); } }}
+                    >
+                      {syncState === 'idle' ? 'Sync from provider' : 'Reset sync'}
+                    </Text>
+                    {syncState === 'loading' && (
+                      <Text fontSize="sm" color="gray.500">Loading preview…</Text>
+                    )}
+                    {syncState === 'applying' && (
+                      <Text fontSize="sm" color="gray.500">Applying sync…</Text>
+                    )}
+                    {syncState === 'error' && (
+                      <Text fontSize="sm" color="red.400">{syncError}</Text>
+                    )}
+                    {syncState === 'preview' && syncPreview && (
+                      <Flex direction="column" gap={1} mt={1} p={2} borderWidth="1px" borderRadius="md" borderColor="teal.200">
+                        <SyncDiffTable results={[syncPreview]} />
+                        {syncPreview.status === 'will_change' && (
+                          <RMButton mt={2} onClick={handleSyncApply}>Apply Sync</RMButton>
+                        )}
+                        {syncPreview.status === 'no_change' && (
+                          <RMButton mt={2} isDisabled>
+                            Apply Sync (not needed)
+                          </RMButton>
+                        )}
+                      </Flex>
+                    )}
+                    {syncState === 'done' && syncApplyResult && (
+                      <Flex direction="column" gap={1} mt={1} p={2} borderWidth="1px" borderRadius="md" borderColor="green.200">
+                        {syncApplyResult.status === 'changed' && (
+                          <>
+                            <Text fontSize="sm" color="green.500">
+                              Sync applied. Updated: {(syncApplyResult.changesApplied || []).join(', ')}.
+                            </Text>
+                            {!!syncApplyResult.errorMessage && (
+                              <Text fontSize="sm" color="orange.500">Warning: {syncApplyResult.errorMessage}</Text>
+                            )}
+                          </>
+                        )}
+                        {syncApplyResult.status === 'unchanged' && (
+                          <Text fontSize="sm" color="green.500">Mount already matches provider — no changes needed.</Text>
+                        )}
+                        {syncApplyResult.status === 'provider_missing' && (
+                          <Text fontSize="sm" color="red.400">Provider not found. Cannot apply sync.</Text>
+                        )}
+                        {syncApplyResult.status === 'error' && (
+                          <Text fontSize="sm" color="red.400">Sync error: {redactSensitiveInfo(syncApplyResult.errorMessage || 'Apply failed.')}</Text>
+                        )}
+                      </Flex>
+                    )}
+                  </Flex>
+                )}
             </Flex>
         </Flex>
     )
 })
 
-const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], onSave = () => { }, onCancel = () => { } }) => {
+const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers = [], onSave = () => { }, onCancel = () => { }, onSaveAsProvider = () => Promise.resolve() }) => {  // P3
     const [s3, setS3] = useState(defaultS3);
+    const [providerSource, setProviderSource] = useState(s3ProvOptions?.length ? "app" : "custom");
+    const [showSaveProviderUI, setShowSaveProviderUI] = useState(false);
+    const [providerName, setProviderName] = useState("");
+    const [saveProviderError, setSaveProviderError] = useState("");
+    const [isSubmitting, setIsSubmitting] = useState(false);  // P4
+    const duplicateProviderAdvisory = useMemo(
+      () => getDuplicateProviderAdvisory(providerName, clusterS3Providers),
+      [providerName, clusterS3Providers]
+    );
 
     const valid = useMemo(() => {
         return s3.endpoint && s3.bucket;
     }, [s3]);
 
+    const savedProviderOptions = useMemo(() =>
+      (clusterS3Providers || [])
+        .map((p) => ({ value: p.name, name: p.name })),
+      [clusterS3Providers]
+    );
+
+    const selectedProviderMissing = useMemo(
+      () => !!s3.providerName && !(clusterS3Providers || []).some((p) => p.name === s3.providerName),
+      [s3.providerName, clusterS3Providers]
+    );
+
     const handleArrayChange = (key, value) => {
         setS3((prev) => ({ ...prev, [key]: value }));
     }
+
+    const handleProviderSourceChange = (option) => {
+      const nextSource = option?.value || option;
+      setProviderSource(nextSource);
+      if (nextSource === "app") {
+        const firstEndpoint = s3ProvOptions?.[0]?.value || "";  // P4: read outside setS3 updater to avoid stale closure
+        setS3((prev) => ({ ...prev, endpoint: firstEndpoint, accesskey: "", secretkey: "" }));
+      }
+    }
+
+    const handleSavedProviderChange = (option) => {
+      const name = option?.value || option;
+      if (!name) return;
+      const provider = (clusterS3Providers || []).find((p) => p.name === name);
+      if (!provider) return;
+      const endpoint = provider.endpoint || provider.providerApp || "";
+      setS3((prev) => ({
+        ...prev,
+        endpoint,
+        region: provider.region || prev.region,
+        accesskey: "",
+        secretkey: "",
+        providerName: name,
+      }));
+      // Sync providerSource to match the selected provider's type so the endpoint
+      // UI (app dropdown vs text input) stays consistent with the actual value.
+      if (provider.providerSource) {
+        setProviderSource(provider.providerSource);
+      }
+    };
 
     const handleSaveAdd = () => {
         if (valid) {
@@ -155,21 +588,100 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], onSave = () => { },
     };
 
     const handleCancel = () => {
-        setS3(defaultS3); // Reset form on cancel
+        setS3(defaultS3);
+        setProviderSource(s3ProvOptions?.length ? "app" : "custom");
         onCancel();
+    };
+
+    const handleSaveAsProvider = () => {
+      if (!providerName.trim()) {
+        setSaveProviderError("Provider name is required.");
+        return;
+      }
+      // P5: validate endpoint before dispatch
+      if (!s3.endpoint) {
+        setSaveProviderError("Endpoint is required before saving as a provider.");
+        return;
+      }
+      setIsSubmitting(true);  // P4
+      onSaveAsProvider(providerName.trim(), s3, providerSource)  // P2: pass providerSource
+        .then(() => {
+          setShowSaveProviderUI(false);
+          setProviderName("");
+          setSaveProviderError("");
+        })
+        .catch((err) => {
+          setSaveProviderError(extractApiErrorMessage(err, "Failed to save provider."));
+        })
+        .finally(() => setIsSubmitting(false));  // P4
     };
 
     return (
         <Flex className={styles.S3DirectoryRowForm} w="100%" align="flex-start" gap={4}>
             <Flex direction="column" flex="1" minW="300px" gap={2}>
+                {savedProviderOptions.length > 0 && (
+                  <Flex direction="column" flex="1">
+                    <Text mb={1}>Saved Provider (optional):</Text>
+                    <Dropdown
+                      placeholder="Select saved provider to copy settings"
+                      selectedValue={s3.providerName || ""}
+                      onChange={(option) => handleSavedProviderChange(option)}
+                      options={savedProviderOptions}
+                    />
+                  </Flex>
+                )}
+                {!!s3.providerName && (
+                  <Flex direction="column" flex="1">
+                    <Text mb={1}>Provider Trace:</Text>
+                    <Text fontSize="sm" color="gray.500">
+                      {selectedProviderMissing
+                        ? `Copied from provider "${s3.providerName}" (no longer in provider library). Values remain editable locally.`
+                        : `Values copied from provider "${s3.providerName}" — editable locally.`}
+                    </Text>
+                  </Flex>
+                )}
                 <Flex direction="column" flex="1">
-                    <Text mb={1}>Endpoint:</Text>
-                    <Dropdown placeholder="Endpoint" selectedValue={s3.endpoint} onChange={(option) => handleArrayChange("endpoint", option.value)} options={s3ProvOptions} />
+                    <Text mb={1}>Provider Source:</Text>
+                    <Dropdown placeholder="Select Provider Source" selectedValue={providerSource} onChange={(option) => handleProviderSourceChange(option)} options={providerSourceOptions} />
+                </Flex>
+                <Flex direction="column" flex="1">
+                    <Text mb={1}>{providerSource === "app" ? "S3 Provider App:" : "Endpoint:"}</Text>
+                    {providerSource === "app" ? (
+                      <Dropdown placeholder="S3 Provider App" selectedValue={s3.endpoint} onChange={(option) => handleArrayChange("endpoint", option.value)} options={s3ProvOptions} />
+                    ) : (
+                      <Input placeholder="host:port or https://endpoint" value={s3.endpoint} onChange={(e) => handleArrayChange("endpoint", e.target.value)} />
+                    )}
+                    <Text mt={1} fontSize="sm" color="gray.500">
+                      {providerSource === "app"
+                        ? "Choose a sibling app configured as an S3 provider."
+                        : "Define a custom endpoint (must be reachable and properly configured)."}
+                    </Text>
+                    {hasCustomBlankCredentials(providerSource, s3) && (
+                      <Text mt={1} fontSize="sm" color="orange.400">
+                        Warning: custom endpoint is using blank credentials. This is only valid for public buckets.
+                      </Text>
+                    )}
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Bucket:</Text>
                     <Input placeholder="Bucket Name" value={s3.bucket} onChange={(e) => handleArrayChange("bucket", e.target.value)} />
                 </Flex>
+                <Flex direction="column" flex="1">
+                    <Text mb={1}>Region:</Text>
+                    <Input placeholder="e.g. us-east-1" value={s3.region} onChange={(e) => handleArrayChange("region", e.target.value)} />
+                </Flex>
+                {providerSource === "custom" && (
+                  <>
+                    <Flex direction="column" flex="1">
+                        <Text mb={1}>Access Key:</Text>
+                        <Input placeholder="Access Key ID" value={s3.accesskey} onChange={(e) => handleArrayChange("accesskey", e.target.value)} />
+                    </Flex>
+                    <Flex direction="column" flex="1">
+                        <Text mb={1}>Secret Key:</Text>
+                        <Input type="password" placeholder="Secret Access Key" value={s3.secretkey} onChange={(e) => handleArrayChange("secretkey", e.target.value)} />
+                    </Flex>
+                  </>
+                )}
                 <Flex direction="column" flex="1">
                     <HStack spacing={2} mt={4}>
                         <RMButton onClick={handleCancel}>
@@ -178,7 +690,28 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], onSave = () => { },
                         <RMButton onClick={handleSaveAdd} isDisabled={!valid}>
                             Save S3 Directory
                         </RMButton>
+                        <RMButton onClick={() => { if (!isSubmitting) { setShowSaveProviderUI((v) => !v); setSaveProviderError(""); } }} isDisabled={isSubmitting}>  {/* P3 */}
+                            Save as Provider
+                        </RMButton>
                     </HStack>
+                    {showSaveProviderUI && (
+                      <Flex direction="column" gap={1} mt={2}>
+                        <Input
+                          placeholder="Provider name"
+                          value={providerName}
+                          onChange={(e) => { setProviderName(e.target.value); setSaveProviderError(""); }}
+                        />
+                        {saveProviderError && (
+                          <Text color="red.400" fontSize="sm">{saveProviderError}</Text>
+                        )}
+                        {!saveProviderError && duplicateProviderAdvisory && (
+                          <Text color="orange.400" fontSize="sm">{duplicateProviderAdvisory}</Text>
+                        )}
+                        <RMButton onClick={handleSaveAsProvider} isDisabled={isSubmitting}>  {/* P4 */}
+                          {isSubmitting ? "Saving…" : "Confirm Save as Provider"}
+                        </RMButton>
+                      </Flex>
+                    )}
                 </Flex>
             </Flex>
         </Flex>

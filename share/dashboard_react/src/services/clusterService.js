@@ -165,7 +165,17 @@ export const clusterService = {
   storageFieldIndexDrop,
 
   connectDockerRegistry,
-  getClusterPlugins
+  getClusterPlugins,
+
+  // S3 provider CRUD APIs
+  addS3Provider,
+  modifyS3Provider,
+  dropS3Provider,
+  getS3ProviderReferences,
+
+  // S3 provider sync APIs
+  syncS3ProviderPreview,
+  syncS3ProviderApply,
 }
 
 //#region Cluster data APIs
@@ -822,7 +832,7 @@ function getResticMountStatus(clusterName, baseURL) {
 }
 
 function resticInitRepo(clusterName, force, options, baseURL) {
-  const endpoint = force 
+  const endpoint = force
     ? `clusters/${clusterName}/restic/init/force`
     : `clusters/${clusterName}/restic/init`
   const payload = options?.allowEmptyPrefix
@@ -830,5 +840,37 @@ function resticInitRepo(clusterName, force, options, baseURL) {
     : undefined
   return getApi(baseURL).post(endpoint, payload)
 }
+
+//#region S3 provider CRUD APIs
+function addS3Provider(clusterName, payload, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/s3providers/add`, payload)
+}
+
+function modifyS3Provider(clusterName, name, payload, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/s3providers/${encodeURIComponent(name)}/modify`, payload)
+}
+
+function dropS3Provider(clusterName, name, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/s3providers/${encodeURIComponent(name)}/drop`)
+}
+
+function getS3ProviderReferences(clusterName, providerName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/s3providers/${encodeURIComponent(providerName)}/references`)
+}
+
+function syncS3ProviderPreview(clusterName, providerName, targets, baseURL) {
+  return getApi(baseURL).post(
+    `clusters/${clusterName}/s3providers/${encodeURIComponent(providerName)}/sync/preview`,
+    { targets }
+  )
+}
+
+function syncS3ProviderApply(clusterName, providerName, targets, revisionToken, baseURL) {
+  return getApi(baseURL).post(
+    `clusters/${clusterName}/s3providers/${encodeURIComponent(providerName)}/sync/apply`,
+    { targets, revisionToken }
+  )
+}
+//#endregion S3 provider CRUD APIs
 
 // Utility functions

@@ -3,6 +3,7 @@ package cluster
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -10,15 +11,20 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/share"
-	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/spf13/viper"
 )
+
+var appTemplateRepoLocks sync.Map
+
+func getAppTemplateRepoLock(key string) *sync.Mutex {
+	mu, _ := appTemplateRepoLocks.LoadOrStore(key, &sync.Mutex{})
+	return mu.(*sync.Mutex)
+}
 
 func (cluster *Cluster) NewAppConfig(apphost, port string) *config.AppConfig {
 	return &config.AppConfig{
@@ -34,6 +40,33 @@ func (cluster *Cluster) NewAppConfig(apphost, port string) *config.AppConfig {
 	}
 }
 
+func (cluster *Cluster) appendConfAppIfAbsent(appcnf *config.AppConfig) bool {
+	if appcnf == nil {
+		return false
+	}
+	cluster.Lock()
+	defer cluster.Unlock()
+	for _, cnf := range cluster.Conf.Apps {
+		if cnf.AppHost == appcnf.AppHost && cnf.AppPort == appcnf.AppPort {
+			return false
+		}
+	}
+	cluster.Conf.Apps = append(cluster.Conf.Apps, appcnf)
+	return true
+}
+
+func (cluster *Cluster) removeConfApp(appcnf *config.AppConfig, srv, port string) bool {
+	cluster.Lock()
+	defer cluster.Unlock()
+	for i, cnf := range cluster.Conf.Apps {
+		if cnf == appcnf || (cnf.AppHost == srv && cnf.AppPort == port) {
+			cluster.Conf.Apps = append(cluster.Conf.Apps[:i], cluster.Conf.Apps[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) LoadAppConfigs() error {
 	dirname := filepath.Join(cluster.WorkingDir, "apps")
 
@@ -41,7 +74,7 @@ func (cluster *Cluster) LoadAppConfigs() error {
 	_, err := os.Stat(dirname)
 	if os.IsNotExist(err) {
 		// Create the directory if it does not exist
-		err = os.MkdirAll(cluster.WorkingDir+"/apps", os.ModePerm)
+		err = os.MkdirAll(cluster.WorkingDir+"/apps", 0750)
 		if err != nil {
 			return err
 		}
@@ -53,7 +86,9 @@ func (cluster *Cluster) LoadAppConfigs() error {
 	}
 
 	// Walk through the directory and load all the configuration files
-	return filepath.WalkDir(dirname, func(path string, d fs.DirEntry, err error) error {
+	var firstErr error
+	failedCount := 0
+	walkErr := filepath.WalkDir(dirname, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -62,10 +97,31 @@ func (cluster *Cluster) LoadAppConfigs() error {
 		}
 		if filepath.Ext(path) == ".toml" {
 			appname := strings.TrimSuffix(filepath.Base(path), ".toml")
-			_ = cluster.LoadAppConfig(dirname, appname)
+			if loadErr := cluster.LoadAppConfig(dirname, appname); loadErr != nil {
+				// ParseConfigMeasurement warnings are non-fatal and were historically ignored.
+				var parseErrs config.ErrorConfigs
+				if errors.As(loadErr, &parseErrs) {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
+						"App config %q loaded with measurement warnings: %v", path, loadErr)
+					return nil
+				}
+				failedCount++
+				if firstErr == nil {
+					firstErr = loadErr
+				}
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
+					"Failed to load app config %q: %v", path, loadErr)
+			}
 		}
 		return nil
 	})
+	if walkErr != nil {
+		return walkErr
+	}
+	if failedCount > 0 {
+		return fmt.Errorf("failed to load %d app config file(s): %w", failedCount, firstErr)
+	}
+	return nil
 }
 
 // LoadConfig loads the configuration from a file to the configuration struct.
@@ -85,10 +141,20 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 		return err
 	}
 
+	rawContent, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+
+	canonicalContent, canonicalRes, err := config.CanonicalizeAppTemplateTOML(rawContent)
+	if err != nil {
+		return err
+	}
+
 	// Open TOML file
 	appViper := viper.New()
-	appViper.SetConfigFile(filename)
-	err = appViper.ReadInConfig()
+	appViper.SetConfigType("toml")
+	err = appViper.ReadConfig(bytes.NewBuffer(canonicalContent))
 	if err != nil {
 		// If there is an error reading the TOML file don't change the configuration
 		return err
@@ -99,6 +165,48 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 	if err != nil {
 		// If there is an error decoding the TOML file don't change the configuration
 		return err
+	}
+
+	if appcnf.Deployment != nil {
+		if resolveErrs := appcnf.Deployment.ResolvePaths(); len(resolveErrs) > 0 {
+			for _, resolveErr := range resolveErrs {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
+					"App config %q deployment path resolution error: %v", filename, resolveErr)
+			}
+			return fmt.Errorf("invalid deployment path mapping in app config %q", filename)
+		}
+	}
+
+	if canonicalRes.Changed {
+		t, err := toml.LoadBytes(canonicalContent)
+		if err != nil {
+			return err
+		}
+		if err := cluster.writeTomlAtomically(t, filename); err != nil {
+			return err
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+			"Canonicalized legacy app config template in %q", filename)
+	}
+
+	// If app-host was not set in the TOML file (or was left as an unresolved template),
+	// fall back to the file name so the app gets a valid, stable Name and ID.
+	if appcnf.AppHost == "" || strings.Contains(appcnf.AppHost, "{{") {
+		appcnf.AppHost = appname
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+			"App config %q had no resolved app-host; using filename as host: %s", filename, appname)
+	}
+	if appcnf.AppPort == "" {
+		appcnf.AppPort = "80"
+	}
+
+	// Skip duplicate entries (same host+port already loaded, e.g. from main config).
+	for _, existing := range cluster.Conf.Apps {
+		if existing.AppHost == appcnf.AppHost && existing.AppPort == appcnf.AppPort {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg,
+				"App config %s:%s already loaded, skipping duplicate from %q", appcnf.AppHost, appcnf.AppPort, filename)
+			return nil
+		}
 	}
 
 	cluster.Conf.Apps = append(cluster.Conf.Apps, &appcnf)
@@ -223,40 +331,87 @@ func (cluster *Cluster) SaveAppConfigFile(app *App, filePath, templatePath strin
 		return false, err
 	}
 
-	// Write sorted values to file
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-	if err != nil {
+	if err := cluster.writeTomlAtomically(t, filePath); err != nil {
 		if os.IsPermission(err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", filePath)
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error opening file: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error writing app file atomically: %s", err)
 		}
 		return false, err
 	}
-	defer file.Close()
-
-	t.WriteTo(file)
 
 	if templatePath != "" {
 		parentDir := filepath.Dir(templatePath)
 		if _, err := os.Stat(parentDir); os.IsNotExist(err) {
-			os.MkdirAll(parentDir, os.ModePerm)
+			if err := os.MkdirAll(parentDir, 0750); err != nil {
+				return false, err
+			}
 		}
-		tfile, err := os.OpenFile(templatePath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-		if err != nil {
+		if err := cluster.writeTomlAtomically(t, templatePath); err != nil {
 			if os.IsPermission(err) {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", templatePath)
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error opening file: %s", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error writing template file atomically: %s", err)
 			}
 			return false, err
 		}
-		defer tfile.Close()
-
-		t.WriteTo(tfile)
 	}
 
 	return true, nil
+}
+
+// writeTomlAtomically writes a TOML tree via temp-file + fsync + rename to avoid
+// truncating a target file on partial writes.
+func (cluster *Cluster) writeTomlAtomically(t *toml.Tree, filePath string) error {
+	parentDir := filepath.Dir(filePath)
+	// 0750: owner rwx, group rx, other none — more restrictive than os.ModePerm
+	// (0777) to protect config dirs that may hold database credentials.
+	if err := os.MkdirAll(parentDir, 0750); err != nil {
+		return err
+	}
+
+	perm := os.FileMode(0640)
+	if fi, err := os.Stat(filePath); err == nil {
+		perm = fi.Mode()
+	}
+
+	tmpFile, err := os.CreateTemp(parentDir, ".repman-toml-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := t.WriteTo(tmpFile); err != nil {
+		tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpPath, perm); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, filePath); err != nil {
+		return err
+	}
+
+	if dir, err := os.Open(parentDir); err == nil {
+		if syncErr := dir.Sync(); syncErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"writeTomlAtomically: directory fsync failed for %s: %v (rename durability not guaranteed)", parentDir, syncErr)
+		}
+		if closeErr := dir.Close(); closeErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"writeTomlAtomically: directory close failed for %s: %v", parentDir, closeErr)
+		}
+	}
+
+	return nil
 }
 
 // func (cluster *Cluster) SaveAppDeploymentsFile(app *App) (bool, error) {
@@ -350,29 +505,55 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		return errors.New("app port must be between 1 and 65535")
 	}
 
-	for _, app := range cluster.Conf.Apps {
-		if app.AppHost == srv && app.AppPort == port {
-			return errors.New("App already exists. If you want to add new deployment, please use the app deployment menu")
-		}
-	}
-
-	appcnf := cluster.GetAppConfig(srv, port) // Get or initiate app config
+	appcnf := cluster.NewAppConfig(srv, port)
 	appcnf.ProvAppDockerImg = dockerImg
 	appcnf.ProvAppTemplate = template
-	cluster.Conf.Apps = append(cluster.Conf.Apps, appcnf)
-
-	cluster.Lock()
-	cluster.newAppList()
-	cluster.Unlock()
-
-	app := cluster.GetAppByConfig(appcnf)
-	if app != nil {
-		app.CheckPrimaryRoute()
+	if appended := cluster.appendConfAppIfAbsent(appcnf); !appended {
+		return errors.New("App already exists. If you want to add new deployment, please use the app deployment menu")
 	}
 
+	appAdded := true
+	rollbackAddedApp := func() {
+		if !appAdded {
+			return
+		}
+		_ = cluster.removeConfApp(appcnf, srv, port)
+		_ = cluster.newAppList()
+		appAdded = false
+	}
+
+	if err := cluster.newAppList(); err != nil {
+		rollbackAddedApp()
+		return err
+	}
+
+	app := cluster.GetAppByConfig(appcnf)
+	if app == nil {
+		rollbackAddedApp()
+		return fmt.Errorf("failed to create app object for %s:%s", srv, port)
+	}
+	app.CheckPrimaryRoute()
+
 	if template != "" {
-		resolvedContent, _ := cluster.ParseTemplateContent(app, content)
-		newViper, _ = cluster.LoadTemplateToViper(resolvedContent)
+		resolvedContent, err := cluster.ParseTemplateContent(app, content)
+		if err != nil {
+			rollbackAddedApp()
+			return err
+		}
+
+		canonicalContent, _, err := config.CanonicalizeAppTemplateTOML(resolvedContent)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+				"Error canonicalizing parsed template content for %s: %s", template, err)
+			rollbackAddedApp()
+			return err
+		}
+
+		newViper, err = cluster.LoadTemplateToViper(canonicalContent)
+		if err != nil {
+			rollbackAddedApp()
+			return err
+		}
 		newViper.Set("app-host", srv)
 		newViper.Set("app-port", port)
 		newViper.Set("prov-app-docker-img", dockerImg)
@@ -382,9 +563,22 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		err = newViper.Unmarshal(appcnf)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error unmarshalling parsed template file %s: %s", template, err)
+			rollbackAddedApp()
 			return err
 		}
+
+		if appcnf.Deployment != nil {
+			if resolveErrs := appcnf.Deployment.ResolvePaths(); len(resolveErrs) > 0 {
+				for _, resolveErr := range resolveErrs {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
+						"App template %q deployment path resolution error: %v", template, resolveErr)
+				}
+				rollbackAddedApp()
+				return fmt.Errorf("invalid deployment path mapping for template %q", template)
+			}
+		}
 	}
+	appAdded = false
 	return nil
 }
 
@@ -629,6 +823,112 @@ func (cluster *Cluster) SetAppVariableValue(app *App, v config.VariableMapping) 
 	return nil
 }
 
+func normalizeTemplateIdentifier(template string) (string, error) {
+	trimmed := strings.TrimSpace(template)
+	if trimmed == "" {
+		return "", fmt.Errorf("template name must be provided")
+	}
+
+	cleanTemplateName := filepath.Clean(filepath.FromSlash(trimmed))
+	if cleanTemplateName == "." || cleanTemplateName == string(filepath.Separator) {
+		return "", fmt.Errorf("template name must be provided")
+	}
+	if filepath.IsAbs(cleanTemplateName) {
+		return "", fmt.Errorf("template name must be relative to templates root")
+	}
+
+	relFromRoot, err := filepath.Rel(".", cleanTemplateName)
+	if err != nil {
+		return "", fmt.Errorf("template path validation failed: %w", err)
+	}
+	if relFromRoot == ".." || strings.HasPrefix(relFromRoot, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("template name contains invalid path traversal")
+	}
+
+	return filepath.ToSlash(cleanTemplateName), nil
+}
+
+// GlobalTemplatesRoot returns the global templates directory shared across all clusters.
+func GlobalTemplatesRoot(workingDir string) string {
+	return filepath.Join(workingDir, ".templates", "apps")
+}
+
+// TemplateRepoCacheRoot returns the pull-only app template repository cache root.
+func TemplateRepoCacheRoot(workingDir string) string {
+	return filepath.Join(workingDir, ".templates", "repos", "apps")
+}
+
+// ClusterTemplatesRoot returns the cluster-specific templates directory.
+func (cluster *Cluster) ClusterTemplatesRoot() string {
+	return filepath.Join(cluster.Conf.WorkingDir, cluster.Name, ".templates", "apps")
+}
+
+func buildTemplateAbsPath(root, normalizedName string) (string, error) {
+	rootAbs, err := filepath.Abs(filepath.Clean(root))
+	if err != nil {
+		return "", fmt.Errorf("invalid templates root path: %w", err)
+	}
+	pathAbs, err := filepath.Abs(filepath.Clean(filepath.Join(rootAbs, filepath.FromSlash(normalizedName)+".toml")))
+	if err != nil {
+		return "", fmt.Errorf("invalid template path: %w", err)
+	}
+	rel, err := filepath.Rel(rootAbs, pathAbs)
+	if err != nil {
+		return "", fmt.Errorf("template path validation failed: %w", err)
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", fmt.Errorf("template name contains invalid path traversal")
+	}
+	return pathAbs, nil
+}
+
+// resolveTemplateLocalCachePath returns the canonical write path for a template.
+// Cache writes (from embedded/repo) always go to the global root.
+func (cluster *Cluster) resolveTemplateLocalCachePath(template string) (string, string, error) {
+	normalizedTemplateName, err := normalizeTemplateIdentifier(template)
+	if err != nil {
+		return "", "", err
+	}
+
+	localPathAbs, err := buildTemplateAbsPath(GlobalTemplatesRoot(cluster.Conf.WorkingDir), normalizedTemplateName)
+	if err != nil {
+		return "", "", err
+	}
+	return normalizedTemplateName, localPathAbs, nil
+}
+
+// resolveTemplateReadPaths returns paths to check in order: cluster-specific first, then global.
+func (cluster *Cluster) resolveTemplateReadPaths(normalizedName string) []string {
+	clusterPath, _ := buildTemplateAbsPath(cluster.ClusterTemplatesRoot(), normalizedName)
+	globalPath, _ := buildTemplateAbsPath(GlobalTemplatesRoot(cluster.Conf.WorkingDir), normalizedName)
+	return []string{clusterPath, globalPath}
+}
+
+func resolveSharedTemplateRepoPath(normalizedTemplate string) (string, error) {
+	templateName := normalizedTemplate
+	if strings.HasPrefix(templateName, "shared/") {
+		templateName = strings.TrimPrefix(templateName, "shared/")
+	}
+	cleanName := filepath.Clean(filepath.FromSlash(templateName))
+	if cleanName == "." || cleanName == string(filepath.Separator) {
+		return "", fmt.Errorf("template name must include a path")
+	}
+	relFromRoot, err := filepath.Rel(".", cleanName)
+	if err != nil {
+		return "", fmt.Errorf("template path validation failed: %w", err)
+	}
+	relFromRoot = filepath.ToSlash(relFromRoot)
+	if relFromRoot == ".." || strings.HasPrefix(relFromRoot, "../") {
+		return "", fmt.Errorf("template name contains invalid path traversal")
+	}
+	return filepath.ToSlash(filepath.Join("app", "templates", filepath.ToSlash(cleanName)+".toml")), nil
+}
+
+func IsSharedDummyTemplate(normalizedTemplate string) bool {
+	return strings.TrimSpace(normalizedTemplate) == "shared/dummy"
+}
+
 func (cluster *Cluster) loadLocalTemplate(path, template string) ([]byte, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -641,46 +941,63 @@ func (cluster *Cluster) loadLocalTemplate(path, template string) ([]byte, error)
 	return content, err
 }
 
-func (cluster *Cluster) loadTemplateFromRepo(template string) ([]byte, error) {
-	var (
-		gClient   githelper.GitClientInterface
-		baseURL   string
-		projectID string
-		err       error
-	)
-
-	gitpass := cluster.Conf.GetDecryptedPassword("template-repo", cluster.Conf.ProvAppTemplateRepoPassword)
-
-	if strings.Contains(cluster.Conf.ProvAppTemplateRepo, "github") {
-		_, projectID, err = githelper.ParseGitHubURL(cluster.Conf.ProvAppTemplateRepo)
-		if err == nil {
-			gClient, err = githelper.NewGithubClient(gitpass)
+func (cluster *Cluster) readTemplateFromRepoCache(repoDir, template string) ([]byte, error) {
+	templatePath, err := buildTemplateAbsPath(repoDir, template)
+	if err != nil {
+		return nil, err
+	}
+	content, err := os.ReadFile(templatePath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, os.ErrNotExist
 		}
-	} else {
-		baseURL, projectID, err = githelper.ParseGitLabURL(cluster.Conf.ProvAppTemplateRepo)
-		if err == nil {
-			gClient, err = githelper.NewGitlabClient(baseURL, gitpass)
+		return nil, fmt.Errorf("error reading template from repo cache: %w", err)
+	}
+	return content, nil
+}
+
+func (cluster *Cluster) loadTemplateFromRepo(template string, forceRefresh bool) ([]byte, error) {
+	repoDir, err := cluster.Conf.ResolveAppTemplateRepoCacheDir()
+	if err != nil {
+		return nil, err
+	}
+	lock := getAppTemplateRepoLock(repoDir)
+	lock.Lock()
+	defer lock.Unlock()
+
+	_, readErrBeforeSync := cluster.readTemplateFromRepoCache(repoDir, template)
+	hasStaleCopy := readErrBeforeSync == nil
+
+	if forceRefresh || !hasStaleCopy {
+		if _, syncErr := cluster.Conf.SyncAppTemplateRepoCache(forceRefresh); syncErr != nil {
+			if hasStaleCopy {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+					"Unable to refresh template repo cache, serving stale template %s: %s", template, syncErr)
+			} else {
+				return nil, syncErr
+			}
 		}
 	}
 
+	content, err := cluster.readTemplateFromRepoCache(repoDir, template)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
-			"Error creating git client for repo %s: %s", cluster.Conf.ProvAppTemplateRepo, err)
 		return nil, err
 	}
 
-	content, err := gClient.DownloadFileFromRepo(
-		projectID,
-		cluster.Conf.ProvAppTemplateRepoUser,
-		template+".toml",
-		time.Duration(cluster.Conf.ProvAppTemplateRepoTimeout)*time.Second,
-	)
-	return content, err
+	return content, nil
 }
 
 func (cluster *Cluster) loadTemplateFromShared(template string) ([]byte, error) {
-	templateName := strings.TrimLeft(template, "shared/")
-	templatePath := "app/deployments/" + templateName + ".toml"
+	if !IsSharedDummyTemplate(template) {
+		return nil, fmt.Errorf("shared fallback is only available for shared/dummy")
+	}
+
+	templatePath, err := resolveSharedTemplateRepoPath(template)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"Error validating shared template path %s: %s", template, err)
+		return nil, err
+	}
 
 	content, err := share.ReadFileFromSharedDir(
 		cluster.Conf.WithEmbed,
@@ -696,40 +1013,122 @@ func (cluster *Cluster) loadTemplateFromShared(template string) ([]byte, error) 
 }
 
 func (cluster *Cluster) GetTemplateContent(template string) ([]byte, error) {
-	localPath := filepath.Join(cluster.Conf.WorkingDir, ".templates", "apps", template+".toml")
+	return cluster.getTemplateContent(template, false)
+}
 
-	// Try local file
-	if content, err := cluster.loadLocalTemplate(localPath, template); err == nil {
-		return content, nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
+// RefreshTemplateContent bypasses local cache and refreshes template content
+// from repo/shared source, then overwrites local cache with validated canonical
+// content.
+func (cluster *Cluster) RefreshTemplateContent(template string) ([]byte, error) {
+	return cluster.getTemplateContent(template, true)
+}
 
-	// Ensure parent dir exists
-	if err := os.MkdirAll(filepath.Dir(localPath), os.ModePerm); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
-			"Error creating parent directory for %s: %s", localPath, err)
-		return nil, err
-	}
-
-	// Try repo
-	content, err := cluster.loadTemplateFromRepo(template)
+func (cluster *Cluster) loadAndValidateLocalTemplate(path, normalizedName string, rewriteOnChange bool) ([]byte, error) {
+	content, err := cluster.loadLocalTemplate(path, normalizedName)
 	if err != nil {
-		// Fallback: shared dir
-		content, err = cluster.loadTemplateFromShared(template)
+		return nil, err
+	}
+	canonicalContent, canonicalRes, canonErr := config.CanonicalizeAppTemplateTOML(content)
+	if canonErr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"Error canonicalizing local template file %s: %s", path, canonErr)
+		return nil, canonErr
+	}
+	if err := cluster.validateTemplateDeploymentPaths(canonicalContent, normalizedName); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"Invalid local template file %s after canonicalization: %s", path, err)
+		return nil, err
+	}
+	if rewriteOnChange && canonicalRes.Changed {
+		t, err := toml.LoadBytes(canonicalContent)
 		if err != nil {
 			return nil, err
 		}
+		if err := cluster.writeTomlAtomically(t, path); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+				"Error writing canonical local template file %s: %s", path, err)
+			return nil, err
+		}
 	}
+	return canonicalContent, nil
+}
 
-	// Cache locally
-	if err := os.WriteFile(localPath, content, 0644); err != nil {
+func (cluster *Cluster) getTemplateContent(template string, forceRefresh bool) ([]byte, error) {
+	normalizedTemplateName, err := normalizeTemplateIdentifier(template)
+	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
-			"Error writing local template file %s: %s", localPath, err)
+			"Error validating template path %s: %s", template, err)
 		return nil, err
 	}
 
-	return content, nil
+	if !forceRefresh {
+		// Walk layered read paths: cluster-specific first, then global.
+		for _, readPath := range cluster.resolveTemplateReadPaths(normalizedTemplateName) {
+			content, err := cluster.loadAndValidateLocalTemplate(readPath, normalizedTemplateName, true)
+			if err == nil {
+				return content, nil
+			}
+			if !errors.Is(err, os.ErrNotExist) {
+				return nil, err
+			}
+		}
+	}
+
+	// Try repo cache, then fall back to embedded/shared dir
+	content, err := cluster.loadTemplateFromRepo(normalizedTemplateName, forceRefresh)
+	if err != nil {
+		if IsSharedDummyTemplate(normalizedTemplateName) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+				"Error loading template %s from repo cache, trying shared dummy fallback: %s", normalizedTemplateName, err)
+			content, err = cluster.loadTemplateFromShared(normalizedTemplateName)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, fmt.Errorf("template %q not found in local or repo cache", normalizedTemplateName)
+		}
+	}
+
+	canonicalContent, _, err := config.CanonicalizeAppTemplateTOML(content)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"Error canonicalizing template file %s: %s", normalizedTemplateName, err)
+		return nil, err
+	}
+	if err := cluster.validateTemplateDeploymentPaths(canonicalContent, normalizedTemplateName); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"Invalid template file %s after canonicalization: %s", normalizedTemplateName, err)
+		return nil, err
+	}
+
+	return canonicalContent, nil
+}
+
+func (cluster *Cluster) validateTemplateDeploymentPaths(content []byte, template string) error {
+	appViper := viper.New()
+	appViper.SetConfigType("toml")
+	if err := appViper.ReadConfig(bytes.NewBuffer(content)); err != nil {
+		return err
+	}
+
+	var appcnf config.AppConfig
+	appcnf.Deployment = config.NewDeploymentConfig()
+	if err := appViper.Unmarshal(&appcnf); err != nil {
+		return err
+	}
+
+	if appcnf.Deployment == nil {
+		return nil
+	}
+	if resolveErrs := appcnf.Deployment.ResolvePaths(); len(resolveErrs) > 0 {
+		for _, resolveErr := range resolveErrs {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
+				"Template %q deployment path resolution error: %v", template, resolveErr)
+		}
+		return fmt.Errorf("invalid deployment path mapping for template %q", template)
+	}
+
+	return nil
 }
 
 func (cluster *Cluster) LoadTemplateToViper(content []byte) (*viper.Viper, error) {
@@ -766,6 +1165,7 @@ func (cluster *Cluster) ParseTemplateContent(app *App, content []byte) ([]byte, 
 		parsed, err = cluster.ParseAppTemplate(string(content), app.AppClusterSubstitute)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error parsing template file: %s", err)
+			return nil, err
 		}
 	}
 	return []byte(parsed), nil

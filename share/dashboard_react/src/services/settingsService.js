@@ -11,6 +11,11 @@ export const settingsService = {
   switchAppSettings,
   clearAppSetting,
   resetAppFromTemplate,
+  previewResetAppTemplateImpact,
+  getAppTemplateContent,
+  saveAppTemplateContent,
+  deleteAppTemplateContent,
+  createLocalAppTemplateCopy,
   saveAppAsTemplate,
   reloadPlanInfo
 }
@@ -53,7 +58,7 @@ function setAppSetting(clusterName, appId, setting, value, baseURL) {
     return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/settings/actions/set/${setting}/${encodeURIComponent(value)}`)
 }
 
-function switchAppSettings(clusterName, setting, baseURL) {
+function switchAppSettings(clusterName, appId, setting, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/settings/actions/switch/${setting}`)
 }
 
@@ -61,10 +66,40 @@ function clearAppSetting(clusterName, appId, setting, baseURL) {
     return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/settings/actions/clear/${setting}`)
 }
 
-function resetAppFromTemplate( clusterName, appId, template, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/settings/actions/reset-from-template`, {
-    template: template
+function resetAppFromTemplate(clusterName, appId, template, forceRefresh = false, baseURL) {
+  const payload = { template: template }
+  if (forceRefresh) {
+    payload.forceRefresh = true
+  }
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/settings/actions/reset-from-template`, payload)
+}
+
+function previewResetAppTemplateImpact(clusterName, appId, template, forceRefresh = false, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/settings/actions/reset-from-template/preview`, {
+    template,
+    forceRefresh
   })
+}
+
+function getAppTemplateContent(clusterName, templateName, forceRefresh = false, baseURL) {
+	const query = forceRefresh ? '?forceRefresh=true' : ''
+	return getApi(baseURL).get(`clusters/${clusterName}/templates/apps/${templateName}/content${query}`)
+}
+
+function saveAppTemplateContent(clusterName, templateName, content, baseURL) {
+	return getApi(baseURL).post(`clusters/${clusterName}/templates/apps/${templateName}/content/actions/save`, {
+		content
+	})
+}
+
+function deleteAppTemplateContent(clusterName, templateName, baseURL) {
+	return getApi(baseURL).post(`clusters/${clusterName}/templates/apps/${templateName}/content/actions/delete`)
+}
+
+function createLocalAppTemplateCopy(clusterName, templateName, localTemplateName, baseURL) {
+	return getApi(baseURL).post(`clusters/${clusterName}/templates/apps/${templateName}/content/actions/create-local-copy`, {
+		localTemplateName
+	})
 }
 
 function saveAppAsTemplate( clusterName, appId, template, baseURL) {

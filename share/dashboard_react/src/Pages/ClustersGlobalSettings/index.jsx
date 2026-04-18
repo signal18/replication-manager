@@ -6,17 +6,22 @@ import ConfirmModal from '../../components/Modals/ConfirmModal'
 
 import AccordionComponent from '../../components/AccordionComponent'
 import CloudSettings from './CloudSettings'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import GlobalSettings from './GlobalSettings'
+import { setGlobalSetting } from '../../redux/globalClustersSlice'
+import AppTemplateRepoSection from '../Settings/components/AppTemplateRepoSection'
 
-function ClustersGlobalSettings({}) {
+function ClustersGlobalSettings({ user }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [confirmTitle, setConfirmTitle] = useState('')
+  const dispatch = useDispatch()
 
   const {
     globalClusters: { monitor }
   } = useSelector((state) => state)
+
+  const canEditGlobalSettings = user?.grants?.['cluster-settings'] !== false && (user?.User === 'admin' || user?.grants?.['cluster-settings'] !== undefined)
 
   const openConfirmModal = (title, handler) => {
     setIsConfirmModalOpen(true)
@@ -41,6 +46,19 @@ function ClustersGlobalSettings({}) {
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<GlobalSettings config={monitor?.config} openConfirmModal={openConfirmModal} />}
+      />
+      <AccordionComponent
+        heading={'App Templates Repo'}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        body={
+          <AppTemplateRepoSection
+            scope='global'
+            config={monitor?.config}
+            canEdit={canEditGlobalSettings}
+            onSet={(setting, value) => dispatch(setGlobalSetting({ setting, value }))}
+          />
+        }
       />
 
       {isConfirmModalOpen && (

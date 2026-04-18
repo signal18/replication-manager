@@ -36,6 +36,31 @@ const defaultPath = {
 const nodeToValue = (node) => (node.type === "directory" && !node.path.endsWith("/") ? node.path + "/" : node.path);
 const nodeToString = (node) => node.name || node.path;
 
+const normalizeSubPath = (value) => {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw || raw === '/') return '/';
+  return raw.startsWith('/') ? raw : `/${raw}`;
+};
+
+const composeSourcePath = (srcbasepath, subpath) => {
+  const normalizedSubPath = normalizeSubPath(subpath);
+  if (!srcbasepath) return normalizedSubPath;
+  if (normalizedSubPath === '/') return srcbasepath;
+  return `${srcbasepath}${normalizedSubPath}`.replace('//', '/');
+};
+
+const getDisplaySubPath = (srcpath, srcbasepath) => {
+  const sourcePath = typeof srcpath === 'string' ? srcpath : '';
+  const basePath = typeof srcbasepath === 'string' ? srcbasepath : '';
+
+  if (basePath && sourcePath && sourcePath.startsWith(basePath)) {
+    const rel = sourcePath.slice(basePath.length);
+    return normalizeSubPath(rel);
+  }
+
+  return normalizeSubPath(sourcePath);
+};
+
 const columnHelper = createColumnHelper()
 
 const PathSection = ({
@@ -81,7 +106,7 @@ const PathSection = ({
     return {
       ...row,
       srcbasepath: srcbasepath,
-      subpath: srcbasepath && srcpath && srcpath.startsWith(srcbasepath) ? srcpath.replace(srcbasepath, "").replace("//", "/") : srcpath || "",
+      subpath: getDisplaySubPath(srcpath, srcbasepath),
       parentname: parentname || parent.value,
       parentpath: parent.dockerpath || parent.srcpath,
       parentRow: parent,
@@ -253,11 +278,7 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gi
   }, [srctype, gitTree, s3Tree, dockerTree]);
 
   const subpath = useMemo(() => {
-    if (srcbasepath != "" && srcpath.startsWith(srcbasepath)) {
-      return srcpath.replace(srcbasepath, "").replace("//", "/");
-    } else {
-      return srcpath;
-    }
+    return getDisplaySubPath(srcpath, srcbasepath);
   }, [srcpath, srcbasepath]);
 
   const onRowArrayChange = useCallback((fieldName, index, key, value) => {
@@ -279,7 +300,7 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gi
       dispatch(showErrorToast(`Invalid subpath: ${value}`));
       return;
     }
-    const newSrcPath = !srcbasepath || value.startsWith(srcbasepath) ? value : (srcbasepath || "") + (value.startsWith("/") ? value : `/${value}`);
+    const newSrcPath = composeSourcePath(srcbasepath, value);
     onRowArrayChange(fieldName, index, "srcpath", newSrcPath);
   }, [fieldName, index, onRowArrayChange, srcbasepath]);
 
@@ -356,6 +377,7 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gi
               ) : (
                 <TextForm confirmTitle={"Source path changed"} name={`row_${index}.subpath`} placeholder="To" value={subpath} onSave={(value) => handleSubPathChange(value)} />
               )}
+              <Text mt={1} fontSize="sm" color="gray.500">Use "/" to map the source root.</Text>
             </Flex>
           )}
         </>)}
@@ -500,14 +522,14 @@ const PathNewForm = React.memo(({ clusterName, appId, parentRow, gitOptions, vol
         } else {
           newPath.srcbasepath = "";
         }
-        newPath.srcpath = newPath.srcbasepath + (newPath.subpath.startsWith("/") ? newPath.subpath : `/${newPath.subpath}`);
+        newPath.srcpath = composeSourcePath(newPath.srcbasepath, newPath.subpath);
       } else if (key === "srctype") {
         newPath.srcname = "";
         newPath.srcbasepath = "";
         newPath.subpath = "/";
       } else if (key === "subpath") {
-        newPath.subpath = value;
-        newPath.srcpath = prev.srcbasepath + (value.startsWith("/") ? value : `/${value}`);
+        newPath.subpath = normalizeSubPath(value);
+        newPath.srcpath = composeSourcePath(prev.srcbasepath, value);
       }
 
       return newPath;
@@ -637,10 +659,11 @@ const PathNewForm = React.memo(({ clusterName, appId, parentRow, gitOptions, vol
           {srcname && (
             <Flex direction="column" flex="1">
               <Text mb={1}>Storage Path:</Text>
-              <InputGroup>
-                <Input key={`${srctype}-${srcname}`} name={`newpath.subpath`} placeholder="Subpath" value={subpath} onChange={(e) => handleArrayChange("subpath", e.target.value)} />
+                <InputGroup>
+                <Input key={`${srctype}-${srcname}`} name={`newpath.subpath`} placeholder={'Storage Path ("/" for root)'} value={subpath} onChange={(e) => handleArrayChange("subpath", e.target.value)} />
                 {srctype === "git" && (<RMIconButton icon={HiFolder} aria-label="Browse Path" onClick={handleBrowseSource} />)}
               </InputGroup>
+              <Text mt={1} fontSize="sm" color="gray.500">Use "/" to map the source root.</Text>
             </Flex>
           )}
         </>)}

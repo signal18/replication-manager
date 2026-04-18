@@ -17,7 +17,8 @@ export const globalClustersService = {
   renameCluster,
   reloadClustersPlan,
   reloadClustersPlanInfo,
-  refreshAppTemplateRepo
+  refreshAppTemplateRepo,
+  getAppTemplateStructureGuide
 }
 
 function getClusters(baseURL) {
@@ -84,6 +85,11 @@ function reloadClustersPlanInfo(download = true) {
   return getApi().post(`clusters/settings/actions/reload-clusters-plan-info`, { download })
 }
 
-function refreshAppTemplateRepo(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/actions/refresh-apps-template`)
+function refreshAppTemplateRepo(clusterName, baseURL, forceRefresh = false) {
+	const suffix = forceRefresh ? '?forceRefresh=true' : ''
+	return getApi(baseURL).get(`clusters/${clusterName}/templates/apps${suffix}`)
+}
+
+function getAppTemplateStructureGuide(clusterName, baseURL) {
+	return getApi(baseURL).get(`clusters/${clusterName}/templates/apps/structure-guide`)
 }

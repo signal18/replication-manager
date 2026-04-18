@@ -2244,6 +2244,155 @@ export const monitorAllSchemas = createGuardedAsyncThunk(
   }
 )
 
+// S3 provider CRUD thunks
+export const addS3Provider = createGuardedAsyncThunk(
+  'cluster/addS3Provider',
+  async ({ clusterName, payload }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.addS3Provider(clusterName, payload, baseURL)
+      if (status !== 200 && status !== 201) {
+        throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+      }
+      let refreshError = null
+      try {
+        await thunkAPI.dispatch(getClusterData({ clusterName })).unwrap()
+      } catch (err) {
+        refreshError = err?.errorMessage || err?.message || String(err)
+      }
+      return { data, status, refreshError }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const modifyS3Provider = createGuardedAsyncThunk(
+  'cluster/modifyS3Provider',
+  async ({ clusterName, name, payload }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.modifyS3Provider(clusterName, name, payload, baseURL)
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+      }
+      thunkAPI.dispatch(getClusterData({ clusterName }))
+      return { data, status }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const dropS3Provider = createGuardedAsyncThunk(
+  'cluster/dropS3Provider',
+  async ({ clusterName, name }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.dropS3Provider(clusterName, name, baseURL)
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+      }
+      thunkAPI.dispatch(getClusterData({ clusterName }))
+      return { data, status }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const getS3ProviderReferences = createGuardedAsyncThunk(
+  'cluster/getS3ProviderReferences',
+  async ({ clusterName, providerName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.getS3ProviderReferences(clusterName, providerName, baseURL)
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+      }
+      return { data }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+// previewS3MountSync performs a dry-run diff for a single mount against its provider.
+// Payload: { clusterName, providerName, appId, mountName }
+// Returns the SyncPreviewResponse from the server.
+export const previewS3MountSync = createGuardedAsyncThunk(
+  'cluster/previewS3MountSync',
+  async ({ clusterName, providerName, appId, mountName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const targets = [{ appId, mountName }]
+      const { data, status } = await clusterService.syncS3ProviderPreview(clusterName, providerName, targets, baseURL)
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+      }
+      return { data }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+// applyS3MountSync applies provider-managed fields to a single mount.
+// Payload: { clusterName, providerName, appId, mountName, revisionToken }
+// Returns the SyncApplyResponse from the server.
+export const applyS3MountSync = createGuardedAsyncThunk(
+  'cluster/applyS3MountSync',
+  async ({ clusterName, providerName, appId, mountName, revisionToken }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const targets = [{ appId, mountName }]
+      const { data, status } = await clusterService.syncS3ProviderApply(clusterName, providerName, targets, revisionToken, baseURL)
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+      }
+      return { data }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+// previewS3ProviderBulkSync performs a dry-run diff for selected mounts.
+// Payload: { clusterName, providerName, targets: [{ appId, mountName }] }
+export const previewS3ProviderBulkSync = createGuardedAsyncThunk(
+  'cluster/previewS3ProviderBulkSync',
+  async ({ clusterName, providerName, targets }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.syncS3ProviderPreview(clusterName, providerName, targets, baseURL)
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+      }
+      return { data }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+// applyS3ProviderBulkSync applies provider-managed fields for selected mounts.
+// Payload: { clusterName, providerName, targets: [{ appId, mountName }], revisionToken }
+export const applyS3ProviderBulkSync = createGuardedAsyncThunk(
+  'cluster/applyS3ProviderBulkSync',
+  async ({ clusterName, providerName, targets, revisionToken }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.syncS3ProviderApply(clusterName, providerName, targets, revisionToken, baseURL)
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+      }
+      return { data }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 const initialState = {
   loading: false,
   pendingThunks: {},
@@ -2662,6 +2811,10 @@ export const clusterSlice = createSlice({
 })
 
 export const { setRefreshInterval, setCluster, clearCluster, pauseAutoReload } = clusterSlice.actions
+
+// Selector for cluster-level saved S3 providers (credentials already masked by backend).
+// Returns an empty array when cluster data is not yet loaded.
+export const selectClusterS3Providers = (state) => state.cluster?.clusterData?.clusterS3Providers ?? []
 
 // this is for configureStore
 export default clusterSlice.reducer

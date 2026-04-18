@@ -1,5 +1,5 @@
-import { createSlice, createAsyncThunk, isAnyOf } from '@reduxjs/toolkit'
-import { handleError, showErrorBanner, showLoaderBanner, showSuccessBanner } from '../utility/common'
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
+import { handleError, showErrorBanner, showSuccessBanner } from '../utility/common'
 import { settingsService } from '../services/settingsService'
 
 export const switchSetting = createAsyncThunk('settings/switchSetting', async ({ clusterName, setting }, thunkAPI) => {
@@ -27,7 +27,7 @@ export const changeTopology = createAsyncThunk(
       showSuccessBanner(`Topology changed to ${topology} successfully!`, status, thunkAPI)
       return { data, status }
     } catch (error) {
-      showErrorBanner(`Changing topology to ${setting} failed!`, error, thunkAPI)
+      showErrorBanner(`Changing topology to ${topology} failed!`, error, thunkAPI)
       handleError(error, thunkAPI)
     }
   }
@@ -101,7 +101,7 @@ export const switchAppSetting = createAsyncThunk('settings/switchAppSetting', as
   try {
     // showLoaderBanner(`${setting} `, thunkAPI)
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await settingsService.switchAppSettings(clusterName, appId, setting, value, baseURL)
+    const { data, status } = await settingsService.switchAppSettings(clusterName, appId, setting, baseURL)
     if (status === 200) {
       showSuccessBanner(`${setting} changed successfully!`, status, thunkAPI)
       return { data, status }
@@ -114,12 +114,12 @@ export const switchAppSetting = createAsyncThunk('settings/switchAppSetting', as
   }
 })
 
-export const resetAppFromTemplate = createAsyncThunk('settings/resetAppFromTemplate', async ({ clusterName, appId, template }, thunkAPI) => {
+export const resetAppFromTemplate = createAsyncThunk('settings/resetAppFromTemplate', async ({ clusterName, appId, template, forceRefresh = false }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await settingsService.resetAppFromTemplate(clusterName, appId, template, baseURL)
+    const { data, status } = await settingsService.resetAppFromTemplate(clusterName, appId, template, forceRefresh, baseURL)
     if (status === 200) {
-      showSuccessBanner(`App reset from template successfully!`, status, thunkAPI)
+      showSuccessBanner(forceRefresh ? `App template refreshed and reset successfully!` : `App reset from template successfully!`, status, thunkAPI)
       return { data, status }
     } else {
       throw new Error(data)
@@ -127,6 +127,79 @@ export const resetAppFromTemplate = createAsyncThunk('settings/resetAppFromTempl
   } catch (error) {
     showErrorBanner(`Resetting app from template failed!`, error.toString(), thunkAPI)
     handleError(error, thunkAPI)
+  }
+})
+
+export const previewResetAppTemplateImpact = createAsyncThunk('settings/previewResetAppTemplateImpact', async ({ clusterName, appId, template, forceRefresh = false }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await settingsService.previewResetAppTemplateImpact(clusterName, appId, template, forceRefresh, baseURL)
+    if (status === 200) {
+      return { data, status }
+    }
+    throw new Error(data)
+  } catch (error) {
+    showErrorBanner(`Loading reset impact preview failed!`, error.toString(), thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const previewAppTemplateContent = createAsyncThunk('settings/previewAppTemplateContent', async ({ clusterName, templateName, forceRefresh = false }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await settingsService.getAppTemplateContent(clusterName, templateName, forceRefresh, baseURL)
+    if (status === 200) {
+      return { data, status }
+    }
+    throw new Error(data)
+  } catch (error) {
+    showErrorBanner(`Loading template preview failed!`, error.toString(), thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const saveAppTemplateContent = createAsyncThunk('settings/saveAppTemplateContent', async ({ clusterName, templateName, content }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await settingsService.saveAppTemplateContent(clusterName, templateName, content, baseURL)
+    if (status === 200) {
+      showSuccessBanner(`Template saved successfully!`, status, thunkAPI)
+      return { data, status }
+    }
+    throw new Error(data)
+  } catch (error) {
+    showErrorBanner(`Saving template failed!`, error.toString(), thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const deleteAppTemplateContent = createAsyncThunk('settings/deleteAppTemplateContent', async ({ clusterName, templateName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await settingsService.deleteAppTemplateContent(clusterName, templateName, baseURL)
+    if (status === 200) {
+      showSuccessBanner(`Template deleted successfully!`, status, thunkAPI)
+      return { data, status }
+    }
+    throw new Error(data)
+  } catch (error) {
+    showErrorBanner(`Deleting template failed!`, error.toString(), thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const createLocalAppTemplateCopy = createAsyncThunk('settings/createLocalAppTemplateCopy', async ({ clusterName, templateName, localTemplateName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await settingsService.createLocalAppTemplateCopy(clusterName, templateName, localTemplateName, baseURL)
+    if (status === 200) {
+      showSuccessBanner(`Local template copy created successfully!`, status, thunkAPI)
+      return { data, status }
+    }
+    throw new Error(data)
+  } catch (error) {
+    showErrorBanner(`Creating local template copy failed!`, error.toString(), thunkAPI)
+    return handleError(error, thunkAPI)
   }
 })
 
@@ -152,7 +225,7 @@ export const settingsSlice = createSlice({
   name: 'settings',
   initialState,
   reducers: {
-    clearSettings: (state, action) => {
+    clearSettings: (state) => {
       Object.assign(state, initialState)
     }
   }

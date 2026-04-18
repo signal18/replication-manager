@@ -15,8 +15,13 @@ import RepConfigSettings from './RepConfigSettings'
 import AlertSettings from './AlertSettings'
 import BackupSettings from './BackupSettings'
 import SchedulerSettings from './SchedulerSettings'
+import S3ProvidersSettings from './S3ProvidersSettings'
+import AppTemplateRepoSection from './components/AppTemplateRepoSection'
+import { setSetting } from '../../redux/settingsSlice'
+import { useDispatch } from 'react-redux'
 
 function Settings({ selectedCluster, user, onTabChange, monitor }) {
+  const dispatch = useDispatch()
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [confirmTitle, setConfirmTitle] = useState('')
@@ -56,6 +61,12 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   })
   const { isOpen: isCloud18Open, onToggle: onCloud18Toggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isCloud18Open')) || false
+  })
+  const { isOpen: isS3ProvidersOpen, onToggle: onS3ProvidersToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isS3ProvidersOpen')) || false
+  })
+  const { isOpen: isAppTemplateRepoOpen, onToggle: onAppTemplateRepoToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isAppTemplateRepoOpen')) || false
   })
 
   useEffect(() => {
@@ -97,7 +108,12 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   useEffect(() => {
     localStorage.setItem('isCloud18Open', JSON.stringify(isCloud18Open))
   }, [isCloud18Open])
-
+  useEffect(() => {
+    localStorage.setItem('isS3ProvidersOpen', JSON.stringify(isS3ProvidersOpen))
+  }, [isS3ProvidersOpen])
+  useEffect(() => {
+    localStorage.setItem('isAppTemplateRepoOpen', JSON.stringify(isAppTemplateRepoOpen))
+  }, [isAppTemplateRepoOpen])
 
   const openConfirmModal = (title, handler) => {
     setIsConfirmModalOpen(true)
@@ -206,6 +222,33 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<BackupSettings selectedCluster={selectedCluster} user={user} />}
+      />
+      <AccordionComponent
+        heading={'S3 Providers'}
+        onToggle={onS3ProvidersToggle}
+        isOpen={isS3ProvidersOpen}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        body={<S3ProvidersSettings selectedCluster={selectedCluster} user={user} />}
+      />
+      <AccordionComponent
+        heading={'App Templates Repo'}
+        onToggle={onAppTemplateRepoToggle}
+        isOpen={isAppTemplateRepoOpen}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        body={
+          <AppTemplateRepoSection
+            scope='cluster'
+            config={selectedCluster?.config}
+            canEdit={
+              user?.grants?.['cluster-settings'] !== false &&
+              user?.grants?.['cluster-settings'] !== undefined &&
+              selectedCluster?.config?.provAppTemplateRepoAllowOverride !== false
+            }
+            onSet={(setting, value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting, value }))}
+          />
+        }
       />
 
       {isConfirmModalOpen && (
