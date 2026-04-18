@@ -116,10 +116,10 @@ func TestGetTemplateContent_LocalCacheCanonicalizesAndRewrites(t *testing.T) {
 	}
 }
 
-func TestGetTemplateContent_SharedTemplateCanonicalizedBeforeCacheWrite(t *testing.T) {
+func TestGetTemplateContent_SharedDummyCanonicalizedWithoutLocalRewrite(t *testing.T) {
 	workingDir := t.TempDir()
 	shareDir := filepath.Join(t.TempDir(), "share")
-	sharedPath := filepath.Join(shareDir, "app", "deployments", "legacy.toml")
+	sharedPath := filepath.Join(shareDir, "app", "templates", "dummy.toml")
 	if err := os.MkdirAll(filepath.Dir(sharedPath), 0o755); err != nil {
 		t.Fatalf("mkdir shared template dir failed: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestGetTemplateContent_SharedTemplateCanonicalizedBeforeCacheWrite(t *testi
 		ProvAppTemplateRepo: "%%%",
 	}}
 
-	content, err := cluster.GetTemplateContent("shared/legacy")
+	content, err := cluster.GetTemplateContent("shared/dummy")
 	if err != nil {
 		t.Fatalf("GetTemplateContent from shared failed: %v", err)
 	}
@@ -142,13 +142,9 @@ func TestGetTemplateContent_SharedTemplateCanonicalizedBeforeCacheWrite(t *testi
 		t.Fatalf("expected canonicalized fetched content, got:\n%s", string(content))
 	}
 
-	localCache := filepath.Join(workingDir, ".templates", "apps", "shared", "legacy.toml")
-	localContent, err := os.ReadFile(localCache)
-	if err != nil {
-		t.Fatalf("read local cached template failed: %v", err)
-	}
-	if !strings.Contains(string(localContent), `parentname = "web-root"`) {
-		t.Fatalf("expected canonical content in local cache, got:\n%s", string(localContent))
+	localCache := filepath.Join(workingDir, ".templates", "apps", "shared", "dummy.toml")
+	if _, err := os.Stat(localCache); !os.IsNotExist(err) {
+		t.Fatalf("expected no local cache rewrite for shared template, err=%v", err)
 	}
 }
 
@@ -315,7 +311,7 @@ func TestGetTemplateContent_InvalidTemplateDoesNotRewriteLocalCache(t *testing.T
 func TestGetTemplateContent_InvalidSharedTemplateDoesNotWriteCache(t *testing.T) {
 	workingDir := t.TempDir()
 	shareDir := filepath.Join(t.TempDir(), "share")
-	sharedPath := filepath.Join(shareDir, "app", "deployments", "invalid.toml")
+	sharedPath := filepath.Join(shareDir, "app", "templates", "invalid.toml")
 	if err := os.MkdirAll(filepath.Dir(sharedPath), 0o755); err != nil {
 		t.Fatalf("mkdir shared template dir failed: %v", err)
 	}
@@ -382,11 +378,11 @@ func TestLoadAppConfigs_ReturnsAggregateErrorButLoadsValidApps(t *testing.T) {
 	}
 }
 
-func TestGetTemplateContent_SharedPrefixUsesTrimPrefixNotTrimLeft(t *testing.T) {
+func TestGetTemplateContent_SharedPrefixOnlyDummyIsAllowed(t *testing.T) {
 	workingDir := t.TempDir()
 	shareDir := filepath.Join(t.TempDir(), "share")
 
-	sharedPath := filepath.Join(shareDir, "app", "deployments", "some-template.toml")
+	sharedPath := filepath.Join(shareDir, "app", "templates", "some-template.toml")
 	if err := os.MkdirAll(filepath.Dir(sharedPath), 0o755); err != nil {
 		t.Fatalf("mkdir shared template dir failed: %v", err)
 	}
@@ -400,21 +396,21 @@ func TestGetTemplateContent_SharedPrefixUsesTrimPrefixNotTrimLeft(t *testing.T) 
 		ProvAppTemplateRepo: "%%%",
 	}}
 
-	if _, err := cluster.GetTemplateContent("shared/some-template"); err != nil {
-		t.Fatalf("GetTemplateContent failed: %v", err)
+	if _, err := cluster.GetTemplateContent("shared/some-template"); err == nil {
+		t.Fatalf("expected non-dummy shared template to be rejected")
 	}
 
 	localCache := filepath.Join(workingDir, ".templates", "apps", "shared", "some-template.toml")
-	if _, err := os.Stat(localCache); err != nil {
-		t.Fatalf("expected local cache for shared/some-template, err=%v", err)
+	if _, err := os.Stat(localCache); !os.IsNotExist(err) {
+		t.Fatalf("expected no local cache rewrite for shared/some-template, err=%v", err)
 	}
 }
 
-func TestRefreshTemplateContent_ReplacesLocalCacheWithSharedTemplate(t *testing.T) {
+func TestRefreshTemplateContent_SharedNonDummyRejected(t *testing.T) {
 	workingDir := t.TempDir()
 	shareDir := filepath.Join(t.TempDir(), "share")
 
-	sharedPath := filepath.Join(shareDir, "app", "deployments", "refreshable.toml")
+	sharedPath := filepath.Join(shareDir, "app", "templates", "refreshable.toml")
 	if err := os.MkdirAll(filepath.Dir(sharedPath), 0o755); err != nil {
 		t.Fatalf("mkdir shared template dir failed: %v", err)
 	}
@@ -466,19 +462,68 @@ srcpath = "."
 		ProvAppTemplateRepo: "%%%",
 	}}
 
-	content, err := cluster.RefreshTemplateContent("shared/refreshable")
-	if err != nil {
-		t.Fatalf("RefreshTemplateContent failed: %v", err)
-	}
-	if !strings.Contains(string(content), `dockerpath = "/var/www/new"`) {
-		t.Fatalf("expected refreshed content from shared template, got:\n%s", string(content))
+	if _, err := cluster.RefreshTemplateContent("shared/refreshable"); err == nil {
+		t.Fatalf("expected non-dummy shared refresh to be rejected")
 	}
 
 	rewritten, err := os.ReadFile(localCache)
 	if err != nil {
 		t.Fatalf("read local cache failed: %v", err)
 	}
-	if !strings.Contains(string(rewritten), `dockerpath = "/var/www/new"`) {
-		t.Fatalf("expected local cache to be replaced by refreshed template, got:\n%s", string(rewritten))
+	if !strings.Contains(string(rewritten), `dockerpath = "/var/www/old"`) {
+		t.Fatalf("expected local cache to remain unchanged, got:\n%s", string(rewritten))
+	}
+}
+
+func TestRefreshTemplateContent_RepoSyncFailureFallsBackToStaleCache(t *testing.T) {
+	workingDir := t.TempDir()
+
+	cl := &Cluster{Conf: &config.Config{
+		WorkingDir:              workingDir,
+		ProvAppTemplateRepo:     "https://127.0.0.1.invalid/nonexistent/repo.git",
+		ProvAppTemplateRepoUser: "git",
+	}}
+
+	repoDir, err := cl.Conf.ResolveAppTemplateRepoCacheDir()
+	if err != nil {
+		t.Fatalf("ResolveAppTemplateRepoCacheDir failed: %v", err)
+	}
+	stalePath := filepath.Join(repoDir, "repo-only.toml")
+	if err := os.MkdirAll(filepath.Dir(stalePath), 0o755); err != nil {
+		t.Fatalf("mkdir stale cache dir failed: %v", err)
+	}
+	if err := os.WriteFile(stalePath, []byte(legacyAppTemplateTOML), 0o644); err != nil {
+		t.Fatalf("write stale template failed: %v", err)
+	}
+
+	content, err := cl.RefreshTemplateContent("repo-only")
+	if err != nil {
+		t.Fatalf("RefreshTemplateContent should fallback to stale cache, got err: %v", err)
+	}
+	if !strings.Contains(string(content), `parentname = "web-root"`) {
+		t.Fatalf("expected stale cached template content, got:\n%s", string(content))
+	}
+
+	localPath := filepath.Join(workingDir, ".templates", "apps", "repo-only.toml")
+	if _, err := os.Stat(localPath); !os.IsNotExist(err) {
+		t.Fatalf("expected no local template write from repo cache read, err=%v", err)
+	}
+}
+
+func TestRefreshTemplateContent_RepoSyncFailureWithoutCacheReturnsError(t *testing.T) {
+	workingDir := t.TempDir()
+
+	cl := &Cluster{Conf: &config.Config{
+		WorkingDir:              workingDir,
+		ProvAppTemplateRepo:     "https://127.0.0.1.invalid/nonexistent/repo.git",
+		ProvAppTemplateRepoUser: "git",
+	}}
+
+	_, err := cl.RefreshTemplateContent("repo-only")
+	if err == nil {
+		t.Fatal("expected error when repo sync fails and no cache exists")
+	}
+	if !strings.Contains(err.Error(), "repository") && !strings.Contains(err.Error(), "repo") {
+		t.Fatalf("expected repo-related error, got: %v", err)
 	}
 }

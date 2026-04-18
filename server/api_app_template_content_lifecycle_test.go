@@ -12,25 +12,25 @@ import (
 func TestValidateTemplateNameForLocalWrite(t *testing.T) {
 	workDir := t.TempDir()
 
-	if err := validateTemplateNameForLocalWrite(workDir, ""); err == nil {
+	if err := validateTemplateNameForLocalWrite(workDir, "testcluster", ""); err == nil {
 		t.Fatalf("expected error for empty template name")
 	}
-	if err := validateTemplateNameForLocalWrite(workDir, "shared/nginx"); err == nil {
+	if err := validateTemplateNameForLocalWrite(workDir, "testcluster", "shared/nginx"); err == nil {
 		t.Fatalf("expected error for shared template")
 	}
-	if err := validateTemplateNameForLocalWrite(workDir, "../escape"); err == nil {
+	if err := validateTemplateNameForLocalWrite(workDir, "testcluster", "../escape"); err == nil {
 		t.Fatalf("expected error for path traversal")
 	}
-	if err := validateTemplateNameForLocalWrite(workDir, "/tmp/escape"); err == nil {
+	if err := validateTemplateNameForLocalWrite(workDir, "testcluster", "/tmp/escape"); err == nil {
 		t.Fatalf("expected error for absolute path")
 	}
-	if err := validateTemplateNameForLocalWrite(workDir, "local/../../escape"); err == nil {
+	if err := validateTemplateNameForLocalWrite(workDir, "testcluster", "local/../../escape"); err == nil {
 		t.Fatalf("expected error for cleaned traversal path")
 	}
-	if err := validateTemplateNameForLocalWrite(workDir, "./local/custom"); err != nil {
+	if err := validateTemplateNameForLocalWrite(workDir, "testcluster", "./local/custom"); err != nil {
 		t.Fatalf("expected normalized local template name, got %v", err)
 	}
-	if err := validateTemplateNameForLocalWrite(workDir, "local/custom"); err != nil {
+	if err := validateTemplateNameForLocalWrite(workDir, "testcluster", "local/custom"); err != nil {
 		t.Fatalf("expected valid local template name, got %v", err)
 	}
 }
@@ -39,7 +39,7 @@ func TestResolveTemplateCachePath(t *testing.T) {
 	workDir := t.TempDir()
 
 	t.Run("shared template path is normalized and accepted", func(t *testing.T) {
-		normalized, localPath, err := resolveTemplateCachePath(workDir, "./shared/nginx")
+		normalized, localPath, err := resolveTemplateCachePath(workDir, "testcluster", "./shared/nginx")
 		if err != nil {
 			t.Fatalf("expected shared template to be valid, got %v", err)
 		}
@@ -52,7 +52,7 @@ func TestResolveTemplateCachePath(t *testing.T) {
 	})
 
 	t.Run("shared traversal is rejected", func(t *testing.T) {
-		if _, _, err := resolveTemplateCachePath(workDir, "shared/../../escape"); err == nil {
+		if _, _, err := resolveTemplateCachePath(workDir, "testcluster", "shared/../../escape"); err == nil {
 			t.Fatal("expected shared traversal to be rejected")
 		}
 	})
@@ -110,7 +110,7 @@ func TestCreateLocalTemplateCopyFromTemplate(t *testing.T) {
 	workDir := t.TempDir()
 	shareDir := t.TempDir()
 
-	sharedPath := filepath.Join(shareDir, "app", "deployments", "copyme.toml")
+	sharedPath := filepath.Join(shareDir, "app", "templates", "dummy.toml")
 	if err := os.MkdirAll(filepath.Dir(sharedPath), 0o755); err != nil {
 		t.Fatalf("mkdir shared template dir failed: %v", err)
 	}
@@ -132,12 +132,24 @@ srcpath = "."
 
 	cl := &cluster.Cluster{Conf: &config.Config{WorkingDir: workDir, ShareDir: shareDir, ProvAppTemplateRepo: "%%%"}}
 
-	if err := createLocalTemplateCopyFromTemplate(cl, "shared/copyme", "local/copyme"); err != nil {
+	if err := createLocalTemplateCopyFromTemplate(cl, "shared/dummy", "local/copyme"); err != nil {
 		t.Fatalf("createLocalTemplateCopyFromTemplate failed: %v", err)
 	}
 
 	localPath := filepath.Join(workDir, ".templates", "apps", "local", "copyme.toml")
 	if _, err := os.Stat(localPath); err != nil {
 		t.Fatalf("expected local template copy at %s, err=%v", localPath, err)
+	}
+}
+
+func TestValidateDummyTemplateRenamePolicy(t *testing.T) {
+	if err := validateDummyTemplateRenamePolicy("shared/dummy", "local/dummy"); err == nil {
+		t.Fatalf("expected rename policy error when keeping dummy basename")
+	}
+	if err := validateDummyTemplateRenamePolicy("shared/dummy", "local/my-template"); err != nil {
+		t.Fatalf("expected renamed dummy template to pass, got %v", err)
+	}
+	if err := validateDummyTemplateRenamePolicy("repo/template-a", "local/dummy"); err != nil {
+		t.Fatalf("expected non-dummy source to bypass rename policy, got %v", err)
 	}
 }

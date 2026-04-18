@@ -236,17 +236,37 @@ export const getGlobalAlerts = createGuardedAsyncThunk('globalClusters/getGlobal
 
 export const refreshAppTemplateRepo = createGuardedAsyncThunk(
   'globalClusters/refreshAppTemplateRepo',
-  async ({ clusterName }, thunkAPI) => {
+  async ({ clusterName, silent = false, forceRefresh = false }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await globalClustersService.refreshAppTemplateRepo(clusterName, baseURL)
+      const { data, status } = await globalClustersService.refreshAppTemplateRepo(clusterName, baseURL, forceRefresh)
       if (status !== 200) {
         throw new Error(data)
       }
-      showSuccessBanner('App template repository refresh initiated!', status, thunkAPI)
       return { data, status }
     } catch (error) {
-      showErrorBanner('Error while refreshing app template repository', error, thunkAPI)
+      if (!silent) {
+        showErrorBanner('Error while refreshing app template repository', error, thunkAPI)
+      }
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const getAppTemplateStructureGuide = createGuardedAsyncThunk(
+  'globalClusters/getAppTemplateStructureGuide',
+  async ({ clusterName, silent = false }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await globalClustersService.getAppTemplateStructureGuide(clusterName, baseURL)
+      if (status !== 200) {
+        throw new Error(data)
+      }
+      return { data, status }
+    } catch (error) {
+      if (!silent) {
+        showErrorBanner('Error while loading template structure guide', error, thunkAPI)
+      }
       return handleError(error, thunkAPI)
     }
   }
@@ -262,6 +282,9 @@ const initialState = {
   clusterPeers: null,
   clusterForSale: null,
   monitor: null,
+  templateRepoError: null,
+  templateGuideContent: '',
+  templateGuideError: null,
   terms: ``,
   globalAlerts: { errors: [], warnings: [] },
   globalMetrics: null,
@@ -329,9 +352,17 @@ export const globalClustersSlice = createSlice({
         }
         state.monitor.serviceTemplates = templateNames
         state.monitor.serviceTemplateMetadata = templateRows
+        state.templateRepoError = null
       })
       .addCase(refreshAppTemplateRepo.rejected, (state, action) => {
-        state.error = action.error
+        state.templateRepoError = action.error?.message || 'Failed to refresh app template repository'
+      })
+      .addCase(getAppTemplateStructureGuide.fulfilled, (state, action) => {
+        state.templateGuideContent = action.payload?.data?.content || ''
+        state.templateGuideError = null
+      })
+      .addCase(getAppTemplateStructureGuide.rejected, (state, action) => {
+        state.templateGuideError = action.error?.message || 'Failed to load template structure guide'
       })
       .addCase(getGlobalAlerts.fulfilled, (state, action) => {
         state.globalAlerts = {

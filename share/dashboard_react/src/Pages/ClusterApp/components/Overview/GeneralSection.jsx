@@ -31,7 +31,12 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     return [{ name: 'Select Template', value: '' }, ...templateList.map(item => ({ name: item, value: item }))]
   }, [dockerTemplates])
   const { provAppDockerImg = '', provAppDockerCmd = '', provAppTemplate = '', provAppAgents = '', provAppHaTopology = '' } = appConfig;
-  const agentList = config?.provAppAgents ? config?.provAppAgents : config?.provDbAgents;
+  const agentList = useMemo(() => {
+    const raw = config?.provAppAgents || config?.provDbAgents
+    if (Array.isArray(raw)) return raw
+    if (typeof raw === 'string' && raw.trim()) return raw.split(',').map((s) => s.trim()).filter(Boolean)
+    return []
+  }, [config?.provAppAgents, config?.provDbAgents])
   const onSaveDockerImage = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-img', value: value })), [clusterName, appId, dispatch])
   const onSaveDockerCmd = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-cmd', value: value })), [clusterName, appId, dispatch])
   const onSaveAppAsTemplate = useCallback(() => dispatch(saveAppAsTemplate({ clusterName: clusterName, appId: appId, template: appName })), [clusterName, appId, appName, dispatch])
@@ -246,8 +251,8 @@ GeneralSection.propTypes = {
   appName: PropTypes.string,
   appHost: PropTypes.string,
   config: PropTypes.shape({
-    provAppAgents: PropTypes.array,
-    provDbAgents: PropTypes.array
+    provAppAgents: PropTypes.oneOfType([PropTypes.array, PropTypes.string]),
+    provDbAgents: PropTypes.oneOfType([PropTypes.array, PropTypes.string])
   }),
   appConfig: PropTypes.shape({
     provAppDockerImg: PropTypes.string,

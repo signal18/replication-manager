@@ -291,8 +291,9 @@ func newTestClusterForAPI(t *testing.T) *cluster.Cluster {
 	}
 	return &cluster.Cluster{
 		Conf: &config.Config{
-			WorkingDir: dir,
-			Verbose:    false,
+			WorkingDir:                       dir,
+			Verbose:                          false,
+			ProvAppTemplateRepoAllowOverride: true,
 		},
 		Name:       name,
 		WorkingDir: workingDir,

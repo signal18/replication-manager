@@ -35,7 +35,7 @@ For every `[[deployment.paths]]` entry:
 
 ## Template lifecycle operations (Epic 10)
 
-- Source templates (for example `shared/*`) are read-only.
+- The built-in source template `shared/dummy` is read-only and intended as a usable example.
 - Editable templates are local working copies under `.templates/apps`.
 - Create a local copy before editing source templates.
 - Save operations enforce canonicalization and strict path validation.
@@ -47,10 +47,10 @@ Use the converter to migrate old templates to canonical form:
 
 ```bash
 # Check templates and report non-canonical patterns
-go run ./scripts/convert_app_template.go -in share/app/deployments -check
+go run ./scripts/convert_app_template.go -in share/app/templates -check
 
 # Rewrite templates in place
-go run ./scripts/convert_app_template.go -in share/app/deployments -write
+go run ./scripts/convert_app_template.go -in share/app/templates -write
 ```
 
 The converter performs these updates:

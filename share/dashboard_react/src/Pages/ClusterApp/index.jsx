@@ -45,7 +45,7 @@ function ClusterApp() {
         dispatch(getAppService({ clusterName, serviceName: 'service-opensvc', appId }))
       }
       if (tabs.current[selectedTabRef.current] === 'Templates') {
-        dispatch(refreshAppTemplateRepo({ clusterName }))
+        dispatch(refreshAppTemplateRepo({ clusterName, silent: true }))
       }
     }
   }

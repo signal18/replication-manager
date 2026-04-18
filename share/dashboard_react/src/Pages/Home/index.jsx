@@ -321,7 +321,7 @@ function Home() {
                     ? [<PeerClusterList onLogin={setDashboardTab} />, <PeerClusterList mode='shared' />]
                     : []),
                   ...(globalTabsRef.current.includes('Settings')
-                    ? [<ClustersGlobalSettings />]
+                    ? [<ClustersGlobalSettings user={loggedUser} />]
                     : []),
                   <GlobalItems />
                 ])

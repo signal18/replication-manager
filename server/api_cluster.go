@@ -2839,7 +2839,7 @@ func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWri
 	vars := mux.Vars(r)
 	setting := vars["settingName"]
 	serverScope := config.IsScope(setting, "server")
-	if !serverScope {
+	if !serverScope && !isProvAppTemplateRepoSetting(setting) {
 		http.Error(w, "Setting Not Found", http.StatusNotImplemented)
 		return
 	}
@@ -2941,6 +2941,30 @@ func applyIsActive(oldValue bool, isactive *bool) bool {
 		return oldValue
 	}
 	return *isactive
+}
+
+func isProvAppTemplateRepoSetting(name string) bool {
+	switch name {
+	case "prov-app-template-repo",
+		"prov-app-template-repo-branch",
+		"prov-app-template-repo-user",
+		"prov-app-template-repo-password",
+		"prov-app-template-repo-timeout":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseProvAppTemplateRepoTimeout(value string) (int, error) {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return 0, fmt.Errorf("invalid value for prov-app-template-repo-timeout: %q", value)
+	}
+	if parsed < 1 || parsed > 600 {
+		return 0, fmt.Errorf("prov-app-template-repo-timeout must be between 1 and 600")
+	}
+	return parsed, nil
 }
 
 func normalizeCompressionOverride(value string) (string, error) {
@@ -3119,6 +3143,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	} else {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Overwriting an immutable parameter defined in config , please use config-merge command to preserve them between restart")
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", fmtlog, logargs...)
+	}
+	if isProvAppTemplateRepoSetting(name) && !mycluster.Conf.ProvAppTemplateRepoAllowOverride {
+		return errors.New("cluster override is disabled for prov-app-template-repo* settings")
 	}
 
 	switch name {
@@ -4516,6 +4543,28 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-level-plugin":
 		v, _ := strconv.Atoi(value)
 		mycluster.Conf.LogPluginLevel = v
+	case "prov-app-template-repo":
+		mycluster.Conf.ProvAppTemplateRepo = value
+	case "prov-app-template-repo-branch":
+		mycluster.Conf.ProvAppTemplateRepoBranch = value
+	case "prov-app-template-repo-user":
+		mycluster.Conf.ProvAppTemplateRepoUser = value
+	case "prov-app-template-repo-password":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return fmt.Errorf("unable to base64-decode value: %w", err)
+		}
+		mycluster.Conf.ProvAppTemplateRepoPassword = string(val)
+		var new_secret config.Secret
+		new_secret.Value = mycluster.Conf.ProvAppTemplateRepoPassword
+		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("prov-app-template-repo-password")
+		mycluster.Conf.Secrets["prov-app-template-repo-password"] = new_secret
+	case "prov-app-template-repo-timeout":
+		parsedTimeout, err := parseProvAppTemplateRepoTimeout(value)
+		if err != nil {
+			return err
+		}
+		mycluster.Conf.ProvAppTemplateRepoTimeout = parsedTimeout
 	default:
 		// Check if this is a plugin-config key: "plugin-config-<pluginname>-<key>"
 		// e.g. "plugin-config-errorlog-timeframe-hours" → PluginConfig["errorlog"]["timeframe-hours"]
@@ -4705,6 +4754,40 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.ProvServicePlanRegistry = value
 	case "prov-service-plan":
 		repman.Conf.ProvServicePlan = value
+	case "prov-app-template-repo":
+		repman.Conf.ProvAppTemplateRepo = value
+	case "prov-app-template-repo-branch":
+		repman.Conf.ProvAppTemplateRepoBranch = value
+	case "prov-app-template-repo-user":
+		repman.Conf.ProvAppTemplateRepoUser = value
+	case "prov-app-template-repo-password":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return fmt.Errorf("unable to base64-decode value: %w", err)
+		}
+		repman.Conf.ProvAppTemplateRepoPassword = string(val)
+		var new_secret config.Secret
+		new_secret.Value = repman.Conf.ProvAppTemplateRepoPassword
+		new_secret.OldValue = repman.Conf.GetDecryptedValue("prov-app-template-repo-password")
+		repman.Conf.Secrets["prov-app-template-repo-password"] = new_secret
+	case "prov-app-template-repo-timeout":
+		parsedTimeout, err := parseProvAppTemplateRepoTimeout(value)
+		if err != nil {
+			return err
+		}
+		repman.Conf.ProvAppTemplateRepoTimeout = parsedTimeout
+	case "prov-app-template-repo-allow-override":
+		trimmed := strings.TrimSpace(strings.ToLower(value))
+		if trimmed == "on" {
+			trimmed = "true"
+		} else if trimmed == "off" {
+			trimmed = "false"
+		}
+		parsed, err := strconv.ParseBool(trimmed)
+		if err != nil {
+			return fmt.Errorf("invalid boolean value for %s: %q", name, value)
+		}
+		repman.Conf.ProvAppTemplateRepoAllowOverride = parsed
 	case "sysbench-binary-path":
 		_, storeValue, err := resolveExecutablePath(value, "sysbench-binary-path")
 		if err != nil {
@@ -4894,6 +4977,11 @@ func (repman *ReplicationManager) setServerSetting(user string, URL string, name
 	if err != nil {
 		return err
 	}
+	if isProvAppTemplateRepoSetting(name) {
+		// Intentionally do not fan out to clusters: these are global defaults
+		// that clusters may inherit/override independently.
+		return nil
+	}
 
 	for _, cl := range repman.Clusters {
 		//Don't print error with no valid ACL
@@ -4922,6 +5010,11 @@ func (repman *ReplicationManager) switchServerSetting(user string, URL string, n
 		err := repman.setRepmanSetting(name, value)
 		if err != nil {
 			return err
+		}
+		if isProvAppTemplateRepoSetting(name) {
+			// Intentionally do not fan out to clusters: these are global defaults
+			// that clusters may inherit/override independently.
+			return nil
 		}
 
 		for _, cl := range repman.Clusters {

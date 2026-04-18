@@ -1,8 +1,10 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
@@ -30,6 +32,28 @@ func TestHandlerAppTemplateContent_NoCluster(t *testing.T) {
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 for missing cluster, got %d", w.Code)
+	}
+}
+
+func TestHandlerAppTemplateStructureGuide_NoCluster(t *testing.T) {
+	repman := newTestRepmanWithCluster(t, "other", newTestClusterForAPI(t))
+	req := httptest.NewRequest(http.MethodGet, "/api/clusters/missing/templates/apps/structure-guide", nil)
+	req = setMuxVars(req, map[string]string{"clusterName": "missing"})
+	w := httptest.NewRecorder()
+
+	repman.handlerMuxAppTemplateStructureGuide(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for missing cluster, got %d", w.Code)
+	}
+}
+
+func TestTemplateStructureGuideReadErrorStatus(t *testing.T) {
+	if got := templateStructureGuideReadErrorStatus(os.ErrNotExist); got != http.StatusNotFound {
+		t.Fatalf("expected 404 for os.ErrNotExist, got %d", got)
+	}
+	if got := templateStructureGuideReadErrorStatus(errors.New("boom")); got != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for generic read error, got %d", got)
 	}
 }
 

@@ -10,8 +10,18 @@ import (
 )
 
 func TestInferTemplateMetadata_SharedTemplate(t *testing.T) {
-	cl := &cluster.Cluster{Conf: &config.Config{WorkingDir: t.TempDir()}}
-	meta := inferTemplateMetadata(cl, "shared/nginx")
+	workDir := t.TempDir()
+	shareDir := t.TempDir()
+	dummyPath := filepath.Join(shareDir, "app", "templates", "dummy.toml")
+	if err := os.MkdirAll(filepath.Dir(dummyPath), 0o750); err != nil {
+		t.Fatalf("mkdir shared dummy dir failed: %v", err)
+	}
+	if err := os.WriteFile(dummyPath, []byte("app-host='dummy'"), 0o600); err != nil {
+		t.Fatalf("write shared dummy failed: %v", err)
+	}
+
+	cl := &cluster.Cluster{Conf: &config.Config{WorkingDir: workDir, ShareDir: shareDir}}
+	meta := inferTemplateMetadata(cl, "shared/dummy")
 
 	if meta.Origin != "shared" {
 		t.Fatalf("expected shared origin, got %q", meta.Origin)
@@ -53,7 +63,7 @@ func TestInferTemplateMetadata_LocalTemplate(t *testing.T) {
 
 func TestInferTemplateMetadata_RepoTemplate(t *testing.T) {
 	cl := &cluster.Cluster{Conf: &config.Config{WorkingDir: t.TempDir()}}
-	meta := inferTemplateMetadata(cl, "repo/template-a")
+	meta := inferTemplateMetadata(cl, "shared/not-dummy")
 
 	if meta.Origin != "repo" {
 		t.Fatalf("expected repo origin, got %q", meta.Origin)

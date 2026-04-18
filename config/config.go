@@ -678,6 +678,7 @@ type Config struct {
 	ProvAppTemplateRepoUser                   string                       `mapstructure:"prov-app-template-repo-user" toml:"prov-app-template-repo-user" json:"provAppTemplateRepoUser" groups:"apps"`
 	ProvAppTemplateRepoPassword               string                       `mapstructure:"prov-app-template-repo-password" toml:"prov-app-template-repo-password" json:"provAppTemplateRepoPassword" groups:"apps"`
 	ProvAppTemplateRepoTimeout                int                          `mapstructure:"prov-app-template-repo-timeout" toml:"prov-app-template-repo-timeout" json:"provAppTemplateRepoTimeout" groups:"apps"`
+	ProvAppTemplateRepoAllowOverride          bool                         `scope:"server" mapstructure:"prov-app-template-repo-allow-override" toml:"prov-app-template-repo-allow-override" json:"provAppTemplateRepoAllowOverride"`
 	TemplateVariableMaxDepth                  int                          `mapstructure:"template-var-max-depth" toml:"template-var-max-depth" json:"templateVarMaxDepth"`
 	TemplateStrict                            bool                         `mapstructure:"template-strict" toml:"template-strict" json:"templateStrict"`
 	APIUsers                                  string                       `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
@@ -4355,31 +4356,142 @@ func (conf *Config) GetAppVolumePools(pooltype string) map[string]VolumePool {
 }
 
 func (conf *Config) LoadAppTemplateList() ([]string, error) {
-	var result []string = make([]string, 0)
-	var gitpass, gitrepo, gitbranch, cacheDir string
-	var timeout int = conf.Timeout
-	if conf.ProvAppTemplateRepo != "" {
-		gitpass = conf.GetDecryptedPassword("App Template Repo Pass", conf.ProvAppTemplateRepoPassword)
-		gitrepo = conf.ProvAppTemplateRepo
-		gitbranch = conf.ProvAppTemplateRepoBranch
-		cacheDir = filepath.Join(conf.WorkingDir, ".cache", "git", "repos")
-		tree, err := githelper.GetTemplateFromRepo(gitrepo, gitpass, gitbranch, cacheDir, timeout, true)
-		if err != nil {
-			return result, err
-		}
-		result = tree.PrintTree(".toml", true, true)
+	return conf.LoadAppTemplateListWithRefresh(false)
+}
+
+func (conf *Config) LoadAppTemplateListWithRefresh(forceRefresh bool) ([]string, error) {
+	result := make([]string, 0)
+	repoDir, err := conf.SyncAppTemplateRepoCache(forceRefresh)
+	if err != nil {
+		return result, err
+	}
+	if repoDir == "" {
+		return result, nil
 	}
 
-	// remove empty entries
-	cleaned := make([]string, 0)
-	for _, v := range result {
-		if strings.TrimSpace(v) != "" {
-			cleaned = append(cleaned, v)
+	err = filepath.WalkDir(repoDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
+		if d.IsDir() {
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(d.Name()) != ".toml" {
+			return nil
+		}
+		rel, err := filepath.Rel(repoDir, path)
+		if err != nil {
+			return nil
+		}
+		rel = strings.TrimSuffix(filepath.ToSlash(rel), ".toml")
+		rel = strings.TrimSpace(rel)
+		if rel != "" {
+			result = append(result, rel)
+		}
+		return nil
+	})
+	if err != nil {
+		return result, err
 	}
-	result = cleaned
 
 	return result, nil
+}
+
+func (conf *Config) ResolveAppTemplateRepoCacheDir() (string, error) {
+	if strings.TrimSpace(conf.ProvAppTemplateRepo) == "" {
+		return "", errors.New("no git repo configured")
+	}
+	branch := strings.TrimSpace(conf.ProvAppTemplateRepoBranch)
+	if branch == "" {
+		branch = "main"
+	}
+	sum := md5.Sum([]byte(strings.TrimSpace(conf.ProvAppTemplateRepo) + "::" + branch))
+	key := fmt.Sprintf("%x", sum)
+	return filepath.Join(conf.WorkingDir, ".templates", "repos", "apps", key), nil
+}
+
+func (conf *Config) SyncAppTemplateRepoCache(forceRefresh bool) (string, error) {
+	repoDir, err := conf.ResolveAppTemplateRepoCacheDir()
+	if err != nil {
+		return "", err
+	}
+
+	branch := strings.TrimSpace(conf.ProvAppTemplateRepoBranch)
+	if branch == "" {
+		branch = "main"
+	}
+
+	timeout := conf.ProvAppTemplateRepoTimeout
+	if timeout == 0 {
+		timeout = conf.Timeout
+	}
+	if timeout <= 0 {
+		timeout = 30
+	}
+
+	cloneRepo := func(targetDir string) error {
+		if err := os.MkdirAll(filepath.Dir(targetDir), 0750); err != nil {
+			return err
+		}
+		cloneOpt := &git.CloneOptions{
+			URL:           strings.TrimSpace(conf.ProvAppTemplateRepo),
+			ReferenceName: plumbing.NewBranchReferenceName(branch),
+			SingleBranch:  true,
+			Depth:         1,
+		}
+		gitpass := conf.GetDecryptedPassword("App Template Repo Pass", conf.ProvAppTemplateRepoPassword)
+		if gitpass != "" {
+			user := strings.TrimSpace(conf.ProvAppTemplateRepoUser)
+			if user == "" {
+				user = "git"
+			}
+			cloneOpt.Auth = &git_https.BasicAuth{Username: user, Password: gitpass}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+		defer cancel()
+		cloneOpt.Progress = nil
+		_, cloneErr := git.PlainCloneContext(ctx, targetDir, false, cloneOpt)
+		return cloneErr
+	}
+
+	if _, statErr := os.Stat(repoDir); os.IsNotExist(statErr) {
+		if err := cloneRepo(repoDir); err != nil {
+			return repoDir, err
+		}
+		return repoDir, nil
+	} else if statErr != nil {
+		return repoDir, statErr
+	}
+
+	if !forceRefresh {
+		return repoDir, nil
+	}
+
+	tmpDir := fmt.Sprintf("%s.refresh.%d", repoDir, time.Now().UnixNano())
+	if err := os.RemoveAll(tmpDir); err != nil {
+		return repoDir, err
+	}
+	if err := cloneRepo(tmpDir); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return repoDir, err
+	}
+
+	backupDir := fmt.Sprintf("%s.stale.%d", repoDir, time.Now().UnixNano())
+	if err := os.Rename(repoDir, backupDir); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return repoDir, err
+	}
+	if err := os.Rename(tmpDir, repoDir); err != nil {
+		_ = os.Rename(backupDir, repoDir)
+		_ = os.RemoveAll(tmpDir)
+		return repoDir, err
+	}
+	_ = os.RemoveAll(backupDir)
+
+	return repoDir, nil
 }
 
 func GetKeyAliasMap() map[string]string {
