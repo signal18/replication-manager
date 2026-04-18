@@ -120,10 +120,6 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppResetFromTemplatePreview)),
 	))
-	router.Handle("/api/clusters/{clusterName}/apps/{appName}/settings/actions/reset-from-template/preview", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppResetFromTemplatePreview)),
-	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/settings/actions/save-as-template", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppSaveAsTemplate)),
