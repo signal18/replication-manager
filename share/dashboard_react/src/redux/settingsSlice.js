@@ -130,6 +130,20 @@ export const resetAppFromTemplate = createAsyncThunk('settings/resetAppFromTempl
   }
 })
 
+export const previewResetAppTemplateImpact = createAsyncThunk('settings/previewResetAppTemplateImpact', async ({ clusterName, appId, template, forceRefresh = false }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await settingsService.previewResetAppTemplateImpact(clusterName, appId, template, forceRefresh, baseURL)
+    if (status === 200) {
+      return { data, status }
+    }
+    throw new Error(data)
+  } catch (error) {
+    showErrorBanner(`Loading reset impact preview failed!`, error.toString(), thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
 export const previewAppTemplateContent = createAsyncThunk('settings/previewAppTemplateContent', async ({ clusterName, templateName, forceRefresh = false }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''

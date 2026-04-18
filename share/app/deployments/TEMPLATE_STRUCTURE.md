@@ -33,6 +33,14 @@ For every `[[deployment.paths]]` entry:
 - Local writable copies are rewritten to canonical TOML only after validation succeeds.
 - Invalid/ambiguous legacy templates are rejected (they are not silently accepted).
 
+## Template lifecycle operations (Epic 10)
+
+- Source templates (for example `shared/*`) are read-only.
+- Editable templates are local working copies under `.templates/apps`.
+- Create a local copy before editing source templates.
+- Save operations enforce canonicalization and strict path validation.
+- Reset/apply operations support impact preview before apply.
+
 ## Converter for old templates
 
 Use the converter to migrate old templates to canonical form:

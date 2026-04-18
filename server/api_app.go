@@ -116,6 +116,14 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppResetFromTemplate)),
 	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/settings/actions/reset-from-template/preview", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppResetFromTemplatePreview)),
+	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/settings/actions/reset-from-template/preview", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppResetFromTemplatePreview)),
+	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/settings/actions/save-as-template", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppSaveAsTemplate)),
@@ -184,6 +192,19 @@ type appTemplateContentResponse struct {
 	Origin       string `json:"origin"`
 	HasLocalCopy bool   `json:"hasLocalCopy"`
 	Refreshed    bool   `json:"refreshed"`
+}
+
+type appTemplateFieldChange struct {
+	Field string `json:"field"`
+	Old   string `json:"old"`
+	New   string `json:"new"`
+}
+
+type appTemplateResetPreview struct {
+	TemplateName string                   `json:"templateName"`
+	ForceRefresh bool                     `json:"forceRefresh"`
+	ChangeCount  int                      `json:"changeCount"`
+	Changes      []appTemplateFieldChange `json:"changes"`
 }
 
 func validateTemplateNameForLocalWrite(templateName string) error {
@@ -2531,6 +2552,70 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplate(w http.Response
 	}
 }
 
+// @Summary Preview Reset App from Template Impact
+// @Description Previews template-owned field changes that would be applied by reset-from-template.
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Success 200 {object} appTemplateResetPreview
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Server Not Found" or "No cluster"
+// @Router /api/clusters/{clusterName}/apps/{appName}/settings/actions/reset-from-template/preview [post]
+func (repman *ReplicationManager) handlerMuxAppResetFromTemplatePreview(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	node := mycluster.GetAppFromName(vars["appName"])
+	if node == nil {
+		http.Error(w, "Server Not Found", http.StatusInternalServerError)
+		return
+	}
+
+	var body struct {
+		Template     string `json:"template"`
+		ForceRefresh bool   `json:"forceRefresh"`
+	}
+	err := json.NewDecoder(r.Body).Decode(&body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error decoding request body: %v", err), http.StatusBadRequest)
+		return
+	}
+	if body.Template == "" {
+		http.Error(w, "Template name must be provided", http.StatusBadRequest)
+		return
+	}
+
+	tempConfig, err := buildValidatedTempAppConfigFromTemplate(mycluster, node, body.Template, body.ForceRefresh)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error applying template: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	changes := buildTemplateProjectionImpact(node.AppConfig, tempConfig, body.Template)
+	preview := appTemplateResetPreview{
+		TemplateName: body.Template,
+		ForceRefresh: body.ForceRefresh,
+		ChangeCount:  len(changes),
+		Changes:      changes,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(preview)
+}
+
 func buildValidatedTempAppConfigFromTemplate(mycluster *cluster.Cluster, node *cluster.App, templateName string, forceRefresh bool) (*config.AppConfig, error) {
 	var (
 		content []byte
@@ -2619,6 +2704,48 @@ func applyTemplateOwnedProjection(dst, src *config.AppConfig, templateName strin
 	dst.ProvAppAgents = src.ProvAppAgents
 	dst.ProvAppHATopology = src.ProvAppHATopology
 	dst.ProvAppAgentsFailover = src.ProvAppAgentsFailover
+}
+
+func buildTemplateProjectionImpact(current, projected *config.AppConfig, templateName string) []appTemplateFieldChange {
+	if current == nil || projected == nil {
+		return nil
+	}
+
+	deploymentSummary := func(d *config.Deployment) string {
+		if d == nil {
+			return "none"
+		}
+		if raw, err := json.Marshal(d); err == nil {
+			return string(raw)
+		}
+		return fmt.Sprintf("paths=%d volumes=%d git=%d s3mounts=%d", len(d.Paths), len(d.Storages.Volumes), len(d.Storages.GitClones), len(d.Storages.S3Mounts))
+	}
+
+	changes := make([]appTemplateFieldChange, 0)
+	appendIfChanged := func(field string, oldVal, newVal string) {
+		if oldVal == newVal {
+			return
+		}
+		changes = append(changes, appTemplateFieldChange{Field: field, Old: oldVal, New: newVal})
+	}
+
+	appendIfChanged("ProvAppTemplate", current.ProvAppTemplate, templateName)
+	appendIfChanged("ProvAppDockerImg", current.ProvAppDockerImg, projected.ProvAppDockerImg)
+	appendIfChanged("ProvAppDockerCmd", current.ProvAppDockerCmd, projected.ProvAppDockerCmd)
+	appendIfChanged("ProvAppType", current.ProvAppType, projected.ProvAppType)
+	appendIfChanged("ProvAppMem", current.ProvAppMem, projected.ProvAppMem)
+	appendIfChanged("ProvAppCpuCores", current.ProvAppCpuCores, projected.ProvAppCpuCores)
+	appendIfChanged("ProvAppDisk", current.ProvAppDisk, projected.ProvAppDisk)
+	appendIfChanged("ProvAppDiskType", current.ProvAppDiskType, projected.ProvAppDiskType)
+	appendIfChanged("ProvAppRouteAddr", current.ProvAppRouteAddr, projected.ProvAppRouteAddr)
+	appendIfChanged("ProvAppRoutePort", current.ProvAppRoutePort, projected.ProvAppRoutePort)
+	appendIfChanged("ProvAppRouteMask", current.ProvAppRouteMask, projected.ProvAppRouteMask)
+	appendIfChanged("ProvAppAgents", current.ProvAppAgents, projected.ProvAppAgents)
+	appendIfChanged("ProvAppHATopology", current.ProvAppHATopology, projected.ProvAppHATopology)
+	appendIfChanged("ProvAppAgentsFailover", current.ProvAppAgentsFailover, projected.ProvAppAgentsFailover)
+	appendIfChanged("Deployment", deploymentSummary(current.Deployment), deploymentSummary(projected.Deployment))
+
+	return changes
 }
 
 // @Summary Resolve App Template Variable Values

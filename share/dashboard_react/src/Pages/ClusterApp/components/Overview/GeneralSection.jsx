@@ -1,9 +1,9 @@
-import { Flex, Text } from '@chakra-ui/react'
+import { Box, Flex, Text } from '@chakra-ui/react'
 import TextForm from '../../../../components/TextForm';
 import styles from './styles.module.scss';
 import { useDispatch } from 'react-redux';
 import TableType2 from '../../../../components/TableType2';
-import { previewAppTemplateContent, resetAppFromTemplate, saveAppAsTemplate, setAppSetting } from '../../../../redux/settingsSlice';
+import { previewAppTemplateContent, previewResetAppTemplateImpact, resetAppFromTemplate, saveAppAsTemplate, setAppSetting } from '../../../../redux/settingsSlice';
 import Checkboxes from '../../../../components/Checkboxes/Checkboxes';
 import React, { useCallback, useMemo, useState } from 'react';
 import Dropdown from '../../../../components/Dropdown';
@@ -13,6 +13,7 @@ import { HiEye, HiRefresh } from 'react-icons/hi';
 import VariableInputArea from '../../../../components/VariableTree/VariableInputArea';
 import PropTypes from 'prop-types';
 import CopyTextModal from '../../../../components/Modals/CopyTextModal';
+import ConfirmModal from '../../../../components/Modals/ConfirmModal';
 
 const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfig, dockerTemplates, substitution, user }) => {
 
@@ -20,6 +21,10 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
   const [isTemplatePreviewOpen, setIsTemplatePreviewOpen] = useState(false)
   const [templatePreviewContent, setTemplatePreviewContent] = useState('')
   const [templatePreviewTitle, setTemplatePreviewTitle] = useState('Template Preview')
+  const [isResetImpactModalOpen, setIsResetImpactModalOpen] = useState(false)
+  const [resetImpactTemplate, setResetImpactTemplate] = useState('')
+  const [resetImpactForceRefresh, setResetImpactForceRefresh] = useState(false)
+  const [resetImpactChanges, setResetImpactChanges] = useState([])
   const haTopologyOptions = useMemo(() => ([{ value: 'failover', name: 'Failover' }, { value: 'flex', name: 'Flex' }]), []);
   const templateOptions = useMemo(() => {
     const templateList = Array.isArray(dockerTemplates) ? dockerTemplates : []
@@ -30,13 +35,35 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
   const onSaveDockerImage = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-img', value: value })), [clusterName, appId, dispatch])
   const onSaveDockerCmd = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-cmd', value: value })), [clusterName, appId, dispatch])
   const onSaveAppAsTemplate = useCallback(() => dispatch(saveAppAsTemplate({ clusterName: clusterName, appId: appId, template: appName })), [clusterName, appId, appName, dispatch])
-  const onResetAppFromTemplate = useCallback((value) => dispatch(resetAppFromTemplate({ clusterName, appId, template: value })), [clusterName, appId, dispatch])
+  const onResetAppFromTemplate = useCallback((value) => {
+    if (!value) return
+    dispatch(previewResetAppTemplateImpact({ clusterName, appId, template: value, forceRefresh: false }))
+      .unwrap()
+      .then(({ data }) => {
+        setResetImpactTemplate(value)
+        setResetImpactForceRefresh(false)
+        setResetImpactChanges(Array.isArray(data?.changes) ? data.changes : [])
+        setIsResetImpactModalOpen(true)
+      })
+  }, [clusterName, appId, dispatch])
   const onRefreshAndResetAppFromTemplate = useCallback(() => {
     if (!provAppTemplate) {
       return
     }
-    dispatch(resetAppFromTemplate({ clusterName, appId, template: provAppTemplate, forceRefresh: true }))
+    dispatch(previewResetAppTemplateImpact({ clusterName, appId, template: provAppTemplate, forceRefresh: true }))
+      .unwrap()
+      .then(({ data }) => {
+        setResetImpactTemplate(provAppTemplate)
+        setResetImpactForceRefresh(true)
+        setResetImpactChanges(Array.isArray(data?.changes) ? data.changes : [])
+        setIsResetImpactModalOpen(true)
+      })
   }, [clusterName, appId, provAppTemplate, dispatch])
+  const onConfirmResetFromTemplate = useCallback(() => {
+    if (!resetImpactTemplate) return
+    dispatch(resetAppFromTemplate({ clusterName, appId, template: resetImpactTemplate, forceRefresh: resetImpactForceRefresh }))
+    setIsResetImpactModalOpen(false)
+  }, [clusterName, appId, resetImpactTemplate, resetImpactForceRefresh, dispatch])
   const onAgentsChange = useCallback((value) => dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-agents', value: value.toString() })), [clusterName, appId, dispatch])
   const onHATopologyChange = useCallback((value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-ha-topology', value: value })) }, [clusterName, appId, dispatch])
   const onPreviewTemplate = useCallback(() => {
@@ -108,8 +135,6 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
         value: (
           <Flex alignItems='center' gap='8px'>
             <Dropdown
-              confirmTitle="Docker Template Change"
-              confirmBody='Are you sure you want to reset template using: '
               isMenuPortalTarget={true}
               onChange={onResetAppFromTemplate}
               selectedValue={provAppTemplate}
@@ -180,6 +205,34 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
         title={templatePreviewTitle}
         text={templatePreviewContent}
         showPrettyJsonCheckbox={false}
+      />
+      <ConfirmModal
+        isOpen={isResetImpactModalOpen}
+        closeModal={() => setIsResetImpactModalOpen(false)}
+        title={resetImpactForceRefresh ? 'Refresh and Apply Template' : 'Apply Template'}
+        body={
+          <Box>
+            <Text mb={2}>Template: <strong>{resetImpactTemplate}</strong></Text>
+            <Text mb={2}>Detected changes: <strong>{resetImpactChanges.length}</strong></Text>
+            {resetImpactChanges.length > 0 && (
+              <Box as='ul' pl={5} maxH='220px' overflowY='auto'>
+                {resetImpactChanges.slice(0, 12).map((change) => (
+                  <Box as='li' key={`${change.field}-${change.old}-${change.new}`}>
+                    <Text as='span' fontWeight='600'>{change.field}</Text>
+                    <Text as='span'>: {change.old || '(empty)'} → {change.new || '(empty)'}</Text>
+                  </Box>
+                ))}
+                {resetImpactChanges.length > 12 && (
+                  <Box as='li'>
+                    <Text>... and {resetImpactChanges.length - 12} more change(s)</Text>
+                  </Box>
+                )}
+              </Box>
+            )}
+          </Box>
+        }
+        onConfirmClick={onConfirmResetFromTemplate}
+        confirmButtonText='Apply'
       />
     </Flex>
   )

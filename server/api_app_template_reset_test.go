@@ -190,6 +190,47 @@ volumename = "data-volume"
 	}
 }
 
+func TestBuildTemplateProjectionImpact_ReportsChangedTemplateOwnedFields(t *testing.T) {
+	current := seedAppConfigForTemplateResetTests()
+	projected := seedAppConfigForTemplateResetTests()
+	projected.ProvAppDockerImg = "templated/new:1"
+	projected.ProvAppRoutePort = "443"
+	projected.Deployment = &config.Deployment{
+		Paths: config.PathMaps{{Name: "new-root", DockerPath: "/srv/new"}},
+	}
+
+	changes := buildTemplateProjectionImpact(current, projected, "new-template")
+	if len(changes) == 0 {
+		t.Fatalf("expected non-empty change set")
+	}
+
+	hasField := func(field string) bool {
+		for _, c := range changes {
+			if c.Field == field {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !hasField("ProvAppTemplate") {
+		t.Fatalf("expected ProvAppTemplate in changes")
+	}
+	if !hasField("ProvAppDockerImg") {
+		t.Fatalf("expected ProvAppDockerImg in changes")
+	}
+	if !hasField("ProvAppRoutePort") {
+		t.Fatalf("expected ProvAppRoutePort in changes")
+	}
+	if !hasField("Deployment") {
+		t.Fatalf("expected Deployment in changes")
+	}
+
+	if hasField("AppHost") || hasField("AppPort") || hasField("AppDbUser") {
+		t.Fatalf("preserved fields should not be reported in template impact")
+	}
+}
+
 func seedAppConfigForTemplateResetTests() *config.AppConfig {
 	return &config.AppConfig{
 		ProvAppType:           "old-type",
