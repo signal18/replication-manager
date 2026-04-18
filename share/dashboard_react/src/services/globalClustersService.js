@@ -85,5 +85,5 @@ function reloadClustersPlanInfo(download = true) {
 }
 
 function refreshAppTemplateRepo(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/actions/refresh-apps-template`)
+	return getApi(baseURL).get(`clusters/${clusterName}/templates/apps`)
 }

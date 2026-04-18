@@ -3,19 +3,23 @@ import TextForm from '../../../../components/TextForm';
 import styles from './styles.module.scss';
 import { useDispatch } from 'react-redux';
 import TableType2 from '../../../../components/TableType2';
-import { resetAppFromTemplate, saveAppAsTemplate, setAppSetting } from '../../../../redux/settingsSlice';
+import { previewAppTemplateContent, resetAppFromTemplate, saveAppAsTemplate, setAppSetting } from '../../../../redux/settingsSlice';
 import Checkboxes from '../../../../components/Checkboxes/Checkboxes';
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import Dropdown from '../../../../components/Dropdown';
 import RMIconButton from '../../../../components/RMIconButton';
 import { AiOutlineSave } from 'react-icons/ai';
-import { HiRefresh } from 'react-icons/hi';
+import { HiEye, HiRefresh } from 'react-icons/hi';
 import VariableInputArea from '../../../../components/VariableTree/VariableInputArea';
 import PropTypes from 'prop-types';
+import CopyTextModal from '../../../../components/Modals/CopyTextModal';
 
 const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfig, dockerTemplates, substitution, user }) => {
 
   const dispatch = useDispatch();
+  const [isTemplatePreviewOpen, setIsTemplatePreviewOpen] = useState(false)
+  const [templatePreviewContent, setTemplatePreviewContent] = useState('')
+  const [templatePreviewTitle, setTemplatePreviewTitle] = useState('Template Preview')
   const haTopologyOptions = useMemo(() => ([{ value: 'failover', name: 'Failover' }, { value: 'flex', name: 'Flex' }]), []);
   const templateOptions = useMemo(() => {
     const templateList = Array.isArray(dockerTemplates) ? dockerTemplates : []
@@ -35,6 +39,18 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
   }, [clusterName, appId, provAppTemplate, dispatch])
   const onAgentsChange = useCallback((value) => dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-agents', value: value.toString() })), [clusterName, appId, dispatch])
   const onHATopologyChange = useCallback((value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-ha-topology', value: value })) }, [clusterName, appId, dispatch])
+  const onPreviewTemplate = useCallback(() => {
+    if (!provAppTemplate) {
+      return
+    }
+    dispatch(previewAppTemplateContent({ clusterName, templateName: provAppTemplate }))
+      .unwrap()
+      .then(({ data }) => {
+        setTemplatePreviewTitle(`Template Preview: ${data?.name || provAppTemplate}`)
+        setTemplatePreviewContent(data?.content || '')
+        setIsTemplatePreviewOpen(true)
+      })
+  }, [clusterName, provAppTemplate, dispatch])
 
   const dataObject = useMemo(() => {
     return [
@@ -74,7 +90,18 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
       },
       {
         key: 'Docker Template',
-        value: (<Text>{provAppTemplate}</Text>)
+        value: (
+          <Flex alignItems='center' gap='8px'>
+            <Text>{provAppTemplate}</Text>
+            <RMIconButton
+              icon={HiEye}
+              aria-label='Preview template content'
+              tooltip='Preview template content'
+              onClick={onPreviewTemplate}
+              isDisabled={!provAppTemplate}
+            />
+          </Flex>
+        )
       },
       {
         key: 'Reset App From Template',
@@ -142,11 +169,18 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
         )
       },
     ]
-  }, [appName, appHost, provAppDockerImg, onSaveDockerImage, provAppDockerCmd, onSaveDockerCmd, onSaveAppAsTemplate, templateOptions, provAppTemplate, onResetAppFromTemplate, onRefreshAndResetAppFromTemplate, agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions, substitution, user])
+  }, [appName, appHost, provAppDockerImg, onSaveDockerImage, provAppDockerCmd, onSaveDockerCmd, onSaveAppAsTemplate, templateOptions, provAppTemplate, onPreviewTemplate, onResetAppFromTemplate, onRefreshAndResetAppFromTemplate, agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions, substitution, user])
   
   return (
     <Flex direction="column" className={`${styles.tableSectionWrapper}`} w={"100%"} gap="8px">
       <TableType2 dataArray={dataObject} className={styles.table} />
+      <CopyTextModal
+        isOpen={isTemplatePreviewOpen}
+        closeModal={() => setIsTemplatePreviewOpen(false)}
+        title={templatePreviewTitle}
+        text={templatePreviewContent}
+        showPrettyJsonCheckbox={false}
+      />
     </Flex>
   )
 }

@@ -130,6 +130,50 @@ export const resetAppFromTemplate = createAsyncThunk('settings/resetAppFromTempl
   }
 })
 
+export const previewAppTemplateContent = createAsyncThunk('settings/previewAppTemplateContent', async ({ clusterName, templateName, forceRefresh = false }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await settingsService.getAppTemplateContent(clusterName, templateName, forceRefresh, baseURL)
+    if (status === 200) {
+      return { data, status }
+    }
+    throw new Error(data)
+  } catch (error) {
+    showErrorBanner(`Loading template preview failed!`, error.toString(), thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const saveAppTemplateContent = createAsyncThunk('settings/saveAppTemplateContent', async ({ clusterName, templateName, content }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await settingsService.saveAppTemplateContent(clusterName, templateName, content, baseURL)
+    if (status === 200) {
+      showSuccessBanner(`Template saved successfully!`, status, thunkAPI)
+      return { data, status }
+    }
+    throw new Error(data)
+  } catch (error) {
+    showErrorBanner(`Saving template failed!`, error.toString(), thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const deleteAppTemplateContent = createAsyncThunk('settings/deleteAppTemplateContent', async ({ clusterName, templateName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await settingsService.deleteAppTemplateContent(clusterName, templateName, baseURL)
+    if (status === 200) {
+      showSuccessBanner(`Template deleted successfully!`, status, thunkAPI)
+      return { data, status }
+    }
+    throw new Error(data)
+  } catch (error) {
+    showErrorBanner(`Deleting template failed!`, error.toString(), thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
 export const saveAppAsTemplate = createAsyncThunk('settings/saveAppAsTemplate', async ({ clusterName, appId, template }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''

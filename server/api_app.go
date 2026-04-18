@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -147,6 +148,134 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppDropByName)),
 	))
+	router.Handle("/api/clusters/{clusterName}/templates/apps", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppTemplatesList)),
+	))
+	router.Handle("/api/clusters/{clusterName}/templates/apps/{templateName:.*}/content", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppTemplateContent)),
+	))
+	router.Handle("/api/clusters/{clusterName}/templates/apps/{templateName:.*}/content/actions/save", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppTemplateContentSave)),
+	))
+	router.Handle("/api/clusters/{clusterName}/templates/apps/{templateName:.*}/content/actions/delete", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppTemplateContentDelete)),
+	))
+}
+
+type appTemplateSummary struct {
+	Name         string `json:"name"`
+	Origin       string `json:"origin"`
+	Editable     bool   `json:"editable"`
+	HasLocalCopy bool   `json:"hasLocalCopy"`
+	Refreshable  bool   `json:"refreshable"`
+}
+
+type appTemplateContentResponse struct {
+	Name         string `json:"name"`
+	Content      string `json:"content"`
+	Origin       string `json:"origin"`
+	HasLocalCopy bool   `json:"hasLocalCopy"`
+	Refreshed    bool   `json:"refreshed"`
+}
+
+func validateTemplateNameForLocalWrite(templateName string) error {
+	templateName = strings.TrimSpace(templateName)
+	if templateName == "" {
+		return fmt.Errorf("template name must be provided")
+	}
+	if strings.HasPrefix(templateName, "shared/") {
+		return fmt.Errorf("shared templates are read-only; create a local copy before editing")
+	}
+	if strings.Contains(templateName, "..") {
+		return fmt.Errorf("template name contains invalid path traversal")
+	}
+	return nil
+}
+
+func validateCanonicalTemplateContentForSave(mycluster *cluster.Cluster, templateName string, canonicalContent []byte) error {
+	appViper, err := mycluster.LoadTemplateToViper(canonicalContent)
+	if err != nil {
+		return err
+	}
+
+	appcnf := config.AppConfig{Deployment: config.NewDeploymentConfig()}
+	if err := appViper.Unmarshal(&appcnf); err != nil {
+		return err
+	}
+
+	if appcnf.Deployment != nil {
+		if resolveErrs := appcnf.Deployment.ResolvePaths(); len(resolveErrs) > 0 {
+			for _, resolveErr := range resolveErrs {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
+					"Template %q deployment path resolution error: %v", templateName, resolveErr)
+			}
+			return fmt.Errorf("invalid deployment path mapping for template %q", templateName)
+		}
+	}
+
+	return nil
+}
+
+func writeTemplateContentAtomically(path string, content []byte) error {
+	parentDir := filepath.Dir(path)
+	if err := os.MkdirAll(parentDir, 0750); err != nil {
+		return err
+	}
+
+	tmpFile, err := os.CreateTemp(parentDir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+	defer func() {
+		_ = os.Remove(tmpPath)
+	}()
+
+	if _, err := tmpFile.Write(content); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Sync(); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	return nil
+}
+
+func inferTemplateMetadata(mycluster *cluster.Cluster, templateName string) appTemplateSummary {
+	hasLocal := false
+	if mycluster != nil && mycluster.Conf != nil {
+		localPath := filepath.Join(mycluster.Conf.WorkingDir, ".templates", "apps", templateName+".toml")
+		if _, err := os.Stat(localPath); err == nil {
+			hasLocal = true
+		}
+	}
+
+	origin := "repo"
+	if strings.HasPrefix(templateName, "shared/") {
+		origin = "shared"
+	} else if hasLocal {
+		origin = "local"
+	}
+
+	return appTemplateSummary{
+		Name:         templateName,
+		Origin:       origin,
+		Editable:     hasLocal,
+		HasLocalCopy: hasLocal,
+		Refreshable:  origin == "shared" || origin == "repo",
+	}
 }
 
 func validateCustomEndpointCredentialPair(accessKey, secretKey string) error {
@@ -2587,6 +2716,228 @@ func (repman *ReplicationManager) handlerMuxAppRefreshTemplateFromRepo(w http.Re
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
+}
+
+// @Summary List App Templates with Metadata
+// @Description Returns unified app template inventory with source/local metadata.
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} appTemplateSummary
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/templates/apps [get]
+func (repman *ReplicationManager) handlerMuxAppTemplatesList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	if err := repman.GetAppTemplates(); err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"Error refreshing app template inventory: %v", err)
+	}
+
+	seen := make(map[string]bool)
+	result := make([]appTemplateSummary, 0, len(repman.ServiceTemplates))
+	for _, name := range repman.ServiceTemplates {
+		if strings.TrimSpace(name) == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		result = append(result, inferTemplateMetadata(mycluster, name))
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(result)
+}
+
+// @Summary Preview App Template Content
+// @Description Returns canonical app template content for preview, optionally forcing source refresh.
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param templateName path string true "Template Name"
+// @Param forceRefresh query boolean false "Bypass local cache and refresh from source"
+// @Success 200 {object} appTemplateContentResponse
+// @Failure 400 {string} string "Template name must be provided"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/templates/apps/{templateName}/content [get]
+func (repman *ReplicationManager) handlerMuxAppTemplateContent(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	templateName := vars["templateName"]
+	if strings.TrimSpace(templateName) == "" {
+		http.Error(w, "Template name must be provided", http.StatusBadRequest)
+		return
+	}
+
+	forceRefresh := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("forceRefresh")), "true")
+	var (
+		content []byte
+		err     error
+	)
+	if forceRefresh {
+		content, err = mycluster.RefreshTemplateContent(templateName)
+	} else {
+		content, err = mycluster.GetTemplateContent(templateName)
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error getting template content: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	meta := inferTemplateMetadata(mycluster, templateName)
+	resp := appTemplateContentResponse{
+		Name:         templateName,
+		Content:      string(content),
+		Origin:       meta.Origin,
+		HasLocalCopy: meta.HasLocalCopy,
+		Refreshed:    forceRefresh,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// @Summary Save Local App Template Content
+// @Description Saves editable local template content after canonicalization and strict validation.
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param templateName path string true "Template Name"
+// @Param body body object true "Template content payload"
+// @Success 200 {string} string "Template saved successfully"
+// @Failure 400 {string} string "Invalid request"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/templates/apps/{templateName}/content/actions/save [post]
+func (repman *ReplicationManager) handlerMuxAppTemplateContentSave(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	templateName := vars["templateName"]
+	if err := validateTemplateNameForLocalWrite(templateName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, fmt.Sprintf("Error decoding request body: %v", err), http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(body.Content) == "" {
+		http.Error(w, "Template content must be provided", http.StatusBadRequest)
+		return
+	}
+
+	canonicalContent, _, err := config.CanonicalizeAppTemplateTOML([]byte(body.Content))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error canonicalizing template content: %v", err), http.StatusBadRequest)
+		return
+	}
+	if err := validateCanonicalTemplateContentForSave(mycluster, templateName, canonicalContent); err != nil {
+		http.Error(w, fmt.Sprintf("Error validating template content: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	localPath := filepath.Join(mycluster.Conf.WorkingDir, ".templates", "apps", templateName+".toml")
+	if err := writeTemplateContentAtomically(localPath, canonicalContent); err != nil {
+		http.Error(w, fmt.Sprintf("Error saving template content: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("Template saved successfully"))
+}
+
+// @Summary Delete Local App Template Content
+// @Description Deletes editable local template content.
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param templateName path string true "Template Name"
+// @Success 200 {string} string "Template deleted successfully"
+// @Failure 400 {string} string "Invalid request"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "Template not found"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/templates/apps/{templateName}/content/actions/delete [post]
+func (repman *ReplicationManager) handlerMuxAppTemplateContentDelete(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	templateName := vars["templateName"]
+	if err := validateTemplateNameForLocalWrite(templateName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	localPath := filepath.Join(mycluster.Conf.WorkingDir, ".templates", "apps", templateName+".toml")
+	if _, err := os.Stat(localPath); os.IsNotExist(err) {
+		http.Error(w, "Template not found", http.StatusNotFound)
+		return
+	}
+	if err := os.Remove(localPath); err != nil {
+		http.Error(w, fmt.Sprintf("Error deleting template content: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("Template deleted successfully"))
 }
 
 // @Summary Drop App Monitor

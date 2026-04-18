@@ -11,6 +11,9 @@ export const settingsService = {
   switchAppSettings,
   clearAppSetting,
   resetAppFromTemplate,
+  getAppTemplateContent,
+  saveAppTemplateContent,
+  deleteAppTemplateContent,
   saveAppAsTemplate,
   reloadPlanInfo
 }
@@ -67,6 +70,21 @@ function resetAppFromTemplate(clusterName, appId, template, forceRefresh = false
     payload.forceRefresh = true
   }
   return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/settings/actions/reset-from-template`, payload)
+}
+
+function getAppTemplateContent(clusterName, templateName, forceRefresh = false, baseURL) {
+	const query = forceRefresh ? '?forceRefresh=true' : ''
+	return getApi(baseURL).get(`clusters/${clusterName}/templates/apps/${templateName}/content${query}`)
+}
+
+function saveAppTemplateContent(clusterName, templateName, content, baseURL) {
+	return getApi(baseURL).post(`clusters/${clusterName}/templates/apps/${templateName}/content/actions/save`, {
+		content
+	})
+}
+
+function deleteAppTemplateContent(clusterName, templateName, baseURL) {
+	return getApi(baseURL).post(`clusters/${clusterName}/templates/apps/${templateName}/content/actions/delete`)
 }
 
 function saveAppAsTemplate( clusterName, appId, template, baseURL) {

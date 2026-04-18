@@ -322,7 +322,13 @@ export const globalClustersSlice = createSlice({
         state.error = action.error
       })
       .addCase(refreshAppTemplateRepo.fulfilled, (state, action) => {
-        state.monitor.serviceTemplates = action.payload.data
+        const templateRows = Array.isArray(action.payload.data) ? action.payload.data : []
+        const templateNames = templateRows.map((row) => row?.name).filter(Boolean)
+        if (!state.monitor) {
+          state.monitor = {}
+        }
+        state.monitor.serviceTemplates = templateNames
+        state.monitor.serviceTemplateMetadata = templateRows
       })
       .addCase(refreshAppTemplateRepo.rejected, (state, action) => {
         state.error = action.error
