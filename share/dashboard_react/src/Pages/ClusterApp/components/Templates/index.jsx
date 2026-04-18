@@ -33,21 +33,6 @@ function Templates({ clusterName, appConfig, user }) {
     }
   }, [appConfig?.provAppTemplate, selectedTemplate])
 
-  useEffect(() => {
-    if (!selectedTemplate) {
-      return
-    }
-    if (isDirty) {
-      return
-    }
-    if (content !== '') {
-      return
-    }
-    loadTemplateContent(false)
-  }, [selectedTemplate, content, isDirty, loadTemplateContent])
-
-  const selectedMeta = useMemo(() => templateMeta.find((row) => row?.name === selectedTemplate), [templateMeta, selectedTemplate])
-
   const loadTemplateContent = useCallback((forceRefresh = false) => {
     if (!selectedTemplate) return
     if (isDirty) {
@@ -65,6 +50,21 @@ function Templates({ clusterName, appConfig, user }) {
       })
       .finally(() => setIsLoadingContent(false))
   }, [clusterName, selectedTemplate, isDirty, dispatch])
+
+  const selectedMeta = useMemo(() => templateMeta.find((row) => row?.name === selectedTemplate), [templateMeta, selectedTemplate])
+
+  useEffect(() => {
+    if (!selectedTemplate) {
+      return
+    }
+    if (isDirty) {
+      return
+    }
+    if (content !== '') {
+      return
+    }
+    loadTemplateContent(false)
+  }, [selectedTemplate, content, isDirty, loadTemplateContent])
 
   const handleSave = useCallback(() => {
     if (!selectedTemplate || !isDirty) return
