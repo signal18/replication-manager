@@ -12,11 +12,22 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/signal18/replication-manager/config"
 )
 
 const s3ProvidersFileName = "s3providers.json"
+
+// s3ProviderState holds in-memory S3 provider data and its synchronization.
+// LOCKING CONTRACT:
+//   - providers reads/writes must hold mu (RLock for reads, Lock for writes)
+//   - mutate+persist(+rollback) sequences must hold crudMu
+type s3ProviderState struct {
+	providers []config.S3Provider
+	mu        sync.RWMutex
+	crudMu    sync.Mutex
+}
 
 // s3ProviderOnDisk is a private struct used exclusively for file I/O.
 // It bypasses config.S3Provider.MarshalJSON (which always omits credentials)
@@ -109,15 +120,15 @@ func (cluster *Cluster) LoadS3Providers() error {
 	path := cluster.s3ProvidersFilePath()
 	data, err := os.ReadFile(path)
 	if err != nil {
-		cluster.clusterS3ProvidersMu.Lock()
-		defer cluster.clusterS3ProvidersMu.Unlock()
+		cluster.s3Providers.mu.Lock()
+		defer cluster.s3Providers.mu.Unlock()
 		if !os.IsNotExist(err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 				"Failed to read S3 providers file %s: %v", path, err)
-			cluster.clusterS3Providers = []config.S3Provider{}
+			cluster.s3Providers.providers = []config.S3Provider{}
 			return fmt.Errorf("read S3 providers file %s: %w", path, err)
 		}
-		cluster.clusterS3Providers = []config.S3Provider{}
+		cluster.s3Providers.providers = []config.S3Provider{}
 		return nil
 	}
 
@@ -125,9 +136,9 @@ func (cluster *Cluster) LoadS3Providers() error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 			"Failed to parse S3 providers file %s: %v", path, err)
-		cluster.clusterS3ProvidersMu.Lock()
-		defer cluster.clusterS3ProvidersMu.Unlock()
-		cluster.clusterS3Providers = []config.S3Provider{}
+		cluster.s3Providers.mu.Lock()
+		defer cluster.s3Providers.mu.Unlock()
+		cluster.s3Providers.providers = []config.S3Provider{}
 		return fmt.Errorf("parse S3 providers file %s: %w", path, err)
 	}
 
@@ -158,9 +169,9 @@ func (cluster *Cluster) LoadS3Providers() error {
 		valid = append(valid, p)
 	}
 
-	cluster.clusterS3ProvidersMu.Lock()
-	defer cluster.clusterS3ProvidersMu.Unlock()
-	cluster.clusterS3Providers = valid
+	cluster.s3Providers.mu.Lock()
+	defer cluster.s3Providers.mu.Unlock()
+	cluster.s3Providers.providers = valid
 
 	if skipped > 0 {
 		return fmt.Errorf("S3 providers file %s: %d record(s) skipped due to validation errors or duplicate names — check logs for details", path, skipped)
@@ -174,13 +185,13 @@ func (cluster *Cluster) LoadS3Providers() error {
 // (which omits credentials) so that encrypted secrets reach the file.
 // File permissions are 0600 (owner read/write only).
 func (cluster *Cluster) SaveS3Providers() error {
-	cluster.clusterS3ProvidersMu.RLock()
-	snapshot := make([]config.S3Provider, len(cluster.clusterS3Providers))
-	copy(snapshot, cluster.clusterS3Providers)
-	cluster.clusterS3ProvidersMu.RUnlock()
+	cluster.s3Providers.mu.RLock()
+	snapshot := make([]config.S3Provider, len(cluster.s3Providers.providers))
+	copy(snapshot, cluster.s3Providers.providers)
+	cluster.s3Providers.mu.RUnlock()
 
 	// Validate all providers and reject duplicate names before touching the file.
-	// This guards against state mutated directly via the unexported clusterS3Providers field
+	// This guards against state mutated directly via the grouped in-memory state
 	// (possible within the cluster package, e.g. in tests or internal helpers).
 	seen := make(map[string]struct{}, len(snapshot))
 	for i := range snapshot {
@@ -214,14 +225,25 @@ func (cluster *Cluster) SaveS3Providers() error {
 	return nil
 }
 
+// WithS3ProviderCRUDLock serializes S3 provider mutate+persist(+rollback)
+// transactions across concurrent API requests.
+func (cluster *Cluster) WithS3ProviderCRUDLock(run func() error) error {
+	cluster.s3Providers.crudMu.Lock()
+	defer cluster.s3Providers.crudMu.Unlock()
+	if run == nil {
+		return nil
+	}
+	return run()
+}
+
 // GetS3ProvidersSnapshot returns a deep copy of ClusterS3Providers under the
 // read lock. Use this in API response assembly to avoid races with concurrent
 // CRUD mutations (AddS3Provider, UpdateS3Provider, RemoveS3Provider).
 func (cluster *Cluster) GetS3ProvidersSnapshot() []config.S3Provider {
-	cluster.clusterS3ProvidersMu.RLock()
-	defer cluster.clusterS3ProvidersMu.RUnlock()
-	snapshot := make([]config.S3Provider, len(cluster.clusterS3Providers))
-	copy(snapshot, cluster.clusterS3Providers)
+	cluster.s3Providers.mu.RLock()
+	defer cluster.s3Providers.mu.RUnlock()
+	snapshot := make([]config.S3Provider, len(cluster.s3Providers.providers))
+	copy(snapshot, cluster.s3Providers.providers)
 	return snapshot
 }
 
@@ -232,27 +254,27 @@ func (cluster *Cluster) AddS3Provider(p config.S3Provider) error {
 	if err := p.Validate(); err != nil {
 		return fmt.Errorf("invalid S3 provider: %w", err)
 	}
-	cluster.clusterS3ProvidersMu.Lock()
-	defer cluster.clusterS3ProvidersMu.Unlock()
-	for _, existing := range cluster.clusterS3Providers {
+	cluster.s3Providers.mu.Lock()
+	defer cluster.s3Providers.mu.Unlock()
+	for _, existing := range cluster.s3Providers.providers {
 		if existing.Name == p.Name {
 			// Name matching is case-sensitive: "Provider" and "provider" are distinct.
 			return fmt.Errorf("S3 provider with name %q already exists (name comparison is case-sensitive)", p.Name)
 		}
 	}
-	cluster.clusterS3Providers = append(cluster.clusterS3Providers, p)
+	cluster.s3Providers.providers = append(cluster.s3Providers.providers, p)
 	return nil
 }
 
 // RemoveS3Provider removes the provider whose Name equals name under a write lock.
 func (cluster *Cluster) RemoveS3Provider(name string) error {
-	cluster.clusterS3ProvidersMu.Lock()
-	defer cluster.clusterS3ProvidersMu.Unlock()
-	for i, p := range cluster.clusterS3Providers {
+	cluster.s3Providers.mu.Lock()
+	defer cluster.s3Providers.mu.Unlock()
+	for i, p := range cluster.s3Providers.providers {
 		if p.Name == name {
-			cluster.clusterS3Providers = append(
-				cluster.clusterS3Providers[:i],
-				cluster.clusterS3Providers[i+1:]...,
+			cluster.s3Providers.providers = append(
+				cluster.s3Providers.providers[:i],
+				cluster.s3Providers.providers[i+1:]...,
 			)
 			return nil
 		}
@@ -267,11 +289,11 @@ func (cluster *Cluster) UpdateS3Provider(p config.S3Provider) error {
 	if err := p.Validate(); err != nil {
 		return fmt.Errorf("invalid S3 provider: %w", err)
 	}
-	cluster.clusterS3ProvidersMu.Lock()
-	defer cluster.clusterS3ProvidersMu.Unlock()
-	for i, existing := range cluster.clusterS3Providers {
+	cluster.s3Providers.mu.Lock()
+	defer cluster.s3Providers.mu.Unlock()
+	for i, existing := range cluster.s3Providers.providers {
 		if existing.Name == p.Name {
-			cluster.clusterS3Providers[i] = p
+			cluster.s3Providers.providers[i] = p
 			return nil
 		}
 	}

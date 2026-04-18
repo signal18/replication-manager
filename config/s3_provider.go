@@ -26,11 +26,13 @@ const (
 // S3Provider holds the definition of a saved S3 provider in the cluster library.
 // It is persisted per-cluster in a JSON file outside config.toml.
 //
-// Secret handling: AccessKey and SecretKey are held in plaintext in memory (needed
-// by the provisioning path). They are encrypted at rest (config.GetEncryptedString)
-// before being written to disk, and decrypted on load. They are NEVER emitted by
-// MarshalJSON — use the dedicated persistence struct in cluster_s3_providers.go for
-// file I/O.
+// Credential handling: AccessKey and SecretKey are held in plaintext in memory
+// (needed by the provisioning path). They are encrypted at rest
+// (config.GetEncryptedString) before being written to disk, and decrypted on load.
+// Product policy classifies AccessKey as config/env (not secret), but API contract
+// still forbids returning stored credentials to the UI.
+// MarshalJSON therefore omits both AccessKey and SecretKey; use the dedicated
+// persistence struct in cluster_s3_providers.go for file I/O.
 type S3Provider struct {
 	Name           string           `json:"name"                  groups:"web"`
 	ProviderSource S3ProviderSource `json:"providerSource"        groups:"web"`
@@ -55,9 +57,10 @@ type s3ProviderWeb struct {
 	Region         string           `json:"region,omitempty"`
 }
 
-// MarshalJSON emits only non-sensitive fields. Credentials (AccessKey, SecretKey)
-// are always omitted. File persistence must use a private disk struct that bypasses
-// this method — see cluster/cluster_s3_providers.go.
+// MarshalJSON emits only non-sensitive fields.
+// Credentials (AccessKey, SecretKey) are always omitted by API serialization.
+// File persistence must use a private disk struct that bypasses this method —
+// see cluster/cluster_s3_providers.go.
 func (p S3Provider) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s3ProviderWeb{
 		Name:           p.Name,

@@ -557,6 +557,10 @@ func (cluster *Cluster) resolveS3MountProvisioningEndpoint(app *App, s3m *config
 	if s3m == nil {
 		return "", errors.New("S3 mount is nil")
 	}
+	// Provider-linked mounts are hydrated server-side (API add/modify paths) so
+	// provisioning can safely consume the mount's effective endpoint/credentials.
+	// Provisioning never calls provider GET/list APIs and does not depend on
+	// credentials being returned to UI.
 
 	if s3m.Endpoint != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg,

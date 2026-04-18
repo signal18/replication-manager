@@ -156,15 +156,10 @@ type Cluster struct {
 	DiskType                      map[string]string      `json:"diskType" groups:"web"`
 	VMType                        map[string]bool        `json:"vmType" groups:"web"`
 	AppS3Providers                []string               `json:"appS3Providers" groups:"web"`
-	// clusterS3Providers holds the in-memory S3 provider list for this cluster.
-	// LOCKING CONTRACT: all reads and writes MUST be performed under
-	// clusterS3ProvidersMu (RLock for reads, Lock for writes).
-	// Use the accessor methods AddS3Provider, RemoveS3Provider, UpdateS3Provider,
-	// and GetS3ProvidersSnapshot — do NOT assign to this field directly.
-	// The field is unexported so external packages are forced to use the
-	// accessors; JSON exclusion is automatic for unexported fields.
-	// API response paths must inject a snapshot via GetS3ProvidersSnapshot() + sjson.
-	clusterS3Providers []config.S3Provider
+	// s3Providers groups S3 provider state and locking primitives in one place.
+	// Use the accessor methods (Add/Remove/Update/GetS3ProvidersSnapshot) and
+	// CRUD transaction lock helpers instead of direct field mutation.
+	s3Providers s3ProviderState
 	Agents             []Agent                    `json:"agents" groups:"web"`
 	AgentMaxFreq       map[string]int64           `json:"-"`
 	hostList           []string                   `json:"-"`
@@ -280,7 +275,6 @@ type Cluster struct {
 	preservedVarsLoaded         bool                       `json:"-"`
 	preservedVarsMutex          sync.RWMutex               `json:"-"`
 	s3SyncApplyMu               sync.Mutex                 `json:"-"`
-	clusterS3ProvidersMu        sync.RWMutex               `json:"-"`
 	secretVersionStoreMu        sync.Mutex                 `json:"-"`
 	secretVersionStoreDirty     bool                       `json:"-"`
 	// pluginSpikeCache holds the last DetectSpike result per server+plugin pair.

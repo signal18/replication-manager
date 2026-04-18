@@ -555,10 +555,10 @@ func (cluster *Cluster) ApplyS3ProviderSync(providerName string, targets []SyncT
 	defer cluster.s3SyncApplyMu.Unlock()
 
 	// Keep provider set stable for token revalidation + apply.
-	cluster.clusterS3ProvidersMu.RLock()
-	defer cluster.clusterS3ProvidersMu.RUnlock()
-	providerSnapshot := make([]config.S3Provider, len(cluster.clusterS3Providers))
-	copy(providerSnapshot, cluster.clusterS3Providers)
+	cluster.s3Providers.mu.RLock()
+	defer cluster.s3Providers.mu.RUnlock()
+	providerSnapshot := make([]config.S3Provider, len(cluster.s3Providers.providers))
+	copy(providerSnapshot, cluster.s3Providers.providers)
 
 	provider := findProviderByName(providerSnapshot, providerName)
 	lockAppIDs := cluster.syncApplyLockAppIDs(provider, targets)
@@ -606,7 +606,7 @@ func (cluster *Cluster) ApplyS3ProviderSync(providerName string, targets []SyncT
 // applySingleMountSyncLocked mutates one mount's provider-managed fields to
 // match the provider and persists the parent app. provider may be nil
 // (provider_missing). Caller must hold lockSyncTargetApps(targets) and
-// clusterS3ProvidersMu.RLock().
+// s3Providers.mu.RLock().
 // When SaveApp fails, provider-managed field mutations are rolled back and the
 // caller receives SyncStatusError with ErrorMessage.
 func (cluster *Cluster) applySingleMountSyncLocked(provider *config.S3Provider, providerName string, targetApp *App, target SyncTarget) SyncApplyResult {

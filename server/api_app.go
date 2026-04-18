@@ -158,6 +158,85 @@ func validateCustomEndpointCredentialPair(accessKey, secretKey string) error {
 	return nil
 }
 
+// validateStandaloneCustomEndpointCredentials enforces the product contract for
+// standalone custom mounts (no providerName): both credentials must be supplied.
+func validateStandaloneCustomEndpointCredentials(accessKey, secretKey string) error {
+	if err := validateCustomEndpointCredentialPair(accessKey, secretKey); err != nil {
+		return err
+	}
+	if strings.TrimSpace(accessKey) == "" {
+		return fmt.Errorf("standalone custom endpoint mounts require both accesskey and secretkey")
+	}
+	return nil
+}
+
+// hydrateS3MountFromProvider applies provider-managed fields to a provider-linked
+// mount using ProviderName as the server-side authority.
+//
+// Contract notes:
+//   - UI may submit credentials, but provider GET/list APIs never return stored
+//     credentials to the UI.
+//   - AccessKey remains classified as config/env (not secret) by product decision,
+//     yet provider APIs still omit it.
+//   - For provider-linked mounts, endpoint/region/credentials are resolved here.
+func hydrateS3MountFromProvider(mycluster *cluster.Cluster, mount *config.S3Mount) error {
+	if mount == nil {
+		return fmt.Errorf("s3 mount is nil")
+	}
+	providerName := strings.TrimSpace(mount.ProviderName)
+	if providerName == "" {
+		return nil
+	}
+
+	var provider *config.S3Provider
+	for _, p := range mycluster.GetS3ProvidersSnapshot() {
+		if p.Name == providerName {
+			cp := p
+			provider = &cp
+			break
+		}
+	}
+	if provider == nil {
+		return fmt.Errorf("provider %q not found", providerName)
+	}
+
+	switch provider.ProviderSource {
+	case config.S3ProviderSourceCustom:
+		mount.Endpoint = provider.Endpoint
+		mount.Region = provider.Region
+		mount.AccessKey = provider.AccessKey
+		mount.SecretKey = provider.SecretKey
+	case config.S3ProviderSourceApp:
+		s3node, _ := mycluster.GetAppByURL(provider.ProviderApp)
+		if s3node == nil {
+			return fmt.Errorf("provider %q references unknown app endpoint %q", providerName, provider.ProviderApp)
+		}
+		acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
+		if err != nil || acckey == nil {
+			return fmt.Errorf("S3 endpoint app does not have MINIO_ROOT_USER variable set")
+		}
+		secretkey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_PASSWORD", false)
+		if err != nil || secretkey == nil {
+			return fmt.Errorf("S3 endpoint app does not have MINIO_ROOT_PASSWORD variable set")
+		}
+
+		mount.Endpoint = provider.ProviderApp
+		mount.AccessKey = acckey.Value
+		mount.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(mount.Name, secretkey.Value))
+
+		region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
+		if region != nil {
+			mount.Region = region.Value
+		} else {
+			mount.Region = ""
+		}
+	default:
+		return fmt.Errorf("unsupported provider source %q", provider.ProviderSource)
+	}
+
+	return nil
+}
+
 // @Summary Shows the apps for that specific named cluster
 // @Description Shows the apps for that specific named cluster
 // @Tags Apps
@@ -1271,6 +1350,11 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			return
 		}
 
+		if err := hydrateS3MountFromProvider(mycluster, row); err != nil {
+			http.Error(w, "Error resolving provider-linked S3 mount: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
 		// Story 6.7 – compatibility fix: allow custom-endpoint mounts to be created even when
 		// GetAppByURL returns nil (i.e., the endpoint does not resolve to a sibling app in this cluster).
 		// This path is reached by mounts that carry their own credentials (copied from a saved provider
@@ -1279,9 +1363,14 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 		s3node, _ := mycluster.GetAppByURL(row.Endpoint)
 		if s3node == nil && row.Endpoint != "" {
 			// Custom-endpoint mount: row.Endpoint is set but no sibling app found.
-			// row.AccessKey / row.SecretKey must already be populated (copied from saved provider or manual entry).
-			// Proceed to InsertS3Mount without credential derivation. row.ProviderName may be set for traceability.
-			if err := validateCustomEndpointCredentialPair(row.AccessKey, row.SecretKey); err != nil {
+			// Standalone mounts must provide credentials locally; provider-linked mounts
+			// resolve credentials server-side from providerName above.
+			if strings.TrimSpace(row.ProviderName) == "" {
+				if err := validateStandaloneCustomEndpointCredentials(row.AccessKey, row.SecretKey); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			} else if err := validateCustomEndpointCredentialPair(row.AccessKey, row.SecretKey); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -1302,7 +1391,7 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			}
 		}
 
-		if s3node != nil {
+		if s3node != nil && strings.TrimSpace(row.ProviderName) == "" {
 			// Derive credentials from sibling app only when endpoint resolved to an app.
 			acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
 			if err != nil || acckey == nil {
@@ -1684,7 +1773,12 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					}
 					// When s3node is nil (custom endpoint): keep existing s3Mount.AccessKey/SecretKey.
 					if s3node == nil {
-						if err := validateCustomEndpointCredentialPair(s3Mount.AccessKey, s3Mount.SecretKey); err != nil {
+						if strings.TrimSpace(s3Mount.ProviderName) == "" {
+							if err := validateStandaloneCustomEndpointCredentials(s3Mount.AccessKey, s3Mount.SecretKey); err != nil {
+								http.Error(w, err.Error(), http.StatusBadRequest)
+								return
+							}
+						} else if err := validateCustomEndpointCredentialPair(s3Mount.AccessKey, s3Mount.SecretKey); err != nil {
 							http.Error(w, err.Error(), http.StatusBadRequest)
 							return
 						}
@@ -1756,6 +1850,20 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 				default:
 					http.Error(w, "Invalid key for s3Mounts", http.StatusInternalServerError)
 					return
+				}
+
+				if err := hydrateS3MountFromProvider(mycluster, s3Mount); err != nil {
+					http.Error(w, "Error resolving provider-linked S3 mount: "+err.Error(), http.StatusBadRequest)
+					return
+				}
+				if strings.TrimSpace(s3Mount.ProviderName) == "" {
+					s3node, _ := mycluster.GetAppByURL(s3Mount.Endpoint)
+					if s3node == nil && strings.TrimSpace(s3Mount.Endpoint) != "" {
+						if err := validateStandaloneCustomEndpointCredentials(s3Mount.AccessKey, s3Mount.SecretKey); err != nil {
+							http.Error(w, err.Error(), http.StatusBadRequest)
+							return
+						}
+					}
 				}
 			default:
 				http.Error(w, "Invalid field", http.StatusInternalServerError)

@@ -5926,7 +5926,7 @@ func (repman *ReplicationManager) handlerMuxClusterWaitDatabases(w http.Response
 // @Router /api/clusters/{clusterName} [get]
 // buildClusterAPIPayload serialises mycluster into the JSON payload returned by
 // GET /api/clusters/{clusterName}. It replaces the clusterS3Providers field
-// with a safely-snapshotted copy (acquired under clusterS3ProvidersMu) so
+// with a safely-snapshotted copy (acquired under the grouped s3Providers state lock) so
 // concurrent CRUD mutations cannot produce a racy or inconsistent response.
 func buildClusterAPIPayload(mycluster *cluster.Cluster) ([]byte, error) {
 	cl, err := json.Marshal(mycluster)
@@ -9066,9 +9066,12 @@ type s3ProviderRequest struct {
 	SecretKey      string                  `json:"secretkey,omitempty"`
 }
 
-// s3ProviderResponse is the JSON read response struct. SecretKey is set to "****"
-// when a secret exists so the UI can indicate that credentials are configured
-// without exposing the plaintext value.
+// s3ProviderResponse is the JSON read response struct for provider GET/list APIs.
+// Product contract: stored credentials are never returned to the UI.
+//   - AccessKey is intentionally omitted (even though product classifies it as
+//     config/env, not a secret).
+//   - SecretKey is represented as "****" when present to indicate configuration
+//     without exposing credential material.
 type s3ProviderResponse struct {
 	Name           string                  `json:"name"`
 	ProviderSource config.S3ProviderSource `json:"providerSource"`
@@ -9078,8 +9081,8 @@ type s3ProviderResponse struct {
 	SecretKey      string                  `json:"secretkey,omitempty"`
 }
 
-// maskS3Provider builds a read-safe response from a provider, substituting a fixed
-// mask ("****") for any non-empty SecretKey.
+// maskS3Provider builds a read-safe response from a provider:
+// AccessKey omitted, SecretKey masked.
 func maskS3Provider(p config.S3Provider) s3ProviderResponse {
 	resp := s3ProviderResponse{
 		Name:           p.Name,
@@ -9165,46 +9168,49 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderAdd(w http.Response
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
-	var req s3ProviderRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
-		return
-	}
-	p := config.S3Provider{
-		Name:           req.Name,
-		ProviderSource: req.ProviderSource,
-		ProviderApp:    req.ProviderApp,
-		Endpoint:       req.Endpoint,
-		Region:         req.Region,
-		AccessKey:      req.AccessKey,
-		SecretKey:      req.SecretKey,
-	}
-	if err := p.Validate(); err != nil {
-		http.Error(w, fmt.Sprintf("Validation error: %v", err), http.StatusBadRequest)
-		return
-	}
-	if err := validateS3ProviderAPIRequest(p, mycluster); err != nil {
-		http.Error(w, fmt.Sprintf("Validation error: %v", err), http.StatusBadRequest)
-		return
-	}
-	if err := mycluster.AddS3Provider(p); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to add S3 provider: %v", err), http.StatusConflict)
-		return
-	}
-	if err := mycluster.SaveS3Providers(); err != nil {
-		// Rollback the in-memory add so state does not diverge from disk.
-		if rbErr := mycluster.RemoveS3Provider(p.Name); rbErr != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-				"Rollback of in-memory add failed for %q: %v", p.Name, rbErr)
+	_ = mycluster.WithS3ProviderCRUDLock(func() error {
+		var req s3ProviderRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+			return nil
 		}
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-			"Failed to persist S3 providers after add of %q: %v", p.Name, err)
-		http.Error(w, fmt.Sprintf("Failed to persist S3 provider: %v", err), http.StatusInternalServerError)
-		return
-	}
-	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-		"S3 provider %q added to cluster library", p.Name)
-	w.WriteHeader(http.StatusCreated)
+		p := config.S3Provider{
+			Name:           req.Name,
+			ProviderSource: req.ProviderSource,
+			ProviderApp:    req.ProviderApp,
+			Endpoint:       req.Endpoint,
+			Region:         req.Region,
+			AccessKey:      req.AccessKey,
+			SecretKey:      req.SecretKey,
+		}
+		if err := p.Validate(); err != nil {
+			http.Error(w, fmt.Sprintf("Validation error: %v", err), http.StatusBadRequest)
+			return nil
+		}
+		if err := validateS3ProviderAPIRequest(p, mycluster); err != nil {
+			http.Error(w, fmt.Sprintf("Validation error: %v", err), http.StatusBadRequest)
+			return nil
+		}
+		if err := mycluster.AddS3Provider(p); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to add S3 provider: %v", err), http.StatusConflict)
+			return nil
+		}
+		if err := mycluster.SaveS3Providers(); err != nil {
+			// Rollback the in-memory add so state does not diverge from disk.
+			if rbErr := mycluster.RemoveS3Provider(p.Name); rbErr != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+					"Rollback of in-memory add failed for %q: %v", p.Name, rbErr)
+			}
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Failed to persist S3 providers after add of %q: %v", p.Name, err)
+			http.Error(w, fmt.Sprintf("Failed to persist S3 provider: %v", err), http.StatusInternalServerError)
+			return nil
+		}
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"S3 provider %q added to cluster library", p.Name)
+		w.WriteHeader(http.StatusCreated)
+		return nil
+	})
 }
 
 // prepareModifyProvider builds a fully-validated S3Provider for the modify path.
@@ -9266,38 +9272,41 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderModify(w http.Respo
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
-	var req s3ProviderRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
-		return
-	}
-	// URL path name is authoritative to prevent accidental rename.
-	req.Name = vars["name"]
-	p, oldProvider, err := prepareModifyProvider(req, mycluster)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Validation error: %v", err), http.StatusBadRequest)
-		return
-	}
-	if err := mycluster.UpdateS3Provider(p); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to update S3 provider: %v", err), http.StatusNotFound)
-		return
-	}
-	if err := mycluster.SaveS3Providers(); err != nil {
-		// Rollback the in-memory update so state does not diverge from disk.
-		if oldProvider != nil {
-			if rbErr := mycluster.UpdateS3Provider(*oldProvider); rbErr != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-					"Rollback of in-memory modify failed for %q: %v", p.Name, rbErr)
-			}
+	_ = mycluster.WithS3ProviderCRUDLock(func() error {
+		var req s3ProviderRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+			return nil
 		}
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-			"Failed to persist S3 providers after modify of %q: %v", p.Name, err)
-		http.Error(w, fmt.Sprintf("Failed to persist S3 provider: %v", err), http.StatusInternalServerError)
-		return
-	}
-	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-		"S3 provider %q modified in cluster library", p.Name)
-	w.WriteHeader(http.StatusOK)
+		// URL path name is authoritative to prevent accidental rename.
+		req.Name = vars["name"]
+		p, oldProvider, err := prepareModifyProvider(req, mycluster)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Validation error: %v", err), http.StatusBadRequest)
+			return nil
+		}
+		if err := mycluster.UpdateS3Provider(p); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to update S3 provider: %v", err), http.StatusNotFound)
+			return nil
+		}
+		if err := mycluster.SaveS3Providers(); err != nil {
+			// Rollback the in-memory update so state does not diverge from disk.
+			if oldProvider != nil {
+				if rbErr := mycluster.UpdateS3Provider(*oldProvider); rbErr != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+						"Rollback of in-memory modify failed for %q: %v", p.Name, rbErr)
+				}
+			}
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Failed to persist S3 providers after modify of %q: %v", p.Name, err)
+			http.Error(w, fmt.Sprintf("Failed to persist S3 provider: %v", err), http.StatusInternalServerError)
+			return nil
+		}
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"S3 provider %q modified in cluster library", p.Name)
+		w.WriteHeader(http.StatusOK)
+		return nil
+	})
 }
 
 // handlerMuxClusterS3ProviderDrop removes an S3 provider from the cluster library.
@@ -9313,36 +9322,39 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderDrop(w http.Respons
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
-	name := vars["name"]
-	// Capture old state before removal so we can roll back if save fails.
-	var oldProvider *config.S3Provider
-	for _, sp := range mycluster.GetS3ProvidersSnapshot() {
-		if sp.Name == name {
-			cp := sp
-			oldProvider = &cp
-			break
-		}
-	}
-	if err := mycluster.RemoveS3Provider(name); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to remove S3 provider: %v", err), http.StatusNotFound)
-		return
-	}
-	if err := mycluster.SaveS3Providers(); err != nil {
-		// Rollback the in-memory removal so state does not diverge from disk.
-		if oldProvider != nil {
-			if rbErr := mycluster.AddS3Provider(*oldProvider); rbErr != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-					"Rollback of in-memory drop failed for %q: %v", name, rbErr)
+	_ = mycluster.WithS3ProviderCRUDLock(func() error {
+		name := vars["name"]
+		// Capture old state before removal so we can roll back if save fails.
+		var oldProvider *config.S3Provider
+		for _, sp := range mycluster.GetS3ProvidersSnapshot() {
+			if sp.Name == name {
+				cp := sp
+				oldProvider = &cp
+				break
 			}
 		}
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-			"Failed to persist S3 providers after drop of %q: %v", name, err)
-		http.Error(w, fmt.Sprintf("Failed to persist S3 provider: %v", err), http.StatusInternalServerError)
-		return
-	}
-	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-		"S3 provider %q dropped from cluster library", name)
-	w.WriteHeader(http.StatusOK)
+		if err := mycluster.RemoveS3Provider(name); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to remove S3 provider: %v", err), http.StatusNotFound)
+			return nil
+		}
+		if err := mycluster.SaveS3Providers(); err != nil {
+			// Rollback the in-memory removal so state does not diverge from disk.
+			if oldProvider != nil {
+				if rbErr := mycluster.AddS3Provider(*oldProvider); rbErr != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+						"Rollback of in-memory drop failed for %q: %v", name, rbErr)
+				}
+			}
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Failed to persist S3 providers after drop of %q: %v", name, err)
+			http.Error(w, fmt.Sprintf("Failed to persist S3 provider: %v", err), http.StatusInternalServerError)
+			return nil
+		}
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"S3 provider %q dropped from cluster library", name)
+		w.WriteHeader(http.StatusOK)
+		return nil
+	})
 }
 
 // s3ProviderReference represents a single mount reference to a provider.

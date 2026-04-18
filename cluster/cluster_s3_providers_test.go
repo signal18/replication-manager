@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -328,7 +329,7 @@ func TestSaveS3Providers_RejectsDuplicateNames(t *testing.T) {
 	// Inject duplicates directly via unexported field (bypassing AddS3Provider).
 	// This is intentional: SaveS3Providers must validate even when internal state
 	// is corrupted by a direct field write (possible within the cluster package).
-	cl.clusterS3Providers = []config.S3Provider{
+	cl.s3Providers.providers = []config.S3Provider{
 		{Name: "dup", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com"},
 		{Name: "dup", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3-other.example.com"},
 	}
@@ -611,6 +612,47 @@ func TestRemoveS3Provider_NotFound(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
 	if err := cl.RemoveS3Provider("ghost"); err == nil {
 		t.Fatal("expected error for missing provider, got nil")
+	}
+}
+
+func TestS3ProviderCRUDLock_SerializesConcurrentTransactions(t *testing.T) {
+	cl, _ := newTestClusterForS3(t)
+
+	firstEntered := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	secondEntered := make(chan struct{})
+
+	go func() {
+		_ = cl.WithS3ProviderCRUDLock(func() error {
+			close(firstEntered)
+			<-releaseFirst
+			return nil
+		})
+	}()
+
+	<-firstEntered
+
+	go func() {
+		_ = cl.WithS3ProviderCRUDLock(func() error {
+			close(secondEntered)
+			return nil
+		})
+	}()
+
+	select {
+	case <-secondEntered:
+		t.Fatal("second transaction entered before first released lock")
+	case <-time.After(30 * time.Millisecond):
+		// expected: still blocked
+	}
+
+	close(releaseFirst)
+
+	select {
+	case <-secondEntered:
+		// expected: enters after release
+	case <-time.After(2 * time.Second):
+		t.Fatal("second transaction did not enter after first released lock")
 	}
 }
 
