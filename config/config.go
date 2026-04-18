@@ -547,6 +547,7 @@ type Config struct {
 	ProvOpensvcCollectorAccount               string                       `mapstructure:"opensvc-collector-account" toml:"opensvc-collector-account" json:"opensvcCollectorAccount"`
 	ProvUser                                  string                       `mapstructure:"opensvc-user" toml:"opensvc-user" json:"opensvcUser"`
 	ProvCodeApp                               string                       `mapstructure:"opensvc-codeapp" toml:"opensvc-codeapp" json:"opensvcCodeapp"`
+	ProvEventTimeout                          int                          `mapstructure:"prov-timeout" toml:"prov-timeout" json:"provEventTimeout"`
 	ProvSerialized                            bool                         `mapstructure:"prov-serialized" toml:"prov-serialized" json:"provSerialized"`
 	ProvObjectAllowOverwrite                  bool                         `mapstructure:"prov-object-allow-overwrite" toml:"prov-object-allow-overwrite" json:"provObjectAllowOverwrite"`
 	ProvOrchestrator                          string                       `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`
@@ -589,6 +590,7 @@ type Config struct {
 	ProvNetIface                              string                       `mapstructure:"prov-db-net-iface" toml:"prov-db-net-iface" json:"provDbNetIface"`
 	ProvNetmask                               string                       `mapstructure:"prov-db-net-mask" toml:"prov-db-net-mask" json:"provDbNetMask"`
 	ProvGateway                               string                       `mapstructure:"prov-db-net-gateway" toml:"prov-db-net-gateway" json:"provDbNetGateway"`
+	ProvUseIpv6                               bool                         `mapstructure:"prov-use-ipv6" toml:"prov-use-ipv6" json:"provUseIpv6"`
 	ProvDbImg                                 string                       `mapstructure:"prov-db-docker-img" toml:"prov-db-docker-img" json:"provDbDockerImg"`
 	ProvDBDockerTmpfsSize                     string                       `measurement:"M,bytes" mapstructure:"prov-db-docker-tmpfs-size" toml:"prov-db-docker-tmpfs-size" json:"provDbDockerTmpfsSize"`
 	ProvDBDockerRunArgs                       string                       `mapstructure:"prov-db-docker-run-args" toml:"prov-db-docker-run-args" json:"provDbDockerRunArgs"`
@@ -848,6 +850,7 @@ type Config struct {
 	BackupSplitdumpCreateDatabases         bool                   `mapstructure:"backup-splitdump-create-databases" toml:"backup-splitdump-create-databases" json:"backupSplitdumpCreateDatabases"`
 	BackupMytopPath                        string                 `mapstructure:"backup-mytop-path" toml:"backup-mytop-path" json:"backupMytopPath"`
 	BackupGottyClientPath                  string                 `mapstructure:"backup-gotty-client-path" toml:"backup-gotty-client-path" json:"backupGottyClientPath"`
+	TtyShareBinaryPath                     string                 `mapstructure:"tty-share-binary-path" toml:"tty-share-binary-path" json:"ttyShareBinaryPath"`
 	ReplicationManagerCliPath              string                 `mapstructure:"replication-manager-cli-path" toml:"replication-manager-cli-path" json:"replicationManagerCliPath"`
 	BackupBinlogs                          bool                   `mapstructure:"backup-binlogs" toml:"backup-binlogs" json:"backupBinlogs"`
 	BackupBinlogsKeep                      int                    `mapstructure:"backup-binlogs-keep" toml:"backup-binlogs-keep" json:"backupBinlogsKeep"`
@@ -4456,5 +4459,6 @@ func GetKeyAliasMap() map[string]string {
 		"sphinx-log-level":          "log-level-sphinx",
 		"registry-consul-log-level": "log-level-registry-consul",
 		"log-vault-level":           "log-level-vault",
+		"backup-tty-share-path":     "tty-share-binary-path",
 	}
 }

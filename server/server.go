@@ -925,6 +925,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.BackupSplitdumpCreateDatabases, "backup-splitdump-create-databases", true, "Auto-create databases before splitdump restore (server-orchestrated)")
 	flags.StringVar(&conf.BackupMytopPath, "backup-mytop-path", "", "Path to mytop binary")
 	flags.StringVar(&conf.BackupGottyClientPath, "backup-gotty-client-path", "", "Path to gotty client binary")
+	flags.StringVar(&conf.TtyShareBinaryPath, "tty-share-binary-path", "", "Path to tty-share binary")
 	flags.StringVar(&conf.ReplicationManagerCliPath, "replication-manager-cli-path", "", "Path to replication-manager-cli binary")
 	flags.BoolVar(&conf.BackupRestoreVersionStrict, "backup-restore-version-strict", false, "During restore, check backup version against tools version. False will just issue a warning. True will abort restore")
 	flags.BoolVar(&conf.BackupRestoreDefinerStrict, "backup-restore-definer-strict", false, "During restore, fail closed when an incompatible DEFINER clause is encountered. False (default) applies non-strict fallback and continues.")
@@ -1115,6 +1116,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvNetIface, "prov-db-net-iface", "eth0", "HBA Device to hold Ips")
 		flags.StringVar(&conf.ProvGateway, "prov-db-net-gateway", "192.168.0.254", "Micro Service network gateway")
 		flags.StringVar(&conf.ProvNetmask, "prov-db-net-mask", "255.255.255.0", "Micro Service network mask")
+		flags.BoolVar(&conf.ProvUseIpv6, "prov-use-ipv6", false, "Use IPv6 addresses for provisioned services")
 		flags.StringVar(&conf.ProvDBLoadCSV, "prov-db-load-csv", "", "List of shema.table csv file to load a bootstrap")
 		flags.StringVar(&conf.ProvDBLoadSQL, "prov-db-load-sql", "", "List of sql scripts file to load a bootstrap")
 		flags.StringVar(&conf.ProvProxType, "prov-proxy-service-type", "package", "[package|docker|podman|oci|kvm|zone|lxc]")
@@ -1164,6 +1166,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		if WithOpenSVC == "ON" {
 
 			flags.BoolVar(&conf.Enterprise, "opensvc", true, "Provisioning via opensvc")
+			flags.IntVar(&conf.ProvEventTimeout, "prov-timeout", 600, "Timeout in seconds for provisionning operations")
 			flags.StringVar(&conf.ProvHost, "opensvc-host", "collector.signal18.io:443", "OpenSVC collector API")
 			flags.StringVar(&conf.ProvAdminUser, "opensvc-admin-user", "root@signal18.io:opensvc", "OpenSVC collector admin user")
 			flags.BoolVar(&conf.ProvRegister, "opensvc-register", false, "Register user codeapp to collector, load compliance")
@@ -2378,7 +2381,6 @@ func (repman *ReplicationManager) Run() error {
 
 	if repman.Conf.ProvOrchestrator == "opensvc" {
 		repman.Agents = []opensvc.Host{}
-		repman.OpenSVC.MessageChan = repman.MessageChan
 		repman.OpenSVC.Host, repman.OpenSVC.Port = misc.SplitHostPort(repman.Conf.ProvHost)
 		repman.OpenSVC.User, repman.OpenSVC.Pass = misc.SplitPair(repman.Conf.ProvAdminUser)
 		repman.OpenSVC.RplMgrUser, repman.OpenSVC.RplMgrPassword = misc.SplitPair(repman.Conf.ProvUser) //yaml licence

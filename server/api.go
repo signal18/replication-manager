@@ -1944,7 +1944,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 	if sessionID == "global" {
 		session.WorkingDir = repman.OsUser.HomeDir
 		// Create a new session or resume the existing session by ID
-		session, err = repman.SessionManager.RunSession(session)
+		err = repman.SessionManager.RunSession(session)
 		if err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error creating or resuming session: %v", err)
 			session.SafeWriteMessage(websocket.TextMessage, []byte("Failed to create or resume session\n"))
@@ -1987,28 +1987,35 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 
 		if session.CmdType == tty.TerminalBash {
 			if session.Orchestrator == config.ConstOrchestratorOpenSVC {
-				url, node := mycluster.GetGottyServer(session.ServiceName, session.ServiceContainerName)
-				session.ServiceGottyUrl = strings.Replace(url, node, node+".signal18.io", 1)
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session OpenSVC Service Gotty Url  %s on cluster %s", session.ServiceGottyUrl, mycluster.Name)
+				url, node, ver := mycluster.GetGottyServer(session.ServiceName, session.ServiceContainerName, session.ServiceAgentName)
+				if ver == "v2" {
+					session.ServiceTtyUrl = strings.Replace(url, node, node+".signal18.io", 1)
+					// repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session OpenSVC Service Gotty Url  %s on cluster %s", session.ServiceTtyUrl, mycluster.Name)
+					session.Arguments = append(session.Arguments, "--v2")
+					session.Arguments = append(session.Arguments, "--skip-tls-verify")
+					session.Arguments = append(session.Arguments, session.ServiceTtyUrl)
 
-				session.Arguments = append(session.Arguments, "--v2")
-				session.Arguments = append(session.Arguments, "--skip-tls-verify")
-				session.Arguments = append(session.Arguments, session.ServiceGottyUrl)
-
-				session.CmdType = tty.TerminalGottyClient
-				session.Command = mycluster.GetGottyClientPath()
-				session, err = repman.SessionManager.RunSession(session)
+					session.CmdType = tty.TerminalGottyClient
+					session.Command = mycluster.GetGottyClientPath()
+				} else {
+					session.ServiceTtyUrl = url
+					// repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session OpenSVC Service TTY Share Url  %s on cluster %s", session.ServiceTtyUrl, mycluster.Name)
+					session.Arguments = append(session.Arguments, session.ServiceTtyUrl)
+					session.CmdType = tty.TerminalTtyShare
+					session.Command = mycluster.GetTtyShareClientPath()
+				}
+				err = repman.SessionManager.RunSession(session)
 			} else {
-				session, err = repman.SessionManager.RunSSHSession(session)
+				err = repman.SessionManager.RunSSHSession(session)
 			}
 		} else if session.CmdType == tty.TerminalMySQL {
 			session.Command = mycluster.GetMysqlclientPath()
 			session.Arguments = append(session.Arguments, "-p")
-			session, err = repman.SessionManager.RunSession(session)
+			err = repman.SessionManager.RunSession(session)
 		} else if session.CmdType == tty.TerminalMyTop {
 			session.Command = mycluster.GetMytopPath()
 			session.Arguments = append(session.Arguments, "--prompt")
-			session, err = repman.SessionManager.RunSession(session)
+			err = repman.SessionManager.RunSession(session)
 		} else {
 			session.SafeWriteMessage(websocket.TextMessage, []byte("Invalid command\n"))
 			return
@@ -2020,9 +2027,6 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 			return
 		}
 	}
-
-	// Wait for the session to finish (or be closed).
-	session.WG.Wait()
 }
 
 // handlerGetTerminalSessionList handles the HTTP request to retrieve a list of terminal sessions.

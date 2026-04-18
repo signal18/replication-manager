@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -194,6 +195,8 @@ type ServerMonitor struct {
 	LastTLSConfig               string                     `json:"lastTLSConfig"` //used to track last working TLS config
 	SSTPort                     string                     `json:"sstPort"`       //used to send data to dbjobs
 	Agent                       string                     `json:"agent"`         //used to provision service in orchestrator
+	WorkingAgent                string                     `json:"workingAgent"`  //used to track on which agent the server is running
+	workingAgentMu              sync.RWMutex               `json:"-"`
 	BinaryLogFiles              *dbhelper.BinaryLogMetaMap `json:"binaryLogFiles"`
 	BinaryLogMetaToWrite        []string                   `json:"-"`
 	BinaryLogMetaToRemove       []string                   `json:"-"`
@@ -256,12 +259,12 @@ type ServerMonitor struct {
 // One record per unique digest hash — written once, never overwritten,
 // so the file grows only when new query templates appear.
 type PFSExplainRecord struct {
-	CapturedAt  string               `json:"capturedAt"`  // RFC3339 timestamp of first EXPLAIN
-	Digest      string               `json:"digest"`      // PFS digest hash
-	DigestText  string               `json:"digestText"`  // normalised template  e.g. SELECT * FROM t WHERE id = ?
-	SampleQuery string               `json:"sampleQuery"` // concrete SQL instance used for EXPLAIN
-	SchemaName  string               `json:"schemaName"`
-	Plan        []dbhelper.Explain   `json:"plan"`        // rows returned by EXPLAIN
+	CapturedAt  string             `json:"capturedAt"`  // RFC3339 timestamp of first EXPLAIN
+	Digest      string             `json:"digest"`      // PFS digest hash
+	DigestText  string             `json:"digestText"`  // normalised template  e.g. SELECT * FROM t WHERE id = ?
+	SampleQuery string             `json:"sampleQuery"` // concrete SQL instance used for EXPLAIN
+	SchemaName  string             `json:"schemaName"`
+	Plan        []dbhelper.Explain `json:"plan"` // rows returned by EXPLAIN
 }
 
 type ServerBackupMeta struct {
@@ -2075,4 +2078,33 @@ func (server *ServerMonitor) CpuFromStatWorkLoad(start_time time.Time) time.Time
 		server.WorkLoad.Set("current", current_workLoad)
 		return time.Now()
 	}
+}
+
+func (server *ServerMonitor) GetWorkingOrchestratorNode() error {
+	cluster := server.ClusterGroup
+	if cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
+		return nil
+	}
+
+	srvname := cluster.Name + "/svc/" + server.Name
+
+	svc := cluster.OpenSVCConnect()
+	agents, err := svc.GetServiceNodeFromState(srvname)
+	if err != nil {
+		return fmt.Errorf("unable to get database agent from OpenSVC: %v", err)
+	}
+
+	if len(agents) == 0 {
+		return fmt.Errorf("no database agents found for service %s", srvname)
+	}
+
+	server.workingAgentMu.Lock()
+	defer server.workingAgentMu.Unlock()
+	if !slices.Contains(agents, server.Agent) {
+		server.WorkingAgent = agents[0]
+	} else {
+		server.WorkingAgent = server.Agent
+	}
+
+	return nil
 }

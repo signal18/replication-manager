@@ -104,6 +104,11 @@ func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session,
 	session.Orchestrator = mycluster.GetOrchestrator()
 	session.ServiceName = mycluster.Name + "/svc/" + node.Name
 	session.ServiceContainerName = defaultServerServiceContainer
+	if wa := node.GetWorkingAgent(); wa != "" {
+		session.ServiceAgentName = wa
+	} else {
+		session.ServiceAgentName = node.Agent
+	}
 	apiUser, ok := mycluster.APIUsers[session.Owner]
 	if !ok {
 		return fmt.Errorf("user %s not found in cluster %s", session.Owner, mycluster.Name)
@@ -167,6 +172,11 @@ func (repman *ReplicationManager) SetSessionValuesFromProxy(session *tty.Session
 	session.Orchestrator = mycluster.GetOrchestrator()
 	session.ServiceName = mycluster.Name + "/svc/" + proxy.GetName()
 	session.ServiceContainerName = defaultProxyServiceContainer
+	if wa := proxy.GetWorkingAgent(); wa != "" {
+		session.ServiceAgentName = wa
+	} else {
+		session.ServiceAgentName = proxy.GetAgent()
+	}
 	switch session.CmdType {
 	case tty.TerminalBash:
 		session.Port = strconv.Itoa(proxy.GetCluster().Conf.OnPremiseSSHPort)
