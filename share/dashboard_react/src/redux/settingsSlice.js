@@ -114,12 +114,12 @@ export const switchAppSetting = createAsyncThunk('settings/switchAppSetting', as
   }
 })
 
-export const resetAppFromTemplate = createAsyncThunk('settings/resetAppFromTemplate', async ({ clusterName, appId, template }, thunkAPI) => {
+export const resetAppFromTemplate = createAsyncThunk('settings/resetAppFromTemplate', async ({ clusterName, appId, template, forceRefresh = false }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await settingsService.resetAppFromTemplate(clusterName, appId, template, baseURL)
+    const { data, status } = await settingsService.resetAppFromTemplate(clusterName, appId, template, forceRefresh, baseURL)
     if (status === 200) {
-      showSuccessBanner(`App reset from template successfully!`, status, thunkAPI)
+      showSuccessBanner(forceRefresh ? `App template refreshed and reset successfully!` : `App reset from template successfully!`, status, thunkAPI)
       return { data, status }
     } else {
       throw new Error(data)

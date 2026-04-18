@@ -9,6 +9,7 @@ import React, { useCallback, useMemo } from 'react';
 import Dropdown from '../../../../components/Dropdown';
 import RMIconButton from '../../../../components/RMIconButton';
 import { AiOutlineSave } from 'react-icons/ai';
+import { HiRefresh } from 'react-icons/hi';
 import VariableInputArea from '../../../../components/VariableTree/VariableInputArea';
 import PropTypes from 'prop-types';
 
@@ -26,6 +27,12 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
   const onSaveDockerCmd = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-cmd', value: value })), [clusterName, appId, dispatch])
   const onSaveAppAsTemplate = useCallback(() => dispatch(saveAppAsTemplate({ clusterName: clusterName, appId: appId, template: appName })), [clusterName, appId, appName, dispatch])
   const onResetAppFromTemplate = useCallback((value) => dispatch(resetAppFromTemplate({ clusterName, appId, template: value })), [clusterName, appId, dispatch])
+  const onRefreshAndResetAppFromTemplate = useCallback(() => {
+    if (!provAppTemplate) {
+      return
+    }
+    dispatch(resetAppFromTemplate({ clusterName, appId, template: provAppTemplate, forceRefresh: true }))
+  }, [clusterName, appId, provAppTemplate, dispatch])
   const onAgentsChange = useCallback((value) => dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-agents', value: value.toString() })), [clusterName, appId, dispatch])
   const onHATopologyChange = useCallback((value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-ha-topology', value: value })) }, [clusterName, appId, dispatch])
 
@@ -72,14 +79,26 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
       {
         key: 'Reset App From Template',
         value: (
-          <Dropdown
-            confirmTitle="Docker Template Change"
-            confirmBody='Are you sure you want to reset template using: '
-            isMenuPortalTarget={true}
-            onChange={onResetAppFromTemplate}
-            selectedValue={provAppTemplate}
-            options={templateOptions}
-          />
+          <Flex alignItems='center' gap='8px'>
+            <Dropdown
+              confirmTitle="Docker Template Change"
+              confirmBody='Are you sure you want to reset template using: '
+              isMenuPortalTarget={true}
+              onChange={onResetAppFromTemplate}
+              selectedValue={provAppTemplate}
+              options={templateOptions}
+            />
+            <RMIconButton
+              icon={HiRefresh}
+              aria-label='Refresh template from source and apply'
+              tooltip='Refresh current template from source and apply'
+              onClick={onRefreshAndResetAppFromTemplate}
+              isDisabled={!provAppTemplate}
+              confirm={true}
+              confirmTitle='Refresh and Apply Template'
+              confirmBody='Are you sure you want to refresh the current template from source and apply it to this app?'
+            />
+          </Flex>
         )
       },
       {
@@ -123,7 +142,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
         )
       },
     ]
-  }, [appName, appHost, provAppDockerImg, onSaveDockerImage, provAppDockerCmd, onSaveDockerCmd, onSaveAppAsTemplate, templateOptions, provAppTemplate, onResetAppFromTemplate, agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions, substitution, user])
+  }, [appName, appHost, provAppDockerImg, onSaveDockerImage, provAppDockerCmd, onSaveDockerCmd, onSaveAppAsTemplate, templateOptions, provAppTemplate, onResetAppFromTemplate, onRefreshAndResetAppFromTemplate, agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions, substitution, user])
   
   return (
     <Flex direction="column" className={`${styles.tableSectionWrapper}`} w={"100%"} gap="8px">

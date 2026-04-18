@@ -2367,7 +2367,8 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplate(w http.Response
 		if node != nil {
 			//Get the request body {template: value}
 			var body struct {
-				Template string `json:"template"`
+				Template     string `json:"template"`
+				ForceRefresh bool   `json:"forceRefresh"`
 			}
 			err := json.NewDecoder(r.Body).Decode(&body)
 			if err != nil {
@@ -2379,33 +2380,11 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplate(w http.Response
 				return
 			}
 
-			node.AppConfig.ProvAppTemplate = body.Template
-			// Get the template content
-			content, err := mycluster.GetTemplateContent(node.AppConfig.ProvAppTemplate)
+			err = resetAppFromTemplateWithProjection(mycluster, node, body.Template, body.ForceRefresh)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("Error getting template content: %v", err), http.StatusInternalServerError)
+				http.Error(w, fmt.Sprintf("Error applying template: %v", err), http.StatusInternalServerError)
 				return
 			}
-
-			parsedContent, _ := mycluster.ParseTemplateContent(node, content)
-
-			// Load the new template into the Viper instance
-			newViper, err := mycluster.LoadTemplateToViper(parsedContent)
-			if err != nil {
-				http.Error(w, fmt.Sprintf("Error loading template: %v", err), http.StatusInternalServerError)
-				return
-			}
-
-			// Update the app configuration with the new Viper instance
-			// Unmarshal the parsed content into the app configuration
-			err = newViper.Unmarshal(node.AppConfig)
-			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error unmarshalling parsed template file %s: %s", body.Template, err)
-				http.Error(w, fmt.Sprintf("Error unmarshalling template: %v", err), http.StatusInternalServerError)
-				return
-			}
-
-			node.AppConfig.ProvAppTemplate = body.Template
 
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("App template reloaded successfully"))
@@ -2417,6 +2396,96 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplate(w http.Response
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
+}
+
+func buildValidatedTempAppConfigFromTemplate(mycluster *cluster.Cluster, node *cluster.App, templateName string, forceRefresh bool) (*config.AppConfig, error) {
+	var (
+		content []byte
+		err     error
+	)
+
+	if forceRefresh {
+		content, err = mycluster.RefreshTemplateContent(templateName)
+	} else {
+		content, err = mycluster.GetTemplateContent(templateName)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	parsedContent, err := mycluster.ParseTemplateContent(node, content)
+	if err != nil {
+		return nil, err
+	}
+
+	canonicalContent, _, err := config.CanonicalizeAppTemplateTOML(parsedContent)
+	if err != nil {
+		return nil, err
+	}
+
+	newViper, err := mycluster.LoadTemplateToViper(canonicalContent)
+	if err != nil {
+		return nil, err
+	}
+
+	tempConfig := &config.AppConfig{Deployment: config.NewDeploymentConfig()}
+	if err := newViper.Unmarshal(tempConfig); err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error unmarshalling parsed template file %s: %s", templateName, err)
+		return nil, err
+	}
+
+	if tempConfig.Deployment != nil {
+		if resolveErrs := tempConfig.Deployment.ResolvePaths(); len(resolveErrs) > 0 {
+			for _, resolveErr := range resolveErrs {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
+					"App template %q deployment path resolution error: %v", templateName, resolveErr)
+			}
+			return nil, fmt.Errorf("invalid deployment path mapping for template %q", templateName)
+		}
+	}
+
+	return tempConfig, nil
+}
+
+func resetAppFromTemplateWithProjection(mycluster *cluster.Cluster, node *cluster.App, templateName string, forceRefresh bool) error {
+	tempConfig, err := buildValidatedTempAppConfigFromTemplate(mycluster, node, templateName, forceRefresh)
+	if err != nil {
+		return err
+	}
+
+	applyTemplateOwnedProjection(node.AppConfig, tempConfig, templateName)
+	return nil
+}
+
+func applyTemplateOwnedProjection(dst, src *config.AppConfig, templateName string) {
+	if dst == nil || src == nil {
+		return
+	}
+
+	// Template ownership projection (Milestone 1):
+	// - Preserved (live app identity / unrelated):
+	//   AppHost, AppPort, AppHostsIPV6, AppDbUser, AppDbPass, AppDbSchema,
+	//   AppS3Provider, ProvAppCreditUsed, ProvAppCreditPlanned.
+	// - Template-owned (overwritten from validated template):
+	//   Deployment, ProvAppTemplate, ProvAppDockerImg, ProvAppDockerCmd, ProvAppType,
+	//   ProvAppMem, ProvAppCpuCores, ProvAppDisk, ProvAppDiskType, ProvAppRouteAddr,
+	//   ProvAppRoutePort, ProvAppRouteMask, ProvAppAgents, ProvAppHATopology,
+	//   ProvAppAgentsFailover.
+	dst.Deployment = src.Deployment
+	dst.ProvAppTemplate = templateName
+	dst.ProvAppDockerImg = src.ProvAppDockerImg
+	dst.ProvAppDockerCmd = src.ProvAppDockerCmd
+	dst.ProvAppType = src.ProvAppType
+	dst.ProvAppMem = src.ProvAppMem
+	dst.ProvAppCpuCores = src.ProvAppCpuCores
+	dst.ProvAppDisk = src.ProvAppDisk
+	dst.ProvAppDiskType = src.ProvAppDiskType
+	dst.ProvAppRouteAddr = src.ProvAppRouteAddr
+	dst.ProvAppRoutePort = src.ProvAppRoutePort
+	dst.ProvAppRouteMask = src.ProvAppRouteMask
+	dst.ProvAppAgents = src.ProvAppAgents
+	dst.ProvAppHATopology = src.ProvAppHATopology
+	dst.ProvAppAgentsFailover = src.ProvAppAgentsFailover
 }
 
 // @Summary Resolve App Template Variable Values

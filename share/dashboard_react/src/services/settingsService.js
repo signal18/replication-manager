@@ -61,10 +61,12 @@ function clearAppSetting(clusterName, appId, setting, baseURL) {
     return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/settings/actions/clear/${setting}`)
 }
 
-function resetAppFromTemplate( clusterName, appId, template, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/settings/actions/reset-from-template`, {
-    template: template
-  })
+function resetAppFromTemplate(clusterName, appId, template, forceRefresh = false, baseURL) {
+  const payload = { template: template }
+  if (forceRefresh) {
+    payload.forceRefresh = true
+  }
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/settings/actions/reset-from-template`, payload)
 }
 
 function saveAppAsTemplate( clusterName, appId, template, baseURL) {

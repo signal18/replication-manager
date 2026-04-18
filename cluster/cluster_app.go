@@ -871,35 +871,48 @@ func (cluster *Cluster) loadTemplateFromShared(template string) ([]byte, error) 
 }
 
 func (cluster *Cluster) GetTemplateContent(template string) ([]byte, error) {
+	return cluster.getTemplateContent(template, false)
+}
+
+// RefreshTemplateContent bypasses local cache and refreshes template content
+// from repo/shared source, then overwrites local cache with validated canonical
+// content.
+func (cluster *Cluster) RefreshTemplateContent(template string) ([]byte, error) {
+	return cluster.getTemplateContent(template, true)
+}
+
+func (cluster *Cluster) getTemplateContent(template string, forceRefresh bool) ([]byte, error) {
 	localPath := filepath.Join(cluster.Conf.WorkingDir, ".templates", "apps", template+".toml")
 
-	// Try local file
-	if content, err := cluster.loadLocalTemplate(localPath, template); err == nil {
-		canonicalContent, canonicalRes, canonErr := config.CanonicalizeAppTemplateTOML(content)
-		if canonErr != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
-				"Error canonicalizing local template file %s: %s", localPath, canonErr)
-			return nil, canonErr
-		}
-		if err := cluster.validateTemplateDeploymentPaths(canonicalContent, template); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
-				"Invalid local template file %s after canonicalization: %s", localPath, err)
+	if !forceRefresh {
+		// Try local file
+		if content, err := cluster.loadLocalTemplate(localPath, template); err == nil {
+			canonicalContent, canonicalRes, canonErr := config.CanonicalizeAppTemplateTOML(content)
+			if canonErr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+					"Error canonicalizing local template file %s: %s", localPath, canonErr)
+				return nil, canonErr
+			}
+			if err := cluster.validateTemplateDeploymentPaths(canonicalContent, template); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+					"Invalid local template file %s after canonicalization: %s", localPath, err)
+				return nil, err
+			}
+			if canonicalRes.Changed {
+				t, err := toml.LoadBytes(canonicalContent)
+				if err != nil {
+					return nil, err
+				}
+				if err := cluster.writeTomlAtomically(t, localPath); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+						"Error writing canonical local template file %s: %s", localPath, err)
+					return nil, err
+				}
+			}
+			return canonicalContent, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
 			return nil, err
 		}
-		if canonicalRes.Changed {
-			t, err := toml.LoadBytes(canonicalContent)
-			if err != nil {
-				return nil, err
-			}
-			if err := cluster.writeTomlAtomically(t, localPath); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
-					"Error writing canonical local template file %s: %s", localPath, err)
-				return nil, err
-			}
-		}
-		return canonicalContent, nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, err
 	}
 
 	// Ensure parent dir exists
@@ -1006,6 +1019,7 @@ func (cluster *Cluster) ParseTemplateContent(app *App, content []byte) ([]byte, 
 		parsed, err = cluster.ParseAppTemplate(string(content), app.AppClusterSubstitute)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error parsing template file: %s", err)
+			return []byte(parsed), err
 		}
 	}
 	return []byte(parsed), nil

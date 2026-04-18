@@ -397,3 +397,76 @@ func TestGetTemplateContent_SharedPrefixUsesTrimPrefixNotTrimLeft(t *testing.T) 
 		t.Fatalf("expected local cache for shared/some-template, err=%v", err)
 	}
 }
+
+func TestRefreshTemplateContent_ReplacesLocalCacheWithSharedTemplate(t *testing.T) {
+	workingDir := t.TempDir()
+	shareDir := filepath.Join(t.TempDir(), "share")
+
+	sharedPath := filepath.Join(shareDir, "app", "deployments", "refreshable.toml")
+	if err := os.MkdirAll(filepath.Dir(sharedPath), 0o755); err != nil {
+		t.Fatalf("mkdir shared template dir failed: %v", err)
+	}
+	sharedTemplate := `
+[deployment.storages]
+[[deployment.storages.volumes]]
+name = "data-volume"
+poolname = "data"
+volumedir = "data"
+
+[[deployment.paths]]
+name = "web-root"
+level = 0
+dockerpath = "/var/www/new"
+srctype = "volume"
+srcname = "data-volume"
+srcpath = "."
+`
+	if err := os.WriteFile(sharedPath, []byte(sharedTemplate), 0o644); err != nil {
+		t.Fatalf("write shared template failed: %v", err)
+	}
+
+	localCache := filepath.Join(workingDir, ".templates", "apps", "shared", "refreshable.toml")
+	if err := os.MkdirAll(filepath.Dir(localCache), 0o755); err != nil {
+		t.Fatalf("mkdir local cache dir failed: %v", err)
+	}
+	localTemplate := `
+[deployment.storages]
+[[deployment.storages.volumes]]
+name = "data-volume"
+poolname = "data"
+volumedir = "data"
+
+[[deployment.paths]]
+name = "web-root"
+level = 0
+dockerpath = "/var/www/old"
+srctype = "volume"
+srcname = "data-volume"
+srcpath = "."
+`
+	if err := os.WriteFile(localCache, []byte(localTemplate), 0o644); err != nil {
+		t.Fatalf("write local cache template failed: %v", err)
+	}
+
+	cluster := &Cluster{Conf: &config.Config{
+		WorkingDir:          workingDir,
+		ShareDir:            shareDir,
+		ProvAppTemplateRepo: "%%%",
+	}}
+
+	content, err := cluster.RefreshTemplateContent("shared/refreshable")
+	if err != nil {
+		t.Fatalf("RefreshTemplateContent failed: %v", err)
+	}
+	if !strings.Contains(string(content), `dockerpath = "/var/www/new"`) {
+		t.Fatalf("expected refreshed content from shared template, got:\n%s", string(content))
+	}
+
+	rewritten, err := os.ReadFile(localCache)
+	if err != nil {
+		t.Fatalf("read local cache failed: %v", err)
+	}
+	if !strings.Contains(string(rewritten), `dockerpath = "/var/www/new"`) {
+		t.Fatalf("expected local cache to be replaced by refreshed template, got:\n%s", string(rewritten))
+	}
+}
