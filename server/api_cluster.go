@@ -9121,8 +9121,16 @@ func validateS3ProviderAPIRequest(p config.S3Provider, mycluster *cluster.Cluste
 		if p.SecretKey == "" {
 			return fmt.Errorf("secretkey is required for custom mode")
 		}
-		if _, err := url.ParseRequestURI(p.Endpoint); err != nil {
+		u, err := url.ParseRequestURI(p.Endpoint)
+		if err != nil {
 			return fmt.Errorf("endpoint is not a valid URL: %v", err)
+		}
+		scheme := strings.ToLower(strings.TrimSpace(u.Scheme))
+		if scheme != "http" && scheme != "https" {
+			return fmt.Errorf("endpoint must use http or https scheme")
+		}
+		if strings.TrimSpace(u.Host) == "" {
+			return fmt.Errorf("endpoint must include a host")
 		}
 	}
 	return nil

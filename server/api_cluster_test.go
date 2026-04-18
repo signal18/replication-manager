@@ -425,6 +425,20 @@ func TestValidateS3ProviderAPIRequest_CustomModeValid(t *testing.T) {
 	}
 }
 
+func TestValidateS3ProviderAPIRequest_CustomModeValidHTTP(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	p := config.S3Provider{
+		Name:           "myprovider",
+		ProviderSource: config.S3ProviderSourceCustom,
+		Endpoint:       "http://s3.example.com",
+		AccessKey:      "AKIAIOSFODNN7EXAMPLE",
+		SecretKey:      "wJalrXUtnFEMI",
+	}
+	if err := validateS3ProviderAPIRequest(p, cl); err != nil {
+		t.Errorf("expected no error for valid http custom endpoint, got: %v", err)
+	}
+}
+
 // TestValidateS3ProviderAPIRequest_CustomModeMissingAccessKey verifies that
 // custom mode without an access key is rejected.
 func TestValidateS3ProviderAPIRequest_CustomModeMissingAccessKey(t *testing.T) {
@@ -468,6 +482,20 @@ func TestValidateS3ProviderAPIRequest_CustomModeInvalidEndpoint(t *testing.T) {
 	}
 	if err := validateS3ProviderAPIRequest(p, cl); err == nil {
 		t.Error("expected error for invalid endpoint URL, got nil")
+	}
+}
+
+func TestValidateS3ProviderAPIRequest_CustomModeRejectsNonHTTPSScheme(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	p := config.S3Provider{
+		Name:           "myprovider",
+		ProviderSource: config.S3ProviderSourceCustom,
+		Endpoint:       "s3://bucket",
+		AccessKey:      "AKIAIOSFODNN7EXAMPLE",
+		SecretKey:      "wJalrXUtnFEMI",
+	}
+	if err := validateS3ProviderAPIRequest(p, cl); err == nil {
+		t.Error("expected error for non-http/https endpoint scheme, got nil")
 	}
 }
 

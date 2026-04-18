@@ -369,3 +369,31 @@ func TestLoadAppConfigs_ReturnsAggregateErrorButLoadsValidApps(t *testing.T) {
 		t.Fatalf("unexpected loaded app config: host=%q port=%q", cluster.Conf.Apps[0].AppHost, cluster.Conf.Apps[0].AppPort)
 	}
 }
+
+func TestGetTemplateContent_SharedPrefixUsesTrimPrefixNotTrimLeft(t *testing.T) {
+	workingDir := t.TempDir()
+	shareDir := filepath.Join(t.TempDir(), "share")
+
+	sharedPath := filepath.Join(shareDir, "app", "deployments", "some-template.toml")
+	if err := os.MkdirAll(filepath.Dir(sharedPath), 0o755); err != nil {
+		t.Fatalf("mkdir shared template dir failed: %v", err)
+	}
+	if err := os.WriteFile(sharedPath, []byte(legacyAppTemplateTOML), 0o644); err != nil {
+		t.Fatalf("write shared template failed: %v", err)
+	}
+
+	cluster := &Cluster{Conf: &config.Config{
+		WorkingDir:          workingDir,
+		ShareDir:            shareDir,
+		ProvAppTemplateRepo: "%%%",
+	}}
+
+	if _, err := cluster.GetTemplateContent("shared/some-template"); err != nil {
+		t.Fatalf("GetTemplateContent failed: %v", err)
+	}
+
+	localCache := filepath.Join(workingDir, ".templates", "apps", "shared", "some-template.toml")
+	if _, err := os.Stat(localCache); err != nil {
+		t.Fatalf("expected local cache for shared/some-template, err=%v", err)
+	}
+}

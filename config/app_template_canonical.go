@@ -179,6 +179,41 @@ func applyPathLevels(paths []any, res *AppTemplateCanonicalizationResult) int {
 		}
 	}
 
+	memo := make(map[string]int, len(nameToPath))
+	visiting := make(map[string]bool, len(nameToPath))
+
+	var levelForName func(name string) (int, bool)
+	levelForName = func(name string) (int, bool) {
+		if lvl, ok := memo[name]; ok {
+			return lvl, true
+		}
+		pm, found := nameToPath[name]
+		if !found {
+			res.UnresolvedParentReferences = append(res.UnresolvedParentReferences, name)
+			return 0, false
+		}
+		if visiting[name] {
+			res.UnresolvedParentReferences = append(res.UnresolvedParentReferences, name)
+			return 0, false
+		}
+		visiting[name] = true
+
+		lvl := 0
+		parentName := asTrimmedString(pm["parentname"])
+		if parentName != "" {
+			parentLevel, ok := levelForName(parentName)
+			if !ok {
+				delete(visiting, name)
+				return 0, false
+			}
+			lvl = parentLevel + 1
+		}
+
+		memo[name] = lvl
+		delete(visiting, name)
+		return lvl, true
+	}
+
 	changed := 0
 	for _, item := range paths {
 		pm, ok := asAnyMap(item)
@@ -189,12 +224,15 @@ func applyPathLevels(paths []any, res *AppTemplateCanonicalizationResult) int {
 		newLevel := 0
 		parentName := asTrimmedString(pm["parentname"])
 		if parentName != "" {
-			parent, found := nameToPath[parentName]
-			if !found {
-				res.UnresolvedParentReferences = append(res.UnresolvedParentReferences, parentName)
+			parentLevel, ok := levelForName(parentName)
+			if !ok {
 				continue
 			}
-			newLevel = pmToInt(parent["level"], 0) + 1
+			newLevel = parentLevel + 1
+		} else if name := asTrimmedString(pm["name"]); name != "" {
+			if lvl, ok := levelForName(name); ok {
+				newLevel = lvl
+			}
 		}
 
 		oldLevel := pmToInt(pm["level"], -1)

@@ -215,9 +215,26 @@ func (cluster *Cluster) SaveS3Providers() error {
 		return fmt.Errorf("marshal S3 providers: %w", err)
 	}
 	path := cluster.s3ProvidersFilePath()
-	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+	parentDir := filepath.Dir(path)
+	tmpFile, err := os.CreateTemp(parentDir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create S3 providers temp file in %s: %w", parentDir, err)
+	}
+	tmpPath := tmpFile.Name()
+	defer func() {
+		_ = os.Remove(tmpPath)
+	}()
+
+	if _, err := tmpFile.Write(data); err != nil {
+		_ = tmpFile.Close()
 		return fmt.Errorf("write S3 providers temp file %s: %w", tmpPath, err)
+	}
+	if err := tmpFile.Sync(); err != nil {
+		_ = tmpFile.Close()
+		return fmt.Errorf("sync S3 providers temp file %s: %w", tmpPath, err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("close S3 providers temp file %s: %w", tmpPath, err)
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("rename S3 providers file to %s: %w", path, err)

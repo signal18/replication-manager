@@ -324,6 +324,32 @@ func TestSaveS3Providers_WritesValidJSON(t *testing.T) {
 	}
 }
 
+func TestSaveS3Providers_DoesNotUseFixedTmpPath(t *testing.T) {
+	cl, workDir := newTestClusterForS3(t)
+	if err := cl.AddS3Provider(config.S3Provider{
+		Name: "p1", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example.com",
+	}); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
+	}
+
+	fixedTmp := filepath.Join(workDir, s3ProvidersFileName+".tmp")
+	if err := os.WriteFile(fixedTmp, []byte("sentinel"), 0600); err != nil {
+		t.Fatalf("write sentinel tmp file: %v", err)
+	}
+
+	if err := cl.SaveS3Providers(); err != nil {
+		t.Fatalf("SaveS3Providers: %v", err)
+	}
+
+	data, err := os.ReadFile(fixedTmp)
+	if err != nil {
+		t.Fatalf("read sentinel tmp file: %v", err)
+	}
+	if string(data) != "sentinel" {
+		t.Fatalf("expected fixed .tmp sentinel untouched, got %q", string(data))
+	}
+}
+
 func TestSaveS3Providers_RejectsDuplicateNames(t *testing.T) {
 	cl, _ := newTestClusterForS3(t)
 	// Inject duplicates directly via unexported field (bypassing AddS3Provider).

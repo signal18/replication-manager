@@ -3,6 +3,8 @@ package config
 import (
 	"strings"
 	"testing"
+
+	"github.com/pelletier/go-toml"
 )
 
 func TestCanonicalizeAppTemplateTOML_LegacyPathsAreMigrated(t *testing.T) {
@@ -52,5 +54,65 @@ parentname = "/var/www/html"
 	}
 	if !strings.Contains(got, "level = 0") || !strings.Contains(got, "level = 1") {
 		t.Fatalf("expected levels to be materialized in output, got:\n%s", got)
+	}
+}
+
+func TestCanonicalizeAppTemplateTOML_LevelsComputedFromHierarchyNotInputOrder(t *testing.T) {
+	legacy := []byte(`
+[deployment.storages]
+
+[[deployment.paths]]
+name = "assets"
+parentname = "web-root"
+dockerpath = "/var/www/html/assets"
+
+[[deployment.paths]]
+name = "images"
+parentname = "assets"
+dockerpath = "/var/www/html/assets/images"
+
+[[deployment.paths]]
+name = "web-root"
+dockerpath = "/var/www/html"
+`)
+
+	canonical, _, err := CanonicalizeAppTemplateTOML(legacy)
+	if err != nil {
+		t.Fatalf("canonicalize failed: %v", err)
+	}
+
+	tree, err := toml.LoadBytes(canonical)
+	if err != nil {
+		t.Fatalf("load canonical toml failed: %v", err)
+	}
+	raw := tree.ToMap()
+	dep, ok := raw["deployment"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("missing deployment map")
+	}
+	pathsAny, ok := dep["paths"].([]interface{})
+	if !ok {
+		t.Fatalf("missing deployment.paths array")
+	}
+
+	levels := make(map[string]int, len(pathsAny))
+	for _, item := range pathsAny {
+		p, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		name, _ := p["name"].(string)
+		level, _ := p["level"].(int64)
+		levels[name] = int(level)
+	}
+
+	if levels["web-root"] != 0 {
+		t.Fatalf("expected web-root level=0, got %d", levels["web-root"])
+	}
+	if levels["assets"] != 1 {
+		t.Fatalf("expected assets level=1, got %d", levels["assets"])
+	}
+	if levels["images"] != 2 {
+		t.Fatalf("expected images level=2, got %d", levels["images"])
 	}
 }

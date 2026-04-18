@@ -854,7 +854,7 @@ func (cluster *Cluster) loadTemplateFromRepo(template string) ([]byte, error) {
 }
 
 func (cluster *Cluster) loadTemplateFromShared(template string) ([]byte, error) {
-	templateName := strings.TrimLeft(template, "shared/")
+	templateName := strings.TrimPrefix(template, "shared/")
 	templatePath := "app/deployments/" + templateName + ".toml"
 
 	content, err := share.ReadFileFromSharedDir(
