@@ -164,6 +164,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppTemplateContentDelete)),
 	))
+	router.Handle("/api/clusters/{clusterName}/templates/apps/{templateName:.*}/content/actions/create-local-copy", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppTemplateContentCreateLocalCopy)),
+	))
 }
 
 type appTemplateSummary struct {
@@ -2938,6 +2942,82 @@ func (repman *ReplicationManager) handlerMuxAppTemplateContentDelete(w http.Resp
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("Template deleted successfully"))
+}
+
+// @Summary Create Local Copy of App Template Content
+// @Description Creates an editable local template copy from an existing template source/content.
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param templateName path string true "Template Name"
+// @Param body body object true "Create local copy payload"
+// @Success 200 {string} string "Template local copy created successfully"
+// @Failure 400 {string} string "Invalid request"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/templates/apps/{templateName}/content/actions/create-local-copy [post]
+func (repman *ReplicationManager) handlerMuxAppTemplateContentCreateLocalCopy(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	templateName := strings.TrimSpace(vars["templateName"])
+	if templateName == "" {
+		http.Error(w, "Template name must be provided", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		LocalTemplateName string `json:"localTemplateName"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, fmt.Sprintf("Error decoding request body: %v", err), http.StatusBadRequest)
+		return
+	}
+	if err := validateTemplateNameForLocalWrite(body.LocalTemplateName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := createLocalTemplateCopyFromTemplate(mycluster, templateName, body.LocalTemplateName); err != nil {
+		http.Error(w, fmt.Sprintf("Error creating local template copy: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("Template local copy created successfully"))
+}
+
+func createLocalTemplateCopyFromTemplate(mycluster *cluster.Cluster, templateName, localTemplateName string) error {
+	content, err := mycluster.GetTemplateContent(templateName)
+	if err != nil {
+		return err
+	}
+
+	canonicalContent, _, err := config.CanonicalizeAppTemplateTOML(content)
+	if err != nil {
+		return err
+	}
+	if err := validateCanonicalTemplateContentForSave(mycluster, localTemplateName, canonicalContent); err != nil {
+		return err
+	}
+
+	localPath := filepath.Join(mycluster.Conf.WorkingDir, ".templates", "apps", localTemplateName+".toml")
+	if err := writeTemplateContentAtomically(localPath, canonicalContent); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // @Summary Drop App Monitor

@@ -8,6 +8,7 @@ import Overview from '../Overview'
 import ServiceOpenSvc from '../../../ClusterDB/components/ServiceOpenSvc'
 import ServerStatus from '../../../../components/ServerStatus'
 import StoragePage from '../Storage'
+import Templates from '../Templates'
 
 function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, config }) {
   const [currentTab, setCurrentTab] = useState('')
@@ -50,6 +51,16 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
     )
   }, [clusterName, appId, user])
 
+  const templatesComponent = useMemo(() => {
+    return (
+      <Templates
+        clusterName={clusterName}
+        appConfig={appConfig}
+        user={user}
+      />
+    )
+  }, [clusterName, appConfig, user])
+
 
   useEffect(() => {
     setCurrentTab(tab)
@@ -85,6 +96,7 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
       {currentTab === "overview" ? (overviewComponent) 
         : currentTab === "storages" ? (storagesComponent)
         : currentTab === "opensvc" ? (serviceOpenSvcComponent) 
+        : currentTab === "templates" ? (templatesComponent)
         : null }
     </VStack>
   )

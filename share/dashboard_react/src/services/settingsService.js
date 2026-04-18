@@ -14,6 +14,7 @@ export const settingsService = {
   getAppTemplateContent,
   saveAppTemplateContent,
   deleteAppTemplateContent,
+  createLocalAppTemplateCopy,
   saveAppAsTemplate,
   reloadPlanInfo
 }
@@ -56,7 +57,7 @@ function setAppSetting(clusterName, appId, setting, value, baseURL) {
     return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/settings/actions/set/${setting}/${encodeURIComponent(value)}`)
 }
 
-function switchAppSettings(clusterName, setting, baseURL) {
+function switchAppSettings(clusterName, appId, setting, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/settings/actions/switch/${setting}`)
 }
 
@@ -85,6 +86,12 @@ function saveAppTemplateContent(clusterName, templateName, content, baseURL) {
 
 function deleteAppTemplateContent(clusterName, templateName, baseURL) {
 	return getApi(baseURL).post(`clusters/${clusterName}/templates/apps/${templateName}/content/actions/delete`)
+}
+
+function createLocalAppTemplateCopy(clusterName, templateName, localTemplateName, baseURL) {
+	return getApi(baseURL).post(`clusters/${clusterName}/templates/apps/${templateName}/content/actions/create-local-copy`, {
+		localTemplateName
+	})
 }
 
 function saveAppAsTemplate( clusterName, appId, template, baseURL) {

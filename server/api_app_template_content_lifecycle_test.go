@@ -71,3 +71,39 @@ func TestWriteTemplateContentAtomically(t *testing.T) {
 		t.Fatalf("expected non-empty template file content")
 	}
 }
+
+func TestCreateLocalTemplateCopyFromTemplate(t *testing.T) {
+	workDir := t.TempDir()
+	shareDir := t.TempDir()
+
+	sharedPath := filepath.Join(shareDir, "app", "deployments", "copyme.toml")
+	if err := os.MkdirAll(filepath.Dir(sharedPath), 0o755); err != nil {
+		t.Fatalf("mkdir shared template dir failed: %v", err)
+	}
+	if err := os.WriteFile(sharedPath, []byte(`
+[[deployment.storages.volumes]]
+name = "v1"
+poolname = "data"
+volumedir = "d"
+
+[[deployment.paths]]
+name = "root"
+dockerpath = "/srv/app"
+srctype = "volume"
+srcname = "v1"
+srcpath = "."
+`), 0o644); err != nil {
+		t.Fatalf("write shared template failed: %v", err)
+	}
+
+	cl := &cluster.Cluster{Conf: &config.Config{WorkingDir: workDir, ShareDir: shareDir, ProvAppTemplateRepo: "%%%"}}
+
+	if err := createLocalTemplateCopyFromTemplate(cl, "shared/copyme", "local/copyme"); err != nil {
+		t.Fatalf("createLocalTemplateCopyFromTemplate failed: %v", err)
+	}
+
+	localPath := filepath.Join(workDir, ".templates", "apps", "local", "copyme.toml")
+	if _, err := os.Stat(localPath); err != nil {
+		t.Fatalf("expected local template copy at %s, err=%v", localPath, err)
+	}
+}
