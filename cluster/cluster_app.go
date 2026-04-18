@@ -54,7 +54,9 @@ func (cluster *Cluster) LoadAppConfigs() error {
 	}
 
 	// Walk through the directory and load all the configuration files
-	return filepath.WalkDir(dirname, func(path string, d fs.DirEntry, err error) error {
+	var firstErr error
+	failedCount := 0
+	walkErr := filepath.WalkDir(dirname, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -63,10 +65,31 @@ func (cluster *Cluster) LoadAppConfigs() error {
 		}
 		if filepath.Ext(path) == ".toml" {
 			appname := strings.TrimSuffix(filepath.Base(path), ".toml")
-			_ = cluster.LoadAppConfig(dirname, appname)
+			if loadErr := cluster.LoadAppConfig(dirname, appname); loadErr != nil {
+				// ParseConfigMeasurement warnings are non-fatal and were historically ignored.
+				var parseErrs config.ErrorConfigs
+				if errors.As(loadErr, &parseErrs) {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
+						"App config %q loaded with measurement warnings: %v", path, loadErr)
+					return nil
+				}
+				failedCount++
+				if firstErr == nil {
+					firstErr = loadErr
+				}
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
+					"Failed to load app config %q: %v", path, loadErr)
+			}
 		}
 		return nil
 	})
+	if walkErr != nil {
+		return walkErr
+	}
+	if failedCount > 0 {
+		return fmt.Errorf("failed to load %d app config file(s): %w", failedCount, firstErr)
+	}
+	return nil
 }
 
 // LoadConfig loads the configuration from a file to the configuration struct.
@@ -96,18 +119,6 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 		return err
 	}
 
-	if canonicalRes.Changed {
-		t, err := toml.LoadBytes(canonicalContent)
-		if err != nil {
-			return err
-		}
-		if err := cluster.writeTomlAtomically(t, filename); err != nil {
-			return err
-		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
-			"Canonicalized legacy app config template in %q", filename)
-	}
-
 	// Open TOML file
 	appViper := viper.New()
 	appViper.SetConfigType("toml")
@@ -132,6 +143,18 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 			}
 			return fmt.Errorf("invalid deployment path mapping in app config %q", filename)
 		}
+	}
+
+	if canonicalRes.Changed {
+		t, err := toml.LoadBytes(canonicalContent)
+		if err != nil {
+			return err
+		}
+		if err := cluster.writeTomlAtomically(t, filename); err != nil {
+			return err
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+			"Canonicalized legacy app config template in %q", filename)
 	}
 
 	// If app-host was not set in the TOML file (or was left as an unresolved template),
@@ -460,19 +483,42 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 	appcnf.ProvAppDockerImg = dockerImg
 	appcnf.ProvAppTemplate = template
 	cluster.Conf.Apps = append(cluster.Conf.Apps, appcnf)
+	appAdded := true
+	rollbackAddedApp := func() {
+		if !appAdded {
+			return
+		}
+		for i, cnf := range cluster.Conf.Apps {
+			if cnf == appcnf || (cnf.AppHost == srv && cnf.AppPort == port) {
+				cluster.Conf.Apps = append(cluster.Conf.Apps[:i], cluster.Conf.Apps[i+1:]...)
+				break
+			}
+		}
+		cluster.Lock()
+		_ = cluster.newAppList()
+		cluster.Unlock()
+		appAdded = false
+	}
 
 	cluster.Lock()
-	cluster.newAppList()
+	if err := cluster.newAppList(); err != nil {
+		cluster.Unlock()
+		rollbackAddedApp()
+		return err
+	}
 	cluster.Unlock()
 
 	app := cluster.GetAppByConfig(appcnf)
-	if app != nil {
-		app.CheckPrimaryRoute()
+	if app == nil {
+		rollbackAddedApp()
+		return fmt.Errorf("failed to create app object for %s:%s", srv, port)
 	}
+	app.CheckPrimaryRoute()
 
 	if template != "" {
 		resolvedContent, err := cluster.ParseTemplateContent(app, content)
 		if err != nil {
+			rollbackAddedApp()
 			return err
 		}
 
@@ -480,11 +526,13 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
 				"Error canonicalizing parsed template content for %s: %s", template, err)
+			rollbackAddedApp()
 			return err
 		}
 
 		newViper, err = cluster.LoadTemplateToViper(canonicalContent)
 		if err != nil {
+			rollbackAddedApp()
 			return err
 		}
 		newViper.Set("app-host", srv)
@@ -496,6 +544,7 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		err = newViper.Unmarshal(appcnf)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error unmarshalling parsed template file %s: %s", template, err)
+			rollbackAddedApp()
 			return err
 		}
 
@@ -505,10 +554,12 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
 						"App template %q deployment path resolution error: %v", template, resolveErr)
 				}
+				rollbackAddedApp()
 				return fmt.Errorf("invalid deployment path mapping for template %q", template)
 			}
 		}
 	}
+	appAdded = false
 	return nil
 }
 
@@ -830,6 +881,11 @@ func (cluster *Cluster) GetTemplateContent(template string) ([]byte, error) {
 				"Error canonicalizing local template file %s: %s", localPath, canonErr)
 			return nil, canonErr
 		}
+		if err := cluster.validateTemplateDeploymentPaths(canonicalContent, template); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+				"Invalid local template file %s after canonicalization: %s", localPath, err)
+			return nil, err
+		}
 		if canonicalRes.Changed {
 			t, err := toml.LoadBytes(canonicalContent)
 			if err != nil {
@@ -869,6 +925,11 @@ func (cluster *Cluster) GetTemplateContent(template string) ([]byte, error) {
 			"Error canonicalizing template file %s: %s", template, err)
 		return nil, err
 	}
+	if err := cluster.validateTemplateDeploymentPaths(canonicalContent, template); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"Invalid template file %s after canonicalization: %s", template, err)
+		return nil, err
+	}
 
 	// Cache locally
 	t, err := toml.LoadBytes(canonicalContent)
@@ -882,6 +943,33 @@ func (cluster *Cluster) GetTemplateContent(template string) ([]byte, error) {
 	}
 
 	return canonicalContent, nil
+}
+
+func (cluster *Cluster) validateTemplateDeploymentPaths(content []byte, template string) error {
+	appViper := viper.New()
+	appViper.SetConfigType("toml")
+	if err := appViper.ReadConfig(bytes.NewBuffer(content)); err != nil {
+		return err
+	}
+
+	var appcnf config.AppConfig
+	appcnf.Deployment = config.NewDeploymentConfig()
+	if err := appViper.Unmarshal(&appcnf); err != nil {
+		return err
+	}
+
+	if appcnf.Deployment == nil {
+		return nil
+	}
+	if resolveErrs := appcnf.Deployment.ResolvePaths(); len(resolveErrs) > 0 {
+		for _, resolveErr := range resolveErrs {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
+				"Template %q deployment path resolution error: %v", template, resolveErr)
+		}
+		return fmt.Errorf("invalid deployment path mapping for template %q", template)
+	}
+
+	return nil
 }
 
 func (cluster *Cluster) LoadTemplateToViper(content []byte) (*viper.Viper, error) {

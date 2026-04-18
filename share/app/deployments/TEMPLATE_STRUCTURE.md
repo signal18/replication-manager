@@ -26,6 +26,13 @@ For every `[[deployment.paths]]` entry:
 - `parentname` must match an existing path `name`.
 - `srcpath = "/"` is invalid. Use `srcpath = "."`.
 
+## Legacy compatibility behavior
+
+- Legacy templates are accepted only at load boundaries (local app configs, local template cache, fetched/shared templates, and seeded-template parsing).
+- Legacy patterns are canonicalized in-memory first, then validated with strict deployment path resolution.
+- Local writable copies are rewritten to canonical TOML only after validation succeeds.
+- Invalid/ambiguous legacy templates are rejected (they are not silently accepted).
+
 ## Converter for old templates
 
 Use the converter to migrate old templates to canonical form:

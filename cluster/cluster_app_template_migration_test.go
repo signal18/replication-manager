@@ -30,6 +30,17 @@ parentname = "/var/www/html"
 dockerpath = "/var/www/html/assets"
 `
 
+const invalidLegacyTemplateTOML = `
+[deployment.storages]
+
+[[deployment.paths]]
+name = "invalid-root"
+dockerpath = "/var/www/html"
+srctype = "volume"
+srcname = "missing-volume"
+srcpath = "/"
+`
+
 func TestLoadAppConfig_CanonicalizesLegacyAndRewritesFile(t *testing.T) {
 	workingDir := t.TempDir()
 	appsDir := filepath.Join(workingDir, "apps")
@@ -186,5 +197,175 @@ func TestAddSeededApp_CanonicalizesLegacyResolvedTemplateBeforeUnmarshal(t *test
 	}
 	if seeded.Deployment.Paths[0].SourcePath != "." {
 		t.Fatalf("expected srcpath to be canonicalized to '.', got %q", seeded.Deployment.Paths[0].SourcePath)
+	}
+}
+
+func TestAddSeededApp_InvalidTemplateDoesNotRegisterApp(t *testing.T) {
+	workingDir := t.TempDir()
+	localPath := filepath.Join(workingDir, ".templates", "apps", "invalid-seed.toml")
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+		t.Fatalf("mkdir local template dir failed: %v", err)
+	}
+	template := "app-port = \"8080\"\nprov-app-docker-img = \"nginx:latest\"\n" + invalidLegacyTemplateTOML
+	if err := os.WriteFile(localPath, []byte(template), 0o644); err != nil {
+		t.Fatalf("write invalid seed template failed: %v", err)
+	}
+
+	cluster := &Cluster{
+		Name:       "test-cluster",
+		WorkingDir: workingDir,
+		crcTable:   crc64.MakeTable(crc64.ECMA),
+		Conf: &config.Config{
+			WorkingDir: workingDir,
+			Apps:       make([]*config.AppConfig, 0),
+		},
+	}
+
+	if err := cluster.AddSeededApp("seed-host", "8080", "nginx:latest", "invalid-seed"); err == nil {
+		t.Fatalf("expected AddSeededApp to fail for invalid template")
+	}
+
+	if len(cluster.Conf.Apps) != 0 {
+		t.Fatalf("expected no app config to be registered after failure, got %d", len(cluster.Conf.Apps))
+	}
+
+	if app, _ := cluster.GetAppByHostPort("seed-host", "8080"); app != nil {
+		t.Fatalf("expected no app object to remain after failure")
+	}
+}
+
+func TestLoadAppConfig_InvalidCanonicalizedTemplateDoesNotRewriteFile(t *testing.T) {
+	workingDir := t.TempDir()
+	appsDir := filepath.Join(workingDir, "apps")
+	if err := os.MkdirAll(appsDir, 0o755); err != nil {
+		t.Fatalf("mkdir apps dir failed: %v", err)
+	}
+
+	appFile := filepath.Join(appsDir, "invalid.toml")
+	content := "app-host = \"invalid\"\napp-port = \"8080\"\nprov-app-memory = \"128M\"\nprov-app-disk-size = \"1G\"\n" + invalidLegacyTemplateTOML
+	if err := os.WriteFile(appFile, []byte(content), 0o644); err != nil {
+		t.Fatalf("write invalid app file failed: %v", err)
+	}
+
+	cluster := &Cluster{
+		Name:       "test-cluster",
+		WorkingDir: workingDir,
+		crcTable:   crc64.MakeTable(crc64.ECMA),
+		Conf: &config.Config{
+			WorkingDir:     workingDir,
+			Apps:           make([]*config.AppConfig, 0),
+			DefaultFlagMap: map[string]interface{}{"prov-app-memory": "128M", "prov-app-disk-size": "1G"},
+		},
+	}
+
+	if err := cluster.LoadAppConfig(appsDir, "invalid"); err == nil {
+		t.Fatalf("expected LoadAppConfig to fail for invalid canonicalized template")
+	}
+
+	updated, err := os.ReadFile(appFile)
+	if err != nil {
+		t.Fatalf("read app file failed: %v", err)
+	}
+	got := string(updated)
+	if !strings.Contains(got, `srcpath = "/"`) {
+		t.Fatalf("expected invalid file to remain unchanged, got:\n%s", got)
+	}
+	if strings.Contains(got, `srcpath = "."`) {
+		t.Fatalf("expected no canonical rewrite on invalid template, got:\n%s", got)
+	}
+}
+
+func TestGetTemplateContent_InvalidTemplateDoesNotRewriteLocalCache(t *testing.T) {
+	workingDir := t.TempDir()
+	localPath := filepath.Join(workingDir, ".templates", "apps", "invalid.toml")
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+		t.Fatalf("mkdir local template dir failed: %v", err)
+	}
+	if err := os.WriteFile(localPath, []byte(invalidLegacyTemplateTOML), 0o644); err != nil {
+		t.Fatalf("write local invalid template failed: %v", err)
+	}
+
+	cluster := &Cluster{Conf: &config.Config{WorkingDir: workingDir}}
+
+	if _, err := cluster.GetTemplateContent("invalid"); err == nil {
+		t.Fatalf("expected GetTemplateContent to fail for invalid local template")
+	}
+
+	rewritten, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read local template failed: %v", err)
+	}
+	if !strings.Contains(string(rewritten), `srcpath = "/"`) {
+		t.Fatalf("expected local invalid template not to be rewritten, got:\n%s", string(rewritten))
+	}
+}
+
+func TestGetTemplateContent_InvalidSharedTemplateDoesNotWriteCache(t *testing.T) {
+	workingDir := t.TempDir()
+	shareDir := filepath.Join(t.TempDir(), "share")
+	sharedPath := filepath.Join(shareDir, "app", "deployments", "invalid.toml")
+	if err := os.MkdirAll(filepath.Dir(sharedPath), 0o755); err != nil {
+		t.Fatalf("mkdir shared template dir failed: %v", err)
+	}
+	if err := os.WriteFile(sharedPath, []byte(invalidLegacyTemplateTOML), 0o644); err != nil {
+		t.Fatalf("write shared invalid template failed: %v", err)
+	}
+
+	cluster := &Cluster{Conf: &config.Config{
+		WorkingDir:          workingDir,
+		ShareDir:            shareDir,
+		ProvAppTemplateRepo: "%%%",
+	}}
+
+	if _, err := cluster.GetTemplateContent("shared/invalid"); err == nil {
+		t.Fatalf("expected GetTemplateContent to fail for invalid shared template")
+	}
+
+	localCache := filepath.Join(workingDir, ".templates", "apps", "shared", "invalid.toml")
+	if _, err := os.Stat(localCache); !os.IsNotExist(err) {
+		t.Fatalf("expected no local cache file for invalid shared template, got err=%v", err)
+	}
+}
+
+func TestLoadAppConfigs_ReturnsAggregateErrorButLoadsValidApps(t *testing.T) {
+	workingDir := t.TempDir()
+	appsDir := filepath.Join(workingDir, "apps")
+	if err := os.MkdirAll(appsDir, 0o755); err != nil {
+		t.Fatalf("mkdir apps dir failed: %v", err)
+	}
+
+	goodFile := filepath.Join(appsDir, "good.toml")
+	goodContent := "app-host = \"good\"\napp-port = \"8081\"\nprov-app-memory = \"128M\"\nprov-app-disk-size = \"1G\"\n" + legacyAppTemplateTOML
+	if err := os.WriteFile(goodFile, []byte(goodContent), 0o644); err != nil {
+		t.Fatalf("write good app file failed: %v", err)
+	}
+
+	badFile := filepath.Join(appsDir, "bad.toml")
+	badContent := "app-host = \"bad\"\napp-port = \"8082\"\nprov-app-memory = \"128M\"\nprov-app-disk-size = \"1G\"\n" + invalidLegacyTemplateTOML
+	if err := os.WriteFile(badFile, []byte(badContent), 0o644); err != nil {
+		t.Fatalf("write bad app file failed: %v", err)
+	}
+
+	cluster := &Cluster{
+		Name:       "test-cluster",
+		WorkingDir: workingDir,
+		crcTable:   crc64.MakeTable(crc64.ECMA),
+		Conf: &config.Config{
+			WorkingDir:     workingDir,
+			Apps:           make([]*config.AppConfig, 0),
+			DefaultFlagMap: map[string]interface{}{"prov-app-memory": "128M", "prov-app-disk-size": "1G"},
+		},
+	}
+
+	err := cluster.LoadAppConfigs()
+	if err == nil {
+		t.Fatalf("expected aggregate error when one app config is invalid")
+	}
+
+	if len(cluster.Conf.Apps) != 1 {
+		t.Fatalf("expected one valid app config to load, got %d", len(cluster.Conf.Apps))
+	}
+	if cluster.Conf.Apps[0].AppHost != "good" || cluster.Conf.Apps[0].AppPort != "8081" {
+		t.Fatalf("unexpected loaded app config: host=%q port=%q", cluster.Conf.Apps[0].AppHost, cluster.Conf.Apps[0].AppPort)
 	}
 }
