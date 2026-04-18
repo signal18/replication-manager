@@ -901,6 +901,46 @@ func TestPrepareModifyProvider_NewCredsAppliedWhenProvided(t *testing.T) {
 	}
 }
 
+// TestPrepareModifyProvider_SourceModeTransitionDoesNotInheritCustomCreds verifies
+// that changing providerSource custom->app does not inherit old custom
+// credentials when request credentials are blank.
+func TestPrepareModifyProvider_SourceModeTransitionDoesNotInheritCustomCreds(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.AppS3Providers = []string{"app1:9000"}
+	original := config.S3Provider{
+		Name:           "provider-switch",
+		ProviderSource: config.S3ProviderSourceCustom,
+		Endpoint:       "https://s3.example.com",
+		AccessKey:      "AK-old",
+		SecretKey:      "SK-old",
+	}
+	if err := cl.AddS3Provider(original); err != nil {
+		t.Fatalf("AddS3Provider: %v", err)
+	}
+
+	req := s3ProviderRequest{
+		Name:           "provider-switch",
+		ProviderSource: config.S3ProviderSourceApp,
+		ProviderApp:    "app1:9000",
+		AccessKey:      "", // blank should NOT inherit on source transition
+		SecretKey:      "", // blank should NOT inherit on source transition
+	}
+
+	p, _, err := prepareModifyProvider(req, cl)
+	if err != nil {
+		t.Fatalf("prepareModifyProvider: %v", err)
+	}
+	if p.AccessKey != "" {
+		t.Errorf("expected AccessKey to remain empty on source transition, got %q", p.AccessKey)
+	}
+	if p.SecretKey != "" {
+		t.Errorf("expected SecretKey to remain empty on source transition, got %q", p.SecretKey)
+	}
+	if p.ProviderSource != config.S3ProviderSourceApp {
+		t.Errorf("expected provider source app, got %q", p.ProviderSource)
+	}
+}
+
 // TestPrepareModifyProvider_ValidationFailsInvalidEndpoint confirms that
 // prepareModifyProvider still rejects malformed endpoints even after merging creds.
 func TestPrepareModifyProvider_ValidationFailsInvalidEndpoint(t *testing.T) {

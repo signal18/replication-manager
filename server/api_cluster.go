@@ -9248,7 +9248,7 @@ func prepareModifyProvider(req s3ProviderRequest, mycluster *cluster.Cluster) (c
 			break
 		}
 	}
-	if oldProvider != nil {
+	if oldProvider != nil && p.ProviderSource == oldProvider.ProviderSource {
 		if p.AccessKey == "" {
 			p.AccessKey = oldProvider.AccessKey
 		}
