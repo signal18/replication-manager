@@ -122,6 +122,13 @@ var appACLRules = []ACLRule{
 	{"/actions/restart", []string{config.GrantAppStop, config.GrantAppStart}, nil},
 	{"/settings/actions/", nil, []string{config.GrantAppConfig}},
 	{"/git/", nil, []string{config.GrantAppGit}},
+
+	// App Template Manager
+	{"/templates/apps", nil, []string{config.GrantAppDeployment}},
+	{"/content/actions/save", nil, []string{config.GrantAppDeployment}},
+	{"/content/actions/delete", nil, []string{config.GrantAppDeployment}},
+	{"/content/actions/create-local-copy", nil, []string{config.GrantAppDeployment}},
+	{"/content", nil, []string{config.GrantAppDeployment}},
 }
 
 // clusterACLRules defines ACL rules for general cluster-level endpoints
