@@ -7,6 +7,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/base64"
@@ -752,19 +753,27 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/s3providers", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterS3ProvidersGet)),
-	))
+	)).Methods(http.MethodGet)
 	router.Handle("/api/clusters/{clusterName}/s3providers/add", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterS3ProviderAdd)),
-	))
+	)).Methods(http.MethodPost)
 	router.Handle("/api/clusters/{clusterName}/s3providers/{name}/modify", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterS3ProviderModify)),
-	))
+	)).Methods(http.MethodPut)
+	router.Handle("/api/clusters/{clusterName}/s3providers/{name}/modify", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterS3ProviderModify)),
+	)).Methods(http.MethodPost)
 	router.Handle("/api/clusters/{clusterName}/s3providers/{name}/drop", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterS3ProviderDrop)),
-	))
+	)).Methods(http.MethodDelete)
+	router.Handle("/api/clusters/{clusterName}/s3providers/{name}/drop", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterS3ProviderDrop)),
+	)).Methods(http.MethodGet)
 	router.Handle("/api/clusters/{clusterName}/s3providers/{name}/references", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterS3ProviderReferences)),
@@ -5950,8 +5959,13 @@ func buildClusterAPIPayload(mycluster *cluster.Cluster) ([]byte, error) {
 	// Overwrite clusterS3Providers with a safe snapshot acquired under the mutex
 	// to prevent races with concurrent CRUD mutations (AddS3Provider, etc.).
 	s3snap := mycluster.GetS3ProvidersSnapshot()
-	if s3JSON, merr := json.Marshal(s3snap); merr == nil {
-		cl, _ = sjson.SetRawBytes(cl, "clusterS3Providers", s3JSON)
+	s3JSON, merr := json.Marshal(s3snap)
+	if merr != nil {
+		return nil, fmt.Errorf("marshal clusterS3Providers snapshot: %w", merr)
+	}
+	cl, err = sjson.SetRawBytes(cl, "clusterS3Providers", s3JSON)
+	if err != nil {
+		return nil, fmt.Errorf("set clusterS3Providers snapshot: %w", err)
 	}
 
 	return cl, nil
@@ -9066,6 +9080,44 @@ type s3ProviderRequest struct {
 	SecretKey      string                  `json:"secretkey,omitempty"`
 }
 
+const s3ProviderRequestBodyMaxBytes int64 = 1 << 20 // 1 MiB
+
+func decodeS3ProviderRequestBody(w http.ResponseWriter, r *http.Request, req *s3ProviderRequest) (bool, error) {
+	r.Body = http.MaxBytesReader(w, r.Body, s3ProviderRequestBodyMaxBytes)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			return false, fmt.Errorf("request body too large (max %d bytes)", s3ProviderRequestBodyMaxBytes)
+		}
+		return false, fmt.Errorf("invalid request body: %w", err)
+	}
+
+	strictDec := json.NewDecoder(bytes.NewReader(body))
+	strictDec.DisallowUnknownFields()
+	if err := strictDec.Decode(req); err != nil {
+		if strings.Contains(err.Error(), "unknown field") {
+			compatDec := json.NewDecoder(bytes.NewReader(body))
+			if compatErr := compatDec.Decode(req); compatErr != nil {
+				return false, fmt.Errorf("invalid request body: %w", err)
+			}
+			var compatExtra any
+			if compatErr := compatDec.Decode(&compatExtra); compatErr != io.EOF {
+				return false, fmt.Errorf("invalid request body: unexpected trailing content")
+			}
+			return true, nil
+		}
+		return false, fmt.Errorf("invalid request body: %w", err)
+	}
+
+	// Reject trailing content after a single JSON payload.
+	var extra any
+	if err := strictDec.Decode(&extra); err != io.EOF {
+		return false, fmt.Errorf("invalid request body: unexpected trailing content")
+	}
+	return false, nil
+}
+
 // s3ProviderResponse is the JSON read response struct for provider GET/list APIs.
 // Product contract: stored credentials are never returned to the UI.
 //   - AccessKey is intentionally omitted (even though product classifies it as
@@ -9136,6 +9188,14 @@ func validateS3ProviderAPIRequest(p config.S3Provider, mycluster *cluster.Cluste
 	return nil
 }
 
+func logLegacyS3ProviderMethodUsage(mycluster *cluster.Cluster, routePath, method, preferredMethod string) {
+	if strings.EqualFold(method, preferredMethod) {
+		return
+	}
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+		"Deprecated S3 provider API method %s on %s (preferred: %s)", method, routePath, preferredMethod)
+}
+
 // handlerMuxClusterS3ProvidersGet lists all S3 providers for a cluster with secrets masked.
 func (repman *ReplicationManager) handlerMuxClusterS3ProvidersGet(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -9163,6 +9223,34 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProvidersGet(w http.Respons
 	}
 }
 
+type s3ProviderCRUDHTTPResponse struct {
+	statusCode int
+	message    string
+}
+
+func executeS3ProviderCRUDTransaction(mycluster *cluster.Cluster, txn func() s3ProviderCRUDHTTPResponse) s3ProviderCRUDHTTPResponse {
+	resp := s3ProviderCRUDHTTPResponse{statusCode: http.StatusInternalServerError, message: "Unhandled S3 provider CRUD transaction state"}
+	_ = mycluster.WithS3ProviderCRUDLock(func() error {
+		if txn == nil {
+			return nil
+		}
+		resp = txn()
+		return nil
+	})
+	return resp
+}
+
+func writeS3ProviderCRUDResponse(w http.ResponseWriter, resp s3ProviderCRUDHTTPResponse) {
+	if resp.statusCode == 0 {
+		resp.statusCode = http.StatusOK
+	}
+	if resp.message != "" {
+		http.Error(w, resp.message, resp.statusCode)
+		return
+	}
+	w.WriteHeader(resp.statusCode)
+}
+
 // handlerMuxClusterS3ProviderAdd validates and adds a new S3 provider to the cluster library.
 func (repman *ReplicationManager) handlerMuxClusterS3ProviderAdd(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -9176,11 +9264,15 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderAdd(w http.Response
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
-	_ = mycluster.WithS3ProviderCRUDLock(func() error {
+	resp := executeS3ProviderCRUDTransaction(mycluster, func() s3ProviderCRUDHTTPResponse {
 		var req s3ProviderRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
-			return nil
+		legacyUnknownFieldAccepted, err := decodeS3ProviderRequestBody(w, r, &req)
+		if err != nil {
+			return s3ProviderCRUDHTTPResponse{statusCode: http.StatusBadRequest, message: err.Error()}
+		}
+		if legacyUnknownFieldAccepted {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"Deprecated S3 provider add payload with unknown fields accepted for compatibility")
 		}
 		p := config.S3Provider{
 			Name:           req.Name,
@@ -9192,16 +9284,13 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderAdd(w http.Response
 			SecretKey:      req.SecretKey,
 		}
 		if err := p.Validate(); err != nil {
-			http.Error(w, fmt.Sprintf("Validation error: %v", err), http.StatusBadRequest)
-			return nil
+			return s3ProviderCRUDHTTPResponse{statusCode: http.StatusBadRequest, message: fmt.Sprintf("Validation error: %v", err)}
 		}
 		if err := validateS3ProviderAPIRequest(p, mycluster); err != nil {
-			http.Error(w, fmt.Sprintf("Validation error: %v", err), http.StatusBadRequest)
-			return nil
+			return s3ProviderCRUDHTTPResponse{statusCode: http.StatusBadRequest, message: fmt.Sprintf("Validation error: %v", err)}
 		}
 		if err := mycluster.AddS3Provider(p); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to add S3 provider: %v", err), http.StatusConflict)
-			return nil
+			return s3ProviderCRUDHTTPResponse{statusCode: http.StatusConflict, message: fmt.Sprintf("Failed to add S3 provider: %v", err)}
 		}
 		if err := mycluster.SaveS3Providers(); err != nil {
 			// Rollback the in-memory add so state does not diverge from disk.
@@ -9211,14 +9300,13 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderAdd(w http.Response
 			}
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 				"Failed to persist S3 providers after add of %q: %v", p.Name, err)
-			http.Error(w, fmt.Sprintf("Failed to persist S3 provider: %v", err), http.StatusInternalServerError)
-			return nil
+			return s3ProviderCRUDHTTPResponse{statusCode: http.StatusInternalServerError, message: fmt.Sprintf("Failed to persist S3 provider: %v", err)}
 		}
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"S3 provider %q added to cluster library", p.Name)
-		w.WriteHeader(http.StatusCreated)
-		return nil
+		return s3ProviderCRUDHTTPResponse{statusCode: http.StatusCreated}
 	})
+	writeS3ProviderCRUDResponse(w, resp)
 }
 
 // prepareModifyProvider builds a fully-validated S3Provider for the modify path.
@@ -9280,22 +9368,25 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderModify(w http.Respo
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
-	_ = mycluster.WithS3ProviderCRUDLock(func() error {
+	logLegacyS3ProviderMethodUsage(mycluster, "/api/clusters/{clusterName}/s3providers/{name}/modify", r.Method, http.MethodPut)
+	resp := executeS3ProviderCRUDTransaction(mycluster, func() s3ProviderCRUDHTTPResponse {
 		var req s3ProviderRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
-			return nil
+		legacyUnknownFieldAccepted, err := decodeS3ProviderRequestBody(w, r, &req)
+		if err != nil {
+			return s3ProviderCRUDHTTPResponse{statusCode: http.StatusBadRequest, message: err.Error()}
+		}
+		if legacyUnknownFieldAccepted {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"Deprecated S3 provider modify payload with unknown fields accepted for compatibility")
 		}
 		// URL path name is authoritative to prevent accidental rename.
 		req.Name = vars["name"]
 		p, oldProvider, err := prepareModifyProvider(req, mycluster)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Validation error: %v", err), http.StatusBadRequest)
-			return nil
+			return s3ProviderCRUDHTTPResponse{statusCode: http.StatusBadRequest, message: fmt.Sprintf("Validation error: %v", err)}
 		}
 		if err := mycluster.UpdateS3Provider(p); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to update S3 provider: %v", err), http.StatusNotFound)
-			return nil
+			return s3ProviderCRUDHTTPResponse{statusCode: http.StatusNotFound, message: fmt.Sprintf("Failed to update S3 provider: %v", err)}
 		}
 		if err := mycluster.SaveS3Providers(); err != nil {
 			// Rollback the in-memory update so state does not diverge from disk.
@@ -9307,14 +9398,13 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderModify(w http.Respo
 			}
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 				"Failed to persist S3 providers after modify of %q: %v", p.Name, err)
-			http.Error(w, fmt.Sprintf("Failed to persist S3 provider: %v", err), http.StatusInternalServerError)
-			return nil
+			return s3ProviderCRUDHTTPResponse{statusCode: http.StatusInternalServerError, message: fmt.Sprintf("Failed to persist S3 provider: %v", err)}
 		}
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"S3 provider %q modified in cluster library", p.Name)
-		w.WriteHeader(http.StatusOK)
-		return nil
+		return s3ProviderCRUDHTTPResponse{statusCode: http.StatusOK}
 	})
+	writeS3ProviderCRUDResponse(w, resp)
 }
 
 // handlerMuxClusterS3ProviderDrop removes an S3 provider from the cluster library.
@@ -9330,7 +9420,8 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderDrop(w http.Respons
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
-	_ = mycluster.WithS3ProviderCRUDLock(func() error {
+	logLegacyS3ProviderMethodUsage(mycluster, "/api/clusters/{clusterName}/s3providers/{name}/drop", r.Method, http.MethodDelete)
+	resp := executeS3ProviderCRUDTransaction(mycluster, func() s3ProviderCRUDHTTPResponse {
 		name := vars["name"]
 		// Capture old state before removal so we can roll back if save fails.
 		var oldProvider *config.S3Provider
@@ -9342,8 +9433,7 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderDrop(w http.Respons
 			}
 		}
 		if err := mycluster.RemoveS3Provider(name); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to remove S3 provider: %v", err), http.StatusNotFound)
-			return nil
+			return s3ProviderCRUDHTTPResponse{statusCode: http.StatusNotFound, message: fmt.Sprintf("Failed to remove S3 provider: %v", err)}
 		}
 		if err := mycluster.SaveS3Providers(); err != nil {
 			// Rollback the in-memory removal so state does not diverge from disk.
@@ -9355,14 +9445,13 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderDrop(w http.Respons
 			}
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 				"Failed to persist S3 providers after drop of %q: %v", name, err)
-			http.Error(w, fmt.Sprintf("Failed to persist S3 provider: %v", err), http.StatusInternalServerError)
-			return nil
+			return s3ProviderCRUDHTTPResponse{statusCode: http.StatusInternalServerError, message: fmt.Sprintf("Failed to persist S3 provider: %v", err)}
 		}
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"S3 provider %q dropped from cluster library", name)
-		w.WriteHeader(http.StatusOK)
-		return nil
+		return s3ProviderCRUDHTTPResponse{statusCode: http.StatusOK}
 	})
+	writeS3ProviderCRUDResponse(w, resp)
 }
 
 // s3ProviderReference represents a single mount reference to a provider.
@@ -9393,54 +9482,42 @@ type s3ProviderReferencesResponse struct {
 // still returned with status "provider_missing"). Extracted for testability.
 func buildS3ProviderReferencesResponse(mycluster *cluster.Cluster, providerName string, provider *config.S3Provider) s3ProviderReferencesResponse {
 	references := []s3ProviderReference{}
-	for _, app := range mycluster.Apps {
-		if app.AppConfig == nil || app.AppConfig.Deployment == nil || app.AppConfig.Deployment.Storages.S3Mounts == nil {
-			continue
+	providerEndpoint := ""
+	providerRegion := ""
+	providerSourceKnown := false
+	if provider != nil {
+		effectiveEndpoint, effectiveRegion, _, _ := mycluster.ResolveS3ProviderEffectiveValues(*provider)
+		switch provider.ProviderSource {
+		case config.S3ProviderSourceApp, config.S3ProviderSourceCustom:
+			providerSourceKnown = true
+			providerEndpoint = effectiveEndpoint
+			providerRegion = effectiveRegion
 		}
-		for _, s3m := range app.AppConfig.Deployment.Storages.S3Mounts {
-			if s3m == nil || s3m.ProviderName != providerName {
-				continue
-			}
+	}
 
-			ref := s3ProviderReference{
-				AppID:        app.GetId(),
-				AppName:      app.Name,
-				MountName:    s3m.Name,
-				ProviderName: s3m.ProviderName,
-				Status:       "unknown",
-			}
-			ref.Fields.Endpoint = s3m.Endpoint
-			ref.Fields.Region = s3m.Region
-			ref.Fields.Bucket = s3m.Bucket
-
-			if provider == nil {
-				ref.Status = "provider_missing"
-			} else {
-				var providerEndpoint string
-				var providerRegion string
-				switch provider.ProviderSource {
-				case config.S3ProviderSourceApp:
-					if app2, _ := mycluster.GetAppByURL(provider.ProviderApp); app2 != nil && app2.Host != "" && app2.Port != "" {
-						providerEndpoint = app2.Host + ":" + app2.Port
-					}
-					providerRegion = provider.Region
-				case config.S3ProviderSourceCustom:
-					providerEndpoint = provider.Endpoint
-					providerRegion = provider.Region
-				default:
-					ref.Status = "unknown"
-					references = append(references, ref)
-					continue
-				}
-				if s3m.Endpoint == providerEndpoint && s3m.Region == providerRegion {
-					ref.Status = "matches_provider"
-				} else {
-					ref.Status = "customized"
-				}
-			}
-
-			references = append(references, ref)
+	for _, snap := range mycluster.S3MountReferencesSnapshot(providerName) {
+		ref := s3ProviderReference{
+			AppID:        snap.AppID,
+			AppName:      snap.AppName,
+			MountName:    snap.MountName,
+			ProviderName: snap.ProviderName,
+			Status:       "unknown",
 		}
+		ref.Fields.Endpoint = snap.Endpoint
+		ref.Fields.Region = snap.Region
+		ref.Fields.Bucket = snap.Bucket
+
+		if provider == nil {
+			ref.Status = "provider_missing"
+		} else if !providerSourceKnown {
+			ref.Status = "unknown"
+		} else if snap.Endpoint == providerEndpoint && snap.Region == providerRegion {
+			ref.Status = "matches_provider"
+		} else {
+			ref.Status = "customized"
+		}
+
+		references = append(references, ref)
 	}
 	return s3ProviderReferencesResponse{
 		ProviderName:   providerName,
@@ -9503,6 +9580,27 @@ type s3SyncRequest struct {
 	RevisionToken string               `json:"revisionToken,omitempty"`
 }
 
+const s3SyncRequestBodyMaxBytes int64 = 1 << 20 // 1 MiB
+
+func decodeS3SyncRequestBody(w http.ResponseWriter, r *http.Request, req *s3SyncRequest) (int, error) {
+	r.Body = http.MaxBytesReader(w, r.Body, s3SyncRequestBodyMaxBytes)
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			return http.StatusRequestEntityTooLarge, fmt.Errorf("request body too large (max %d bytes)", s3SyncRequestBodyMaxBytes)
+		}
+		return http.StatusBadRequest, fmt.Errorf("Invalid request body: %w", err)
+	}
+	// Reject trailing garbage after the first JSON value.
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		return http.StatusBadRequest, fmt.Errorf("Invalid request body: unexpected trailing content")
+	}
+	return http.StatusOK, nil
+}
+
 func validateS3SyncApplyRevisionToken(revisionToken string) error {
 	token := strings.TrimSpace(revisionToken)
 	if token == "" {
@@ -9537,16 +9635,8 @@ func parseS3SyncRequest(repman *ReplicationManager, w http.ResponseWriter, r *ht
 	}
 
 	var req s3SyncRequest
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil {
-		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
-		return nil, "", s3SyncRequest{}, false
-	}
-	// Reject trailing garbage after the first JSON value.
-	var extra any
-	if err := dec.Decode(&extra); err != io.EOF {
-		http.Error(w, "Invalid request body: unexpected trailing content", http.StatusBadRequest)
+	if statusCode, err := decodeS3SyncRequestBody(w, r, &req); err != nil {
+		http.Error(w, err.Error(), statusCode)
 		return nil, "", s3SyncRequest{}, false
 	}
 	if len(req.Targets) == 0 {

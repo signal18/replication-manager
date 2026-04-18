@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -102,6 +101,18 @@ type SyncApplySummary struct {
 	Failed    int `json:"failed"`
 }
 
+// S3MountReferenceSnapshot captures a stable copy of one app mount used by
+// provider reference/read-only APIs.
+type S3MountReferenceSnapshot struct {
+	AppID        string
+	AppName      string
+	MountName    string
+	ProviderName string
+	Endpoint     string
+	Region       string
+	Bucket       string
+}
+
 // SyncPreviewResponse is the full response for a preview (dry-run) request.
 type SyncPreviewResponse struct {
 	ProviderName  string              `json:"providerName"`
@@ -163,14 +174,65 @@ var credentialFields = map[string]bool{
 	"secretKey": true,
 }
 
+type syncMountFieldSpec struct {
+	name    string
+	current string
+	desired string
+}
+
+// S3MountReferencesSnapshot returns a read-safe snapshot of app mounts that
+// reference the requested provider name.
+func (cluster *Cluster) S3MountReferencesSnapshot(providerName string) []S3MountReferenceSnapshot {
+	cluster.Lock()
+	apps := make([]*App, len(cluster.Apps))
+	copy(apps, cluster.Apps)
+	cluster.Unlock()
+
+	refs := make([]S3MountReferenceSnapshot, 0)
+	for _, app := range apps {
+		if app == nil {
+			continue
+		}
+		locked := false
+		if app.Mutex != nil {
+			app.Lock()
+			locked = true
+		}
+		if app.AppConfig == nil || app.AppConfig.Deployment == nil || app.AppConfig.Deployment.Storages.S3Mounts == nil {
+			if locked {
+				app.Unlock()
+			}
+			continue
+		}
+		for _, s3m := range app.AppConfig.Deployment.Storages.S3Mounts {
+			if s3m == nil || s3m.ProviderName != providerName {
+				continue
+			}
+			refs = append(refs, S3MountReferenceSnapshot{
+				AppID:        app.GetId(),
+				AppName:      app.Name,
+				MountName:    s3m.Name,
+				ProviderName: s3m.ProviderName,
+				Endpoint:     s3m.Endpoint,
+				Region:       s3m.Region,
+				Bucket:       s3m.Bucket,
+			})
+		}
+		if locked {
+			app.Unlock()
+		}
+	}
+	return refs
+}
+
 // resolveProviderEffectiveValues returns the effective endpoint, region, accessKey,
 // and secretKey for a provider. For app-mode providers the endpoint is derived from
 // the sibling app's host:port; credentials are always empty for app mode.
 func (cluster *Cluster) resolveProviderEffectiveValues(p *config.S3Provider) (endpoint, region, accessKey, secretKey string) {
 	switch p.ProviderSource {
 	case config.S3ProviderSourceApp:
-		if app, _ := cluster.GetAppByURL(p.ProviderApp); app != nil && app.Host != "" && app.Port != "" {
-			endpoint = app.Host + ":" + app.Port
+		if providerEndpoint, ok := cluster.appEndpointByURL(p.ProviderApp); ok {
+			endpoint = providerEndpoint
 		}
 		region = p.Region
 		// App-mode providers carry no credentials.
@@ -181,6 +243,13 @@ func (cluster *Cluster) resolveProviderEffectiveValues(p *config.S3Provider) (en
 		secretKey = p.SecretKey
 	}
 	return
+}
+
+// ResolveS3ProviderEffectiveValues returns effective provider values for
+// read-only API consumers using the same logic as sync preview/apply.
+func (cluster *Cluster) ResolveS3ProviderEffectiveValues(p config.S3Provider) (endpoint, region, accessKey, secretKey string) {
+	cp := p
+	return cluster.resolveProviderEffectiveValues(&cp)
 }
 
 // findProviderByName returns a pointer to the named provider in a snapshot, or nil.
@@ -202,6 +271,22 @@ func maskChangeValue(field, value string) string {
 		return credentialMask
 	}
 	return value
+}
+
+// mountLooksCustomizedForProviderManagedFields returns true when at least one
+// provider-managed field differs from desired and the mount carries a non-empty
+// local value for that differing field. Empty differing values are treated as
+// likely fresh/default placeholders and do not trigger the "customized" warning.
+func mountLooksCustomizedForProviderManagedFields(specs []syncMountFieldSpec) bool {
+	for _, f := range specs {
+		if f.current == f.desired {
+			continue
+		}
+		if strings.TrimSpace(f.current) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // IsValidS3SyncRevisionToken validates the expected revision token shape.
@@ -230,7 +315,66 @@ func normalizeSyncTargets(targets []SyncTarget) []SyncTarget {
 	return normalized
 }
 
-func (cluster *Cluster) appByID(appID string) *App {
+func normalizeAppURLForLookup(url string) (string, bool) {
+	normalized := strings.TrimSpace(url)
+	if normalized == "" {
+		return "", false
+	}
+
+	if strings.Contains(normalized, "://") {
+		parts := strings.SplitN(normalized, "://", 2)
+		if len(parts) == 2 {
+			normalized = parts[1]
+		}
+	}
+
+	parts := strings.SplitN(normalized, ":", 2)
+	if len(parts) == 2 {
+		return parts[0] + ":" + parts[1], true
+	}
+	return parts[0] + ":80", true
+}
+
+func (cluster *Cluster) syncAppIndexesSnapshot() (map[string]*App, map[string]string, uint64) {
+	appByID := make(map[string]*App)
+	idByURL := make(map[string]string)
+
+	cluster.Lock()
+	defer cluster.Unlock()
+	appListVersion := cluster.appListVersion()
+
+	for _, app := range cluster.Apps {
+		if app == nil {
+			continue
+		}
+		appID := app.GetId()
+		if appID == "" {
+			continue
+		}
+		appByID[appID] = app
+
+		key, ok := normalizeAppURLForLookup(app.Host + ":" + app.Port)
+		if ok {
+			idByURL[key] = appID
+		}
+	}
+
+	return appByID, idByURL, appListVersion
+}
+
+func appIDByURLFromIndex(url string, idByURL map[string]string) (string, bool) {
+	key, ok := normalizeAppURLForLookup(url)
+	if !ok {
+		return "", false
+	}
+	appID, ok := idByURL[key]
+	if !ok || appID == "" {
+		return "", false
+	}
+	return appID, true
+}
+
+func (cluster *Cluster) appByIDUnsafe(appID string) *App {
 	for _, app := range cluster.Apps {
 		if app.GetId() == appID {
 			return app
@@ -239,7 +383,52 @@ func (cluster *Cluster) appByID(appID string) *App {
 	return nil
 }
 
-func (cluster *Cluster) syncApplyLockAppIDs(provider *config.S3Provider, targets []SyncTarget) []string {
+func (cluster *Cluster) appByID(appID string) *App {
+	cluster.Lock()
+	defer cluster.Unlock()
+	app := cluster.appByIDUnsafe(appID)
+	if app != nil && app.Mutex == nil {
+		return nil
+	}
+	return app
+}
+
+func (cluster *Cluster) appEndpointByURL(url string) (string, bool) {
+	cluster.Lock()
+	app, _ := cluster.GetAppByURL(url)
+	cluster.Unlock()
+	if app == nil {
+		return "", false
+	}
+	if app.Mutex != nil {
+		app.Lock()
+		defer app.Unlock()
+	}
+	if app.Host == "" || app.Port == "" {
+		return "", false
+	}
+	return app.Host + ":" + app.Port, true
+}
+
+// appEndpointByURLFromLockedApps resolves an app endpoint without acquiring any
+// app mutexes. Caller must have locked the relevant app(s) and provided them in
+// lockedApps (typically via lockAppsByID in apply path).
+func (cluster *Cluster) appEndpointByURLFromLockedApps(url string, idByURL map[string]string, lockedApps map[string]*App) (string, bool) {
+	appID, ok := appIDByURLFromIndex(url, idByURL)
+	if !ok {
+		return "", false
+	}
+	app, ok := lockedApps[appID]
+	if !ok || app == nil {
+		return "", false
+	}
+	if app.Host == "" || app.Port == "" {
+		return "", false
+	}
+	return app.Host + ":" + app.Port, true
+}
+
+func (cluster *Cluster) syncApplyLockAppIDs(provider *config.S3Provider, targets []SyncTarget, idByURL map[string]string) []string {
 	idSet := make(map[string]struct{})
 	for _, t := range normalizeSyncTargets(targets) {
 		if strings.TrimSpace(t.AppId) != "" {
@@ -248,8 +437,8 @@ func (cluster *Cluster) syncApplyLockAppIDs(provider *config.S3Provider, targets
 	}
 
 	if provider != nil && provider.ProviderSource == config.S3ProviderSourceApp && strings.TrimSpace(provider.ProviderApp) != "" {
-		if providerApp, _ := cluster.GetAppByURL(provider.ProviderApp); providerApp != nil {
-			idSet[providerApp.GetId()] = struct{}{}
+		if providerAppID, ok := appIDByURLFromIndex(provider.ProviderApp, idByURL); ok {
+			idSet[providerAppID] = struct{}{}
 		}
 	}
 
@@ -263,13 +452,10 @@ func (cluster *Cluster) syncApplyLockAppIDs(provider *config.S3Provider, targets
 
 // lockAppsByID returns (locked app map, unlock callback) for app IDs locked in
 // deterministic AppId order to avoid deadlocks across concurrent callers.
-func (cluster *Cluster) lockAppsByID(orderedIDs []string) (map[string]*App, func()) {
+func (cluster *Cluster) lockAppsByID(orderedIDs []string, appSnapshotByID map[string]*App) (map[string]*App, func()) {
 	appByID := make(map[string]*App)
 	for _, appID := range orderedIDs {
-		if app := cluster.appByID(appID); app != nil {
-			if app.Mutex == nil {
-				app.Mutex = &sync.Mutex{}
-			}
+		if app := appSnapshotByID[appID]; app != nil && app.Mutex != nil {
 			appByID[appID] = app
 		}
 	}
@@ -309,30 +495,74 @@ func (cluster *Cluster) resolveSyncTargetMountInApp(targetApp *App, target SyncT
 	return nil, fmt.Sprintf("mount %q not found in app %q", target.MountName, target.AppId)
 }
 
-func (cluster *Cluster) resolveSyncTargetMount(target SyncTarget) (*App, *config.S3Mount, string, bool) {
-	var targetApp *App
-	for _, app := range cluster.Apps {
-		if app.GetId() == target.AppId {
-			targetApp = app
-			break
-		}
-	}
+func (cluster *Cluster) resolveSyncTargetMountSnapshot(target SyncTarget) (*config.S3Mount, string, bool) {
+	targetApp := cluster.appByID(target.AppId)
 	if targetApp == nil {
-		return nil, nil, fmt.Sprintf("app %q not found", target.AppId), false
+		return nil, fmt.Sprintf("app %q not found", target.AppId), false
 	}
+
+	targetApp.Lock()
+	defer targetApp.Unlock()
 	if targetApp.AppConfig == nil || targetApp.AppConfig.Deployment == nil {
-		return targetApp, nil, fmt.Sprintf("app %q has no deployment config", target.AppId), false
+		return nil, fmt.Sprintf("app %q has no deployment config", target.AppId), false
 	}
 
 	for _, s3m := range targetApp.AppConfig.Deployment.Storages.S3Mounts {
 		if s3m != nil && s3m.Name == target.MountName {
-			return targetApp, s3m, "", true
+			cp := *s3m
+			return &cp, "", true
 		}
 	}
-	return targetApp, nil, fmt.Sprintf("mount %q not found in app %q", target.MountName, target.AppId), true
+	return nil, fmt.Sprintf("mount %q not found in app %q", target.MountName, target.AppId), true
 }
 
-func (cluster *Cluster) computeS3SyncRevisionTokenWithSnapshot(providerName string, targets []SyncTarget, providers []config.S3Provider) string {
+// resolveSyncTargetMountSnapshotFromLockedApps resolves a target mount snapshot
+// from already-locked apps without re-locking app mutexes.
+func (cluster *Cluster) resolveSyncTargetMountSnapshotFromLockedApps(target SyncTarget, lockedApps map[string]*App) (*config.S3Mount, string, bool) {
+	targetApp := lockedApps[target.AppId]
+	if targetApp == nil {
+		return nil, fmt.Sprintf("app %q not found", target.AppId), false
+	}
+
+	if targetApp.AppConfig == nil || targetApp.AppConfig.Deployment == nil {
+		return nil, fmt.Sprintf("app %q has no deployment config", target.AppId), false
+	}
+
+	for _, s3m := range targetApp.AppConfig.Deployment.Storages.S3Mounts {
+		if s3m != nil && s3m.Name == target.MountName {
+			cp := *s3m
+			return &cp, "", true
+		}
+	}
+	return nil, fmt.Sprintf("mount %q not found in app %q", target.MountName, target.AppId), true
+}
+
+// resolveProviderEffectiveValuesFromLockedApps returns provider effective values
+// without re-locking app mutexes. For app-source providers, endpoint resolution
+// must come from lockedApps.
+func (cluster *Cluster) resolveProviderEffectiveValuesFromLockedApps(p *config.S3Provider, idByURL map[string]string, lockedApps map[string]*App) (endpoint, region, accessKey, secretKey string) {
+	switch p.ProviderSource {
+	case config.S3ProviderSourceApp:
+		if providerEndpoint, ok := cluster.appEndpointByURLFromLockedApps(p.ProviderApp, idByURL, lockedApps); ok {
+			endpoint = providerEndpoint
+		}
+		region = p.Region
+	case config.S3ProviderSourceCustom:
+		endpoint = p.Endpoint
+		region = p.Region
+		accessKey = p.AccessKey
+		secretKey = p.SecretKey
+	}
+	return
+}
+
+func (cluster *Cluster) computeS3SyncRevisionTokenWithSnapshotUsingResolvers(
+	providerName string,
+	targets []SyncTarget,
+	providers []config.S3Provider,
+	resolveProvider func(*config.S3Provider) (endpoint, region, accessKey, secretKey string),
+	resolveTargetMount func(SyncTarget) (*config.S3Mount, string, bool),
+) string {
 	normalizedTargets := normalizeSyncTargets(targets)
 	snapshot := syncRevisionSnapshot{
 		Version:      "v1",
@@ -342,7 +572,7 @@ func (cluster *Cluster) computeS3SyncRevisionTokenWithSnapshot(providerName stri
 
 	provider := findProviderByName(providers, providerName)
 	if provider != nil {
-		effectiveEndpoint, effectiveRegion, effectiveAccessKey, effectiveSecretKey := cluster.resolveProviderEffectiveValues(provider)
+		effectiveEndpoint, effectiveRegion, effectiveAccessKey, effectiveSecretKey := resolveProvider(provider)
 		snapshot.Provider = &syncRevisionProviderSnapshot{
 			Name:               provider.Name,
 			ProviderSource:     string(provider.ProviderSource),
@@ -365,7 +595,7 @@ func (cluster *Cluster) computeS3SyncRevisionTokenWithSnapshot(providerName stri
 			AppState:   "ok",
 			MountState: "ok",
 		}
-		_, targetMount, errMessage, appResolved := cluster.resolveSyncTargetMount(t)
+		targetMount, errMessage, appResolved := resolveTargetMount(t)
 		if errMessage != "" {
 			if !appResolved {
 				entry.AppState = "missing_or_invalid"
@@ -394,6 +624,16 @@ func (cluster *Cluster) computeS3SyncRevisionTokenWithSnapshot(providerName stri
 	return syncRevisionTokenPrefix + hex.EncodeToString(sum[:])
 }
 
+func (cluster *Cluster) computeS3SyncRevisionTokenWithSnapshot(providerName string, targets []SyncTarget, providers []config.S3Provider) string {
+	return cluster.computeS3SyncRevisionTokenWithSnapshotUsingResolvers(
+		providerName,
+		targets,
+		providers,
+		cluster.resolveProviderEffectiveValues,
+		cluster.resolveSyncTargetMountSnapshot,
+	)
+}
+
 func (cluster *Cluster) computeS3SyncRevisionToken(providerName string, targets []SyncTarget) string {
 	return cluster.computeS3SyncRevisionTokenWithSnapshot(providerName, targets, cluster.GetS3ProvidersSnapshot())
 }
@@ -405,7 +645,7 @@ func (cluster *Cluster) computeS3SyncRevisionToken(providerName string, targets 
 func (cluster *Cluster) planSingleMountPreview(provider *config.S3Provider, target SyncTarget) SyncPreviewResult {
 	result := SyncPreviewResult{Target: target}
 
-	_, targetMount, errMessage, _ := cluster.resolveSyncTargetMount(target)
+	targetMount, errMessage, _ := cluster.resolveSyncTargetMountSnapshot(target)
 	if errMessage != "" {
 		result.Status = SyncStatusError
 		result.ErrorMessage = errMessage
@@ -427,12 +667,7 @@ func (cluster *Cluster) planSingleMountPreview(provider *config.S3Provider, targ
 	}
 
 	// Diff provider-managed fields. Credential values are masked in the output.
-	type fieldSpec struct {
-		name    string
-		current string
-		desired string
-	}
-	specs := []fieldSpec{
+	specs := []syncMountFieldSpec{
 		{"endpoint", targetMount.Endpoint, desiredEndpoint},
 		{"region", targetMount.Region, desiredRegion},
 		{"accessKey", targetMount.AccessKey, desiredAccessKey},
@@ -460,7 +695,9 @@ func (cluster *Cluster) planSingleMountPreview(provider *config.S3Provider, targ
 		result.Changes = changes
 		result.Warnings = []string{
 			"Local provider-managed fields will be overwritten by provider values.",
-			"This mount has been customized from the provider template.",
+		}
+		if mountLooksCustomizedForProviderManagedFields(specs) {
+			result.Warnings = append(result.Warnings, "This mount has been customized from the provider template.")
 		}
 	}
 
@@ -559,13 +796,32 @@ func (cluster *Cluster) ApplyS3ProviderSync(providerName string, targets []SyncT
 	defer cluster.s3Providers.mu.RUnlock()
 	providerSnapshot := make([]config.S3Provider, len(cluster.s3Providers.providers))
 	copy(providerSnapshot, cluster.s3Providers.providers)
+	appSnapshotByID, appIDByURL, appSnapshotVersion := cluster.syncAppIndexesSnapshot()
 
 	provider := findProviderByName(providerSnapshot, providerName)
-	lockAppIDs := cluster.syncApplyLockAppIDs(provider, targets)
-	lockedApps, unlockApps := cluster.lockAppsByID(lockAppIDs)
+	lockAppIDs := cluster.syncApplyLockAppIDs(provider, targets, appIDByURL)
+	lockedApps, unlockApps := cluster.lockAppsByID(lockAppIDs, appSnapshotByID)
 	defer unlockApps()
 
-	if cluster.computeS3SyncRevisionTokenWithSnapshot(providerName, targets, providerSnapshot) != strings.TrimSpace(revisionToken) {
+	// Lock contract (apply path): once lockAppsByID has acquired app mutexes,
+	// no downstream helper is allowed to lock app mutexes again. Revision-token
+	// revalidation and app-source endpoint resolution therefore use locked-app
+	// variants that only read from already-locked app state.
+	computeTokenFromLockedState := func() string {
+		return cluster.computeS3SyncRevisionTokenWithSnapshotUsingResolvers(
+			providerName,
+			targets,
+			providerSnapshot,
+			func(p *config.S3Provider) (endpoint, region, accessKey, secretKey string) {
+				return cluster.resolveProviderEffectiveValuesFromLockedApps(p, appIDByURL, lockedApps)
+			},
+			func(t SyncTarget) (*config.S3Mount, string, bool) {
+				return cluster.resolveSyncTargetMountSnapshotFromLockedApps(t, lockedApps)
+			},
+		)
+	}
+
+	if computeTokenFromLockedState() != strings.TrimSpace(revisionToken) {
 		for _, t := range targets {
 			resp.Results = append(resp.Results, SyncApplyResult{Target: t, Status: SyncApplyStatusStale, ErrorMessage: "sync preview is stale; run preview again before apply"})
 		}
@@ -574,17 +830,18 @@ func (cluster *Cluster) ApplyS3ProviderSync(providerName string, targets []SyncT
 		return resp
 	}
 
+	if cluster.appListVersion() != appSnapshotVersion {
+		for _, t := range targets {
+			resp.Results = append(resp.Results, SyncApplyResult{Target: t, Status: SyncApplyStatusStale, ErrorMessage: "sync target app list changed during apply; run preview again"})
+		}
+		resp.Summary.Total = len(resp.Results)
+		resp.Summary.Failed = len(resp.Results)
+		return resp
+	}
+
 	for _, t := range targets {
 		targetApp := lockedApps[t.AppId]
-		if current := cluster.appByID(t.AppId); targetApp != nil && current != nil && current != targetApp {
-			resp.Results = append(resp.Results, SyncApplyResult{
-				Target:       t,
-				Status:       SyncApplyStatusStale,
-				ErrorMessage: "sync target app changed during apply; run preview again",
-			})
-			continue
-		}
-		r := cluster.applySingleMountSyncLocked(provider, providerName, targetApp, t)
+		r := cluster.applySingleMountSyncLocked(provider, providerName, targetApp, t, appIDByURL, lockedApps)
 		resp.Results = append(resp.Results, r)
 	}
 
@@ -609,7 +866,7 @@ func (cluster *Cluster) ApplyS3ProviderSync(providerName string, targets []SyncT
 // s3Providers.mu.RLock().
 // When SaveApp fails, provider-managed field mutations are rolled back and the
 // caller receives SyncStatusError with ErrorMessage.
-func (cluster *Cluster) applySingleMountSyncLocked(provider *config.S3Provider, providerName string, targetApp *App, target SyncTarget) SyncApplyResult {
+func (cluster *Cluster) applySingleMountSyncLocked(provider *config.S3Provider, providerName string, targetApp *App, target SyncTarget, idByURL map[string]string, lockedApps map[string]*App) SyncApplyResult {
 	result := SyncApplyResult{Target: target}
 
 	if provider == nil {
@@ -632,7 +889,7 @@ func (cluster *Cluster) applySingleMountSyncLocked(provider *config.S3Provider, 
 
 	// Compute desired effective values from provider.
 	desiredEndpoint, desiredRegion, desiredAccessKey, desiredSecretKey :=
-		cluster.resolveProviderEffectiveValues(provider)
+		cluster.resolveProviderEffectiveValuesFromLockedApps(provider, idByURL, lockedApps)
 	if provider.ProviderSource == config.S3ProviderSourceApp && desiredEndpoint == "" {
 		result.Status = SyncStatusError
 		result.ErrorMessage = fmt.Sprintf("provider %q app endpoint is unavailable", provider.Name)

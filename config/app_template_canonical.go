@@ -51,6 +51,7 @@ func CanonicalizeAppTemplateTOML(content []byte) ([]byte, AppTemplateCanonicaliz
 
 func CanonicalizeAppTemplateRaw(raw map[string]any) (AppTemplateCanonicalizationResult, error) {
 	var res AppTemplateCanonicalizationResult
+	unresolvedSet := make(map[string]struct{})
 
 	deployment, ok := asAnyMap(raw["deployment"])
 	if !ok {
@@ -100,7 +101,7 @@ func CanonicalizeAppTemplateRaw(raw map[string]any) (AppTemplateCanonicalization
 					res.Changed = true
 					res.UpdatedParentNames++
 				} else {
-					res.UnresolvedParentReferences = append(res.UnresolvedParentReferences, parentName)
+					appendUnresolvedParentReference(&res, unresolvedSet, parentName)
 				}
 			}
 		} else if idx > 0 {
@@ -129,7 +130,7 @@ func CanonicalizeAppTemplateRaw(raw map[string]any) (AppTemplateCanonicalization
 		}
 	}
 
-	levelsChanged := applyPathLevels(paths, &res)
+	levelsChanged := applyPathLevels(paths, &res, unresolvedSet)
 	if levelsChanged > 0 {
 		res.Changed = true
 		res.UpdatedLevels += levelsChanged
@@ -167,7 +168,7 @@ func inferParentByDockerPath(previous []any, dockerPath string) string {
 	return bestMatch
 }
 
-func applyPathLevels(paths []any, res *AppTemplateCanonicalizationResult) int {
+func applyPathLevels(paths []any, res *AppTemplateCanonicalizationResult, unresolvedSet map[string]struct{}) int {
 	nameToPath := make(map[string]map[string]any, len(paths))
 	for _, item := range paths {
 		pm, ok := asAnyMap(item)
@@ -189,11 +190,11 @@ func applyPathLevels(paths []any, res *AppTemplateCanonicalizationResult) int {
 		}
 		pm, found := nameToPath[name]
 		if !found {
-			res.UnresolvedParentReferences = append(res.UnresolvedParentReferences, name)
+			appendUnresolvedParentReference(res, unresolvedSet, name)
 			return 0, false
 		}
 		if visiting[name] {
-			res.UnresolvedParentReferences = append(res.UnresolvedParentReferences, name)
+			appendUnresolvedParentReference(res, unresolvedSet, name)
 			return 0, false
 		}
 		visiting[name] = true
@@ -245,15 +246,29 @@ func applyPathLevels(paths []any, res *AppTemplateCanonicalizationResult) int {
 	return changed
 }
 
+func appendUnresolvedParentReference(res *AppTemplateCanonicalizationResult, seen map[string]struct{}, parentName string) {
+	if res == nil {
+		return
+	}
+	name := strings.TrimSpace(parentName)
+	if name == "" {
+		return
+	}
+	if seen != nil {
+		if _, exists := seen[name]; exists {
+			return
+		}
+		seen[name] = struct{}{}
+	}
+	res.UnresolvedParentReferences = append(res.UnresolvedParentReferences, name)
+}
+
 func asAnyMap(v any) (map[string]any, bool) {
 	if v == nil {
 		return nil, false
 	}
 	if m, ok := v.(map[string]any); ok {
 		return m, true
-	}
-	if m, ok := v.(map[string]interface{}); ok {
-		return map[string]any(m), true
 	}
 	return nil, false
 }

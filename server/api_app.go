@@ -203,18 +203,77 @@ type appTemplateResetPreview struct {
 	Changes      []appTemplateFieldChange `json:"changes"`
 }
 
-func validateTemplateNameForLocalWrite(templateName string) error {
+func normalizeTemplateIdentifier(templateName string) (string, error) {
 	templateName = strings.TrimSpace(templateName)
 	if templateName == "" {
-		return fmt.Errorf("template name must be provided")
+		return "", fmt.Errorf("template name must be provided")
 	}
-	if strings.HasPrefix(templateName, "shared/") {
-		return fmt.Errorf("shared templates are read-only; create a local copy before editing")
+
+	cleanTemplateName := filepath.Clean(filepath.FromSlash(templateName))
+	if cleanTemplateName == "." || cleanTemplateName == string(filepath.Separator) {
+		return "", fmt.Errorf("template name must be provided")
 	}
-	if strings.Contains(templateName, "..") {
-		return fmt.Errorf("template name contains invalid path traversal")
+	if filepath.IsAbs(cleanTemplateName) {
+		return "", fmt.Errorf("template name must be relative to templates root")
 	}
-	return nil
+
+	relFromRoot, err := filepath.Rel(".", cleanTemplateName)
+	if err != nil {
+		return "", fmt.Errorf("template path validation failed: %w", err)
+	}
+	if relFromRoot == ".." || strings.HasPrefix(relFromRoot, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("template name contains invalid path traversal")
+	}
+
+	cleanTemplateNameSlash := filepath.ToSlash(cleanTemplateName)
+	if cleanTemplateNameSlash == "shared" {
+		return "", fmt.Errorf("shared template name must include a template path")
+	}
+
+	return cleanTemplateNameSlash, nil
+}
+
+func resolveTemplateCachePath(workingDir, templateName string) (string, string, error) {
+	normalizedTemplateName, err := normalizeTemplateIdentifier(templateName)
+	if err != nil {
+		return "", "", err
+	}
+
+	localTemplatesRootAbs, err := filepath.Abs(filepath.Clean(filepath.Join(workingDir, ".templates", "apps")))
+	if err != nil {
+		return "", "", fmt.Errorf("invalid templates root path: %w", err)
+	}
+
+	localPathAbs, err := filepath.Abs(filepath.Clean(filepath.Join(localTemplatesRootAbs, filepath.FromSlash(normalizedTemplateName)+".toml")))
+	if err != nil {
+		return "", "", fmt.Errorf("invalid template path: %w", err)
+	}
+	relPath, err := filepath.Rel(localTemplatesRootAbs, localPathAbs)
+	if err != nil {
+		return "", "", fmt.Errorf("template path validation failed: %w", err)
+	}
+	if relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
+		return "", "", fmt.Errorf("template name contains invalid path traversal")
+	}
+
+	return normalizedTemplateName, localPathAbs, nil
+}
+
+func resolveLocalTemplateWritePath(workingDir, templateName string) (string, error) {
+	normalizedTemplateName, localPathAbs, err := resolveTemplateCachePath(workingDir, templateName)
+	if err != nil {
+		return "", err
+	}
+	if normalizedTemplateName == "shared" || strings.HasPrefix(normalizedTemplateName, "shared/") {
+		return "", fmt.Errorf("shared templates are read-only; create a local copy before editing")
+	}
+
+	return localPathAbs, nil
+}
+
+func validateTemplateNameForLocalWrite(workingDir, templateName string) error {
+	_, err := resolveLocalTemplateWritePath(workingDir, templateName)
+	return err
 }
 
 func validateCanonicalTemplateContentForSave(mycluster *cluster.Cluster, templateName string, canonicalContent []byte) error {
@@ -1556,6 +1615,10 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 				return
 			}
 
+			// Contract: mount SecretKey remains encrypted at rest in app config/API payloads.
+			// The sibling app variable may arrive plaintext or encrypted depending on source;
+			// GetDecryptedPassword normalizes to plaintext first, then GetEncryptedString
+			// re-encrypts for this mount storage slot.
 			row.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(row.Name, secretkey.Value))
 
 			region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
@@ -2920,9 +2983,9 @@ func (repman *ReplicationManager) handlerMuxAppTemplateContent(w http.ResponseWr
 		return
 	}
 
-	templateName := vars["templateName"]
-	if strings.TrimSpace(templateName) == "" {
-		http.Error(w, "Template name must be provided", http.StatusBadRequest)
+	normalizedTemplateName, _, pathErr := resolveTemplateCachePath(mycluster.Conf.WorkingDir, vars["templateName"])
+	if pathErr != nil {
+		http.Error(w, pathErr.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -2932,18 +2995,18 @@ func (repman *ReplicationManager) handlerMuxAppTemplateContent(w http.ResponseWr
 		err     error
 	)
 	if forceRefresh {
-		content, err = mycluster.RefreshTemplateContent(templateName)
+		content, err = mycluster.RefreshTemplateContent(normalizedTemplateName)
 	} else {
-		content, err = mycluster.GetTemplateContent(templateName)
+		content, err = mycluster.GetTemplateContent(normalizedTemplateName)
 	}
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error getting template content: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	meta := inferTemplateMetadata(mycluster, templateName)
+	meta := inferTemplateMetadata(mycluster, normalizedTemplateName)
 	resp := appTemplateContentResponse{
-		Name:         templateName,
+		Name:         normalizedTemplateName,
 		Content:      string(content),
 		Origin:       meta.Origin,
 		HasLocalCopy: meta.HasLocalCopy,
@@ -2983,7 +3046,8 @@ func (repman *ReplicationManager) handlerMuxAppTemplateContentSave(w http.Respon
 	}
 
 	templateName := vars["templateName"]
-	if err := validateTemplateNameForLocalWrite(templateName); err != nil {
+	localPath, err := resolveLocalTemplateWritePath(mycluster.Conf.WorkingDir, templateName)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -3010,7 +3074,6 @@ func (repman *ReplicationManager) handlerMuxAppTemplateContentSave(w http.Respon
 		return
 	}
 
-	localPath := filepath.Join(mycluster.Conf.WorkingDir, ".templates", "apps", templateName+".toml")
 	if err := writeTemplateContentAtomically(localPath, canonicalContent); err != nil {
 		http.Error(w, fmt.Sprintf("Error saving template content: %v", err), http.StatusInternalServerError)
 		return
@@ -3048,12 +3111,12 @@ func (repman *ReplicationManager) handlerMuxAppTemplateContentDelete(w http.Resp
 	}
 
 	templateName := vars["templateName"]
-	if err := validateTemplateNameForLocalWrite(templateName); err != nil {
+	localPath, err := resolveLocalTemplateWritePath(mycluster.Conf.WorkingDir, templateName)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	localPath := filepath.Join(mycluster.Conf.WorkingDir, ".templates", "apps", templateName+".toml")
 	if _, err := os.Stat(localPath); os.IsNotExist(err) {
 		http.Error(w, "Template not found", http.StatusNotFound)
 		return
@@ -3094,9 +3157,9 @@ func (repman *ReplicationManager) handlerMuxAppTemplateContentCreateLocalCopy(w 
 		return
 	}
 
-	templateName := strings.TrimSpace(vars["templateName"])
-	if templateName == "" {
-		http.Error(w, "Template name must be provided", http.StatusBadRequest)
+	normalizedTemplateName, _, err := resolveTemplateCachePath(mycluster.Conf.WorkingDir, vars["templateName"])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -3107,12 +3170,12 @@ func (repman *ReplicationManager) handlerMuxAppTemplateContentCreateLocalCopy(w 
 		http.Error(w, fmt.Sprintf("Error decoding request body: %v", err), http.StatusBadRequest)
 		return
 	}
-	if err := validateTemplateNameForLocalWrite(body.LocalTemplateName); err != nil {
+	if err := validateTemplateNameForLocalWrite(mycluster.Conf.WorkingDir, body.LocalTemplateName); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err := createLocalTemplateCopyFromTemplate(mycluster, templateName, body.LocalTemplateName); err != nil {
+	if err := createLocalTemplateCopyFromTemplate(mycluster, normalizedTemplateName, body.LocalTemplateName); err != nil {
 		http.Error(w, fmt.Sprintf("Error creating local template copy: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -3122,7 +3185,12 @@ func (repman *ReplicationManager) handlerMuxAppTemplateContentCreateLocalCopy(w 
 }
 
 func createLocalTemplateCopyFromTemplate(mycluster *cluster.Cluster, templateName, localTemplateName string) error {
-	content, err := mycluster.GetTemplateContent(templateName)
+	normalizedTemplateName, _, err := resolveTemplateCachePath(mycluster.Conf.WorkingDir, templateName)
+	if err != nil {
+		return err
+	}
+
+	content, err := mycluster.GetTemplateContent(normalizedTemplateName)
 	if err != nil {
 		return err
 	}
@@ -3135,7 +3203,10 @@ func createLocalTemplateCopyFromTemplate(mycluster *cluster.Cluster, templateNam
 		return err
 	}
 
-	localPath := filepath.Join(mycluster.Conf.WorkingDir, ".templates", "apps", localTemplateName+".toml")
+	localPath, err := resolveLocalTemplateWritePath(mycluster.Conf.WorkingDir, localTemplateName)
+	if err != nil {
+		return err
+	}
 	if err := writeTemplateContentAtomically(localPath, canonicalContent); err != nil {
 		return err
 	}

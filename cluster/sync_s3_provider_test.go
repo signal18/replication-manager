@@ -7,7 +7,9 @@ package cluster
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -32,9 +34,11 @@ func newTestClusterForSync(t *testing.T) *Cluster {
 		t.Fatalf("AddS3Provider: %v", err)
 	}
 	app := &App{
-		Id:   "app-a",
-		Name: "app-a",
-		Port: "8080",
+		Id:    "app-a",
+		Name:  "app-a",
+		Host:  "app-a",
+		Port:  "8080",
+		Mutex: &sync.Mutex{},
 		AppConfig: &config.AppConfig{
 			AppHost: "app-a",
 			AppPort: "8080",
@@ -64,6 +68,45 @@ func newTestClusterForSync(t *testing.T) *Cluster {
 
 func previewTokenForTargets(cl *Cluster, providerName string, targets []SyncTarget) string {
 	return cl.PreviewS3ProviderSync(providerName, targets).RevisionToken
+}
+
+func TestS3MountReferencesSnapshot(t *testing.T) {
+	cl := newTestClusterForSync(t)
+	refs := cl.S3MountReferencesSnapshot("minio-prod")
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 reference snapshot, got %d", len(refs))
+	}
+	if refs[0].AppID != "app-a" || refs[0].MountName != "media" {
+		t.Fatalf("unexpected snapshot entry: %+v", refs[0])
+	}
+}
+
+func TestAppEndpointByURLFromLockedApps_DoesNotNeedClusterLock(t *testing.T) {
+	cl := newTestClusterForSync(t)
+	appSnapshotByID, appIDByURL, _ := cl.syncAppIndexesSnapshot()
+	lockedApps, unlock := cl.lockAppsByID([]string{"app-a"}, appSnapshotByID)
+	defer unlock()
+
+	cl.Lock()
+	defer cl.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		endpoint, ok := cl.appEndpointByURLFromLockedApps("app-a:8080", appIDByURL, lockedApps)
+		if !ok {
+			t.Errorf("expected endpoint lookup to succeed")
+		}
+		if endpoint != "app-a:8080" {
+			t.Errorf("endpoint: got %q, want %q", endpoint, "app-a:8080")
+		}
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("appEndpointByURLFromLockedApps blocked while cluster lock held")
+	}
 }
 
 // ---- Preview tests ----
@@ -126,6 +169,59 @@ func TestPreviewS3ProviderSync_WillChange(t *testing.T) {
 	}
 	if mountAfter.AccessKey != mountBefore.AccessKey {
 		t.Errorf("AccessKey was mutated by preview: got %q, want %q", mountAfter.AccessKey, mountBefore.AccessKey)
+	}
+}
+
+func TestPreviewS3ProviderSync_WillChangeFreshMountOmitsCustomizedWarning(t *testing.T) {
+	cl := newTestClusterForSync(t)
+	m := cl.Apps[0].AppConfig.Deployment.Storages.S3Mounts[0]
+
+	// Fresh/uncustomized heuristic: provider-managed fields are unset locally.
+	m.Endpoint = ""
+	m.Region = ""
+	m.AccessKey = ""
+	m.SecretKey = ""
+
+	resp := cl.PreviewS3ProviderSync("minio-prod", []SyncTarget{{AppId: "app-a", MountName: "media"}})
+	if len(resp.Results) != 1 {
+		t.Fatalf("Results len: got %d, want 1", len(resp.Results))
+	}
+	r := resp.Results[0]
+	if r.Status != SyncStatusWillChange {
+		t.Fatalf("Status: got %q, want %q", r.Status, SyncStatusWillChange)
+	}
+	if len(r.Warnings) != 1 {
+		t.Fatalf("Warnings: got %v, want only overwrite warning", r.Warnings)
+	}
+	if r.Warnings[0] != "Local provider-managed fields will be overwritten by provider values." {
+		t.Fatalf("unexpected warning[0]: %q", r.Warnings[0])
+	}
+}
+
+func TestPreviewS3ProviderSync_WillChangeNonEmptyDiffKeepsCustomizedWarning(t *testing.T) {
+	cl := newTestClusterForSync(t)
+	m := cl.Apps[0].AppConfig.Deployment.Storages.S3Mounts[0]
+
+	// Mixed state: some fields empty, but one non-empty differing value means
+	// keep the conservative customized warning.
+	m.Endpoint = ""
+	m.Region = "custom-region"
+	m.AccessKey = ""
+	m.SecretKey = ""
+
+	resp := cl.PreviewS3ProviderSync("minio-prod", []SyncTarget{{AppId: "app-a", MountName: "media"}})
+	if len(resp.Results) != 1 {
+		t.Fatalf("Results len: got %d, want 1", len(resp.Results))
+	}
+	r := resp.Results[0]
+	if r.Status != SyncStatusWillChange {
+		t.Fatalf("Status: got %q, want %q", r.Status, SyncStatusWillChange)
+	}
+	if len(r.Warnings) < 2 {
+		t.Fatalf("expected customized warning to be retained, got warnings %v", r.Warnings)
+	}
+	if r.Warnings[1] != "This mount has been customized from the provider template." {
+		t.Fatalf("expected customized warning, got %v", r.Warnings)
 	}
 }
 
@@ -206,6 +302,25 @@ func TestPreviewS3ProviderSync_UnknownMount(t *testing.T) {
 	}
 	if resp.Results[0].Status != SyncStatusError {
 		t.Errorf("Status: got %q, want %q", resp.Results[0].Status, SyncStatusError)
+	}
+}
+
+func TestPreviewS3ProviderSync_NilMutexAppDoesNotPanic(t *testing.T) {
+	cl := newTestClusterForSync(t)
+	cl.Apps[0].Mutex = nil
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("preview panicked with nil app mutex: %v", r)
+		}
+	}()
+
+	resp := cl.PreviewS3ProviderSync("minio-prod", []SyncTarget{{AppId: "app-a", MountName: "media"}})
+	if len(resp.Results) != 1 {
+		t.Fatalf("Results len: got %d, want 1", len(resp.Results))
+	}
+	if resp.Results[0].Status != SyncStatusError {
+		t.Fatalf("Status: got %q, want %q", resp.Results[0].Status, SyncStatusError)
 	}
 }
 
@@ -616,6 +731,27 @@ func TestApplyS3ProviderSync_StaleStateOnMountDrift(t *testing.T) {
 	}
 }
 
+func TestApplyS3ProviderSync_StaleStateOnAppListChange(t *testing.T) {
+	cl := newTestClusterForSync(t)
+	targets := []SyncTarget{{AppId: "app-a", MountName: "media"}}
+	token := previewTokenForTargets(cl, "minio-prod", targets)
+
+	// Simulate app-list structural replacement between preview and apply.
+	cl.Lock()
+	cl.Apps = appList([]*App{newTestAppForAddApp("app-a", "8080", "")})
+	cl.bumpAppListVersion()
+	cl.Unlock()
+
+	resp := cl.ApplyS3ProviderSync("minio-prod", targets, token)
+
+	if len(resp.Results) != 1 {
+		t.Fatalf("Results len: got %d, want 1", len(resp.Results))
+	}
+	if resp.Results[0].Status != SyncApplyStatusStale {
+		t.Fatalf("status: got %q, want %q", resp.Results[0].Status, SyncApplyStatusStale)
+	}
+}
+
 func TestApplyS3ProviderSync_RejectsMissingOrMalformedRevisionToken(t *testing.T) {
 	cl := newTestClusterForSync(t)
 	targets := []SyncTarget{{AppId: "app-a", MountName: "media"}}
@@ -634,5 +770,122 @@ func TestApplyS3ProviderSync_RejectsMissingOrMalformedRevisionToken(t *testing.T
 	mountAfter := *cl.Apps[0].AppConfig.Deployment.Storages.S3Mounts[0]
 	if mountAfter.Endpoint != mountBefore.Endpoint || mountAfter.Region != mountBefore.Region || mountAfter.AccessKey != mountBefore.AccessKey || mountAfter.SecretKey != mountBefore.SecretKey {
 		t.Fatalf("mount mutated despite invalid revision token")
+	}
+}
+
+// TestApplyS3ProviderSync_AppSourceProviderOverlapTarget_NoDeadlock verifies
+// apply does not deadlock when the provider source app is also a target app.
+func TestApplyS3ProviderSync_AppSourceProviderOverlapTarget_NoDeadlock(t *testing.T) {
+	cl := newTestClusterForSync(t)
+
+	cl.Apps[0].Host = "10.10.10.10"
+
+	p := cl.GetS3ProvidersSnapshot()[0]
+	p.ProviderSource = config.S3ProviderSourceApp
+	p.ProviderApp = "10.10.10.10:8080"
+	p.Endpoint = ""
+	p.Region = ""
+	p.AccessKey = ""
+	p.SecretKey = ""
+	if err := cl.UpdateS3Provider(p); err != nil {
+		t.Fatalf("UpdateS3Provider (app-source): %v", err)
+	}
+
+	targets := []SyncTarget{{AppId: "app-a", MountName: "media"}}
+	token := previewTokenForTargets(cl, "minio-prod", targets)
+
+	done := make(chan SyncApplyResponse, 1)
+	go func() {
+		done <- cl.ApplyS3ProviderSync("minio-prod", targets, token)
+	}()
+
+	select {
+	case resp := <-done:
+		if len(resp.Results) != 1 {
+			t.Fatalf("Results len: got %d, want 1", len(resp.Results))
+		}
+		if resp.Results[0].Status != SyncApplyStatusChanged {
+			t.Fatalf("status: got %q, want %q", resp.Results[0].Status, SyncApplyStatusChanged)
+		}
+		m := cl.Apps[0].AppConfig.Deployment.Storages.S3Mounts[0]
+		if m.Endpoint != "10.10.10.10:8080" {
+			t.Fatalf("Endpoint: got %q, want %q", m.Endpoint, "10.10.10.10:8080")
+		}
+		if m.AccessKey != "" || m.SecretKey != "" {
+			t.Fatalf("app-source provider should clear credentials, got accessKey=%q secretKey=%q", m.AccessKey, m.SecretKey)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("ApplyS3ProviderSync timed out (possible deadlock with app-source provider overlap target)")
+	}
+}
+
+// TestS3ProviderSync_ConcurrentPreviewApply_NoDeadlock stresses preview/apply
+// interleaving and asserts the sync path does not hang under contention.
+func TestS3ProviderSync_ConcurrentPreviewApply_NoDeadlock(t *testing.T) {
+	cl := newTestClusterForSync(t)
+
+	// Use app-source provider mode so endpoint resolution exercises locked-app path.
+	cl.Apps[0].Host = "10.10.10.10"
+	p := cl.GetS3ProvidersSnapshot()[0]
+	p.ProviderSource = config.S3ProviderSourceApp
+	p.ProviderApp = "10.10.10.10:8080"
+	p.Endpoint = ""
+	p.Region = ""
+	p.AccessKey = ""
+	p.SecretKey = ""
+	if err := cl.UpdateS3Provider(p); err != nil {
+		t.Fatalf("UpdateS3Provider (app-source): %v", err)
+	}
+
+	targets := []SyncTarget{{AppId: "app-a", MountName: "media"}}
+	const iterations = 200
+
+	errCh := make(chan string, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			resp := cl.PreviewS3ProviderSync("minio-prod", targets)
+			if len(resp.Results) != 1 {
+				errCh <- "preview returned unexpected result count"
+				return
+			}
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			token := previewTokenForTargets(cl, "minio-prod", targets)
+			resp := cl.ApplyS3ProviderSync("minio-prod", targets, token)
+			if len(resp.Results) != 1 {
+				errCh <- "apply returned unexpected result count"
+				return
+			}
+			st := resp.Results[0].Status
+			if st != SyncApplyStatusChanged && st != SyncApplyStatusUnchanged {
+				errCh <- "apply returned unexpected status"
+				return
+			}
+		}
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		select {
+		case msg := <-errCh:
+			t.Fatal(msg)
+		default:
+		}
+	case <-time.After(8 * time.Second):
+		t.Fatal("concurrent preview/apply timed out (possible deadlock)")
 	}
 }

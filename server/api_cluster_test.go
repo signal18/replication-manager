@@ -2,17 +2,158 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 )
+
+func TestDecodeS3ProviderRequestBody(t *testing.T) {
+	t.Run("valid body", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":"p1"}`))
+		w := httptest.NewRecorder()
+		var out s3ProviderRequest
+		legacyUnknownAccepted, err := decodeS3ProviderRequestBody(w, req, &out)
+		if err != nil {
+			t.Fatalf("expected valid body, got %v", err)
+		}
+		if legacyUnknownAccepted {
+			t.Fatalf("expected strict decode for valid body")
+		}
+		if out.Name != "p1" {
+			t.Fatalf("expected decoded name p1, got %q", out.Name)
+		}
+	})
+
+	t.Run("unknown fields accepted for compatibility with warning flag", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":"p1","legacyField":"x"}`))
+		w := httptest.NewRecorder()
+		var out s3ProviderRequest
+		legacyUnknownAccepted, err := decodeS3ProviderRequestBody(w, req, &out)
+		if err != nil {
+			t.Fatalf("expected compatibility decode, got %v", err)
+		}
+		if !legacyUnknownAccepted {
+			t.Fatalf("expected unknown field compatibility flag")
+		}
+	})
+
+	t.Run("body too large", func(t *testing.T) {
+		oversized := fmt.Sprintf(`{"name":"%s"}`, strings.Repeat("a", int(s3ProviderRequestBodyMaxBytes)+32))
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(oversized))
+		w := httptest.NewRecorder()
+		var out s3ProviderRequest
+		_, err := decodeS3ProviderRequestBody(w, req, &out)
+		if err == nil {
+			t.Fatal("expected max-bytes error for oversized body")
+		}
+		if !strings.Contains(err.Error(), "request body too large") {
+			t.Fatalf("expected size-limit error, got %v", err)
+		}
+	})
+
+	t.Run("reject trailing JSON", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":"p1"} {"extra":true}`))
+		w := httptest.NewRecorder()
+		var out s3ProviderRequest
+		_, err := decodeS3ProviderRequestBody(w, req, &out)
+		if err == nil {
+			t.Fatal("expected trailing-content validation error")
+		}
+		if !strings.Contains(err.Error(), "trailing") {
+			t.Fatalf("expected trailing-content error, got %v", err)
+		}
+	})
+}
+
+func TestS3ProviderCRUDRoutes_MethodConstraints(t *testing.T) {
+	repman := &ReplicationManager{}
+	router := mux.NewRouter()
+	repman.apiClusterProtectedHandler(router)
+
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		wantStatus int
+	}{
+		{name: "list rejects POST", method: http.MethodPost, path: "/api/clusters/c1/s3providers", wantStatus: http.StatusMethodNotAllowed},
+		{name: "add rejects GET", method: http.MethodGet, path: "/api/clusters/c1/s3providers/add", wantStatus: http.StatusMethodNotAllowed},
+		{name: "modify legacy POST alias is accepted", method: http.MethodPost, path: "/api/clusters/c1/s3providers/p1/modify", wantStatus: http.StatusUnauthorized},
+		{name: "drop legacy GET alias is accepted", method: http.MethodGet, path: "/api/clusters/c1/s3providers/p1/drop", wantStatus: http.StatusUnauthorized},
+		{name: "modify rejects PATCH", method: http.MethodPatch, path: "/api/clusters/c1/s3providers/p1/modify", wantStatus: http.StatusMethodNotAllowed},
+		{name: "drop rejects POST", method: http.MethodPost, path: "/api/clusters/c1/s3providers/p1/drop", wantStatus: http.StatusMethodNotAllowed},
+		{name: "list accepts GET route", method: http.MethodGet, path: "/api/clusters/c1/s3providers", wantStatus: http.StatusUnauthorized},
+		{name: "add accepts POST route", method: http.MethodPost, path: "/api/clusters/c1/s3providers/add", wantStatus: http.StatusUnauthorized},
+		{name: "modify accepts PUT route", method: http.MethodPut, path: "/api/clusters/c1/s3providers/p1/modify", wantStatus: http.StatusUnauthorized},
+		{name: "drop accepts DELETE route", method: http.MethodDelete, path: "/api/clusters/c1/s3providers/p1/drop", wantStatus: http.StatusUnauthorized},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			if w.Code != tt.wantStatus {
+				t.Fatalf("%s %s: got %d, want %d", tt.method, tt.path, w.Code, tt.wantStatus)
+			}
+		})
+	}
+}
+
+func TestDecodeS3SyncRequestBody(t *testing.T) {
+	t.Run("valid body", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"targets":[{"appId":"a","mountName":"m"}]}`))
+		w := httptest.NewRecorder()
+		var out s3SyncRequest
+		statusCode, err := decodeS3SyncRequestBody(w, req, &out)
+		if err != nil {
+			t.Fatalf("expected valid body, got %v", err)
+		}
+		if statusCode != http.StatusOK {
+			t.Fatalf("expected status 200 from decoder, got %d", statusCode)
+		}
+		if len(out.Targets) != 1 {
+			t.Fatalf("expected 1 target, got %d", len(out.Targets))
+		}
+	})
+
+	t.Run("unknown field rejected", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"targets":[],"extra":true}`))
+		w := httptest.NewRecorder()
+		var out s3SyncRequest
+		statusCode, err := decodeS3SyncRequestBody(w, req, &out)
+		if err == nil {
+			t.Fatal("expected unknown-field error")
+		}
+		if statusCode != http.StatusBadRequest {
+			t.Fatalf("expected 400 for unknown field, got %d", statusCode)
+		}
+	})
+
+	t.Run("body too large", func(t *testing.T) {
+		oversized := fmt.Sprintf(`{"targets":[{"appId":"%s","mountName":"m"}]}`, strings.Repeat("a", int(s3SyncRequestBodyMaxBytes)+32))
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(oversized))
+		w := httptest.NewRecorder()
+		var out s3SyncRequest
+		statusCode, err := decodeS3SyncRequestBody(w, req, &out)
+		if err == nil {
+			t.Fatal("expected max-bytes error for oversized body")
+		}
+		if statusCode != http.StatusRequestEntityTooLarge {
+			t.Fatalf("expected 413 for oversized body, got %d", statusCode)
+		}
+	})
+}
 
 func TestNormalizeCompressionOverride(t *testing.T) {
 	tests := []struct {
@@ -628,6 +769,28 @@ func TestHandlerS3ProviderDrop_NoCluster(t *testing.T) {
 	}
 }
 
+func TestExecuteS3ProviderCRUDTransaction_ResponsePathRunsOutsideCRUDLock(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	resp := executeS3ProviderCRUDTransaction(cl, func() s3ProviderCRUDHTTPResponse {
+		return s3ProviderCRUDHTTPResponse{statusCode: http.StatusCreated}
+	})
+	if resp.statusCode != http.StatusCreated {
+		t.Fatalf("unexpected transaction status: got %d", resp.statusCode)
+	}
+
+	acquired := make(chan struct{})
+	go func() {
+		_ = cl.WithS3ProviderCRUDLock(func() error { return nil })
+		close(acquired)
+	}()
+
+	select {
+	case <-acquired:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected CRUD lock to be released before response write path")
+	}
+}
+
 // setMuxVars injects gorilla/mux route variables into a request context so that
 // handler tests can exercise mux.Vars(r) without a live router.
 func setMuxVars(r *http.Request, vars map[string]string) *http.Request {
@@ -979,9 +1142,14 @@ func TestPrepareModifyProvider_ValidationFailsInvalidEndpoint(t *testing.T) {
 // S3 mount referencing providerName. id and name are used for identity.
 func newAppWithS3Mount(id, name, mountName, mountEndpoint, mountRegion, mountBucket, providerName string) *cluster.App {
 	return &cluster.App{
-		Id:   id,
-		Name: name,
+		Id:    id,
+		Name:  name,
+		Host:  name,
+		Port:  "80",
+		Mutex: &sync.Mutex{},
 		AppConfig: &config.AppConfig{
+			AppHost: name,
+			AppPort: "80",
 			Deployment: &config.Deployment{
 				Storages: config.StorageMapping{
 					S3Mounts: config.S3Mounts{

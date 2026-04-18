@@ -103,8 +103,11 @@ func (cluster *Cluster) newAppList() error {
 		}
 	}
 
+	cluster.Lock()
 	cluster.Apps = newApps
 	cluster.AppS3Providers = news3providers
+	cluster.bumpAppListVersion()
+	cluster.Unlock()
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "Loaded %d apps", len(cluster.Apps))
 
@@ -113,10 +116,9 @@ func (cluster *Cluster) newAppList() error {
 	return nil
 }
 
-// addAppToList initialises an App and appends it to the supplied slice.
-// It mirrors AddApp but writes to the provided slice instead of cluster.Apps,
-// allowing newAppList to build the full list before the atomic swap.
-func (c *Cluster) addAppToList(list *[]*App, app *App) {
+// initializeAppForRegistration performs the shared app bootstrap sequence used by
+// both addAppToList and AddApp.
+func (c *Cluster) initializeAppForRegistration(app *App) {
 	app.SetCluster(c)
 	app.SetID()
 	app.SetDataDir()
@@ -125,10 +127,17 @@ func (c *Cluster) addAppToList(list *[]*App, app *App) {
 	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"New application monitored %s: %s:%s", app.GetType(), app.GetHost(), app.GetPort())
 	app.SetState(stateSuspect)
-	*list = append(*list, app)
 	if app.AppConfig.ProvAppCreditPlanned == 0 {
 		app.AppConfig.ProvAppCreditPlanned = len(app.GetAppAgents())
 	}
+}
+
+// addAppToList initialises an App and appends it to the supplied slice.
+// It mirrors AddApp but writes to the provided slice instead of cluster.Apps,
+// allowing newAppList to build the full list before the atomic swap.
+func (c *Cluster) addAppToList(list *[]*App, app *App) {
+	c.initializeAppForRegistration(app)
+	*list = append(*list, app)
 }
 
 func (app *App) FetchStats() {

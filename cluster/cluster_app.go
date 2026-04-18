@@ -804,6 +804,82 @@ func (cluster *Cluster) SetAppVariableValue(app *App, v config.VariableMapping) 
 	return nil
 }
 
+func normalizeTemplateIdentifier(template string) (string, error) {
+	trimmed := strings.TrimSpace(template)
+	if trimmed == "" {
+		return "", fmt.Errorf("template name must be provided")
+	}
+
+	cleanTemplateName := filepath.Clean(filepath.FromSlash(trimmed))
+	if cleanTemplateName == "." || cleanTemplateName == string(filepath.Separator) {
+		return "", fmt.Errorf("template name must be provided")
+	}
+	if filepath.IsAbs(cleanTemplateName) {
+		return "", fmt.Errorf("template name must be relative to templates root")
+	}
+
+	relFromRoot, err := filepath.Rel(".", cleanTemplateName)
+	if err != nil {
+		return "", fmt.Errorf("template path validation failed: %w", err)
+	}
+	if relFromRoot == ".." || strings.HasPrefix(relFromRoot, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("template name contains invalid path traversal")
+	}
+
+	normalizedTemplateName := filepath.ToSlash(cleanTemplateName)
+	if normalizedTemplateName == "shared" {
+		return "", fmt.Errorf("shared template name must include a template path")
+	}
+	return normalizedTemplateName, nil
+}
+
+func (cluster *Cluster) resolveTemplateLocalCachePath(template string) (string, string, error) {
+	normalizedTemplateName, err := normalizeTemplateIdentifier(template)
+	if err != nil {
+		return "", "", err
+	}
+
+	localTemplatesRootAbs, err := filepath.Abs(filepath.Clean(filepath.Join(cluster.Conf.WorkingDir, ".templates", "apps")))
+	if err != nil {
+		return "", "", fmt.Errorf("invalid templates root path: %w", err)
+	}
+
+	localPathAbs, err := filepath.Abs(filepath.Clean(filepath.Join(localTemplatesRootAbs, filepath.FromSlash(normalizedTemplateName)+".toml")))
+	if err != nil {
+		return "", "", fmt.Errorf("invalid template path: %w", err)
+	}
+	relPath, err := filepath.Rel(localTemplatesRootAbs, localPathAbs)
+	if err != nil {
+		return "", "", fmt.Errorf("template path validation failed: %w", err)
+	}
+	if relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
+		return "", "", fmt.Errorf("template name contains invalid path traversal")
+	}
+
+	return normalizedTemplateName, localPathAbs, nil
+}
+
+func resolveSharedTemplateRepoPath(normalizedTemplate string) (string, error) {
+	if !strings.HasPrefix(normalizedTemplate, "shared/") {
+		return "", fmt.Errorf("shared template path must start with shared/")
+	}
+
+	sharedTemplateName := strings.TrimPrefix(normalizedTemplate, "shared/")
+	cleanShared := filepath.Clean(filepath.FromSlash(sharedTemplateName))
+	if cleanShared == "." || cleanShared == string(filepath.Separator) {
+		return "", fmt.Errorf("shared template name must include a template path")
+	}
+	relFromRoot, err := filepath.Rel(".", cleanShared)
+	if err != nil {
+		return "", fmt.Errorf("template path validation failed: %w", err)
+	}
+	if relFromRoot == ".." || strings.HasPrefix(relFromRoot, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("template name contains invalid path traversal")
+	}
+
+	return filepath.ToSlash(filepath.Join("app", "deployments", filepath.ToSlash(cleanShared)+".toml")), nil
+}
+
 func (cluster *Cluster) loadLocalTemplate(path, template string) ([]byte, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -854,8 +930,12 @@ func (cluster *Cluster) loadTemplateFromRepo(template string) ([]byte, error) {
 }
 
 func (cluster *Cluster) loadTemplateFromShared(template string) ([]byte, error) {
-	templateName := strings.TrimPrefix(template, "shared/")
-	templatePath := "app/deployments/" + templateName + ".toml"
+	templatePath, err := resolveSharedTemplateRepoPath(template)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"Error validating shared template path %s: %s", template, err)
+		return nil, err
+	}
 
 	content, err := share.ReadFileFromSharedDir(
 		cluster.Conf.WithEmbed,
@@ -882,18 +962,23 @@ func (cluster *Cluster) RefreshTemplateContent(template string) ([]byte, error) 
 }
 
 func (cluster *Cluster) getTemplateContent(template string, forceRefresh bool) ([]byte, error) {
-	localPath := filepath.Join(cluster.Conf.WorkingDir, ".templates", "apps", template+".toml")
+	normalizedTemplateName, localPath, err := cluster.resolveTemplateLocalCachePath(template)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"Error validating template path %s: %s", template, err)
+		return nil, err
+	}
 
 	if !forceRefresh {
 		// Try local file
-		if content, err := cluster.loadLocalTemplate(localPath, template); err == nil {
+		if content, err := cluster.loadLocalTemplate(localPath, normalizedTemplateName); err == nil {
 			canonicalContent, canonicalRes, canonErr := config.CanonicalizeAppTemplateTOML(content)
 			if canonErr != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
 					"Error canonicalizing local template file %s: %s", localPath, canonErr)
 				return nil, canonErr
 			}
-			if err := cluster.validateTemplateDeploymentPaths(canonicalContent, template); err != nil {
+			if err := cluster.validateTemplateDeploymentPaths(canonicalContent, normalizedTemplateName); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
 					"Invalid local template file %s after canonicalization: %s", localPath, err)
 				return nil, err
@@ -923,10 +1008,10 @@ func (cluster *Cluster) getTemplateContent(template string, forceRefresh bool) (
 	}
 
 	// Try repo
-	content, err := cluster.loadTemplateFromRepo(template)
+	content, err := cluster.loadTemplateFromRepo(normalizedTemplateName)
 	if err != nil {
 		// Fallback: shared dir
-		content, err = cluster.loadTemplateFromShared(template)
+		content, err = cluster.loadTemplateFromShared(normalizedTemplateName)
 		if err != nil {
 			return nil, err
 		}
@@ -935,12 +1020,12 @@ func (cluster *Cluster) getTemplateContent(template string, forceRefresh bool) (
 	canonicalContent, _, err := config.CanonicalizeAppTemplateTOML(content)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
-			"Error canonicalizing template file %s: %s", template, err)
+			"Error canonicalizing template file %s: %s", normalizedTemplateName, err)
 		return nil, err
 	}
-	if err := cluster.validateTemplateDeploymentPaths(canonicalContent, template); err != nil {
+	if err := cluster.validateTemplateDeploymentPaths(canonicalContent, normalizedTemplateName); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
-			"Invalid template file %s after canonicalization: %s", template, err)
+			"Invalid template file %s after canonicalization: %s", normalizedTemplateName, err)
 		return nil, err
 	}
 

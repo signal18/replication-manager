@@ -159,20 +159,20 @@ type Cluster struct {
 	// s3Providers groups S3 provider state and locking primitives in one place.
 	// Use the accessor methods (Add/Remove/Update/GetS3ProvidersSnapshot) and
 	// CRUD transaction lock helpers instead of direct field mutation.
-	s3Providers s3ProviderState
-	Agents             []Agent                    `json:"agents" groups:"web"`
-	AgentMaxFreq       map[string]int64           `json:"-"`
-	hostList           []string                   `json:"-"`
-	proxyList          []string                   `json:"-"`
-	clusterList        map[string]*Cluster        `json:"-"`
-	deprecatedKeys     map[string]map[string]bool `json:"-"`
-	slaves             serverList                 `json:"slaves" groups:"apps"`
-	master             *ServerMonitor             `json:"master" groups:"apps"`
-	oldMaster          *ServerMonitor             `json:"oldmaster" groups:"web"`
-	vmaster            *ServerMonitor             `json:"vmaster" `
-	StagingServer      *ServerMonitor             `json:"-" groups:"web"`
-	mxs                *maxscale.MaxScale         `json:"-"`
-	CheckSumConfig     map[string]hash.Hash       `json:"-"`
+	s3Providers    s3ProviderState
+	Agents         []Agent                    `json:"agents" groups:"web"`
+	AgentMaxFreq   map[string]int64           `json:"-"`
+	hostList       []string                   `json:"-"`
+	proxyList      []string                   `json:"-"`
+	clusterList    map[string]*Cluster        `json:"-"`
+	deprecatedKeys map[string]map[string]bool `json:"-"`
+	slaves         serverList                 `json:"slaves" groups:"apps"`
+	master         *ServerMonitor             `json:"master" groups:"apps"`
+	oldMaster      *ServerMonitor             `json:"oldmaster" groups:"web"`
+	vmaster        *ServerMonitor             `json:"vmaster" `
+	StagingServer  *ServerMonitor             `json:"-" groups:"web"`
+	mxs            *maxscale.MaxScale         `json:"-"`
+	CheckSumConfig map[string]hash.Hash       `json:"-"`
 	//dbUser                        string                      `json:"-"`
 	//oldDbUser string `json:"-"`
 	//dbPass                        string                      `json:"-"`
@@ -275,6 +275,7 @@ type Cluster struct {
 	preservedVarsLoaded         bool                       `json:"-"`
 	preservedVarsMutex          sync.RWMutex               `json:"-"`
 	s3SyncApplyMu               sync.Mutex                 `json:"-"`
+	appListEpoch                uint64                     `json:"-"`
 	secretVersionStoreMu        sync.Mutex                 `json:"-"`
 	secretVersionStoreDirty     bool                       `json:"-"`
 	// pluginSpikeCache holds the last DetectSpike result per server+plugin pair.
@@ -2259,18 +2260,11 @@ func (c *Cluster) AddProxy(prx DatabaseProxy) {
 }
 
 func (c *Cluster) AddApp(app *App) {
-	app.SetCluster(c)
-	app.SetID()
-	app.SetDataDir()
-	app.SetServiceName(c.Name)
-	app.SetDefaultRoute(c.Conf.Cloud18Domain, c.Conf.Cloud18SubDomain, c.Conf.Cloud18SubDomainZone, c.Name)
-	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "New application monitored %s: %s:%s", app.GetType(), app.GetHost(), app.GetPort())
-	app.SetState(stateSuspect)
+	c.initializeAppForRegistration(app)
+	c.Lock()
 	c.Apps = append(c.Apps, app)
-
-	if app.AppConfig.ProvAppCreditPlanned == 0 {
-		app.AppConfig.ProvAppCreditPlanned = len(app.GetAppAgents())
-	}
+	c.bumpAppListVersion()
+	c.Unlock()
 
 	if app.AppConfig.ProvAppCreditPlanned > app.AppConfig.ProvAppCreditUsed {
 		c.Conf.Cloud18ApplicationCreditsUsed += app.AppConfig.ProvAppCreditPlanned
@@ -2304,6 +2298,17 @@ func (cluster *Cluster) ReloadCertificates() {
 	for _, pri := range cluster.Proxies {
 		pri.CertificatesReload()
 	}
+}
+
+// appListVersion returns a monotonic version for Cluster.Apps structural changes.
+// It is used by sync/apply flows to detect stale snapshots without taking
+// additional coarse cluster locks in hot paths.
+func (cluster *Cluster) appListVersion() uint64 {
+	return atomic.LoadUint64(&cluster.appListEpoch)
+}
+
+func (cluster *Cluster) bumpAppListVersion() {
+	atomic.AddUint64(&cluster.appListEpoch, 1)
 }
 
 func (cluster *Cluster) ResetStates() {

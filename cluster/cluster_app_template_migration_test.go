@@ -152,6 +152,18 @@ func TestGetTemplateContent_SharedTemplateCanonicalizedBeforeCacheWrite(t *testi
 	}
 }
 
+func TestGetTemplateContent_RejectsPathTraversalInIdentifier(t *testing.T) {
+	workingDir := t.TempDir()
+	cluster := &Cluster{Conf: &config.Config{WorkingDir: workingDir}}
+
+	if _, err := cluster.GetTemplateContent("../escape"); err == nil {
+		t.Fatal("expected traversal template identifier to be rejected")
+	}
+	if _, err := cluster.GetTemplateContent("shared/../../escape"); err == nil {
+		t.Fatal("expected shared traversal template identifier to be rejected")
+	}
+}
+
 func TestAddSeededApp_CanonicalizesLegacyResolvedTemplateBeforeUnmarshal(t *testing.T) {
 	workingDir := t.TempDir()
 	localPath := filepath.Join(workingDir, ".templates", "apps", "legacy-seed.toml")

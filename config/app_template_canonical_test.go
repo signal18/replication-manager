@@ -116,3 +116,28 @@ dockerpath = "/var/www/html"
 		t.Fatalf("expected images level=2, got %d", levels["images"])
 	}
 }
+
+func TestCanonicalizeAppTemplateRaw_UnresolvedParentReportedOnce(t *testing.T) {
+	raw := map[string]any{
+		"deployment": map[string]any{
+			"paths": []any{
+				map[string]any{
+					"name":       "child",
+					"dockerpath": "/var/www/html/child",
+					"parentname": "missing-parent",
+				},
+			},
+		},
+	}
+
+	res, err := CanonicalizeAppTemplateRaw(raw)
+	if err != nil {
+		t.Fatalf("canonicalize failed: %v", err)
+	}
+	if len(res.UnresolvedParentReferences) != 1 {
+		t.Fatalf("expected unresolved parent to be reported once, got %v", res.UnresolvedParentReferences)
+	}
+	if res.UnresolvedParentReferences[0] != "missing-parent" {
+		t.Fatalf("expected unresolved parent %q, got %q", "missing-parent", res.UnresolvedParentReferences[0])
+	}
+}
