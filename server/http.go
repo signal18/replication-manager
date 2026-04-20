@@ -289,8 +289,11 @@ func (repman *ReplicationManager) httpserver() {
 		)(router),
 		ErrorLog: basiclog.New(repman.ApiLogAdapter, "", 0),
 	}
+	repman.httpServer = server
 
-	log.Fatal(server.ListenAndServe())
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatal(err)
+	}
 }
 
 func (repman *ReplicationManager) handlerApp(w http.ResponseWriter, r *http.Request) {

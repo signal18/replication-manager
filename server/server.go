@@ -8,6 +8,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/json"
 	"errors"
@@ -134,12 +135,14 @@ type ReplicationManager struct {
 	tlog                                             s18log.TermLog
 	termlength                                       int
 	exitMsg                                          string
-	exit                                             bool
+	exit                                             atomic.Bool
 	isStarted                                        bool
 	Confs                                            map[string]config.Config
 	VersionConfs                                     map[string]*config.ConfVersion `json:"-"`
 	grpcServer                                       *grpc.Server                   `json:"-"`
 	grpcWrapped                                      *grpcweb.WrappedGrpcServer     `json:"-"`
+	httpServer                                       *http.Server                   `json:"-"`
+	apiServer                                        *http.Server                   `json:"-"`
 	V3Up                                             chan bool                      `json:"-"`
 	v3Config                                         Repmanv3Config                 `json:"-"`
 	cloud18CheckSum                                  hash.Hash                      `json:"-"`
@@ -2547,34 +2550,35 @@ func (repman *ReplicationManager) Run() error {
 	//	ticker := time.NewTicker(interval * time.Duration(repman.Conf.MonitoringTicker))
 	repman.isStarted = true
 	sigs := make(chan os.Signal, 1)
-	// catch all signals since not explicitly listing
-	//	signal.Notify(sigs)
-	signal.Notify(sigs, os.Interrupt)
-	// method invoked upon seeing signal
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		s := <-sigs
 		repman.Logrus.Printf("RECEIVED SIGNAL: %s", s)
 		repman.UnMountS3()
 
+		// Stop ticker goroutines.
+		close(quit_GitPull)
+		close(quit_PAT)
+
 		stopwg := sync.WaitGroup{}
 		for _, cl := range repman.Clusters {
 			stopwg.Add(1)
-			go func() {
+			go func(c *cluster.Cluster) {
 				defer stopwg.Done()
-				cl.Stop()
-			}()
+				c.Stop()
+			}(cl)
 		}
 		// Wait for cluster close
 		stopwg.Wait()
 
-		repman.exit = true
+		repman.exit.Store(true)
 
 	}()
 
 	repman.RefreshDiskStats()
 
 	var counter int64 = 0
-	for !repman.exit {
+	for !repman.exit.Load() {
 		if repman.Conf.Arbitration {
 			repman.Heartbeat()
 		}
@@ -2618,7 +2622,7 @@ func (repman *ReplicationManager) Run() error {
 		pprof.StopCPUProfile()
 	}
 	repman.Stop()
-	os.Exit(1)
+	os.Exit(0)
 	return nil
 
 }
@@ -2813,6 +2817,22 @@ func (repman *ReplicationManager) resolveHostIp() string {
 
 func (repman *ReplicationManager) Stop() {
 
+	if repman.globalScheduler != nil {
+		repman.globalScheduler.Stop()
+	}
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer shutdownCancel()
+	if repman.httpServer != nil {
+		repman.httpServer.Shutdown(shutdownCtx)
+	}
+	if repman.apiServer != nil {
+		repman.apiServer.Shutdown(shutdownCtx)
+	}
+	if repman.grpcServer != nil {
+		repman.grpcServer.GracefulStop()
+	}
+
 	if repman.MemProfile != "" {
 		f, err := os.Create(repman.MemProfile)
 		if err != nil {
@@ -2851,7 +2871,7 @@ func (repman *ReplicationManager) Stop() {
 	repman.ConfigManager.Stop()
 
 	if !repman.IsExportPush {
-		go repman.PushConfigToBackupDir()
+		repman.PushConfigToBackupDir()
 	}
 }
 

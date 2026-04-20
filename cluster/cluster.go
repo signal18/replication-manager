@@ -186,7 +186,7 @@ type Cluster struct {
 	RepMgrVersion                       string                      `json:"-"`
 	RepMgrHostname                      string                      `json:"-"`
 	exitMsg                             string                      `json:"-"`
-	exit                                bool                        `json:"-"`
+	exit                                atomic.Bool                 `json:"-"`
 	canFlashBack                        bool                        `json:"-"`
 	canResticFetchRepo                  bool                        `json:"-"`
 	failoverCond                        *nbc.NonBlockingChan        `json:"-"`
@@ -700,7 +700,7 @@ func (cluster *Cluster) Run() {
 	cluster.Unlock()
 	cluster.MarkSecretVersionStoreDirty()
 
-	for !cluster.exit {
+	for !cluster.exit.Load() {
 		if !cluster.Conf.MonitorPause {
 			cluster.ReconcileSecretVersionStore()
 			cluster.ServerIdList = cluster.GetDBServerIdList()
@@ -1061,18 +1061,25 @@ func (cluster *Cluster) StateProcessing() {
 }
 
 func (cluster *Cluster) Stop() {
-	cluster.Lock()
-	defer cluster.Unlock()
+	// Signal the monitoring loop to stop before doing any blocking I/O.
+	// The lock is not held across the slow operations below to avoid deadlock
+	// with SaveConfig(wait=true) and ResticManager.UnmountRepo (5 min timeout).
+	cluster.exit.Store(true)
+
+	if cluster.scheduler != nil {
+		cluster.scheduler.Stop()
+	}
+
+	cluster.CloseRefreshTemplateMD5Worker()
+
 	if cluster.ResticManager != nil {
 		if err := cluster.ResticManager.UnmountRepo(); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Restic unmount on shutdown failed: %s", err)
 		}
 		cluster.ResticManager.ShutdownWorker()
 	}
-	cluster.CloseRefreshTemplateMD5Worker()
+
 	cluster.ConfigManager.SaveConfig(cluster, true)
-	// prevent new cycle
-	cluster.exit = true
 }
 
 func (cluster *Cluster) SetIsSavingConfig(val bool) {
