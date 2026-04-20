@@ -2622,7 +2622,13 @@ func (repman *ReplicationManager) Run() error {
 		counter++
 	}
 	// Block until all cluster.Stop() goroutines finish so no config saves are lost.
-	<-clustersDone
+	// The timeout guards against a hang if repman.exit is ever set outside the signal
+	// handler (which would exit the loop without closing clustersDone).
+	select {
+	case <-clustersDone:
+	case <-time.After(30 * time.Second):
+		repman.Logrus.Warn("timed out waiting for clusters to stop")
+	}
 
 	if repman.exitMsg != "" {
 		repman.Logrus.Println(repman.exitMsg)
