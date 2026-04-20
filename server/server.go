@@ -2828,14 +2828,43 @@ func (repman *ReplicationManager) Stop() {
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
+
+	// Shut down both HTTP servers in parallel so neither consumes the other's budget.
+	var httpWg sync.WaitGroup
 	if repman.httpServer != nil {
-		repman.httpServer.Shutdown(shutdownCtx)
+		httpWg.Add(1)
+		go func() {
+			defer httpWg.Done()
+			if err := repman.httpServer.Shutdown(shutdownCtx); err != nil {
+				repman.Logrus.Warnf("HTTP server shutdown: %v", err)
+			}
+		}()
 	}
 	if repman.apiServer != nil {
-		repman.apiServer.Shutdown(shutdownCtx)
+		httpWg.Add(1)
+		go func() {
+			defer httpWg.Done()
+			if err := repman.apiServer.Shutdown(shutdownCtx); err != nil {
+				repman.Logrus.Warnf("API server shutdown: %v", err)
+			}
+		}()
 	}
+	httpWg.Wait()
+
+	// GracefulStop waits for all in-flight RPCs; fall back to hard Stop if the
+	// context deadline expires so long-lived streams don't hold up shutdown.
 	if repman.grpcServer != nil {
-		repman.grpcServer.GracefulStop()
+		grpcDone := make(chan struct{})
+		go func() {
+			repman.grpcServer.GracefulStop()
+			close(grpcDone)
+		}()
+		select {
+		case <-grpcDone:
+		case <-shutdownCtx.Done():
+			repman.Logrus.Warn("gRPC graceful stop timed out, forcing stop")
+			repman.grpcServer.Stop()
+		}
 	}
 
 	if repman.MemProfile != "" {

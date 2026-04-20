@@ -704,7 +704,12 @@ func (cm *ConfigManager) processGitPush() {
 			cm.configWg.Wait()
 			cm.gitMutex.Unlock()
 
-			// Abort if a stop was requested while we were waiting.
+			// NOTE: there is a narrow window between Unlock() and the stopCh
+			// check below where a new SaveConfig call could start and add to
+			// configWg. That save will not be waited on by this push. This is
+			// intentional for the shutdown path (new saves during stop are
+			// undesirable) and benign in normal operation (the next push picks
+			// up any changes that arrive mid-operation).
 			select {
 			case <-cm.gitManager.stopCh:
 				if configGitTask.WaitGroup != nil {
