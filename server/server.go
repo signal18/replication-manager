@@ -2554,6 +2554,13 @@ func (repman *ReplicationManager) Run() error {
 	go func() {
 		s := <-sigs
 		repman.Logrus.Printf("RECEIVED SIGNAL: %s", s)
+
+		// Stop the main loop immediately so it stops queuing new git pushes,
+		// config saves, and other periodic work before clusters finish stopping.
+		// Without this, the main loop can keep enqueuing git push tasks while
+		// processClusterQueue is blocked waiting for gitMutex — compounding the delay.
+		repman.exit.Store(true)
+
 		repman.UnMountS3()
 
 		// Stop ticker goroutines.
@@ -2570,8 +2577,6 @@ func (repman *ReplicationManager) Run() error {
 		}
 		// Wait for cluster close
 		stopwg.Wait()
-
-		repman.exit.Store(true)
 
 	}()
 
