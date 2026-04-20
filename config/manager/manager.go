@@ -696,10 +696,34 @@ func (cm *ConfigManager) processGitPush() {
 			}
 			cm.gitManager.mutex.Unlock()
 
-			cm.logger.Debugf("none", config.ConstLogModGit, "Locking git mutex")
-			cm.gitMutex.Lock() // Block new config saves
-			cm.logger.Debugf("none", config.ConstLogModGit, "Waiting for active saves to finish...")
-			cm.configWg.Wait() // Ensure all active saves finish
+			// Hold gitMutex only long enough to wait for in-flight saves.
+			// Releasing it before network I/O lets ConfigManager.Stop() and
+			// processClusterQueue proceed immediately instead of blocking for
+			// the full duration of the git push/pull.
+			cm.gitMutex.Lock()
+			cm.configWg.Wait()
+			cm.gitMutex.Unlock()
+
+			// NOTE: there is a narrow window between Unlock() and the stopCh
+			// check below where a new SaveConfig call could start and add to
+			// configWg. That save will not be waited on by this push. This is
+			// intentional for the shutdown path (new saves during stop are
+			// undesirable) and benign in normal operation (the next push picks
+			// up any changes that arrive mid-operation).
+			select {
+			case <-cm.gitManager.stopCh:
+				if configGitTask.WaitGroup != nil {
+					configGitTask.WaitGroup.Done()
+				}
+				for _, task := range skippedTasks {
+					if task.WaitGroup != nil {
+						task.WaitGroup.Done()
+					}
+				}
+				cm.logger.Infof("none", config.ConstLogModGit, "[Git] Task aborted: git manager is stopping.")
+				return
+			default:
+			}
 
 			if configGitTask.TaskType == "pull" {
 				cm.logger.Debugf("none", config.ConstLogModGit, "[Git] Starting Git pull...")
@@ -724,10 +748,8 @@ func (cm *ConfigManager) processGitPush() {
 
 			} else {
 				cm.logger.Debugf("none", config.ConstLogModGit, "[Git] Starting Git push...")
-				// Execute the save function and handle potential errors
 				if err := cm.PushAllConfigsToGit(configGitTask.conf, configGitTask.clusterList); err != nil {
 					status := cm.UpdateGitOperationStatus(gitOperationPush, err)
-					// Execute the Git push function and handle potential errors
 					if status.Recoverable {
 						cm.logger.Warnf("none", config.ConstLogModGit, "[Git] Warning-class push failure (%s): %v", status.Reason, err)
 					} else {
@@ -739,7 +761,7 @@ func (cm *ConfigManager) processGitPush() {
 				}
 			}
 
-			// If a WaitGroup pointer is provided, mark the task as done
+			// Signal completion outside the lock — callers don't need gitMutex.
 			if configGitTask.WaitGroup != nil {
 				configGitTask.WaitGroup.Done()
 			}
@@ -749,8 +771,6 @@ func (cm *ConfigManager) processGitPush() {
 					task.WaitGroup.Done()
 				}
 			}
-
-			cm.gitMutex.Unlock()
 
 			if cm.gitManager.isStopping && len(cm.gitManager.tasks) == 0 {
 				cm.logger.Infof("none", config.ConstLogModGit, "[Git] No more tasks in queue, stopping goroutine.")
