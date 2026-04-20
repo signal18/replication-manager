@@ -93,11 +93,10 @@ func (cluster *Cluster) AddShardProxy(proxysql *ProxySQLProxy, shardproxy *Maria
 }
 
 func (proxy *ProxySQLProxy) UseSSL() string {
-	UseSSL := "0"
-	if proxy.ClusterGroup.Configurator.HaveDBTag("ssl") {
-		UseSSL = "1"
+	if proxy.ClusterGroup.Configurator.HaveDBTag("ssl") || proxy.ClusterGroup.HaveDBTLSCert || proxy.ClusterGroup.HaveAutoTLS {
+		return "1"
 	}
-	return UseSSL
+	return "0"
 }
 
 func (proxy *ProxySQLProxy) AddShardProxy(shardproxy *MariadbShardProxy) {

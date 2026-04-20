@@ -17,6 +17,7 @@ import (
 	git_obj "github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
+	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/utils/githelper"
@@ -289,6 +290,10 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 			repman.UpdateLocalPeer()
 			repman.LoadPartnersJson()
 		}
+
+		// Copy plugin binaries from pull repo into each cluster's working dir
+		// so ReloadLogPlugins can find them.
+		repman.syncPluginsFromPull(pullDir)
 	}
 
 	if repman.Conf.Cloud18 {
@@ -332,6 +337,109 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 			}
 		}
 	}
+}
+
+// syncPluginsFromPull copies plugin binaries from the -pull git repo
+// (pullDir/{clusterName}/plugins/) into each cluster's working directory
+// (WorkingDir/{clusterName}/plugins/) and triggers a hot-reload only when
+// at least one file actually changed (MD5 comparison).
+//
+// .sig files are NOT distributed via the pull repo — they are CI artifacts
+// shipped with the repman package in ShareDir/plugins/ to preserve the
+// chain of trust.
+func (repman *ReplicationManager) syncPluginsFromPull(pullDir string) {
+	for clusterName, cluster := range repman.Clusters {
+		srcDir := filepath.Join(pullDir, clusterName, logplugin.PluginDirName)
+		if _, err := os.Stat(srcDir); os.IsNotExist(err) {
+			continue
+		}
+		dstDir := logplugin.PluginDir(cluster.WorkingDir)
+		if err := os.MkdirAll(dstDir, 0755); err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlErr,
+				"[logplugin] cannot create plugin dir %s: %v", dstDir, err)
+			continue
+		}
+		entries, err := os.ReadDir(srcDir)
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+				"[logplugin] cannot read pull plugin dir %s: %v", srcDir, err)
+			continue
+		}
+		changed := 0
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			src := filepath.Join(srcDir, e.Name())
+			dst := filepath.Join(dstDir, e.Name())
+
+			// Skip if destination exists and content is identical.
+			if gitPluginFilesEqual(src, dst) {
+				continue
+			}
+
+			if err := gitPluginCopyFile(src, dst); err != nil {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+					"[logplugin] failed to copy plugin file %s: %v", e.Name(), err)
+				continue
+			}
+			// Only set executable bit on actual binaries (no extension).
+			// .pub and .sig files must not be made executable.
+			if filepath.Ext(e.Name()) == "" {
+				os.Chmod(dst, 0755) // #nosec G302 — plugin binaries must be executable
+			}
+			changed++
+		}
+		if changed > 0 {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlInfo,
+				"[logplugin] synced %d changed plugin file(s) from pull repo for cluster %s", changed, clusterName)
+			cluster.ReloadLogPlugins()
+		}
+	}
+}
+
+// gitPluginFilesEqual returns true when dst exists and has the same MD5 as src.
+func gitPluginFilesEqual(src, dst string) bool {
+	srcHash, err := gitPluginFileHash(src)
+	if err != nil {
+		return false
+	}
+	dstHash, err := gitPluginFileHash(dst)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(srcHash, dstHash)
+}
+
+func gitPluginFileHash(path string) ([]byte, error) {
+	f, err := os.Open(path) // #nosec G304 — path is constructed from trusted dirs
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	h := md5.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return nil, err
+	}
+	return h.Sum(nil), nil
+}
+
+// gitPluginCopyFile copies a single file from src to dst, overwriting dst if it exists.
+func gitPluginCopyFile(src, dst string) error {
+	in, err := os.Open(src) // #nosec G304 — src is constructed from a trusted pull dir
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	if _, err = io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
 }
 
 func (repman *ReplicationManager) ReadCloud18Config() {

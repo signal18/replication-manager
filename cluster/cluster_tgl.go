@@ -748,3 +748,7 @@ func (cluster *Cluster) SwitchCloud18OpenSysops() {
 func (cluster *Cluster) SwitchTopologyStaging() {
 	cluster.Conf.TopologyStaging = !cluster.Conf.TopologyStaging
 }
+
+func (cluster *Cluster) SwitchMonitorBinlogEvents() {
+	cluster.Conf.MonitorBinlogEvents = !cluster.Conf.MonitorBinlogEvents
+}

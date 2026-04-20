@@ -5,18 +5,17 @@
 // is >= regression-factor (default 3×) higher than its historical average from
 // the PFS digest statistics.
 //
-// Config (via environment variables read by the plugin):
+// Config (TOML plugin-config or scoped env vars as fallback):
 //
-//	REPMAN_TIMEFRAME_HOURS   int    default: 1   — current window
-//	REPMAN_REGRESSION_FACTOR float  default: 3.0 — multiplier to flag regression
-//	REPMAN_MIN_EXECUTIONS    int    default: 5   — minimum PFS exec_count to consider
+//	timeframe-hours    int    default: 1   — current observation window in hours  (env: REPMAN_SLOW_QUERY_REGRESSION_TIMEFRAME_HOURS)
+//	regression-factor  float  default: 3.0 — slowdown multiplier to flag          (env: REPMAN_SLOW_QUERY_REGRESSION_REGRESSION_FACTOR)
+//	min-executions     int    default: 5   — minimum PFS exec_count for baseline  (env: REPMAN_SLOW_QUERY_REGRESSION_MIN_EXECUTIONS)
 package main
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -30,11 +29,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	hours := envInt("REPMAN_TIMEFRAME_HOURS", 1)
-	factor := envFloat("REPMAN_REGRESSION_FACTOR", 3.0)
-	minExec := envInt("REPMAN_MIN_EXECUTIONS", 5)
+	hours := wire.CfgInt(req.Config, "timeframe-hours", wire.EnvInt("REPMAN_SLOW_QUERY_REGRESSION_TIMEFRAME_HOURS", 1))
+	factor := wire.CfgFloat(req.Config, "regression-factor", wire.EnvFloat("REPMAN_SLOW_QUERY_REGRESSION_REGRESSION_FACTOR", 3.0))
+	minExec := wire.CfgInt(req.Config, "min-executions", wire.EnvInt("REPMAN_SLOW_QUERY_REGRESSION_MIN_EXECUTIONS", 5))
 
-	// Build a map of digest → avg_ms from PFS (historical baseline)
 	type pfsEntry struct {
 		digestText    string
 		execCount     int64
@@ -53,16 +51,14 @@ func main() {
 	}
 
 	if len(pfsMap) == 0 {
-		// No PFS data — cannot detect regression
 		json.NewEncoder(os.Stdout).Encode(wire.Response{})
 		return
 	}
 
-	// Count slow log entries per query fingerprint in the current window
 	cutoff := time.Now().Add(-time.Duration(hours) * time.Hour)
 	type slowEntry struct {
-		count    int
-		totalMs  float64
+		count   int
+		totalMs float64
 	}
 	slowMap := make(map[string]*slowEntry)
 
@@ -75,7 +71,7 @@ func main() {
 				continue
 			}
 		}
-		queryTime := msg.TimeMetrics["query_time"] * 1000 // convert to ms
+		queryTime := msg.TimeMetrics["query_time"] * 1000
 		digest := simpleFingerprint(msg.Query)
 		if e, ok := slowMap[digest]; ok {
 			e.count++
@@ -94,13 +90,13 @@ func main() {
 		}
 		currentAvgMs := slow.totalMs / float64(slow.count)
 		if pfs.execTimeAvgMs < 1 {
-			continue // baseline too small to compare
+			continue
 		}
 		ratio := currentAvgMs / pfs.execTimeAvgMs
 		if ratio >= factor {
 			findings = append(findings, wire.Finding{
 				ErrKey:   "WARN0301",
-				Severity: "WARNING",
+				Severity: "WORKLOAD",
 				Description: fmt.Sprintf(
 					"Server %s: query regression detected — current avg %.0fms vs PFS baseline %.0fms (%.1f× — %d occurrences in last %dh): %s",
 					req.ServerURL, currentAvgMs, pfs.execTimeAvgMs, ratio,
@@ -118,7 +114,6 @@ func main() {
 }
 
 func simpleFingerprint(q string) string {
-	// Lowercase and remove numeric literals for a naive fingerprint
 	q = strings.ToLower(strings.TrimSpace(q))
 	var b strings.Builder
 	inNum := false
@@ -150,22 +145,4 @@ func parseTS(s string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("unknown timestamp: %q", s)
-}
-
-func envInt(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
-	}
-	return def
-}
-
-func envFloat(key string, def float64) float64 {
-	if v := os.Getenv(key); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			return f
-		}
-	}
-	return def
 }

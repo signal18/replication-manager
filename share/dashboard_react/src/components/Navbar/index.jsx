@@ -9,7 +9,11 @@ import { Link } from 'react-router-dom'
 import { clearCluster } from '../../redux/clusterSlice'
 import AlertBadge from '../AlertBadge'
 import AlertModal from '../Modals/AlertModal'
+import SecurityScoreModal from '../Modals/SecurityScoreModal'
+import WorkloadModal from '../Modals/WorkloadModal'
 import { FaPowerOff, FaUserPlus } from 'react-icons/fa'
+import { MdSecurity } from 'react-icons/md'
+import { RiSpeedFill } from 'react-icons/ri'
 import ConfirmModal from '../Modals/ConfirmModal'
 import styles from './styles.module.scss'
 import RMButton from '../RMButton'
@@ -27,6 +31,8 @@ function Navbar({ username }) {
   const [alertModalType, setAlertModalType] = useState('')
   const [globalAlertModalType, setGlobalAlertModalType] = useState('')
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
+  const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false)
+  const [isWorkloadModalOpen, setIsWorkloadModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
   const [isChatOpen, setIsChatOpen] = useState(() => { return localStorage.getItem('chatOpen') === 'true'; });
@@ -171,6 +177,34 @@ function Navbar({ username }) {
                 onClick={() => openAlertModal('warning')}
                 showText={!isMobile}
               />
+              {clusterData?.securityScore?.grade && (
+                <AlertBadge
+                  colorScheme={GRADE_COLOR[clusterData.securityScore.grade] || 'gray'}
+                  icon={MdSecurity}
+                  text='Security'
+                  count={clusterData.securityScore.grade}
+                  bubbleStyle={{
+                    background: `var(--chakra-colors-${GRADE_COLOR[clusterData.securityScore.grade] || 'gray'}-600)`,
+                    color: 'white',
+                    fontSize: '10px',
+                    fontWeight: 'bold',
+                  }}
+                  onClick={() => setIsSecurityModalOpen(true)}
+                  showText={!isMobile}
+                />
+              )}
+              <AlertBadge
+                colorScheme={(clusterData?.workloadStates || []).length > 0 ? 'purple' : 'gray'}
+                icon={RiSpeedFill}
+                text='Workload'
+                count={(clusterData?.workloadStates || []).length}
+                bubbleStyle={{
+                  background: `var(--chakra-colors-${(clusterData?.workloadStates || []).length > 0 ? 'purple' : 'gray'}-500)`,
+                  color: 'white',
+                }}
+                onClick={() => setIsWorkloadModalOpen(true)}
+                showText={!isMobile}
+              />
             </Flex>
           )}
 
@@ -239,9 +273,17 @@ function Navbar({ username }) {
       {isAddUserModalOpen && (
         <AddUserModal clusterName={clusterData?.name} isOpen={isAddUserModalOpen} closeModal={closeAddUserModal} />
       )}
+      {isSecurityModalOpen && (
+        <SecurityScoreModal isOpen={isSecurityModalOpen} closeModal={() => setIsSecurityModalOpen(false)} />
+      )}
+      {isWorkloadModalOpen && (
+        <WorkloadModal isOpen={isWorkloadModalOpen} closeModal={() => setIsWorkloadModalOpen(false)} />
+      )}
     </>
   )
 }
+
+const GRADE_COLOR = { A: 'green', B: 'teal', C: 'yellow', D: 'orange', F: 'red' }
 
 export default Navbar
 

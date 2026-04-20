@@ -676,6 +676,84 @@ func (configurator *Configurator) GetDatabaseDynamicConfig(filter string, cmd st
 	return mydynamicconf, nil
 }
 
+// GetTagSQL extracts the SQL for a compliance module tag directly from the in-memory
+// module — no deployed files required.
+//
+// tagName is matched against each ruleset's fset_name (e.g. "with_sec_localinfile",
+// "default_security").  cmdPrefix is one of "mariadb_command", "mysql_command",
+// "mariadb_default", or "mysql_default".
+//
+// Returns the raw SQL string after the colon (may contain multiple semicolon-separated
+// statements) or "" when the tag or prefix is not found.
+func (configurator *Configurator) GetTagSQL(tagName, cmdPrefix string) string {
+	type fileVar struct {
+		Fmt string `json:"fmt"`
+	}
+	commentPrefix := "# " + cmdPrefix + ":"
+	var result strings.Builder
+	for _, rule := range configurator.DBModule.Rulesets {
+		if !strings.Contains(rule.Filter, tagName) {
+			continue
+		}
+		for _, variable := range rule.Variables {
+			if variable.Class != "file" {
+				continue
+			}
+			var fv fileVar
+			if err := json.Unmarshal([]byte(variable.Value), &fv); err != nil {
+				continue
+			}
+			for _, line := range strings.Split(fv.Fmt, "\n") {
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, commentPrefix) {
+					sql := strings.TrimSpace(strings.TrimPrefix(trimmed, commentPrefix))
+					result.WriteString(sql)
+				}
+			}
+		}
+	}
+	return result.String()
+}
+
+// GetTagMyCnf returns the my.cnf snippet from a compliance module tag's cnf fmt content.
+// It extracts the non-comment, non-empty lines starting from the first [section] header.
+// tagName is matched against each ruleset's fset_name.
+func (configurator *Configurator) GetTagMyCnf(tagName string) string {
+	type fileVar struct {
+		Fmt string `json:"fmt"`
+	}
+	var result strings.Builder
+	for _, rule := range configurator.DBModule.Rulesets {
+		if !strings.Contains(rule.Filter, tagName) {
+			continue
+		}
+		for _, variable := range rule.Variables {
+			if variable.Class != "file" {
+				continue
+			}
+			var fv fileVar
+			if err := json.Unmarshal([]byte(variable.Value), &fv); err != nil {
+				continue
+			}
+			inSection := false
+			for _, line := range strings.Split(fv.Fmt, "\n") {
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "[") {
+					inSection = true
+				}
+				if !inSection {
+					continue
+				}
+				if strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+				result.WriteString(line + "\n")
+			}
+		}
+	}
+	return strings.TrimSpace(result.String())
+}
+
 func (configurator *Configurator) GetDatabaseConfig(filter string, datadir string) (string, error) {
 	mydynamicconf := ""
 	// processing symlink
@@ -741,7 +819,7 @@ func (configurator *Configurator) WriteDatabaseConfigFile(Datadir string, Remote
 		}
 	}
 
-	if fpath[len(fpath)-1:] != "/" && (configurator.IsFilterInDBTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic") {
+	if len(fpath) > 0 && fpath[len(fpath)-1:] != "/" && (configurator.IsFilterInDBTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic") {
 		content := misc.ExtractKey(f.Content, TemplateEnv)
 
 		if configurator.IsFilterInDBTags("docker") && configurator.ClusterConfig.ProvOrchestrator != config.ConstOrchestratorLocalhost {

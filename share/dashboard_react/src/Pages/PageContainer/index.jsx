@@ -76,7 +76,7 @@ function PageContainer({ children }) {
       <Navbar username={user?.username} />
       <Box className={styles.pageContent}>{children}</Box>
       <Box as='footer' className={styles.footer} textAlign={location.pathname === '/login' ? 'right' : 'left'}>
-        {location.pathname === '/login' ? monitor?.config.apiSwaggerEnabled && (<Link href='/api-docs/index.html' target='_blank' rel='noreferrer'>API Swagger</Link>) : (<Text>{`Replication-Manager ${fullVersion} © 2017-${new Date().getFullYear()} SIGNAL18 CLOUD SAS`}</Text>)}
+        {location.pathname === '/login' ? monitor?.config?.apiSwaggerEnabled && (<Link href='/api-docs/index.html' target='_blank' rel='noreferrer'>API Swagger</Link>) : (<Text>{`Replication-Manager ${fullVersion} © 2017-${new Date().getFullYear()} SIGNAL18 CLOUD SAS`}</Text>)}
       </Box>
     </Box>
   )

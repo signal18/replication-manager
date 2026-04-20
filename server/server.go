@@ -174,6 +174,18 @@ type ReplicationManager struct {
 	inFetchOpenSVCStats                              bool                           `json:"-"`
 	MessageChan                                      chan sharedlog.Message         `json:"-"`
 	fileHook                                         log.Hook
+	// SecurityLogrus is a dedicated logger that writes security events to
+	// security.log (path derived from log-file by inserting "-security" before
+	// the extension). Nil when log-file is not configured.
+	SecurityLogrus                                   *log.Logger    `json:"-"`
+	// WorkloadLogrus is a dedicated logger that writes workload/performance spike
+	// events to workload.log (path derived from log-file by inserting "-workload"
+	// before the extension). Nil when log-file is not configured.
+	WorkloadLogrus                                   *log.Logger    `json:"-"`
+	// MaintenanceLogrus is a dedicated logger that writes planned-operations events
+	// (backup, SST, task execution, purge, orchestrator) to maintenance.log.
+	// Nil when log-file is not configured.
+	MaintenanceLogrus                                *log.Logger    `json:"-"`
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
@@ -318,6 +330,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		}
 	}
 
+	flags.StringVar(&conf.PluginSigningPublicKey, "plugin-signing-public-key", conf.ShareDir+"/plugins/plugin-signing.pub", "Path to the Ed25519 public key used to verify external log plugin binaries (leave empty to skip verification)")
+
 	// Important flags for monitoring
 	flags.BoolVar(&conf.ConfRewrite, "monitoring-save-config", true, "Save configuration changes to <monitoring-datadir>/<cluster_name> ")
 	flags.BoolVar(&conf.ConfRestoreOnStart, "monitoring-restore-config-on-start", false, "Wipe working directory and restore config")
@@ -372,6 +386,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.MonitorErrorLogLength, "monitoring-error-log-length", 20, "Number of error log line to keep in monitor")
 	flags.IntVar(&conf.MonitorSqlErrorLogLength, "monitoring-sql-error-log-length", 20, "Number of sql error log line to keep in monitor")
 	flags.IntVar(&conf.MonitorAuditLogLength, "monitoring-audit-log-length", 20, "Number of audit log line to keep in monitor")
+	flags.IntVar(&conf.MonitorBinlogEventLogLength, "monitoring-binlog-event-log-length", 200, "Number of binlog QUERY events to keep for security plugin inspection")
 	flags.BoolVar(&conf.MonitorScheduler, "monitoring-scheduler", false, "Enable internal scheduler")
 	flags.BoolVar(&conf.MonitorCheckGrants, "monitoring-check-grants", true, "Check grants for replication and monitoring users, it use DNS Lookup")
 	flags.BoolVar(&conf.MonitorPause, "monitoring-pause", false, "Disable monitoring")
@@ -447,6 +462,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.LogLevelDatabaseSlowquery, "log-level-database-slowquery", 2, "Log Level for fetcher slow query log")
 	flags.IntVar(&conf.LogLevelDatabaseAudit, "log-level-database-audit", 3, "Log Level for fetcher audit log")
 	flags.BoolVar(&conf.LogPlugin, "log-plugin", false, "Enable generic log-tailer plugin checks (errorlog, sqlerrorlog, slowlog 24h windows)")
+	flags.BoolVar(&conf.MonitorBinlogEvents, "monitoring-binlog-events", false, "Enable incremental binlog QUERY event scanning (feeds binlog security plugins: cleartext-password, credit-card-leak)")
 	flags.IntVar(&conf.LogPluginLevel, "log-level-plugin", 2, "Log verbosity level for log-tailer plugins (1=error,2=warn,3=info,4=debug)")
 
 	// DB Credentials
@@ -2340,6 +2356,82 @@ func (repman *ReplicationManager) Run() error {
 		repman.Logrus.AddHook(hook)
 		repman.fileHook = hook
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Log to file: %s", repman.Conf.LogFile)
+
+		// Security log — same rotation settings, separate file alongside the main log.
+		// Path is derived by inserting "-security" before the log file extension.
+		secLogFile := securityLogPath(repman.Conf.LogFile)
+		secLogger := log.New()
+		secLogger.SetLevel(log.InfoLevel)
+		secLogger.SetFormatter(&log.TextFormatter{DisableColors: true})
+		secHook, secErr := s18log.NewRotateFileHook(s18log.RotateFileConfig{
+			Filename:   secLogFile,
+			MaxSize:    repman.Conf.LogRotateMaxSize,
+			MaxBackups: repman.Conf.LogRotateMaxBackup,
+			MaxAge:     repman.Conf.LogRotateMaxAge,
+			Level:      log.InfoLevel,
+			Formatter: &log.TextFormatter{
+				DisableColors:   true,
+				TimestampFormat: "2006-01-02 15:04:05",
+				FullTimestamp:   true,
+			},
+		})
+		if secErr != nil {
+			repman.Logrus.WithError(secErr).Warn("Can't init security log file, security events will only appear in main log")
+		} else {
+			secLogger.AddHook(secHook)
+			repman.SecurityLogrus = secLogger
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Security log to file: %s", secLogFile)
+		}
+
+		// Workload log — same rotation settings, separate file for performance spike events.
+		wrkLogFile := workloadLogPath(repman.Conf.LogFile)
+		wrkLogger := log.New()
+		wrkLogger.SetLevel(log.InfoLevel)
+		wrkLogger.SetFormatter(&log.TextFormatter{DisableColors: true})
+		wrkHook, wrkErr := s18log.NewRotateFileHook(s18log.RotateFileConfig{
+			Filename:   wrkLogFile,
+			MaxSize:    repman.Conf.LogRotateMaxSize,
+			MaxBackups: repman.Conf.LogRotateMaxBackup,
+			MaxAge:     repman.Conf.LogRotateMaxAge,
+			Level:      log.InfoLevel,
+			Formatter: &log.TextFormatter{
+				DisableColors:   true,
+				TimestampFormat: "2006-01-02 15:04:05",
+				FullTimestamp:   true,
+			},
+		})
+		if wrkErr != nil {
+			repman.Logrus.WithError(wrkErr).Warn("Can't init workload log file, workload events will only appear in main log")
+		} else {
+			wrkLogger.AddHook(wrkHook)
+			repman.WorkloadLogrus = wrkLogger
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Workload log to file: %s", wrkLogFile)
+		}
+
+		// Maintenance log — backup, SST, task execution, purge, orchestrator events.
+		mntLogFile := maintenanceLogPath(repman.Conf.LogFile)
+		mntLogger := log.New()
+		mntLogger.SetLevel(log.InfoLevel)
+		mntLogger.SetFormatter(&log.TextFormatter{DisableColors: true})
+		mntHook, mntErr := s18log.NewRotateFileHook(s18log.RotateFileConfig{
+			Filename:   mntLogFile,
+			MaxSize:    repman.Conf.LogRotateMaxSize,
+			MaxBackups: repman.Conf.LogRotateMaxBackup,
+			MaxAge:     repman.Conf.LogRotateMaxAge,
+			Level:      log.InfoLevel,
+			Formatter: &log.TextFormatter{
+				DisableColors:   true,
+				TimestampFormat: "2006-01-02 15:04:05",
+				FullTimestamp:   true,
+			},
+		})
+		if mntErr != nil {
+			repman.Logrus.WithError(mntErr).Warn("Can't init maintenance log file, maintenance events will only appear in main log")
+		} else {
+			mntLogger.AddHook(mntHook)
+			repman.MaintenanceLogrus = mntLogger
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Maintenance log to file: %s", mntLogFile)
+		}
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No log file defined. Writing logs to stdout. Use journalctl to view logs.")
 	}
@@ -2648,6 +2740,9 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 
 	repman.currentCluster = new(cluster.Cluster)
 	repman.currentCluster.Logrus = repman.Logrus
+	repman.currentCluster.SecurityLogrus = repman.SecurityLogrus
+	repman.currentCluster.WorkloadLogrus = repman.WorkloadLogrus
+	repman.currentCluster.MaintenanceLogrus = repman.MaintenanceLogrus
 	repman.currentCluster.Partner = &repman.Partner
 	repman.currentCluster.ConfigManager = repman.ConfigManager
 
@@ -3077,6 +3172,58 @@ func (repman *ReplicationManager) ReloadTerms() error {
 func IsDefault(p string, v *viper.Viper) bool {
 
 	return false
+}
+
+// logSecurityEvent writes a structured security event to the dedicated security
+// log file (when configured) AND to the main repman log at WARN level.
+// event is a short machine-readable label (e.g. "api_auth_failure"),
+// user is the username involved, remoteAddr is the HTTP remote address.
+func (repman *ReplicationManager) logSecurityEvent(event, user, remoteAddr, msg string) {
+	fields := log.Fields{
+		"event":       event,
+		"user":        user,
+		"remote_addr": remoteAddr,
+	}
+	repman.Logrus.WithFields(fields).Warn(msg)
+	if repman.SecurityLogrus != nil {
+		repman.SecurityLogrus.WithFields(fields).Warn(msg)
+	}
+}
+
+// securityLogPath derives the security log file path from the main log file path
+// by inserting "-security" before the file extension.
+// Examples:
+//
+//	/var/log/replication-manager.log  →  /var/log/replication-manager-security.log
+//	/var/log/repman                   →  /var/log/repman-security
+func securityLogPath(logFile string) string {
+	ext := filepath.Ext(logFile)
+	base := strings.TrimSuffix(logFile, ext)
+	return base + "-security" + ext
+}
+
+// workloadLogPath derives the workload log file path from the main log file path
+// by inserting "-workload" before the file extension.
+// Examples:
+//
+//	/var/log/replication-manager.log  →  /var/log/replication-manager-workload.log
+//	/var/log/repman                   →  /var/log/repman-workload
+func workloadLogPath(logFile string) string {
+	ext := filepath.Ext(logFile)
+	base := strings.TrimSuffix(logFile, ext)
+	return base + "-workload" + ext
+}
+
+// maintenanceLogPath derives the maintenance log file path from the main log file path
+// by inserting "-maintenance" before the file extension.
+// Examples:
+//
+//	/var/log/replication-manager.log  →  /var/log/replication-manager-maintenance.log
+//	/var/log/repman                   →  /var/log/repman-maintenance
+func maintenanceLogPath(logFile string) string {
+	ext := filepath.Ext(logFile)
+	base := strings.TrimSuffix(logFile, ext)
+	return base + "-maintenance" + ext
 }
 
 func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string {

@@ -12,6 +12,7 @@ package cluster
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,8 +32,33 @@ import (
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 )
+
+// isMySQLError3159 reports whether err is MySQL/MariaDB error 3159
+// (Connections using insecure transport prohibited; require_secure_transport=ON).
+func isMySQLError3159(err error) bool {
+	if e, ok := err.(*mysql.MyError); ok {
+		return e.Code == 3159
+	}
+	return false
+}
+
+// binlogSyncerTLSConfig returns the TLS config for BinlogSyncerConfig.
+// Returns cluster.tlsconf when full cert material is available, a minimal
+// skip-verify config when the server auto-detected require_secure_transport=ON,
+// or nil when plain-text is fine.
+func (server *ServerMonitor) binlogSyncerTLSConfig() *tls.Config {
+	cluster := server.ClusterGroup
+	if cluster.HaveDBTLSCert {
+		return cluster.tlsconf
+	}
+	if server.ForceTLSSkipVerify {
+		return &tls.Config{InsecureSkipVerify: true}
+	}
+	return nil
+}
 
 func (server *ServerMonitor) RefreshBinaryLogs() error {
 	var err error
@@ -109,9 +135,7 @@ func (server *ServerMonitor) RefreshBinlogMetaGoMySQL(meta *dbhelper.BinaryLogMe
 		Password: server.Pass,
 	}
 
-	if cluster.HaveDBTLSCert {
-		cfg.TLSConfig = cluster.tlsconf
-	}
+	cfg.TLSConfig = server.binlogSyncerTLSConfig()
 
 	syncer := replication.NewBinlogSyncer(cfg)
 	defer syncer.Close()
@@ -885,9 +909,7 @@ func (server *ServerMonitor) GetBinlogPositionFromTimestamp(start uint32, end *b
 		Password: server.Pass,
 	}
 
-	if cluster.HaveDBTLSCert {
-		cfg.TLSConfig = cluster.tlsconf
-	}
+	cfg.TLSConfig = server.binlogSyncerTLSConfig()
 
 	syncer := replication.NewBinlogSyncer(cfg)
 	defer syncer.Close()
@@ -1020,4 +1042,152 @@ func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start backupmgr.R
 	}
 
 	return nil
+}
+
+// ScanBinlogQueryEvents drains newly-arrived QUERY_EVENTs from the server's
+// current binary log into server.BinlogEventLog for consumption by security
+// plugins (cleartext-password, credit-card-leak, …).
+//
+// Design — persistent streamer, no double-fetch:
+//
+//   - A single *replication.BinlogSyncer + *replication.BinlogStreamer is kept
+//     open on ServerMonitor (binlogEventSyncer / binlogEventStreamer).  The
+//     connection is established lazily on the first call and reused on every
+//     subsequent monitoring tick, so there is no reconnect overhead and no
+//     re-scan of already-processed events.
+//
+//   - server.BinaryLogFile is the current binlog filename maintained by the
+//     existing monitoring code (srv_binlog.go / CheckBinaryLogs).  When it
+//     changes (rotation) the old streamer is closed and a new one is opened
+//     starting from position 4 of the new file.
+//
+//   - Each call does a non-blocking drain: GetEvent is called with a 50 ms
+//     budget.  When the streamer catches up with the writer the context
+//     deadline fires and the loop exits immediately — the monitoring tick is
+//     not blocked.
+//
+//   - On any hard error the streamer is torn down; it will be recreated on the
+//     next tick.  CloseBinlogEventSyncer() must be called whenever the server
+//     goes unreachable so the TCP connection is released promptly.
+func (server *ServerMonitor) ScanBinlogQueryEvents() {
+	cluster := server.ClusterGroup
+
+	// server.BinaryLogFile is already refreshed every tick by CheckBinaryLogs /
+	// the MasterStatus polling path — no extra DB query needed.
+	currentFile := server.BinaryLogFile
+	if currentFile == "" {
+		return
+	}
+
+	port, _ := strconv.Atoi(server.Port)
+
+	// (Re)open the streamer when it does not exist yet or when the binlog has
+	// rotated to a new file.
+	if server.binlogEventStreamer == nil || server.binlogEventFile != currentFile {
+		// Tear down the previous syncer cleanly before opening a new one.
+		server.CloseBinlogEventSyncer()
+
+		cfg := replication.BinlogSyncerConfig{
+			// Use a server-id that is distinct from the metadata syncer
+			// (CheckBinServerId) and from any real replica, to avoid
+			// "duplicate server-id" errors.
+			ServerID: uint32(cluster.Conf.CheckBinServerId + 2000),
+			Flavor:   server.DBVersion.Flavor,
+			Host:     server.Host,
+			Port:     uint16(port),
+			User:     server.User,
+			Password: server.Pass,
+		}
+		cfg.TLSConfig = server.binlogSyncerTLSConfig()
+
+		syncer := replication.NewBinlogSyncer(cfg)
+		// Start from the beginning of the current file so we see all events
+		// written since the last rotation.  Position 4 skips the 4-byte magic
+		// header that precedes the first real event.
+		streamer, err := syncer.StartSync(mysql.Position{Name: currentFile, Pos: 4})
+		if err != nil {
+			syncer.Close()
+			// If the server requires SSL and we haven't detected it yet via the
+			// monitoring connection, set ForceTLSSkipVerify and retry once.
+			if isMySQLError3159(err) && !server.ForceTLSSkipVerify && !cluster.HaveDBTLSCert {
+				server.ForceTLSSkipVerify = true
+				cluster.Lock()
+				cluster.HaveAutoTLS = true
+				cluster.Unlock()
+				server.SetDSN()
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+					"[binlog-scan] auto-enabled TLS with InsecureSkipVerify=true for %s (error 3159)."+
+						" Certificate authenticity is NOT verified — configure monitoring-ssl-ca/cert/key for full TLS validation.", server.URL)
+				cfg.TLSConfig = server.binlogSyncerTLSConfig()
+				syncer = replication.NewBinlogSyncer(cfg)
+				streamer, err = syncer.StartSync(mysql.Position{Name: currentFile, Pos: 4})
+				if err != nil {
+					syncer.Close()
+				}
+			}
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
+					"[binlog-scan] StartSync failed on %s file %s: %v", server.URL, currentFile, err)
+				return
+			}
+		}
+
+		server.binlogEventSyncer = syncer
+		server.binlogEventStreamer = streamer
+		server.binlogEventFile = currentFile
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
+			"[binlog-scan] opened streamer on %s file %s", server.URL, currentFile)
+	}
+
+	// Non-blocking drain: read new events until the writer catches up or the
+	// short per-event budget expires.  50 ms is enough to collect a burst of
+	// events without ever blocking the monitoring loop.
+	const perEventBudget = 50 * time.Millisecond
+
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), perEventBudget)
+		ev, err := server.binlogEventStreamer.GetEvent(ctx)
+		cancel()
+
+		if err == context.DeadlineExceeded {
+			// Caught up with the writer — nothing more to read right now.
+			break
+		}
+		if err != nil {
+			// Hard error (connection reset, etc.) — tear down and retry next tick.
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
+				"[binlog-scan] streamer error on %s: %v — closing syncer", server.URL, err)
+			server.CloseBinlogEventSyncer()
+			break
+		}
+
+		switch e := ev.Event.(type) {
+		case *replication.QueryEvent:
+			query := strings.TrimSpace(string(e.Query))
+			// Skip transaction control statements.
+			upperQuery := strings.ToUpper(query)
+			if upperQuery == "BEGIN" || upperQuery == "COMMIT" || upperQuery == "ROLLBACK" {
+				continue
+			}
+			ts := time.Unix(int64(ev.Header.Timestamp), 0).UTC()
+			server.BinlogEventLog.Add(s18log.BinlogEvent{
+				Timestamp: ts.Format("2006-01-02 15:04:05"),
+				Schema:    string(e.Schema),
+				Query:     query,
+				ServerID:  ev.Header.ServerID,
+			})
+		}
+	}
+}
+
+// CloseBinlogEventSyncer tears down the persistent binlog streamer used by
+// ScanBinlogQueryEvents.  Must be called when the server goes unreachable,
+// during failover, or on shutdown so the TCP connection is released promptly.
+func (server *ServerMonitor) CloseBinlogEventSyncer() {
+	if server.binlogEventSyncer != nil {
+		server.binlogEventSyncer.Close()
+		server.binlogEventSyncer = nil
+		server.binlogEventStreamer = nil
+		server.binlogEventFile = ""
+	}
 }

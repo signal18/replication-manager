@@ -77,11 +77,10 @@ func (proxy *ProxyJanitor) Connect() (proxysql.ProxySQL, error) {
 }
 
 func (proxy *ProxyJanitor) UseSSL() string {
-	UseSSL := "0"
-	if proxy.ClusterGroup.Configurator.HaveDBTag("ssl") {
-		UseSSL = "1"
+	if proxy.ClusterGroup.Configurator.HaveDBTag("ssl") || proxy.ClusterGroup.HaveDBTLSCert || proxy.ClusterGroup.HaveAutoTLS {
+		return "1"
 	}
-	return UseSSL
+	return "0"
 }
 
 func (proxy *ProxyJanitor) AddShardProxy(shardproxy *MariadbShardProxy) {

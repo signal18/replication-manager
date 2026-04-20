@@ -1,0 +1,140 @@
+import React, { useMemo, useState } from 'react'
+import {
+  Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay,
+  HStack, Button, Tooltip, Badge
+} from '@chakra-ui/react'
+import { useSelector, useDispatch } from 'react-redux'
+import { DataTable } from '../../DataTable'
+import { createColumnHelper } from '@tanstack/react-table'
+import NotFound from '../../NotFound'
+import parentStyles from '../styles.module.scss'
+import { useTheme } from '../../../ThemeProvider'
+import { clusterService } from '../../../services/clusterService'
+import { showSuccessToast, showErrorToast } from '../../../redux/toastSlice'
+
+function WorkloadModal({ isOpen, closeModal }) {
+  const { theme } = useTheme()
+  const dispatch = useDispatch()
+  const { isMobile, isTablet, isDesktop } = useSelector((state) => state.common)
+  const clusterData = useSelector((state) => state.cluster.clusterData)
+  const baseURL = useSelector((state) => state.auth?.baseURL || '')
+  const [fixing, setFixing] = useState({})
+
+  const statesArray = clusterData?.workloadStates || []
+
+  // Build a lookup from err_key → RemediationEntry from the workload remediation plan.
+  const remediationByKey = useMemo(() => {
+    const map = {}
+    for (const entry of clusterData?.workloadRemediations?.remediations || []) {
+      if (!map[entry.err_key]) map[entry.err_key] = entry
+    }
+    return map
+  }, [clusterData?.workloadRemediations])
+
+  const handleFix = async (errKey) => {
+    setFixing((prev) => ({ ...prev, [errKey]: true }))
+    try {
+      const entry = remediationByKey[errKey]
+      const fix = entry?.fixes?.[0]
+
+      let status, data
+      if (fix?.type === 'settings_switch' && fix?.url) {
+        ;({ status, data } = await clusterService.switchClusterSetting(fix.url, baseURL))
+      } else {
+        return
+      }
+
+      if (status === 200) {
+        dispatch(showSuccessToast({
+          title: `Fix applied: ${errKey}`,
+          description: 'Fix applied successfully.',
+        }))
+      } else {
+        dispatch(showErrorToast({
+          title: `Fix failed: ${errKey}`,
+          description: typeof data === 'string' ? data : 'Unexpected error',
+        }))
+      }
+    } catch (err) {
+      dispatch(showErrorToast({ title: `Fix failed: ${errKey}`, description: String(err) }))
+    } finally {
+      setFixing((prev) => ({ ...prev, [errKey]: false }))
+    }
+  }
+
+  const columnHelper = createColumnHelper()
+  const columns = useMemo(() => [
+    columnHelper.accessor((row) => row, {
+      id: 'desc',
+      header: () => <span>Description</span>,
+      cell: (info) => {
+        const row = info.getValue()
+        const errKey = (row.ErrKey || '').split('@')[0]
+        const desc = row.ErrDesc?.replace(/,(?!\s)/g, ', ') || ''
+        const entry = remediationByKey[errKey]
+
+        if (!entry?.auto_fixable) return <span>{desc}</span>
+
+        return (
+          <HStack spacing={2} align='start'>
+            <Tooltip label='Risk: safe' placement='top'>
+              <Button
+                size='xs'
+                colorScheme='green'
+                flexShrink={0}
+                isLoading={!!fixing[errKey]}
+                onClick={() => handleFix(errKey)}>
+                Enable
+              </Button>
+            </Tooltip>
+            <span>{desc}</span>
+          </HStack>
+        )
+      },
+    }),
+    columnHelper.accessor((row) => row.ServerUrl, {
+      id: 'server',
+      cell: (info) => info.getValue() || '',
+      header: () => <span>Server</span>,
+      maxWidth: '200',
+    }),
+    columnHelper.accessor((row) => row.ErrKey, {
+      id: 'code',
+      cell: (info) => info.getValue() || '',
+      header: () => <span>Code</span>,
+      maxWidth: '120',
+    }),
+  ], [fixing, remediationByKey, baseURL])
+
+  return (
+    <Modal isOpen={isOpen} onClose={closeModal}>
+      <ModalOverlay />
+      <ModalContent
+        className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}
+        width={isDesktop ? '80%' : isTablet ? '97%' : '99%'}
+        maxWidth='none'
+        minHeight='300px'
+        maxH='90%'
+        overflow='hidden'>
+        <ModalHeader style={{ background: 'var(--chakra-colors-purple-500)', color: 'white' }}>
+          Workload Spikes ({statesArray.length})
+        </ModalHeader>
+        <ModalCloseButton color='white' />
+        <ModalBody overflowY='auto' pb={6}>
+          {statesArray.length === 0 ? (
+            <NotFound text='No active workload findings' />
+          ) : (
+            <DataTable
+              key='WorkloadStates'
+              columns={columns}
+              data={statesArray}
+              cellValueAlign='start'
+            />
+          )}
+        </ModalBody>
+      </ModalContent>
+    </Modal>
+  )
+}
+
+export default WorkloadModal

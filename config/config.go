@@ -61,6 +61,7 @@ type Config struct {
 	BaseDir                                   string                       `scope:"server" mapstructure:"monitoring-basedir" toml:"monitoring-basedir" json:"monitoringBasedir"`
 	WorkingDir                                string                       `scope:"server" mapstructure:"monitoring-datadir" toml:"monitoring-datadir" json:"monitoringDatadir"`
 	ShareDir                                  string                       `mapstructure:"monitoring-sharedir" toml:"monitoring-sharedir" json:"monitoringSharedir"`
+	PluginSigningPublicKey                    string                       `scope:"server" mapstructure:"plugin-signing-public-key" toml:"plugin-signing-public-key" json:"pluginSigningPublicKey"`
 	ConfDir                                   string                       `scope:"server" mapstructure:"monitoring-confdir" toml:"monitoring-confdir" json:"monitoringConfdir"`
 	ConfDirBackup                             string                       `scope:"server" mapstructure:"monitoring-confdir-backup" toml:"monitoring-confdir-backup" json:"monitoringConfdirBackup"`
 	ConfDirExtra                              string                       `scope:"server" mapstructure:"monitoring-confdir-extra" toml:"monitoring-confdir-extra" json:"monitoringConfdirExtra"`
@@ -127,6 +128,7 @@ type Config struct {
 	MonitorErrorLogLength                     int                          `mapstructure:"monitoring-error-log-length" toml:"monitoring-error-log-length" json:"monitoringErrorLogLength"`
 	MonitorSqlErrorLogLength                  int                          `mapstructure:"monitoring-sql-error-log-length" toml:"monitoring-sql-error-log-length" json:"monitoringSqlErrorLogLength"`
 	MonitorAuditLogLength                     int                          `mapstructure:"monitoring-audit-log-length" toml:"monitoring-audit-log-length" json:"monitoringAuditLogLength"`
+	MonitorBinlogEventLogLength               int                          `mapstructure:"monitoring-binlog-event-log-length" toml:"monitoring-binlog-event-log-length" json:"monitoringBinlogEventLogLength"`
 	MonitorCapture                            bool                         `mapstructure:"monitoring-capture" toml:"monitoring-capture" json:"monitoringCapture"`
 	MonitorCaptureFileKeep                    int                          `mapstructure:"monitoring-capture-file-keep" toml:"monitoring-capture-file-keep" json:"monitoringCaptureFileKeep"`
 	MonitorDiskUsage                          bool                         `mapstructure:"monitoring-disk-usage" toml:"monitoring-disk-usage" json:"monitoringDiskUsage"`
@@ -190,6 +192,7 @@ type Config struct {
 	LogLevelDatabaseOptimize                  int                          `mapstructure:"log-level-database-optimize" toml:"log-level-database-optimize" json:"logLevelDatabaseOptimize"`
 	LogLevelDatabaseAudit                     int                          `mapstructure:"log-level-database-audit" toml:"log-level-database-audit" json:"logLevelDatabaseAudit"`
 	LogPlugin                                 bool                         `mapstructure:"log-plugin" toml:"log-plugin" json:"logPlugin"`
+	MonitorBinlogEvents                       bool                         `mapstructure:"monitoring-binlog-events" toml:"monitoring-binlog-events" json:"monitoringBinlogEvents"`
 	LogPluginLevel                            int                          `mapstructure:"log-level-plugin" toml:"log-level-plugin" json:"logPluginLevel"`
 	PluginConfig                              map[string]map[string]string `mapstructure:"plugin-config" toml:"plugin-config" json:"pluginConfig"`
 	User                                      string                       `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
@@ -1461,6 +1464,10 @@ const (
 	ConstLogModDbAudit        = 28
 	ConstLogModDbSqlErrors    = 29
 	ConstLogModPlugin         = 30 // generic log-tailer plugin module
+	// ConstLogModMaintenance covers planned-operations modules (backup, SST,
+	// task execution, purge, orchestrator provisioning). Routed to maintenance.log
+	// when configured so operational noise does not pollute the HA main log.
+	ConstLogModMaintenance    = 31
 )
 
 /*
@@ -3446,6 +3453,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			if conf.LogPlugin {
 				return conf.LogPluginLevel >= lvl
 			}
+		case module == ConstLogModMaintenance:
+			return true // always eligible; routing is handled by MaintenanceLogrus
 		}
 	}
 
@@ -3633,6 +3642,8 @@ func GetTagsForLog(module int) string {
 		return "auditlog"
 	case ConstLogModPlugin:
 		return "plugin"
+	case ConstLogModMaintenance:
+		return "maintenance"
 	}
 	return ""
 }

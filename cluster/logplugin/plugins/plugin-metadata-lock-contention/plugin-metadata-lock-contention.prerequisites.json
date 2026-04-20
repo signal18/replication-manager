@@ -1,0 +1,8 @@
+{
+  "prerequisites": [
+    {
+      "config_key": "monitoring-metadata-lock-info",
+      "description": "the METADATA_LOCK_INFO MySQL plugin must be installed and active on the server (INSTALL PLUGIN METADATA_LOCK_INFO SONAME 'metadata_lock_info.so')"
+    }
+  ]
+}

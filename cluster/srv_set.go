@@ -96,6 +96,8 @@ func (server *ServerMonitor) SetPrevState(state string) {
 
 func (server *ServerMonitor) SetFailed() {
 	server.SetState(stateFailed)
+	// Release the persistent binlog streamer so the TCP connection is freed promptly.
+	server.CloseBinlogEventSyncer()
 }
 
 func (server *ServerMonitor) SetMaster() {
@@ -240,6 +242,15 @@ func (server *ServerMonitor) SetDSN() {
 		}
 		if cluster.HaveDBTLSCert {
 			dsn += server.TLSConfigUsed
+		} else if server.ForceTLSSkipVerify {
+			dsn += ConstTLSSkipVerify
+		} else {
+			switch cluster.Conf.HostsTlsSslMode {
+			case "PREFERRED":
+				dsn += "&tls=preferred"
+			case "REQUIRED":
+				dsn += "&tls=skip-verify"
+			}
 		}
 		return dsn
 	}

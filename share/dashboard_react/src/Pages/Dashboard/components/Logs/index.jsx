@@ -106,4 +106,14 @@ export const TaskLogs = ({ className }) => {
   return <Logs key={"task"} logs={taskLogs?.buffer} className={className} />
 }
 
+export const SecurityLogs = ({ className }) => {
+  const securityLogs = useSelector((state) => state.cluster.clusterLogs.security)
+  return <Logs key={"security"} logs={securityLogs?.buffer} className={className} />
+}
+
+export const WorkloadLogs = ({ className }) => {
+  const workloadLogs = useSelector((state) => state.cluster.clusterLogs.workload)
+  return <Logs key={"workload"} logs={workloadLogs?.buffer} className={className} />
+}
+
 export default Logs

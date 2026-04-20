@@ -336,21 +336,14 @@ func (cluster *Cluster) GetDomainHeadCluster() string {
 	return ""
 }
 
-func (cluster *Cluster) GetPersitentState() error {
+func (cluster *Cluster) GetPersistentState() error {
 
-	type Save struct {
-		Servers    string      `json:"servers"`
-		Crashes    crashList   `json:"crashes"`
-		SLA        state.Sla   `json:"sla"`
-		SLAHistory []state.Sla `json:"slaHistory"`
-	}
-
-	var clsave Save
 	file, err := os.ReadFile(cluster.WorkingDir + "/clusterstate.json")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No file found: %v\n", err)
 		return err
 	}
+	var clsave ClusterState
 	err = json.Unmarshal(file, &clsave)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "File error: %v\n", err)
@@ -359,9 +352,39 @@ func (cluster *Cluster) GetPersitentState() error {
 	if len(clsave.Crashes) > 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json")
 	}
-	cluster.SLAHistory = clsave.SLAHistory
 	cluster.Crashes = clsave.Crashes
-	cluster.StateMachine.SetSla(clsave.SLA)
+
+	slaFile, err := os.ReadFile(cluster.WorkingDir + "/sla.json")
+	if err != nil {
+		// sla.json absent — attempt to migrate SLA data from old clusterstate.json format
+		// which embedded SLA fields before they were split into a dedicated file.
+		type legacyClusterState struct {
+			ClusterState
+			SLA        state.Sla   `json:"sla"`
+			SLAHistory []state.Sla `json:"slaHistory"`
+		}
+		var legacy legacyClusterState
+		if legacyFile, lerr := os.ReadFile(cluster.WorkingDir + "/clusterstate.json"); lerr == nil {
+			if jerr := json.Unmarshal(legacyFile, &legacy); jerr == nil && (len(legacy.SLAHistory) > 0 || legacy.SLA.Uptime > 0) {
+				cluster.SLAHistory = legacy.SLAHistory
+				cluster.StateMachine.SetSla(legacy.SLA)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+					"Migrated SLA history (%d entries) from clusterstate.json to sla.json\n", len(legacy.SLAHistory))
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No sla.json found, starting fresh\n")
+			}
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No sla.json found, starting fresh\n")
+		}
+	} else {
+		var slasave ClusterSLAState
+		if err = json.Unmarshal(slaFile, &slasave); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "sla.json parse error: %v\n", err)
+		} else {
+			cluster.SLAHistory = slasave.SLAHistory
+			cluster.StateMachine.SetSla(slasave.SLA)
+		}
+	}
 	cluster.StateMachine.SetMasterUpAndSyncRestart()
 
 	return nil
@@ -1804,6 +1827,10 @@ func (cluster *Cluster) GetWebLogsByType(logtype string) any {
 		return &cluster.LogTask
 	case "general":
 		return &cluster.Log
+	case "security":
+		return &cluster.LogSecurity
+	case "workload":
+		return &cluster.LogWorkload
 	default:
 		return nil
 	}
@@ -1813,6 +1840,8 @@ func (cluster *Cluster) GetAllWebLogs() map[string]any {
 	logs := make(map[string]any)
 	logs["general"] = &cluster.Log
 	logs["task"] = &cluster.LogTask
+	logs["security"] = &cluster.LogSecurity
+	logs["workload"] = &cluster.LogWorkload
 	return logs
 }
 

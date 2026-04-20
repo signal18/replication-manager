@@ -576,6 +576,56 @@ func SetUserPassword(db *sqlx.DB, myver *version.Version, user_host string, user
 	return query, nil
 }
 
+// validateDBHost validates a MySQL host string.
+// MySQL hosts may contain letters, digits, dots, hyphens, colons (IPv6), and '%'.
+// Backtick and NUL are disallowed to prevent identifier injection.
+func validateDBHost(host string) error {
+	if host == "" {
+		return fmt.Errorf("host cannot be empty")
+	}
+	for _, c := range host {
+		if c == '`' || c == 0 {
+			return fmt.Errorf("invalid host: contains disallowed character")
+		}
+	}
+	return nil
+}
+
+// LockDBUser locks a database account so it cannot be used to log in.
+// Uses ALTER USER ... ACCOUNT LOCK (MariaDB 10.4+ / MySQL 5.7.6+).
+func LockDBUser(db *sqlx.DB, user, host string) (string, error) {
+	if err := ValidateIdentifier(user); err != nil {
+		return "", fmt.Errorf("invalid username: %w", err)
+	}
+	if err := validateDBHost(host); err != nil {
+		return "", fmt.Errorf("invalid host: %w", err)
+	}
+	query := fmt.Sprintf("ALTER USER %s@%s ACCOUNT LOCK",
+		QuoteMySQLIdentifier(user),
+		QuoteMySQLIdentifier(host))
+	_, err := db.Exec(query)
+	return query, err
+}
+
+// DropDBUser removes a database account.
+// Uses DROP USER IF EXISTS to be idempotent.
+// user may be empty string (anonymous accounts have user='').
+func DropDBUser(db *sqlx.DB, user, host string) (string, error) {
+	if user != "" {
+		if err := ValidateIdentifier(user); err != nil {
+			return "", fmt.Errorf("invalid username: %w", err)
+		}
+	}
+	if err := validateDBHost(host); err != nil {
+		return "", fmt.Errorf("invalid host: %w", err)
+	}
+	query := fmt.Sprintf("DROP USER IF EXISTS %s@%s",
+		QuoteMySQLIdentifier(user),
+		QuoteMySQLIdentifier(host))
+	_, err := db.Exec(query)
+	return query, err
+}
+
 // RenameUserPassword renames a user
 func RenameUserPassword(db *sqlx.DB, myver *version.Version, user_host string, old_user_name string, new_password string, new_user_name string) (string, error) {
 	// Validate usernames
@@ -624,27 +674,54 @@ func SetUserGrants(ctx context.Context, conn *sqlx.Conn, myver *version.Version,
 
 // Additional functions extracted from backup - some contain SQL injection risks marked with TODO
 
-// GetUsers retrieves all users from the database
+// GetUsers retrieves all users from the database.
+// The Plugin field is populated on MySQL 5.7.6+ and all MariaDB versions.
+// It is left empty for PostgreSQL and pre-5.7.6 MySQL.
 func GetUsers(db *sqlx.DB, myver *version.Version) (map[string]*Grant, string, error) {
 	vars := make(map[string]*Grant)
-	query := "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10) FROM mysql.user where host<>'localhost'"
+	// account_locked column availability:
+	//   MySQL/Percona  >= 5.7.6   (introduced with ALTER USER ... ACCOUNT LOCK)
+	//   MariaDB        >= 10.4.2  (introduced in MDEV-7397)
+	//   Older versions / PostgreSQL: use literal 'N' as placeholder
+	query := "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), '' as plugin, 'N' as account_locked FROM mysql.user where host<>'localhost'"
 	if myver.IsPostgreSQL() {
-		query = "SELECT usename as user, '%' as host, 'unknow' as password, 0 FROM pg_catalog.pg_user"
+		query = "SELECT usename as user, '%' as host, 'unknow' as password, 0, '' as plugin, 'N' as account_locked FROM pg_catalog.pg_user"
 	} else if myver.IsMySQLOrPercona() && myver.GreaterEqual("5.7.6") {
-		query = "SELECT user, host, authentication_string as password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10) FROM mysql.user"
+		query = "SELECT user, host, authentication_string as password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), IFNULL(plugin,'') as plugin, IFNULL(account_locked,'N') as account_locked FROM mysql.user"
+	} else if myver.IsMariaDB() && myver.GreaterEqual("10.4.2") {
+		// MariaDB 10.4+: account_locked is stored as JSON boolean in mysql.global_priv.
+		// JSON_EXTRACT returns the string "true" for JSON boolean true. We must use
+		// = 'true' for the comparison — IF(JSON_EXTRACT(...)) treats "true" as numeric
+		// 0 in MariaDB's implicit cast, making every account appear unlocked.
+		query = "SELECT u.user, u.host, u.password, CONV(LEFT(MD5(concat(u.user,u.host)), 16), 16, 10), IFNULL(u.plugin,'') as plugin, IF(JSON_EXTRACT(g.priv, '$.account_locked') = 'true', 'Y', 'N') as account_locked FROM mysql.user u LEFT JOIN mysql.global_priv g ON u.user = g.user AND u.host = g.host"
+	} else if myver.IsMariaDB() {
+		// MariaDB < 10.4.2: no account_locked column — plugin column exists from 5.2+
+		query = "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), IFNULL(plugin,'') as plugin, 'N' as account_locked FROM mysql.user"
 	}
 
 	rows, err := db.Queryx(query)
+	if err != nil && myver.IsMariaDB() && myver.GreaterEqual("10.4.2") {
+		// Fallback: global_priv or JSON_VALUE not available (very old 10.4 build).
+		// Use the view column; if that also fails, fall back to literal 'N'.
+		query = "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), IFNULL(plugin,'') as plugin, IFNULL(account_locked,'N') as account_locked FROM mysql.user"
+		rows, err = db.Queryx(query)
+		if err != nil {
+			query = "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10), IFNULL(plugin,'') as plugin, 'N' as account_locked FROM mysql.user"
+			rows, err = db.Queryx(query)
+		}
+	}
 	if err != nil {
 		return nil, query, errors.New("Could not get DB user list")
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var g Grant
-		err = rows.Scan(&g.User, &g.Host, &g.Password, &g.Hash)
+		var accountLocked string
+		err = rows.Scan(&g.User, &g.Host, &g.Password, &g.Hash, &g.Plugin, &accountLocked)
 		if err != nil {
 			return vars, query, err
 		}
+		g.AccountLocked = strings.EqualFold(accountLocked, "Y")
 		vars["'"+g.User+"'@'"+g.Host+"'"] = &g
 	}
 	return vars, query, nil

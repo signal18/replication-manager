@@ -1,3 +1,4 @@
+**/.DS_Store
 *~
 replication-manager*
 *.rpm
@@ -28,6 +29,9 @@ share/dashboard_react/.vite/
 etc/opensvc/cluster-api/cluster-demo/priyanka.toml
 .replication-manager/
 data/
+# Exception: static plugin sidecar data files shipped with repman packages.
+!share/plugins/data/
+!share/plugins/data/*.json
 .config/
 share/dashboard/images
 share/dashboard/assets

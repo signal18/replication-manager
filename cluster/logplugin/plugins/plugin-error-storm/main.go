@@ -5,17 +5,16 @@
 // WARN0302 — raised when any error template appears >= storm-threshold times
 // within storm-window-minutes.
 //
-// Config (environment variables):
+// Config (TOML plugin-config or scoped env vars as fallback):
 //
-//	REPMAN_STORM_THRESHOLD    int  default: 10  — occurrences to trigger
-//	REPMAN_STORM_WINDOW_MINS  int  default: 5   — rolling window in minutes
+//	storm-threshold    int  default: 10  — occurrences to trigger          (env: REPMAN_ERROR_STORM_THRESHOLD)
+//	storm-window-mins  int  default: 5   — rolling window in minutes       (env: REPMAN_ERROR_STORM_WINDOW_MINS)
 package main
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -29,11 +28,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	threshold := envInt("REPMAN_STORM_THRESHOLD", 10)
-	windowMins := envInt("REPMAN_STORM_WINDOW_MINS", 5)
+	threshold := wire.CfgInt(req.Config, "storm-threshold", wire.EnvInt("REPMAN_ERROR_STORM_THRESHOLD", 10))
+	windowMins := wire.CfgInt(req.Config, "storm-window-mins", wire.EnvInt("REPMAN_ERROR_STORM_WINDOW_MINS", 5))
 	cutoff := time.Now().Add(-time.Duration(windowMins) * time.Minute)
 
-	// Count by error template (fingerprint the error text)
 	counts := make(map[string]int)
 	samples := make(map[string]string)
 
@@ -56,7 +54,6 @@ func main() {
 		}
 	}
 
-	// Also check SQL error log
 	for _, msg := range req.SqlErrorLog {
 		if msg.Text == "" {
 			continue
@@ -78,7 +75,7 @@ func main() {
 		if count >= threshold {
 			findings = append(findings, wire.Finding{
 				ErrKey:   "WARN0302",
-				Severity: "WARNING",
+				Severity: "WORKLOAD",
 				Description: fmt.Sprintf(
 					"Server %s: error storm — %d occurrences in last %dmin: %s",
 					req.ServerURL, count, windowMins,
@@ -90,8 +87,6 @@ func main() {
 	json.NewEncoder(os.Stdout).Encode(wire.Response{Findings: findings})
 }
 
-// errorTemplate strips variable parts (numbers, quoted strings, hex addresses)
-// to group similar errors together.
 func errorTemplate(s string) string {
 	s = strings.ToLower(s)
 	var b strings.Builder
@@ -111,7 +106,7 @@ func errorTemplate(s string) string {
 			for i < len(s) && s[i] != quote {
 				i++
 			}
-			i++ // closing quote
+			i++
 		default:
 			b.WriteByte(c)
 			i++
@@ -139,13 +134,4 @@ func parseTS(s string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("unknown ts: %q", s)
-}
-
-func envInt(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
-	}
-	return def
 }

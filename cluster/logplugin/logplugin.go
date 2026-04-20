@@ -38,15 +38,39 @@ import (
 type Severity string
 
 const (
-	SeverityWarning Severity = "WARNING"
-	SeverityError   Severity = "ERROR"
+	SeverityWarning  Severity = "WARNING"
+	SeverityError    Severity = "ERROR"
+	// SeveritySecurity is used by security-audit plugins (SEC0xxx error keys).
+	// It is rendered distinctly from operational WARNING/ERROR in the UI and
+	// API responses, allowing operators to filter security findings separately.
+	SeveritySecurity Severity = "SECURITY"
+	// SeverityWorkload is used by workload/performance spike detection plugins.
+	// These detect Graphite-based anomalies (slow query regressions, connection
+	// storms, tmp-table storms, etc.) and are tracked in the WorkloadStateMachine
+	// separately from HA findings so performance noise does not pollute the HA view.
+	SeverityWorkload Severity = "WORKLOAD"
 )
+
+// Remediation is a machine-readable fix proposal attached to a Finding.
+// Type is one of "sql", "my_cnf", or "repman_config".
+// Risk is one of "safe" (non-disruptive), "moderate" (may affect connections),
+// or "disruptive" (requires restart or may break workloads).
+type Remediation struct {
+	Type        string `json:"type"`
+	Description string `json:"description"`
+	SQL         string `json:"sql,omitempty"`
+	MyCnf       string `json:"my_cnf,omitempty"`
+	ConfigKey   string `json:"config_key,omitempty"`
+	ConfigValue string `json:"config_value,omitempty"`
+	Risk        string `json:"risk"`
+}
 
 // Finding is a single alert raised by a plugin evaluation.
 type Finding struct {
-	ErrKey      string
-	Severity    Severity
-	Description string
+	ErrKey       string
+	Severity     Severity
+	Description  string
+	Remediations []Remediation
 }
 
 // ToState converts a Finding to a cluster state.State.
@@ -62,11 +86,20 @@ func (f Finding) ToState(from string) state.State {
 // EvaluateResult is returned by Evaluate.
 type EvaluateResult struct {
 	Findings      []Finding
-	CurrentCount  int     // events counted in current window
-	PreviousCount int     // events in previous same-length window (for fallback when graphite unavailable)
+	ScoreChecks   []ScoreCheck // compliance score contributions, may be nil
+	CurrentCount  int          // events counted in current window
+	PreviousCount int          // events in previous same-length window (for fallback when graphite unavailable)
 	// MetricName is the graphite metric name this plugin writes its count under.
 	// Empty if graphite is not configured.
-	MetricName    string
+	MetricName string
+}
+
+// ScoreCheck is a single compliance check result returned by a score plugin.
+// The Tag matches one of the SecurityScore boolean fields (e.g. "HasSSL").
+type ScoreCheck struct {
+	Tag    string `json:"tag"`              // e.g. "HasSSL", "NoEmptyPassword"
+	Pass   bool   `json:"pass"`             // true = check passed
+	Detail string `json:"detail,omitempty"` // human-readable explanation
 }
 
 // SpikeCheckInterval is how often DetectSpike is actually called.
@@ -114,6 +147,33 @@ func (c *SpikeCache) IsFresh() bool {
 	return time.Since(c.CheckedAt) < SpikeCheckInterval
 }
 
+// StdioDBUser is one row from mysql.user, stripped of sensitive credential data.
+// Used by security plugins to audit authentication configuration.
+type StdioDBUser struct {
+	User          string `json:"user"`
+	Host          string `json:"host"`
+	Plugin        string `json:"plugin"`          // e.g. "mysql_native_password", "ed25519", "caching_sha2_password"
+	PasswordEmpty bool   `json:"password_empty"`  // true when authentication_string / password is empty
+	AccountLocked bool   `json:"account_locked"`  // true when account_locked = 'Y' — account cannot be used to log in
+}
+
+// StdioServerVersion carries the pre-parsed database version.
+type StdioServerVersion struct {
+	Flavor  string `json:"flavor"`
+	Major   int    `json:"major"`
+	Minor   int    `json:"minor"`
+	Release int    `json:"release"`
+}
+
+// StdioBinlogEvent is a single QUERY_EVENT captured from a server's binary log.
+// Passed to plugins that inspect binlog content (e.g. cleartext-password, credit-card).
+type StdioBinlogEvent struct {
+	Timestamp string `json:"timestamp"` // "2006-01-02 15:04:05" UTC
+	Schema    string `json:"schema"`    // default schema at query time
+	Query     string `json:"query"`     // raw SQL statement text
+	ServerID  uint32 `json:"server_id"` // originating server-id
+}
+
 // LogSource is passed to every plugin Evaluate() call.
 // All buffer fields are lock-free value copies.
 type LogSource struct {
@@ -144,6 +204,34 @@ type LogSource struct {
 	// MetaDataLocks is a snapshot of current MDL waits.
 	// Populated when METADATA_LOCK_INFO plugin is installed.
 	MetaDataLocks []StdioMDL
+	// BinlogEvents is a snapshot of recent binlog QUERY events.
+	// Populated when Conf.MonitorBinlogEvents is enabled.
+	BinlogEvents []StdioBinlogEvent
+	// ServerVersion is the pre-parsed database version derived from the live connection.
+	// Use this instead of parsing ServerVariables["version"] — it has correct flavor/case.
+	ServerVersion   StdioServerVersion
+	// ServerVariables is a snapshot of SHOW GLOBAL VARIABLES (non-sensitive).
+	// Always populated when the server is reachable.
+	ServerVariables map[string]string
+	// DatabaseUsers is a snapshot of mysql.user rows (no password hashes).
+	// Always populated when the server is reachable.
+	DatabaseUsers []StdioDBUser
+	// ClusterContext carries cluster-level facts that cannot be derived from
+	// a single server snapshot (e.g. whether proxies are configured, whether
+	// backups are encrypted). Populated by srv_log_plugins.go.
+	ClusterContext ClusterContext
+	// PluginDataDir is the directory where plugin sidecar data files are stored
+	// (e.g. lts-versions.json). Plugins should read data files from this path.
+	PluginDataDir string
+}
+
+// ClusterContext carries cluster-level facts passed to every plugin.
+type ClusterContext struct {
+	HasProxies       bool `json:"has_proxies"`        // cluster has at least one proxy configured
+	BackupEncrypted  bool `json:"backup_encrypted"`   // backup configured with encryption (e.g. restic password set)
+	ConfigClearPwd   bool `json:"config_clear_pwd"`   // repman detected cleartext passwords in TOML config
+	HistoryClearPwd  bool `json:"history_clear_pwd"`  // previous binlog scan found cleartext passwords
+	DockerDeployment bool `json:"docker_deployment"`  // servers run as Docker containers (DNS-based discovery, dynamic IPs)
 }
 
 // IsEnabled returns false only when config explicitly sets enabled=false/0/no.
@@ -154,6 +242,57 @@ func (src LogSource) IsEnabled() bool {
 // HasGraphite returns true when a graphite API endpoint is configured.
 func (src LogSource) HasGraphite() bool {
 	return src.GraphiteAPIURL != "" && src.GraphiteHostname != ""
+}
+
+// ErrKeyMissingMonitoringFeed is raised when a plugin is enabled but the
+// monitoring feed it depends on (e.g. monitoring-binlog-events) is disabled.
+const ErrKeyMissingMonitoringFeed = "WARN0312"
+
+// ErrKeyNoExternalPlugins is raised when log-plugin=true but no external plugins
+// are installed for the cluster.  It points operators to the plugin marketplace.
+const ErrKeyNoExternalPlugins = "WARN0313"
+
+// ErrKeyLogPluginDisabled is raised when plugin binaries are present in the
+// cluster plugin directory but log-plugin=false.  It means plugins were
+// delivered by the portal but the operator has not yet enabled evaluation.
+// The advisory includes a direct API link to toggle log-plugin on.
+const ErrKeyLogPluginDisabled = "WARN0314"
+
+// ErrKeyMoreWorkloadPlugins is an informational nudge raised on the workload
+// state machine when log-plugin=true but no external plugins are loaded.
+// Built-in workload plugins are already running; this advisory signals that
+// additional workload analysis plugins are available after signing up at
+// gitlab.signal18.io.  Uses ErrType "INFO" — not a warning, just an upsell.
+const ErrKeyMoreWorkloadPlugins = "INFO0315"
+
+// Prerequisite declares that a plugin requires a named monitoring feature to
+// be active in order to produce findings.
+type Prerequisite struct {
+	// ConfigKey is the monitoring flag name as it appears in the TOML /
+	// CLI, e.g. "monitoring-binlog-events".
+	ConfigKey string
+	// Description is a human-readable explanation embedded in the WARN0312
+	// finding, e.g. "binlog QUERY event scanning must be enabled".
+	Description string
+}
+
+// LogPluginWithPrerequisites is an optional extension of LogPlugin.
+// Plugins that depend on a specific monitoring feed implement this interface
+// so the RunLogPlugins orchestrator can emit WARN0312 when the feed is off,
+// rather than silently producing no findings.
+type LogPluginWithPrerequisites interface {
+	LogPlugin
+	Prerequisites() []Prerequisite
+}
+
+// LogPluginWithDefaultSeverity is an optional extension of LogPlugin.
+// Pure security plugins (hardening, local-infile, no-password-user, weak-auth)
+// implement this so RunLogPlugins can route debug messages to the correct
+// dedicated log even when Evaluate returns zero findings (compliant server).
+// Score plugins do not need this — they always return ScoreChecks.
+type LogPluginWithDefaultSeverity interface {
+	LogPlugin
+	DefaultSeverity() Severity
 }
 
 // LogPlugin is the interface every log-tailer plugin must implement.
@@ -207,6 +346,10 @@ type Registry struct {
 	plugins []LogPlugin
 }
 
+// GlobalRegistry is the process-wide registry seeded by init() functions in each
+// built-in plugin file.  It must only contain built-in (in-process) plugins.
+// External (subprocess) plugins must be loaded into per-cluster registries via
+// NewRegistry() so that one cluster's plugins do not pollute another's monitoring loop.
 var GlobalRegistry = &Registry{}
 
 func Register(p LogPlugin) {
@@ -217,6 +360,28 @@ func (r *Registry) All() []LogPlugin {
 	out := make([]LogPlugin, len(r.plugins))
 	copy(out, r.plugins)
 	return out
+}
+
+// ExternalCount returns the number of external (subprocess) plugins in the registry.
+// A zero count means no plugins have been loaded from disk for this cluster.
+func (r *Registry) ExternalCount() int {
+	n := 0
+	for _, p := range r.plugins {
+		if _, ok := p.(*ExternalLogPlugin); ok {
+			n++
+		}
+	}
+	return n
+}
+
+// NewRegistry returns a new per-cluster registry pre-seeded with the built-in
+// plugins from GlobalRegistry.  External plugins are then added to this registry
+// by LoadPluginsFromDir, keeping each cluster's set of external plugins isolated.
+func NewRegistry() *Registry {
+	reg := &Registry{}
+	reg.plugins = make([]LogPlugin, len(GlobalRegistry.plugins))
+	copy(reg.plugins, GlobalRegistry.plugins)
+	return reg
 }
 
 // ---- Config helpers ---------------------------------------------------------
@@ -312,6 +477,11 @@ func (r *graphiteSeriesResponse) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// graphiteHTTPClient is shared by FetchGraphiteMetric and correlateGraphiteSpike.
+// A 10-second timeout prevents the monitoring loop from blocking indefinitely
+// when the Graphite host is unreachable or slow to respond.
+var graphiteHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
 // FetchGraphiteMetric queries the graphite render API and returns datapoints.
 // from/until use graphite relative syntax: "-7d", "-1h", "now".
 func FetchGraphiteMetric(apiURL, target, from, until string) ([]graphiteDatapoint, error) {
@@ -327,7 +497,7 @@ func FetchGraphiteMetric(apiURL, target, from, until string) ([]graphiteDatapoin
 	q.Set("noCache", "1")
 	u.RawQuery = q.Encode()
 
-	resp, err := http.Get(u.String())
+	resp, err := graphiteHTTPClient.Get(u.String())
 	if err != nil {
 		return nil, fmt.Errorf("graphite fetch error: %w", err)
 	}
@@ -655,7 +825,7 @@ func correlateGraphiteSpike(apiURL, prefix, from string, spikeTime time.Time, si
 	q.Set("format", "treejson")
 	u.RawQuery = q.Encode()
 
-	resp, err := http.Get(u.String())
+	resp, err := graphiteHTTPClient.Get(u.String())
 	if err != nil {
 		return nil
 	}

@@ -34,7 +34,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
-	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dockerhelper"
@@ -99,6 +98,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/plugins", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterPlugins)),
+	))
+	router.Handle("/api/clusters/{clusterName}/plugins/reload", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterPluginsReload)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/tags", negroni.New(
@@ -789,6 +792,20 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 
 	// Register restic-specific routes
 	repman.RegisterResticRoutes(router)
+
+	// Security remediation endpoints
+	router.Handle("/api/clusters/{clusterName}/security/remediation-plan", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecurityRemediationPlan)),
+	))
+	router.Handle("/api/clusters/{clusterName}/security/apply-fix", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecurityApplyFix)),
+	))
+	router.Handle("/api/clusters/{clusterName}/security/fix-state/{errKey}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecurityFixState)),
+	))
 }
 
 // @Summary Retrieve servers for a specific cluster
@@ -2750,6 +2767,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.BackupResticRepoAppendCluster = !mycluster.Conf.BackupResticRepoAppendCluster
 	case "log-plugin":
 		mycluster.Conf.LogPlugin = !mycluster.Conf.LogPlugin
+	case "monitoring-binlog-events":
+		mycluster.SwitchMonitorBinlogEvents()
 	default:
 		return errors.New("setting not found")
 	}
@@ -4567,21 +4586,32 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ProvAppTemplateRepoTimeout = parsedTimeout
 	default:
 		// Check if this is a plugin-config key: "plugin-config-<pluginname>-<key>"
-		// e.g. "plugin-config-errorlog-timeframe-hours" → PluginConfig["errorlog"]["timeframe-hours"]
+		// e.g. "plugin-config-errorlog-timeframe-hours"      → PluginConfig["errorlog"]["timeframe-hours"]
+		//      "plugin-config-plugin-connection-storm-sleep-ratio-threshold"
+		//                                                     → PluginConfig["plugin-connection-storm"]["sleep-ratio-threshold"]
+		//
+		// SplitN(rest, "-", 2) is wrong for plugin names that contain hyphens (all external
+		// plugins are named "plugin-*").  Instead we match against the registered plugin names
+		// and pick the longest match so that the plugin name and config key are unambiguous.
 		if strings.HasPrefix(name, "plugin-config-") {
 			rest := strings.TrimPrefix(name, "plugin-config-")
-			// First segment is the plugin name, remainder is the config key
-			parts := strings.SplitN(rest, "-", 2)
-			if len(parts) == 2 {
-				pluginName := parts[0]
-				configKey := parts[1]
+			var matchedPlugin, matchedKey string
+			for _, p := range mycluster.PluginRegistry().All() {
+				pname := p.Name()
+				prefix := pname + "-"
+				if strings.HasPrefix(rest, prefix) && len(pname) > len(matchedPlugin) {
+					matchedPlugin = pname
+					matchedKey = strings.TrimPrefix(rest, prefix)
+				}
+			}
+			if matchedPlugin != "" && matchedKey != "" {
 				if mycluster.Conf.PluginConfig == nil {
 					mycluster.Conf.PluginConfig = make(map[string]map[string]string)
 				}
-				if mycluster.Conf.PluginConfig[pluginName] == nil {
-					mycluster.Conf.PluginConfig[pluginName] = make(map[string]string)
+				if mycluster.Conf.PluginConfig[matchedPlugin] == nil {
+					mycluster.Conf.PluginConfig[matchedPlugin] = make(map[string]string)
 				}
-				mycluster.Conf.PluginConfig[pluginName][configKey] = value
+				mycluster.Conf.PluginConfig[matchedPlugin][matchedKey] = value
 				mycluster.ConfigManager.SaveConfig(mycluster, false)
 				return nil
 			}
@@ -6155,7 +6185,7 @@ func (repman *ReplicationManager) handlerMuxClusterPlugins(w http.ResponseWriter
 		Config  map[string]string `json:"config"`
 	}
 
-	plugins := logplugin.GlobalRegistry.All()
+	plugins := mycluster.PluginRegistry().All()
 	result := make([]PluginInfo, 0, len(plugins))
 	for _, p := range plugins {
 		var cfg map[string]string
@@ -6165,9 +6195,13 @@ func (repman *ReplicationManager) handlerMuxClusterPlugins(w http.ResponseWriter
 		if cfg == nil {
 			cfg = map[string]string{}
 		}
+		enabled := mycluster.Conf.LogPlugin
+		if v, ok := cfg["enabled"]; ok {
+			enabled = v != "false"
+		}
 		result = append(result, PluginInfo{
 			Name:    p.Name(),
-			Enabled: mycluster.Conf.LogPlugin,
+			Enabled: enabled,
 			Config:  cfg,
 		})
 	}
@@ -6177,6 +6211,32 @@ func (repman *ReplicationManager) handlerMuxClusterPlugins(w http.ResponseWriter
 	if err := e.Encode(result); err != nil {
 		http.Error(w, "Encoding error", http.StatusInternalServerError)
 	}
+}
+
+// handlerMuxClusterPluginsReload forces a rescan of the cluster's plugin directory
+// and reloads the global registry.  Useful after deploying new plugin binaries
+// without restarting the server or triggering a topology reset.
+//
+// @Summary  Reload external log plugins for a cluster
+// @Tags     ClusterSettings
+// @Param    clusterName path string true "Cluster Name"
+// @Success  200
+// @Router   /api/clusters/{clusterName}/plugins/reload [post]
+func (repman *ReplicationManager) handlerMuxClusterPluginsReload(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	mycluster.ReloadLogPlugins()
+	w.WriteHeader(http.StatusOK)
 }
 
 // handlerMuxClusterSendVaultToken sends the Vault token to the specified cluster via email.
@@ -9158,6 +9218,133 @@ func (repman *ReplicationManager) handlerMuxSavePreservedVarsCnf(w http.Response
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(fmt.Sprintf("Successfully saved preserved variables CNF to %s", mycluster.GetPreservedVarsPath())))
+}
+
+// handlerMuxSecurityRemediationPlan returns the remediation plan for all open
+// security findings in a cluster.
+//
+// Each RemediationEntry has one or more RemediationFix items. Fix types:
+//
+//	add_tag      — add a compliance module tag (deploys .cnf + runs mariadb_command SQL)
+//	drop_tag     — remove a compliance module tag (runs mariadb_default SQL)
+//	fix_db_user  — named action on a database account; no raw SQL from client
+//	cnf_template — suggested .cnf content to add to the compliance module (no tag yet)
+//
+// @Summary Get security remediation plan
+// @Tags ClusterSecurity
+// @Produce json
+// @Param Authorization header string true "Bearer token"
+// @Param clusterName path string true "Cluster name"
+// @Success 200 {object} cluster.RemediationPlan
+// @Failure 404 {string} string "Cluster not found"
+// @Router /api/clusters/{clusterName}/security/remediation-plan [get]
+func (repman *ReplicationManager) handlerMuxSecurityRemediationPlan(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster not found", http.StatusNotFound)
+		return
+	}
+	plan := mycluster.GetRemediationPlan()
+	data, err := json.Marshal(plan)
+	if err != nil {
+		http.Error(w, "Encoding error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+}
+
+// handlerMuxSecurityApplyFix applies a tag-based security remediation fix
+// (add_tag or drop_tag).  The cluster's AddDBTag / DropDBTag mechanism deploys
+// the compliance .cnf file to all servers and executes the embedded
+// mariadb_command / mariadb_default SQL automatically — no direct SQL execution.
+//
+// Per-account findings (SEC0100, SEC0107, SEC0108) must be handled manually.
+//
+// @Summary Apply a tag-based security remediation fix
+// @Tags ClusterSecurity
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Bearer token"
+// @Param clusterName path string true "Cluster name"
+// @Param body body object true "{\"action\":\"add_tag\"|\"drop_tag\", \"tag\":\"<tag_name>\"}"
+// @Success 200 {string} string "Fix applied"
+// @Failure 400 {string} string "Bad request"
+// @Failure 404 {string} string "Cluster not found"
+// @Failure 500 {string} string "Execution error"
+// @Router /api/clusters/{clusterName}/security/apply-fix [post]
+func (repman *ReplicationManager) handlerMuxSecurityApplyFix(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster not found", http.StatusNotFound)
+		return
+	}
+	var req struct {
+		Action string `json:"action"`
+		Tag    string `json:"tag"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Action == "" {
+		http.Error(w, `Body must be JSON with non-empty "action" and "tag" fields`, http.StatusBadRequest)
+		return
+	}
+	if req.Tag == "" {
+		http.Error(w, `"tag" field is required`, http.StatusBadRequest)
+		return
+	}
+	if err := mycluster.ApplyRemediationTag(req.Action, req.Tag); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok"}`))
+}
+
+// handlerMuxSecurityFixState applies the automated remediation for a single SEC
+// error key across all servers in the cluster.  No request body is required —
+// the server knows exactly what to do for each supported code.
+//
+// Supported codes (AutoFixable=true in the remediation plan):
+//
+//	SEC0100 — ACCOUNT LOCK all no-password, non-socket accounts
+//	SEC0102 — drop compliance tag with_sec_localinfile (SET GLOBAL local_infile=0)
+//	SEC0104 — drop compliance tag with_log_general    (SET GLOBAL general_log=0)
+//	SEC0107 — DROP all anonymous user accounts
+//	SEC0113 — INSTALL SONAME 'simple_password_check'   (MariaDB 10.1+)
+//	SEC0114 — INSTALL SONAME 'cracklib_password_check' (MariaDB 10.1+, requires cracklib OS lib)
+//	SEC0115 — INSTALL SONAME 'password_reuse_check'    (MariaDB 10.7+)
+//
+// @Summary Apply automated fix for a security finding
+// @Tags ClusterSecurity
+// @Produce json
+// @Param Authorization header string true "Bearer token"
+// @Param clusterName path string true "Cluster name"
+// @Param errKey path string true "SEC error key (e.g. SEC0102)"
+// @Success 200 {string} string "Fix applied"
+// @Failure 400 {string} string "No automated fix for this code"
+// @Failure 404 {string} string "Cluster not found"
+// @Failure 500 {string} string "Execution error"
+// @Router /api/clusters/{clusterName}/security/fix-state/{errKey} [post]
+func (repman *ReplicationManager) handlerMuxSecurityFixState(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster not found", http.StatusNotFound)
+		return
+	}
+	errKey := vars["errKey"]
+	tag := r.URL.Query().Get("tag") // optional: selects among multiple fix options (e.g. SEC0113 pwdcheck)
+	if err := mycluster.FixSecState(errKey, tag); err != nil {
+		// FixSecState returns a specific error when the code has no automated fix.
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok"}`))
 }
 
 // s3ProviderRequest is the JSON request body for S3 provider add and modify operations.

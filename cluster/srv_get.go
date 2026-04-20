@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -1084,6 +1085,35 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 
 	}
 	conn, err := sqlx.Connect("mysql", server.DSN)
+	if err != nil && !server.ClusterGroup.HaveDBTLSCert && !server.ForceTLSSkipVerify {
+		if driverErr, ok := err.(*mysql.MySQLError); ok && driverErr.Number == 3159 {
+			// Server has require_secure_transport=ON but we connected without SSL.
+			// Auto-upgrade to skip-verify TLS and persist so future connections skip this retry.
+			server.ForceTLSSkipVerify = true
+			server.SetDSN()
+			conn, err = sqlx.Connect("mysql", server.DSN)
+			if err != nil {
+				server.ForceTLSSkipVerify = false
+				server.SetDSN()
+			} else {
+				// Close the persistent pool (server.Conn) so Ping() replaces it with
+				// this TLS-enabled conn immediately, avoiding further plaintext attempts.
+				if server.Conn != nil {
+					server.Conn.Close()
+					server.Conn = nil
+				}
+				// Propagate to cluster so proxies also enable SSL on their backends.
+				// Use the cluster mutex: multiple server goroutines may set this concurrently.
+				server.ClusterGroup.Lock()
+				server.ClusterGroup.HaveAutoTLS = true
+				server.ClusterGroup.Unlock()
+				server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"Auto-enabled TLS with InsecureSkipVerify=true for %s (error 3159: require_secure_transport=ON)."+
+						" Certificate authenticity is NOT verified — configure monitoring-ssl-ca/cert/key for full TLS validation.", server.URL)
+			}
+			return conn, err
+		}
+	}
 	if err != nil && server.ClusterGroup.HaveDBTLSCert {
 		// Possible can't connect because of SSL key rotation try old key until server rebooted or key reloaded
 		server.TLSConfigUsed = ConstTLSOldConfig

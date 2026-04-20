@@ -28,7 +28,9 @@ package logplugin
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -73,6 +75,28 @@ type StdioRequest struct {
 
 	// Metadata lock waits (populated when METADATA_LOCK_INFO plugin is installed)
 	MetaDataLocks []StdioMDL `json:"metadata_locks"`
+
+	// BinlogEvents contains recent binlog QUERY events (populated when monitoring-binlog-events is on)
+	BinlogEvents []StdioBinlogEvent `json:"binlog_events"`
+
+	// ServerVersion is the pre-parsed database version derived from the live connection.
+	ServerVersion   StdioServerVersion `json:"server_version"`
+	// ServerVariables is a snapshot of SHOW GLOBAL VARIABLES (non-sensitive).
+	ServerVariables map[string]string  `json:"server_variables"`
+
+	// DatabaseUsers is a snapshot of mysql.user rows (no password hashes).
+	DatabaseUsers []StdioDBUser `json:"database_users"`
+
+	// ClusterContext carries cluster-level facts (proxies, backup encryption, etc.)
+	ClusterContext ClusterContext `json:"cluster_context"`
+
+	// PluginDataDir is the directory where plugin sidecar data files live.
+	PluginDataDir string `json:"plugin_data_dir"`
+
+	// Config carries per-plugin settings from the cluster TOML / GUI.
+	// Keys are kebab-case (e.g. "timeframe-hours"). Plugins read these via
+	// wire.CfgInt / wire.CfgFloat / wire.CfgStr with REPMAN_* env var fallback.
+	Config map[string]string `json:"config,omitempty"`
 }
 
 // stdioMsg is a generic log entry (error log, SQL error log, audit log).
@@ -142,31 +166,108 @@ type StdioMDL struct {
 
 // stdioResponse is read from the plugin's stdout.
 type stdioResponse struct {
-	Findings []stdioFinding `json:"findings"`
+	Findings    []stdioFinding    `json:"findings"`
+	ScoreChecks []ScoreCheck      `json:"score_checks"`
+}
+
+type stdioRemediation struct {
+	Type        string `json:"type"`
+	Description string `json:"description"`
+	SQL         string `json:"sql,omitempty"`
+	MyCnf       string `json:"my_cnf,omitempty"`
+	ConfigKey   string `json:"config_key,omitempty"`
+	ConfigValue string `json:"config_value,omitempty"`
+	Risk        string `json:"risk"`
 }
 
 type stdioFinding struct {
-	ErrKey      string `json:"err_key"`
-	Severity    string `json:"severity"`
-	Description string `json:"description"`
+	ErrKey       string             `json:"err_key"`
+	Severity     string             `json:"severity"`
+	Description  string             `json:"description"`
+	Remediations []stdioRemediation `json:"remediations,omitempty"`
 }
 
 // ---- ExternalLogPlugin ------------------------------------------------------
 
 // ExternalLogPlugin wraps a downloaded plugin binary as a LogPlugin.
 // It is created by LoadPluginsFromDir and registered in the GlobalRegistry.
+//
+// If a sidecar file <binary-name>.prerequisites.json exists alongside the
+// binary, its contents are parsed and the plugin implements
+// LogPluginWithPrerequisites so the orchestrator can raise WARN0312 when a
+// required monitoring feed is disabled.
 type ExternalLogPlugin struct {
-	name    string
-	binPath string
-	timeout time.Duration
+	name         string
+	binPath      string
+	timeout      time.Duration
+	prerequisites []Prerequisite // loaded from <binary>.prerequisites.json, may be nil
+}
+
+// prerequisitesSidecar is the JSON structure of the sidecar file.
+type prerequisitesSidecar struct {
+	Prerequisites []struct {
+		ConfigKey   string `json:"config_key"`
+		Description string `json:"description"`
+	} `json:"prerequisites"`
 }
 
 // NewExternalLogPlugin creates a wrapper for the executable at binPath.
+// If a <binPath>.prerequisites.json sidecar exists, prerequisites are loaded
+// from it; errors reading the sidecar are silently ignored.
 func NewExternalLogPlugin(name, binPath string, timeout time.Duration) *ExternalLogPlugin {
-	return &ExternalLogPlugin{name: name, binPath: binPath, timeout: timeout}
+	p := &ExternalLogPlugin{name: name, binPath: binPath, timeout: timeout}
+	p.prerequisites = loadPrerequisitesSidecar(binPath + ".prerequisites.json")
+	return p
+}
+
+// loadPrerequisitesSidecar reads and parses a prerequisites sidecar file.
+// Returns nil if the file does not exist or cannot be parsed.
+func loadPrerequisitesSidecar(path string) []Prerequisite {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var s prerequisitesSidecar
+	if err := json.Unmarshal(data, &s); err != nil {
+		return nil
+	}
+	if len(s.Prerequisites) == 0 {
+		return nil
+	}
+	out := make([]Prerequisite, 0, len(s.Prerequisites))
+	for _, p := range s.Prerequisites {
+		if p.ConfigKey != "" {
+			out = append(out, Prerequisite{ConfigKey: p.ConfigKey, Description: p.Description})
+		}
+	}
+	return out
 }
 
 func (p *ExternalLogPlugin) Name() string { return p.name }
+
+// Prerequisites implements LogPluginWithPrerequisites when the sidecar was loaded.
+func (p *ExternalLogPlugin) Prerequisites() []Prerequisite { return p.prerequisites }
+
+// DefaultSeverity implements LogPluginWithDefaultSeverity.
+// Used by RunLogPlugins to route debug messages to the correct dedicated log
+// when Evaluate returns zero findings (compliant server — no issue detected).
+//
+// Naming conventions used for inference:
+//   plugin-security-* and plugin-score-*  → SeveritySecurity (security/compliance audit)
+//   plugin-binlog-*                        → SeveritySecurity (binlog audit for cleartext creds / PII)
+//   plugin-*privilege* or plugin-*off-hours* → SeveritySecurity (access-control auditing)
+//   everything else                        → SeverityWorkload  (performance / spike detection)
+func (p *ExternalLogPlugin) DefaultSeverity() Severity {
+	n := p.name
+	if strings.HasPrefix(n, "plugin-security-") ||
+		strings.HasPrefix(n, "plugin-score-") ||
+		strings.HasPrefix(n, "plugin-binlog-") ||
+		strings.Contains(n, "privilege") ||
+		strings.Contains(n, "off-hours") {
+		return SeveritySecurity
+	}
+	return SeverityWorkload
+}
 
 func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	req := StdioRequest{
@@ -180,8 +281,23 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 		PFSQueries:       pfsToWire(src.PFSQueries),
 		ProcessList:      processToWire(src.ProcessList),
 		MetaDataLocks:    mdlToWire(src.MetaDataLocks),
+		BinlogEvents:     src.BinlogEvents,
+		ServerVersion:    src.ServerVersion,
+		ServerVariables:  src.ServerVariables,
+		DatabaseUsers:    src.DatabaseUsers,
+		ClusterContext:   src.ClusterContext,
+		PluginDataDir:    src.PluginDataDir,
+		Config:           src.Config,
 	}
 
+	// SECURITY NOTE: req (wire.Request) includes a full SHOW GLOBAL VARIABLES snapshot,
+	// user account data, binlog events, and cluster context.  This payload is passed to
+	// the plugin subprocess on stdin on every monitoring tick.  Only plugin binaries
+	// that have been verified against plugin-signing.pub are executed; when
+	// PluginSigningPublicKey is empty (dev/CI builds without credentials), signature
+	// verification is skipped and any plugin-* executable in the plugin directory will
+	// receive the full server configuration.  On production deployments always ensure
+	// the signing public key is deployed so untrusted binaries are rejected.
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL, fmt.Sprintf("marshal error: %v", err))}
@@ -190,12 +306,24 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
 
+	var stderrBuf bytes.Buffer
 	cmd := exec.CommandContext(ctx, p.binPath) // #nosec G204 — path validated in LoadPluginsFromDir
 	cmd.Stdin = bytes.NewReader(payload)
+	cmd.Stderr = &limitWriter{w: &stderrBuf, remaining: 4096} // cap stderr — misbehaving plugin cannot OOM the process
+	// WaitDelay ensures cmd.Output() returns promptly after the context deadline
+	// fires even when the plugin subprocess has spawned children that inherited
+	// the stdout/stderr pipes.  Without this, cmd.Wait() blocks forever waiting
+	// for pipe EOF from those orphaned children, hanging the monitoring loop.
+	cmd.WaitDelay = 2 * time.Second
 
 	out, err := cmd.Output()
-	if ctx.Err() == context.DeadlineExceeded {
+	if ctx.Err() == context.DeadlineExceeded || errors.Is(err, exec.ErrWaitDelay) {
 		return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL, "plugin timed out")}
+	}
+	if stderrBuf.Len() > 0 {
+		// Plugin wrote to stderr — surface it as a finding so it appears in the log
+		return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL,
+			fmt.Sprintf("plugin stderr: %s", strings.TrimSpace(stderrBuf.String())))}
 	}
 	if err != nil {
 		return EvaluateResult{Findings: pluginErrFinding(p.name, src.ServerURL, fmt.Sprintf("exec error: %v", err))}
@@ -209,47 +337,129 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	findings := make([]Finding, 0, len(resp.Findings))
 	for _, sf := range resp.Findings {
 		sev := Severity(strings.ToUpper(sf.Severity))
-		if sev != SeverityWarning && sev != SeverityError {
+		if sev != SeverityWarning && sev != SeverityError && sev != SeveritySecurity && sev != SeverityWorkload {
 			sev = SeverityWarning
 		}
+		remeds := make([]Remediation, 0, len(sf.Remediations))
+		for _, sr := range sf.Remediations {
+			remeds = append(remeds, Remediation{
+				Type:        sr.Type,
+				Description: sr.Description,
+				SQL:         sr.SQL,
+				MyCnf:       sr.MyCnf,
+				ConfigKey:   sr.ConfigKey,
+				ConfigValue: sr.ConfigValue,
+				Risk:        sr.Risk,
+			})
+		}
 		findings = append(findings, Finding{
-			ErrKey:      sf.ErrKey,
-			Severity:    sev,
-			Description: sf.Description,
+			ErrKey:       sf.ErrKey,
+			Severity:     sev,
+			Description:  sf.Description,
+			Remediations: remeds,
 		})
 	}
-	return EvaluateResult{Findings: findings}
+	return EvaluateResult{Findings: findings, ScoreChecks: resp.ScoreChecks}
+}
+
+// ---- signature verification -------------------------------------------------
+
+// VerifyPluginSignature checks the Ed25519 signature of a plugin binary.
+// sigDir is the directory that holds <plugin-name>.sig files (ShareDir/plugins/).
+// pubKeyPath is the path to the raw 32-byte Ed25519 public key file.
+// Returns nil when the signature is valid.
+func VerifyPluginSignature(binPath, sigDir, pubKeyPath string) error {
+	pubBytes, err := os.ReadFile(pubKeyPath)
+	if err != nil {
+		return fmt.Errorf("cannot read public key %s: %w", pubKeyPath, err)
+	}
+	if len(pubBytes) != ed25519.PublicKeySize {
+		return fmt.Errorf("invalid public key length %d (expected %d)", len(pubBytes), ed25519.PublicKeySize)
+	}
+
+	data, err := os.ReadFile(binPath)
+	if err != nil {
+		return fmt.Errorf("cannot read plugin binary %s: %w", binPath, err)
+	}
+
+	name := filepath.Base(binPath)
+	sigPath := filepath.Join(sigDir, name+".sig")
+	sig, err := os.ReadFile(sigPath)
+	if err != nil {
+		return fmt.Errorf("cannot read signature %s: %w", sigPath, err)
+	}
+
+	if !ed25519.Verify(ed25519.PublicKey(pubBytes), data, sig) {
+		return fmt.Errorf("signature mismatch for plugin %s — binary may have been tampered with", name)
+	}
+	return nil
 }
 
 // ---- loader -----------------------------------------------------------------
 
+// LoadOptions controls optional behaviour of LoadPluginsFromDir.
+type LoadOptions struct {
+	// PubKeyPath is the path to the Ed25519 public key used to verify plugin
+	// signatures. When non-empty, every plugin binary must have a valid .sig
+	// sidecar in SigDir; plugins that fail verification are rejected and logged.
+	// When empty, signature verification is skipped (dev/unsigned builds).
+	PubKeyPath string
+
+	// SigDir is the directory containing <plugin-name>.sig files.
+	// Defaults to pluginDir when empty (sig files next to binaries).
+	// In production this is typically <ShareDir>/plugins/.
+	SigDir string
+}
+
 // LoadPluginsFromDir scans pluginDir for executable files, creates an
 // ExternalLogPlugin for each one, and registers/replaces it in reg.
-// Returns the number of plugins loaded and any scan error.
+// Returns the number of plugins loaded, a slice of rejection messages for
+// plugins that failed signature verification, and any scan error.
 //
 // Rules:
 //   - Non-executable files and dotfiles are silently skipped.
 //   - A plugin whose name already exists in reg is hot-replaced in place.
-func LoadPluginsFromDir(pluginDir string, reg *Registry) (int, error) {
+//   - When opts.PubKeyPath is set AND the key file exists, every plugin must
+//     have a valid .sig in SigDir; plugins that fail are rejected.
+//   - When opts.PubKeyPath is set but the file does not exist yet (e.g. first
+//     boot before the package is fully installed), verification is skipped and
+//     a "pubKeyMissing" message is returned as the first rejection entry so the
+//     caller can log a warning.
+func LoadPluginsFromDir(pluginDir string, reg *Registry, opts LoadOptions) (loaded int, rejections []string, err error) {
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return 0, nil
+			return 0, nil, nil
 		}
-		return 0, fmt.Errorf("scan plugin dir %s: %w", pluginDir, err)
+		return 0, nil, fmt.Errorf("scan plugin dir %s: %w", pluginDir, err)
 	}
 
-	loaded := 0
+	// Resolve whether signature verification is active for this run.
+	verifyEnabled := false
+	if opts.PubKeyPath != "" {
+		if _, statErr := os.Stat(opts.PubKeyPath); statErr == nil {
+			verifyEnabled = true
+		} else {
+			// Key path configured but file absent — warn and proceed without verification.
+			rejections = append(rejections, fmt.Sprintf("pubKeyMissing: %s not found — signature verification skipped", opts.PubKeyPath))
+		}
+	}
+
+	sigDir := opts.SigDir
+	if sigDir == "" {
+		sigDir = pluginDir
+	}
+
 	for _, e := range entries {
-		// Skip directories, dotfiles, and known non-binary names (e.g. the
-		// "wire" library package which lives alongside the plugin sources).
 		if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-		// Convention: all plugin binaries are named plugin-*.
-		// Anything that doesn't match is silently skipped so library packages
-		// or helper scripts in the same directory don't cause exec errors.
 		if !strings.HasPrefix(e.Name(), "plugin-") {
+			continue
+		}
+		// Plugin binaries have no file extension. Skip .sig, .pub, and any
+		// other extension so non-binary files are never executed.
+		if filepath.Ext(e.Name()) != "" {
 			continue
 		}
 		info, err := e.Info()
@@ -260,11 +470,19 @@ func LoadPluginsFromDir(pluginDir string, reg *Registry) (int, error) {
 			continue
 		}
 		binPath := filepath.Join(pluginDir, e.Name())
+
+		if verifyEnabled {
+			if verr := VerifyPluginSignature(binPath, sigDir, opts.PubKeyPath); verr != nil {
+				rejections = append(rejections, fmt.Sprintf("%s: %v", e.Name(), verr))
+				continue
+			}
+		}
+
 		name := pluginNameFromBinary(e.Name())
 		reg.replace(name, NewExternalLogPlugin(name, binPath, DefaultPluginTimeout))
 		loaded++
 	}
-	return loaded, nil
+	return loaded, rejections, nil
 }
 
 // PluginDir returns the canonical plugin directory for a cluster given its
@@ -316,4 +534,24 @@ func pluginErrFinding(pluginName, serverURL, msg string) []Finding {
 		Severity:    SeverityError,
 		Description: fmt.Sprintf("Plugin %s on %s: %s", pluginName, serverURL, msg),
 	}}
+}
+
+// limitWriter caps writes to a fixed number of bytes so a misbehaving plugin
+// subprocess cannot grow the stderr buffer unboundedly on every monitoring tick.
+// Replaces io.LimitWriter (added Go 1.22) for compatibility with older toolchains.
+type limitWriter struct {
+	w         *bytes.Buffer
+	remaining int64
+}
+
+func (lw *limitWriter) Write(p []byte) (int, error) {
+	if lw.remaining <= 0 {
+		return len(p), nil // silently discard once cap is reached
+	}
+	if int64(len(p)) > lw.remaining {
+		p = p[:lw.remaining]
+	}
+	n, err := lw.w.Write(p)
+	lw.remaining -= int64(n)
+	return n, err
 }

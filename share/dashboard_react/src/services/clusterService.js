@@ -34,6 +34,10 @@ export const clusterService = {
   getResticMountStatus,
   resticInitRepo,
 
+  // Security / workload remediation APIs
+  fixSecState,
+  switchClusterSetting,
+
   // Cluster management APIs
   checksumAllTables,
   checksumRepairAllTables,
@@ -841,6 +845,15 @@ function resticInitRepo(clusterName, force, options, baseURL) {
   return getApi(baseURL).post(endpoint, payload)
 }
 
+function fixSecState(clusterName, errKey, baseURL, tag) {
+  const url = `clusters/${clusterName}/security/fix-state/${encodeURIComponent(errKey)}`
+  return getApi(baseURL).post(tag ? `${url}?tag=${encodeURIComponent(tag)}` : url)
+}
+
+function switchClusterSetting(settingURL, baseURL) {
+  return getApi(baseURL).get(settingURL)
+}
+
 //#region S3 provider CRUD APIs
 function addS3Provider(clusterName, payload, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/s3providers/add`, payload)
@@ -872,5 +885,6 @@ function syncS3ProviderApply(clusterName, providerName, targets, revisionToken, 
   )
 }
 //#endregion S3 provider CRUD APIs
+
 
 // Utility functions
