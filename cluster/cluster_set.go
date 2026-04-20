@@ -2452,3 +2452,25 @@ func (cluster *Cluster) SetRollingJobsUpgradeState() {
 
 	cluster.SetState("WARN0155", state.State{ErrType: "WARN0155", ErrDesc: clusterError["WARN0155"], ErrFrom: "MAINTENANCE"})
 }
+
+func (cluster *Cluster) SetOrchestratorVersion(value string) {
+	cluster.orchestratorVersionMu.Lock()
+	defer cluster.orchestratorVersionMu.Unlock()
+	cluster.OrchestratorVersion = value
+}
+
+func (cluster *Cluster) GetOrchestratorVersion() string {
+	cluster.orchestratorVersionMu.RLock()
+	defer cluster.orchestratorVersionMu.RUnlock()
+	return cluster.OrchestratorVersion
+}
+
+func (cluster *Cluster) ShouldProbeOrchestratorVersion(interval time.Duration) bool {
+	cluster.orchestratorVersionMu.Lock()
+	defer cluster.orchestratorVersionMu.Unlock()
+	if !cluster.lastOrchestratorProbe.IsZero() && time.Since(cluster.lastOrchestratorProbe) < interval {
+		return false
+	}
+	cluster.lastOrchestratorProbe = time.Now()
+	return true
+}

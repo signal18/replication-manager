@@ -941,6 +941,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.BackupSplitdumpCreateDatabases, "backup-splitdump-create-databases", true, "Auto-create databases before splitdump restore (server-orchestrated)")
 	flags.StringVar(&conf.BackupMytopPath, "backup-mytop-path", "", "Path to mytop binary")
 	flags.StringVar(&conf.BackupGottyClientPath, "backup-gotty-client-path", "", "Path to gotty client binary")
+	flags.StringVar(&conf.TtyShareBinaryPath, "tty-share-binary-path", "", "Path to tty-share binary")
 	flags.StringVar(&conf.ReplicationManagerCliPath, "replication-manager-cli-path", "", "Path to replication-manager-cli binary")
 	flags.BoolVar(&conf.BackupRestoreVersionStrict, "backup-restore-version-strict", false, "During restore, check backup version against tools version. False will just issue a warning. True will abort restore")
 	flags.BoolVar(&conf.BackupRestoreDefinerStrict, "backup-restore-definer-strict", false, "During restore, fail closed when an incompatible DEFINER clause is encountered. False (default) applies non-strict fallback and continues.")
@@ -1131,6 +1132,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvNetIface, "prov-db-net-iface", "eth0", "HBA Device to hold Ips")
 		flags.StringVar(&conf.ProvGateway, "prov-db-net-gateway", "192.168.0.254", "Micro Service network gateway")
 		flags.StringVar(&conf.ProvNetmask, "prov-db-net-mask", "255.255.255.0", "Micro Service network mask")
+		flags.BoolVar(&conf.ProvUseIpv6, "prov-use-ipv6", false, "Use IPv6 addresses for provisioned services")
 		flags.StringVar(&conf.ProvDBLoadCSV, "prov-db-load-csv", "", "List of shema.table csv file to load a bootstrap")
 		flags.StringVar(&conf.ProvDBLoadSQL, "prov-db-load-sql", "", "List of sql scripts file to load a bootstrap")
 		flags.StringVar(&conf.ProvProxType, "prov-proxy-service-type", "package", "[package|docker|podman|oci|kvm|zone|lxc]")
@@ -1180,6 +1182,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		if WithOpenSVC == "ON" {
 
 			flags.BoolVar(&conf.Enterprise, "opensvc", true, "Provisioning via opensvc")
+			flags.IntVar(&conf.ProvEventTimeout, "prov-timeout", 600, "Timeout in seconds for provisionning operations")
 			flags.StringVar(&conf.ProvHost, "opensvc-host", "collector.signal18.io:443", "OpenSVC collector API")
 			flags.StringVar(&conf.ProvAdminUser, "opensvc-admin-user", "root@signal18.io:opensvc", "OpenSVC collector admin user")
 			flags.BoolVar(&conf.ProvRegister, "opensvc-register", false, "Register user codeapp to collector, load compliance")
@@ -1216,11 +1219,12 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvAppMem, "prov-app-memory", "1024", "Memory usage in M bytes. When cloud18 credit system is used, this is the base for 1 credit")
 	flags.StringVar(&conf.ProvAppVolumePools, "prov-app-volume-pools", "tank:local,drbd:shared:active-passive", "List of volume pools to use for application, comma separated. Format: poolname:type:[additional description]. Type can be local or shared. Example of additional description, for shared can be active-passive.")
 	flags.StringVar(&conf.ProvAppHATopology, "prov-app-ha-topology", "failover", "High availability mode for application. [failover|flex]")
-	flags.StringVar(&conf.ProvAppTemplateRepo, "prov-app-template-repo", "https://github.com/signal18/cloud18-templates", "Git repository for application templates")
-	flags.StringVar(&conf.ProvAppTemplateRepoBranch, "prov-app-template-repo-branch", "main", "Git repository branch for application templates")
-	flags.StringVar(&conf.ProvAppTemplateRepoUser, "prov-app-template-repo-user", "", "Git repository user for application templates")
-	flags.StringVar(&conf.ProvAppTemplateRepoPassword, "prov-app-template-repo-password", "", "Git repository password for application templates")
-	flags.IntVar(&conf.ProvAppTemplateRepoTimeout, "prov-app-template-repo-timeout", 30, "Git repository timeout for application templates")
+	flags.StringVar(&conf.ProvAppTemplateRepo, "prov-app-template-repo", "https://github.com/signal18/cloud18-templates", "Git repository for application templates (cluster-scoped)")
+	flags.StringVar(&conf.ProvAppTemplateRepoBranch, "prov-app-template-repo-branch", "main", "Git repository branch for application templates (cluster-scoped)")
+	flags.StringVar(&conf.ProvAppTemplateRepoUser, "prov-app-template-repo-user", "", "Git repository user for application templates (cluster-scoped)")
+	flags.StringVar(&conf.ProvAppTemplateRepoPassword, "prov-app-template-repo-password", "", "Git repository password for application templates (cluster-scoped)")
+	flags.IntVar(&conf.ProvAppTemplateRepoTimeout, "prov-app-template-repo-timeout", 30, "Git repository timeout for application templates (cluster-scoped)")
+	flags.BoolVar(&conf.ProvAppTemplateRepoAllowOverride, "prov-app-template-repo-allow-override", true, "Allow clusters to override inherited prov-app-template-repo* defaults")
 	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")
 	flags.StringVar(&conf.TerminalSessionManager, "terminal-session-manager", "tmux", "Terminal session manager: tmux|screen")
 	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", false, "Enable terminal session")
@@ -2447,6 +2451,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.InitGrants()
 	repman.InitRoles()
 	repman.ReloadTerms()
+	repman.InitSharedAppTemplates()
 	repman.MonitorType = config.GetMonitorType()
 	repman.ServiceRepos, err = repman.Conf.GetDockerRepos(repman.Conf.ShareDir+"/repo/repos.json", repman.Conf.Test)
 	if err != nil {
@@ -2470,7 +2475,6 @@ func (repman *ReplicationManager) Run() error {
 
 	if repman.Conf.ProvOrchestrator == "opensvc" {
 		repman.Agents = []opensvc.Host{}
-		repman.OpenSVC.MessageChan = repman.MessageChan
 		repman.OpenSVC.Host, repman.OpenSVC.Port = misc.SplitHostPort(repman.Conf.ProvHost)
 		repman.OpenSVC.User, repman.OpenSVC.Pass = misc.SplitPair(repman.Conf.ProvAdminUser)
 		repman.OpenSVC.RplMgrUser, repman.OpenSVC.RplMgrPassword = misc.SplitPair(repman.Conf.ProvUser) //yaml licence
@@ -3498,65 +3502,140 @@ func (repman *ReplicationManager) Save() error {
 }
 
 func (repman *ReplicationManager) GetAppTemplates() error {
-	filelist, _ := repman.GetAppTemplatesFromLocal()
+	return repman.GetAppTemplatesForCluster("")
+}
 
-	repolist, err := repman.Conf.LoadAppTemplateList()
-	if err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error loading app template list: %v", err)
+func (repman *ReplicationManager) GetAppTemplatesForCluster(clusterName string) error {
+	filelist, _ := repman.GetAppTemplatesFromLocal(clusterName)
+
+	// Per-cluster repo (uses cluster config if cluster exists, else server default)
+	var clusterConf *config.Config
+	if cl := repman.getClusterByName(clusterName); cl != nil {
+		clusterConf = cl.Conf
+	} else {
+		clusterConf = repman.Conf
+	}
+	if repolist, err := clusterConf.LoadAppTemplateList(); err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error loading cluster app template list: %v", err)
+	} else {
+		filelist = append(filelist, repolist...)
 	}
 
-	repman.ServiceTemplates = append(filelist, repolist...)
-
+	repman.ServiceTemplates = filelist
 	return nil
 }
 
-func (repman *ReplicationManager) GetAppTemplatesFromLocal() ([]string, error) {
-	filelist, err := share.ListFilesInSharedDir(repman.Conf.WithEmbed, repman.Conf.ShareDir, "app/deployments")
-	if err == nil {
-		for i, file := range filelist {
-			ext := filepath.Ext(file)
-			if ext == ".toml" {
-				filelist[i] = "shared/" + strings.TrimSuffix(file, ext)
-			}
-		}
+// listTomlNamesFromDir walks one level of subdirectories and returns slash-separated
+// names relative to dir (without the .toml extension).
+func (repman *ReplicationManager) listTomlNamesFromDir(dir string) []string {
+	var names []string
+	list, err := os.ReadDir(dir)
+	if err != nil {
+		return names
 	}
-
-	templateDir := filepath.Join(repman.Conf.WorkingDir, ".templates", "apps")
-	if _, err := os.Stat(templateDir); os.IsNotExist(err) {
-		_ = os.MkdirAll(templateDir, 0755)
-	} else {
-		list, err := os.ReadDir(templateDir)
+	for _, entry := range list {
+		if !entry.IsDir() {
+			if ext := filepath.Ext(entry.Name()); ext == ".toml" {
+				names = append(names, strings.TrimSuffix(entry.Name(), ext))
+			}
+			continue
+		}
+		subdir := filepath.Join(dir, entry.Name())
+		sublist, err := os.ReadDir(subdir)
 		if err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading template directory %s: %v", templateDir, err)
-			return filelist, err
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Error reading template subdirectory %s: %v", subdir, err)
+			continue
 		}
+		for _, subentry := range sublist {
+			if ext := filepath.Ext(subentry.Name()); ext == ".toml" {
+				names = append(names, filepath.ToSlash(filepath.Join(entry.Name(), strings.TrimSuffix(subentry.Name(), ext))))
+			}
+		}
+	}
+	return names
+}
 
-		for _, entry := range list {
-			// List to subdirectories
-			if entry.IsDir() {
-				subdir := filepath.Join(templateDir, entry.Name())
-				sublist, err := os.ReadDir(subdir)
-				if err != nil {
-					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading subdirectory %s: %v", subdir, err)
-					continue
-				}
-				for _, subentry := range sublist {
-					ext := filepath.Ext(subentry.Name())
-					if ext == ".toml" {
-						filelist = append(filelist, filepath.Join(entry.Name(), strings.TrimSuffix(subentry.Name(), ext)))
-					}
-				}
+// GetAppTemplatesFromLocal returns the deduplicated template list visible to clusterName.
+// Templates from the cluster-specific dir shadow same-named global templates.
+// Pass an empty clusterName to get only global templates.
+func (repman *ReplicationManager) GetAppTemplatesFromLocal(clusterName string) ([]string, error) {
+	seen := make(map[string]bool)
+	var result []string
+
+	addUnique := func(names []string) {
+		for _, n := range names {
+			if n != "" && !seen[n] {
+				seen[n] = true
+				result = append(result, n)
 			}
 		}
 	}
 
-	// Remove empty entries
-	var cleanedFilelist []string
-	for _, file := range filelist {
-		if file != "" {
-			cleanedFilelist = append(cleanedFilelist, file)
+	// 1. Shared (embedded) templates — names have no prefix
+	files, err := share.ListFilesInSharedDir(repman.Conf.WithEmbed, repman.Conf.ShareDir, "app/templates")
+	if err != nil {
+		// Backward-compatible fallback for older shared layouts.
+		files, err = share.ListFilesInSharedDir(repman.Conf.WithEmbed, repman.Conf.ShareDir, "app/deployments")
+	}
+	if err == nil {
+		for _, file := range files {
+			if filepath.Ext(file) == ".toml" {
+				addUnique([]string{"shared/" + strings.TrimSuffix(file, filepath.Ext(file))})
+			}
 		}
 	}
 
-	return cleanedFilelist, nil
+	// 2. Cluster-specific templates (higher priority within the cluster)
+	if clusterName != "" {
+		clusterDir := filepath.Join(repman.Conf.WorkingDir, clusterName, ".templates", "apps")
+		_ = os.MkdirAll(clusterDir, 0750)
+		addUnique(repman.listTomlNamesFromDir(clusterDir))
+	}
+
+	// 3. Global templates
+	globalDir := cluster.GlobalTemplatesRoot(repman.Conf.WorkingDir)
+	_ = os.MkdirAll(globalDir, 0750)
+	addUnique(repman.listTomlNamesFromDir(globalDir))
+
+	return result, nil
+}
+
+// InitSharedAppTemplates seeds {WorkingDir}/.templates/apps/ from the
+// embedded/shared app/templates directory on startup. Existing files are not
+// overwritten so local edits are preserved.
+func (repman *ReplicationManager) InitSharedAppTemplates() {
+	destRoot := cluster.GlobalTemplatesRoot(repman.Conf.WorkingDir)
+	if err := os.MkdirAll(destRoot, 0750); err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"InitSharedAppTemplates: cannot create directory %s: %v", destRoot, err)
+		return
+	}
+
+	files, err := share.ListFilesInSharedDir(repman.Conf.WithEmbed, repman.Conf.ShareDir, "app/templates")
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"InitSharedAppTemplates: cannot list shared templates: %v", err)
+		return
+	}
+
+	for _, file := range files {
+		if filepath.Ext(file) != ".toml" {
+			continue
+		}
+		dest := filepath.Join(destRoot, file)
+		if _, err := os.Stat(dest); err == nil {
+			continue
+		}
+		content, err := share.ReadFileFromSharedDir(repman.Conf.WithEmbed, repman.Conf.ShareDir, "app/templates/"+file)
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"InitSharedAppTemplates: cannot read %s: %v", file, err)
+			continue
+		}
+		if err := os.WriteFile(dest, content, 0640); err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"InitSharedAppTemplates: cannot write %s: %v", dest, err)
+		}
+	}
 }

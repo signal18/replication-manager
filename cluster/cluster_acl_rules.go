@@ -122,6 +122,13 @@ var appACLRules = []ACLRule{
 	{"/actions/restart", []string{config.GrantAppStop, config.GrantAppStart}, nil},
 	{"/settings/actions/", nil, []string{config.GrantAppConfig}},
 	{"/git/", nil, []string{config.GrantAppGit}},
+
+	// App Template Manager
+	{"/templates/apps", nil, []string{config.GrantAppDeployment}},
+	{"/content/actions/save", nil, []string{config.GrantAppDeployment}},
+	{"/content/actions/delete", nil, []string{config.GrantAppDeployment}},
+	{"/content/actions/create-local-copy", nil, []string{config.GrantAppDeployment}},
+	{"/content", nil, []string{config.GrantAppDeployment}},
 }
 
 // clusterACLRules defines ACL rules for general cluster-level endpoints
@@ -201,6 +208,9 @@ var clusterACLRules = []ACLRule{
 	{"/settings/actions/clear", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/discover", nil, []string{config.GrantClusterSettings}},
 	{"/actions/reset-failover-control", nil, []string{config.GrantClusterSettings}},
+
+	// S3 Provider Library (read: list + references; write: add/modify/drop)
+	{"/s3providers", nil, []string{config.GrantClusterSettings}},
 
 	// Config Management - MySQL Defaults and Preserved Variables (from origin/develop)
 	{"/settings/mysql-defaults-cnf", nil, []string{config.GrantClusterSettings}},

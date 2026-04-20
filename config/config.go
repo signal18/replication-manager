@@ -550,6 +550,7 @@ type Config struct {
 	ProvOpensvcCollectorAccount               string                       `mapstructure:"opensvc-collector-account" toml:"opensvc-collector-account" json:"opensvcCollectorAccount"`
 	ProvUser                                  string                       `mapstructure:"opensvc-user" toml:"opensvc-user" json:"opensvcUser"`
 	ProvCodeApp                               string                       `mapstructure:"opensvc-codeapp" toml:"opensvc-codeapp" json:"opensvcCodeapp"`
+	ProvEventTimeout                          int                          `mapstructure:"prov-timeout" toml:"prov-timeout" json:"provEventTimeout"`
 	ProvSerialized                            bool                         `mapstructure:"prov-serialized" toml:"prov-serialized" json:"provSerialized"`
 	ProvObjectAllowOverwrite                  bool                         `mapstructure:"prov-object-allow-overwrite" toml:"prov-object-allow-overwrite" json:"provObjectAllowOverwrite"`
 	ProvOrchestrator                          string                       `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`
@@ -592,6 +593,7 @@ type Config struct {
 	ProvNetIface                              string                       `mapstructure:"prov-db-net-iface" toml:"prov-db-net-iface" json:"provDbNetIface"`
 	ProvNetmask                               string                       `mapstructure:"prov-db-net-mask" toml:"prov-db-net-mask" json:"provDbNetMask"`
 	ProvGateway                               string                       `mapstructure:"prov-db-net-gateway" toml:"prov-db-net-gateway" json:"provDbNetGateway"`
+	ProvUseIpv6                               bool                         `mapstructure:"prov-use-ipv6" toml:"prov-use-ipv6" json:"provUseIpv6"`
 	ProvDbImg                                 string                       `mapstructure:"prov-db-docker-img" toml:"prov-db-docker-img" json:"provDbDockerImg"`
 	ProvDBDockerTmpfsSize                     string                       `measurement:"M,bytes" mapstructure:"prov-db-docker-tmpfs-size" toml:"prov-db-docker-tmpfs-size" json:"provDbDockerTmpfsSize"`
 	ProvDBDockerRunArgs                       string                       `mapstructure:"prov-db-docker-run-args" toml:"prov-db-docker-run-args" json:"provDbDockerRunArgs"`
@@ -679,6 +681,7 @@ type Config struct {
 	ProvAppTemplateRepoUser                   string                       `mapstructure:"prov-app-template-repo-user" toml:"prov-app-template-repo-user" json:"provAppTemplateRepoUser" groups:"apps"`
 	ProvAppTemplateRepoPassword               string                       `mapstructure:"prov-app-template-repo-password" toml:"prov-app-template-repo-password" json:"provAppTemplateRepoPassword" groups:"apps"`
 	ProvAppTemplateRepoTimeout                int                          `mapstructure:"prov-app-template-repo-timeout" toml:"prov-app-template-repo-timeout" json:"provAppTemplateRepoTimeout" groups:"apps"`
+	ProvAppTemplateRepoAllowOverride          bool                         `scope:"server" mapstructure:"prov-app-template-repo-allow-override" toml:"prov-app-template-repo-allow-override" json:"provAppTemplateRepoAllowOverride"`
 	TemplateVariableMaxDepth                  int                          `mapstructure:"template-var-max-depth" toml:"template-var-max-depth" json:"templateVarMaxDepth"`
 	TemplateStrict                            bool                         `mapstructure:"template-strict" toml:"template-strict" json:"templateStrict"`
 	APIUsers                                  string                       `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
@@ -851,6 +854,7 @@ type Config struct {
 	BackupSplitdumpCreateDatabases         bool                   `mapstructure:"backup-splitdump-create-databases" toml:"backup-splitdump-create-databases" json:"backupSplitdumpCreateDatabases"`
 	BackupMytopPath                        string                 `mapstructure:"backup-mytop-path" toml:"backup-mytop-path" json:"backupMytopPath"`
 	BackupGottyClientPath                  string                 `mapstructure:"backup-gotty-client-path" toml:"backup-gotty-client-path" json:"backupGottyClientPath"`
+	TtyShareBinaryPath                     string                 `mapstructure:"tty-share-binary-path" toml:"tty-share-binary-path" json:"ttyShareBinaryPath"`
 	ReplicationManagerCliPath              string                 `mapstructure:"replication-manager-cli-path" toml:"replication-manager-cli-path" json:"replicationManagerCliPath"`
 	BackupBinlogs                          bool                   `mapstructure:"backup-binlogs" toml:"backup-binlogs" json:"backupBinlogs"`
 	BackupBinlogsKeep                      int                    `mapstructure:"backup-binlogs-keep" toml:"backup-binlogs-keep" json:"backupBinlogsKeep"`
@@ -4363,31 +4367,142 @@ func (conf *Config) GetAppVolumePools(pooltype string) map[string]VolumePool {
 }
 
 func (conf *Config) LoadAppTemplateList() ([]string, error) {
-	var result []string = make([]string, 0)
-	var gitpass, gitrepo, gitbranch, cacheDir string
-	var timeout int = conf.Timeout
-	if conf.ProvAppTemplateRepo != "" {
-		gitpass = conf.GetDecryptedPassword("App Template Repo Pass", conf.ProvAppTemplateRepoPassword)
-		gitrepo = conf.ProvAppTemplateRepo
-		gitbranch = conf.ProvAppTemplateRepoBranch
-		cacheDir = filepath.Join(conf.WorkingDir, ".cache", "git", "repos")
-		tree, err := githelper.GetTemplateFromRepo(gitrepo, gitpass, gitbranch, cacheDir, timeout, true)
-		if err != nil {
-			return result, err
-		}
-		result = tree.PrintTree(".toml", true, true)
+	return conf.LoadAppTemplateListWithRefresh(false)
+}
+
+func (conf *Config) LoadAppTemplateListWithRefresh(forceRefresh bool) ([]string, error) {
+	result := make([]string, 0)
+	repoDir, err := conf.SyncAppTemplateRepoCache(forceRefresh)
+	if err != nil {
+		return result, err
+	}
+	if repoDir == "" {
+		return result, nil
 	}
 
-	// remove empty entries
-	cleaned := make([]string, 0)
-	for _, v := range result {
-		if strings.TrimSpace(v) != "" {
-			cleaned = append(cleaned, v)
+	err = filepath.WalkDir(repoDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
+		if d.IsDir() {
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(d.Name()) != ".toml" {
+			return nil
+		}
+		rel, err := filepath.Rel(repoDir, path)
+		if err != nil {
+			return nil
+		}
+		rel = strings.TrimSuffix(filepath.ToSlash(rel), ".toml")
+		rel = strings.TrimSpace(rel)
+		if rel != "" {
+			result = append(result, rel)
+		}
+		return nil
+	})
+	if err != nil {
+		return result, err
 	}
-	result = cleaned
 
 	return result, nil
+}
+
+func (conf *Config) ResolveAppTemplateRepoCacheDir() (string, error) {
+	if strings.TrimSpace(conf.ProvAppTemplateRepo) == "" {
+		return "", errors.New("no git repo configured")
+	}
+	branch := strings.TrimSpace(conf.ProvAppTemplateRepoBranch)
+	if branch == "" {
+		branch = "main"
+	}
+	sum := md5.Sum([]byte(strings.TrimSpace(conf.ProvAppTemplateRepo) + "::" + branch))
+	key := fmt.Sprintf("%x", sum)
+	return filepath.Join(conf.WorkingDir, ".templates", "repos", "apps", key), nil
+}
+
+func (conf *Config) SyncAppTemplateRepoCache(forceRefresh bool) (string, error) {
+	repoDir, err := conf.ResolveAppTemplateRepoCacheDir()
+	if err != nil {
+		return "", err
+	}
+
+	branch := strings.TrimSpace(conf.ProvAppTemplateRepoBranch)
+	if branch == "" {
+		branch = "main"
+	}
+
+	timeout := conf.ProvAppTemplateRepoTimeout
+	if timeout == 0 {
+		timeout = conf.Timeout
+	}
+	if timeout <= 0 {
+		timeout = 30
+	}
+
+	cloneRepo := func(targetDir string) error {
+		if err := os.MkdirAll(filepath.Dir(targetDir), 0750); err != nil {
+			return err
+		}
+		cloneOpt := &git.CloneOptions{
+			URL:           strings.TrimSpace(conf.ProvAppTemplateRepo),
+			ReferenceName: plumbing.NewBranchReferenceName(branch),
+			SingleBranch:  true,
+			Depth:         1,
+		}
+		gitpass := conf.GetDecryptedPassword("App Template Repo Pass", conf.ProvAppTemplateRepoPassword)
+		if gitpass != "" {
+			user := strings.TrimSpace(conf.ProvAppTemplateRepoUser)
+			if user == "" {
+				user = "git"
+			}
+			cloneOpt.Auth = &git_https.BasicAuth{Username: user, Password: gitpass}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+		defer cancel()
+		cloneOpt.Progress = nil
+		_, cloneErr := git.PlainCloneContext(ctx, targetDir, false, cloneOpt)
+		return cloneErr
+	}
+
+	if _, statErr := os.Stat(repoDir); os.IsNotExist(statErr) {
+		if err := cloneRepo(repoDir); err != nil {
+			return repoDir, err
+		}
+		return repoDir, nil
+	} else if statErr != nil {
+		return repoDir, statErr
+	}
+
+	if !forceRefresh {
+		return repoDir, nil
+	}
+
+	tmpDir := fmt.Sprintf("%s.refresh.%d", repoDir, time.Now().UnixNano())
+	if err := os.RemoveAll(tmpDir); err != nil {
+		return repoDir, err
+	}
+	if err := cloneRepo(tmpDir); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return repoDir, err
+	}
+
+	backupDir := fmt.Sprintf("%s.stale.%d", repoDir, time.Now().UnixNano())
+	if err := os.Rename(repoDir, backupDir); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return repoDir, err
+	}
+	if err := os.Rename(tmpDir, repoDir); err != nil {
+		_ = os.Rename(backupDir, repoDir)
+		_ = os.RemoveAll(tmpDir)
+		return repoDir, err
+	}
+	_ = os.RemoveAll(backupDir)
+
+	return repoDir, nil
 }
 
 func GetKeyAliasMap() map[string]string {
@@ -4467,5 +4582,6 @@ func GetKeyAliasMap() map[string]string {
 		"sphinx-log-level":          "log-level-sphinx",
 		"registry-consul-log-level": "log-level-registry-consul",
 		"log-vault-level":           "log-level-vault",
+		"backup-tty-share-path":     "tty-share-binary-path",
 	}
 }

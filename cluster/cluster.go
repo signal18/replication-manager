@@ -158,6 +158,10 @@ type Cluster struct {
 	DiskType                      map[string]string          `json:"diskType" groups:"web"`
 	VMType                        map[string]bool            `json:"vmType" groups:"web"`
 	AppS3Providers                []string                   `json:"appS3Providers" groups:"web"`
+	// s3Providers groups S3 provider state and locking primitives in one place.
+	// Use the accessor methods (Add/Remove/Update/GetS3ProvidersSnapshot) and
+	// CRUD transaction lock helpers instead of direct field mutation.
+	s3Providers                   s3ProviderState
 	Agents                        []Agent                    `json:"agents" groups:"web"`
 	AgentMaxFreq                  map[string]int64           `json:"-"`
 	hostList                      []string                   `json:"-"`
@@ -296,15 +300,20 @@ type Cluster struct {
 	SlavesConnected        int
 	clog                   *clog.Logger `json:"-"`
 	*ClusterGraphite
-	VersionsMap         *config.VersionsMap
-	SessionManager      *tty.SessionManager `json:"-"`
-	SysBenchTpcMResults []SysBenchTpcResultPerMinute
-	OpenSVCStats        atomic.Value `json:"-"`
+	VersionsMap           *config.VersionsMap
+	SessionManager        *tty.SessionManager `json:"-"`
+	SysBenchTpcMResults   []SysBenchTpcResultPerMinute
+	OpenSVCStats          atomic.Value `json:"-"`
+	OrchestratorVersion   string       `json:"-"`
+	orchestratorVersionMu sync.RWMutex `json:"-"`
+	lastOrchestratorProbe time.Time    `json:"-"`
 	// Per-cluster preserved variables (replaces ProvDBConfigPreserveVars mechanism)
 	preservedVars               map[string]string          `json:"-"`
 	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}
 	preservedVarsLoaded         bool                       `json:"-"`
 	preservedVarsMutex          sync.RWMutex               `json:"-"`
+	s3SyncApplyMu               sync.Mutex                 `json:"-"`
+	appListEpoch                uint64                     `json:"-"`
 	secretVersionStoreMu        sync.Mutex                 `json:"-"`
 	secretVersionStoreDirty     bool                       `json:"-"`
 	// pluginSpikeCache holds the last DetectSpike result per server+plugin pair.
@@ -532,6 +541,10 @@ func (cluster *Cluster) InitFromConf() {
 		os.MkdirAll(cluster.WorkingDir, os.ModePerm)
 	}
 	cluster.initSnapshotMetadataPersistence()
+	if err := cluster.LoadS3Providers(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"LoadS3Providers: %v", err)
+	}
 
 	cluster.SetClusterCredentialsFromConfig()
 	cluster.LoadAPIUsers()
@@ -868,6 +881,7 @@ func (cluster *Cluster) Run() {
 							cluster.JobsCheckSchedulerTable()
 							cluster.CheckGlobalDeprecatedKeys()
 							cluster.CheckClusterDeprecatedKeys()
+							cluster.CheckClusterServiceAgents()
 						} else {
 							cluster.StateMachine.PreserveState(pstates30...)
 						}
@@ -2458,18 +2472,11 @@ func (c *Cluster) AddProxy(prx DatabaseProxy) {
 }
 
 func (c *Cluster) AddApp(app *App) {
-	app.SetCluster(c)
-	app.SetID()
-	app.SetDataDir()
-	app.SetServiceName(c.Name)
-	app.SetDefaultRoute(c.Conf.Cloud18Domain, c.Conf.Cloud18SubDomain, c.Conf.Cloud18SubDomainZone, c.Name)
-	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "New application monitored %s: %s:%s", app.GetType(), app.GetHost(), app.GetPort())
-	app.SetState(stateSuspect)
+	c.initializeAppForRegistration(app)
+	c.Lock()
 	c.Apps = append(c.Apps, app)
-
-	if app.AppConfig.ProvAppCreditPlanned == 0 {
-		app.AppConfig.ProvAppCreditPlanned = len(app.GetAppAgents())
-	}
+	c.bumpAppListVersion()
+	c.Unlock()
 
 	if app.AppConfig.ProvAppCreditPlanned > app.AppConfig.ProvAppCreditUsed {
 		c.Conf.Cloud18ApplicationCreditsUsed += app.AppConfig.ProvAppCreditPlanned
@@ -2503,6 +2510,17 @@ func (cluster *Cluster) ReloadCertificates() {
 	for _, pri := range cluster.Proxies {
 		pri.CertificatesReload()
 	}
+}
+
+// appListVersion returns a monotonic version for Cluster.Apps structural changes.
+// It is used by sync/apply flows to detect stale snapshots without taking
+// additional coarse cluster locks in hot paths.
+func (cluster *Cluster) appListVersion() uint64 {
+	return atomic.LoadUint64(&cluster.appListEpoch)
+}
+
+func (cluster *Cluster) bumpAppListVersion() {
+	atomic.AddUint64(&cluster.appListEpoch, 1)
 }
 
 func (cluster *Cluster) ResetStates() {

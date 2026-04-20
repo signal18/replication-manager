@@ -189,6 +189,7 @@ func (cluster *Cluster) RemoveAppMonitor(host string, port string) error {
 			newApps = append(cluster.Apps[:index], cluster.Apps[index+1:]...)
 		}
 		cluster.Apps = newApps
+		cluster.bumpAppListVersion()
 		for i, a := range cluster.Conf.Apps {
 			if a == appcnf {
 				if len(cluster.Conf.Apps) > 1 {

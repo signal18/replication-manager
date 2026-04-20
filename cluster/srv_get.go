@@ -162,6 +162,10 @@ func (server *ServerMonitor) GetBindAddress() string {
 		return server.ClusterGroup.Conf.DbServersBindAddress
 	}
 
+	if server.ClusterGroup.Conf.ProvUseIpv6 {
+		return "[::]"
+	}
+
 	return "0.0.0.0"
 }
 
@@ -816,9 +820,9 @@ func (server *ServerMonitor) PurgePFSExplainCache() {
 
 // explainWorkItem is one unit of work for RunPFSExplainCapture, pre-sorted by priority.
 type explainWorkItem struct {
-	digest      string
-	query       *dbhelper.PFSQuery
-	capturedAt  time.Time // zero if never explained — sorts first (highest priority)
+	digest     string
+	query      *dbhelper.PFSQuery
+	capturedAt time.Time // zero if never explained — sorts first (highest priority)
 }
 
 // RunPFSExplainCapture iterates over the digests captured during the just-completed
@@ -1541,6 +1545,12 @@ func (server *ServerMonitor) GetStatusDeltaValue(name string) int {
 		return 0
 	}
 	return cur - prev
+}
+
+func (server *ServerMonitor) GetWorkingAgent() string {
+	server.workingAgentMu.RLock()
+	defer server.workingAgentMu.RUnlock()
+	return server.WorkingAgent
 }
 
 func (server *ServerMonitor) JobsGetEntries() config.ServerTaskList {

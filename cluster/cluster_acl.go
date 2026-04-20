@@ -386,6 +386,9 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 	if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/apps") {
 		return cluster.IsURLPassAppsACL(strUser, URL)
 	}
+	if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/templates/apps") {
+		return cluster.IsURLPassAppsACL(strUser, URL)
+	}
 
 	// Check general cluster-level rules
 	// Apply cluster rules if:

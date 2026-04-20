@@ -256,10 +256,8 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 			}
 		}
 
-		// Only allow internal S3 mounts for now
-		s3_app, appidx := cluster.GetAppByURL(s3m.Endpoint)
-		if s3_app == nil || appidx < 0 {
-			return []byte(""), fmt.Errorf("S3 mount app %s not found in cluster %s", s3m.Endpoint, cluster.Name)
+		if _, err := cluster.resolveS3MountProvisioningEndpoint(app, s3m); err != nil {
+			return []byte(""), err
 		}
 
 		containernum++
@@ -491,8 +489,8 @@ func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc *confi
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer = cluster.OpenSVCGetAppGitInitDefaultSection(app)
 		svccontainer["volume_mounts"] = fmt.Sprintf("/etc/localtime:/etc/localtime:ro %s:/bootstrap", app.GetAppVolumeName(gc.GetSourcePoolName(), false))
-		svccontainer["secrets_environment"] = gc.GetVariableKeys(app.Name, "secret")
-		svccontainer["configs_environment"] = gc.GetVariableKeys(app.Name, "env")
+		svccontainer["secrets_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeSecret)
+		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
 		dirname := filepath.Join("/bootstrap", gc.GetSourcePath())
 
 		prefix := gc.GetVariablePrefix()
@@ -524,8 +522,8 @@ func (cluster *Cluster) OpenSVCGetAppS3MountContainerSection(app *App, s3m *conf
 		svccontainer["image"] = "signal18/nfsmixr:latest"
 		svccontainer["netns"] = "container#01"
 		svccontainer["privileged"] = "true"
-		svccontainer["secrets_environment"] = s3m.GetVariableKeys(app.Name, "secret")
-		svccontainer["configs_environment"] = s3m.GetVariableKeys(app.Name, "env")
+		svccontainer["secrets_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeSecret)
+		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
 		diskname := app.GetAppVolumeName(s3m.GetSourcePoolName(), false)
 		svccontainer["volume_mounts"] = fmt.Sprintf("%s:/mnt:rw,rshared", filepath.Join(diskname, s3m.VolumeDir))
 		svccontainer["run_command"] = "-o allow_other -o nonempty --use-content-type --uid 33 --gid 33 -f"
@@ -533,6 +531,82 @@ func (cluster *Cluster) OpenSVCGetAppS3MountContainerSection(app *App, s3m *conf
 		svccontainer["blocking_post_start"] = "sleep 3"
 	}
 	return svccontainer
+}
+
+func (cluster *Cluster) getAppDeploymentVariableValue(app *App, key string) (string, bool) {
+	if app == nil || app.AppConfig == nil || app.AppConfig.Deployment == nil {
+		return "", false
+	}
+
+	for _, variable := range app.AppConfig.Deployment.Variables {
+		if variable.Name != key {
+			continue
+		}
+
+		if variable.Type == config.VariableTypeSecret {
+			return cluster.Conf.GetDecryptedPassword(variable.Name, variable.Value), true
+		}
+
+		return variable.Value, true
+	}
+
+	return "", false
+}
+
+func (cluster *Cluster) resolveS3MountProvisioningEndpoint(app *App, s3m *config.S3Mount) (string, error) {
+	if s3m == nil {
+		return "", errors.New("S3 mount is nil")
+	}
+	// Provider-linked mounts are hydrated server-side (API add/modify paths) so
+	// provisioning can safely consume the mount's effective endpoint/credentials.
+	// Provisioning never calls provider GET/list APIs and does not depend on
+	// credentials being returned to UI.
+
+	if s3m.Endpoint != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg,
+			"S3 mount %s uses custom endpoint %s – skipping sibling-app resolution", s3m.Name, s3m.Endpoint)
+		return s3m.Endpoint, nil
+	}
+
+	if s3m.Node != nil {
+		return "http://" + s3m.Node.GetS3Endpoint(), nil
+	}
+
+	prefix := s3m.GetVariablePrefix()
+	legacyEndpoint, _ := cluster.getAppDeploymentVariableValue(app, prefix+config.S3VarSuffixEndpoint)
+	if legacyEndpoint != "" {
+		node, _ := cluster.GetAppByURL(legacyEndpoint)
+		if node != nil {
+			s3m.Node = node
+			return "http://" + s3m.Node.GetS3Endpoint(), nil
+		}
+	}
+
+	fallbackAccessKey := s3m.AccessKey
+	fallbackSecretKey := s3m.SecretKey
+	if fallbackAccessKey == "" {
+		fallbackAccessKey, _ = cluster.getAppDeploymentVariableValue(app, prefix+config.S3VarSuffixAccessKey)
+	}
+	if fallbackSecretKey == "" {
+		fallbackSecretKey, _ = cluster.getAppDeploymentVariableValue(app, prefix+config.S3VarSuffixSecretKey)
+	}
+
+	if legacyEndpoint != "" && fallbackAccessKey != "" && fallbackSecretKey != "" {
+		s3m.Endpoint = legacyEndpoint
+		s3m.AccessKey = fallbackAccessKey
+		s3m.SecretKey = fallbackSecretKey
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"S3 mount %s sibling-app resolution failed; reusing legacy fallback credentials", s3m.Name)
+		return legacyEndpoint, nil
+	}
+
+	return "", fmt.Errorf(
+		"S3 mount %s: sibling-app unresolved and no fallback credentials available (endpoint=%q, access_key=%t, secret_key=%t)",
+		s3m.Name,
+		legacyEndpoint,
+		fallbackAccessKey != "",
+		fallbackSecretKey != "",
+	)
 }
 
 func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
@@ -549,8 +623,18 @@ func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
 	}
 
 	for _, path := range deployment.Paths {
+		if path.SourceType != "" && path.SourceName != "" && path.VolumeName == "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+				"Skipping unresolved deployment path mapping dockerpath=%q name=%q parentname=%q srctype=%q srcname=%q srcpath=%q volumename=%q",
+				path.DockerPath, path.Name, path.ParentName, path.SourceType, path.SourceName, path.SourcePath, path.VolumeName)
+			continue
+		}
+
 		vol, err := deployment.GetVolumeByName(path.VolumeName)
 		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+				"Skipping deployment path mapping dockerpath=%q name=%q volumename=%q srctype=%q srcname=%q: %v",
+				path.DockerPath, path.Name, path.VolumeName, path.SourceType, path.SourceName, err)
 			continue
 		}
 
@@ -653,19 +737,17 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 
 	// Create the s3 mount config keys
 	for _, s3m := range app.AppConfig.Deployment.Storages.S3Mounts {
-		if s3m.Node == nil {
-			node, _ := cluster.GetAppByURL(s3m.Endpoint)
-			if node == nil {
-				return fmt.Errorf("S3 mount node %s not found in cluster %s", s3m.Endpoint, cluster.Name)
-			}
-			s3m.Node = node
+		effectiveEndpoint, err := cluster.resolveS3MountProvisioningEndpoint(app, s3m)
+		if err != nil {
+			return err
 		}
+
 		prefix := s3m.GetVariablePrefix()
 		envs := s3m.GetEnvVariables()
 		for k, val := range envs {
 			vName := prefix + k
 			if k == config.S3VarSuffixEndpoint {
-				val = "http://" + s3m.Node.GetS3Endpoint()
+				val = effectiveEndpoint
 			} else if k == config.S3VarSuffixMountDir {
 				// If the mount directory is not set, we use the default mount directory
 				if val == "" {

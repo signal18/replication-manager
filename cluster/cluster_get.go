@@ -289,6 +289,17 @@ func (cluster *Cluster) GetReplicationManagerCliPath() string {
 	return cluster.Conf.ReplicationManagerCliPath
 }
 
+func (cluster *Cluster) GetTtyShareClientPath() string {
+	if cluster.Conf.TtyShareBinaryPath == "" {
+		if out, err := exec.Command("which", "tty-share").Output(); err == nil {
+			path := strings.Trim(string(out), "\r\n")
+			return path
+		}
+		return "" // Use embedded tty-share in tty package
+	}
+	return cluster.Conf.TtyShareBinaryPath
+}
+
 func (cluster *Cluster) GetMysqlServerBinaryPath() string {
 	if cluster.Conf.BackupMysqlclientPath == "" {
 		// Return installed mysql client on repman host instead of embedded if exists
@@ -1793,6 +1804,18 @@ func (cluster *Cluster) GetCompactJson() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// Overwrite clusterS3Providers with a safe snapshot acquired under the mutex
+	// to prevent races with concurrent CRUD mutations.
+	s3snap := cluster.GetS3ProvidersSnapshot()
+	s3JSON, merr := json.Marshal(s3snap)
+	if merr != nil {
+		return nil, fmt.Errorf("marshal clusterS3Providers snapshot: %w", merr)
+	}
+	result, err = sjson.SetRawBytes(result, "clusterS3Providers", s3JSON)
+	if err != nil {
+		return nil, fmt.Errorf("set clusterS3Providers snapshot: %w", err)
 	}
 
 	return result, nil

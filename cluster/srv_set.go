@@ -38,6 +38,15 @@ func (server *ServerMonitor) SetPlacement(k int, ProvAgents string, SlapOSDBPart
 		server.Agent = agents[k%len(agents)]
 	}
 	server.SSTPort = sstports[k%len(sstports)]
+
+	// Only probe the working agent for already-provisioned services to avoid
+	// network calls (and spurious warnings) during initial placement.
+	if server.HasProvisionCookie() {
+		if err := server.GetWorkingOrchestratorNode(); err != nil {
+			cluster := server.GetCluster()
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not resolve working orchestrator node for %s: %s", server.URL, err)
+		}
+	}
 }
 
 func (server *ServerMonitor) SetSourceClusterName(name string) {
