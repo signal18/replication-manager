@@ -68,8 +68,9 @@ function MenuOptions({
   }
 
   const handleMenuToggle = (event) => {
-    event.preventDefault()
-    event.stopPropagation()
+    if (event) {
+      event.stopPropagation()
+    }
 
     if (isOpen) {
       handleMenuClose()
@@ -81,9 +82,7 @@ function MenuOptions({
   }
 
   useEffect(() => {
-    if (options.length > 0) {
-      setMenuOptions(options)
-    }
+    setMenuOptions(options || [])
   }, [options])
 
   useEffect(() => {
@@ -109,11 +108,7 @@ function MenuOptions({
               <MenuItem
                 key={`item-${index}`}
                 as={MenuButton}
-                type='button'
-                onClick={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                }}>
+                type='button'>
                 <HStack>
                   <span>{option.name}</span> <Spacer /> <CustomIcon icon={HiChevronRight} />
                 </HStack>
@@ -122,8 +117,9 @@ function MenuOptions({
                 {option.subMenu.map((subMenuOption, subIndex) => (
                   <MenuItem
                     onClick={(event) => {
-                      event.preventDefault()
-                      event.stopPropagation()
+                      if (event) {
+                        event.stopPropagation()
+                      }
                       subMenuOption.onClick()
                       handleMenuClose()
                     }}
@@ -140,8 +136,9 @@ function MenuOptions({
               {...(option.onClick
                 ? {
                     onClick: (event) => {
-                      event.preventDefault()
-                      event.stopPropagation()
+                      if (event) {
+                        event.stopPropagation()
+                      }
                       option.onClick()
                       handleMenuClose()
                     }
