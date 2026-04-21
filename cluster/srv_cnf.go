@@ -958,6 +958,11 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 	return nil
 }
 
+func (server *ServerMonitor) WipeDeltaConfig() {
+	deltapath := filepath.Join(server.Datadir, "02_delta.cnf")
+	os.Remove(deltapath)
+}
+
 // atomicWriteFile writes data to a file atomically by writing to a temp file first,
 // then renaming it to the target path. This prevents partial writes and corruption.
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
