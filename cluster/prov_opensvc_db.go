@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
@@ -128,12 +129,19 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseV3(s *ServerMonitor, svc opensvc
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", res)
-	err = svc.CreateTemplateV3(cluster.Name, s.ServiceName, s.Agent, res)
+	body, err := svc.CreateTemplateV3(cluster.Name, s.ServiceName, s.Agent, res)
+	var se *opensvc.StatusError
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision database:  %s ", err)
+		if !errors.As(err, &se) || se.StatusCode != 409 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision database:  %s ", err)
+		}
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Template created with response: %s", body)
 	}
 
-	return nil
+	time.Sleep(10 * time.Second)
+
+	return svc.ProvisionServiceV3(cluster.Name, s.ServiceName)
 }
 
 func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {

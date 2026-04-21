@@ -433,23 +433,23 @@ func (collector *Collector) handleObjectActionV3(namespace, kind, service, actio
 	return body, nil
 }
 
-func (collector *Collector) CreateTemplateV3(cluster string, svc string, node string, template []byte) error {
+func (collector *Collector) CreateTemplateV3(cluster string, svc string, node string, template []byte) ([]byte, error) {
 
 	svcparts := strings.SplitN(svc, "/", 3)
 	if len(svcparts) != 3 {
-		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+		return nil, fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
 	}
 
 	ns := svcparts[0]
 	kind := svcparts[1]
 	svcname := svcparts[2]
 
-	if _, err := collector.CreateObjectV3(ns, kind, svcname, template); err != nil {
-		return fmt.Errorf("failed to create object %s/%s/%s: %w", ns, kind, svcname, err)
+	resp, err := collector.CreateObjectV3(ns, kind, svcname, template)
+	if err != nil {
+		return nil, err
 	}
 
-	_, err := collector.handleObjectActionV3(ns, kind, svcname, "provision", nil)
-	return err
+	return resp, nil
 }
 
 func (collector *Collector) ProvisionServiceV3(cluster, svc string) error {
