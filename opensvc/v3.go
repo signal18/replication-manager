@@ -3,6 +3,7 @@ package opensvc
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -319,6 +320,9 @@ func (collector *Collector) GetSecretKeyValueV3(namespace, service, key string) 
 
 func (collector *Collector) CreateSecretKeyValueV3(namespace, service, key, value string) error {
 	_, err := collector.handleObjectKeyValueV3("create", namespace, "sec", service, key, value)
+	if err != nil && errors.Is(err, ErrObjectAlreadyExists) {
+		return collector.UpdateSecretKeyValueV3(namespace, service, key, value)
+	}
 	return err
 }
 
@@ -338,6 +342,9 @@ func (collector *Collector) GetConfigKeyValueV3(namespace, service, key string) 
 
 func (collector *Collector) CreateConfigKeyValueV3(namespace, service, key, value string) error {
 	_, err := collector.handleObjectKeyValueV3("create", namespace, "cfg", service, key, value)
+	if err != nil && errors.Is(err, ErrObjectAlreadyExists) {
+		return collector.UpdateConfigKeyValueV3(namespace, service, key, value)
+	}
 	return err
 }
 
