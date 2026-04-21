@@ -1193,6 +1193,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 			flags.BoolVar(&conf.ProvOpensvcUseCollectorAPI, "opensvc-use-collector-api", false, "Use the collector API instead of cluster VIP")
 			flags.StringVar(&conf.KubeConfig, "kube-config", "", "path to ks8 config file")
 			flags.StringVar(&conf.ProvOpensvcCollectorAccount, "opensvc-collector-account", "/etc/replication-manager/account.yaml", "Openscv collector account")
+			flags.IntVar(&conf.ProvOpensvcV3ProvisionDelay, "opensvc-v3-provision-delay", 10, "Seconds to wait after template creation before provisioning in V3")
 
 			if conf.ProvOpensvcUseCollectorAPI {
 				dbConfig := viper.New()

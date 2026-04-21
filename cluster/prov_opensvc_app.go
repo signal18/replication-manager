@@ -215,7 +215,9 @@ func (cluster *Cluster) OpenSVCProvisionAppV3(app *App, svc opensvc.Collector, a
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", res)
 
 	templatefile := filepath.Join(app.Datadir, "opensvc_template.ini")
-	_ = os.WriteFile(templatefile, res, 0644)
+	if err := os.WriteFile(templatefile, res, 0600); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Failed to write template file %s: %s", templatefile, err)
+	}
 
 	app.TemplateMD5Prov = misc.GetMD5HashFromBytes(res)
 	app.TemplateMD5 = app.TemplateMD5Prov
@@ -231,7 +233,11 @@ func (cluster *Cluster) OpenSVCProvisionAppV3(app *App, svc opensvc.Collector, a
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Template created with response: %s", body)
 	}
 
-	time.Sleep(10 * time.Second)
+	delay := cluster.Conf.ProvOpensvcV3ProvisionDelay
+	if delay <= 0 {
+		delay = 10
+	}
+	time.Sleep(time.Duration(delay) * time.Second)
 
 	return svc.ProvisionServiceV3(cluster.Name, app.ServiceName)
 }
@@ -378,13 +384,25 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV3(app *App) ([]byte, error) {
 
 	cfg := ini.Empty()
 
-	for sectionName, kv := range svcsection {
+	sectionNames := make([]string, 0, len(svcsection))
+	for k := range svcsection {
+		sectionNames = append(sectionNames, k)
+	}
+	sort.Strings(sectionNames)
+
+	for _, sectionName := range sectionNames {
+		kv := svcsection[sectionName]
 		sec, err := cfg.NewSection(sectionName)
 		if err != nil {
 			return nil, err
 		}
-		for k, v := range kv {
-			_, err := sec.NewKey(k, v)
+		keys := make([]string, 0, len(kv))
+		for k := range kv {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			_, err := sec.NewKey(k, kv[k])
 			if err != nil {
 				return nil, err
 			}

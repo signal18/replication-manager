@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -139,7 +140,11 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseV3(s *ServerMonitor, svc opensvc
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Template created with response: %s", body)
 	}
 
-	time.Sleep(10 * time.Second)
+	delay := cluster.Conf.ProvOpensvcV3ProvisionDelay
+	if delay <= 0 {
+		delay = 10
+	}
+	time.Sleep(time.Duration(delay) * time.Second)
 
 	return svc.ProvisionServiceV3(cluster.Name, s.ServiceName)
 }
@@ -767,13 +772,25 @@ func (server *ServerMonitor) GenerateDBTemplateV3() ([]byte, error) {
 
 	cfg := ini.Empty()
 
-	for sectionName, kv := range svcsection {
+	sectionNames := make([]string, 0, len(svcsection))
+	for k := range svcsection {
+		sectionNames = append(sectionNames, k)
+	}
+	sort.Strings(sectionNames)
+
+	for _, sectionName := range sectionNames {
+		kv := svcsection[sectionName]
 		sec, err := cfg.NewSection(sectionName)
 		if err != nil {
 			return nil, err
 		}
-		for k, v := range kv {
-			_, err := sec.NewKey(k, v)
+		keys := make([]string, 0, len(kv))
+		for k := range kv {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			_, err := sec.NewKey(k, kv[k])
 			if err != nil {
 				return nil, err
 			}

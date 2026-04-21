@@ -11,6 +11,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -136,6 +139,16 @@ func (cluster *Cluster) OpenSVCProvisionProxyV3(pri DatabaseProxy, svc opensvc.C
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", res)
 
+	templatefile := filepath.Join(pri.GetDatadir(), "opensvc_template.ini")
+	if werr := os.WriteFile(templatefile, res, 0600); werr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Failed to write template file %s: %s", templatefile, werr)
+	}
+
+	if p, ok := pri.(*Proxy); ok {
+		p.TemplateMD5Prov = misc.GetMD5HashFromBytes(res)
+		p.TemplateMD5 = p.TemplateMD5Prov
+	}
+
 	body, err := svc.CreateTemplateV3(cluster.Name, pri.GetServiceName(), pri.GetAgent(), res)
 	var se *opensvc.StatusError
 	if err != nil {
@@ -147,7 +160,11 @@ func (cluster *Cluster) OpenSVCProvisionProxyV3(pri DatabaseProxy, svc opensvc.C
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Template created with response: %s", body)
 	}
 
-	time.Sleep(10 * time.Second)
+	delay := cluster.Conf.ProvOpensvcV3ProvisionDelay
+	if delay <= 0 {
+		delay = 10
+	}
+	time.Sleep(time.Duration(delay) * time.Second)
 
 	return svc.ProvisionServiceV3(cluster.Name, pri.GetServiceName())
 }
@@ -467,13 +484,25 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV3(servers string, pri DatabasePr
 
 	cfg := ini.Empty()
 
-	for sectionName, kv := range svcsection {
+	sectionNames := make([]string, 0, len(svcsection))
+	for k := range svcsection {
+		sectionNames = append(sectionNames, k)
+	}
+	sort.Strings(sectionNames)
+
+	for _, sectionName := range sectionNames {
+		kv := svcsection[sectionName]
 		sec, err := cfg.NewSection(sectionName)
 		if err != nil {
 			return nil, err
 		}
-		for k, v := range kv {
-			_, err := sec.NewKey(k, v)
+		keys := make([]string, 0, len(kv))
+		for k := range kv {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			_, err := sec.NewKey(k, kv[k])
 			if err != nil {
 				return nil, err
 			}

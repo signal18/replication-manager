@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -960,7 +961,10 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 
 func (server *ServerMonitor) WipeDeltaConfig() {
 	deltapath := filepath.Join(server.Datadir, "02_delta.cnf")
-	os.Remove(deltapath)
+	if err := os.Remove(deltapath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"Failed to remove delta config %s: %s", deltapath, err)
+	}
 }
 
 // atomicWriteFile writes data to a file atomically by writing to a temp file first,
