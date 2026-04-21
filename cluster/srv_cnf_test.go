@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 // TestProcessDummyConfigSendCookie_NoCookie tests processing when no cookie exists
@@ -85,6 +87,35 @@ func TestProcessDummyConfigSendCookie_CookieDeletion(t *testing.T) {
 	// Note: In the real implementation, cookie is deleted before processing
 	// So even if processing fails, cookie should be gone
 	t.Log("Cookie deletion test completed")
+}
+
+func TestWipeDeltaConfig_RemoveErrorIsNonFatal(t *testing.T) {
+	tempDir := t.TempDir()
+	deltaPath := filepath.Join(tempDir, "02_delta.cnf")
+
+	if err := os.MkdirAll(deltaPath, 0o755); err != nil {
+		t.Fatalf("failed to create directory-backed delta path: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(deltaPath, "guard.txt"), []byte("non-empty"), 0o644); err != nil {
+		t.Fatalf("failed to create guard file in delta directory: %v", err)
+	}
+
+	server := &ServerMonitor{
+		Datadir: tempDir,
+		ClusterGroup: &Cluster{
+			Conf: &config.Config{},
+		},
+	}
+
+	// os.Remove on a directory returns an error. WipeDeltaConfig should keep running
+	// and only log a warning.
+	server.WipeDeltaConfig()
+
+	if info, err := os.Stat(deltaPath); err != nil {
+		t.Fatalf("expected delta path to still exist after non-fatal remove error: %v", err)
+	} else if !info.IsDir() {
+		t.Fatalf("expected directory to remain at %s", deltaPath)
+	}
 }
 
 // TestTimingSafetyCalculation tests the timing safety logic

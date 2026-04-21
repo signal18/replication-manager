@@ -41,11 +41,12 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
   const onSaveDockerCmd = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-cmd', value: value })), [clusterName, appId, dispatch])
   const onSaveAppAsTemplate = useCallback(() => dispatch(saveAppAsTemplate({ clusterName: clusterName, appId: appId, template: appName })), [clusterName, appId, appName, dispatch])
   const onResetAppFromTemplate = useCallback((value) => {
-    if (!value) return
-    dispatch(previewResetAppTemplateImpact({ clusterName, appId, template: value, forceRefresh: false }))
+    const templateName = typeof value === 'string' ? value : value?.value || value?.name || ''
+    if (!templateName) return
+    dispatch(previewResetAppTemplateImpact({ clusterName, appId, template: templateName, forceRefresh: false }))
       .unwrap()
       .then(({ data }) => {
-        setResetImpactTemplate(value)
+        setResetImpactTemplate(templateName)
         setResetImpactForceRefresh(false)
         setResetImpactChanges(Array.isArray(data?.changes) ? data.changes : [])
         setIsResetImpactModalOpen(true)

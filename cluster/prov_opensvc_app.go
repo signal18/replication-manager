@@ -262,20 +262,17 @@ func (cluster *Cluster) OpenSVCProvisionAppV3(app *App, svc opensvc.Collector, a
 	app.TemplateMD5 = app.TemplateMD5Prov
 
 	body, err := svc.CreateTemplateV3(cluster.Name, app.ServiceName, app.Agent, res)
-	var se *opensvc.StatusError
 	if err != nil {
-		if !errors.As(err, &se) || se.StatusCode != 409 {
+		if !isOpenSVCAlreadyExists(err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision app:  %s ", err)
 			return err
 		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "App template already exists, reusing existing template: %s", app.ServiceName)
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Template created with response: %s", body)
 	}
 
-	delay := cluster.Conf.ProvOpensvcV3ProvisionDelay
-	if delay <= 0 {
-		delay = 10
-	}
+	delay := normalizeOpenSVCV3ProvisionDelay(cluster.Conf.ProvOpensvcV3ProvisionDelay)
 	time.Sleep(time.Duration(delay) * time.Second)
 
 	return svc.ProvisionServiceV3(cluster.Name, app.ServiceName)
@@ -834,11 +831,7 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 	svc := cluster.OpenSVCConnect()
 
 	isAlreadyExists := func(err error) bool {
-		if errors.Is(err, opensvc.ErrObjectAlreadyExists) {
-			return true
-		}
-		var se *opensvc.StatusError
-		return errors.As(err, &se) && se.StatusCode == 409
+		return isOpenSVCAlreadyExists(err)
 	}
 
 	err := svc.CreateSecret(cluster.Name, app.Name, agent)

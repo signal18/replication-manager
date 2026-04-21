@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Menu, MenuButton, MenuList, MenuItem, IconButton, HStack, Spacer, useDisclosure } from '@chakra-ui/react'
+import { Menu, MenuButton, MenuList, MenuItem, IconButton, HStack, Spacer } from '@chakra-ui/react'
 import { HiChevronRight, HiDotsVertical } from 'react-icons/hi'
 import styles from './styles.module.scss'
 import CustomIcon from '../Icons/CustomIcon'
@@ -17,7 +17,6 @@ function MenuOptions({
   ...rest
 }) {
   const [menuOptions, setMenuOptions] = useState([])
-  const { isOpen, onOpen, onClose } = useDisclosure()
   const menuPauseRegisteredRef = useRef(false)
 
   const getMenuPauseCount = () => {
@@ -62,25 +61,6 @@ function MenuOptions({
     menuPauseRegisteredRef.current = false
   }
 
-  const handleMenuClose = () => {
-    onClose()
-    resumeAutoReloadFromMenu()
-  }
-
-  const handleMenuToggle = (event) => {
-    if (event) {
-      event.stopPropagation()
-    }
-
-    if (isOpen) {
-      handleMenuClose()
-      return
-    }
-
-    pauseAutoReloadForMenu()
-    onOpen()
-  }
-
   useEffect(() => {
     setMenuOptions(options || [])
   }, [options])
@@ -92,36 +72,56 @@ function MenuOptions({
   }, [])
 
   return (
-    <Menu colorScheme={colorScheme} isOpen={isOpen} placement={placement} onClose={handleMenuClose} {...rest}>
+    <Menu
+      colorScheme={colorScheme}
+      placement={placement}
+      onOpen={pauseAutoReloadForMenu}
+      onClose={resumeAutoReloadFromMenu}
+      {...rest}>
       <MenuButton
         colorScheme={colorScheme}
-        onClick={handleMenuToggle}
+        onClick={(event) => {
+          if (event) {
+            event.stopPropagation()
+          }
+        }}
         aria-label='Options'
         type='button'
         className={`${styles.menuButton} ${colorScheme === 'blue' ? styles.baseColor : ''} ${className}`}
         as={IconButton}
         icon={<HiDotsVertical />}></MenuButton>
-      <MenuList className={styles.menuList}>
+      <MenuList
+        className={styles.menuList}
+        onClick={(event) => {
+          if (event) {
+            event.stopPropagation()
+          }
+        }}>
         {menuOptions?.map((option, index) => {
           return option.subMenu ? (
             <Menu key={index} placement={subMenuPlacement}>
-              <MenuItem
-                key={`item-${index}`}
-                as={MenuButton}
-                type='button'>
+              <MenuItem key={`item-${index}`} as={MenuButton} type='button'>
                 <HStack>
                   <span>{option.name}</span> <Spacer /> <CustomIcon icon={HiChevronRight} />
                 </HStack>
               </MenuItem>
-              <MenuList key={`sub-${index}`} className={styles.menuList}>
+              <MenuList
+                key={`sub-${index}`}
+                className={styles.menuList}
+                onClick={(event) => {
+                  if (event) {
+                    event.stopPropagation()
+                  }
+                }}>
                 {option.subMenu.map((subMenuOption, subIndex) => (
                   <MenuItem
                     onClick={(event) => {
                       if (event) {
                         event.stopPropagation()
                       }
-                      subMenuOption.onClick()
-                      handleMenuClose()
+                      if (subMenuOption?.onClick) {
+                        subMenuOption.onClick()
+                      }
                     }}
                     {...(subMenuOption.isDisabled ? { isDisabled: subMenuOption.isDisabled } : {})}
                     key={subIndex}>
@@ -140,7 +140,6 @@ function MenuOptions({
                         event.stopPropagation()
                       }
                       option.onClick()
-                      handleMenuClose()
                     }
                   }
                 : {})}

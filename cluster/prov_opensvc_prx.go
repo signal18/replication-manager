@@ -183,26 +183,20 @@ func (cluster *Cluster) OpenSVCProvisionProxyV3(pri DatabaseProxy, svc opensvc.C
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Failed to write template file %s: %s", templatefile, werr)
 	}
 
-	if p, ok := pri.(*Proxy); ok {
-		p.TemplateMD5Prov = misc.GetMD5HashFromBytes(res)
-		p.TemplateMD5 = p.TemplateMD5Prov
-	}
+	pri.SetTemplateMD5(misc.GetMD5HashFromBytes(res))
 
 	body, err := svc.CreateTemplateV3(cluster.Name, pri.GetServiceName(), pri.GetAgent(), res)
-	var se *opensvc.StatusError
 	if err != nil {
-		if !errors.As(err, &se) || se.StatusCode != 409 {
+		if !isOpenSVCAlreadyExists(err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision proxy:  %s ", err)
 			return err
 		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Proxy template already exists, reusing existing template: %s", pri.GetServiceName())
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Template created with response: %s", body)
 	}
 
-	delay := cluster.Conf.ProvOpensvcV3ProvisionDelay
-	if delay <= 0 {
-		delay = 10
-	}
+	delay := normalizeOpenSVCV3ProvisionDelay(cluster.Conf.ProvOpensvcV3ProvisionDelay)
 	time.Sleep(time.Duration(delay) * time.Second)
 
 	return svc.ProvisionServiceV3(cluster.Name, pri.GetServiceName())

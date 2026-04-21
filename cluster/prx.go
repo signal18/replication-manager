@@ -142,6 +142,7 @@ type DatabaseProxy interface {
 	SetID()
 	SetDataDir()
 	SetServiceName(namespace string)
+	SetTemplateMD5(md5 string)
 	SetStaging(staging bool)
 	IsInStaging() bool
 

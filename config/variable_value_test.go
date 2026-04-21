@@ -9,6 +9,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -328,6 +329,23 @@ func TestVariablesMapSetValue(t *testing.T) {
 	// Should be a map value
 	if _, ok := state.Config.(MapValue); !ok {
 		t.Error("optimizer_switch should be MapValue")
+	}
+}
+
+func TestMapValuePrintWithExcludeUsesLooseOptimizerSwitch(t *testing.T) {
+	mv := make(MapValue)
+	mv.Set("index_merge=on")
+	mv.Set("mrr=off")
+
+	lines := mv.PrintWithExclude("optimizer_switch", nil)
+	if len(lines) == 0 {
+		t.Fatalf("expected printed lines for optimizer_switch")
+	}
+
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "loose_optimizer_switch=") {
+			t.Fatalf("expected loose_optimizer_switch prefix, got %q", line)
+		}
 	}
 }
 

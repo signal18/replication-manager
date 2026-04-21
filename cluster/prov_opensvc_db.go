@@ -131,19 +131,17 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseV3(s *ServerMonitor, svc opensvc
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", res)
 	body, err := svc.CreateTemplateV3(cluster.Name, s.ServiceName, s.Agent, res)
-	var se *opensvc.StatusError
 	if err != nil {
-		if !errors.As(err, &se) || se.StatusCode != 409 {
+		if !isOpenSVCAlreadyExists(err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision database:  %s ", err)
+			return err
 		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Database template already exists, reusing existing template: %s", s.ServiceName)
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Template created with response: %s", body)
 	}
 
-	delay := cluster.Conf.ProvOpensvcV3ProvisionDelay
-	if delay <= 0 {
-		delay = 10
-	}
+	delay := normalizeOpenSVCV3ProvisionDelay(cluster.Conf.ProvOpensvcV3ProvisionDelay)
 	time.Sleep(time.Duration(delay) * time.Second)
 
 	return svc.ProvisionServiceV3(cluster.Name, s.ServiceName)

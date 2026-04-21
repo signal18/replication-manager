@@ -2718,6 +2718,52 @@ func (repman *ReplicationManager) handlerMuxAppSaveAsTemplate(w http.ResponseWri
 	}
 }
 
+type appTemplateActionBody struct {
+	Template     interface{} `json:"template"`
+	ForceRefresh bool        `json:"forceRefresh"`
+}
+
+func decodeAppTemplateActionBody(r *http.Request) (string, bool, error) {
+	var body appTemplateActionBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return "", false, err
+	}
+
+	templateName, err := normalizeTemplatePayloadName(body.Template)
+	if err != nil {
+		return "", body.ForceRefresh, err
+	}
+	if templateName == "" {
+		return "", body.ForceRefresh, errors.New("template name must be provided")
+	}
+
+	return templateName, body.ForceRefresh, nil
+}
+
+func normalizeTemplatePayloadName(template interface{}) (string, error) {
+	switch value := template.(type) {
+	case string:
+		return strings.TrimSpace(value), nil
+	case map[string]interface{}:
+		for _, key := range []string{"value", "name", "template", "label"} {
+			raw, ok := value[key]
+			if !ok {
+				continue
+			}
+
+			s, ok := raw.(string)
+			if ok && strings.TrimSpace(s) != "" {
+				return strings.TrimSpace(s), nil
+			}
+		}
+		return "", errors.New("template must be a string or an object with value/name/template/label")
+	case nil:
+		return "", nil
+	default:
+		return "", errors.New("template must be a string or an object")
+	}
+}
+
 // @Summary Reset App from Template
 // @Description Reloads the app template configuration for a specific app in a cluster.
 // @Tags Apps
@@ -2742,22 +2788,13 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplate(w http.Response
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
-			//Get the request body {template: value}
-			var body struct {
-				Template     string `json:"template"`
-				ForceRefresh bool   `json:"forceRefresh"`
-			}
-			err := json.NewDecoder(r.Body).Decode(&body)
+			templateName, forceRefresh, err := decodeAppTemplateActionBody(r)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Error decoding request body: %v", err), http.StatusBadRequest)
 				return
 			}
-			if body.Template == "" {
-				http.Error(w, "Template name must be provided", http.StatusBadRequest)
-				return
-			}
 
-			err = resetAppFromTemplateWithProjection(mycluster, node, body.Template, body.ForceRefresh)
+			err = resetAppFromTemplateWithProjection(mycluster, node, templateName, forceRefresh)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Error applying template: %v", err), http.StatusInternalServerError)
 				return
@@ -2806,30 +2843,22 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplatePreview(w http.R
 		return
 	}
 
-	var body struct {
-		Template     string `json:"template"`
-		ForceRefresh bool   `json:"forceRefresh"`
-	}
-	err := json.NewDecoder(r.Body).Decode(&body)
+	templateName, forceRefresh, err := decodeAppTemplateActionBody(r)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error decoding request body: %v", err), http.StatusBadRequest)
 		return
 	}
-	if body.Template == "" {
-		http.Error(w, "Template name must be provided", http.StatusBadRequest)
-		return
-	}
 
-	tempConfig, err := buildValidatedTempAppConfigFromTemplate(mycluster, node, body.Template, body.ForceRefresh)
+	tempConfig, err := buildValidatedTempAppConfigFromTemplate(mycluster, node, templateName, forceRefresh)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error applying template: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	changes := buildTemplateProjectionImpact(node.AppConfig, tempConfig, body.Template)
+	changes := buildTemplateProjectionImpact(node.AppConfig, tempConfig, templateName)
 	preview := appTemplateResetPreview{
-		TemplateName: body.Template,
-		ForceRefresh: body.ForceRefresh,
+		TemplateName: templateName,
+		ForceRefresh: forceRefresh,
 		ChangeCount:  len(changes),
 		Changes:      changes,
 	}
