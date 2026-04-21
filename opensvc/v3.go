@@ -21,7 +21,14 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-var ErrObjectConflict = errors.New("unexpected status code: 409")
+type StatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("unexpected status code: %d, body: %s", e.StatusCode, e.Body)
+}
 
 func (collector *Collector) IsV3() bool {
 	return collector.ClusterApiVersion == "v3"
@@ -92,7 +99,10 @@ func (collector *Collector) GetAuthInfoV3() error {
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
-		return fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
 	}
 
 	// Set the API version in the collector if successful
@@ -133,7 +143,10 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
 	}
 
 	var hosts []Host
@@ -175,7 +188,10 @@ func (collector *Collector) CreateObjectV3(namespace, kind, service string, data
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
 	}
 
 	return body, nil
@@ -213,7 +229,10 @@ func (collector *Collector) GetObjectV3(namespace, kind, service string, getFunc
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
 	}
 
 	if getFunc == nil {
@@ -310,7 +329,10 @@ func (collector *Collector) handleObjectKeyValueV3(operation, namespace, kind, s
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
 	}
 
 	return body, nil
@@ -322,7 +344,8 @@ func (collector *Collector) GetSecretKeyValueV3(namespace, service, key string) 
 
 func (collector *Collector) CreateSecretKeyValueV3(namespace, service, key, value string) error {
 	_, err := collector.handleObjectKeyValueV3("create", namespace, "sec", service, key, value)
-	if err != nil && errors.Is(err, ErrObjectConflict) {
+	var se *StatusError
+	if err != nil && errors.As(err, &se) && se.StatusCode == 409 {
 		return collector.UpdateSecretKeyValueV3(namespace, service, key, value)
 	}
 	return err
@@ -344,7 +367,8 @@ func (collector *Collector) GetConfigKeyValueV3(namespace, service, key string) 
 
 func (collector *Collector) CreateConfigKeyValueV3(namespace, service, key, value string) error {
 	_, err := collector.handleObjectKeyValueV3("create", namespace, "cfg", service, key, value)
-	if err != nil && errors.Is(err, ErrObjectConflict) {
+	var se *StatusError
+	if err != nil && errors.As(err, &se) && se.StatusCode == 409 {
 		return collector.UpdateConfigKeyValueV3(namespace, service, key, value)
 	}
 	return err
@@ -400,7 +424,10 @@ func (collector *Collector) handleObjectActionV3(namespace, kind, service, actio
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
 	}
 
 	return body, nil
@@ -555,7 +582,10 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
 	}
 
 	return body, nil
@@ -589,7 +619,10 @@ func (collector *Collector) handleInstanceConsoleV3(node, namespace, kind, servi
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
 	}
 
 	return []byte(resp.Header.Get("Location")), nil
