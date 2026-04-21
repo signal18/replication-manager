@@ -7,11 +7,15 @@ import {
   ModalHeader,
   ModalOverlay
 } from '@chakra-ui/react'
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import RMButton from '../../RMButton'
 import styles from './styles.module.scss'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
+
+const AUTO_RELOAD_PAUSE_KEY = 'pause_auto_reload'
+const CONFIRM_MODAL_PAUSE_TOKEN = 'confirm-modal'
+const CONFIRM_MODAL_PAUSE_COUNT_KEY = 'pause_auto_reload_confirm_modal_count'
 
 function ConfirmModal({
   title,
@@ -28,6 +32,61 @@ function ConfirmModal({
   confirmButtonProps = {}
 }) {
   const { theme } = useTheme()
+  const pauseRegisteredRef = useRef(false)
+
+  const getConfirmModalPauseCount = () => {
+    const pauseCount = parseInt(localStorage.getItem(CONFIRM_MODAL_PAUSE_COUNT_KEY) || '0', 10)
+    return Number.isNaN(pauseCount) ? 0 : pauseCount
+  }
+
+  const pauseAutoReloadForConfirmModal = () => {
+    if (pauseRegisteredRef.current) {
+      return
+    }
+
+    const currentPauseState = localStorage.getItem(AUTO_RELOAD_PAUSE_KEY)
+    const currentPauseCount = getConfirmModalPauseCount()
+
+    localStorage.setItem(CONFIRM_MODAL_PAUSE_COUNT_KEY, String(currentPauseCount + 1))
+    pauseRegisteredRef.current = true
+
+    if (!currentPauseState) {
+      localStorage.setItem(AUTO_RELOAD_PAUSE_KEY, CONFIRM_MODAL_PAUSE_TOKEN)
+    }
+  }
+
+  const resumeAutoReloadFromConfirmModal = () => {
+    if (!pauseRegisteredRef.current) {
+      return
+    }
+
+    const currentPauseCount = getConfirmModalPauseCount()
+    const nextPauseCount = Math.max(0, currentPauseCount - 1)
+
+    if (nextPauseCount === 0) {
+      localStorage.removeItem(CONFIRM_MODAL_PAUSE_COUNT_KEY)
+
+      if (localStorage.getItem(AUTO_RELOAD_PAUSE_KEY) === CONFIRM_MODAL_PAUSE_TOKEN) {
+        localStorage.removeItem(AUTO_RELOAD_PAUSE_KEY)
+      }
+    } else {
+      localStorage.setItem(CONFIRM_MODAL_PAUSE_COUNT_KEY, String(nextPauseCount))
+    }
+
+    pauseRegisteredRef.current = false
+  }
+
+  useEffect(() => {
+    if (isOpen) {
+      pauseAutoReloadForConfirmModal()
+    } else {
+      resumeAutoReloadFromConfirmModal()
+    }
+
+    return () => {
+      resumeAutoReloadFromConfirmModal()
+    }
+  }, [isOpen])
 
   return (
     <Modal isOpen={isOpen} onClose={closeModal} closeOnOverlayClick={closeOnOverlayClick} closeOnEsc={closeOnEsc}>
