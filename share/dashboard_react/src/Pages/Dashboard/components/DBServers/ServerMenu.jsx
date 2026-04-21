@@ -3,6 +3,8 @@ import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import AdvancedReseedModal from '../../../../components/Modals/AdvancedReseedModal'
 import {
+  abortDatabase,
+  clearDatabase,
   dropServer,
   flushLogs,
   jobsUpgrade,
@@ -391,7 +393,19 @@ function ServerMenu({
                         setConfirmTitle(`Confirm stop for ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(stopDatabase({ clusterName, serverId: row.id })))
                       }
-                    }
+                    },
+                    ...(orchestrator === 'opensvc'
+                      ? [
+                          {
+                            name: 'Abort Orchestration',
+                            onClick: () => {
+                              openConfirmModal()
+                              setConfirmTitle(`Confirm orchestration abort for ${serverName}?`)
+                              setConfirmHandler(() => () => dispatch(abortDatabase({ clusterName, serverId: row.id })))
+                            }
+                          }
+                        ]
+                      : [])
                   ]
                 : []),
               ...(user?.grants['db-start']
@@ -404,6 +418,18 @@ function ServerMenu({
                         setConfirmHandler(() => () => dispatch(startDatabase({ clusterName, serverId: row.id })))
                       }
                     },
+                    ...(orchestrator === 'opensvc'
+                      ? [
+                          {
+                            name: 'Clear Instance State',
+                            onClick: () => {
+                              openConfirmModal()
+                              setConfirmTitle(`Confirm clear instance state for ${serverName}?`)
+                              setConfirmHandler(() => () => dispatch(clearDatabase({ clusterName, serverId: row.id })))
+                            }
+                          }
+                        ]
+                      : []),
                     ...(orchestrator === 'opensvc'
                       ? [
                           {

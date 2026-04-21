@@ -11,8 +11,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
@@ -128,12 +130,21 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseV3(s *ServerMonitor, svc opensvc
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", res)
-	err = svc.CreateTemplateV3(cluster.Name, s.ServiceName, s.Agent, res)
+	body, err := svc.CreateTemplateV3(cluster.Name, s.ServiceName, s.Agent, res)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision database:  %s ", err)
+		if !isOpenSVCAlreadyExists(err) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision database:  %s ", err)
+			return err
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Database template already exists, reusing existing template: %s", s.ServiceName)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Template created with response: %s", body)
 	}
 
-	return nil
+	delay := normalizeOpenSVCV3ProvisionDelay(cluster.Conf.ProvOpensvcV3ProvisionDelay)
+	time.Sleep(time.Duration(delay) * time.Second)
+
+	return svc.ProvisionServiceV3(cluster.Name, s.ServiceName)
 }
 
 func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
@@ -256,17 +267,68 @@ func (cluster *Cluster) OpenSVCRestartDatabaseService(server *ServerMonitor, nod
 	return nil
 }
 
+func (cluster *Cluster) OpenSVCAbortDatabaseService(server *ServerMonitor) error {
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() {
+		err := ErrOpenSVCAbortNotSupported
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not abort database: %s", err)
+		return err
+	}
+
+	err := svc.AbortServiceV3(cluster.Name, server.ServiceName)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not abort database: %s", err)
+		return err
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) OpenSVCClearDatabaseInstanceState(server *ServerMonitor, node string) error {
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() {
+		err := ErrOpenSVCClearNotSupported
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not clear database instance state: %s", err)
+		return err
+	}
+
+	agent := server.Agent
+	if node != "" {
+		agent = node
+	}
+
+	err := svc.ClearInstanceV3(agent, server.ServiceName)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not clear database instance state: %s", err)
+		return err
+	}
+
+	return nil
+}
+
 func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor) {
 	svc := cluster.OpenSVCConnect()
+	var opErr error
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
-		node, _ := cluster.OpenSVCFoundDatabaseAgent(server)
-		for _, service := range node.Svc {
-			if cluster.Name+"/svc/"+server.Name == service.Svc_name {
-				idaction, _ := svc.UnprovisionService(node.Node_id, service.Svc_id)
-				err := cluster.OpenSVCWaitDequeue(svc, idaction)
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't unprovision database %s, %s", cluster.Name+"/svc/"+server.Name, err)
-					cluster.errorChan <- err
+		node, err := cluster.OpenSVCFoundDatabaseAgent(server)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't find database agent %s, %s", cluster.Name+"/svc/"+server.Name, err)
+			opErr = errors.Join(opErr, err)
+		} else {
+			for _, service := range node.Svc {
+				if cluster.Name+"/svc/"+server.Name == service.Svc_name {
+					idaction, err := svc.UnprovisionService(node.Node_id, service.Svc_id)
+					if err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't queue unprovision database %s, %s", cluster.Name+"/svc/"+server.Name, err)
+						opErr = errors.Join(opErr, err)
+						continue
+					}
+
+					err = cluster.OpenSVCWaitDequeue(svc, idaction)
+					if err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't unprovision database %s, %s", cluster.Name+"/svc/"+server.Name, err)
+						opErr = errors.Join(opErr, err)
+					}
 				}
 			}
 		}
@@ -274,26 +336,26 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor)
 		err := svc.PurgeServiceV3(cluster.Name, server.ServiceName)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database service:  %s ", err)
-			cluster.errorChan <- err
+			opErr = errors.Join(opErr, err)
 		}
 		err = svc.PurgeServiceV3(cluster.Name, cluster.Name+"/vol/"+server.Name)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database volume:  %s ", err)
-			cluster.errorChan <- err
+			opErr = errors.Join(opErr, err)
 		}
 	} else {
 		err := svc.PurgeServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database service:  %s ", err)
-			cluster.errorChan <- err
+			opErr = errors.Join(opErr, err)
 		}
 		err = svc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+server.Name, server.Agent)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database volume:  %s ", err)
-			cluster.errorChan <- err
+			opErr = errors.Join(opErr, err)
 		}
 	}
-	cluster.errorChan <- nil
+	cluster.errorChan <- opErr
 }
 
 func (cluster *Cluster) OpenSVCFoundDatabaseAgent(server *ServerMonitor) (opensvc.Host, error) {
@@ -759,13 +821,25 @@ func (server *ServerMonitor) GenerateDBTemplateV3() ([]byte, error) {
 
 	cfg := ini.Empty()
 
-	for sectionName, kv := range svcsection {
+	sectionNames := make([]string, 0, len(svcsection))
+	for k := range svcsection {
+		sectionNames = append(sectionNames, k)
+	}
+	sort.Strings(sectionNames)
+
+	for _, sectionName := range sectionNames {
+		kv := svcsection[sectionName]
 		sec, err := cfg.NewSection(sectionName)
 		if err != nil {
 			return nil, err
 		}
-		for k, v := range kv {
-			_, err := sec.NewKey(k, v)
+		keys := make([]string, 0, len(kv))
+		for k := range kv {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			_, err := sec.NewKey(k, kv[k])
 			if err != nil {
 				return nil, err
 			}

@@ -2,10 +2,30 @@ import { useDispatch } from 'react-redux'
 import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import { useState, useEffect, useCallback } from 'react'
-import { dropServerByName, provisionProxy, stagingProxy, startProxy, stopProxy, unprovisionProxy } from '../../../../redux/clusterSlice'
+import {
+  abortProxy,
+  clearProxy,
+  dropServerByName,
+  provisionProxy,
+  stagingProxy,
+  startProxy,
+  stopProxy,
+  unprovisionProxy
+} from '../../../../redux/clusterSlice'
 import { useHref } from 'react-router-dom'
 
-function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView', user, isMenuOptionsVisible = false, showTerminal, topoStaging }) {
+function ProxyMenu({
+  clusterName,
+  row,
+  isDesktop,
+  colorScheme,
+  from = 'tableView',
+  user,
+  isMenuOptionsVisible = false,
+  showTerminal,
+  topoStaging,
+  orchestrator
+}) {
   const dispatch = useDispatch()
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
@@ -101,6 +121,30 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
                     openConfirmModal()
                     setConfirmTitle(`Confirm stop proxy ${proxyName}?`)
                     setConfirmHandler(() => () => dispatch(stopProxy({ clusterName, proxyId: row.proxyId })))
+                  }
+                },
+                ...(orchestrator === 'opensvc'
+                  ? [
+                      {
+                        name: 'Abort Orchestration',
+                        onClick: () => {
+                          openConfirmModal()
+                          setConfirmTitle(`Confirm orchestration abort for ${proxyName}?`)
+                          setConfirmHandler(() => () => dispatch(abortProxy({ clusterName, proxyId: row.proxyId })))
+                        }
+                      }
+                    ]
+                  : [])
+              ]
+            : []),
+          ...(user?.grants['proxy-start'] && orchestrator === 'opensvc'
+            ? [
+                {
+                  name: 'Clear Instance State',
+                  onClick: () => {
+                    openConfirmModal()
+                    setConfirmTitle(`Confirm clear instance state for ${proxyName}?`)
+                    setConfirmHandler(() => () => dispatch(clearProxy({ clusterName, proxyId: row.proxyId })))
                   }
                 }
               ]

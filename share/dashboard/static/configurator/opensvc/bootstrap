@@ -22,6 +22,8 @@ function get {
 	$GET --header Accept:application/json --header "Authorization: Bearer $TOKEN" $@
 }
 
+mkdir -p /bootstrap
+
 get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/need-config-fetch > need-config-fetch
 if [ $? -eq 0 ]; then
 	get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/config > config.tar.gz
@@ -42,13 +44,12 @@ if [ $? -eq 0 ]; then
 
 fi
 
-CURRENT_VERSION=$(cat /bootstrap/version)
-if [ -z "$CURRENT_VERSION" ]; then
-	CURRENT_VERSION="0.0.0"
+CURRENT_VERSION="0.0.0"
+if [ -f "/bootstrap/version" ]; then 
+	CURRENT_VERSION=$(cat /bootstrap/version)
 fi
 
 get $REPLICATION_MANAGER_URL/api/version > version
-mkdir -p /bootstrap
 MONITOR_VERSION=$(cat version)
 
 # If the version is not the same or the file not exists, download the new version

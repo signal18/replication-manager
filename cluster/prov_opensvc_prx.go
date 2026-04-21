@@ -7,45 +7,74 @@
 package cluster
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	ini "gopkg.in/ini.v1"
 )
 
 func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx DatabaseProxy) {
-	opensvc := cluster.OpenSVCConnect()
-	//agents := opensvc.GetNodes()
-	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
-		err := opensvc.PurgeServiceV2(cluster.GetName(), prx.GetServiceName(), prx.GetAgent())
+	svc := cluster.OpenSVCConnect()
+	var opErr error
+	if cluster.Conf.ProvOpensvcUseCollectorAPI {
+		node, err := cluster.FoundProxyAgent(prx)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision proxy service:  %s ", err)
-			cluster.errorChan <- err
-		}
-		err = opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+prx.GetName(), prx.GetAgent())
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision proxy volume:  %s ", err)
-			cluster.errorChan <- err
-		}
-	} else {
-		node, _ := cluster.FoundProxyAgent(prx)
-		for _, svc := range node.Svc {
-			if prx.GetServiceName() == svc.Svc_name {
-				idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-				err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't unprovision proxy %s, %s", prx.GetId(), err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't find proxy agent %s, %s", prx.GetId(), err)
+			opErr = errors.Join(opErr, err)
+		} else {
+			for _, service := range node.Svc {
+				if prx.GetServiceName() == service.Svc_name {
+					idaction, err := svc.UnprovisionService(node.Node_id, service.Svc_id)
+					if err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't queue unprovision proxy %s, %s", prx.GetId(), err)
+						opErr = errors.Join(opErr, err)
+						continue
+					}
+
+					err = cluster.OpenSVCWaitDequeue(svc, idaction)
+					if err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't unprovision proxy %s, %s", prx.GetId(), err)
+						opErr = errors.Join(opErr, err)
+					}
 				}
 			}
 		}
+	} else if svc.IsV3() {
+		err := svc.PurgeServiceV3(cluster.Name, prx.GetServiceName())
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision proxy service:  %s ", err)
+			opErr = errors.Join(opErr, err)
+		}
+		err = svc.PurgeServiceV3(cluster.Name, cluster.Name+"/vol/"+prx.GetName())
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision proxy volume:  %s ", err)
+			opErr = errors.Join(opErr, err)
+		}
+	} else {
+		err := svc.PurgeServiceV2(cluster.GetName(), prx.GetServiceName(), prx.GetAgent())
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision proxy service:  %s ", err)
+			opErr = errors.Join(opErr, err)
+		}
+		err = svc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+prx.GetName(), prx.GetAgent())
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision proxy volume:  %s ", err)
+			opErr = errors.Join(opErr, err)
+		}
 	}
-	cluster.errorChan <- nil
+	cluster.errorChan <- opErr
 }
 
 func (cluster *Cluster) OpenSVCStopProxyService(server DatabaseProxy) error {
@@ -60,6 +89,12 @@ func (cluster *Cluster) OpenSVCStopProxyService(server DatabaseProxy) error {
 			return err
 		}
 		svc.StopService(agent.Node_id, service.Svc_id)
+	} else if svc.IsV3() {
+		err := svc.StopServiceV3(cluster.Name, server.GetServiceName())
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop proxy:  %s ", err)
+			return err
+		}
 	} else {
 		err := svc.StopServiceV2(cluster.Name, server.GetServiceName(), server.GetAgent())
 		if err != nil {
@@ -82,14 +117,101 @@ func (cluster *Cluster) OpenSVCStartProxyService(server DatabaseProxy) error {
 			return err
 		}
 		svc.StartService(agent.Node_id, service.Svc_id)
+	} else if svc.IsV3() {
+		err := svc.StartServiceV3(cluster.Name, server.GetServiceName())
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start proxy:  %s ", err)
+			return err
+		}
 	} else {
 		err := svc.StartServiceV2(cluster.Name, server.GetServiceName(), server.GetAgent())
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop proxy:  %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start proxy:  %s ", err)
 			return err
 		}
 	}
 	return nil
+}
+
+func (cluster *Cluster) OpenSVCAbortProxyService(server DatabaseProxy) error {
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() {
+		err := ErrOpenSVCAbortNotSupported
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not abort proxy: %s", err)
+		return err
+	}
+
+	err := svc.AbortServiceV3(cluster.Name, server.GetServiceName())
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not abort proxy: %s", err)
+		return err
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) OpenSVCClearProxyInstanceState(server DatabaseProxy, node string) error {
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() {
+		err := ErrOpenSVCClearNotSupported
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not clear proxy instance state: %s", err)
+		return err
+	}
+
+	agent := server.GetAgent()
+	if node != "" {
+		agent = node
+	}
+
+	err := svc.ClearInstanceV3(agent, server.GetServiceName())
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not clear proxy instance state: %s", err)
+		return err
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) OpenSVCProvisionProxyV3(pri DatabaseProxy, svc opensvc.Collector, agent opensvc.Host) error {
+	err := cluster.OpenSVCCreateMaps(agent.Node_name)
+	if err != nil {
+		return err
+	}
+
+	srvlist := make([]string, len(cluster.Servers))
+	for i, s := range cluster.Servers {
+		srvlist[i] = s.Host
+	}
+
+	res, err := cluster.OpenSVCGetProxyTemplateV3(strings.Join(srvlist, " "), pri)
+	if err != nil {
+		return err
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", res)
+
+	templatefile := filepath.Join(pri.GetDatadir(), "opensvc_template.ini")
+	if werr := os.WriteFile(templatefile, res, 0600); werr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Failed to write template file %s: %s", templatefile, werr)
+	}
+
+	pri.SetTemplateMD5(misc.GetMD5HashFromBytes(res))
+
+	body, err := svc.CreateTemplateV3(cluster.Name, pri.GetServiceName(), pri.GetAgent(), res)
+	if err != nil {
+		if !isOpenSVCAlreadyExists(err) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision proxy:  %s ", err)
+			return err
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Proxy template already exists, reusing existing template: %s", pri.GetServiceName())
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Template created with response: %s", body)
+	}
+
+	delay := normalizeOpenSVCV3ProvisionDelay(cluster.Conf.ProvOpensvcV3ProvisionDelay)
+	time.Sleep(time.Duration(delay) * time.Second)
+
+	return svc.ProvisionServiceV3(cluster.Name, pri.GetServiceName())
 }
 
 func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
@@ -99,6 +221,17 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 		cluster.errorChan <- err
 		return err
 	}
+
+	if !cluster.Conf.ProvOpensvcUseCollectorAPI && svc.IsV3() {
+		err = cluster.OpenSVCProvisionProxyV3(pri, svc, agent)
+		if err != nil {
+			cluster.errorChan <- err
+			return err
+		}
+		cluster.errorChan <- nil
+		return nil
+	}
+
 	// Unprovision if already in OpenSVC
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		var idsrv string
@@ -332,7 +465,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, pri DatabaseProxy) ([]byte, error) {
+func (cluster *Cluster) OpenSVCGetProxyTemplateSectionMap(servers string, pri DatabaseProxy) map[string]map[string]string {
 	svcsection := make(map[string]map[string]string)
 	svcsection["DEFAULT"] = pri.OpenSVCGetProxyDefaultSection()
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
@@ -343,9 +476,6 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, pri DatabasePr
 		svcsection["disk#0001"] = cluster.OpenSVCGetDiskLoopbackSnapshotPodSection()
 		svcsection["fs#00"] = cluster.OpenSVCGetFSDockerPrivateSection()
 		svcsection["fs#01"] = cluster.OpenSVCGetFSPodSection()
-		//	svcsection["sync#01"] = server.OpenSVCGetZFSSnapshotSection()
-		//	svcsection["task#02"] = server.OpenSVCGetTaskZFSSnapshotSection()
-
 	} else {
 		if cluster.Conf.ProvDockerDaemonPrivate {
 			svcsection["volume#00"] = cluster.OpenSVCGetVolumeDockerSection()
@@ -381,12 +511,56 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, pri DatabasePr
 
 	svcsection["env"] = cluster.OpenSVCGetProxyEnvSection(servers, pri)
 
+	return svcsection
+}
+
+func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, pri DatabaseProxy) ([]byte, error) {
+	svcsection := cluster.OpenSVCGetProxyTemplateSectionMap(servers, pri)
+
 	svcsectionJson, err := json.MarshalIndent(svcsection, "", "\t")
 	if err != nil {
 		return []byte(""), err
 	}
 	return svcsectionJson, nil
+}
 
+func (cluster *Cluster) OpenSVCGetProxyTemplateV3(servers string, pri DatabaseProxy) ([]byte, error) {
+	svcsection := cluster.OpenSVCGetProxyTemplateSectionMap(servers, pri)
+
+	cfg := ini.Empty()
+
+	sectionNames := make([]string, 0, len(svcsection))
+	for k := range svcsection {
+		sectionNames = append(sectionNames, k)
+	}
+	sort.Strings(sectionNames)
+
+	for _, sectionName := range sectionNames {
+		kv := svcsection[sectionName]
+		sec, err := cfg.NewSection(sectionName)
+		if err != nil {
+			return nil, err
+		}
+		keys := make([]string, 0, len(kv))
+		for k := range kv {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			_, err := sec.NewKey(k, kv[k])
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	var buf bytes.Buffer
+	_, err := cfg.WriteTo(&buf)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }
 
 func (cluster *Cluster) OpenSVCGetProxyVolumeDataSection() map[string]string {

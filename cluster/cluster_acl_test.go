@@ -217,6 +217,30 @@ func TestDatabaseStartStopSingleGrant(t *testing.T) {
 			url:      "/api/clusters/testcluster/servers/db1/actions/start",
 			expected: false,
 		},
+		{
+			name:     "User with GrantDBStop can abort",
+			user:     "user_stop_only",
+			url:      "/api/clusters/testcluster/servers/db1/actions/abort",
+			expected: true,
+		},
+		{
+			name:     "User with only GrantDBStart cannot abort",
+			user:     "user_start_only",
+			url:      "/api/clusters/testcluster/servers/db1/actions/abort",
+			expected: false,
+		},
+		{
+			name:     "User with GrantDBStart can clear",
+			user:     "user_start_only",
+			url:      "/api/clusters/testcluster/servers/db1/actions/clear",
+			expected: true,
+		},
+		{
+			name:     "User with only GrantDBStop cannot clear",
+			user:     "user_stop_only",
+			url:      "/api/clusters/testcluster/servers/db1/actions/clear",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -416,6 +440,30 @@ func TestProxyACL(t *testing.T) {
 			url:      "/api/clusters/testcluster/proxies/proxy1/actions/start",
 			expected: false,
 		},
+		{
+			name:     "User with GrantProxyStop can abort proxy",
+			user:     "user_proxy",
+			url:      "/api/clusters/testcluster/proxies/proxy1/actions/abort",
+			expected: true,
+		},
+		{
+			name:     "User with GrantProxyStart can clear proxy",
+			user:     "user_proxy",
+			url:      "/api/clusters/testcluster/proxies/proxy1/actions/clear",
+			expected: true,
+		},
+		{
+			name:     "User without proxy grants cannot abort proxy",
+			user:     "user_start_only",
+			url:      "/api/clusters/testcluster/proxies/proxy1/actions/abort",
+			expected: false,
+		},
+		{
+			name:     "User without proxy grants cannot clear proxy",
+			user:     "user_start_only",
+			url:      "/api/clusters/testcluster/proxies/proxy1/actions/clear",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -456,6 +504,30 @@ func TestAppACL(t *testing.T) {
 			url:      "/api/clusters/testcluster/apps/app1/actions/start",
 			expected: false,
 		},
+		{
+			name:     "User with GrantAppStop can abort app",
+			user:     "user_app",
+			url:      "/api/clusters/testcluster/apps/app1/actions/abort",
+			expected: true,
+		},
+		{
+			name:     "User with GrantAppStart can clear app",
+			user:     "user_app",
+			url:      "/api/clusters/testcluster/apps/app1/actions/clear",
+			expected: true,
+		},
+		{
+			name:     "User without app grants cannot abort app",
+			user:     "user_start_only",
+			url:      "/api/clusters/testcluster/apps/app1/actions/abort",
+			expected: false,
+		},
+		{
+			name:     "User without app grants cannot clear app",
+			user:     "user_start_only",
+			url:      "/api/clusters/testcluster/apps/app1/actions/clear",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -463,6 +535,45 @@ func TestAppACL(t *testing.T) {
 			result := cluster.IsURLPassAppsACL(tt.user, tt.url)
 			if result != tt.expected {
 				t.Errorf("Expected %v for user %s on %s, got %v", tt.expected, tt.user, tt.url, result)
+			}
+		})
+	}
+}
+
+func TestAppSettingsClearDoesNotFallbackToActionClear(t *testing.T) {
+	cluster := setupACLTestCluster()
+
+	cluster.APIUsers["user_app_config"] = APIUser{
+		User: "user_app_config",
+		Grants: map[string]bool{
+			config.GrantAppConfig: true,
+		},
+	}
+
+	url := "/api/clusters/testcluster/apps/app1/settings/actions/clear/setting"
+
+	tests := []struct {
+		name     string
+		user     string
+		expected bool
+	}{
+		{
+			name:     "User with app start/stop cannot clear settings",
+			user:     "user_app",
+			expected: false,
+		},
+		{
+			name:     "User with app config can clear settings",
+			user:     "user_app_config",
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := cluster.IsURLPassAppsACL(tt.user, url)
+			if result != tt.expected {
+				t.Errorf("Expected %v for user %s on %s, got %v", tt.expected, tt.user, url, result)
 			}
 		})
 	}
@@ -1003,7 +1114,7 @@ func TestIsURLPassACLComprehensiveCoverage(t *testing.T) {
 		// Maintenance
 		{"Maintenance", "/api/clusters/test/actions/checksum-all-tables", true},
 		{"Maintenance", "/api/clusters/test/actions/analyze-all-tables", true},
-		{"Maintenance", "/api/clusters/test/actions/repair-all-tables", true},
+		{"Maintenance", "/api/clusters/test/actions/checksum-repair-all-tables", true},
 	}
 
 	for _, tt := range tests {

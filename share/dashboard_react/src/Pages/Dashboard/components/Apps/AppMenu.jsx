@@ -2,10 +2,18 @@ import { useDispatch } from 'react-redux'
 import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import { useState, useEffect } from 'react'
-import { dropApp, provisionApp, startApp, stopApp, unprovisionApp } from '../../../../redux/clusterSlice'
+import {
+  abortApp,
+  clearApp,
+  dropApp,
+  provisionApp,
+  startApp,
+  stopApp,
+  unprovisionApp
+} from '../../../../redux/clusterSlice'
 import { useNavigate } from 'react-router-dom'
 
-function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView', user }) {
+function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView', user, orchestrator }) {
   const dispatch = useDispatch()
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
@@ -47,7 +55,19 @@ function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView',
                       setConfirmTitle(`Confirm stop for ${appName}?`)
                       setConfirmHandler(() => () => dispatch(stopApp({ clusterName, appId: row.id })))
                     }
-                  }
+                  },
+                  ...(orchestrator === 'opensvc'
+                    ? [
+                        {
+                          name: 'Abort Orchestration',
+                          onClick: () => {
+                            openConfirmModal()
+                            setConfirmTitle(`Confirm orchestration abort for ${appName}?`)
+                            setConfirmHandler(() => () => dispatch(abortApp({ clusterName, appId: row.id })))
+                          }
+                        }
+                      ]
+                    : [])
                 ]
                 : []),
               ...(user?.grants['app-start']
@@ -59,7 +79,19 @@ function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView',
                       setConfirmTitle(`Confirm start for ${appName}?`)
                       setConfirmHandler(() => () => dispatch(startApp({ clusterName, appId: row.id })))
                     }
-                  }
+                  },
+                  ...(orchestrator === 'opensvc'
+                    ? [
+                        {
+                          name: 'Clear Instance State',
+                          onClick: () => {
+                            openConfirmModal()
+                            setConfirmTitle(`Confirm clear instance state for ${appName}?`)
+                            setConfirmHandler(() => () => dispatch(clearApp({ clusterName, appId: row.id })))
+                          }
+                        }
+                      ]
+                    : [])
                 ]
                 : []),
               ...(user?.grants['prov-app-provision']

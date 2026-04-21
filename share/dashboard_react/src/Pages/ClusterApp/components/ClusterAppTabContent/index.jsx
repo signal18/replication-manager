@@ -86,6 +86,7 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
                 clusterName={clusterName}
                 row={selectedApp}
                 user={user}
+                orchestrator={config?.provOrchestrator}
               />
               <ServerStatus state={selectedApp?.state} />
               <ServerName className={styles.appName} name={`${selectedApp?.host}`} />

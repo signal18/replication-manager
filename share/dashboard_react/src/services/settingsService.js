@@ -1,5 +1,18 @@
 import { getApi } from './apiHelper'
 
+function normalizeTemplateName(template) {
+  if (typeof template === 'string') {
+    return template
+  }
+
+  if (template && typeof template === 'object') {
+    const candidate = template.value || template.name || template.label || ''
+    return typeof candidate === 'string' ? candidate : ''
+  }
+
+  return ''
+}
+
 export const settingsService = {
   switchSettings,
   changeTopology,
@@ -67,7 +80,7 @@ function clearAppSetting(clusterName, appId, setting, baseURL) {
 }
 
 function resetAppFromTemplate(clusterName, appId, template, forceRefresh = false, baseURL) {
-  const payload = { template: template }
+  const payload = { template: normalizeTemplateName(template) }
   if (forceRefresh) {
     payload.forceRefresh = true
   }
@@ -75,8 +88,9 @@ function resetAppFromTemplate(clusterName, appId, template, forceRefresh = false
 }
 
 function previewResetAppTemplateImpact(clusterName, appId, template, forceRefresh = false, baseURL) {
+  const normalizedTemplate = normalizeTemplateName(template)
   return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/settings/actions/reset-from-template/preview`, {
-    template,
+    template: normalizedTemplate,
     forceRefresh
   })
 }

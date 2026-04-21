@@ -90,6 +90,7 @@ func (cluster *Cluster) ProvisionServices() error {
 	for _, server := range cluster.Servers {
 		hasConfigPath[server.HostCnf] = server.HasConfigPathCookie()
 		server.DelConfigPathCookie() // remove the config path cookie since we are going to provision it
+		server.WipeDeltaConfig()
 		switch cluster.GetOrchestrator() {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCProvisionDatabaseService(server)
@@ -170,6 +171,7 @@ func (cluster *Cluster) ProvisionServices() error {
 
 func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
 	cluster.StateMachine.SetFailoverState()
+	server.WipeDeltaConfig()
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCProvisionDatabaseService(server)

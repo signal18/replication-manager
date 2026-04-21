@@ -29,6 +29,8 @@ var databaseACLRules = []ACLRule{
 	{"/actions/unprovision", nil, []string{config.GrantProvDBUnprovision}},
 	{"/actions/start", nil, []string{config.GrantDBStart}},
 	{"/actions/stop", nil, []string{config.GrantDBStop}},
+	{"/actions/abort", nil, []string{config.GrantDBStop}},
+	{"/actions/clear", nil, []string{config.GrantDBStart}},
 	{"/actions/switchover", nil, []string{config.GrantClusterSwitchover}},
 	{"/actions/set-prefered", nil, []string{config.GrantClusterFailover}},
 	{"/actions/set-unrated", nil, []string{config.GrantClusterFailover}},
@@ -102,6 +104,8 @@ var proxyACLRules = []ACLRule{
 	{"/actions/unprovision", nil, []string{config.GrantProvProxyUnprovision}},
 	{"/actions/start", nil, []string{config.GrantProxyStart}},
 	{"/actions/stop", nil, []string{config.GrantProxyStop}},
+	{"/actions/abort", nil, []string{config.GrantProxyStop}},
+	{"/actions/clear", nil, []string{config.GrantProxyStart}},
 	{"/actions/staging", nil, []string{config.GrantClusterStaging}},
 }
 
@@ -119,6 +123,8 @@ var appACLRules = []ACLRule{
 	{"/settings/actions/save-to-template", nil, []string{config.GrantAppDeployment}},
 	{"/actions/start", nil, []string{config.GrantAppStart}},
 	{"/actions/stop", nil, []string{config.GrantAppStop}},
+	{"/actions/abort", nil, []string{config.GrantAppStop}},
+	{"/actions/clear", nil, []string{config.GrantAppStart}},
 	{"/actions/restart", []string{config.GrantAppStop, config.GrantAppStart}, nil},
 	{"/settings/actions/", nil, []string{config.GrantAppConfig}},
 	{"/git/", nil, []string{config.GrantAppGit}},
