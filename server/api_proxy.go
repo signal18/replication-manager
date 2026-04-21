@@ -8,6 +8,8 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"os"
 
@@ -39,6 +41,14 @@ func (repman *ReplicationManager) apiProxyProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxyStart)),
 	))
+	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/abort", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxyAbort)),
+	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/clear", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxyClear)),
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/need-restart", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxyNeedRestart)),
@@ -173,6 +183,111 @@ func (repman *ReplicationManager) handlerMuxProxyStop(w http.ResponseWriter, r *
 		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
+}
+
+func (repman *ReplicationManager) handlerMuxProxyAbort(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Cluster Not Found"})
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"error": "No valid ACL"})
+		return
+	}
+
+	if mycluster.GetOrchestrator() != "opensvc" {
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Abort is only supported for OpenSVC orchestrator"})
+		return
+	}
+
+	node := mycluster.GetProxyFromName(vars["proxyName"])
+	if node == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Server Not Found"})
+		return
+	}
+
+	err := mycluster.OpenSVCAbortProxyService(node)
+	if err != nil {
+		if errors.Is(err, cluster.ErrOpenSVCAbortNotSupported) {
+			w.WriteHeader(http.StatusNotImplemented)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to abort proxy service: %s", err)})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Abort requested successfully",
+		"proxy":   node.GetName(),
+	})
+}
+
+func (repman *ReplicationManager) handlerMuxProxyClear(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Cluster Not Found"})
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"error": "No valid ACL"})
+		return
+	}
+
+	if mycluster.GetOrchestrator() != "opensvc" {
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Clear is only supported for OpenSVC orchestrator"})
+		return
+	}
+
+	node := mycluster.GetProxyFromName(vars["proxyName"])
+	if node == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Server Not Found"})
+		return
+	}
+
+	nodeParam := r.URL.Query().Get("node")
+	err := mycluster.OpenSVCClearProxyInstanceState(node, nodeParam)
+	if err != nil {
+		if errors.Is(err, cluster.ErrOpenSVCClearNotSupported) {
+			w.WriteHeader(http.StatusNotImplemented)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to clear proxy instance state: %s", err)})
+		return
+	}
+
+	effectiveNode := nodeParam
+	if effectiveNode == "" {
+		effectiveNode = node.GetAgent()
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Instance monitor state cleared successfully",
+		"proxy":   node.GetName(),
+		"node":    effectiveNode,
+	})
 }
 
 // @Summary Provision Proxy Service

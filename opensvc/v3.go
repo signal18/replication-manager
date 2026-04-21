@@ -402,6 +402,8 @@ func (collector *Collector) handleObjectActionV3(namespace, kind, service, actio
 		resp, err = client.PostObjectActionProvision(ctx, namespace, oKind, service, collector.RequestCloserV3())
 	case "unprovision":
 		resp, err = client.PostObjectActionUnprovision(ctx, namespace, oKind, service, collector.RequestCloserV3())
+	case "abort":
+		resp, err = client.PostObjectActionAbort(ctx, namespace, oKind, service, collector.RequestCloserV3())
 	case "start":
 		resp, err = client.PostObjectActionStart(ctx, namespace, oKind, service, collector.RequestCloserV3())
 	case "stop":
@@ -524,6 +526,20 @@ func (collector *Collector) RestartServiceV3(cluster, svc string) error {
 	return err
 }
 
+func (collector *Collector) AbortServiceV3(cluster, svc string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+
+	ns := svcparts[0]
+	kind := svcparts[1]
+	svcname := svcparts[2]
+
+	_, err := collector.handleObjectActionV3(ns, kind, svcname, "abort", nil)
+	return err
+}
+
 func (collector *Collector) handleInstanceActionV3(node, namespace, kind, service, action string, params *InstanceActionParams) ([]byte, error) {
 	var resp *http.Response
 	var err error
@@ -568,6 +584,8 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 			rtparams = params.ToRestartParams()
 		}
 		resp, err = client.PostInstanceActionRestart(ctx, node, namespace, oKind, service, rtparams, collector.RequestCloserV3())
+	case "clear":
+		resp, err = client.PostInstanceClear(ctx, node, namespace, oKind, service, collector.RequestCloserV3())
 	default:
 		return nil, fmt.Errorf("unsupported action: %s", action)
 	}
@@ -589,6 +607,20 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 	}
 
 	return body, nil
+}
+
+func (collector *Collector) ClearInstanceV3(node, svc string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+
+	ns := svcparts[0]
+	kind := svcparts[1]
+	svcname := svcparts[2]
+
+	_, err := collector.handleInstanceActionV3(node, ns, kind, svcname, "clear", nil)
+	return err
 }
 
 func (collector *Collector) handleInstanceConsoleV3(node, namespace, kind, service, rid string) ([]byte, error) {

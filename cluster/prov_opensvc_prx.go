@@ -121,6 +121,45 @@ func (cluster *Cluster) OpenSVCStartProxyService(server DatabaseProxy) error {
 	return nil
 }
 
+func (cluster *Cluster) OpenSVCAbortProxyService(server DatabaseProxy) error {
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() {
+		err := ErrOpenSVCAbortNotSupported
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not abort proxy: %s", err)
+		return err
+	}
+
+	err := svc.AbortServiceV3(cluster.Name, server.GetServiceName())
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not abort proxy: %s", err)
+		return err
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) OpenSVCClearProxyInstanceState(server DatabaseProxy, node string) error {
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() {
+		err := ErrOpenSVCClearNotSupported
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not clear proxy instance state: %s", err)
+		return err
+	}
+
+	agent := server.GetAgent()
+	if node != "" {
+		agent = node
+	}
+
+	err := svc.ClearInstanceV3(agent, server.GetServiceName())
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not clear proxy instance state: %s", err)
+		return err
+	}
+
+	return nil
+}
+
 func (cluster *Cluster) OpenSVCProvisionProxyV3(pri DatabaseProxy, svc opensvc.Collector, agent opensvc.Host) error {
 	err := cluster.OpenSVCCreateMaps(agent.Node_name)
 	if err != nil {

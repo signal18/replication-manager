@@ -201,6 +201,45 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 	return nil
 }
 
+func (cluster *Cluster) OpenSVCAbortAppService(app *App) error {
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() {
+		err := ErrOpenSVCAbortNotSupported
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not abort app: %s", err)
+		return err
+	}
+
+	err := svc.AbortServiceV3(cluster.Name, app.GetServiceName())
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not abort app: %s", err)
+		return err
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) OpenSVCClearAppInstanceState(app *App, node string) error {
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() {
+		err := ErrOpenSVCClearNotSupported
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not clear app instance state: %s", err)
+		return err
+	}
+
+	agent := app.GetAgent()
+	if node != "" {
+		agent = node
+	}
+
+	err := svc.ClearInstanceV3(agent, app.GetServiceName())
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not clear app instance state: %s", err)
+		return err
+	}
+
+	return nil
+}
+
 func (cluster *Cluster) OpenSVCProvisionAppV3(app *App, svc opensvc.Collector, agent opensvc.Host) error {
 	err := cluster.OpenSVCCreateAppVariableMaps(agent.Node_name, app)
 	if err != nil {

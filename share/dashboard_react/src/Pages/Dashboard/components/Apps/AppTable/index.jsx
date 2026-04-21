@@ -10,7 +10,7 @@ import TagPill from '../../../../../components/TagPill'
 import AppStatus from '../AppStatus'
 import ServerStatus from '../../../../../components/ServerStatus'
 
-function AppTable({ apps = [], isDesktop, clusterName, showGridView, user, states }) {
+function AppTable({ apps = [], isDesktop, clusterName, showGridView, user, states, orchestrator }) {
   const [tableData, setTableData] = useState([])
   useEffect(() => {
     if (apps?.length > 0) {
@@ -25,7 +25,15 @@ function AppTable({ apps = [], isDesktop, clusterName, showGridView, user, state
       columnHelper.accessor(
         (row) => row.name || row.id,
         {
-          cell: ({row}) => <AppMenu row={row.original} isDesktop={isDesktop} clusterName={clusterName} user={user} />,
+          cell: ({row}) => (
+            <AppMenu
+              row={row.original}
+              isDesktop={isDesktop}
+              clusterName={clusterName}
+              user={user}
+              orchestrator={orchestrator}
+            />
+          ),
           id: 'options',
           header: '',
           width: '40px'
@@ -52,7 +60,7 @@ function AppTable({ apps = [], isDesktop, clusterName, showGridView, user, state
         header: 'Routes'
       }),
     ],
-    []
+    [clusterName, isDesktop, orchestrator, user]
   )
 
   return (

@@ -12,7 +12,17 @@ import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
 import ServerName from '../../../../../components/ServerName'
 
-function ProxyGrid({ proxies = [], clusterName, showTableView, user, isDesktop, isMenuOptionsVisible, showTerminal, topoStaging }) {
+function ProxyGrid({
+  proxies = [],
+  clusterName,
+  showTableView,
+  user,
+  isDesktop,
+  isMenuOptionsVisible,
+  showTerminal,
+  topoStaging,
+  orchestrator
+}) {
   return (
     <SimpleGrid columns={{ base: 1, sm: 1, md: 2, lg: 3 }} spacing={2} spacingY={6} spacingX={6} marginTop='4px'>
       {proxies?.length > 0 &&
@@ -56,6 +66,7 @@ function ProxyGrid({ proxies = [], clusterName, showTableView, user, isDesktop, 
                   isMenuOptionsVisible={isMenuOptionsVisible}
                   showTerminal={showTerminal}
                   topoStaging={topoStaging}
+                  orchestrator={orchestrator}
                 />
               </Flex>
 

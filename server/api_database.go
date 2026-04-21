@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -293,6 +294,14 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/restart", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerRestart)),
+	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/abort", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerAbort)),
+	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/clear", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerClear)),
 	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/maintenance", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -2514,6 +2523,111 @@ func (repman *ReplicationManager) handlerMuxServerRestart(w http.ResponseWriter,
 		"server":  node.Name,
 		"node":    nodeParam,
 		"rid":     ridParam,
+	})
+}
+
+func (repman *ReplicationManager) handlerMuxServerAbort(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Cluster Not Found"})
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"error": "No valid ACL"})
+		return
+	}
+
+	if mycluster.GetOrchestrator() != "opensvc" {
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Abort is only supported for OpenSVC orchestrator"})
+		return
+	}
+
+	node := mycluster.GetServerFromName(vars["serverName"])
+	if node == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Server Not Found"})
+		return
+	}
+
+	err := mycluster.OpenSVCAbortDatabaseService(node)
+	if err != nil {
+		if errors.Is(err, cluster.ErrOpenSVCAbortNotSupported) {
+			w.WriteHeader(http.StatusNotImplemented)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to abort server service: %s", err)})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Abort requested successfully",
+		"server":  node.Name,
+	})
+}
+
+func (repman *ReplicationManager) handlerMuxServerClear(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Cluster Not Found"})
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"error": "No valid ACL"})
+		return
+	}
+
+	if mycluster.GetOrchestrator() != "opensvc" {
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Clear is only supported for OpenSVC orchestrator"})
+		return
+	}
+
+	node := mycluster.GetServerFromName(vars["serverName"])
+	if node == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Server Not Found"})
+		return
+	}
+
+	nodeParam := r.URL.Query().Get("node")
+	err := mycluster.OpenSVCClearDatabaseInstanceState(node, nodeParam)
+	if err != nil {
+		if errors.Is(err, cluster.ErrOpenSVCClearNotSupported) {
+			w.WriteHeader(http.StatusNotImplemented)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to clear server instance state: %s", err)})
+		return
+	}
+
+	effectiveNode := nodeParam
+	if effectiveNode == "" {
+		effectiveNode = node.Agent
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Instance monitor state cleared successfully",
+		"server":  node.Name,
+		"node":    effectiveNode,
 	})
 }
 

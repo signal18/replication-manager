@@ -269,6 +269,45 @@ func (cluster *Cluster) OpenSVCRestartDatabaseService(server *ServerMonitor, nod
 	return nil
 }
 
+func (cluster *Cluster) OpenSVCAbortDatabaseService(server *ServerMonitor) error {
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() {
+		err := ErrOpenSVCAbortNotSupported
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not abort database: %s", err)
+		return err
+	}
+
+	err := svc.AbortServiceV3(cluster.Name, server.ServiceName)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not abort database: %s", err)
+		return err
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) OpenSVCClearDatabaseInstanceState(server *ServerMonitor, node string) error {
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() {
+		err := ErrOpenSVCClearNotSupported
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not clear database instance state: %s", err)
+		return err
+	}
+
+	agent := server.Agent
+	if node != "" {
+		agent = node
+	}
+
+	err := svc.ClearInstanceV3(agent, server.ServiceName)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not clear database instance state: %s", err)
+		return err
+	}
+
+	return nil
+}
+
 func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor) {
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {

@@ -11,7 +11,7 @@ import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
 import ServerName from '../../../../../components/ServerName'
 
-function AppGrid({ apps = [], clusterName, showTableView, user, isDesktop }) {
+function AppGrid({ apps = [], clusterName, showTableView, user, isDesktop, orchestrator }) {
   return (
     <SimpleGrid columns={{ base: 1, sm: 1, md: 2, lg: 3 }} spacing={2} spacingY={6} spacingX={6} marginTop='4px'>
       {apps?.length > 0 &&
@@ -43,6 +43,7 @@ function AppGrid({ apps = [], clusterName, showTableView, user, isDesktop }) {
                     clusterName={clusterName}
                     isDesktop={isDesktop}
                     user={user}
+                    orchestrator={orchestrator}
                   />
               </Flex>
 

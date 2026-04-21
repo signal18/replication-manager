@@ -20,6 +20,11 @@ import (
 
 var dockerMinusRm bool
 
+var (
+	ErrOpenSVCAbortNotSupported = errors.New("abort not supported for this OpenSVC API version")
+	ErrOpenSVCClearNotSupported = errors.New("clear not supported for this OpenSVC API version")
+)
+
 func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	var svc opensvc.Collector
 	svc.ClusterConf = cluster.Conf
