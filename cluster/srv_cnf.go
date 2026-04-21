@@ -945,53 +945,6 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 			continue
 		}
 
-		// 4-LAYER SAFETY FRAMEWORK FOR RUNTIME FALLBACK
-		// Only use runtime value if deployed is nil and all safety checks pass
-		if v.Deployed == nil && v.Runtime != nil {
-			runtimeStr := v.Runtime.String()
-
-			// Layer 1: Empty value check - never write empty values
-			// Layer 2: Read-only check - never write read-only variables
-			// Layer 3: Whitelist check - only write whitelisted variables
-			// Layer 4: Server status check - only if server is running (not failed)
-			if runtimeStr != "" &&
-				!isReadOnlyVariable(v.VariableName) &&
-				isSafeForRuntimeFallback(v.VariableName) &&
-				!server.IsFailed() {
-				// Safe to use runtime value as fallback
-				v.Deployed = v.Runtime
-				content.WriteString(v.PrintDeployedDelta() + "\n")
-				v.Deployed = nil // Reset to avoid persisting the change
-			}
-			// If any check fails, skip this variable (don't write it)
-			continue
-		}
-
-		// LAYER 5: MYSQL DEFAULT FALLBACK - REMOVED
-		// This layer has been removed because Configurator generates a base CNF from tags.
-		// Configuration priority is now:
-		//   1. Server-specific preserved variables (01_preserved.cnf, 02_delta.cnf, 03_agreed.cnf)
-		//   2. Cluster-wide preserved variables
-		//   3. Configurator settings (tags, templates, dynamic configs)
-		//   4. Runtime/deployed values
-		// No need for mysql_defaults.cnf as configurator provides the base configuration.
-		/*
-			if v.Deployed == nil && v.Runtime == nil && server.IsFailed() {
-				defaultValue := cluster.getMySQLDefaultForVar(v.VariableName)
-				if defaultValue != "" {
-					sv := config.SingleValue(defaultValue)
-					v.Deployed = &sv
-					content.WriteString(v.PrintDeployedDelta() + "\n")
-					v.Deployed = nil // Reset to avoid persisting the change
-
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-						"Using MySQL default for variable %s=%s (server failed, no deployed/runtime values)",
-						v.VariableName, defaultValue)
-				}
-				continue
-			}
-		*/
-
 		// Normal case: deployed value exists
 		content.WriteString(v.PrintDeployedDelta() + "\n")
 	}

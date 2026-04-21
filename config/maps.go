@@ -662,6 +662,10 @@ func (mv MapValue) Print(varname string) string {
 func (mv MapValue) PrintWithExclude(varname string, exclude VariableValue) []string {
 	pairs := make([]string, 0)
 
+	if strings.ToLower(varname) == "optimizer_switch" {
+		varname = "loose_optimizer_switch"
+	}
+
 	o, ok := exclude.(MapValue)
 	if !ok {
 		o = make(MapValue)
