@@ -4104,6 +4104,65 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/apps/{appName}/settings/actions/reset-from-template/preview": {
+            "post": {
+                "description": "Previews template-owned field changes that would be applied by reset-from-template.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Preview Reset App from Template Impact",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.appTemplateResetPreview"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Server Not Found\" or \"No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/apps/{appName}/settings/actions/save-as-template/{templateName}": {
             "post": {
                 "description": "Saves the app configuration to a template directory for a specific app in a cluster.",
@@ -5664,6 +5723,28 @@ const docTemplate = `{
                                 "type": "object"
                             }
                         }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/plugins/reload": {
+            "post": {
+                "tags": [
+                    "ClusterSettings"
+                ],
+                "summary": "Reload external log plugins for a cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
                     }
                 }
             }
@@ -7938,6 +8019,172 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/security/apply-fix": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSecurity"
+                ],
+                "summary": "Apply a tag-based security remediation fix",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "{\\",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Fix applied",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Execution error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/security/fix-state/{errKey}": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSecurity"
+                ],
+                "summary": "Apply automated fix for a security finding",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "SEC error key (e.g. SEC0102)",
+                        "name": "errKey",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Fix applied",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "No automated fix for this code",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Execution error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/security/remediation-plan": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSecurity"
+                ],
+                "summary": "Get security remediation plan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.RemediationPlan"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster not found",
                         "schema": {
                             "type": "string"
                         }
@@ -11635,6 +11882,76 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Cluster Not Found\" or \"Server Not Found\" or \"Encoding error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/pfs-join-weights": {
+            "get": {
+                "description": "Returns per-snapshot join-weight data computed from on-disk PFS JSONL files.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseSchema"
+                ],
+                "summary": "Historical PFS join weights",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start hour YYYYMMDD_HH",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End hour YYYYMMDD_HH",
+                        "name": "to",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/server.pfsSnapshotWeights"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "error message",
                         "schema": {
                             "type": "string"
                         }
@@ -16489,6 +16806,415 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/templates/apps": {
+            "get": {
+                "description": "Returns unified app template inventory with source/local metadata.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "List App Templates with Metadata",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Force refresh of pull-only repo cache before listing",
+                        "name": "forceRefresh",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/server.appTemplateSummary"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/templates/apps/structure-guide": {
+            "get": {
+                "description": "Returns TEMPLATE_STRUCTURE.md content for in-app guidance.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Get App Template Structure Guide",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.appTemplateStructureGuideResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Template structure guide not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"Error reading template structure guide",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/templates/apps/{templateName}/content": {
+            "get": {
+                "description": "Returns canonical app template content for preview, optionally forcing source refresh.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Preview App Template Content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Template Name",
+                        "name": "templateName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Bypass local cache and refresh from source",
+                        "name": "forceRefresh",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.appTemplateContentResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Template name must be provided",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/templates/apps/{templateName}/content/actions/create-local-copy": {
+            "post": {
+                "description": "Creates an editable local template copy from an existing template source/content.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Create Local Copy of App Template Content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Template Name",
+                        "name": "templateName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Create local copy payload",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Template local copy created successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/templates/apps/{templateName}/content/actions/delete": {
+            "post": {
+                "description": "Deletes editable local template content.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Delete Local App Template Content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Template Name",
+                        "name": "templateName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Template deleted successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Template not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/templates/apps/{templateName}/content/actions/save": {
+            "post": {
+                "description": "Saves editable local template content after canonicalization and strict validation.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Save Local App Template Content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Template Name",
+                        "name": "templateName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Template content payload",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Template saved successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/tests/actions/run/all": {
             "post": {
                 "description": "This endpoint runs all tests for the specified cluster.",
@@ -17831,6 +18557,42 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/server.globalAlertsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/global/http-logs": {
+            "get": {
+                "description": "Returns server-level log entries from the ReplicationManager in-memory ring buffer.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Global"
+                ],
+                "summary": "Get global logs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.globalLogsResponse"
                         }
                     },
                     "401": {
@@ -20893,6 +21655,10 @@ const docTemplate = `{
                         "type": "boolean"
                     }
                 },
+                "haveAutoTLS": {
+                    "description": "set when any server auto-detected require_secure_transport=ON via error 3159",
+                    "type": "boolean"
+                },
                 "haveDBTLSCert": {
                     "type": "boolean"
                 },
@@ -21051,6 +21817,35 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "securityClearPwdConfig": {
+                    "description": "Set by dbjob SSH scripts scanning my.cnf/.my.cnf on DB servers",
+                    "type": "boolean"
+                },
+                "securityClearPwdHistory": {
+                    "description": "Set by dbjob SSH scripts scanning .bash_history/.mysql_history on DB servers",
+                    "type": "boolean"
+                },
+                "securityRemediations": {
+                    "description": "SecurityRemediations is the current remediation plan for all open security findings.\nPopulated alongside SecurityStates in CheckLogPlugins so the dashboard gets\nAutoFixable flags, fix tags, and risk levels without a separate API call.\nThis is the authoritative source — the UI must not duplicate autoFixable logic.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.RemediationPlan"
+                        }
+                    ]
+                },
+                "securityScore": {
+                    "$ref": "#/definitions/cluster.SecurityScore"
+                },
+                "securityStateMachine": {
+                    "$ref": "#/definitions/state.StateMachine"
+                },
+                "securityStates": {
+                    "description": "SecurityStates is a snapshot of all open security findings from the current monitoring\ntick, serialised into the cluster JSON for the dashboard (SecurityStateMachine.CurState\nhas json:\"-\" so it cannot be read directly). Updated by CheckLogPlugins.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_signal18_replication-manager_utils_state.State"
+                    }
+                },
                 "servers": {
                     "type": "array",
                     "items": {
@@ -21151,6 +21946,29 @@ const docTemplate = `{
                 },
                 "workingDir": {
                     "type": "string"
+                },
+                "workloadRemediations": {
+                    "description": "WorkloadRemediations is the current remediation plan for actionable workload advisories.\nPopulated alongside WorkloadStates in CheckLogPlugins.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.RemediationPlan"
+                        }
+                    ]
+                },
+                "workloadStateMachine": {
+                    "description": "WorkloadStateMachine tracks workload/performance findings from Graphite spike-detection\nplugins (WORKLOAD severity). Kept separate from the HA StateMachine so performance\nnoise does not obscure operational cluster health or trigger false failover gates.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/state.StateMachine"
+                        }
+                    ]
+                },
+                "workloadStates": {
+                    "description": "WorkloadStates is a snapshot of all open workload findings from the current monitoring\ntick. Updated by CheckLogPlugins after all servers have been evaluated.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_signal18_replication-manager_utils_state.State"
+                    }
                 }
             }
         },
@@ -21392,6 +22210,9 @@ const docTemplate = `{
                 "weight": {
                     "type": "string"
                 },
+                "workingAgent": {
+                    "type": "string"
+                },
                 "writePort": {
                     "type": "integer"
                 },
@@ -21422,6 +22243,151 @@ const docTemplate = `{
                 },
                 "timestamp": {
                     "type": "string"
+                }
+            }
+        },
+        "cluster.RemediationEntry": {
+            "type": "object",
+            "properties": {
+                "auto_fixable": {
+                    "description": "true when POST /security/fix-state/{err_key} is supported",
+                    "type": "boolean"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "err_key": {
+                    "type": "string"
+                },
+                "fixes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.RemediationFix"
+                    }
+                },
+                "server": {
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.RemediationFix": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "file_name": {
+                    "description": "cnf_template",
+                    "type": "string"
+                },
+                "my_cnf": {
+                    "description": "suggested file content",
+                    "type": "string"
+                },
+                "risk": {
+                    "description": "\"safe\", \"moderate\", \"disruptive\"",
+                    "type": "string"
+                },
+                "tag": {
+                    "description": "add_tag / drop_tag",
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "url": {
+                    "description": "settings_switch",
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.RemediationPlan": {
+            "type": "object",
+            "properties": {
+                "cluster": {
+                    "type": "string"
+                },
+                "generated_at": {
+                    "type": "string"
+                },
+                "open_findings": {
+                    "type": "integer"
+                },
+                "remediations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.RemediationEntry"
+                    }
+                }
+            }
+        },
+        "cluster.SecurityScore": {
+            "type": "object",
+            "properties": {
+                "grade": {
+                    "description": "A/B/C/D/F",
+                    "type": "string"
+                },
+                "hasAuditPlugins": {
+                    "type": "boolean"
+                },
+                "hasBackupEncryption": {
+                    "type": "boolean"
+                },
+                "hasBinlogEncryption": {
+                    "type": "boolean"
+                },
+                "hasLastLTS": {
+                    "type": "boolean"
+                },
+                "hasParsecPlugins": {
+                    "type": "boolean"
+                },
+                "hasPasswordRotation": {
+                    "type": "boolean"
+                },
+                "hasPrepareStatement": {
+                    "type": "boolean"
+                },
+                "hasProxies": {
+                    "type": "boolean"
+                },
+                "hasSSL": {
+                    "type": "boolean"
+                },
+                "hasStrongPwd": {
+                    "type": "boolean"
+                },
+                "hasTableEncryption": {
+                    "type": "boolean"
+                },
+                "hasTmpEncryption": {
+                    "type": "boolean"
+                },
+                "hasZeroSSL": {
+                    "type": "boolean"
+                },
+                "noClearPwdBinlogs": {
+                    "type": "boolean"
+                },
+                "noClearPwdConfigs": {
+                    "type": "boolean"
+                },
+                "noClearPwdHistory": {
+                    "type": "boolean"
+                },
+                "noEmptyPassword": {
+                    "type": "boolean"
+                },
+                "noHostnameGrants": {
+                    "type": "boolean"
+                },
+                "noWeakAuthPlugin": {
+                    "type": "boolean"
+                },
+                "score": {
+                    "description": "0-100",
+                    "type": "integer"
                 }
             }
         },
@@ -21569,6 +22535,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "failoverSemiSyncSlaveStatus": {
+                    "type": "boolean"
+                },
+                "forceTLSSkipVerify": {
+                    "description": "auto-detected when server returns error 3159 (require_secure_transport=ON)",
                     "type": "boolean"
                 },
                 "gtidBinlogPos": {
@@ -21978,6 +22948,10 @@ const docTemplate = `{
                 },
                 "workLoad": {
                     "$ref": "#/definitions/config.WorkLoadsMap"
+                },
+                "workingAgent": {
+                    "description": "used to track on which agent the server is running",
+                    "type": "string"
                 }
             }
         },
@@ -22368,6 +23342,9 @@ const docTemplate = `{
                 "dockerpath": {
                     "type": "string"
                 },
+                "level": {
+                    "type": "integer"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -22452,6 +23429,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "providerName": {
                     "type": "string"
                 },
                 "region": {
@@ -23527,6 +24507,9 @@ const docTemplate = `{
                 "backupResticTimeout": {
                     "type": "integer"
                 },
+                "backupRestoreDefinerStrict": {
+                    "type": "boolean"
+                },
                 "backupRestoreMysqlUser": {
                     "type": "boolean"
                 },
@@ -23537,6 +24520,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "backupSplitMysqlUser": {
+                    "type": "boolean"
+                },
+                "backupSplitdumpCreateDatabases": {
                     "type": "boolean"
                 },
                 "backupSplitdumpFileSize": {
@@ -24427,6 +25413,12 @@ const docTemplate = `{
                 "monitoringBasedir": {
                     "type": "string"
                 },
+                "monitoringBinlogEventLogLength": {
+                    "type": "integer"
+                },
+                "monitoringBinlogEvents": {
+                    "type": "boolean"
+                },
                 "monitoringCapture": {
                     "type": "boolean"
                 },
@@ -24613,6 +25605,15 @@ const docTemplate = `{
                 "monitoringSchemaSchedulerCron": {
                     "type": "string"
                 },
+                "monitoringSecretVersioning": {
+                    "type": "boolean"
+                },
+                "monitoringSecretVersioningAutoPrune": {
+                    "type": "boolean"
+                },
+                "monitoringSecretVersioningKeepLast": {
+                    "type": "integer"
+                },
                 "monitoringSharedir": {
                     "type": "string"
                 },
@@ -24763,6 +25764,9 @@ const docTemplate = `{
                         }
                     }
                 },
+                "pluginSigningPublicKey": {
+                    "type": "string"
+                },
                 "printDelayStat": {
                     "type": "boolean"
                 },
@@ -24789,6 +25793,9 @@ const docTemplate = `{
                 },
                 "provAppTemplateRepo": {
                     "type": "string"
+                },
+                "provAppTemplateRepoAllowOverride": {
+                    "type": "boolean"
                 },
                 "provAppTemplateRepoBranch": {
                     "type": "string"
@@ -24964,6 +25971,9 @@ const docTemplate = `{
                 "provDockerRegistryCredentials": {
                     "type": "string"
                 },
+                "provEventTimeout": {
+                    "type": "integer"
+                },
                 "provNetCni": {
                     "type": "boolean"
                 },
@@ -25134,6 +26144,9 @@ const docTemplate = `{
                 },
                 "provTlsServerKey": {
                     "type": "string"
+                },
+                "provUseIpv6": {
+                    "type": "boolean"
                 },
                 "proxyServersBackendCompression": {
                     "type": "boolean"
@@ -25619,6 +26632,9 @@ const docTemplate = `{
                 "topologyTarget": {
                     "type": "string"
                 },
+                "ttyShareBinaryPath": {
+                    "type": "string"
+                },
                 "vaultAuth": {
                     "type": "string"
                 },
@@ -25650,6 +26666,26 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "withTarball": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_signal18_replication-manager_utils_state.State": {
+            "type": "object",
+            "properties": {
+                "errDesc": {
+                    "type": "string"
+                },
+                "errFrom": {
+                    "type": "string"
+                },
+                "errKey": {
+                    "type": "string"
+                },
+                "errType": {
+                    "type": "string"
+                },
+                "serverUrl": {
                     "type": "string"
                 }
             }
@@ -26770,6 +27806,92 @@ const docTemplate = `{
                 }
             }
         },
+        "server.appTemplateContentResponse": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "hasLocalCopy": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "origin": {
+                    "type": "string"
+                },
+                "refreshed": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "server.appTemplateFieldChange": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string"
+                },
+                "new": {
+                    "type": "string"
+                },
+                "old": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.appTemplateResetPreview": {
+            "type": "object",
+            "properties": {
+                "changeCount": {
+                    "type": "integer"
+                },
+                "changes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.appTemplateFieldChange"
+                    }
+                },
+                "forceRefresh": {
+                    "type": "boolean"
+                },
+                "templateName": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.appTemplateStructureGuideResponse": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.appTemplateSummary": {
+            "type": "object",
+            "properties": {
+                "editable": {
+                    "type": "boolean"
+                },
+                "hasLocalCopy": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "origin": {
+                    "type": "string"
+                },
+                "refreshable": {
+                    "type": "boolean"
+                },
+                "scope": {
+                    "description": "\"cluster\" | \"global\"",
+                    "type": "string"
+                }
+            }
+        },
         "server.globalAlertsResponse": {
             "type": "object",
             "properties": {
@@ -26784,6 +27906,31 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/state.StateHttp"
                     }
+                }
+            }
+        },
+        "server.globalLogsResponse": {
+            "type": "object",
+            "properties": {
+                "general": {
+                    "$ref": "#/definitions/server.globalLogsSnapshot"
+                }
+            }
+        },
+        "server.globalLogsSnapshot": {
+            "type": "object",
+            "properties": {
+                "buffer": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/s18log.HttpMessage"
+                    }
+                },
+                "len": {
+                    "type": "integer"
+                },
+                "line": {
+                    "type": "integer"
                 }
             }
         },
@@ -26856,6 +28003,43 @@ const docTemplate = `{
                 },
                 "process": {
                     "$ref": "#/definitions/server.globalMetricsProcessInfo"
+                }
+            }
+        },
+        "server.pfsJoinLink": {
+            "type": "object",
+            "properties": {
+                "joinWeightPct": {
+                    "description": "0–100",
+                    "type": "number"
+                },
+                "tableA": {
+                    "description": "\"schema.table\"",
+                    "type": "string"
+                },
+                "tableB": {
+                    "description": "\"schema.table\"",
+                    "type": "string"
+                }
+            }
+        },
+        "server.pfsSnapshotWeights": {
+            "type": "object",
+            "properties": {
+                "links": {
+                    "description": "computed join weights for this period",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.pfsJoinLink"
+                    }
+                },
+                "snapshotFile": {
+                    "description": "basename of the .jsonl file",
+                    "type": "string"
+                },
+                "timestamp": {
+                    "description": "RFC3339 of the snapshot hour",
+                    "type": "string"
                 }
             }
         },
