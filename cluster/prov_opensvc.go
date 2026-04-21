@@ -226,7 +226,7 @@ func (cluster *Cluster) openSVCCreateMapsV3(svc opensvc.Collector, agent string)
 	var allErr error
 
 	err := svc.CreateSecret(cluster.Name, "env", agent)
-	if err != nil && !errors.Is(err, opensvc.ErrObjectAlreadyExists) {
+	if err != nil && !errors.Is(err, opensvc.ErrObjectAlreadyExists) && !errors.Is(err, opensvc.ErrObjectConflict) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create secret: %s ", err)
 		return err
 	}
@@ -253,7 +253,7 @@ func (cluster *Cluster) openSVCCreateMapsV3(svc opensvc.Collector, agent string)
 	}
 
 	err = svc.CreateConfig(cluster.Name, "env", agent)
-	if err != nil && !errors.Is(err, opensvc.ErrObjectAlreadyExists) {
+	if err != nil && !errors.Is(err, opensvc.ErrObjectAlreadyExists) && !errors.Is(err, opensvc.ErrObjectConflict) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create config: %s ", err)
 		allErr = errors.Join(allErr, fmt.Errorf("create config env: %w", err))
 	}
