@@ -12,8 +12,8 @@ import RMButton from '../../RMButton'
 import styles from './styles.module.scss'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
+import { AUTO_RELOAD_PAUSE_KEY } from '../../../utility/autoReloadPause'
 
-const AUTO_RELOAD_PAUSE_KEY = 'pause_auto_reload'
 const CONFIRM_MODAL_PAUSE_TOKEN = 'confirm-modal'
 const CONFIRM_MODAL_PAUSE_COUNT_KEY = 'pause_auto_reload_confirm_modal_count'
 

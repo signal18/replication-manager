@@ -858,7 +858,10 @@ func (repman *ReplicationManager) handlerMuxAppUnprovision(w http.ResponseWriter
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
-			mycluster.OpenSVCUnprovisionAppService(node)
+			if err := mycluster.OpenSVCUnprovisionAppService(node); err != nil {
+				http.Error(w, fmt.Sprintf("Can not unprovision app service: %s", err), http.StatusInternalServerError)
+				return
+			}
 		} else {
 			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return

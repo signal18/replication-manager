@@ -32,16 +32,29 @@ import (
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
-func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) {
+func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) error {
 	svc := cluster.OpenSVCConnect()
+	var opErr error
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
-		node, _ := cluster.OpenSVCFoundAppAgent(app)
-		for _, service := range node.Svc {
-			if app.GetServiceName() == service.Svc_name {
-				idaction, _ := svc.UnprovisionService(node.Node_id, service.Svc_id)
-				err := cluster.OpenSVCWaitDequeue(svc, idaction)
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't unprovision app %s, %s", app.GetId(), err)
+		node, err := cluster.OpenSVCFoundAppAgent(app)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't find app agent %s, %s", app.GetId(), err)
+			opErr = errors.Join(opErr, err)
+		} else {
+			for _, service := range node.Svc {
+				if app.GetServiceName() == service.Svc_name {
+					idaction, err := svc.UnprovisionService(node.Node_id, service.Svc_id)
+					if err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't queue unprovision app %s, %s", app.GetId(), err)
+						opErr = errors.Join(opErr, err)
+						continue
+					}
+
+					err = cluster.OpenSVCWaitDequeue(svc, idaction)
+					if err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't unprovision app %s, %s", app.GetId(), err)
+						opErr = errors.Join(opErr, err)
+					}
 				}
 			}
 		}
@@ -49,30 +62,31 @@ func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) {
 		err := svc.PurgeServiceV3(cluster.Name, app.GetServiceName())
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app service:  %s ", err)
-			cluster.errorChan <- err
+			opErr = errors.Join(opErr, err)
 		}
 		for _, volumename := range app.GetVolumes(true) {
 			err = svc.PurgeServiceV3(cluster.Name, cluster.Name+"/vol/"+volumename)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app volume:  %s ", err)
-				cluster.errorChan <- err
+				opErr = errors.Join(opErr, err)
 			}
 		}
 	} else {
 		err := svc.PurgeServiceV2(cluster.GetName(), app.GetServiceName(), app.GetAgent())
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app service:  %s ", err)
-			cluster.errorChan <- err
+			opErr = errors.Join(opErr, err)
 		}
 		for _, volumename := range app.GetVolumes(true) {
 			err = svc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+volumename, app.GetAgent())
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app volume:  %s ", err)
-				cluster.errorChan <- err
+				opErr = errors.Join(opErr, err)
 			}
 		}
 	}
-	cluster.errorChan <- nil
+
+	return opErr
 }
 
 func (cluster *Cluster) OpenSVCStopAppService(app *App, node string) error {
@@ -830,13 +844,9 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 
 	svc := cluster.OpenSVCConnect()
 
-	isAlreadyExists := func(err error) bool {
-		return isOpenSVCAlreadyExists(err)
-	}
-
 	err := svc.CreateSecret(cluster.Name, app.Name, agent)
 	if err != nil {
-		if isAlreadyExists(err) && cluster.Conf.ProvObjectAllowOverwrite {
+		if isOpenSVCAlreadyExists(err) && cluster.Conf.ProvObjectAllowOverwrite {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Overwriting existing secret for app %s without truncation", app.Name)
 		} else {
 			return err
@@ -845,7 +855,7 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 
 	err = svc.CreateConfig(cluster.Name, app.Name, agent)
 	if err != nil {
-		if isAlreadyExists(err) && cluster.Conf.ProvObjectAllowOverwrite {
+		if isOpenSVCAlreadyExists(err) && cluster.Conf.ProvObjectAllowOverwrite {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Overwriting existing config for app %s without truncation", app.Name)
 		} else {
 			return err

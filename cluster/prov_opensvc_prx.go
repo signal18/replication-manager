@@ -27,15 +27,27 @@ import (
 
 func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx DatabaseProxy) {
 	svc := cluster.OpenSVCConnect()
+	var opErr error
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
-		node, _ := cluster.FoundProxyAgent(prx)
-		for _, service := range node.Svc {
-			if prx.GetServiceName() == service.Svc_name {
-				idaction, _ := svc.UnprovisionService(node.Node_id, service.Svc_id)
-				err := cluster.OpenSVCWaitDequeue(svc, idaction)
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't unprovision proxy %s, %s", prx.GetId(), err)
-					cluster.errorChan <- err
+		node, err := cluster.FoundProxyAgent(prx)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't find proxy agent %s, %s", prx.GetId(), err)
+			opErr = errors.Join(opErr, err)
+		} else {
+			for _, service := range node.Svc {
+				if prx.GetServiceName() == service.Svc_name {
+					idaction, err := svc.UnprovisionService(node.Node_id, service.Svc_id)
+					if err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't queue unprovision proxy %s, %s", prx.GetId(), err)
+						opErr = errors.Join(opErr, err)
+						continue
+					}
+
+					err = cluster.OpenSVCWaitDequeue(svc, idaction)
+					if err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't unprovision proxy %s, %s", prx.GetId(), err)
+						opErr = errors.Join(opErr, err)
+					}
 				}
 			}
 		}
@@ -43,26 +55,26 @@ func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx DatabaseProxy) {
 		err := svc.PurgeServiceV3(cluster.Name, prx.GetServiceName())
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision proxy service:  %s ", err)
-			cluster.errorChan <- err
+			opErr = errors.Join(opErr, err)
 		}
 		err = svc.PurgeServiceV3(cluster.Name, cluster.Name+"/vol/"+prx.GetName())
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision proxy volume:  %s ", err)
-			cluster.errorChan <- err
+			opErr = errors.Join(opErr, err)
 		}
 	} else {
 		err := svc.PurgeServiceV2(cluster.GetName(), prx.GetServiceName(), prx.GetAgent())
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision proxy service:  %s ", err)
-			cluster.errorChan <- err
+			opErr = errors.Join(opErr, err)
 		}
 		err = svc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+prx.GetName(), prx.GetAgent())
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision proxy volume:  %s ", err)
-			cluster.errorChan <- err
+			opErr = errors.Join(opErr, err)
 		}
 	}
-	cluster.errorChan <- nil
+	cluster.errorChan <- opErr
 }
 
 func (cluster *Cluster) OpenSVCStopProxyService(server DatabaseProxy) error {

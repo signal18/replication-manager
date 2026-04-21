@@ -211,7 +211,7 @@ func (repman *ReplicationManager) handlerMuxProxyAbort(w http.ResponseWriter, r 
 	node := mycluster.GetProxyFromName(vars["proxyName"])
 	if node == nil {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Server Not Found"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Proxy Not Found"})
 		return
 	}
 
@@ -260,7 +260,7 @@ func (repman *ReplicationManager) handlerMuxProxyClear(w http.ResponseWriter, r 
 	node := mycluster.GetProxyFromName(vars["proxyName"])
 	if node == nil {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Server Not Found"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Proxy Not Found"})
 		return
 	}
 

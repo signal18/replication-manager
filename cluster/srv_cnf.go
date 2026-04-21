@@ -840,92 +840,6 @@ func (server *ServerMonitor) ReadPreservedVariables() error {
 	return nil
 }
 
-// Read-only variables that should never be written to config files
-var readOnlyVariables = []string{
-	"VERSION",
-	"VERSION_COMMENT",
-	"VERSION_COMPILE_MACHINE",
-	"VERSION_COMPILE_OS",
-	"HOSTNAME",
-	"SERVER_UUID",
-	"BASEDIR",
-	"LOG_BIN_BASENAME",
-	"LOG_BIN_INDEX",
-	"RELAY_LOG_BASENAME",
-	"RELAY_LOG_INDEX",
-	"DATADIR", // Paths should not be changed via runtime fallback
-}
-
-// Variables safe for runtime fallback (whitelist)
-var safeRuntimeFallbackVariables = []string{
-	"INNODB_BUFFER_POOL_SIZE",
-	"MAX_CONNECTIONS",
-	"INNODB_LOG_FILE_SIZE",
-	"INNODB_FLUSH_LOG_AT_TRX_COMMIT",
-	"SYNC_BINLOG",
-	"BINLOG_FORMAT",
-	"SLOW_QUERY_LOG",
-	"SLOW_QUERY_LOG_FILE",
-	"LONG_QUERY_TIME",
-	"LOG_QUERIES_NOT_USING_INDEXES",
-	"GENERAL_LOG",
-	"GENERAL_LOG_FILE",
-	"LOG_ERROR",
-	"LOG_WARNINGS",
-	"EXPIRE_LOGS_DAYS",
-	"BINLOG_EXPIRE_LOGS_SECONDS",
-	"MAX_ALLOWED_PACKET",
-	"MAX_BINLOG_SIZE",
-	"MAX_RELAY_LOG_SIZE",
-	"RELAY_LOG_SPACE_LIMIT",
-	"INNODB_IO_CAPACITY",
-	"INNODB_IO_CAPACITY_MAX",
-	"INNODB_FLUSH_METHOD",
-	"INNODB_FILE_PER_TABLE",
-	"INNODB_BUFFER_POOL_INSTANCES",
-	"INNODB_LOG_BUFFER_SIZE",
-	"INNODB_WRITE_IO_THREADS",
-	"INNODB_READ_IO_THREADS",
-	"INNODB_PURGE_THREADS",
-	"INNODB_PAGE_CLEANERS",
-	"TABLE_OPEN_CACHE",
-	"TABLE_DEFINITION_CACHE",
-	"OPEN_FILES_LIMIT",
-	"THREAD_CACHE_SIZE",
-	"QUERY_CACHE_SIZE",
-	"QUERY_CACHE_TYPE",
-	"TMP_TABLE_SIZE",
-	"MAX_HEAP_TABLE_SIZE",
-	"JOIN_BUFFER_SIZE",
-	"SORT_BUFFER_SIZE",
-	"READ_BUFFER_SIZE",
-	"READ_RND_BUFFER_SIZE",
-	"BINLOG_CACHE_SIZE",
-	"BINLOG_STMT_CACHE_SIZE",
-}
-
-// isReadOnlyVariable checks if a variable is read-only and should never be changed
-func isReadOnlyVariable(varName string) bool {
-	upperName := strings.ToUpper(varName)
-	for _, readOnly := range readOnlyVariables {
-		if upperName == readOnly {
-			return true
-		}
-	}
-	return false
-}
-
-// isSafeForRuntimeFallback checks if a variable is whitelisted for runtime fallback
-func isSafeForRuntimeFallback(varName string) bool {
-	upperName := strings.ToUpper(varName)
-	for _, safe := range safeRuntimeFallbackVariables {
-		if upperName == safe {
-			return true
-		}
-	}
-	return false
-}
-
 func (server *ServerMonitor) WriteDeltaVariables() error {
 	cluster := server.ClusterGroup
 	deltapath := filepath.Join(server.Datadir, "02_delta.cnf")
@@ -946,8 +860,14 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 			continue
 		}
 
-		// Normal case: deployed value exists
-		content.WriteString(v.PrintDeployedDelta() + "\n")
+		// Runtime fallback is intentionally disabled here. Delta files only persist
+		// deployed values that differ from config and are not preserved.
+		deltaLine := strings.TrimSpace(v.PrintDeployedDelta())
+		if deltaLine == "" {
+			continue
+		}
+
+		content.WriteString(deltaLine + "\n")
 	}
 
 	// Write atomically

@@ -3,8 +3,8 @@ import { Menu, MenuButton, MenuList, MenuItem, IconButton, HStack, Spacer } from
 import { HiChevronRight, HiDotsVertical } from 'react-icons/hi'
 import styles from './styles.module.scss'
 import CustomIcon from '../Icons/CustomIcon'
+import { AUTO_RELOAD_PAUSE_KEY } from '../../utility/autoReloadPause'
 
-const AUTO_RELOAD_PAUSE_KEY = 'pause_auto_reload'
 const MENU_PAUSE_TOKEN = 'menu-options'
 const MENU_PAUSE_COUNT_KEY = 'pause_auto_reload_menu_count'
 
