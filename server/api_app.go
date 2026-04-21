@@ -706,7 +706,7 @@ func (repman *ReplicationManager) handlerMuxAppAbort(w http.ResponseWriter, r *h
 	app := mycluster.GetAppFromName(vars["appName"])
 	if app == nil {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Server Not Found"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "App Not Found"})
 		return
 	}
 
@@ -755,7 +755,7 @@ func (repman *ReplicationManager) handlerMuxAppClear(w http.ResponseWriter, r *h
 	app := mycluster.GetAppFromName(vars["appName"])
 	if app == nil {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Server Not Found"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "App Not Found"})
 		return
 	}
 

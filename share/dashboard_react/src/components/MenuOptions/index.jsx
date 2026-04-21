@@ -3,10 +3,7 @@ import { Menu, MenuButton, MenuList, MenuItem, IconButton, HStack, Spacer } from
 import { HiChevronRight, HiDotsVertical } from 'react-icons/hi'
 import styles from './styles.module.scss'
 import CustomIcon from '../Icons/CustomIcon'
-import { AUTO_RELOAD_PAUSE_KEY } from '../../utility/autoReloadPause'
-
-const MENU_PAUSE_TOKEN = 'menu-options'
-const MENU_PAUSE_COUNT_KEY = 'pause_auto_reload_menu_count'
+import { acquireAutoReloadPause, releaseAutoReloadPause } from '../../utility/autoReloadPause'
 
 function MenuOptions({
   options = [],
@@ -19,25 +16,13 @@ function MenuOptions({
   const [menuOptions, setMenuOptions] = useState([])
   const menuPauseRegisteredRef = useRef(false)
 
-  const getMenuPauseCount = () => {
-    const pauseCount = parseInt(localStorage.getItem(MENU_PAUSE_COUNT_KEY) || '0', 10)
-    return Number.isNaN(pauseCount) ? 0 : pauseCount
-  }
-
   const pauseAutoReloadForMenu = () => {
     if (menuPauseRegisteredRef.current) {
       return
     }
 
-    const currentPauseState = localStorage.getItem(AUTO_RELOAD_PAUSE_KEY)
-    const currentPauseCount = getMenuPauseCount()
-
-    localStorage.setItem(MENU_PAUSE_COUNT_KEY, String(currentPauseCount + 1))
+    acquireAutoReloadPause()
     menuPauseRegisteredRef.current = true
-
-    if (!currentPauseState) {
-      localStorage.setItem(AUTO_RELOAD_PAUSE_KEY, MENU_PAUSE_TOKEN)
-    }
   }
 
   const resumeAutoReloadFromMenu = () => {
@@ -45,18 +30,7 @@ function MenuOptions({
       return
     }
 
-    const currentPauseCount = getMenuPauseCount()
-    const nextPauseCount = Math.max(0, currentPauseCount - 1)
-
-    if (nextPauseCount === 0) {
-      localStorage.removeItem(MENU_PAUSE_COUNT_KEY)
-
-      if (localStorage.getItem(AUTO_RELOAD_PAUSE_KEY) === MENU_PAUSE_TOKEN) {
-        localStorage.removeItem(AUTO_RELOAD_PAUSE_KEY)
-      }
-    } else {
-      localStorage.setItem(MENU_PAUSE_COUNT_KEY, String(nextPauseCount))
-    }
+    releaseAutoReloadPause()
 
     menuPauseRegisteredRef.current = false
   }
