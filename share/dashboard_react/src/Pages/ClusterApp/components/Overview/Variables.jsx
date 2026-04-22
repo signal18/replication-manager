@@ -265,7 +265,7 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
         </Flex>
         <Flex direction="column" flex="1">
           <Text mb={1}>Variable Type:</Text>
-          <Dropdown id={`variables[${index}].type`} confirmTitle={"Variable type changed"} selectedValue={v.type} onChange={(e) => onRowArrayChange(fieldName, index, "type", e.target.value)} options={variableTypes} />
+          <Dropdown id={`variables[${index}].type`} confirmTitle={"Variable type changed"} selectedValue={v.type} onChange={(value) => onRowArrayChange(fieldName, index, "type", value)} options={variableTypes} />
         </Flex>
         <Flex direction="column" flex="1">
           <Text mb={1}>Variable Value:</Text>
