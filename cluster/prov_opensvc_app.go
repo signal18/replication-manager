@@ -625,10 +625,10 @@ func (cluster *Cluster) OpenSVCGetAppDefaultSection(app *App) map[string]string 
 		svcdefault["flex_primary"] = nodes[0]
 		svcdefault["flex_target"] = strconv.Itoa(len(nodes))
 	} else {
-		svcdefault["orchestrate"] = "ha"
 		svcdefault["rollback"] = "false"
 	}
 
+	svcdefault["orchestrate"] = "ha"
 	svcdefault["app"] = cluster.Conf.ProvCodeApp
 	return svcdefault
 }
