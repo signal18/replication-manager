@@ -743,7 +743,7 @@ function unprovisionApp(clusterName, appId, baseURL) {
 }
 
 function updateRoutesApp(clusterName, appId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/update-routes`)
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/actions/update-routes`)
 }
 
 function startApp(clusterName, appId, baseURL) {

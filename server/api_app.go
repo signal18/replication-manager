@@ -72,7 +72,7 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/update-routes", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppUpdateRoutes)),
-	))
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/stop", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppStop)),
@@ -843,7 +843,8 @@ func (repman *ReplicationManager) handlerMuxAppProvision(w http.ResponseWriter, 
 // @Param appName path string true "App Name"
 // @Success 200 {string} string "App Routes Updated"
 // @Failure 403 {string} string "No valid ACL"
-// @Failure 500 {string} string "Cluster Not Found" "App Not Found"
+// @Failure 404 {string} string "App Not Found"
+// @Failure 500 {string} string "Cluster Not Found"
 // @Router /api/clusters/{clusterName}/apps/{appName}/actions/update-routes [post]
 func (repman *ReplicationManager) handlerMuxAppUpdateRoutes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -866,8 +867,9 @@ func (repman *ReplicationManager) handlerMuxAppUpdateRoutes(w http.ResponseWrite
 				http.Error(w, "Failed to update app routes: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
+			fmt.Fprintf(w, "App Routes Updated")
 		} else {
-			http.Error(w, "App Not Found", http.StatusInternalServerError)
+			http.Error(w, "App Not Found", http.StatusNotFound)
 			return
 		}
 	} else {
