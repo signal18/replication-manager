@@ -19,7 +19,8 @@ export const globalClustersService = {
   reloadClustersPlanInfo,
   refreshAppTemplateRepo,
   getAppTemplateStructureGuide,
-  register
+  register,
+  confirmRegister
 }
 
 function getClusters(baseURL) {
@@ -97,4 +98,8 @@ function getAppTemplateStructureGuide(clusterName, baseURL) {
 
 function register(email, password, uri) {
   return getApi().post('register', { email, password, uri })
+}
+
+function confirmRegister(email, password, uri) {
+  return getApi().post('register/confirm', { email, password, uri })
 }

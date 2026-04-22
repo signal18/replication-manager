@@ -194,22 +194,40 @@ export const registerInstance = createGuardedAsyncThunk(
   async ({ email, password, uri }, thunkAPI) => {
     try {
       const { data, status } = await globalClustersService.register(email, password, uri)
-      if (status === 201) {
-        if (data?.connect_error) {
-          showSuccessBanner(
-            `Registered successfully but connect failed — set cloud18=true once GitLab is reachable`,
-            status,
-            thunkAPI
-          )
-        } else {
-          showSuccessBanner('Registration and Cloud18 connect succeeded!', status, thunkAPI)
-        }
+      if (status === 202) {
+        showSuccessBanner('GitLab account created — check your email for the confirmation link', status, thunkAPI)
         return { data, status }
       } else {
         throw new Error(typeof data === 'object' ? (data?.error || JSON.stringify(data)) : data)
       }
     } catch (error) {
       showErrorBanner('Registration failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const confirmRegisterInstance = createGuardedAsyncThunk(
+  'globalClusters/confirmRegisterInstance',
+  async ({ email, password, uri }, thunkAPI) => {
+    try {
+      const { data, status } = await globalClustersService.confirmRegister(email, password, uri)
+      if (status === 201) {
+        if (data?.connect_error) {
+          showSuccessBanner(
+            `Registered successfully — connect will retry once GitLab is reachable`,
+            status,
+            thunkAPI
+          )
+        } else {
+          showSuccessBanner('Registration complete — Cloud18 is now connected!', status, thunkAPI)
+        }
+        return { data, status }
+      } else {
+        throw new Error(typeof data === 'object' ? (data?.error || JSON.stringify(data)) : data)
+      }
+    } catch (error) {
+      showErrorBanner('Confirmation failed!', error, thunkAPI)
       return handleError(error, thunkAPI)
     }
   }

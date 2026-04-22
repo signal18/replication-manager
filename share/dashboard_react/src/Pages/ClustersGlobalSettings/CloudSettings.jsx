@@ -7,7 +7,7 @@ import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
-import { switchGlobalSetting, setGlobalSetting, reloadClustersPlan, reloadClustersPlanInfo, registerInstance } from '../../redux/globalClustersSlice'
+import { switchGlobalSetting, setGlobalSetting, reloadClustersPlan, reloadClustersPlanInfo, registerInstance, confirmRegisterInstance } from '../../redux/globalClustersSlice'
 import TextForm from '../../components/TextForm'
 import RMIconButton from '../../components/RMIconButton'
 import { HiOutlineInformationCircle, HiQuestionMarkCircle, HiRefresh } from 'react-icons/hi'
@@ -33,10 +33,12 @@ function CloudSettings({ config }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [shouldRedownloadPlans, setShouldRedownloadPlans] = useState(true)
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
+  const [registerStep, setRegisterStep] = useState(1)
   const [showPassword, setShowPassword] = useState(false)
   const [registerForm, setRegisterForm] = useState({ email: '', password: '', domain: '', subdomain: '', zone: '' })
   const [registerErrors, setRegisterErrors] = useState({})
-  const [isRegistering, setIsRegistering] = useState(false)
+  const [isSendingCode, setIsSendingCode] = useState(false)
+  const [isConfirming, setIsConfirming] = useState(false)
   const errInvalidGrant = (err) => { if (err?.message?.includes("invalid_grant")) err.message = <>{err.message}. <Link href="https://gitlab.signal18.io/users/sign_up" target='_blank'><u>Click here to Sign Up</u></Link></>; return err }
 
   const benefits = `Registered Replication Manager to Cloud18 benefit many advantages  
@@ -81,9 +83,9 @@ Start create an account in https://gitlab.signal18.io
   const disableConnect = useMemo(() => (config?.cloud18GitUser === "" || config?.cloud18Domain === "" || config?.cloud18SubDomain === "" || config?.cloud18SubDomainZone === ""),[config?.cloud18GitUser, config?.cloud18Domain, config?.cloud18SubDomain, config?.cloud18SubDomainZone])
 
   const openRegisterModal = () => {
-    const emailGuess = config?.cloud18GitUser || ''
+    setRegisterStep(1)
     setRegisterForm({
-      email: emailGuess,
+      email: config?.cloud18GitUser || '',
       password: '',
       domain: config?.cloud18Domain || '',
       subdomain: config?.cloud18SubDomain || '',
@@ -109,20 +111,34 @@ Start create an account in https://gitlab.signal18.io
     return errors
   }
 
-  const handleRegisterSubmit = async () => {
+  // Step 1: create GitLab account — GitLab sends confirmation email
+  const handleSendConfirmation = async () => {
     const errors = validateRegisterForm(registerForm)
     if (Object.keys(errors).length > 0) { setRegisterErrors(errors); return }
-    setIsRegistering(true)
+    setIsSendingCode(true)
     const uri = `${registerForm.domain.trim()}.${registerForm.subdomain.trim()}.${registerForm.zone.trim()}`
-    await dispatch(registerInstance({ email: registerForm.email.trim(), password: registerForm.password, uri }))
-    setIsRegistering(false)
-    setIsRegisterModalOpen(false)
+    const result = await dispatch(registerInstance({ email: registerForm.email.trim(), password: registerForm.password, uri }))
+    setIsSendingCode(false)
+    if (result?.payload?.status === 202) {
+      setRegisterStep(2)
+    }
   }
 
-  const registerFormBody = (
+  // Step 2: user has confirmed email via GitLab link — complete registration
+  const handleConfirmRegistration = async () => {
+    setIsConfirming(true)
+    const uri = `${registerForm.domain.trim()}.${registerForm.subdomain.trim()}.${registerForm.zone.trim()}`
+    const result = await dispatch(confirmRegisterInstance({ email: registerForm.email.trim(), password: registerForm.password, uri }))
+    setIsConfirming(false)
+    if (result?.payload?.status === 201) {
+      setIsRegisterModalOpen(false)
+    }
+  }
+
+  const registerFormBody = registerStep === 1 ? (
     <VStack spacing={3} align='stretch' pb={2}>
       <Text fontSize='sm' color='gray.500'>
-        Creates a new GitLab account at <Link href='https://gitlab.signal18.io' target='_blank' color='blue.400'>gitlab.signal18.io</Link> and links this instance. The email is used as the GitLab username.
+        Creates a GitLab account at <Link href='https://gitlab.signal18.io' target='_blank' color='blue.400'>gitlab.signal18.io</Link>. GitLab will send a confirmation email — you will need to click it before completing registration.
       </Text>
       <FormControl isInvalid={!!registerErrors.email} isRequired>
         <FormLabel fontSize='sm'>Email</FormLabel>
@@ -172,7 +188,23 @@ Start create an account in https://gitlab.signal18.io
       <Text fontSize='xs' color='gray.400'>URI: {registerForm.domain || 'domain'}.{registerForm.subdomain || 'subdomain'}.{registerForm.zone || 'zone'}</Text>
       <HStack justify='flex-end' pt={1}>
         <RMButton variant='ghost' onClick={() => setIsRegisterModalOpen(false)}>Cancel</RMButton>
-        <RMButton isLoading={isRegistering} onClick={handleRegisterSubmit}>Register</RMButton>
+        <RMButton isLoading={isSendingCode} onClick={handleSendConfirmation}>Send Confirmation Email</RMButton>
+      </HStack>
+    </VStack>
+  ) : (
+    <VStack spacing={4} align='stretch' pb={2}>
+      <Text fontSize='sm'>
+        A confirmation email has been sent to <strong>{registerForm.email}</strong> by GitLab.
+      </Text>
+      <Text fontSize='sm' color='gray.500'>
+        Click the link in the email to confirm your GitLab account, then click <strong>Complete Registration</strong> below. GitLab must validate your email before the projects can be created.
+      </Text>
+      <HStack justify='space-between' pt={2}>
+        <RMButton variant='ghost' onClick={() => setRegisterStep(1)}>Back</RMButton>
+        <HStack>
+          <RMButton variant='ghost' onClick={() => setIsRegisterModalOpen(false)}>Cancel</RMButton>
+          <RMButton isLoading={isConfirming} onClick={handleConfirmRegistration}>Complete Registration</RMButton>
+        </HStack>
       </HStack>
     </VStack>
   )
@@ -426,7 +458,7 @@ Start create an account in https://gitlab.signal18.io
         <CommonModal
           isOpen={isRegisterModalOpen}
           size='md'
-          title='Register with Signal18 Cloud18'
+          title={registerStep === 1 ? 'Register with Signal18 Cloud18 (1/2)' : 'Confirm your email (2/2)'}
           body={registerFormBody}
           closeModal={() => setIsRegisterModalOpen(false)}
         />
