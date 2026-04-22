@@ -61,6 +61,15 @@ func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http
 	}
 
 	// ----------------------------------------------------------------
+	// Admin-only endpoint
+	// ----------------------------------------------------------------
+	claims, err := repman.GetJWTClaims(r)
+	if err != nil || claims["User"] != "admin" {
+		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
+		return
+	}
+
+	// ----------------------------------------------------------------
 	// Parse request body
 	// ----------------------------------------------------------------
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
