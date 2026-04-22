@@ -12,14 +12,16 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 // registerRequest is the JSON body accepted by POST /api/register.
 type registerRequest struct {
-	Email string `json:"email"`
-	// URI is parsed as domain.subdomain.zone
-	URI      string `json:"uri"`
+	Email    string `json:"email"`
 	Password string `json:"password"`
+	// URI is parsed as domain.subdomain.zone  (e.g. "mycompany.ovh.fr-1")
+	URI string `json:"uri"`
 }
 
 // crmRegisterPayload is the body forwarded to the CRM API.
@@ -31,9 +33,9 @@ type crmRegisterPayload struct {
 	Zone      string `json:"zone"`
 }
 
-// handlerRegister proxies a cluster-slot registration request to the CRM API.
+// handlerRegister registers a new cluster slot on the Signal18 DBAaS platform.
 //
-// POST /api/register
+// POST /api/register  (no authentication required)
 //
 // Request body:
 //
@@ -43,9 +45,12 @@ type crmRegisterPayload struct {
 //	  "uri":      "mycompany.ovh.fr-1"
 //	}
 //
-// The uri field is split on the first two dots into domain, subdomain, zone.
-// The request is forwarded to the URL configured by cloud18-crm-api-url
-// (default: https://api.crm.ovh-fr-2.signal18.cloud18.io).
+// On success (CRM API returns 201) the handler:
+//  1. Sets Cloud18Domain, Cloud18SubDomain, Cloud18SubDomainZone from the URI
+//  2. Sets Cloud18GitUser / Cloud18GitPassword from email / password
+//  3. Enables Cloud18 and calls InitGitConfig — the same "connect" flow triggered
+//     by setting cloud18=true in global settings — which authenticates with GitLab,
+//     creates a personal access token, sets up Git URLs, and clones the config repo.
 func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -86,10 +91,13 @@ func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http
 			http.StatusBadRequest)
 		return
 	}
-	domain, subdomain, zone := parts[0], parts[1], parts[2]
+	domain := strings.TrimSpace(strings.ToLower(parts[0]))
+	subdomain := strings.TrimSpace(strings.ToLower(parts[1]))
+	zone := strings.TrimSpace(strings.ToLower(parts[2]))
+	email := strings.TrimSpace(strings.ToLower(req.Email))
 
 	// ----------------------------------------------------------------
-	// Forward to CRM API
+	// Forward registration to CRM API
 	// ----------------------------------------------------------------
 	crmBase := strings.TrimRight(repman.Conf.Cloud18CrmApiUrl, "/")
 	if crmBase == "" {
@@ -97,15 +105,15 @@ func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http
 	}
 	crmURL := crmBase + "/api/register"
 
-	payload := crmRegisterPayload{
-		Email:     strings.TrimSpace(strings.ToLower(req.Email)),
+	crmPayload := crmRegisterPayload{
+		Email:     email,
 		Password:  req.Password,
-		Domain:    strings.TrimSpace(strings.ToLower(domain)),
-		Subdomain: strings.TrimSpace(strings.ToLower(subdomain)),
-		Zone:      strings.TrimSpace(strings.ToLower(zone)),
+		Domain:    domain,
+		Subdomain: subdomain,
+		Zone:      zone,
 	}
 
-	payloadBytes, err := json.Marshal(payload)
+	payloadBytes, err := json.Marshal(crmPayload)
 	if err != nil {
 		http.Error(w, `{"error":"internal error encoding request"}`, http.StatusInternalServerError)
 		return
@@ -119,8 +127,8 @@ func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http
 	crmReq.Header.Set("Content-Type", "application/json")
 	crmReq.Header.Set("Accept", "application/json")
 
-	client := &http.Client{}
-	crmResp, err := client.Do(crmReq)
+	crmClient := &http.Client{}
+	crmResp, err := crmClient.Do(crmReq)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"CRM API unreachable: %s"}`, err), http.StatusBadGateway)
 		return
@@ -134,8 +142,57 @@ func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http
 	}
 
 	// ----------------------------------------------------------------
-	// Relay CRM response verbatim (status code + body)
+	// On failure: relay CRM response verbatim and stop
 	// ----------------------------------------------------------------
-	w.WriteHeader(crmResp.StatusCode)
+	if crmResp.StatusCode != http.StatusCreated {
+		w.WriteHeader(crmResp.StatusCode)
+		w.Write(respBody)
+		return
+	}
+
+	// ----------------------------------------------------------------
+	// Registration succeeded — configure Cloud18 and run connect flow
+	// ----------------------------------------------------------------
+
+	// Set domain/subdomain/zone (guard against Cloud18 already being on)
+	repman.Conf.Cloud18 = false
+	repman.Conf.Cloud18Domain = domain
+	repman.Conf.Cloud18SubDomain = subdomain
+	repman.Conf.Cloud18SubDomainZone = zone
+	repman.Conf.Cloud18GitUser = email
+	repman.Conf.Cloud18GitPassword = req.Password
+	var gitSecret config.Secret
+	gitSecret.Value = req.Password
+	gitSecret.OldValue = repman.Conf.GetDecryptedValue("cloud18-gitlab-password")
+	repman.Conf.Secrets["cloud18-gitlab-password"] = gitSecret
+	repman.Conf.Cloud18 = true
+
+	// InitGitConfig is the same function called when setting cloud18=true in
+	// global settings. It authenticates with GitLab via basic auth, obtains a
+	// personal access token, idempotently creates the Git projects, sets GitUrl /
+	// GitUrlPull, and clones the config repo if needed.
+	if err := repman.InitGitConfig(repman.Conf); err != nil {
+		repman.Conf.Cloud18 = false
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"register: InitGitConfig failed after CRM registration: %s", err)
+
+		// Return the CRM success body but add a connect_error field so the
+		// caller knows registration succeeded but connect needs a retry.
+		var crmBody map[string]interface{}
+		if json.Unmarshal(respBody, &crmBody) == nil {
+			crmBody["connect_error"] = err.Error()
+			if out, e := json.Marshal(crmBody); e == nil {
+				w.WriteHeader(http.StatusCreated)
+				w.Write(out)
+				return
+			}
+		}
+		w.WriteHeader(http.StatusCreated)
+		w.Write(respBody)
+		return
+	}
+
+	// Both registration and connect succeeded — relay the CRM 201 body.
+	w.WriteHeader(http.StatusCreated)
 	w.Write(respBody)
 }
