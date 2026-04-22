@@ -636,7 +636,6 @@ func (cluster *Cluster) OpenSVCGetAppDefaultSection(app *App) map[string]string 
 func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]string {
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
-		svccontainer["hostname"] = "{fqdn}"
 		svccontainer["tags"] = ""
 		svccontainer["netns"] = "container#01"
 		svccontainer["rm"] = "true"
