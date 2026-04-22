@@ -67,45 +67,51 @@ func makeAdminJWT(t *testing.T) string {
 }
 
 // ---------------------------------------------------------------------------
-// 1secmail helpers
+// Guerrillamail helpers
 // ---------------------------------------------------------------------------
 
-type secMailMessage struct {
-	ID      int    `json:"id"`
-	From    string `json:"from"`
-	Subject string `json:"subject"`
+const guerrillaAPI = "https://api.guerrillamail.com/ajax.php"
+
+type guerrillaSession struct {
+	SidToken   string `json:"sid_token"`
+	EmailAddr  string `json:"email_addr"`
 }
 
-type secMailMessageBody struct {
-	HTMLBody string `json:"htmlBody"`
-	TextBody string `json:"textBody"`
+type guerrillaInbox struct {
+	List []guerrillaEmail `json:"list"`
 }
 
-const secMailAPI = "https://www.1secmail.com/api/v1/"
+type guerrillaEmail struct {
+	MailID      string `json:"mail_id"`
+	MailFrom    string `json:"mail_from"`
+	MailSubject string `json:"mail_subject"`
+}
 
-func secMailGenAddress(t *testing.T) (login, domain string) {
+type guerrillaFetch struct {
+	MailBody string `json:"mail_body"`
+}
+
+// guerrillaGenAddress creates a new Guerrillamail session and returns the
+// disposable email address and the sid_token needed for subsequent calls.
+func guerrillaGenAddress(t *testing.T) (email, sid string) {
 	t.Helper()
-	resp, err := http.Get(secMailAPI + "?action=genRandomMailbox&count=1")
+	resp, err := http.Get(guerrillaAPI + "?f=get_email_address")
 	if err != nil {
-		t.Fatalf("1secmail genAddress: %v", err)
+		t.Fatalf("guerrillamail get_email_address: %v", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
-	var addrs []string
-	if err := json.Unmarshal(body, &addrs); err != nil || len(addrs) == 0 {
-		t.Fatalf("1secmail genAddress: unexpected response: %s", body)
+	var sess guerrillaSession
+	if err := json.Unmarshal(body, &sess); err != nil || sess.EmailAddr == "" {
+		t.Fatalf("guerrillamail get_email_address: unexpected response: %s", body)
 	}
-	parts := strings.SplitN(addrs[0], "@", 2)
-	if len(parts) != 2 {
-		t.Fatalf("1secmail genAddress: bad address %q", addrs[0])
-	}
-	return parts[0], parts[1]
+	return sess.EmailAddr, sess.SidToken
 }
 
-// secMailWaitForConfirmation polls the 1secmail inbox until a GitLab
+// guerrillaWaitForConfirmation polls the Guerrillamail inbox until a GitLab
 // confirmation email arrives or the timeout expires.
-func secMailWaitForConfirmation(t *testing.T, login, domain string, timeout time.Duration) string {
+func guerrillaWaitForConfirmation(t *testing.T, sid string, timeout time.Duration) string {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -113,27 +119,27 @@ func secMailWaitForConfirmation(t *testing.T, login, domain string, timeout time
 	for time.Now().Before(deadline) {
 		time.Sleep(5 * time.Second)
 
-		listURL := fmt.Sprintf("%s?action=getMessages&login=%s&domain=%s", secMailAPI, login, domain)
+		listURL := fmt.Sprintf("%s?f=get_email_list&offset=0&sid_token=%s", guerrillaAPI, sid)
 		resp, err := client.Get(listURL)
 		if err != nil {
-			t.Logf("1secmail poll error: %v (retrying)", err)
+			t.Logf("guerrillamail poll error: %v (retrying)", err)
 			continue
 		}
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 
-		var msgs []secMailMessage
-		if err := json.Unmarshal(body, &msgs); err != nil {
+		var inbox guerrillaInbox
+		if err := json.Unmarshal(body, &inbox); err != nil {
 			continue
 		}
 
-		for _, msg := range msgs {
-			if !strings.Contains(strings.ToLower(msg.From), "gitlab") &&
-				!strings.Contains(strings.ToLower(msg.Subject), "confirm") {
+		for _, msg := range inbox.List {
+			if !strings.Contains(strings.ToLower(msg.MailFrom), "gitlab") &&
+				!strings.Contains(strings.ToLower(msg.MailSubject), "confirm") {
 				continue
 			}
-			fetchURL := fmt.Sprintf("%s?action=readMessage&login=%s&domain=%s&id=%d",
-				secMailAPI, login, domain, msg.ID)
+			fetchURL := fmt.Sprintf("%s?f=fetch_email&email_id=%s&sid_token=%s",
+				guerrillaAPI, msg.MailID, sid)
 			resp2, err := client.Get(fetchURL)
 			if err != nil {
 				continue
@@ -141,20 +147,16 @@ func secMailWaitForConfirmation(t *testing.T, login, domain string, timeout time
 			msgBody, _ := io.ReadAll(resp2.Body)
 			resp2.Body.Close()
 
-			var full secMailMessageBody
+			var full guerrillaFetch
 			if err := json.Unmarshal(msgBody, &full); err != nil {
 				continue
 			}
-			content := full.HTMLBody
-			if content == "" {
-				content = full.TextBody
-			}
-			if url := extractGitLabConfirmURL(content); url != "" {
+			if url := extractGitLabConfirmURL(full.MailBody); url != "" {
 				return url
 			}
 		}
 	}
-	t.Fatalf("1secmail: no GitLab confirmation email received within %s", timeout)
+	t.Fatalf("guerrillamail: no GitLab confirmation email received within %s", timeout)
 	return ""
 }
 
@@ -247,9 +249,8 @@ func TestRegisterWorkflow(t *testing.T) {
 	// Mint an admin JWT directly — no running server needed
 	adminToken := makeAdminJWT(t)
 
-	// Generate a disposable email address
-	login, mailDomain := secMailGenAddress(t)
-	email := login + "@" + mailDomain
+	// Generate a disposable email address via Guerrillamail
+	email, sid := guerrillaGenAddress(t)
 	t.Logf("temp email: %s", email)
 
 	// Unique test URI to avoid zone conflicts across runs
@@ -286,7 +287,7 @@ func TestRegisterWorkflow(t *testing.T) {
 	// Step 2 — wait for GitLab confirmation email, follow the link
 	// ----------------------------------------------------------------
 	t.Log("step 2: waiting for confirmation email (up to 3 minutes)...")
-	confirmURL := secMailWaitForConfirmation(t, login, mailDomain, 3*time.Minute)
+	confirmURL := guerrillaWaitForConfirmation(t, sid, 3*time.Minute)
 	t.Logf("step 2: confirmation URL: %s", confirmURL)
 
 	confirmResp, err := http.Get(confirmURL)

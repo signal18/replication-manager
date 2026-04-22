@@ -331,6 +331,14 @@ func initPrintDefaultsFlags(cmd *cobra.Command) {
 	initServerFlags(cmd)
 }
 
+func initRegisterFlags(cmd *cobra.Command) {
+	initServerApiFlags(cmd)
+	cmd.Flags().StringVar(&cliRegisterEmail, "email", "", "Email for the new GitLab account")
+	cmd.Flags().StringVar(&cliRegisterURI, "uri", "", "Registration URI in domain.subdomain.zone format")
+	cmd.Flags().Bool("confirm", false, "Step 2: confirm email and complete registration")
+	viper.BindPFlags(cmd.Flags())
+}
+
 func init() {
 	viper.SetEnvPrefix("REPLICATION_MANAGER_CLI")
 
@@ -386,6 +394,9 @@ func init() {
 
 	rootClientCmd.AddCommand(printDefaultsCmd)
 	initPrintDefaultsFlags(printDefaultsCmd)
+
+	rootClientCmd.AddCommand(registerCmd)
+	initRegisterFlags(registerCmd)
 
 	viper.AutomaticEnv()
 }
