@@ -2080,6 +2080,21 @@ export const unprovisionApp = createGuardedAsyncThunk(
   }
 )
 
+export const updateRoutesApp = createGuardedAsyncThunk(
+  'cluster/updateRoutesApp',
+  async ({ clusterName, appId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.updateRoutesApp(clusterName, appId, baseURL)
+      showSuccessBanner('Update routes successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Update routes failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const startApp = createGuardedAsyncThunk('cluster/startApp', async ({ clusterName, appId }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -2700,6 +2715,7 @@ export const clusterSlice = createSlice({
         clearProxy.pending,
         provisionApp.pending,
         unprovisionApp.pending,
+        updateRoutesApp.pending,
         startApp.pending,
         stopApp.pending,
         abortApp.pending,
@@ -2785,6 +2801,7 @@ export const clusterSlice = createSlice({
         clearProxy.fulfilled,
         provisionApp.fulfilled,
         unprovisionApp.fulfilled,
+        updateRoutesApp.fulfilled,
         startApp.fulfilled,
         stopApp.fulfilled,
         abortApp.fulfilled,
@@ -2871,6 +2888,7 @@ export const clusterSlice = createSlice({
         clearProxy.rejected,
         provisionApp.rejected,
         unprovisionApp.rejected,
+        updateRoutesApp.rejected,
         startApp.rejected,
         stopApp.rejected,
         abortApp.rejected,

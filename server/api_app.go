@@ -69,6 +69,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppProvision)),
 	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/update-routes", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppUpdateRoutes)),
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/stop", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppStop)),
@@ -821,6 +825,51 @@ func (repman *ReplicationManager) handlerMuxAppProvision(w http.ResponseWriter, 
 			}
 		} else {
 			http.Error(w, "Server Not Found", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+		return
+	}
+}
+
+// @Summary Update App Routes
+// @Description Push route configuration to the OpenSVC gateway service for a given app
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Success 200 {string} string "App Routes Updated"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "App Not Found"
+// @Failure 500 {string} string "Cluster Not Found"
+// @Router /api/clusters/{clusterName}/apps/{appName}/actions/update-routes [post]
+func (repman *ReplicationManager) handlerMuxAppUpdateRoutes(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+
+		if mycluster.GetOrchestrator() != "opensvc" {
+			http.Error(w, "Orchestrator not supported", http.StatusInternalServerError)
+			return
+		}
+
+		node := mycluster.GetAppFromName(vars["appName"])
+		if node != nil {
+			if err := mycluster.OpenSVCProvisionRoute(node); err != nil {
+				http.Error(w, "Failed to update app routes: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			fmt.Fprintf(w, "App Routes Updated")
+		} else {
+			http.Error(w, "App Not Found", http.StatusNotFound)
 			return
 		}
 	} else {

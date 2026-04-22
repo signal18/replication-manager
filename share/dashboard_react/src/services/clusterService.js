@@ -159,6 +159,7 @@ export const clusterService = {
   getClusterApps,
   provisionApp,
   unprovisionApp,
+  updateRoutesApp,
   startApp,
   stopApp,
   abortApp,
@@ -739,6 +740,10 @@ function provisionApp(clusterName, appId, baseURL) {
 
 function unprovisionApp(clusterName, appId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/unprovision`)
+}
+
+function updateRoutesApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/actions/update-routes`)
 }
 
 function startApp(clusterName, appId, baseURL) {
