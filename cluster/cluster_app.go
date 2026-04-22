@@ -814,12 +814,15 @@ func (cluster *Cluster) SetAppVariableValue(app *App, v config.VariableMapping) 
 	for i, variable := range app.AppConfig.Deployment.Variables {
 		if variable.Name == v.Name {
 			app.AppConfig.Deployment.Variables[i].Value = newValue
+			app.AppConfig.Deployment.Variables[i].Type = v.Type
 			return nil
 		}
 	}
 
-	// If the variable does not exist, add it
-	app.AppConfig.Deployment.Variables = append(app.AppConfig.Deployment.Variables, config.VariableMapping{Name: v.Name, Value: newValue})
+	// If the variable does not exist, add it — preserve all fields from the input
+	newVar := v
+	newVar.Value = newValue
+	app.AppConfig.Deployment.Variables = append(app.AppConfig.Deployment.Variables, newVar)
 	return nil
 }
 

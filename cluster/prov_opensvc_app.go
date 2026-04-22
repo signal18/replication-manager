@@ -876,14 +876,14 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 				}
 			}
 		} else {
-			err = svc.CreateConfigKeyValue(cluster.Name, app.Name, v.Name, v.Value)
+			err = svc.CreateConfigKeyValue(cluster.Name, app.Name, v.Name, cluster.Conf.GetDecryptedPassword(v.Name, v.Value))
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", v.Name, err)
 			}
 
 			for _, cd := range v.Conditional {
 				cdname := fmt.Sprintf("%s@%s", v.Name, cd.Agent)
-				err = svc.CreateConfigKeyValue(cluster.Name, app.Name, cdname, cd.Value)
+				err = svc.CreateConfigKeyValue(cluster.Name, app.Name, cdname, cluster.Conf.GetDecryptedPassword(cdname, cd.Value))
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add conditional key to config: %s %s ", cdname, err)
 				}
