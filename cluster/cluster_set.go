@@ -1803,7 +1803,7 @@ func (cluster *Cluster) SetProvProxyServiceType(value string) error {
 }
 
 func (cluster *Cluster) Exit() {
-	cluster.exit = true
+	cluster.exit.Store(true)
 }
 
 func (cluster *Cluster) SetInjectVariables() {

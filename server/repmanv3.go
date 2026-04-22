@@ -152,6 +152,8 @@ func (s *ReplicationManager) StartServerV3(debug bool, router *mux.Router) error
 		return true
 	}))
 
+	s.apiServer = srv
+
 	// s.V3Up <- true
 	if s.v3Config.TLS.Enabled {
 		log.Info("starting multiplexed TLS HTTP/2.0 and HTTP/1.1 Gateway server: ", s.v3Config.Listen.AddressWithPort())
@@ -166,7 +168,7 @@ func (s *ReplicationManager) StartServerV3(debug bool, router *mux.Router) error
 		err = srv.Serve(conn)
 	}
 
-	if err != nil {
+	if err != nil && err != http.ErrServerClosed {
 		return err
 	}
 

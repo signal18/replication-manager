@@ -176,3 +176,19 @@ func (ap *InstanceActionParams) ToUnprovisionParams() *apiv3.PostInstanceActionU
 		To:           ap.To,
 	}
 }
+
+func (ap *InstanceActionParams) ToRunParams() *apiv3.PostInstanceActionRunParams {
+	return &apiv3.PostInstanceActionRunParams{
+		Slaves:       ap.Slaves,
+		Confirm:      ap.Confirm,
+		Cron:         ap.Cron,
+		Force:        ap.Force,
+		Master:       ap.Master,
+		RequesterSid: ap.RequesterSid,
+		Rid:          ap.Rid,
+		Slave:        ap.Slave,
+		Subset:       ap.Subset,
+		Tag:          ap.Tag,
+		Env:          ap.Env,
+	}
+}

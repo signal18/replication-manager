@@ -3494,7 +3494,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_icp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0\\n# mariadb_documentation: https://mariadb.com/kb/en/index-condition-pushdown/\\n# mysql_version: 5.6.0\\n# mariadb_command: SET GLOBAL optimizer_switch='index_condition_pushdown=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='index_condition_pushdown=on';\\n\\n[mariadb]\\noptimizer_switch ='index_condition_pushdown=off'\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_icp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0\\n# mariadb_documentation: https://mariadb.com/kb/en/index-condition-pushdown/\\n# mysql_version: 5.6.0\\n# mariadb_command: SET GLOBAL optimizer_switch='index_condition_pushdown=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='index_condition_pushdown=on';\\n\\n[mariadb]\\nloose_optimizer_switch ='index_condition_pushdown=off'\"}",
                     "var_updated": "2024-07-29 19:02:38",
                     "var_name": "db_cnf_opt_no_icp",
                     "id": 6112
@@ -3582,7 +3582,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_intoexists.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0\\n# mariadb_documentation: https://mariadb.com/kb/en/non-semi-join-subquery-optimizations/#the-in-to-exists-transformation\\n# mariadb_command: SET GLOBAL optimizer_switch='in_to_exists=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='in_to_exists=on';\\n \\n[mariadb]\\noptimizer_switch ='in_to_exists=off'\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_intoexists.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0\\n# mariadb_documentation: https://mariadb.com/kb/en/non-semi-join-subquery-optimizations/#the-in-to-exists-transformation\\n# mariadb_command: SET GLOBAL optimizer_switch='in_to_exists=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='in_to_exists=on';\\n \\n[mariadb]\\nloose_optimizer_switch ='in_to_exists=off'\"}",
                     "var_updated": "2024-07-29 19:02:54",
                     "var_name": "db_cnf_opt_no_intoexists",
                     "id": 6135
@@ -3590,7 +3590,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_opt_extendedkeys.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.5.21 \\n# mariadb_documentation: https://mariadb.com/kb/en/extended-keys/\\n# mariadb_command: SET GLOBAL optimizer_switch='extended_keys=on';\\n# mariadb_default: SET GLOBAL optimizer_switch='extended_keys=off';\\n\\n# mysql_command: SET GLOBAL optimizer_switch='use_index_extensions=on';\\n# mysql_default: SET GLOBAL optimizer_switch='use_index_extensions=off';\\n\\n[mariadb]\\noptimizer_switch ='extended_keys=on'\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_opt_extendedkeys.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.5.21 \\n# mariadb_documentation: https://mariadb.com/kb/en/extended-keys/\\n# mariadb_command: SET GLOBAL optimizer_switch='extended_keys=on';\\n# mariadb_default: SET GLOBAL optimizer_switch='extended_keys=off';\\n\\n# mysql_command: SET GLOBAL optimizer_switch='use_index_extensions=on';\\n# mysql_default: SET GLOBAL optimizer_switch='use_index_extensions=off';\\n\\n[mariadb]\\nloose_optimizer_switch ='extended_keys=on'\"}",
                     "var_updated": "2024-07-29 19:05:05",
                     "var_name": "db_cnf_opt_with_extendedkeys",
                     "id": 6136
@@ -3598,7 +3598,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_derivedwithkeys.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0\\n# mariadb_documentation: https://mariadb.com/kb/en/derived-table-with-key-optimization/\\n# mariadb_command: SET GLOBAL optimizer_switch ='derived_with_keys=off';\\n# mariadb_default: SET GLOBAL optimizer_switch ='derived_with_keys=on';\\n \\n# mysql_version: 5.6.0\\n\\n[mariadb]\\noptimizer_switch ='derived_with_keys=off'\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_derivedwithkeys.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0\\n# mariadb_documentation: https://mariadb.com/kb/en/derived-table-with-key-optimization/\\n# mariadb_command: SET GLOBAL optimizer_switch ='derived_with_keys=off';\\n# mariadb_default: SET GLOBAL optimizer_switch ='derived_with_keys=on';\\n \\n# mysql_version: 5.6.0\\n\\n[mariadb]\\nloose_optimizer_switch ='derived_with_keys=off'\"}",
                     "var_updated": "2024-07-29 19:01:52",
                     "var_name": "db_cnf_opt_no_derivedwithkeys",
                     "id": 6137
@@ -3606,7 +3606,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_derivedmerge.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL optimizer_switch ='derived_merge=off';\\n# mariadb_default: SET GLOBAL optimizer_switch ='derived_merge=on';\\n# mariadb_documentation: https://mariadb.com/kb/en/derived-table-merge-optimization/\\n\\n# mysql_command: SET GLOBAL optimizer_switch ='derived_merge=off';\\n# mysql_default: SET GLOBAL optimizer_switch ='derived_merge=on';\\n\\n[mariadb]\\noptimizer_switch ='derived_merge=off'\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_derivedmerge.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL optimizer_switch ='derived_merge=off';\\n# mariadb_default: SET GLOBAL optimizer_switch ='derived_merge=on';\\n# mariadb_documentation: https://mariadb.com/kb/en/derived-table-merge-optimization/\\n\\n# mysql_command: SET GLOBAL optimizer_switch ='derived_merge=off';\\n# mysql_default: SET GLOBAL optimizer_switch ='derived_merge=on';\\n\\n[mariadb]\\nloose_optimizer_switch ='derived_merge=off'\"}",
                     "var_updated": "2024-07-29 19:01:39",
                     "var_name": "db_cnf_opt_no_derivedmerge",
                     "id": 6138
@@ -3614,7 +3614,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_opt_firstmatch.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0 \\n# mysql_version: 5.6.0 \\n# mariadb_documentation: https://mariadb.com/kb/en/firstmatch-strategy/\\n# mariadb_command: SET GLOBAL optimizer_switch='firstmatch=on';\\n# mariadb_default: SET GLOBAL optimizer_switch='firstmatch=off';\\n\\n# mysql_command: SET GLOBAL optimizer_switch='firstmatch=on';\\n# mysql_default: SET GLOBAL optimizer_switch='firstmatch=off';\\n\\n[mariadb]\\noptimizer_switch ='firstmatch=on'\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_opt_firstmatch.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0 \\n# mysql_version: 5.6.0 \\n# mariadb_documentation: https://mariadb.com/kb/en/firstmatch-strategy/\\n# mariadb_command: SET GLOBAL optimizer_switch='firstmatch=on';\\n# mariadb_default: SET GLOBAL optimizer_switch='firstmatch=off';\\n\\n# mysql_command: SET GLOBAL optimizer_switch='firstmatch=on';\\n# mysql_default: SET GLOBAL optimizer_switch='firstmatch=off';\\n\\n[mariadb]\\nloose_optimizer_switch ='firstmatch=on'\"}",
                     "var_updated": "2024-07-29 19:05:17",
                     "var_name": "db_cnf_opt_with_firstmatch",
                     "id": 6139
@@ -3622,7 +3622,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_opt_loosescan.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3\\n# mariadb_documentation: https://mariadb.com/kb/en/loosescan-strategy/\\n# mariadb_command: SET GLOBAL optimizer_switch='loosescan=on';\\n# mariadb_default: SET GLOBAL optimizer_switch='loosescan=off';\\n\\n# mysql_version: 5.6\\n# mysql_command: SET GLOBAL optimizer_switch='loosescan=on';\\n# mysql_default: SET GLOBAL optimizer_switch='loosescan=off';\\n\\n[mariadb]\\noptimizer_switch ='loosescan=on'\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_opt_loosescan.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3\\n# mariadb_documentation: https://mariadb.com/kb/en/loosescan-strategy/\\n# mariadb_command: SET GLOBAL optimizer_switch='loosescan=on';\\n# mariadb_default: SET GLOBAL optimizer_switch='loosescan=off';\\n\\n# mysql_version: 5.6\\n# mysql_command: SET GLOBAL optimizer_switch='loosescan=on';\\n# mysql_default: SET GLOBAL optimizer_switch='loosescan=off';\\n\\n[mariadb]\\nloose_optimizer_switch ='loosescan=on'\"}",
                     "var_updated": "2024-07-29 19:06:23",
                     "var_name": "db_cnf_opt_with_loosescan",
                     "id": 6140
@@ -3630,7 +3630,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_semijoin.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0 \\n# mariadb_documentation: https://mariadb.com/kb/en/semi-join-materialization-strategy/\\n# mariadb_command: SET GLOBAL optimizer_switch='semijoin=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='semijoin=on';\\n\\n# mysql_version: 5.6.0\\n# mysql_command: SET GLOBAL optimizer_switch='semijoin=off';\\n# mysql_default: SET GLOBAL optimizer_switch='semijoin=on';\\n \\n[mariadb]\\noptimizer_switch ='semijoin=off'\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_semijoin.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0 \\n# mariadb_documentation: https://mariadb.com/kb/en/semi-join-materialization-strategy/\\n# mariadb_command: SET GLOBAL optimizer_switch='semijoin=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='semijoin=on';\\n\\n# mysql_version: 5.6.0\\n# mysql_command: SET GLOBAL optimizer_switch='semijoin=off';\\n# mysql_default: SET GLOBAL optimizer_switch='semijoin=on';\\n \\n[mariadb]\\nloose_optimizer_switch ='semijoin=off'\"}",
                     "var_updated": "2024-07-29 19:04:24",
                     "var_name": "db_cnf_opt_no_semijoin",
                     "id": 6141
@@ -3638,7 +3638,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_opt_subquerycache.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL optimizer_switch='subquery_cache=on';\\n# mariadb_default: SET GLOBAL optimizer_switch='subquery_cache=off';\\n\\n[mariadb]\\noptimizer_switch ='subquery_cache=on'\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_opt_subquerycache.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL optimizer_switch='subquery_cache=on';\\n# mariadb_default: SET GLOBAL optimizer_switch='subquery_cache=off';\\n\\n[mariadb]\\nloose_optimizer_switch ='subquery_cache=on'\"}",
                     "var_updated": "2025-11-19 08:40:20",
                     "var_name": "db_cnf_opt_with_subquerycache",
                     "id": 6142
@@ -3646,7 +3646,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_mrr.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0\\n# mysql_version: 5.6.0  \\n# mariadb_documentation: https://mariadb.com/kb/en/multi-range-read-optimization/\\n# mariadb_command: SET GLOBAL optimizer_switch='mrr=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='mrr=on';\\n\\n# mysql_command: SET GLOBAL optimizer_switch='mrr=off';\\n# mysql_default: SET GLOBAL optimizer_switch='mrr=on';\\n\\n[mariadb]\\noptimizer_switch ='mrr=off'\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_mrr.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0\\n# mysql_version: 5.6.0  \\n# mariadb_documentation: https://mariadb.com/kb/en/multi-range-read-optimization/\\n# mariadb_command: SET GLOBAL optimizer_switch='mrr=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='mrr=on';\\n\\n# mysql_command: SET GLOBAL optimizer_switch='mrr=off';\\n# mysql_default: SET GLOBAL optimizer_switch='mrr=on';\\n\\n[mariadb]\\nloose_optimizer_switch ='mrr=off'\"}",
                     "var_updated": "2024-07-29 19:03:51",
                     "var_name": "db_cnf_opt_no_mrr",
                     "id": 6143
@@ -3654,7 +3654,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_outerjoincache.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0 \\n# mariadb_documentation: https://mariadb.com/kb/en/block-based-join-algorithms/\\n# mariadb_command: SET GLOBAL optimizer_switch='outer_join_with_cache=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='outer_join_with_cache=on';\\n\\n[mariadb]\\noptimizer_switch ='outer_join_with_cache=off'\\n\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_outerjoincache.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0 \\n# mariadb_documentation: https://mariadb.com/kb/en/block-based-join-algorithms/\\n# mariadb_command: SET GLOBAL optimizer_switch='outer_join_with_cache=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='outer_join_with_cache=on';\\n\\n[mariadb]\\nloose_optimizer_switch ='outer_join_with_cache=off'\\n\"}",
                     "var_updated": "2024-07-29 19:04:01",
                     "var_name": "db_cnf_opt_no_outerjoincache",
                     "id": 6144
@@ -3662,7 +3662,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_opt_semijoincache.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL optimizer_switch='semijoin_with_cache=on';\\n# mariadb_default: SET GLOBAL optimizer_switch='semijoin_with_cache=off';\\n\\n[mariadb]\\noptimizer_switch ='semijoin_with_cache=on'\\n\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_opt_semijoincache.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL optimizer_switch='semijoin_with_cache=on';\\n# mariadb_default: SET GLOBAL optimizer_switch='semijoin_with_cache=off';\\n\\n[mariadb]\\nloose_optimizer_switch ='semijoin_with_cache=on'\\n\"}",
                     "var_updated": "2024-07-29 19:07:31",
                     "var_name": "db_cnf_opt_with_semijoincache",
                     "id": 6145
@@ -3670,7 +3670,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_tableelimination.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.1.0 \\n# mariadb_documentation: https://mariadb.com/kb/en/table-elimination-user-interface/\\n# mariadb_command: SET GLOBAL optimizer_switch='table_elimination=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='table_elimination=on';\\n\\n[mariadb]\\noptimizer_switch ='table_elimination=off'\\n\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_tableelimination.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.1.0 \\n# mariadb_documentation: https://mariadb.com/kb/en/table-elimination-user-interface/\\n# mariadb_command: SET GLOBAL optimizer_switch='table_elimination=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='table_elimination=on';\\n\\n[mariadb]\\nloose_optimizer_switch ='table_elimination=off'\\n\"}",
                     "var_updated": "2024-07-29 19:04:34",
                     "var_name": "db_cnf_opt_no_tableelimination",
                     "id": 6146
@@ -3678,7 +3678,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_materialization.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0 \\n# mysql_version: 5.6.0 \\n# mariadb_documentation: https://mariadb.com/kb/en/semi-join-materialization-strategy/\\n# mariadb_command: SET GLOBAL optimizer_switch='materialization=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='materialization=on';\\n\\n# mysql_command: SET GLOBAL optimizer_switch='materialization=off';\\n# mysql_default: SET GLOBAL optimizer_switch='materialization=on';\\n\\n[mariadb]\\noptimizer_switch ='materialization=off'\\n\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_materialization.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0 \\n# mysql_version: 5.6.0 \\n# mariadb_documentation: https://mariadb.com/kb/en/semi-join-materialization-strategy/\\n# mariadb_command: SET GLOBAL optimizer_switch='materialization=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='materialization=on';\\n\\n# mysql_command: SET GLOBAL optimizer_switch='materialization=off';\\n# mysql_default: SET GLOBAL optimizer_switch='materialization=on';\\n\\n[mariadb]\\nloose_optimizer_switch ='materialization=off'\\n\"}",
                     "var_updated": "2024-07-29 19:03:38",
                     "var_name": "db_cnf_opt_no_materialization",
                     "id": 6147
@@ -3798,7 +3798,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_opt_imsi.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 10.3.0 \\n# mariadb_documentation: https://mariadb.com/kb/en/index_merge-sort_intersection/\\n# mariadb_command: SET GLOBAL optimizer_switch='index_merge_sort_intersection=on';\\n# mariadb_default: SET GLOBAL optimizer_switch='index_merge_sort_intersection=off';\\n\\n[mariadb]\\noptimizer_switch='index_merge_sort_intersection=on'\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_opt_imsi.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 10.3.0 \\n# mariadb_documentation: https://mariadb.com/kb/en/index_merge-sort_intersection/\\n# mariadb_command: SET GLOBAL optimizer_switch='index_merge_sort_intersection=on';\\n# mariadb_default: SET GLOBAL optimizer_switch='index_merge_sort_intersection=off';\\n\\n[mariadb]\\nloose_optimizer_switch='index_merge_sort_intersection=on'\"}",
                     "var_updated": "2024-07-29 19:05:50",
                     "var_name": "db_cnf_opt_with_imsi",
                     "id": 6197
@@ -3806,7 +3806,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_lateralderived.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 10.3.0\\n# mariadb_documentation: https://mariadb.com/kb/en/lateral-derived-optimization/\\n# mariadb_command: SET GLOBAL optimizer_switch='split_materialized=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='split_materialized=on';\\n\\n[mariadb]\\noptimizer_switch='split_materialized=off'\\n\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_lateralderived.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 10.3.0\\n# mariadb_documentation: https://mariadb.com/kb/en/lateral-derived-optimization/\\n# mariadb_command: SET GLOBAL optimizer_switch='split_materialized=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='split_materialized=on';\\n\\n[mariadb]\\nloose_optimizer_switch='split_materialized=off'\\n\"}",
                     "var_updated": "2024-07-29 19:03:26",
                     "var_name": "db_cnf_opt_no_lateral_derived",
                     "id": 6198
@@ -3814,7 +3814,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_hcp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 10.4.3\\n# mariadb_documentation: https://mariadb.com/kb/en/condition-pushdown-from-having/\\n# mariadb_command: SET GLOBAL optimizer_switch='condition_pushdown_from_having=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='condition_pushdown_from_having=on';\\n\\n[mariadb]\\noptimizer_switch='condition_pushdown_from_having=off'\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_hcp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 10.4.3\\n# mariadb_documentation: https://mariadb.com/kb/en/condition-pushdown-from-having/\\n# mariadb_command: SET GLOBAL optimizer_switch='condition_pushdown_from_having=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='condition_pushdown_from_having=on';\\n\\n[mariadb]\\nloose_optimizer_switch='condition_pushdown_from_having=off'\"}",
                     "var_updated": "2024-07-29 19:02:26",
                     "var_name": "db_cnf_opt_no_hcp",
                     "id": 6199
@@ -3822,7 +3822,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_scp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 10.4.0 \\n# mariadb_documentation: https://mariadb.com/kb/en/condition-pushdown-into-in-subqueries/\\n# mariadb_command: SET GLOBAL optimizer_switch='condition_pushdown_for_subquery=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='condition_pushdown_for_subquery=on';\\n\\n\\n[mariadb]\\noptimizer_switch='condition_pushdown_for_subquery=off'\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_scp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 10.4.0 \\n# mariadb_documentation: https://mariadb.com/kb/en/condition-pushdown-into-in-subqueries/\\n# mariadb_command: SET GLOBAL optimizer_switch='condition_pushdown_for_subquery=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='condition_pushdown_for_subquery=on';\\n\\n\\n[mariadb]\\nloose_optimizer_switch='condition_pushdown_for_subquery=off'\"}",
                     "var_updated": "2024-07-29 19:04:14",
                     "var_name": "db_cnf_opt_no_scp",
                     "id": 6200
@@ -3830,7 +3830,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_ecp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0\\n# mariadb_deprecated: 10.1.0\\n# mariadb_documentation: https://mariadb.com/kb/en/index-condition-pushdown/\\n# mysql_version: 5.5.0\\n# mariadb_command: SET GLOBAL optimizer_switch='engine_condition_pushdown=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='engine_condition_pushdown=on';\\n\\n\\n\\n[mariadb]\\noptimizer_switch='engine_condition_pushdown=off'\\n\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_ecp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.3.0\\n# mariadb_deprecated: 10.1.0\\n# mariadb_documentation: https://mariadb.com/kb/en/index-condition-pushdown/\\n# mysql_version: 5.5.0\\n# mariadb_command: SET GLOBAL optimizer_switch='engine_condition_pushdown=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='engine_condition_pushdown=on';\\n\\n\\n\\n[mariadb]\\nloose_optimizer_switch='engine_condition_pushdown=off'\\n\"}",
                     "var_updated": "2024-07-29 19:02:03",
                     "var_name": "db_cnf_opt_no_ecp",
                     "id": 6201
@@ -3838,7 +3838,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_dcp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariabd_version: 10.2.2\\n# mariadb_command: SET GLOBAL optimizer_switch='condition_pushdown_for_derived=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='condition_pushdown_for_derived=on';\\n# mariadb_documentation: https://mariadb.com/kb/en/condition-pushdown-into-derived-table-optimization/\\n \\n[mariadb]\\noptimizer_switch='condition_pushdown_for_derived=off'\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_dcp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariabd_version: 10.2.2\\n# mariadb_command: SET GLOBAL optimizer_switch='condition_pushdown_for_derived=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='condition_pushdown_for_derived=on';\\n# mariadb_documentation: https://mariadb.com/kb/en/condition-pushdown-into-derived-table-optimization/\\n \\n[mariadb]\\nloose_optimizer_switch='condition_pushdown_for_derived=off'\"}",
                     "var_updated": "2024-07-29 19:01:14",
                     "var_name": "db_cnf_opt_no_dcp",
                     "id": 6202
@@ -3846,7 +3846,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_bloomfilter.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 10.4.3 \\n# mariadb_documnetation: https://mariadb.com/kb/en/rowid-filtering-optimization/\\n# mariadb_command: SET GLOBAL optimizer_switch='rowid_filter=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='rowid_filter=on';\\n\\n[mariadb]\\noptimizer_switch='rowid_filter=off'\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_bloomfilter.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 10.4.3 \\n# mariadb_documnetation: https://mariadb.com/kb/en/rowid-filtering-optimization/\\n# mariadb_command: SET GLOBAL optimizer_switch='rowid_filter=off';\\n# mariadb_default: SET GLOBAL optimizer_switch='rowid_filter=on';\\n\\n[mariadb]\\nloose_optimizer_switch='rowid_filter=off'\"}",
                     "var_updated": "2024-07-29 19:00:42",
                     "var_name": "db_cnf_opt_no_bloomfilter",
                     "id": 6203
@@ -3862,7 +3862,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_conditionfanoutfilter.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mysql_documentation: http://oysteing.blogspot.com/2017/03/mysql-57-improved-join-order-by-taking.html\\n# mysql_version: 5.7.0\\n# mysql_command: SET GLOBAL optimizer_switch='condition_fanout_filter=off';\\n# mysql_default: SET GLOBAL optimizer_switch='condition_fanout_filter=on';\\n\\n[mysqld]\\noptimizer_switch='condition_fanout_filter=off'\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_opt_conditionfanoutfilter.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mysql_documentation: http://oysteing.blogspot.com/2017/03/mysql-57-improved-join-order-by-taking.html\\n# mysql_version: 5.7.0\\n# mysql_command: SET GLOBAL optimizer_switch='condition_fanout_filter=off';\\n# mysql_default: SET GLOBAL optimizer_switch='condition_fanout_filter=on';\\n\\n[mysqld]\\nloose_optimizer_switch='condition_fanout_filter=off'\"}",
                     "var_updated": "2024-07-29 19:00:56",
                     "var_name": "db_cnf_opt_no_condition_fanout_filter",
                     "id": 6213

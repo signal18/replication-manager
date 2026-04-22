@@ -731,6 +731,10 @@ definitions:
         additionalProperties:
           type: boolean
         type: object
+      haveAutoTLS:
+        description: set when any server auto-detected require_secure_transport=ON
+          via error 3159
+        type: boolean
       haveDBTLSCert:
         type: boolean
       haveDBTLSOldCert:
@@ -837,6 +841,33 @@ definitions:
         items:
           type: string
         type: array
+      securityClearPwdConfig:
+        description: Set by dbjob SSH scripts scanning my.cnf/.my.cnf on DB servers
+        type: boolean
+      securityClearPwdHistory:
+        description: Set by dbjob SSH scripts scanning .bash_history/.mysql_history
+          on DB servers
+        type: boolean
+      securityRemediations:
+        allOf:
+        - $ref: '#/definitions/cluster.RemediationPlan'
+        description: |-
+          SecurityRemediations is the current remediation plan for all open security findings.
+          Populated alongside SecurityStates in CheckLogPlugins so the dashboard gets
+          AutoFixable flags, fix tags, and risk levels without a separate API call.
+          This is the authoritative source — the UI must not duplicate autoFixable logic.
+      securityScore:
+        $ref: '#/definitions/cluster.SecurityScore'
+      securityStateMachine:
+        $ref: '#/definitions/state.StateMachine'
+      securityStates:
+        description: |-
+          SecurityStates is a snapshot of all open security findings from the current monitoring
+          tick, serialised into the cluster JSON for the dashboard (SecurityStateMachine.CurState
+          has json:"-" so it cannot be read directly). Updated by CheckLogPlugins.
+        items:
+          $ref: '#/definitions/github_com_signal18_replication-manager_utils_state.State'
+        type: array
       servers:
         items:
           $ref: '#/definitions/cluster.ServerMonitor'
@@ -911,6 +942,26 @@ definitions:
         $ref: '#/definitions/config.WorkLoad'
       workingDir:
         type: string
+      workloadRemediations:
+        allOf:
+        - $ref: '#/definitions/cluster.RemediationPlan'
+        description: |-
+          WorkloadRemediations is the current remediation plan for actionable workload advisories.
+          Populated alongside WorkloadStates in CheckLogPlugins.
+      workloadStateMachine:
+        allOf:
+        - $ref: '#/definitions/state.StateMachine'
+        description: |-
+          WorkloadStateMachine tracks workload/performance findings from Graphite spike-detection
+          plugins (WORKLOAD severity). Kept separate from the HA StateMachine so performance
+          noise does not obscure operational cluster health or trigger false failover gates.
+      workloadStates:
+        description: |-
+          WorkloadStates is a snapshot of all open workload findings from the current monitoring
+          tick. Updated by CheckLogPlugins after all servers have been evaluated.
+        items:
+          $ref: '#/definitions/github_com_signal18_replication-manager_utils_state.State'
+        type: array
     type: object
   cluster.ClusterForm:
     properties:
@@ -1072,6 +1123,8 @@ definitions:
         type: string
       weight:
         type: string
+      workingAgent:
+        type: string
       writePort:
         type: integer
       writerHostGroup:
@@ -1093,6 +1146,104 @@ definitions:
         type: array
       timestamp:
         type: string
+    type: object
+  cluster.RemediationEntry:
+    properties:
+      auto_fixable:
+        description: true when POST /security/fix-state/{err_key} is supported
+        type: boolean
+      description:
+        type: string
+      err_key:
+        type: string
+      fixes:
+        items:
+          $ref: '#/definitions/cluster.RemediationFix'
+        type: array
+      server:
+        type: string
+    type: object
+  cluster.RemediationFix:
+    properties:
+      description:
+        type: string
+      file_name:
+        description: cnf_template
+        type: string
+      my_cnf:
+        description: suggested file content
+        type: string
+      risk:
+        description: '"safe", "moderate", "disruptive"'
+        type: string
+      tag:
+        description: add_tag / drop_tag
+        type: string
+      type:
+        type: string
+      url:
+        description: settings_switch
+        type: string
+    type: object
+  cluster.RemediationPlan:
+    properties:
+      cluster:
+        type: string
+      generated_at:
+        type: string
+      open_findings:
+        type: integer
+      remediations:
+        items:
+          $ref: '#/definitions/cluster.RemediationEntry'
+        type: array
+    type: object
+  cluster.SecurityScore:
+    properties:
+      grade:
+        description: A/B/C/D/F
+        type: string
+      hasAuditPlugins:
+        type: boolean
+      hasBackupEncryption:
+        type: boolean
+      hasBinlogEncryption:
+        type: boolean
+      hasLastLTS:
+        type: boolean
+      hasParsecPlugins:
+        type: boolean
+      hasPasswordRotation:
+        type: boolean
+      hasPrepareStatement:
+        type: boolean
+      hasProxies:
+        type: boolean
+      hasSSL:
+        type: boolean
+      hasStrongPwd:
+        type: boolean
+      hasTableEncryption:
+        type: boolean
+      hasTmpEncryption:
+        type: boolean
+      hasZeroSSL:
+        type: boolean
+      noClearPwdBinlogs:
+        type: boolean
+      noClearPwdConfigs:
+        type: boolean
+      noClearPwdHistory:
+        type: boolean
+      noEmptyPassword:
+        type: boolean
+      noHostnameGrants:
+        type: boolean
+      noWeakAuthPlugin:
+        type: boolean
+      score:
+        description: 0-100
+        type: integer
     type: object
   cluster.ServerBackupMeta:
     properties:
@@ -1189,6 +1340,9 @@ definitions:
       failoverMasterLogPos:
         type: string
       failoverSemiSyncSlaveStatus:
+        type: boolean
+      forceTLSSkipVerify:
+        description: auto-detected when server returns error 3159 (require_secure_transport=ON)
         type: boolean
       gtidBinlogPos:
         items:
@@ -1469,6 +1623,9 @@ definitions:
         type: string
       workLoad:
         $ref: '#/definitions/config.WorkLoadsMap'
+      workingAgent:
+        description: used to track on which agent the server is running
+        type: string
     type: object
   cluster.SlaveVariables:
     properties:
@@ -1723,6 +1880,8 @@ definitions:
     properties:
       dockerpath:
         type: string
+      level:
+        type: integer
       name:
         type: string
       parentname:
@@ -1778,6 +1937,8 @@ definitions:
       mountdir:
         type: string
       name:
+        type: string
+      providerName:
         type: string
       region:
         type: string
@@ -2502,6 +2663,8 @@ definitions:
         type: string
       backupResticTimeout:
         type: integer
+      backupRestoreDefinerStrict:
+        type: boolean
       backupRestoreMysqlUser:
         type: boolean
       backupRestoreVersionStrict:
@@ -2509,6 +2672,8 @@ definitions:
       backupSaveScript:
         type: string
       backupSplitMysqlUser:
+        type: boolean
+      backupSplitdumpCreateDatabases:
         type: boolean
       backupSplitdumpFileSize:
         type: string
@@ -3103,6 +3268,10 @@ definitions:
         type: integer
       monitoringBasedir:
         type: string
+      monitoringBinlogEventLogLength:
+        type: integer
+      monitoringBinlogEvents:
+        type: boolean
       monitoringCapture:
         type: boolean
       monitoringCaptureFileKeep:
@@ -3227,6 +3396,12 @@ definitions:
         type: boolean
       monitoringSchemaSchedulerCron:
         type: string
+      monitoringSecretVersioning:
+        type: boolean
+      monitoringSecretVersioningAutoPrune:
+        type: boolean
+      monitoringSecretVersioningKeepLast:
+        type: integer
       monitoringSharedir:
         type: string
       monitoringSocket:
@@ -3327,6 +3502,8 @@ definitions:
             type: string
           type: object
         type: object
+      pluginSigningPublicKey:
+        type: string
       printDelayStat:
         type: boolean
       printDelayStatHistory:
@@ -3345,6 +3522,8 @@ definitions:
         type: string
       provAppTemplateRepo:
         type: string
+      provAppTemplateRepoAllowOverride:
+        type: boolean
       provAppTemplateRepoBranch:
         type: string
       provAppTemplateRepoPassword:
@@ -3461,6 +3640,8 @@ definitions:
         type: boolean
       provDockerRegistryCredentials:
         type: string
+      provEventTimeout:
+        type: integer
       provNetCni:
         type: boolean
       provNetCniCluster:
@@ -3575,6 +3756,8 @@ definitions:
         type: string
       provTlsServerKey:
         type: string
+      provUseIpv6:
+        type: boolean
       proxyServersBackendCompression:
         type: boolean
       proxyServersBackendMaxConnections:
@@ -3898,6 +4081,8 @@ definitions:
         type: string
       topologyTarget:
         type: string
+      ttyShareBinaryPath:
+        type: string
       vaultAuth:
         type: string
       vaultMode:
@@ -3919,6 +4104,19 @@ definitions:
       withEmbed:
         type: string
       withTarball:
+        type: string
+    type: object
+  github_com_signal18_replication-manager_utils_state.State:
+    properties:
+      errDesc:
+        type: string
+      errFrom:
+        type: string
+      errKey:
+        type: string
+      errType:
+        type: string
+      serverUrl:
         type: string
     type: object
   github_com_signal18_replication-manager_utils_version.Version:
@@ -4592,7 +4790,7 @@ definitions:
         additionalProperties:
           type: boolean
         type: object
-      spitBrain:
+      splitBrain:
         type: boolean
       stateMachine:
         $ref: '#/definitions/state.StateMachine'
@@ -4660,6 +4858,62 @@ definitions:
       useTempDir:
         type: boolean
     type: object
+  server.appTemplateContentResponse:
+    properties:
+      content:
+        type: string
+      hasLocalCopy:
+        type: boolean
+      name:
+        type: string
+      origin:
+        type: string
+      refreshed:
+        type: boolean
+    type: object
+  server.appTemplateFieldChange:
+    properties:
+      field:
+        type: string
+      new:
+        type: string
+      old:
+        type: string
+    type: object
+  server.appTemplateResetPreview:
+    properties:
+      changeCount:
+        type: integer
+      changes:
+        items:
+          $ref: '#/definitions/server.appTemplateFieldChange'
+        type: array
+      forceRefresh:
+        type: boolean
+      templateName:
+        type: string
+    type: object
+  server.appTemplateStructureGuideResponse:
+    properties:
+      content:
+        type: string
+    type: object
+  server.appTemplateSummary:
+    properties:
+      editable:
+        type: boolean
+      hasLocalCopy:
+        type: boolean
+      name:
+        type: string
+      origin:
+        type: string
+      refreshable:
+        type: boolean
+      scope:
+        description: '"cluster" | "global"'
+        type: string
+    type: object
   server.globalAlertsResponse:
     properties:
       errors:
@@ -4670,6 +4924,22 @@ definitions:
         items:
           $ref: '#/definitions/state.StateHttp'
         type: array
+    type: object
+  server.globalLogsResponse:
+    properties:
+      general:
+        $ref: '#/definitions/server.globalLogsSnapshot'
+    type: object
+  server.globalLogsSnapshot:
+    properties:
+      buffer:
+        items:
+          $ref: '#/definitions/s18log.HttpMessage'
+        type: array
+      len:
+        type: integer
+      line:
+        type: integer
     type: object
   server.globalMetricsHostInfo:
     properties:
@@ -4717,6 +4987,32 @@ definitions:
         $ref: '#/definitions/server.globalMetricsHostInfo'
       process:
         $ref: '#/definitions/server.globalMetricsProcessInfo'
+    type: object
+  server.pfsJoinLink:
+    properties:
+      joinWeightPct:
+        description: 0–100
+        type: number
+      tableA:
+        description: '"schema.table"'
+        type: string
+      tableB:
+        description: '"schema.table"'
+        type: string
+    type: object
+  server.pfsSnapshotWeights:
+    properties:
+      links:
+        description: computed join weights for this period
+        items:
+          $ref: '#/definitions/server.pfsJoinLink'
+        type: array
+      snapshotFile:
+        description: basename of the .jsonl file
+        type: string
+      timestamp:
+        description: RFC3339 of the snapshot hour
+        type: string
     type: object
   server.resticSnapshotResponse:
     properties:
@@ -7357,6 +7653,47 @@ paths:
       summary: Reset App from Template
       tags:
       - Apps
+  /api/clusters/{clusterName}/apps/{appName}/settings/actions/reset-from-template/preview:
+    post:
+      consumes:
+      - application/json
+      description: Previews template-owned field changes that would be applied by
+        reset-from-template.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.appTemplateResetPreview'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Server Not Found" or "No cluster
+          schema:
+            type: string
+      summary: Preview Reset App from Template Impact
+      tags:
+      - Apps
   /api/clusters/{clusterName}/apps/{appName}/settings/actions/save-as-template/{templateName}:
     post:
       consumes:
@@ -8434,6 +8771,20 @@ paths:
               type: object
             type: array
       summary: List active log-tailer plugins for a cluster
+      tags:
+      - ClusterSettings
+  /api/clusters/{clusterName}/plugins/reload:
+    post:
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+      summary: Reload external log plugins for a cluster
       tags:
       - ClusterSettings
   /api/clusters/{clusterName}/proxies/{proxyName}:
@@ -9993,6 +10344,116 @@ paths:
       summary: Calculate checksum for a specific schema in a specific cluster
       tags:
       - ClusterSchema
+  /api/clusters/{clusterName}/security/apply-fix:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Bearer token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: '{\'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Fix applied
+          schema:
+            type: string
+        "400":
+          description: Bad request
+          schema:
+            type: string
+        "404":
+          description: Cluster not found
+          schema:
+            type: string
+        "500":
+          description: Execution error
+          schema:
+            type: string
+      summary: Apply a tag-based security remediation fix
+      tags:
+      - ClusterSecurity
+  /api/clusters/{clusterName}/security/fix-state/{errKey}:
+    post:
+      parameters:
+      - description: Bearer token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: SEC error key (e.g. SEC0102)
+        in: path
+        name: errKey
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Fix applied
+          schema:
+            type: string
+        "400":
+          description: No automated fix for this code
+          schema:
+            type: string
+        "404":
+          description: Cluster not found
+          schema:
+            type: string
+        "500":
+          description: Execution error
+          schema:
+            type: string
+      summary: Apply automated fix for a security finding
+      tags:
+      - ClusterSecurity
+  /api/clusters/{clusterName}/security/remediation-plan:
+    get:
+      parameters:
+      - description: Bearer token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cluster.RemediationPlan'
+        "404":
+          description: Cluster not found
+          schema:
+            type: string
+      summary: Get security remediation plan
+      tags:
+      - ClusterSecurity
   /api/clusters/{clusterName}/send-vault-token:
     post:
       consumes:
@@ -13757,6 +14218,54 @@ paths:
       summary: Get metadata locks of a server
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/pfs-join-weights:
+    get:
+      description: Returns per-snapshot join-weight data computed from on-disk PFS
+        JSONL files.
+      parameters:
+      - description: Bearer token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Start hour YYYYMMDD_HH
+        in: query
+        name: from
+        type: string
+      - description: End hour YYYYMMDD_HH
+        in: query
+        name: to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/server.pfsSnapshotWeights'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: error message
+          schema:
+            type: string
+      summary: Historical PFS join weights
+      tags:
+      - DatabaseSchema
   /api/clusters/{clusterName}/servers/{serverName}/processlist:
     get:
       description: Retrieves the process list of a specified server within a cluster.
@@ -15910,6 +16419,285 @@ paths:
       summary: Retrieve tags for a specific cluster
       tags:
       - ClusterTags
+  /api/clusters/{clusterName}/templates/apps:
+    get:
+      consumes:
+      - application/json
+      description: Returns unified app template inventory with source/local metadata.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Force refresh of pull-only repo cache before listing
+        in: query
+        name: forceRefresh
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/server.appTemplateSummary'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: List App Templates with Metadata
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/templates/apps/{templateName}/content:
+    get:
+      consumes:
+      - application/json
+      description: Returns canonical app template content for preview, optionally
+        forcing source refresh.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Template Name
+        in: path
+        name: templateName
+        required: true
+        type: string
+      - description: Bypass local cache and refresh from source
+        in: query
+        name: forceRefresh
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.appTemplateContentResponse'
+        "400":
+          description: Template name must be provided
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Preview App Template Content
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/templates/apps/{templateName}/content/actions/create-local-copy:
+    post:
+      consumes:
+      - application/json
+      description: Creates an editable local template copy from an existing template
+        source/content.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Template Name
+        in: path
+        name: templateName
+        required: true
+        type: string
+      - description: Create local copy payload
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Template local copy created successfully
+          schema:
+            type: string
+        "400":
+          description: Invalid request
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Create Local Copy of App Template Content
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/templates/apps/{templateName}/content/actions/delete:
+    post:
+      consumes:
+      - application/json
+      description: Deletes editable local template content.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Template Name
+        in: path
+        name: templateName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Template deleted successfully
+          schema:
+            type: string
+        "400":
+          description: Invalid request
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: Template not found
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Delete Local App Template Content
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/templates/apps/{templateName}/content/actions/save:
+    post:
+      consumes:
+      - application/json
+      description: Saves editable local template content after canonicalization and
+        strict validation.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Template Name
+        in: path
+        name: templateName
+        required: true
+        type: string
+      - description: Template content payload
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Template saved successfully
+          schema:
+            type: string
+        "400":
+          description: Invalid request
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Save Local App Template Content
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/templates/apps/structure-guide:
+    get:
+      consumes:
+      - application/json
+      description: Returns TEMPLATE_STRUCTURE.md content for in-app guidance.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.appTemplateStructureGuideResponse'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: Template structure guide not found
+          schema:
+            type: string
+        "500":
+          description: No cluster" or "Error reading template structure guide
+          schema:
+            type: string
+      summary: Get App Template Structure Guide
+      tags:
+      - Apps
   /api/clusters/{clusterName}/tests/actions/run/{testName}:
     post:
       consumes:
@@ -17164,6 +17952,31 @@ paths:
           schema:
             type: string
       summary: Get global alerts
+      tags:
+      - Global
+  /api/global/http-logs:
+    get:
+      description: Returns server-level log entries from the ReplicationManager in-memory
+        ring buffer.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.globalLogsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+      summary: Get global logs
       tags:
       - Global
   /api/global/metrics:

@@ -12,7 +12,17 @@ import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
 import ServerName from '../../../../../components/ServerName'
 
-function ProxyTable({ proxies = [], isDesktop, clusterName, showGridView, user, isMenuOptionsVisible, showTerminal, topoStaging}) {
+function ProxyTable({
+  proxies = [],
+  isDesktop,
+  clusterName,
+  showGridView,
+  user,
+  isMenuOptionsVisible,
+  showTerminal,
+  topoStaging,
+  orchestrator
+}) {
   const [tableData, setTableData] = useState([])
   useEffect(() => {
     if (proxies?.length > 0) {
@@ -66,7 +76,19 @@ function ProxyTable({ proxies = [], isDesktop, clusterName, showGridView, user, 
   const columns = useMemo(
     () => [
       columnHelper.accessor(
-        (row) => row.showMenu && <ProxyMenu row={row} isDesktop={isDesktop} clusterName={clusterName} user={user} isMenuOptionsVisible={isMenuOptionsVisible} showTerminal={showTerminal} topoStaging={topoStaging}/>,
+        (row) =>
+          row.showMenu && (
+            <ProxyMenu
+              row={row}
+              isDesktop={isDesktop}
+              clusterName={clusterName}
+              user={user}
+              isMenuOptionsVisible={isMenuOptionsVisible}
+              showTerminal={showTerminal}
+              topoStaging={topoStaging}
+              orchestrator={orchestrator}
+            />
+          ),
         {
           cell: (info) => info.getValue(),
           id: 'options',
@@ -135,7 +157,7 @@ function ProxyTable({ proxies = [], isDesktop, clusterName, showGridView, user, 
         header: 'ID Group'
       })
     ],
-    []
+    [clusterName, isDesktop, isMenuOptionsVisible, orchestrator, showGridView, showTerminal, topoStaging, user]
   )
 
   return (

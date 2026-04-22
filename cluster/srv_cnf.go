@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -839,92 +840,6 @@ func (server *ServerMonitor) ReadPreservedVariables() error {
 	return nil
 }
 
-// Read-only variables that should never be written to config files
-var readOnlyVariables = []string{
-	"VERSION",
-	"VERSION_COMMENT",
-	"VERSION_COMPILE_MACHINE",
-	"VERSION_COMPILE_OS",
-	"HOSTNAME",
-	"SERVER_UUID",
-	"BASEDIR",
-	"LOG_BIN_BASENAME",
-	"LOG_BIN_INDEX",
-	"RELAY_LOG_BASENAME",
-	"RELAY_LOG_INDEX",
-	"DATADIR", // Paths should not be changed via runtime fallback
-}
-
-// Variables safe for runtime fallback (whitelist)
-var safeRuntimeFallbackVariables = []string{
-	"INNODB_BUFFER_POOL_SIZE",
-	"MAX_CONNECTIONS",
-	"INNODB_LOG_FILE_SIZE",
-	"INNODB_FLUSH_LOG_AT_TRX_COMMIT",
-	"SYNC_BINLOG",
-	"BINLOG_FORMAT",
-	"SLOW_QUERY_LOG",
-	"SLOW_QUERY_LOG_FILE",
-	"LONG_QUERY_TIME",
-	"LOG_QUERIES_NOT_USING_INDEXES",
-	"GENERAL_LOG",
-	"GENERAL_LOG_FILE",
-	"LOG_ERROR",
-	"LOG_WARNINGS",
-	"EXPIRE_LOGS_DAYS",
-	"BINLOG_EXPIRE_LOGS_SECONDS",
-	"MAX_ALLOWED_PACKET",
-	"MAX_BINLOG_SIZE",
-	"MAX_RELAY_LOG_SIZE",
-	"RELAY_LOG_SPACE_LIMIT",
-	"INNODB_IO_CAPACITY",
-	"INNODB_IO_CAPACITY_MAX",
-	"INNODB_FLUSH_METHOD",
-	"INNODB_FILE_PER_TABLE",
-	"INNODB_BUFFER_POOL_INSTANCES",
-	"INNODB_LOG_BUFFER_SIZE",
-	"INNODB_WRITE_IO_THREADS",
-	"INNODB_READ_IO_THREADS",
-	"INNODB_PURGE_THREADS",
-	"INNODB_PAGE_CLEANERS",
-	"TABLE_OPEN_CACHE",
-	"TABLE_DEFINITION_CACHE",
-	"OPEN_FILES_LIMIT",
-	"THREAD_CACHE_SIZE",
-	"QUERY_CACHE_SIZE",
-	"QUERY_CACHE_TYPE",
-	"TMP_TABLE_SIZE",
-	"MAX_HEAP_TABLE_SIZE",
-	"JOIN_BUFFER_SIZE",
-	"SORT_BUFFER_SIZE",
-	"READ_BUFFER_SIZE",
-	"READ_RND_BUFFER_SIZE",
-	"BINLOG_CACHE_SIZE",
-	"BINLOG_STMT_CACHE_SIZE",
-}
-
-// isReadOnlyVariable checks if a variable is read-only and should never be changed
-func isReadOnlyVariable(varName string) bool {
-	upperName := strings.ToUpper(varName)
-	for _, readOnly := range readOnlyVariables {
-		if upperName == readOnly {
-			return true
-		}
-	}
-	return false
-}
-
-// isSafeForRuntimeFallback checks if a variable is whitelisted for runtime fallback
-func isSafeForRuntimeFallback(varName string) bool {
-	upperName := strings.ToUpper(varName)
-	for _, safe := range safeRuntimeFallbackVariables {
-		if upperName == safe {
-			return true
-		}
-	}
-	return false
-}
-
 func (server *ServerMonitor) WriteDeltaVariables() error {
 	cluster := server.ClusterGroup
 	deltapath := filepath.Join(server.Datadir, "02_delta.cnf")
@@ -945,55 +860,14 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 			continue
 		}
 
-		// 4-LAYER SAFETY FRAMEWORK FOR RUNTIME FALLBACK
-		// Only use runtime value if deployed is nil and all safety checks pass
-		if v.Deployed == nil && v.Runtime != nil {
-			runtimeStr := v.Runtime.String()
-
-			// Layer 1: Empty value check - never write empty values
-			// Layer 2: Read-only check - never write read-only variables
-			// Layer 3: Whitelist check - only write whitelisted variables
-			// Layer 4: Server status check - only if server is running (not failed)
-			if runtimeStr != "" &&
-				!isReadOnlyVariable(v.VariableName) &&
-				isSafeForRuntimeFallback(v.VariableName) &&
-				!server.IsFailed() {
-				// Safe to use runtime value as fallback
-				v.Deployed = v.Runtime
-				content.WriteString(v.PrintDeployedDelta() + "\n")
-				v.Deployed = nil // Reset to avoid persisting the change
-			}
-			// If any check fails, skip this variable (don't write it)
+		// Runtime fallback is intentionally disabled here. Delta files only persist
+		// deployed values that differ from config and are not preserved.
+		deltaLine := strings.TrimSpace(v.PrintDeployedDelta())
+		if deltaLine == "" {
 			continue
 		}
 
-		// LAYER 5: MYSQL DEFAULT FALLBACK - REMOVED
-		// This layer has been removed because Configurator generates a base CNF from tags.
-		// Configuration priority is now:
-		//   1. Server-specific preserved variables (01_preserved.cnf, 02_delta.cnf, 03_agreed.cnf)
-		//   2. Cluster-wide preserved variables
-		//   3. Configurator settings (tags, templates, dynamic configs)
-		//   4. Runtime/deployed values
-		// No need for mysql_defaults.cnf as configurator provides the base configuration.
-		/*
-			if v.Deployed == nil && v.Runtime == nil && server.IsFailed() {
-				defaultValue := cluster.getMySQLDefaultForVar(v.VariableName)
-				if defaultValue != "" {
-					sv := config.SingleValue(defaultValue)
-					v.Deployed = &sv
-					content.WriteString(v.PrintDeployedDelta() + "\n")
-					v.Deployed = nil // Reset to avoid persisting the change
-
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-						"Using MySQL default for variable %s=%s (server failed, no deployed/runtime values)",
-						v.VariableName, defaultValue)
-				}
-				continue
-			}
-		*/
-
-		// Normal case: deployed value exists
-		content.WriteString(v.PrintDeployedDelta() + "\n")
+		content.WriteString(deltaLine + "\n")
 	}
 
 	// Write atomically
@@ -1003,6 +877,14 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 	}
 
 	return nil
+}
+
+func (server *ServerMonitor) WipeDeltaConfig() {
+	deltapath := filepath.Join(server.Datadir, "02_delta.cnf")
+	if err := os.Remove(deltapath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"Failed to remove delta config %s: %s", deltapath, err)
+	}
 }
 
 // atomicWriteFile writes data to a file atomically by writing to a temp file first,

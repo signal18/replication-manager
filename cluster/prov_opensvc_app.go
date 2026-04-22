@@ -17,11 +17,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	ini "gopkg.in/ini.v1"
 )
 
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
@@ -30,37 +32,61 @@ import (
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
-func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) {
-	opensvc := cluster.OpenSVCConnect()
-	//agents := opensvc.GetNodes()
-	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
-		err := opensvc.PurgeServiceV2(cluster.GetName(), app.GetServiceName(), app.GetAgent())
+func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) error {
+	svc := cluster.OpenSVCConnect()
+	var opErr error
+	if cluster.Conf.ProvOpensvcUseCollectorAPI {
+		node, err := cluster.OpenSVCFoundAppAgent(app)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app service:  %s ", err)
-			cluster.errorChan <- err
-		}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't find app agent %s, %s", app.GetId(), err)
+			opErr = errors.Join(opErr, err)
+		} else {
+			for _, service := range node.Svc {
+				if app.GetServiceName() == service.Svc_name {
+					idaction, err := svc.UnprovisionService(node.Node_id, service.Svc_id)
+					if err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't queue unprovision app %s, %s", app.GetId(), err)
+						opErr = errors.Join(opErr, err)
+						continue
+					}
 
-		// Unprovision volumes
-		for _, volumename := range app.GetVolumes(true) {
-			err = opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+volumename, app.GetAgent())
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app volume:  %s ", err)
-				cluster.errorChan <- err
-			}
-		}
-	} else {
-		node, _ := cluster.OpenSVCFoundAppAgent(app)
-		for _, svc := range node.Svc {
-			if app.GetServiceName() == svc.Svc_name {
-				idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-				err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't unprovision app %s, %s", app.GetId(), err)
+					err = cluster.OpenSVCWaitDequeue(svc, idaction)
+					if err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't unprovision app %s, %s", app.GetId(), err)
+						opErr = errors.Join(opErr, err)
+					}
 				}
 			}
 		}
+	} else if svc.IsV3() {
+		err := svc.PurgeServiceV3(cluster.Name, app.GetServiceName())
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app service:  %s ", err)
+			opErr = errors.Join(opErr, err)
+		}
+		for _, volumename := range app.GetVolumes(true) {
+			err = svc.PurgeServiceV3(cluster.Name, cluster.Name+"/vol/"+volumename)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app volume:  %s ", err)
+				opErr = errors.Join(opErr, err)
+			}
+		}
+	} else {
+		err := svc.PurgeServiceV2(cluster.GetName(), app.GetServiceName(), app.GetAgent())
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app service:  %s ", err)
+			opErr = errors.Join(opErr, err)
+		}
+		for _, volumename := range app.GetVolumes(true) {
+			err = svc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+volumename, app.GetAgent())
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app volume:  %s ", err)
+				opErr = errors.Join(opErr, err)
+			}
+		}
 	}
-	cluster.errorChan <- nil
+
+	return opErr
 }
 
 func (cluster *Cluster) OpenSVCStopAppService(app *App, node string) error {
@@ -93,6 +119,12 @@ func (cluster *Cluster) OpenSVCStopAppService(app *App, node string) error {
 			}
 			svc.StopService(agent.Node_id, service.Svc_id)
 		}
+	} else if svc.IsV3() {
+		err := svc.StopServiceV3(cluster.Name, app.GetServiceName())
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop app:  %s ", err)
+			return err
+		}
 	} else {
 		if strings.ToUpper(node) == "ALL" {
 			err := svc.StopServiceV2(cluster.Name, app.GetServiceName(), "*")
@@ -117,6 +149,14 @@ func (cluster *Cluster) OpenSVCStopAppService(app *App, node string) error {
 
 func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
 	svc := cluster.OpenSVCConnect()
+	if svc.IsV3() {
+		err := svc.StartServiceV3(cluster.Name, app.GetServiceName())
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start app:  %s ", err)
+			return err
+		}
+		return nil
+	}
 	agent := app.GetAgent()
 	if strings.ToUpper(node) == "ALL" {
 		nodes := strings.Split(app.GetAppConfig().ProvAppAgents, ",")
@@ -143,8 +183,18 @@ func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
 
 func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid string) error {
 	svc := cluster.OpenSVCConnect()
+	if svc.IsV3() {
+		if rid != "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "RID restart is not supported in OpenSVC v3, falling back to full service restart")
+		}
+		err := svc.RestartServiceV3(cluster.Name, app.GetServiceName())
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app:  %s ", err)
+			return err
+		}
+		return nil
+	}
 	agent := app.GetAgent()
-
 	if strings.ToUpper(node) == "ALL" || node == "*" {
 		err := svc.RestartServiceV2(cluster.Name, app.GetServiceName(), "*", rid)
 		if err != nil {
@@ -165,6 +215,83 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 	return nil
 }
 
+func (cluster *Cluster) OpenSVCAbortAppService(app *App) error {
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() {
+		err := ErrOpenSVCAbortNotSupported
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not abort app: %s", err)
+		return err
+	}
+
+	err := svc.AbortServiceV3(cluster.Name, app.GetServiceName())
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not abort app: %s", err)
+		return err
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) OpenSVCClearAppInstanceState(app *App, node string) error {
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() {
+		err := ErrOpenSVCClearNotSupported
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not clear app instance state: %s", err)
+		return err
+	}
+
+	agent := app.GetAgent()
+	if node != "" {
+		agent = node
+	}
+
+	err := svc.ClearInstanceV3(agent, app.GetServiceName())
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not clear app instance state: %s", err)
+		return err
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) OpenSVCProvisionAppV3(app *App, svc opensvc.Collector, agent opensvc.Host) error {
+	err := cluster.OpenSVCCreateAppVariableMaps(agent.Node_name, app)
+	if err != nil {
+		return err
+	}
+
+	res, err := cluster.OpenSVCGetAppTemplateV3(app)
+	if err != nil {
+		return err
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", res)
+
+	templatefile := filepath.Join(app.Datadir, "opensvc_template.ini")
+	if err := os.WriteFile(templatefile, res, 0600); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Failed to write template file %s: %s", templatefile, err)
+	}
+
+	app.TemplateMD5Prov = misc.GetMD5HashFromBytes(res)
+	app.TemplateMD5 = app.TemplateMD5Prov
+
+	body, err := svc.CreateTemplateV3(cluster.Name, app.ServiceName, app.Agent, res)
+	if err != nil {
+		if !isOpenSVCAlreadyExists(err) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision app:  %s ", err)
+			return err
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "App template already exists, reusing existing template: %s", app.ServiceName)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Template created with response: %s", body)
+	}
+
+	delay := normalizeOpenSVCV3ProvisionDelay(cluster.Conf.ProvOpensvcV3ProvisionDelay)
+	time.Sleep(time.Duration(delay) * time.Second)
+
+	return svc.ProvisionServiceV3(cluster.Name, app.ServiceName)
+}
+
 func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 	svc := cluster.OpenSVCConnect()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Provisioning app %s on OpenSVC", app.GetId())
@@ -176,6 +303,23 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Found app agent %s. Creating maps", agent.Node_name)
+
+	if !cluster.Conf.ProvOpensvcUseCollectorAPI && svc.IsV3() {
+		err = cluster.OpenSVCProvisionAppV3(app, svc, agent)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision app:  %s ", err)
+			cluster.errorChan <- err
+			return err
+		}
+		err = cluster.OpenSVCProvisionRoute(app)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create app route:  %s ", err)
+			cluster.errorChan <- err
+			return err
+		}
+		cluster.errorChan <- nil
+		return nil
+	}
 
 	err = cluster.OpenSVCCreateAppVariableMaps(agent.Node_name, app)
 	if err != nil {
@@ -217,10 +361,9 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
-	// Check if app image not empty
+func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]map[string]string, error) {
 	if app.AppConfig.ProvAppDockerImg == "" {
-		return []byte(""), errors.New("App image is not defined in app config")
+		return nil, errors.New("App image is not defined in app config")
 	}
 
 	deployment := app.AppConfig.Deployment
@@ -231,14 +374,13 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
 	svcsection = cluster.OpenSVCGetAppVolumeSections(svcsection, app)
 	svcsection[fmt.Sprintf("container#%02d", containernum)] = cluster.OpenSVCGetNamespaceContainerSection()
-	var err error
+
 	for _, gc := range deployment.Storages.GitClones {
 		if gc.Volume == nil {
-			// If the volume is not set, try to resolve it
 			if vol, err := deployment.GetVolumeByName(gc.VolumeName); err == nil {
 				gc.Volume = vol
 			} else {
-				return []byte(""), fmt.Errorf("Git clone volume %s not found in deployment", gc.VolumeName)
+				return nil, fmt.Errorf("Git clone volume %s not found in deployment", gc.VolumeName)
 			}
 		}
 		containernum++
@@ -248,24 +390,33 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 
 	for _, s3m := range deployment.Storages.S3Mounts {
 		if s3m.Volume == nil {
-			// If the volume is not set, try to resolve it
 			if vol, err := deployment.GetVolumeByName(s3m.VolumeName); err == nil {
 				s3m.Volume = vol
 			} else {
-				return []byte(""), fmt.Errorf("S3 mount volume %s not found in deployment", s3m.VolumeName)
+				return nil, fmt.Errorf("S3 mount volume %s not found in deployment", s3m.VolumeName)
 			}
 		}
 
 		if _, err := cluster.resolveS3MountProvisioningEndpoint(app, s3m); err != nil {
-			return []byte(""), err
+			return nil, err
 		}
 
 		containernum++
 		sectionName := fmt.Sprintf("container#%02dinit%s", containernum, s3m.Name)
 		svcsection[sectionName] = cluster.OpenSVCGetAppS3MountContainerSection(app, s3m)
 	}
+
 	svcsection["container#app"] = cluster.OpenSVCGetAppContainerSection(app)
 	svcsection["env"] = cluster.OpenSVCGetAppEnvSection(app)
+
+	return svcsection, nil
+}
+
+func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
+	svcsection, err := cluster.OpenSVCGetAppTemplateSectionMap(app)
+	if err != nil {
+		return []byte(""), err
+	}
 
 	svcsectionJson, err := json.MarshalIndent(svcsection, "", "\t")
 	if err != nil {
@@ -273,7 +424,48 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 	}
 
 	return svcsectionJson, nil
+}
 
+func (cluster *Cluster) OpenSVCGetAppTemplateV3(app *App) ([]byte, error) {
+	svcsection, err := cluster.OpenSVCGetAppTemplateSectionMap(app)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := ini.Empty()
+
+	sectionNames := make([]string, 0, len(svcsection))
+	for k := range svcsection {
+		sectionNames = append(sectionNames, k)
+	}
+	sort.Strings(sectionNames)
+
+	for _, sectionName := range sectionNames {
+		kv := svcsection[sectionName]
+		sec, err := cfg.NewSection(sectionName)
+		if err != nil {
+			return nil, err
+		}
+		keys := make([]string, 0, len(kv))
+		for k := range kv {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			_, err := sec.NewKey(k, kv[k])
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	var buf bytes.Buffer
+	_, err = cfg.WriteTo(&buf)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }
 
 func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[string]string, app *App) map[string]map[string]string {
@@ -651,21 +843,20 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 	}
 
 	svc := cluster.OpenSVCConnect()
-	err := svc.CreateSecretV2(cluster.Name, app.Name, agent)
+
+	err := svc.CreateSecret(cluster.Name, app.Name, agent)
 	if err != nil {
-		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && cluster.Conf.ProvObjectAllowOverwrite {
+		if isOpenSVCAlreadyExists(err) && cluster.Conf.ProvObjectAllowOverwrite {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Overwriting existing secret for app %s without truncation", app.Name)
-			err = nil
 		} else {
 			return err
 		}
 	}
 
-	err = svc.CreateConfigV2(cluster.Name, app.Name, agent)
+	err = svc.CreateConfig(cluster.Name, app.Name, agent)
 	if err != nil {
-		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && cluster.Conf.ProvObjectAllowOverwrite {
+		if isOpenSVCAlreadyExists(err) && cluster.Conf.ProvObjectAllowOverwrite {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Overwriting existing config for app %s without truncation", app.Name)
-			err = nil
 		} else {
 			return err
 		}
@@ -673,27 +864,27 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 
 	for _, v := range app.AppConfig.Deployment.Variables {
 		if v.Type == "secret" {
-			err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, v.Name, cluster.Conf.GetDecryptedPassword(v.Name, v.Value))
+			err = svc.CreateSecretKeyValue(cluster.Name, app.Name, v.Name, cluster.Conf.GetDecryptedPassword(v.Name, v.Value))
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", v.Name, err)
 			}
 
 			for _, cd := range v.Conditional {
 				cdname := fmt.Sprintf("%s@%s", v.Name, cd.Agent)
-				err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, cdname, cluster.Conf.GetDecryptedPassword(cdname, cd.Value))
+				err = svc.CreateSecretKeyValue(cluster.Name, app.Name, cdname, cluster.Conf.GetDecryptedPassword(cdname, cd.Value))
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add conditional key to secret: %s %s ", cdname, err)
 				}
 			}
 		} else {
-			err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, v.Name, v.Value)
+			err = svc.CreateConfigKeyValue(cluster.Name, app.Name, v.Name, v.Value)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", v.Name, err)
 			}
 
 			for _, cd := range v.Conditional {
 				cdname := fmt.Sprintf("%s@%s", v.Name, cd.Agent)
-				err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, cdname, cd.Value)
+				err = svc.CreateConfigKeyValue(cluster.Name, app.Name, cdname, cd.Value)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add conditional key to config: %s %s ", cdname, err)
 				}
@@ -707,35 +898,30 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		for k, val := range envs {
 			vName := prefix + k
 
-			// Create the git clone config key
 			if k == config.GitVarSuffixRepo {
-				// If the git repo is a URL, we need to remove the protocol part
 				if strings.HasPrefix(val, "http://") || strings.HasPrefix(val, "https://") {
 					val = strings.TrimPrefix(val, "http://")
 					val = strings.TrimPrefix(val, "https://")
 				}
 			}
 			if k == config.GitVarSuffixBranch {
-				// If the git branch is not set, we use the default branch
 				if val == "" {
 					val = "master"
 				}
 			}
 
-			err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, vName, val)
+			err = svc.CreateConfigKeyValue(cluster.Name, app.Name, vName, val)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", vName, err)
 			}
 		}
 
-		// Create the git clone secret key
-		err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, prefix+config.GitVarSuffixPass, cluster.Conf.GetDecryptedPassword(gc.Name, gc.GitPass))
+		err = svc.CreateSecretKeyValue(cluster.Name, app.Name, prefix+config.GitVarSuffixPass, cluster.Conf.GetDecryptedPassword(gc.Name, gc.GitPass))
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", prefix+config.GitVarSuffixPass, err)
 		}
 	}
 
-	// Create the s3 mount config keys
 	for _, s3m := range app.AppConfig.Deployment.Storages.S3Mounts {
 		effectiveEndpoint, err := cluster.resolveS3MountProvisioningEndpoint(app, s3m)
 		if err != nil {
@@ -749,30 +935,26 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 			if k == config.S3VarSuffixEndpoint {
 				val = effectiveEndpoint
 			} else if k == config.S3VarSuffixMountDir {
-				// If the mount directory is not set, we use the default mount directory
 				if val == "" {
 					val = "/mnt"
 				}
 			} else if k == config.S3VarSuffixRegion {
-				// If the region is not set, we use the default region
 				if val == "" {
 					val = "fr-east-1"
 				}
 			} else if k == config.S3VarSuffixBucket {
-				// If the bucket is not set, we use the app name as the default bucket
 				if val == "" {
 					val = app.Name
 				}
 			}
 
-			err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, vName, val)
+			err = svc.CreateConfigKeyValue(cluster.Name, app.Name, vName, val)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", vName, err)
 			}
 		}
 
-		// Create the s3 mount secret key
-		err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, prefix+config.S3VarSuffixSecretKey, cluster.Conf.GetDecryptedPassword(s3m.Name, s3m.SecretKey))
+		err = svc.CreateSecretKeyValue(cluster.Name, app.Name, prefix+config.S3VarSuffixSecretKey, cluster.Conf.GetDecryptedPassword(s3m.Name, s3m.SecretKey))
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", prefix+config.S3VarSuffixSecretKey, err)
 		}
@@ -829,7 +1011,7 @@ backend ` + backend + `
 `
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Creating app route fragment %s %s %s %s", cloud18GatewayServiceConfig[0], cloud18GatewayServiceConfig[2], "haproxy.cfg.d/"+backend, haproxyfragment)
 
-		err = svc.CreateConfigKeyValueV2(cloud18GatewayServiceConfig[0], cloud18GatewayServiceConfig[2], "haproxy.cfg.d/"+backend, haproxyfragment)
+		err = svc.CreateConfigKeyValue(cloud18GatewayServiceConfig[0], cloud18GatewayServiceConfig[2], "haproxy.cfg.d/"+backend, haproxyfragment)
 		if err != nil {
 			return err
 		}
@@ -845,7 +1027,7 @@ backend ` + backend + `
 	var errtask ErrSlice
 	for _, node := range nodes {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Creating app route %s on OpenSVC service host %s", app.GetId(), node)
-		err = svc.RunTaskV2(cluster.Name, cluster.Conf.Cloud18GatewayService, node, "task#mergecfg", "")
+		err = svc.RunTask(cluster.Name, cluster.Conf.Cloud18GatewayService, node, "task#mergecfg", "")
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not aggregate fragments of gateway service: %s", err)
 			errtask = append(errtask, err)

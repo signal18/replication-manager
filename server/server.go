@@ -8,6 +8,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/json"
 	"errors"
@@ -134,12 +135,14 @@ type ReplicationManager struct {
 	tlog                                             s18log.TermLog
 	termlength                                       int
 	exitMsg                                          string
-	exit                                             bool
+	exit                                             atomic.Bool
 	isStarted                                        bool
 	Confs                                            map[string]config.Config
 	VersionConfs                                     map[string]*config.ConfVersion `json:"-"`
 	grpcServer                                       *grpc.Server                   `json:"-"`
 	grpcWrapped                                      *grpcweb.WrappedGrpcServer     `json:"-"`
+	httpServer                                       *http.Server                   `json:"-"`
+	apiServer                                        *http.Server                   `json:"-"`
 	V3Up                                             chan bool                      `json:"-"`
 	v3Config                                         Repmanv3Config                 `json:"-"`
 	cloud18CheckSum                                  hash.Hash                      `json:"-"`
@@ -1191,6 +1194,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 			flags.BoolVar(&conf.ProvOpensvcUseCollectorAPI, "opensvc-use-collector-api", false, "Use the collector API instead of cluster VIP")
 			flags.StringVar(&conf.KubeConfig, "kube-config", "", "path to ks8 config file")
 			flags.StringVar(&conf.ProvOpensvcCollectorAccount, "opensvc-collector-account", "/etc/replication-manager/account.yaml", "Openscv collector account")
+			flags.IntVar(&conf.ProvOpensvcV3ProvisionDelay, "opensvc-v3-provision-delay", 10, "Seconds to wait after template creation before provisioning in V3")
 
 			if conf.ProvOpensvcUseCollectorAPI {
 				dbConfig := viper.New()
@@ -2642,34 +2646,41 @@ func (repman *ReplicationManager) Run() error {
 	//	ticker := time.NewTicker(interval * time.Duration(repman.Conf.MonitoringTicker))
 	repman.isStarted = true
 	sigs := make(chan os.Signal, 1)
-	// catch all signals since not explicitly listing
-	//	signal.Notify(sigs)
-	signal.Notify(sigs, os.Interrupt)
-	// method invoked upon seeing signal
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	clustersDone := make(chan struct{})
 	go func() {
 		s := <-sigs
 		repman.Logrus.Printf("RECEIVED SIGNAL: %s", s)
+
+		// Stop the main loop immediately so it stops queuing new git pushes,
+		// config saves, and other periodic work before clusters finish stopping.
+		// Without this, the main loop can keep enqueuing git push tasks while
+		// processClusterQueue is blocked waiting for gitMutex — compounding the delay.
+		repman.exit.Store(true)
+
 		repman.UnMountS3()
+
+		// Stop ticker goroutines.
+		close(quit_GitPull)
+		close(quit_PAT)
 
 		stopwg := sync.WaitGroup{}
 		for _, cl := range repman.Clusters {
 			stopwg.Add(1)
-			go func() {
+			go func(c *cluster.Cluster) {
 				defer stopwg.Done()
-				cl.Stop()
-			}()
+				c.Stop()
+			}(cl)
 		}
-		// Wait for cluster close
+		// Wait for all cluster.Stop() calls to complete, then unblock the main goroutine.
 		stopwg.Wait()
-
-		repman.exit = true
-
+		close(clustersDone)
 	}()
 
 	repman.RefreshDiskStats()
 
 	var counter int64 = 0
-	for !repman.exit {
+	for !repman.exit.Load() {
 		if repman.Conf.Arbitration {
 			repman.Heartbeat()
 		}
@@ -2706,6 +2717,15 @@ func (repman *ReplicationManager) Run() error {
 
 		counter++
 	}
+	// Block until all cluster.Stop() goroutines finish so no config saves are lost.
+	// The timeout guards against a hang if repman.exit is ever set outside the signal
+	// handler (which would exit the loop without closing clustersDone).
+	select {
+	case <-clustersDone:
+	case <-time.After(30 * time.Second):
+		repman.Logrus.Warn("timed out waiting for clusters to stop")
+	}
+
 	if repman.exitMsg != "" {
 		repman.Logrus.Println(repman.exitMsg)
 	}
@@ -2713,7 +2733,7 @@ func (repman *ReplicationManager) Run() error {
 		pprof.StopCPUProfile()
 	}
 	repman.Stop()
-	os.Exit(1)
+	os.Exit(0)
 	return nil
 
 }
@@ -2911,6 +2931,54 @@ func (repman *ReplicationManager) resolveHostIp() string {
 
 func (repman *ReplicationManager) Stop() {
 
+	if repman.globalScheduler != nil {
+		repman.globalScheduler.Stop()
+	}
+
+	httpCtx, httpCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer httpCancel()
+
+	// Shut down both HTTP servers in parallel so neither consumes the other's budget.
+	var httpWg sync.WaitGroup
+	if repman.httpServer != nil {
+		httpWg.Add(1)
+		go func() {
+			defer httpWg.Done()
+			if err := repman.httpServer.Shutdown(httpCtx); err != nil {
+				repman.Logrus.Warnf("HTTP server shutdown: %v", err)
+			}
+		}()
+	}
+	if repman.apiServer != nil {
+		httpWg.Add(1)
+		go func() {
+			defer httpWg.Done()
+			if err := repman.apiServer.Shutdown(httpCtx); err != nil {
+				repman.Logrus.Warnf("API server shutdown: %v", err)
+			}
+		}()
+	}
+	httpWg.Wait()
+
+	// GracefulStop waits for all in-flight RPCs; fall back to hard Stop if the
+	// deadline expires so long-lived streams don't hold up shutdown.
+	// Uses a dedicated context so HTTP drain time doesn't eat gRPC's budget.
+	if repman.grpcServer != nil {
+		grpcCtx, grpcCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer grpcCancel()
+		grpcDone := make(chan struct{})
+		go func() {
+			repman.grpcServer.GracefulStop()
+			close(grpcDone)
+		}()
+		select {
+		case <-grpcDone:
+		case <-grpcCtx.Done():
+			repman.Logrus.Warn("gRPC graceful stop timed out, forcing stop")
+			repman.grpcServer.Stop()
+		}
+	}
+
 	if repman.MemProfile != "" {
 		f, err := os.Create(repman.MemProfile)
 		if err != nil {
@@ -2949,7 +3017,7 @@ func (repman *ReplicationManager) Stop() {
 	repman.ConfigManager.Stop()
 
 	if !repman.IsExportPush {
-		go repman.PushConfigToBackupDir()
+		repman.PushConfigToBackupDir()
 	}
 }
 

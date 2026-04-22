@@ -88,6 +88,8 @@ export const clusterService = {
   physicalBackupMaster,
   logicalBackup,
   stopDatabase,
+  abortDatabase,
+  clearDatabase,
   startDatabase,
   restartDatabase,
   provisionDatabase,
@@ -109,6 +111,8 @@ export const clusterService = {
   unprovisionProxy,
   startProxy,
   stopProxy,
+  abortProxy,
+  clearProxy,
   stagingProxy,
 
   // Database service APIs
@@ -155,8 +159,11 @@ export const clusterService = {
   getClusterApps,
   provisionApp,
   unprovisionApp,
+  updateRoutesApp,
   startApp,
   stopApp,
+  abortApp,
+  clearApp,
   getAppService,
   resolveTemplateVariables,
   addDeployment,
@@ -471,6 +478,14 @@ function stopDatabase(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/stop`)
 }
 
+function abortDatabase(clusterName, serverId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/abort`)
+}
+
+function clearDatabase(clusterName, serverId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/clear`)
+}
+
 function startDatabase(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/start`)
 }
@@ -548,6 +563,14 @@ function startProxy(clusterName, proxyId, cfgAction, baseURL) {
 
 function stopProxy(clusterName, proxyId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/stop`)
+}
+
+function abortProxy(clusterName, proxyId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/proxies/${proxyId}/actions/abort`)
+}
+
+function clearProxy(clusterName, proxyId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/proxies/${proxyId}/actions/clear`)
 }
 
 function stagingProxy(clusterName, proxyId, isStaging, baseURL) {
@@ -719,12 +742,24 @@ function unprovisionApp(clusterName, appId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/unprovision`)
 }
 
+function updateRoutesApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/actions/update-routes`)
+}
+
 function startApp(clusterName, appId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/start`)
 }
 
 function stopApp(clusterName, appId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/stop`)
+}
+
+function abortApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/actions/abort`)
+}
+
+function clearApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/actions/clear`)
 }
 
 function getAppService(clusterName, serviceName, appId, baseURL) {

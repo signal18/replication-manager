@@ -20,6 +20,34 @@ import (
 
 var dockerMinusRm bool
 
+var (
+	ErrOpenSVCAbortNotSupported = errors.New("abort not supported for this OpenSVC API version")
+	ErrOpenSVCClearNotSupported = errors.New("clear not supported for this OpenSVC API version")
+)
+
+const defaultOpenSVCV3ProvisionDelay = 10
+
+func isOpenSVCAlreadyExists(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, opensvc.ErrObjectAlreadyExists) {
+		return true
+	}
+
+	var se *opensvc.StatusError
+	return errors.As(err, &se) && se != nil && se.StatusCode == 409
+}
+
+func normalizeOpenSVCV3ProvisionDelay(delay int) int {
+	if delay < 0 {
+		return defaultOpenSVCV3ProvisionDelay
+	}
+
+	return delay
+}
+
 func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	var svc opensvc.Collector
 	svc.ClusterConf = cluster.Conf
@@ -227,11 +255,16 @@ func (cluster *Cluster) openSVCCreateMapsV3(svc opensvc.Collector, agent string)
 
 	err := svc.CreateSecret(cluster.Name, "env", agent)
 	if err != nil {
-		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && cluster.Conf.ProvObjectAllowOverwrite {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Secret object exists. Reuse secret env on cluster to avoid truncation of keys")
+		if isOpenSVCAlreadyExists(err) {
+			if cluster.Conf.ProvObjectAllowOverwrite {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Secret object exists. Reuse secret env on cluster to avoid truncation of keys")
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create secret: %s", err)
+				return err
+			}
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create secret: %s ", err)
-			allErr = errors.Join(allErr, fmt.Errorf("create secret env: %w", err))
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create secret: %s", err)
+			return err
 		}
 	}
 
@@ -258,11 +291,16 @@ func (cluster *Cluster) openSVCCreateMapsV3(svc opensvc.Collector, agent string)
 
 	err = svc.CreateConfig(cluster.Name, "env", agent)
 	if err != nil {
-		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && cluster.Conf.ProvObjectAllowOverwrite {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Config object exists. Reuse config env on cluster to avoid truncation of keys")
+		if isOpenSVCAlreadyExists(err) {
+			if cluster.Conf.ProvObjectAllowOverwrite {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Config object exists. Reuse config env on cluster to avoid truncation of keys")
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create config: %s", err)
+				return err
+			}
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create config: %s ", err)
-			allErr = errors.Join(allErr, fmt.Errorf("create config env: %w", err))
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create config: %s", err)
+			return err
 		}
 	}
 

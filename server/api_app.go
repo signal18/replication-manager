@@ -69,6 +69,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppProvision)),
 	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/update-routes", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppUpdateRoutes)),
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/stop", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppStop)),
@@ -93,6 +97,14 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppRestart)),
 	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/abort", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppAbort)),
+	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/clear", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppClear)),
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/need-restart", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppNeedRestart)),
@@ -672,6 +684,111 @@ func (repman *ReplicationManager) handlerMuxAppRestart(w http.ResponseWriter, r 
 	}
 }
 
+func (repman *ReplicationManager) handlerMuxAppAbort(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Cluster Not Found"})
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"error": "No valid ACL"})
+		return
+	}
+
+	if mycluster.GetOrchestrator() != "opensvc" {
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Abort is only supported for OpenSVC orchestrator"})
+		return
+	}
+
+	app := mycluster.GetAppFromName(vars["appName"])
+	if app == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "App Not Found"})
+		return
+	}
+
+	err := mycluster.OpenSVCAbortAppService(app)
+	if err != nil {
+		if errors.Is(err, cluster.ErrOpenSVCAbortNotSupported) {
+			w.WriteHeader(http.StatusNotImplemented)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to abort app service: %s", err)})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Abort requested successfully",
+		"app":     app.GetName(),
+	})
+}
+
+func (repman *ReplicationManager) handlerMuxAppClear(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Cluster Not Found"})
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"error": "No valid ACL"})
+		return
+	}
+
+	if mycluster.GetOrchestrator() != "opensvc" {
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Clear is only supported for OpenSVC orchestrator"})
+		return
+	}
+
+	app := mycluster.GetAppFromName(vars["appName"])
+	if app == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "App Not Found"})
+		return
+	}
+
+	nodeParam := r.URL.Query().Get("node")
+	err := mycluster.OpenSVCClearAppInstanceState(app, nodeParam)
+	if err != nil {
+		if errors.Is(err, cluster.ErrOpenSVCClearNotSupported) {
+			w.WriteHeader(http.StatusNotImplemented)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to clear app instance state: %s", err)})
+		return
+	}
+
+	effectiveNode := nodeParam
+	if effectiveNode == "" {
+		effectiveNode = app.GetAgent()
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Instance monitor state cleared successfully",
+		"app":     app.GetName(),
+		"node":    effectiveNode,
+	})
+}
+
 // @Summary Provision App Service
 // @Description Provision the app service for a given cluster and app
 // @Tags Apps
@@ -716,6 +833,51 @@ func (repman *ReplicationManager) handlerMuxAppProvision(w http.ResponseWriter, 
 	}
 }
 
+// @Summary Update App Routes
+// @Description Push route configuration to the OpenSVC gateway service for a given app
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Success 200 {string} string "App Routes Updated"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "App Not Found"
+// @Failure 500 {string} string "Cluster Not Found"
+// @Router /api/clusters/{clusterName}/apps/{appName}/actions/update-routes [post]
+func (repman *ReplicationManager) handlerMuxAppUpdateRoutes(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+
+		if mycluster.GetOrchestrator() != "opensvc" {
+			http.Error(w, "Orchestrator not supported", http.StatusInternalServerError)
+			return
+		}
+
+		node := mycluster.GetAppFromName(vars["appName"])
+		if node != nil {
+			if err := mycluster.OpenSVCProvisionRoute(node); err != nil {
+				http.Error(w, "Failed to update app routes: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			fmt.Fprintf(w, "App Routes Updated")
+		} else {
+			http.Error(w, "App Not Found", http.StatusNotFound)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+		return
+	}
+}
+
 // @Summary Unprovision App Service
 // @Description Unprovision the app service for a given cluster and app
 // @Tags Apps
@@ -745,7 +907,10 @@ func (repman *ReplicationManager) handlerMuxAppUnprovision(w http.ResponseWriter
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
-			mycluster.OpenSVCUnprovisionAppService(node)
+			if err := mycluster.OpenSVCUnprovisionAppService(node); err != nil {
+				http.Error(w, fmt.Sprintf("Can not unprovision app service: %s", err), http.StatusInternalServerError)
+				return
+			}
 		} else {
 			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
@@ -2605,6 +2770,52 @@ func (repman *ReplicationManager) handlerMuxAppSaveAsTemplate(w http.ResponseWri
 	}
 }
 
+type appTemplateActionBody struct {
+	Template     interface{} `json:"template"`
+	ForceRefresh bool        `json:"forceRefresh"`
+}
+
+func decodeAppTemplateActionBody(r *http.Request) (string, bool, error) {
+	var body appTemplateActionBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return "", false, err
+	}
+
+	templateName, err := normalizeTemplatePayloadName(body.Template)
+	if err != nil {
+		return "", body.ForceRefresh, err
+	}
+	if templateName == "" {
+		return "", body.ForceRefresh, errors.New("template name must be provided")
+	}
+
+	return templateName, body.ForceRefresh, nil
+}
+
+func normalizeTemplatePayloadName(template interface{}) (string, error) {
+	switch value := template.(type) {
+	case string:
+		return strings.TrimSpace(value), nil
+	case map[string]interface{}:
+		for _, key := range []string{"value", "name", "template", "label"} {
+			raw, ok := value[key]
+			if !ok {
+				continue
+			}
+
+			s, ok := raw.(string)
+			if ok && strings.TrimSpace(s) != "" {
+				return strings.TrimSpace(s), nil
+			}
+		}
+		return "", errors.New("template must be a string or an object with value/name/template/label")
+	case nil:
+		return "", nil
+	default:
+		return "", errors.New("template must be a string or an object")
+	}
+}
+
 // @Summary Reset App from Template
 // @Description Reloads the app template configuration for a specific app in a cluster.
 // @Tags Apps
@@ -2629,22 +2840,13 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplate(w http.Response
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
-			//Get the request body {template: value}
-			var body struct {
-				Template     string `json:"template"`
-				ForceRefresh bool   `json:"forceRefresh"`
-			}
-			err := json.NewDecoder(r.Body).Decode(&body)
+			templateName, forceRefresh, err := decodeAppTemplateActionBody(r)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Error decoding request body: %v", err), http.StatusBadRequest)
 				return
 			}
-			if body.Template == "" {
-				http.Error(w, "Template name must be provided", http.StatusBadRequest)
-				return
-			}
 
-			err = resetAppFromTemplateWithProjection(mycluster, node, body.Template, body.ForceRefresh)
+			err = resetAppFromTemplateWithProjection(mycluster, node, templateName, forceRefresh)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Error applying template: %v", err), http.StatusInternalServerError)
 				return
@@ -2693,30 +2895,22 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplatePreview(w http.R
 		return
 	}
 
-	var body struct {
-		Template     string `json:"template"`
-		ForceRefresh bool   `json:"forceRefresh"`
-	}
-	err := json.NewDecoder(r.Body).Decode(&body)
+	templateName, forceRefresh, err := decodeAppTemplateActionBody(r)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error decoding request body: %v", err), http.StatusBadRequest)
 		return
 	}
-	if body.Template == "" {
-		http.Error(w, "Template name must be provided", http.StatusBadRequest)
-		return
-	}
 
-	tempConfig, err := buildValidatedTempAppConfigFromTemplate(mycluster, node, body.Template, body.ForceRefresh)
+	tempConfig, err := buildValidatedTempAppConfigFromTemplate(mycluster, node, templateName, forceRefresh)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error applying template: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	changes := buildTemplateProjectionImpact(node.AppConfig, tempConfig, body.Template)
+	changes := buildTemplateProjectionImpact(node.AppConfig, tempConfig, templateName)
 	preview := appTemplateResetPreview{
-		TemplateName: body.Template,
-		ForceRefresh: body.ForceRefresh,
+		TemplateName: templateName,
+		ForceRefresh: forceRefresh,
 		ChangeCount:  len(changes),
 		Changes:      changes,
 	}

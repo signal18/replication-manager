@@ -1169,6 +1169,36 @@ export const stopDatabase = createGuardedAsyncThunk(
   }
 )
 
+export const abortDatabase = createGuardedAsyncThunk(
+  'cluster/abortDatabase',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.abortDatabase(clusterName, serverId, baseURL)
+      showSuccessBanner('Database orchestration aborted!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Aborting database orchestration failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const clearDatabase = createGuardedAsyncThunk(
+  'cluster/clearDatabase',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.clearDatabase(clusterName, serverId, baseURL)
+      showSuccessBanner('Database instance state cleared!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Clearing database instance state failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const startDatabase = createGuardedAsyncThunk(
   'cluster/startDatabase',
   async ({ clusterName, serverId }, thunkAPI) => {
@@ -1478,6 +1508,30 @@ export const stopProxy = createGuardedAsyncThunk('cluster/stopProxy', async ({ c
     return { data, status }
   } catch (error) {
     showErrorBanner('Stopping proxy failed!', error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const abortProxy = createGuardedAsyncThunk('cluster/abortProxy', async ({ clusterName, proxyId }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.abortProxy(clusterName, proxyId, baseURL)
+    showSuccessBanner('Proxy orchestration aborted!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Aborting proxy orchestration failed!', error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const clearProxy = createGuardedAsyncThunk('cluster/clearProxy', async ({ clusterName, proxyId }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.clearProxy(clusterName, proxyId, baseURL)
+    showSuccessBanner('Proxy instance state cleared!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Clearing proxy instance state failed!', error, thunkAPI)
     return handleError(error, thunkAPI)
   }
 })
@@ -2026,6 +2080,21 @@ export const unprovisionApp = createGuardedAsyncThunk(
   }
 )
 
+export const updateRoutesApp = createGuardedAsyncThunk(
+  'cluster/updateRoutesApp',
+  async ({ clusterName, appId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.updateRoutesApp(clusterName, appId, baseURL)
+      showSuccessBanner('Update routes successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Update routes failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const startApp = createGuardedAsyncThunk('cluster/startApp', async ({ clusterName, appId }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -2046,6 +2115,30 @@ export const stopApp = createGuardedAsyncThunk('cluster/stopApp', async ({ clust
     return { data, status }
   } catch (error) {
     showErrorBanner('Stopping app failed!', error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const abortApp = createGuardedAsyncThunk('cluster/abortApp', async ({ clusterName, appId }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.abortApp(clusterName, appId, baseURL)
+    showSuccessBanner('App orchestration aborted!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Aborting app orchestration failed!', error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const clearApp = createGuardedAsyncThunk('cluster/clearApp', async ({ clusterName, appId }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.clearApp(clusterName, appId, baseURL)
+    showSuccessBanner('App instance state cleared!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Clearing app instance state failed!', error, thunkAPI)
     return handleError(error, thunkAPI)
   }
 })
@@ -2598,6 +2691,8 @@ export const clusterSlice = createSlice({
         physicalBackupMaster.pending,
         logicalBackup.pending,
         stopDatabase.pending,
+        abortDatabase.pending,
+        clearDatabase.pending,
         startDatabase.pending,
         restartDatabase.pending,
         provisionDatabase.pending,
@@ -2616,6 +2711,15 @@ export const clusterSlice = createSlice({
         unprovisionProxy.pending,
         startProxy.pending,
         stopProxy.pending,
+        abortProxy.pending,
+        clearProxy.pending,
+        provisionApp.pending,
+        unprovisionApp.pending,
+        updateRoutesApp.pending,
+        startApp.pending,
+        stopApp.pending,
+        abortApp.pending,
+        clearApp.pending,
         refreshStaging.pending,
         killThread.pending,
         killQuery.pending,
@@ -2673,6 +2777,8 @@ export const clusterSlice = createSlice({
         physicalBackupMaster.fulfilled,
         logicalBackup.fulfilled,
         stopDatabase.fulfilled,
+        abortDatabase.fulfilled,
+        clearDatabase.fulfilled,
         startDatabase.fulfilled,
         restartDatabase.fulfilled,
         provisionDatabase.fulfilled,
@@ -2691,6 +2797,15 @@ export const clusterSlice = createSlice({
         unprovisionProxy.fulfilled,
         startProxy.fulfilled,
         stopProxy.fulfilled,
+        abortProxy.fulfilled,
+        clearProxy.fulfilled,
+        provisionApp.fulfilled,
+        unprovisionApp.fulfilled,
+        updateRoutesApp.fulfilled,
+        startApp.fulfilled,
+        stopApp.fulfilled,
+        abortApp.fulfilled,
+        clearApp.fulfilled,
         refreshStaging.fulfilled,
         killThread.fulfilled,
         killQuery.fulfilled,
@@ -2749,6 +2864,8 @@ export const clusterSlice = createSlice({
         physicalBackupMaster.rejected,
         logicalBackup.rejected,
         stopDatabase.rejected,
+        abortDatabase.rejected,
+        clearDatabase.rejected,
         startDatabase.rejected,
         restartDatabase.rejected,
         provisionDatabase.rejected,
@@ -2767,6 +2884,15 @@ export const clusterSlice = createSlice({
         unprovisionProxy.rejected,
         startProxy.rejected,
         stopProxy.rejected,
+        abortProxy.rejected,
+        clearProxy.rejected,
+        provisionApp.rejected,
+        unprovisionApp.rejected,
+        updateRoutesApp.rejected,
+        startApp.rejected,
+        stopApp.rejected,
+        abortApp.rejected,
+        clearApp.rejected,
         refreshStaging.rejected,
         killThread.rejected,
         killQuery.rejected,

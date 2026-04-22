@@ -30,6 +30,7 @@ function Proxies({ selectedCluster, user }) {
         isMenuOptionsVisible={selectedCluster?.config?.provOrchestrator !== 'onpremise'}
         showTerminal={selectedCluster?.config?.terminalSessionEnabled}
         topoStaging={selectedCluster?.config?.topologyStaging}
+        orchestrator={selectedCluster?.config?.provOrchestrator}
         user={user}
       />
     ) : (
@@ -41,6 +42,7 @@ function Proxies({ selectedCluster, user }) {
         isMenuOptionsVisible={selectedCluster?.config?.provOrchestrator !== 'onpremise'}
         showTerminal={selectedCluster?.config?.terminalSessionEnabled}
         topoStaging={selectedCluster?.config?.topologyStaging}
+        orchestrator={selectedCluster?.config?.provOrchestrator}
         user={user}
       />
     )

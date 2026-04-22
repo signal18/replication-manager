@@ -25,6 +25,7 @@ function Apps({ selectedCluster, user }) {
         clusterName={selectedCluster?.name}
         showGridView={showGridView}
         isMenuOptionsVisible={true}
+        orchestrator={selectedCluster?.config?.provOrchestrator}
         user={user}
         states={clusterAppStates}
       />
@@ -35,6 +36,7 @@ function Apps({ selectedCluster, user }) {
         clusterName={selectedCluster?.name}
         showTableView={showTableView}
         isMenuOptionsVisible={true}
+        orchestrator={selectedCluster?.config?.provOrchestrator}
         user={user}
         states={clusterAppStates}
       />

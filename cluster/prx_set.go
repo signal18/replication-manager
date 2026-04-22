@@ -40,6 +40,11 @@ func (proxy *Proxy) SetStaging(staging bool) {
 	proxy.IsStaging = staging
 }
 
+func (proxy *Proxy) SetTemplateMD5(md5 string) {
+	proxy.TemplateMD5Prov = md5
+	proxy.TemplateMD5 = md5
+}
+
 func (proxy *Proxy) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions string, ProxysqlHostsIPV6 string, Weights string) {
 	slapospartitions := strings.Split(SlapOSDBPartitions, ",")
 	agents := strings.Split(ProvAgents, ",")

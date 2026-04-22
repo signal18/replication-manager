@@ -69,6 +69,8 @@ type Proxy struct {
 	workingAgentMu  sync.RWMutex         `json:"-"`
 	Weight          string               `json:"weight"`
 	IsStaging       bool                 `json:"isStaging"`
+	TemplateMD5Prov string               `json:"templateMD5Prov"`
+	TemplateMD5     string               `json:"templateMD5"`
 	Lock            sync.Mutex
 }
 
@@ -140,6 +142,7 @@ type DatabaseProxy interface {
 	SetID()
 	SetDataDir()
 	SetServiceName(namespace string)
+	SetTemplateMD5(md5 string)
 	SetStaging(staging bool)
 	IsInStaging() bool
 

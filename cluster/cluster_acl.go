@@ -411,6 +411,24 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 }
 
 func (cluster *Cluster) IsURLPassAppsACL(strUser string, URL string) bool {
+	// App settings actions must only be evaluated against app settings rules.
+	// This prevents fallback from /settings/actions/* to generic /actions/* rules.
+	if strings.Contains(URL, "/settings/actions/") {
+		settingsRules := make([]ACLRule, 0)
+		for _, rule := range appACLRules {
+			if strings.Contains(rule.URLPattern, "/settings/actions/") {
+				settingsRules = append(settingsRules, rule)
+			}
+		}
+
+		if cluster.matchACLRules(strUser, URL, settingsRules) {
+			return true
+		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL app settings check failed for user %s : %s", strUser, URL)
+		return false
+	}
+
 	// Check against rule-based ACL system with improved logging
 	if cluster.matchACLRules(strUser, URL, appACLRules) {
 		return true

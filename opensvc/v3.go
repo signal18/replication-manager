@@ -3,6 +3,7 @@ package opensvc
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +20,15 @@ import (
 
 	"github.com/tidwall/gjson"
 )
+
+type StatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("unexpected status code: %d, body: %s", e.StatusCode, e.Body)
+}
 
 func (collector *Collector) IsV3() bool {
 	return collector.ClusterApiVersion == "v3"
@@ -89,7 +99,10 @@ func (collector *Collector) GetAuthInfoV3() error {
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
-		return fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
 	}
 
 	// Set the API version in the collector if successful
@@ -130,7 +143,10 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
 	}
 
 	var hosts []Host
@@ -172,7 +188,10 @@ func (collector *Collector) CreateObjectV3(namespace, kind, service string, data
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
 	}
 
 	return body, nil
@@ -210,7 +229,10 @@ func (collector *Collector) GetObjectV3(namespace, kind, service string, getFunc
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
 	}
 
 	if getFunc == nil {
@@ -307,7 +329,10 @@ func (collector *Collector) handleObjectKeyValueV3(operation, namespace, kind, s
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
 	}
 
 	return body, nil
@@ -319,6 +344,10 @@ func (collector *Collector) GetSecretKeyValueV3(namespace, service, key string) 
 
 func (collector *Collector) CreateSecretKeyValueV3(namespace, service, key, value string) error {
 	_, err := collector.handleObjectKeyValueV3("create", namespace, "sec", service, key, value)
+	var se *StatusError
+	if err != nil && errors.As(err, &se) && se.StatusCode == 409 {
+		return collector.UpdateSecretKeyValueV3(namespace, service, key, value)
+	}
 	return err
 }
 
@@ -338,6 +367,10 @@ func (collector *Collector) GetConfigKeyValueV3(namespace, service, key string) 
 
 func (collector *Collector) CreateConfigKeyValueV3(namespace, service, key, value string) error {
 	_, err := collector.handleObjectKeyValueV3("create", namespace, "cfg", service, key, value)
+	var se *StatusError
+	if err != nil && errors.As(err, &se) && se.StatusCode == 409 {
+		return collector.UpdateConfigKeyValueV3(namespace, service, key, value)
+	}
 	return err
 }
 
@@ -369,6 +402,8 @@ func (collector *Collector) handleObjectActionV3(namespace, kind, service, actio
 		resp, err = client.PostObjectActionProvision(ctx, namespace, oKind, service, collector.RequestCloserV3())
 	case "unprovision":
 		resp, err = client.PostObjectActionUnprovision(ctx, namespace, oKind, service, collector.RequestCloserV3())
+	case "abort":
+		resp, err = client.PostObjectActionAbort(ctx, namespace, oKind, service, collector.RequestCloserV3())
 	case "start":
 		resp, err = client.PostObjectActionStart(ctx, namespace, oKind, service, collector.RequestCloserV3())
 	case "stop":
@@ -391,29 +426,32 @@ func (collector *Collector) handleObjectActionV3(namespace, kind, service, actio
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
 	}
 
 	return body, nil
 }
 
-func (collector *Collector) CreateTemplateV3(cluster string, svc string, node string, template []byte) error {
+func (collector *Collector) CreateTemplateV3(cluster string, svc string, node string, template []byte) ([]byte, error) {
 
 	svcparts := strings.SplitN(svc, "/", 3)
 	if len(svcparts) != 3 {
-		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+		return nil, fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
 	}
 
 	ns := svcparts[0]
 	kind := svcparts[1]
 	svcname := svcparts[2]
 
-	if _, err := collector.CreateObjectV3(ns, kind, svcname, template); err != nil {
-		return fmt.Errorf("failed to create object %s/%s/%s: %w", ns, kind, svcname, err)
+	resp, err := collector.CreateObjectV3(ns, kind, svcname, template)
+	if err != nil {
+		return nil, err
 	}
 
-	_, err := collector.handleObjectActionV3(ns, kind, svcname, "provision", nil)
-	return err
+	return resp, nil
 }
 
 func (collector *Collector) ProvisionServiceV3(cluster, svc string) error {
@@ -488,6 +526,20 @@ func (collector *Collector) RestartServiceV3(cluster, svc string) error {
 	return err
 }
 
+func (collector *Collector) AbortServiceV3(cluster, svc string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+
+	ns := svcparts[0]
+	kind := svcparts[1]
+	svcname := svcparts[2]
+
+	_, err := collector.handleObjectActionV3(ns, kind, svcname, "abort", nil)
+	return err
+}
+
 func (collector *Collector) handleInstanceActionV3(node, namespace, kind, service, action string, params *InstanceActionParams) ([]byte, error) {
 	var resp *http.Response
 	var err error
@@ -532,6 +584,14 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 			rtparams = params.ToRestartParams()
 		}
 		resp, err = client.PostInstanceActionRestart(ctx, node, namespace, oKind, service, rtparams, collector.RequestCloserV3())
+	case "run":
+		var rpparams *apiv3.PostInstanceActionRunParams
+		if params != nil {
+			rpparams = params.ToRunParams()
+		}
+		resp, err = client.PostInstanceActionRun(ctx, node, namespace, oKind, service, rpparams, collector.RequestCloserV3())
+	case "clear":
+		resp, err = client.PostInstanceClear(ctx, node, namespace, oKind, service, collector.RequestCloserV3())
 	default:
 		return nil, fmt.Errorf("unsupported action: %s", action)
 	}
@@ -546,10 +606,52 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
 	}
 
 	return body, nil
+}
+
+func (collector *Collector) ClearInstanceV3(node, svc string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+
+	ns := svcparts[0]
+	kind := svcparts[1]
+	svcname := svcparts[2]
+
+	_, err := collector.handleInstanceActionV3(node, ns, kind, svcname, "clear", nil)
+	return err
+}
+
+func (collector *Collector) RunTaskV3(srv string, node string, task string, env string) error {
+	svcparts := strings.SplitN(srv, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", srv)
+	}
+
+	ns := svcparts[0]
+	kind := svcparts[1]
+	svcname := svcparts[2]
+
+	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Printf("RunTask V3: node=%s svc=%s task=%s env=%s", node, srv, task, env)
+	}
+
+	rid := apiv3.InQueryRid(task)
+	params := &InstanceActionParams{Rid: &rid}
+	if env != "" {
+		envs := apiv3.InQueryEnvs([]string{env})
+		params.Env = &envs
+	}
+
+	_, err := collector.handleInstanceActionV3(node, ns, kind, svcname, "run", params)
+	return err
 }
 
 func (collector *Collector) handleInstanceConsoleV3(node, namespace, kind, service, rid string) ([]byte, error) {
@@ -580,7 +682,10 @@ func (collector *Collector) handleInstanceConsoleV3(node, namespace, kind, servi
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
 	}
 
 	return []byte(resp.Header.Get("Location")), nil
