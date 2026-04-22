@@ -67,51 +67,99 @@ func makeAdminJWT(t *testing.T) string {
 }
 
 // ---------------------------------------------------------------------------
-// Guerrillamail helpers
+// mail.tm helpers — disposable email via https://api.mail.tm
 // ---------------------------------------------------------------------------
 
-const guerrillaAPI = "https://api.guerrillamail.com/ajax.php"
+const mailTmAPI = "https://api.mail.tm"
 
-type guerrillaSession struct {
-	SidToken   string `json:"sid_token"`
-	EmailAddr  string `json:"email_addr"`
+type mailTmDomain struct {
+	Domain string `json:"domain"`
 }
 
-type guerrillaInbox struct {
-	List []guerrillaEmail `json:"list"`
+type mailTmDomainList struct {
+	Members []mailTmDomain `json:"hydra:member"`
 }
 
-type guerrillaEmail struct {
-	MailID      string `json:"mail_id"`
-	MailFrom    string `json:"mail_from"`
-	MailSubject string `json:"mail_subject"`
+type mailTmAccount struct {
+	ID      string `json:"id"`
+	Address string `json:"address"`
 }
 
-type guerrillaFetch struct {
-	MailBody string `json:"mail_body"`
+type mailTmToken struct {
+	Token string `json:"token"`
 }
 
-// guerrillaGenAddress creates a new Guerrillamail session and returns the
-// disposable email address and the sid_token needed for subsequent calls.
-func guerrillaGenAddress(t *testing.T) (email, sid string) {
+type mailTmMessage struct {
+	ID      string `json:"id"`
+	From    struct{ Address string } `json:"from"`
+	Subject string `json:"subject"`
+}
+
+type mailTmMessageList struct {
+	Members []mailTmMessage `json:"hydra:member"`
+}
+
+type mailTmMessageDetail struct {
+	Text string `json:"text"`
+	HTML string `json:"html"`
+}
+
+// mailTmGenAddress creates a mail.tm account and returns the email address
+// and JWT token needed for subsequent inbox calls.
+func mailTmGenAddress(t *testing.T) (email, token string) {
 	t.Helper()
-	resp, err := http.Get(guerrillaAPI + "?f=get_email_address")
-	if err != nil {
-		t.Fatalf("guerrillamail get_email_address: %v", err)
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	client := &http.Client{Timeout: 10 * time.Second}
 
-	var sess guerrillaSession
-	if err := json.Unmarshal(body, &sess); err != nil || sess.EmailAddr == "" {
-		t.Fatalf("guerrillamail get_email_address: unexpected response: %s", body)
+	// 1. Get an available domain
+	resp, err := client.Get(mailTmAPI + "/domains?page=1")
+	if err != nil {
+		t.Fatalf("mail.tm get domains: %v", err)
 	}
-	return sess.EmailAddr, sess.SidToken
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	var domains mailTmDomainList
+	if err := json.Unmarshal(body, &domains); err != nil || len(domains.Members) == 0 {
+		t.Fatalf("mail.tm get domains: unexpected response: %s", body)
+	}
+	domain := domains.Members[0].Domain
+
+	// 2. Create account with random address
+	address := fmt.Sprintf("repman%d@%s", time.Now().UnixNano()%1000000, domain)
+	password := "Repman1234!"
+	payload, _ := json.Marshal(map[string]string{"address": address, "password": password})
+
+	resp2, err := client.Post(mailTmAPI+"/accounts", "application/json", strings.NewReader(string(payload)))
+	if err != nil {
+		t.Fatalf("mail.tm create account: %v", err)
+	}
+	body2, _ := io.ReadAll(resp2.Body)
+	resp2.Body.Close()
+
+	var acct mailTmAccount
+	if err := json.Unmarshal(body2, &acct); err != nil || acct.Address == "" {
+		t.Fatalf("mail.tm create account: unexpected response: %s", body2)
+	}
+
+	// 3. Get JWT token
+	resp3, err := client.Post(mailTmAPI+"/token", "application/json", strings.NewReader(string(payload)))
+	if err != nil {
+		t.Fatalf("mail.tm get token: %v", err)
+	}
+	body3, _ := io.ReadAll(resp3.Body)
+	resp3.Body.Close()
+
+	var tok mailTmToken
+	if err := json.Unmarshal(body3, &tok); err != nil || tok.Token == "" {
+		t.Fatalf("mail.tm get token: unexpected response: %s", body3)
+	}
+
+	return acct.Address, tok.Token
 }
 
-// guerrillaWaitForConfirmation polls the Guerrillamail inbox until a GitLab
+// mailTmWaitForConfirmation polls the mail.tm inbox until a GitLab
 // confirmation email arrives or the timeout expires.
-func guerrillaWaitForConfirmation(t *testing.T, sid string, timeout time.Duration) string {
+func mailTmWaitForConfirmation(t *testing.T, token string, timeout time.Duration) string {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -119,44 +167,47 @@ func guerrillaWaitForConfirmation(t *testing.T, sid string, timeout time.Duratio
 	for time.Now().Before(deadline) {
 		time.Sleep(5 * time.Second)
 
-		listURL := fmt.Sprintf("%s?f=get_email_list&offset=0&sid_token=%s", guerrillaAPI, sid)
-		resp, err := client.Get(listURL)
+		req, _ := http.NewRequest(http.MethodGet, mailTmAPI+"/messages?page=1", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := client.Do(req)
 		if err != nil {
-			t.Logf("guerrillamail poll error: %v (retrying)", err)
+			t.Logf("mail.tm poll error: %v (retrying)", err)
 			continue
 		}
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 
-		var inbox guerrillaInbox
+		var inbox mailTmMessageList
 		if err := json.Unmarshal(body, &inbox); err != nil {
 			continue
 		}
 
-		for _, msg := range inbox.List {
-			if !strings.Contains(strings.ToLower(msg.MailFrom), "gitlab") &&
-				!strings.Contains(strings.ToLower(msg.MailSubject), "confirm") {
+		for _, msg := range inbox.Members {
+			if !strings.Contains(strings.ToLower(msg.From.Address), "gitlab") &&
+				!strings.Contains(strings.ToLower(msg.Subject), "confirm") {
 				continue
 			}
-			fetchURL := fmt.Sprintf("%s?f=fetch_email&email_id=%s&sid_token=%s",
-				guerrillaAPI, msg.MailID, sid)
-			resp2, err := client.Get(fetchURL)
+			// Fetch full message body
+			req2, _ := http.NewRequest(http.MethodGet, mailTmAPI+"/messages/"+msg.ID, nil)
+			req2.Header.Set("Authorization", "Bearer "+token)
+			resp2, err := client.Do(req2)
 			if err != nil {
 				continue
 			}
-			msgBody, _ := io.ReadAll(resp2.Body)
+			fullBody, _ := io.ReadAll(resp2.Body)
 			resp2.Body.Close()
 
-			var full guerrillaFetch
-			if err := json.Unmarshal(msgBody, &full); err != nil {
+			var detail mailTmMessageDetail
+			if err := json.Unmarshal(fullBody, &detail); err != nil {
 				continue
 			}
-			if url := extractGitLabConfirmURL(full.MailBody); url != "" {
+			combined := detail.Text + detail.HTML
+			if url := extractGitLabConfirmURL(combined); url != "" {
 				return url
 			}
 		}
 	}
-	t.Fatalf("guerrillamail: no GitLab confirmation email received within %s", timeout)
+	t.Fatalf("mail.tm: no GitLab confirmation email received within %s", timeout)
 	return ""
 }
 
@@ -233,9 +284,9 @@ func gitlabDeleteGroup(t *testing.T, adminToken, groupPath string) {
 
 // TestRegisterWorkflow exercises the complete two-step Cloud18 registration:
 //
-//  1. Generate a disposable inbox via 1secmail
+//  1. Generate a disposable inbox via mail.tm
 //  2. POST /api/register  → expect 202
-//  3. Poll 1secmail (up to 3 min) for the GitLab confirmation email
+//  3. Poll mail.tm (up to 3 min) for the GitLab confirmation email
 //  4. Follow the confirmation link
 //  5. POST /api/register/confirm → expect 201
 //  6. Clean up GitLab user and group
@@ -249,8 +300,8 @@ func TestRegisterWorkflow(t *testing.T) {
 	// Mint an admin JWT directly — no running server needed
 	adminToken := makeAdminJWT(t)
 
-	// Generate a disposable email address via Guerrillamail
-	email, sid := guerrillaGenAddress(t)
+	// Generate a disposable email address via mail.tm
+	email, mailToken := mailTmGenAddress(t)
 	t.Logf("temp email: %s", email)
 
 	// Unique test URI to avoid zone conflicts across runs
@@ -287,7 +338,7 @@ func TestRegisterWorkflow(t *testing.T) {
 	// Step 2 — wait for GitLab confirmation email, follow the link
 	// ----------------------------------------------------------------
 	t.Log("step 2: waiting for confirmation email (up to 3 minutes)...")
-	confirmURL := guerrillaWaitForConfirmation(t, sid, 3*time.Minute)
+	confirmURL := mailTmWaitForConfirmation(t, mailToken, 3*time.Minute)
 	t.Logf("step 2: confirmation URL: %s", confirmURL)
 
 	confirmResp, err := http.Get(confirmURL)
