@@ -9,7 +9,8 @@ import {
   provisionApp,
   startApp,
   stopApp,
-  unprovisionApp
+  unprovisionApp,
+  updateRoutesApp
 } from '../../../../redux/clusterSlice'
 import { useNavigate } from 'react-router-dom'
 
@@ -105,6 +106,18 @@ function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView',
                     }
                   }
                 ]
+                : []),
+              ...(user?.grants['prov-app-provision'] && orchestrator === 'opensvc'
+                ? [
+                    {
+                      name: 'Update Routes',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm update routes for ${appName}?`)
+                        setConfirmHandler(() => () => dispatch(updateRoutesApp({ clusterName, appId: row.id })))
+                      }
+                    }
+                  ]
                 : []),
               ...(user?.grants['prov-app-unprovision']
                 ? [
