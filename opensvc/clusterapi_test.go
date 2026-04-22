@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -338,5 +339,117 @@ func TestCreateV2_TreatsUnknownServiceAsMissing(t *testing.T) {
 			}
 			assertCreatePayload(t, snapshot.LastCreateBody, expectedPath)
 		})
+	}
+}
+
+// --- RunTask tests ---
+
+func newServiceActionTestServer(t *testing.T) (*httptest.Server, *serviceActionState) {
+	t.Helper()
+	state := &serviceActionState{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/service_action", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		state.mu.Lock()
+		state.calls++
+		state.lastBody = body
+		state.lastNode = r.Header.Get("o-node")
+		state.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":0}`))
+	})
+	server := httptest.NewUnstartedServer(mux)
+	server.EnableHTTP2 = true
+	server.TLS = &tls.Config{NextProtos: []string{"h2"}}
+	server.StartTLS()
+	return server, state
+}
+
+type serviceActionState struct {
+	mu       sync.Mutex
+	calls    int
+	lastBody []byte
+	lastNode string
+}
+
+func (s *serviceActionState) snapshot() (calls int, body []byte, node string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls, append([]byte(nil), s.lastBody...), s.lastNode
+}
+
+func TestRunTaskV3_MalformedServiceString(t *testing.T) {
+	collector := &Collector{ClusterApiVersion: "v3"}
+
+	cases := []string{"namespace/svc", "singlepart", ""}
+	for _, svc := range cases {
+		err := collector.RunTaskV3(svc, "node1", "task#mergecfg", "")
+		if err == nil {
+			t.Fatalf("expected error for service %q, got nil", svc)
+		}
+		if !strings.Contains(err.Error(), "invalid service format") {
+			t.Fatalf("unexpected error for %q: %v", svc, err)
+		}
+	}
+}
+
+func TestRunTask_RoutesToV3OnMalformedInput(t *testing.T) {
+	collector := &Collector{ClusterApiVersion: "v3"}
+	err := collector.RunTask("cluster", "ns/svc", "node1", "task#mergecfg", "")
+	if err == nil {
+		t.Fatal("expected error for malformed service format")
+	}
+	if !strings.Contains(err.Error(), "invalid service format") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunTaskV2_SendsCorrectRequest(t *testing.T) {
+	server, state := newServiceActionTestServer(t)
+	defer server.Close()
+
+	parsed, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse server url: %v", err)
+	}
+	collector := &Collector{
+		Host:            parsed.Hostname(),
+		Port:            parsed.Port(),
+		UseCollectorAPI: true,
+	}
+
+	svc := "ns1/svc/haproxy"
+	node := "s18-fr-6"
+	task := "task#mergecfg"
+
+	if err := collector.RunTaskV2("cluster1", svc, node, task, ""); err != nil {
+		t.Fatalf("RunTaskV2 failed: %v", err)
+	}
+
+	calls, body, gotNode := state.snapshot()
+	if calls != 1 {
+		t.Fatalf("expected 1 service_action call, got %d", calls)
+	}
+	if gotNode != node {
+		t.Fatalf("expected o-node header %q, got %q", node, gotNode)
+	}
+
+	var req ActionRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		t.Fatalf("unmarshal request body: %v", err)
+	}
+	if req.Path != svc {
+		t.Fatalf("expected path %q, got %q", svc, req.Path)
+	}
+	if req.Action != "run" {
+		t.Fatalf("expected action %q, got %q", "run", req.Action)
+	}
+	rid, ok := req.Options["rid"]
+	if !ok {
+		t.Fatal("expected rid in options")
+	}
+	if rid != task {
+		t.Fatalf("expected rid %q, got %v", task, rid)
 	}
 }

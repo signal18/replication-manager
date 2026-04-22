@@ -372,9 +372,9 @@ func (collector *Collector) PurgeServiceV2(cluster string, srv string, node stri
 func (collector *Collector) CreateConfigKeyValue(namespace string, service string, key string, value string) error {
 	if collector.IsV3() {
 		return collector.CreateConfigKeyValueV3(namespace, service, key, value)
-	} else {
-		return collector.CreateConfigKeyValueV2(namespace, service, key, value)
 	}
+
+	return collector.CreateConfigKeyValueV2(namespace, service, key, value)
 }
 
 func (collector *Collector) CreateConfigKeyValueV2(namespace string, service string, key string, value string) error {
