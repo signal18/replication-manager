@@ -1369,8 +1369,11 @@ func (cluster *Cluster) ReconcileSnapshotMetadataAsync() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Reconciliation failed: %s", err)
 			return
 		}
-		if len(report.OrphanedMetadata) > 0 || len(report.MissingMetadata) > 0 {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Reconciliation drift detected: %d orphaned, %d missing metadata", len(report.OrphanedMetadata), len(report.MissingMetadata))
+		if len(report.MissingMetadata) > 0 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Reconciliation drift detected: %d missing metadata (snapshots without tracking)", len(report.MissingMetadata))
+		}
+		if len(report.OrphanedMetadata) > 0 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlDbg, "Reconciliation: %d orphaned metadata entries (stale files for deleted snapshots); enable backup-reconcile-auto-cleanup to remove them", len(report.OrphanedMetadata))
 		}
 	}()
 }

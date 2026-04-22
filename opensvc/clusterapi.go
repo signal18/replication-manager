@@ -219,6 +219,13 @@ func (collector *Collector) RestartServiceV2(cluster string, srv string, node st
 	return nil
 }
 
+func (collector *Collector) RunTask(cluster string, srv string, node string, task string, parameter string) error {
+	if collector.IsV3() {
+		return collector.RunTaskV3(srv, node, task)
+	}
+	return collector.RunTaskV2(cluster, srv, node, task, parameter)
+}
+
 func (collector *Collector) RunTaskV2(cluster string, srv string, node string, task string, parameter string) error {
 	// osvccurl -o /tmp/physical.dbdump.log -X POST -H "o-node: $NODE" --data '{"path": "namespace/svc/haproxy", "action": "run", "sync": true, "options": {"rid": "task#addcert"}, "env": "DOMAIN=www.acme.com"}' ${APIURL}/object_action
 

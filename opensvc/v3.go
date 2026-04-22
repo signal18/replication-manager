@@ -623,6 +623,46 @@ func (collector *Collector) ClearInstanceV3(node, svc string) error {
 	return err
 }
 
+func (collector *Collector) RunTaskV3(srv string, node string, task string) error {
+	svcparts := strings.SplitN(srv, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", srv)
+	}
+
+	ns := svcparts[0]
+	kind := svcparts[1]
+	svcname := svcparts[2]
+
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+
+	oKind := apiv3.Kind(kind)
+	rid := apiv3.InQueryRid(task)
+	params := &apiv3.PostInstanceActionRunParams{Rid: &rid}
+
+	resp, err := client.PostInstanceActionRun(ctx, node, ns, oKind, svcname, params, collector.RequestCloserV3())
+	if err != nil {
+		return fmt.Errorf("failed to run task '%s' on %s/%s/%s@%s: %w", task, ns, kind, svcname, node, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if !handleSuccessGroup(resp.StatusCode) {
+		return &StatusError{StatusCode: resp.StatusCode, Body: string(body)}
+	}
+
+	return nil
+}
+
 func (collector *Collector) handleInstanceConsoleV3(node, namespace, kind, service, rid string) ([]byte, error) {
 	var resp *http.Response
 	var err error
