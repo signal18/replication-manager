@@ -275,7 +275,13 @@ func (repman *ReplicationManager) handlerRegisterConfirm(w http.ResponseWriter, 
 	var gitSecret config.Secret
 	gitSecret.Value = req.Password
 	gitSecret.OldValue = repman.Conf.GetDecryptedValue("cloud18-gitlab-password")
+	if repman.Conf.Secrets == nil {
+		repman.Conf.Secrets = make(map[string]config.Secret)
+	}
 	repman.Conf.Secrets["cloud18-gitlab-password"] = gitSecret
+	if repman.Conf.ImmuableFlagMap == nil {
+		repman.Conf.ImmuableFlagMap = make(map[string]interface{})
+	}
 	repman.Conf.Cloud18 = true
 
 	if err := repman.InitGitConfig(repman.Conf); err != nil {

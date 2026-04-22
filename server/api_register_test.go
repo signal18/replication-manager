@@ -100,8 +100,8 @@ type mailTmMessageList struct {
 }
 
 type mailTmMessageDetail struct {
-	Text string `json:"text"`
-	HTML string `json:"html"`
+	Text string   `json:"text"`
+	HTML []string `json:"html"`
 }
 
 // mailTmGenAddress creates a mail.tm account and returns the email address
@@ -201,7 +201,7 @@ func mailTmWaitForConfirmation(t *testing.T, token string, timeout time.Duration
 			if err := json.Unmarshal(fullBody, &detail); err != nil {
 				continue
 			}
-			combined := detail.Text + detail.HTML
+			combined := detail.Text + strings.Join(detail.HTML, " ")
 			if url := extractGitLabConfirmURL(combined); url != "" {
 				return url
 			}
