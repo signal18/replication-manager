@@ -584,6 +584,12 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 			rtparams = params.ToRestartParams()
 		}
 		resp, err = client.PostInstanceActionRestart(ctx, node, namespace, oKind, service, rtparams, collector.RequestCloserV3())
+	case "run":
+		var rpparams *apiv3.PostInstanceActionRunParams
+		if params != nil {
+			rpparams = params.ToRunParams()
+		}
+		resp, err = client.PostInstanceActionRun(ctx, node, namespace, oKind, service, rpparams, collector.RequestCloserV3())
 	case "clear":
 		resp, err = client.PostInstanceClear(ctx, node, namespace, oKind, service, collector.RequestCloserV3())
 	default:
@@ -620,6 +626,31 @@ func (collector *Collector) ClearInstanceV3(node, svc string) error {
 	svcname := svcparts[2]
 
 	_, err := collector.handleInstanceActionV3(node, ns, kind, svcname, "clear", nil)
+	return err
+}
+
+func (collector *Collector) RunTaskV3(srv string, node string, task string, env string) error {
+	svcparts := strings.SplitN(srv, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", srv)
+	}
+
+	ns := svcparts[0]
+	kind := svcparts[1]
+	svcname := svcparts[2]
+
+	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Printf("RunTask V3: node=%s svc=%s task=%s env=%s", node, srv, task, env)
+	}
+
+	rid := apiv3.InQueryRid(task)
+	params := &InstanceActionParams{Rid: &rid}
+	if env != "" {
+		envs := apiv3.InQueryEnvs([]string{env})
+		params.Env = &envs
+	}
+
+	_, err := collector.handleInstanceActionV3(node, ns, kind, svcname, "run", params)
 	return err
 }
 
