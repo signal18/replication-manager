@@ -221,7 +221,7 @@ func (collector *Collector) RestartServiceV2(cluster string, srv string, node st
 
 func (collector *Collector) RunTask(cluster string, srv string, node string, task string, parameter string) error {
 	if collector.IsV3() {
-		return collector.RunTaskV3(srv, node, task)
+		return collector.RunTaskV3(srv, node, task, parameter)
 	}
 	return collector.RunTaskV2(cluster, srv, node, task, parameter)
 }
