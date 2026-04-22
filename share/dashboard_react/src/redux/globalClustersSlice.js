@@ -189,6 +189,32 @@ export const reloadClustersPlanInfo = createGuardedAsyncThunk('globalClusters/re
 }
 )
 
+export const registerInstance = createGuardedAsyncThunk(
+  'globalClusters/registerInstance',
+  async ({ email, password, uri }, thunkAPI) => {
+    try {
+      const { data, status } = await globalClustersService.register(email, password, uri)
+      if (status === 201) {
+        if (data?.connect_error) {
+          showSuccessBanner(
+            `Registered successfully but connect failed — set cloud18=true once GitLab is reachable`,
+            status,
+            thunkAPI
+          )
+        } else {
+          showSuccessBanner('Registration and Cloud18 connect succeeded!', status, thunkAPI)
+        }
+        return { data, status }
+      } else {
+        throw new Error(typeof data === 'object' ? (data?.error || JSON.stringify(data)) : data)
+      }
+    } catch (error) {
+      showErrorBanner('Registration failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const getTermsData = createGuardedAsyncThunk('globalClusters/getTermsData', async ({ baseURL = '' }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getTermsData(baseURL)

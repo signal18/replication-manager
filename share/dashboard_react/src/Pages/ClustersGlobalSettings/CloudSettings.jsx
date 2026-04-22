@@ -1,13 +1,17 @@
-import { Box, Checkbox, Flex, HStack, Link } from '@chakra-ui/react'
+import {
+  Box, Checkbox, Flex, FormControl, FormErrorMessage, FormLabel,
+  HStack, Input, InputGroup, InputRightElement, Link, Text, VStack
+} from '@chakra-ui/react'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
-import { switchGlobalSetting, setGlobalSetting, reloadClustersPlan, reloadClustersPlanInfo } from '../../redux/globalClustersSlice'
+import { switchGlobalSetting, setGlobalSetting, reloadClustersPlan, reloadClustersPlanInfo, registerInstance } from '../../redux/globalClustersSlice'
 import TextForm from '../../components/TextForm'
 import RMIconButton from '../../components/RMIconButton'
 import { HiOutlineInformationCircle, HiQuestionMarkCircle, HiRefresh } from 'react-icons/hi'
+import { HiEye, HiEyeOff } from 'react-icons/hi'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import TagPill from '../../components/TagPill'
 import RMButton from '../../components/RMButton'
@@ -28,6 +32,11 @@ function CloudSettings({ config }) {
   const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [shouldRedownloadPlans, setShouldRedownloadPlans] = useState(true)
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [registerForm, setRegisterForm] = useState({ email: '', password: '', domain: '', subdomain: '', zone: '' })
+  const [registerErrors, setRegisterErrors] = useState({})
+  const [isRegistering, setIsRegistering] = useState(false)
   const errInvalidGrant = (err) => { if (err?.message?.includes("invalid_grant")) err.message = <>{err.message}. <Link href="https://gitlab.signal18.io/users/sign_up" target='_blank'><u>Click here to Sign Up</u></Link></>; return err }
 
   const benefits = `Registered Replication Manager to Cloud18 benefit many advantages  
@@ -70,6 +79,103 @@ Start create an account in https://gitlab.signal18.io
   }, [type, shouldRedownloadPlans])
 
   const disableConnect = useMemo(() => (config?.cloud18GitUser === "" || config?.cloud18Domain === "" || config?.cloud18SubDomain === "" || config?.cloud18SubDomainZone === ""),[config?.cloud18GitUser, config?.cloud18Domain, config?.cloud18SubDomain, config?.cloud18SubDomainZone])
+
+  const openRegisterModal = () => {
+    const emailGuess = config?.cloud18GitUser || ''
+    setRegisterForm({
+      email: emailGuess,
+      password: '',
+      domain: config?.cloud18Domain || '',
+      subdomain: config?.cloud18SubDomain || '',
+      zone: config?.cloud18SubDomainZone || ''
+    })
+    setRegisterErrors({})
+    setShowPassword(false)
+    setIsRegisterModalOpen(true)
+  }
+
+  const validateRegisterForm = (form) => {
+    const errors = {}
+    if (!form.email.trim()) errors.email = 'Email is required'
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errors.email = 'Enter a valid email address'
+    if (!form.password) errors.password = 'Password is required'
+    else if (form.password.length < 8) errors.password = 'Password must be at least 8 characters'
+    if (!form.domain.trim()) errors.domain = 'Domain is required'
+    else if (!/^[a-z0-9-]+$/.test(form.domain.trim())) errors.domain = 'Only lowercase letters, digits and hyphens'
+    if (!form.subdomain.trim()) errors.subdomain = 'Subdomain is required'
+    else if (!/^[a-z0-9-]+$/.test(form.subdomain.trim())) errors.subdomain = 'Only lowercase letters, digits and hyphens'
+    if (!form.zone.trim()) errors.zone = 'Zone is required'
+    else if (!/^[a-z0-9-]+$/.test(form.zone.trim())) errors.zone = 'Only lowercase letters, digits and hyphens'
+    return errors
+  }
+
+  const handleRegisterSubmit = async () => {
+    const errors = validateRegisterForm(registerForm)
+    if (Object.keys(errors).length > 0) { setRegisterErrors(errors); return }
+    setIsRegistering(true)
+    const uri = `${registerForm.domain.trim()}.${registerForm.subdomain.trim()}.${registerForm.zone.trim()}`
+    await dispatch(registerInstance({ email: registerForm.email.trim(), password: registerForm.password, uri }))
+    setIsRegistering(false)
+    setIsRegisterModalOpen(false)
+  }
+
+  const registerFormBody = (
+    <VStack spacing={3} align='stretch' pb={2}>
+      <Text fontSize='sm' color='gray.500'>
+        Creates a new GitLab account at <Link href='https://gitlab.signal18.io' target='_blank' color='blue.400'>gitlab.signal18.io</Link> and links this instance. The email is used as the GitLab username.
+      </Text>
+      <FormControl isInvalid={!!registerErrors.email} isRequired>
+        <FormLabel fontSize='sm'>Email</FormLabel>
+        <Input size='sm' type='email' placeholder='admin@mycompany.com'
+          value={registerForm.email}
+          onChange={(e) => setRegisterForm(f => ({ ...f, email: e.target.value }))}
+        />
+        <FormErrorMessage>{registerErrors.email}</FormErrorMessage>
+      </FormControl>
+      <FormControl isInvalid={!!registerErrors.password} isRequired>
+        <FormLabel fontSize='sm'>GitLab Password</FormLabel>
+        <InputGroup size='sm'>
+          <Input type={showPassword ? 'text' : 'password'} placeholder='min 8 characters'
+            value={registerForm.password}
+            onChange={(e) => setRegisterForm(f => ({ ...f, password: e.target.value }))}
+          />
+          <InputRightElement>
+            <Box as={showPassword ? HiEyeOff : HiEye} cursor='pointer' onClick={() => setShowPassword(v => !v)} />
+          </InputRightElement>
+        </InputGroup>
+        <FormErrorMessage>{registerErrors.password}</FormErrorMessage>
+      </FormControl>
+      <FormControl isInvalid={!!registerErrors.domain} isRequired>
+        <FormLabel fontSize='sm'>Domain <Text as='span' fontWeight='normal' color='gray.400'>(company namespace)</Text></FormLabel>
+        <Input size='sm' placeholder='mycompany'
+          value={registerForm.domain}
+          onChange={(e) => setRegisterForm(f => ({ ...f, domain: e.target.value.toLowerCase() }))}
+        />
+        <FormErrorMessage>{registerErrors.domain}</FormErrorMessage>
+      </FormControl>
+      <FormControl isInvalid={!!registerErrors.subdomain} isRequired>
+        <FormLabel fontSize='sm'>Subdomain <Text as='span' fontWeight='normal' color='gray.400'>(datacenter / environment)</Text></FormLabel>
+        <Input size='sm' placeholder='ovh'
+          value={registerForm.subdomain}
+          onChange={(e) => setRegisterForm(f => ({ ...f, subdomain: e.target.value.toLowerCase() }))}
+        />
+        <FormErrorMessage>{registerErrors.subdomain}</FormErrorMessage>
+      </FormControl>
+      <FormControl isInvalid={!!registerErrors.zone} isRequired>
+        <FormLabel fontSize='sm'>Zone</FormLabel>
+        <Input size='sm' placeholder='fr-1'
+          value={registerForm.zone}
+          onChange={(e) => setRegisterForm(f => ({ ...f, zone: e.target.value.toLowerCase() }))}
+        />
+        <FormErrorMessage>{registerErrors.zone}</FormErrorMessage>
+      </FormControl>
+      <Text fontSize='xs' color='gray.400'>URI: {registerForm.domain || 'domain'}.{registerForm.subdomain || 'subdomain'}.{registerForm.zone || 'zone'}</Text>
+      <HStack justify='flex-end' pt={1}>
+        <RMButton variant='ghost' onClick={() => setIsRegisterModalOpen(false)}>Cancel</RMButton>
+        <RMButton isLoading={isRegistering} onClick={handleRegisterSubmit}>Register</RMButton>
+      </HStack>
+    </VStack>
+  )
 
   useEffect(() => {
     // Re-render when the config prop changes
@@ -229,8 +335,23 @@ Start create an account in https://gitlab.signal18.io
       )
     },
     {
+      key: 'Cloud18 Register',
+      value: (
+        <HStack>
+          <RMButton
+            isDisabled={!!config?.cloud18}
+            onClick={openRegisterModal}
+            title={config?.cloud18 ? 'Already connected — disconnect first to re-register' : 'Create a new Signal18 account and link this instance'}
+          >
+            Register
+          </RMButton>
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({title:'Cloud18 Benefits', type: '', body: <Box className={joinClasses(modalStyles.infoTooltip, styles.infoTooltip)}><Markdown remarkPlugins={[remarkGfm]}>{benefits}</Markdown></Box>}); openCommonModal()}} />
+        </HStack>
+      )
+    },
+    {
       key: 'Cloud18 Connect',
-      value: (<HStack> { config?.cloud18 ? <RMButton onClick={() => { setAction({title:'Confirm disconnect from cloud18?', type: 'cloud18-disconnect'}); openConfirmModal()}}>Disconnect</RMButton> : <RMButton isDisabled={disableConnect}  onClick={() => { setAction({title:'Confirm connect to cloud18?', type: 'cloud18-connect'}); openConfirmModal()}}>Connect</RMButton>} <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({title:'Cloud 18 Benefits', type: '', body: <Box className={joinClasses(modalStyles.infoTooltip, styles.infoTooltip)}><Markdown remarkPlugins={[remarkGfm]}>{benefits}</Markdown></Box>}); openCommonModal()}} /></HStack>)
+      value: (<HStack> { config?.cloud18 ? <RMButton onClick={() => { setAction({title:'Confirm disconnect from cloud18?', type: 'cloud18-disconnect'}); openConfirmModal()}}>Disconnect</RMButton> : <RMButton isDisabled={disableConnect}  onClick={() => { setAction({title:'Confirm connect to cloud18?', type: 'cloud18-connect'}); openConfirmModal()}}>Connect</RMButton>} </HStack>)
     },
     {
       key: 'Reload All Clusters Plans',
@@ -299,6 +420,15 @@ Start create an account in https://gitlab.signal18.io
           closeModal={() => {
             closeCommonModal()
           }}
+        />
+      )}
+      {isRegisterModalOpen && (
+        <CommonModal
+          isOpen={isRegisterModalOpen}
+          size='md'
+          title='Register with Signal18 Cloud18'
+          body={registerFormBody}
+          closeModal={() => setIsRegisterModalOpen(false)}
         />
       )}
     </Flex>
