@@ -293,7 +293,7 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 				printfields["type"] = "alert"
 				printfields["channel"] = "StdOut"
 				cluster.Logrus.WithFields(printfields).Errorf(cliformat, args...)
-				if cluster.Conf.Cloud18Alert {
+				if cluster.Conf.Cloud18Alert && cluster.Conf.Cloud18SubscriptionPlan != "free" {
 					cluster.LogSlack.WithFields(slackFields).Errorf(cliformat, args...)
 				}
 				if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
@@ -323,7 +323,7 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 				printfields["type"] = "alert"
 				printfields["channel"] = "StdOut"
 				cluster.Logrus.WithFields(printfields).Infof(cliformat, args...)
-				if cluster.Conf.Cloud18Alert {
+				if cluster.Conf.Cloud18Alert && cluster.Conf.Cloud18SubscriptionPlan != "free" {
 					cluster.LogSlack.WithFields(slackFields).Infof(cliformat, args...)
 				}
 				if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
