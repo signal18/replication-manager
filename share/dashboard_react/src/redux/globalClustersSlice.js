@@ -245,6 +245,35 @@ export const pollRegisterStatus = createGuardedAsyncThunk(
   }
 )
 
+export const fetchSubscription = createGuardedAsyncThunk(
+  'globalClusters/fetchSubscription',
+  async (_, thunkAPI) => {
+    try {
+      const { data, status } = await globalClustersService.getSubscription()
+      return { data, status }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const updateSubscription = createGuardedAsyncThunk(
+  'globalClusters/updateSubscription',
+  async ({ plan }, thunkAPI) => {
+    try {
+      const { data, status } = await globalClustersService.changeSubscription(plan)
+      if (status === 200 || status === 201) {
+        showSuccessBanner(`Subscription changed to ${plan}`, status, thunkAPI)
+        return { data, status }
+      }
+      throw new Error(typeof data === 'object' ? (data?.error || JSON.stringify(data)) : data)
+    } catch (error) {
+      showErrorBanner('Subscription change failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const getTermsData = createGuardedAsyncThunk('globalClusters/getTermsData', async ({ baseURL = '' }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getTermsData(baseURL)

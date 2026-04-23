@@ -1,12 +1,13 @@
 import {
   Box, Flex, FormControl, FormErrorMessage, FormLabel,
-  HStack, Input, InputGroup, InputRightElement, Link, Spinner, Text, VStack
+  HStack, Input, InputGroup, InputRightElement, Link, Radio, RadioGroup,
+  Spinner, Text, VStack
 } from '@chakra-ui/react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
-import { setGlobalSetting, registerInstance, confirmRegisterInstance, pollRegisterStatus } from '../../redux/globalClustersSlice'
+import { setGlobalSetting, registerInstance, confirmRegisterInstance, pollRegisterStatus, fetchSubscription, updateSubscription } from '../../redux/globalClustersSlice'
 import TextForm from '../../components/TextForm'
 import RMIconButton from '../../components/RMIconButton'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
@@ -38,6 +39,13 @@ function CloudSettings({ config }) {
   const pollIntervalRef = useRef(null)
   const tickIntervalRef = useRef(null)
   const REG_TIMEOUT_SEC = 5 * 60
+  // Subscription modal state
+  const [isSubModalOpen, setIsSubModalOpen] = useState(false)
+  const [subLoading, setSubLoading] = useState(false)
+  const [subChanging, setSubChanging] = useState(false)
+  const [subInfo, setSubInfo] = useState(null)   // {email, plan} from CRM
+  const [subError, setSubError] = useState(null)
+  const [selectedPlan, setSelectedPlan] = useState('')
   const errInvalidGrant = (err) => { if (err?.message?.includes("invalid_grant")) err.message = <>{err.message}. <Link href="https://gitlab.signal18.io/users/sign_up" target='_blank'><u>Click here to Sign Up</u></Link></>; return err }
 
   const benefits = `Registered Replication Manager to Cloud18 benefit many advantages  
@@ -275,6 +283,40 @@ Start create an account in https://gitlab.signal18.io
     )
   })()
 
+  // Subscription plans — same keys as Go constants
+  const PLANS = [
+    { value: 'free',             label: 'Free',                                    desc: 'Community access, config backup to GitLab, basic alerting' },
+    { value: 'support',          label: 'Contributing under Support',              desc: 'Support ticket access, SLA, and community priority queue' },
+    { value: 'support-services', label: 'Contributing under Support and Services', desc: 'Full support + managed DBA/SysOps services access' },
+    { value: 'partner',          label: 'Market Place Partner',                    desc: 'Marketplace listing, revenue sharing, and partner API access' },
+  ]
+
+  const openSubModal = async () => {
+    setIsSubModalOpen(true)
+    setSubInfo(null)
+    setSubError(null)
+    setSubLoading(true)
+    const result = await dispatch(fetchSubscription())
+    setSubLoading(false)
+    const data = result?.payload?.data
+    if (data?.email) {
+      setSubInfo(data)
+      setSelectedPlan(data.plan || 'free')
+    } else {
+      setSubError(data?.error || 'Could not fetch subscription from CRM')
+    }
+  }
+
+  const handleChangePlan = async () => {
+    setSubChanging(true)
+    const result = await dispatch(updateSubscription({ plan: selectedPlan }))
+    setSubChanging(false)
+    const status = result?.payload?.status
+    if (status === 200 || status === 201) {
+      setIsSubModalOpen(false)
+    }
+  }
+
   // Same helper pattern as cluster settings — opens an info modal with markdown
   const h = (content, title) => (
     <RMIconButton
@@ -294,6 +336,7 @@ Start create an account in https://gitlab.signal18.io
   const hZone = `**Subdomain Zone**\n\nGeographic zone or region (e.g. \`fr-1\`, \`us-east\`).\nCompletes the three-part URI: \`domain.subdomain.zone\`. This URI uniquely identifies your instance on Cloud18.\n\nConfig: \`cloud18-sub-domain-zone\``
   const hRegister = `**Register**\n\nCreate a Signal18 Cloud18 account and link this replication-manager instance.\nTriggers GitLab account creation at \`gitlab.signal18.io\`, sends a confirmation email, and sets up the configuration backup repository and group structure.`
   const hConnect = `**Connect / Disconnect**\n\nActivate or deactivate the Cloud18 connection using the stored credentials.\nWhen connected, configuration changes are automatically pushed to the GitLab repository and the instance is visible on the marketplace.\n\nConfig: \`cloud18\``
+  const hSubscription = `**Subscription Plan**\n\nYour Signal18 Cloud18 subscription level. Clicking **Change** verifies your registration with the CRM using your GitLab token and lets you switch plan.\n\n| Plan | Description |\n|------|-------------|\n| Free | Community access, config backup, basic alerting |\n| Contributing under Support | Support tickets, SLA |\n| Contributing under Support and Services | Full support + managed services |\n| Market Place Partner | Marketplace listing, revenue sharing, partner API |\n\nConfig: \`cloud18-subscription-plan\``
 
   const registrationData = [
     { key: 'Status',         help: h(hStatus,    'Cloud18 Status'),    value: <TagPill colorScheme={config?.cloud18 ? 'green' : 'gray'} text={config?.cloud18 ? 'ONLINE' : 'OFFLINE'} /> },
@@ -336,6 +379,18 @@ Start create an account in https://gitlab.signal18.io
         </HStack>
       )
     },
+    ...(config?.cloud18 ? [{
+      key: 'Subscription',
+      help: h(hSubscription, 'Subscription Plan'),
+      value: (
+        <HStack>
+          <Text fontSize='sm'>
+            {PLANS.find(p => p.value === (config?.cloud18SubscriptionPlan || 'free'))?.label || 'Free'}
+          </Text>
+          <RMButton size='xs' variant='outline' onClick={openSubModal}>Change</RMButton>
+        </HStack>
+      )
+    }] : []),
   ]
 
   return (
@@ -365,6 +420,64 @@ Start create an account in https://gitlab.signal18.io
           title={registerStep === 1 ? 'Register with Signal18 Cloud18 (1/2)' : 'Waiting for email confirmation (2/2)'}
           body={registerFormBody}
           closeModal={() => { stopPolling(); setIsRegisterModalOpen(false) }}
+        />
+      )}
+      {isSubModalOpen && (
+        <CommonModal
+          isOpen={isSubModalOpen}
+          size='md'
+          title='Change Subscription Plan'
+          closeModal={() => setIsSubModalOpen(false)}
+          body={
+            <VStack spacing={4} align='stretch' pb={2}>
+              {subLoading && (
+                <HStack justify='center' py={4}>
+                  <Spinner size='sm' />
+                  <Text fontSize='sm' color='gray.500'>Verifying registration with CRM…</Text>
+                </HStack>
+              )}
+              {subError && (
+                <Box bg='red.50' borderRadius='md' p={3}>
+                  <Text fontSize='sm' color='red.700'>{subError}</Text>
+                </Box>
+              )}
+              {!subLoading && subInfo && (
+                <>
+                  <Box bg='blue.50' borderRadius='md' p={3}>
+                    <Text fontSize='xs' color='gray.500'>Registered account</Text>
+                    <Text fontSize='sm' fontWeight='medium'>{subInfo.email}</Text>
+                  </Box>
+                  <Text fontSize='sm' color='gray.600'>Select your new subscription plan:</Text>
+                  <RadioGroup value={selectedPlan} onChange={setSelectedPlan}>
+                    <VStack align='stretch' spacing={3}>
+                      {PLANS.map(plan => (
+                        <Box key={plan.value} borderWidth={1} borderRadius='md' p={3}
+                          borderColor={selectedPlan === plan.value ? 'blue.400' : 'gray.200'}
+                          bg={selectedPlan === plan.value ? 'blue.50' : 'transparent'}
+                          cursor='pointer' onClick={() => setSelectedPlan(plan.value)}
+                        >
+                          <Radio value={plan.value}>
+                            <Text fontWeight='medium' fontSize='sm'>{plan.label}</Text>
+                          </Radio>
+                          <Text fontSize='xs' color='gray.500' pl={6} mt={1}>{plan.desc}</Text>
+                        </Box>
+                      ))}
+                    </VStack>
+                  </RadioGroup>
+                  <HStack justify='flex-end' pt={2}>
+                    <RMButton variant='ghost' onClick={() => setIsSubModalOpen(false)}>Cancel</RMButton>
+                    <RMButton
+                      isLoading={subChanging}
+                      isDisabled={selectedPlan === subInfo.plan}
+                      onClick={handleChangePlan}
+                    >
+                      Confirm Change
+                    </RMButton>
+                  </HStack>
+                </>
+              )}
+            </VStack>
+          }
         />
       )}
     </>

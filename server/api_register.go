@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/githelper"
 )
 
 // ---------------------------------------------------------------------------
@@ -90,6 +91,16 @@ type crmConfirmPayload struct {
 
 const confirmPollInterval = 10 * time.Second
 const confirmPollTimeout = 5 * time.Minute
+
+const defaultCrmBaseURL = "https://api.crm.ovh-fr-2.signal18.cloud18.io"
+
+// crmBase returns the configured CRM API base URL, falling back to the default.
+func (repman *ReplicationManager) crmBase() string {
+	if u := strings.TrimRight(repman.Conf.Cloud18CrmApiUrl, "/"); u != "" {
+		return u
+	}
+	return defaultCrmBaseURL
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -261,10 +272,7 @@ func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http
 	zone := strings.TrimSpace(strings.ToLower(parts[2]))
 	email := strings.TrimSpace(strings.ToLower(req.Email))
 
-	crmBase := strings.TrimRight(repman.Conf.Cloud18CrmApiUrl, "/")
-	if crmBase == "" {
-		crmBase = "https://api.crm.ovh-fr-2.signal18.cloud18.io"
-	}
+	crmBase := repman.crmBase()
 
 	// Reject if a registration is already in progress
 	if state, _, _ := repman.RegStatus.snapshot(); state == RegStatePending {
@@ -394,10 +402,7 @@ func (repman *ReplicationManager) handlerRegisterConfirm(w http.ResponseWriter, 
 	zone := strings.TrimSpace(strings.ToLower(parts[2]))
 	email := strings.TrimSpace(strings.ToLower(req.Email))
 
-	crmBase := strings.TrimRight(repman.Conf.Cloud18CrmApiUrl, "/")
-	if crmBase == "" {
-		crmBase = "https://api.crm.ovh-fr-2.signal18.cloud18.io"
-	}
+	crmBase := repman.crmBase()
 
 	status, respBody, err := crmCallConfirm(crmBase, crmConfirmPayload{
 		Email: email, Password: req.Password,
@@ -423,5 +428,174 @@ func (repman *ReplicationManager) handlerRegisterConfirm(w http.ResponseWriter, 
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
+	w.Write(respBody)
+}
+
+// ---------------------------------------------------------------------------
+// Subscription plans
+// ---------------------------------------------------------------------------
+
+const (
+	SubPlanFree     = "free"
+	SubPlanSupport  = "support"
+	SubPlanServices = "support-services"
+	SubPlanPartner  = "partner"
+)
+
+type changeSubPayload struct {
+	Plan string `json:"plan"`
+}
+
+// crmGetSubscription fetches the current subscription from CRM using a GitLab PAT.
+func crmGetSubscription(crmBase, gitlabToken string) (int, []byte, error) {
+	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/subscription", nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+gitlabToken)
+	req.Header.Set("Accept", "application/json")
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
+}
+
+// crmChangeSubscription changes the plan on CRM using a GitLab PAT.
+func crmChangeSubscription(crmBase, gitlabToken, plan string) (int, []byte, error) {
+	b, _ := json.Marshal(changeSubPayload{Plan: plan})
+	req, err := http.NewRequest(http.MethodPost, crmBase+"/api/subscription", bytes.NewReader(b))
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+gitlabToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
+}
+
+// gitlabTokenFromConfig obtains a GitLab PAT from the stored Cloud18 credentials,
+// using the same exchange the rest of the codebase performs for git operations.
+func (repman *ReplicationManager) gitlabTokenFromConfig() (string, error) {
+	email := repman.Conf.Cloud18GitUser
+	password := repman.Conf.GetDecryptedValue("cloud18-gitlab-password")
+	if email == "" || password == "" {
+		return "", fmt.Errorf("cloud18 credentials not configured")
+	}
+	tok, err := githelper.GetGitLabTokenBasicAuth(email, password, repman.Conf.Verbose)
+	if err != nil {
+		return "", fmt.Errorf("could not obtain GitLab token: %w", err)
+	}
+	return tok, nil
+}
+
+// handlerGetSubscription — GET /api/register/subscription  (admin JWT required)
+//
+// Uses the stored GitLab PAT to query the CRM for the current subscription
+// plan and confirmed email address.
+func (repman *ReplicationManager) handlerGetSubscription(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	claims, err := repman.GetJWTClaims(r)
+	if err != nil || claims["User"] != "admin" {
+		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
+		return
+	}
+
+	if !repman.Conf.Cloud18 {
+		http.Error(w, `{"error":"not registered to Cloud18"}`, http.StatusPreconditionFailed)
+		return
+	}
+
+	tok, err := repman.gitlabTokenFromConfig()
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err), http.StatusBadGateway)
+		return
+	}
+
+	status, body, err := crmGetSubscription(repman.crmBase(), tok)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"CRM unreachable: %s"}`, err), http.StatusBadGateway)
+		return
+	}
+	w.WriteHeader(status)
+	w.Write(body)
+}
+
+// handlerChangeSubscription — POST /api/register/subscription  (admin JWT required)
+//
+// Validates the requested plan, calls the CRM to change the subscription, and
+// persists the new plan in the local configuration on success.
+func (repman *ReplicationManager) handlerChangeSubscription(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	claims, err := repman.GetJWTClaims(r)
+	if err != nil || claims["User"] != "admin" {
+		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
+		return
+	}
+
+	if !repman.Conf.Cloud18 {
+		http.Error(w, `{"error":"not registered to Cloud18"}`, http.StatusPreconditionFailed)
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		http.Error(w, `{"error":"failed to read request body"}`, http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var req changeSubPayload
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
+		return
+	}
+
+	switch req.Plan {
+	case SubPlanFree, SubPlanSupport, SubPlanServices, SubPlanPartner:
+	default:
+		http.Error(w, fmt.Sprintf(`{"error":"invalid plan %q — must be one of free, support, support-services, partner"}`, req.Plan),
+			http.StatusBadRequest)
+		return
+	}
+
+	tok, err := repman.gitlabTokenFromConfig()
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err), http.StatusBadGateway)
+		return
+	}
+
+	status, respBody, err := crmChangeSubscription(repman.crmBase(), tok, req.Plan)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"CRM unreachable: %s"}`, err), http.StatusBadGateway)
+		return
+	}
+
+	if status == http.StatusOK || status == http.StatusCreated {
+		repman.Conf.Cloud18SubscriptionPlan = req.Plan
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"subscription: plan changed to %s", req.Plan)
+	}
+
+	w.WriteHeader(status)
 	w.Write(respBody)
 }
