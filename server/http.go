@@ -149,6 +149,11 @@ func (repman *ReplicationManager) httpserver() {
 		negroni.Wrap(http.HandlerFunc(repman.handlerRegisterStatus)),
 	))
 
+	router.Handle("/api/register/unregister", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerUnregister)),
+	))
+
 	router.Handle("/api/register/subscription/plans", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerGetSubscriptionPlans)),

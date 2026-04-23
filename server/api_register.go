@@ -503,6 +503,29 @@ func crmChangeSubscription(crmBase, gitlabToken, uri, plan string) (int, []byte,
 	return resp.StatusCode, body, err
 }
 
+// crmUnregister drops the GitLab projects for the given URI via the CRM.
+func crmUnregister(crmBase, gitlabToken, uri string) (int, []byte, error) {
+	type unregPayload struct {
+		URI string `json:"uri"`
+	}
+	b, _ := json.Marshal(unregPayload{URI: uri})
+	req, err := http.NewRequest(http.MethodPost, crmBase+"/api/unregister", bytes.NewReader(b))
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+gitlabToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
+}
+
 // gitlabTokenFromConfig obtains a GitLab PAT from the stored Cloud18 credentials,
 // using the same exchange the rest of the codebase performs for git operations.
 func (repman *ReplicationManager) gitlabTokenFromConfig() (string, error) {
@@ -642,5 +665,59 @@ func (repman *ReplicationManager) handlerChangeSubscription(w http.ResponseWrite
 	}
 
 	w.WriteHeader(status)
+	w.Write(respBody)
+}
+
+// handlerUnregister — POST /api/register/unregister  (admin JWT required)
+//
+// Drops the GitLab projects for this instance's URI via the CRM, then clears
+// the Cloud18 flag so the URI fields become editable again.  The user can
+// then change the URI and re-register.
+func (repman *ReplicationManager) handlerUnregister(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	claims, err := repman.GetJWTClaims(r)
+	if err != nil || claims["User"] != "admin" {
+		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
+		return
+	}
+
+	if !repman.Conf.Cloud18 {
+		http.Error(w, `{"error":"not registered to Cloud18"}`, http.StatusPreconditionFailed)
+		return
+	}
+
+	tok, err := repman.gitlabTokenFromConfig()
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err), http.StatusBadGateway)
+		return
+	}
+
+	uri := repman.Conf.Cloud18Domain + "." + repman.Conf.Cloud18SubDomain + "." + repman.Conf.Cloud18SubDomainZone
+
+	status, respBody, err := crmUnregister(repman.crmBase(), tok, uri)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"CRM unreachable: %s"}`, err), http.StatusBadGateway)
+		return
+	}
+
+	if status != http.StatusOK {
+		w.WriteHeader(status)
+		w.Write(respBody)
+		return
+	}
+
+	// CRM confirmed — clear Cloud18 state so URI fields become editable
+	repman.Conf.Cloud18 = false
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"unregister: Cloud18 disconnected for URI %s", uri)
+
+	w.WriteHeader(http.StatusOK)
 	w.Write(respBody)
 }

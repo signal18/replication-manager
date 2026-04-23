@@ -22,6 +22,7 @@ export const globalClustersService = {
   register,
   confirmRegister,
   getRegisterStatus,
+  unregister,
   getSubscription,
   changeSubscription,
   getSubscriptionPlans
@@ -110,6 +111,10 @@ function confirmRegister(email, password, uri) {
 
 function getRegisterStatus() {
   return getApi().get('register/status')
+}
+
+function unregister() {
+  return getApi().post('register/unregister')
 }
 
 function getSubscription() {

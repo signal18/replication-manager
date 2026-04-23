@@ -286,6 +286,23 @@ export const updateSubscription = createGuardedAsyncThunk(
   }
 )
 
+export const unregisterInstance = createGuardedAsyncThunk(
+  'globalClusters/unregisterInstance',
+  async (_, thunkAPI) => {
+    try {
+      const { data, status } = await globalClustersService.unregister()
+      if (status === 200) {
+        showSuccessBanner('Unregistered from Cloud18 — URI fields are now editable', status, thunkAPI)
+        return { data, status }
+      }
+      throw new Error(typeof data === 'object' ? (data?.error || JSON.stringify(data)) : data)
+    } catch (error) {
+      showErrorBanner('Unregister failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const getTermsData = createGuardedAsyncThunk('globalClusters/getTermsData', async ({ baseURL = '' }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getTermsData(baseURL)
