@@ -1,13 +1,13 @@
 import {
   Box, Checkbox, Flex, FormControl, FormErrorMessage, FormLabel,
-  HStack, Input, InputGroup, InputRightElement, Link, Text, VStack
+  HStack, Input, InputGroup, InputRightElement, Link, Spinner, Text, VStack
 } from '@chakra-ui/react'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
-import { switchGlobalSetting, setGlobalSetting, reloadClustersPlan, reloadClustersPlanInfo, registerInstance, confirmRegisterInstance } from '../../redux/globalClustersSlice'
+import { switchGlobalSetting, setGlobalSetting, reloadClustersPlan, reloadClustersPlanInfo, registerInstance, confirmRegisterInstance, pollRegisterStatus } from '../../redux/globalClustersSlice'
 import TextForm from '../../components/TextForm'
 import RMIconButton from '../../components/RMIconButton'
 import { HiOutlineInformationCircle, HiQuestionMarkCircle, HiRefresh } from 'react-icons/hi'
@@ -39,6 +39,11 @@ function CloudSettings({ config }) {
   const [registerErrors, setRegisterErrors] = useState({})
   const [isSendingCode, setIsSendingCode] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
+  const [regStatus, setRegStatus] = useState(null)   // {state, message} from server
+  const [regElapsed, setRegElapsed] = useState(0)    // seconds since step 2 started
+  const pollIntervalRef = useRef(null)
+  const tickIntervalRef = useRef(null)
+  const REG_TIMEOUT_SEC = 5 * 60
   const errInvalidGrant = (err) => { if (err?.message?.includes("invalid_grant")) err.message = <>{err.message}. <Link href="https://gitlab.signal18.io/users/sign_up" target='_blank'><u>Click here to Sign Up</u></Link></>; return err }
 
   const benefits = `Registered Replication Manager to Cloud18 benefit many advantages  
@@ -95,6 +100,43 @@ Start create an account in https://gitlab.signal18.io
     setShowPassword(false)
     setIsRegisterModalOpen(true)
   }
+
+  // Stop all polling intervals
+  const stopPolling = () => {
+    if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null }
+    if (tickIntervalRef.current) { clearInterval(tickIntervalRef.current); tickIntervalRef.current = null }
+  }
+
+  // Start polling when step 2 becomes active
+  useEffect(() => {
+    if (registerStep !== 2 || !isRegisterModalOpen) { stopPolling(); return }
+
+    setRegStatus(null)
+    setRegElapsed(0)
+
+    // Elapsed-time ticker (every second for the countdown display)
+    tickIntervalRef.current = setInterval(() => {
+      setRegElapsed(s => s + 1)
+    }, 1000)
+
+    // Status poller (every 10 s)
+    pollIntervalRef.current = setInterval(async () => {
+      const result = await dispatch(pollRegisterStatus())
+      const payload = result?.payload?.data
+      if (!payload) return
+      const { state, message } = payload
+      setRegStatus({ state, message })
+
+      if (state === 'complete') {
+        stopPolling()
+        setIsRegisterModalOpen(false)
+      } else if (state === 'timeout' || state === 'error') {
+        stopPolling()
+      }
+    }, 10000)
+
+    return stopPolling
+  }, [registerStep, isRegisterModalOpen])
 
   const validateRegisterForm = (form) => {
     const errors = {}
@@ -191,23 +233,57 @@ Start create an account in https://gitlab.signal18.io
         <RMButton isLoading={isSendingCode} onClick={handleSendConfirmation}>Send Confirmation Email</RMButton>
       </HStack>
     </VStack>
-  ) : (
-    <VStack spacing={4} align='stretch' pb={2}>
-      <Text fontSize='sm'>
-        A confirmation email has been sent to <strong>{registerForm.email}</strong> by GitLab.
-      </Text>
-      <Text fontSize='sm' color='gray.500'>
-        Click the link in the email to confirm your GitLab account, then click <strong>Complete Registration</strong> below. GitLab must validate your email before the projects can be created.
-      </Text>
-      <HStack justify='space-between' pt={2}>
-        <RMButton variant='ghost' onClick={() => setRegisterStep(1)}>Back</RMButton>
-        <HStack>
-          <RMButton variant='ghost' onClick={() => setIsRegisterModalOpen(false)}>Cancel</RMButton>
-          <RMButton isLoading={isConfirming} onClick={handleConfirmRegistration}>Complete Registration</RMButton>
+  ) : (() => {
+    const remaining = Math.max(0, REG_TIMEOUT_SEC - regElapsed)
+    const mins = Math.floor(remaining / 60)
+    const secs = remaining % 60
+    const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`
+    const isTerminal = regStatus?.state === 'timeout' || regStatus?.state === 'error'
+    const isComplete = regStatus?.state === 'complete'
+    return (
+      <VStack spacing={4} align='stretch' pb={2}>
+        <Text fontSize='sm'>
+          A confirmation email has been sent to <strong>{registerForm.email}</strong> by GitLab.
+          Click the link in the email to confirm your account.
+        </Text>
+
+        {/* Polling progress area */}
+        {!isTerminal && !isComplete && (
+          <HStack spacing={3} bg='blue.50' borderRadius='md' p={3}>
+            <Spinner size='sm' color='blue.500' flexShrink={0} />
+            <VStack align='start' spacing={0}>
+              <Text fontSize='sm' fontWeight='medium'>Waiting for email confirmation…</Text>
+              <Text fontSize='xs' color='gray.500'>
+                {regStatus?.message || 'Checking every 10 seconds'} &nbsp;·&nbsp; {timeStr} remaining
+              </Text>
+            </VStack>
+          </HStack>
+        )}
+
+        {isTerminal && (
+          <Box bg='red.50' borderRadius='md' p={3}>
+            <Text fontSize='sm' fontWeight='medium' color='red.700'>
+              {regStatus.state === 'timeout' ? 'Timed out' : 'Error'}
+            </Text>
+            <Text fontSize='xs' color='red.600'>{regStatus.message}</Text>
+            <Text fontSize='xs' color='gray.500' mt={1}>
+              You can retry manually using the button below.
+            </Text>
+          </Box>
+        )}
+
+        <HStack justify='space-between' pt={1}>
+          <RMButton variant='ghost' onClick={() => { stopPolling(); setRegisterStep(1) }}>Back</RMButton>
+          <HStack>
+            <RMButton variant='ghost' onClick={() => { stopPolling(); setIsRegisterModalOpen(false) }}>Cancel</RMButton>
+            <RMButton isLoading={isConfirming} onClick={handleConfirmRegistration} title='Manually trigger confirmation check'>
+              {isTerminal ? 'Retry Confirm' : 'Complete Registration'}
+            </RMButton>
+          </HStack>
         </HStack>
-      </HStack>
-    </VStack>
-  )
+      </VStack>
+    )
+  })()
 
   useEffect(() => {
     // Re-render when the config prop changes
@@ -458,9 +534,9 @@ Start create an account in https://gitlab.signal18.io
         <CommonModal
           isOpen={isRegisterModalOpen}
           size='md'
-          title={registerStep === 1 ? 'Register with Signal18 Cloud18 (1/2)' : 'Confirm your email (2/2)'}
+          title={registerStep === 1 ? 'Register with Signal18 Cloud18 (1/2)' : 'Waiting for email confirmation (2/2)'}
           body={registerFormBody}
-          closeModal={() => setIsRegisterModalOpen(false)}
+          closeModal={() => { stopPolling(); setIsRegisterModalOpen(false) }}
         />
       )}
     </Flex>

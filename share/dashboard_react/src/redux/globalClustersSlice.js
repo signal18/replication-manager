@@ -233,6 +233,18 @@ export const confirmRegisterInstance = createGuardedAsyncThunk(
   }
 )
 
+export const pollRegisterStatus = createGuardedAsyncThunk(
+  'globalClusters/pollRegisterStatus',
+  async (_, thunkAPI) => {
+    try {
+      const { data, status } = await globalClustersService.getRegisterStatus()
+      return { data, status }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const getTermsData = createGuardedAsyncThunk('globalClusters/getTermsData', async ({ baseURL = '' }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getTermsData(baseURL)
