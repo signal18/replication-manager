@@ -21,7 +21,11 @@ export const globalClustersService = {
   getAppTemplateStructureGuide,
   register,
   confirmRegister,
-  getRegisterStatus
+  getRegisterStatus,
+  unregister,
+  getSubscription,
+  changeSubscription,
+  getSubscriptionPlans
 }
 
 function getClusters(baseURL) {
@@ -107,4 +111,20 @@ function confirmRegister(email, password, uri) {
 
 function getRegisterStatus() {
   return getApi().get('register/status')
+}
+
+function unregister() {
+  return getApi().post('register/unregister')
+}
+
+function getSubscription() {
+  return getApi().get('register/subscription')
+}
+
+function changeSubscription(plan) {
+  return getApi().post('register/subscription', { plan })
+}
+
+function getSubscriptionPlans() {
+  return getApi().get('register/subscription/plans')
 }

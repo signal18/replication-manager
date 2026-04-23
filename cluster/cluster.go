@@ -596,7 +596,7 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogSlack.Activate("slack", true)
 	}
 
-	if cluster.Conf.Cloud18 && cluster.Conf.Cloud18Alert {
+	if cluster.Conf.Cloud18 && cluster.Conf.Cloud18Alert && cluster.Conf.Cloud18SubscriptionPlan != "free" {
 		cluster.LogSlack.Activate("cloud18", true)
 	}
 

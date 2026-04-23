@@ -6,6 +6,7 @@ import ConfirmModal from '../../components/Modals/ConfirmModal'
 
 import AccordionComponent from '../../components/AccordionComponent'
 import CloudSettings from './CloudSettings'
+import MarketplaceSettings from './MarketplaceSettings'
 import { useDispatch, useSelector } from 'react-redux'
 import GlobalSettings from './GlobalSettings'
 import { setGlobalSetting } from '../../redux/globalClustersSlice'
@@ -36,7 +37,7 @@ function ClustersGlobalSettings({ user }) {
   return (
     <Flex className={styles.settingsContainer}>
       <AccordionComponent
-        heading={'Cloud18'}
+        heading={'Registration'}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<CloudSettings config={monitor?.config} openConfirmModal={openConfirmModal} />}
@@ -47,6 +48,14 @@ function ClustersGlobalSettings({ user }) {
         panelClassName={styles.accordionPanel}
         body={<GlobalSettings config={monitor?.config} openConfirmModal={openConfirmModal} />}
       />
+      {monitor?.config?.cloud18 && (
+        <AccordionComponent
+          heading={'Market Place'}
+          headerClassName={styles.accordionHeader}
+          panelClassName={styles.accordionPanel}
+          body={<MarketplaceSettings config={monitor?.config} />}
+        />
+      )}
       <AccordionComponent
         heading={'App Templates Repo'}
         headerClassName={styles.accordionHeader}

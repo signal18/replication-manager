@@ -4661,14 +4661,26 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.SetApiTokenTimeout(val)
 	case "cloud18":
 		if value == "true" {
-			if err := repman.InitGitConfig(repman.Conf); err != nil {
-				if strings.Contains(err.Error(), "invalid_grant") {
-					return fmt.Errorf("invalid_grant")
+			// Set Cloud18=true optimistically so the UI sees the state change immediately.
+			// InitGitConfig makes 5+ sequential HTTP calls to GitLab (OAuth token, user
+			// lookup, group access, PAT rotation/creation) and takes several seconds.
+			// Running it synchronously would block the HTTP handler and serialize all
+			// other browser requests during that time. Run it in a background goroutine
+			// so the response returns immediately. If it fails, Cloud18 is reverted to
+			// false and the UI will reflect that on the next monitor poll.
+			repman.Conf.Cloud18 = true
+			go func() {
+				if err := repman.InitGitConfig(repman.Conf); err != nil {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+						"Cloud18 connect failed: %s", err.Error())
+					repman.Conf.Cloud18 = false
 				}
-				return err
-			}
+				// Save final state (Cloud18 + any PAT/GitUrl set by InitGitConfig).
+				repman.ConfigManager.SaveConfig(repman, false)
+			}()
+		} else {
+			repman.Conf.Cloud18 = false
 		}
-		repman.Conf.Cloud18 = (value == "true")
 	case "cloud18-domain":
 		if repman.Conf.Cloud18 {
 			return errors.New("Unable to change setting when cloud18 is ON")
