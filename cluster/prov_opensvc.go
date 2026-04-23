@@ -206,7 +206,7 @@ func (cluster *Cluster) openSVCCreateMapsV2(svc opensvc.Collector, agent string)
 	err := svc.CreateSecretV2(cluster.Name, "env", agent)
 	if err != nil {
 		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && cluster.Conf.ProvObjectAllowOverwrite {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Secret object exists. Reuse secret env on cluster to avoid truncation of keys")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Secret object already exists; updating individual keys in place (not recreating object)")
 		} else {
 			return err
 		}
@@ -228,7 +228,7 @@ func (cluster *Cluster) openSVCCreateMapsV2(svc opensvc.Collector, agent string)
 	err = svc.CreateConfigV2(cluster.Name, "env", agent)
 	if err != nil {
 		if errors.Is(err, opensvc.ErrObjectAlreadyExists) && cluster.Conf.ProvObjectAllowOverwrite {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Config object exists. Reuse config env on cluster to avoid truncation of keys")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Config object already exists; updating individual keys in place (not recreating object)")
 		} else {
 			return err
 		}
@@ -257,7 +257,7 @@ func (cluster *Cluster) openSVCCreateMapsV3(svc opensvc.Collector, agent string)
 	if err != nil {
 		if isOpenSVCAlreadyExists(err) {
 			if cluster.Conf.ProvObjectAllowOverwrite {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Secret object exists. Reuse secret env on cluster to avoid truncation of keys")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Secret object already exists; updating individual keys in place (not recreating object)")
 			} else {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create secret: %s", err)
 				return err
@@ -293,7 +293,7 @@ func (cluster *Cluster) openSVCCreateMapsV3(svc opensvc.Collector, agent string)
 	if err != nil {
 		if isOpenSVCAlreadyExists(err) {
 			if cluster.Conf.ProvObjectAllowOverwrite {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Config object exists. Reuse config env on cluster to avoid truncation of keys")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Config object already exists; updating individual keys in place (not recreating object)")
 			} else {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create config: %s", err)
 				return err
