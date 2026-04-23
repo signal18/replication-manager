@@ -4662,13 +4662,14 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "cloud18":
 		if value == "true" {
 			repman.Conf.Cloud18 = true
-			// Only run InitGitConfig when git credentials haven't been set up yet.
-			// On a live reconnect after disconnect, the PAT and git URL are still
-			// in memory from the initial registration — re-running InitGitConfig
-			// would try to rotate the PAT via an OAuth token that lacks the required
-			// scope, causing the reconnect to fail. Startup skips InitGitConfig for
-			// the same reason (InitConfig is always called with init_git=false).
-			if repman.Conf.GitAccesToken == "" || repman.Conf.GitUrl == "" {
+			// Only run InitGitConfig when the PAT/git-URL haven't been set up yet.
+			// GitAccesToken is stored as a secret (conf.Secrets["git-acces-token"]),
+			// not in the struct field, so check the secrets map. On a live reconnect
+			// after disconnect both are already in memory — skipping InitGitConfig
+			// avoids 5+ GitLab round-trips and the PAT rotation that breaks reconnect.
+			// Startup skips InitGitConfig for the same reason (init_git=false always).
+			patStored := repman.Conf.Secrets != nil && repman.Conf.Secrets["git-acces-token"].Value != ""
+			if !patStored || repman.Conf.GitUrl == "" {
 				if err := repman.InitGitConfig(repman.Conf); err != nil {
 					repman.Conf.Cloud18 = false
 					if strings.Contains(err.Error(), "invalid_grant") {

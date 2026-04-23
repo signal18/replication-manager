@@ -40,12 +40,26 @@ function CloudSettings({ config }) {
   const REG_TIMEOUT_SEC = 5 * 60
   const [isUnregisterModalOpen, setIsUnregisterModalOpen] = useState(false)
   const [isUnregistering, setIsUnregistering] = useState(false)
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [isDisconnecting, setIsDisconnecting] = useState(false)
 
   const handleUnregister = async () => {
     setIsUnregistering(true)
     await dispatch(unregisterInstance())
     setIsUnregistering(false)
     setIsUnregisterModalOpen(false)
+  }
+
+  const handleConnect = async () => {
+    setIsConnecting(true)
+    await dispatch(setGlobalSetting({ setting: 'cloud18', value: 'true', errMsgFunc: errInvalidGrant }))
+    setIsConnecting(false)
+  }
+
+  const handleDisconnect = async () => {
+    setIsDisconnecting(true)
+    await dispatch(setGlobalSetting({ setting: 'cloud18', value: 'false', errMsgFunc: errInvalidGrant }))
+    setIsDisconnecting(false)
   }
 
   // Subscription modal state
@@ -366,7 +380,8 @@ Start create an account in https://gitlab.signal18.io
           {isConnected ? (
             <>
               <RMButton
-                onClick={() => dispatch(setGlobalSetting({ setting: 'cloud18', value: 'false', errMsgFunc: errInvalidGrant }))}
+                isLoading={isDisconnecting}
+                onClick={handleDisconnect}
                 title='Deactivate Cloud18 connection (credentials are preserved)'
               >
                 Disconnect
@@ -374,6 +389,7 @@ Start create an account in https://gitlab.signal18.io
               <RMButton
                 colorScheme='red'
                 variant='outline'
+                isDisabled={isDisconnecting}
                 onClick={() => setIsUnregisterModalOpen(true)}
                 title='Drop GitLab projects for this URI and unlock fields to change URI'
               >
@@ -382,8 +398,9 @@ Start create an account in https://gitlab.signal18.io
             </>
           ) : hasCredentials ? (
             <RMButton
-              isDisabled={disableConnect}
-              onClick={() => dispatch(setGlobalSetting({ setting: 'cloud18', value: 'true', errMsgFunc: errInvalidGrant }))}
+              isLoading={isConnecting}
+              isDisabled={disableConnect || isConnecting}
+              onClick={handleConnect}
               title='Connect using stored credentials'
             >
               Connect
