@@ -4662,12 +4662,20 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "cloud18":
 		if value == "true" {
 			repman.Conf.Cloud18 = true
-			if err := repman.InitGitConfig(repman.Conf); err != nil {
-				repman.Conf.Cloud18 = false
-				if strings.Contains(err.Error(), "invalid_grant") {
-					return fmt.Errorf("invalid_grant")
+			// Only run InitGitConfig when git credentials haven't been set up yet.
+			// On a live reconnect after disconnect, the PAT and git URL are still
+			// in memory from the initial registration — re-running InitGitConfig
+			// would try to rotate the PAT via an OAuth token that lacks the required
+			// scope, causing the reconnect to fail. Startup skips InitGitConfig for
+			// the same reason (InitConfig is always called with init_git=false).
+			if repman.Conf.GitAccesToken == "" || repman.Conf.GitUrl == "" {
+				if err := repman.InitGitConfig(repman.Conf); err != nil {
+					repman.Conf.Cloud18 = false
+					if strings.Contains(err.Error(), "invalid_grant") {
+						return fmt.Errorf("invalid_grant")
+					}
+					return err
 				}
-				return err
 			}
 		} else {
 			repman.Conf.Cloud18 = false
