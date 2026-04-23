@@ -4661,23 +4661,23 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.SetApiTokenTimeout(val)
 	case "cloud18":
 		if value == "true" {
+			// Set Cloud18=true optimistically so the UI sees the state change immediately.
+			// InitGitConfig makes 5+ sequential HTTP calls to GitLab (OAuth token, user
+			// lookup, group access, PAT rotation/creation) and takes several seconds.
+			// Running it synchronously would block the HTTP handler and serialize all
+			// other browser requests during that time. Run it in a background goroutine
+			// so the response returns immediately. If it fails, Cloud18 is reverted to
+			// false and the UI will reflect that on the next monitor poll.
 			repman.Conf.Cloud18 = true
-			// Only run InitGitConfig when the PAT/git-URL haven't been set up yet.
-			// GitAccesToken is stored as a secret (conf.Secrets["git-acces-token"]),
-			// not in the struct field, so check the secrets map. On a live reconnect
-			// after disconnect both are already in memory — skipping InitGitConfig
-			// avoids 5+ GitLab round-trips and the PAT rotation that breaks reconnect.
-			// Startup skips InitGitConfig for the same reason (init_git=false always).
-			patStored := repman.Conf.Secrets != nil && repman.Conf.Secrets["git-acces-token"].Value != ""
-			if !patStored || repman.Conf.GitUrl == "" {
+			go func() {
 				if err := repman.InitGitConfig(repman.Conf); err != nil {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+						"Cloud18 connect failed: %s", err.Error())
 					repman.Conf.Cloud18 = false
-					if strings.Contains(err.Error(), "invalid_grant") {
-						return fmt.Errorf("invalid_grant")
-					}
-					return err
 				}
-			}
+				// Save final state (Cloud18 + any PAT/GitUrl set by InitGitConfig).
+				repman.ConfigManager.SaveConfig(repman, false)
+			}()
 		} else {
 			repman.Conf.Cloud18 = false
 		}
