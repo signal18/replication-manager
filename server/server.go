@@ -106,87 +106,87 @@ type ReplicationManager struct {
 	clusterHeartbeatTrackingLock sync.RWMutex                       `json:"-"`
 	clusterHeartbeatTracking     map[string]clusterHeartbeatTracker `json:"-"`
 	//Adding default flags from AddFlags
-	CommandLineFlag                                  []string                    `json:"-"`
-	ConfigPathList                                   []string                    `json:"-"`
-	Logs                                             s18log.HttpLog              `json:"logs"`
-	MonitorType                                      map[string]string           `json:"monitorType"`
-	ServicePlans                                     []config.ServicePlan        `json:"servicePlans"`
-	ServiceOrchestrators                             []config.ConfigVariableType `json:"serviceOrchestrators"`
-	ServiceAcl                                       []config.Grant              `json:"serviceAcl"`
-	ServiceRoles                                     []config.Role               `json:"serviceRoles"`
-	ServiceRepos                                     []config.DockerRepo         `json:"serviceRepos"`
-	ServiceTarballs                                  []config.Tarball            `json:"serviceTarballs"`
-	ServiceTemplates                                 []string                    `json:"serviceTemplates"`
-	ServiceFS                                        map[string]bool             `json:"serviceFS"`
-	ServiceVM                                        map[string]bool             `json:"serviceVM"`
-	ServiceDisk                                      map[string]string           `json:"serviceDisk"`
-	ServicePool                                      map[string]bool             `json:"servicePool"`
-	ServiceSSLMode                                   map[string]bool             `json:"serviceSslMode"`
-	BackupLogicalList                                map[string]bool             `json:"backupLogicalList"`
-	BackupPhysicalList                               map[string]bool             `json:"backupPhysicalList"`
-	BackupBinlogList                                 map[string]bool             `json:"backupBinlogList"`
-	BinlogParseList                                  map[string]bool             `json:"binlogParseList"`
-	GraphiteTemplateList                             map[string]bool             `json:"graphiteTemplateList"`
-	ServerScopeList                                  map[string]bool             `json:"-"`
-	currentCluster                                   *cluster.Cluster            `json:"-"`
-	UserAuthTry                                      sync.Map                    `json:"-"`
-	OAuthAccessToken                                 *oauth2.Token               `json:"-"`
-	ViperConfig                                      *viper.Viper                `json:"-"`
-	tlog                                             s18log.TermLog
-	termlength                                       int
-	exitMsg                                          string
-	exit                                             atomic.Bool
-	isStarted                                        bool
-	Confs                                            map[string]config.Config
-	VersionConfs                                     map[string]*config.ConfVersion `json:"-"`
-	grpcServer                                       *grpc.Server                   `json:"-"`
-	grpcWrapped                                      *grpcweb.WrappedGrpcServer     `json:"-"`
-	httpServer                                       *http.Server                   `json:"-"`
-	apiServer                                        *http.Server                   `json:"-"`
-	V3Up                                             chan bool                      `json:"-"`
-	v3Config                                         Repmanv3Config                 `json:"-"`
-	cloud18CheckSum                                  hash.Hash                      `json:"-"`
-	RegStatus                                        RegistrationStatus             `json:"-"`
-	clog                                             *clog.Logger                   `json:"-"`
-	cApiLog                                          *clog.Logger                   `json:"-"`
-	Logrus                                           *log.Logger                    `json:"-"`
-	ApiLogAdapter                                    *ApiLogAdapter                 `json:"-"`
-	IsSavingConfig                                   bool                           `json:"isSavingConfig"`
-	HasSavingConfigQueue                             bool                           `json:"hasSavingConfigQueue"`
-	IsGitPull                                        bool                           `json:"isGitPull"`
-	IsGitPush                                        bool                           `json:"isGitPush"`
-	GitPushLock                                      sync.Mutex                     `json:"-"`
-	IsNeedGitPush                                    bool                           `json:"-"`
-	CanConnectVault                                  bool                           `json:"canConnectVault"`
-	IsExportPush                                     bool                           `json:"-"`
-	globalScheduler                                  *cron.Cron                     `json:"-"`
-	CheckSumConfig                                   map[string]hash.Hash           `json:"-"`
-	Mailer                                           *mailer.Mailer                 `json:"-"`
-	IsHttpListenerReady                              bool                           `json:"-"`
-	IsApiListenerReady                               bool                           `json:"-"`
-	Terms                                            []byte                         `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
-	TermsDT                                          time.Time                      `json:"termsDT"`
-	ModTimes                                         map[string]time.Time           `json:"termsDT"`
-	SessionManager                                   *tty.SessionManager            `json:"-"`
-	ConfigManager                                    *manager.ConfigManager         `json:"-"`
-	MeetUserID                                       string                         `json:"-"`
-	DiskStatManager                                  *misc.DiskStatManager          `json:"-"`
-	OpenSVCStats                                     atomic.Value                   `json:"-"`
-	inFetchOpenSVCStats                              bool                           `json:"-"`
-	MessageChan                                      chan sharedlog.Message         `json:"-"`
-	fileHook                                         log.Hook
+	CommandLineFlag      []string                    `json:"-"`
+	ConfigPathList       []string                    `json:"-"`
+	Logs                 s18log.HttpLog              `json:"logs"`
+	MonitorType          map[string]string           `json:"monitorType"`
+	ServicePlans         []config.ServicePlan        `json:"servicePlans"`
+	ServiceOrchestrators []config.ConfigVariableType `json:"serviceOrchestrators"`
+	ServiceAcl           []config.Grant              `json:"serviceAcl"`
+	ServiceRoles         []config.Role               `json:"serviceRoles"`
+	ServiceRepos         []config.DockerRepo         `json:"serviceRepos"`
+	ServiceTarballs      []config.Tarball            `json:"serviceTarballs"`
+	ServiceTemplates     []string                    `json:"serviceTemplates"`
+	ServiceFS            map[string]bool             `json:"serviceFS"`
+	ServiceVM            map[string]bool             `json:"serviceVM"`
+	ServiceDisk          map[string]string           `json:"serviceDisk"`
+	ServicePool          map[string]bool             `json:"servicePool"`
+	ServiceSSLMode       map[string]bool             `json:"serviceSslMode"`
+	BackupLogicalList    map[string]bool             `json:"backupLogicalList"`
+	BackupPhysicalList   map[string]bool             `json:"backupPhysicalList"`
+	BackupBinlogList     map[string]bool             `json:"backupBinlogList"`
+	BinlogParseList      map[string]bool             `json:"binlogParseList"`
+	GraphiteTemplateList map[string]bool             `json:"graphiteTemplateList"`
+	ServerScopeList      map[string]bool             `json:"-"`
+	currentCluster       *cluster.Cluster            `json:"-"`
+	UserAuthTry          sync.Map                    `json:"-"`
+	OAuthAccessToken     *oauth2.Token               `json:"-"`
+	ViperConfig          *viper.Viper                `json:"-"`
+	tlog                 s18log.TermLog
+	termlength           int
+	exitMsg              string
+	exit                 atomic.Bool
+	isStarted            bool
+	Confs                map[string]config.Config
+	VersionConfs         map[string]*config.ConfVersion `json:"-"`
+	grpcServer           *grpc.Server                   `json:"-"`
+	grpcWrapped          *grpcweb.WrappedGrpcServer     `json:"-"`
+	httpServer           *http.Server                   `json:"-"`
+	apiServer            *http.Server                   `json:"-"`
+	V3Up                 chan bool                      `json:"-"`
+	v3Config             Repmanv3Config                 `json:"-"`
+	cloud18CheckSum      hash.Hash                      `json:"-"`
+	RegStatus            RegistrationStatus             `json:"-"`
+	clog                 *clog.Logger                   `json:"-"`
+	cApiLog              *clog.Logger                   `json:"-"`
+	Logrus               *log.Logger                    `json:"-"`
+	ApiLogAdapter        *ApiLogAdapter                 `json:"-"`
+	IsSavingConfig       bool                           `json:"isSavingConfig"`
+	HasSavingConfigQueue bool                           `json:"hasSavingConfigQueue"`
+	IsGitPull            bool                           `json:"isGitPull"`
+	IsGitPush            bool                           `json:"isGitPush"`
+	GitPushLock          sync.Mutex                     `json:"-"`
+	IsNeedGitPush        bool                           `json:"-"`
+	CanConnectVault      bool                           `json:"canConnectVault"`
+	IsExportPush         bool                           `json:"-"`
+	globalScheduler      *cron.Cron                     `json:"-"`
+	CheckSumConfig       map[string]hash.Hash           `json:"-"`
+	Mailer               *mailer.Mailer                 `json:"-"`
+	IsHttpListenerReady  bool                           `json:"-"`
+	IsApiListenerReady   bool                           `json:"-"`
+	Terms                []byte                         `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
+	TermsDT              time.Time                      `json:"termsDT"`
+	ModTimes             map[string]time.Time           `json:"termsDT"`
+	SessionManager       *tty.SessionManager            `json:"-"`
+	ConfigManager        *manager.ConfigManager         `json:"-"`
+	MeetUserID           string                         `json:"-"`
+	DiskStatManager      *misc.DiskStatManager          `json:"-"`
+	OpenSVCStats         atomic.Value                   `json:"-"`
+	inFetchOpenSVCStats  bool                           `json:"-"`
+	MessageChan          chan sharedlog.Message         `json:"-"`
+	fileHook             log.Hook
 	// SecurityLogrus is a dedicated logger that writes security events to
 	// security.log (path derived from log-file by inserting "-security" before
 	// the extension). Nil when log-file is not configured.
-	SecurityLogrus                                   *log.Logger    `json:"-"`
+	SecurityLogrus *log.Logger `json:"-"`
 	// WorkloadLogrus is a dedicated logger that writes workload/performance spike
 	// events to workload.log (path derived from log-file by inserting "-workload"
 	// before the extension). Nil when log-file is not configured.
-	WorkloadLogrus                                   *log.Logger    `json:"-"`
+	WorkloadLogrus *log.Logger `json:"-"`
 	// MaintenanceLogrus is a dedicated logger that writes planned-operations events
 	// (backup, SST, task execution, purge, orchestrator) to maintenance.log.
 	// Nil when log-file is not configured.
-	MaintenanceLogrus                                *log.Logger    `json:"-"`
+	MaintenanceLogrus                                *log.Logger `json:"-"`
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
@@ -1182,7 +1182,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvDBCompliance, "prov-db-compliance", "", "Path of compliance file for DB configuration")
 		flags.StringVar(&conf.ProvProxyCompliance, "prov-proxy-compliance", "", "Path of compliance file for Proxy configuration")
 		flags.BoolVar(&conf.MeasurementAutoClampLimit, "measurement-auto-clamp-limit", false, "Auto clamp to allowed value for measurement if exceed the min-max boundaries")
-		flags.BoolVar(&conf.ProvObjectAllowOverwrite, "prov-object-allow-overwrite", false, "Allow overwriting config/secret keys when objects already exist")
+		flags.BoolVar(&conf.ProvObjectAllowOverwrite, "prov-object-allow-overwrite", true, "Allow overwriting config/secret keys when objects already exist")
 
 		if WithOpenSVC == "ON" {
 
