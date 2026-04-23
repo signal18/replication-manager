@@ -42,12 +42,21 @@ function CloudSettings({ config }) {
   const [isUnregistering, setIsUnregistering] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isDisconnecting, setIsDisconnecting] = useState(false)
+  // Set to true only after a successful Unregister (CRM call that drops GitLab projects
+  // and the subscription DB record). That is the only valid gate for URI editing —
+  // disconnect alone is not enough because the CRM still holds the old URI record.
+  // Reset automatically when a connection is re-established.
+  const [uriUnlocked, setUriUnlocked] = useState(false)
 
   const handleUnregister = async () => {
     setIsUnregistering(true)
-    await dispatch(unregisterInstance())
+    const result = await dispatch(unregisterInstance())
     setIsUnregistering(false)
     setIsUnregisterModalOpen(false)
+    if (result?.payload?.status === 200) {
+      setUriUnlocked(true)
+      await dispatch(getMonitoredData({}))
+    }
   }
 
   const handleConnect = async () => {
@@ -357,14 +366,20 @@ Start create an account in https://gitlab.signal18.io
   const hSubscription = `**Subscription Plan**\n\nYour Signal18 Cloud18 subscription level. Clicking **Change** verifies your registration with the CRM using your GitLab token and lets you switch plan.\n\n| Plan | Description |\n|------|-------------|\n| Free | Community access, config backup, basic alerting |\n| Contributing under Support | Support tickets, SLA |\n| Contributing under Support and Services | Full support + managed services |\n| Market Place Partner | Marketplace listing, revenue sharing, partner API |\n\nConfig: \`cloud18-subscription-plan\``
 
   const isConnected = !!config?.cloud18
-  // True when all credentials are stored — a direct Connect is possible without re-registering.
-  const hasCredentials = !!(config?.cloud18GitUser && config?.cloud18Domain && config?.cloud18SubDomain && config?.cloud18SubDomainZone)
 
-  // URI fields (domain/subdomain/zone) are locked whenever credentials exist — even when
-  // disconnected. Disconnect is a temporary deactivation; the CRM is not notified of URI
-  // changes, so altering the URI after disconnect would orphan the old GitLab projects.
-  // Only Unregister (which calls the CRM to drop projects) should unlock URI fields.
-  const uriLocked = isConnected || hasCredentials
+  // Reset URI unlock when connection is re-established (new registration completed)
+  useEffect(() => {
+    if (isConnected) setUriUnlocked(false)
+  }, [isConnected])
+
+  // True when a full set of credentials + URI is stored, meaning a direct Connect is
+  // possible. After Unregister (uriUnlocked=true) we force this false so the UI shows
+  // Register instead of Connect — the CRM subscription row was dropped and must be recreated.
+  const hasCredentials = !uriUnlocked && !!(config?.cloud18GitUser && config?.cloud18Domain && config?.cloud18SubDomain && config?.cloud18SubDomainZone)
+
+  // URI fields are locked unless the user has explicitly unregistered (CRM call that drops
+  // both the GitLab projects and the subscription DB record for this URI).
+  const uriLocked = isConnected || (!uriUnlocked && !!(config?.cloud18Domain && config?.cloud18SubDomain && config?.cloud18SubDomainZone))
 
   const registrationData = [
     { key: 'Status',         help: h(hStatus,    'Cloud18 Status'),    value: <TagPill colorScheme={isConnected ? 'green' : 'gray'} text={isConnected ? 'ONLINE' : 'OFFLINE'} /> },
