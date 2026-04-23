@@ -7,7 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
-import { setGlobalSetting, registerInstance, confirmRegisterInstance, pollRegisterStatus, fetchSubscriptionPlans, fetchSubscription, updateSubscription, unregisterInstance } from '../../redux/globalClustersSlice'
+import { setGlobalSetting, getMonitoredData, registerInstance, confirmRegisterInstance, pollRegisterStatus, fetchSubscriptionPlans, fetchSubscription, updateSubscription, unregisterInstance } from '../../redux/globalClustersSlice'
 import TextForm from '../../components/TextForm'
 import RMIconButton from '../../components/RMIconButton'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
@@ -53,12 +53,17 @@ function CloudSettings({ config }) {
   const handleConnect = async () => {
     setIsConnecting(true)
     await dispatch(setGlobalSetting({ setting: 'cloud18', value: 'true', errMsgFunc: errInvalidGrant }))
+    // Force an immediate monitor refresh so the UI transitions without waiting
+    // for the next polling interval. The connect may have already set cloud18=true
+    // on the server; we need to pull that state now.
+    await dispatch(getMonitoredData({}))
     setIsConnecting(false)
   }
 
   const handleDisconnect = async () => {
     setIsDisconnecting(true)
     await dispatch(setGlobalSetting({ setting: 'cloud18', value: 'false', errMsgFunc: errInvalidGrant }))
+    await dispatch(getMonitoredData({}))
     setIsDisconnecting(false)
   }
 
