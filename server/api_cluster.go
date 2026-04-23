@@ -4661,14 +4661,17 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.SetApiTokenTimeout(val)
 	case "cloud18":
 		if value == "true" {
+			repman.Conf.Cloud18 = true
 			if err := repman.InitGitConfig(repman.Conf); err != nil {
+				repman.Conf.Cloud18 = false
 				if strings.Contains(err.Error(), "invalid_grant") {
 					return fmt.Errorf("invalid_grant")
 				}
 				return err
 			}
+		} else {
+			repman.Conf.Cloud18 = false
 		}
-		repman.Conf.Cloud18 = (value == "true")
 	case "cloud18-domain":
 		if repman.Conf.Cloud18 {
 			return errors.New("Unable to change setting when cloud18 is ON")
