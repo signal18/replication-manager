@@ -1,16 +1,15 @@
 import {
-  Box, Checkbox, Flex, FormControl, FormErrorMessage, FormLabel,
+  Box, Flex, FormControl, FormErrorMessage, FormLabel,
   HStack, Input, InputGroup, InputRightElement, Link, Spinner, Text, VStack
 } from '@chakra-ui/react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styles from './styles.module.scss'
-import RMSwitch from '../../components/RMSwitch'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
-import { switchGlobalSetting, setGlobalSetting, reloadClustersPlan, reloadClustersPlanInfo, registerInstance, confirmRegisterInstance, pollRegisterStatus } from '../../redux/globalClustersSlice'
+import { setGlobalSetting, registerInstance, confirmRegisterInstance, pollRegisterStatus } from '../../redux/globalClustersSlice'
 import TextForm from '../../components/TextForm'
 import RMIconButton from '../../components/RMIconButton'
-import { HiOutlineInformationCircle, HiQuestionMarkCircle, HiRefresh } from 'react-icons/hi'
+import { HiQuestionMarkCircle } from 'react-icons/hi'
 import { HiEye, HiEyeOff } from 'react-icons/hi'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import TagPill from '../../components/TagPill'
@@ -23,15 +22,10 @@ import remarkGfm from 'remark-gfm'
 function CloudSettings({ config }) {
   const dispatch = useDispatch()
   const joinClasses = (...classes) => classes.filter(Boolean).join(' ')
-  const [action, setAction] = useState({
-    title: '',
-    type: '',
-    body: <></>
-  })
-  const {title,type} = action
+  const [action, setAction] = useState({ title: '', type: '', body: <></> })
+  const { title, type } = action
   const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
-  const [shouldRedownloadPlans, setShouldRedownloadPlans] = useState(true)
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
   const [registerStep, setRegisterStep] = useState(1)
   const [showPassword, setShowPassword] = useState(false)
@@ -78,12 +72,8 @@ Start create an account in https://gitlab.signal18.io
       dispatch(setGlobalSetting({ setting: 'cloud18', value: "true", errMsgFunc: errInvalidGrant }))
     } else if (type === 'cloud18-disconnect') {
       dispatch(setGlobalSetting({ setting: 'cloud18', value: "false", errMsgFunc: errInvalidGrant }))
-    } else if (type === 'reload-clusters-plan') {
-      dispatch(reloadClustersPlan({ download: shouldRedownloadPlans }))
-    } else if (type === 'reload-clusters-plan-info') {
-      dispatch(reloadClustersPlanInfo({ download: shouldRedownloadPlans }))
     }
-  }, [type, shouldRedownloadPlans])
+  }, [type])
 
   const disableConnect = useMemo(() => (config?.cloud18GitUser === "" || config?.cloud18Domain === "" || config?.cloud18SubDomain === "" || config?.cloud18SubDomainZone === ""),[config?.cloud18GitUser, config?.cloud18Domain, config?.cloud18SubDomain, config?.cloud18SubDomainZone])
 
@@ -285,78 +275,36 @@ Start create an account in https://gitlab.signal18.io
     )
   })()
 
-  // Helper: question-mark icon with tooltip
-  const qmark = (tip) => (
-    <RMIconButton icon={HiQuestionMarkCircle} tooltip={tip} variant='ghost' size='xs' />
+  // Same helper pattern as cluster settings — opens an info modal with markdown
+  const h = (content, title) => (
+    <RMIconButton
+      icon={HiQuestionMarkCircle}
+      onClick={() => { setAction({ title, type: '', body: <Box className={modalStyles.infoTooltip}><Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown></Box> }); openCommonModal() }}
+      iconFontsize='1rem'
+      variant='ghost'
+      style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }}
+    />
   )
 
+  const hStatus = `**Cloud18 Status**\n\nShows whether this instance is actively connected to Signal18 Cloud18.\nWhen ONLINE, configuration is automatically backed up to GitLab on every change, and marketplace features are available.\n\nConfig: \`cloud18\``
+  const hGitUser = `**Git User**\n\nGitLab email or username at \`gitlab.signal18.io\`.\nCreated during registration — used for authentication, encrypted configuration backup, and marketplace identity.\n\nConfig: \`cloud18-gitlab-user\``
+  const hGitPass = `**GitLab Password**\n\nPassword for the GitLab account at \`gitlab.signal18.io\`.\nStored encrypted in the replication-manager configuration.\n\nConfig: \`cloud18-gitlab-password\``
+  const hDomain = `**Domain**\n\nCompany namespace on Cloud18 (e.g. \`mycompany\`).\nA top-level GitLab group with this name is created at \`gitlab.signal18.io\` to host your cluster configurations.\n\nConfig: \`cloud18-domain\``
+  const hSubdomain = `**Subdomain**\n\nDatacenter or environment identifier (e.g. \`ovh\`, \`aws\`).\nCreates a subgroup under your domain group, allowing multiple independent deployment environments.\n\nConfig: \`cloud18-sub-domain\``
+  const hZone = `**Subdomain Zone**\n\nGeographic zone or region (e.g. \`fr-1\`, \`us-east\`).\nCompletes the three-part URI: \`domain.subdomain.zone\`. This URI uniquely identifies your instance on Cloud18.\n\nConfig: \`cloud18-sub-domain-zone\``
+  const hRegister = `**Register**\n\nCreate a Signal18 Cloud18 account and link this replication-manager instance.\nTriggers GitLab account creation at \`gitlab.signal18.io\`, sends a confirmation email, and sets up the configuration backup repository and group structure.`
+  const hConnect = `**Connect / Disconnect**\n\nActivate or deactivate the Cloud18 connection using the stored credentials.\nWhen connected, configuration changes are automatically pushed to the GitLab repository and the instance is visible on the marketplace.\n\nConfig: \`cloud18\``
+
   const registrationData = [
-    {
-      key: 'Status',
-      help: qmark('Shows whether this instance is actively connected to Signal18 Cloud18. When ONLINE, configuration is backed up to GitLab and marketplace features are available.'),
-      value: (
-        <TagPill colorScheme={config?.cloud18 ? 'green' : 'gray'} text={config?.cloud18 ? 'ONLINE' : 'OFFLINE'} />
-      )
-    },
-    {
-      key: 'Git User',
-      help: qmark('GitLab email/username at gitlab.signal18.io. Created during registration — used for authentication, encrypted configuration backup, and marketplace identity.'),
-      value: (
-        <TextForm
-          value={config?.cloud18GitUser}
-          confirmTitle='Confirm git username to '
-          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-user', value }))}
-        />
-      )
-    },
-    {
-      key: 'GitLab Password',
-      help: qmark('Password for the GitLab account at gitlab.signal18.io. Stored encrypted in the replication-manager configuration.'),
-      value: (
-        <TextForm
-          type='password'
-          value={config?.cloud18GitlabPassword}
-          confirmTitle='Confirm GitLab password to '
-          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-password', value: btoa(value) }))}
-        />
-      )
-    },
-    {
-      key: 'Domain',
-      help: qmark('Company namespace on Cloud18 (e.g. mycompany). A top-level GitLab group with this name is created at gitlab.signal18.io to host your cluster configurations.'),
-      value: (
-        <TextForm
-          value={config?.cloud18Domain}
-          confirmTitle='Confirm Cloud18 domain to '
-          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-domain', value }))}
-        />
-      )
-    },
-    {
-      key: 'Subdomain',
-      help: qmark('Datacenter or environment identifier (e.g. ovh, aws). Creates a subgroup under your domain group, allowing multiple independent deployment environments.'),
-      value: (
-        <TextForm
-          value={config?.cloud18SubDomain}
-          confirmTitle='Confirm subdomain to '
-          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-sub-domain', value }))}
-        />
-      )
-    },
-    {
-      key: 'Subdomain Zone',
-      help: qmark('Geographic zone or region (e.g. fr-1, us-east). Completes the three-part URI: domain.subdomain.zone. This URI uniquely identifies your instance on Cloud18.'),
-      value: (
-        <TextForm
-          value={config?.cloud18SubDomainZone}
-          confirmTitle='Confirm subdomain zone to '
-          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-sub-domain-zone', value }))}
-        />
-      )
-    },
+    { key: 'Status',         help: h(hStatus,    'Cloud18 Status'),    value: <TagPill colorScheme={config?.cloud18 ? 'green' : 'gray'} text={config?.cloud18 ? 'ONLINE' : 'OFFLINE'} /> },
+    { key: 'Git User',       help: h(hGitUser,   'Git User'),          value: <TextForm value={config?.cloud18GitUser}       confirmTitle='Confirm git username to '   onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-user', value: v }))} /> },
+    { key: 'GitLab Password',help: h(hGitPass,   'GitLab Password'),   value: <TextForm value={config?.cloud18GitlabPassword} type='password' confirmTitle='Confirm GitLab password to ' onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-password', value: btoa(v) }))} /> },
+    { key: 'Domain',         help: h(hDomain,    'Domain'),            value: <TextForm value={config?.cloud18Domain}        confirmTitle='Confirm domain to '         onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-domain', value: v }))} /> },
+    { key: 'Subdomain',      help: h(hSubdomain, 'Subdomain'),         value: <TextForm value={config?.cloud18SubDomain}     confirmTitle='Confirm subdomain to '      onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-sub-domain', value: v }))} /> },
+    { key: 'Subdomain Zone', help: h(hZone,      'Subdomain Zone'),    value: <TextForm value={config?.cloud18SubDomainZone} confirmTitle='Confirm subdomain zone to ' onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-sub-domain-zone', value: v }))} /> },
     {
       key: 'Register',
-      help: qmark('Create a Signal18 Cloud18 account and link this instance. Triggers GitLab account creation, sends a confirmation email, and sets up the configuration backup repository.'),
+      help: h(hRegister, 'Register'),
       value: (
         <HStack>
           <RMButton
@@ -366,13 +314,19 @@ Start create an account in https://gitlab.signal18.io
           >
             Register
           </RMButton>
-          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Cloud18 Benefits', type: '', body: <Box className={joinClasses(modalStyles.infoTooltip, styles.infoTooltip)}><Markdown remarkPlugins={[remarkGfm]}>{benefits}</Markdown></Box> }); openCommonModal() }} />
+          <RMIconButton
+            icon={HiQuestionMarkCircle}
+            onClick={() => { setAction({ title: 'Cloud18 Benefits', type: '', body: <Box className={joinClasses(modalStyles.infoTooltip, styles.infoTooltip)}><Markdown remarkPlugins={[remarkGfm]}>{benefits}</Markdown></Box> }); openCommonModal() }}
+            iconFontsize='1rem'
+            variant='ghost'
+            style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }}
+          />
         </HStack>
       )
     },
     {
       key: 'Connect',
-      help: qmark('Activate or deactivate the Cloud18 connection using the stored credentials. When connected, configuration changes are automatically pushed to the GitLab repository.'),
+      help: h(hConnect, 'Connect / Disconnect'),
       value: (
         <HStack>
           {config?.cloud18
@@ -384,170 +338,26 @@ Start create an account in https://gitlab.signal18.io
     },
   ]
 
-  const marketplaceData = [
-    {
-      key: 'Platform Description',
-      help: qmark('Human-readable description of this replication-manager platform shown to other Cloud18 users in the marketplace. Helps buyers and subscribers identify your offering.'),
-      value: (
-        <TextForm
-          value={config?.cloud18PlatformDescription}
-          confirmTitle='Confirm platform description to '
-          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-platform-description', value }))}
-        />
-      )
-    },
-    {
-      key: 'Gateway Domain Name',
-      help: qmark('Public FQDN for the Cloud18 API gateway that exposes this instance on the internet (e.g. repman.mycompany.cloud18.io). Required for clusters accessible from the marketplace.'),
-      value: (
-        <TextForm
-          value={config?.cloud18GatewayDomainName}
-          confirmTitle='Confirm gateway domain name to '
-          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-gateway-domain-name', value }))}
-        />
-      )
-    },
-    {
-      key: 'Gateway Service',
-      help: qmark('OpenSVC service name of the Cloud18 gateway proxy. The gateway routes inbound marketplace traffic to this replication-manager instance via the OpenSVC orchestrator.'),
-      value: (
-        <TextForm
-          value={config?.cloud18GatewayService}
-          confirmTitle='Confirm gateway service to '
-          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-gateway-service', value }))}
-        />
-      )
-    },
-    {
-      key: 'Domain Add Script',
-      help: qmark('Shell script executed when a new marketplace subscription is activated. Typically creates DNS records and routing rules for the new tenant\'s domain.'),
-      value: (
-        <TextForm
-          value={config?.cloud18DomainAddScript}
-          confirmTitle='Confirm domain add script to '
-          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-domain-add-script', value }))}
-        />
-      )
-    },
-    {
-      key: 'Domain Drop Script',
-      help: qmark('Shell script executed when a marketplace subscription is cancelled. Should remove the DNS entries and routing rules created by the Domain Add Script.'),
-      value: (
-        <TextForm
-          value={config?.cloud18DomainDropScript}
-          confirmTitle='Confirm domain drop script to '
-          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-domain-drop-script', value }))}
-        />
-      )
-    },
-    {
-      key: 'Domain User',
-      help: qmark('Username for the domain management API (DNS provider, load balancer, etc.) called by the add/drop scripts to automate tenant routing.'),
-      value: (
-        <TextForm
-          value={config?.cloud18DomainUser}
-          confirmTitle='Confirm domain user to '
-          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-domain-user', value }))}
-        />
-      )
-    },
-    {
-      key: 'Domain Secret',
-      help: qmark('API key or password for domain management authentication. Stored encrypted in the replication-manager configuration.'),
-      value: (
-        <TextForm
-          type='password'
-          value={config?.cloud18DomainSecret}
-          confirmTitle='Confirm domain secret to '
-          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-domain-secret', value: btoa(value) }))}
-        />
-      )
-    },
-    {
-      key: 'Reload Plans',
-      help: qmark('Download and reapply marketplace service plans from the Cloud18 GitLab repository. Plans define available database topologies, resource profiles, and OpenSVC provisioning templates.'),
-      value: (
-        <HStack>
-          <RMIconButton
-            icon={HiRefresh}
-            tooltip='Reload plans (reapply)'
-            aria-label='Reload all clusters plans'
-            onClick={() => {
-              setShouldRedownloadPlans(true)
-              setAction({ title: 'Confirm reload all clusters plans?', type: 'reload-clusters-plan' })
-              openConfirmModal()
-            }}
-          />
-          <RMIconButton
-            icon={HiOutlineInformationCircle}
-            tooltip='Reload plan info only'
-            aria-label='Reload all clusters plan info'
-            onClick={() => {
-              setShouldRedownloadPlans(true)
-              setAction({ title: 'Confirm reload all clusters plan info?', type: 'reload-clusters-plan-info' })
-              openConfirmModal()
-            }}
-          />
-        </HStack>
-      )
-    },
-  ]
-
   return (
-    <Flex justify='space-between' gap='0'>
-      <VStack align='stretch' spacing={0} flex={1}>
-        <Text fontSize='xs' fontWeight='700' textTransform='uppercase' letterSpacing='wider'
-          color='gray.500' px={2} py={1} bg='gray.100' borderBottom='1px solid' borderColor='gray.200'>
-          Cloud18 Registration
-        </Text>
-        <TableType2 dataArray={registrationData} className={styles.table} helpColumn />
-        {config?.cloud18 && (
-          <>
-            <Text fontSize='xs' fontWeight='700' textTransform='uppercase' letterSpacing='wider'
-              color='gray.500' px={2} py={1} mt={4} bg='gray.100' borderBottom='1px solid' borderColor='gray.200'>
-              Market Place
-            </Text>
-            <TableType2 dataArray={marketplaceData} className={styles.table} helpColumn />
-          </>
-        )}
-      </VStack>
+    <>
+      <Flex justify='space-between' gap='0'>
+        <TableType2 dataArray={registrationData} className={styles.tableWithHelp} helpColumn />
+      </Flex>
       {isConfirmModalOpen && (
         <ConfirmModal
           isOpen={isConfirmModalOpen}
-          closeModal={() => {
-            closeConfirmModal()
-          }}
+          closeModal={closeConfirmModal}
           title={title}
-          body={
-            (type === 'reload-clusters-plan' || type === 'reload-clusters-plan-info') && (
-              <Checkbox
-                isChecked={shouldRedownloadPlans}
-                onChange={(event) => setShouldRedownloadPlans(event.target.checked)}
-              >
-                Redownload plan repository before reload
-              </Checkbox>
-            )
-          }
-          onConfirmClick={() => {
-            actionHandler()
-            closeConfirmModal()
-          }}
+          onConfirmClick={() => { actionHandler(); closeConfirmModal() }}
         />
       )}
-      {isCommonModalOpen && (
-        <CommonModal
-          isOpen={isCommonModalOpen}
-          size='lg'
-          title={title}
-          body={action.body}
-          contentClassName={joinClasses(modalStyles.infoModalContent, styles.infoModalContent)}
-          headerClassName={joinClasses(modalStyles.infoModalHeader, styles.infoModalHeader)}
-          bodyClassName={joinClasses(modalStyles.infoModalBody, styles.infoModalBody)}
-          closeModal={() => {
-            closeCommonModal()
-          }}
-        />
-      )}
+      <CommonModal
+        isOpen={isCommonModalOpen}
+        size='xl'
+        title={title}
+        body={action.body}
+        closeModal={closeCommonModal}
+      />
       {isRegisterModalOpen && (
         <CommonModal
           isOpen={isRegisterModalOpen}
@@ -557,7 +367,7 @@ Start create an account in https://gitlab.signal18.io
           closeModal={() => { stopPolling(); setIsRegisterModalOpen(false) }}
         />
       )}
-    </Flex>
+    </>
   )
 }
 
