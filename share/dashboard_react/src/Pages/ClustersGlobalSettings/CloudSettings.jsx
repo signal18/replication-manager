@@ -3,7 +3,7 @@ import {
   HStack, Input, InputGroup, InputRightElement, Link, Radio, RadioGroup,
   Spinner, Text, VStack
 } from '@chakra-ui/react'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
@@ -23,10 +23,9 @@ import remarkGfm from 'remark-gfm'
 function CloudSettings({ config }) {
   const dispatch = useDispatch()
   const joinClasses = (...classes) => classes.filter(Boolean).join(' ')
-  const [action, setAction] = useState({ title: '', type: '', body: <></> })
-  const { title, type } = action
+  const [action, setAction] = useState({ title: '', body: <></> })
+  const { title } = action
   const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
-  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
   const [registerStep, setRegisterStep] = useState(1)
   const [showPassword, setShowPassword] = useState(false)
@@ -76,22 +75,6 @@ Start create an account in https://gitlab.signal18.io
   const closeCommonModal = () => {
     setIsCommonModalOpen(false)
   }
-
-  const openConfirmModal = () => {
-    setIsConfirmModalOpen(true)
-  }
-
-  const closeConfirmModal = () => {
-    setIsConfirmModalOpen(false)
-  }
-
-  const actionHandler = useCallback(() => {
-    if (type === 'cloud18-connect') {
-      dispatch(setGlobalSetting({ setting: 'cloud18', value: "true", errMsgFunc: errInvalidGrant }))
-    } else if (type === 'cloud18-disconnect') {
-      dispatch(setGlobalSetting({ setting: 'cloud18', value: "false", errMsgFunc: errInvalidGrant }))
-    }
-  }, [type])
 
   const disableConnect = useMemo(() => (config?.cloud18GitUser === "" || config?.cloud18Domain === "" || config?.cloud18SubDomain === "" || config?.cloud18SubDomainZone === ""),[config?.cloud18GitUser, config?.cloud18Domain, config?.cloud18SubDomain, config?.cloud18SubDomainZone])
 
@@ -338,7 +321,7 @@ Start create an account in https://gitlab.signal18.io
   const h = (content, title) => (
     <RMIconButton
       icon={HiQuestionMarkCircle}
-      onClick={() => { setAction({ title, type: '', body: <Box className={modalStyles.infoTooltip}><Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown></Box> }); openCommonModal() }}
+      onClick={() => { setAction({ title,  body: <Box className={modalStyles.infoTooltip}><Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown></Box> }); openCommonModal() }}
       iconFontsize='1rem'
       variant='ghost'
       style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }}
@@ -351,11 +334,12 @@ Start create an account in https://gitlab.signal18.io
   const hDomain = `**Domain**\n\nCompany namespace on Cloud18 (e.g. \`mycompany\`).\nA top-level GitLab group with this name is created at \`gitlab.signal18.io\` to host your cluster configurations.\n\nConfig: \`cloud18-domain\``
   const hSubdomain = `**Subdomain**\n\nDatacenter or environment identifier (e.g. \`ovh\`, \`aws\`).\nCreates a subgroup under your domain group, allowing multiple independent deployment environments.\n\nConfig: \`cloud18-sub-domain\``
   const hZone = `**Subdomain Zone**\n\nGeographic zone or region (e.g. \`fr-1\`, \`us-east\`).\nCompletes the three-part URI: \`domain.subdomain.zone\`. This URI uniquely identifies your instance on Cloud18.\n\nConfig: \`cloud18-sub-domain-zone\``
-  const hRegister = `**Register**\n\nCreate a Signal18 Cloud18 account and link this replication-manager instance.\nTriggers GitLab account creation at \`gitlab.signal18.io\`, sends a confirmation email, and sets up the configuration backup repository and group structure.`
-  const hConnect = `**Connect / Disconnect**\n\nActivate or deactivate the Cloud18 connection using the stored credentials.\nWhen connected, configuration changes are automatically pushed to the GitLab repository and the instance is visible on the marketplace.\n\nConfig: \`cloud18\``
+  const hConnect = `**Connect / Disconnect / Register**\n\nWhen credentials are stored: **Connect** activates Cloud18 using the stored GitLab credentials, or **Disconnect** deactivates it (credentials are preserved). When connected, **Unregister** drops the GitLab projects for this URI and unlocks fields so you can change the URI.\n\nWhen no credentials are stored: **Register** creates a GitLab account and links this instance.\n\nConfig: \`cloud18\``
   const hSubscription = `**Subscription Plan**\n\nYour Signal18 Cloud18 subscription level. Clicking **Change** verifies your registration with the CRM using your GitLab token and lets you switch plan.\n\n| Plan | Description |\n|------|-------------|\n| Free | Community access, config backup, basic alerting |\n| Contributing under Support | Support tickets, SLA |\n| Contributing under Support and Services | Full support + managed services |\n| Market Place Partner | Marketplace listing, revenue sharing, partner API |\n\nConfig: \`cloud18-subscription-plan\``
 
   const isConnected = !!config?.cloud18
+  // True when all credentials are stored — a direct Connect is possible without re-registering.
+  const hasCredentials = !!(config?.cloud18GitUser && config?.cloud18Domain && config?.cloud18SubDomain && config?.cloud18SubDomainZone)
 
   const registrationData = [
     { key: 'Status',         help: h(hStatus,    'Cloud18 Status'),    value: <TagPill colorScheme={isConnected ? 'green' : 'gray'} text={isConnected ? 'ONLINE' : 'OFFLINE'} /> },
@@ -375,18 +359,34 @@ Start create an account in https://gitlab.signal18.io
         ? <Text fontSize='sm'>{config?.cloud18SubDomainZone}</Text>
         : <TextForm value={config?.cloud18SubDomainZone}  confirmTitle='Confirm subdomain zone to ' onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-sub-domain-zone', value: v }))} /> },
     {
-      key: 'Register',
-      help: h(hRegister, 'Register'),
+      key: 'Connect',
+      help: h(hConnect, 'Connect / Disconnect'),
       value: (
         <HStack>
           {isConnected ? (
+            <>
+              <RMButton
+                onClick={() => dispatch(setGlobalSetting({ setting: 'cloud18', value: 'false', errMsgFunc: errInvalidGrant }))}
+                title='Deactivate Cloud18 connection (credentials are preserved)'
+              >
+                Disconnect
+              </RMButton>
+              <RMButton
+                colorScheme='red'
+                variant='outline'
+                onClick={() => setIsUnregisterModalOpen(true)}
+                title='Drop GitLab projects for this URI and unlock fields to change URI'
+              >
+                Unregister
+              </RMButton>
+            </>
+          ) : hasCredentials ? (
             <RMButton
-              colorScheme='red'
-              variant='outline'
-              onClick={() => setIsUnregisterModalOpen(true)}
-              title='Drop GitLab projects for this URI and unlock fields to change URI'
+              isDisabled={disableConnect}
+              onClick={() => dispatch(setGlobalSetting({ setting: 'cloud18', value: 'true', errMsgFunc: errInvalidGrant }))}
+              title='Connect using stored credentials'
             >
-              Unregister
+              Connect
             </RMButton>
           ) : (
             <RMButton
@@ -398,23 +398,11 @@ Start create an account in https://gitlab.signal18.io
           )}
           <RMIconButton
             icon={HiQuestionMarkCircle}
-            onClick={() => { setAction({ title: 'Cloud18 Benefits', type: '', body: <Box className={joinClasses(modalStyles.infoTooltip, styles.infoTooltip)}><Markdown remarkPlugins={[remarkGfm]}>{benefits}</Markdown></Box> }); openCommonModal() }}
+            onClick={() => { setAction({ title: 'Cloud18 Benefits',  body: <Box className={joinClasses(modalStyles.infoTooltip, styles.infoTooltip)}><Markdown remarkPlugins={[remarkGfm]}>{benefits}</Markdown></Box> }); openCommonModal() }}
             iconFontsize='1rem'
             variant='ghost'
             style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }}
           />
-        </HStack>
-      )
-    },
-    {
-      key: 'Connect',
-      help: h(hConnect, 'Connect / Disconnect'),
-      value: (
-        <HStack>
-          {config?.cloud18
-            ? <RMButton onClick={() => { setAction({ title: 'Confirm disconnect from Cloud18?', type: 'cloud18-disconnect' }); openConfirmModal() }}>Disconnect</RMButton>
-            : <RMButton isDisabled={disableConnect} onClick={() => { setAction({ title: 'Confirm connect to Cloud18?', type: 'cloud18-connect' }); openConfirmModal() }}>Connect</RMButton>
-          }
         </HStack>
       )
     },
@@ -437,14 +425,6 @@ Start create an account in https://gitlab.signal18.io
       <Flex justify='space-between' gap='0'>
         <TableType2 dataArray={registrationData} className={styles.tableWithHelp} helpColumn />
       </Flex>
-      {isConfirmModalOpen && (
-        <ConfirmModal
-          isOpen={isConfirmModalOpen}
-          closeModal={closeConfirmModal}
-          title={title}
-          onConfirmClick={() => { actionHandler(); closeConfirmModal() }}
-        />
-      )}
       <CommonModal
         isOpen={isCommonModalOpen}
         size='xl'
