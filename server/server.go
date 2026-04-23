@@ -146,6 +146,7 @@ type ReplicationManager struct {
 	V3Up                                             chan bool                      `json:"-"`
 	v3Config                                         Repmanv3Config                 `json:"-"`
 	cloud18CheckSum                                  hash.Hash                      `json:"-"`
+	RegStatus                                        RegistrationStatus             `json:"-"`
 	clog                                             *clog.Logger                   `json:"-"`
 	cApiLog                                          *clog.Logger                   `json:"-"`
 	Logrus                                           *log.Logger                    `json:"-"`

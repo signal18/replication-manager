@@ -12,26 +12,62 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 )
 
-// registerRequest is the JSON body accepted by POST /api/register (step 1).
+// ---------------------------------------------------------------------------
+// Registration state — stored on ReplicationManager, polled via /api/register/status
+// ---------------------------------------------------------------------------
+
+const (
+	RegStateIdle    = "idle"
+	RegStatePending = "pending"   // GitLab account created, waiting for email confirmation
+	RegStateOK      = "complete"  // confirmed and Cloud18 connect flow succeeded
+	RegStateTimeout = "timeout"   // user did not click the link in time
+	RegStateError   = "error"     // terminal error (CRM, GitLab, etc.)
+)
+
+// RegistrationStatus is the current state of an ongoing or completed registration.
+type RegistrationStatus struct {
+	mu      sync.RWMutex
+	State   string          `json:"state"`
+	Message string          `json:"message,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
+}
+
+func (s *RegistrationStatus) set(state, message string, result json.RawMessage) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.State = state
+	s.Message = message
+	s.Result = result
+}
+
+func (s *RegistrationStatus) snapshot() (state, message string, result json.RawMessage) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.State, s.Message, s.Result
+}
+
+// ---------------------------------------------------------------------------
+// Request / payload types
+// ---------------------------------------------------------------------------
+
 type registerRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
-	// URI is parsed as domain.subdomain.zone  (e.g. "mycompany.ovh.fr-1")
-	URI string `json:"uri"`
+	URI      string `json:"uri"` // domain.subdomain.zone
 }
 
-// registerConfirmRequest is the JSON body accepted by POST /api/register/confirm (step 2).
 type registerConfirmRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 	URI      string `json:"uri"`
 }
 
-// crmRegisterPayload is the body forwarded to the CRM API for step 1.
 type crmRegisterPayload struct {
 	Email     string `json:"email"`
 	Password  string `json:"password"`
@@ -40,7 +76,6 @@ type crmRegisterPayload struct {
 	Zone      string `json:"zone"`
 }
 
-// crmConfirmPayload is the body forwarded to the CRM API for step 2.
 type crmConfirmPayload struct {
 	Email     string `json:"email"`
 	Password  string `json:"password"`
@@ -49,22 +84,139 @@ type crmConfirmPayload struct {
 	Zone      string `json:"zone"`
 }
 
-// handlerRegister is step 1 of the registration workflow.
+// ---------------------------------------------------------------------------
+// Polling constants
+// ---------------------------------------------------------------------------
+
+const confirmPollInterval = 10 * time.Second
+const confirmPollTimeout = 5 * time.Minute
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+// crmCallConfirm calls the CRM /api/register/confirm endpoint once.
+func crmCallConfirm(crmBase string, payload crmConfirmPayload) (int, []byte, error) {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return 0, nil, err
+	}
+	req, err := http.NewRequest(http.MethodPost, crmBase+"/api/register/confirm", bytes.NewReader(b))
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
+}
+
+// applyCloudConnect configures Cloud18 settings and runs InitGitConfig.
+// It updates the registration status on the ReplicationManager.
+func (repman *ReplicationManager) applyCloudConnect(
+	domain, subdomain, zone, email, password string,
+	respBody []byte,
+) {
+	repman.Conf.Cloud18 = false
+	repman.Conf.Cloud18Domain = domain
+	repman.Conf.Cloud18SubDomain = subdomain
+	repman.Conf.Cloud18SubDomainZone = zone
+	repman.Conf.Cloud18GitUser = email
+	repman.Conf.Cloud18GitPassword = password
+
+	var gitSecret config.Secret
+	gitSecret.Value = password
+	gitSecret.OldValue = repman.Conf.GetDecryptedValue("cloud18-gitlab-password")
+	if repman.Conf.Secrets == nil {
+		repman.Conf.Secrets = make(map[string]config.Secret)
+	}
+	repman.Conf.Secrets["cloud18-gitlab-password"] = gitSecret
+	if repman.Conf.ImmuableFlagMap == nil {
+		repman.Conf.ImmuableFlagMap = make(map[string]interface{})
+	}
+	repman.Conf.Cloud18 = true
+
+	if err := repman.InitGitConfig(repman.Conf); err != nil {
+		repman.Conf.Cloud18 = false
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"register: InitGitConfig failed: %s", err)
+
+		// Still mark complete — the CRM part succeeded; connect_error is advisory
+		var crmBody map[string]interface{}
+		if json.Unmarshal(respBody, &crmBody) == nil {
+			crmBody["connect_error"] = err.Error()
+			if out, e := json.Marshal(crmBody); e == nil {
+				repman.RegStatus.set(RegStateOK, "Registration complete (connect error: "+err.Error()+")", out)
+				return
+			}
+		}
+	}
+	repman.RegStatus.set(RegStateOK, "Registration complete", json.RawMessage(respBody))
+}
+
+// pollConfirmLoop runs in a goroutine: polls CRM every confirmPollInterval until
+// the user confirms their email or the timeout expires.
+func (repman *ReplicationManager) pollConfirmLoop(crmBase string, payload crmConfirmPayload,
+	domain, subdomain, zone, email, password string) {
+
+	deadline := time.Now().Add(confirmPollTimeout)
+	ticker := time.NewTicker(confirmPollInterval)
+	defer ticker.Stop()
+
+	for time.Now().Before(deadline) {
+		<-ticker.C
+
+		status, respBody, err := crmCallConfirm(crmBase, payload)
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"register: confirm poll error: %s (retrying)", err)
+			continue
+		}
+
+		if status == http.StatusCreated {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"register: email confirmed for %s — running Cloud18 connect flow", email)
+			repman.applyCloudConnect(domain, subdomain, zone, email, password, respBody)
+			return
+		}
+
+		if status == http.StatusBadRequest {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"register: waiting for %s to confirm email…", email)
+			continue
+		}
+
+		// Terminal error
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"register: confirm returned unexpected status %d: %s", status, respBody)
+		repman.RegStatus.set(RegStateError,
+			fmt.Sprintf("CRM confirm error (HTTP %d): %s", status, respBody), nil)
+		return
+	}
+
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+		"register: email confirmation timeout for %s", email)
+	repman.RegStatus.set(RegStateTimeout,
+		fmt.Sprintf("Email confirmation timeout — please ask %s to click the confirmation link and try again", email),
+		nil)
+}
+
+// ---------------------------------------------------------------------------
+// Handlers
+// ---------------------------------------------------------------------------
+
+// handlerRegister — POST /api/register  (admin JWT required)
 //
-// POST /api/register  (admin JWT required)
-//
-// Request body:
-//
-//	{
-//	  "email":    "user@company.com",
-//	  "password": "s3cr3tpass",
-//	  "uri":      "mycompany.ovh.fr-1"
-//	}
-//
-// Forwards the request to the CRM API which creates a GitLab account and
-// lets GitLab send its own email confirmation link to the user.
-// Returns 202 Accepted — the client should prompt the user to confirm their
-// email and then call POST /api/register/confirm.
+// Creates the GitLab account via CRM, returns 202 immediately, then launches
+// a background goroutine that polls CRM confirm every 10 s for up to 5 min.
+// The client polls GET /api/register/status to track progress.
 func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -100,8 +252,7 @@ func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http
 
 	parts := strings.SplitN(req.URI, ".", 3)
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		http.Error(w,
-			`{"error":"uri must be in domain.subdomain.zone format (e.g. mycompany.ovh.fr-1)"}`,
+		http.Error(w, `{"error":"uri must be in domain.subdomain.zone format (e.g. mycompany.ovh.fr-1)"}`,
 			http.StatusBadRequest)
 		return
 	}
@@ -115,62 +266,91 @@ func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http
 		crmBase = "https://api.crm.ovh-fr-2.signal18.cloud18.io"
 	}
 
-	payload := crmRegisterPayload{
-		Email:     email,
-		Password:  req.Password,
-		Domain:    domain,
-		Subdomain: subdomain,
-		Zone:      zone,
-	}
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		http.Error(w, `{"error":"internal error encoding request"}`, http.StatusInternalServerError)
+	// Reject if a registration is already in progress
+	if state, _, _ := repman.RegStatus.snapshot(); state == RegStatePending {
+		http.Error(w, `{"error":"a registration is already in progress — poll /api/register/status"}`,
+			http.StatusConflict)
 		return
 	}
 
-	crmReq, err := http.NewRequest(http.MethodPost, crmBase+"/api/register", bytes.NewReader(payloadBytes))
+	// Step 1 — create GitLab account
+	step1Bytes, _ := json.Marshal(crmRegisterPayload{
+		Email: email, Password: req.Password,
+		Domain: domain, Subdomain: subdomain, Zone: zone,
+	})
+	step1Req, err := http.NewRequest(http.MethodPost, crmBase+"/api/register", bytes.NewReader(step1Bytes))
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"failed to build CRM request: %s"}`, err), http.StatusInternalServerError)
 		return
 	}
-	crmReq.Header.Set("Content-Type", "application/json")
-	crmReq.Header.Set("Accept", "application/json")
+	step1Req.Header.Set("Content-Type", "application/json")
+	step1Req.Header.Set("Accept", "application/json")
 
-	crmClient := &http.Client{}
-	crmResp, err := crmClient.Do(crmReq)
+	step1Client := &http.Client{Timeout: 30 * time.Second}
+	step1Resp, err := step1Client.Do(step1Req)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"CRM API unreachable: %s"}`, err), http.StatusBadGateway)
 		return
 	}
-	defer crmResp.Body.Close()
+	step1Body, _ := io.ReadAll(step1Resp.Body)
+	step1Resp.Body.Close()
 
-	respBody, err := io.ReadAll(crmResp.Body)
-	if err != nil {
-		http.Error(w, `{"error":"failed to read CRM response"}`, http.StatusBadGateway)
+	if step1Resp.StatusCode != http.StatusAccepted && step1Resp.StatusCode != http.StatusOK {
+		w.WriteHeader(step1Resp.StatusCode)
+		w.Write(step1Body)
 		return
 	}
 
-	// Relay the CRM response verbatim (202 = email sent, or error codes).
-	w.WriteHeader(crmResp.StatusCode)
-	w.Write(respBody)
+	// Mark pending and launch background poller
+	repman.RegStatus.set(RegStatePending,
+		fmt.Sprintf("GitLab account created — waiting for %s to confirm email (timeout %s)", email, confirmPollTimeout),
+		nil)
+
+	go repman.pollConfirmLoop(crmBase,
+		crmConfirmPayload{Email: email, Password: req.Password, Domain: domain, Subdomain: subdomain, Zone: zone},
+		domain, subdomain, zone, email, req.Password)
+
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"register: confirmation email sent to %s — background poller started", email)
+
+	w.WriteHeader(http.StatusAccepted)
+	w.Write(step1Body)
 }
 
-// handlerRegisterConfirm is step 2 of the registration workflow.
+// handlerRegisterStatus — GET /api/register/status  (admin JWT required)
 //
-// POST /api/register/confirm  (admin JWT required)
+// Returns the current registration state so the GUI or CLI can poll until
+// state is "complete", "timeout", or "error".
+func (repman *ReplicationManager) handlerRegisterStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	claims, err := repman.GetJWTClaims(r)
+	if err != nil || claims["User"] != "admin" {
+		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
+		return
+	}
+
+	state, message, result := repman.RegStatus.snapshot()
+	resp := map[string]interface{}{
+		"state":   state,
+		"message": message,
+	}
+	if result != nil {
+		resp["result"] = json.RawMessage(result)
+	}
+
+	out, _ := json.Marshal(resp)
+	// Return 200 always — the state field tells the client what happened
+	w.WriteHeader(http.StatusOK)
+	w.Write(out)
+}
+
+// handlerRegisterConfirm — POST /api/register/confirm  (admin JWT required)
 //
-// Called after the user has clicked the GitLab confirmation link in their
-// email.  Forwards to the CRM which verifies the account is confirmed,
-// then creates the group and projects.  On CRM 201 the handler runs the
-// Cloud18 connect flow (InitGitConfig) without requiring a restart.
-//
-// Request body:
-//
-//	{
-//	  "email":    "user@company.com",
-//	  "password": "s3cr3tpass",
-//	  "uri":      "mycompany.ovh.fr-1"
-//	}
+// Manual single-shot confirm: verifies email is confirmed via CRM and runs
+// the Cloud18 connect flow.  Useful if the background poller is not running
+// or the client wants explicit control.
 func (repman *ReplicationManager) handlerRegisterConfirm(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -206,9 +386,7 @@ func (repman *ReplicationManager) handlerRegisterConfirm(w http.ResponseWriter, 
 
 	parts := strings.SplitN(req.URI, ".", 3)
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		http.Error(w,
-			`{"error":"uri must be in domain.subdomain.zone format (e.g. mycompany.ovh.fr-1)"}`,
-			http.StatusBadRequest)
+		http.Error(w, `{"error":"uri must be in domain.subdomain.zone format"}`, http.StatusBadRequest)
 		return
 	}
 	domain := strings.TrimSpace(strings.ToLower(parts[0]))
@@ -221,88 +399,29 @@ func (repman *ReplicationManager) handlerRegisterConfirm(w http.ResponseWriter, 
 		crmBase = "https://api.crm.ovh-fr-2.signal18.cloud18.io"
 	}
 
-	payload := crmConfirmPayload{
-		Email:     email,
-		Password:  req.Password,
-		Domain:    domain,
-		Subdomain: subdomain,
-		Zone:      zone,
-	}
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		http.Error(w, `{"error":"internal error encoding request"}`, http.StatusInternalServerError)
-		return
-	}
-
-	crmReq, err := http.NewRequest(http.MethodPost, crmBase+"/api/register/confirm", bytes.NewReader(payloadBytes))
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"failed to build CRM request: %s"}`, err), http.StatusInternalServerError)
-		return
-	}
-	crmReq.Header.Set("Content-Type", "application/json")
-	crmReq.Header.Set("Accept", "application/json")
-
-	crmClient := &http.Client{}
-	crmResp, err := crmClient.Do(crmReq)
+	status, respBody, err := crmCallConfirm(crmBase, crmConfirmPayload{
+		Email: email, Password: req.Password,
+		Domain: domain, Subdomain: subdomain, Zone: zone,
+	})
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"CRM API unreachable: %s"}`, err), http.StatusBadGateway)
 		return
 	}
-	defer crmResp.Body.Close()
 
-	respBody, err := io.ReadAll(crmResp.Body)
-	if err != nil {
-		http.Error(w, `{"error":"failed to read CRM response"}`, http.StatusBadGateway)
-		return
-	}
-
-	if crmResp.StatusCode != http.StatusCreated {
-		w.WriteHeader(crmResp.StatusCode)
+	if status != http.StatusCreated {
+		w.WriteHeader(status)
 		w.Write(respBody)
 		return
 	}
 
-	// ----------------------------------------------------------------
-	// CRM confirmed — configure Cloud18 and run connect flow
-	// ----------------------------------------------------------------
+	repman.applyCloudConnect(domain, subdomain, zone, email, req.Password, respBody)
 
-	repman.Conf.Cloud18 = false
-	repman.Conf.Cloud18Domain = domain
-	repman.Conf.Cloud18SubDomain = subdomain
-	repman.Conf.Cloud18SubDomainZone = zone
-	repman.Conf.Cloud18GitUser = email
-	repman.Conf.Cloud18GitPassword = req.Password
-	var gitSecret config.Secret
-	gitSecret.Value = req.Password
-	gitSecret.OldValue = repman.Conf.GetDecryptedValue("cloud18-gitlab-password")
-	if repman.Conf.Secrets == nil {
-		repman.Conf.Secrets = make(map[string]config.Secret)
-	}
-	repman.Conf.Secrets["cloud18-gitlab-password"] = gitSecret
-	if repman.Conf.ImmuableFlagMap == nil {
-		repman.Conf.ImmuableFlagMap = make(map[string]interface{})
-	}
-	repman.Conf.Cloud18 = true
-
-	if err := repman.InitGitConfig(repman.Conf); err != nil {
-		repman.Conf.Cloud18 = false
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-			"register/confirm: InitGitConfig failed after CRM registration: %s", err)
-
-		var crmBody map[string]interface{}
-		if json.Unmarshal(respBody, &crmBody) == nil {
-			crmBody["connect_error"] = err.Error()
-			if out, e := json.Marshal(crmBody); e == nil {
-				w.WriteHeader(http.StatusCreated)
-				w.Write(out)
-				return
-			}
-		}
+	_, _, result := repman.RegStatus.snapshot()
+	if result != nil {
 		w.WriteHeader(http.StatusCreated)
-		w.Write(respBody)
+		w.Write(result)
 		return
 	}
-
 	w.WriteHeader(http.StatusCreated)
 	w.Write(respBody)
 }

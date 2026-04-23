@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh/terminal"
@@ -30,23 +31,22 @@ var (
 var registerCmd = &cobra.Command{
 	Use:   "register",
 	Short: "Register this instance with Signal18 Cloud18",
-	Long: `Two-step registration workflow:
+	Long: `Register this replication-manager instance with Signal18 Cloud18.
 
-  Step 1: Creates a GitLab account at gitlab.signal18.io.
-          GitLab sends a confirmation email to the provided address.
+The server creates a GitLab account, sends a confirmation email, and then
+waits (up to 5 minutes) for the user to click the confirmation link.
+This command returns immediately after the 202 response and polls the server
+every 10 seconds until registration completes, times out, or errors.
 
-  Step 2: After clicking the confirmation link in the email,
-          run the same command with --confirm to complete registration.
-          The server verifies the email is confirmed, creates the GitLab
-          group and projects, and activates the Cloud18 connect flow.
+Use --confirm for a manual single-shot confirmation check instead of polling.
 
 Examples:
-  # Step 1 — create account and trigger confirmation email
+  # Start registration and wait for email confirmation (interactive)
   replication-manager-cli register \
     --email admin@mycompany.com \
     --uri   mycompany.ovh.fr-1
 
-  # Step 2 — complete registration after confirming email
+  # Manual confirm after clicking the link (advanced)
   replication-manager-cli register \
     --email   admin@mycompany.com \
     --uri     mycompany.ovh.fr-1 \
@@ -92,15 +92,15 @@ Examples:
 		if confirm {
 			cliRegisterConfirm(password)
 		} else {
-			cliRegisterInitiate(password)
+			cliRegisterAndPoll(password)
 		}
 	},
 }
 
-// cliRegisterInitiate calls POST /api/register (step 1).
-// The server creates the GitLab account and GitLab sends the confirmation email.
-func cliRegisterInitiate(password string) {
-	urlpost := "https://" + cliHost + ":" + cliPort + "/api/register"
+// cliRegisterAndPoll calls POST /api/register (returns 202), then polls
+// GET /api/register/status every 10 seconds until a terminal state is reached.
+func cliRegisterAndPoll(password string) {
+	urlPost := "https://" + cliHost + ":" + cliPort + "/api/register"
 
 	payload, _ := json.Marshal(map[string]string{
 		"email":    cliRegisterEmail,
@@ -108,35 +108,79 @@ func cliRegisterInitiate(password string) {
 		"uri":      cliRegisterURI,
 	})
 
-	body, status, err := cliDoPost(urlpost, payload)
+	body, status, err := cliDoPost(urlPost, payload)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
 
-	if status == http.StatusAccepted {
-		fmt.Println("GitLab account created.")
-		fmt.Printf("A confirmation email has been sent to %s by GitLab.\n", cliRegisterEmail)
-		fmt.Println("Click the link in the email to confirm your account, then run:")
-		fmt.Printf("\n  replication-manager-cli register --email %s --uri %s --confirm\n\n", cliRegisterEmail, cliRegisterURI)
-		return
+	if status != http.StatusAccepted {
+		var errBody map[string]interface{}
+		if json.Unmarshal(body, &errBody) == nil {
+			if msg, ok := errBody["error"].(string); ok {
+				fmt.Fprintf(os.Stderr, "Registration failed: %s\n", msg)
+				os.Exit(1)
+			}
+		}
+		fmt.Fprintf(os.Stderr, "Registration failed (HTTP %d): %s\n", status, string(body))
+		os.Exit(1)
 	}
 
-	// Non-202: print error body and exit non-zero
-	var errBody map[string]interface{}
-	if json.Unmarshal(body, &errBody) == nil {
-		if msg, ok := errBody["error"].(string); ok {
-			fmt.Fprintf(os.Stderr, "Registration failed: %s\n", msg)
+	fmt.Printf("GitLab account requested for %s.\n", cliRegisterEmail)
+	fmt.Println("A confirmation email will be sent by GitLab. Please click the link to confirm.")
+	fmt.Println("Waiting for confirmation (up to 5 minutes) …")
+
+	// Poll /api/register/status until terminal state
+	urlStatus := "https://" + cliHost + ":" + cliPort + "/api/register/status"
+	pollDeadline := time.Now().Add(6 * time.Minute)
+	for time.Now().Before(pollDeadline) {
+		time.Sleep(10 * time.Second)
+
+		statusBody, httpCode, err := cliDoGet(urlStatus)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: status poll error: %s (retrying)\n", err)
+			continue
+		}
+		if httpCode != http.StatusOK {
+			fmt.Fprintf(os.Stderr, "Warning: status returned HTTP %d (retrying)\n", httpCode)
+			continue
+		}
+
+		var st map[string]interface{}
+		if err := json.Unmarshal(statusBody, &st); err != nil {
+			continue
+		}
+		state, _ := st["state"].(string)
+		message, _ := st["message"].(string)
+
+		switch state {
+		case "complete":
+			result, _ := st["result"].(map[string]interface{})
+			if connectErr, ok := result["connect_error"].(string); ok {
+				fmt.Printf("Registration complete for %s.\n", cliRegisterURI)
+				fmt.Printf("Warning: Cloud18 connect failed (%s).\n", connectErr)
+				fmt.Println("Set cloud18=true in global settings once GitLab is reachable.")
+			} else {
+				fmt.Printf("Registration complete. Cloud18 is now active for %s.\n", cliRegisterURI)
+			}
+			return
+		case "timeout":
+			fmt.Fprintf(os.Stderr, "Registration timed out: %s\n", message)
 			os.Exit(1)
+		case "error":
+			fmt.Fprintf(os.Stderr, "Registration error: %s\n", message)
+			os.Exit(1)
+		default:
+			fmt.Printf("  status: %s — %s\n", state, message)
 		}
 	}
-	fmt.Fprintf(os.Stderr, "Registration failed (HTTP %d): %s\n", status, string(body))
+
+	fmt.Fprintln(os.Stderr, "Client timeout waiting for registration to complete.")
 	os.Exit(1)
 }
 
-// cliRegisterConfirm calls POST /api/register/confirm (step 2).
-// The server checks the GitLab account is confirmed, creates group + projects,
-// and activates the Cloud18 connect flow.
+// cliRegisterConfirm calls POST /api/register/confirm (manual single-shot).
+// Useful when the background poller is not running or for scripted flows.
 func cliRegisterConfirm(password string) {
 	urlpost := "https://" + cliHost + ":" + cliPort + "/api/register/confirm"
 
@@ -166,7 +210,6 @@ func cliRegisterConfirm(password string) {
 		return
 	}
 
-	// Non-201: surface the error message
 	var errBody map[string]interface{}
 	if json.Unmarshal(body, &errBody) == nil {
 		if msg, ok := errBody["error"].(string); ok {
@@ -185,6 +228,27 @@ func cliDoPost(urlpost string, payload []byte) ([]byte, int, error) {
 		return nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+cliToken)
+
+	resp, err := cliConn.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp.StatusCode, err
+	}
+	return body, resp.StatusCode, nil
+}
+
+// cliDoGet sends an authenticated GET request and returns (body, statusCode, error).
+func cliDoGet(url string) ([]byte, int, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, 0, err
+	}
 	req.Header.Set("Authorization", "Bearer "+cliToken)
 
 	resp, err := cliConn.Do(req)

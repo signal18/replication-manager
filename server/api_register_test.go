@@ -282,97 +282,94 @@ func gitlabDeleteGroup(t *testing.T, adminToken, groupPath string) {
 // Test
 // ---------------------------------------------------------------------------
 
-// TestRegisterWorkflow exercises the complete two-step Cloud18 registration:
+// TestRegisterWorkflow exercises the async Cloud18 registration:
 //
 //  1. Generate a disposable inbox via mail.tm
-//  2. POST /api/register  → expect 202
-//  3. Poll mail.tm (up to 3 min) for the GitLab confirmation email
-//  4. Follow the confirmation link
-//  5. POST /api/register/confirm → expect 201
-//  6. Clean up GitLab user and group
+//  2. POST /api/register → expect 202 (returns immediately, background goroutine polls CRM)
+//  3. Concurrently follow the GitLab confirmation link from the email
+//  4. Poll GET /api/register/status until state is "complete", "timeout", or "error"
+//  5. Clean up GitLab user and group
 func TestRegisterWorkflow(t *testing.T) {
-	// Build a minimal ReplicationManager with the real CRM URL
 	repman := &ReplicationManager{}
 	repman.Conf = &config.Config{
 		Cloud18CrmApiUrl: "https://api.crm.ovh-fr-2.signal18.cloud18.io",
 	}
 
-	// Mint an admin JWT directly — no running server needed
 	adminToken := makeAdminJWT(t)
 
-	// Generate a disposable email address via mail.tm
 	email, mailToken := mailTmGenAddress(t)
 	t.Logf("temp email: %s", email)
 
-	// Unique test URI to avoid zone conflicts across runs
 	testURI := fmt.Sprintf("testdomain.testenv.t%d", time.Now().Unix()%100000)
 	testDomain := strings.SplitN(testURI, ".", 3)[0]
 	password := "TestPass123!"
 
-	// GitLab cleanup uses the admin token from the CRM environment.
-	// If not available the cleanup steps are skipped gracefully.
 	gitlabAdminToken := ""
-
 	t.Cleanup(func() {
 		gitlabDeleteUserByEmail(t, gitlabAdminToken, email)
 		gitlabDeleteGroup(t, gitlabAdminToken, testDomain)
 	})
 
-	// ----------------------------------------------------------------
-	// Step 1 — POST /api/register
-	// ----------------------------------------------------------------
-	t.Log("step 1: POST /api/register")
+	// Step 1 — POST /api/register: must return 202 immediately
+	t.Log("POST /api/register — expect 202 Accepted")
 	reqBody := fmt.Sprintf(`{"email":%q,"password":%q,"uri":%q}`, email, password, testURI)
-	req1 := httptest.NewRequest(http.MethodPost, "/api/register", strings.NewReader(reqBody))
-	req1.Header.Set("Content-Type", "application/json")
-	req1.Header.Set("Authorization", "Bearer "+adminToken)
-	w1 := httptest.NewRecorder()
-	repman.handlerRegister(w1, req1)
+	req := httptest.NewRequest(http.MethodPost, "/api/register", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	w := httptest.NewRecorder()
+	repman.handlerRegister(w, req)
 
-	t.Logf("step 1 response: HTTP %d — %s", w1.Code, w1.Body.String())
-	if w1.Code != http.StatusAccepted {
-		t.Fatalf("step 1: expected 202, got %d: %s", w1.Code, w1.Body.String())
+	t.Logf("register response: HTTP %d — %s", w.Code, w.Body.String())
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// ----------------------------------------------------------------
-	// Step 2 — wait for GitLab confirmation email, follow the link
-	// ----------------------------------------------------------------
-	t.Log("step 2: waiting for confirmation email (up to 3 minutes)...")
-	confirmURL := mailTmWaitForConfirmation(t, mailToken, 3*time.Minute)
-	t.Logf("step 2: confirmation URL: %s", confirmURL)
+	// Step 2 — concurrently watch the inbox and follow the GitLab confirmation link
+	go func() {
+		confirmURL := mailTmWaitForConfirmation(t, mailToken, 4*time.Minute)
+		t.Logf("confirmation URL found: %s — following link", confirmURL)
+		resp, err := http.Get(confirmURL) //nolint:noctx
+		if err != nil {
+			t.Logf("WARNING: follow confirmation link: %v", err)
+			return
+		}
+		resp.Body.Close()
+		t.Logf("GitLab confirmation returned HTTP %d", resp.StatusCode)
+	}()
 
-	confirmResp, err := http.Get(confirmURL)
-	if err != nil {
-		t.Fatalf("step 2: follow confirmation link: %v", err)
-	}
-	confirmResp.Body.Close()
-	t.Logf("step 2: GitLab returned HTTP %d", confirmResp.StatusCode)
-	if confirmResp.StatusCode >= 500 {
-		t.Fatalf("step 2: confirmation link returned server error %d", confirmResp.StatusCode)
-	}
+	// Step 3 — poll GET /api/register/status until terminal state
+	t.Log("polling /api/register/status …")
+	pollDeadline := time.Now().Add(6 * time.Minute)
+	for time.Now().Before(pollDeadline) {
+		time.Sleep(10 * time.Second)
 
-	// ----------------------------------------------------------------
-	// Step 3 — POST /api/register/confirm
-	// ----------------------------------------------------------------
-	t.Log("step 3: POST /api/register/confirm")
-	req2 := httptest.NewRequest(http.MethodPost, "/api/register/confirm", strings.NewReader(reqBody))
-	req2.Header.Set("Content-Type", "application/json")
-	req2.Header.Set("Authorization", "Bearer "+adminToken)
-	w2 := httptest.NewRecorder()
-	repman.handlerRegisterConfirm(w2, req2)
+		sr := httptest.NewRequest(http.MethodGet, "/api/register/status", nil)
+		sr.Header.Set("Authorization", "Bearer "+adminToken)
+		sw := httptest.NewRecorder()
+		repman.handlerRegisterStatus(sw, sr)
 
-	t.Logf("step 3 response: HTTP %d — %s", w2.Code, w2.Body.String())
-	if w2.Code != http.StatusCreated {
-		t.Fatalf("step 3: expected 201, got %d: %s", w2.Code, w2.Body.String())
-	}
+		var status map[string]interface{}
+		if err := json.Unmarshal(sw.Body.Bytes(), &status); err != nil {
+			t.Logf("status poll parse error: %v (retrying)", err)
+			continue
+		}
+		state, _ := status["state"].(string)
+		message, _ := status["message"].(string)
+		t.Logf("status: state=%s  message=%s", state, message)
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(w2.Body.Bytes(), &result); err != nil {
-		t.Fatalf("step 3: parse response: %v", err)
+		switch state {
+		case RegStateOK:
+			if connectErr, ok := status["result"].(map[string]interface{})["connect_error"].(string); ok {
+				t.Logf("WARNING: registration complete but connect failed: %s", connectErr)
+			} else {
+				t.Log("registration complete — Cloud18 connect flow succeeded")
+			}
+			return
+		case RegStateTimeout:
+			t.Fatalf("registration timed out: %s", message)
+		case RegStateError:
+			t.Fatalf("registration error: %s", message)
+		}
 	}
-	if connectErr, ok := result["connect_error"].(string); ok {
-		t.Logf("WARNING: registration complete but connect failed: %s", connectErr)
-	} else {
-		t.Log("registration complete — Cloud18 connect flow succeeded")
-	}
+	t.Fatal("test deadline exceeded waiting for registration to complete")
 }
