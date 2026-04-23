@@ -245,6 +245,18 @@ export const pollRegisterStatus = createGuardedAsyncThunk(
   }
 )
 
+export const fetchSubscriptionPlans = createGuardedAsyncThunk(
+  'globalClusters/fetchSubscriptionPlans',
+  async (_, thunkAPI) => {
+    try {
+      const { data, status } = await globalClustersService.getSubscriptionPlans()
+      return { data, status }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const fetchSubscription = createGuardedAsyncThunk(
   'globalClusters/fetchSubscription',
   async (_, thunkAPI) => {

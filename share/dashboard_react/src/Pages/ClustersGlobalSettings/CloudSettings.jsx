@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
-import { setGlobalSetting, registerInstance, confirmRegisterInstance, pollRegisterStatus, fetchSubscription, updateSubscription } from '../../redux/globalClustersSlice'
+import { setGlobalSetting, registerInstance, confirmRegisterInstance, pollRegisterStatus, fetchSubscriptionPlans, fetchSubscription, updateSubscription } from '../../redux/globalClustersSlice'
 import TextForm from '../../components/TextForm'
 import RMIconButton from '../../components/RMIconButton'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
@@ -283,27 +283,34 @@ Start create an account in https://gitlab.signal18.io
     )
   })()
 
-  // Subscription plans — same keys as Go constants
-  const PLANS = [
+  // Plans fetched from CRM; fallback list shown only if CRM is unreachable
+  const PLANS_FALLBACK = [
     { value: 'free',             label: 'Free',                                    desc: 'Community access, config backup to GitLab, basic alerting' },
     { value: 'support',          label: 'Contributing under Support',              desc: 'Support ticket access, SLA, and community priority queue' },
     { value: 'support-services', label: 'Contributing under Support and Services', desc: 'Full support + managed DBA/SysOps services access' },
     { value: 'partner',          label: 'Market Place Partner',                    desc: 'Marketplace listing, revenue sharing, and partner API access' },
   ]
+  const [plans, setPlans] = useState(PLANS_FALLBACK)
 
   const openSubModal = async () => {
     setIsSubModalOpen(true)
     setSubInfo(null)
     setSubError(null)
     setSubLoading(true)
-    const result = await dispatch(fetchSubscription())
+    // Fetch plan catalog and current subscription in parallel
+    const [plansResult, subResult] = await Promise.all([
+      dispatch(fetchSubscriptionPlans()),
+      dispatch(fetchSubscription()),
+    ])
     setSubLoading(false)
-    const data = result?.payload?.data
-    if (data?.email) {
-      setSubInfo(data)
-      setSelectedPlan(data.plan || 'free')
+    const plansData = plansResult?.payload?.data
+    if (Array.isArray(plansData) && plansData.length > 0) setPlans(plansData)
+    const subData = subResult?.payload?.data
+    if (subData?.email) {
+      setSubInfo(subData)
+      setSelectedPlan(subData.plan || 'free')
     } else {
-      setSubError(data?.error || 'Could not fetch subscription from CRM')
+      setSubError(subData?.error || 'Could not fetch subscription from CRM')
     }
   }
 
@@ -385,7 +392,7 @@ Start create an account in https://gitlab.signal18.io
       value: (
         <HStack>
           <Text fontSize='sm'>
-            {PLANS.find(p => p.value === (config?.cloud18SubscriptionPlan || 'free'))?.label || 'Free'}
+            {plans.find(p => p.value === (config?.cloud18SubscriptionPlan || 'free'))?.label || 'Free'}
           </Text>
           <RMButton size='xs' variant='outline' onClick={openSubModal}>Change</RMButton>
         </HStack>
@@ -450,7 +457,7 @@ Start create an account in https://gitlab.signal18.io
                   <Text fontSize='sm' color='gray.600'>Select your new subscription plan:</Text>
                   <RadioGroup value={selectedPlan} onChange={setSelectedPlan}>
                     <VStack align='stretch' spacing={3}>
-                      {PLANS.map(plan => (
+                      {plans.map(plan => (
                         <Box key={plan.value} borderWidth={1} borderRadius='md' p={3}
                           borderColor={selectedPlan === plan.value ? 'blue.400' : 'gray.200'}
                           bg={selectedPlan === plan.value ? 'blue.50' : 'transparent'}

@@ -446,6 +446,23 @@ type changeSubPayload struct {
 	Plan string `json:"plan"`
 }
 
+// crmGetPlans fetches the available subscription plans from the CRM (no auth required).
+func crmGetPlans(crmBase string) (int, []byte, error) {
+	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/subscription/plans", nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
+}
+
 // crmGetSubscription fetches the current subscription from CRM using a GitLab PAT.
 func crmGetSubscription(crmBase, gitlabToken string) (int, []byte, error) {
 	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/subscription", nil)
@@ -497,6 +514,28 @@ func (repman *ReplicationManager) gitlabTokenFromConfig() (string, error) {
 		return "", fmt.Errorf("could not obtain GitLab token: %w", err)
 	}
 	return tok, nil
+}
+
+// handlerGetSubscriptionPlans — GET /api/register/subscription/plans  (admin JWT required)
+//
+// Proxies the CRM plan catalog so the frontend always reflects what the CRM offers.
+func (repman *ReplicationManager) handlerGetSubscriptionPlans(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	claims, err := repman.GetJWTClaims(r)
+	if err != nil || claims["User"] != "admin" {
+		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
+		return
+	}
+
+	status, body, err := crmGetPlans(repman.crmBase())
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"CRM unreachable: %s"}`, err), http.StatusBadGateway)
+		return
+	}
+	w.WriteHeader(status)
+	w.Write(body)
 }
 
 // handlerGetSubscription — GET /api/register/subscription  (admin JWT required)

@@ -23,7 +23,8 @@ export const globalClustersService = {
   confirmRegister,
   getRegisterStatus,
   getSubscription,
-  changeSubscription
+  changeSubscription,
+  getSubscriptionPlans
 }
 
 function getClusters(baseURL) {
@@ -117,4 +118,8 @@ function getSubscription() {
 
 function changeSubscription(plan) {
   return getApi().post('register/subscription', { plan })
+}
+
+function getSubscriptionPlans() {
+  return getApi().get('register/subscription/plans')
 }
