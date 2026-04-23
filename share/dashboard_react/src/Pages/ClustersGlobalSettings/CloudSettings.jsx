@@ -360,6 +360,12 @@ Start create an account in https://gitlab.signal18.io
   // True when all credentials are stored — a direct Connect is possible without re-registering.
   const hasCredentials = !!(config?.cloud18GitUser && config?.cloud18Domain && config?.cloud18SubDomain && config?.cloud18SubDomainZone)
 
+  // URI fields (domain/subdomain/zone) are locked whenever credentials exist — even when
+  // disconnected. Disconnect is a temporary deactivation; the CRM is not notified of URI
+  // changes, so altering the URI after disconnect would orphan the old GitLab projects.
+  // Only Unregister (which calls the CRM to drop projects) should unlock URI fields.
+  const uriLocked = isConnected || hasCredentials
+
   const registrationData = [
     { key: 'Status',         help: h(hStatus,    'Cloud18 Status'),    value: <TagPill colorScheme={isConnected ? 'green' : 'gray'} text={isConnected ? 'ONLINE' : 'OFFLINE'} /> },
     { key: 'Git User',       help: h(hGitUser,   'Git User'),          value: isConnected
@@ -368,13 +374,13 @@ Start create an account in https://gitlab.signal18.io
     { key: 'GitLab Password',help: h(hGitPass,   'GitLab Password'),   value: isConnected
         ? <Text fontSize='sm'>••••••••</Text>
         : <TextForm value={config?.cloud18GitlabPassword} type='password' confirmTitle='Confirm GitLab password to ' onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-password', value: btoa(v) }))} /> },
-    { key: 'Domain',         help: h(hDomain,    'Domain'),            value: isConnected
+    { key: 'Domain',         help: h(hDomain,    'Domain'),            value: uriLocked
         ? <Text fontSize='sm'>{config?.cloud18Domain}</Text>
         : <TextForm value={config?.cloud18Domain}         confirmTitle='Confirm domain to '         onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-domain', value: v }))} /> },
-    { key: 'Subdomain',      help: h(hSubdomain, 'Subdomain'),         value: isConnected
+    { key: 'Subdomain',      help: h(hSubdomain, 'Subdomain'),         value: uriLocked
         ? <Text fontSize='sm'>{config?.cloud18SubDomain}</Text>
         : <TextForm value={config?.cloud18SubDomain}      confirmTitle='Confirm subdomain to '      onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-sub-domain', value: v }))} /> },
-    { key: 'Subdomain Zone', help: h(hZone,      'Subdomain Zone'),    value: isConnected
+    { key: 'Subdomain Zone', help: h(hZone,      'Subdomain Zone'),    value: uriLocked
         ? <Text fontSize='sm'>{config?.cloud18SubDomainZone}</Text>
         : <TextForm value={config?.cloud18SubDomainZone}  confirmTitle='Confirm subdomain zone to ' onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-sub-domain-zone', value: v }))} /> },
     {
