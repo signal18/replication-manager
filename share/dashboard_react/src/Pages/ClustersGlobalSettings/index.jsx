@@ -42,6 +42,12 @@ function ClustersGlobalSettings({ user }) {
         panelClassName={styles.accordionPanel}
         body={<CloudSettings config={monitor?.config} openConfirmModal={openConfirmModal} />}
       />
+      <AccordionComponent
+        heading={'Global Settings'}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        body={<GlobalSettings config={monitor?.config} openConfirmModal={openConfirmModal} />}
+      />
       {monitor?.config?.cloud18 && (
         <AccordionComponent
           heading={'Market Place'}
@@ -50,12 +56,6 @@ function ClustersGlobalSettings({ user }) {
           body={<MarketplaceSettings config={monitor?.config} />}
         />
       )}
-      <AccordionComponent
-        heading={'Global Settings'}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<GlobalSettings config={monitor?.config} openConfirmModal={openConfirmModal} />}
-      />
       <AccordionComponent
         heading={'App Templates Repo'}
         headerClassName={styles.accordionHeader}
