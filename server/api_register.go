@@ -443,6 +443,7 @@ const (
 )
 
 type changeSubPayload struct {
+	URI  string `json:"uri"`
 	Plan string `json:"plan"`
 }
 
@@ -464,8 +465,9 @@ func crmGetPlans(crmBase string) (int, []byte, error) {
 }
 
 // crmGetSubscription fetches the current subscription from CRM using a GitLab PAT.
-func crmGetSubscription(crmBase, gitlabToken string) (int, []byte, error) {
-	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/subscription", nil)
+// uri is the instance URI in domain.subdomain.zone format.
+func crmGetSubscription(crmBase, gitlabToken, uri string) (int, []byte, error) {
+	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/subscription?uri="+uri, nil)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -481,9 +483,9 @@ func crmGetSubscription(crmBase, gitlabToken string) (int, []byte, error) {
 	return resp.StatusCode, body, err
 }
 
-// crmChangeSubscription changes the plan on CRM using a GitLab PAT.
-func crmChangeSubscription(crmBase, gitlabToken, plan string) (int, []byte, error) {
-	b, _ := json.Marshal(changeSubPayload{Plan: plan})
+// crmChangeSubscription changes the plan for a specific URI on CRM using a GitLab PAT.
+func crmChangeSubscription(crmBase, gitlabToken, uri, plan string) (int, []byte, error) {
+	b, _ := json.Marshal(changeSubPayload{URI: uri, Plan: plan})
 	req, err := http.NewRequest(http.MethodPost, crmBase+"/api/subscription", bytes.NewReader(b))
 	if err != nil {
 		return 0, nil, err
@@ -563,7 +565,9 @@ func (repman *ReplicationManager) handlerGetSubscription(w http.ResponseWriter, 
 		return
 	}
 
-	status, body, err := crmGetSubscription(repman.crmBase(), tok)
+	uri := repman.Conf.Cloud18Domain + "." + repman.Conf.Cloud18SubDomain + "." + repman.Conf.Cloud18SubDomainZone
+
+	status, body, err := crmGetSubscription(repman.crmBase(), tok, uri)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"CRM unreachable: %s"}`, err), http.StatusBadGateway)
 		return
@@ -623,7 +627,9 @@ func (repman *ReplicationManager) handlerChangeSubscription(w http.ResponseWrite
 		return
 	}
 
-	status, respBody, err := crmChangeSubscription(repman.crmBase(), tok, req.Plan)
+	uri := repman.Conf.Cloud18Domain + "." + repman.Conf.Cloud18SubDomain + "." + repman.Conf.Cloud18SubDomainZone
+
+	status, respBody, err := crmChangeSubscription(repman.crmBase(), tok, uri, req.Plan)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"CRM unreachable: %s"}`, err), http.StatusBadGateway)
 		return
@@ -632,7 +638,7 @@ func (repman *ReplicationManager) handlerChangeSubscription(w http.ResponseWrite
 	if status == http.StatusOK || status == http.StatusCreated {
 		repman.Conf.Cloud18SubscriptionPlan = req.Plan
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"subscription: plan changed to %s", req.Plan)
+			"subscription: plan changed to %s for URI %s", req.Plan, uri)
 	}
 
 	w.WriteHeader(status)
