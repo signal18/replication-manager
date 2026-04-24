@@ -30,12 +30,30 @@ function Login(props) {
   useEffect(() => {
     if (isAuthorized()) {
       navigate('/')
-    } else {
-      // If not authorized, ensure the user is logged out and clear clusters
-      dispatch(logout());
-      dispatch(clearClusters());
-      dispatch(clearCluster());
+      return
     }
+    // Try auto-login endpoint (only active when api-autologin=true on the server)
+    fetch('/api/autologin')
+      .then((res) => {
+        if (res.ok) return res.json()
+        return null
+      })
+      .then((data) => {
+        if (data && data.token) {
+          localStorage.setItem('user_token', data.token)
+          localStorage.setItem('username', data.username || 'admin')
+          navigate('/')
+        } else {
+          dispatch(logout())
+          dispatch(clearClusters())
+          dispatch(clearCluster())
+        }
+      })
+      .catch(() => {
+        dispatch(logout())
+        dispatch(clearClusters())
+        dispatch(clearCluster())
+      })
   }, [])
 
   useEffect(() => {

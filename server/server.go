@@ -610,6 +610,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.APIBind, "api-bind", "0.0.0.0", "Rest API bind ip")
 	flags.BoolVar(&conf.APIHttpsBind, "api-https-bind", false, "Bind API call to https Web UI will error with http")
 	flags.BoolVar(&conf.APISecureConfig, "api-credentials-secure-config", false, "Need JWT token to download config tar.gz")
+	flags.BoolVar(&conf.APIAutologin, "api-autologin", false, "Enable unauthenticated auto-login token endpoint (trusted networks only)")
+	flags.StringVar(&conf.APIAutologinUser, "api-autologin-user", "admin", "Username to generate a token for when api-autologin is enabled")
 	flags.StringVar(&conf.APIPublicURL, "api-public-url", "https://127.0.0.1:10005", "Public address of monitoring API Used for cloud18 OAuth callback")
 	flags.StringVar(&conf.OAuthProvider, "api-oauth-provider-url", "https://gitlab.signal18.io", "API OAuth Provider URL")
 	flags.StringVar(&conf.OAuthClientID, "api-oauth-client-id", "", "API OAuth Client ID")

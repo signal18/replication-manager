@@ -262,6 +262,7 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/api/terminal/connect", http.HandlerFunc(repman.handlerTerminal))
 
 	router.HandleFunc("/api/login", repman.loginHandler)
+	router.HandleFunc("/api/autologin", repman.autologinHandler)
 	router.HandleFunc("/api/version", repman.handlerVersion)
 
 	router.Handle("/api/terms", negroni.New(
@@ -731,6 +732,76 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	repman.jsonResponse(resp, w)
+}
+
+// autologinHandler returns a JWT token for the configured auto-login user without requiring credentials.
+// Only active when api-autologin = true. Should only be exposed on trusted networks.
+func (repman *ReplicationManager) autologinHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if !repman.Conf.APIAutologin {
+		http.Error(w, "Auto-login not enabled", http.StatusNotFound)
+		return
+	}
+
+	username := repman.Conf.APIAutologinUser
+	if username == "" {
+		username = "admin"
+	}
+
+	// Find the password for the configured user
+	password := ""
+	credList := repman.Conf.Secrets["api-credentials"].Value
+	if credList == "" {
+		credList = repman.Conf.APIUsers
+	}
+	for _, entry := range strings.Split(credList, ",") {
+		parts := strings.SplitN(strings.TrimSpace(entry), ":", 2)
+		if len(parts) == 2 && parts[0] == username {
+			password = parts[1]
+			break
+		}
+	}
+
+	// Validate the user exists in at least one cluster
+	found := false
+	for _, cl := range repman.Clusters {
+		if cl.IsValidACL(username, password, r.URL.Path, "password") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		http.Error(w, "Auto-login user not found", http.StatusUnauthorized)
+		return
+	}
+
+	userInfo := struct {
+		Name     string
+		Role     string
+		Password string
+	}{username, "Member", repman.Conf.GetEncryptedString(password)}
+
+	signer := jwt.New(jwt.SigningMethodRS256)
+	claims := signer.Claims.(jwt.MapClaims)
+	claims["iss"] = "https://api.replication-manager.signal18.io"
+	claims["iat"] = time.Now().Unix()
+	claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
+	claims["jti"] = "1"
+	claims["token"] = ""
+	claims["CustomUserInfo"] = userInfo
+	signer.Claims = claims
+	sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
+
+	tokenString, err := signer.SignedString(sk)
+	if err != nil {
+		http.Error(w, "Error signing token: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	repman.jsonResponse(struct {
+		Token    string `json:"token"`
+		Username string `json:"username"`
+	}{Token: tokenString, Username: username}, w)
 }
 
 func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, r *http.Request) {

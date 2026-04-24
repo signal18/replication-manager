@@ -692,6 +692,8 @@ type Config struct {
 	APIUsersACLDiscard                        string                       `mapstructure:"api-credentials-acl-discard" toml:"api-credentials-acl-discard" json:"apiCredentialsACLDiscard"`
 	APIUsersACLDiscardExternal                string                       `mapstructure:"api-credentials-acl-discard-external" toml:"api-credentials-acl-discard-external" json:"apiCredentialsACLDiscardExternal"`
 	APISecureConfig                           bool                         `mapstructure:"api-credentials-secure-config" toml:"api-credentials-secure-config" json:"apiCredentialsSecureConfig"`
+	APIAutologin                              bool                         `scope:"server" mapstructure:"api-autologin" toml:"api-autologin" json:"apiAutologin"`
+	APIAutologinUser                          string                       `scope:"server" mapstructure:"api-autologin-user" toml:"api-autologin-user" json:"apiAutologinUser"`
 	APIPort                                   string                       `scope:"server" mapstructure:"api-port" toml:"api-port" json:"apiPort"`
 	APIBind                                   string                       `scope:"server" mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
 	APIPublicURL                              string                       `scope:"server" mapstructure:"api-public-url" toml:"api-public-url" json:"apiPublicUrl"`
