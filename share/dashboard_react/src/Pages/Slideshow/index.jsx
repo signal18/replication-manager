@@ -163,19 +163,19 @@ function Slideshow() {
     <PageContainer>
       {/* ── Header bar ─────────────────────────────────────── */}
       <Flex
-        px={4}
-        py={2}
+        px={6}
+        py={3}
         align='center'
         justify='space-between'
         borderBottom='1px solid'
         borderColor='gray.200'>
-        <Text fontWeight='bold' fontSize='lg'>
+        <Text fontWeight='bold' fontSize='3xl'>
           {currentSlide?.clusterName || '…'}
         </Text>
-        <Text fontSize='sm' color='gray.500'>
+        <Text fontSize='2xl' fontWeight='semibold' color='gray.500'>
           {currentSlide?.label || '…'}
         </Text>
-        <Text fontSize='xs' color='gray.400'>
+        <Text fontSize='sm' color='gray.400'>
           {clusterCount > 0
             ? `Cluster ${clusterIndex} of ${clusterCount} — section ${sectionIndex} of ${SECTIONS.length}`
             : 'Loading clusters…'}
