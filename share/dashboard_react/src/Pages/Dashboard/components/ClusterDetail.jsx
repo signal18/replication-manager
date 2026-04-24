@@ -38,7 +38,7 @@ import CopyTextModal from '../../../components/Modals/CopyTextModal'
 import SetCredentialsModal from '../../../components/Modals/SetCredentialsModal'
 import NewClusterModal from '../../../components/Modals/NewClusterModal'
 
-function ClusterDetail({ selectedCluster, user }) {
+function ClusterDetail({ selectedCluster, user, readOnly = false }) {
   const dispatch = useDispatch()
   const isDesktop = useSelector((state) => state.common.isDesktop)
   const monitor = useSelector((state) => state.globalClusters.monitor)
@@ -70,6 +70,7 @@ function ClusterDetail({ selectedCluster, user }) {
   }
 
   const g = user?.grants ?? {}
+  const isVisitor = !!user?.roles?.['visitor']
 
   const menuOptions = [
     {
@@ -111,7 +112,7 @@ function ClusterDetail({ selectedCluster, user }) {
             setConfirmHandler(() => () => dispatch(toggleTrafficStaging({ clusterName: selectedCluster?.name })))
           }
         }] : []),
-        ...(clusterMaster?.state === 'Failed' && g['cluster-failover']
+        ...(!isVisitor && !readOnly && clusterMaster?.state === 'Failed' && g['cluster-failover']
           ? [
             {
               name: 'Failover',
@@ -122,7 +123,7 @@ function ClusterDetail({ selectedCluster, user }) {
               }
             }
           ]
-          : clusterMaster?.state !== 'Failed' && g['cluster-switchover']
+          : !isVisitor && !readOnly && clusterMaster?.state !== 'Failed' && g['cluster-switchover']
           ? [
             {
               name: 'Switchover',

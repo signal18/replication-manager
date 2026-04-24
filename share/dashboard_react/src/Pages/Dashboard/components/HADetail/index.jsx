@@ -8,7 +8,7 @@ import { failOverCluster, switchOverCluster } from '../../../../redux/clusterSli
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import styles from './styles.module.scss'
 
-function HADetail({ selectedCluster, user }) {
+function HADetail({ selectedCluster, user, readOnly = false }) {
   const clusterMaster = useSelector((state) => state.cluster.clusterMaster)
   const { switchOverLoading, failOverLoading } = useSelector((state) => state.cluster.loadingStates)
   const isDesktop = useSelector((state) => state.common.isDesktop)
@@ -80,7 +80,7 @@ function HADetail({ selectedCluster, user }) {
           </Grid>
         }
         onClick={openConfirmModal}
-        {...(clusterMaster?.state && (user?.grants?.['cluster-switchover'] || user?.grants?.['cluster-failover'])
+        {...(clusterMaster?.state && !readOnly && !user?.roles?.['visitor'] && (user?.grants?.['cluster-switchover'] || user?.grants?.['cluster-failover'])
           ? {
               headerAction: 'button',
               isLoading: switchOverLoading || failOverLoading,

@@ -217,8 +217,8 @@ function Slideshow() {
 
         {currentSlide?.view === 'cluster-ha' && clusterData && (
           <Flex gap='24px' direction={{ base: 'column', lg: 'row' }}>
-            <ClusterDetail selectedCluster={clusterData} user={user} />
-            <HADetail selectedCluster={clusterData} user={user} />
+            <ClusterDetail selectedCluster={clusterData} user={user} readOnly />
+            <HADetail selectedCluster={clusterData} user={user} readOnly />
           </Flex>
         )}
 
