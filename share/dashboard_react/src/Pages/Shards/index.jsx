@@ -551,14 +551,14 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
           <Flex className={styles.actionsRow}>
             <RMButton
               onClick={handleChecksumAll}
-              isDisabled={!selectedCluster?.name || isChecksumAllRunning}
+              isDisabled={!selectedCluster?.name || isChecksumAllRunning || !user?.grants['cluster-checksum']}
               isLoading={isChecksumAllRunning}
             >
               {isChecksumAllRunning ? 'Preparing schema cache…' : 'Checksum All Tables'}
             </RMButton>
             <RMButton
               onClick={handleChecksumRepairAll}
-              isDisabled={!selectedCluster?.name || isChecksumRepairAllRunning}
+              isDisabled={!selectedCluster?.name || isChecksumRepairAllRunning || !user?.grants['cluster-checksum-repair']}
               isLoading={isChecksumRepairAllRunning}
             >
               {isChecksumRepairAllRunning ? 'Preparing schema cache…' : 'Repair All Tables'}
@@ -566,7 +566,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
             <RMButton
               variant="outline"
               onClick={onOpenSchedulerSettings}
-              isDisabled={!onOpenSchedulerSettings || user?.grants['cluster-show-backups'] === false}
+              isDisabled={!onOpenSchedulerSettings || !user?.grants['cluster-show-backups']}
             >
               Open Scheduler Settings
             </RMButton>

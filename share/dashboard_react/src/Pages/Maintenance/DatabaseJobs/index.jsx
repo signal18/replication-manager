@@ -13,7 +13,7 @@ import { FaTrash } from 'react-icons/fa'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
 import { cancelServerJob } from '../../../redux/clusterSlice'
 
-function DatabaseJobs({ clusterName }) {
+function DatabaseJobs({ clusterName, user }) {
   const {
     cluster: { jobs, clusterServers }
   } = useSelector((state) => state)
@@ -80,7 +80,7 @@ function DatabaseJobs({ clusterName }) {
         id: 'cancelTask',
         header: 'Cancel Task',
         cell: (info) =>
-          canCancelJob(info.row.original) ? (
+          canCancelJob(info.row.original) && user?.grants['cluster-process'] ? (
             <RMIconButton
               className={styles.btnCancelTask}
               tooltip={'Cancel task'}

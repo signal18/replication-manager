@@ -444,8 +444,8 @@ function Maintenance({ selectedCluster, user, section }) {
     {
       key: 'Action',
       value: (selectedCluster?.isResticQueuePaused ?
-        <RMIconButton icon={HiPlay} onClick={() => openConfirmModal('Resume Restic Queue', { action: 'queueResume' })} /> :
-        <RMIconButton icon={HiPause} onClick={() => openConfirmModal('Pause Restic Queue', { action: 'queuePause' })} />
+        <RMIconButton icon={HiPlay} tooltip='Resume queue' isDisabled={!user?.grants['cluster-process']} onClick={() => openConfirmModal('Resume Restic Queue', { action: 'queueResume' })} /> :
+        <RMIconButton icon={HiPause} tooltip='Pause queue' isDisabled={!user?.grants['cluster-process']} onClick={() => openConfirmModal('Pause Restic Queue', { action: 'queuePause' })} />
       )
     }
   ], [selectedCluster?.isResticQueuePaused, queuelength])
@@ -611,7 +611,7 @@ function Maintenance({ selectedCluster, user, section }) {
       className={styles.accordion}
       headerClassName={styles.accordionHeader}
       panelClassName={styles.accordionPanel}
-      body={<DatabaseJobs clusterName={selectedCluster?.name} />}
+      body={<DatabaseJobs clusterName={selectedCluster?.name} user={user} />}
     />
   )
 
