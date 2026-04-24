@@ -741,6 +741,17 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	repman.jsonResponse(resp, w)
 }
 
+// resolveUserPassword returns the plaintext password for username by looking it up in
+// the already-decrypted cluster.APIUsers map. Returns "" if the user is not found.
+func (repman *ReplicationManager) resolveUserPassword(username string) string {
+	for _, cl := range repman.Clusters {
+		if user, ok := cl.APIUsers[username]; ok {
+			return user.Password
+		}
+	}
+	return ""
+}
+
 // autologinHandler returns a JWT token for the configured auto-login user without requiring credentials.
 // Only active when api-autologin = true. Should only be exposed on trusted networks.
 func (repman *ReplicationManager) autologinHandler(w http.ResponseWriter, r *http.Request) {
@@ -755,12 +766,15 @@ func (repman *ReplicationManager) autologinHandler(w http.ResponseWriter, r *htt
 		username = "admin"
 	}
 
-	// The username is admin-configured — skip password lookup and mint the token directly.
-	// ACL enforcement still applies on every subsequent API call.
+	// Resolve plaintext password from cluster APIUsers (already decrypted there).
+	// The JWT must carry the encrypted password so IsValidClusterACL can authenticate it.
+	password := repman.resolveUserPassword(username)
+
 	userInfo := struct {
-		Name string
-		Role string
-	}{username, "Member"}
+		Name     string
+		Role     string
+		Password string
+	}{username, "Member", repman.Conf.GetEncryptedString(password)}
 
 	signer := jwt.New(jwt.SigningMethodRS256)
 	claims := signer.Claims.(jwt.MapClaims)
@@ -796,12 +810,15 @@ func (repman *ReplicationManager) dashboardTokenHandler(w http.ResponseWriter, r
 		return
 	}
 
-	// The username is admin-configured — skip password lookup and mint the token directly.
-	// ACL enforcement still applies on every subsequent API call.
+	// Resolve plaintext password from cluster APIUsers (already decrypted there).
+	// The JWT must carry the encrypted password so IsValidClusterACL can authenticate it.
+	password := repman.resolveUserPassword(username)
+
 	userInfo := struct {
-		Name string
-		Role string
-	}{username, "Member"}
+		Name     string
+		Role     string
+		Password string
+	}{username, "Member", repman.Conf.GetEncryptedString(password)}
 
 	signer := jwt.New(jwt.SigningMethodRS256)
 	claims := signer.Claims.(jwt.MapClaims)
