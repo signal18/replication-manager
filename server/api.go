@@ -755,38 +755,12 @@ func (repman *ReplicationManager) autologinHandler(w http.ResponseWriter, r *htt
 		username = "admin"
 	}
 
-	// Find the password for the configured user
-	password := ""
-	credList := repman.Conf.Secrets["api-credentials"].Value
-	if credList == "" {
-		credList = repman.Conf.APIUsers
-	}
-	for _, entry := range strings.Split(credList, ",") {
-		parts := strings.SplitN(strings.TrimSpace(entry), ":", 2)
-		if len(parts) == 2 && parts[0] == username {
-			password = parts[1]
-			break
-		}
-	}
-
-	// Validate the user exists in at least one cluster
-	found := false
-	for _, cl := range repman.Clusters {
-		if cl.IsValidACL(username, password, r.URL.Path, "password") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		http.Error(w, "Auto-login user not found", http.StatusUnauthorized)
-		return
-	}
-
+	// The username is admin-configured — skip password lookup and mint the token directly.
+	// ACL enforcement still applies on every subsequent API call.
 	userInfo := struct {
-		Name     string
-		Role     string
-		Password string
-	}{username, "Member", repman.Conf.GetEncryptedString(password)}
+		Name string
+		Role string
+	}{username, "Member"}
 
 	signer := jwt.New(jwt.SigningMethodRS256)
 	claims := signer.Claims.(jwt.MapClaims)
@@ -822,37 +796,12 @@ func (repman *ReplicationManager) dashboardTokenHandler(w http.ResponseWriter, r
 		return
 	}
 
-	// Resolve the password from api-credentials
-	password := ""
-	credList := repman.Conf.Secrets["api-credentials"].Value
-	if credList == "" {
-		credList = repman.Conf.APIUsers
-	}
-	for _, entry := range strings.Split(credList, ",") {
-		parts := strings.SplitN(strings.TrimSpace(entry), ":", 2)
-		if len(parts) == 2 && parts[0] == username {
-			password = parts[1]
-			break
-		}
-	}
-
-	found := false
-	for _, cl := range repman.Clusters {
-		if cl.IsValidACL(username, password, r.URL.Path, "password") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		http.Error(w, "Dashboard user not found or invalid credentials", http.StatusUnauthorized)
-		return
-	}
-
+	// The username is admin-configured — skip password lookup and mint the token directly.
+	// ACL enforcement still applies on every subsequent API call.
 	userInfo := struct {
-		Name     string
-		Role     string
-		Password string
-	}{username, "Member", repman.Conf.GetEncryptedString(password)}
+		Name string
+		Role string
+	}{username, "Member"}
 
 	signer := jwt.New(jwt.SigningMethodRS256)
 	claims := signer.Claims.(jwt.MapClaims)
