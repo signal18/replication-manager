@@ -82,7 +82,16 @@ function Slideshow() {
     if (!clusters || clusters.length === 0) return
     const built = []
     clusters.forEach((cl) => {
+      const hasBackup =
+        cl.config?.backupRestic ||
+        (cl.config?.backupPhysicalType && cl.config?.backupPhysicalType !== 'none') ||
+        (cl.config?.backupLogicalType && cl.config?.backupLogicalType !== 'none')
+      const hasScheduler = cl.config?.schedulerEnabled
+      const hasApps = cl.appServers?.length > 0
+
       SECTIONS.forEach(({ view, label }) => {
+        if (view === 'maintenance' && !hasBackup && !hasScheduler) return
+        if (view === 'apps' && !hasApps) return
         built.push({ clusterName: cl.name, view, label })
       })
     })
@@ -156,8 +165,14 @@ function Slideshow() {
 
   const currentSlide = slides[slideIndex]
   const clusterCount = clusters?.length || 0
-  const clusterIndex = clusterCount > 0 ? Math.floor(slideIndex / SECTIONS.length) + 1 : 0
-  const sectionIndex = (slideIndex % SECTIONS.length) + 1
+  // Derive per-cluster section position dynamically (clusters may have different section counts)
+  const clusterNames = [...new Set(slides.map((s) => s.clusterName))]
+  const clusterIndex = currentSlide ? clusterNames.indexOf(currentSlide.clusterName) + 1 : 0
+  const slidesForCluster = slides.filter((s) => s.clusterName === currentSlide?.clusterName)
+  const sectionIndex = currentSlide
+    ? slidesForCluster.findIndex((s) => s.view === currentSlide.view) + 1
+    : 0
+  const totalSections = slidesForCluster.length
 
   return (
     <PageContainer>
@@ -177,7 +192,7 @@ function Slideshow() {
         </Text>
         <Text fontSize='sm' color='gray.400'>
           {clusterCount > 0
-            ? `Cluster ${clusterIndex} of ${clusterCount} — section ${sectionIndex} of ${SECTIONS.length}`
+            ? `Cluster ${clusterIndex} of ${clusterCount} — section ${sectionIndex} of ${totalSections}`
             : 'Loading clusters…'}
         </Text>
       </Flex>
