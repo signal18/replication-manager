@@ -20,6 +20,7 @@ import { getClusters, getMonitoredData } from '../../redux/globalClustersSlice'
 import ClusterDetail from '../Dashboard/components/ClusterDetail'
 import HADetail from '../Dashboard/components/HADetail'
 import DBServers from '../Dashboard/components/DBServers'
+import DBServerGrid from '../Dashboard/components/DBServers/DBServerGrid'
 import Proxies from '../Dashboard/components/Proxies'
 import Apps from '../Dashboard/components/Apps'
 import { GeneralLogs, TaskLogs, SecurityLogs, WorkloadLogs } from '../Dashboard/components/Logs'
@@ -35,6 +36,7 @@ const SLIDE_DURATION_MS = 15000
 const SECTIONS = [
   { view: 'cluster-ha',         label: 'Cluster & HA' },
   { view: 'servers',            label: 'Servers' },
+  { view: 'servers-detail',     label: 'Server Details' },
   { view: 'proxies',            label: 'Proxies' },
   { view: 'apps',               label: 'Application Servers' },
   { view: 'logs-cluster',       label: 'Cluster & Security Logs' },
@@ -53,6 +55,10 @@ function Slideshow() {
   const clusterData = useSelector((state) => state.cluster.clusterData)
   const clusterServers = useSelector((state) => state.cluster.clusterServers)
   const clusterProxies = useSelector((state) => state.cluster.clusterProxies)
+  const clusterMaster = useSelector((state) => state.cluster.clusterMaster)
+
+  const hasMariadbGtid = clusterServers?.some((s) => s.haveMariadbGtid) ?? false
+  const hasMysqlGtid = clusterServers?.some((s) => s.haveMysqlGtid) ?? false
 
   const [slides, setSlides] = useState([]) // [{clusterName, view, label}]
   const [slideIndex, setSlideIndex] = useState(0)
@@ -242,6 +248,26 @@ function Slideshow() {
         {currentSlide?.view === 'servers' && (
           clusterData && clusterServers?.length > 0
             ? <DBServers selectedCluster={clusterData} user={user} />
+            : <Text color='gray.400' textAlign='center' mt={8}>Loading servers…</Text>
+        )}
+
+        {currentSlide?.view === 'servers-detail' && (
+          clusterData && clusterServers?.length > 0
+            ? <DBServerGrid
+                allDBServers={clusterServers}
+                clusterMasterId={clusterMaster?.id}
+                clusterName={clusterData.name}
+                backupLogicalType={clusterData.config?.backupLogicalType}
+                backupPhysicalType={clusterData.config?.backupPhysicalType}
+                backupRestic={clusterData.config?.backupRestic}
+                orchestrator={clusterData.config?.provOrchestrator}
+                user={user}
+                showTerminal={clusterData.config?.terminalSessionEnabled}
+                showTableView={() => {}}
+                openCompareModal={() => {}}
+                hasMariadbGtid={hasMariadbGtid}
+                hasMysqlGtid={hasMysqlGtid}
+              />
             : <Text color='gray.400' textAlign='center' mt={8}>Loading servers…</Text>
         )}
 
