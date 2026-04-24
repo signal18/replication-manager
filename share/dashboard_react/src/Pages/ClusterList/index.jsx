@@ -28,6 +28,7 @@ function ClusterList({ onClick }) {
   const monitor = useSelector((state) => state.globalClusters.monitor)
   const isDownList = useSelector((state) => state.globalClusters.isDownList)
   const isFailableList = useSelector((state) => state.globalClusters.isFailableList)
+  const isAdmin = localStorage.getItem('username') === 'admin'
 
   useEffect(() => {
     dispatch(getClusters({}))
@@ -151,7 +152,7 @@ function ClusterList({ onClick }) {
                     }}>
                     <CustomIcon icon={isSponsor || isPending ? (HiCreditCard) : (AiOutlineCluster)} fill={isSponsor ? "green" : isPending ? "orange" : "gray"} />
                     <span className={styles.cardHeaderText}>{headerText}</span>
-                    {monitor?.config?.monitoringSaveConfig && monitor?.config?.cloud18GitUser?.length > 0 && (
+                    {monitor?.config?.monitoringSaveConfig && monitor?.config?.cloud18GitUser?.length > 0 && isAdmin && (
                       <RMIconButton
                         icon={FaUserPlus}
                         tooltip={'Add User'}

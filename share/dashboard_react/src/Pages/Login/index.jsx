@@ -28,7 +28,9 @@ function Login({ dashboard = false }) {
   } = useSelector((state) => state)
 
   useEffect(() => {
-    if (isAuthorized()) {
+    // In dashboard mode always fetch a fresh token so the viewer lands on
+    // /slideshow even when a stale token is already in localStorage.
+    if (!dashboard && isAuthorized()) {
       navigate('/')
       return
     }
