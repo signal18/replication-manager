@@ -376,7 +376,7 @@ function Maintenance({ selectedCluster, user, section }) {
             icon={HiTrash}
             tooltip='Delete backup'
             onClick={() => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: info.row.original.id } })}
-            isDisabled={!user?.grants['cluster-show-backups']}
+            isDisabled={!user?.grants['db-backup']}
           />
         )
       })
