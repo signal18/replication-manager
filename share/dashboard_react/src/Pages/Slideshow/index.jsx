@@ -40,33 +40,6 @@ function Slideshow() {
   const slidesRef = useRef([])
   const slideIndexRef = useRef(0)
 
-  // ─── Build slides whenever cluster list changes ───────────────────────────
-  useEffect(() => {
-    if (!clusters || clusters.length === 0) return
-    const built = []
-    clusters.forEach((cl) => {
-      built.push({ clusterName: cl.name, view: 'dashboard' })
-      built.push({ clusterName: cl.name, view: 'maintenance' })
-    })
-    slidesRef.current = built
-    setSlides(built)
-    // Reset to first slide when cluster list changes
-    setSlideIndex(0)
-    slideIndexRef.current = 0
-    // Kick off the first slide data load immediately
-    loadSlideData(built[0])
-  }, [clusters, loadSlideData])
-
-  // ─── Initial cluster list fetch ───────────────────────────────────────────
-  useEffect(() => {
-    const interval = localStorage.getItem('refresh_interval')
-      ? parseInt(localStorage.getItem('refresh_interval'))
-      : AppSettings.DEFAULT_INTERVAL
-    dispatch(setRefreshInterval({ interval }))
-    dispatch(getClusters({}))
-    dispatch(getMonitoredData({}))
-  }, [])
-
   // ─── Load all data for a given slide ─────────────────────────────────────
   const loadSlideData = useCallback(
     (slide) => {
@@ -89,6 +62,31 @@ function Slideshow() {
     },
     [dispatch]
   )
+
+  // ─── Build slides whenever cluster list changes ───────────────────────────
+  useEffect(() => {
+    if (!clusters || clusters.length === 0) return
+    const built = []
+    clusters.forEach((cl) => {
+      built.push({ clusterName: cl.name, view: 'dashboard' })
+      built.push({ clusterName: cl.name, view: 'maintenance' })
+    })
+    slidesRef.current = built
+    setSlides(built)
+    setSlideIndex(0)
+    slideIndexRef.current = 0
+    loadSlideData(built[0])
+  }, [clusters, loadSlideData])
+
+  // ─── Initial cluster list fetch ───────────────────────────────────────────
+  useEffect(() => {
+    const interval = localStorage.getItem('refresh_interval')
+      ? parseInt(localStorage.getItem('refresh_interval'))
+      : AppSettings.DEFAULT_INTERVAL
+    dispatch(setRefreshInterval({ interval }))
+    dispatch(getClusters({}))
+    dispatch(getMonitoredData({}))
+  }, [])
 
   // ─── Slideshow timer ──────────────────────────────────────────────────────
   // Runs once on mount. Uses slidesRef so the interval never restarts when

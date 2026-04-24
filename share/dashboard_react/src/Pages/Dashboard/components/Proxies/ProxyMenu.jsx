@@ -60,41 +60,45 @@ function ProxyMenu({
         placement={from === 'tableView' ? 'right-end' : 'left-end'}
         subMenuPlacement={isDesktop ? (from === 'tableView' ? 'right-end' : 'left-end') : 'bottom'}
         options={[
-          ...(user?.grants['cluster-staging'] && topoStaging ? row.isStaging ? [
-            {
-              name: 'Set As Normal Proxy',
-              onClick: () => {
-                openConfirmModal()
-                setConfirmTitle(`Confirm provision proxy ${proxyName}?`)
-                setConfirmHandler(() => () => dispatch(stagingProxy({ clusterName, proxyId: row.proxyId, staging: false })))
-              }
-            }
-          ] : [
-            {
-              name: 'Set As Staging Proxy',
-              onClick: () => {
-                openConfirmModal()
-                setConfirmTitle(`Confirm provision proxy ${proxyName}?`)
-                setConfirmHandler(() => () => dispatch(stagingProxy({ clusterName, proxyId: row.proxyId, staging: true })))
-              }
-            }
-          ] : []),
-          ...(user?.grants['prov-proxy-provision'] && isMenuOptionsVisible
+          ...(topoStaging
+            ? row.isStaging
+              ? [
+                  {
+                    name: 'Set As Normal Proxy',
+                    isDisabled: !user?.grants['cluster-staging'],
+                    onClick: () => {
+                      openConfirmModal()
+                      setConfirmTitle(`Confirm provision proxy ${proxyName}?`)
+                      setConfirmHandler(() => () => dispatch(stagingProxy({ clusterName, proxyId: row.proxyId, staging: false })))
+                    }
+                  }
+                ]
+              : [
+                  {
+                    name: 'Set As Staging Proxy',
+                    isDisabled: !user?.grants['cluster-staging'],
+                    onClick: () => {
+                      openConfirmModal()
+                      setConfirmTitle(`Confirm provision proxy ${proxyName}?`)
+                      setConfirmHandler(() => () => dispatch(stagingProxy({ clusterName, proxyId: row.proxyId, staging: true })))
+                    }
+                  }
+                ]
+            : []),
+          ...(isMenuOptionsVisible
             ? [
                 {
                   name: 'Provision Proxy',
+                  isDisabled: !user?.grants['prov-proxy-provision'],
                   onClick: () => {
                     openConfirmModal()
                     setConfirmTitle(`Confirm provision proxy ${proxyName}?`)
                     setConfirmHandler(() => () => dispatch(provisionProxy({ clusterName, proxyId: row.proxyId })))
                   }
-                }
-            ]
-            : []),
-          ...(user?.grants['prov-proxy-unprovision'] && isMenuOptionsVisible
-            ? [
+                },
                 {
                   name: 'Unprovision Proxy',
+                  isDisabled: !user?.grants['prov-proxy-unprovision'],
                   onClick: () => {
                     openConfirmModal()
                     setConfirmTitle(`Confirm unprovision proxy ${proxyName}?`)
@@ -103,44 +107,38 @@ function ProxyMenu({
                 }
               ]
             : []),
-          ...(user?.grants['proxy-start'] ? [
-                {
-                  name: 'Start Proxy',
-                  onClick: () => {
-                    openConfirmModal()
-                    setConfirmTitle(`Confirm start proxy ${proxyName}?`)
-                    setConfirmHandler(() => () => dispatch(startProxy({ clusterName, proxyId: row.proxyId })))
-                  }
-                }
-              ]
-            : []),
-          ...(user?.grants['proxy-stop'] ? [
-                {
-                  name: 'Stop Proxy',
-                  onClick: () => {
-                    openConfirmModal()
-                    setConfirmTitle(`Confirm stop proxy ${proxyName}?`)
-                    setConfirmHandler(() => () => dispatch(stopProxy({ clusterName, proxyId: row.proxyId })))
-                  }
-                },
-                ...(orchestrator === 'opensvc'
-                  ? [
-                      {
-                        name: 'Abort Orchestration',
-                        onClick: () => {
-                          openConfirmModal()
-                          setConfirmTitle(`Confirm orchestration abort for ${proxyName}?`)
-                          setConfirmHandler(() => () => dispatch(abortProxy({ clusterName, proxyId: row.proxyId })))
-                        }
-                      }
-                    ]
-                  : [])
-              ]
-            : []),
-          ...(user?.grants['proxy-start'] && orchestrator === 'opensvc'
+          {
+            name: 'Start Proxy',
+            isDisabled: !user?.grants['proxy-start'],
+            onClick: () => {
+              openConfirmModal()
+              setConfirmTitle(`Confirm start proxy ${proxyName}?`)
+              setConfirmHandler(() => () => dispatch(startProxy({ clusterName, proxyId: row.proxyId })))
+            }
+          },
+          {
+            name: 'Stop Proxy',
+            isDisabled: !user?.grants['proxy-stop'],
+            onClick: () => {
+              openConfirmModal()
+              setConfirmTitle(`Confirm stop proxy ${proxyName}?`)
+              setConfirmHandler(() => () => dispatch(stopProxy({ clusterName, proxyId: row.proxyId })))
+            }
+          },
+          ...(orchestrator === 'opensvc'
             ? [
                 {
+                  name: 'Abort Orchestration',
+                  isDisabled: !user?.grants['proxy-stop'],
+                  onClick: () => {
+                    openConfirmModal()
+                    setConfirmTitle(`Confirm orchestration abort for ${proxyName}?`)
+                    setConfirmHandler(() => () => dispatch(abortProxy({ clusterName, proxyId: row.proxyId })))
+                  }
+                },
+                {
                   name: 'Clear Instance State',
+                  isDisabled: !user?.grants['proxy-start'],
                   onClick: () => {
                     openConfirmModal()
                     setConfirmTitle(`Confirm clear instance state for ${proxyName}?`)
@@ -149,28 +147,29 @@ function ProxyMenu({
                 }
               ]
             : []),
-          ...(user?.grants['terminal-proxy'] && showTerminal 
+          ...(showTerminal
             ? [
                 {
                   name: 'Web Terminal',
                   subMenu: [
                     {
                       name: 'MySQL Terminal',
+                      isDisabled: !user?.grants['terminal-proxy'],
                       onClick: () => openTerminalPage(clusterName, row.proxyId, 'mysql')
                     },
                     {
                       name: 'MyTop Terminal',
+                      isDisabled: !user?.grants['terminal-proxy'],
                       onClick: () => openTerminalPage(clusterName, row.proxyId, 'mytop')
                     },
-                    ...(user?.grants['terminal-global'] ? [
-                      {
-                        name: 'Shell Terminal',
-                        onClick: () => openTerminalPage(clusterName, row.proxyId)
-                      }
-                    ] : []),
+                    {
+                      name: 'Shell Terminal',
+                      isDisabled: !user?.grants['terminal-global'],
+                      onClick: () => openTerminalPage(clusterName, row.proxyId)
+                    }
                   ]
                 }
-              ] 
+              ]
             : []),
           {
             name: 'Remove Monitor',
@@ -179,7 +178,7 @@ function ProxyMenu({
               setConfirmTitle(`Confirm removing monitor for ${row.proxyId} (${row.server})?`)
               setConfirmHandler(() => () => dispatch(dropServerByName({ clusterName, serverName: row.proxyId })))
             }
-          },
+          }
         ]}
       />
       {isConfirmModalOpen && (
