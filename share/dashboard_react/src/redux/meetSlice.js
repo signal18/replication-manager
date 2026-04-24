@@ -11,11 +11,11 @@ export const getMeetInfo = createAsyncThunk('meet/getMeetInfo', async (_, thunkA
     throw error; // Ensure the error is thrown to trigger the rejected state
   }
 },
-// Add a condition to prevent the action from being dispatched if the user is already fetching the info
+// Add a condition to prevent the action from being dispatched if already fetching or previously failed
 {
   condition: (_, { getState }) => {
     const { meet } = getState();
-    if (meet.isFetchingInfo) {
+    if (meet.isFetchingInfo || meet.meetError) {
       return false;
     }
   }

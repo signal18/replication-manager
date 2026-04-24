@@ -147,9 +147,11 @@ export const getBackupStrategy = (strategyId) => {
 }
 
 export const formatDate = (date, format) => {
+  if (!date) return ''
   if (typeof date === 'string') {
     date = new Date(date)
   }
+  if (!(date instanceof Date) || isNaN(date.getTime())) return ''
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0') // Months are zero-based
   const day = String(date.getDate()).padStart(2, '0')
