@@ -93,7 +93,7 @@ function MenuOptions({
                       if (event) {
                         event.stopPropagation()
                       }
-                      if (subMenuOption?.onClick) {
+                      if (!subMenuOption.isDisabled && subMenuOption?.onClick) {
                         subMenuOption.onClick()
                       }
                     }}
@@ -113,7 +113,9 @@ function MenuOptions({
                       if (event) {
                         event.stopPropagation()
                       }
-                      option.onClick()
+                      if (!option.isDisabled) {
+                        option.onClick()
+                      }
                     }
                   }
                 : {})}
