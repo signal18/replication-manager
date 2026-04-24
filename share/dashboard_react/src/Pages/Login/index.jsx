@@ -35,36 +35,66 @@ function Login({ dashboard = false }) {
       return
     }
 
-    const autoLoginUrl = dashboard ? '/api/dashboard-token' : '/api/autologin'
-
-    fetch(autoLoginUrl)
-      .then((res) => {
-        if (res.ok) return res.json()
-        return null
-      })
-      .then((data) => {
-        if (data && data.token) {
-          localStorage.setItem('user_token', data.token)
-          localStorage.setItem('username', data.username || 'admin')
-          dispatch(setUserData())
-          navigate(dashboard ? '/slideshow' : '/')
-        } else {
+    if (!dashboard) {
+      // Normal login page: try autologin once, fall through to manual login form on failure.
+      fetch('/api/autologin')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && data.token) {
+            localStorage.setItem('user_token', data.token)
+            localStorage.setItem('username', data.username || 'admin')
+            dispatch(setUserData())
+            navigate('/')
+          } else {
+            dispatch(logout())
+            dispatch(clearClusters())
+            dispatch(clearCluster())
+          }
+        })
+        .catch(() => {
           dispatch(logout())
           dispatch(clearClusters())
           dispatch(clearCluster())
-        }
-      })
-      .catch(() => {
-        dispatch(logout())
-        dispatch(clearClusters())
-        dispatch(clearCluster())
-      })
+        })
+      return
+    }
+
+    // Dashboard (slideshow) mode: retry until the server is ready after restart.
+    let retryTimer = null
+    let cancelled = false
+
+    const tryDashboardToken = () => {
+      fetch('/api/dashboard-token')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (cancelled) return
+          if (data && data.token) {
+            localStorage.setItem('user_token', data.token)
+            localStorage.setItem('username', data.username || 'viewer')
+            dispatch(setUserData())
+            navigate('/slideshow')
+          } else {
+            // Server not ready yet or no dashboard token configured — retry.
+            retryTimer = setTimeout(tryDashboardToken, 3000)
+          }
+        })
+        .catch(() => {
+          if (!cancelled) retryTimer = setTimeout(tryDashboardToken, 3000)
+        })
+    }
+
+    tryDashboardToken()
+    return () => {
+      cancelled = true
+      clearTimeout(retryTimer)
+    }
   }, [])
 
   useEffect(() => {
     if (!loading || !loadingGitLogin) {
-      if (isLogged && user && !dashboard) {
-        navigate('/')
+      if (isLogged && user) {
+        // Navigate to the right destination after manual login regardless of mode.
+        navigate(dashboard ? '/slideshow' : '/')
       }
       if (error) {
         setErrorMessage(error)
