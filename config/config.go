@@ -694,6 +694,7 @@ type Config struct {
 	APISecureConfig                           bool                         `mapstructure:"api-credentials-secure-config" toml:"api-credentials-secure-config" json:"apiCredentialsSecureConfig"`
 	APIAutologin                              bool                         `scope:"server" mapstructure:"api-autologin" toml:"api-autologin" json:"apiAutologin"`
 	APIAutologinUser                          string                       `scope:"server" mapstructure:"api-autologin-user" toml:"api-autologin-user" json:"apiAutologinUser"`
+	APIDashboardUser                          string                       `scope:"server" mapstructure:"api-dashboard-user" toml:"api-dashboard-user" json:"apiDashboardUser"`
 	APIPort                                   string                       `scope:"server" mapstructure:"api-port" toml:"api-port" json:"apiPort"`
 	APIBind                                   string                       `scope:"server" mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
 	APIPublicURL                              string                       `scope:"server" mapstructure:"api-public-url" toml:"api-public-url" json:"apiPublicUrl"`

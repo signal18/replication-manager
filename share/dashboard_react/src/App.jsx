@@ -74,6 +74,7 @@ function App() {
           </PrivateRoute>
         } />
         <Route path='/login' element={<Login />} />
+        <Route path='/dashboard' element={<Login dashboard />} />
       </Routes>
     </BrowserRouter>
   )

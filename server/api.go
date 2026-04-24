@@ -263,6 +263,7 @@ func (repman *ReplicationManager) apiserver() {
 
 	router.HandleFunc("/api/login", repman.loginHandler)
 	router.HandleFunc("/api/autologin", repman.autologinHandler)
+	router.HandleFunc("/api/dashboard-token", repman.dashboardTokenHandler)
 	router.HandleFunc("/api/version", repman.handlerVersion)
 
 	router.Handle("/api/terms", negroni.New(
@@ -772,6 +773,72 @@ func (repman *ReplicationManager) autologinHandler(w http.ResponseWriter, r *htt
 	}
 	if !found {
 		http.Error(w, "Auto-login user not found", http.StatusUnauthorized)
+		return
+	}
+
+	userInfo := struct {
+		Name     string
+		Role     string
+		Password string
+	}{username, "Member", repman.Conf.GetEncryptedString(password)}
+
+	signer := jwt.New(jwt.SigningMethodRS256)
+	claims := signer.Claims.(jwt.MapClaims)
+	claims["iss"] = "https://api.replication-manager.signal18.io"
+	claims["iat"] = time.Now().Unix()
+	claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
+	claims["jti"] = "1"
+	claims["token"] = ""
+	claims["CustomUserInfo"] = userInfo
+	signer.Claims = claims
+	sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
+
+	tokenString, err := signer.SignedString(sk)
+	if err != nil {
+		http.Error(w, "Error signing token: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	repman.jsonResponse(struct {
+		Token    string `json:"token"`
+		Username string `json:"username"`
+	}{Token: tokenString, Username: username}, w)
+}
+
+// dashboardTokenHandler issues a read-only JWT for the /dashboard public endpoint.
+// Active whenever api-dashboard-user is set — no separate enable flag needed.
+func (repman *ReplicationManager) dashboardTokenHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	username := repman.Conf.APIDashboardUser
+	if username == "" {
+		http.Error(w, "Dashboard endpoint not configured", http.StatusNotFound)
+		return
+	}
+
+	// Resolve the password from api-credentials
+	password := ""
+	credList := repman.Conf.Secrets["api-credentials"].Value
+	if credList == "" {
+		credList = repman.Conf.APIUsers
+	}
+	for _, entry := range strings.Split(credList, ",") {
+		parts := strings.SplitN(strings.TrimSpace(entry), ":", 2)
+		if len(parts) == 2 && parts[0] == username {
+			password = parts[1]
+			break
+		}
+	}
+
+	found := false
+	for _, cl := range repman.Clusters {
+		if cl.IsValidACL(username, password, r.URL.Path, "password") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		http.Error(w, "Dashboard user not found or invalid credentials", http.StatusUnauthorized)
 		return
 	}
 

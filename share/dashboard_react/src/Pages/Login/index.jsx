@@ -13,7 +13,7 @@ import { useTheme } from '../../ThemeProvider'
 import { clearCluster } from '../../redux/clusterSlice'
 import { clearClusters } from '../../redux/globalClustersSlice'
 
-function Login(props) {
+function Login({ dashboard = false }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [usernameError, setUsernameError] = useState('')
@@ -32,8 +32,10 @@ function Login(props) {
       navigate('/')
       return
     }
-    // Try auto-login endpoint (only active when api-autologin=true on the server)
-    fetch('/api/autologin')
+
+    const autoLoginUrl = dashboard ? '/api/dashboard-token' : '/api/autologin'
+
+    fetch(autoLoginUrl)
       .then((res) => {
         if (res.ok) return res.json()
         return null
