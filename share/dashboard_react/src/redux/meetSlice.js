@@ -282,6 +282,7 @@ const meetSlice = createSlice({
         state.isFetchingInfo = true;
       })
       .addCase(getMeetInfo.fulfilled, (state, action) => {
+        sessionStorage.removeItem(MEET_UNAVAILABLE_KEY);
         state.meetInfo = action.payload.data;
         //localStorage.setItem('userID', state.meetInfo?.user_id);
         state.unreadMessagesByChannel = action.payload.data.unread_messages_by_channel || {};
@@ -309,10 +310,11 @@ const meetSlice = createSlice({
         state.messages = {};
         state.unreadMessagesByChannel = {};
         state.channels = [];
+        state.meetError = false;
         localStorage.removeItem('userID');
         localStorage.removeItem('chatOpen');
         localStorage.removeItem('selectedChannel');
-        // Handle successful logout if needed
+        sessionStorage.removeItem(MEET_UNAVAILABLE_KEY);
       })
       .addCase(logoutFromMeet.rejected, (state, action) => {
         state.loading = false;
