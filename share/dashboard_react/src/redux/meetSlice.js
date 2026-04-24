@@ -2,20 +2,28 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { handleError, showErrorBanner, showSuccessBanner } from '../utility/common';
 import { meetService } from '../services/meetService';
 
+const MEET_UNAVAILABLE_KEY = 'meet_unavailable'
+
 export const getMeetInfo = createAsyncThunk('meet/getMeetInfo', async (_, thunkAPI) => {
   try {
     const { data, status } = await meetService.getMeetInfo();
     return { data, status };
   } catch (error) {
-    handleError(error, thunkAPI);
-    throw error; // Ensure the error is thrown to trigger the rejected state
+    // Use rejectWithValue instead of throw to avoid console noise for expected
+    // failures (e.g. viewer tokens that have no meet user ID).
+    return thunkAPI.rejectWithValue({ errorMessage: error.message, errorStatus: error.errorStatus || 500 })
   }
 },
-// Add a condition to prevent the action from being dispatched if already fetching or previously failed
 {
   condition: (_, { getState }) => {
     const { meet } = getState();
+    // Block if already fetching or Redux state records a previous failure
     if (meet.isFetchingInfo || meet.meetError) {
+      return false;
+    }
+    // Also block if a previous failure was recorded in sessionStorage
+    // (survives Redux resets caused by re-login after server restart)
+    if (sessionStorage.getItem(MEET_UNAVAILABLE_KEY) === 'true') {
       return false;
     }
   }
@@ -292,6 +300,8 @@ const meetSlice = createSlice({
         state.meetError = true;
         state.meetInfo = null;
         state.isFetchingInfo = false;
+        // Persist failure so re-login/Redux-reset cycles don't retry needlessly
+        sessionStorage.setItem(MEET_UNAVAILABLE_KEY, 'true');
       })
       .addCase(logoutFromMeet.fulfilled, (state, action) => {
         state.loading = false;
