@@ -1,7 +1,7 @@
 import React, { useEffect, useState, Suspense } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { login, logout } from '../../redux/authSlice'
+import { login, logout, setUserData } from '../../redux/authSlice'
 import styles from './styles.module.scss'
 import { Box, Container, FormControl, FormLabel, FormErrorMessage, Heading, Input, Stack, Text } from '@chakra-ui/react'
 import PageContainer from '../PageContainer'
@@ -44,6 +44,7 @@ function Login({ dashboard = false }) {
         if (data && data.token) {
           localStorage.setItem('user_token', data.token)
           localStorage.setItem('username', data.username || 'admin')
+          dispatch(setUserData())
           navigate(dashboard ? '/slideshow' : '/')
         } else {
           dispatch(logout())
