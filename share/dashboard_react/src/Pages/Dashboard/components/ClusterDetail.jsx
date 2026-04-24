@@ -69,12 +69,15 @@ function ClusterDetail({ selectedCluster, user }) {
     setClipboardText('')
   }
 
+  const g = user?.grants ?? {}
+
   const menuOptions = [
     {
       name: 'HA',
       subMenu: [
         {
           name: 'Reset Failover Counter',
+          isDisabled: !g['cluster-settings'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Reset failover counter?')
@@ -83,6 +86,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Rotate SLA',
+          isDisabled: !g['cluster-reset-sla'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Reset SLA?')
@@ -91,6 +95,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Toggle Traffic',
+          isDisabled: !g['cluster-traffic'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Toggle traffic?')
@@ -99,9 +104,10 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         ...(selectedCluster.config?.topologyStaging ? [{
           name: 'Toggle Traffic Staging',
+          isDisabled: !g['cluster-traffic'],
           onClick: () => {
             openConfirmModal()
-            setConfirmTitle('Toggle traffic?')
+            setConfirmTitle('Toggle traffic staging?')
             setConfirmHandler(() => () => dispatch(toggleTrafficStaging({ clusterName: selectedCluster?.name })))
           }
         }] : []),
@@ -109,6 +115,7 @@ function ClusterDetail({ selectedCluster, user }) {
           ? [
             {
               name: 'Failover',
+              isDisabled: !g['cluster-failover'],
               onClick: () => {
                 openConfirmModal()
                 setConfirmTitle('Confirm failover?')
@@ -119,6 +126,7 @@ function ClusterDetail({ selectedCluster, user }) {
           : [
             {
               name: 'Switchover',
+              isDisabled: !g['cluster-switchover'],
               onClick: () => {
                 openConfirmModal()
                 setConfirmTitle('Confirm switchover?')
@@ -135,18 +143,21 @@ function ClusterDetail({ selectedCluster, user }) {
       subMenu: [
         {
           name: 'New Cluster Shard',
+          isDisabled: !g['cluster-create'],
           onClick: () => {
             setIsNewClusterModalOpen(true)
           }
         },
         {
           name: 'New Monitor',
+          isDisabled: !g['cluster-create-monitor'],
           onClick: () => {
             setIsNewServerModalOpen(true)
           }
         },
         {
           name: 'Provision Cluster',
+          isDisabled: !g['prov-cluster'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Provision cluster?')
@@ -155,6 +166,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Unprovision Cluster',
+          isDisabled: !g['prov-cluster-unprovision'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Unprovision cluster?')
@@ -168,6 +180,7 @@ function ClusterDetail({ selectedCluster, user }) {
       subMenu: [
         {
           name: 'Set Database Credentials',
+          isDisabled: !g['cluster-settings'],
           onClick: () => {
             setIsCredentialModalOpen(true)
             setCredentialType('db-servers-credential')
@@ -175,6 +188,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Set Replication Credentials',
+          isDisabled: !g['cluster-settings'],
           onClick: () => {
             setIsCredentialModalOpen(true)
             setCredentialType('replication-credential')
@@ -182,6 +196,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Set DBA Credentials',
+          isDisabled: !g['cluster-settings'],
           onClick: () => {
             setIsCredentialModalOpen(true)
             setCredentialType('cloud18-dba-user-credentials')
@@ -189,6 +204,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Set Sponsor DB Credentials',
+          isDisabled: !g['cluster-settings'],
           onClick: () => {
             setIsCredentialModalOpen(true)
             setCredentialType('cloud18-sponsor-user-credentials')
@@ -196,6 +212,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Set ProxySQL Credentials',
+          isDisabled: !g['cluster-settings'],
           onClick: () => {
             setIsCredentialModalOpen(true)
             setCredentialType('proxysql-servers-credential')
@@ -203,6 +220,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Set Maxscale Credentials',
+          isDisabled: !g['cluster-settings'],
           onClick: () => {
             setIsCredentialModalOpen(true)
             setCredentialType('maxscale-servers-credential')
@@ -210,6 +228,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Set Sharding Proxy Credentials',
+          isDisabled: !g['cluster-settings'],
           onClick: () => {
             setIsCredentialModalOpen(true)
             setCredentialType('shardproxy-servers-credential')
@@ -217,6 +236,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Rotate Database Credentials',
+          isDisabled: !g['cluster-rotate-passwords'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Rotate database credentials?')
@@ -230,7 +250,7 @@ function ClusterDetail({ selectedCluster, user }) {
       subMenu: [
         {
           name: 'Run Monitor Schema',
-          isDisabled: !selectedCluster?.config?.monitoringSchemaChange,
+          isDisabled: !selectedCluster?.config?.monitoringSchemaChange || !g['cluster-sharding'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Run monitor schema for all databases?')
@@ -239,6 +259,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Rolling Optimize',
+          isDisabled: !g['cluster-rolling'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Rolling optimize?')
@@ -247,6 +268,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Rolling Jobs Upgrade',
+          isDisabled: !g['cluster-rolling'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Rolling jobs upgrade?')
@@ -255,6 +277,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Rolling Restart',
+          isDisabled: !g['cluster-rolling'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Rolling restart?')
@@ -263,6 +286,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Rotate Certificates',
+          isDisabled: !g['cluster-certificates-rotate'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Rotate certificates?')
@@ -271,6 +295,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Reload Certificates',
+          isDisabled: !g['cluster-certificates-reload'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Reload certificates?')
@@ -279,6 +304,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Cancel Rolling Restart',
+          isDisabled: !g['cluster-rolling'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Cancel Rolling Restart?')
@@ -287,6 +313,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Cancel Rolling Reprove',
+          isDisabled: !g['cluster-rolling'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Cancel Rolling Reprove?')
@@ -300,6 +327,7 @@ function ClusterDetail({ selectedCluster, user }) {
       subMenu: [
         {
           name: 'Master Slave',
+          isDisabled: !g['cluster-replication'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle(confirmBootrapMessage)
@@ -308,6 +336,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Master Slave Positional',
+          isDisabled: !g['cluster-replication'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle(confirmBootrapMessage)
@@ -316,6 +345,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Multi Master',
+          isDisabled: !g['cluster-replication'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle(confirmBootrapMessage)
@@ -324,6 +354,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Multi Master Ring',
+          isDisabled: !g['cluster-replication'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle(confirmBootrapMessage)
@@ -332,6 +363,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Multi Tier Slave',
+          isDisabled: !g['cluster-replication'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle(confirmBootrapMessage)
@@ -345,6 +377,7 @@ function ClusterDetail({ selectedCluster, user }) {
       subMenu: [
         {
           name: 'Reload',
+          isDisabled: !g['cluster-settings'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Confirm reload config?')
@@ -353,6 +386,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Database discover config',
+          isDisabled: !g['cluster-settings'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Confirm database discover config?')
@@ -361,6 +395,7 @@ function ClusterDetail({ selectedCluster, user }) {
         },
         {
           name: 'Database apply dynamic config',
+          isDisabled: !g['db-config-flag'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Confirm database apply config?')
@@ -454,9 +489,9 @@ function ClusterDetail({ selectedCluster, user }) {
             valueClassName={`${parentStyles.rowValue} ${parentStyles.ClusterDetailRow}`}
           />
         }
-        {...(user?.grants?.['cluster-settings'] || user?.grants?.['cluster-switchover'] || user?.grants?.['cluster-failover'] || user?.grants?.['prov-cluster-provision']
-          ? { headerAction: 'menu', isLoading: menuActionsLoading, menuOptions }
-          : {})}
+        headerAction='menu'
+        isLoading={menuActionsLoading}
+        menuOptions={menuOptions}
       />
       {isConfirmModalOpen && (
         <ConfirmModal
