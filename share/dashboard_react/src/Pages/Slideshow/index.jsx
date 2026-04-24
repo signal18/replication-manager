@@ -35,9 +35,8 @@ const SLIDE_DURATION_MS = 15000
 // Sections shown per cluster in order
 const SECTIONS = [
   { view: 'cluster-ha',         label: 'Cluster & HA' },
-  { view: 'servers',            label: 'Servers' },
+  { view: 'servers-proxies',    label: 'Servers & Proxies' },
   { view: 'servers-detail',     label: 'Server Details' },
-  { view: 'proxies',            label: 'Proxies' },
   { view: 'apps',               label: 'Application Servers' },
   { view: 'logs-cluster',       label: 'Cluster & Security Logs' },
   { view: 'logs-workload',      label: 'Workload Logs' },
@@ -258,10 +257,17 @@ function Slideshow() {
           </Flex>
         )}
 
-        {currentSlide?.view === 'servers' && (
-          clusterData && clusterServers?.length > 0
-            ? <DBServers selectedCluster={clusterData} user={user} />
-            : <Text color='gray.400' textAlign='center' mt={8}>Loading servers…</Text>
+        {currentSlide?.view === 'servers-proxies' && clusterData && (
+          <Flex direction='column' gap='16px'>
+            {clusterServers?.length > 0
+              ? <DBServers selectedCluster={clusterData} user={user} />
+              : <Text color='gray.400' textAlign='center'>Loading servers…</Text>
+            }
+            {clusterProxies?.length > 0
+              ? <Proxies selectedCluster={clusterData} user={user} />
+              : <Text color='gray.400' textAlign='center'>Loading proxies…</Text>
+            }
+          </Flex>
         )}
 
         {currentSlide?.view === 'servers-detail' && (
@@ -280,14 +286,9 @@ function Slideshow() {
                 openCompareModal={() => {}}
                 hasMariadbGtid={hasMariadbGtid}
                 hasMysqlGtid={hasMysqlGtid}
+                defaultOpenAll
               />
             : <Text color='gray.400' textAlign='center' mt={8}>Loading servers…</Text>
-        )}
-
-        {currentSlide?.view === 'proxies' && (
-          clusterData && clusterProxies?.length > 0
-            ? <Proxies selectedCluster={clusterData} user={user} />
-            : <Text color='gray.400' textAlign='center' mt={8}>Loading proxies…</Text>
         )}
 
         {currentSlide?.view === 'apps' && clusterData && (
