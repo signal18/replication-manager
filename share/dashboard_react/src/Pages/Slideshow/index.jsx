@@ -53,7 +53,9 @@ function Slideshow() {
     // Reset to first slide when cluster list changes
     setSlideIndex(0)
     slideIndexRef.current = 0
-  }, [clusters])
+    // Kick off the first slide data load immediately
+    loadSlideData(built[0])
+  }, [clusters, loadSlideData])
 
   // ─── Initial cluster list fetch ───────────────────────────────────────────
   useEffect(() => {
@@ -89,16 +91,15 @@ function Slideshow() {
   )
 
   // ─── Slideshow timer ──────────────────────────────────────────────────────
+  // Runs once on mount. Uses slidesRef so the interval never restarts when
+  // the slides state updates, keeping the elapsed counter stable.
   useEffect(() => {
-    if (slides.length === 0) return
-
-    // Load data for the first slide immediately
-    loadSlideData(slides[0])
-
     let elapsed = 0
     const TICK_MS = 250
 
     const ticker = setInterval(() => {
+      if (slidesRef.current.length === 0) return // clusters not loaded yet
+
       elapsed += TICK_MS
       setProgress(Math.min((elapsed / SLIDE_DURATION_MS) * 100, 100))
 
@@ -114,7 +115,7 @@ function Slideshow() {
     }, TICK_MS)
 
     return () => clearInterval(ticker)
-  }, [slides, loadSlideData])
+  }, [loadSlideData])
 
   // ─── Background data refresh on a separate interval ───────────────────────
   useEffect(() => {
