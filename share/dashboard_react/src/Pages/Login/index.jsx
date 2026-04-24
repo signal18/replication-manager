@@ -61,7 +61,7 @@ function Login({ dashboard = false }) {
 
   useEffect(() => {
     if (!loading || !loadingGitLogin) {
-      if (isLogged && user) {
+      if (isLogged && user && !dashboard) {
         navigate('/')
       }
       if (error) {
