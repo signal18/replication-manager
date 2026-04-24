@@ -376,7 +376,7 @@ function Maintenance({ selectedCluster, user, section }) {
             icon={HiTrash}
             tooltip='Delete backup'
             onClick={() => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: info.row.original.id } })}
-            isDisabled={user?.grants['cluster-settings'] == false}
+            isDisabled={!user?.grants['cluster-show-backups']}
           />
         )
       })
@@ -422,7 +422,9 @@ function Maintenance({ selectedCluster, user, section }) {
       cell: (info) => (
         <RMIconButton
           icon={HiTrash}
+          tooltip='Purge snapshot'
           onClick={() => openConfirmModal('Do you want to purge this snapshot?', { action: 'snapshotPurge', data: { snapshotId: info.row.original.id } })}
+          isDisabled={!user?.grants['cluster-process']}
         />
       )
     })
@@ -541,14 +543,16 @@ function Maintenance({ selectedCluster, user, section }) {
       id: 'details',
       minWidth: 200
     }),
-    // Added Purge action column
+    // Added cancel action column
     columnHelper.display({
       id: 'actions',
       header: 'Actions',
       cell: (info) => (
         <RMIconButton
           icon={HiTrash}
+          tooltip='Cancel queued task'
           onClick={() => openConfirmModal('Cancel Queued Task', { action: 'queueCancel', data: { taskId: info.row.original.task_id } })}
+          isDisabled={!user?.grants['cluster-process']}
         />
       )
     })

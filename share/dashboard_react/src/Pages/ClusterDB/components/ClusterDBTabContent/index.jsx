@@ -84,6 +84,7 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
             selectedDBServer={selectedDBServer}
             tableSize={clusterData?.workLoad?.dbTableSize}
             usePersistent={clusterData?.config?.analyzeUsePersistent}
+            user={user}
           />
         ) : null
       ) : currentTab === 'status' ? (

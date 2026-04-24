@@ -199,6 +199,7 @@ function ServerMenu({
             : []),
           {
             name: 'Maintenance Mode',
+            isDisabled: !user?.grants['db-maintenance'],
             onClick: () => {
               openConfirmModal()
               setConfirmTitle(`Confirm maintenance for ${serverName}?`)
@@ -346,6 +347,7 @@ function ServerMenu({
               },
               {
                 name: 'Run Remote Jobs',
+                isDisabled: !user?.grants['cluster-process'],
                 onClick: () => {
                   openConfirmModal()
                   setConfirmTitle(`Confirm running remote jobs for ${serverName}?`)
@@ -453,6 +455,7 @@ function ServerMenu({
               },
               {
                 name: 'Remove Monitor',
+                isDisabled: !user?.grants['cluster-drop-monitor'],
                 onClick: () => {
                   openConfirmModal()
                   setConfirmTitle(`Confirm removing monitor for ${serverName}?`)

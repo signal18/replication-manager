@@ -410,6 +410,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
       subMenu: [
         {
           name: 'Clusters',
+          isDisabled: !g['cluster-debug'],
           onClick: () => {
             setIsClipboardModalOpen(true)
             setClipboardText(JSON.stringify(selectedCluster))
@@ -418,6 +419,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
         },
         {
           name: 'Servers',
+          isDisabled: !g['cluster-debug'],
           onClick: () => {
             setIsClipboardModalOpen(true)
             setClipboardText(JSON.stringify(clusterServers))
@@ -426,6 +428,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
         },
         {
           name: 'Proxies',
+          isDisabled: !g['cluster-debug'],
           onClick: () => {
             setIsClipboardModalOpen(true)
             setClipboardText(JSON.stringify(clusterProxies))

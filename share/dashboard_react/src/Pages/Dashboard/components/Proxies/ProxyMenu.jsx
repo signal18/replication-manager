@@ -173,6 +173,7 @@ function ProxyMenu({
             : []),
           {
             name: 'Remove Monitor',
+            isDisabled: !user?.grants['cluster-drop-monitor'],
             onClick: () => {
               openConfirmModal()
               setConfirmTitle(`Confirm removing monitor for ${row.proxyId} (${row.server})?`)

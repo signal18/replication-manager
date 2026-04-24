@@ -18,7 +18,7 @@ const selectTables = (state) => ({ tables: state.cluster.database.tables, isDesk
 
 const columnHelper = createColumnHelper()
 
-function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize }) {
+function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize, user }) {
   const dispatch = useDispatch()
   const { tables, isDesktop } = useSelector(selectTables, shallowEqual)
   const [search, setSearch] = useState('')
@@ -124,6 +124,7 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize 
         options={[
           {
             name: 'Checksum',
+            isDisabled: !user?.grants['cluster-checksum'],
             onClick: () => {
               openConfirmModal()
               setConfirmTitle(`Confirm run checksum for ${row.table_schema}.${row.table_name}?`)
@@ -132,6 +133,7 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize 
           },
           {
             name: 'ChecksumRepair',
+            isDisabled: !user?.grants['cluster-checksum-repair'],
             onClick: () => {
               openConfirmModal()
               setConfirmTitle(`Confirm run repair for ${row.table_schema}.${row.table_name}?`)
@@ -143,6 +145,7 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize 
             subMenu: [
               {
                 name: 'Persistent',
+                isDisabled: !user?.grants['cluster-analyze'],
                 onClick: () => {
                   setConfirmTitle(`Confirm run analyze for ${row.table_schema}.${row.table_name}?`)
                   setConfirmHandler(() => () => handleAnalyze(row.table_schema, row.table_name, true))
@@ -151,6 +154,7 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize 
               },
               {
                 name: 'Non-Persistent',
+                isDisabled: !user?.grants['cluster-analyze'],
                 onClick: () => {
                   setConfirmTitle(`Confirm run analyze for ${row.table_schema}.${row.table_name}?`)
                   setConfirmHandler(() => () => handleAnalyze(row.table_schema, row.table_name, false))
@@ -258,6 +262,7 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize 
             options={[
               {
                 name: 'Checksum',
+                isDisabled: !user?.grants['cluster-checksum'],
                 onClick: () => {
                   openConfirmModal()
                   setConfirmTitle(`Confirm run checksum for ${row.original.table_schema}?`)
@@ -269,6 +274,7 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize 
                 subMenu: [
                   {
                     name: 'Persistent',
+                    isDisabled: !user?.grants['cluster-analyze'],
                     onClick: () => {
                       setConfirmTitle(`Confirm run analyze for ${row.table_schema}?`)
                       setConfirmHandler(() => () => handleAnalyzeSchema(row.table_schema, true))
@@ -277,6 +283,7 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize 
                   },
                   {
                     name: 'Non-Persistent',
+                    isDisabled: !user?.grants['cluster-analyze'],
                     onClick: () => {
                       setConfirmTitle(`Confirm run analyze for ${row.table_schema}?`)
                       setConfirmHandler(() => () => handleAnalyzeSchema(row.table_schema, false))
@@ -303,14 +310,14 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize 
             <Input id='search' type='search' onChange={handleSearch} />
             <Box className={styles.divider} />
             <label htmlFor='search'>Checksum</label>
-            <RMIconButton icon={HiShieldCheck} tooltip={"Checksum All Tables"} onClick={() => {
+            <RMIconButton icon={HiShieldCheck} tooltip={"Checksum All Tables"} isDisabled={!user?.grants['cluster-checksum']} onClick={() => {
               setConfirmTitle(`Confirm run checksum for all schemas and tables?`)
               setConfirmHandler(() => () => handleChecksumAll())
               openConfirmModal()
             }} />
             <Box className={styles.divider} />
             <label htmlFor='search'>Analyze</label>
-            <RMIconButton icon={HiChartBar} tooltip={"Analyze All Tables"} onClick={() => {
+            <RMIconButton icon={HiChartBar} tooltip={"Analyze All Tables"} isDisabled={!user?.grants['cluster-analyze']} onClick={() => {
               let title = persistent ? 'with PERSISTENT FOR ALL' : ''
               setConfirmTitle(`Confirm run checksum for all schemas and tables ${title}?`)
               setConfirmHandler(() => () => handleAnalyzeAll(persistent))
