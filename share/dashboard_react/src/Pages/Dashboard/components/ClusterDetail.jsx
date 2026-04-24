@@ -111,11 +111,10 @@ function ClusterDetail({ selectedCluster, user }) {
             setConfirmHandler(() => () => dispatch(toggleTrafficStaging({ clusterName: selectedCluster?.name })))
           }
         }] : []),
-        ...(clusterMaster?.state === 'Failed'
+        ...(clusterMaster?.state === 'Failed' && g['cluster-failover']
           ? [
             {
               name: 'Failover',
-              isDisabled: !g['cluster-failover'],
               onClick: () => {
                 openConfirmModal()
                 setConfirmTitle('Confirm failover?')
@@ -123,10 +122,10 @@ function ClusterDetail({ selectedCluster, user }) {
               }
             }
           ]
-          : [
+          : clusterMaster?.state !== 'Failed' && g['cluster-switchover']
+          ? [
             {
               name: 'Switchover',
-              isDisabled: !g['cluster-switchover'],
               onClick: () => {
                 openConfirmModal()
                 setConfirmTitle('Confirm switchover?')
@@ -135,7 +134,8 @@ function ClusterDetail({ selectedCluster, user }) {
                 )
               }
             }
-          ])
+          ]
+          : [])
       ]
     },
     {

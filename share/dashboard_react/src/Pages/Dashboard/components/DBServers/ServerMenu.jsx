@@ -229,11 +229,10 @@ function ServerMenu({
                 }
               ]
             : []),
-          ...(row.isSlave
+          ...(row.isSlave && user?.grants['cluster-switchover']
             ? [
                 {
                   name: 'Promote To Leader',
-                  isDisabled: !user?.grants['cluster-switchover'],
                   onClick: () => {
                     openConfirmModal()
                     setConfirmTitle(`Confirm promotion for ${serverName}?`)

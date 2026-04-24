@@ -33,12 +33,18 @@ const SLIDE_DURATION_MS = 15000
 
 // Sections shown per cluster in order
 const SECTIONS = [
-  { view: 'cluster-ha',        label: 'Cluster & HA' },
-  { view: 'servers-proxies',   label: 'Servers & Proxies' },
-  { view: 'apps',              label: 'Application Servers' },
-  { view: 'logs',              label: 'Logs' },
-  { view: 'maintenance',       label: 'Maintenance' },
+  { view: 'cluster-ha',         label: 'Cluster & HA' },
+  { view: 'servers',            label: 'Servers' },
+  { view: 'proxies',            label: 'Proxies' },
+  { view: 'apps',               label: 'Application Servers' },
+  { view: 'logs-cluster',       label: 'Cluster & Security Logs' },
+  { view: 'logs-workload',      label: 'Workload Logs' },
+  { view: 'maintenance-backup', label: 'Backup' },
+  { view: 'maintenance-jobs',   label: 'Scheduler Jobs' },
+  { view: 'logs-jobs',          label: 'Job Logs' },
 ]
+
+const MAINTENANCE_VIEWS = new Set(['maintenance-backup', 'maintenance-jobs', 'logs-jobs'])
 
 function Slideshow() {
   const dispatch = useDispatch()
@@ -67,7 +73,7 @@ function Slideshow() {
       dispatch(getClusterMaster({ clusterName }))
       dispatch(getClusterLogs({ clusterName }))
       dispatch(getClusterApps({ clusterName }))
-      if (view === 'maintenance') {
+      if (MAINTENANCE_VIEWS.has(view)) {
         dispatch(getResticSnapshot({ clusterName, filter: 'latest-per-session' }))
         dispatch(getBackups({ clusterName }))
         dispatch(getBackupStats({ clusterName }))
@@ -91,7 +97,7 @@ function Slideshow() {
       const hasApps = cl.appServers?.length > 0
 
       SECTIONS.forEach(({ view, label }) => {
-        if (view === 'maintenance' && !hasBackup && !hasScheduler) return
+        if (MAINTENANCE_VIEWS.has(view) && !hasBackup && !hasScheduler) return
         if (view === 'apps' && !hasApps) return
         built.push({ clusterName: cl.name, view, label })
       })
@@ -208,31 +214,47 @@ function Slideshow() {
             Loading clusters…
           </Text>
         )}
+
         {currentSlide?.view === 'cluster-ha' && clusterData && (
           <Flex gap='24px' direction={{ base: 'column', lg: 'row' }}>
             <ClusterDetail selectedCluster={clusterData} user={user} />
             <HADetail selectedCluster={clusterData} user={user} />
           </Flex>
         )}
-        {currentSlide?.view === 'servers-proxies' && clusterData && (
-          <Flex direction='column' gap='24px'>
-            <DBServers selectedCluster={clusterData} user={user} />
-            <Proxies selectedCluster={clusterData} user={user} />
-          </Flex>
+
+        {currentSlide?.view === 'servers' && clusterData && (
+          <DBServers selectedCluster={clusterData} user={user} />
         )}
+
+        {currentSlide?.view === 'proxies' && clusterData && (
+          <Proxies selectedCluster={clusterData} user={user} />
+        )}
+
         {currentSlide?.view === 'apps' && clusterData && (
           <Apps selectedCluster={clusterData} user={user} />
         )}
-        {currentSlide?.view === 'logs' && (
+
+        {currentSlide?.view === 'logs-cluster' && (
           <Flex direction='column' gap='8px'>
             <AccordionComponent heading='Cluster Logs' body={<GeneralLogs />} />
-            <AccordionComponent heading='Job Logs' body={<TaskLogs />} />
             <AccordionComponent heading='Security Logs' body={<SecurityLogs />} />
-            <AccordionComponent heading='Workload Logs' body={<WorkloadLogs />} />
           </Flex>
         )}
-        {currentSlide?.view === 'maintenance' && (
-          <Maintenance selectedCluster={clusterData} user={user} />
+
+        {currentSlide?.view === 'logs-workload' && (
+          <AccordionComponent heading='Workload Logs' body={<WorkloadLogs />} />
+        )}
+
+        {currentSlide?.view === 'maintenance-backup' && (
+          <Maintenance selectedCluster={clusterData} user={user} section='backup' />
+        )}
+
+        {currentSlide?.view === 'maintenance-jobs' && (
+          <Maintenance selectedCluster={clusterData} user={user} section='jobs' />
+        )}
+
+        {currentSlide?.view === 'logs-jobs' && (
+          <AccordionComponent heading='Job Logs' body={<TaskLogs />} />
         )}
       </Box>
     </PageContainer>

@@ -124,7 +124,8 @@ const resticTaskDetail = (row) => {
 }
 
 
-function Maintenance({ selectedCluster, user }) {
+// section: undefined = full page, 'backup' = backup accordions only, 'jobs' = jobs accordion only
+function Maintenance({ selectedCluster, user, section }) {
   const [data, setData] = useState([])
   const [snapshotData, setSnapshotData] = useState([])
   const [queueData, setQueueData] = useState([])
@@ -553,9 +554,9 @@ function Maintenance({ selectedCluster, user }) {
     })
   ])
 
-  return (
-    <VStack className={styles.backupContainer}>
-<AccordionComponent
+  const backupSection = (
+    <>
+      <AccordionComponent
         heading={'Current Backups'}
         isOpen={isBackupsOpen}
         onToggle={onBackupsToggle}
@@ -595,24 +596,38 @@ function Maintenance({ selectedCluster, user }) {
           </VStack>
         }
       />
-      <AccordionComponent
-        heading={'Database Jobs'}
-        isOpen={isDBJobsOpen}
-        onToggle={onDBJobsToggle}
-        className={styles.accordion}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<DatabaseJobs clusterName={selectedCluster?.name} />}
-      />
-      <AccordionComponent
-        className={styles.accordion}
-        isOpen={isLogsOpen}
-        onToggle={onLogsToggle}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        heading={'Job Logs'}
-        body={<TaskLogs />}
-      />
+    </>
+  )
+
+  const jobsSection = (
+    <AccordionComponent
+      heading={'Database Jobs'}
+      isOpen={isDBJobsOpen}
+      onToggle={onDBJobsToggle}
+      className={styles.accordion}
+      headerClassName={styles.accordionHeader}
+      panelClassName={styles.accordionPanel}
+      body={<DatabaseJobs clusterName={selectedCluster?.name} />}
+    />
+  )
+
+  const logsSection = (
+    <AccordionComponent
+      className={styles.accordion}
+      isOpen={isLogsOpen}
+      onToggle={onLogsToggle}
+      headerClassName={styles.accordionHeader}
+      panelClassName={styles.accordionPanel}
+      heading={'Job Logs'}
+      body={<TaskLogs />}
+    />
+  )
+
+  return (
+    <VStack className={styles.backupContainer}>
+      {(!section || section === 'backup') && backupSection}
+      {(!section || section === 'jobs') && jobsSection}
+      {!section && logsSection}
       {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} body={<DynamicForm
         payload={payload}
         queueData={queueData}
