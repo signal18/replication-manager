@@ -44,7 +44,7 @@ function Login({ dashboard = false }) {
         if (data && data.token) {
           localStorage.setItem('user_token', data.token)
           localStorage.setItem('username', data.username || 'admin')
-          navigate('/')
+          navigate(dashboard ? '/slideshow' : '/')
         } else {
           dispatch(logout())
           dispatch(clearClusters())

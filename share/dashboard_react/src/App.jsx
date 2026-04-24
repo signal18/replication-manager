@@ -7,6 +7,7 @@ import Login from './Pages/Login'
 // const Login = lazy(() => import('./Pages/Login'))
 // const Home = lazy(() => import('./Pages/Home'))
 import Home from './Pages/Home'
+import Slideshow from './Pages/Slideshow'
 import ClusterDB from './Pages/ClusterDB'
 import TerminalComponent from './Pages/Terminal'
 import ClusterApp from './Pages/ClusterApp'
@@ -75,6 +76,14 @@ function App() {
         } />
         <Route path='/login' element={<Login />} />
         <Route path='/dashboard' element={<Login dashboard />} />
+        <Route
+          path='/slideshow'
+          element={
+            <PrivateRoute>
+              <Slideshow />
+            </PrivateRoute>
+          }
+        />
       </Routes>
     </BrowserRouter>
   )
