@@ -49,6 +49,26 @@ func (cluster *Cluster) SetUserGrants(u *APIUser, grant string) {
 	}
 }
 
+// SetUserGrantsStrict applies grants and always overwrites any previously set value.
+// Used for the main config ACL which must take precedence over cluster-level overrides.
+func (cluster *Cluster) SetUserGrantsStrict(u *APIUser, grant string) {
+	if u.Grants == nil {
+		u.Grants = map[string]bool{}
+	}
+
+	acls := strings.Split(grant, " ")
+	for key, value := range cluster.Grants {
+		found := false
+		for _, acl := range acls {
+			if strings.HasPrefix(key, acl) && acl != "" {
+				found = true
+				break
+			}
+		}
+		u.Grants[value] = found
+	}
+}
+
 func (cluster *Cluster) SetUserRoles(u *APIUser, roles string) {
 	if u.Roles == nil {
 		u.Roles = map[string]bool{}
@@ -234,26 +254,27 @@ func (cluster *Cluster) LoadAPIUsers() error {
 		newapiuser.Grants = make(map[string]bool)
 		newapiuser.Roles = make(map[string]bool)
 
-		// Assign Roles and ACLs
-		if userACL, ok := listACLs[newapiuser.User]; ok {
-			cluster.SetUserGrants(&newapiuser, userACL.ACLs)
-			cluster.SetUserRoles(&newapiuser, userACL.Roles)
-		}
-
-		if discardACL, ok := listDiscard[newapiuser.User]; ok {
-			acls := strings.Split(discardACL.ACLs, " ")
-			for _, acl := range acls {
-				newapiuser.Grants[acl] = false
-			}
-		}
-
-		// Assign Roles and ACLs
+		// Apply cluster-level external ACLs first (lower priority)
 		if userACL, ok := listACLsExt[newapiuser.User]; ok {
 			cluster.SetUserGrants(&newapiuser, userACL.ACLs)
 			cluster.SetUserRoles(&newapiuser, userACL.Roles)
 		}
 
 		if discardACL, ok := listDiscardExt[newapiuser.User]; ok {
+			acls := strings.Split(discardACL.ACLs, " ")
+			for _, acl := range acls {
+				newapiuser.Grants[acl] = false
+			}
+		}
+
+		// Apply main config ACLs last using strict override — main config is always authoritative
+		// and cannot be escalated by cluster-level configuration.
+		if userACL, ok := listACLs[newapiuser.User]; ok {
+			cluster.SetUserGrantsStrict(&newapiuser, userACL.ACLs)
+			cluster.SetUserRoles(&newapiuser, userACL.Roles)
+		}
+
+		if discardACL, ok := listDiscard[newapiuser.User]; ok {
 			acls := strings.Split(discardACL.ACLs, " ")
 			for _, acl := range acls {
 				newapiuser.Grants[acl] = false
