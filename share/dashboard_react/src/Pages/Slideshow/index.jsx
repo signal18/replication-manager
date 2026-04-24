@@ -51,6 +51,8 @@ function Slideshow() {
 
   const clusters = useSelector((state) => state.globalClusters.clusters)
   const clusterData = useSelector((state) => state.cluster.clusterData)
+  const clusterServers = useSelector((state) => state.cluster.clusterServers)
+  const clusterProxies = useSelector((state) => state.cluster.clusterProxies)
 
   const [slides, setSlides] = useState([]) // [{clusterName, view, label}]
   const [slideIndex, setSlideIndex] = useState(0)
@@ -222,12 +224,16 @@ function Slideshow() {
           </Flex>
         )}
 
-        {currentSlide?.view === 'servers' && clusterData && (
-          <DBServers selectedCluster={clusterData} user={user} />
+        {currentSlide?.view === 'servers' && (
+          clusterData && clusterServers?.length > 0
+            ? <DBServers selectedCluster={clusterData} user={user} />
+            : <Text color='gray.400' textAlign='center' mt={8}>Loading servers…</Text>
         )}
 
-        {currentSlide?.view === 'proxies' && clusterData && (
-          <Proxies selectedCluster={clusterData} user={user} />
+        {currentSlide?.view === 'proxies' && (
+          clusterData && clusterProxies?.length > 0
+            ? <Proxies selectedCluster={clusterData} user={user} />
+            : <Text color='gray.400' textAlign='center' mt={8}>Loading proxies…</Text>
         )}
 
         {currentSlide?.view === 'apps' && clusterData && (
