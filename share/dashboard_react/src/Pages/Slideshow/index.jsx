@@ -28,17 +28,15 @@ import PageContainer from '../PageContainer'
 import { AppSettings } from '../../AppSettings'
 
 // Duration in milliseconds each slide is displayed
-const SLIDE_DURATION_MS = 5000
+const SLIDE_DURATION_MS = 15000
 
 // Sections shown per cluster in order
 const SECTIONS = [
-  { view: 'cluster-detail', label: 'Cluster' },
-  { view: 'ha-detail',      label: 'High Availability' },
-  { view: 'db-servers',     label: 'Database Servers' },
-  { view: 'proxies',        label: 'Proxies' },
-  { view: 'apps',           label: 'Application Servers' },
-  { view: 'logs',           label: 'Logs' },
-  { view: 'maintenance',    label: 'Maintenance' },
+  { view: 'cluster-ha',        label: 'Cluster & HA' },
+  { view: 'servers-proxies',   label: 'Servers & Proxies' },
+  { view: 'apps',              label: 'Application Servers' },
+  { view: 'logs',              label: 'Logs' },
+  { view: 'maintenance',       label: 'Maintenance' },
 ]
 
 function Slideshow() {
@@ -194,17 +192,17 @@ function Slideshow() {
             Loading clusters…
           </Text>
         )}
-        {currentSlide?.view === 'cluster-detail' && clusterData && (
-          <ClusterDetail selectedCluster={clusterData} user={user} />
+        {currentSlide?.view === 'cluster-ha' && clusterData && (
+          <Flex gap='24px' direction={{ base: 'column', lg: 'row' }}>
+            <ClusterDetail selectedCluster={clusterData} user={user} />
+            <HADetail selectedCluster={clusterData} user={user} />
+          </Flex>
         )}
-        {currentSlide?.view === 'ha-detail' && clusterData && (
-          <HADetail selectedCluster={clusterData} user={user} />
-        )}
-        {currentSlide?.view === 'db-servers' && clusterData && (
-          <DBServers selectedCluster={clusterData} user={user} />
-        )}
-        {currentSlide?.view === 'proxies' && clusterData && (
-          <Proxies selectedCluster={clusterData} user={user} />
+        {currentSlide?.view === 'servers-proxies' && clusterData && (
+          <Flex direction='column' gap='24px'>
+            <DBServers selectedCluster={clusterData} user={user} />
+            <Proxies selectedCluster={clusterData} user={user} />
+          </Flex>
         )}
         {currentSlide?.view === 'apps' && clusterData && (
           <Apps selectedCluster={clusterData} user={user} />
