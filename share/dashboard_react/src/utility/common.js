@@ -94,6 +94,7 @@ export const padWithZero = (number) => {
 }
 
 export const formatBytes = (bytes, decimals = 2) => {
+  if (bytes == null || isNaN(bytes)) return '—'
   if (bytes === 0) return '0 Bytes'
 
   const k = 1024
@@ -237,6 +238,7 @@ export const getColorFromServerStatus = (status) => {
 }
 
 export const sizeOf = function (bytes) {
+  if (bytes == null || isNaN(bytes)) { return '—'; }
   if (bytes == 0) { return "0.00 B"; }
   var e = Math.floor(Math.log(bytes) / Math.log(1024));
   return (bytes/Math.pow(1024, e)).toFixed(2)+' '+' KMGTP'.charAt(e)+'B';

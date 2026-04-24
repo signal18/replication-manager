@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Box, Flex, Grid, Progress, Text } from '@chakra-ui/react'
+import { Box, Flex, Progress, Text } from '@chakra-ui/react'
 import {
   getBackupStats,
   getBackups,
@@ -25,6 +25,7 @@ import Apps from '../Dashboard/components/Apps'
 import { GeneralLogs, TaskLogs, SecurityLogs, WorkloadLogs } from '../Dashboard/components/Logs'
 import Maintenance from '../Maintenance'
 import PageContainer from '../PageContainer'
+import AccordionComponent from '../../components/AccordionComponent'
 import { AppSettings } from '../../AppSettings'
 
 // Duration in milliseconds each slide is displayed
@@ -223,24 +224,12 @@ function Slideshow() {
           <Apps selectedCluster={clusterData} user={user} />
         )}
         {currentSlide?.view === 'logs' && (
-          <Grid templateColumns='repeat(2, 1fr)' gap={4}>
-            <Box>
-              <Text fontWeight='semibold' fontSize='sm' mb={2} color='gray.600'>Cluster Logs</Text>
-              <GeneralLogs />
-            </Box>
-            <Box>
-              <Text fontWeight='semibold' fontSize='sm' mb={2} color='gray.600'>Job Logs</Text>
-              <TaskLogs />
-            </Box>
-            <Box>
-              <Text fontWeight='semibold' fontSize='sm' mb={2} color='gray.600'>Security Logs</Text>
-              <SecurityLogs />
-            </Box>
-            <Box>
-              <Text fontWeight='semibold' fontSize='sm' mb={2} color='gray.600'>Workload Logs</Text>
-              <WorkloadLogs />
-            </Box>
-          </Grid>
+          <Flex direction='column' gap='8px'>
+            <AccordionComponent heading='Cluster Logs' body={<GeneralLogs />} />
+            <AccordionComponent heading='Job Logs' body={<TaskLogs />} />
+            <AccordionComponent heading='Security Logs' body={<SecurityLogs />} />
+            <AccordionComponent heading='Workload Logs' body={<WorkloadLogs />} />
+          </Flex>
         )}
         {currentSlide?.view === 'maintenance' && (
           <Maintenance selectedCluster={clusterData} user={user} />
