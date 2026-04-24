@@ -156,12 +156,27 @@ function Slideshow() {
         : AppSettings.DEFAULT_INTERVAL) * 1000
 
     const poller = setInterval(() => {
+      // Always refresh cluster list so the slideshow recovers after a server restart
+      dispatch(getClusters({}))
+
       const current = slidesRef.current[slideIndexRef.current]
       if (current) loadSlideData(current)
     }, refreshMs)
 
     return () => clearInterval(poller)
   }, [loadSlideData])
+
+  // ─── Fast retry when no clusters loaded yet (handles server restart) ──────
+  // Polls every 5 s until slides are built, then stops polling.
+  useEffect(() => {
+    const retrier = setInterval(() => {
+      if (slidesRef.current.length === 0) {
+        dispatch(getClusters({}))
+        dispatch(getMonitoredData({}))
+      }
+    }, 5000)
+    return () => clearInterval(retrier)
+  }, [dispatch])
 
   // ─── Resolve user from clusterData ────────────────────────────────────────
   useEffect(() => {
