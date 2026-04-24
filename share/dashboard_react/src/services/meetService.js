@@ -20,16 +20,13 @@ export const meetService = {
 
 
 async function getMeetInfo() {
-    try {
-        const response = await meetApi.get('info');
-        if (response.status !== 200) {
-            throw new Error(`Error fetching meet info: ${response.status} ${response.data}`);
-        }
-        return response;
-    } catch (error) {
-        console.error('Error fetching meet info:', error);
-        throw error;
+    const response = await meetApi.get('info');
+    if (response.status !== 200) {
+        const err = new Error(`Error fetching meet info: ${response.status} ${response.data}`);
+        err.errorStatus = response.status;
+        throw err;
     }
+    return response;
 }
 
 async function postMeetMessageOnChannel(channelId, message) {
