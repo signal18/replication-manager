@@ -72,236 +72,263 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
   const g = user?.grants ?? {}
   const isVisitor = !!user?.roles?.['visitor']
 
-  const haItems = [
-    ...(g['cluster-settings'] ? [{
-      name: 'Reset Failover Counter',
-      onClick: () => {
-        openConfirmModal()
-        setConfirmTitle('Reset failover counter?')
-        setConfirmHandler(() => () => dispatch(resetFailOverCounter({ clusterName: selectedCluster?.name })))
-      }
-    }] : []),
-    ...(g['cluster-reset-sla'] ? [{
-      name: 'Rotate SLA',
-      onClick: () => {
-        openConfirmModal()
-        setConfirmTitle('Reset SLA?')
-        setConfirmHandler(() => () => dispatch(resetSLA({ clusterName: selectedCluster?.name })))
-      }
-    }] : []),
-    ...(g['cluster-traffic'] ? [{
-      name: 'Toggle Traffic',
-      onClick: () => {
-        openConfirmModal()
-        setConfirmTitle('Toggle traffic?')
-        setConfirmHandler(() => () => dispatch(toggleTraffic({ clusterName: selectedCluster?.name })))
-      }
-    }] : []),
-    ...(g['cluster-traffic'] && selectedCluster.config?.topologyStaging ? [{
-      name: 'Toggle Traffic Staging',
-      onClick: () => {
-        openConfirmModal()
-        setConfirmTitle('Toggle traffic staging?')
-        setConfirmHandler(() => () => dispatch(toggleTrafficStaging({ clusterName: selectedCluster?.name })))
-      }
-    }] : []),
-    ...(!isVisitor && !readOnly && clusterMaster?.state === 'Failed' && g['cluster-failover']
-      ? [{
-          name: 'Failover',
-          onClick: () => {
-            openConfirmModal()
-            setConfirmTitle('Confirm failover?')
-            setConfirmHandler(() => () => dispatch(failOverCluster({ clusterName: selectedCluster?.name })))
-          }
-        }]
-      : !isVisitor && !readOnly && clusterMaster?.state !== 'Failed' && g['cluster-switchover']
-      ? [{
-          name: 'Switchover',
-          onClick: () => {
-            openConfirmModal()
-            setConfirmTitle('Confirm switchover?')
-            setConfirmHandler(() => () => dispatch(switchOverCluster({ clusterName: selectedCluster?.name })))
-          }
-        }]
-      : [])
-  ]
-
-  const provisionItems = [
-    ...(g['cluster-create'] ? [{
-      name: 'New Cluster Shard',
-      onClick: () => { setIsNewClusterModalOpen(true) }
-    }] : []),
-    ...(g['cluster-create-monitor'] ? [{
-      name: 'New Monitor',
-      onClick: () => { setIsNewServerModalOpen(true) }
-    }] : []),
-    ...(g['prov-cluster'] ? [{
-      name: 'Provision Cluster',
-      onClick: () => {
-        openConfirmModal()
-        setConfirmTitle('Provision cluster?')
-        setConfirmHandler(() => () => dispatch(provisionCluster({ clusterName: selectedCluster?.name })))
-      }
-    }] : []),
-    ...(g['prov-cluster-unprovision'] ? [{
-      name: 'Unprovision Cluster',
-      onClick: () => {
-        openConfirmModal()
-        setConfirmTitle('Unprovision cluster?')
-        setConfirmHandler(() => () => dispatch(unProvisionCluster({ clusterName: selectedCluster?.name })))
-      }
-    }] : [])
-  ]
-
-  const credentialItems = [
-    ...(g['cluster-settings'] ? [
-      {
-        name: 'Set Database Credentials',
-        onClick: () => { setIsCredentialModalOpen(true); setCredentialType('db-servers-credential') }
-      },
-      {
-        name: 'Set Replication Credentials',
-        onClick: () => { setIsCredentialModalOpen(true); setCredentialType('replication-credential') }
-      },
-      {
-        name: 'Set DBA Credentials',
-        onClick: () => { setIsCredentialModalOpen(true); setCredentialType('cloud18-dba-user-credentials') }
-      },
-      {
-        name: 'Set Sponsor DB Credentials',
-        onClick: () => { setIsCredentialModalOpen(true); setCredentialType('cloud18-sponsor-user-credentials') }
-      },
-      {
-        name: 'Set ProxySQL Credentials',
-        onClick: () => { setIsCredentialModalOpen(true); setCredentialType('proxysql-servers-credential') }
-      },
-      {
-        name: 'Set Maxscale Credentials',
-        onClick: () => { setIsCredentialModalOpen(true); setCredentialType('maxscale-servers-credential') }
-      },
-      {
-        name: 'Set Sharding Proxy Credentials',
-        onClick: () => { setIsCredentialModalOpen(true); setCredentialType('shardproxy-servers-credential') }
-      }
-    ] : []),
-    ...(g['cluster-rotate-passwords'] ? [{
-      name: 'Rotate Database Credentials',
-      onClick: () => {
-        openConfirmModal()
-        setConfirmTitle('Rotate database credentials?')
-        setConfirmHandler(() => () => dispatch(rotateDBCredential({ clusterName: selectedCluster?.name })))
-      }
-    }] : [])
-  ]
-
-  const maintenanceItems = [
-    ...(g['cluster-sharding'] && selectedCluster?.config?.monitoringSchemaChange ? [{
-      name: 'Run Monitor Schema',
-      onClick: () => {
-        openConfirmModal()
-        setConfirmTitle('Run monitor schema for all databases?')
-        setConfirmHandler(() => () => dispatch(monitorAllSchemas({ clusterName: selectedCluster?.name })))
-      }
-    }] : []),
-    ...(g['cluster-rolling'] ? [
-      {
-        name: 'Rolling Optimize',
-        onClick: () => {
-          openConfirmModal()
-          setConfirmTitle('Rolling optimize?')
-          setConfirmHandler(() => () => dispatch(rollingOptimize({ clusterName: selectedCluster?.name })))
-        }
-      },
-      {
-        name: 'Rolling Jobs Upgrade',
-        onClick: () => {
-          openConfirmModal()
-          setConfirmTitle('Rolling jobs upgrade?')
-          setConfirmHandler(() => () => dispatch(rollingJobsUpgrade({ clusterName: selectedCluster?.name })))
-        }
-      },
-      {
-        name: 'Rolling Restart',
-        onClick: () => {
-          openConfirmModal()
-          setConfirmTitle('Rolling restart?')
-          setConfirmHandler(() => () => dispatch(rollingRestart({ clusterName: selectedCluster?.name })))
-        }
-      },
-      {
-        name: 'Cancel Rolling Restart',
-        onClick: () => {
-          openConfirmModal()
-          setConfirmTitle('Cancel Rolling Restart?')
-          setConfirmHandler(() => () => dispatch(cancelRollingRestart({ clusterName: selectedCluster?.name })))
-        }
-      },
-      {
-        name: 'Cancel Rolling Reprove',
-        onClick: () => {
-          openConfirmModal()
-          setConfirmTitle('Cancel Rolling Reprove?')
-          setConfirmHandler(() => () => dispatch(cancelRollingReprov({ clusterName: selectedCluster?.name })))
-        }
-      }
-    ] : []),
-    ...(g['cluster-certificates-rotate'] ? [{
-      name: 'Rotate Certificates',
-      onClick: () => {
-        openConfirmModal()
-        setConfirmTitle('Rotate certificates?')
-        setConfirmHandler(() => () => dispatch(rotateCertificates({ clusterName: selectedCluster?.name })))
-      }
-    }] : []),
-    ...(g['cluster-certificates-reload'] ? [{
-      name: 'Reload Certificates',
-      onClick: () => {
-        openConfirmModal()
-        setConfirmTitle('Reload certificates?')
-        setConfirmHandler(() => () => dispatch(reloadCertificates({ clusterName: selectedCluster?.name })))
-      }
-    }] : [])
-  ]
-
-  const configItems = [
-    ...(g['cluster-settings'] ? [
-      {
-        name: 'Reload',
-        onClick: () => {
-          openConfirmModal()
-          setConfirmTitle('Confirm reload config?')
-          setConfirmHandler(() => () => dispatch(configReload({ clusterName: selectedCluster?.name })))
-        }
-      },
-      {
-        name: 'Database discover config',
-        onClick: () => {
-          openConfirmModal()
-          setConfirmTitle('Confirm database discover config?')
-          setConfirmHandler(() => () => dispatch(configDiscoverDB({ clusterName: selectedCluster?.name })))
-        }
-      }
-    ] : []),
-    ...(g['db-config-flag'] ? [{
-      name: 'Database apply dynamic config',
-      onClick: () => {
-        openConfirmModal()
-        setConfirmTitle('Confirm database apply config?')
-        setConfirmHandler(() => () => dispatch(configDynamic({ clusterName: selectedCluster?.name })))
-      }
-    }] : [])
-  ]
-
   const menuOptions = [
-    ...(haItems.length > 0 ? [{ name: 'HA', subMenu: haItems }] : []),
-    ...(provisionItems.length > 0 ? [{ name: 'Provision', subMenu: provisionItems }] : []),
-    ...(credentialItems.length > 0 ? [{ name: 'Credentials', subMenu: credentialItems }] : []),
-    ...(maintenanceItems.length > 0 ? [{ name: 'Maintenance', subMenu: maintenanceItems }] : []),
-    ...(g['cluster-replication'] ? [{
+    {
+      name: 'HA',
+      subMenu: [
+        {
+          name: 'Reset Failover Counter',
+          isDisabled: !g['cluster-settings'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Reset failover counter?')
+            setConfirmHandler(() => () => dispatch(resetFailOverCounter({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Rotate SLA',
+          isDisabled: !g['cluster-reset-sla'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Reset SLA?')
+            setConfirmHandler(() => () => dispatch(resetSLA({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Toggle Traffic',
+          isDisabled: !g['cluster-traffic'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Toggle traffic?')
+            setConfirmHandler(() => () => dispatch(toggleTraffic({ clusterName: selectedCluster?.name })))
+          }
+        },
+        ...(selectedCluster.config?.topologyStaging ? [{
+          name: 'Toggle Traffic Staging',
+          isDisabled: !g['cluster-traffic'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Toggle traffic staging?')
+            setConfirmHandler(() => () => dispatch(toggleTrafficStaging({ clusterName: selectedCluster?.name })))
+          }
+        }] : []),
+        ...(!isVisitor && !readOnly && clusterMaster?.state === 'Failed' && g['cluster-failover']
+          ? [
+            {
+              name: 'Failover',
+              onClick: () => {
+                openConfirmModal()
+                setConfirmTitle('Confirm failover?')
+                setConfirmHandler(() => () => dispatch(failOverCluster({ clusterName: selectedCluster?.name })))
+              }
+            }
+          ]
+          : !isVisitor && !readOnly && clusterMaster?.state !== 'Failed' && g['cluster-switchover']
+          ? [
+            {
+              name: 'Switchover',
+              onClick: () => {
+                openConfirmModal()
+                setConfirmTitle('Confirm switchover?')
+                setConfirmHandler(
+                  () => () => dispatch(switchOverCluster({ clusterName: selectedCluster?.name }))
+                )
+              }
+            }
+          ]
+          : [])
+      ]
+    },
+    {
+      name: 'Provision',
+      subMenu: [
+        {
+          name: 'New Cluster Shard',
+          isDisabled: !g['cluster-create'],
+          onClick: () => {
+            setIsNewClusterModalOpen(true)
+          }
+        },
+        {
+          name: 'New Monitor',
+          isDisabled: !g['cluster-create-monitor'],
+          onClick: () => {
+            setIsNewServerModalOpen(true)
+          }
+        },
+        {
+          name: 'Provision Cluster',
+          isDisabled: !g['prov-cluster'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Provision cluster?')
+            setConfirmHandler(() => () => dispatch(provisionCluster({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Unprovision Cluster',
+          isDisabled: !g['prov-cluster-unprovision'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Unprovision cluster?')
+            setConfirmHandler(() => () => dispatch(unProvisionCluster({ clusterName: selectedCluster?.name })))
+          }
+        }
+      ]
+    },
+    {
+      name: 'Credentials',
+      subMenu: [
+        {
+          name: 'Set Database Credentials',
+          isDisabled: !g['cluster-settings'],
+          onClick: () => {
+            setIsCredentialModalOpen(true)
+            setCredentialType('db-servers-credential')
+          }
+        },
+        {
+          name: 'Set Replication Credentials',
+          isDisabled: !g['cluster-settings'],
+          onClick: () => {
+            setIsCredentialModalOpen(true)
+            setCredentialType('replication-credential')
+          }
+        },
+        {
+          name: 'Set DBA Credentials',
+          isDisabled: !g['cluster-settings'],
+          onClick: () => {
+            setIsCredentialModalOpen(true)
+            setCredentialType('cloud18-dba-user-credentials')
+          }
+        },
+        {
+          name: 'Set Sponsor DB Credentials',
+          isDisabled: !g['cluster-settings'],
+          onClick: () => {
+            setIsCredentialModalOpen(true)
+            setCredentialType('cloud18-sponsor-user-credentials')
+          }
+        },
+        {
+          name: 'Set ProxySQL Credentials',
+          isDisabled: !g['cluster-settings'],
+          onClick: () => {
+            setIsCredentialModalOpen(true)
+            setCredentialType('proxysql-servers-credential')
+          }
+        },
+        {
+          name: 'Set Maxscale Credentials',
+          isDisabled: !g['cluster-settings'],
+          onClick: () => {
+            setIsCredentialModalOpen(true)
+            setCredentialType('maxscale-servers-credential')
+          }
+        },
+        {
+          name: 'Set Sharding Proxy Credentials',
+          isDisabled: !g['cluster-settings'],
+          onClick: () => {
+            setIsCredentialModalOpen(true)
+            setCredentialType('shardproxy-servers-credential')
+          }
+        },
+        {
+          name: 'Rotate Database Credentials',
+          isDisabled: !g['cluster-rotate-passwords'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Rotate database credentials?')
+            setConfirmHandler(() => () => dispatch(rotateDBCredential({ clusterName: selectedCluster?.name })))
+          }
+        }
+      ]
+    },
+    {
+      name: 'Maintenance',
+      subMenu: [
+        {
+          name: 'Run Monitor Schema',
+          isDisabled: !selectedCluster?.config?.monitoringSchemaChange || !g['cluster-sharding'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Run monitor schema for all databases?')
+            setConfirmHandler(() => () => dispatch(monitorAllSchemas({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Rolling Optimize',
+          isDisabled: !g['cluster-rolling'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Rolling optimize?')
+            setConfirmHandler(() => () => dispatch(rollingOptimize({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Rolling Jobs Upgrade',
+          isDisabled: !g['cluster-rolling'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Rolling jobs upgrade?')
+            setConfirmHandler(() => () => dispatch(rollingJobsUpgrade({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Rolling Restart',
+          isDisabled: !g['cluster-rolling'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Rolling restart?')
+            setConfirmHandler(() => () => dispatch(rollingRestart({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Rotate Certificates',
+          isDisabled: !g['cluster-certificates-rotate'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Rotate certificates?')
+            setConfirmHandler(() => () => dispatch(rotateCertificates({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Reload Certificates',
+          isDisabled: !g['cluster-certificates-reload'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Reload certificates?')
+            setConfirmHandler(() => () => dispatch(reloadCertificates({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Cancel Rolling Restart',
+          isDisabled: !g['cluster-rolling'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Cancel Rolling Restart?')
+            setConfirmHandler(() => () => dispatch(cancelRollingRestart({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Cancel Rolling Reprove',
+          isDisabled: !g['cluster-rolling'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Cancel Rolling Reprove?')
+            setConfirmHandler(() => () => dispatch(cancelRollingReprov({ clusterName: selectedCluster?.name })))
+          }
+        }
+      ]
+    },
+    {
       name: 'Replication Bootstrap',
       subMenu: [
         {
           name: 'Master Slave',
+          isDisabled: !g['cluster-replication'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle(confirmBootrapMessage)
@@ -310,6 +337,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
         },
         {
           name: 'Master Slave Positional',
+          isDisabled: !g['cluster-replication'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle(confirmBootrapMessage)
@@ -318,6 +346,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
         },
         {
           name: 'Multi Master',
+          isDisabled: !g['cluster-replication'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle(confirmBootrapMessage)
@@ -326,6 +355,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
         },
         {
           name: 'Multi Master Ring',
+          isDisabled: !g['cluster-replication'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle(confirmBootrapMessage)
@@ -334,6 +364,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
         },
         {
           name: 'Multi Tier Slave',
+          isDisabled: !g['cluster-replication'],
           onClick: () => {
             openConfirmModal()
             setConfirmTitle(confirmBootrapMessage)
@@ -341,13 +372,45 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
           }
         }
       ]
-    }] : []),
-    ...(configItems.length > 0 ? [{ name: 'Config', subMenu: configItems }] : []),
-    ...(g['cluster-debug'] ? [{
+    },
+    {
+      name: 'Config',
+      subMenu: [
+        {
+          name: 'Reload',
+          isDisabled: !g['cluster-settings'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Confirm reload config?')
+            setConfirmHandler(() => () => dispatch(configReload({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Database discover config',
+          isDisabled: !g['cluster-settings'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Confirm database discover config?')
+            setConfirmHandler(() => () => dispatch(configDiscoverDB({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Database apply dynamic config',
+          isDisabled: !g['db-config-flag'],
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Confirm database apply config?')
+            setConfirmHandler(() => () => dispatch(configDynamic({ clusterName: selectedCluster?.name })))
+          }
+        }
+      ]
+    },
+    {
       name: 'Debug',
       subMenu: [
         {
           name: 'Clusters',
+          isDisabled: !g['cluster-debug'],
           onClick: () => {
             setIsClipboardModalOpen(true)
             setClipboardText(JSON.stringify(selectedCluster))
@@ -356,6 +419,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
         },
         {
           name: 'Servers',
+          isDisabled: !g['cluster-debug'],
           onClick: () => {
             setIsClipboardModalOpen(true)
             setClipboardText(JSON.stringify(clusterServers))
@@ -364,6 +428,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
         },
         {
           name: 'Proxies',
+          isDisabled: !g['cluster-debug'],
           onClick: () => {
             setIsClipboardModalOpen(true)
             setClipboardText(JSON.stringify(clusterProxies))
@@ -371,7 +436,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
           }
         }
       ]
-    }] : [])
+    }
   ]
 
   const dataObject = [
