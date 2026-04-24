@@ -223,6 +223,9 @@ func (repman *ReplicationManager) apiserver() {
 	if repman.Conf.Test {
 		router.HandleFunc("/", repman.handlerApp)
 		router.PathPrefix("/terminal/").HandlerFunc(repman.handlerApp)
+		router.HandleFunc("/login", repman.handlerApp)
+		router.HandleFunc("/dashboard", repman.handlerApp)
+		router.HandleFunc("/slideshow", repman.handlerApp)
 		router.PathPrefix("/images/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/assets/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 
@@ -232,6 +235,9 @@ func (repman *ReplicationManager) apiserver() {
 	} else {
 		router.HandleFunc("/", repman.rootHandler)
 		router.PathPrefix("/terminal/").HandlerFunc(repman.rootHandler)
+		router.HandleFunc("/login", repman.rootHandler)
+		router.HandleFunc("/dashboard", repman.rootHandler)
+		router.HandleFunc("/slideshow", repman.rootHandler)
 		router.PathPrefix("/static/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/app/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/images/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))

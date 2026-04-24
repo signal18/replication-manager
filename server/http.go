@@ -106,6 +106,9 @@ func (repman *ReplicationManager) httpserver() {
 		}
 		router.HandleFunc("/", repman.handlerApp)
 		router.PathPrefix("/terminal/").HandlerFunc(repman.handlerApp)
+		router.HandleFunc("/login", repman.handlerApp)
+		router.HandleFunc("/dashboard", repman.handlerApp)
+		router.HandleFunc("/slideshow", repman.handlerApp)
 		router.PathPrefix("/images/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/assets/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
@@ -114,6 +117,9 @@ func (repman *ReplicationManager) httpserver() {
 	} else {
 		router.HandleFunc("/", repman.rootHandler)
 		router.PathPrefix("/terminal/").HandlerFunc(repman.rootHandler)
+		router.HandleFunc("/login", repman.rootHandler)
+		router.HandleFunc("/dashboard", repman.rootHandler)
+		router.HandleFunc("/slideshow", repman.rootHandler)
 		router.PathPrefix("/images/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/assets/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/static/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
@@ -133,6 +139,8 @@ func (repman *ReplicationManager) httpserver() {
 	})
 
 	router.HandleFunc("/api/login", repman.loginHandler)
+	router.HandleFunc("/api/autologin", repman.autologinHandler)
+	router.HandleFunc("/api/dashboard-token", repman.dashboardTokenHandler)
 
 	router.Handle("/api/register", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
