@@ -110,11 +110,24 @@ function Slideshow() {
         built.push({ clusterName: cl.name, view, label })
       })
     })
+
+    // Only reset to slide 0 when the slide structure actually changes
+    // (cluster added/removed, or config that controls which sections appear).
+    // Routine getClusters polls return new array references even when data is
+    // identical, so comparing by reference would reset the index every few seconds.
+    const prev = slidesRef.current
+    const structurallyChanged =
+      built.length !== prev.length ||
+      built.some((s, i) => s.clusterName !== prev[i]?.clusterName || s.view !== prev[i]?.view)
+
     slidesRef.current = built
     setSlides(built)
-    setSlideIndex(0)
-    slideIndexRef.current = 0
-    loadSlideData(built[0])
+
+    if (structurallyChanged) {
+      setSlideIndex(0)
+      slideIndexRef.current = 0
+      loadSlideData(built[0])
+    }
   }, [clusters, loadSlideData])
 
   // ─── Initial cluster list fetch ───────────────────────────────────────────
