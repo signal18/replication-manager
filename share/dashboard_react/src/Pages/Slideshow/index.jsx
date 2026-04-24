@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Box, Flex, Progress, Text } from '@chakra-ui/react'
+import { Box, Flex, Grid, Progress, Text } from '@chakra-ui/react'
 import {
   getBackupStats,
   getBackups,
@@ -17,13 +17,29 @@ import {
   setRefreshInterval
 } from '../../redux/clusterSlice'
 import { getClusters, getMonitoredData } from '../../redux/globalClustersSlice'
-import Dashboard from '../Dashboard'
+import ClusterDetail from '../Dashboard/components/ClusterDetail'
+import HADetail from '../Dashboard/components/HADetail'
+import DBServers from '../Dashboard/components/DBServers'
+import Proxies from '../Dashboard/components/Proxies'
+import Apps from '../Dashboard/components/Apps'
+import { GeneralLogs, TaskLogs, SecurityLogs, WorkloadLogs } from '../Dashboard/components/Logs'
 import Maintenance from '../Maintenance'
 import PageContainer from '../PageContainer'
 import { AppSettings } from '../../AppSettings'
 
 // Duration in milliseconds each slide is displayed
-const SLIDE_DURATION_MS = 30000
+const SLIDE_DURATION_MS = 5000
+
+// Sections shown per cluster in order
+const SECTIONS = [
+  { view: 'cluster-detail', label: 'Cluster' },
+  { view: 'ha-detail',      label: 'High Availability' },
+  { view: 'db-servers',     label: 'Database Servers' },
+  { view: 'proxies',        label: 'Proxies' },
+  { view: 'apps',           label: 'Application Servers' },
+  { view: 'logs',           label: 'Logs' },
+  { view: 'maintenance',    label: 'Maintenance' },
+]
 
 function Slideshow() {
   const dispatch = useDispatch()
@@ -31,7 +47,7 @@ function Slideshow() {
   const clusters = useSelector((state) => state.globalClusters.clusters)
   const clusterData = useSelector((state) => state.cluster.clusterData)
 
-  const [slides, setSlides] = useState([]) // [{clusterName, view}]
+  const [slides, setSlides] = useState([]) // [{clusterName, view, label}]
   const [slideIndex, setSlideIndex] = useState(0)
   const [progress, setProgress] = useState(0)
   const [user, setUser] = useState(null)
@@ -68,8 +84,9 @@ function Slideshow() {
     if (!clusters || clusters.length === 0) return
     const built = []
     clusters.forEach((cl) => {
-      built.push({ clusterName: cl.name, view: 'dashboard' })
-      built.push({ clusterName: cl.name, view: 'maintenance' })
+      SECTIONS.forEach(({ view, label }) => {
+        built.push({ clusterName: cl.name, view, label })
+      })
     })
     slidesRef.current = built
     setSlides(built)
@@ -140,8 +157,9 @@ function Slideshow() {
   }, [clusterData])
 
   const currentSlide = slides[slideIndex]
-  const totalSlides = slides.length
   const clusterCount = clusters?.length || 0
+  const clusterIndex = clusterCount > 0 ? Math.floor(slideIndex / SECTIONS.length) + 1 : 0
+  const sectionIndex = (slideIndex % SECTIONS.length) + 1
 
   return (
     <PageContainer>
@@ -156,12 +174,12 @@ function Slideshow() {
         <Text fontWeight='bold' fontSize='lg'>
           {currentSlide?.clusterName || '…'}
         </Text>
-        <Text fontSize='sm' textTransform='capitalize' color='gray.500'>
-          {currentSlide?.view === 'dashboard' ? 'Dashboard' : 'Maintenance'}
+        <Text fontSize='sm' color='gray.500'>
+          {currentSlide?.label || '…'}
         </Text>
         <Text fontSize='xs' color='gray.400'>
           {clusterCount > 0
-            ? `Cluster ${Math.floor(slideIndex / 2) + 1} of ${clusterCount}`
+            ? `Cluster ${clusterIndex} of ${clusterCount} — section ${sectionIndex} of ${SECTIONS.length}`
             : 'Loading clusters…'}
         </Text>
       </Flex>
@@ -176,8 +194,40 @@ function Slideshow() {
             Loading clusters…
           </Text>
         )}
-        {currentSlide?.view === 'dashboard' && (
-          <Dashboard selectedCluster={clusterData} user={user} />
+        {currentSlide?.view === 'cluster-detail' && clusterData && (
+          <ClusterDetail selectedCluster={clusterData} user={user} />
+        )}
+        {currentSlide?.view === 'ha-detail' && clusterData && (
+          <HADetail selectedCluster={clusterData} user={user} />
+        )}
+        {currentSlide?.view === 'db-servers' && clusterData && (
+          <DBServers selectedCluster={clusterData} user={user} />
+        )}
+        {currentSlide?.view === 'proxies' && clusterData && (
+          <Proxies selectedCluster={clusterData} user={user} />
+        )}
+        {currentSlide?.view === 'apps' && clusterData && (
+          <Apps selectedCluster={clusterData} user={user} />
+        )}
+        {currentSlide?.view === 'logs' && (
+          <Grid templateColumns='repeat(2, 1fr)' gap={4}>
+            <Box>
+              <Text fontWeight='semibold' fontSize='sm' mb={2} color='gray.600'>Cluster Logs</Text>
+              <GeneralLogs />
+            </Box>
+            <Box>
+              <Text fontWeight='semibold' fontSize='sm' mb={2} color='gray.600'>Job Logs</Text>
+              <TaskLogs />
+            </Box>
+            <Box>
+              <Text fontWeight='semibold' fontSize='sm' mb={2} color='gray.600'>Security Logs</Text>
+              <SecurityLogs />
+            </Box>
+            <Box>
+              <Text fontWeight='semibold' fontSize='sm' mb={2} color='gray.600'>Workload Logs</Text>
+              <WorkloadLogs />
+            </Box>
+          </Grid>
         )}
         {currentSlide?.view === 'maintenance' && (
           <Maintenance selectedCluster={clusterData} user={user} />
