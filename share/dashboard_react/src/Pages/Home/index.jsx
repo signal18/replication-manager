@@ -291,7 +291,7 @@ function Home() {
               ? [renderClusterListTabWithArrow(), ...dashboardTabsRef.current]
               : globalTabsRef.current
           }
-          tabPrefix={[...(selectedClusterNameRef.current == '' ? [<div onClick={openNewClusterModal} className={styles.tabSelected}><CustomIcon icon={FaPlus} /></div>] : [])]}
+          tabPrefix={[...(selectedClusterNameRef.current == '' && localStorage.getItem('username') == "admin" ? [<div onClick={openNewClusterModal} className={styles.tabSelected}><CustomIcon icon={FaPlus} /></div>] : [])]}
           tabSuffix={[...(selectedClusterNameRef.current == '' && localStorage.getItem('username') == "admin" ? [<div onClick={openTerminalPage} className={styles.tabNormal}>Terminal</div>] : [])]}
           tabContents={[
             <ClusterList onClick={setDashboardTab} />,
