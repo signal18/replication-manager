@@ -38,7 +38,7 @@ import CopyTextModal from '../../../components/Modals/CopyTextModal'
 import SetCredentialsModal from '../../../components/Modals/SetCredentialsModal'
 import NewClusterModal from '../../../components/Modals/NewClusterModal'
 
-function ClusterDetail({ selectedCluster }) {
+function ClusterDetail({ selectedCluster, user }) {
   const dispatch = useDispatch()
   const isDesktop = useSelector((state) => state.common.isDesktop)
   const monitor = useSelector((state) => state.globalClusters.monitor)
@@ -454,9 +454,9 @@ function ClusterDetail({ selectedCluster }) {
             valueClassName={`${parentStyles.rowValue} ${parentStyles.ClusterDetailRow}`}
           />
         }
-        headerAction='menu'
-        isLoading={menuActionsLoading}
-        menuOptions={menuOptions}
+        {...(user?.grants?.['cluster-settings'] || user?.grants?.['cluster-switchover'] || user?.grants?.['cluster-failover'] || user?.grants?.['prov-cluster-provision']
+          ? { headerAction: 'menu', isLoading: menuActionsLoading, menuOptions }
+          : {})}
       />
       {isConfirmModalOpen && (
         <ConfirmModal

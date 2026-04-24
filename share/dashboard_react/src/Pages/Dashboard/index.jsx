@@ -45,8 +45,8 @@ function Dashboard({ selectedCluster, user }) {
       <Flex gap='24px'>
         {selectedCluster && (
           <Flex w='100%' gap='24px' direction={isDesktop ? 'row' : 'column'}>
-            <ClusterDetail selectedCluster={selectedCluster} />
-            <HADetail selectedCluster={selectedCluster} />
+            <ClusterDetail selectedCluster={selectedCluster} user={user} />
+            <HADetail selectedCluster={selectedCluster} user={user} />
           </Flex>
         )}
       </Flex>
