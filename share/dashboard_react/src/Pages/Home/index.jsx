@@ -72,6 +72,11 @@ function Home() {
   const refreshInterval = useSelector((state) => state.cluster.refreshInterval)
   const clusterData = useSelector((state) => state.cluster.clusterData)
   const monitor = useSelector((state) => state.globalClusters.monitor)
+  const clusters = useSelector((state) => state.globalClusters.clusters)
+  const clusterPeers = useSelector((state) => state.globalClusters.clusterPeers)
+  const clustersLoading = useSelector((state) => state.globalClusters.loading)
+
+  const isSSOUser = !!loggedUser?.profile
 
   useEffect(() => {
     if (params?.cluster) {
@@ -90,7 +95,38 @@ function Home() {
       globalTabsRef.current.push('Settings')
     }
     globalTabsRef.current.push('Dashboard')
-  }, [monitor?.config?.cloud18,loggedUser?.User])
+  }, [monitor?.config?.cloud18, loggedUser?.User])
+
+  // For SSO users: if local clusters are empty after loading, advance to Peer,
+  // then to For Sale if Peer is also empty.
+  useEffect(() => {
+    if (
+      isClusterOpenRef.current ||     // a cluster is already open — leave it alone
+      !isSSOUser ||                   // non-SSO users stay on local
+      !monitor?.config?.cloud18 ||    // peer/for-sale tabs only exist when cloud18 is on
+      clustersLoading                 // wait until getClusters has finished
+    ) return
+
+    const currentTab = globalTabsRef.current[selectedTabRef.current]
+
+    if (currentTab === 'Clusters Local' && clusters.length === 0) {
+      // Local empty → try Peer
+      const peerIdx = globalTabsRef.current.indexOf('Clusters Peer')
+      if (peerIdx >= 0) {
+        selectedTabRef.current = peerIdx
+        setSelectedTab(peerIdx)
+        dispatch(getClusterPeers({}))
+      }
+    } else if (currentTab === 'Clusters Peer' && clusterPeers !== null && clusterPeers.length === 0) {
+      // Peer empty → try For Sale
+      const forSaleIdx = globalTabsRef.current.indexOf('Clusters For Sale')
+      if (forSaleIdx >= 0) {
+        selectedTabRef.current = forSaleIdx
+        setSelectedTab(forSaleIdx)
+        dispatch(getClusterForSale({}))
+      }
+    }
+  }, [clusters, clusterPeers, clustersLoading, isSSOUser, monitor?.config?.cloud18])
 
   useEffect(() => {
     if (clusterData) {
