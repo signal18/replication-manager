@@ -4950,6 +4950,10 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "mail-smtp-tls-skip-verify":
 		repman.Conf.MailSMTPTLSSkipVerify = isactive
 		repman.Mailer.UpdateTLSConfig(repman.Conf.MailSMTPTLSSkipVerify)
+	case "monitoring-log-api-login":
+		repman.Conf.MonitoringLogAPILogin = isactive
+	case "monitoring-log-api-login-silent-users":
+		repman.Conf.MonitoringLogAPILoginSilentUsers = value
 	case "mail-max-pool":
 		v, _ = strconv.Atoi(value)
 		repman.Conf.MailMaxPool = v
@@ -5007,6 +5011,8 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Mailer.UpdateTLSConfig(repman.Conf.MailSMTPTLSSkipVerify)
 	case "log-support":
 		repman.Conf.LogSupport = !repman.Conf.LogSupport
+	case "monitoring-log-api-login":
+		repman.Conf.MonitoringLogAPILogin = !repman.Conf.MonitoringLogAPILogin
 	default:
 		return errors.New("setting not found")
 	}
