@@ -534,6 +534,24 @@ func (repman *ReplicationManager) GetUserFromRequest(r *http.Request) string {
 	return ""
 }
 
+// UserHasGlobalGrant returns true if the user extracted from the JWT has the
+// given grant enabled in at least one cluster.  Global grants (global-admin-show,
+// global-settings, …) are resolved per cluster, so we accept any cluster hit.
+func (repman *ReplicationManager) UserHasGlobalGrant(r *http.Request, grant string) bool {
+	username := repman.GetUserFromRequest(r)
+	if username == "" {
+		return false
+	}
+	for _, cl := range repman.Clusters {
+		if u, ok := cl.APIUsers[username]; ok {
+			if u.Grants[grant] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // loginHandler handles user login requests.
 // @Summary User login
 // @Description Authenticates a user and returns a JWT token upon successful login.
@@ -715,6 +733,10 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		fmt.Fprintln(w, "Error while signing the token")
 		http.Error(w, "Error signing token: "+err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	if repman.Conf.MonitoringLogAPILogin {
+		repman.logSecurityEvent("api_login_success", user.Username, r.RemoteAddr, "API login successful")
 	}
 
 	//create a token instance using the token string

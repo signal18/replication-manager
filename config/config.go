@@ -193,6 +193,7 @@ type Config struct {
 	LogLevelDatabaseAudit                     int                          `mapstructure:"log-level-database-audit" toml:"log-level-database-audit" json:"logLevelDatabaseAudit"`
 	LogPlugin                                 bool                         `mapstructure:"log-plugin" toml:"log-plugin" json:"logPlugin"`
 	MonitorBinlogEvents                       bool                         `mapstructure:"monitoring-binlog-events" toml:"monitoring-binlog-events" json:"monitoringBinlogEvents"`
+	MonitoringLogAPILogin                     bool                         `scope:"server" mapstructure:"monitoring-log-api-login" toml:"monitoring-log-api-login" json:"monitoringLogApiLogin"`
 	LogPluginLevel                            int                          `mapstructure:"log-level-plugin" toml:"log-level-plugin" json:"logPluginLevel"`
 	PluginConfig                              map[string]map[string]string `mapstructure:"plugin-config" toml:"plugin-config" json:"pluginConfig"`
 	User                                      string                       `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
@@ -1384,8 +1385,10 @@ const (
 	GrantProvSettings           string = "prov-settings"
 	GrantProvCluster            string = "prov-cluster"
 
-	GrantGlobalSettings string = "global-settings" // Can update global settings
-	GrantGlobalGrant    string = "global-grant"    // Can grant global settings
+	GrantGlobalSettings  string = "global-settings"      // Can update global settings
+	GrantGlobalGrant     string = "global-grant"         // Can grant global settings
+	GrantGlobalAdminShow string = "global-admin-show"    // Can view global dashboard (logs, metrics, alerts)
+	GrantGlobalAdminConf string = "global-admin-config"  // Can modify global-level monitoring configuration
 
 	GrantGrantShow   string = "grant-show"   // Can show users settings
 	GrantGrantAdd    string = "grant-add"    // Can add new user
@@ -2520,6 +2523,8 @@ func GetGrantType() map[string]string {
 		GrantAppGit:                    GrantAppGit,
 		GrantGlobalGrant:               GrantGlobalGrant,
 		GrantGlobalSettings:            GrantGlobalSettings,
+		GrantGlobalAdminShow:           GrantGlobalAdminShow,
+		GrantGlobalAdminConf:           GrantGlobalAdminConf,
 		GrantSalesValidate:             GrantSalesValidate,
 		GrantSalesRefuse:               GrantSalesRefuse,
 		GrantSalesUnsubscribe:          GrantSalesUnsubscribe,
@@ -2685,6 +2690,8 @@ func GetGrantGlobal() []string {
 	return []string{
 		GrantGlobalGrant,
 		GrantGlobalSettings,
+		GrantGlobalAdminShow,
+		GrantGlobalAdminConf,
 	}
 }
 
