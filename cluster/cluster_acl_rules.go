@@ -146,7 +146,7 @@ var clusterACLRules = []ACLRule{
 	{"/shardclusters", nil, []string{config.GrantClusterSharding}},
 
 	// Process and Jobs
-	{"/jobs", nil, []string{config.GrantClusterProcess}},
+	{"/jobs", nil, []string{config.GrantClusterProcess, config.GrantClusterShowJobs}},
 	{"/top", nil, []string{config.GrantClusterProcess}},
 	{"/actions/restic-mount-toggle", nil, []string{config.GrantClusterSettings}},
 	{"/restic", nil, []string{config.GrantClusterProcess}},

@@ -95,9 +95,11 @@ function Slideshow() {
     [dispatch]
   )
 
-  // ─── Build slides whenever cluster list changes ───────────────────────────
+  // ─── Build slides whenever cluster list or user grants change ────────────
   useEffect(() => {
     if (!clusters || clusters.length === 0) return
+    const canShowBackups = !user || user?.grants?.['cluster-show-backups']
+    const canShowJobs = !user || user?.grants?.['cluster-show-jobs'] || user?.grants?.['cluster-process']
     const built = []
     clusters.forEach((cl) => {
       const hasBackup =
@@ -110,6 +112,8 @@ function Slideshow() {
       SECTIONS.forEach(({ view, label }) => {
         if (MAINTENANCE_VIEWS.has(view) && !hasBackup && !hasScheduler) return
         if (view === 'apps' && !hasApps) return
+        if ((view === 'maintenance-backup') && !canShowBackups) return
+        if ((view === 'maintenance-jobs' || view === 'logs-jobs') && !canShowJobs) return
         built.push({ clusterName: cl.name, view, label })
       })
     })
@@ -131,7 +135,7 @@ function Slideshow() {
       slideIndexRef.current = 0
       loadSlideData(built[0])
     }
-  }, [clusters, loadSlideData])
+  }, [clusters, loadSlideData, user])
 
   // ─── Initial cluster list fetch ───────────────────────────────────────────
   useEffect(() => {

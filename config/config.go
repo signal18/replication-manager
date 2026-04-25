@@ -1350,6 +1350,7 @@ const (
 	GrantClusterTest               string = "cluster-test"
 	GrantClusterTraffic            string = "cluster-traffic"
 	GrantClusterShowBackups        string = "cluster-show-backups"
+	GrantClusterShowJobs           string = "cluster-show-jobs"
 	GrantClusterShowRoutes         string = "cluster-show-routes"
 	GrantClusterShowGraphs         string = "cluster-show-graphs"
 	GrantClusterConfigGraphs       string = "cluster-config-graphs"
@@ -2489,6 +2490,7 @@ func GetGrantType() map[string]string {
 		GrantClusterProcess:            GrantClusterProcess,
 		GrantClusterDebug:              GrantClusterDebug,
 		GrantClusterShowBackups:        GrantClusterShowBackups,
+		GrantClusterShowJobs:           GrantClusterShowJobs,
 		GrantClusterShowAgents:         GrantClusterShowAgents,
 		GrantClusterShowGraphs:         GrantClusterShowGraphs,
 		GrantClusterConfigGraphs:       GrantClusterConfigGraphs,
