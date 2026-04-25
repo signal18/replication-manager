@@ -262,6 +262,8 @@ var GlobalError = map[string]string{
 	"GWARN001": "ReplicationManager detected stalled cluster heartbeat for %s",
 	"GWARN002": "ReplicationManager git push reported warning-level failure: %s",
 	"GWARN003": "ReplicationManager git pull reported warning-level failure: %s",
+	"GWARN004": "ReplicationManager cannot reach GitLab identity provider: %s",
+	"GWARN005": "ReplicationManager cannot reach Cloud18 CRM API: %s",
 	"GERR001":  "ReplicationManager detected prolonged stalled cluster heartbeat for %s",
 	"GERR002":  "ReplicationManager git push reported persistent failure: %s",
 	"GERR003":  "ReplicationManager git pull reported persistent failure: %s",

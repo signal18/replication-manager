@@ -2716,6 +2716,9 @@ func (repman *ReplicationManager) Run() error {
 
 		repman.ProduceClusterHeartbeatSupervisionStates()
 		repman.ProduceGitSupervisionStates()
+		if counter%60 == 0 {
+			repman.ProduceCloud18ConnectivityStates()
+		}
 		repman.ProcessAlertStateLifecycle()
 
 		counter++
