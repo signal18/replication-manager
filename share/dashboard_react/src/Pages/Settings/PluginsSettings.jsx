@@ -305,6 +305,12 @@ function pluginKnownKeys(pluginName) {
       return ['ignored-users']
     case 'plugin-security-hardening':
       return ['wildcard-priv-ignored-users']
+    // Enterprise advisory plugins — no user-configurable params
+    // (the advisory JSON is pushed by the back office)
+    case 'enterprise-security':
+    case 'enterprise-replication':
+    case 'enterprise-workload':
+      return []
     // Score plugins and plugins with no configurable params
     default:
       return []
@@ -510,6 +516,15 @@ function pluginDescription(pluginName) {
 
     case 'plugin-security-hardening':
       return `**Security Hardening** — SEC0103–SEC0118\n\nChecks a set of CIS MySQL/MariaDB Benchmark hardening controls:\n\n- **SEC0103** \`require_secure_transport=OFF\` — plaintext connections allowed\n- **SEC0104** \`general_log=ON\` — passwords logged in cleartext\n- **SEC0105** \`secure_file_priv=''\` — unrestricted filesystem access\n- **SEC0106** \`skip_name_resolve=OFF\` — DNS hostname spoofing possible\n- **SEC0107** Anonymous user account exists\n- **SEC0108** Wildcard-host account with SUPER/ADMIN/ALL privileges\n- **SEC0113–SEC0115** MariaDB password validation plugins\n- **SEC0116–SEC0117** MySQL password validation\n- **SEC0118** Hostname grants with skip_name_resolve=ON\n\nUse \`wildcard-priv-ignored-users\` to exempt known-safe wildcard-host accounts from SEC0108.`
+
+    case 'enterprise-security':
+      return `**Enterprise Security Advisories** — ENT0001+\n\nSurfaces CVEs and security advisories from the Signal18 back-office advisory database.\n\nCovers all known MariaDB/MySQL security vulnerabilities with version-range matching — findings auto-resolve when the server is upgraded past the fix version.\n\nThe advisory database is refreshed daily by the back office and pushed to instances on a paid plan (support, partner). Free-plan instances use the embedded default shipped with this repman build.\n\nSources: NIST NVD (MariaDB + MySQL CVEs), GitHub security issues, hand-curated MDEV entries.\n\nNo configurable parameters — the advisory JSON is managed by the back office.`
+
+    case 'enterprise-replication':
+      return `**Enterprise Replication Advisories** — RPL0001+\n\nSurfaces known replication bugs and CVEs that affect the MySQL/MariaDB replication subsystem.\n\nTracks critical MDEV issues:\n- **MDEV-20821** — crash-safe parallel replication data loss\n- **MDEV-28310** — silent data corruption with non-ROW binlog format\n- **MDEV-19577** — auto-increment gaps with INNODB_AUTOINC_LOCK_MODE=2\n\nFindings auto-resolve when the server is upgraded past the fix version.\n\nNo configurable parameters — the advisory JSON is managed by the back office.`
+
+    case 'enterprise-workload':
+      return `**Enterprise Workload Advisories** — WRK0001+\n\nSurfaces CRITICAL and HIGH severity bugs impacting workload stability — server crashes, InnoDB deadlocks, optimizer regressions, memory leaks, and DoS vulnerabilities.\n\nTracks MDEV issues:\n- **MDEV-31404** — InnoDB crash on ALTER TABLE with virtual columns\n- **MDEV-29644** — optimizer crash with window functions + CTEs\n- **MDEV-30820** — InnoDB purge deadlock with spatial indexes\n- **MDEV-29032** — memory leak in query cache + prepared statements\n- **MDEV-31105** — crash on KILL during fulltext rebuild\n\nCovers CVEs not already in the security or replication advisories. Findings auto-resolve on upgrade.\n\nNo configurable parameters — the advisory JSON is managed by the back office.`
 
     default:
       if (pluginName && pluginName.startsWith('plugin-score-')) {
