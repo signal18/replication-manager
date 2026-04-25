@@ -101,6 +101,20 @@ func (p *EnterpriseSecurityPlugin) Evaluate(src LogSource) EvaluateResult {
 
 	var findings []Finding
 
+	// Free plan: CVE advisories are not refreshed by the back office.
+	// Emit a persistent error so operators know their advisory database is stale.
+	if src.ClusterContext.SubscriptionPlan == "free" {
+		findings = append(findings, Finding{
+			ErrKey:   "ENTERR001",
+			Severity: SeveritySecurity,
+			Description: fmt.Sprintf(
+				"Server %s: enterprise security advisories are not refreshed on the free plan. "+
+					"CVE coverage is frozen at the version shipped with this build. "+
+					"Upgrade to a support or partner plan to receive daily advisory updates from the Signal18 back office.",
+				src.ServerURL),
+		})
+	}
+
 	for _, iss := range data.Issues {
 		if !entMatchIssue(iss.Flavor, iss.AffectedFrom, iss.FixedIn, sv, src.ClusterContext.ToolVersions) {
 			continue

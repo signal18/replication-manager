@@ -57,8 +57,11 @@ type ClusterContext struct {
 	HistoryClearPwd   bool              `json:"history_clear_pwd"`   // previous binlog scan found cleartext passwords
 	DockerDeployment  bool              `json:"docker_deployment"`   // servers run as Docker containers (DNS-based discovery, dynamic IPs)
 	// ToolVersions maps tool/product names to their version strings.
-	// Keys: "repman", "client", "client-dump", "mydumper", "restic", "sysbench", etc.
+	// Keys: "repman", "mariadb", "mysql", "proxysql", "maxscale", "haproxy", "restic", etc.
 	ToolVersions      map[string]string `json:"tool_versions,omitempty"`
+	// SubscriptionPlan is the Cloud18 subscription plan: "free", "support",
+	// "support-services", or "partner". Empty when Cloud18 is not enabled.
+	SubscriptionPlan  string            `json:"subscription_plan,omitempty"`
 }
 
 // DBUser is one row from mysql.user, stripped of credential data.

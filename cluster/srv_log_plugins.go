@@ -863,6 +863,7 @@ func buildClusterContext(cluster *Cluster, server *ServerMonitor) logplugin.Clus
 		HistoryClearPwd:  cluster.SecurityClearPwdHistory,
 		DockerDeployment: cluster.Configurator.IsFilterInDBTags("docker"),
 		ToolVersions:     toolVersions,
+		SubscriptionPlan: cluster.Conf.Cloud18SubscriptionPlan,
 	}
 }
 

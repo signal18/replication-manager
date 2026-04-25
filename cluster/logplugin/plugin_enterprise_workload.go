@@ -80,6 +80,18 @@ func (p *EnterpriseWorkloadPlugin) Evaluate(src LogSource) EvaluateResult {
 
 	var findings []Finding
 
+	if src.ClusterContext.SubscriptionPlan == "free" {
+		findings = append(findings, Finding{
+			ErrKey:   "WRKERR001",
+			Severity: SeveritySecurity,
+			Description: fmt.Sprintf(
+				"Server %s: enterprise workload advisories are not refreshed on the free plan. "+
+					"Crash and performance bug coverage is frozen at the version shipped with this build. "+
+					"Upgrade to a support or partner plan to receive daily advisory updates.",
+				src.ServerURL),
+		})
+	}
+
 	for _, iss := range data.Issues {
 		if !entMatchIssue(iss.Flavor, iss.AffectedFrom, iss.FixedIn, sv, src.ClusterContext.ToolVersions) {
 			continue
