@@ -20,6 +20,7 @@ import (
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 // graphiteHostname returns the metric-safe hostname for the server,
@@ -826,12 +827,34 @@ func (cluster *Cluster) logPluginDebugWork(pluginName, msg string) {
 }
 
 func buildClusterContext(cluster *Cluster) logplugin.ClusterContext {
+	// Build ToolVersions from cluster.VersionsMap (client, mydumper, restic, …)
+	// plus "repman" for the replication-manager version itself and proxy versions.
+	toolVersions := make(map[string]string)
+	if cluster.VersionsMap != nil {
+		cluster.VersionsMap.Callback(func(key string, v *version.Version) bool {
+			if v != nil {
+				toolVersions[key] = v.ToString()
+			}
+			return true
+		})
+	}
+	if cluster.Conf.FullVersion != "" {
+		toolVersions["repman"] = cluster.Conf.FullVersion
+	}
+	// Add proxy versions: key is the proxy type (proxysql, maxscale, haproxy, …)
+	for _, pr := range cluster.Proxies {
+		if p, ok := pr.(*Proxy); ok && p.Version != "" {
+			toolVersions[pr.GetType()] = p.Version
+		}
+	}
+
 	return logplugin.ClusterContext{
 		HasProxies:       len(cluster.Proxies) > 0,
 		BackupEncrypted:  cluster.Conf.BackupRestic && cluster.Conf.BackupResticPassword != "",
 		ConfigClearPwd:   cluster.SecurityClearPwdConfig,
 		HistoryClearPwd:  cluster.SecurityClearPwdHistory,
 		DockerDeployment: cluster.Configurator.IsFilterInDBTags("docker"),
+		ToolVersions:     toolVersions,
 	}
 }
 

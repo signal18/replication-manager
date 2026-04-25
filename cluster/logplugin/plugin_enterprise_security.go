@@ -102,27 +102,8 @@ func (p *EnterpriseSecurityPlugin) Evaluate(src LogSource) EvaluateResult {
 	var findings []Finding
 
 	for _, iss := range data.Issues {
-		// Flavor filter: empty = any flavor; "repman" = always emit (not a DB version).
-		if iss.Flavor != "" && !strings.EqualFold(iss.Flavor, "repman") {
-			if !strings.EqualFold(iss.Flavor, sv.Flavor) {
-				continue
-			}
-		}
-
-		// Version range check for database-targeted issues.
-		if !strings.EqualFold(iss.Flavor, "repman") {
-			affected := entParseVersion(iss.AffectedFrom)
-			fixed := entParseVersion(iss.FixedIn)
-			cur := [3]int{sv.Major, sv.Minor, sv.Release}
-
-			// Not yet in the affected range.
-			if iss.AffectedFrom != "" && entVersionLess(cur, affected) {
-				continue
-			}
-			// Already fixed — finding self-extinguishes on upgrade.
-			if iss.FixedIn != "" && !entVersionLess(cur, fixed) {
-				continue
-			}
+		if !entMatchIssue(iss.Flavor, iss.AffectedFrom, iss.FixedIn, sv, src.ClusterContext.ToolVersions) {
+			continue
 		}
 
 		desc := entExpandPlaceholders(iss.Description, src.ServerURL, sv.Flavor, serverVerStr)
@@ -165,6 +146,52 @@ func entExpandPlaceholders(s, serverURL, flavor, version string) string {
 	s = strings.ReplaceAll(s, "{flavor}", flavor)
 	s = strings.ReplaceAll(s, "{version}", version)
 	return s
+}
+
+// entMatchIssue checks whether an advisory issue matches the current environment.
+// For database flavors (MariaDB, MySQL, Percona) it compares against the server
+// version. For tool flavors (repman, restic, proxysql, …) it looks up the
+// version in toolVersions. Returns true if the issue should be emitted.
+func entMatchIssue(flavor, affectedFrom, fixedIn string, sv StdioServerVersion, toolVersions map[string]string) bool {
+	flavorLower := strings.ToLower(strings.TrimSpace(flavor))
+
+	// Empty flavor = matches any server.
+	if flavorLower == "" {
+		return true
+	}
+
+	// Database flavors: compare against server version.
+	dbFlavors := map[string]bool{"mariadb": true, "mysql": true, "percona": true, "postgresql": true}
+	if dbFlavors[flavorLower] {
+		if !strings.EqualFold(flavor, sv.Flavor) {
+			return false
+		}
+		cur := [3]int{sv.Major, sv.Minor, sv.Release}
+		return entVersionInRange(cur, affectedFrom, fixedIn)
+	}
+
+	// Tool flavors: look up version in ToolVersions map.
+	// If the tool is not in the map (version unknown), skip the issue —
+	// we cannot confirm the tool is affected without knowing its version.
+	toolVer, ok := toolVersions[flavorLower]
+	if !ok || toolVer == "" {
+		return false
+	}
+	// Strip leading "v" prefix (e.g. "v3.1.23-448-gd8ad239df" → "3.1.23-…")
+	toolVer = strings.TrimPrefix(toolVer, "v")
+	cur := entParseVersion(toolVer)
+	return entVersionInRange(cur, affectedFrom, fixedIn)
+}
+
+// entVersionInRange returns true if cur is within [affectedFrom, fixedIn).
+func entVersionInRange(cur [3]int, affectedFrom, fixedIn string) bool {
+	if affectedFrom != "" && entVersionLess(cur, entParseVersion(affectedFrom)) {
+		return false
+	}
+	if fixedIn != "" && !entVersionLess(cur, entParseVersion(fixedIn)) {
+		return false
+	}
+	return true
 }
 
 // entParseVersion converts "major.minor.release" to [3]int; missing parts → 0.

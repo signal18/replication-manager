@@ -81,23 +81,8 @@ func (p *EnterpriseWorkloadPlugin) Evaluate(src LogSource) EvaluateResult {
 	var findings []Finding
 
 	for _, iss := range data.Issues {
-		if iss.Flavor != "" && !strings.EqualFold(iss.Flavor, "repman") {
-			if !strings.EqualFold(iss.Flavor, sv.Flavor) {
-				continue
-			}
-		}
-
-		if !strings.EqualFold(iss.Flavor, "repman") {
-			affected := entParseVersion(iss.AffectedFrom)
-			fixed := entParseVersion(iss.FixedIn)
-			cur := [3]int{sv.Major, sv.Minor, sv.Release}
-
-			if iss.AffectedFrom != "" && entVersionLess(cur, affected) {
-				continue
-			}
-			if iss.FixedIn != "" && !entVersionLess(cur, fixed) {
-				continue
-			}
+		if !entMatchIssue(iss.Flavor, iss.AffectedFrom, iss.FixedIn, sv, src.ClusterContext.ToolVersions) {
+			continue
 		}
 
 		desc := entExpandPlaceholders(iss.Description, src.ServerURL, sv.Flavor, serverVerStr)

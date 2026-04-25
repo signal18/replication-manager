@@ -227,11 +227,16 @@ type LogSource struct {
 
 // ClusterContext carries cluster-level facts passed to every plugin.
 type ClusterContext struct {
-	HasProxies       bool `json:"has_proxies"`        // cluster has at least one proxy configured
-	BackupEncrypted  bool `json:"backup_encrypted"`   // backup configured with encryption (e.g. restic password set)
-	ConfigClearPwd   bool `json:"config_clear_pwd"`   // repman detected cleartext passwords in TOML config
-	HistoryClearPwd  bool `json:"history_clear_pwd"`  // previous binlog scan found cleartext passwords
-	DockerDeployment bool `json:"docker_deployment"`  // servers run as Docker containers (DNS-based discovery, dynamic IPs)
+	HasProxies       bool              `json:"has_proxies"`        // cluster has at least one proxy configured
+	BackupEncrypted  bool              `json:"backup_encrypted"`   // backup configured with encryption (e.g. restic password set)
+	ConfigClearPwd   bool              `json:"config_clear_pwd"`   // repman detected cleartext passwords in TOML config
+	HistoryClearPwd  bool              `json:"history_clear_pwd"`  // previous binlog scan found cleartext passwords
+	DockerDeployment bool              `json:"docker_deployment"`  // servers run as Docker containers (DNS-based discovery, dynamic IPs)
+	// ToolVersions maps tool/product names to their version strings.
+	// Plugins can use this to check advisory version ranges for non-database
+	// products (repman itself, proxies, backup tools, etc.).
+	// Keys: "repman", "proxysql", "maxscale", "haproxy", "restic", etc.
+	ToolVersions     map[string]string `json:"tool_versions,omitempty"`
 }
 
 // IsEnabled returns false only when config explicitly sets enabled=false/0/no.

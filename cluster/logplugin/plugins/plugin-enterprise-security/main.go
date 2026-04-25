@@ -112,31 +112,8 @@ func main() {
 	var findings []wire.Finding
 
 	for _, iss := range data.Issues {
-		// Filter by flavor (empty = matches any).
-		if iss.Flavor != "" && !strings.EqualFold(iss.Flavor, sv.Flavor) {
-			// Special case: flavor "repman" is a meta-target for replication-manager
-			// itself; the server version fields won't match a database version.
-			// We always emit repman-flavored issues regardless of database version.
-			if !strings.EqualFold(iss.Flavor, "repman") {
-				continue
-			}
-		}
-
-		// For database-targeting issues check the version range.
-		if !strings.EqualFold(iss.Flavor, "repman") {
-			affected := parseVersion(iss.AffectedFrom)
-			fixed := parseVersion(iss.FixedIn)
-			cur := [3]int{sv.Major, sv.Minor, sv.Release}
-
-			// Not yet in the affected range.
-			if iss.AffectedFrom != "" && versionLess(cur, affected) {
-				continue
-			}
-
-			// Already fixed.
-			if iss.FixedIn != "" && !versionLess(cur, fixed) {
-				continue
-			}
+		if !matchIssue(iss.Flavor, iss.AffectedFrom, iss.FixedIn, sv, req.ClusterContext.ToolVersions) {
+			continue
 		}
 
 		description := expandPlaceholders(iss.Description, req.ServerURL, sv.Flavor, serverVerStr)
@@ -168,6 +145,36 @@ func main() {
 	}
 
 	json.NewEncoder(os.Stdout).Encode(wire.Response{Findings: findings})
+}
+
+// matchIssue checks whether an advisory matches the current environment.
+func matchIssue(flavor, affectedFrom, fixedIn string, sv wire.ServerVersion, toolVersions map[string]string) bool {
+	fl := strings.ToLower(strings.TrimSpace(flavor))
+	if fl == "" {
+		return true
+	}
+	dbFlavors := map[string]bool{"mariadb": true, "mysql": true, "percona": true, "postgresql": true}
+	if dbFlavors[fl] {
+		if !strings.EqualFold(flavor, sv.Flavor) {
+			return false
+		}
+		return versionInRange([3]int{sv.Major, sv.Minor, sv.Release}, affectedFrom, fixedIn)
+	}
+	toolVer, ok := toolVersions[fl]
+	if !ok || toolVer == "" {
+		return false
+	}
+	return versionInRange(parseVersion(strings.TrimPrefix(toolVer, "v")), affectedFrom, fixedIn)
+}
+
+func versionInRange(cur [3]int, affectedFrom, fixedIn string) bool {
+	if affectedFrom != "" && versionLess(cur, parseVersion(affectedFrom)) {
+		return false
+	}
+	if fixedIn != "" && !versionLess(cur, parseVersion(fixedIn)) {
+		return false
+	}
+	return true
 }
 
 // expandPlaceholders replaces {server_url}, {flavor}, {version} in s.
