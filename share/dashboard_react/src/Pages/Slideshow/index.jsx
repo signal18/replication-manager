@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Box, Flex, Progress, Text } from '@chakra-ui/react'
+import { HiPlay, HiStop } from 'react-icons/hi'
+import RMIconButton from '../../components/RMIconButton'
 import {
   getBackupStats,
   getBackups,
@@ -63,10 +65,12 @@ function Slideshow() {
   const [slideIndex, setSlideIndex] = useState(0)
   const [progress, setProgress] = useState(0)
   const [user, setUser] = useState(null)
+  const [isPaused, setIsPaused] = useState(false)
 
   // Refs for use inside intervals without stale closures
   const slidesRef = useRef([])
   const slideIndexRef = useRef(0)
+  const isPausedRef = useRef(false)
 
   // ─── Load all data for a given slide ─────────────────────────────────────
   const loadSlideData = useCallback(
@@ -139,6 +143,11 @@ function Slideshow() {
     dispatch(getMonitoredData({}))
   }, [])
 
+  // Keep isPausedRef in sync with state so the ticker can read it without stale closures
+  useEffect(() => {
+    isPausedRef.current = isPaused
+  }, [isPaused])
+
   // ─── Slideshow timer ──────────────────────────────────────────────────────
   // Runs once on mount. Uses slidesRef so the interval never restarts when
   // the slides state updates, keeping the elapsed counter stable.
@@ -148,6 +157,7 @@ function Slideshow() {
 
     const ticker = setInterval(() => {
       if (slidesRef.current.length === 0) return // clusters not loaded yet
+      if (isPausedRef.current) return // slideshow paused
 
       elapsed += TICK_MS
       setProgress(Math.min((elapsed / SLIDE_DURATION_MS) * 100, 100))
@@ -232,15 +242,22 @@ function Slideshow() {
         <Text fontSize='2xl' fontWeight='semibold' color='gray.500'>
           {currentSlide?.label || '…'}
         </Text>
-        <Text fontSize='sm' color='gray.400'>
-          {clusterCount > 0
-            ? `Cluster ${clusterIndex} of ${clusterCount} — section ${sectionIndex} of ${totalSections}`
-            : 'Loading clusters…'}
-        </Text>
+        <Flex align='center' gap={3}>
+          <Text fontSize='sm' color='gray.400'>
+            {clusterCount > 0
+              ? `Cluster ${clusterIndex} of ${clusterCount} — section ${sectionIndex} of ${totalSections}`
+              : 'Loading clusters…'}
+          </Text>
+          {isPaused ? (
+            <RMIconButton icon={HiPlay} tooltip='Resume slideshow' onClick={() => setIsPaused(false)} />
+          ) : (
+            <RMIconButton icon={HiStop} tooltip='Pause slideshow' onClick={() => setIsPaused(true)} />
+          )}
+        </Flex>
       </Flex>
 
       {/* ── Progress bar ───────────────────────────────────── */}
-      <Progress value={progress} size='xs' colorScheme='blue' borderRadius={0} />
+      <Progress value={progress} size='xs' colorScheme={isPaused ? 'gray' : 'blue'} borderRadius={0} />
 
       {/* ── Slide content ──────────────────────────────────── */}
       <Box px={4} py={4}>

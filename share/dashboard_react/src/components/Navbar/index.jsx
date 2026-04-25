@@ -136,7 +136,7 @@ function Navbar({ username }) {
         </Link>
         <Spacer />
 
-        {isAuthorized() && isDesktop && <RefreshCounter clusterName={clusterData?.name} />}
+        {isAuthorized() && isDesktop && location.pathname !== '/slideshow' && <RefreshCounter clusterName={clusterData?.name} />}
 
 
         <Spacer />
@@ -251,7 +251,7 @@ function Navbar({ username }) {
 
       <MattermostIntegration isOpen={isChatOpen} setIsChatOpen={setIsChatOpen} onClose={() => setIsChatOpen(false)} cloud18={monitor?.config?.cloud18} />
 
-      {isAuthorized() && !isDesktop && (
+      {isAuthorized() && !isDesktop && location.pathname !== '/slideshow' && (
         <Box mx='auto' p='8px' marginTop='60px'>
           <RefreshCounter clusterName={clusterData?.name} />
         </Box>
