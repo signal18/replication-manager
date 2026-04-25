@@ -119,9 +119,12 @@ func (p *EnterpriseWorkloadPlugin) Evaluate(src LogSource) EvaluateResult {
 			desc += " [" + strings.Join(refs, "; ") + "]"
 		}
 
+		// Always route to the security log — workload-critical bugs (crashes,
+		// deadlocks, memory leaks) are safety issues that belong in
+		// SecurityStateMachine + LogSecurity.
 		findings = append(findings, Finding{
 			ErrKey:       iss.ID,
-			Severity:     Severity(iss.Severity),
+			Severity:     SeveritySecurity,
 			Description:  desc,
 			Remediations: iss.Remediations,
 		})

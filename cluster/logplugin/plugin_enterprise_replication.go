@@ -121,9 +121,11 @@ func (p *EnterpriseReplicationPlugin) Evaluate(src LogSource) EvaluateResult {
 			desc += " [" + strings.Join(refs, "; ") + "]"
 		}
 
+		// Always route to the security log — replication bugs are safety-critical
+		// and belong in SecurityStateMachine + LogSecurity.
 		findings = append(findings, Finding{
 			ErrKey:       iss.ID,
-			Severity:     Severity(iss.Severity),
+			Severity:     SeveritySecurity,
 			Description:  desc,
 			Remediations: iss.Remediations,
 		})

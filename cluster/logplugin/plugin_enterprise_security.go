@@ -145,9 +145,12 @@ func (p *EnterpriseSecurityPlugin) Evaluate(src LogSource) EvaluateResult {
 			desc += " [" + strings.Join(refs, "; ") + "]"
 		}
 
+		// Always route to the security log — all enterprise security advisories
+		// belong in SecurityStateMachine + LogSecurity regardless of the JSON
+		// severity field (which may be WARNING for unresolved GitHub issues).
 		findings = append(findings, Finding{
 			ErrKey:       iss.ID,
-			Severity:     Severity(iss.Severity),
+			Severity:     SeveritySecurity,
 			Description:  desc,
 			Remediations: iss.Remediations,
 		})
