@@ -194,6 +194,7 @@ type Config struct {
 	LogPlugin                                 bool                         `mapstructure:"log-plugin" toml:"log-plugin" json:"logPlugin"`
 	MonitorBinlogEvents                       bool                         `mapstructure:"monitoring-binlog-events" toml:"monitoring-binlog-events" json:"monitoringBinlogEvents"`
 	MonitoringLogAPILogin                     bool                         `scope:"server" mapstructure:"monitoring-log-api-login" toml:"monitoring-log-api-login" json:"monitoringLogApiLogin"`
+	MonitoringLogAPILoginSilentUsers          string                       `scope:"server" mapstructure:"monitoring-log-api-login-silent-users" toml:"monitoring-log-api-login-silent-users" json:"monitoringLogApiLoginSilentUsers"`
 	LogPluginLevel                            int                          `mapstructure:"log-level-plugin" toml:"log-level-plugin" json:"logPluginLevel"`
 	PluginConfig                              map[string]map[string]string `mapstructure:"plugin-config" toml:"plugin-config" json:"pluginConfig"`
 	User                                      string                       `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`

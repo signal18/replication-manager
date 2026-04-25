@@ -465,6 +465,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.LogPlugin, "log-plugin", false, "Enable generic log-tailer plugin checks (errorlog, sqlerrorlog, slowlog 24h windows)")
 	flags.BoolVar(&conf.MonitorBinlogEvents, "monitoring-binlog-events", false, "Enable incremental binlog QUERY event scanning (feeds binlog security plugins: cleartext-password, credit-card-leak)")
 	flags.BoolVar(&conf.MonitoringLogAPILogin, "monitoring-log-api-login", false, "Log successful API logins to the global server log and security log")
+	flags.StringVar(&conf.MonitoringLogAPILoginSilentUsers, "monitoring-log-api-login-silent-users", "system", "Comma-separated list of usernames excluded from API login logging (default: system, used by dbjobs polling)")
 	flags.IntVar(&conf.LogPluginLevel, "log-level-plugin", 2, "Log verbosity level for log-tailer plugins (1=error,2=warn,3=info,4=debug)")
 
 	// DB Credentials
@@ -3175,6 +3176,22 @@ func (repman *ReplicationManager) ReloadTerms() error {
 
 func IsDefault(p string, v *viper.Viper) bool {
 
+	return false
+}
+
+// isAPILoginSilenced returns true when username appears in the
+// monitoring-log-api-login-silent-users comma-separated list.
+// Comparison is case-insensitive.
+func (repman *ReplicationManager) isAPILoginSilenced(username string) bool {
+	if repman.Conf.MonitoringLogAPILoginSilentUsers == "" {
+		return false
+	}
+	lower := strings.ToLower(username)
+	for _, u := range strings.Split(repman.Conf.MonitoringLogAPILoginSilentUsers, ",") {
+		if strings.TrimSpace(strings.ToLower(u)) == lower {
+			return true
+		}
+	}
 	return false
 }
 

@@ -735,7 +735,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if repman.Conf.MonitoringLogAPILogin {
+	if repman.Conf.MonitoringLogAPILogin && !repman.isAPILoginSilenced(user.Username) {
 		repman.logSecurityEvent("api_login_success", user.Username, r.RemoteAddr, "API login successful")
 	}
 
