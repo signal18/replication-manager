@@ -101,7 +101,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			ServerVersion:    snapshotServerVersion(server),
 			ServerVariables:  snapshotServerVariables(server),
 			DatabaseUsers:    snapshotDatabaseUsers(server),
-			ClusterContext:   buildClusterContext(cluster),
+			ClusterContext:   buildClusterContext(cluster, server),
 			PluginDataDir:    cluster.Conf.ShareDir + "/plugins/data",
 		}
 		if !src.IsEnabled() {
@@ -826,9 +826,10 @@ func (cluster *Cluster) logPluginDebugWork(pluginName, msg string) {
 	}
 }
 
-func buildClusterContext(cluster *Cluster) logplugin.ClusterContext {
+func buildClusterContext(cluster *Cluster, server *ServerMonitor) logplugin.ClusterContext {
 	// Build ToolVersions from cluster.VersionsMap (client, mydumper, restic, …)
-	// plus "repman" for the replication-manager version itself and proxy versions.
+	// plus "repman" for the replication-manager version itself, proxy versions,
+	// and the database server version.
 	toolVersions := make(map[string]string)
 	if cluster.VersionsMap != nil {
 		cluster.VersionsMap.Callback(func(key string, v *version.Version) bool {
@@ -845,6 +846,13 @@ func buildClusterContext(cluster *Cluster) logplugin.ClusterContext {
 	for _, pr := range cluster.Proxies {
 		if p, ok := pr.(*Proxy); ok && p.Version != "" {
 			toolVersions[pr.GetType()] = p.Version
+		}
+	}
+	// Add the database server version keyed by its flavor (mariadb, mysql, …)
+	if server != nil && server.DBVersion != nil {
+		flavorKey := strings.ToLower(server.DBVersion.Flavor)
+		if flavorKey != "" {
+			toolVersions[flavorKey] = fmt.Sprintf("%d.%d.%d", server.DBVersion.Major, server.DBVersion.Minor, server.DBVersion.Release)
 		}
 	}
 
