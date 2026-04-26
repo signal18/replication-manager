@@ -80,7 +80,7 @@ func (p *EnterpriseWorkloadPlugin) Evaluate(src LogSource) EvaluateResult {
 
 	var findings []Finding
 
-	plan := src.ClusterContext.SubscriptionPlan
+	plan := ConfigStr(src.Config, "cloud18-subscription-plan", "")
 	if plan == "" || plan == "free" {
 		findings = append(findings, Finding{
 			ErrKey:   "WRKERR001",

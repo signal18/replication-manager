@@ -328,16 +328,22 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 }
 
 func resolvePluginConfig(cluster *Cluster, pluginName string) map[string]string {
-	if cluster.Conf.PluginConfig == nil {
-		return nil
+	var out map[string]string
+	if cluster.Conf.PluginConfig != nil {
+		if src, ok := cluster.Conf.PluginConfig[pluginName]; ok && len(src) > 0 {
+			out = make(map[string]string, len(src)+1)
+			for k, v := range src {
+				out[k] = v
+			}
+		}
 	}
-	src, ok := cluster.Conf.PluginConfig[pluginName]
-	if !ok || len(src) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(src))
-	for k, v := range src {
-		out[k] = v
+	// Inject cluster-level config keys that plugins may need without
+	// duplicating them into a separate struct field.
+	if cluster.Conf.Cloud18SubscriptionPlan != "" {
+		if out == nil {
+			out = make(map[string]string, 1)
+		}
+		out["cloud18-subscription-plan"] = cluster.Conf.Cloud18SubscriptionPlan
 	}
 	return out
 }
@@ -863,7 +869,6 @@ func buildClusterContext(cluster *Cluster, server *ServerMonitor) logplugin.Clus
 		HistoryClearPwd:  cluster.SecurityClearPwdHistory,
 		DockerDeployment: cluster.Configurator.IsFilterInDBTags("docker"),
 		ToolVersions:     toolVersions,
-		SubscriptionPlan: cluster.Conf.Cloud18SubscriptionPlan,
 	}
 }
 

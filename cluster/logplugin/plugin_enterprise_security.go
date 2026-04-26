@@ -103,7 +103,7 @@ func (p *EnterpriseSecurityPlugin) Evaluate(src LogSource) EvaluateResult {
 
 	// Free plan or unregistered: CVE advisories are not refreshed by the back office.
 	// Emit a persistent error so operators know their advisory database is stale.
-	plan := src.ClusterContext.SubscriptionPlan
+	plan := ConfigStr(src.Config, "cloud18-subscription-plan", "")
 	if plan == "" || plan == "free" {
 		findings = append(findings, Finding{
 			ErrKey:   "ENTERR001",

@@ -237,9 +237,6 @@ type ClusterContext struct {
 	// products (repman itself, proxies, backup tools, etc.).
 	// Keys: "repman", "mariadb", "mysql", "proxysql", "maxscale", "haproxy", "restic", etc.
 	ToolVersions     map[string]string `json:"tool_versions,omitempty"`
-	// SubscriptionPlan is the Cloud18 subscription plan: "free", "support",
-	// "support-services", or "partner". Empty when Cloud18 is not enabled.
-	SubscriptionPlan string            `json:"subscription_plan,omitempty"`
 }
 
 // IsEnabled returns false only when config explicitly sets enabled=false/0/no.
