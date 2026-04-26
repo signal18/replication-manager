@@ -420,6 +420,11 @@ For dev builds without credentials, a local keypair is generated automatically.
 | `errorlog` | WARN0201 | ErrorLog | Error log rate spikes |
 | `sqlerrorlog` | WARN0209 | SqlErrorLog | SQL error rate spikes |
 | `auditlog` | WARN0204 | AuditLog | New query template drift |
+| `enterprise-security` | ENT0001+, CVE-* | ServerVersion, ToolVersions | CVEs from NVD + GitHub security issues (492 embedded) |
+| `enterprise-replication` | RPL0001+, CVE-*-replication-* | ServerVersion, ToolVersions | Replication bugs: MDEV-20821, MDEV-28310, MDEV-19577 + NVD (20 embedded) |
+| `enterprise-workload` | WRK0001+, CVE-*-workload-* | ServerVersion, ToolVersions | CRITICAL/HIGH crash, deadlock, memory leak bugs (259 embedded) |
+
+The enterprise plugins also emit `ENTERR001`/`RPLERR001`/`WRKERR001` when the subscription plan is free or unset — advisory database is frozen at the build version. See [`ENTERPRISE_PLUGINS.md`](../security/ENTERPRISE_PLUGINS.md) for full architecture.
 
 ### Official External
 
@@ -436,16 +441,45 @@ For dev builds without credentials, a local keypair is generated automatically.
 | `plugin-replication-lag-predictor` | — | ProcessList + SlowLog | Replication lag prediction |
 | `plugin-tmp-table-storm` | — | PFSQueries | Temporary table creation spikes |
 
+### Official Security External
+
+| Binary | ErrKey | Input | Detects |
+|--------|--------|-------|---------|
+| `plugin-security-hardening` | SEC0103–SEC0118 | ServerVariables, DatabaseUsers, ClusterContext | CIS benchmark hardening checks (TLS, file_priv, DNS, anon users, password plugins) |
+| `plugin-security-no-password-user` | SEC0100 | DatabaseUsers | Accounts with empty authentication_string |
+| `plugin-security-weak-auth` | SEC0101 | DatabaseUsers | Accounts using deprecated auth plugins (mysql_native_password, mysql_old_password) |
+| `plugin-security-local-infile` | SEC0102 | ServerVariables | local_infile enabled |
+| `plugin-binlog-cleartext-password` | WARN0310 | BinlogEvents | Cleartext passwords in binlog (CREATE USER, GRANT) |
+| `plugin-binlog-creditcard-leak` | WARN0311 | BinlogEvents | Credit card PANs in binlog (Luhn-validated) |
+
+### Official Score External
+
+| Binary | ScoreCheck tags | Input | Evaluates |
+|--------|----------------|-------|-----------|
+| `plugin-score-auth` | HasStrongAuth, HasStrongPwd | ServerVariables, DatabaseUsers | Authentication plugin strength + password validation |
+| `plugin-score-audit` | HasAudit | ServerVariables | Audit plugin loaded |
+| `plugin-score-encryption` | HasEncryption | ServerVariables | InnoDB tablespace encryption |
+| `plugin-score-lts` | HasLastLTS | ServerVersion | Server is on an active LTS release |
+| `plugin-score-network` | HasNetwork | ServerVariables | Network security (require_secure_transport, skip_name_resolve) |
+| `plugin-score-passwords` | NoEmptyPassword | DatabaseUsers | No empty-password accounts |
+| `plugin-score-proxy` | HasProxy | ClusterContext | Cluster has proxy layer configured |
+| `plugin-score-ssl` | HasSSL | ServerVariables | SSL/TLS enabled and configured |
+
 ---
 
 ## Relevant Source Files
 
 | File | Purpose |
 |------|---------|
-| `cluster/logplugin/logplugin.go` | `LogPlugin` interface, `LogSource`, `EvaluateResult`, spike detection |
+| `cluster/logplugin/logplugin.go` | `LogPlugin` interface, `LogSource`, `EvaluateResult`, `ClusterContext`, spike detection |
 | `cluster/logplugin/external.go` | External binary loader, wire type definitions, 5s timeout |
 | `cluster/logplugin/plugins/wire/wire.go` | Shared JSON wire types (import or copy) |
+| `cluster/logplugin/plugin_enterprise_security.go` | Built-in enterprise security plugin + shared helpers |
+| `cluster/logplugin/plugin_enterprise_replication.go` | Built-in enterprise replication plugin |
+| `cluster/logplugin/plugin_enterprise_workload.go` | Built-in enterprise workload plugin |
 | `cluster/logplugin/example/plugin-innodb-corruption/main.go` | Minimal self-contained example |
 | `cluster/logplugin/plugins/plugin-*/main.go` | Official plugin implementations |
-| `cluster/srv_log_plugins.go` | Server integration: snapshot creation, tick loop, state injection |
+| `cluster/srv_log_plugins.go` | Server integration: snapshot creation, tick loop, state injection, `buildClusterContext()` |
+| `server/server_git.go` | `syncPluginDataFromPull()` — global data file sync from pull repo |
+| `doc/implementation/security/ENTERPRISE_PLUGINS.md` | Full enterprise advisory plugins architecture |
 | `Makefile` (lines 74–212) | Build, sign, and distribution targets |
