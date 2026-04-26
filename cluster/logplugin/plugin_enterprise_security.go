@@ -101,9 +101,10 @@ func (p *EnterpriseSecurityPlugin) Evaluate(src LogSource) EvaluateResult {
 
 	var findings []Finding
 
-	// Free plan: CVE advisories are not refreshed by the back office.
+	// Free plan or unregistered: CVE advisories are not refreshed by the back office.
 	// Emit a persistent error so operators know their advisory database is stale.
-	if src.ClusterContext.SubscriptionPlan == "free" {
+	plan := src.ClusterContext.SubscriptionPlan
+	if plan == "" || plan == "free" {
 		findings = append(findings, Finding{
 			ErrKey:   "ENTERR001",
 			Severity: SeveritySecurity,

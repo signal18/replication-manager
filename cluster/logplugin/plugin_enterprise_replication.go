@@ -82,7 +82,8 @@ func (p *EnterpriseReplicationPlugin) Evaluate(src LogSource) EvaluateResult {
 
 	var findings []Finding
 
-	if src.ClusterContext.SubscriptionPlan == "free" {
+	plan := src.ClusterContext.SubscriptionPlan
+	if plan == "" || plan == "free" {
 		findings = append(findings, Finding{
 			ErrKey:   "RPLERR001",
 			Severity: SeveritySecurity,

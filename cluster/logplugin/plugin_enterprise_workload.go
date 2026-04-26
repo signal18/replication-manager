@@ -80,7 +80,8 @@ func (p *EnterpriseWorkloadPlugin) Evaluate(src LogSource) EvaluateResult {
 
 	var findings []Finding
 
-	if src.ClusterContext.SubscriptionPlan == "free" {
+	plan := src.ClusterContext.SubscriptionPlan
+	if plan == "" || plan == "free" {
 		findings = append(findings, Finding{
 			ErrKey:   "WRKERR001",
 			Severity: SeveritySecurity,
