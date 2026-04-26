@@ -45,7 +45,8 @@ function DBServerGrid({
   showTerminal,
   openCompareModal,
   hasMariadbGtid,
-  hasMysqlGtid
+  hasMysqlGtid,
+  defaultOpenAll = false
 }) {
   const {
     common: { isDesktop },
@@ -56,8 +57,8 @@ function DBServerGrid({
   }, [clusterStates])
 
   const { isOpen: isServiceInfoOpen, onToggle: onServiceInfoToggle } = useDisclosure({ defaultIsOpen: false })
-  const { isOpen: isReplicationVarOpen, onToggle: onReplicationVarToggle } = useDisclosure({ defaultIsOpen: false })
-  const { isOpen: isLeaderStatusOpen, onToggle: onLeaderStatusToggle } = useDisclosure({ defaultIsOpen: false })
+  const { isOpen: isReplicationVarOpen, onToggle: onReplicationVarToggle } = useDisclosure({ defaultIsOpen: defaultOpenAll })
+  const { isOpen: isLeaderStatusOpen, onToggle: onLeaderStatusToggle } = useDisclosure({ defaultIsOpen: defaultOpenAll })
   const { isOpen: isReplicationStatusOpen, onToggle: onReplicationStatusToggle } = useDisclosure({
     defaultIsOpen: true
   })

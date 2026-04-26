@@ -131,14 +131,18 @@ function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView',
                   },
                 ]
                 : []),
-              {
-                name: 'Remove Monitor',
-                onClick: () => {
-                  openConfirmModal()
-                  setConfirmTitle(`Confirm removing monitor for ${appName}?`)
-                  setConfirmHandler(() => () => dispatch(dropApp({ clusterName, host: row.host, port: row.port })))
-                }
-              },
+              ...(user?.grants['prov-app-unprovision']
+                ? [
+                    {
+                      name: 'Remove Monitor',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm removing monitor for ${appName}?`)
+                        setConfirmHandler(() => () => dispatch(dropApp({ clusterName, host: row.host, port: row.port })))
+                      }
+                    }
+                  ]
+                : []),
             ]
           },
           ...(user?.grants['app-terminal'] ? [

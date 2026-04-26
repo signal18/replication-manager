@@ -7,6 +7,7 @@ import Login from './Pages/Login'
 // const Login = lazy(() => import('./Pages/Login'))
 // const Home = lazy(() => import('./Pages/Home'))
 import Home from './Pages/Home'
+import Slideshow from './Pages/Slideshow'
 import ClusterDB from './Pages/ClusterDB'
 import TerminalComponent from './Pages/Terminal'
 import ClusterApp from './Pages/ClusterApp'
@@ -74,18 +75,37 @@ function App() {
           </PrivateRoute>
         } />
         <Route path='/login' element={<Login />} />
+        <Route path='/dashboard' element={<Login dashboard />} />
+        <Route
+          path='/slideshow'
+          element={
+            <SlideshowRoute>
+              <Slideshow />
+            </SlideshowRoute>
+          }
+        />
       </Routes>
     </BrowserRouter>
   )
 }
 
 const PrivateRoute = ({ children }) => {
-  // Add your own authentication on the below line.
   const isLoggedIn = localStorage.getItem('user_token') !== null
   return isLoggedIn ? <Suspense fallback={<div>Loading...</div>}>{children}</Suspense> : <Navigate to='/login' />
 }
 
+// Slideshow uses the dashboard token — on auth failure redirect back to /dashboard
+// (not /login) so the viewer token is re-fetched automatically.
+const SlideshowRoute = ({ children }) => {
+  const isLoggedIn = localStorage.getItem('user_token') !== null
+  return isLoggedIn ? <Suspense fallback={<div>Loading...</div>}>{children}</Suspense> : <Navigate to='/dashboard' />
+}
+
 PrivateRoute.propTypes = {
+  children: PropTypes.node.isRequired
+}
+
+SlideshowRoute.propTypes = {
   children: PropTypes.node.isRequired
 }
 

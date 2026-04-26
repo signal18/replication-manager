@@ -94,6 +94,7 @@ export const padWithZero = (number) => {
 }
 
 export const formatBytes = (bytes, decimals = 2) => {
+  if (bytes == null || isNaN(bytes)) return '—'
   if (bytes === 0) return '0 Bytes'
 
   const k = 1024
@@ -147,9 +148,11 @@ export const getBackupStrategy = (strategyId) => {
 }
 
 export const formatDate = (date, format) => {
+  if (!date) return ''
   if (typeof date === 'string') {
     date = new Date(date)
   }
+  if (!(date instanceof Date) || isNaN(date.getTime())) return ''
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0') // Months are zero-based
   const day = String(date.getDate()).padStart(2, '0')
@@ -235,6 +238,7 @@ export const getColorFromServerStatus = (status) => {
 }
 
 export const sizeOf = function (bytes) {
+  if (bytes == null || isNaN(bytes)) { return '—'; }
   if (bytes == 0) { return "0.00 B"; }
   var e = Math.floor(Math.log(bytes) / Math.log(1024));
   return (bytes/Math.pow(1024, e)).toFixed(2)+' '+' KMGTP'.charAt(e)+'B';

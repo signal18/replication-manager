@@ -223,6 +223,9 @@ func (repman *ReplicationManager) apiserver() {
 	if repman.Conf.Test {
 		router.HandleFunc("/", repman.handlerApp)
 		router.PathPrefix("/terminal/").HandlerFunc(repman.handlerApp)
+		router.HandleFunc("/login", repman.handlerApp)
+		router.HandleFunc("/dashboard", repman.handlerApp)
+		router.HandleFunc("/slideshow", repman.handlerApp)
 		router.PathPrefix("/images/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/assets/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 
@@ -232,6 +235,9 @@ func (repman *ReplicationManager) apiserver() {
 	} else {
 		router.HandleFunc("/", repman.rootHandler)
 		router.PathPrefix("/terminal/").HandlerFunc(repman.rootHandler)
+		router.HandleFunc("/login", repman.rootHandler)
+		router.HandleFunc("/dashboard", repman.rootHandler)
+		router.HandleFunc("/slideshow", repman.rootHandler)
 		router.PathPrefix("/static/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/app/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/images/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
@@ -262,6 +268,8 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/api/terminal/connect", http.HandlerFunc(repman.handlerTerminal))
 
 	router.HandleFunc("/api/login", repman.loginHandler)
+	router.HandleFunc("/api/autologin", repman.autologinHandler)
+	router.HandleFunc("/api/dashboard-token", repman.dashboardTokenHandler)
 	router.HandleFunc("/api/version", repman.handlerVersion)
 
 	router.Handle("/api/terms", negroni.New(
@@ -753,6 +761,108 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	repman.jsonResponse(resp, w)
+}
+
+// resolveUserPassword returns the plaintext password for username by looking it up in
+// the already-decrypted cluster.APIUsers map. Returns "" if the user is not found.
+func (repman *ReplicationManager) resolveUserPassword(username string) string {
+	for _, cl := range repman.Clusters {
+		if user, ok := cl.APIUsers[username]; ok {
+			return user.Password
+		}
+	}
+	return ""
+}
+
+// autologinHandler returns a JWT token for the configured auto-login user without requiring credentials.
+// Only active when api-autologin = true. Should only be exposed on trusted networks.
+func (repman *ReplicationManager) autologinHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if !repman.Conf.APIAutologin {
+		http.Error(w, "Auto-login not enabled", http.StatusNotFound)
+		return
+	}
+
+	username := repman.Conf.APIAutologinUser
+	if username == "" {
+		username = "admin"
+	}
+
+	// Resolve plaintext password from cluster APIUsers (already decrypted there).
+	// The JWT must carry the encrypted password so IsValidClusterACL can authenticate it.
+	password := repman.resolveUserPassword(username)
+
+	userInfo := struct {
+		Name     string
+		Role     string
+		Password string
+	}{username, "Member", repman.Conf.GetEncryptedString(password)}
+
+	signer := jwt.New(jwt.SigningMethodRS256)
+	claims := signer.Claims.(jwt.MapClaims)
+	claims["iss"] = "https://api.replication-manager.signal18.io"
+	claims["iat"] = time.Now().Unix()
+	claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
+	claims["jti"] = "1"
+	claims["token"] = ""
+	claims["CustomUserInfo"] = userInfo
+	signer.Claims = claims
+	sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
+
+	tokenString, err := signer.SignedString(sk)
+	if err != nil {
+		http.Error(w, "Error signing token: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	repman.jsonResponse(struct {
+		Token    string `json:"token"`
+		Username string `json:"username"`
+	}{Token: tokenString, Username: username}, w)
+}
+
+// dashboardTokenHandler issues a read-only JWT for the /dashboard public endpoint.
+// Active whenever api-dashboard-user is set — no separate enable flag needed.
+func (repman *ReplicationManager) dashboardTokenHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	username := repman.Conf.APIDashboardUser
+	if username == "" {
+		http.Error(w, "Dashboard endpoint not configured", http.StatusNotFound)
+		return
+	}
+
+	// Resolve plaintext password from cluster APIUsers (already decrypted there).
+	// The JWT must carry the encrypted password so IsValidClusterACL can authenticate it.
+	password := repman.resolveUserPassword(username)
+
+	userInfo := struct {
+		Name     string
+		Role     string
+		Password string
+	}{username, "Member", repman.Conf.GetEncryptedString(password)}
+
+	signer := jwt.New(jwt.SigningMethodRS256)
+	claims := signer.Claims.(jwt.MapClaims)
+	claims["iss"] = "https://api.replication-manager.signal18.io"
+	claims["iat"] = time.Now().Unix()
+	claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
+	claims["jti"] = "1"
+	claims["token"] = ""
+	claims["CustomUserInfo"] = userInfo
+	signer.Claims = claims
+	sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
+
+	tokenString, err := signer.SignedString(sk)
+	if err != nil {
+		http.Error(w, "Error signing token: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	repman.jsonResponse(struct {
+		Token    string `json:"token"`
+		Username string `json:"username"`
+	}{Token: tokenString, Username: username}, w)
 }
 
 func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, r *http.Request) {

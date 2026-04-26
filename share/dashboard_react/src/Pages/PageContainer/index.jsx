@@ -67,7 +67,8 @@ function PageContainer({ children }) {
 
   useEffect(() => {
     if (!isLogged && user === null && !isAuthorized() && location.pathname !== '/login') {
-      navigate('/login')
+      // Slideshow auth goes through /dashboard (viewer token) not /login (regular autologin → /)
+      navigate(location.pathname === '/slideshow' ? '/dashboard' : '/login')
     }
   }, [isLogged, location.pathname, navigate, user])
 

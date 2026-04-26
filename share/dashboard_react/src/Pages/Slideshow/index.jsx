@@ -1,0 +1,346 @@
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import { Box, Flex, Progress, Text } from '@chakra-ui/react'
+import { HiPlay, HiStop } from 'react-icons/hi'
+import RMIconButton from '../../components/RMIconButton'
+import {
+  getBackupStats,
+  getBackups,
+  getClusterAlerts,
+  getClusterApps,
+  getClusterData,
+  getClusterLogs,
+  getClusterMaster,
+  getClusterProxies,
+  getClusterServers,
+  getJobs,
+  getResticCurrentTask,
+  getResticSnapshot,
+  setRefreshInterval
+} from '../../redux/clusterSlice'
+import { getClusters, getMonitoredData } from '../../redux/globalClustersSlice'
+import ClusterDetail from '../Dashboard/components/ClusterDetail'
+import HADetail from '../Dashboard/components/HADetail'
+import DBServers from '../Dashboard/components/DBServers'
+import DBServerGrid from '../Dashboard/components/DBServers/DBServerGrid'
+import Proxies from '../Dashboard/components/Proxies'
+import Apps from '../Dashboard/components/Apps'
+import { GeneralLogs, TaskLogs, SecurityLogs, WorkloadLogs } from '../Dashboard/components/Logs'
+import Maintenance from '../Maintenance'
+import PageContainer from '../PageContainer'
+import AccordionComponent from '../../components/AccordionComponent'
+import { AppSettings } from '../../AppSettings'
+
+// Duration in milliseconds each slide is displayed
+const SLIDE_DURATION_MS = 15000
+
+// Sections shown per cluster in order
+const SECTIONS = [
+  { view: 'cluster-ha',         label: 'Cluster & HA' },
+  { view: 'servers-proxies',    label: 'Servers & Proxies' },
+  { view: 'servers-detail',     label: 'Server Details' },
+  { view: 'apps',               label: 'Application Servers' },
+  { view: 'logs-cluster',       label: 'Cluster & Security Logs' },
+  { view: 'logs-workload',      label: 'Workload Logs' },
+  { view: 'maintenance-backup', label: 'Backup' },
+  { view: 'maintenance-jobs',   label: 'Scheduler Jobs' },
+  { view: 'logs-jobs',          label: 'Job Logs' },
+]
+
+const MAINTENANCE_VIEWS = new Set(['maintenance-backup', 'maintenance-jobs', 'logs-jobs'])
+
+function Slideshow() {
+  const dispatch = useDispatch()
+
+  const clusters = useSelector((state) => state.globalClusters.clusters)
+  const clusterData = useSelector((state) => state.cluster.clusterData)
+  const clusterServers = useSelector((state) => state.cluster.clusterServers)
+  const clusterProxies = useSelector((state) => state.cluster.clusterProxies)
+  const clusterMaster = useSelector((state) => state.cluster.clusterMaster)
+
+  const hasMariadbGtid = clusterServers?.some((s) => s.haveMariadbGtid) ?? false
+  const hasMysqlGtid = clusterServers?.some((s) => s.haveMysqlGtid) ?? false
+
+  const [slides, setSlides] = useState([]) // [{clusterName, view, label}]
+  const [slideIndex, setSlideIndex] = useState(0)
+  const [progress, setProgress] = useState(0)
+  const [user, setUser] = useState(null)
+  const [isPaused, setIsPaused] = useState(false)
+
+  // Refs for use inside intervals without stale closures
+  const slidesRef = useRef([])
+  const slideIndexRef = useRef(0)
+  const isPausedRef = useRef(false)
+
+  // ─── Load all data for a given slide ─────────────────────────────────────
+  const loadSlideData = useCallback(
+    (slide) => {
+      if (!slide) return
+      const { clusterName, view } = slide
+      dispatch(getClusterData({ clusterName }))
+      dispatch(getClusterServers({ clusterName }))
+      dispatch(getClusterProxies({ clusterName }))
+      dispatch(getClusterAlerts({ clusterName }))
+      dispatch(getClusterMaster({ clusterName }))
+      dispatch(getClusterLogs({ clusterName }))
+      dispatch(getClusterApps({ clusterName }))
+      if (MAINTENANCE_VIEWS.has(view)) {
+        dispatch(getResticSnapshot({ clusterName, filter: 'latest-per-session' }))
+        dispatch(getBackups({ clusterName }))
+        dispatch(getBackupStats({ clusterName }))
+        dispatch(getResticCurrentTask({ clusterName }))
+        dispatch(getJobs({ clusterName }))
+      }
+    },
+    [dispatch]
+  )
+
+  // ─── Build slides whenever cluster list or user grants change ────────────
+  useEffect(() => {
+    if (!clusters || clusters.length === 0) return
+    const canShowBackups = !user || user?.grants?.['cluster-show-backups']
+    const canShowJobs = !user || user?.grants?.['cluster-show-jobs'] || user?.grants?.['cluster-process']
+    const built = []
+    clusters.forEach((cl) => {
+      const hasBackup =
+        cl.config?.backupRestic ||
+        (cl.config?.backupPhysicalType && cl.config?.backupPhysicalType !== 'none') ||
+        (cl.config?.backupLogicalType && cl.config?.backupLogicalType !== 'none')
+      const hasScheduler = cl.config?.schedulerEnabled
+      const hasApps = cl.appServers?.length > 0
+
+      SECTIONS.forEach(({ view, label }) => {
+        if (MAINTENANCE_VIEWS.has(view) && !hasBackup && !hasScheduler) return
+        if (view === 'apps' && !hasApps) return
+        if ((view === 'maintenance-backup') && !canShowBackups) return
+        if ((view === 'maintenance-jobs' || view === 'logs-jobs') && !canShowJobs) return
+        built.push({ clusterName: cl.name, view, label })
+      })
+    })
+
+    // Only reset to slide 0 when the slide structure actually changes
+    // (cluster added/removed, or config that controls which sections appear).
+    // Routine getClusters polls return new array references even when data is
+    // identical, so comparing by reference would reset the index every few seconds.
+    const prev = slidesRef.current
+    const structurallyChanged =
+      built.length !== prev.length ||
+      built.some((s, i) => s.clusterName !== prev[i]?.clusterName || s.view !== prev[i]?.view)
+
+    slidesRef.current = built
+    setSlides(built)
+
+    if (structurallyChanged) {
+      setSlideIndex(0)
+      slideIndexRef.current = 0
+      loadSlideData(built[0])
+    }
+  }, [clusters, loadSlideData, user])
+
+  // ─── Initial cluster list fetch ───────────────────────────────────────────
+  useEffect(() => {
+    const interval = localStorage.getItem('refresh_interval')
+      ? parseInt(localStorage.getItem('refresh_interval'))
+      : AppSettings.DEFAULT_INTERVAL
+    dispatch(setRefreshInterval({ interval }))
+    dispatch(getClusters({}))
+    dispatch(getMonitoredData({}))
+  }, [])
+
+  // Keep isPausedRef in sync with state so the ticker can read it without stale closures
+  useEffect(() => {
+    isPausedRef.current = isPaused
+  }, [isPaused])
+
+  // ─── Slideshow timer ──────────────────────────────────────────────────────
+  // Runs once on mount. Uses slidesRef so the interval never restarts when
+  // the slides state updates, keeping the elapsed counter stable.
+  useEffect(() => {
+    let elapsed = 0
+    const TICK_MS = 250
+
+    const ticker = setInterval(() => {
+      if (slidesRef.current.length === 0) return // clusters not loaded yet
+      if (isPausedRef.current) return // slideshow paused
+
+      elapsed += TICK_MS
+      setProgress(Math.min((elapsed / SLIDE_DURATION_MS) * 100, 100))
+
+      if (elapsed >= SLIDE_DURATION_MS) {
+        elapsed = 0
+        setSlideIndex((prev) => {
+          const next = (prev + 1) % slidesRef.current.length
+          slideIndexRef.current = next
+          loadSlideData(slidesRef.current[next])
+          return next
+        })
+      }
+    }, TICK_MS)
+
+    return () => clearInterval(ticker)
+  }, [loadSlideData])
+
+  // ─── Background data refresh on a separate interval ───────────────────────
+  useEffect(() => {
+    const refreshMs =
+      (localStorage.getItem('refresh_interval')
+        ? parseInt(localStorage.getItem('refresh_interval'))
+        : AppSettings.DEFAULT_INTERVAL) * 1000
+
+    const poller = setInterval(() => {
+      // Always refresh cluster list so the slideshow recovers after a server restart
+      dispatch(getClusters({}))
+
+      const current = slidesRef.current[slideIndexRef.current]
+      if (current) loadSlideData(current)
+    }, refreshMs)
+
+    return () => clearInterval(poller)
+  }, [loadSlideData])
+
+  // ─── Fast retry when no clusters loaded yet (handles server restart) ──────
+  // Polls every 5 s until slides are built, then stops polling.
+  useEffect(() => {
+    const retrier = setInterval(() => {
+      if (slidesRef.current.length === 0) {
+        dispatch(getClusters({}))
+        dispatch(getMonitoredData({}))
+      }
+    }, 5000)
+    return () => clearInterval(retrier)
+  }, [dispatch])
+
+  // ─── Resolve user from clusterData ────────────────────────────────────────
+  useEffect(() => {
+    if (clusterData?.apiUsers) {
+      const username = localStorage.getItem('username')
+      const apiUser = clusterData.apiUsers[username] || clusterData.apiUsers[username?.toLowerCase()]
+      if (apiUser) setUser(apiUser)
+    }
+  }, [clusterData])
+
+  const currentSlide = slides[slideIndex]
+  const clusterCount = clusters?.length || 0
+  // Derive per-cluster section position dynamically (clusters may have different section counts)
+  const clusterNames = [...new Set(slides.map((s) => s.clusterName))]
+  const clusterIndex = currentSlide ? clusterNames.indexOf(currentSlide.clusterName) + 1 : 0
+  const slidesForCluster = slides.filter((s) => s.clusterName === currentSlide?.clusterName)
+  const sectionIndex = currentSlide
+    ? slidesForCluster.findIndex((s) => s.view === currentSlide.view) + 1
+    : 0
+  const totalSections = slidesForCluster.length
+
+  return (
+    <PageContainer>
+      {/* ── Header bar ─────────────────────────────────────── */}
+      <Flex
+        px={6}
+        py={3}
+        align='center'
+        justify='space-between'
+        borderBottom='1px solid'
+        borderColor='gray.200'>
+        <Text fontWeight='bold' fontSize='3xl'>
+          {currentSlide?.clusterName || '…'}
+        </Text>
+        <Text fontSize='2xl' fontWeight='semibold' color='gray.500'>
+          {currentSlide?.label || '…'}
+        </Text>
+        <Flex align='center' gap={3}>
+          <Text fontSize='sm' color='gray.400'>
+            {clusterCount > 0
+              ? `Cluster ${clusterIndex} of ${clusterCount} — section ${sectionIndex} of ${totalSections}`
+              : 'Loading clusters…'}
+          </Text>
+          {isPaused ? (
+            <RMIconButton icon={HiPlay} tooltip='Resume slideshow' onClick={() => setIsPaused(false)} />
+          ) : (
+            <RMIconButton icon={HiStop} tooltip='Pause slideshow' onClick={() => setIsPaused(true)} />
+          )}
+        </Flex>
+      </Flex>
+
+      {/* ── Progress bar ───────────────────────────────────── */}
+      <Progress value={progress} size='xs' colorScheme={isPaused ? 'gray' : 'blue'} borderRadius={0} />
+
+      {/* ── Slide content ──────────────────────────────────── */}
+      <Box px={4} py={4}>
+        {slides.length === 0 && (
+          <Text color='gray.400' textAlign='center' mt={8}>
+            Loading clusters…
+          </Text>
+        )}
+
+        {currentSlide?.view === 'cluster-ha' && clusterData && (
+          <Flex gap='24px' direction={{ base: 'column', lg: 'row' }}>
+            <ClusterDetail selectedCluster={clusterData} user={user} readOnly />
+            <HADetail selectedCluster={clusterData} user={user} readOnly />
+          </Flex>
+        )}
+
+        {currentSlide?.view === 'servers-proxies' && clusterData && (
+          <Flex direction='column' gap='16px'>
+            {clusterServers?.length > 0
+              ? <DBServers selectedCluster={clusterData} user={user} />
+              : <Text color='gray.400' textAlign='center'>Loading servers…</Text>
+            }
+            {clusterProxies?.length > 0
+              ? <Proxies selectedCluster={clusterData} user={user} />
+              : <Text color='gray.400' textAlign='center'>Loading proxies…</Text>
+            }
+          </Flex>
+        )}
+
+        {currentSlide?.view === 'servers-detail' && (
+          clusterData && clusterServers?.length > 0
+            ? <DBServerGrid
+                allDBServers={clusterServers}
+                clusterMasterId={clusterMaster?.id}
+                clusterName={clusterData.name}
+                backupLogicalType={clusterData.config?.backupLogicalType}
+                backupPhysicalType={clusterData.config?.backupPhysicalType}
+                backupRestic={clusterData.config?.backupRestic}
+                orchestrator={clusterData.config?.provOrchestrator}
+                user={user}
+                showTerminal={clusterData.config?.terminalSessionEnabled}
+                showTableView={() => {}}
+                openCompareModal={() => {}}
+                hasMariadbGtid={hasMariadbGtid}
+                hasMysqlGtid={hasMysqlGtid}
+                defaultOpenAll
+              />
+            : <Text color='gray.400' textAlign='center' mt={8}>Loading servers…</Text>
+        )}
+
+        {currentSlide?.view === 'apps' && clusterData && (
+          <Apps selectedCluster={clusterData} user={user} />
+        )}
+
+        {currentSlide?.view === 'logs-cluster' && (
+          <Flex direction='column' gap='8px'>
+            <AccordionComponent heading='Cluster Logs' body={<GeneralLogs />} />
+            <AccordionComponent heading='Security Logs' body={<SecurityLogs />} />
+          </Flex>
+        )}
+
+        {currentSlide?.view === 'logs-workload' && (
+          <AccordionComponent heading='Workload Logs' body={<WorkloadLogs />} />
+        )}
+
+        {currentSlide?.view === 'maintenance-backup' && (
+          <Maintenance selectedCluster={clusterData} user={user} section='backup' />
+        )}
+
+        {currentSlide?.view === 'maintenance-jobs' && (
+          <Maintenance selectedCluster={clusterData} user={user} section='jobs' />
+        )}
+
+        {currentSlide?.view === 'logs-jobs' && (
+          <AccordionComponent heading='Job Logs' body={<TaskLogs />} />
+        )}
+      </Box>
+    </PageContainer>
+  )
+}
+
+export default Slideshow

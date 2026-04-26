@@ -2006,6 +2006,7 @@ func (repman *ReplicationManager) handlerMuxClusterTags(w http.ResponseWriter, r
 // handlerMuxClusterBackups handles the retrieval of backups for a given cluster.
 // @Summary Retrieve backups for a specific cluster
 // @Description This endpoint retrieves the backups for the specified cluster.
+// @Description Required grant: cluster-show-backups
 // @Tags ClusterBackups
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -2053,6 +2054,7 @@ type resticSnapshotsResponse struct {
 // handlerMuxClusterBackupStat handles the retrieval of backup stats for a given cluster.
 // @Summary Retrieve backup stats for a specific cluster
 // @Description This endpoint retrieves the backup stats for the specified cluster.
+// @Description Required grant: cluster-show-backups
 // @Tags ClusterBackups
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -2086,6 +2088,7 @@ func (repman *ReplicationManager) handlerMuxClusterBackupStat(w http.ResponseWri
 // handlerMuxClusterBackupReconcile handles the manual reconciliation of backup metadata with restic snapshots.
 // @Summary Reconcile backup metadata with restic snapshots
 // @Description This endpoint triggers a manual reconciliation check to detect drift between backup metadata files and restic snapshots.
+// @Description Required grant: db-backup
 // @Tags ClusterBackup
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -2126,6 +2129,7 @@ func (repman *ReplicationManager) handlerMuxClusterBackupReconcile(w http.Respon
 // handlerMuxClusterBackupDelete handles deletion of a non-restic backup by ID.
 // @Summary Delete a backup by ID
 // @Description Deletes a non-restic backup for the specified cluster.
+// @Description Required grant: db-backup
 // @Tags ClusterBackups
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -8141,6 +8145,7 @@ func (repman *ReplicationManager) handlerMuxResticFetch(w http.ResponseWriter, r
 // handlerMuxResticPurge handles the HTTP request to purge the restic repo for a given cluster.
 // @Summary Purge Restic Backup
 // @Description Purges the restic backup for the specified cluster.
+// @Description Required grant: db-backup
 // @Tags ClusterRestic
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)

@@ -124,7 +124,8 @@ const resticTaskDetail = (row) => {
 }
 
 
-function Maintenance({ selectedCluster, user }) {
+// section: undefined = full page, 'backup' = backup accordions only, 'jobs' = jobs accordion only
+function Maintenance({ selectedCluster, user, section }) {
   const [data, setData] = useState([])
   const [snapshotData, setSnapshotData] = useState([])
   const [queueData, setQueueData] = useState([])
@@ -375,7 +376,7 @@ function Maintenance({ selectedCluster, user }) {
             icon={HiTrash}
             tooltip='Delete backup'
             onClick={() => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: info.row.original.id } })}
-            isDisabled={user?.grants['cluster-settings'] == false}
+            isDisabled={!user?.grants['db-backup']}
           />
         )
       })
@@ -421,7 +422,9 @@ function Maintenance({ selectedCluster, user }) {
       cell: (info) => (
         <RMIconButton
           icon={HiTrash}
+          tooltip='Purge snapshot'
           onClick={() => openConfirmModal('Do you want to purge this snapshot?', { action: 'snapshotPurge', data: { snapshotId: info.row.original.id } })}
+          isDisabled={!user?.grants['cluster-process']}
         />
       )
     })
@@ -441,8 +444,8 @@ function Maintenance({ selectedCluster, user }) {
     {
       key: 'Action',
       value: (selectedCluster?.isResticQueuePaused ?
-        <RMIconButton icon={HiPlay} onClick={() => openConfirmModal('Resume Restic Queue', { action: 'queueResume' })} /> :
-        <RMIconButton icon={HiPause} onClick={() => openConfirmModal('Pause Restic Queue', { action: 'queuePause' })} />
+        <RMIconButton icon={HiPlay} tooltip='Resume queue' isDisabled={!user?.grants['cluster-process']} onClick={() => openConfirmModal('Resume Restic Queue', { action: 'queueResume' })} /> :
+        <RMIconButton icon={HiPause} tooltip='Pause queue' isDisabled={!user?.grants['cluster-process']} onClick={() => openConfirmModal('Pause Restic Queue', { action: 'queuePause' })} />
       )
     }
   ], [selectedCluster?.isResticQueuePaused, queuelength])
@@ -540,22 +543,24 @@ function Maintenance({ selectedCluster, user }) {
       id: 'details',
       minWidth: 200
     }),
-    // Added Purge action column
+    // Added cancel action column
     columnHelper.display({
       id: 'actions',
       header: 'Actions',
       cell: (info) => (
         <RMIconButton
           icon={HiTrash}
+          tooltip='Cancel queued task'
           onClick={() => openConfirmModal('Cancel Queued Task', { action: 'queueCancel', data: { taskId: info.row.original.task_id } })}
+          isDisabled={!user?.grants['cluster-process']}
         />
       )
     })
   ])
 
-  return (
-    <VStack className={styles.backupContainer}>
-<AccordionComponent
+  const backupSection = (
+    <>
+      <AccordionComponent
         heading={'Current Backups'}
         isOpen={isBackupsOpen}
         onToggle={onBackupsToggle}
@@ -595,24 +600,38 @@ function Maintenance({ selectedCluster, user }) {
           </VStack>
         }
       />
-      <AccordionComponent
-        heading={'Database Jobs'}
-        isOpen={isDBJobsOpen}
-        onToggle={onDBJobsToggle}
-        className={styles.accordion}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<DatabaseJobs clusterName={selectedCluster?.name} />}
-      />
-      <AccordionComponent
-        className={styles.accordion}
-        isOpen={isLogsOpen}
-        onToggle={onLogsToggle}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        heading={'Job Logs'}
-        body={<TaskLogs />}
-      />
+    </>
+  )
+
+  const jobsSection = (
+    <AccordionComponent
+      heading={'Database Jobs'}
+      isOpen={isDBJobsOpen}
+      onToggle={onDBJobsToggle}
+      className={styles.accordion}
+      headerClassName={styles.accordionHeader}
+      panelClassName={styles.accordionPanel}
+      body={<DatabaseJobs clusterName={selectedCluster?.name} user={user} />}
+    />
+  )
+
+  const logsSection = (
+    <AccordionComponent
+      className={styles.accordion}
+      isOpen={isLogsOpen}
+      onToggle={onLogsToggle}
+      headerClassName={styles.accordionHeader}
+      panelClassName={styles.accordionPanel}
+      heading={'Job Logs'}
+      body={<TaskLogs />}
+    />
+  )
+
+  return (
+    <VStack className={styles.backupContainer}>
+      {(!section || section === 'backup') && backupSection}
+      {(!section || section === 'jobs') && jobsSection}
+      {!section && logsSection}
       {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} body={<DynamicForm
         payload={payload}
         queueData={queueData}

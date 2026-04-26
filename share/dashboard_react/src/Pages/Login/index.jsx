@@ -1,7 +1,7 @@
 import React, { useEffect, useState, Suspense } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { login, logout } from '../../redux/authSlice'
+import { login, logout, setUserData } from '../../redux/authSlice'
 import styles from './styles.module.scss'
 import { Box, Container, FormControl, FormLabel, FormErrorMessage, Heading, Input, Stack, Text } from '@chakra-ui/react'
 import PageContainer from '../PageContainer'
@@ -13,7 +13,7 @@ import { useTheme } from '../../ThemeProvider'
 import { clearCluster } from '../../redux/clusterSlice'
 import { clearClusters } from '../../redux/globalClustersSlice'
 
-function Login(props) {
+function Login({ dashboard = false }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [usernameError, setUsernameError] = useState('')
@@ -28,20 +28,73 @@ function Login(props) {
   } = useSelector((state) => state)
 
   useEffect(() => {
-    if (isAuthorized()) {
+    // In dashboard mode always fetch a fresh token so the viewer lands on
+    // /slideshow even when a stale token is already in localStorage.
+    if (!dashboard && isAuthorized()) {
       navigate('/')
-    } else {
-      // If not authorized, ensure the user is logged out and clear clusters
-      dispatch(logout());
-      dispatch(clearClusters());
-      dispatch(clearCluster());
+      return
+    }
+
+    if (!dashboard) {
+      // Normal login page: try autologin once, fall through to manual login form on failure.
+      fetch('/api/autologin')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && data.token) {
+            localStorage.setItem('user_token', data.token)
+            localStorage.setItem('username', data.username || 'admin')
+            dispatch(setUserData())
+            navigate('/')
+          } else {
+            dispatch(logout())
+            dispatch(clearClusters())
+            dispatch(clearCluster())
+          }
+        })
+        .catch(() => {
+          dispatch(logout())
+          dispatch(clearClusters())
+          dispatch(clearCluster())
+        })
+      return
+    }
+
+    // Dashboard (slideshow) mode: retry until the server is ready after restart.
+    let retryTimer = null
+    let cancelled = false
+
+    const tryDashboardToken = () => {
+      fetch('/api/dashboard-token')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (cancelled) return
+          if (data && data.token) {
+            localStorage.setItem('user_token', data.token)
+            localStorage.setItem('username', data.username || 'viewer')
+            dispatch(setUserData())
+            navigate('/slideshow')
+          } else {
+            // Server not ready yet or no dashboard token configured — retry.
+            retryTimer = setTimeout(tryDashboardToken, 3000)
+          }
+        })
+        .catch(() => {
+          if (!cancelled) retryTimer = setTimeout(tryDashboardToken, 3000)
+        })
+    }
+
+    tryDashboardToken()
+    return () => {
+      cancelled = true
+      clearTimeout(retryTimer)
     }
   }, [])
 
   useEffect(() => {
     if (!loading || !loadingGitLogin) {
       if (isLogged && user) {
-        navigate('/')
+        // Navigate to the right destination after manual login regardless of mode.
+        navigate(dashboard ? '/slideshow' : '/')
       }
       if (error) {
         setErrorMessage(error)
