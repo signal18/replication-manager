@@ -294,6 +294,10 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 		// Copy plugin binaries from pull repo into each cluster's working dir
 		// so ReloadLogPlugins can find them.
 		repman.syncPluginsFromPull(pullDir)
+
+		// Copy global plugin data files (e.g. enterprise-security-issues.json)
+		// from pull repo root plugins/data/ → ShareDir/plugins/data/.
+		repman.syncPluginDataFromPull(pullDir)
 	}
 
 	if repman.Conf.Cloud18 {
@@ -395,6 +399,51 @@ func (repman *ReplicationManager) syncPluginsFromPull(pullDir string) {
 				"[logplugin] synced %d changed plugin file(s) from pull repo for cluster %s", changed, clusterName)
 			cluster.ReloadLogPlugins()
 		}
+	}
+}
+
+// syncPluginDataFromPull copies global plugin data files from the pull repo
+// root (pullDir/plugins/data/) into ShareDir/plugins/data/.  These files are
+// instance-wide (not per-cluster) — e.g. the enterprise-security-issues.json
+// pushed by the back office.  Only files that actually changed (MD5 comparison)
+// are overwritten.
+func (repman *ReplicationManager) syncPluginDataFromPull(pullDir string) {
+	srcDir := filepath.Join(pullDir, "plugins", "data")
+	if _, err := os.Stat(srcDir); os.IsNotExist(err) {
+		return
+	}
+	dstDir := filepath.Join(repman.Conf.ShareDir, "plugins", "data")
+	if err := os.MkdirAll(dstDir, 0755); err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlErr,
+			"[logplugin] cannot create plugin data dir %s: %v", dstDir, err)
+		return
+	}
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+			"[logplugin] cannot read pull plugin data dir %s: %v", srcDir, err)
+		return
+	}
+	changed := 0
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		src := filepath.Join(srcDir, e.Name())
+		dst := filepath.Join(dstDir, e.Name())
+		if gitPluginFilesEqual(src, dst) {
+			continue
+		}
+		if err := gitPluginCopyFile(src, dst); err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+				"[logplugin] failed to copy plugin data file %s: %v", e.Name(), err)
+			continue
+		}
+		changed++
+	}
+	if changed > 0 {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlInfo,
+			"[logplugin] synced %d global plugin data file(s) from pull repo", changed)
 	}
 }
 

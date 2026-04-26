@@ -1,0 +1,387 @@
+{
+  "version": "1",
+  "generated_at": "2026-04-25T09:48:24Z",
+  "source": "signal18-backoffice",
+  "issues": [
+    {
+      "id": "RPL0001",
+      "cve": "",
+      "mariadb_jira": "MDEV-20821",
+      "github_issue": "",
+      "severity": "ERROR",
+      "title": "MariaDB replication blocker: crash-safe slave with parallel replication (MDEV-20821)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by MDEV-20821 — a critical replication blocker that can cause data loss or slave crash when using crash-safe parallel replication.",
+      "flavor": "MariaDB",
+      "affected_from": "10.4.12",
+      "fixed_in": "10.5.1",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade to MariaDB 10.5.1 or later.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "RPL0002",
+      "cve": "",
+      "mariadb_jira": "MDEV-28310",
+      "github_issue": "",
+      "severity": "WARNING",
+      "title": "MariaDB replication issue with non-ROW binlog format (MDEV-28310)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by MDEV-28310 — replication may silently produce incorrect results when using STATEMENT or MIXED binlog format.",
+      "flavor": "MariaDB",
+      "affected_from": "10.2.0",
+      "fixed_in": "10.2.44",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade to MariaDB 10.2.44+ / 10.3.35+ / 10.4.25+ / 10.5.16+ / 10.6.8+ / 10.7.4+ / 10.8.3+ or switch to ROW binlog format.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "RPL0003",
+      "cve": "",
+      "mariadb_jira": "MDEV-28310",
+      "github_issue": "",
+      "severity": "WARNING",
+      "title": "MariaDB replication issue with non-ROW binlog format (MDEV-28310)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by MDEV-28310 — replication may silently produce incorrect results when using STATEMENT or MIXED binlog format.",
+      "flavor": "MariaDB",
+      "affected_from": "10.3.0",
+      "fixed_in": "10.3.35",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade to MariaDB 10.3.35 or later or switch to ROW binlog format.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "RPL0004",
+      "cve": "",
+      "mariadb_jira": "MDEV-28310",
+      "github_issue": "",
+      "severity": "WARNING",
+      "title": "MariaDB replication issue with non-ROW binlog format (MDEV-28310)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by MDEV-28310 — replication may silently produce incorrect results when using STATEMENT or MIXED binlog format.",
+      "flavor": "MariaDB",
+      "affected_from": "10.4.0",
+      "fixed_in": "10.4.25",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade to MariaDB 10.4.25 or later or switch to ROW binlog format.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "RPL0005",
+      "cve": "",
+      "mariadb_jira": "MDEV-28310",
+      "github_issue": "",
+      "severity": "WARNING",
+      "title": "MariaDB replication issue with non-ROW binlog format (MDEV-28310)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by MDEV-28310 — replication may silently produce incorrect results when using STATEMENT or MIXED binlog format.",
+      "flavor": "MariaDB",
+      "affected_from": "10.5.0",
+      "fixed_in": "10.5.16",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade to MariaDB 10.5.16 or later or switch to ROW binlog format.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "RPL0006",
+      "cve": "",
+      "mariadb_jira": "MDEV-28310",
+      "github_issue": "",
+      "severity": "WARNING",
+      "title": "MariaDB replication issue with non-ROW binlog format (MDEV-28310)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by MDEV-28310 — replication may silently produce incorrect results when using STATEMENT or MIXED binlog format.",
+      "flavor": "MariaDB",
+      "affected_from": "10.6.0",
+      "fixed_in": "10.6.8",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade to MariaDB 10.6.8 or later or switch to ROW binlog format.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "RPL0007",
+      "cve": "",
+      "mariadb_jira": "MDEV-28310",
+      "github_issue": "",
+      "severity": "WARNING",
+      "title": "MariaDB replication issue with non-ROW binlog format (MDEV-28310)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by MDEV-28310 — replication may silently produce incorrect results when using STATEMENT or MIXED binlog format.",
+      "flavor": "MariaDB",
+      "affected_from": "10.7.0",
+      "fixed_in": "10.7.4",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade to MariaDB 10.7.4 or later or switch to ROW binlog format.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "RPL0008",
+      "cve": "",
+      "mariadb_jira": "MDEV-28310",
+      "github_issue": "",
+      "severity": "WARNING",
+      "title": "MariaDB replication issue with non-ROW binlog format (MDEV-28310)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by MDEV-28310 — replication may silently produce incorrect results when using STATEMENT or MIXED binlog format.",
+      "flavor": "MariaDB",
+      "affected_from": "10.8.0",
+      "fixed_in": "10.8.3",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade to MariaDB 10.8.3 or later or switch to ROW binlog format.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "RPL0009",
+      "cve": "",
+      "mariadb_jira": "MDEV-19577",
+      "github_issue": "",
+      "severity": "WARNING",
+      "title": "MariaDB AUTOINC + non-ROW replication issue (MDEV-19577)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by MDEV-19577 — using INNODB_AUTOINC_LOCK_MODE=2 with non-ROW binlog format can cause auto-increment gaps or duplicate key errors on replicas.",
+      "flavor": "MariaDB",
+      "affected_from": "10.2.0",
+      "fixed_in": "10.3.35",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade to MariaDB 10.3.35+ / 10.4.25+ / 10.5.16+ or set INNODB_AUTOINC_LOCK_MODE=1 or use ROW binlog format.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "RPL0010",
+      "cve": "",
+      "mariadb_jira": "MDEV-19577",
+      "github_issue": "",
+      "severity": "WARNING",
+      "title": "MariaDB AUTOINC + non-ROW replication issue (MDEV-19577)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by MDEV-19577 — using INNODB_AUTOINC_LOCK_MODE=2 with non-ROW binlog format can cause auto-increment gaps or duplicate key errors on replicas.",
+      "flavor": "MariaDB",
+      "affected_from": "10.4.0",
+      "fixed_in": "10.4.25",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade to MariaDB 10.4.25 or later.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "RPL0011",
+      "cve": "",
+      "mariadb_jira": "MDEV-19577",
+      "github_issue": "",
+      "severity": "WARNING",
+      "title": "MariaDB AUTOINC + non-ROW replication issue (MDEV-19577)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by MDEV-19577 — using INNODB_AUTOINC_LOCK_MODE=2 with non-ROW binlog format can cause auto-increment gaps or duplicate key errors on replicas.",
+      "flavor": "MariaDB",
+      "affected_from": "10.5.0",
+      "fixed_in": "10.5.16",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade to MariaDB 10.5.16 or later.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "RPL0012",
+      "cve": "",
+      "mariadb_jira": "MDEV-19577",
+      "github_issue": "",
+      "severity": "WARNING",
+      "title": "MariaDB AUTOINC + non-ROW replication issue (MDEV-19577)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by MDEV-19577 — using INNODB_AUTOINC_LOCK_MODE=2 with non-ROW binlog format can cause auto-increment gaps or duplicate key errors on replicas.",
+      "flavor": "MariaDB",
+      "affected_from": "10.6.0",
+      "fixed_in": "10.6.8",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade to MariaDB 10.6.8 or later.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "RPL0013",
+      "cve": "",
+      "mariadb_jira": "MDEV-19577",
+      "github_issue": "",
+      "severity": "WARNING",
+      "title": "MariaDB AUTOINC + non-ROW replication issue (MDEV-19577)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by MDEV-19577 — using INNODB_AUTOINC_LOCK_MODE=2 with non-ROW binlog format can cause auto-increment gaps or duplicate key errors on replicas.",
+      "flavor": "MariaDB",
+      "affected_from": "10.7.0",
+      "fixed_in": "10.7.4",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade to MariaDB 10.7.4 or later.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2016-0650-mariadb-10.0",
+      "cve": "CVE-2016-0650",
+      "mariadb_jira": "",
+      "github_issue": "",
+      "severity": "SECURITY",
+      "title": "MariaDB CVE-2016-0650 (CVSS 5.5)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by CVE-2016-0650 (CVSS 5.5) — Unspecified vulnerability in Oracle MySQL 5.5.47 and earlier, 5.6.28 and earlier, and 5.7.10 and earlier and MariaDB before 5.5.48, 10.0.x before 10.0.24, and 10.1.x before 10.1.12 allows local users ...",
+      "flavor": "MariaDB",
+      "affected_from": "10.0.0",
+      "fixed_in": "10.0.24",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade MariaDB to 10.0.24 or later.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2016-0650-mariadb-10.1",
+      "cve": "CVE-2016-0650",
+      "mariadb_jira": "",
+      "github_issue": "",
+      "severity": "SECURITY",
+      "title": "MariaDB CVE-2016-0650 (CVSS 5.5)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by CVE-2016-0650 (CVSS 5.5) — Unspecified vulnerability in Oracle MySQL 5.5.47 and earlier, 5.6.28 and earlier, and 5.7.10 and earlier and MariaDB before 5.5.48, 10.0.x before 10.0.24, and 10.1.x before 10.1.12 allows local users ...",
+      "flavor": "MariaDB",
+      "affected_from": "10.1.0",
+      "fixed_in": "10.1.12",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade MariaDB to 10.1.12 or later.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2016-0650-mariadb-5.5",
+      "cve": "CVE-2016-0650",
+      "mariadb_jira": "",
+      "github_issue": "",
+      "severity": "SECURITY",
+      "title": "MariaDB CVE-2016-0650 (CVSS 5.5)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by CVE-2016-0650 (CVSS 5.5) — Unspecified vulnerability in Oracle MySQL 5.5.47 and earlier, 5.6.28 and earlier, and 5.7.10 and earlier and MariaDB before 5.5.48, 10.0.x before 10.0.24, and 10.1.x before 10.1.12 allows local users ...",
+      "flavor": "MariaDB",
+      "affected_from": "5.5.20",
+      "fixed_in": "5.5.48",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade MariaDB to 5.5.48 or later.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2017-15365-mariadb-0",
+      "cve": "CVE-2017-15365",
+      "mariadb_jira": "",
+      "github_issue": "",
+      "severity": "SECURITY",
+      "title": "MariaDB CVE-2017-15365 (CVSS 8.8)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by CVE-2017-15365 (CVSS 8.8) — sql/event_data_objects.cc in MariaDB before 10.1.30 and 10.2.x before 10.2.10 and Percona XtraDB Cluster before 5.6.37-26.21-3 and 5.7.x before 5.7.19-29.22-3 allows remote authenticated users with SQ...",
+      "flavor": "MariaDB",
+      "affected_from": "",
+      "fixed_in": "10.1.30",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade MariaDB to 10.1.30 or later.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2017-15365-mariadb-10.2",
+      "cve": "CVE-2017-15365",
+      "mariadb_jira": "",
+      "github_issue": "",
+      "severity": "SECURITY",
+      "title": "MariaDB CVE-2017-15365 (CVSS 8.8)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by CVE-2017-15365 (CVSS 8.8) — sql/event_data_objects.cc in MariaDB before 10.1.30 and 10.2.x before 10.2.10 and Percona XtraDB Cluster before 5.6.37-26.21-3 and 5.7.x before 5.7.19-29.22-3 allows remote authenticated users with SQ...",
+      "flavor": "MariaDB",
+      "affected_from": "10.2.0",
+      "fixed_in": "10.2.10",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade MariaDB to 10.2.10 or later.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2020-2921-mysql-8.0",
+      "cve": "CVE-2020-2921",
+      "mariadb_jira": "",
+      "github_issue": "",
+      "severity": "SECURITY",
+      "title": "MySQL CVE-2020-2921 (CVSS 4.4)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by CVE-2020-2921 (CVSS 4.4) — Vulnerability in the MySQL Server product of Oracle MySQL (component: Server: Group Replication Plugin). Supported versions that are affected are 8.0.19 and prior. Difficult to exploit vulnerability a...",
+      "flavor": "MySQL",
+      "affected_from": "8.0.0",
+      "fixed_in": "8.0.19",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade MySQL to 8.0.19 or later.",
+          "risk": "disruptive"
+        }
+      ]
+    },
+    {
+      "id": "CVE-2020-2926-mysql-8.0",
+      "cve": "CVE-2020-2926",
+      "mariadb_jira": "",
+      "github_issue": "",
+      "severity": "SECURITY",
+      "title": "MySQL CVE-2020-2926 (CVSS 4.4)",
+      "description": "Server {server_url} is running {flavor} {version} which is affected by CVE-2020-2926 (CVSS 4.4) — Vulnerability in the MySQL Server product of Oracle MySQL (component: Server: Group Replication GCS). Supported versions that are affected are 8.0.19 and prior. Difficult to exploit vulnerability allo...",
+      "flavor": "MySQL",
+      "affected_from": "8.0.0",
+      "fixed_in": "8.0.19",
+      "remediations": [
+        {
+          "type": "repman_config",
+          "description": "Upgrade MySQL to 8.0.19 or later.",
+          "risk": "disruptive"
+        }
+      ]
+    }
+  ]
+}

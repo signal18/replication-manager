@@ -4684,6 +4684,10 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 		return
 	}
 
+	if repman.Conf.MonitoringLogAPILogin && !repman.isAPILoginSilenced(user.User) {
+		repman.logSecurityEvent("api_secret_login_success", user.User, r.RemoteAddr, "API secret login successful (dbjobs/service account)")
+	}
+
 	//create a token instance using the token string
 	specs := r.Header.Get("Accept")
 	//resp := token{tokenString}

@@ -179,16 +179,10 @@ function Navbar({ username }) {
               />
               {clusterData?.securityScore?.grade && (
                 <AlertBadge
-                  colorScheme={GRADE_COLOR[clusterData.securityScore.grade] || 'gray'}
+                  colorScheme={(clusterData?.securityStates || []).length > 0 ? (GRADE_COLOR[clusterData.securityScore.grade] || 'orange') : 'gray'}
                   icon={MdSecurity}
                   text='Security'
-                  count={clusterData.securityScore.grade}
-                  bubbleStyle={{
-                    background: `var(--chakra-colors-${GRADE_COLOR[clusterData.securityScore.grade] || 'gray'}-600)`,
-                    color: 'white',
-                    fontSize: '10px',
-                    fontWeight: 'bold',
-                  }}
+                  count={(clusterData?.securityStates || []).length}
                   onClick={() => setIsSecurityModalOpen(true)}
                   showText={!isMobile}
                 />

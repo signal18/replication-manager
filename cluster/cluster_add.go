@@ -11,10 +11,12 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/proxysql"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/s18log"
 )
 
 func (cluster *Cluster) AddSeededServer(srv string) error {
@@ -246,6 +248,19 @@ func (cluster *Cluster) AddUser(userform UserForm, delegator string, reloadACL b
 			cluster.SaveAcls()
 			cluster.ConfigManager.SaveConfig(cluster, false)
 		}
+
+		msg := fmt.Sprintf("user %q added to cluster %q by delegator %q with grants [%s]", user, cluster.Name, delegator, grants)
+		cluster.LogSecurity.Add(s18log.HttpMessage{
+			Group:     cluster.Name,
+			Level:     config.LvlInfo,
+			Timestamp: time.Now().Format("2006/01/02 15:04:05"),
+			Text:      msg,
+		})
+		if cluster.SecurityLogrus != nil {
+			cluster.SecurityLogrus.WithField("user", user).WithField("delegator", delegator).Info(msg)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[security] %s", msg)
+		}
 	}
 
 	return nil
@@ -314,6 +329,19 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 			cluster.SaveAcls()
 			cluster.ConfigManager.SaveConfig(cluster, false)
 		}
+
+		msg := fmt.Sprintf("user %q updated in cluster %q by delegator %q with grants [%s]", user, cluster.Name, delegator, grants)
+		cluster.LogSecurity.Add(s18log.HttpMessage{
+			Group:     cluster.Name,
+			Level:     config.LvlInfo,
+			Timestamp: time.Now().Format("2006/01/02 15:04:05"),
+			Text:      msg,
+		})
+		if cluster.SecurityLogrus != nil {
+			cluster.SecurityLogrus.WithField("user", user).WithField("delegator", delegator).Info(msg)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[security] %s", msg)
+		}
 	}
 
 	return nil
@@ -340,6 +368,19 @@ func (cluster *Cluster) DropUser(userform UserForm, reloadACL bool) error {
 		if reloadACL {
 			cluster.SaveAcls()
 			cluster.ConfigManager.SaveConfig(cluster, false)
+		}
+
+		msg := fmt.Sprintf("user %q removed from cluster %q", user, cluster.Name)
+		cluster.LogSecurity.Add(s18log.HttpMessage{
+			Group:     cluster.Name,
+			Level:     config.LvlInfo,
+			Timestamp: time.Now().Format("2006/01/02 15:04:05"),
+			Text:      msg,
+		})
+		if cluster.SecurityLogrus != nil {
+			cluster.SecurityLogrus.WithField("user", user).Info(msg)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[security] %s", msg)
 		}
 	}
 

@@ -8,7 +8,10 @@ package server
 
 import (
 	"fmt"
+	"net/http"
 	"sort"
+	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
@@ -23,8 +26,14 @@ const (
 	gitPushErrErrKey                            = "GERR002"
 	gitPullWarnErrKey                           = "GWARN003"
 	gitPullErrErrKey                            = "GERR003"
+	gitlabConnectWarnErrKey                     = "GWARN004"
+	crmConnectWarnErrKey                        = "GWARN005"
 	defaultMonitorGlobalHeartbeatStallThreshold = 5
 	heartbeatCriticalThresholdMultiplier        = int64(3)
+
+	// cloud18ConnectivityProbeTimeout is the per-request deadline for the
+	// lightweight HTTP probe used by ProduceCloud18ConnectivityStates.
+	cloud18ConnectivityProbeTimeout = 10 * time.Second
 )
 
 type clusterHeartbeatTracker struct {
@@ -347,4 +356,73 @@ func (repman *ReplicationManager) getClusterHeartbeatStallThresholdCycles() int6
 	}
 
 	return int64(defaultMonitorGlobalHeartbeatStallThreshold)
+}
+
+// ProduceCloud18ConnectivityStates probes the GitLab identity provider and the
+// CRM API for reachability and opens/closes GWARN004 / GWARN005 global alert
+// states accordingly.  It is a no-op when Cloud18 is not enabled.
+//
+// The probe is a lightweight HEAD (GitLab OAuth endpoint) / GET (CRM health)
+// with a short timeout so it never blocks the monitoring loop.  Both checks
+// run in the same goroutine — the total worst-case overhead per call is
+// 2 × cloud18ConnectivityProbeTimeout.
+func (repman *ReplicationManager) ProduceCloud18ConnectivityStates() {
+	if repman == nil || repman.Conf == nil || !repman.Conf.Cloud18 {
+		return
+	}
+
+	client := &http.Client{Timeout: cloud18ConnectivityProbeTimeout}
+
+	// ── GitLab probe ────────────────────────────────────────────────────────
+	gitlabURL := repman.Conf.OAuthProvider
+	if gitlabURL == "" {
+		gitlabURL = "https://gitlab.signal18.io"
+	}
+	gitlabProbeURL := gitlabURL + "/users/sign_in"
+
+	gitlabErr := probeHTTPReachability(client, gitlabProbeURL)
+	if gitlabErr != nil {
+		desc := fmt.Sprintf(config.GlobalError[gitlabConnectWarnErrKey], gitlabErr.Error())
+		repman.SetState(gitlabConnectWarnErrKey, state.State{
+			ErrType: "WARNING",
+			ErrKey:  gitlabConnectWarnErrKey,
+			ErrDesc: desc,
+			ErrFrom: "REPMAN",
+		})
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"Cloud18 GitLab unreachable (%s): %s", gitlabProbeURL, gitlabErr)
+	}
+
+	// ── CRM API probe ────────────────────────────────────────────────────────
+	crmURL := repman.Conf.Cloud18CrmApiUrl
+	if crmURL != "" {
+		crmProbeURL := strings.TrimRight(crmURL, "/") + "/api/health"
+		crmErr := probeHTTPReachability(client, crmProbeURL)
+		if crmErr != nil {
+			desc := fmt.Sprintf(config.GlobalError[crmConnectWarnErrKey], crmErr.Error())
+			repman.SetState(crmConnectWarnErrKey, state.State{
+				ErrType: "WARNING",
+				ErrKey:  crmConnectWarnErrKey,
+				ErrDesc: desc,
+				ErrFrom: "REPMAN",
+			})
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"Cloud18 CRM API unreachable (%s): %s", crmProbeURL, crmErr)
+		}
+	}
+}
+
+// probeHTTPReachability performs a HEAD request to url and returns an error if
+// the host is unreachable or returns a 5xx server error.  4xx responses are
+// treated as reachable (the endpoint exists; access control is expected).
+func probeHTTPReachability(client *http.Client, url string) error {
+	resp, err := client.Head(url)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode >= 500 {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	return nil
 }

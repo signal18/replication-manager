@@ -231,6 +231,28 @@ function GlobalSettings({ config }) {
         </HStack>
       )
     },
+    {
+      key: 'Log API Login',
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch global settings for Log API Login?'}
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'monitoring-log-api-login', setRefresh }))}
+          isChecked={config?.monitoringLogApiLogin}
+        />
+      )
+    },
+    {
+      key: 'Log API Login Silent Users',
+      value: (
+        <TextForm
+          value={config?.monitoringLogApiLoginSilentUsers}
+          confirmTitle={`Confirm change 'monitoring-log-api-login-silent-users' to `}
+          onSave={(value) => {
+            dispatch(setGlobalSetting({ setting: 'monitoring-log-api-login-silent-users', value: value || '{undefined}' }))
+          }}
+        />
+      )
+    },
   ]
 
   return (

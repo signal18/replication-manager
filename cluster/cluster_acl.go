@@ -9,11 +9,14 @@ package cluster
 import (
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/s18log"
 	"google.golang.org/grpc/codes"
 )
 
@@ -276,11 +279,40 @@ func (cluster *Cluster) LoadAPIUsers() error {
 			newapiuser.Roles[config.RoleVisitor] = true
 		}
 
+		cluster.logUserGrantAssignment(newapiuser)
 		meUsers[newapiuser.User] = newapiuser
 	}
 
 	cluster.APIUsers = meUsers
 	return nil
+}
+
+// logUserGrantAssignment writes the resolved grant set for a user to the
+// security log (both the HTTP buffer shown in the dashboard and SecurityLogrus
+// which writes to security.log on disk).
+func (cluster *Cluster) logUserGrantAssignment(u APIUser) {
+	var granted []string
+	for grant, enabled := range u.Grants {
+		if enabled {
+			granted = append(granted, grant)
+		}
+	}
+	sort.Strings(granted)
+
+	msg := fmt.Sprintf("user %q granted: [%s]", u.User, strings.Join(granted, ", "))
+
+	cluster.LogSecurity.Add(s18log.HttpMessage{
+		Group:     cluster.Name,
+		Level:     config.LvlInfo,
+		Timestamp: time.Now().Format("2006/01/02 15:04:05"),
+		Text:      msg,
+	})
+
+	if cluster.SecurityLogrus != nil {
+		cluster.SecurityLogrus.WithField("user", u.User).Info(msg)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[security] %s", msg)
+	}
 }
 
 var dbloglist = []string{

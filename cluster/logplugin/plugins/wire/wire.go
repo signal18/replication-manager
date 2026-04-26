@@ -51,11 +51,14 @@ type Request struct {
 // ClusterContext carries cluster-level facts that cannot be derived from
 // a single server snapshot.
 type ClusterContext struct {
-	HasProxies        bool `json:"has_proxies"`         // cluster has at least one proxy configured
-	BackupEncrypted   bool `json:"backup_encrypted"`    // backup configured with encryption
-	ConfigClearPwd    bool `json:"config_clear_pwd"`    // cleartext passwords detected in TOML config
-	HistoryClearPwd   bool `json:"history_clear_pwd"`   // previous binlog scan found cleartext passwords
-	DockerDeployment  bool `json:"docker_deployment"`   // servers run as Docker containers (DNS-based discovery, dynamic IPs)
+	HasProxies        bool              `json:"has_proxies"`         // cluster has at least one proxy configured
+	BackupEncrypted   bool              `json:"backup_encrypted"`    // backup configured with encryption
+	ConfigClearPwd    bool              `json:"config_clear_pwd"`    // cleartext passwords detected in TOML config
+	HistoryClearPwd   bool              `json:"history_clear_pwd"`   // previous binlog scan found cleartext passwords
+	DockerDeployment  bool              `json:"docker_deployment"`   // servers run as Docker containers (DNS-based discovery, dynamic IPs)
+	// ToolVersions maps tool/product names to their version strings.
+	// Keys: "repman", "mariadb", "mysql", "proxysql", "maxscale", "haproxy", "restic", etc.
+	ToolVersions      map[string]string `json:"tool_versions,omitempty"`
 }
 
 // DBUser is one row from mysql.user, stripped of credential data.

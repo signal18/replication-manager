@@ -278,11 +278,11 @@ var clusterACLRules = []ACLRule{
 // These are checked BEFORE cluster-level rules to prevent /settings/actions/switch
 // from granting access to /api/clusters/settings/actions/switch
 var globalSettingsACLRules = []ACLRule{
-	{"/api/clusters/settings/actions/switch", nil, []string{config.GrantGlobalSettings}},
-	{"/api/clusters/settings/actions/set", nil, []string{config.GrantGlobalSettings}},
-	{"/api/clusters/settings/actions/clear", nil, []string{config.GrantGlobalSettings}},
-	{"/api/clusters/settings/actions/reload-clusters-plans", nil, []string{config.GrantGlobalSettings}},
-	{"/api/clusters/settings/actions/reload-clusters-plan-info", nil, []string{config.GrantGlobalSettings}},
+	{"/api/clusters/settings/actions/switch", nil, []string{config.GrantGlobalSettings, config.GrantGlobalAdminConf}},
+	{"/api/clusters/settings/actions/set", nil, []string{config.GrantGlobalSettings, config.GrantGlobalAdminConf}},
+	{"/api/clusters/settings/actions/clear", nil, []string{config.GrantGlobalSettings, config.GrantGlobalAdminConf}},
+	{"/api/clusters/settings/actions/reload-clusters-plans", nil, []string{config.GrantGlobalSettings, config.GrantGlobalAdminConf}},
+	{"/api/clusters/settings/actions/reload-clusters-plan-info", nil, []string{config.GrantGlobalSettings, config.GrantGlobalAdminConf}},
 }
 
 // terminalACLRules defines ACL rules for terminal access

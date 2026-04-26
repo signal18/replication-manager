@@ -20,6 +20,7 @@ import (
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 // graphiteHostname returns the metric-safe hostname for the server,
@@ -100,7 +101,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			ServerVersion:    snapshotServerVersion(server),
 			ServerVariables:  snapshotServerVariables(server),
 			DatabaseUsers:    snapshotDatabaseUsers(server),
-			ClusterContext:   buildClusterContext(cluster),
+			ClusterContext:   buildClusterContext(cluster, server),
 			PluginDataDir:    cluster.Conf.ShareDir + "/plugins/data",
 		}
 		if !src.IsEnabled() {
@@ -327,16 +328,22 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 }
 
 func resolvePluginConfig(cluster *Cluster, pluginName string) map[string]string {
-	if cluster.Conf.PluginConfig == nil {
-		return nil
+	var out map[string]string
+	if cluster.Conf.PluginConfig != nil {
+		if src, ok := cluster.Conf.PluginConfig[pluginName]; ok && len(src) > 0 {
+			out = make(map[string]string, len(src)+1)
+			for k, v := range src {
+				out[k] = v
+			}
+		}
 	}
-	src, ok := cluster.Conf.PluginConfig[pluginName]
-	if !ok || len(src) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(src))
-	for k, v := range src {
-		out[k] = v
+	// Inject cluster-level config keys that plugins may need without
+	// duplicating them into a separate struct field.
+	if cluster.Conf.Cloud18SubscriptionPlan != "" {
+		if out == nil {
+			out = make(map[string]string, 1)
+		}
+		out["cloud18-subscription-plan"] = cluster.Conf.Cloud18SubscriptionPlan
 	}
 	return out
 }
@@ -825,13 +832,43 @@ func (cluster *Cluster) logPluginDebugWork(pluginName, msg string) {
 	}
 }
 
-func buildClusterContext(cluster *Cluster) logplugin.ClusterContext {
+func buildClusterContext(cluster *Cluster, server *ServerMonitor) logplugin.ClusterContext {
+	// Build ToolVersions from cluster.VersionsMap (client, mydumper, restic, …)
+	// plus "repman" for the replication-manager version itself, proxy versions,
+	// and the database server version.
+	toolVersions := make(map[string]string)
+	if cluster.VersionsMap != nil {
+		cluster.VersionsMap.Callback(func(key string, v *version.Version) bool {
+			if v != nil {
+				toolVersions[key] = v.ToString()
+			}
+			return true
+		})
+	}
+	if cluster.Conf.FullVersion != "" {
+		toolVersions["repman"] = cluster.Conf.FullVersion
+	}
+	// Add proxy versions: key is the proxy type (proxysql, maxscale, haproxy, …)
+	for _, pr := range cluster.Proxies {
+		if p, ok := pr.(*Proxy); ok && p.Version != "" {
+			toolVersions[pr.GetType()] = p.Version
+		}
+	}
+	// Add the database server version keyed by its flavor (mariadb, mysql, …)
+	if server != nil && server.DBVersion != nil {
+		flavorKey := strings.ToLower(server.DBVersion.Flavor)
+		if flavorKey != "" {
+			toolVersions[flavorKey] = fmt.Sprintf("%d.%d.%d", server.DBVersion.Major, server.DBVersion.Minor, server.DBVersion.Release)
+		}
+	}
+
 	return logplugin.ClusterContext{
 		HasProxies:       len(cluster.Proxies) > 0,
 		BackupEncrypted:  cluster.Conf.BackupRestic && cluster.Conf.BackupResticPassword != "",
 		ConfigClearPwd:   cluster.SecurityClearPwdConfig,
 		HistoryClearPwd:  cluster.SecurityClearPwdHistory,
 		DockerDeployment: cluster.Configurator.IsFilterInDBTags("docker"),
+		ToolVersions:     toolVersions,
 	}
 }
 
