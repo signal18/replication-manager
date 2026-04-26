@@ -59,9 +59,6 @@ type ClusterContext struct {
 	// ToolVersions maps tool/product names to their version strings.
 	// Keys: "repman", "mariadb", "mysql", "proxysql", "maxscale", "haproxy", "restic", etc.
 	ToolVersions      map[string]string `json:"tool_versions,omitempty"`
-	// SubscriptionPlan is the Cloud18 subscription plan: "free", "support",
-	// "support-services", or "partner". Empty when Cloud18 is not enabled.
-	SubscriptionPlan  string            `json:"subscription_plan,omitempty"`
 }
 
 // DBUser is one row from mysql.user, stripped of credential data.
