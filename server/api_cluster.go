@@ -34,6 +34,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dockerhelper"
@@ -316,6 +317,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/settings/actions/save-preserved-variables-cnf", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSavePreservedVarsCnf)),
+	))
+	router.Handle("/api/clusters/{clusterName}/configurator/tags/{tagName}/content", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetTagContent)),
+	))
+	router.Handle("/api/clusters/{clusterName}/configurator/tags/{tagName}/dochelp", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetTagDocHelp)),
 	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/add-proxy-tag/{tagValue}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -5249,6 +5258,62 @@ func (repman *ReplicationManager) handlerMuxAddTag(w http.ResponseWriter, r *htt
 		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
+}
+
+// handlerMuxGetTagContent returns the my.cnf snippet for a configurator tag.
+func (repman *ReplicationManager) handlerMuxGetTagContent(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	content := mycluster.Configurator.GetTagMyCnf(vars["tagName"])
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(content))
+}
+
+// handlerMuxGetTagDocHelp returns documentation links for the variables in a tag.
+// Enterprise-only: returns 403 for free-plan or unregistered instances.
+func (repman *ReplicationManager) handlerMuxGetTagDocHelp(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	plan := mycluster.Conf.Cloud18SubscriptionPlan
+	if plan == "" || plan == "free" {
+		http.Error(w, `{"error":"Documentation help requires a support or partner plan. Upgrade at https://cloud18.io"}`, http.StatusForbidden)
+		return
+	}
+
+	tagName := vars["tagName"]
+	varNames := mycluster.Configurator.GetTagVariableNames(tagName)
+
+	pluginDataDir := mycluster.Conf.ShareDir + "/plugins/data"
+	dh := configurator.NewDocHelp(pluginDataDir)
+	matched, unknown := dh.LookupVariables(varNames)
+
+	result := configurator.DocHelpResult{
+		Tag:              tagName,
+		Variables:        matched,
+		UnknownVariables: unknown,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 // handlerMuxAddProxyTag handles the addition of a proxy tag to a given cluster.
