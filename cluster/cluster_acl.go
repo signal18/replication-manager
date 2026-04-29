@@ -414,6 +414,11 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		return true
 	}
 
+	// Configurator tag content and doc help — read-only, no grant required beyond auth
+	if strings.HasPrefix(URL, "/api/clusters/"+cluster.Name+"/configurator/tags/") {
+		return true
+	}
+
 	// Terminal ACL - special handling
 	if strings.HasPrefix(URL, "/api/terminal") {
 		if cluster.matchACLRules(strUser, URL, terminalACLRules) {
