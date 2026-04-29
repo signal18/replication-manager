@@ -754,35 +754,6 @@ func (configurator *Configurator) GetTagMyCnf(tagName string) string {
 	return strings.TrimSpace(result.String())
 }
 
-// GetTagVariableNames extracts the MySQL/MariaDB variable names from a tag's
-// my.cnf content. It parses lines like "innodb_buffer_pool_size=128M" or
-// "innodb-buffer-pool-size = 128M" and returns a deduplicated list of
-// normalised variable names (lowercase, hyphens→underscores).
-func (configurator *Configurator) GetTagVariableNames(tagName string) []string {
-	cnf := configurator.GetTagMyCnf(tagName)
-	if cnf == "" {
-		return nil
-	}
-	seen := make(map[string]bool)
-	var names []string
-	for _, line := range strings.Split(cnf, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "[") || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") {
-			continue
-		}
-		// Split on '=' to get the variable name.
-		parts := strings.SplitN(line, "=", 2)
-		varName := strings.TrimSpace(parts[0])
-		// Normalise: lowercase, hyphens to underscores.
-		varName = strings.ToLower(strings.ReplaceAll(varName, "-", "_"))
-		if varName != "" && !seen[varName] {
-			seen[varName] = true
-			names = append(names, varName)
-		}
-	}
-	return names
-}
-
 func (configurator *Configurator) GetDatabaseConfig(filter string, datadir string) (string, error) {
 	mydynamicconf := ""
 	// processing symlink

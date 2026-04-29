@@ -3,15 +3,12 @@ import React, { useEffect, useState } from 'react'
 import RMSwitch from '../../../components/RMSwitch'
 import TableType2 from '../../../components/TableType2'
 import styles from '../styles.module.scss'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch } from 'react-redux'
 import { setSetting, switchSetting } from '../../../redux/settingsSlice'
 import AccordionComponent from '../../../components/AccordionComponent'
 import AddRemovePill from '../../../components/AddRemovePill'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
-import TagContentModal from '../../../components/Modals/TagContentModal'
-import DocHelpModal from '../../../components/Modals/DocHelpModal'
 import { addDBTag, dropDBTag, generateAllConfig } from '../../../redux/configSlice'
-import { configService } from '../../../services/configService'
 import Gauge from '../../../components/Gauge'
 import RMIconButton from '../../../components/RMIconButton'
 import { HiRefresh } from 'react-icons/hi'
@@ -37,37 +34,7 @@ function DBConfigs({ selectedCluster, user }) {
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
 
-  // Tag content modal state
-  const [tagContentModal, setTagContentModal] = useState({ open: false, tagName: '', content: '' })
-  // Doc help modal state
-  const [docHelpModal, setDocHelpModal] = useState({ open: false, tagName: '', data: null, error: '' })
-
-  const baseURL = useSelector((state) => state?.auth?.baseURL || '')
-  const plan = selectedCluster?.config?.cloud18SubscriptionPlan || ''
-  const isEnterprise = plan !== '' && plan !== 'free'
-
   const dispatch = useDispatch()
-
-  const handleViewContent = async (tagName) => {
-    try {
-      const { data } = await configService.getTagContent(selectedCluster?.name, tagName, baseURL)
-      setTagContentModal({ open: true, tagName, content: data })
-    } catch {
-      setTagContentModal({ open: true, tagName, content: '' })
-    }
-  }
-
-  const handleDocHelp = async (tagName) => {
-    try {
-      const { data } = await configService.getTagDocHelp(selectedCluster?.name, tagName, baseURL)
-      setDocHelpModal({ open: true, tagName, data, error: '' })
-    } catch (err) {
-      const msg = err?.response?.status === 403
-        ? 'Documentation help requires a support or partner plan.'
-        : 'Failed to load documentation.'
-      setDocHelpModal({ open: true, tagName, data: null, error: msg })
-    }
-  }
 
   useEffect(() => {
     if (selectedCluster?.configurator?.configTags?.length > 0) {
@@ -409,8 +376,6 @@ function DBConfigs({ selectedCluster, user }) {
                                 () => () => dispatch(addDBTag({ clusterName: selectedCluster?.name, tag: tag.name }))
                               )
                             }}
-                            onViewContent={handleViewContent}
-                            onDocHelp={isEnterprise ? handleDocHelp : undefined}
                           />
                         )
                       })}
@@ -429,8 +394,6 @@ function DBConfigs({ selectedCluster, user }) {
                   <AddRemovePill
                     key={tag?.name}
                     text={tag?.name}
-                    onViewContent={handleViewContent}
-                    onDocHelp={isEnterprise ? handleDocHelp : undefined}
                     onRemove={(title) => {
                       setConfirmTitle(title)
                       setIsConfirmModalOpen(true)
@@ -465,21 +428,6 @@ function DBConfigs({ selectedCluster, user }) {
           }}
         />
       )}
-
-      <TagContentModal
-        isOpen={tagContentModal.open}
-        closeModal={() => setTagContentModal({ open: false, tagName: '', content: '' })}
-        tagName={tagContentModal.tagName}
-        content={tagContentModal.content}
-      />
-
-      <DocHelpModal
-        isOpen={docHelpModal.open}
-        closeModal={() => setDocHelpModal({ open: false, tagName: '', data: null, error: '' })}
-        tagName={docHelpModal.tagName}
-        data={docHelpModal.data}
-        error={docHelpModal.error}
-      />
     </VStack>
   )
 }
