@@ -294,6 +294,7 @@ var terminalACLRules = []ACLRule{
 	{"/api/terminal/list", nil, []string{config.GrantTerminalGlobal}},
 	{"/servers", nil, []string{config.GrantTerminalDatabase}},
 	{"/proxies", nil, []string{config.GrantTerminalProxy}},
+	{"/apps", nil, []string{config.GrantAppTerminal}},
 }
 
 // checkACLRule checks if a user has the required grants for a specific rule

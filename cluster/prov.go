@@ -23,11 +23,20 @@ const (
 	RestartRidJobsContainer = "container#jobs"
 )
 
-// validateRestartRid validates the resource ID parameter for restart operations
-// Only container#jobs is allowed for targeted restarts
+// validateRestartRid validates the resource ID parameter for database restart operations.
+// Only container#jobs is allowed for targeted restarts.
 func validateRestartRid(rid string) error {
 	if rid != "" && rid != RestartRidJobsContainer {
 		return fmt.Errorf("invalid rid '%s': only '%s' is allowed for restart", rid, RestartRidJobsContainer)
+	}
+	return nil
+}
+
+// validateAppRestartRid validates the resource ID parameter for app restart operations.
+// Empty string restarts the entire service; any container#* value targets a specific container.
+func validateAppRestartRid(rid string) error {
+	if rid != "" && !strings.HasPrefix(rid, "container#") {
+		return fmt.Errorf("invalid rid '%s': must be empty or start with 'container#'", rid)
 	}
 	return nil
 }
