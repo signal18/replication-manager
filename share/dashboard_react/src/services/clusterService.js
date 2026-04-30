@@ -162,6 +162,7 @@ export const clusterService = {
   updateRoutesApp,
   startApp,
   stopApp,
+  restartApp,
   abortApp,
   clearApp,
   getAppService,
@@ -747,11 +748,11 @@ function updateRoutesApp(clusterName, appId, baseURL) {
 }
 
 function startApp(clusterName, appId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/start`)
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/actions/start`)
 }
 
 function stopApp(clusterName, appId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/stop`)
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/actions/stop`)
 }
 
 function abortApp(clusterName, appId, baseURL) {
@@ -760,6 +761,11 @@ function abortApp(clusterName, appId, baseURL) {
 
 function clearApp(clusterName, appId, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/actions/clear`)
+}
+
+function restartApp(clusterName, appId, rid, baseURL) {
+  const params = rid ? { rid } : {}
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/actions/restart`, null, { params })
 }
 
 function getAppService(clusterName, serviceName, appId, baseURL) {

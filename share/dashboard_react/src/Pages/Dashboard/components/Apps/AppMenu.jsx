@@ -1,6 +1,7 @@
 import { useDispatch } from 'react-redux'
 import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
+import RestartAppModal from './RestartAppModal'
 import { useState, useEffect } from 'react'
 import {
   abortApp,
@@ -16,7 +17,9 @@ import { useNavigate } from 'react-router-dom'
 
 function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView', user, orchestrator }) {
   const dispatch = useDispatch()
+  const canRestartApp = !!user?.grants['app-start'] && !!user?.grants['app-stop']
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
+  const [isRestartModalOpen, setIsRestartModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [appName, setAppName] = useState('')
@@ -83,6 +86,14 @@ function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView',
                   },
                   ...(orchestrator === 'opensvc'
                     ? [
+                        ...(canRestartApp
+                          ? [
+                              {
+                                name: 'Restart App',
+                                onClick: () => setIsRestartModalOpen(true)
+                              }
+                            ]
+                          : []),
                         {
                           name: 'Clear Instance State',
                           onClick: () => {
@@ -167,6 +178,16 @@ function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView',
             confirmHandler()
             closeConfirmModal()
           }}
+        />
+      )}
+      {isRestartModalOpen && (
+        <RestartAppModal
+          isOpen={isRestartModalOpen}
+          closeModal={() => setIsRestartModalOpen(false)}
+          clusterName={clusterName}
+          appId={row.id}
+          appName={appName}
+          gitClones={row.config?.deployment?.storages?.gitClones}
         />
       )}
     </>

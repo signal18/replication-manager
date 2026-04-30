@@ -153,10 +153,10 @@ var clusterACLRules = []ACLRule{
 	{"/plugins", nil, []string{config.GrantClusterSettings}},
 
 	// Backups — ordered longest-match-first so specific rules win
-	{"/backups/stats", nil, []string{config.GrantClusterShowBackups}},  // read-only stats
-	{"/backups/", nil, []string{config.GrantDBBackup}},                 // write sub-paths: delete, reconcile
-	{"/backups", nil, []string{config.GrantClusterShowBackups}},        // list (bare path, no slash)
-	{"/restic/purge", nil, []string{config.GrantDBBackup}},             // delete a snapshot
+	{"/backups/stats", nil, []string{config.GrantClusterShowBackups}}, // read-only stats
+	{"/backups/", nil, []string{config.GrantDBBackup}},                // write sub-paths: delete, reconcile
+	{"/backups", nil, []string{config.GrantClusterShowBackups}},       // list (bare path, no slash)
+	{"/restic/purge", nil, []string{config.GrantDBBackup}},            // delete a snapshot
 	{"/restic/snapshots", nil, []string{config.GrantClusterShowBackups}},
 	{"/restic/stats", nil, []string{config.GrantClusterShowBackups}},
 

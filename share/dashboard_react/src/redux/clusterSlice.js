@@ -2143,6 +2143,21 @@ export const clearApp = createGuardedAsyncThunk('cluster/clearApp', async ({ clu
   }
 })
 
+export const restartApp = createGuardedAsyncThunk(
+  'cluster/restartApp',
+  async ({ clusterName, appId, rid = '' }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.restartApp(clusterName, appId, rid, baseURL)
+      showSuccessBanner('Restarting app successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Restarting app failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const getAppService = createGuardedAsyncThunk(
   'cluster/getAppService',
   async ({ clusterName, serviceName, appId }, thunkAPI) => {
@@ -2718,6 +2733,7 @@ export const clusterSlice = createSlice({
         updateRoutesApp.pending,
         startApp.pending,
         stopApp.pending,
+        restartApp.pending,
         abortApp.pending,
         clearApp.pending,
         refreshStaging.pending,
@@ -2804,6 +2820,7 @@ export const clusterSlice = createSlice({
         updateRoutesApp.fulfilled,
         startApp.fulfilled,
         stopApp.fulfilled,
+        restartApp.fulfilled,
         abortApp.fulfilled,
         clearApp.fulfilled,
         refreshStaging.fulfilled,
@@ -2891,6 +2908,7 @@ export const clusterSlice = createSlice({
         updateRoutesApp.rejected,
         startApp.rejected,
         stopApp.rejected,
+        restartApp.rejected,
         abortApp.rejected,
         clearApp.rejected,
         refreshStaging.rejected,
