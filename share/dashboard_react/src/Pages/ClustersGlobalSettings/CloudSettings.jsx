@@ -33,7 +33,7 @@ function CloudSettings({ config }) {
   const [showPassword, setShowPassword] = useState(false)
   const [registerForm, setRegisterForm] = useState({ email: '', password: '', domain: '', subdomain: '', zone: '' })
   const [registerErrors, setRegisterErrors] = useState({})
-  const [signupSeed, setSignupSeed] = useState(null) // { email, password } from successful signup
+  const [signupSeed, setSignupSeed] = useState(null) // { email } from successful signup
   const [isSignupModalOpen, setIsSignupModalOpen] = useState(false)
   const signupCloseTimerRef = useRef(null)
   const [isSendingCode, setIsSendingCode] = useState(false)
@@ -115,7 +115,7 @@ Start create an account in https://gitlab.signal18.io
     setRegisterStep(1)
     setRegisterForm({
       email: signupSeed?.email || config?.cloud18GitUser || '',
-      password: signupSeed?.password || '',
+      password: '',
       domain: config?.cloud18Domain || '',
       subdomain: config?.cloud18SubDomain || '',
       zone: config?.cloud18SubDomainZone || ''
@@ -139,11 +139,10 @@ Start create an account in https://gitlab.signal18.io
 
   const handleSignupSuccess = (_, payload) => {
     const seeded = {
-      email: payload?.email || '',
-      password: payload?.password || ''
+      email: payload?.email || ''
     }
     setSignupSeed(seeded)
-    setRegisterForm(f => ({ ...f, email: seeded.email, password: seeded.password }))
+    setRegisterForm(f => ({ ...f, email: seeded.email }))
     clearTimeout(signupCloseTimerRef.current)
     signupCloseTimerRef.current = setTimeout(() => setIsSignupModalOpen(false), 1500)
   }
@@ -182,7 +181,7 @@ Start create an account in https://gitlab.signal18.io
   const validateRegisterForm = (form) => {
     const errors = {}
     const email = (signupSeed?.email || form.email || '').trim()
-    const password = signupSeed?.password || form.password || ''
+    const password = form.password || ''
 
     if (!email) errors.email = 'Email is required'
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Enter a valid email address'
@@ -204,7 +203,7 @@ Start create an account in https://gitlab.signal18.io
     setIsSendingCode(true)
     const uri = `${registerForm.domain.trim()}.${registerForm.subdomain.trim()}.${registerForm.zone.trim()}`
     const email = (signupSeed?.email || registerForm.email || '').trim()
-    const password = signupSeed?.password || registerForm.password || ''
+    const password = registerForm.password || ''
     const result = await dispatch(registerInstance({ email, password, uri }))
     setIsSendingCode(false)
     if (result?.payload?.status === 202) {
@@ -218,7 +217,7 @@ Start create an account in https://gitlab.signal18.io
     setIsConfirming(true)
     const uri = `${registerForm.domain.trim()}.${registerForm.subdomain.trim()}.${registerForm.zone.trim()}`
     const email = (signupSeed?.email || registerForm.email || '').trim()
-    const password = signupSeed?.password || registerForm.password || ''
+    const password = registerForm.password || ''
     const result = await dispatch(confirmRegisterInstance({ email, password, uri }))
     setIsConfirming(false)
     if (result?.payload?.status === 201) {
@@ -249,19 +248,15 @@ Start create an account in https://gitlab.signal18.io
       </FormControl>
       <FormControl isInvalid={!!registerErrors.password} isRequired>
         <FormLabel fontSize='sm'>GitLab Password</FormLabel>
-        {signupSeed ? (
-          <Input size='sm' type='password' value='••••••••' isReadOnly />
-        ) : (
-          <InputGroup size='sm'>
-            <Input type={showPassword ? 'text' : 'password'} placeholder='min 8 characters'
-              value={registerForm.password}
-              onChange={(e) => setRegisterForm(f => ({ ...f, password: e.target.value }))}
-            />
-            <InputRightElement>
-              <Box as={showPassword ? HiEyeOff : HiEye} cursor='pointer' onClick={() => setShowPassword(v => !v)} />
-            </InputRightElement>
-          </InputGroup>
-        )}
+        <InputGroup size='sm'>
+          <Input type={showPassword ? 'text' : 'password'} placeholder='min 8 characters'
+            value={registerForm.password}
+            onChange={(e) => setRegisterForm(f => ({ ...f, password: e.target.value }))}
+          />
+          <InputRightElement>
+            <Box as={showPassword ? HiEyeOff : HiEye} cursor='pointer' onClick={() => setShowPassword(v => !v)} />
+          </InputRightElement>
+        </InputGroup>
         <FormErrorMessage>{registerErrors.password}</FormErrorMessage>
       </FormControl>
       {signupSeed && (

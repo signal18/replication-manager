@@ -55,6 +55,7 @@ function SignupForm({
     if (!email.trim()) nextErrors.email = 'Please enter your email'
     else if (!emailRegex.test(email.trim())) nextErrors.email = 'Please enter a valid email'
     if (!password) nextErrors.password = 'Please enter a password'
+    else if (password.length < 8) nextErrors.password = 'Password must be at least 8 characters'
     setErrors(nextErrors)
     return Object.keys(nextErrors).length === 0
   }
@@ -104,23 +105,23 @@ function SignupForm({
   const formFields = (
     <Stack spacing='3'>
       <SimpleGrid columns={{ base: 1, md: 2 }} spacing='3'>
-        <FormControl isInvalid={!!errors.firstName}>
+        <FormControl isInvalid={!!errors.firstName} isRequired>
           <FormLabel className={fieldLabelClass} fontSize='sm' fontWeight='semibold'>First Name</FormLabel>
           <Input value={firstName} size='sm' className={fieldInputClass} onChange={(e) => setFirstName(e.target.value)} />
           <FormErrorMessage>{errors.firstName}</FormErrorMessage>
         </FormControl>
-        <FormControl isInvalid={!!errors.lastName}>
+        <FormControl isInvalid={!!errors.lastName} isRequired>
           <FormLabel className={fieldLabelClass} fontSize='sm' fontWeight='semibold'>Last Name</FormLabel>
           <Input value={lastName} size='sm' className={fieldInputClass} onChange={(e) => setLastName(e.target.value)} />
           <FormErrorMessage>{errors.lastName}</FormErrorMessage>
         </FormControl>
       </SimpleGrid>
-      <FormControl isInvalid={!!errors.username}>
+      <FormControl isInvalid={!!errors.username} isRequired>
         <FormLabel className={fieldLabelClass} fontSize='sm' fontWeight='semibold'>Username</FormLabel>
         <Input value={username} size='sm' className={fieldInputClass} onChange={(e) => setUsername(e.target.value)} />
         <FormErrorMessage>{errors.username}</FormErrorMessage>
       </FormControl>
-      <FormControl isInvalid={!!errors.email}>
+      <FormControl isInvalid={!!errors.email} isRequired>
         <FormLabel className={fieldLabelClass} fontSize='sm' fontWeight='semibold'>Email</FormLabel>
         <Input type='email' value={email} size='sm' className={fieldInputClass} onChange={(e) => setEmail(e.target.value)} />
         <FormErrorMessage>{errors.email}</FormErrorMessage>
@@ -133,14 +134,17 @@ function SignupForm({
         <FormLabel className={fieldLabelClass} fontSize='sm' fontWeight='semibold'>Company <Text as='span' fontWeight='normal' color='gray.400'>(optional)</Text></FormLabel>
         <Input value={company} size='sm' className={fieldInputClass} onChange={(e) => setCompany(e.target.value)} />
       </FormControl>
-      <PasswordControl
-        passwordError={errors.password}
-        inputClassName={fieldInputClass}
-        labelClassName={fieldLabelClass}
-        onChange={(e) => setPassword(e.target.value)}
-        className={revealBtnClass}
-        size='sm'
-      />
+      <FormControl isInvalid={!!errors.password} isRequired>
+        <FormLabel className={fieldLabelClass} fontSize='sm' fontWeight='semibold'>Password</FormLabel>
+        <PasswordControl
+          noControl
+          inputClassName={fieldInputClass}
+          onChange={(e) => setPassword(e.target.value)}
+          className={revealBtnClass}
+          size='sm'
+        />
+        <FormErrorMessage>{errors.password}</FormErrorMessage>
+      </FormControl>
     </Stack>
   )
 
@@ -152,7 +156,7 @@ function SignupForm({
           <VStack spacing={5} align='stretch'>
             {promo?.free_credit_offer > 0 && (
               <Box
-                bg='linear-gradient(135deg, #059669 0%, #10b981 100%)'
+                bgGradient='linear(to-br, green.600, green.500)'
                 borderRadius='lg'
                 p={5}
                 boxShadow='md'
@@ -244,7 +248,7 @@ function SignupForm({
         {/* Promotional hero banner — top of form for maximum visibility */}
         {promo?.free_credit_offer > 0 && (
           <Box
-            bg='linear-gradient(135deg, #059669 0%, #10b981 100%)'
+            bgGradient='linear(to-br, green.600, green.500)'
             borderRadius='lg'
             p={4}
             boxShadow='md'
