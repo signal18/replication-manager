@@ -21,13 +21,21 @@ import {
 
 const ChakraLink = chakra(Link);
 
+function getTerminalTitle(clusterName, serverName, proxyName, appName) {
+  if (!clusterName) return 'Web Terminal';
+  if (serverName) return 'Server Terminal';
+  if (proxyName) return 'Proxy Terminal';
+  if (appName) return 'App Terminal';
+  return 'Web Terminal';
+}
+
 const TerminalComponent = () => {
   const [status, setStatus] = useState('disconnected');
   const [url, setUrl] = useState('');
   const terminalRef = useRef(null);
   const terminalInstanceRef = useRef(null); // Store the terminal instance
   const socketRef = useRef(null); // Store the WebSocket connection in a ref for stability
-  const { clusterName, serverName, proxyName, commandType } = useParams();
+  const { clusterName, serverName, proxyName, appName, commandType } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const [serviceContainer, setServiceContainer] = useState(OpenSVCTerminalRID.Default);
@@ -90,6 +98,7 @@ const TerminalComponent = () => {
     if (clusterData) {
       const servers = clusterData.dbServers || [];
       const proxies = clusterData.proxyServers || [];
+      const apps = clusterData.apps || [];
 
       if (serverName) {
         if (!servers.find(srv => srv === serverName)) {
@@ -99,9 +108,13 @@ const TerminalComponent = () => {
         if (!proxies.find(prx => prx === proxyName)) {
           navigate(`/`);
         }
+      } else if (appName) {
+        if (!apps.find(app => app.id === appName)) {
+          navigate(`/`);
+        }
       }
     }
-  }, [clusterData?.name, serverName, proxyName])
+  }, [clusterData?.name, clusterData?.apps, serverName, proxyName, appName, navigate])
 
   const sendMessage = (message) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
@@ -168,6 +181,8 @@ const TerminalComponent = () => {
       websocketUrl = `/api/terminal/connect/clusters/${clusterName}/servers/${serverName}`;
     } else if (clusterName && proxyName) {
       websocketUrl = `/api/terminal/connect/clusters/${clusterName}/proxies/${proxyName}`;
+    } else if (clusterName && appName) {
+      websocketUrl = `/api/terminal/connect/clusters/${clusterName}/apps/${appName}`;
     } else {
       websocketUrl = '/api/terminal/connect';
     }
@@ -241,7 +256,7 @@ const TerminalComponent = () => {
       <Box className={styles.container}>
         <HStack justify="space-between" align="center" spacing={4}>
           <Text fontSize="xl" fontWeight="bold" className={styles.title}>
-            {clusterName ? (serverName ? "Server Terminal" : "Proxy Terminal") : "Web Terminal"}
+            {getTerminalTitle(clusterName, serverName, proxyName, appName)}
           </Text>
 
           <HStack spacing={2}>
@@ -254,7 +269,7 @@ const TerminalComponent = () => {
               </>
             )}
             <Text fontSize="lg" fontWeight="bold">
-              {serverName || proxyName || ""}
+              {serverName || proxyName || appName || ""}
             </Text>
           </HStack>
         </HStack>

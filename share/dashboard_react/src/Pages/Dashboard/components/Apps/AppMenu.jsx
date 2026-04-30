@@ -156,13 +156,13 @@ function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView',
                 : []),
             ]
           },
-          ...(user?.grants['app-terminal'] ? [
+          ...(user?.grants['terminal-app'] ? [
             {
               name: 'Web Terminal',
               subMenu: [
                 {
                   name: 'Shell Terminal',
-                  onClick: () => navigate(`/terminal/clusters/${clusterName}/apps/${row.appId}`)
+                  onClick: () => navigate(`/terminal/clusters/${clusterName}/apps/${row.id}`)
                 }
               ]
             }

@@ -933,6 +933,10 @@ func TestIsURLPassACLTerminalAccess(t *testing.T) {
 		User:   "terminal_proxy",
 		Grants: map[string]bool{config.GrantTerminalProxy: true},
 	}
+	cluster.APIUsers["terminal_app"] = APIUser{
+		User:   "terminal_app",
+		Grants: map[string]bool{config.GrantTerminalApp: true},
+	}
 	cluster.APIUsers["no_terminal"] = APIUser{
 		User:   "no_terminal",
 		Grants: map[string]bool{config.GrantDBStart: true},
@@ -956,9 +960,15 @@ func TestIsURLPassACLTerminalAccess(t *testing.T) {
 		{"Terminal - proxy", "terminal_proxy", "/api/terminal/proxies/proxy1", true},
 		{"Terminal - proxy denied to db user", "terminal_db", "/api/terminal/proxies/proxy1", false},
 
+		// App terminal access
+		{"Terminal - app", "terminal_app", "/api/terminal/connect/clusters/test/apps/app1", true},
+		{"Terminal - app denied to proxy user", "terminal_proxy", "/api/terminal/connect/clusters/test/apps/app1", false},
+		{"Terminal - global user on app route", "terminal_global", "/api/terminal/connect/clusters/test/apps/app1", true},
+
 		// No terminal access
 		{"Terminal - denied without grant", "no_terminal", "/api/terminal/connect", false},
 		{"Terminal - denied without grant servers", "no_terminal", "/api/terminal/servers/server1", false},
+		{"Terminal - denied without grant apps", "no_terminal", "/api/terminal/connect/clusters/test/apps/app1", false},
 	}
 
 	for _, tt := range tests {
