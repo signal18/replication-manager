@@ -10,10 +10,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -121,6 +124,197 @@ const confirmPollTimeout = 5 * time.Minute
 const defaultCrmBaseURL = "https://api.crm.ovh-fr-2.signal18.cloud18.io"
 
 var basicEmailRegexp = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+
+const (
+	signupRatePerMinute      = 5
+	signupRateBurst          = 3
+	signupPromoRatePerMinute = 30
+	signupPromoRateBurst     = 10
+)
+
+type ipTokenBucket struct {
+	mu         sync.Mutex
+	tokens     float64
+	lastRefill time.Time
+	lastSeen   time.Time
+}
+
+type ipRateLimiter struct {
+	ratePerSecond float64
+	burst         float64
+	staleAfter    time.Duration
+	cleanupEvery  uint64
+	requestCount  atomic.Uint64
+	ipBuckets     sync.Map // map[string]*ipTokenBucket
+}
+
+func newIPRateLimiter(ratePerMinute int, burst int, staleAfter time.Duration, cleanupEvery uint64) *ipRateLimiter {
+	return &ipRateLimiter{
+		ratePerSecond: float64(ratePerMinute) / 60.0,
+		burst:         float64(burst),
+		staleAfter:    staleAfter,
+		cleanupEvery:  cleanupEvery,
+	}
+}
+
+func (l *ipRateLimiter) allow(ip string, now time.Time) bool {
+	v, _ := l.ipBuckets.LoadOrStore(ip, &ipTokenBucket{tokens: l.burst, lastRefill: now, lastSeen: now})
+	b := v.(*ipTokenBucket)
+
+	b.mu.Lock()
+	elapsed := now.Sub(b.lastRefill).Seconds()
+	if elapsed > 0 {
+		b.tokens += elapsed * l.ratePerSecond
+		if b.tokens > l.burst {
+			b.tokens = l.burst
+		}
+		b.lastRefill = now
+	}
+	b.lastSeen = now
+	allowed := b.tokens >= 1
+	if allowed {
+		b.tokens -= 1
+	}
+	b.mu.Unlock()
+
+	if l.cleanupEvery > 0 && l.requestCount.Add(1)%l.cleanupEvery == 0 {
+		l.cleanupStale(now)
+	}
+
+	return allowed
+}
+
+func (l *ipRateLimiter) cleanupStale(now time.Time) {
+	l.ipBuckets.Range(func(key, value interface{}) bool {
+		b, ok := value.(*ipTokenBucket)
+		if !ok {
+			l.ipBuckets.Delete(key)
+			return true
+		}
+		b.mu.Lock()
+		stale := now.Sub(b.lastSeen) > l.staleAfter
+		b.mu.Unlock()
+		if stale {
+			l.ipBuckets.Delete(key)
+		}
+		return true
+	})
+}
+
+func (l *ipRateLimiter) resetForTests() {
+	l.ipBuckets = sync.Map{}
+	l.requestCount.Store(0)
+}
+
+var signupLimiter = newIPRateLimiter(signupRatePerMinute, signupRateBurst, 15*time.Minute, 128)
+var signupPromoLimiter = newIPRateLimiter(signupPromoRatePerMinute, signupPromoRateBurst, 15*time.Minute, 128)
+
+func writeJSONError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+func (repman *ReplicationManager) setSignupCORSHeaders(w http.ResponseWriter, r *http.Request) {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		return
+	}
+	if repman.isAllowedSignupOrigin(origin) {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		appendVaryHeader(w, "Origin")
+	}
+}
+
+func appendVaryHeader(w http.ResponseWriter, value string) {
+	existing := w.Header().Get("Vary")
+	if existing == "" {
+		w.Header().Set("Vary", value)
+		return
+	}
+	for _, item := range strings.Split(existing, ",") {
+		if strings.EqualFold(strings.TrimSpace(item), value) {
+			return
+		}
+	}
+	w.Header().Set("Vary", existing+", "+value)
+}
+
+func (repman *ReplicationManager) isAllowedSignupOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" {
+		return false
+	}
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return true
+	}
+
+	if apiURL := strings.TrimSpace(repman.Conf.APIPublicURL); apiURL != "" {
+		if pu, err := url.Parse(apiURL); err == nil && strings.EqualFold(host, pu.Hostname()) {
+			return true
+		}
+	}
+
+	if repman.PeerManager != nil && repman.handleOriginValidator(origin) {
+		return true
+	}
+
+	instanceURI := strings.ToLower(strings.TrimSpace(repman.registeredInstanceURI()))
+	return instanceURI != "" && host == instanceURI
+}
+
+func signupClientIP(r *http.Request) string {
+	remoteIP := parseRemoteIP(r.RemoteAddr)
+	if remoteIP != nil && isTrustedProxyIP(remoteIP) {
+		xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
+		if xff != "" {
+			parts := strings.Split(xff, ",")
+			if len(parts) > 0 {
+				candidate := strings.TrimSpace(parts[0])
+				if candidateIP := net.ParseIP(candidate); candidateIP != nil {
+					return candidateIP.String()
+				}
+			}
+		}
+	}
+
+	if remoteIP != nil {
+		return remoteIP.String()
+	}
+	if strings.TrimSpace(r.RemoteAddr) != "" {
+		return strings.TrimSpace(r.RemoteAddr)
+	}
+	return "unknown"
+}
+
+func parseRemoteIP(remoteAddr string) net.IP {
+	remoteAddr = strings.TrimSpace(remoteAddr)
+	if remoteAddr == "" {
+		return nil
+	}
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err == nil {
+		return net.ParseIP(host)
+	}
+	return net.ParseIP(remoteAddr)
+}
+
+func isTrustedProxyIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() {
+		return true
+	}
+	if ip.IsPrivate() {
+		return true
+	}
+	return ip.IsLinkLocalUnicast()
+}
 
 // crmBase returns the configured CRM API base URL, falling back to the default.
 func (repman *ReplicationManager) crmBase() string {
@@ -367,13 +561,28 @@ func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http
 // Proxies signup data to CRM and always derives referrer_uri from
 // the registered local Cloud18 instance URI.
 func (repman *ReplicationManager) handlerSignup(w http.ResponseWriter, r *http.Request) {
+	repman.setSignupCORSHeaders(w, r)
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 
 	if r.Method != http.MethodPost {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 			"signup: method not allowed: %s", r.Method)
-		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	clientIP := signupClientIP(r)
+	if !signupLimiter.allow(clientIP, time.Now()) {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"signup: throttled request from ip=%s", clientIP)
+		writeJSONError(w, http.StatusTooManyRequests, "too many requests")
 		return
 	}
 
@@ -381,7 +590,7 @@ func (repman *ReplicationManager) handlerSignup(w http.ResponseWriter, r *http.R
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 			"signup: failed to read request body: %s", err)
-		http.Error(w, `{"error":"failed to read request body"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "failed to read request body")
 		return
 	}
 	defer r.Body.Close()
@@ -390,7 +599,7 @@ func (repman *ReplicationManager) handlerSignup(w http.ResponseWriter, r *http.R
 	if err := json.Unmarshal(body, &req); err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 			"signup: invalid JSON body: %s", err)
-		http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 
@@ -406,12 +615,12 @@ func (repman *ReplicationManager) handlerSignup(w http.ResponseWriter, r *http.R
 	req.URI = strings.TrimSpace(req.URI)
 
 	if req.FirstName == "" || req.LastName == "" || req.Username == "" || req.Email == "" || req.Password == "" {
-		http.Error(w, `{"error":"first_name, last_name, username, email and password are required"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "first_name, last_name, username, email and password are required")
 		return
 	}
 
 	if !basicEmailRegexp.MatchString(req.Email) {
-		http.Error(w, `{"error":"invalid email format"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "invalid email format")
 		return
 	}
 
@@ -447,7 +656,7 @@ func (repman *ReplicationManager) handlerSignup(w http.ResponseWriter, r *http.R
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 			"signup: failed to marshal CRM payload: %s", err)
-		http.Error(w, `{"error":"failed to prepare CRM request"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "failed to prepare CRM request")
 		return
 	}
 
@@ -455,7 +664,7 @@ func (repman *ReplicationManager) handlerSignup(w http.ResponseWriter, r *http.R
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 			"signup: failed to build CRM request: %s", err)
-		http.Error(w, `{"error":"failed to build CRM request"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "failed to build CRM request")
 		return
 	}
 	crmReq.Header.Set("Content-Type", "application/json")
@@ -466,7 +675,7 @@ func (repman *ReplicationManager) handlerSignup(w http.ResponseWriter, r *http.R
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 			"signup: CRM unreachable: %s", err)
-		http.Error(w, fmt.Sprintf(`{"error":"CRM API unreachable: %s"}`, err), http.StatusBadGateway)
+		writeJSONError(w, http.StatusBadGateway, "CRM API unreachable")
 		return
 	}
 	defer crmResp.Body.Close()
@@ -475,7 +684,7 @@ func (repman *ReplicationManager) handlerSignup(w http.ResponseWriter, r *http.R
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 			"signup: failed to read CRM response: %s", err)
-		http.Error(w, `{"error":"failed to read CRM response"}`, http.StatusBadGateway)
+		writeJSONError(w, http.StatusBadGateway, "failed to read CRM response")
 		return
 	}
 
@@ -488,13 +697,28 @@ func (repman *ReplicationManager) handlerSignup(w http.ResponseWriter, r *http.R
 // Returns the best active promotional offer for signup onboarding
 // and the required/optional field definitions expected by the CRM.
 func (repman *ReplicationManager) handlerSignupPromo(w http.ResponseWriter, r *http.Request) {
+	repman.setSignupCORSHeaders(w, r)
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 
 	if r.Method != http.MethodGet {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 			"signup/promo: method not allowed: %s", r.Method)
-		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	clientIP := signupClientIP(r)
+	if !signupPromoLimiter.allow(clientIP, time.Now()) {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"signup/promo: throttled request from ip=%s", clientIP)
+		writeJSONError(w, http.StatusTooManyRequests, "too many requests")
 		return
 	}
 
@@ -502,7 +726,7 @@ func (repman *ReplicationManager) handlerSignupPromo(w http.ResponseWriter, r *h
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 			"signup/promo: CRM unreachable: %s", err)
-		http.Error(w, fmt.Sprintf(`{"error":"CRM API unreachable: %s"}`, err), http.StatusBadGateway)
+		writeJSONError(w, http.StatusBadGateway, "CRM API unreachable")
 		return
 	}
 
