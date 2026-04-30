@@ -5,6 +5,10 @@ const authConfig = {
     resolveUrl: (apiUrl) => `/api/${apiUrl}`,
     getToken: () => localStorage.getItem('user_token')
   },
+  4: { // Local public calls (no auth header)
+    resolveUrl: (apiUrl) => `/api/${apiUrl}`,
+    getToken: () => null
+  },
   2: { // Peer calls
     resolveUrl: (apiUrl, baseUrl) => `/peer/${baseUrl}/api/${apiUrl}`,
     getToken: (baseUrl) => {
@@ -154,6 +158,7 @@ const requestWrapper = (authValue, baseUrl = '') => ({
 });
 
 export const localApi = requestWrapper(1); // Wrapper for local API calls
+export const publicApi = requestWrapper(4); // Wrapper for local public API calls (no auth)
 export const peerApi = (baseUrl) => requestWrapper(2, baseUrl); // Wrapper for peer API calls
 export const meetApi = requestWrapper(3); // Wrapper for Mattermost (meetAPI) calls
 

@@ -1,4 +1,4 @@
-import { getApi } from './apiHelper'
+import { getApi, publicApi } from './apiHelper'
 
 export const authService = {
   login,
@@ -8,7 +8,10 @@ export const authService = {
 }
 
 function login(username, password, baseURL) {
-  return getApi(baseURL).post('login', { username, password })
+  if (baseURL) {
+    return getApi(baseURL).post('login', { username, password })
+  }
+  return publicApi.post('login', { username, password })
 }
 
 function gitLogin(username, password, baseURL) {
@@ -20,5 +23,8 @@ function whoami(baseURL) {
 }
 
 function signup(payload, baseURL) {
-  return getApi(baseURL).post('signup', payload)
+  if (baseURL) {
+    return getApi(baseURL).post('signup', payload)
+  }
+  return publicApi.post('signup', payload)
 }
