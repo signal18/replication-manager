@@ -13,9 +13,9 @@ function Signup() {
 
   return (
     <PageContainer>
-      <Container maxWidth='lg' py={{ base: '24', md: '24' }} px={{ base: '0', sm: '8' }}>
-        <Stack spacing='8'>
-          <Stack spacing='6'>
+      <Container maxWidth='lg' py={{ base: '10', md: '12' }} px={{ base: '0', sm: '8' }}>
+        <Stack spacing='6'>
+          <Stack spacing='4'>
             <Stack spacing={{ base: '2', md: '3' }} textAlign='center'>
               <Heading size='md'>Sign up with GitLab SSO</Heading>
             </Stack>

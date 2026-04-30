@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Box, FormControl, FormErrorMessage, FormLabel, Input, Stack } from '@chakra-ui/react'
+import { Box, FormControl, FormErrorMessage, FormLabel, Input, SimpleGrid, Stack, Text } from '@chakra-ui/react'
 import { useTheme } from '../../ThemeProvider'
 import PasswordControl from '../PasswordControl'
 import RMButton from '../RMButton'
@@ -23,6 +23,8 @@ function SignupForm({
   const [lastName, setLastName] = useState('')
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
+  const [telephone, setTelephone] = useState('')
+  const [company, setCompany] = useState('')
   const [password, setPassword] = useState('')
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
@@ -55,6 +57,8 @@ function SignupForm({
         last_name: lastName.trim(),
         username: username.trim(),
         email: email.trim().toLowerCase(),
+        telephone: telephone.trim(),
+        company: company.trim(),
         password
       }
 
@@ -81,16 +85,18 @@ function SignupForm({
     <Box as='form' className={`${loginStyles.loginForm} ${className}`.trim()} onSubmit={handleSubmit}>
       <Stack spacing='6'>
         <Stack spacing='5'>
-          <FormControl isInvalid={errors.firstName}>
-            <FormLabel className={theme === 'dark' ? loginStyles.darkLoginText : ''}>First Name</FormLabel>
-            <Input value={firstName} className={theme === 'dark' ? loginStyles.darkLoginText : ''} onChange={(e) => setFirstName(e.target.value)} />
-            <FormErrorMessage sx={loginStyles.errorMessage}>{errors.firstName}</FormErrorMessage>
-          </FormControl>
-          <FormControl isInvalid={errors.lastName}>
-            <FormLabel className={theme === 'dark' ? loginStyles.darkLoginText : ''}>Last Name</FormLabel>
-            <Input value={lastName} className={theme === 'dark' ? loginStyles.darkLoginText : ''} onChange={(e) => setLastName(e.target.value)} />
-            <FormErrorMessage sx={loginStyles.errorMessage}>{errors.lastName}</FormErrorMessage>
-          </FormControl>
+          <SimpleGrid columns={{ base: 1, md: 2 }} spacing='4'>
+            <FormControl isInvalid={errors.firstName}>
+              <FormLabel className={theme === 'dark' ? loginStyles.darkLoginText : ''}>First Name</FormLabel>
+              <Input value={firstName} className={theme === 'dark' ? loginStyles.darkLoginText : ''} onChange={(e) => setFirstName(e.target.value)} />
+              <FormErrorMessage sx={loginStyles.errorMessage}>{errors.firstName}</FormErrorMessage>
+            </FormControl>
+            <FormControl isInvalid={errors.lastName}>
+              <FormLabel className={theme === 'dark' ? loginStyles.darkLoginText : ''}>Last Name</FormLabel>
+              <Input value={lastName} className={theme === 'dark' ? loginStyles.darkLoginText : ''} onChange={(e) => setLastName(e.target.value)} />
+              <FormErrorMessage sx={loginStyles.errorMessage}>{errors.lastName}</FormErrorMessage>
+            </FormControl>
+          </SimpleGrid>
           <FormControl isInvalid={errors.username}>
             <FormLabel className={theme === 'dark' ? loginStyles.darkLoginText : ''}>Username</FormLabel>
             <Input value={username} className={theme === 'dark' ? loginStyles.darkLoginText : ''} onChange={(e) => setUsername(e.target.value)} />
@@ -100,6 +106,14 @@ function SignupForm({
             <FormLabel className={theme === 'dark' ? loginStyles.darkLoginText : ''}>Email</FormLabel>
             <Input type='email' value={email} className={theme === 'dark' ? loginStyles.darkLoginText : ''} onChange={(e) => setEmail(e.target.value)} />
             <FormErrorMessage sx={loginStyles.errorMessage}>{errors.email}</FormErrorMessage>
+          </FormControl>
+          <FormControl>
+            <FormLabel className={theme === 'dark' ? loginStyles.darkLoginText : ''}>Telephone <Text as='span' fontWeight='normal' color='gray.400'>(optional)</Text></FormLabel>
+            <Input type='tel' value={telephone} className={theme === 'dark' ? loginStyles.darkLoginText : ''} onChange={(e) => setTelephone(e.target.value)} />
+          </FormControl>
+          <FormControl>
+            <FormLabel className={theme === 'dark' ? loginStyles.darkLoginText : ''}>Company <Text as='span' fontWeight='normal' color='gray.400'>(optional)</Text></FormLabel>
+            <Input value={company} className={theme === 'dark' ? loginStyles.darkLoginText : ''} onChange={(e) => setCompany(e.target.value)} />
           </FormControl>
           <PasswordControl
             passwordError={errors.password}

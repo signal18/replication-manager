@@ -76,7 +76,12 @@ type signupRequest struct {
 	Username    string `json:"username"`
 	Email       string `json:"email"`
 	Password    string `json:"password"`
+	Telephone   string `json:"telephone,omitempty"`
+	Phone       string `json:"phone,omitempty"`
+	Tel         string `json:"tel,omitempty"`
+	Company     string `json:"company,omitempty"`
 	ReferrerURI string `json:"referrer_uri,omitempty"`
+	URI         string `json:"uri,omitempty"`
 }
 
 type crmRegisterPayload struct {
@@ -101,6 +106,8 @@ type crmSignupPayload struct {
 	Username    string `json:"username"`
 	Email       string `json:"email"`
 	Password    string `json:"password"`
+	Telephone   string `json:"telephone,omitempty"`
+	Company     string `json:"company,omitempty"`
 	ReferrerURI string `json:"referrer_uri"`
 }
 
@@ -391,6 +398,12 @@ func (repman *ReplicationManager) handlerSignup(w http.ResponseWriter, r *http.R
 	req.LastName = strings.TrimSpace(req.LastName)
 	req.Username = strings.TrimSpace(req.Username)
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	req.Telephone = strings.TrimSpace(req.Telephone)
+	req.Phone = strings.TrimSpace(req.Phone)
+	req.Tel = strings.TrimSpace(req.Tel)
+	req.Company = strings.TrimSpace(req.Company)
+	req.ReferrerURI = strings.TrimSpace(req.ReferrerURI)
+	req.URI = strings.TrimSpace(req.URI)
 
 	if req.FirstName == "" || req.LastName == "" || req.Username == "" || req.Email == "" || req.Password == "" {
 		http.Error(w, `{"error":"first_name, last_name, username, email and password are required"}`, http.StatusBadRequest)
@@ -402,13 +415,32 @@ func (repman *ReplicationManager) handlerSignup(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Normalize aliases
+	telephone := req.Telephone
+	if telephone == "" {
+		telephone = req.Phone
+	}
+	if telephone == "" {
+		telephone = req.Tel
+	}
+
+	referrerURI := req.ReferrerURI
+	if referrerURI == "" {
+		referrerURI = req.URI
+	}
+	if referrerURI == "" {
+		referrerURI = repman.registeredInstanceURI()
+	}
+
 	crmPayload := crmSignupPayload{
 		FirstName:   req.FirstName,
 		LastName:    req.LastName,
 		Username:    req.Username,
 		Email:       req.Email,
 		Password:    req.Password,
-		ReferrerURI: repman.registeredInstanceURI(),
+		Telephone:   telephone,
+		Company:     req.Company,
+		ReferrerURI: referrerURI,
 	}
 
 	crmBody, err := json.Marshal(crmPayload)
@@ -449,6 +481,33 @@ func (repman *ReplicationManager) handlerSignup(w http.ResponseWriter, r *http.R
 
 	w.WriteHeader(crmResp.StatusCode)
 	w.Write(respBody)
+}
+
+// handlerSignupPromo — GET /api/signup/promo (public, no JWT required)
+//
+// Returns the best active promotional offer for signup onboarding
+// and the required/optional field definitions expected by the CRM.
+func (repman *ReplicationManager) handlerSignupPromo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodGet {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"signup/promo: method not allowed: %s", r.Method)
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	status, body, err := crmGetSignupPromo(repman.crmBase())
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"signup/promo: CRM unreachable: %s", err)
+		http.Error(w, fmt.Sprintf(`{"error":"CRM API unreachable: %s"}`, err), http.StatusBadGateway)
+		return
+	}
+
+	w.WriteHeader(status)
+	w.Write(body)
 }
 
 // handlerRegisterStatus — GET /api/register/status  (admin JWT required)
@@ -576,6 +635,24 @@ type changeSubPayload struct {
 // crmGetPlans fetches the available subscription plans from the CRM (no auth required).
 func crmGetPlans(crmBase string) (int, []byte, error) {
 	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/subscription/plans", nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
+}
+
+// crmGetSignupPromo fetches the best active promotional offer for signup onboarding
+// from the CRM (no auth required).
+func crmGetSignupPromo(crmBase string) (int, []byte, error) {
+	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/signup/promo", nil)
 	if err != nil {
 		return 0, nil, err
 	}

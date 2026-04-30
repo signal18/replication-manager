@@ -142,6 +142,7 @@ func (repman *ReplicationManager) httpserver() {
 
 	router.HandleFunc("/api/login", repman.loginHandler)
 	router.HandleFunc("/api/signup", repman.handlerSignup)
+	router.HandleFunc("/api/signup/promo", repman.handlerSignupPromo)
 	router.HandleFunc("/api/autologin", repman.autologinHandler)
 	router.HandleFunc("/api/dashboard-token", repman.dashboardTokenHandler)
 
