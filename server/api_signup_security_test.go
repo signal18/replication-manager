@@ -121,7 +121,7 @@ func TestSignupHandlers_ErrorResponseJSONAndSanitized(t *testing.T) {
 
 func TestSignupOptionsPreflight(t *testing.T) {
 	repman := &ReplicationManager{Conf: &config.Config{
-		APIPublicURL:          "https://public.example",
+		APIPublicURL:         "https://public.example",
 		Cloud18Domain:        "acme",
 		Cloud18SubDomain:     "app",
 		Cloud18SubDomainZone: "test",

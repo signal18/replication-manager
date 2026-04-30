@@ -125,6 +125,9 @@ const defaultCrmBaseURL = "https://api.crm.ovh-fr-2.signal18.cloud18.io"
 
 var basicEmailRegexp = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
+var crmHTTPClient15s = &http.Client{Timeout: 15 * time.Second}
+var crmHTTPClient30s = &http.Client{Timeout: 30 * time.Second}
+
 const (
 	signupRatePerMinute      = 5
 	signupRateBurst          = 3
@@ -350,8 +353,7 @@ func crmCallConfirm(crmBase string, payload crmConfirmPayload) (int, []byte, err
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := crmHTTPClient30s.Do(req)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -525,8 +527,7 @@ func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http
 	step1Req.Header.Set("Content-Type", "application/json")
 	step1Req.Header.Set("Accept", "application/json")
 
-	step1Client := &http.Client{Timeout: 30 * time.Second}
-	step1Resp, err := step1Client.Do(step1Req)
+	step1Resp, err := crmHTTPClient30s.Do(step1Req)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"CRM API unreachable: %s"}`, err), http.StatusBadGateway)
 		return
@@ -670,8 +671,7 @@ func (repman *ReplicationManager) handlerSignup(w http.ResponseWriter, r *http.R
 	crmReq.Header.Set("Content-Type", "application/json")
 	crmReq.Header.Set("Accept", "application/json")
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	crmResp, err := client.Do(crmReq)
+	crmResp, err := crmHTTPClient30s.Do(crmReq)
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 			"signup: CRM unreachable: %s", err)
@@ -863,8 +863,7 @@ func crmGetPlans(crmBase string) (int, []byte, error) {
 		return 0, nil, err
 	}
 	req.Header.Set("Accept", "application/json")
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := crmHTTPClient15s.Do(req)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -881,8 +880,7 @@ func crmGetSignupPromo(crmBase string) (int, []byte, error) {
 		return 0, nil, err
 	}
 	req.Header.Set("Accept", "application/json")
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := crmHTTPClient15s.Do(req)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -900,8 +898,7 @@ func crmGetSubscription(crmBase, gitlabToken, uri string) (int, []byte, error) {
 	}
 	req.Header.Set("Authorization", "Bearer "+gitlabToken)
 	req.Header.Set("Accept", "application/json")
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := crmHTTPClient15s.Do(req)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -920,8 +917,7 @@ func crmChangeSubscription(crmBase, gitlabToken, uri, plan string) (int, []byte,
 	req.Header.Set("Authorization", "Bearer "+gitlabToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := crmHTTPClient15s.Do(req)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -943,8 +939,7 @@ func crmUnregister(crmBase, gitlabToken, uri string) (int, []byte, error) {
 	req.Header.Set("Authorization", "Bearer "+gitlabToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := crmHTTPClient30s.Do(req)
 	if err != nil {
 		return 0, nil, err
 	}

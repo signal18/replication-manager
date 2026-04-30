@@ -270,8 +270,10 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/api/terminal/connect", http.HandlerFunc(repman.handlerTerminal))
 
 	router.HandleFunc("/api/login", repman.loginHandler)
-	router.HandleFunc("/api/signup", repman.handlerSignup)
-	router.HandleFunc("/api/signup/promo", repman.handlerSignupPromo)
+	// Public auth routes are intentionally wired in both api.go and http.go because
+	// replication-manager can run this API server path independently of httpserver().
+	router.HandleFunc("/api/signup", repman.handlerSignup).Methods(http.MethodPost, http.MethodOptions)
+	router.HandleFunc("/api/signup/promo", repman.handlerSignupPromo).Methods(http.MethodGet, http.MethodOptions)
 	router.HandleFunc("/api/autologin", repman.autologinHandler)
 	router.HandleFunc("/api/dashboard-token", repman.dashboardTokenHandler)
 	router.HandleFunc("/api/version", repman.handlerVersion)
