@@ -1947,14 +1947,14 @@ func logResponse(resp *http.Response) {
 // @Param rid query string false "OpenSVC bash terminal container RID (server allowed: container#db, container#jobs; app allowed: container#app)"
 // @Success 200 {string} string "Connected successfully"
 // @Failure 400 {string} string "No user provided"
-// @Failure 500 {string} string "No valid node" or "No valid cluster"
+// @Failure 500 {string} string "No valid terminal target" or "No valid cluster"
 // @Router /api/terminal/connect [get]
 // @Router /api/terminal/connect/clusters/{clusterName}/servers/{serverName} [get]
 // @Router /api/terminal/connect/clusters/{clusterName}/proxies/{serverName} [get]
-// @Router /api/terminal/connect/clusters/{clusterName}/apps/{serverName} [get]
+// @Router /api/terminal/connect/clusters/{clusterName}/apps/{appName} [get]
 // @Router /api/terminal/connect/clusters/{clusterName}/servers/{serverName}/{command} [get]
 // @Router /api/terminal/connect/clusters/{clusterName}/proxies/{serverName}/{command} [get]
-// @Router /api/terminal/connect/clusters/{clusterName}/apps/{serverName}/{command} [get]
+// @Router /api/terminal/connect/clusters/{clusterName}/apps/{appName}/{command} [get]
 func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http.Request) {
 	defer repman.LogPanicToFile()
 
@@ -2059,24 +2059,28 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 			return
 		}
 
-		node = mycluster.GetServerFromName(vars["serverName"])
-		proxy = mycluster.GetProxyFromName(vars["serverName"])
+		targetName := vars["serverName"]
+		if targetName == "" {
+			targetName = vars["appName"]
+		}
+
+		node = mycluster.GetServerFromName(targetName)
+		proxy = mycluster.GetProxyFromName(targetName)
 		if node != nil {
 			sessionID = mycluster.Name + "-" + node.Name
 		} else if proxy != nil {
 			sessionID = mycluster.Name + "-" + proxy.GetName()
 		} else {
-			appTarget = mycluster.GetAppFromName(vars["serverName"])
+			appTarget = mycluster.GetAppFromName(targetName)
 			if appTarget != nil {
 				sessionID = mycluster.Name + "-" + appTarget.GetName()
 			}
 		}
 		if node == nil && proxy == nil && appTarget == nil {
-			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid node\n"))
+			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid terminal target\n"))
 			return
-		} else {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session started for user %s on cluster %s", plainuser, mycluster.Name)
 		}
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session started for user %s on cluster %s", plainuser, mycluster.Name)
 
 	}
 

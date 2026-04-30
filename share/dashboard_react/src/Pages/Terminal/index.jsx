@@ -21,6 +21,14 @@ import {
 
 const ChakraLink = chakra(Link);
 
+function getTerminalTitle(clusterName, serverName, proxyName, appName) {
+  if (!clusterName) return 'Web Terminal';
+  if (serverName) return 'Server Terminal';
+  if (proxyName) return 'Proxy Terminal';
+  if (appName) return 'App Terminal';
+  return 'Web Terminal';
+}
+
 const TerminalComponent = () => {
   const [status, setStatus] = useState('disconnected');
   const [url, setUrl] = useState('');
@@ -243,13 +251,7 @@ const TerminalComponent = () => {
       <Box className={styles.container}>
         <HStack justify="space-between" align="center" spacing={4}>
           <Text fontSize="xl" fontWeight="bold" className={styles.title}>
-            {clusterName
-              ? (serverName
-                  ? "Server Terminal"
-                  : (proxyName
-                      ? "Proxy Terminal"
-                      : (appName ? "App Terminal" : "Web Terminal")))
-              : "Web Terminal"}
+            {getTerminalTitle(clusterName, serverName, proxyName, appName)}
           </Text>
 
           <HStack spacing={2}>

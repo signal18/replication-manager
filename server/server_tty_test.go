@@ -1,6 +1,7 @@
 package server
 
 import (
+	"os/user"
 	"testing"
 
 	"github.com/signal18/replication-manager/cluster"
@@ -214,5 +215,62 @@ func TestResolveTerminalContainerRIDForSession(t *testing.T) {
 				t.Fatalf("resolveTerminalContainerRIDForSession() shouldSet = %v, want %v", gotShouldSet, tt.wantShouldSet)
 			}
 		})
+	}
+}
+
+func TestSetSessionValuesFromApp(t *testing.T) {
+	repman := &ReplicationManager{}
+
+	mycluster := &cluster.Cluster{
+		Name: "clusterA",
+		Conf: &config.Config{
+			ProvOrchestrator:       config.ConstOrchestratorOpenSVC,
+			OnPremiseSSHPort:       2200,
+			OnPremiseSSH:           true,
+			OnPremiseSSHPrivateKey: "",
+			Secrets: map[string]config.Secret{
+				"onpremise-ssh-credential": {Value: "sshuser:sshpass"},
+			},
+		},
+		OsUser: &user.User{HomeDir: "/tmp"},
+	}
+
+	app := &cluster.App{
+		Name:         "my-app",
+		Host:         "10.0.0.20",
+		Agent:        "node-1",
+		ClusterGroup: mycluster,
+	}
+
+	session := &tty.Session{CmdType: tty.TerminalBash}
+
+	err := repman.SetSessionValuesFromApp(session, app)
+	if err != nil {
+		t.Fatalf("SetSessionValuesFromApp() returned error: %v", err)
+	}
+
+	if session.Host != "10.0.0.20" {
+		t.Fatalf("session.Host = %q, want %q", session.Host, "10.0.0.20")
+	}
+	if session.Orchestrator != config.ConstOrchestratorOpenSVC {
+		t.Fatalf("session.Orchestrator = %q, want %q", session.Orchestrator, config.ConstOrchestratorOpenSVC)
+	}
+	if session.ServiceName != "clusterA/svc/my-app" {
+		t.Fatalf("session.ServiceName = %q, want %q", session.ServiceName, "clusterA/svc/my-app")
+	}
+	if session.ServiceContainerName != defaultAppServiceContainer {
+		t.Fatalf("session.ServiceContainerName = %q, want %q", session.ServiceContainerName, defaultAppServiceContainer)
+	}
+	if session.ServiceAgentName != "node-1" {
+		t.Fatalf("session.ServiceAgentName = %q, want %q", session.ServiceAgentName, "node-1")
+	}
+	if session.Port != "2200" {
+		t.Fatalf("session.Port = %q, want %q", session.Port, "2200")
+	}
+	if session.Username != "sshuser" {
+		t.Fatalf("session.Username = %q, want %q", session.Username, "sshuser")
+	}
+	if session.Password != "sshpass" {
+		t.Fatalf("session.Password = %q, want %q", session.Password, "sshpass")
 	}
 }
