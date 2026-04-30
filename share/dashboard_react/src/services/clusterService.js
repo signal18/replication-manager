@@ -748,11 +748,11 @@ function updateRoutesApp(clusterName, appId, baseURL) {
 }
 
 function startApp(clusterName, appId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/start`)
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/actions/start`)
 }
 
 function stopApp(clusterName, appId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/stop`)
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/actions/stop`)
 }
 
 function abortApp(clusterName, appId, baseURL) {

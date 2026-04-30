@@ -32,9 +32,9 @@ func validateRestartRid(rid string) error {
 	return nil
 }
 
-// validateAppRestartRid validates the resource ID parameter for app restart operations.
+// ValidateAppRestartRid validates the resource ID parameter for app restart operations.
 // Empty string restarts the entire service; any container#* value targets a specific container.
-func validateAppRestartRid(rid string) error {
+func ValidateAppRestartRid(rid string) error {
 	if rid != "" && !strings.HasPrefix(rid, "container#") {
 		return fmt.Errorf("invalid rid '%s': must be empty or start with 'container#'", rid)
 	}

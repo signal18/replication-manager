@@ -182,7 +182,7 @@ func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
 }
 
 func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid string) error {
-	if err := validateAppRestartRid(rid); err != nil {
+	if err := ValidateAppRestartRid(rid); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "App restart validation failed: %s", err)
 		return err
 	}

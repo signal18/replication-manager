@@ -17,6 +17,7 @@ import { useNavigate } from 'react-router-dom'
 
 function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView', user, orchestrator }) {
   const dispatch = useDispatch()
+  const canRestartApp = !!user?.grants['app-start'] && !!user?.grants['app-stop']
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [isRestartModalOpen, setIsRestartModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
@@ -85,7 +86,7 @@ function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView',
                   },
                   ...(orchestrator === 'opensvc'
                     ? [
-                        ...(user?.grants['app-stop']
+                        ...(canRestartApp
                           ? [
                               {
                                 name: 'Restart App',
