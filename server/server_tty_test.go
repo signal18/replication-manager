@@ -151,6 +151,16 @@ func TestResolveTerminalContainerRIDForSession(t *testing.T) {
 			wantErr:       true,
 		},
 		{
+			name:          "empty rid ignored for opensvc proxy bash terminal",
+			targetKind:    terminalTargetProxy,
+			cmdType:       tty.TerminalBash,
+			orchestrator:  config.ConstOrchestratorOpenSVC,
+			rid:           "",
+			wantRID:       "",
+			wantShouldSet: false,
+			wantErr:       false,
+		},
+		{
 			name:          "rid rejected for opensvc mysql terminal",
 			targetKind:    terminalTargetServer,
 			cmdType:       tty.TerminalMySQL,
@@ -223,6 +233,9 @@ func TestSetSessionValuesFromApp(t *testing.T) {
 
 	mycluster := &cluster.Cluster{
 		Name: "clusterA",
+		APIUsers: map[string]cluster.APIUser{
+			"app_terminal_user": {User: "app_terminal_user"},
+		},
 		Conf: &config.Config{
 			ProvOrchestrator:       config.ConstOrchestratorOpenSVC,
 			OnPremiseSSHPort:       2200,
@@ -242,7 +255,7 @@ func TestSetSessionValuesFromApp(t *testing.T) {
 		ClusterGroup: mycluster,
 	}
 
-	session := &tty.Session{CmdType: tty.TerminalBash}
+	session := &tty.Session{CmdType: tty.TerminalBash, Owner: "app_terminal_user"}
 
 	err := repman.SetSessionValuesFromApp(session, app)
 	if err != nil {

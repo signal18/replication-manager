@@ -961,13 +961,14 @@ func TestIsURLPassACLTerminalAccess(t *testing.T) {
 		{"Terminal - proxy denied to db user", "terminal_db", "/api/terminal/proxies/proxy1", false},
 
 		// App terminal access
-		{"Terminal - app", "terminal_app", "/api/terminal/apps/app1", true},
-		{"Terminal - app denied to proxy user", "terminal_proxy", "/api/terminal/apps/app1", false},
+		{"Terminal - app", "terminal_app", "/api/terminal/connect/clusters/test/apps/app1", true},
+		{"Terminal - app denied to proxy user", "terminal_proxy", "/api/terminal/connect/clusters/test/apps/app1", false},
+		{"Terminal - global user on app route", "terminal_global", "/api/terminal/connect/clusters/test/apps/app1", true},
 
 		// No terminal access
 		{"Terminal - denied without grant", "no_terminal", "/api/terminal/connect", false},
 		{"Terminal - denied without grant servers", "no_terminal", "/api/terminal/servers/server1", false},
-		{"Terminal - denied without grant apps", "no_terminal", "/api/terminal/apps/app1", false},
+		{"Terminal - denied without grant apps", "no_terminal", "/api/terminal/connect/clusters/test/apps/app1", false},
 	}
 
 	for _, tt := range tests {

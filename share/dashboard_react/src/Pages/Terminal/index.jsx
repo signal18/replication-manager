@@ -98,6 +98,7 @@ const TerminalComponent = () => {
     if (clusterData) {
       const servers = clusterData.dbServers || [];
       const proxies = clusterData.proxyServers || [];
+      const apps = clusterData.apps || [];
 
       if (serverName) {
         if (!servers.find(srv => srv === serverName)) {
@@ -107,9 +108,13 @@ const TerminalComponent = () => {
         if (!proxies.find(prx => prx === proxyName)) {
           navigate(`/`);
         }
+      } else if (appName) {
+        if (!apps.find(app => app.id === appName)) {
+          navigate(`/`);
+        }
       }
     }
-  }, [clusterData?.name, serverName, proxyName])
+  }, [clusterData?.name, clusterData?.apps, serverName, proxyName, appName, navigate])
 
   const sendMessage = (message) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
