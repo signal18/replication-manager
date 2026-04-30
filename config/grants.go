@@ -146,6 +146,7 @@ const (
 
 	GrantTerminalDatabase string = "terminal-db"
 	GrantTerminalProxy    string = "terminal-proxy"
+	GrantTerminalApp      string = "terminal-app"
 	GrantTerminalGlobal   string = "terminal-global" // Can use global terminal
 )
 
@@ -244,6 +245,7 @@ func GetGrantType() map[string]string {
 		GrantShow:                      GrantShow,
 		GrantTerminalDatabase:          GrantTerminalDatabase,
 		GrantTerminalProxy:             GrantTerminalProxy,
+		GrantTerminalApp:               GrantTerminalApp,
 		GrantTerminalGlobal:            GrantTerminalGlobal,
 	}
 }
@@ -451,6 +453,7 @@ func GetGrantTerminal() []string {
 	return []string{
 		GrantTerminalDatabase,
 		GrantTerminalProxy,
+		GrantTerminalApp,
 		GrantTerminalGlobal,
 	}
 }

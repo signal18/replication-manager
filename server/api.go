@@ -1944,15 +1944,17 @@ func logResponse(resp *http.Response) {
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string false "Cluster Name"
 // @Param serverName path string false "Server Name"
-// @Param rid query string false "OpenSVC server bash terminal container RID (allowed: container#db, container#jobs)"
+// @Param rid query string false "OpenSVC bash terminal container RID (server allowed: container#db, container#jobs; app allowed: container#app)"
 // @Success 200 {string} string "Connected successfully"
 // @Failure 400 {string} string "No user provided"
 // @Failure 500 {string} string "No valid node" or "No valid cluster"
 // @Router /api/terminal/connect [get]
 // @Router /api/terminal/connect/clusters/{clusterName}/servers/{serverName} [get]
 // @Router /api/terminal/connect/clusters/{clusterName}/proxies/{serverName} [get]
+// @Router /api/terminal/connect/clusters/{clusterName}/apps/{serverName} [get]
 // @Router /api/terminal/connect/clusters/{clusterName}/servers/{serverName}/{command} [get]
 // @Router /api/terminal/connect/clusters/{clusterName}/proxies/{serverName}/{command} [get]
+// @Router /api/terminal/connect/clusters/{clusterName}/apps/{serverName}/{command} [get]
 func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http.Request) {
 	defer repman.LogPanicToFile()
 
@@ -1960,6 +1962,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 	var mycluster *cluster.Cluster
 	var node *cluster.ServerMonitor
 	var proxy cluster.DatabaseProxy
+	var appTarget *cluster.App
 
 	vars := mux.Vars(r)
 	path := r.URL.Path
@@ -2063,10 +2066,17 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 		} else if proxy != nil {
 			sessionID = mycluster.Name + "-" + proxy.GetName()
 		} else {
+			appTarget = mycluster.GetAppFromName(vars["serverName"])
+			if appTarget != nil {
+				sessionID = mycluster.Name + "-" + appTarget.GetName()
+			}
+		}
+		if node == nil && proxy == nil && appTarget == nil {
 			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid node\n"))
 			return
+		} else {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session started for user %s on cluster %s", plainuser, mycluster.Name)
 		}
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session started for user %s on cluster %s", plainuser, mycluster.Name)
 
 	}
 
@@ -2104,14 +2114,23 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 			err = repman.SetSessionValuesFromNode(session, node)
 		} else if proxy != nil {
 			err = repman.SetSessionValuesFromProxy(session, proxy)
+		} else if appTarget != nil {
+			err = repman.SetSessionValuesFromApp(session, appTarget)
 		}
 		if err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error setting session values from node: %v", err)
-			session.SafeWriteMessage(websocket.TextMessage, []byte("Failed to set session values from node\n"))
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error setting session values from terminal target: %v", err)
+			session.SafeWriteMessage(websocket.TextMessage, []byte("Failed to set session values from terminal target\n"))
 			return
 		}
 
-		selectedRID, shouldSetRID, err := resolveTerminalContainerRIDForSession(node != nil, session.CmdType, session.Orchestrator, r.URL.Query().Get("rid"))
+		targetKind := terminalTargetProxy
+		if node != nil {
+			targetKind = terminalTargetServer
+		} else if appTarget != nil {
+			targetKind = terminalTargetApp
+		}
+
+		selectedRID, shouldSetRID, err := resolveTerminalContainerRIDForSession(targetKind, session.CmdType, session.Orchestrator, r.URL.Query().Get("rid"))
 		if err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Terminal session rid validation failed: %v", err)
 			session.SafeWriteMessage(websocket.TextMessage, []byte("Invalid rid parameter: "+err.Error()+"\n"))

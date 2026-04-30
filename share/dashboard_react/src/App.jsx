@@ -74,6 +74,16 @@ function App() {
             <TerminalComponent />
           </PrivateRoute>
         } />
+        <Route path={"/terminal/clusters/:clusterName/apps/:appName"} element={
+          <PrivateRoute>
+            <TerminalComponent />
+          </PrivateRoute>
+        } />
+        <Route path={"/terminal/clusters/:clusterName/apps/:appName/:commandType"} element={
+          <PrivateRoute>
+            <TerminalComponent />
+          </PrivateRoute>
+        } />
         <Route path='/login' element={<Login />} />
         <Route path='/dashboard' element={<Login dashboard />} />
         <Route

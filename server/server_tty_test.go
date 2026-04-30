@@ -54,92 +54,156 @@ func TestResolveOpenSVCTerminalContainerRID(t *testing.T) {
 	}
 }
 
-func TestResolveTerminalContainerRIDForSession(t *testing.T) {
+func TestResolveOpenSVCAppTerminalContainerRID(t *testing.T) {
 	tests := []struct {
-		name           string
-		isNodeTerminal bool
-		cmdType        tty.TerminalCommandType
-		orchestrator   string
-		rid            string
-		wantRID        string
-		wantShouldSet  bool
-		wantErr        bool
+		name    string
+		rid     string
+		want    string
+		wantErr bool
 	}{
 		{
-			name:           "opensvc server bash defaults to db",
-			isNodeTerminal: true,
-			cmdType:        tty.TerminalBash,
-			orchestrator:   config.ConstOrchestratorOpenSVC,
-			rid:            "",
-			wantRID:        defaultServerServiceContainer,
-			wantShouldSet:  true,
-			wantErr:        false,
+			name:    "explicit app container accepted",
+			rid:     defaultAppServiceContainer,
+			want:    defaultAppServiceContainer,
+			wantErr: false,
 		},
 		{
-			name:           "opensvc server bash jobs override accepted",
-			isNodeTerminal: true,
-			cmdType:        tty.TerminalBash,
-			orchestrator:   config.ConstOrchestratorOpenSVC,
-			rid:            cluster.RestartRidJobsContainer,
-			wantRID:        cluster.RestartRidJobsContainer,
-			wantShouldSet:  true,
-			wantErr:        false,
-		},
-		{
-			name:           "rid rejected for proxy bash terminal",
-			isNodeTerminal: false,
-			cmdType:        tty.TerminalBash,
-			orchestrator:   config.ConstOrchestratorOpenSVC,
-			rid:            cluster.RestartRidJobsContainer,
-			wantRID:        "",
-			wantShouldSet:  false,
-			wantErr:        true,
-		},
-		{
-			name:           "rid rejected for opensvc mysql terminal",
-			isNodeTerminal: true,
-			cmdType:        tty.TerminalMySQL,
-			orchestrator:   config.ConstOrchestratorOpenSVC,
-			rid:            cluster.RestartRidJobsContainer,
-			wantRID:        "",
-			wantShouldSet:  false,
-			wantErr:        true,
-		},
-		{
-			name:           "rid rejected for non-opensvc server bash",
-			isNodeTerminal: true,
-			cmdType:        tty.TerminalBash,
-			orchestrator:   config.ConstOrchestratorOnPremise,
-			rid:            cluster.RestartRidJobsContainer,
-			wantRID:        "",
-			wantShouldSet:  false,
-			wantErr:        true,
-		},
-		{
-			name:           "empty rid ignored for non-opensvc path",
-			isNodeTerminal: true,
-			cmdType:        tty.TerminalBash,
-			orchestrator:   config.ConstOrchestratorOnPremise,
-			rid:            "",
-			wantRID:        "",
-			wantShouldSet:  false,
-			wantErr:        false,
-		},
-		{
-			name:           "invalid opensvc rid rejected",
-			isNodeTerminal: true,
-			cmdType:        tty.TerminalBash,
-			orchestrator:   config.ConstOrchestratorOpenSVC,
-			rid:            "container#prx",
-			wantRID:        "",
-			wantShouldSet:  false,
-			wantErr:        true,
+			name:    "invalid rid rejected",
+			rid:     defaultServerServiceContainer,
+			want:    "",
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotRID, gotShouldSet, err := resolveTerminalContainerRIDForSession(tt.isNodeTerminal, tt.cmdType, tt.orchestrator, tt.rid)
+			got, err := resolveOpenSVCAppTerminalContainerRID(tt.rid)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("resolveOpenSVCAppTerminalContainerRID() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Fatalf("resolveOpenSVCAppTerminalContainerRID() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveTerminalContainerRIDForSession(t *testing.T) {
+	tests := []struct {
+		name          string
+		targetKind    string
+		cmdType       tty.TerminalCommandType
+		orchestrator  string
+		rid           string
+		wantRID       string
+		wantShouldSet bool
+		wantErr       bool
+	}{
+		{
+			name:          "opensvc server bash defaults to db",
+			targetKind:    terminalTargetServer,
+			cmdType:       tty.TerminalBash,
+			orchestrator:  config.ConstOrchestratorOpenSVC,
+			rid:           "",
+			wantRID:       defaultServerServiceContainer,
+			wantShouldSet: true,
+			wantErr:       false,
+		},
+		{
+			name:          "opensvc app bash defaults to app",
+			targetKind:    terminalTargetApp,
+			cmdType:       tty.TerminalBash,
+			orchestrator:  config.ConstOrchestratorOpenSVC,
+			rid:           "",
+			wantRID:       defaultAppServiceContainer,
+			wantShouldSet: true,
+			wantErr:       false,
+		},
+		{
+			name:          "opensvc server bash jobs override accepted",
+			targetKind:    terminalTargetServer,
+			cmdType:       tty.TerminalBash,
+			orchestrator:  config.ConstOrchestratorOpenSVC,
+			rid:           cluster.RestartRidJobsContainer,
+			wantRID:       cluster.RestartRidJobsContainer,
+			wantShouldSet: true,
+			wantErr:       false,
+		},
+		{
+			name:          "opensvc app bash app rid accepted",
+			targetKind:    terminalTargetApp,
+			cmdType:       tty.TerminalBash,
+			orchestrator:  config.ConstOrchestratorOpenSVC,
+			rid:           defaultAppServiceContainer,
+			wantRID:       defaultAppServiceContainer,
+			wantShouldSet: true,
+			wantErr:       false,
+		},
+		{
+			name:          "rid rejected for proxy bash terminal",
+			targetKind:    terminalTargetProxy,
+			cmdType:       tty.TerminalBash,
+			orchestrator:  config.ConstOrchestratorOpenSVC,
+			rid:           cluster.RestartRidJobsContainer,
+			wantRID:       "",
+			wantShouldSet: false,
+			wantErr:       true,
+		},
+		{
+			name:          "rid rejected for opensvc mysql terminal",
+			targetKind:    terminalTargetServer,
+			cmdType:       tty.TerminalMySQL,
+			orchestrator:  config.ConstOrchestratorOpenSVC,
+			rid:           cluster.RestartRidJobsContainer,
+			wantRID:       "",
+			wantShouldSet: false,
+			wantErr:       true,
+		},
+		{
+			name:          "rid rejected for non-opensvc server bash",
+			targetKind:    terminalTargetServer,
+			cmdType:       tty.TerminalBash,
+			orchestrator:  config.ConstOrchestratorOnPremise,
+			rid:           cluster.RestartRidJobsContainer,
+			wantRID:       "",
+			wantShouldSet: false,
+			wantErr:       true,
+		},
+		{
+			name:          "empty rid ignored for non-opensvc path",
+			targetKind:    terminalTargetServer,
+			cmdType:       tty.TerminalBash,
+			orchestrator:  config.ConstOrchestratorOnPremise,
+			rid:           "",
+			wantRID:       "",
+			wantShouldSet: false,
+			wantErr:       false,
+		},
+		{
+			name:          "invalid opensvc rid rejected",
+			targetKind:    terminalTargetServer,
+			cmdType:       tty.TerminalBash,
+			orchestrator:  config.ConstOrchestratorOpenSVC,
+			rid:           "container#prx",
+			wantRID:       "",
+			wantShouldSet: false,
+			wantErr:       true,
+		},
+		{
+			name:          "invalid app rid rejected",
+			targetKind:    terminalTargetApp,
+			cmdType:       tty.TerminalBash,
+			orchestrator:  config.ConstOrchestratorOpenSVC,
+			rid:           defaultServerServiceContainer,
+			wantRID:       "",
+			wantShouldSet: false,
+			wantErr:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotRID, gotShouldSet, err := resolveTerminalContainerRIDForSession(tt.targetKind, tt.cmdType, tt.orchestrator, tt.rid)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("resolveTerminalContainerRIDForSession() error = %v, wantErr %v", err, tt.wantErr)
 			}

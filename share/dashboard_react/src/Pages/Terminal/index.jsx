@@ -27,7 +27,7 @@ const TerminalComponent = () => {
   const terminalRef = useRef(null);
   const terminalInstanceRef = useRef(null); // Store the terminal instance
   const socketRef = useRef(null); // Store the WebSocket connection in a ref for stability
-  const { clusterName, serverName, proxyName, commandType } = useParams();
+  const { clusterName, serverName, proxyName, appName, commandType } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const [serviceContainer, setServiceContainer] = useState(OpenSVCTerminalRID.Default);
@@ -168,6 +168,8 @@ const TerminalComponent = () => {
       websocketUrl = `/api/terminal/connect/clusters/${clusterName}/servers/${serverName}`;
     } else if (clusterName && proxyName) {
       websocketUrl = `/api/terminal/connect/clusters/${clusterName}/proxies/${proxyName}`;
+    } else if (clusterName && appName) {
+      websocketUrl = `/api/terminal/connect/clusters/${clusterName}/apps/${appName}`;
     } else {
       websocketUrl = '/api/terminal/connect';
     }
@@ -241,7 +243,13 @@ const TerminalComponent = () => {
       <Box className={styles.container}>
         <HStack justify="space-between" align="center" spacing={4}>
           <Text fontSize="xl" fontWeight="bold" className={styles.title}>
-            {clusterName ? (serverName ? "Server Terminal" : "Proxy Terminal") : "Web Terminal"}
+            {clusterName
+              ? (serverName
+                  ? "Server Terminal"
+                  : (proxyName
+                      ? "Proxy Terminal"
+                      : (appName ? "App Terminal" : "Web Terminal")))
+              : "Web Terminal"}
           </Text>
 
           <HStack spacing={2}>
@@ -254,7 +262,7 @@ const TerminalComponent = () => {
               </>
             )}
             <Text fontSize="lg" fontWeight="bold">
-              {serverName || proxyName || ""}
+              {serverName || proxyName || appName || ""}
             </Text>
           </HStack>
         </HStack>

@@ -14,6 +14,11 @@ import (
 const (
 	defaultServerServiceContainer = "container#db"
 	defaultProxyServiceContainer  = "container#prx"
+	defaultAppServiceContainer    = "container#app"
+
+	terminalTargetServer = "server"
+	terminalTargetProxy  = "proxy"
+	terminalTargetApp    = "app"
 )
 
 // resolveOpenSVCTerminalContainerRID validates and resolves the target OpenSVC
@@ -30,28 +35,52 @@ func resolveOpenSVCTerminalContainerRID(rid string) (string, error) {
 	}
 }
 
+func resolveOpenSVCAppTerminalContainerRID(rid string) (string, error) {
+	switch rid {
+	case defaultAppServiceContainer:
+		return rid, nil
+	default:
+		return "", fmt.Errorf("invalid terminal rid: only '%s' is allowed", defaultAppServiceContainer)
+	}
+}
+
 // resolveTerminalContainerRIDForSession validates whether rid is applicable for
 // the requested terminal type and returns the effective service container name.
 //
-// rid is only accepted for OpenSVC server bash terminals.
-func resolveTerminalContainerRIDForSession(isNodeTerminal bool, cmdType tty.TerminalCommandType, orchestrator string, rid string) (string, bool, error) {
+// rid is only accepted for OpenSVC server/app bash terminals.
+func resolveTerminalContainerRIDForSession(targetKind string, cmdType tty.TerminalCommandType, orchestrator string, rid string) (string, bool, error) {
 	if rid == "" {
-		if isNodeTerminal && cmdType == tty.TerminalBash && orchestrator == config.ConstOrchestratorOpenSVC {
-			return defaultServerServiceContainer, true, nil
+		if cmdType == tty.TerminalBash && orchestrator == config.ConstOrchestratorOpenSVC {
+			switch targetKind {
+			case terminalTargetServer:
+				return defaultServerServiceContainer, true, nil
+			case terminalTargetApp:
+				return defaultAppServiceContainer, true, nil
+			}
 		}
 		return "", false, nil
 	}
 
-	if !isNodeTerminal || cmdType != tty.TerminalBash || orchestrator != config.ConstOrchestratorOpenSVC {
-		return "", false, fmt.Errorf("rid is only supported for OpenSVC server bash terminals")
+	if cmdType != tty.TerminalBash || orchestrator != config.ConstOrchestratorOpenSVC {
+		return "", false, fmt.Errorf("rid is only supported for OpenSVC server/app bash terminals")
 	}
 
-	selectedRID, err := resolveOpenSVCTerminalContainerRID(rid)
-	if err != nil {
-		return "", false, err
+	switch targetKind {
+	case terminalTargetServer:
+		selectedRID, err := resolveOpenSVCTerminalContainerRID(rid)
+		if err != nil {
+			return "", false, err
+		}
+		return selectedRID, true, nil
+	case terminalTargetApp:
+		selectedRID, err := resolveOpenSVCAppTerminalContainerRID(rid)
+		if err != nil {
+			return "", false, err
+		}
+		return selectedRID, true, nil
+	default:
+		return "", false, fmt.Errorf("rid is only supported for OpenSVC server/app bash terminals")
 	}
-
-	return selectedRID, true, nil
 }
 
 func (repman *ReplicationManager) InitWebTTY() {
@@ -190,5 +219,26 @@ func (repman *ReplicationManager) SetSessionValuesFromProxy(session *tty.Session
 	default:
 		return fmt.Errorf("unsupported command type: %s", session.CmdType)
 	}
+	return nil
+}
+
+func (repman *ReplicationManager) SetSessionValuesFromApp(session *tty.Session, app *cluster.App) error {
+	session.Host = app.GetHost()
+	mycluster := app.GetCluster()
+	session.Orchestrator = mycluster.GetOrchestrator()
+	session.ServiceName = app.GetServiceName()
+	session.ServiceContainerName = defaultAppServiceContainer
+	session.ServiceAgentName = app.GetAgent()
+
+	switch session.CmdType {
+	case tty.TerminalBash:
+		session.Port = strconv.Itoa(mycluster.Conf.OnPremiseSSHPort)
+		session.Username = mycluster.GetOnPremiseSSHUser()
+		session.Password = mycluster.GetOnPremiseSSHPass()
+		session.AppendKey(mycluster.OnPremiseGetSSHKey())
+	default:
+		return fmt.Errorf("unsupported command type: %s", session.CmdType)
+	}
+
 	return nil
 }
