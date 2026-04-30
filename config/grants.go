@@ -114,7 +114,6 @@ const (
 	GrantAppStart      string = "app-start"
 	GrantAppStop       string = "app-stop"
 	GrantAppGit        string = "app-git"
-	GrantAppTerminal   string = "app-terminal"
 
 	GrantProvClusterProvision   string = "prov-cluster-provision"
 	GrantProvClusterUnprovision string = "prov-cluster-unprovision"
@@ -128,9 +127,9 @@ const (
 	GrantProvCluster            string = "prov-cluster"
 
 	GrantGlobalSettings  string = "global-settings"     // Can update global settings
-	GrantGlobalGrant     string = "global-grant"         // Can grant global settings
-	GrantGlobalAdminShow string = "global-admin-show"    // Can view global dashboard (logs, metrics, alerts)
-	GrantGlobalAdminConf string = "global-admin-config"  // Can modify global-level monitoring configuration
+	GrantGlobalGrant     string = "global-grant"        // Can grant global settings
+	GrantGlobalAdminShow string = "global-admin-show"   // Can view global dashboard (logs, metrics, alerts)
+	GrantGlobalAdminConf string = "global-admin-config" // Can modify global-level monitoring configuration
 
 	GrantGrantShow   string = "grant-show"   // Can show users settings
 	GrantGrantAdd    string = "grant-add"    // Can add new user
@@ -229,7 +228,6 @@ func GetGrantType() map[string]string {
 		GrantAppStart:                  GrantAppStart,
 		GrantAppStop:                   GrantAppStop,
 		GrantAppGit:                    GrantAppGit,
-		GrantAppTerminal:               GrantAppTerminal,
 		GrantGlobalGrant:               GrantGlobalGrant,
 		GrantGlobalSettings:            GrantGlobalSettings,
 		GrantGlobalAdminShow:           GrantGlobalAdminShow,
@@ -383,7 +381,6 @@ func GetGrantApp() []string {
 		GrantAppDocker,
 		GrantAppDeployment,
 		GrantAppGit,
-		GrantAppTerminal,
 	}
 }
 
