@@ -166,10 +166,10 @@ function Login({ dashboard = false }) {
                   id='btnGitRegister'
                   type='button'
                   size='medium'
-                  onClick={() => window.open("https://gitlab.signal18.io/users/sign_up", '_blank')}
+                  onClick={() => navigate('/signup')}
                   isLoading={loadingGitLogin}
                   loadingText={'Signing up to Cloud18'}>
-                  Sign Up To cloud18
+                  Sign up with GitLab SSO
                 </RMButton>
               </Stack>
             </Stack>

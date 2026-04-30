@@ -4,6 +4,7 @@ import PropTypes from 'prop-types'
 import './App.css'
 import ToastManager from './components/ToastManager'
 import Login from './Pages/Login'
+import Signup from './Pages/Signup'
 // const Login = lazy(() => import('./Pages/Login'))
 // const Home = lazy(() => import('./Pages/Home'))
 import Home from './Pages/Home'
@@ -85,6 +86,7 @@ function App() {
           </PrivateRoute>
         } />
         <Route path='/login' element={<Login />} />
+        <Route path='/signup' element={<Signup />} />
         <Route path='/dashboard' element={<Login dashboard />} />
         <Route
           path='/slideshow'

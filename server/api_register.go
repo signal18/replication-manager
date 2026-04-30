@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -25,10 +26,10 @@ import (
 
 const (
 	RegStateIdle    = "idle"
-	RegStatePending = "pending"   // GitLab account created, waiting for email confirmation
-	RegStateOK      = "complete"  // confirmed and Cloud18 connect flow succeeded
-	RegStateTimeout = "timeout"   // user did not click the link in time
-	RegStateError   = "error"     // terminal error (CRM, GitLab, etc.)
+	RegStatePending = "pending"  // GitLab account created, waiting for email confirmation
+	RegStateOK      = "complete" // confirmed and Cloud18 connect flow succeeded
+	RegStateTimeout = "timeout"  // user did not click the link in time
+	RegStateError   = "error"    // terminal error (CRM, GitLab, etc.)
 )
 
 // RegistrationStatus is the current state of an ongoing or completed registration.
@@ -69,6 +70,15 @@ type registerConfirmRequest struct {
 	URI      string `json:"uri"`
 }
 
+type signupRequest struct {
+	FirstName   string `json:"first_name"`
+	LastName    string `json:"last_name"`
+	Username    string `json:"username"`
+	Email       string `json:"email"`
+	Password    string `json:"password"`
+	ReferrerURI string `json:"referrer_uri,omitempty"`
+}
+
 type crmRegisterPayload struct {
 	Email     string `json:"email"`
 	Password  string `json:"password"`
@@ -85,6 +95,15 @@ type crmConfirmPayload struct {
 	Zone      string `json:"zone"`
 }
 
+type crmSignupPayload struct {
+	FirstName   string `json:"first_name"`
+	LastName    string `json:"last_name"`
+	Username    string `json:"username"`
+	Email       string `json:"email"`
+	Password    string `json:"password"`
+	ReferrerURI string `json:"referrer_uri"`
+}
+
 // ---------------------------------------------------------------------------
 // Polling constants
 // ---------------------------------------------------------------------------
@@ -94,12 +113,23 @@ const confirmPollTimeout = 5 * time.Minute
 
 const defaultCrmBaseURL = "https://api.crm.ovh-fr-2.signal18.cloud18.io"
 
+var basicEmailRegexp = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+
 // crmBase returns the configured CRM API base URL, falling back to the default.
 func (repman *ReplicationManager) crmBase() string {
 	if u := strings.TrimRight(repman.Conf.Cloud18CrmApiUrl, "/"); u != "" {
 		return u
 	}
 	return defaultCrmBaseURL
+}
+
+// registeredInstanceURI returns this instance URI when fully configured.
+// Format: domain.subdomain.zone. Returns empty string when incomplete.
+func (repman *ReplicationManager) registeredInstanceURI() string {
+	if repman.Conf.Cloud18Domain == "" || repman.Conf.Cloud18SubDomain == "" || repman.Conf.Cloud18SubDomainZone == "" {
+		return ""
+	}
+	return repman.Conf.Cloud18Domain + "." + repman.Conf.Cloud18SubDomain + "." + repman.Conf.Cloud18SubDomainZone
 }
 
 // ---------------------------------------------------------------------------
@@ -323,6 +353,102 @@ func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http
 
 	w.WriteHeader(http.StatusAccepted)
 	w.Write(step1Body)
+}
+
+// handlerSignup — POST /api/signup (public, no JWT required)
+//
+// Proxies signup data to CRM and always derives referrer_uri from
+// the registered local Cloud18 instance URI.
+func (repman *ReplicationManager) handlerSignup(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodPost {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"signup: method not allowed: %s", r.Method)
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"signup: failed to read request body: %s", err)
+		http.Error(w, `{"error":"failed to read request body"}`, http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var req signupRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"signup: invalid JSON body: %s", err)
+		http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
+		return
+	}
+
+	req.FirstName = strings.TrimSpace(req.FirstName)
+	req.LastName = strings.TrimSpace(req.LastName)
+	req.Username = strings.TrimSpace(req.Username)
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+
+	if req.FirstName == "" || req.LastName == "" || req.Username == "" || req.Email == "" || req.Password == "" {
+		http.Error(w, `{"error":"first_name, last_name, username, email and password are required"}`, http.StatusBadRequest)
+		return
+	}
+
+	if !basicEmailRegexp.MatchString(req.Email) {
+		http.Error(w, `{"error":"invalid email format"}`, http.StatusBadRequest)
+		return
+	}
+
+	crmPayload := crmSignupPayload{
+		FirstName:   req.FirstName,
+		LastName:    req.LastName,
+		Username:    req.Username,
+		Email:       req.Email,
+		Password:    req.Password,
+		ReferrerURI: repman.registeredInstanceURI(),
+	}
+
+	crmBody, err := json.Marshal(crmPayload)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"signup: failed to marshal CRM payload: %s", err)
+		http.Error(w, `{"error":"failed to prepare CRM request"}`, http.StatusInternalServerError)
+		return
+	}
+
+	crmReq, err := http.NewRequest(http.MethodPost, repman.crmBase()+"/api/signup", bytes.NewReader(crmBody))
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"signup: failed to build CRM request: %s", err)
+		http.Error(w, `{"error":"failed to build CRM request"}`, http.StatusInternalServerError)
+		return
+	}
+	crmReq.Header.Set("Content-Type", "application/json")
+	crmReq.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	crmResp, err := client.Do(crmReq)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"signup: CRM unreachable: %s", err)
+		http.Error(w, fmt.Sprintf(`{"error":"CRM API unreachable: %s"}`, err), http.StatusBadGateway)
+		return
+	}
+	defer crmResp.Body.Close()
+
+	respBody, err := io.ReadAll(crmResp.Body)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"signup: failed to read CRM response: %s", err)
+		http.Error(w, `{"error":"failed to read CRM response"}`, http.StatusBadGateway)
+		return
+	}
+
+	w.WriteHeader(crmResp.StatusCode)
+	w.Write(respBody)
 }
 
 // handlerRegisterStatus — GET /api/register/status  (admin JWT required)
@@ -588,7 +714,7 @@ func (repman *ReplicationManager) handlerGetSubscription(w http.ResponseWriter, 
 		return
 	}
 
-	uri := repman.Conf.Cloud18Domain + "." + repman.Conf.Cloud18SubDomain + "." + repman.Conf.Cloud18SubDomainZone
+	uri := repman.registeredInstanceURI()
 
 	status, body, err := crmGetSubscription(repman.crmBase(), tok, uri)
 	if err != nil {
@@ -650,7 +776,7 @@ func (repman *ReplicationManager) handlerChangeSubscription(w http.ResponseWrite
 		return
 	}
 
-	uri := repman.Conf.Cloud18Domain + "." + repman.Conf.Cloud18SubDomain + "." + repman.Conf.Cloud18SubDomainZone
+	uri := repman.registeredInstanceURI()
 
 	status, respBody, err := crmChangeSubscription(repman.crmBase(), tok, uri, req.Plan)
 	if err != nil {
@@ -699,7 +825,7 @@ func (repman *ReplicationManager) handlerUnregister(w http.ResponseWriter, r *ht
 		return
 	}
 
-	uri := repman.Conf.Cloud18Domain + "." + repman.Conf.Cloud18SubDomain + "." + repman.Conf.Cloud18SubDomainZone
+	uri := repman.registeredInstanceURI()
 
 	status, respBody, err := crmUnregister(repman.crmBase(), tok, uri)
 	if err != nil {
