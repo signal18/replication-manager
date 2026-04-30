@@ -4,7 +4,8 @@ export const authService = {
   login,
   gitLogin,
   signup,
-  whoami
+  whoami,
+  getSignupPromo
 }
 
 function login(username, password, baseURL) {
@@ -27,4 +28,8 @@ function signup(payload, baseURL) {
     return getApi(baseURL).post('signup', payload)
   }
   return publicApi.post('signup', payload)
+}
+
+function getSignupPromo() {
+  return publicApi.get('signup/promo')
 }
