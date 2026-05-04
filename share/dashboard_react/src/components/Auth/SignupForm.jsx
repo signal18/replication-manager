@@ -198,8 +198,9 @@ function SignupForm({
             <VStack spacing={3} align='stretch'>
               {[
                 'Access to community via meet.signal18.io',
-                'Backup encrypted configs to cloud repository',
-                'Extra alerting on MariaDB blocker issues',
+                'Be granted ACL to access existing cluster',
+                'Purchase partners database clusters',
+                'Use this account to register a replication-manager',
               ].map((item, i) => (
                 <HStack key={i} spacing={3}>
                   <Box bg='green.100' borderRadius='full' boxSize='24px' display='flex' alignItems='center' justifyContent='center' flexShrink={0}>
