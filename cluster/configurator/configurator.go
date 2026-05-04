@@ -301,6 +301,149 @@ func (configurator *Configurator) loadAcceptedCompliance() bool {
 	return loaded
 }
 
+// ComplianceTagChange describes one tag that was added, removed, or modified.
+type ComplianceTagChange struct {
+	Tag      string `json:"tag"`
+	Category string `json:"category"`
+	Action   string `json:"action"` // "added", "removed", "modified"
+	OldCnf   string `json:"old_cnf,omitempty"`
+	NewCnf   string `json:"new_cnf,omitempty"`
+}
+
+// ComplianceDiffResult is the structured diff between old and new compliance.
+type ComplianceDiffResult struct {
+	HasOld     bool                  `json:"has_old"`
+	HasNew     bool                  `json:"has_new"`
+	OldDBCRC   uint32                `json:"old_db_crc"`
+	NewDBCRC   uint32                `json:"new_db_crc"`
+	OldPrxCRC  uint32                `json:"old_prx_crc"`
+	NewPrxCRC  uint32                `json:"new_prx_crc"`
+	DBChanges  []ComplianceTagChange `json:"db_changes"`
+	PrxChanges []ComplianceTagChange `json:"prx_changes"`
+}
+
+// ComplianceDiff compares the previous (.old) and current accepted compliance
+// and returns a structured list of tag-level changes.
+func (configurator *Configurator) ComplianceDiff() ComplianceDiffResult {
+	result := ComplianceDiffResult{}
+	if configurator.WorkingDir == "" {
+		return result
+	}
+
+	// Load old and new DB modules
+	oldDB := configurator.loadComplianceFile(filepath.Join(configurator.WorkingDir, previousDBFile))
+	newDB := configurator.loadComplianceFile(filepath.Join(configurator.WorkingDir, acceptedDBFile))
+	result.HasOld = oldDB != nil
+	result.HasNew = newDB != nil
+	if oldDB != nil {
+		result.OldDBCRC = configurator.complianceCRC(*oldDB)
+	}
+	if newDB != nil {
+		result.NewDBCRC = configurator.complianceCRC(*newDB)
+	}
+
+	if oldDB != nil && newDB != nil {
+		result.DBChanges = configurator.diffModuleTags(oldDB, newDB)
+	}
+
+	// Load old and new Proxy modules
+	oldPrx := configurator.loadComplianceFile(filepath.Join(configurator.WorkingDir, previousPrxFile))
+	newPrx := configurator.loadComplianceFile(filepath.Join(configurator.WorkingDir, acceptedPrxFile))
+	if oldPrx != nil {
+		result.OldPrxCRC = configurator.complianceCRC(*oldPrx)
+	}
+	if newPrx != nil {
+		result.NewPrxCRC = configurator.complianceCRC(*newPrx)
+	}
+
+	if oldPrx != nil && newPrx != nil {
+		result.PrxChanges = configurator.diffModuleTags(oldPrx, newPrx)
+	}
+
+	return result
+}
+
+func (configurator *Configurator) loadComplianceFile(path string) *config.Compliance {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var module config.Compliance
+	if err := json.Unmarshal(data, &module); err != nil || len(module.Rulesets) == 0 {
+		return nil
+	}
+	return &module
+}
+
+// diffModuleTags compares two compliance modules at the tag level.
+// For each tag it extracts the cnf content and reports added/removed/modified.
+func (configurator *Configurator) diffModuleTags(oldMod, newMod *config.Compliance) []ComplianceTagChange {
+	oldTags := extractTagCnfMap(oldMod)
+	newTags := extractTagCnfMap(newMod)
+
+	var changes []ComplianceTagChange
+
+	// Removed or modified
+	for tag, oldCnf := range oldTags {
+		newCnf, exists := newTags[tag]
+		if !exists {
+			changes = append(changes, ComplianceTagChange{
+				Tag:    tag,
+				Action: "removed",
+				OldCnf: oldCnf,
+			})
+		} else if oldCnf != newCnf {
+			changes = append(changes, ComplianceTagChange{
+				Tag:    tag,
+				Action: "modified",
+				OldCnf: oldCnf,
+				NewCnf: newCnf,
+			})
+		}
+	}
+
+	// Added
+	for tag, newCnf := range newTags {
+		if _, exists := oldTags[tag]; !exists {
+			changes = append(changes, ComplianceTagChange{
+				Tag:    tag,
+				Action: "added",
+				NewCnf: newCnf,
+			})
+		}
+	}
+
+	return changes
+}
+
+// extractTagCnfMap builds a map of tag_name→cnf_content from a compliance module
+// by iterating rulesets and extracting file variables.
+func extractTagCnfMap(mod *config.Compliance) map[string]string {
+	type fileVar struct {
+		Path string `json:"path"`
+		Fmt  string `json:"fmt"`
+	}
+	tags := make(map[string]string)
+	for _, rule := range mod.Rulesets {
+		for _, variable := range rule.Variables {
+			if variable.Class != "file" {
+				continue
+			}
+			var fv fileVar
+			if err := json.Unmarshal([]byte(variable.Value), &fv); err != nil {
+				continue
+			}
+			if !strings.HasSuffix(fv.Path, ".cnf") {
+				continue
+			}
+			// Use var_name as the tag key (normalised)
+			key := strings.ToLower(variable.Name)
+			tags[key] = fv.Fmt
+		}
+	}
+	return tags
+}
+
 func (configurator *Configurator) LoadProxyModules() error {
 	var byteValue []byte
 	if configurator.ClusterConfig.Test {

@@ -258,6 +258,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAcceptCompliance)),
 	))
+	router.Handle("/api/clusters/{clusterName}/configurator/compliance-diff", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxComplianceDiff)),
+	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/reload-plan-info", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReloadPlanInfo)),
@@ -5668,6 +5672,23 @@ func (repman *ReplicationManager) handlerMuxAcceptCompliance(w http.ResponseWrit
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"compliance update accepted"}`))
+}
+
+// handlerMuxComplianceDiff returns a structured diff between the previous
+// (.old) and current accepted compliance, showing added/removed/modified tags.
+func (repman *ReplicationManager) handlerMuxComplianceDiff(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+
+	result := mycluster.Configurator.ComplianceDiff()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 // handlerMuxServerAdd handles the addition of a server to a given cluster.
