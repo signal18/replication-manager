@@ -1,6 +1,6 @@
 {
   "version": "1",
-  "generated_at": "2026-05-04T10:06:42Z",
+  "generated_at": "2026-05-04T10:23:40Z",
   "source": "signal18-backoffice",
   "variables": {
     "allow_suspicious_udfs": {
@@ -108,13 +108,23 @@
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#binlog_commit_wait_count",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/replication-options.html#sysvar_binlog_commit_wait_count",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Kristian Nielsen: 10x Faster Slave with Parallel Replication",
+          "url": "https://kristiannielsen.livejournal.com/18435.html"
+        }
+      ]
     },
     "binlog_commit_wait_usec": {
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#binlog_commit_wait_usec",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/replication-options.html#sysvar_binlog_commit_wait_usec",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Kristian Nielsen: 10x Faster Slave with Parallel Replication",
+          "url": "https://kristiannielsen.livejournal.com/18435.html"
+        }
+      ]
     },
     "binlog_direct_non_transactional_updates": {
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#binlog_direct_non_transactional_updates",
@@ -432,7 +442,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#default_master_connection",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_default_master_connection",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Monty: Multi-Source Replication",
+          "url": "http://monty-says.blogspot.com/2012/10/multi-source-replication-for-mariadb-is.html"
+        }
+      ]
     },
     "default_password_lifetime": {
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#default_password_lifetime",
@@ -661,7 +676,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#general_log",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_general_log",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Monty: Logs and More Logs",
+          "url": "http://monty-says.blogspot.com/2014/08/logs-and-more-logs-who-has-time-to-read.html"
+        }
+      ]
     },
     "general_log_file": {
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#general_log_file",
@@ -1433,6 +1453,10 @@
         {
           "title": "Marko Makela: Doublewrite Buffer Redesign",
           "url": "https://mariadb.org/doublewrite-buffer/"
+        },
+        {
+          "title": "Vladislav Vaintroub: Atomic Writes (disable doublewrite)",
+          "url": "https://mariadb.org/mariadb-introduces-atomic-writes/"
         }
       ]
     },
@@ -1528,7 +1552,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_fast_shutdown",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_fast_shutdown",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Monty: Upgrading Between Major Versions",
+          "url": "http://monty-says.blogspot.com/2020/04/upgrading-between-major-mariadb-versions.html"
+        }
+      ]
     },
     "innodb_fatal_semaphore_wait_threshold": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_fatal_semaphore_wait_threshold",
@@ -1906,7 +1935,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_log_buffer_size",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_log_buffer_size",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Vladislav Vaintroub: InnoDB Redo Log Algorithms",
+          "url": "https://mariadb.org/fest2021/innodb/"
+        }
+      ]
     },
     "innodb_log_checkpoint_now": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_log_checkpoint_now",
@@ -1960,6 +1994,10 @@
         {
           "title": "Marko Makela: InnoDB Redo Log Improvements",
           "url": "https://mariadb.org/redo-log/"
+        },
+        {
+          "title": "Vladislav Vaintroub: InnoDB Redo Log Algorithms",
+          "url": "https://mariadb.org/fest2021/innodb/"
         }
       ]
     },
@@ -2508,7 +2546,16 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_thread_concurrency",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_thread_concurrency",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Mikael Ronstrom: InnoDB Thread Concurrency Analysis",
+          "url": "http://mikaelronstrom.blogspot.com/2009/05/more-analysis-of-innodb-thread.html"
+        },
+        {
+          "title": "Mikael Ronstrom: Optimum Configuration Sysbench",
+          "url": "http://mikaelronstrom.blogspot.com/2010/10/finding-optimum-configuration-of-mysql.html"
+        }
+      ]
     },
     "innodb_thread_concurrency_timer_based": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_thread_concurrency_timer_based",
@@ -2579,7 +2626,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_use_atomic_writes",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_use_atomic_writes",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Vladislav Vaintroub: Atomic Writes",
+          "url": "https://mariadb.org/mariadb-introduces-atomic-writes/"
+        }
+      ]
     },
     "innodb_use_fallocate": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_use_fallocate",
@@ -2943,7 +2995,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#log_warnings",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_log_warnings",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Monty: Logs and More Logs",
+          "url": "http://monty-says.blogspot.com/2014/08/logs-and-more-logs-who-has-time-to-read.html"
+        }
+      ]
     },
     "long_query_time": {
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#long_query_time",
@@ -4165,7 +4222,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#slave_ddl_exec_mode",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/replication-options.html#sysvar_slave_ddl_exec_mode",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Monty: DDL Execution Mode STRICT/IDEMPOTENT",
+          "url": "http://monty-says.blogspot.com/2014/02/the-final-piece-of-puzzle.html"
+        }
+      ]
     },
     "slave_domain_parallel_threads": {
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#slave_domain_parallel_threads",
@@ -4236,6 +4298,10 @@
         {
           "title": "Vlad Lesin: Parallel Replication Internals",
           "url": "https://mariadb.org/parallel-replication/"
+        },
+        {
+          "title": "Kristian Nielsen: 10x Faster Slave with Parallel Replication",
+          "url": "https://kristiannielsen.livejournal.com/18435.html"
         }
       ]
     },
@@ -4301,6 +4367,10 @@
         {
           "title": "jfg-mysql: Slow Query Analysis",
           "url": "https://jfg-mysql.blogspot.com/2019/01/slow-query-log-analysis.html"
+        },
+        {
+          "title": "Monty: Logs and More Logs",
+          "url": "http://monty-says.blogspot.com/2014/08/logs-and-more-logs-who-has-time-to-read.html"
         }
       ]
     },
