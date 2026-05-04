@@ -64,8 +64,9 @@ const (
 	GrantDBMaintenance     string = "db-maintenance"
 	GrantDBConfigCreate    string = "db-config-create"
 	GrantDBConfigRessource string = "db-config-ressource"
-	GrantDBConfigFlag      string = "db-config-flag"
-	GrantDBConfigGet       string = "db-config-get"
+	GrantDBConfigFlag               string = "db-config-flag"
+	GrantDBConfigGet                string = "db-config-get"
+	GrantDBConfigAcceptCompliance   string = "db-config-accept-compliance"
 
 	GrantClusterCreate             string = "cluster-create"
 	GrantClusterDelete             string = "cluster-delete"
@@ -104,7 +105,8 @@ const (
 	GrantProxyConfigCreate    string = "proxy-config-create"
 	GrantProxyConfigGet       string = "proxy-config-get"
 	GrantProxyConfigRessource string = "proxy-config-ressource"
-	GrantProxyConfigFlag      string = "proxy-config-flag"
+	GrantProxyConfigFlag               string = "proxy-config-flag"
+	GrantProxyConfigAcceptCompliance   string = "proxy-config-accept-compliance"
 	GrantProxyStart           string = "proxy-start"
 	GrantProxyStop            string = "proxy-stop"
 
@@ -168,6 +170,7 @@ func GetGrantType() map[string]string {
 		GrantDBConfigCreate:            GrantDBConfigCreate,
 		GrantDBConfigRessource:         GrantDBConfigRessource,
 		GrantDBConfigFlag:              GrantDBConfigFlag,
+		GrantDBConfigAcceptCompliance:  GrantDBConfigAcceptCompliance,
 		GrantDBConfigGet:               GrantDBConfigGet,
 		GrantDBShowVariables:           GrantDBShowVariables,
 		GrantDBShowStatus:              GrantDBShowStatus,
@@ -210,7 +213,8 @@ func GetGrantType() map[string]string {
 		GrantProxyConfigCreate:         GrantProxyConfigCreate,
 		GrantProxyConfigGet:            GrantProxyConfigGet,
 		GrantProxyConfigRessource:      GrantProxyConfigRessource,
-		GrantProxyConfigFlag:           GrantProxyConfigFlag,
+		GrantProxyConfigFlag:                GrantProxyConfigFlag,
+		GrantProxyConfigAcceptCompliance:    GrantProxyConfigAcceptCompliance,
 		GrantProxyStart:                GrantProxyStart,
 		GrantProxyStop:                 GrantProxyStop,
 		GrantProvSettings:              GrantProvSettings,
@@ -268,6 +272,7 @@ func GetGrantDB() []string {
 		GrantDBConfigRessource,
 		GrantDBConfigFlag,
 		GrantDBConfigGet,
+		GrantDBConfigAcceptCompliance,
 		GrantDBShowVariables,
 		GrantDBShowStatus,
 		GrantDBShowSchema,
@@ -337,6 +342,7 @@ func GetGrantProxy() []string {
 		GrantProxyConfigGet,
 		GrantProxyConfigRessource,
 		GrantProxyConfigFlag,
+		GrantProxyConfigAcceptCompliance,
 		GrantProxyStart,
 		GrantProxyStop,
 	}
