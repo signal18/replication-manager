@@ -20,7 +20,7 @@ All advisory findings route to `SecurityStateMachine` → **Security Logs tab** 
 |---|---|---|
 | **enterprise-compliance** | `ENTCOMP001`, `ENTCOMPERR001` | Compliance moduleset change detection |
 
-The compliance plugin monitors for new compliance modulesets pushed by the back office or shipped with a binary upgrade. It does **not** auto-reload — changes require explicit user approval (or auto-accept when `prov-trust-compliance-changes=true`).
+The compliance plugin monitors for updated best-practice compliance modulesets pushed by the back office or shipped with a binary upgrade. When `prov-auto-update-compliance=true` (default), updates are applied automatically — preserved variables are never overwritten. When `false`, changes require explicit user approval via the API or GUI.
 
 ---
 
@@ -216,7 +216,7 @@ BO pushes new compliance → git pull → syncPluginDataFromPull
   → files land in ShareDir/plugins/data/
   → CheckComplianceUpdate() compares CRC32 vs last accepted
   → WARN0168 raised on cluster state machine
-  → User approves via API (or auto-accepted if prov-trust-compliance-changes=true)
+  → User approves via API (or auto-accepted if prov-auto-update-compliance=true)
   → AcceptComplianceUpdate() loads new modules + saves to disk
   → WARN0168 cleared
 ```
@@ -236,13 +236,13 @@ On startup, these are loaded **instead of the embedded modules** to preserve the
 
 ### Configuration
 
-#### `prov-trust-compliance-changes`
+#### `prov-auto-update-compliance`
 
 | Field | Value |
 |---|---|
 | Type | `bool` |
 | Default | `true` |
-| Config key | `prov-trust-compliance-changes` |
+| Config key | `prov-auto-update-compliance` |
 
 When `true` (default): compliance changes are auto-accepted immediately. WARN0168 fires and auto-clears in the same tick. This preserves backward compatibility — upgrades apply compliance changes silently as before.
 
@@ -259,7 +259,7 @@ When `false`: WARN0168 stays open until the user explicitly approves via the API
 | From | `CLUSTER` |
 | Message | `New compliance moduleset available from back office (DB CRC: XXXXXXXX → YYYYYYYY, Proxy CRC: XXXXXXXX → YYYYYYYY). Accept the update via Settings to apply.` |
 | Check frequency | Every 3600 monitoring ticks (~2 hours at 2s tick) |
-| Auto-clear | Yes, when `prov-trust-compliance-changes=true` |
+| Auto-clear | Yes, when `prov-auto-update-compliance=true` |
 
 ### Security log findings
 
