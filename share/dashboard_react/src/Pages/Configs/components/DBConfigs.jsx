@@ -9,11 +9,16 @@ import AccordionComponent from '../../../components/AccordionComponent'
 import AddRemovePill from '../../../components/AddRemovePill'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
 import TagContentModal from '../../../components/Modals/TagContentModal'
+import CommonModal from '../../../components/Modals/CommonModal'
 import { addDBTag, dropDBTag, generateAllConfig } from '../../../redux/configSlice'
 import { configService } from '../../../services/configService'
 import Gauge from '../../../components/Gauge'
 import RMIconButton from '../../../components/RMIconButton'
 import { HiRefresh } from 'react-icons/hi'
+import { HiQuestionMarkCircle } from 'react-icons/hi'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import modalStyles from '../../../components/Modals/styles.module.scss'
 
 import PreservedVariablesEditor from '../../../components/PreservedVariablesEditor'
 import { convertSize } from '../../../utility/common'
@@ -38,6 +43,25 @@ function DBConfigs({ selectedCluster, user }) {
 
   // Tag content modal state (includes doc help section from the same API response)
   const [tagContentModal, setTagContentModal] = useState({ open: false, tagName: '', data: null })
+
+  // Help modal state
+  const [helpAction, setHelpAction] = useState({ title: '', body: <></> })
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false)
+
+  const openInfoModal = (title, content) => {
+    setHelpAction({ title, body: <Box className={modalStyles.infoTooltip}><Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown></Box> })
+    setIsHelpModalOpen(true)
+  }
+
+  const h = (content, title) => (
+    <RMIconButton
+      icon={HiQuestionMarkCircle}
+      onClick={() => openInfoModal(title, content)}
+      iconFontsize='1rem'
+      variant='ghost'
+      style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }}
+    />
+  )
 
   const baseURL = useSelector((state) => state?.auth?.baseURL || '')
 
@@ -142,9 +166,14 @@ function DBConfigs({ selectedCluster, user }) {
     selectedCluster?.configurator?.dbServersTags
   ])
 
+  const hFetchConfig = `**Fetch Config on Start**\n\nWhen enabled, database servers fetch their configuration from replication-manager on startup.\n\nThe generated config is pushed to each server's data directory and applied when the database process starts.\n\nConfig: \`prov-db-start-fetch-config\``
+  const hDynamicConfig = `**Apply Dynamic Config**\n\nWhen enabled, replication-manager applies configuration changes dynamically using \`SET GLOBAL\` statements without requiring a database restart.\n\nOnly variables that support dynamic changes are applied this way. Variables requiring a restart are written to the config file for the next restart.\n\nConfig: \`prov-db-apply-dynamic-config\``
+  const hRefreshConfig = `**Refresh Variables and DB Config**\n\nRegenerates the configuration files for all database servers in this cluster from the compliance module and the current tag selection.\n\nThis rebuilds the config tarball at \`{datadir}/config.tar.gz\` with all tag-specific cnf files merged with preserved variables and defaults.`
+
   const dataObject = [
     {
       key: 'Cluster DB Start Fetch Config',
+      help: h(hFetchConfig, 'Fetch Config on Start'),
       value: (
         <RMSwitch
           isChecked={selectedCluster?.config?.provDbStartFetchConfig}
@@ -158,6 +187,7 @@ function DBConfigs({ selectedCluster, user }) {
     },
     {
       key: 'Apply Dynamic Config',
+      help: h(hDynamicConfig, 'Apply Dynamic Config'),
       value: (
         <RMSwitch
           isChecked={selectedCluster?.config?.provDBApplyDynamicConfig}
@@ -171,9 +201,10 @@ function DBConfigs({ selectedCluster, user }) {
     },
     {
       key: 'Refresh Variables and DB Config',
+      help: h(hRefreshConfig, 'Refresh Variables and DB Config'),
       value: (
-        <RMIconButton isDisabled={user?.grants['proxy-config-flag'] == false} icon={HiRefresh} onClick={() => { 
-          setConfirmTitle('Confirm refresh variables and db config?') 
+        <RMIconButton isDisabled={user?.grants['proxy-config-flag'] == false} icon={HiRefresh} onClick={() => {
+          setConfirmTitle('Confirm refresh variables and db config?')
           setIsConfirmModalOpen(true)
           setConfirmHandler(() => () => dispatch(generateAllConfig({ clusterName: selectedCluster?.name, type: 'db'})))
         }} />
@@ -361,7 +392,7 @@ function DBConfigs({ selectedCluster, user }) {
 
   return (
     <VStack>
-      <TableType2 dataArray={dataObject} className={styles.table} />
+      <TableType2 dataArray={dataObject} className={styles.table} helpColumn={true} />
       {user?.grants['db-config-flag'] && (
         <HStack className={styles.configTagContainer}>
           <VStack className={styles.availableTags}>
@@ -452,6 +483,14 @@ function DBConfigs({ selectedCluster, user }) {
         closeModal={() => setTagContentModal({ open: false, tagName: '', data: null })}
         tagName={tagContentModal.tagName}
         data={tagContentModal.data}
+      />
+
+      <CommonModal
+        isOpen={isHelpModalOpen}
+        closeModal={() => setIsHelpModalOpen(false)}
+        title={helpAction.title}
+        body={helpAction.body}
+        size='xl'
       />
     </VStack>
   )
