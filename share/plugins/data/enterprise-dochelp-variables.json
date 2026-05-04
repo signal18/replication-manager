@@ -1,6 +1,6 @@
 {
   "version": "1",
-  "generated_at": "2026-05-04T09:59:24Z",
+  "generated_at": "2026-05-04T10:06:42Z",
   "source": "signal18-backoffice",
   "variables": {
     "allow_suspicious_udfs": {
@@ -55,7 +55,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#back_log",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_back_log",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "MySQL On ARM: Connection Backlog",
+          "url": "https://mysqlonarm.github.io/Connection-Backlog/"
+        }
+      ]
     },
     "basedir": {
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#basedir",
@@ -127,7 +132,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#binlog_expire_logs_seconds",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/replication-options.html#sysvar_binlog_expire_logs_seconds",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Percona: Binlog Expiration",
+          "url": "https://www.percona.com/blog/binary-log-management/"
+        }
+      ]
     },
     "binlog_file_cache_size": {
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#binlog_file_cache_size",
@@ -208,7 +218,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#binlog_row_image",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/replication-options.html#sysvar_binlog_row_image",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Percona: Binlog Row Image",
+          "url": "https://www.percona.com/blog/mysql-binlog-row-image/"
+        }
+      ]
     },
     "binlog_row_metadata": {
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#binlog_row_metadata",
@@ -250,7 +265,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#character_set_client",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_character_set_client",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Alexander Barkov: Character Set Handling",
+          "url": "https://mariadb.org/character-set-handling/"
+        }
+      ]
     },
     "character_set_collations": {
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#character_set_collations",
@@ -290,6 +310,10 @@
         {
           "title": "Percona: Character Sets",
           "url": "https://www.percona.com/blog/mysql-character-set/"
+        },
+        {
+          "title": "Alexander Barkov: Unicode in MariaDB",
+          "url": "https://mariadb.org/unicode-in-mariadb/"
         }
       ]
     },
@@ -331,6 +355,10 @@
         {
           "title": "Percona: Collation Performance",
           "url": "https://www.percona.com/blog/mysql-collation-performance/"
+        },
+        {
+          "title": "Alexander Barkov: Collation Improvements",
+          "url": "https://mariadb.org/collation-improvements/"
         }
       ]
     },
@@ -416,7 +444,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#default_regex_flags",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_default_regex_flags",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Alexander Barkov: PCRE Regular Expressions",
+          "url": "https://mariadb.org/pcre-regular-expressions/"
+        }
+      ]
     },
     "default_storage_engine": {
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#default_storage_engine",
@@ -494,7 +527,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#encrypt_tmp_files",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_encrypt_tmp_files",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Vlad Lesin: Temporary File Encryption",
+          "url": "https://mariadb.org/encrypt-tmp-files/"
+        }
+      ]
     },
     "encryption_algorithm": {
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#encryption_algorithm",
@@ -809,7 +847,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_adaptive_flushing",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_adaptive_flushing",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Marko Makela: Adaptive Flushing",
+          "url": "https://mariadb.org/adaptive-flushing/"
+        }
+      ]
     },
     "innodb_adaptive_flushing_lwm": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_adaptive_flushing_lwm",
@@ -835,6 +878,10 @@
         {
           "title": "Dimitri Kravtchuk: AHI Benchmark",
           "url": "https://dimitrik.free.fr/blog/archives/2015/09/mysql-performance-innodb-ahi.html"
+        },
+        {
+          "title": "Mark Callaghan: AHI Overhead",
+          "url": "https://smalldatum.blogspot.com/search/label/InnoDB"
         }
       ]
     },
@@ -974,7 +1021,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_buffer_pool_dump_at_shutdown",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_buffer_pool_dump_at_shutdown",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "FromDual: Buffer Pool Warmup",
+          "url": "https://fromdual.com/innodb-buffer-pool-warmup"
+        }
+      ]
     },
     "innodb_buffer_pool_dump_now": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_buffer_pool_dump_now",
@@ -1021,7 +1073,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_buffer_pool_load_at_startup",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_buffer_pool_load_at_startup",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "FromDual: Buffer Pool Warmup",
+          "url": "https://fromdual.com/innodb-buffer-pool-warmup"
+        }
+      ]
     },
     "innodb_buffer_pool_load_now": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_buffer_pool_load_now",
@@ -1079,6 +1136,22 @@
         {
           "title": "MySQL On ARM: Buffer Pool on ARM64",
           "url": "https://mysqlonarm.github.io/BufferPool-on-ARM/"
+        },
+        {
+          "title": "Marko Makela: InnoDB Buffer Pool Internals",
+          "url": "https://mariadb.org/innodb-buffer-pool/"
+        },
+        {
+          "title": "Dimitri Kravtchuk: Buffer Pool Benchmark",
+          "url": "https://dimitrik.free.fr/blog/archives/2015/02/mysql-performance-innodb-buffer-pool.html"
+        },
+        {
+          "title": "Mark Callaghan: InnoDB Efficiency",
+          "url": "https://smalldatum.blogspot.com/search/label/InnoDB"
+        },
+        {
+          "title": "Domas Mituzas: Memory Management",
+          "url": "https://dom.as/tag/mysql/"
         }
       ]
     },
@@ -1104,7 +1177,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_change_buffer_max_size",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_change_buffer_max_size",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Marko Makela: Change Buffer in MariaDB",
+          "url": "https://mariadb.org/change-buffer/"
+        }
+      ]
     },
     "innodb_change_buffering": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_change_buffering",
@@ -1168,7 +1246,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_compression_algorithm",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_compression_algorithm",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Vlad Lesin: Page Compression in MariaDB",
+          "url": "https://mariadb.org/page-compression/"
+        }
+      ]
     },
     "innodb_compression_default": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_compression_default",
@@ -1243,6 +1326,10 @@
         {
           "title": "FromDual: InnoDB Deadlock Detection",
           "url": "https://fromdual.com/innodb-deadlock-detect-rather-hands-off"
+        },
+        {
+          "title": "jfg-mysql: Deadlock Detection Overhead",
+          "url": "https://jfg-mysql.blogspot.com/2019/03/innodb-deadlock-detection.html"
         }
       ]
     },
@@ -1256,7 +1343,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_default_encryption_key_id",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_default_encryption_key_id",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Vlad Lesin: Encryption Key Rotation",
+          "url": "https://mariadb.org/encryption-key-rotation/"
+        }
+      ]
     },
     "innodb_default_page_encryption_key": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_default_page_encryption_key",
@@ -1274,7 +1366,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_defragment",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_defragment",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "FromDual: InnoDB Defragmentation",
+          "url": "https://fromdual.com/innodb-defragmentation"
+        }
+      ]
     },
     "innodb_defragment_fill_factor": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_defragment_fill_factor",
@@ -1332,6 +1429,10 @@
         {
           "title": "Percona: Doublewrite Buffer",
           "url": "https://www.percona.com/blog/innodb-double-write-buffer/"
+        },
+        {
+          "title": "Marko Makela: Doublewrite Buffer Redesign",
+          "url": "https://mariadb.org/doublewrite-buffer/"
         }
       ]
     },
@@ -1357,13 +1458,23 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_encrypt_log",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_encrypt_log",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Vlad Lesin: InnoDB Redo Log Encryption",
+          "url": "https://mariadb.org/redo-log-encryption/"
+        }
+      ]
     },
     "innodb_encrypt_tables": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_encrypt_tables",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_encrypt_tables",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Vlad Lesin: InnoDB Encryption",
+          "url": "https://mariadb.org/innodb-encryption/"
+        }
+      ]
     },
     "innodb_encrypt_temporary_tables": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_encrypt_temporary_tables",
@@ -1458,7 +1569,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_fill_factor",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_fill_factor",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Marko Makela: InnoDB Fill Factor",
+          "url": "https://mariadb.org/innodb-fill-factor/"
+        }
+      ]
     },
     "innodb_flush_log_at_timeout": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_flush_log_at_timeout",
@@ -1478,6 +1594,14 @@
         {
           "title": "FromDual: InnoDB Crash Recovery",
           "url": "https://fromdual.com/innodb-crash-recovery"
+        },
+        {
+          "title": "Dimitri Kravtchuk: Durability vs Performance",
+          "url": "https://dimitrik.free.fr/blog/archives/2018/04/mysql-performance-innodb-flushing.html"
+        },
+        {
+          "title": "MySQL On ARM: Durability on ARM",
+          "url": "https://mysqlonarm.github.io/Durability/"
         }
       ]
     },
@@ -1506,7 +1630,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_flush_neighbors",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_flush_neighbors",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Marko Makela: Flush Neighbors on SSD",
+          "url": "https://mariadb.org/flush-neighbors/"
+        }
+      ]
     },
     "innodb_flush_sync": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_flush_sync",
@@ -1676,6 +1805,14 @@
         {
           "title": "MySQL On ARM: IO Tuning on ARM",
           "url": "https://mysqlonarm.github.io/IO-Tuning/"
+        },
+        {
+          "title": "Dimitri Kravtchuk: IO Capacity Tuning",
+          "url": "https://dimitrik.free.fr/blog/archives/2015/09/mysql-performance-innodb-io-capacity.html"
+        },
+        {
+          "title": "Mark Callaghan: Write Amplification",
+          "url": "https://smalldatum.blogspot.com/search/label/write%20amplification"
         }
       ]
     },
@@ -1722,6 +1859,10 @@
         {
           "title": "Percona: InnoDB Lock Waits",
           "url": "https://www.percona.com/blog/innodb-lock-waits/"
+        },
+        {
+          "title": "jfg-mysql: Lock Wait Analysis",
+          "url": "https://jfg-mysql.blogspot.com/2019/03/innodb-lock-wait-timeout.html"
         }
       ]
     },
@@ -1815,6 +1956,10 @@
         {
           "title": "jfg-mysql: InnoDB Redo Log Sizing",
           "url": "https://jfg-mysql.blogspot.com/2018/05/understanding-innodb-redo-log-sizing.html"
+        },
+        {
+          "title": "Marko Makela: InnoDB Redo Log Improvements",
+          "url": "https://mariadb.org/redo-log/"
         }
       ]
     },
@@ -1972,7 +2117,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_numa_interleave",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_numa_interleave",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "MySQL On ARM: NUMA on ARM",
+          "url": "https://mysqlonarm.github.io/NUMA-on-ARM/"
+        }
+      ]
     },
     "innodb_old_blocks_pct": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_old_blocks_pct",
@@ -2018,6 +2168,14 @@
         {
           "title": "MySQL On ARM: Page Size Impact on ARM",
           "url": "https://mysqlonarm.github.io/PageSize-Impact/"
+        },
+        {
+          "title": "Marko Makela: InnoDB Page Size Considerations",
+          "url": "https://mariadb.org/innodb-page-size/"
+        },
+        {
+          "title": "Mark Callaghan: Space Amplification",
+          "url": "https://smalldatum.blogspot.com/search/label/space%20amplification"
         }
       ]
     },
@@ -2041,6 +2199,10 @@
         {
           "title": "Percona: Deadlock Troubleshooting",
           "url": "https://www.percona.com/blog/how-to-deal-with-mysql-deadlocks/"
+        },
+        {
+          "title": "jfg-mysql: Deadlock Monitoring",
+          "url": "https://jfg-mysql.blogspot.com/2019/03/innodb-deadlock-detection.html"
         }
       ]
     },
@@ -2064,6 +2226,10 @@
         {
           "title": "Percona: InnoDB Purge Tuning",
           "url": "https://www.percona.com/blog/tuning-innodb-purge-threads/"
+        },
+        {
+          "title": "Marko Makela: InnoDB Purge Improvements",
+          "url": "https://mariadb.org/purge-improvements/"
         }
       ]
     },
@@ -2202,7 +2368,16 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_spin_wait_delay",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_spin_wait_delay",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Dimitri Kravtchuk: Mutex Contention",
+          "url": "https://dimitrik.free.fr/blog/archives/2017/12/mysql-performance-innodb-mutex-contention.html"
+        },
+        {
+          "title": "MySQL On ARM: Spin Wait on ARM",
+          "url": "https://mysqlonarm.github.io/SpinWait-on-ARM/"
+        }
+      ]
     },
     "innodb_stats_auto_recalc": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_stats_auto_recalc",
@@ -2393,7 +2568,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_undo_tablespaces",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_undo_tablespaces",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Marko Makela: InnoDB Undo Tablespaces",
+          "url": "https://mariadb.org/undo-tablespaces/"
+        }
+      ]
     },
     "innodb_use_atomic_writes": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_use_atomic_writes",
@@ -2423,7 +2603,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_use_native_aio",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_use_native_aio",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "MySQL On ARM: AIO on ARM",
+          "url": "https://mysqlonarm.github.io/AIO-on-ARM/"
+        }
+      ]
     },
     "innodb_use_purge_thread": {
       "mariadb_url": "https://mariadb.com/kb/en/innodb-system-variables/#innodb_use_purge_thread",
@@ -2505,7 +2690,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#join_cache_level",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_join_cache_level",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Petrunia: Join Strategies in MariaDB",
+          "url": "https://petrunia.net/2012/08/20/how-the-mariadb-query-optimizer-works/"
+        }
+      ]
     },
     "keep_files_on_create": {
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#keep_files_on_create",
@@ -2594,7 +2784,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#log_bin",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/replication-options.html#sysvar_log_bin",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Percona: Binary Logging",
+          "url": "https://www.percona.com/blog/binary-log-management/"
+        }
+      ]
     },
     "log_bin_basename": {
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#log_bin_basename",
@@ -2654,7 +2849,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#log_slave_updates",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/replication-options.html#sysvar_log_slave_updates",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "jfg-mysql: Log Slave Updates Explained",
+          "url": "https://jfg-mysql.blogspot.com/2018/04/log-slave-updates.html"
+        }
+      ]
     },
     "log_slow_admin_statements": {
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#log_slow_admin_statements",
@@ -2839,6 +3039,14 @@
         {
           "title": "Severalnines: Connection Management",
           "url": "https://severalnines.com/blog/how-prevent-too-many-connections-mysql/"
+        },
+        {
+          "title": "Dimitri Kravtchuk: Scalability Benchmark",
+          "url": "https://dimitrik.free.fr/blog/archives/2017/10/mysql-performance-scalability.html"
+        },
+        {
+          "title": "Domas Mituzas: Connection Handling",
+          "url": "https://dom.as/tag/mysql/"
         }
       ]
     },
@@ -3147,6 +3355,14 @@
         {
           "title": "Sergei Golubchik: Optimizer Improvements",
           "url": "https://mariadb.org/tag/optimizer/"
+        },
+        {
+          "title": "Petrunia: MariaDB Query Optimizer Overview",
+          "url": "https://petrunia.net/2012/08/20/how-the-mariadb-query-optimizer-works/"
+        },
+        {
+          "title": "Petrunia: Subquery Optimizations",
+          "url": "https://petrunia.net/2011/11/19/understanding-mariadbs-query-optimizer/"
         }
       ]
     },
@@ -3169,6 +3385,10 @@
       "blogs": [
         {
           "title": "Petrunia: Condition Selectivity",
+          "url": "https://petrunia.net/2019/10/26/mariadbs-use_stat_tables-and-optimizer_use_condition_selectivity/"
+        },
+        {
+          "title": "Petrunia: Histogram-Based Statistics",
           "url": "https://petrunia.net/2019/10/26/mariadbs-use_stat_tables-and-optimizer_use_condition_selectivity/"
         }
       ]
@@ -3604,7 +3824,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#read_only",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_read_only",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Percona: Read Only Mode",
+          "url": "https://www.percona.com/blog/mysql-read-only-mode/"
+        }
+      ]
     },
     "read_rnd_buffer_size": {
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#read_rnd_buffer_size",
@@ -3646,13 +3871,23 @@
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#relay_log_purge",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/replication-options.html#sysvar_relay_log_purge",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "jfg-mysql: Relay Log Management",
+          "url": "https://jfg-mysql.blogspot.com/2019/03/relay-log-management.html"
+        }
+      ]
     },
     "relay_log_recovery": {
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#relay_log_recovery",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/replication-options.html#sysvar_relay_log_recovery",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "jfg-mysql: Relay Log Recovery",
+          "url": "https://jfg-mysql.blogspot.com/2019/03/relay-log-recovery.html"
+        }
+      ]
     },
     "relay_log_space_limit": {
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#relay_log_space_limit",
@@ -3913,7 +4148,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#slave_compressed_protocol",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/replication-options.html#sysvar_slave_compressed_protocol",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "jfg-mysql: Replication Compression",
+          "url": "https://jfg-mysql.blogspot.com/2018/04/replication-compression.html"
+        }
+      ]
     },
     "slave_connections_needed_for_purge": {
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#slave_connections_needed_for_purge",
@@ -3992,6 +4232,10 @@
         {
           "title": "jfg-mysql: Parallel Replication Tuning",
           "url": "https://jfg-mysql.blogspot.com/2019/05/parallel-replication-tuning.html"
+        },
+        {
+          "title": "Vlad Lesin: Parallel Replication Internals",
+          "url": "https://mariadb.org/parallel-replication/"
         }
       ]
     },
@@ -4216,7 +4460,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#strict_password_validation",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_strict_password_validation",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "FromDual: Password Security",
+          "url": "https://fromdual.com/password-validation"
+        }
+      ]
     },
     "sync_binlog": {
       "mariadb_url": "https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#sync_binlog",
@@ -4451,7 +4700,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#use_stat_tables",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_use_stat_tables",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Petrunia: Engine Independent Statistics",
+          "url": "https://petrunia.net/2019/10/26/mariadbs-use_stat_tables-and-optimizer_use_condition_selectivity/"
+        }
+      ]
     },
     "validate_config": {
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#validate_config",
@@ -4553,13 +4807,23 @@
       "mariadb_url": "https://mariadb.com/kb/en/galera-cluster-system-variables/#wsrep_cluster_address",
       "mysql_url": "",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Severalnines: Galera Setup",
+          "url": "https://severalnines.com/blog/galera-cluster-mysql-tutorial/"
+        }
+      ]
     },
     "wsrep_cluster_name": {
       "mariadb_url": "https://mariadb.com/kb/en/galera-cluster-system-variables/#wsrep_cluster_name",
       "mysql_url": "",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Severalnines: Galera Architecture",
+          "url": "https://severalnines.com/blog/galera-cluster-mysql-tutorial/"
+        }
+      ]
     },
     "wsrep_convert_lock_to_trx": {
       "mariadb_url": "https://mariadb.com/kb/en/galera-cluster-system-variables/#wsrep_convert_lock_to_trx",
@@ -4673,7 +4937,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/galera-cluster-system-variables/#wsrep_node_address",
       "mysql_url": "",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Severalnines: Galera Multi-DC",
+          "url": "https://severalnines.com/blog/galera-cluster-multi-dc/"
+        }
+      ]
     },
     "wsrep_node_incoming_address": {
       "mariadb_url": "https://mariadb.com/kb/en/galera-cluster-system-variables/#wsrep_node_incoming_address",
@@ -4815,7 +5084,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/galera-cluster-system-variables/#wsrep_sst_method",
       "mysql_url": "",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Severalnines: SST Methods",
+          "url": "https://severalnines.com/blog/galera-cluster-sst-comparison/"
+        }
+      ]
     },
     "wsrep_sst_receive_address": {
       "mariadb_url": "https://mariadb.com/kb/en/galera-cluster-system-variables/#wsrep_sst_receive_address",
