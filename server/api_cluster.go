@@ -2588,8 +2588,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.CheckNeedConfigFetch()
 	case "prov-db-apply-dynamic-config":
 		mycluster.SwitchDBApplyDynamicConfig()
-	case "prov-trust-compliance-changes":
-		mycluster.Conf.ProvTrustComplianceChanges = !mycluster.Conf.ProvTrustComplianceChanges
+	case "prov-auto-update-compliance":
+		mycluster.Conf.ProvAutoUpdateCompliance = !mycluster.Conf.ProvAutoUpdateCompliance
 	case "prov-docker-daemon-private":
 		mycluster.SwitchProvDockerDaemonPrivate()
 	case "prov-object-allow-overwrite":
@@ -4216,8 +4216,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.CheckNeedConfigFetch()
 	case "prov-db-apply-dynamic-config":
 		mycluster.Conf.ProvDBApplyDynamicConfig = applyIsActive(mycluster.Conf.ProvDBApplyDynamicConfig, isactive)
-	case "prov-trust-compliance-changes":
-		mycluster.Conf.ProvTrustComplianceChanges = applyIsActive(mycluster.Conf.ProvTrustComplianceChanges, isactive)
+	case "prov-auto-update-compliance":
+		mycluster.Conf.ProvAutoUpdateCompliance = applyIsActive(mycluster.Conf.ProvAutoUpdateCompliance, isactive)
 	case "prov-docker-daemon-private":
 		mycluster.Conf.ProvDockerDaemonPrivate = applyIsActive(mycluster.Conf.ProvDockerDaemonPrivate, isactive)
 	case "prov-object-allow-overwrite":

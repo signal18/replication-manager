@@ -199,7 +199,7 @@ function DBConfigs({ selectedCluster, user }) {
   const hFetchConfig = `**Fetch Config on Start**\n\nWhen enabled, database servers fetch their configuration from replication-manager on startup.\n\nThe generated config is pushed to each server's data directory and applied when the database process starts.\n\nConfig: \`prov-db-start-fetch-config\``
   const hDynamicConfig = `**Apply Dynamic Config**\n\nWhen enabled, replication-manager applies configuration changes dynamically using \`SET GLOBAL\` statements without requiring a database restart.\n\nOnly variables that support dynamic changes are applied this way. Variables requiring a restart are written to the config file for the next restart.\n\nConfig: \`prov-db-apply-dynamic-config\``
   const hRefreshConfig = `**Refresh Variables and DB Config**\n\nRegenerates the configuration files for all database servers in this cluster from the compliance module and the current tag selection.\n\nThis rebuilds the config tarball at \`{datadir}/config.tar.gz\` with all tag-specific cnf files merged with preserved variables and defaults.`
-  const hTrustCompliance = `**Trust Compliance Changes**\n\nWhen enabled (default), compliance updates from the back office or binary upgrades are **auto-accepted** without requiring manual approval.\n\nWhen disabled, a warning (WARN0168) is raised when new compliance is detected. The operator must review the changes and explicitly accept before the new compliance takes effect for config generation.\n\nDisabling this gives operators full control over when compliance changes are applied, which is recommended for production environments where configuration changes must be reviewed.\n\nConfig: \`prov-trust-compliance-changes\``
+  const hAutoUpdateCompliance = `**Auto-Update Compliance**\n\nThe compliance module contains replication-manager's best practices for database and proxy configuration. It defines which variables are set for each configuration tag.\n\nWhen enabled (default), compliance updates from the back office or new replication-manager releases are **applied automatically**. Your preserved variables are never overwritten — they always take priority over compliance defaults.\n\nWhen disabled, a warning (WARN0168) is raised when new compliance is available. You can review the changes (added, removed, or modified tags) and accept when ready. This is recommended for production environments where you want to review best practice changes before they take effect.\n\nConfig: \`prov-auto-update-compliance\``
 
   const dataObject = [
     {
@@ -231,15 +231,15 @@ function DBConfigs({ selectedCluster, user }) {
       )
     },
     {
-      key: 'Trust Compliance Changes',
-      help: h(hTrustCompliance, 'Trust Compliance Changes'),
+      key: 'Auto-Update Compliance',
+      help: h(hAutoUpdateCompliance, 'Auto-Update Compliance'),
       value: (
         <RMSwitch
-          isChecked={selectedCluster?.config?.provTrustComplianceChanges}
+          isChecked={selectedCluster?.config?.provAutoUpdateCompliance}
           isDisabled={user?.grants['cluster-settings'] == false}
-          confirmTitle={'Confirm switch settings for prov-trust-compliance-changes?'}
+          confirmTitle={'Confirm switch settings for prov-auto-update-compliance?'}
           onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-trust-compliance-changes' }))
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-auto-update-compliance' }))
           }
         />
       )

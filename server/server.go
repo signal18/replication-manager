@@ -1186,7 +1186,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.BoolVar(&conf.ProvDockerDaemonPrivate, "prov-docker-daemon-private", true, "Use global or private registry per service")
 		flags.StringVar(&conf.ProvDBCompliance, "prov-db-compliance", "", "Path of compliance file for DB configuration")
 		flags.StringVar(&conf.ProvProxyCompliance, "prov-proxy-compliance", "", "Path of compliance file for Proxy configuration")
-		flags.BoolVar(&conf.ProvTrustComplianceChanges, "prov-trust-compliance-changes", true, "Auto-accept compliance changes on upgrade or BO push without user approval")
+		flags.BoolVar(&conf.ProvAutoUpdateCompliance, "prov-auto-update-compliance", true, "Auto-update compliance best practices from back office or binary upgrades")
 		flags.BoolVar(&conf.MeasurementAutoClampLimit, "measurement-auto-clamp-limit", false, "Auto clamp to allowed value for measurement if exceed the min-max boundaries")
 		flags.BoolVar(&conf.ProvObjectAllowOverwrite, "prov-object-allow-overwrite", true, "Allow overwriting config/secret keys when objects already exist")
 

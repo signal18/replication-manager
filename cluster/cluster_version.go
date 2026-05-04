@@ -63,7 +63,7 @@ func (cluster *Cluster) CheckComplianceUpdate() {
 		ErrFrom: "CLUSTER",
 	})
 
-	if cluster.Conf.ProvTrustComplianceChanges {
+	if cluster.Conf.ProvAutoUpdateCompliance {
 		// Auto-accept — clears WARN0168 immediately.
 		if err := cluster.AcceptComplianceUpdate(); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,

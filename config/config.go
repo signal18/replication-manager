@@ -667,7 +667,7 @@ type Config struct {
 	ProvProxyStopScript                       string                       `mapstructure:"prov-proxy-stop-script" toml:"prov-proxy-stop-script" json:"provProxyStopScript"`
 	ProvDBCompliance                          string                       `mapstructure:"prov-db-compliance" toml:"prov-db-compliance" json:"provDBCompliance"`
 	ProvProxyCompliance                       string                       `mapstructure:"prov-proxy-compliance" toml:"prov-proxy-compliance" json:"provProxyCompliance"`
-	ProvTrustComplianceChanges                bool                         `mapstructure:"prov-trust-compliance-changes" toml:"prov-trust-compliance-changes" json:"provTrustComplianceChanges"`
+	ProvAutoUpdateCompliance                bool                         `mapstructure:"prov-auto-update-compliance" toml:"prov-auto-update-compliance" json:"provAutoUpdateCompliance"`
 	ProvDockerRegistryCredentials             string                       `mapstructure:"prov-docker-registry-credentials" toml:"prov-docker-registry-credentials" json:"provDockerRegistryCredentials"`
 	AppOn                                     bool                         `mapstructure:"app" toml:"app" json:"app"`
 	AppHosts                                  string                       `mapstructure:"app-hosts" toml:"app-hosts" json:"appHosts"`

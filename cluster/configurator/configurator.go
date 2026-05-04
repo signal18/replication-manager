@@ -68,7 +68,7 @@ func (configurator *Configurator) Init(conf config.Config, logger *logrus.Logger
 	configurator.ConfigDBTags = configurator.GetDBModuleTags()
 	configurator.ConfigPrxTags = configurator.GetProxyModuleTags()
 	configurator.DocHelp = NewDocHelp(conf.ShareDir + "/plugins/data")
-	if conf.ProvTrustComplianceChanges {
+	if conf.ProvAutoUpdateCompliance {
 		// Trust mode (default): always use the current module (embedded or BO-pushed).
 		// Save it to disk so it becomes the baseline for future comparisons.
 		configurator.ActiveDBCRC = configurator.complianceCRC(configurator.DBModule)
