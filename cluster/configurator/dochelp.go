@@ -7,7 +7,7 @@
 //
 // The JSON is pushed by the back office to paid instances via the git pull repo
 // (plugins/data/enterprise-dochelp-variables.json). A compiled-in default is
-// embedded via go:embed as a baseline.
+// embedded via share.EmbededDbModuleFS as a baseline.
 //
 // This is NOT a logplugin — it's a stateless lookup used by the API handler
 // when the user clicks the "Doc Help" button on a config tag.
@@ -19,17 +19,19 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"unsafe"
 
 	"github.com/signal18/replication-manager/share"
 )
 
 // DocHelpVariable is one variable→documentation mapping entry.
 type DocHelpVariable struct {
-	Name        string          `json:"name"`
-	MariaDBURL  string          `json:"mariadb_url"`
-	MySQLURL    string          `json:"mysql_url"`
-	Description string          `json:"description"`
-	Blogs       []DocHelpBlog   `json:"blogs,omitempty"`
+	Name        string        `json:"name"`
+	MariaDBURL  string        `json:"mariadb_url"`
+	MySQLURL    string        `json:"mysql_url"`
+	Description string        `json:"description"`
+	Blogs       []DocHelpBlog `json:"blogs,omitempty"`
 }
 
 // DocHelpBlog is a reference to a community blog post about a variable.
@@ -57,9 +59,10 @@ type docHelpEntry struct {
 }
 
 // DocHelp is a thread-safe variable documentation lookup loaded from JSON.
+// It uses an atomic pointer to the entries map so Reload is lock-free and
+// there are no data races between concurrent LookupVariables and Reload calls.
 type DocHelp struct {
-	mu       sync.RWMutex
-	entries  map[string]docHelpEntry
+	entries  unsafe.Pointer // *map[string]docHelpEntry — swapped atomically
 	dataDir  string
 	loadOnce sync.Once
 }
@@ -70,7 +73,8 @@ func NewDocHelp(pluginDataDir string) *DocHelp {
 	return &DocHelp{dataDir: pluginDataDir}
 }
 
-func (dh *DocHelp) load() {
+// buildEntries reads and parses the JSON, returning a normalised entries map.
+func (dh *DocHelp) buildEntries() *map[string]docHelpEntry {
 	var raw []byte
 
 	// Prefer on-disk file pushed by the back office.
@@ -86,16 +90,32 @@ func (dh *DocHelp) load() {
 		raw, _ = share.EmbededDbModuleFS.ReadFile("plugins/data/enterprise-dochelp-variables.json")
 	}
 
+	entries := make(map[string]docHelpEntry)
 	var data docHelpFile
 	if err := json.Unmarshal(raw, &data); err != nil {
-		dh.entries = make(map[string]docHelpEntry)
-		return
+		return &entries
 	}
 	// Re-index by normalised key so lookups are case/hyphen/prefix-insensitive.
-	dh.entries = make(map[string]docHelpEntry, len(data.Variables))
 	for key, entry := range data.Variables {
-		dh.entries[NormaliseVariableName(key)] = entry
+		entries[NormaliseVariableName(key)] = entry
 	}
+	return &entries
+}
+
+func (dh *DocHelp) getEntries() map[string]docHelpEntry {
+	p := atomic.LoadPointer(&dh.entries)
+	if p == nil {
+		return nil
+	}
+	return *(*map[string]docHelpEntry)(p)
+}
+
+// ensureLoaded performs a one-time load of the entries map.
+func (dh *DocHelp) ensureLoaded() {
+	dh.loadOnce.Do(func() {
+		entries := dh.buildEntries()
+		atomic.StorePointer(&dh.entries, unsafe.Pointer(entries))
+	})
 }
 
 // NormaliseVariableName applies MySQL/MariaDB variable name normalisation:
@@ -116,14 +136,18 @@ func NormaliseVariableName(name string) string {
 
 // LookupVariables returns documentation for the given variable names.
 // Unknown variables are returned in a separate list.
+// Thread-safe: uses atomic load to read the entries map.
 func (dh *DocHelp) LookupVariables(names []string) (matched []DocHelpVariable, unknown []string) {
-	dh.loadOnce.Do(dh.load)
-	dh.mu.RLock()
-	defer dh.mu.RUnlock()
+	dh.ensureLoaded()
+	entries := dh.getEntries()
+	if entries == nil {
+		unknown = names
+		return
+	}
 
 	for _, name := range names {
 		normalised := NormaliseVariableName(name)
-		if entry, ok := dh.entries[normalised]; ok {
+		if entry, ok := entries[normalised]; ok {
 			matched = append(matched, DocHelpVariable{
 				Name:        normalised,
 				MariaDBURL:  entry.MariaDBURL,
@@ -139,10 +163,8 @@ func (dh *DocHelp) LookupVariables(names []string) (matched []DocHelpVariable, u
 }
 
 // Reload forces a re-read of the JSON data file (e.g. after a git pull).
+// Thread-safe: builds a new map and swaps it atomically.
 func (dh *DocHelp) Reload() {
-	dh.mu.Lock()
-	defer dh.mu.Unlock()
-	dh.load()
-	// Reset loadOnce so future calls to LookupVariables don't skip the load.
-	dh.loadOnce = sync.Once{}
+	entries := dh.buildEntries()
+	atomic.StorePointer(&dh.entries, unsafe.Pointer(entries))
 }
