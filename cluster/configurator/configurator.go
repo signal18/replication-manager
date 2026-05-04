@@ -720,11 +720,82 @@ func (configurator *Configurator) GetTagSQL(tagName, cmdPrefix string) string {
 // tagName is matched against each ruleset's fset_name.
 func (configurator *Configurator) GetTagMyCnf(tagName string) string {
 	type fileVar struct {
-		Fmt string `json:"fmt"`
+		Path string `json:"path"`
+		Fmt  string `json:"fmt"`
 	}
-	var result strings.Builder
+	type symlinkVar struct {
+		Target string `json:"target"`
+	}
+	// Flatten: remove underscores for comparison so tag "nodoublewrite" matches
+	// var_name "db_cnf_disk_no_doublewrite" (which flattens to "dbcnfdisknodoublewrite").
+	tagFlat := strings.ReplaceAll(strings.ToLower(tagName), "_", "")
+
+	// Pass 1: direct match by filter (fset_name) or flattened var_name.
 	for _, rule := range configurator.DBModule.Rulesets {
-		if !strings.Contains(rule.Filter, tagName) {
+		if !strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf") {
+			continue
+		}
+		filterMatch := rule.Filter != "" && strings.HasSuffix(rule.Filter, tagName)
+		for _, variable := range rule.Variables {
+			if variable.Class != "file" {
+				continue
+			}
+			varFlat := strings.ReplaceAll(strings.ToLower(variable.Name), "_", "")
+			if !filterMatch && !strings.Contains(varFlat, tagFlat) {
+				continue
+			}
+			var fv fileVar
+			if err := json.Unmarshal([]byte(variable.Value), &fv); err != nil {
+				continue
+			}
+			if !strings.HasSuffix(fv.Path, ".cnf") {
+				continue
+			}
+			return configurator.extractCnfContent(fv.Fmt)
+		}
+		// Pass 2: if filter matched but no file variable found (only symlink),
+		// resolve the symlink target filename and find it in the generic ruleset.
+		if filterMatch {
+			for _, variable := range rule.Variables {
+				if variable.Class != "symlink" {
+					continue
+				}
+				var sv symlinkVar
+				if err := json.Unmarshal([]byte(variable.Value), &sv); err != nil {
+					continue
+				}
+				targetFile := filepath.Base(sv.Target)
+				if !strings.HasSuffix(targetFile, ".cnf") {
+					continue
+				}
+				// Search the generic ruleset for a file with this path basename.
+				return configurator.getFileContentByBasename(targetFile)
+			}
+		}
+	}
+	return ""
+}
+
+// extractCnfContent returns all non-empty lines from a cnf fmt field.
+func (configurator *Configurator) extractCnfContent(fmt string) string {
+	var result strings.Builder
+	for _, line := range strings.Split(fmt, "\n") {
+		if strings.TrimSpace(line) != "" {
+			result.WriteString(line + "\n")
+		}
+	}
+	return strings.TrimSpace(result.String())
+}
+
+// getFileContentByBasename finds a file variable by its path basename across
+// all rulesets and returns its content. Used to resolve symlink targets.
+func (configurator *Configurator) getFileContentByBasename(basename string) string {
+	type fileVar struct {
+		Path string `json:"path"`
+		Fmt  string `json:"fmt"`
+	}
+	for _, rule := range configurator.DBModule.Rulesets {
+		if !strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf") {
 			continue
 		}
 		for _, variable := range rule.Variables {
@@ -735,23 +806,44 @@ func (configurator *Configurator) GetTagMyCnf(tagName string) string {
 			if err := json.Unmarshal([]byte(variable.Value), &fv); err != nil {
 				continue
 			}
-			inSection := false
-			for _, line := range strings.Split(fv.Fmt, "\n") {
-				trimmed := strings.TrimSpace(line)
-				if strings.HasPrefix(trimmed, "[") {
-					inSection = true
-				}
-				if !inSection {
-					continue
-				}
-				if strings.HasPrefix(trimmed, "#") {
-					continue
-				}
-				result.WriteString(line + "\n")
+			if filepath.Base(fv.Path) == basename {
+				return configurator.extractCnfContent(fv.Fmt)
 			}
 		}
 	}
-	return strings.TrimSpace(result.String())
+	return ""
+}
+
+// ParseVariableNamesFromCnf extracts MySQL/MariaDB variable names from cnf
+// file content. Parses lines like "innodb_buffer_pool_size=128M" and returns
+// a deduplicated list of normalised variable names (lowercase, hyphens→underscores).
+// This is a standalone function — it works on any cnf string, not on a tag.
+func ParseVariableNamesFromCnf(cnf string) []string {
+	if cnf == "" {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var names []string
+	for _, line := range strings.Split(cnf, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "[") || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") {
+			continue
+		}
+		// Skip lines that look like shell commands or template macros
+		if strings.HasPrefix(line, "@") || strings.HasPrefix(line, "if ") ||
+			strings.HasPrefix(line, "mariadb_") || strings.HasPrefix(line, "mysql_") ||
+			strings.Contains(line, "$(") || strings.Contains(line, "${") ||
+			strings.Contains(line, "%%ENV:") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		varName := NormaliseVariableName(parts[0])
+		if varName != "" && !seen[varName] {
+			seen[varName] = true
+			names = append(names, varName)
+		}
+	}
+	return names
 }
 
 func (configurator *Configurator) GetDatabaseConfig(filter string, datadir string) (string, error) {

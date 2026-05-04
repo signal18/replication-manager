@@ -34,6 +34,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dockerhelper"
@@ -316,6 +317,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/settings/actions/save-preserved-variables-cnf", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSavePreservedVarsCnf)),
+	))
+	router.Handle("/api/clusters/{clusterName}/configurator/tags/{tagName}/content", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetTagContent)),
 	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/add-proxy-tag/{tagValue}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -5249,6 +5254,63 @@ func (repman *ReplicationManager) handlerMuxAddTag(w http.ResponseWriter, r *htt
 		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
+}
+
+// handlerMuxGetTagContent returns the config file content for a configurator tag,
+// read from the first server's generated config on disk, together with
+// documentation links for each variable (enterprise-only section).
+//
+// The response is JSON:
+//
+//	{
+//	  "tag": "semisync",
+//	  "content": "[mysqld]\nrpl_semi_sync_master_enabled=ON\n...",
+//	  "doc_help": { "variables": [...], "unknown_variables": [...] }  // only on paid plans
+//	}
+func (repman *ReplicationManager) handlerMuxGetTagContent(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+
+	tagName := vars["tagName"]
+
+	// Extract the tag's cnf content from the compliance module.
+	// GetTagMyCnf matches by filter (fset_name) or by variable name (var_name)
+	// to find the right cnf file content for this tag.
+	content := mycluster.Configurator.GetTagMyCnf(tagName)
+
+	type tagContentResponse struct {
+		Tag     string                  `json:"tag"`
+		Content string                  `json:"content"`
+		DocHelp *configurator.DocHelpResult `json:"doc_help,omitempty"`
+	}
+
+	resp := tagContentResponse{
+		Tag:     tagName,
+		Content: content,
+	}
+
+	// Add doc help links for all users from the embedded database.
+	// Enterprise users get refreshed data via the back office; free users
+	// get the version shipped with the binary.
+	if content != "" {
+		varNames := configurator.ParseVariableNamesFromCnf(content)
+		pluginDataDir := mycluster.Conf.ShareDir + "/plugins/data"
+		dh := configurator.NewDocHelp(pluginDataDir)
+		matched, unknown := dh.LookupVariables(varNames)
+		resp.DocHelp = &configurator.DocHelpResult{
+			Tag:              tagName,
+			Variables:        matched,
+			UnknownVariables: unknown,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 // handlerMuxAddProxyTag handles the addition of a proxy tag to a given cluster.
