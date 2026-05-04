@@ -5298,14 +5298,12 @@ func (repman *ReplicationManager) handlerMuxGetTagContent(w http.ResponseWriter,
 		Content: content,
 	}
 
-	// Add doc help links for all users from the embedded database.
-	// Enterprise users get refreshed data via the back office; free users
-	// get the version shipped with the binary.
+	// Add doc help links for all users from the singleton DocHelp on the
+	// Configurator. The JSON is parsed once at cluster init and reused for
+	// all requests — no per-request I/O or allocation.
 	if content != "" {
 		varNames := configurator.ParseVariableNamesFromCnf(content)
-		pluginDataDir := mycluster.Conf.ShareDir + "/plugins/data"
-		dh := configurator.NewDocHelp(pluginDataDir)
-		matched, unknown := dh.LookupVariables(varNames)
+		matched, unknown := mycluster.Configurator.DocHelp.LookupVariables(varNames)
 		resp.DocHelp = &configurator.DocHelpResult{
 			Tag:              tagName,
 			Variables:        matched,

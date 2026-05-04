@@ -39,6 +39,7 @@ type Configurator struct {
 	DBTagsDiscover        []string          `json:"dbServersTagsDiscover"` //from conf
 	ProxyTagsDiscover     []string          `json:"proxyServersTagsDiscover"`
 	WorkingDir            string            `json:"-"` // working dir is the place to generate the all cluster config
+	DocHelp               *DocHelp          `json:"-"` // variable documentation lookup (singleton, lazy-loaded)
 }
 
 func (configurator *Configurator) Init(conf config.Config, logger *logrus.Logger) error {
@@ -56,6 +57,7 @@ func (configurator *Configurator) Init(conf config.Config, logger *logrus.Logger
 	}
 	configurator.ConfigDBTags = configurator.GetDBModuleTags()
 	configurator.ConfigPrxTags = configurator.GetProxyModuleTags()
+	configurator.DocHelp = NewDocHelp(conf.ShareDir + "/plugins/data")
 	if conf.PRXServersReadOnMaster && !configurator.IsFilterInProxyTags("readonmaster") {
 		configurator.AddProxyTag("readonmaster")
 	} else {
