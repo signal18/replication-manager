@@ -56,33 +56,41 @@ function TagContentModal({ isOpen, closeModal, tagName, data }) {
                   <Thead>
                     <Tr>
                       <Th>Variable</Th>
-                      <Th>Documentation</Th>
+                      <Th>Source</Th>
+                      <Th>Link</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
-                    {docHelp.variables.map((v) => (
-                      <Tr key={v.name}>
+                    {docHelp.variables.flatMap((v) => {
+                      // Build sorted list: official docs first, then blogs alphabetically
+                      const links = []
+                      if (v.mariadb_url) {
+                        links.push({ name: v.name, source: 'MariaDB', title: 'Official Documentation', url: v.mariadb_url, order: 0, color: isLight ? 'blue.600' : 'blue.300' })
+                      }
+                      if (v.mysql_url) {
+                        links.push({ name: v.name, source: 'MySQL', title: 'Official Documentation', url: v.mysql_url, order: 1, color: isLight ? 'teal.600' : 'teal.300' })
+                      }
+                      if (v.blogs) {
+                        v.blogs.forEach((blog) => {
+                          links.push({ name: v.name, source: 'Blog', title: blog.title, url: blog.url, order: 2, color: isLight ? 'purple.600' : 'purple.300' })
+                        })
+                      }
+                      links.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title))
+                      return links
+                    }).map((link, i) => (
+                      <Tr key={`${link.name}-${i}`}>
                         <Td>
-                          <Text fontSize='xs' fontFamily='mono'>{v.name}</Text>
+                          <Text fontSize='xs' fontFamily='mono'>{link.name}</Text>
                         </Td>
                         <Td>
-                          <HStack spacing={2} flexWrap='wrap'>
-                            {v.mariadb_url && (
-                              <Link href={v.mariadb_url} isExternal color={isLight ? 'blue.600' : 'blue.300'} fontSize='xs'>
-                                MariaDB <FiExternalLink style={{ display: 'inline', marginLeft: 2 }} />
-                              </Link>
-                            )}
-                            {v.mysql_url && (
-                              <Link href={v.mysql_url} isExternal color={isLight ? 'teal.600' : 'teal.300'} fontSize='xs'>
-                                MySQL <FiExternalLink style={{ display: 'inline', marginLeft: 2 }} />
-                              </Link>
-                            )}
-                            {v.blogs?.map((blog, i) => (
-                              <Link key={i} href={blog.url} isExternal color={isLight ? 'purple.600' : 'purple.300'} fontSize='xs'>
-                                {blog.title} <FiExternalLink style={{ display: 'inline', marginLeft: 2 }} />
-                              </Link>
-                            ))}
-                          </HStack>
+                          <Badge colorScheme={link.order === 0 ? 'blue' : link.order === 1 ? 'teal' : 'purple'} fontSize='xs'>
+                            {link.source}
+                          </Badge>
+                        </Td>
+                        <Td>
+                          <Link href={link.url} isExternal color={link.color} fontSize='xs'>
+                            {link.title} <FiExternalLink style={{ display: 'inline', marginLeft: 2 }} />
+                          </Link>
                         </Td>
                       </Tr>
                     ))}
