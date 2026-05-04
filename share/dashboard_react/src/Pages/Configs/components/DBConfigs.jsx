@@ -392,7 +392,7 @@ function DBConfigs({ selectedCluster, user }) {
 
   return (
     <VStack>
-      <TableType2 dataArray={dataObject} className={styles.table} helpColumn={true} />
+      <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
       {user?.grants['db-config-flag'] && (
         <HStack className={styles.configTagContainer}>
           <VStack className={styles.availableTags}>
