@@ -1,4 +1,4 @@
-import { Box, Flex, HStack, VStack } from '@chakra-ui/react'
+import { Alert, AlertIcon, Box, Button, Flex, HStack, Text, VStack } from '@chakra-ui/react'
 import React, { useEffect, useState } from 'react'
 import RMSwitch from '../../../components/RMSwitch'
 import TableType2 from '../../../components/TableType2'
@@ -9,6 +9,7 @@ import AccordionComponent from '../../../components/AccordionComponent'
 import AddRemovePill from '../../../components/AddRemovePill'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
 import TagContentModal from '../../../components/Modals/TagContentModal'
+import ComplianceDiffModal from '../../../components/Modals/ComplianceDiffModal'
 import CommonModal from '../../../components/Modals/CommonModal'
 import { addDBTag, dropDBTag, generateAllConfig } from '../../../redux/configSlice'
 import { configService } from '../../../services/configService'
@@ -43,6 +44,35 @@ function DBConfigs({ selectedCluster, user }) {
 
   // Tag content modal state (includes doc help section from the same API response)
   const [tagContentModal, setTagContentModal] = useState({ open: false, tagName: '', data: null })
+
+  // Compliance diff modal state
+  const [complianceDiffModal, setComplianceDiffModal] = useState({ open: false, data: null, loading: false })
+  const [acceptLoading, setAcceptLoading] = useState(false)
+
+  // Check if WARN0168 (pending compliance update) is active
+  const clusterAlerts = useSelector((state) => state?.cluster?.clusterAlerts)
+  const hasPendingCompliance = clusterAlerts?.warnings?.some((w) => w.number === 'WARN0168')
+
+  const handleReviewCompliance = async () => {
+    setComplianceDiffModal({ open: true, data: null, loading: true })
+    try {
+      const { data } = await configService.getComplianceDiff(selectedCluster?.name, baseURL)
+      setComplianceDiffModal({ open: true, data, loading: false })
+    } catch {
+      setComplianceDiffModal({ open: true, data: null, loading: false })
+    }
+  }
+
+  const handleAcceptCompliance = async () => {
+    setAcceptLoading(true)
+    try {
+      await configService.acceptCompliance(selectedCluster?.name, baseURL)
+      setComplianceDiffModal({ open: false, data: null, loading: false })
+    } catch (err) {
+      // keep modal open on error
+    }
+    setAcceptLoading(false)
+  }
 
   // Help modal state
   const [helpAction, setHelpAction] = useState({ title: '', body: <></> })
@@ -392,6 +422,22 @@ function DBConfigs({ selectedCluster, user }) {
 
   return (
     <VStack>
+      {hasPendingCompliance && (
+        <Alert status='warning' borderRadius='md' w='100%'>
+          <AlertIcon />
+          <Text fontSize='sm' flex='1'>
+            A new compliance update is available from the back office. Review the changes before accepting.
+          </Text>
+          <HStack spacing={2}>
+            <Button size='sm' variant='outline' colorScheme='orange' onClick={handleReviewCompliance}>
+              Review Changes
+            </Button>
+            <Button size='sm' colorScheme='blue' isLoading={acceptLoading} onClick={handleAcceptCompliance}>
+              Accept
+            </Button>
+          </HStack>
+        </Alert>
+      )}
       <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
       {user?.grants['db-config-flag'] && (
         <HStack className={styles.configTagContainer}>
@@ -491,6 +537,15 @@ function DBConfigs({ selectedCluster, user }) {
         title={helpAction.title}
         body={helpAction.body}
         size='xl'
+      />
+
+      <ComplianceDiffModal
+        isOpen={complianceDiffModal.open}
+        closeModal={() => setComplianceDiffModal({ open: false, data: null, loading: false })}
+        diffData={complianceDiffModal.data}
+        loading={complianceDiffModal.loading}
+        onAccept={hasPendingCompliance ? handleAcceptCompliance : undefined}
+        acceptLoading={acceptLoading}
       />
     </VStack>
   )

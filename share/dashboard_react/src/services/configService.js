@@ -11,6 +11,8 @@ export const configService = {
   getPreservedVarsCnf,
   savePreservedVarsCnf,
   getTagContent,
+  getComplianceDiff,
+  acceptCompliance,
 }
 
 function addDBTag(clusterName, tag, baseURL) {
@@ -51,4 +53,12 @@ function savePreservedVarsCnf(clusterName, content, baseURL) {
 
 function getTagContent(clusterName, tagName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/configurator/tags/${tagName}/content`)
+}
+
+function getComplianceDiff(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/configurator/compliance-diff`)
+}
+
+function acceptCompliance(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/accept-compliance`)
 }
