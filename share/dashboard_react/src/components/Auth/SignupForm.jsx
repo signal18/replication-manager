@@ -210,6 +210,25 @@ function SignupForm({
                 </HStack>
               ))}
             </VStack>
+            <Text fontSize='sm' color='gray.600' lineHeight='taller'>
+              Registered instance unlock:
+            </Text>
+            <VStack spacing={3} align='stretch'>
+              {[
+                'Backup encrypted configs to cloud repository',
+                'Extra Workload free plugins',
+                'Extra Security free plugins',
+                'Extra Enterprise free plugins',
+                'Auto advisor upgrade of Enterprise plugins on support plan',
+              ].map((item, i) => (
+                <HStack key={i} spacing={3}>
+                  <Box bg='green.100' borderRadius='full' boxSize='24px' display='flex' alignItems='center' justifyContent='center' flexShrink={0}>
+                    <Text fontSize='xs' color='green.700'>✓</Text>
+                  </Box>
+                  <Text fontSize='sm' color='gray.600'>{item}</Text>
+                </HStack>
+              ))}
+            </VStack>
           </VStack>
 
           {/* Right column — form card */}
