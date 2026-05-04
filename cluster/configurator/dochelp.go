@@ -14,16 +14,14 @@
 package configurator
 
 import (
-	_ "embed"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-)
 
-//go:embed dochelp_data/enterprise-dochelp-variables.json
-var defaultDocHelpData []byte
+	"github.com/signal18/replication-manager/share"
+)
 
 // DocHelpVariable is one variable→documentation mapping entry.
 type DocHelpVariable struct {
@@ -73,7 +71,7 @@ func NewDocHelp(pluginDataDir string) *DocHelp {
 }
 
 func (dh *DocHelp) load() {
-	raw := defaultDocHelpData
+	var raw []byte
 
 	// Prefer on-disk file pushed by the back office.
 	if dh.dataDir != "" {
@@ -81,6 +79,11 @@ func (dh *DocHelp) load() {
 		if disk, err := os.ReadFile(dataFile); err == nil {
 			raw = disk
 		}
+	}
+
+	// Fall back to the embedded default in share/plugins/data/.
+	if raw == nil {
+		raw, _ = share.EmbededDbModuleFS.ReadFile("plugins/data/enterprise-dochelp-variables.json")
 	}
 
 	var data docHelpFile
