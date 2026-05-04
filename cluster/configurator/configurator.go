@@ -769,9 +769,15 @@ func ParseVariableNamesFromCnf(cnf string) []string {
 		if line == "" || strings.HasPrefix(line, "[") || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") {
 			continue
 		}
+		// Skip lines that look like shell commands or template macros
+		if strings.HasPrefix(line, "@") || strings.HasPrefix(line, "if ") ||
+			strings.HasPrefix(line, "mariadb_") || strings.HasPrefix(line, "mysql_") ||
+			strings.Contains(line, "$(") || strings.Contains(line, "${") ||
+			strings.Contains(line, "%%ENV:") {
+			continue
+		}
 		parts := strings.SplitN(line, "=", 2)
-		varName := strings.TrimSpace(parts[0])
-		varName = strings.ToLower(strings.ReplaceAll(varName, "-", "_"))
+		varName := NormaliseVariableName(parts[0])
 		if varName != "" && !seen[varName] {
 			seen[varName] = true
 			names = append(names, varName)

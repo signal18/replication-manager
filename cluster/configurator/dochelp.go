@@ -91,10 +91,27 @@ func (dh *DocHelp) load() {
 		dh.entries = make(map[string]docHelpEntry)
 		return
 	}
-	dh.entries = data.Variables
-	if dh.entries == nil {
-		dh.entries = make(map[string]docHelpEntry)
+	// Re-index by normalised key so lookups are case/hyphen/prefix-insensitive.
+	dh.entries = make(map[string]docHelpEntry, len(data.Variables))
+	for key, entry := range data.Variables {
+		dh.entries[NormaliseVariableName(key)] = entry
 	}
+}
+
+// NormaliseVariableName applies MySQL/MariaDB variable name normalisation:
+//   - lowercase
+//   - hyphens → underscores (MySQL treats them as equivalent)
+//   - dots → underscores (MySQL 8.0 component notation: validate_password.policy → validate_password_policy)
+//   - strip "loose_" prefix (MySQL loose option prefix — variable is the part after)
+//
+// This must be used consistently everywhere: parsing cnf, building the
+// dochelp index, and looking up variables.
+func NormaliseVariableName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	name = strings.ReplaceAll(name, "-", "_")
+	name = strings.ReplaceAll(name, ".", "_")
+	name = strings.TrimPrefix(name, "loose_")
+	return name
 }
 
 // LookupVariables returns documentation for the given variable names.
@@ -105,7 +122,7 @@ func (dh *DocHelp) LookupVariables(names []string) (matched []DocHelpVariable, u
 	defer dh.mu.RUnlock()
 
 	for _, name := range names {
-		normalised := strings.ToLower(strings.ReplaceAll(name, "-", "_"))
+		normalised := NormaliseVariableName(name)
 		if entry, ok := dh.entries[normalised]; ok {
 			matched = append(matched, DocHelpVariable{
 				Name:        normalised,
