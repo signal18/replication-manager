@@ -1,6 +1,6 @@
 {
   "version": "1",
-  "generated_at": "2026-05-04T10:23:40Z",
+  "generated_at": "2026-05-04T11:05:05Z",
   "source": "signal18-backoffice",
   "variables": {
     "allow_suspicious_udfs": {
@@ -771,13 +771,23 @@
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#histogram_size",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_histogram_size",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Igor Babaev: Persistent Statistics with Histograms",
+          "url": "https://www.percona.com/live/mysql-conference-2013/users/igor-babaev"
+        }
+      ]
     },
     "histogram_type": {
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#histogram_type",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_histogram_type",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Igor Babaev: Persistent Statistics with Histograms",
+          "url": "https://www.percona.com/live/mysql-conference-2013/users/igor-babaev"
+        }
+      ]
     },
     "host_cache_size": {
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#host_cache_size",
@@ -2729,6 +2739,10 @@
         {
           "title": "Percona: Join Buffer Size",
           "url": "https://www.percona.com/blog/mysql-join-buffer-size/"
+        },
+        {
+          "title": "Igor Babaev: BKA and MRR Join Algorithms",
+          "url": "http://igors-notes.blogspot.com/"
         }
       ]
     },
@@ -2746,6 +2760,10 @@
         {
           "title": "Petrunia: Join Strategies in MariaDB",
           "url": "https://petrunia.net/2012/08/20/how-the-mariadb-query-optimizer-works/"
+        },
+        {
+          "title": "Igor Babaev: BKA Join Optimization",
+          "url": "http://igors-notes.blogspot.com/"
         }
       ]
     },
@@ -3272,7 +3290,12 @@
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#mrr_buffer_size",
       "mysql_url": "https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_mrr_buffer_size",
       "description": "",
-      "blogs": []
+      "blogs": [
+        {
+          "title": "Igor Babaev: In Defense of MRR",
+          "url": "http://igors-notes.blogspot.com/"
+        }
+      ]
     },
     "multi_range_count": {
       "mariadb_url": "https://mariadb.com/kb/en/server-system-variables/#multi_range_count",
@@ -3420,6 +3443,18 @@
         {
           "title": "Petrunia: Subquery Optimizations",
           "url": "https://petrunia.net/2011/11/19/understanding-mariadbs-query-optimizer/"
+        },
+        {
+          "title": "Oleksandr Byelkin: How Optimizer Works",
+          "url": "https://mariadb.org/wp-content/uploads/2019/11/Sanja_2019_Optimizer_in_general.pdf"
+        },
+        {
+          "title": "Igor Babaev: Understanding the Query Optimizer",
+          "url": "https://www.slideshare.net/MariaDB/m18-understanding-the-query-optimizer"
+        },
+        {
+          "title": "Igor Babaev: Comparing MariaDB 5.3 vs MySQL 5.6 Optimizer",
+          "url": "http://igors-notes.blogspot.com/"
         }
       ]
     },
@@ -3815,6 +3850,10 @@
         {
           "title": "FromDual: Query Cache Considered Harmful",
           "url": "https://fromdual.com/query-cache-considered-harmful"
+        },
+        {
+          "title": "Oleksandr Byelkin: Query Cache Author (MySQL 4.0)",
+          "url": "https://mariadb.org/wp-content/uploads/2019/11/Sanja_2019_Optimizer_in_general.pdf"
         }
       ]
     },
@@ -3832,6 +3871,10 @@
         {
           "title": "Percona: Query Cache Tuning",
           "url": "https://www.percona.com/blog/mysql-query-cache/"
+        },
+        {
+          "title": "Oleksandr Byelkin: Query Cache Author (MySQL 4.0)",
+          "url": "https://mariadb.org/wp-content/uploads/2019/11/Sanja_2019_Optimizer_in_general.pdf"
         }
       ]
     },
@@ -4774,6 +4817,10 @@
         {
           "title": "Petrunia: Engine Independent Statistics",
           "url": "https://petrunia.net/2019/10/26/mariadbs-use_stat_tables-and-optimizer_use_condition_selectivity/"
+        },
+        {
+          "title": "Igor Babaev: Persistent Statistics with Histograms",
+          "url": "https://www.percona.com/live/mysql-conference-2013/users/igor-babaev"
         }
       ]
     },
