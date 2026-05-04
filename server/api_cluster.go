@@ -5294,9 +5294,10 @@ func (repman *ReplicationManager) handlerMuxGetTagContent(w http.ResponseWriter,
 		Content: content,
 	}
 
-	// Add doc help links for enterprise users
-	plan := mycluster.Conf.Cloud18SubscriptionPlan
-	if plan != "" && plan != "free" && content != "" {
+	// Add doc help links for all users from the embedded database.
+	// Enterprise users get refreshed data via the back office; free users
+	// get the version shipped with the binary.
+	if content != "" {
 		varNames := configurator.ParseVariableNamesFromCnf(content)
 		pluginDataDir := mycluster.Conf.ShareDir + "/plugins/data"
 		dh := configurator.NewDocHelp(pluginDataDir)
