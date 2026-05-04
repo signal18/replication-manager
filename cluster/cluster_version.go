@@ -42,8 +42,9 @@ func (cluster *Cluster) RefreshToolVersions() {
 
 // CheckComplianceUpdate checks if new compliance files are available in
 // PluginDataDir or if the embedded module changed (binary upgrade).
-// When prov-trust-compliance-changes is true (default), auto-accepts.
-// When false, raises WARN0168 and waits for user approval.
+// Always raises WARN0168 when a change is detected so it's visible in logs.
+// When prov-trust-compliance-changes is true (default), auto-accepts
+// immediately after, which clears the warning.
 func (cluster *Cluster) CheckComplianceUpdate() {
 	pluginDataDir := cluster.Conf.ShareDir + "/plugins/data"
 	pending := cluster.Configurator.CheckComplianceUpdate(pluginDataDir)
@@ -52,16 +53,7 @@ func (cluster *Cluster) CheckComplianceUpdate() {
 		return
 	}
 
-	if cluster.Conf.ProvTrustComplianceChanges {
-		// Auto-accept — same behaviour as before this feature.
-		if err := cluster.AcceptComplianceUpdate(); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-				"Auto-accept compliance update failed: %s", err)
-		}
-		return
-	}
-
-	// Approval mode — raise warning and wait for user action.
+	// Always raise the warning so the change is visible in cluster alerts/logs.
 	desc := fmt.Sprintf(clusterError["WARN0168"],
 		cluster.Configurator.ActiveDBCRC, cluster.Configurator.PendingDBCRC,
 		cluster.Configurator.ActivePrxCRC, cluster.Configurator.PendingPrxCRC)
@@ -70,6 +62,14 @@ func (cluster *Cluster) CheckComplianceUpdate() {
 		ErrDesc: desc,
 		ErrFrom: "CLUSTER",
 	})
+
+	if cluster.Conf.ProvTrustComplianceChanges {
+		// Auto-accept — clears WARN0168 immediately.
+		if err := cluster.AcceptComplianceUpdate(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"Auto-accept compliance update failed: %s", err)
+		}
+	}
 }
 
 // AcceptComplianceUpdate loads the pending compliance from PluginDataDir,
