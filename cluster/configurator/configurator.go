@@ -100,6 +100,36 @@ func (configurator *Configurator) LoadDBModules() error {
 	return nil
 }
 
+// ReloadComplianceFromDataDir checks for updated compliance files in the
+// plugin data directory (pushed by the back office via git pull) and reloads
+// the DB and Proxy modules if the files exist and parse successfully.
+// Returns true if either module was reloaded.
+func (configurator *Configurator) ReloadComplianceFromDataDir(pluginDataDir string) (bool, error) {
+	reloaded := false
+
+	dbFile := filepath.Join(pluginDataDir, "moduleset_mariadb.svc.mrm.db.json")
+	if data, err := os.ReadFile(dbFile); err == nil {
+		var module config.Compliance
+		if err := json.Unmarshal(data, &module); err == nil && len(module.Rulesets) > 0 {
+			configurator.DBModule = module
+			configurator.ConfigDBTags = configurator.GetDBModuleTags()
+			reloaded = true
+		}
+	}
+
+	proxyFile := filepath.Join(pluginDataDir, "moduleset_mariadb.svc.mrm.proxy.json")
+	if data, err := os.ReadFile(proxyFile); err == nil {
+		var module config.Compliance
+		if err := json.Unmarshal(data, &module); err == nil && len(module.Rulesets) > 0 {
+			configurator.ProxyModule = module
+			configurator.ConfigPrxTags = configurator.GetProxyModuleTags()
+			reloaded = true
+		}
+	}
+
+	return reloaded, nil
+}
+
 func (configurator *Configurator) LoadProxyModules() error {
 	var byteValue []byte
 	if configurator.ClusterConfig.Test {
