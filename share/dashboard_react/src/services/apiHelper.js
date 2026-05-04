@@ -1,11 +1,15 @@
 const toBase64 = (str) => btoa(unescape(encodeURIComponent(str)));
 
 const authConfig = {
-  1: { // Local calls
+  local: { // Local calls
     resolveUrl: (apiUrl) => `/api/${apiUrl}`,
     getToken: () => localStorage.getItem('user_token')
   },
-  2: { // Peer calls
+  public: { // Local public calls (no auth header)
+    resolveUrl: (apiUrl) => `/api/${apiUrl}`,
+    getToken: () => null
+  },
+  peer: { // Peer calls
     resolveUrl: (apiUrl, baseUrl) => `/peer/${baseUrl}/api/${apiUrl}`,
     getToken: (baseUrl) => {
       if (baseUrl == "") {
@@ -15,7 +19,7 @@ const authConfig = {
       }
     }
   },
-  3: { // Mattermost API
+  meet: { // Mattermost API
     //resolveUrl: (apiUrl) => `https://meet.signal18.io/api/v4/${apiUrl}`,
     resolveUrl: (apiUrl) => `/meet/${apiUrl}`,
     getToken: () => localStorage.getItem('user_token')
@@ -153,9 +157,10 @@ const requestWrapper = (authValue, baseUrl = '') => ({
   }
 });
 
-export const localApi = requestWrapper(1); // Wrapper for local API calls
-export const peerApi = (baseUrl) => requestWrapper(2, baseUrl); // Wrapper for peer API calls
-export const meetApi = requestWrapper(3); // Wrapper for Mattermost (meetAPI) calls
+export const localApi = requestWrapper('local'); // Wrapper for local API calls
+export const publicApi = requestWrapper('public'); // Wrapper for local public API calls (no auth)
+export const peerApi = (baseUrl) => requestWrapper('peer', baseUrl); // Wrapper for peer API calls
+export const meetApi = requestWrapper('meet'); // Wrapper for Mattermost (meetAPI) calls
 
 export const getApi = (baseURL = '') => {
   return baseURL ? peerApi(baseURL) : localApi;

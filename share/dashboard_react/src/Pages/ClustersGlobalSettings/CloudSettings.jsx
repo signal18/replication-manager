@@ -19,6 +19,8 @@ import Markdown from 'react-markdown'
 import CommonModal from '../../components/Modals/CommonModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
 import remarkGfm from 'remark-gfm'
+import SignupForm from '../../components/Auth/SignupForm'
+import { authService } from '../../services/authService'
 
 function CloudSettings({ config }) {
   const dispatch = useDispatch()
@@ -31,6 +33,9 @@ function CloudSettings({ config }) {
   const [showPassword, setShowPassword] = useState(false)
   const [registerForm, setRegisterForm] = useState({ email: '', password: '', domain: '', subdomain: '', zone: '' })
   const [registerErrors, setRegisterErrors] = useState({})
+  const [signupSeed, setSignupSeed] = useState(null) // { email } from successful signup
+  const [isSignupModalOpen, setIsSignupModalOpen] = useState(false)
+  const signupCloseTimerRef = useRef(null)
   const [isSendingCode, setIsSendingCode] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
   const [regStatus, setRegStatus] = useState(null)   // {state, message} from server
@@ -109,7 +114,7 @@ Start create an account in https://gitlab.signal18.io
   const openRegisterModal = () => {
     setRegisterStep(1)
     setRegisterForm({
-      email: config?.cloud18GitUser || '',
+      email: signupSeed?.email || config?.cloud18GitUser || '',
       password: '',
       domain: config?.cloud18Domain || '',
       subdomain: config?.cloud18SubDomain || '',
@@ -124,6 +129,22 @@ Start create an account in https://gitlab.signal18.io
   const stopPolling = () => {
     if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null }
     if (tickIntervalRef.current) { clearInterval(tickIntervalRef.current); tickIntervalRef.current = null }
+  }
+
+  const clearSignupSeed = () => {
+    setSignupSeed(null)
+    setRegisterForm(f => ({ ...f, email: '', password: '' }))
+    setRegisterErrors(e => ({ ...e, email: undefined, password: undefined }))
+  }
+
+  const handleSignupSuccess = (_, payload) => {
+    const seeded = {
+      email: payload?.email || ''
+    }
+    setSignupSeed(seeded)
+    setRegisterForm(f => ({ ...f, email: seeded.email }))
+    clearTimeout(signupCloseTimerRef.current)
+    signupCloseTimerRef.current = setTimeout(() => setIsSignupModalOpen(false), 1500)
   }
 
   // Start polling when step 2 becomes active
@@ -159,10 +180,13 @@ Start create an account in https://gitlab.signal18.io
 
   const validateRegisterForm = (form) => {
     const errors = {}
-    if (!form.email.trim()) errors.email = 'Email is required'
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errors.email = 'Enter a valid email address'
-    if (!form.password) errors.password = 'Password is required'
-    else if (form.password.length < 8) errors.password = 'Password must be at least 8 characters'
+    const email = (signupSeed?.email || form.email || '').trim()
+    const password = form.password || ''
+
+    if (!email) errors.email = 'Email is required'
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Enter a valid email address'
+    if (!password) errors.password = 'Password is required'
+    else if (password.length < 8) errors.password = 'Password must be at least 8 characters'
     if (!form.domain.trim()) errors.domain = 'Domain is required'
     else if (!/^[a-z0-9-]+$/.test(form.domain.trim())) errors.domain = 'Only lowercase letters, digits and hyphens'
     if (!form.subdomain.trim()) errors.subdomain = 'Subdomain is required'
@@ -178,9 +202,12 @@ Start create an account in https://gitlab.signal18.io
     if (Object.keys(errors).length > 0) { setRegisterErrors(errors); return }
     setIsSendingCode(true)
     const uri = `${registerForm.domain.trim()}.${registerForm.subdomain.trim()}.${registerForm.zone.trim()}`
-    const result = await dispatch(registerInstance({ email: registerForm.email.trim(), password: registerForm.password, uri }))
+    const email = (signupSeed?.email || registerForm.email || '').trim()
+    const password = registerForm.password || ''
+    const result = await dispatch(registerInstance({ email, password, uri }))
     setIsSendingCode(false)
     if (result?.payload?.status === 202) {
+      setRegisterForm(f => ({ ...f, email, password }))
       setRegisterStep(2)
     }
   }
@@ -189,7 +216,9 @@ Start create an account in https://gitlab.signal18.io
   const handleConfirmRegistration = async () => {
     setIsConfirming(true)
     const uri = `${registerForm.domain.trim()}.${registerForm.subdomain.trim()}.${registerForm.zone.trim()}`
-    const result = await dispatch(confirmRegisterInstance({ email: registerForm.email.trim(), password: registerForm.password, uri }))
+    const email = (signupSeed?.email || registerForm.email || '').trim()
+    const password = registerForm.password || ''
+    const result = await dispatch(confirmRegisterInstance({ email, password, uri }))
     setIsConfirming(false)
     if (result?.payload?.status === 201) {
       setIsRegisterModalOpen(false)
@@ -201,12 +230,20 @@ Start create an account in https://gitlab.signal18.io
       <Text fontSize='sm' color='gray.500'>
         Creates a GitLab account at <Link href='https://gitlab.signal18.io' target='_blank' color='blue.400'>gitlab.signal18.io</Link>. GitLab will send a confirmation email — you will need to click it before completing registration.
       </Text>
+      <HStack justify='space-between' align='center' bg='blue.50' borderRadius='md' p={3}>
+        <Text fontSize='xs' color='blue.700'>No GitLab SSO account yet?</Text>
+        <RMButton size='xs' variant='outline' onClick={() => setIsSignupModalOpen(true)}>Sign up now</RMButton>
+      </HStack>
       <FormControl isInvalid={!!registerErrors.email} isRequired>
         <FormLabel fontSize='sm'>Email</FormLabel>
-        <Input size='sm' type='email' placeholder='admin@mycompany.com'
-          value={registerForm.email}
-          onChange={(e) => setRegisterForm(f => ({ ...f, email: e.target.value }))}
-        />
+        {signupSeed ? (
+          <Input size='sm' type='email' value={signupSeed.email} isReadOnly />
+        ) : (
+          <Input size='sm' type='email' placeholder='admin@mycompany.com'
+            value={registerForm.email}
+            onChange={(e) => setRegisterForm(f => ({ ...f, email: e.target.value }))}
+          />
+        )}
         <FormErrorMessage>{registerErrors.email}</FormErrorMessage>
       </FormControl>
       <FormControl isInvalid={!!registerErrors.password} isRequired>
@@ -222,6 +259,12 @@ Start create an account in https://gitlab.signal18.io
         </InputGroup>
         <FormErrorMessage>{registerErrors.password}</FormErrorMessage>
       </FormControl>
+      {signupSeed && (
+        <HStack justify='space-between' align='center' bg='green.50' borderRadius='md' p={3}>
+          <Text fontSize='xs' color='green.700'>Using newly created GitLab SSO account.</Text>
+          <RMButton size='xs' variant='ghost' onClick={clearSignupSeed}>Use different account</RMButton>
+        </HStack>
+      )}
       <FormControl isInvalid={!!registerErrors.domain} isRequired>
         <FormLabel fontSize='sm'>Domain <Text as='span' fontWeight='normal' color='gray.400'>(company namespace)</Text></FormLabel>
         <Input size='sm' placeholder='mycompany'
@@ -304,6 +347,17 @@ Start create an account in https://gitlab.signal18.io
     )
   })()
 
+  const signupSeedBadgeColor = registerStep === 1 ? 'blue' : 'orange'
+
+  const registerModalTitle = (
+    <HStack spacing={2} align='center'>
+      <Text>
+        {registerStep === 1 ? 'Register with Signal18 Cloud18 (1/2)' : 'Waiting for email confirmation (2/2)'}
+      </Text>
+      {signupSeed && <TagPill colorScheme={signupSeedBadgeColor} text='Using newly created account' />}
+    </HStack>
+  )
+
   // Plans fetched from CRM; fallback list shown only if CRM is unreachable
   const PLANS_FALLBACK = [
     { value: 'free',             label: 'Free',                                    desc: 'Community access, config backup to GitLab, basic alerting' },
@@ -369,8 +423,13 @@ Start create an account in https://gitlab.signal18.io
 
   // Reset URI unlock when connection is re-established (new registration completed)
   useEffect(() => {
-    if (isConnected) setUriUnlocked(false)
+    if (isConnected) {
+      setUriUnlocked(false)
+      setSignupSeed(null)
+    }
   }, [isConnected])
+
+  useEffect(() => () => clearTimeout(signupCloseTimerRef.current), [])
 
   // True when a full set of credentials + URI is stored, meaning a direct Connect is
   // possible. After Unregister (uriUnlocked=true) we force this false so the UI shows
@@ -498,9 +557,33 @@ Start create an account in https://gitlab.signal18.io
         <CommonModal
           isOpen={isRegisterModalOpen}
           size='md'
-          title={registerStep === 1 ? 'Register with Signal18 Cloud18 (1/2)' : 'Waiting for email confirmation (2/2)'}
+          title={registerModalTitle}
           body={registerFormBody}
           closeModal={() => { stopPolling(); setIsRegisterModalOpen(false) }}
+        />
+      )}
+      {isSignupModalOpen && (
+        <CommonModal
+          isOpen={isSignupModalOpen}
+          size='md'
+          title='Create GitLab SSO account'
+          closeModal={() => {
+            clearTimeout(signupCloseTimerRef.current)
+            setIsSignupModalOpen(false)
+          }}
+          body={
+            <SignupForm
+              onSubmit={authService.signup}
+              onSuccess={handleSignupSuccess}
+              onCancel={() => {
+                clearTimeout(signupCloseTimerRef.current)
+                setIsSignupModalOpen(false)
+              }}
+              submitLabel='Create GitLab SSO account'
+              loadingText='Creating account'
+              successMessage='Account created. You can continue registration now.'
+            />
+          }
         />
       )}
       {isSubModalOpen && (

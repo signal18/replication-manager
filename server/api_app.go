@@ -76,27 +76,27 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/stop", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppStop)),
-	))
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/stop/{node}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppStop)),
-	))
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/start", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppStart)),
-	))
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/start/{node}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppStart)),
-	))
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/restart", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppRestart)),
-	))
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/restart/{node}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppRestart)),
-	))
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/abort", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppAbort)),
@@ -188,6 +188,12 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 	router.Handle("/api/clusters/{clusterName}/templates/apps/{templateName:.*}/content/actions/create-local-copy", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppTemplateContentCreateLocalCopy)),
+	))
+	router.Handle("/api/terminal/connect/clusters/{clusterName}/apps/{appName}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
+	))
+	router.Handle("/api/terminal/connect/clusters/{clusterName}/apps/{appName}/{command}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
 	))
 }
 
@@ -573,29 +579,54 @@ func (repman *ReplicationManager) handlerMuxApp(w http.ResponseWriter, r *http.R
 // @Router /api/clusters/{clusterName}/apps/{appName}/actions/start/{node} [post]
 func (repman *ReplicationManager) handlerMuxAppStart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", http.StatusForbidden)
-			return
-		}
-
-		if mycluster.GetOrchestrator() != "opensvc" {
-			http.Error(w, "Orchestrator not supported", http.StatusInternalServerError)
-			return
-		}
-
-		app := mycluster.GetAppFromName(vars["appName"])
-		if app != nil {
-			mycluster.OpenSVCStartAppService(app, vars["node"])
-		} else {
-			http.Error(w, "Server Not Found", http.StatusInternalServerError)
-			return
-		}
-	} else {
-		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+	if mycluster == nil {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Cluster Not Found"})
 		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		w.WriteHeader(http.StatusForbidden)
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": "No valid ACL"}); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
+		}
+		return
+	}
+
+	if mycluster.GetOrchestrator() != "opensvc" {
+		w.WriteHeader(http.StatusNotImplemented)
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": "Start is only supported for OpenSVC orchestrator"}); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
+		}
+		return
+	}
+
+	app := mycluster.GetAppFromName(vars["appName"])
+	if app == nil {
+		w.WriteHeader(http.StatusNotFound)
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": "App Not Found"}); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
+		}
+		return
+	}
+
+	if err := mycluster.OpenSVCStartAppService(app, vars["node"]); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		if encErr := json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to start app service: %s", err)}); encErr != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", encErr)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "App service started successfully",
+		"app":     app.GetName(),
+	}); err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
 	}
 }
 
@@ -615,29 +646,54 @@ func (repman *ReplicationManager) handlerMuxAppStart(w http.ResponseWriter, r *h
 // @Router /api/clusters/{clusterName}/apps/{appName}/actions/stop/{node} [post]
 func (repman *ReplicationManager) handlerMuxAppStop(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", http.StatusForbidden)
-			return
-		}
-
-		if mycluster.GetOrchestrator() != "opensvc" {
-			http.Error(w, "Orchestrator not supported", http.StatusInternalServerError)
-			return
-		}
-
-		app := mycluster.GetAppFromName(vars["appName"])
-		if app != nil {
-			mycluster.OpenSVCStopAppService(app, vars["node"])
-		} else {
-			http.Error(w, "Server Not Found", http.StatusInternalServerError)
-			return
-		}
-	} else {
-		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+	if mycluster == nil {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Cluster Not Found"})
 		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		w.WriteHeader(http.StatusForbidden)
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": "No valid ACL"}); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
+		}
+		return
+	}
+
+	if mycluster.GetOrchestrator() != "opensvc" {
+		w.WriteHeader(http.StatusNotImplemented)
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": "Stop is only supported for OpenSVC orchestrator"}); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
+		}
+		return
+	}
+
+	app := mycluster.GetAppFromName(vars["appName"])
+	if app == nil {
+		w.WriteHeader(http.StatusNotFound)
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": "App Not Found"}); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
+		}
+		return
+	}
+
+	if err := mycluster.OpenSVCStopAppService(app, vars["node"]); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		if encErr := json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to stop app service: %s", err)}); encErr != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", encErr)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "App service stopped successfully",
+		"app":     app.GetName(),
+	}); err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
 	}
 }
 
@@ -657,30 +713,76 @@ func (repman *ReplicationManager) handlerMuxAppStop(w http.ResponseWriter, r *ht
 // @Router /api/clusters/{clusterName}/apps/{appName}/actions/restart/{node} [post]
 func (repman *ReplicationManager) handlerMuxAppRestart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", http.StatusForbidden)
-			return
-		}
-
-		if mycluster.GetOrchestrator() != "opensvc" {
-			http.Error(w, "Orchestrator not supported", http.StatusInternalServerError)
-			return
-		}
-
-		app := mycluster.GetAppFromName(vars["appName"])
-		if app != nil {
-			rid := r.URL.Query().Get("rid")
-			mycluster.OpenSVCRestartAppService(app, vars["node"], rid)
-		} else {
-			http.Error(w, "Server Not Found", http.StatusInternalServerError)
-			return
-		}
-	} else {
-		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+	if mycluster == nil {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Cluster Not Found"})
 		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		w.WriteHeader(http.StatusForbidden)
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": "No valid ACL"}); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
+		}
+		return
+	}
+
+	if mycluster.GetOrchestrator() != "opensvc" {
+		w.WriteHeader(http.StatusNotImplemented)
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": "Restart is only supported for OpenSVC orchestrator"}); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
+		}
+		return
+	}
+
+	app := mycluster.GetAppFromName(vars["appName"])
+	if app == nil {
+		w.WriteHeader(http.StatusNotFound)
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": "App Not Found"}); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
+		}
+		return
+	}
+
+	ridParam := r.URL.Query().Get("rid")
+	if err := cluster.ValidateAppRestartRid(ridParam); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		if encErr := json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}); encErr != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", encErr)
+		}
+		return
+	}
+	nodeParam := vars["node"]
+	if nodeParam == "" {
+		nodeParam = app.GetAgent()
+	}
+	if nodeParam == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": "Node is required when app has no default agent"}); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
+		}
+		return
+	}
+
+	if err := mycluster.OpenSVCRestartAppService(app, nodeParam, ridParam); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		if encErr := json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to restart app service: %s", err)}); encErr != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", encErr)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "App service restarted successfully",
+		"app":     app.GetName(),
+		"node":    nodeParam,
+		"rid":     ridParam,
+	}); err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
 	}
 }
 

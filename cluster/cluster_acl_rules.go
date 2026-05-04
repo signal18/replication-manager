@@ -153,10 +153,10 @@ var clusterACLRules = []ACLRule{
 	{"/plugins", nil, []string{config.GrantClusterSettings}},
 
 	// Backups — ordered longest-match-first so specific rules win
-	{"/backups/stats", nil, []string{config.GrantClusterShowBackups}},  // read-only stats
-	{"/backups/", nil, []string{config.GrantDBBackup}},                 // write sub-paths: delete, reconcile
-	{"/backups", nil, []string{config.GrantClusterShowBackups}},        // list (bare path, no slash)
-	{"/restic/purge", nil, []string{config.GrantDBBackup}},             // delete a snapshot
+	{"/backups/stats", nil, []string{config.GrantClusterShowBackups}}, // read-only stats
+	{"/backups/", nil, []string{config.GrantDBBackup}},                // write sub-paths: delete, reconcile
+	{"/backups", nil, []string{config.GrantClusterShowBackups}},       // list (bare path, no slash)
+	{"/restic/purge", nil, []string{config.GrantDBBackup}},            // delete a snapshot
 	{"/restic/snapshots", nil, []string{config.GrantClusterShowBackups}},
 	{"/restic/stats", nil, []string{config.GrantClusterShowBackups}},
 
@@ -294,6 +294,7 @@ var terminalACLRules = []ACLRule{
 	{"/api/terminal/list", nil, []string{config.GrantTerminalGlobal}},
 	{"/servers", nil, []string{config.GrantTerminalDatabase}},
 	{"/proxies", nil, []string{config.GrantTerminalProxy}},
+	{"/apps", nil, []string{config.GrantTerminalApp}},
 }
 
 // checkACLRule checks if a user has the required grants for a specific rule

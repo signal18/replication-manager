@@ -66,7 +66,8 @@ function PageContainer({ children }) {
   }, [dispatch, handleResize, user])
 
   useEffect(() => {
-    if (!isLogged && user === null && !isAuthorized() && location.pathname !== '/login') {
+    const isPublicAuthPage = location.pathname === '/login' || location.pathname === '/signup'
+    if (!isLogged && user === null && !isAuthorized() && !isPublicAuthPage) {
       // Slideshow auth goes through /dashboard (viewer token) not /login (regular autologin → /)
       navigate(location.pathname === '/slideshow' ? '/dashboard' : '/login')
     }
@@ -76,8 +77,10 @@ function PageContainer({ children }) {
     <Box className={styles.container}>
       <Navbar username={user?.username} />
       <Box className={styles.pageContent}>{children}</Box>
-      <Box as='footer' className={styles.footer} textAlign={location.pathname === '/login' ? 'right' : 'left'}>
-        {location.pathname === '/login' ? monitor?.config?.apiSwaggerEnabled && (<Link href='/api-docs/index.html' target='_blank' rel='noreferrer'>API Swagger</Link>) : (<Text>{`Replication-Manager ${fullVersion} © 2017-${new Date().getFullYear()} SIGNAL18 CLOUD SAS`}</Text>)}
+      <Box as='footer' className={styles.footer} textAlign={(location.pathname === '/login' || location.pathname === '/signup') ? 'right' : 'left'}>
+        {(location.pathname === '/login' || location.pathname === '/signup')
+          ? monitor?.config?.apiSwaggerEnabled && (<Link href='/api-docs/index.html' target='_blank' rel='noreferrer'>API Swagger</Link>)
+          : (<Text>{`Replication-Manager ${fullVersion} © 2017-${new Date().getFullYear()} SIGNAL18 CLOUD SAS`}</Text>)}
       </Box>
     </Box>
   )
