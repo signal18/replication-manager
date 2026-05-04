@@ -723,10 +723,14 @@ func (configurator *Configurator) GetTagMyCnf(tagName string) string {
 		Path string `json:"path"`
 		Fmt  string `json:"fmt"`
 	}
+	type symlinkVar struct {
+		Target string `json:"target"`
+	}
 	// Flatten: remove underscores for comparison so tag "nodoublewrite" matches
 	// var_name "db_cnf_disk_no_doublewrite" (which flattens to "dbcnfdisknodoublewrite").
 	tagFlat := strings.ReplaceAll(strings.ToLower(tagName), "_", "")
-	var result strings.Builder
+
+	// Pass 1: direct match by filter (fset_name) or flattened var_name.
 	for _, rule := range configurator.DBModule.Rulesets {
 		if !strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf") {
 			continue
@@ -737,8 +741,7 @@ func (configurator *Configurator) GetTagMyCnf(tagName string) string {
 				continue
 			}
 			varFlat := strings.ReplaceAll(strings.ToLower(variable.Name), "_", "")
-			varMatch := filterMatch || strings.Contains(varFlat, tagFlat)
-			if !varMatch {
+			if !filterMatch && !strings.Contains(varFlat, tagFlat) {
 				continue
 			}
 			var fv fileVar
@@ -748,17 +751,67 @@ func (configurator *Configurator) GetTagMyCnf(tagName string) string {
 			if !strings.HasSuffix(fv.Path, ".cnf") {
 				continue
 			}
-			for _, line := range strings.Split(fv.Fmt, "\n") {
-				trimmed := strings.TrimSpace(line)
-				if trimmed == "" {
+			return configurator.extractCnfContent(fv.Fmt)
+		}
+		// Pass 2: if filter matched but no file variable found (only symlink),
+		// resolve the symlink target filename and find it in the generic ruleset.
+		if filterMatch {
+			for _, variable := range rule.Variables {
+				if variable.Class != "symlink" {
 					continue
 				}
-				result.WriteString(line + "\n")
+				var sv symlinkVar
+				if err := json.Unmarshal([]byte(variable.Value), &sv); err != nil {
+					continue
+				}
+				targetFile := filepath.Base(sv.Target)
+				if !strings.HasSuffix(targetFile, ".cnf") {
+					continue
+				}
+				// Search the generic ruleset for a file with this path basename.
+				return configurator.getFileContentByBasename(targetFile)
 			}
-			break // one match per tag is enough
+		}
+	}
+	return ""
+}
+
+// extractCnfContent returns all non-empty lines from a cnf fmt field.
+func (configurator *Configurator) extractCnfContent(fmt string) string {
+	var result strings.Builder
+	for _, line := range strings.Split(fmt, "\n") {
+		if strings.TrimSpace(line) != "" {
+			result.WriteString(line + "\n")
 		}
 	}
 	return strings.TrimSpace(result.String())
+}
+
+// getFileContentByBasename finds a file variable by its path basename across
+// all rulesets and returns its content. Used to resolve symlink targets.
+func (configurator *Configurator) getFileContentByBasename(basename string) string {
+	type fileVar struct {
+		Path string `json:"path"`
+		Fmt  string `json:"fmt"`
+	}
+	for _, rule := range configurator.DBModule.Rulesets {
+		if !strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf") {
+			continue
+		}
+		for _, variable := range rule.Variables {
+			if variable.Class != "file" {
+				continue
+			}
+			var fv fileVar
+			if err := json.Unmarshal([]byte(variable.Value), &fv); err != nil {
+				continue
+			}
+			if filepath.Base(fv.Path) == basename {
+				return configurator.extractCnfContent(fv.Fmt)
+			}
+		}
+	}
+	return ""
 }
 
 // ParseVariableNamesFromCnf extracts MySQL/MariaDB variable names from cnf
