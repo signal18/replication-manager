@@ -412,7 +412,6 @@ function DBConfigs({ selectedCluster, user }) {
                     key={tag?.name}
                     text={tag?.name}
                     onViewContent={handleViewContent}
-                    onDocHelp={isEnterprise ? handleDocHelp : undefined}
                     onRemove={(title) => {
                       setConfirmTitle(title)
                       setIsConfirmModalOpen(true)
