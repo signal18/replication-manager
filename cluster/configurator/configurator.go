@@ -720,35 +720,42 @@ func (configurator *Configurator) GetTagSQL(tagName, cmdPrefix string) string {
 // tagName is matched against each ruleset's fset_name.
 func (configurator *Configurator) GetTagMyCnf(tagName string) string {
 	type fileVar struct {
-		Fmt string `json:"fmt"`
+		Path string `json:"path"`
+		Fmt  string `json:"fmt"`
 	}
+	tagLower := strings.ToLower(tagName)
 	var result strings.Builder
 	for _, rule := range configurator.DBModule.Rulesets {
-		if !strings.Contains(rule.Filter, tagName) {
+		if !strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf") {
 			continue
 		}
+		// Match by filter (fset_name) if present, otherwise by variable name.
+		filterMatch := rule.Filter != "" && strings.HasSuffix(rule.Filter, tagName)
 		for _, variable := range rule.Variables {
 			if variable.Class != "file" {
+				continue
+			}
+			// Match by var_name when filter is empty (generic rulesets):
+			// e.g. tag "semisync" matches var_name "db_cnf_rep_with_semisync"
+			varMatch := filterMatch || strings.HasSuffix(strings.ToLower(variable.Name), tagLower)
+			if !varMatch {
 				continue
 			}
 			var fv fileVar
 			if err := json.Unmarshal([]byte(variable.Value), &fv); err != nil {
 				continue
 			}
-			inSection := false
+			if !strings.HasSuffix(fv.Path, ".cnf") {
+				continue
+			}
 			for _, line := range strings.Split(fv.Fmt, "\n") {
 				trimmed := strings.TrimSpace(line)
-				if strings.HasPrefix(trimmed, "[") {
-					inSection = true
-				}
-				if !inSection {
-					continue
-				}
-				if strings.HasPrefix(trimmed, "#") {
+				if trimmed == "" {
 					continue
 				}
 				result.WriteString(line + "\n")
 			}
+			break // one match per tag is enough
 		}
 	}
 	return strings.TrimSpace(result.String())

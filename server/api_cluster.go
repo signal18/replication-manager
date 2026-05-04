@@ -5278,40 +5278,10 @@ func (repman *ReplicationManager) handlerMuxGetTagContent(w http.ResponseWriter,
 
 	tagName := vars["tagName"]
 
-	// Read the tag's cnf file from the first server's generated config directory.
-	// Files live at {Datadir}/init/etc/mysql/replication-manager.d/ and follow
-	// naming patterns like with_rep_semisync.cnf, no_disk_doublewrite.cnf, etc.
-	var content string
-	for _, srv := range mycluster.Servers {
-		if srv == nil || srv.Datadir == "" {
-			continue
-		}
-		cnfDir := filepath.Join(srv.Datadir, "init", "etc", "mysql", "replication-manager.d")
-		entries, err := os.ReadDir(cnfDir)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			name := e.Name()
-			// Match: the tag name should appear in the filename
-			// e.g. tag "semisync" matches "with_rep_semisync.cnf"
-			if !strings.HasSuffix(name, ".cnf") {
-				continue
-			}
-			nameNoExt := strings.TrimSuffix(name, ".cnf")
-			if !strings.HasSuffix(nameNoExt, tagName) {
-				continue
-			}
-			data, err := os.ReadFile(filepath.Join(cnfDir, name))
-			if err == nil {
-				content = string(data)
-			}
-			break
-		}
-		if content != "" {
-			break
-		}
-	}
+	// Extract the tag's cnf content from the compliance module.
+	// GetTagMyCnf matches by filter (fset_name) or by variable name (var_name)
+	// to find the right cnf file content for this tag.
+	content := mycluster.Configurator.GetTagMyCnf(tagName)
 
 	type tagContentResponse struct {
 		Tag     string                  `json:"tag"`
