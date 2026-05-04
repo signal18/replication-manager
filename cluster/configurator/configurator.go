@@ -242,20 +242,32 @@ func (configurator *Configurator) AcceptComplianceUpdate(pluginDataDir string) e
 const (
 	acceptedDBFile  = "accepted_compliance_db.json"
 	acceptedPrxFile = "accepted_compliance_proxy.json"
+	previousDBFile  = "accepted_compliance_db.json.old"
+	previousPrxFile = "accepted_compliance_proxy.json.old"
 )
 
 // saveAcceptedCompliance writes the current in-memory compliance modules to
-// disk so they survive binary upgrades. On next startup the accepted version
-// is loaded instead of the embedded one.
+// disk so they survive binary upgrades. The previous accepted version is
+// renamed to .old so operators can diff what changed.
 func (configurator *Configurator) saveAcceptedCompliance() {
 	if configurator.WorkingDir == "" {
 		return
 	}
+	// Rotate: current accepted → .old (for diffing)
+	dbPath := filepath.Join(configurator.WorkingDir, acceptedDBFile)
+	prxPath := filepath.Join(configurator.WorkingDir, acceptedPrxFile)
+	if _, err := os.Stat(dbPath); err == nil {
+		os.Rename(dbPath, filepath.Join(configurator.WorkingDir, previousDBFile))
+	}
+	if _, err := os.Stat(prxPath); err == nil {
+		os.Rename(prxPath, filepath.Join(configurator.WorkingDir, previousPrxFile))
+	}
+	// Write new accepted
 	if data, err := json.Marshal(configurator.DBModule); err == nil {
-		os.WriteFile(filepath.Join(configurator.WorkingDir, acceptedDBFile), data, 0644)
+		os.WriteFile(dbPath, data, 0644)
 	}
 	if data, err := json.Marshal(configurator.ProxyModule); err == nil {
-		os.WriteFile(filepath.Join(configurator.WorkingDir, acceptedPrxFile), data, 0644)
+		os.WriteFile(prxPath, data, 0644)
 	}
 }
 
