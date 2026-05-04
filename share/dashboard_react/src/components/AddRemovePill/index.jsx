@@ -4,10 +4,9 @@ import styles from './styles.module.scss'
 import CustomIcon from '../Icons/CustomIcon'
 import { HiMinus, HiPlus } from 'react-icons/hi'
 import { FiEye } from 'react-icons/fi'
-import { BiBookOpen } from 'react-icons/bi'
 import { HStack, Text, IconButton, Tooltip } from '@chakra-ui/react'
 
-function AddRemovePill({ text, used = false, onAdd, onRemove, onViewContent, onDocHelp, category, isDisabled = false }) {
+function AddRemovePill({ text, used = false, onAdd, onRemove, onViewContent, category, isDisabled = false }) {
   return (
     <HStack spacing='1'>
       <RMButton
@@ -34,18 +33,6 @@ function AddRemovePill({ text, used = false, onAdd, onRemove, onViewContent, onD
             size='xs'
             variant='ghost'
             onClick={(e) => { e.stopPropagation(); onViewContent(text) }}
-          />
-        </Tooltip>
-      )}
-      {onDocHelp && (
-        <Tooltip label='Documentation help' placement='top' hasArrow>
-          <IconButton
-            aria-label='Documentation help'
-            icon={<BiBookOpen />}
-            size='xs'
-            variant='ghost'
-            colorScheme='blue'
-            onClick={(e) => { e.stopPropagation(); onDocHelp(text) }}
           />
         </Tooltip>
       )}

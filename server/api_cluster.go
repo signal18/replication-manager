@@ -322,10 +322,6 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetTagContent)),
 	))
-	router.Handle("/api/clusters/{clusterName}/configurator/tags/{tagName}/dochelp", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetTagDocHelp)),
-	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/add-proxy-tag/{tagValue}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddProxyTag)),
@@ -5260,7 +5256,17 @@ func (repman *ReplicationManager) handlerMuxAddTag(w http.ResponseWriter, r *htt
 	}
 }
 
-// handlerMuxGetTagContent returns the my.cnf snippet for a configurator tag.
+// handlerMuxGetTagContent returns the config file content for a configurator tag,
+// read from the first server's generated config on disk, together with
+// documentation links for each variable (enterprise-only section).
+//
+// The response is JSON:
+//
+//	{
+//	  "tag": "semisync",
+//	  "content": "[mysqld]\nrpl_semi_sync_master_enabled=ON\n...",
+//	  "doc_help": { "variables": [...], "unknown_variables": [...] }  // only on paid plans
+//	}
 func (repman *ReplicationManager) handlerMuxGetTagContent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -5269,51 +5275,71 @@ func (repman *ReplicationManager) handlerMuxGetTagContent(w http.ResponseWriter,
 		http.Error(w, "Cluster Not Found", http.StatusNotFound)
 		return
 	}
-	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-		http.Error(w, "No valid ACL", http.StatusForbidden)
-		return
-	}
-	content := mycluster.Configurator.GetTagMyCnf(vars["tagName"])
-	w.Header().Set("Content-Type", "text/plain")
-	w.Write([]byte(content))
-}
-
-// handlerMuxGetTagDocHelp returns documentation links for the variables in a tag.
-// Enterprise-only: returns 403 for free-plan or unregistered instances.
-func (repman *ReplicationManager) handlerMuxGetTagDocHelp(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster == nil {
-		http.Error(w, "Cluster Not Found", http.StatusNotFound)
-		return
-	}
-	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-		http.Error(w, "No valid ACL", http.StatusForbidden)
-		return
-	}
-
-	plan := mycluster.Conf.Cloud18SubscriptionPlan
-	if plan == "" || plan == "free" {
-		http.Error(w, `{"error":"Documentation help requires a support or partner plan. Upgrade at https://cloud18.io"}`, http.StatusForbidden)
-		return
-	}
 
 	tagName := vars["tagName"]
-	varNames := mycluster.Configurator.GetTagVariableNames(tagName)
 
-	pluginDataDir := mycluster.Conf.ShareDir + "/plugins/data"
-	dh := configurator.NewDocHelp(pluginDataDir)
-	matched, unknown := dh.LookupVariables(varNames)
+	// Read the tag's cnf file from the first server's generated config directory.
+	// Files live at {Datadir}/init/etc/mysql/replication-manager.d/ and follow
+	// naming patterns like with_rep_semisync.cnf, no_disk_doublewrite.cnf, etc.
+	var content string
+	for _, srv := range mycluster.Servers {
+		if srv == nil || srv.Datadir == "" {
+			continue
+		}
+		cnfDir := filepath.Join(srv.Datadir, "init", "etc", "mysql", "replication-manager.d")
+		entries, err := os.ReadDir(cnfDir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			name := e.Name()
+			// Match: the tag name should appear in the filename
+			// e.g. tag "semisync" matches "with_rep_semisync.cnf"
+			if !strings.HasSuffix(name, ".cnf") {
+				continue
+			}
+			nameNoExt := strings.TrimSuffix(name, ".cnf")
+			if !strings.HasSuffix(nameNoExt, tagName) {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(cnfDir, name))
+			if err == nil {
+				content = string(data)
+			}
+			break
+		}
+		if content != "" {
+			break
+		}
+	}
 
-	result := configurator.DocHelpResult{
-		Tag:              tagName,
-		Variables:        matched,
-		UnknownVariables: unknown,
+	type tagContentResponse struct {
+		Tag     string                  `json:"tag"`
+		Content string                  `json:"content"`
+		DocHelp *configurator.DocHelpResult `json:"doc_help,omitempty"`
+	}
+
+	resp := tagContentResponse{
+		Tag:     tagName,
+		Content: content,
+	}
+
+	// Add doc help links for enterprise users
+	plan := mycluster.Conf.Cloud18SubscriptionPlan
+	if plan != "" && plan != "free" && content != "" {
+		varNames := configurator.ParseVariableNamesFromCnf(content)
+		pluginDataDir := mycluster.Conf.ShareDir + "/plugins/data"
+		dh := configurator.NewDocHelp(pluginDataDir)
+		matched, unknown := dh.LookupVariables(varNames)
+		resp.DocHelp = &configurator.DocHelpResult{
+			Tag:              tagName,
+			Variables:        matched,
+			UnknownVariables: unknown,
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	json.NewEncoder(w).Encode(resp)
 }
 
 // handlerMuxAddProxyTag handles the addition of a proxy tag to a given cluster.

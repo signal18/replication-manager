@@ -9,7 +9,6 @@ import AccordionComponent from '../../../components/AccordionComponent'
 import AddRemovePill from '../../../components/AddRemovePill'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
 import TagContentModal from '../../../components/Modals/TagContentModal'
-import DocHelpModal from '../../../components/Modals/DocHelpModal'
 import { addDBTag, dropDBTag, generateAllConfig } from '../../../redux/configSlice'
 import { configService } from '../../../services/configService'
 import Gauge from '../../../components/Gauge'
@@ -37,35 +36,19 @@ function DBConfigs({ selectedCluster, user }) {
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
 
-  // Tag content modal state
-  const [tagContentModal, setTagContentModal] = useState({ open: false, tagName: '', content: '' })
-  // Doc help modal state
-  const [docHelpModal, setDocHelpModal] = useState({ open: false, tagName: '', data: null, error: '' })
+  // Tag content modal state (includes doc help section from the same API response)
+  const [tagContentModal, setTagContentModal] = useState({ open: false, tagName: '', data: null })
 
   const baseURL = useSelector((state) => state?.auth?.baseURL || '')
-  const plan = selectedCluster?.config?.cloud18SubscriptionPlan || ''
-  const isEnterprise = plan !== '' && plan !== 'free'
 
   const dispatch = useDispatch()
 
   const handleViewContent = async (tagName) => {
     try {
       const { data } = await configService.getTagContent(selectedCluster?.name, tagName, baseURL)
-      setTagContentModal({ open: true, tagName, content: data })
+      setTagContentModal({ open: true, tagName, data })
     } catch {
-      setTagContentModal({ open: true, tagName, content: '' })
-    }
-  }
-
-  const handleDocHelp = async (tagName) => {
-    try {
-      const { data } = await configService.getTagDocHelp(selectedCluster?.name, tagName, baseURL)
-      setDocHelpModal({ open: true, tagName, data, error: '' })
-    } catch (err) {
-      const msg = err?.response?.status === 403
-        ? 'Documentation help requires a support or partner plan.'
-        : 'Failed to load documentation.'
-      setDocHelpModal({ open: true, tagName, data: null, error: msg })
+      setTagContentModal({ open: true, tagName, data: null })
     }
   }
 
@@ -410,7 +393,6 @@ function DBConfigs({ selectedCluster, user }) {
                               )
                             }}
                             onViewContent={handleViewContent}
-                            onDocHelp={isEnterprise ? handleDocHelp : undefined}
                           />
                         )
                       })}
@@ -468,17 +450,9 @@ function DBConfigs({ selectedCluster, user }) {
 
       <TagContentModal
         isOpen={tagContentModal.open}
-        closeModal={() => setTagContentModal({ open: false, tagName: '', content: '' })}
+        closeModal={() => setTagContentModal({ open: false, tagName: '', data: null })}
         tagName={tagContentModal.tagName}
-        content={tagContentModal.content}
-      />
-
-      <DocHelpModal
-        isOpen={docHelpModal.open}
-        closeModal={() => setDocHelpModal({ open: false, tagName: '', data: null, error: '' })}
-        tagName={docHelpModal.tagName}
-        data={docHelpModal.data}
-        error={docHelpModal.error}
+        data={tagContentModal.data}
       />
     </VStack>
   )

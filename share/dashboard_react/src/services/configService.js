@@ -11,7 +11,6 @@ export const configService = {
   getPreservedVarsCnf,
   savePreservedVarsCnf,
   getTagContent,
-  getTagDocHelp,
 }
 
 function addDBTag(clusterName, tag, baseURL) {
@@ -52,8 +51,4 @@ function savePreservedVarsCnf(clusterName, content, baseURL) {
 
 function getTagContent(clusterName, tagName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/configurator/tags/${tagName}/content`)
-}
-
-function getTagDocHelp(clusterName, tagName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/configurator/tags/${tagName}/dochelp`)
 }
