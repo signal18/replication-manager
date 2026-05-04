@@ -5282,10 +5282,14 @@ func (repman *ReplicationManager) handlerMuxGetTagContent(w http.ResponseWriter,
 	// GetTagMyCnf matches by filter (fset_name) or by variable name (var_name)
 	// to find the right cnf file content for this tag.
 	content := mycluster.Configurator.GetTagMyCnf(tagName)
+	if content == "" {
+		http.Error(w, fmt.Sprintf(`{"error":"No config content found for tag %q"}`, tagName), http.StatusNotFound)
+		return
+	}
 
 	type tagContentResponse struct {
-		Tag     string                  `json:"tag"`
-		Content string                  `json:"content"`
+		Tag     string                     `json:"tag"`
+		Content string                     `json:"content"`
 		DocHelp *configurator.DocHelpResult `json:"doc_help,omitempty"`
 	}
 

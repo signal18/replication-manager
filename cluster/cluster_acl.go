@@ -414,8 +414,12 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		return true
 	}
 
-	// Configurator tag content and doc help — read-only, no grant required beyond auth
-	if strings.HasPrefix(URL, "/api/clusters/"+cluster.Name+"/configurator/tags/") {
+	// Configurator tag content viewer (read-only GET endpoints only).
+	// Only /content suffix is allowed without a specific grant.
+	// Any future write endpoints under /configurator/tags/ must be added
+	// to clusterACLRules with explicit grant requirements.
+	if strings.HasPrefix(URL, "/api/clusters/"+cluster.Name+"/configurator/tags/") &&
+		strings.HasSuffix(URL, "/content") {
 		return true
 	}
 
