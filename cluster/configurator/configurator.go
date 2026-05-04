@@ -723,21 +723,21 @@ func (configurator *Configurator) GetTagMyCnf(tagName string) string {
 		Path string `json:"path"`
 		Fmt  string `json:"fmt"`
 	}
-	tagLower := strings.ToLower(tagName)
+	// Flatten: remove underscores for comparison so tag "nodoublewrite" matches
+	// var_name "db_cnf_disk_no_doublewrite" (which flattens to "dbcnfdisknodoublewrite").
+	tagFlat := strings.ReplaceAll(strings.ToLower(tagName), "_", "")
 	var result strings.Builder
 	for _, rule := range configurator.DBModule.Rulesets {
 		if !strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf") {
 			continue
 		}
-		// Match by filter (fset_name) if present, otherwise by variable name.
 		filterMatch := rule.Filter != "" && strings.HasSuffix(rule.Filter, tagName)
 		for _, variable := range rule.Variables {
 			if variable.Class != "file" {
 				continue
 			}
-			// Match by var_name when filter is empty (generic rulesets):
-			// e.g. tag "semisync" matches var_name "db_cnf_rep_with_semisync"
-			varMatch := filterMatch || strings.HasSuffix(strings.ToLower(variable.Name), tagLower)
+			varFlat := strings.ReplaceAll(strings.ToLower(variable.Name), "_", "")
+			varMatch := filterMatch || strings.Contains(varFlat, tagFlat)
 			if !varMatch {
 				continue
 			}
