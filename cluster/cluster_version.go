@@ -40,6 +40,52 @@ func (cluster *Cluster) RefreshToolVersions() {
 	}
 }
 
+// CheckComplianceUpdate checks if new compliance files are available in
+// PluginDataDir or if the embedded module changed (binary upgrade).
+// When prov-trust-compliance-changes is true (default), auto-accepts.
+// When false, raises WARN0168 and waits for user approval.
+func (cluster *Cluster) CheckComplianceUpdate() {
+	pluginDataDir := cluster.Conf.ShareDir + "/plugins/data"
+	pending := cluster.Configurator.CheckComplianceUpdate(pluginDataDir)
+	if !pending {
+		cluster.GetStateMachine().DeleteState("WARN0168")
+		return
+	}
+
+	if cluster.Conf.ProvTrustComplianceChanges {
+		// Auto-accept — same behaviour as before this feature.
+		if err := cluster.AcceptComplianceUpdate(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"Auto-accept compliance update failed: %s", err)
+		}
+		return
+	}
+
+	// Approval mode — raise warning and wait for user action.
+	desc := fmt.Sprintf(clusterError["WARN0168"],
+		cluster.Configurator.ActiveDBCRC, cluster.Configurator.PendingDBCRC,
+		cluster.Configurator.ActivePrxCRC, cluster.Configurator.PendingPrxCRC)
+	cluster.SetState("WARN0168", state.State{
+		ErrType: "WARNING",
+		ErrDesc: desc,
+		ErrFrom: "CLUSTER",
+	})
+}
+
+// AcceptComplianceUpdate loads the pending compliance from PluginDataDir,
+// replaces the active modules, clears the pending state and WARN0168.
+func (cluster *Cluster) AcceptComplianceUpdate() error {
+	pluginDataDir := cluster.Conf.ShareDir + "/plugins/data"
+	if err := cluster.Configurator.AcceptComplianceUpdate(pluginDataDir); err != nil {
+		return err
+	}
+	cluster.GetStateMachine().DeleteState("WARN0168")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Compliance update accepted — configurator reloaded with new modules (DB CRC: %08x, Proxy CRC: %08x)",
+		cluster.Configurator.ActiveDBCRC, cluster.Configurator.ActivePrxCRC)
+	return nil
+}
+
 func (cluster *Cluster) SetDBClientVersion(v *version.Version) error {
 	if v == nil {
 		return fmt.Errorf("nil version provided")

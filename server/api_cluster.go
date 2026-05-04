@@ -254,6 +254,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSettingsReload)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/accept-compliance", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAcceptCompliance)),
+	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/reload-plan-info", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReloadPlanInfo)),
@@ -5639,6 +5643,31 @@ func (repman *ReplicationManager) handlerMuxSettingsReload(w http.ResponseWriter
 		return
 	}
 
+}
+
+// handlerMuxAcceptCompliance accepts a pending compliance update for a cluster.
+func (repman *ReplicationManager) handlerMuxAcceptCompliance(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if !mycluster.Configurator.HasPendingComplianceUpdate() {
+		http.Error(w, `{"error":"No pending compliance update"}`, http.StatusConflict)
+		return
+	}
+	if err := mycluster.AcceptComplianceUpdate(); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"compliance update accepted"}`))
 }
 
 // handlerMuxServerAdd handles the addition of a server to a given cluster.

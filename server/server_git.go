@@ -445,20 +445,13 @@ func (repman *ReplicationManager) syncPluginDataFromPull(pullDir string) {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlInfo,
 			"[logplugin] synced %d global plugin data file(s) from pull repo", changed)
 
-		// If compliance modulesets were updated, reload the configurator for all clusters.
-		for clusterName, cluster := range repman.Clusters {
-			pluginDataDir := cluster.Conf.ShareDir + "/plugins/data"
-			reloaded, err := cluster.Configurator.ReloadComplianceFromDataDir(pluginDataDir)
-			if err != nil {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
-					"[compliance] reload failed for cluster %s: %v", clusterName, err)
-			} else if reloaded {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlInfo,
-					"[compliance] reloaded configurator for cluster %s from updated compliance files", clusterName)
-				// Also reload the DocHelp database in case it was updated too.
-				if cluster.Configurator.DocHelp != nil {
-					cluster.Configurator.DocHelp.Reload()
-				}
+		// Reload DocHelp database for all clusters (safe to auto-refresh).
+		// Compliance modules are NOT auto-reloaded — the enterprise-compliance
+		// plugin detects the change and raises a state; the user must explicitly
+		// accept the new compliance via the API before it takes effect.
+		for _, cluster := range repman.Clusters {
+			if cluster.Configurator.DocHelp != nil {
+				cluster.Configurator.DocHelp.Reload()
 			}
 		}
 	}

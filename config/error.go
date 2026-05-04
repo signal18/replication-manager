@@ -242,6 +242,7 @@ var ClusterError = map[string]string{
 	"WARN0165":  "Restart container cookie deferred on %s: %s",
 	"WARN0166":  "Restic reseed queued on server %s (snapshot %s, method %s, strategy %s)",
 	"WARN0167":  "Failed to get sysbench version on repman: %s",
+	"WARN0168":  "New compliance moduleset available from back office (DB CRC: %08x → %08x, Proxy CRC: %08x → %08x). Accept the update via Settings to apply.",
 	// Log-tailer plugin state codes (WARN0200-WARN0299 reserved for logplugin)
 	"WARN0200":  "Server %s has recent ERROR entries in database error log (last 24h)",
 	"WARN0201":  "Server %s has recent SQL errors in SQL error log (last 24h)",
