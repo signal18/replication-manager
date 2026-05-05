@@ -1082,8 +1082,14 @@ func (repman *ReplicationManager) handlerChangeSubscription(w http.ResponseWrite
 
 	if status == http.StatusOK || status == http.StatusCreated {
 		repman.Conf.Cloud18SubscriptionPlan = req.Plan
+		// Persist to all cluster configs so the plan survives restart
+		// and is visible to the back office via git push.
+		for _, cl := range repman.Clusters {
+			cl.Conf.Cloud18SubscriptionPlan = req.Plan
+			cl.ConfigManager.SaveConfig(cl, false)
+		}
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"subscription: plan changed to %s for URI %s", req.Plan, uri)
+			"subscription: plan changed to %s for URI %s (persisted to config)", req.Plan, uri)
 	}
 
 	w.WriteHeader(status)
