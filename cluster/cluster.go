@@ -1303,6 +1303,12 @@ type ClusterState struct {
 	RepmgrVersion string    `json:"repmgrVersion"`
 	RepmgrArch    string    `json:"repmgrArch"`
 	RepmgrOS      string    `json:"repmgrOS"`
+	// Peer health fields — consumed by the BO to build peer.json with health data,
+	// removing the need for direct peer-to-peer HTTP polling.
+	IsDown        bool      `json:"isDown"`
+	IsMasterDown  bool      `json:"isMasterDown"`
+	IsFailable    bool      `json:"isFailable"`
+	IsProvisioned bool      `json:"isProvisioned"`
 }
 
 type ClusterSLAState struct {
@@ -1324,6 +1330,10 @@ func (cluster *Cluster) Save() error {
 	clsave.RepmgrVersion = cluster.RepMgrVersion
 	clsave.RepmgrArch = cluster.Conf.GoArch
 	clsave.RepmgrOS = cluster.Conf.GoOS
+	clsave.IsDown = cluster.IsDown
+	clsave.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().State == "Failed"
+	clsave.IsFailable = !cluster.IsNotMonitoring && cluster.StateMachine.GetHeartbeats() > 0
+	clsave.IsProvisioned = cluster.IsAllDbUp
 
 	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
 	err := os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)
