@@ -1096,6 +1096,7 @@ func (repman *ReplicationManager) handlerChangeSubscription(w http.ResponseWrite
 	w.Write(respBody)
 }
 
+
 // handlerUnregister — POST /api/register/unregister  (admin JWT required)
 //
 // Drops the GitLab projects for this instance's URI via the CRM, then clears
