@@ -1318,6 +1318,12 @@ func (repman *ReplicationManager) handlerMuxPeerClusters(w http.ResponseWriter, 
 		return
 	}
 
+	if repman.Conf.Cloud18DisablePeers {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+		return
+	}
+
 	uinfo, err := repman.GetJWTClaims(r)
 	if err != nil {
 		http.Error(w, "Failed to get token claims: "+err.Error(), http.StatusInternalServerError)
@@ -1353,6 +1359,15 @@ func (repman *ReplicationManager) handlerMuxPeerClustersForSale(w http.ResponseW
 	ok, err := repman.isValidRequest(r)
 	if !ok {
 		http.Error(w, "Unauthenticated resource: "+err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	// Paid plans can disable the for-sale marketplace view.
+	// Free plans cannot — marketplace visibility is the trade-off for the free tier.
+	plan := repman.Conf.Cloud18SubscriptionPlan
+	if repman.Conf.Cloud18DisableForSale && plan != "" && plan != "free" {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
 		return
 	}
 

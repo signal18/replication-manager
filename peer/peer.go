@@ -89,6 +89,7 @@ type PeerManager struct {
 	Clients           map[string]*PeerClient
 	Interval          int
 	MissingSince      time.Time
+	HealthMode        string // "peering" (HTTP poll) or "pulling" (BO via peer.json)
 }
 
 // NewPeerManager initializes a new PeerManager.
@@ -144,13 +145,22 @@ func (pm *PeerManager) BatchUpdateClusters(clusterUpdates []*PeerCluster, remove
 		hashID := GetPeerHashID(pc)
 
 		if cl, exists := pm.PeerClusters[hashID]; exists {
-			pc.IsDown = cl.IsDown
-			pc.IsMasterDown = cl.IsMasterDown
-			pc.IsFailable = cl.IsFailable
-			pc.IsProvisioned = cl.IsProvisioned
-			pc.LastUpdate = cl.LastUpdate
+			if pm.HealthMode == "pulling" && pc.RepmgrVersion != "" {
+				// Pulling mode with known version: use health from peer.json (BO).
+				pc.LastUpdate = time.Now()
+			} else {
+				// Peering mode or unknown version: preserve health from HTTP polling.
+				pc.IsDown = cl.IsDown
+				pc.IsMasterDown = cl.IsMasterDown
+				pc.IsFailable = cl.IsFailable
+				pc.IsProvisioned = cl.IsProvisioned
+				pc.LastUpdate = cl.LastUpdate
+			}
 			*cl = *pc
 		} else {
+			if pm.HealthMode == "pulling" && pc.RepmgrVersion != "" {
+				pc.LastUpdate = time.Now()
+			}
 			pm.PeerClusters[hashID] = pc
 		}
 
@@ -170,9 +180,13 @@ func (pm *PeerManager) BatchUpdateClusters(clusterUpdates []*PeerCluster, remove
 		}
 	}
 
-	// Update the health status of all clusters.
+	// Update health status based on configured mode.
 	if len(pm.PeerURL) > 0 {
-		go pm.GetAllHealthStatus()
+		if pm.HealthMode == "pulling" {
+			go pm.GetHealthStatusForUnknownVersions()
+		} else {
+			go pm.GetAllHealthStatus()
+		}
 	}
 }
 

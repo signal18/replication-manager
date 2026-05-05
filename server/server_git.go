@@ -554,9 +554,11 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 	modTime := fstat.ModTime()
 
 	if oldModTime, ok := repman.ModTimes["peer"]; ok && oldModTime.Equal(modTime) {
-		// peer.json unchanged — poll only peers with unknown version (old repman
-		// instances that don't push health to clusterstate.json yet).
-		go repman.PeerManager.GetHealthStatusForUnknownVersions()
+		if repman.Conf.Cloud18PeerHealthMode == "peering" {
+			go repman.PeerManager.GetAllHealthStatus()
+		} else if repman.Conf.Cloud18PeerHealthMode == "pulling" {
+			go repman.PeerManager.GetHealthStatusForUnknownVersions()
+		}
 		return nil // No changes in the file modification time
 	}
 
@@ -576,7 +578,11 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 
 	// Compare with the existing checksum
 	if oldHash, ok := repman.CheckSumConfig["peer"]; ok && bytes.Equal(oldHash.Sum(nil), newHash.Sum(nil)) {
-		go repman.PeerManager.GetHealthStatusForUnknownVersions()
+		if repman.Conf.Cloud18PeerHealthMode == "peering" {
+			go repman.PeerManager.GetAllHealthStatus()
+		} else if repman.Conf.Cloud18PeerHealthMode == "pulling" {
+			go repman.PeerManager.GetHealthStatusForUnknownVersions()
+		}
 		return nil // No changes in the file content
 	}
 

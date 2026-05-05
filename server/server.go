@@ -1098,6 +1098,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18AlertSlackURL, "cloud18-alert-slack-url", "https://meet.signal18.io/hooks/1wuk8e5sttd89epqoaff3y9t6y", "Slack webhook URL for cloud18")
 	flags.StringVar(&conf.Cloud18AlertSlackUser, "cloud18-alert-slack-user", "repman", "Slack user for cloud18")
 	flags.IntVar(&conf.Cloud18HealthRefreshInterval, "cloud18-health-refresh-interval", 30, "Health refresh interval in seconds")
+	flags.StringVar(&conf.Cloud18PeerHealthMode, "cloud18-peer-health-mode", "peering", "Peer health source: peering (direct HTTP) or pulling (from BO via peer.json)")
+	flags.BoolVar(&conf.Cloud18DisablePeers, "cloud18-disable-peers", false, "Hide peer clusters from dashboard")
+	flags.BoolVar(&conf.Cloud18DisableForSale, "cloud18-disable-for-sale", false, "Hide clusters for sale from marketplace (paid plans only)")
 	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 janitor gateway DNS ")
 	flags.StringVar(&conf.Cloud18CrmApiUrl, "cloud18-crm-api-url", "https://api.crm.ovh-fr-2.signal18.cloud18.io", "Cloud18 CRM API base URL used for cluster registration")
 	flags.IntVar(&conf.Cloud18ApplicationCredits, "cloud18-application-credits", 2, "Cloud18 application credits(1 core 4G Ram 8G Disk)")
@@ -1492,6 +1495,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	}
 
 	repman.PeerManager = peer.NewPeerManager(repman.Conf.Cloud18HealthRefreshInterval)
+	repman.PeerManager.HealthMode = repman.Conf.Cloud18PeerHealthMode
 	repman.ModTimes = make(map[string]time.Time)
 	repman.ServerScopeList = make(map[string]bool)
 	repman.VersionConfs = make(map[string]*config.ConfVersion)
@@ -2704,8 +2708,10 @@ func (repman *ReplicationManager) Run() error {
 				repman.ReloadTerms()
 			}
 
-			if repman.Conf.Cloud18 {
-				repman.PeerManager.GetAllHealthStatus()
+			if repman.Conf.Cloud18 && !repman.Conf.Cloud18DisablePeers {
+				if repman.Conf.Cloud18PeerHealthMode == "peering" {
+					repman.PeerManager.GetAllHealthStatus()
+				}
 				repman.UpdateLocalPeer()
 			}
 
