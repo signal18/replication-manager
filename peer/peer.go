@@ -54,6 +54,7 @@ type PeerCluster struct {
 	Cloud18ExtDbOps                        string    `json:"cloud18-external-dbops"`
 	Cloud18ExtSysOps                       string    `json:"cloud18-external-sysops"`
 	Cloud18InfraCertifications             string    `json:"cloud18-infra-certifications"`
+	RepmgrVersion                          string    `json:"repmgrVersion"`
 	IsDown                                 bool      `json:"isDown"`
 	IsMasterDown                           bool      `json:"isMasterDown"`
 	IsFailable                             bool      `json:"isFailable"`
@@ -382,6 +383,68 @@ func (pm *PeerManager) GetAllHealthStatus() {
 		}
 
 		// Login if no token is set in the client.
+		if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
+			if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
+				nodestat.Error = fmt.Sprintf("failed to login: %s", err)
+				continue
+			}
+		}
+
+		if time.Since(nodestat.LastUpdate) > time.Duration(pm.Interval)*time.Second {
+			if err := pm.GetHealthStatus(pclient); err != nil {
+				nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
+				continue
+			}
+			nodestat.Error = ""
+			nodestat.LastUpdate = time.Now()
+		}
+	}
+}
+
+// GetHealthStatusForUnknownVersions polls only peers whose RepmgrVersion is
+// empty — meaning they are running an old repman that doesn't push health
+// fields to clusterstate.json. Peers with a known version get their health
+// from peer.json (populated by the BO from clusters_state) and don't need
+// direct HTTP polling.
+func (pm *PeerManager) GetHealthStatusForUnknownVersions() {
+	pm.mu.RLock()
+	// Collect URLs of peers with unknown version
+	var unknownURLs []string
+	for _, pc := range pm.PeerClusters {
+		if pc.RepmgrVersion == "" && pc.ApiPublicUrl != "" && pc.ApiPublicUrl != pm.ApiURL {
+			unknownURLs = append(unknownURLs, pc.ApiPublicUrl)
+		}
+	}
+	pm.mu.RUnlock()
+
+	if len(unknownURLs) == 0 {
+		return
+	}
+
+	// Deduplicate URLs (multiple clusters on same instance)
+	seen := make(map[string]bool)
+	for _, url := range unknownURLs {
+		if seen[url] {
+			continue
+		}
+		seen[url] = true
+
+		nodestat, ok := pm.PeerURL[url]
+		if !ok {
+			continue
+		}
+
+		if !misc.IsValidPublicURL(url) {
+			nodestat.Error = "not a valid public URL"
+			continue
+		}
+
+		pclient, ok := pm.Clients[url]
+		if !ok {
+			pclient = pm.NewClient(url)
+			pm.Clients[url] = pclient
+		}
+
 		if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
 			if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
 				nodestat.Error = fmt.Sprintf("failed to login: %s", err)

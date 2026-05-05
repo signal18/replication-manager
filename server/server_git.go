@@ -554,7 +554,9 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 	modTime := fstat.ModTime()
 
 	if oldModTime, ok := repman.ModTimes["peer"]; ok && oldModTime.Equal(modTime) {
-		go repman.PeerManager.GetAllHealthStatus()
+		// peer.json unchanged — poll only peers with unknown version (old repman
+		// instances that don't push health to clusterstate.json yet).
+		go repman.PeerManager.GetHealthStatusForUnknownVersions()
 		return nil // No changes in the file modification time
 	}
 
@@ -574,7 +576,7 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 
 	// Compare with the existing checksum
 	if oldHash, ok := repman.CheckSumConfig["peer"]; ok && bytes.Equal(oldHash.Sum(nil), newHash.Sum(nil)) {
-		go repman.PeerManager.GetAllHealthStatus()
+		go repman.PeerManager.GetHealthStatusForUnknownVersions()
 		return nil // No changes in the file content
 	}
 
