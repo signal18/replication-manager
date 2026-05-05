@@ -83,6 +83,8 @@ func (cluster *Cluster) AcceptComplianceUpdate() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"Compliance update accepted — configurator reloaded with new modules (DB CRC: %08x, Proxy CRC: %08x)",
 		cluster.Configurator.ActiveDBCRC, cluster.Configurator.ActivePrxCRC)
+
+	cluster.SetConfigRefreshCookie() // Flag for config refresh
 	return nil
 }
 
