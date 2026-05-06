@@ -524,7 +524,7 @@ Start create an account in https://gitlab.signal18.io
     }] : []),
     ...(isConnected ? [{
       key: 'Peer Health Mode',
-      help: h(`**Peer Health Mode**\n\nHow peer cluster health status is determined:\n\n- **peering** (default): Direct HTTP polling of all peer instances — gives real-time reachability but scales O(N²)\n- **smart**: Always polls your own fleet (same registered GitLab user). Shared/marketplace peers are only polled when a user viewing them is connected\n- **pulling**: Health comes from peer.json via the back office — lowest overhead, scales O(N), but with a few minutes delay\n\nConfig: \`cloud18-peer-health-mode\``, 'Peer Health Mode'),
+      help: h(`**Peer Health Mode**\n\nHow peer cluster health status is determined:\n\n- **peering**: Direct HTTP polling of all peer instances — gives real-time reachability but scales O(N²)\n- **smart** (default): Always polls your own fleet (same registered GitLab user). Shared/marketplace peers are only polled when a user viewing them is connected\n- **pulling**: Health comes from peer.json via the back office — lowest overhead, scales O(N), but with a few minutes delay\n\nConfig: \`cloud18-peer-health-mode\``, 'Peer Health Mode'),
       value: (
         <Dropdown
           options={[
@@ -532,7 +532,7 @@ Start create an account in https://gitlab.signal18.io
             { value: 'smart', label: 'Smart (own fleet + active users)' },
             { value: 'pulling', label: 'Pulling (via back office)' }
           ]}
-          selectedValue={config?.cloud18PeerHealthMode || 'peering'}
+          selectedValue={config?.cloud18PeerHealthMode || 'smart'}
           confirmTitle="Confirm peer health mode: "
           onChange={(opt) => dispatch(setGlobalSetting({ setting: 'cloud18-peer-health-mode', value: opt.value }))}
         />
