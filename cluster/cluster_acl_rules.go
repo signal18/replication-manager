@@ -213,6 +213,7 @@ var clusterACLRules = []ACLRule{
 	// Cluster Settings
 	{"/settings/actions/reload", nil, []string{config.GrantClusterSettings}},
 	{"/settings/actions/reload-plan-info", nil, []string{config.GrantClusterSettings}},
+	{"/settings/actions/accept-compliance", nil, []string{config.GrantDBConfigAcceptCompliance, config.GrantProxyConfigAcceptCompliance}},
 	{"/settings/actions/switch", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/set", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/clear", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},

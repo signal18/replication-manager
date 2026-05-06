@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
 	"path/filepath"
@@ -40,6 +41,15 @@ type Configurator struct {
 	ProxyTagsDiscover     []string          `json:"proxyServersTagsDiscover"`
 	WorkingDir            string            `json:"-"` // working dir is the place to generate the all cluster config
 	DocHelp               *DocHelp          `json:"-"` // variable documentation lookup (singleton, lazy-loaded)
+	// ActiveDBCRC and ActivePrxCRC are CRC32 checksums of the compliance
+	// modules last accepted by the user. Persisted to disk so upgrades
+	// (new embedded module) and BO pushes are both detected on restart.
+	ActiveDBCRC           uint32            `json:"-"`
+	ActivePrxCRC          uint32            `json:"-"`
+	// PendingDBCRC and PendingPrxCRC are CRC32 checksums of new compliance
+	// files found in PluginDataDir or embedded. Non-zero when an update is pending.
+	PendingDBCRC          uint32            `json:"pendingDBCRC,omitempty"`
+	PendingPrxCRC         uint32            `json:"pendingPrxCRC,omitempty"`
 }
 
 func (configurator *Configurator) Init(conf config.Config, logger *logrus.Logger) error {
@@ -58,6 +68,24 @@ func (configurator *Configurator) Init(conf config.Config, logger *logrus.Logger
 	configurator.ConfigDBTags = configurator.GetDBModuleTags()
 	configurator.ConfigPrxTags = configurator.GetProxyModuleTags()
 	configurator.DocHelp = NewDocHelp(conf.ShareDir + "/plugins/data")
+	if conf.ProvAutoUpdateCompliance {
+		// Trust mode (default): always use the current module (embedded or BO-pushed).
+		// Save it to disk so it becomes the baseline for future comparisons.
+		configurator.ActiveDBCRC = configurator.complianceCRC(configurator.DBModule)
+		configurator.ActivePrxCRC = configurator.complianceCRC(configurator.ProxyModule)
+		configurator.saveAcceptedCompliance()
+	} else {
+		// Approval mode: load the previously accepted compliance from disk.
+		// If found, use it instead of the embedded module — this preserves the
+		// accepted version across binary upgrades until the user explicitly
+		// approves the new version via the API.
+		if configurator.loadAcceptedCompliance() {
+			configurator.ConfigDBTags = configurator.GetDBModuleTags()
+			configurator.ConfigPrxTags = configurator.GetProxyModuleTags()
+		}
+		configurator.ActiveDBCRC = configurator.complianceCRC(configurator.DBModule)
+		configurator.ActivePrxCRC = configurator.complianceCRC(configurator.ProxyModule)
+	}
 	if conf.PRXServersReadOnMaster && !configurator.IsFilterInProxyTags("readonmaster") {
 		configurator.AddProxyTag("readonmaster")
 	} else {
@@ -98,6 +126,322 @@ func (configurator *Configurator) LoadDBModules() error {
 		return fmt.Errorf("Failed unmarshal file %s %s", "opensvc/moduleset_mariadb.svc.mrm.db.json", err)
 	}
 	return nil
+}
+
+// ReloadComplianceFromDataDir checks for updated compliance files in the
+// plugin data directory (pushed by the back office via git pull) and reloads
+// the DB and Proxy modules if the files exist and parse successfully.
+// Returns true if either module was reloaded.
+func (configurator *Configurator) ReloadComplianceFromDataDir(pluginDataDir string) (bool, error) {
+	reloaded := false
+
+	dbFile := filepath.Join(pluginDataDir, "moduleset_mariadb.svc.mrm.db.json")
+	if data, err := os.ReadFile(dbFile); err == nil {
+		var module config.Compliance
+		if err := json.Unmarshal(data, &module); err == nil && len(module.Rulesets) > 0 {
+			configurator.DBModule = module
+			configurator.ConfigDBTags = configurator.GetDBModuleTags()
+			reloaded = true
+		}
+	}
+
+	proxyFile := filepath.Join(pluginDataDir, "moduleset_mariadb.svc.mrm.proxy.json")
+	if data, err := os.ReadFile(proxyFile); err == nil {
+		var module config.Compliance
+		if err := json.Unmarshal(data, &module); err == nil && len(module.Rulesets) > 0 {
+			configurator.ProxyModule = module
+			configurator.ConfigPrxTags = configurator.GetProxyModuleTags()
+			reloaded = true
+		}
+	}
+
+	return reloaded, nil
+}
+
+// complianceCRC computes a CRC32 checksum of a compliance module by
+// re-serialising it to JSON. Used to detect changes.
+func (configurator *Configurator) complianceCRC(module config.Compliance) uint32 {
+	data, err := json.Marshal(module)
+	if err != nil {
+		return 0
+	}
+	return crc32.ChecksumIEEE(data)
+}
+
+// CheckComplianceUpdate checks if the current in-memory compliance modules
+// differ from the last accepted CRC. This detects both:
+// - BO-pushed files in PluginDataDir (pulled via git)
+// - Embedded module changes from a binary upgrade
+// Sets PendingDBCRC/PendingPrxCRC when a change is pending.
+func (configurator *Configurator) CheckComplianceUpdate(pluginDataDir string) bool {
+	pending := false
+
+	// Check PluginDataDir first (BO push takes priority over embedded)
+	dbCRC := uint32(0)
+	dbFile := filepath.Join(pluginDataDir, "moduleset_mariadb.svc.mrm.db.json")
+	if data, err := os.ReadFile(dbFile); err == nil {
+		dbCRC = crc32.ChecksumIEEE(data)
+	} else {
+		// No BO file — check the current in-memory (embedded) module
+		dbCRC = configurator.complianceCRC(configurator.DBModule)
+	}
+	if dbCRC != 0 && dbCRC != configurator.ActiveDBCRC {
+		configurator.PendingDBCRC = dbCRC
+		pending = true
+	} else {
+		configurator.PendingDBCRC = 0
+	}
+
+	prxCRC := uint32(0)
+	prxFile := filepath.Join(pluginDataDir, "moduleset_mariadb.svc.mrm.proxy.json")
+	if data, err := os.ReadFile(prxFile); err == nil {
+		prxCRC = crc32.ChecksumIEEE(data)
+	} else {
+		prxCRC = configurator.complianceCRC(configurator.ProxyModule)
+	}
+	if prxCRC != 0 && prxCRC != configurator.ActivePrxCRC {
+		configurator.PendingPrxCRC = prxCRC
+		pending = true
+	} else {
+		configurator.PendingPrxCRC = 0
+	}
+
+	return pending
+}
+
+// HasPendingComplianceUpdate returns true when new compliance files are
+// available but not yet accepted by the user.
+func (configurator *Configurator) HasPendingComplianceUpdate() bool {
+	return configurator.PendingDBCRC != 0 || configurator.PendingPrxCRC != 0
+}
+
+// AcceptComplianceUpdate loads the pending compliance (from PluginDataDir or
+// the new embedded modules after a binary upgrade), replaces the in-memory
+// modules, persists the full accepted compliance to disk, and clears the
+// pending state. On next restart the accepted version is loaded from disk.
+func (configurator *Configurator) AcceptComplianceUpdate(pluginDataDir string) error {
+	// Try loading from PluginDataDir first (BO push)
+	reloaded, _ := configurator.ReloadComplianceFromDataDir(pluginDataDir)
+	if !reloaded {
+		// No BO files — the change is from an embedded module upgrade.
+		// Reload from the embedded defaults to get the new version.
+		configurator.LoadDBModules()
+		configurator.LoadProxyModules()
+		configurator.ConfigDBTags = configurator.GetDBModuleTags()
+		configurator.ConfigPrxTags = configurator.GetProxyModuleTags()
+	}
+	configurator.ActiveDBCRC = configurator.complianceCRC(configurator.DBModule)
+	configurator.ActivePrxCRC = configurator.complianceCRC(configurator.ProxyModule)
+	configurator.PendingDBCRC = 0
+	configurator.PendingPrxCRC = 0
+	// Persist the full accepted modules to disk so they survive the next restart.
+	configurator.saveAcceptedCompliance()
+	return nil
+}
+
+const (
+	acceptedDBFile  = "accepted_compliance_db.json"
+	acceptedPrxFile = "accepted_compliance_proxy.json"
+	previousDBFile  = "accepted_compliance_db.json.old"
+	previousPrxFile = "accepted_compliance_proxy.json.old"
+)
+
+// saveAcceptedCompliance writes the current in-memory compliance modules to
+// disk so they survive binary upgrades. The previous accepted version is
+// renamed to .old so operators can diff what changed.
+func (configurator *Configurator) saveAcceptedCompliance() {
+	if configurator.WorkingDir == "" {
+		return
+	}
+	// Rotate: current accepted → .old (for diffing)
+	dbPath := filepath.Join(configurator.WorkingDir, acceptedDBFile)
+	prxPath := filepath.Join(configurator.WorkingDir, acceptedPrxFile)
+	if _, err := os.Stat(dbPath); err == nil {
+		os.Rename(dbPath, filepath.Join(configurator.WorkingDir, previousDBFile))
+	}
+	if _, err := os.Stat(prxPath); err == nil {
+		os.Rename(prxPath, filepath.Join(configurator.WorkingDir, previousPrxFile))
+	}
+	// Write new accepted
+	if data, err := json.Marshal(configurator.DBModule); err == nil {
+		os.WriteFile(dbPath, data, 0644)
+	}
+	if data, err := json.Marshal(configurator.ProxyModule); err == nil {
+		os.WriteFile(prxPath, data, 0644)
+	}
+}
+
+// loadAcceptedCompliance reads previously accepted compliance modules from
+// disk and replaces the in-memory modules. Returns true if at least one
+// module was loaded from disk.
+func (configurator *Configurator) loadAcceptedCompliance() bool {
+	if configurator.WorkingDir == "" {
+		return false
+	}
+	loaded := false
+
+	dbPath := filepath.Join(configurator.WorkingDir, acceptedDBFile)
+	if data, err := os.ReadFile(dbPath); err == nil {
+		var module config.Compliance
+		if err := json.Unmarshal(data, &module); err == nil && len(module.Rulesets) > 0 {
+			configurator.DBModule = module
+			loaded = true
+		}
+	}
+
+	prxPath := filepath.Join(configurator.WorkingDir, acceptedPrxFile)
+	if data, err := os.ReadFile(prxPath); err == nil {
+		var module config.Compliance
+		if err := json.Unmarshal(data, &module); err == nil && len(module.Rulesets) > 0 {
+			configurator.ProxyModule = module
+			loaded = true
+		}
+	}
+
+	return loaded
+}
+
+// ComplianceTagChange describes one tag that was added, removed, or modified.
+type ComplianceTagChange struct {
+	Tag      string `json:"tag"`
+	Category string `json:"category"`
+	Action   string `json:"action"` // "added", "removed", "modified"
+	OldCnf   string `json:"old_cnf,omitempty"`
+	NewCnf   string `json:"new_cnf,omitempty"`
+}
+
+// ComplianceDiffResult is the structured diff between old and new compliance.
+type ComplianceDiffResult struct {
+	HasOld     bool                  `json:"has_old"`
+	HasNew     bool                  `json:"has_new"`
+	OldDBCRC   uint32                `json:"old_db_crc"`
+	NewDBCRC   uint32                `json:"new_db_crc"`
+	OldPrxCRC  uint32                `json:"old_prx_crc"`
+	NewPrxCRC  uint32                `json:"new_prx_crc"`
+	DBChanges  []ComplianceTagChange `json:"db_changes"`
+	PrxChanges []ComplianceTagChange `json:"prx_changes"`
+}
+
+// ComplianceDiff compares the previous (.old) and current accepted compliance
+// and returns a structured list of tag-level changes.
+func (configurator *Configurator) ComplianceDiff() ComplianceDiffResult {
+	result := ComplianceDiffResult{}
+	if configurator.WorkingDir == "" {
+		return result
+	}
+
+	// Load old and new DB modules
+	oldDB := configurator.loadComplianceFile(filepath.Join(configurator.WorkingDir, previousDBFile))
+	newDB := configurator.loadComplianceFile(filepath.Join(configurator.WorkingDir, acceptedDBFile))
+	result.HasOld = oldDB != nil
+	result.HasNew = newDB != nil
+	if oldDB != nil {
+		result.OldDBCRC = configurator.complianceCRC(*oldDB)
+	}
+	if newDB != nil {
+		result.NewDBCRC = configurator.complianceCRC(*newDB)
+	}
+
+	if oldDB != nil && newDB != nil {
+		result.DBChanges = configurator.diffModuleTags(oldDB, newDB)
+	}
+
+	// Load old and new Proxy modules
+	oldPrx := configurator.loadComplianceFile(filepath.Join(configurator.WorkingDir, previousPrxFile))
+	newPrx := configurator.loadComplianceFile(filepath.Join(configurator.WorkingDir, acceptedPrxFile))
+	if oldPrx != nil {
+		result.OldPrxCRC = configurator.complianceCRC(*oldPrx)
+	}
+	if newPrx != nil {
+		result.NewPrxCRC = configurator.complianceCRC(*newPrx)
+	}
+
+	if oldPrx != nil && newPrx != nil {
+		result.PrxChanges = configurator.diffModuleTags(oldPrx, newPrx)
+	}
+
+	return result
+}
+
+func (configurator *Configurator) loadComplianceFile(path string) *config.Compliance {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var module config.Compliance
+	if err := json.Unmarshal(data, &module); err != nil || len(module.Rulesets) == 0 {
+		return nil
+	}
+	return &module
+}
+
+// diffModuleTags compares two compliance modules at the tag level.
+// For each tag it extracts the cnf content and reports added/removed/modified.
+func (configurator *Configurator) diffModuleTags(oldMod, newMod *config.Compliance) []ComplianceTagChange {
+	oldTags := extractTagCnfMap(oldMod)
+	newTags := extractTagCnfMap(newMod)
+
+	var changes []ComplianceTagChange
+
+	// Removed or modified
+	for tag, oldCnf := range oldTags {
+		newCnf, exists := newTags[tag]
+		if !exists {
+			changes = append(changes, ComplianceTagChange{
+				Tag:    tag,
+				Action: "removed",
+				OldCnf: oldCnf,
+			})
+		} else if oldCnf != newCnf {
+			changes = append(changes, ComplianceTagChange{
+				Tag:    tag,
+				Action: "modified",
+				OldCnf: oldCnf,
+				NewCnf: newCnf,
+			})
+		}
+	}
+
+	// Added
+	for tag, newCnf := range newTags {
+		if _, exists := oldTags[tag]; !exists {
+			changes = append(changes, ComplianceTagChange{
+				Tag:    tag,
+				Action: "added",
+				NewCnf: newCnf,
+			})
+		}
+	}
+
+	return changes
+}
+
+// extractTagCnfMap builds a map of tag_name→cnf_content from a compliance module
+// by iterating rulesets and extracting file variables.
+func extractTagCnfMap(mod *config.Compliance) map[string]string {
+	type fileVar struct {
+		Path string `json:"path"`
+		Fmt  string `json:"fmt"`
+	}
+	tags := make(map[string]string)
+	for _, rule := range mod.Rulesets {
+		for _, variable := range rule.Variables {
+			if variable.Class != "file" {
+				continue
+			}
+			var fv fileVar
+			if err := json.Unmarshal([]byte(variable.Value), &fv); err != nil {
+				continue
+			}
+			if !strings.HasSuffix(fv.Path, ".cnf") {
+				continue
+			}
+			// Use var_name as the tag key (normalised)
+			key := strings.ToLower(variable.Name)
+			tags[key] = fv.Fmt
+		}
+	}
+	return tags
 }
 
 func (configurator *Configurator) LoadProxyModules() error {

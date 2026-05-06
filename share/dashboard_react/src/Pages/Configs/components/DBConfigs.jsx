@@ -1,4 +1,4 @@
-import { Box, Flex, HStack, VStack } from '@chakra-ui/react'
+import { Alert, AlertIcon, Box, Button, Flex, HStack, Text, VStack } from '@chakra-ui/react'
 import React, { useEffect, useState } from 'react'
 import RMSwitch from '../../../components/RMSwitch'
 import TableType2 from '../../../components/TableType2'
@@ -9,6 +9,7 @@ import AccordionComponent from '../../../components/AccordionComponent'
 import AddRemovePill from '../../../components/AddRemovePill'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
 import TagContentModal from '../../../components/Modals/TagContentModal'
+import ComplianceDiffModal from '../../../components/Modals/ComplianceDiffModal'
 import CommonModal from '../../../components/Modals/CommonModal'
 import { addDBTag, dropDBTag, generateAllConfig } from '../../../redux/configSlice'
 import { configService } from '../../../services/configService'
@@ -43,6 +44,35 @@ function DBConfigs({ selectedCluster, user }) {
 
   // Tag content modal state (includes doc help section from the same API response)
   const [tagContentModal, setTagContentModal] = useState({ open: false, tagName: '', data: null })
+
+  // Compliance diff modal state
+  const [complianceDiffModal, setComplianceDiffModal] = useState({ open: false, data: null, loading: false })
+  const [acceptLoading, setAcceptLoading] = useState(false)
+
+  // Check if WARN0168 (pending compliance update) is active
+  const clusterAlerts = useSelector((state) => state?.cluster?.clusterAlerts)
+  const hasPendingCompliance = clusterAlerts?.warnings?.some((w) => w.number === 'WARN0168')
+
+  const handleReviewCompliance = async () => {
+    setComplianceDiffModal({ open: true, data: null, loading: true })
+    try {
+      const { data } = await configService.getComplianceDiff(selectedCluster?.name, baseURL)
+      setComplianceDiffModal({ open: true, data, loading: false })
+    } catch {
+      setComplianceDiffModal({ open: true, data: null, loading: false })
+    }
+  }
+
+  const handleAcceptCompliance = async () => {
+    setAcceptLoading(true)
+    try {
+      await configService.acceptCompliance(selectedCluster?.name, baseURL)
+      setComplianceDiffModal({ open: false, data: null, loading: false })
+    } catch (err) {
+      // keep modal open on error
+    }
+    setAcceptLoading(false)
+  }
 
   // Help modal state
   const [helpAction, setHelpAction] = useState({ title: '', body: <></> })
@@ -169,6 +199,7 @@ function DBConfigs({ selectedCluster, user }) {
   const hFetchConfig = `**Fetch Config on Start**\n\nWhen enabled, database servers fetch their configuration from replication-manager on startup.\n\nThe generated config is pushed to each server's data directory and applied when the database process starts.\n\nConfig: \`prov-db-start-fetch-config\``
   const hDynamicConfig = `**Apply Dynamic Config**\n\nWhen enabled, replication-manager applies configuration changes dynamically using \`SET GLOBAL\` statements without requiring a database restart.\n\nOnly variables that support dynamic changes are applied this way. Variables requiring a restart are written to the config file for the next restart.\n\nConfig: \`prov-db-apply-dynamic-config\``
   const hRefreshConfig = `**Refresh Variables and DB Config**\n\nRegenerates the configuration files for all database servers in this cluster from the compliance module and the current tag selection.\n\nThis rebuilds the config tarball at \`{datadir}/config.tar.gz\` with all tag-specific cnf files merged with preserved variables and defaults.`
+  const hAutoUpdateCompliance = `**Auto-Update Compliance**\n\nThe compliance module contains replication-manager's best practices for database and proxy configuration. It defines which variables are set for each configuration tag.\n\nWhen enabled (default), compliance updates from the back office or new replication-manager releases are **applied automatically**. Your preserved variables are never overwritten — they always take priority over compliance defaults.\n\nWhen disabled, a warning (WARN0168) is raised when new compliance is available. You can review the changes (added, removed, or modified tags) and accept when ready. This is recommended for production environments where you want to review best practice changes before they take effect.\n\nConfig: \`prov-auto-update-compliance\``
 
   const dataObject = [
     {
@@ -195,6 +226,20 @@ function DBConfigs({ selectedCluster, user }) {
           confirmTitle={'Confirm switch settings for prov-db-apply-dynamic-config?'}
           onChange={() =>
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-apply-dynamic-config' }))
+          }
+        />
+      )
+    },
+    {
+      key: 'Auto-Update Compliance',
+      help: h(hAutoUpdateCompliance, 'Auto-Update Compliance'),
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.provAutoUpdateCompliance}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for prov-auto-update-compliance?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-auto-update-compliance' }))
           }
         />
       )
@@ -392,6 +437,22 @@ function DBConfigs({ selectedCluster, user }) {
 
   return (
     <VStack>
+      {hasPendingCompliance && (
+        <Alert status='warning' borderRadius='md' w='100%'>
+          <AlertIcon />
+          <Text fontSize='sm' flex='1'>
+            A new compliance update is available from the back office. Review the changes before accepting.
+          </Text>
+          <HStack spacing={2}>
+            <Button size='sm' variant='outline' colorScheme='orange' onClick={handleReviewCompliance}>
+              Review Changes
+            </Button>
+            <Button size='sm' colorScheme='blue' isLoading={acceptLoading} onClick={handleAcceptCompliance}>
+              Accept
+            </Button>
+          </HStack>
+        </Alert>
+      )}
       <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
       {user?.grants['db-config-flag'] && (
         <HStack className={styles.configTagContainer}>
@@ -491,6 +552,15 @@ function DBConfigs({ selectedCluster, user }) {
         title={helpAction.title}
         body={helpAction.body}
         size='xl'
+      />
+
+      <ComplianceDiffModal
+        isOpen={complianceDiffModal.open}
+        closeModal={() => setComplianceDiffModal({ open: false, data: null, loading: false })}
+        diffData={complianceDiffModal.data}
+        loading={complianceDiffModal.loading}
+        onAccept={hasPendingCompliance ? handleAcceptCompliance : undefined}
+        acceptLoading={acceptLoading}
       />
     </VStack>
   )

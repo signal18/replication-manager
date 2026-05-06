@@ -444,6 +444,16 @@ func (repman *ReplicationManager) syncPluginDataFromPull(pullDir string) {
 	if changed > 0 {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlInfo,
 			"[logplugin] synced %d global plugin data file(s) from pull repo", changed)
+
+		// Reload DocHelp database for all clusters (safe to auto-refresh).
+		// Compliance modules are NOT auto-reloaded — the enterprise-compliance
+		// plugin detects the change and raises a state; the user must explicitly
+		// accept the new compliance via the API before it takes effect.
+		for _, cluster := range repman.Clusters {
+			if cluster.Configurator.DocHelp != nil {
+				cluster.Configurator.DocHelp.Reload()
+			}
+		}
 	}
 }
 

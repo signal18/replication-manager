@@ -414,13 +414,12 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		return true
 	}
 
-	// Configurator tag content viewer (read-only GET endpoints only).
-	// Only /content suffix is allowed without a specific grant.
-	// Any future write endpoints under /configurator/tags/ must be added
-	// to clusterACLRules with explicit grant requirements.
-	if strings.HasPrefix(URL, "/api/clusters/"+cluster.Name+"/configurator/tags/") &&
-		strings.HasSuffix(URL, "/content") {
-		return true
+	// Configurator read-only endpoints — no specific grant required beyond auth.
+	// Write endpoints under /configurator/ must be added to clusterACLRules.
+	if strings.HasPrefix(URL, "/api/clusters/"+cluster.Name+"/configurator/") {
+		if strings.HasSuffix(URL, "/content") || strings.HasSuffix(URL, "/compliance-diff") {
+			return true
+		}
 	}
 
 	// Terminal ACL - special handling
