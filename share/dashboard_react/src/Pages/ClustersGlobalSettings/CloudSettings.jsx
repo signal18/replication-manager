@@ -7,8 +7,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
-import { setGlobalSetting, getMonitoredData, registerInstance, confirmRegisterInstance, pollRegisterStatus, fetchSubscriptionPlans, fetchSubscription, updateSubscription, unregisterInstance } from '../../redux/globalClustersSlice'
+import { setGlobalSetting, switchGlobalSetting, getMonitoredData, registerInstance, confirmRegisterInstance, pollRegisterStatus, fetchSubscriptionPlans, fetchSubscription, updateSubscription, unregisterInstance } from '../../redux/globalClustersSlice'
 import TextForm from '../../components/TextForm'
+import RMSwitch from '../../components/RMSwitch'
+import Dropdown from '../../components/Dropdown'
 import RMIconButton from '../../components/RMIconButton'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import { HiEye, HiEyeOff } from 'react-icons/hi'
@@ -520,6 +522,44 @@ Start create an account in https://gitlab.signal18.io
         </HStack>
       )
     }] : []),
+    ...(isConnected ? [{
+      key: 'Peer Health Mode',
+      help: h(`**Peer Health Mode**\n\nHow peer cluster health status is determined:\n\n- **peering**: Direct HTTP polling of all peer instances — gives real-time reachability but scales O(N²)\n- **smart** (default): Always polls your own fleet (same registered GitLab user). Shared/marketplace peers are only polled when a user viewing them is connected\n- **pulling**: Health comes from peer.json via the back office — lowest overhead, scales O(N), but with a few minutes delay\n\nConfig: \`cloud18-peer-health-mode\``, 'Peer Health Mode'),
+      value: (
+        <Dropdown
+          options={[
+            { value: 'peering', label: 'Peering (poll all)' },
+            { value: 'smart', label: 'Smart (own fleet + active users)' },
+            { value: 'pulling', label: 'Pulling (via back office)' }
+          ]}
+          selectedValue={config?.cloud18PeerHealthMode || 'smart'}
+          confirmTitle="Confirm peer health mode: "
+          onChange={(opt) => dispatch(setGlobalSetting({ setting: 'cloud18-peer-health-mode', value: opt.value }))}
+        />
+      )
+    },
+    {
+      key: 'Disable Peers',
+      help: h(`**Disable Peers**\n\nWhen enabled, peer clusters are hidden from the dashboard and all peer health polling is skipped.\n\nConfig: \`cloud18-disable-peers\``, 'Disable Peers'),
+      value: (
+        <RMSwitch
+          confirmTitle='Confirm switch settings for cloud18-disable-peers?'
+          onChange={() => dispatch(switchGlobalSetting({ setting: 'cloud18-disable-peers' }))}
+          isChecked={config?.cloud18DisablePeers}
+        />
+      )
+    },
+    ...((config?.cloud18SubscriptionPlan && config?.cloud18SubscriptionPlan !== 'free') ? [{
+      key: 'Disable Marketplace',
+      help: h(`**Disable Marketplace**\n\nWhen enabled, clusters for sale are hidden from the marketplace view.\n\nThis option is only available on paid plans. Free plan users always see the marketplace.\n\nConfig: \`cloud18-disable-for-sale\``, 'Disable Marketplace'),
+      value: (
+        <RMSwitch
+          confirmTitle='Confirm switch settings for cloud18-disable-for-sale?'
+          onChange={() => dispatch(switchGlobalSetting({ setting: 'cloud18-disable-for-sale' }))}
+          isChecked={config?.cloud18DisableForSale}
+        />
+      )
+    }] : [])] : []),
   ]
 
   return (
