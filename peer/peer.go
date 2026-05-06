@@ -378,19 +378,31 @@ func (pm *PeerManager) UpdateHealthStatus(healths map[string]PeerHealth) {
 	}
 }
 
-// GetHealthStatusForActiveUsers polls only the peer URLs that at least one
-// active user can access. activeUsers is the list of usernames with a live
-// session (non-empty GitToken). This turns O(N²) into O(M) where M is the
-// subset of peers relevant to connected users.
-func (pm *PeerManager) GetHealthStatusForActiveUsers(activeUsers []string) {
-	if len(activeUsers) == 0 {
-		return
-	}
-
-	// Collect unique peer URLs that active users can see.
+// GetHealthStatusForActiveUsers polls only the peer URLs that the registered
+// user or active session users can access. The registeredUser (cloud18-gitlab-user)
+// is always included — own fleet peers are always polled. Other users' peers
+// are only polled when they have an active session (non-empty GitToken).
+func (pm *PeerManager) GetHealthStatusForActiveUsers(registeredUser string, activeUsers []string) {
+	// Collect unique peer URLs: registered user always + active session users.
 	pm.mu.RLock()
 	relevantURLs := make(map[string]bool)
+
+	// Always include registered user's peers (own fleet)
+	if registeredUser != "" {
+		if clusters, ok := pm.PeerUserClusters[registeredUser]; ok {
+			for _, pc := range clusters {
+				if pc.ApiPublicUrl != "" && pc.ApiPublicUrl != pm.ApiURL {
+					relevantURLs[pc.ApiPublicUrl] = true
+				}
+			}
+		}
+	}
+
+	// Add active session users' peers
 	for _, user := range activeUsers {
+		if user == registeredUser {
+			continue
+		}
 		if clusters, ok := pm.PeerUserClusters[user]; ok {
 			for _, pc := range clusters {
 				if pc.ApiPublicUrl != "" && pc.ApiPublicUrl != pm.ApiURL {

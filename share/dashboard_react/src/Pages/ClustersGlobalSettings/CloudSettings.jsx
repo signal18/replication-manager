@@ -524,12 +524,12 @@ Start create an account in https://gitlab.signal18.io
     }] : []),
     ...(isConnected ? [{
       key: 'Peer Health Mode',
-      help: h(`**Peer Health Mode**\n\nHow peer cluster health status is determined:\n\n- **peering** (default): Direct HTTP polling of all peer instances — gives real-time reachability but scales O(N²)\n- **smart**: Only polls peers that currently connected users can access — reduces network load to what's needed\n- **pulling**: Health comes from peer.json via the back office — lowest overhead, scales O(N), but with a few minutes delay\n\nConfig: \`cloud18-peer-health-mode\``, 'Peer Health Mode'),
+      help: h(`**Peer Health Mode**\n\nHow peer cluster health status is determined:\n\n- **peering** (default): Direct HTTP polling of all peer instances — gives real-time reachability but scales O(N²)\n- **smart**: Always polls your own fleet (same registered GitLab user). Shared/marketplace peers are only polled when a user viewing them is connected\n- **pulling**: Health comes from peer.json via the back office — lowest overhead, scales O(N), but with a few minutes delay\n\nConfig: \`cloud18-peer-health-mode\``, 'Peer Health Mode'),
       value: (
         <Dropdown
           options={[
             { value: 'peering', label: 'Peering (poll all)' },
-            { value: 'smart', label: 'Smart (poll for active users)' },
+            { value: 'smart', label: 'Smart (own fleet + active users)' },
             { value: 'pulling', label: 'Pulling (via back office)' }
           ]}
           selectedValue={config?.cloud18PeerHealthMode || 'peering'}

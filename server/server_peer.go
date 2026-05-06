@@ -129,6 +129,19 @@ func (repman *ReplicationManager) UpdateLocalPeer() {
 	repman.PeerManager.UpdateHealthStatus(repman.GetLocalHealth())
 }
 
+// dispatchPeerHealthPoll runs the appropriate health poll based on the configured mode.
+func (repman *ReplicationManager) dispatchPeerHealthPoll() {
+	switch repman.Conf.Cloud18PeerHealthMode {
+	case "peering":
+		go repman.PeerManager.GetAllHealthStatus()
+	case "smart":
+		activeUsers := repman.getActiveSessionUsers()
+		go repman.PeerManager.GetHealthStatusForActiveUsers(repman.Conf.Cloud18GitUser, activeUsers)
+	case "pulling":
+		go repman.PeerManager.GetHealthStatusForUnknownVersions()
+	}
+}
+
 // getActiveSessionUsers returns usernames of users with an active session
 // (non-empty GitToken from OAuth login). These are the users currently
 // connected to the dashboard who need peer health data.
