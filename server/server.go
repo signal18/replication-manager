@@ -1098,7 +1098,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18AlertSlackURL, "cloud18-alert-slack-url", "https://meet.signal18.io/hooks/1wuk8e5sttd89epqoaff3y9t6y", "Slack webhook URL for cloud18")
 	flags.StringVar(&conf.Cloud18AlertSlackUser, "cloud18-alert-slack-user", "repman", "Slack user for cloud18")
 	flags.IntVar(&conf.Cloud18HealthRefreshInterval, "cloud18-health-refresh-interval", 30, "Health refresh interval in seconds")
-	flags.StringVar(&conf.Cloud18PeerHealthMode, "cloud18-peer-health-mode", "peering", "Peer health source: peering (direct HTTP) or pulling (from BO via peer.json)")
+	flags.StringVar(&conf.Cloud18PeerHealthMode, "cloud18-peer-health-mode", "peering", "Peer health mode: peering (poll all), smart (poll only for active users), pulling (from BO via peer.json)")
 	flags.BoolVar(&conf.Cloud18DisablePeers, "cloud18-disable-peers", false, "Hide peer clusters from dashboard")
 	flags.BoolVar(&conf.Cloud18DisableForSale, "cloud18-disable-for-sale", false, "Hide clusters for sale from marketplace (paid plans only)")
 	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 janitor gateway DNS ")
@@ -2709,9 +2709,16 @@ func (repman *ReplicationManager) Run() error {
 			}
 
 			if repman.Conf.Cloud18 && !repman.Conf.Cloud18DisablePeers {
-				if repman.Conf.Cloud18PeerHealthMode == "peering" {
+				switch repman.Conf.Cloud18PeerHealthMode {
+				case "peering":
 					repman.PeerManager.GetAllHealthStatus()
+				case "smart":
+					activeUsers := repman.getActiveSessionUsers()
+					if len(activeUsers) > 0 {
+						repman.PeerManager.GetHealthStatusForActiveUsers(activeUsers)
+					}
 				}
+				// "pulling" mode: no HTTP polling, health comes from peer.json
 				repman.UpdateLocalPeer()
 			}
 

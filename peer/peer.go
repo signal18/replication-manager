@@ -378,6 +378,68 @@ func (pm *PeerManager) UpdateHealthStatus(healths map[string]PeerHealth) {
 	}
 }
 
+// GetHealthStatusForActiveUsers polls only the peer URLs that at least one
+// active user can access. activeUsers is the list of usernames with a live
+// session (non-empty GitToken). This turns O(N²) into O(M) where M is the
+// subset of peers relevant to connected users.
+func (pm *PeerManager) GetHealthStatusForActiveUsers(activeUsers []string) {
+	if len(activeUsers) == 0 {
+		return
+	}
+
+	// Collect unique peer URLs that active users can see.
+	pm.mu.RLock()
+	relevantURLs := make(map[string]bool)
+	for _, user := range activeUsers {
+		if clusters, ok := pm.PeerUserClusters[user]; ok {
+			for _, pc := range clusters {
+				if pc.ApiPublicUrl != "" && pc.ApiPublicUrl != pm.ApiURL {
+					relevantURLs[pc.ApiPublicUrl] = true
+				}
+			}
+		}
+	}
+	pm.mu.RUnlock()
+
+	if len(relevantURLs) == 0 {
+		return
+	}
+
+	for url := range relevantURLs {
+		nodestat, ok := pm.PeerURL[url]
+		if !ok {
+			continue
+		}
+
+		if !misc.IsValidPublicURL(url) {
+			nodestat.Error = "not a valid public URL"
+			continue
+		}
+
+		pclient, ok := pm.Clients[url]
+		if !ok {
+			pclient = pm.NewClient(url)
+			pm.Clients[url] = pclient
+		}
+
+		if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
+			if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
+				nodestat.Error = fmt.Sprintf("failed to login: %s", err)
+				continue
+			}
+		}
+
+		if time.Since(nodestat.LastUpdate) > time.Duration(pm.Interval)*time.Second {
+			if err := pm.GetHealthStatus(pclient); err != nil {
+				nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
+				continue
+			}
+			nodestat.Error = ""
+			nodestat.LastUpdate = time.Now()
+		}
+	}
+}
+
 func (pm *PeerManager) GetAllHealthStatus() {
 	for url, nodestat := range pm.PeerURL {
 		if url == pm.ApiURL {

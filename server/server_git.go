@@ -554,9 +554,15 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 	modTime := fstat.ModTime()
 
 	if oldModTime, ok := repman.ModTimes["peer"]; ok && oldModTime.Equal(modTime) {
-		if repman.Conf.Cloud18PeerHealthMode == "peering" {
+		switch repman.Conf.Cloud18PeerHealthMode {
+		case "peering":
 			go repman.PeerManager.GetAllHealthStatus()
-		} else if repman.Conf.Cloud18PeerHealthMode == "pulling" {
+		case "smart":
+			activeUsers := repman.getActiveSessionUsers()
+			if len(activeUsers) > 0 {
+				go repman.PeerManager.GetHealthStatusForActiveUsers(activeUsers)
+			}
+		case "pulling":
 			go repman.PeerManager.GetHealthStatusForUnknownVersions()
 		}
 		return nil // No changes in the file modification time
@@ -578,9 +584,15 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 
 	// Compare with the existing checksum
 	if oldHash, ok := repman.CheckSumConfig["peer"]; ok && bytes.Equal(oldHash.Sum(nil), newHash.Sum(nil)) {
-		if repman.Conf.Cloud18PeerHealthMode == "peering" {
+		switch repman.Conf.Cloud18PeerHealthMode {
+		case "peering":
 			go repman.PeerManager.GetAllHealthStatus()
-		} else if repman.Conf.Cloud18PeerHealthMode == "pulling" {
+		case "smart":
+			activeUsers := repman.getActiveSessionUsers()
+			if len(activeUsers) > 0 {
+				go repman.PeerManager.GetHealthStatusForActiveUsers(activeUsers)
+			}
+		case "pulling":
 			go repman.PeerManager.GetHealthStatusForUnknownVersions()
 		}
 		return nil // No changes in the file content

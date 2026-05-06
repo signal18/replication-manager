@@ -128,3 +128,22 @@ func (repman *ReplicationManager) GetLocalHealth() map[string]peer.PeerHealth {
 func (repman *ReplicationManager) UpdateLocalPeer() {
 	repman.PeerManager.UpdateHealthStatus(repman.GetLocalHealth())
 }
+
+// getActiveSessionUsers returns usernames of users with an active session
+// (non-empty GitToken from OAuth login). These are the users currently
+// connected to the dashboard who need peer health data.
+func (repman *ReplicationManager) getActiveSessionUsers() []string {
+	seen := make(map[string]bool)
+	for _, cl := range repman.Clusters {
+		for username, apiuser := range cl.APIUsers {
+			if apiuser.GitToken != "" && !seen[username] {
+				seen[username] = true
+			}
+		}
+	}
+	users := make([]string, 0, len(seen))
+	for u := range seen {
+		users = append(users, u)
+	}
+	return users
+}

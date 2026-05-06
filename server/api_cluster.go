@@ -4964,7 +4964,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "monitoring-log-api-login-silent-users":
 		repman.Conf.MonitoringLogAPILoginSilentUsers = value
 	case "cloud18-peer-health-mode":
-		if value == "peering" || value == "pulling" {
+		if value == "peering" || value == "smart" || value == "pulling" {
 			repman.Conf.Cloud18PeerHealthMode = value
 			repman.PeerManager.HealthMode = value
 		}
