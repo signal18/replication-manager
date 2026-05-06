@@ -4963,6 +4963,11 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.MonitoringLogAPILogin = isactive
 	case "monitoring-log-api-login-silent-users":
 		repman.Conf.MonitoringLogAPILoginSilentUsers = value
+	case "cloud18-peer-health-mode":
+		if value == "peering" || value == "pulling" {
+			repman.Conf.Cloud18PeerHealthMode = value
+			repman.PeerManager.HealthMode = value
+		}
 	case "mail-max-pool":
 		v, _ = strconv.Atoi(value)
 		repman.Conf.MailMaxPool = v
@@ -5022,6 +5027,13 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.LogSupport = !repman.Conf.LogSupport
 	case "monitoring-log-api-login":
 		repman.Conf.MonitoringLogAPILogin = !repman.Conf.MonitoringLogAPILogin
+	case "cloud18-disable-peers":
+		repman.Conf.Cloud18DisablePeers = !repman.Conf.Cloud18DisablePeers
+	case "cloud18-disable-for-sale":
+		// Free plans cannot disable marketplace
+		if repman.Conf.Cloud18SubscriptionPlan != "" && repman.Conf.Cloud18SubscriptionPlan != "free" {
+			repman.Conf.Cloud18DisableForSale = !repman.Conf.Cloud18DisableForSale
+		}
 	default:
 		return errors.New("setting not found")
 	}
