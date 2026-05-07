@@ -1157,6 +1157,13 @@ func (collector *Collector) GetPoolInfoListV2() ([]PoolInfo, error) {
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
 
+	if !handleSuccessGroup(resp.StatusCode) {
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
+	}
+
 	result := gjson.ParseBytes(body)
 	poolInfos := make([]PoolInfo, 0)
 
@@ -1182,7 +1189,7 @@ func (collector *Collector) GetPoolInfoListV2() ([]PoolInfo, error) {
 
 	if result.IsObject() {
 		result.ForEach(func(key, value gjson.Result) bool {
-			if key.String() != "status" && key.String() != "data" && key.String() != "error" && key.String() != "nodes" {
+			if key.String() != "status" && key.String() != "data" && key.String() != "error" && key.String() != "nodes" && value.IsObject() {
 				poolInfos = append(poolInfos, poolInfoFromResult(value, key.String()))
 			}
 			return true

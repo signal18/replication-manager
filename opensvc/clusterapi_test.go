@@ -642,6 +642,65 @@ func TestGetPoolInfoListV2_ParsesSharedCapabilities(t *testing.T) {
 	}
 }
 
+func TestGetPoolInfoListV2_Non2xxReturnsStatusError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/get_pools", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":"upstream unavailable"}`))
+	})
+
+	server := httptest.NewUnstartedServer(mux)
+	server.EnableHTTP2 = true
+	server.TLS = &tls.Config{NextProtos: []string{"h2"}}
+	server.StartTLS()
+	defer server.Close()
+
+	collector := newTestCollector(t, server)
+	collector.ContextTimeoutSecond = 2
+
+	_, err := collector.GetPoolInfoListV2()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var statusErr *StatusError
+	if !errors.As(err, &statusErr) {
+		t.Fatalf("expected StatusError, got %T (%v)", err, err)
+	}
+	if statusErr.StatusCode != http.StatusBadGateway {
+		t.Fatalf("unexpected status code: got %d want %d", statusErr.StatusCode, http.StatusBadGateway)
+	}
+}
+
+func TestGetPoolInfoListV2_IgnoresTopLevelMetadataKeys(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/get_pools", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"poolA":{},"metadata":"ignore-me","count":2,"status":0}`))
+	})
+
+	server := httptest.NewUnstartedServer(mux)
+	server.EnableHTTP2 = true
+	server.TLS = &tls.Config{NextProtos: []string{"h2"}}
+	server.StartTLS()
+	defer server.Close()
+
+	collector := newTestCollector(t, server)
+	collector.ContextTimeoutSecond = 2
+
+	infos, err := collector.GetPoolInfoListV2()
+	if err != nil {
+		t.Fatalf("GetPoolInfoListV2 failed: %v", err)
+	}
+
+	if len(infos) != 1 {
+		t.Fatalf("unexpected pool count: got %d want 1", len(infos))
+	}
+	if infos[0].Name != "poolA" {
+		t.Fatalf("unexpected pool name: got %q want %q", infos[0].Name, "poolA")
+	}
+}
+
 func TestGetPoolInfoListV3_ParsesShared(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
