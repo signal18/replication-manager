@@ -9205,11 +9205,8 @@ func (repman *ReplicationManager) handlerMuxClusterOpenSVCPoolList(w http.Respon
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(options); err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: %s", err)
-			http.Error(w, "Error writing response: "+err.Error(), http.StatusInternalServerError)
-			return
 		}
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)

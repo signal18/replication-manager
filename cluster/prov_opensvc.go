@@ -221,7 +221,12 @@ func cloneOpenSVCPoolInfoList(pools []opensvc.PoolInfo) []opensvc.PoolInfo {
 	}
 
 	cloned := make([]opensvc.PoolInfo, len(pools))
-	copy(cloned, pools)
+	for i, p := range pools {
+		caps := make([]string, len(p.Capabilities))
+		copy(caps, p.Capabilities)
+		p.Capabilities = caps
+		cloned[i] = p
+	}
 	return cloned
 }
 
@@ -237,6 +242,8 @@ func (cluster *Cluster) openSVCGetPoolInfoList(ttl time.Duration, forceRefresh b
 		cluster.opensvcPoolInfoCacheMu.RUnlock()
 	}
 
+	// Multiple goroutines may reach here concurrently after the read-lock window.
+	// The last writer wins; results are deterministic, so this is benign for a long TTL.
 	svc := cluster.OpenSVCConnect()
 	pools, err := svc.GetPoolInfoList()
 	if err != nil {

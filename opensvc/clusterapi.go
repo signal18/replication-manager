@@ -1188,8 +1188,13 @@ func (collector *Collector) GetPoolInfoListV2() ([]PoolInfo, error) {
 	}
 
 	if result.IsObject() {
+		// All three blocks can fire for the same response (e.g. object with both "nodes" and
+		// top-level pool keys). The nodes block and this block intentionally coexist.
+		// Known top-level metadata keys must be listed here; if the API adds new metadata
+		// object fields in the future they must be added to avoid being misread as pool names.
+		knownMetaKeys := map[string]bool{"status": true, "data": true, "error": true, "nodes": true}
 		result.ForEach(func(key, value gjson.Result) bool {
-			if key.String() != "status" && key.String() != "data" && key.String() != "error" && key.String() != "nodes" && value.IsObject() {
+			if !knownMetaKeys[key.String()] && value.IsObject() {
 				poolInfos = append(poolInfos, poolInfoFromResult(value, key.String()))
 			}
 			return true
