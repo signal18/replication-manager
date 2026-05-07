@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -452,4 +453,151 @@ func TestRunTaskV2_SendsCorrectRequest(t *testing.T) {
 	if rid != task {
 		t.Fatalf("expected rid %q, got %v", task, rid)
 	}
+}
+
+func TestGetPoolListV2_CallsGetPoolsAndParses(t *testing.T) {
+	t.Run("direct object keys", func(t *testing.T) {
+		var gotPath string
+		var gotNode string
+
+		mux := http.NewServeMux()
+		mux.HandleFunc("/get_pools", func(w http.ResponseWriter, r *http.Request) {
+			gotPath = r.URL.Path
+			gotNode = r.Header.Get("o-node")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"poolB":{},"poolA":{},"status":0}`))
+		})
+
+		server := httptest.NewUnstartedServer(mux)
+		server.EnableHTTP2 = true
+		server.TLS = &tls.Config{NextProtos: []string{"h2"}}
+		server.StartTLS()
+		defer server.Close()
+
+		collector := newTestCollector(t, server)
+		collector.ContextTimeoutSecond = 2
+
+		pools, err := collector.GetPoolListV2()
+		if err != nil {
+			t.Fatalf("GetPoolListV2 failed: %v", err)
+		}
+
+		if gotPath != "/get_pools" {
+			t.Fatalf("unexpected endpoint: %s", gotPath)
+		}
+		if gotNode != "*" {
+			t.Fatalf("unexpected o-node header: %s", gotNode)
+		}
+
+		want := []string{"poolA", "poolB"}
+		if fmt.Sprint(pools) != fmt.Sprint(want) {
+			t.Fatalf("unexpected pools: got %v want %v", pools, want)
+		}
+	})
+
+	t.Run("nodes wrapped and deduped", func(t *testing.T) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/get_pools", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"nodes":{"n1":{"poolZ":{},"poolA":{}},"n2":{"poolA":{},"poolB":{}}}}`))
+		})
+
+		server := httptest.NewUnstartedServer(mux)
+		server.EnableHTTP2 = true
+		server.TLS = &tls.Config{NextProtos: []string{"h2"}}
+		server.StartTLS()
+		defer server.Close()
+
+		collector := newTestCollector(t, server)
+		collector.ContextTimeoutSecond = 2
+
+		pools, err := collector.GetPoolListV2()
+		if err != nil {
+			t.Fatalf("GetPoolListV2 failed: %v", err)
+		}
+
+		want := []string{"poolA", "poolB", "poolZ"}
+		if fmt.Sprint(pools) != fmt.Sprint(want) {
+			t.Fatalf("unexpected pools: got %v want %v", pools, want)
+		}
+	})
+}
+
+func TestGetPoolListV3_StatusAndParsing(t *testing.T) {
+	t.Run("success parses and sorts", func(t *testing.T) {
+		var gotPath string
+		mux := http.NewServeMux()
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			gotPath = r.URL.Path
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"items":[{"name":"pool-c"},{"name":"pool-a"},{"name":"pool-a"}]}`))
+		})
+
+		server := httptest.NewTLSServer(mux)
+		defer server.Close()
+
+		parsed, err := url.Parse(server.URL)
+		if err != nil {
+			t.Fatalf("parse server url: %v", err)
+		}
+
+		collector := &Collector{
+			Host:                 parsed.Hostname(),
+			Port:                 parsed.Port(),
+			RplMgrUser:           "user",
+			RplMgrPassword:       "pass",
+			ClusterApiVersion:    "v3",
+			ContextTimeoutSecond: 2,
+		}
+
+		pools, err := collector.GetPoolListV3()
+		if err != nil {
+			t.Fatalf("GetPoolListV3 failed: %v", err)
+		}
+		if !strings.Contains(gotPath, "pool") {
+			t.Fatalf("unexpected endpoint: %s", gotPath)
+		}
+
+		want := []string{"pool-a", "pool-c"}
+		if fmt.Sprint(pools) != fmt.Sprint(want) {
+			t.Fatalf("unexpected pools: got %v want %v", pools, want)
+		}
+	})
+
+	t.Run("non 2xx returns StatusError", func(t *testing.T) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"bad request"}`))
+		})
+
+		server := httptest.NewTLSServer(mux)
+		defer server.Close()
+
+		parsed, err := url.Parse(server.URL)
+		if err != nil {
+			t.Fatalf("parse server url: %v", err)
+		}
+
+		collector := &Collector{
+			Host:                 parsed.Hostname(),
+			Port:                 parsed.Port(),
+			RplMgrUser:           "user",
+			RplMgrPassword:       "pass",
+			ClusterApiVersion:    "v3",
+			ContextTimeoutSecond: 2,
+		}
+
+		_, err = collector.GetPoolListV3()
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		var statusErr *StatusError
+		if !errors.As(err, &statusErr) {
+			t.Fatalf("expected StatusError, got %T (%v)", err, err)
+		}
+		if statusErr.StatusCode != http.StatusBadRequest {
+			t.Fatalf("unexpected status code: %d", statusErr.StatusCode)
+		}
+	})
 }

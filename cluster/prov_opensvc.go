@@ -189,6 +189,11 @@ func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
 	return agents, nil
 }
 
+func (cluster *Cluster) OpenSVCGetPoolList() ([]string, error) {
+	svc := cluster.OpenSVCConnect()
+	return svc.GetPoolList()
+}
+
 func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		return errors.New("No support of Maps in Collector API")

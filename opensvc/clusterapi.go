@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"time"
 
@@ -968,6 +969,127 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 	} else {
 		return collector.GetNodesV2()
 	}
+}
+
+func normalizeStringList(values []string) []string {
+	uniq := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		uniq[value] = struct{}{}
+	}
+
+	result := make([]string, 0, len(uniq))
+	for value := range uniq {
+		result = append(result, value)
+	}
+
+	sort.Strings(result)
+	return result
+}
+
+func (collector *Collector) GetPoolList() ([]string, error) {
+	if collector.IsV3() {
+		return collector.GetPoolListV3()
+	}
+
+	return collector.GetPoolListV2()
+}
+
+func (collector *Collector) GetPoolListV2() ([]string, error) {
+	url := fmt.Sprintf("https://%s:%s/get_pools", collector.Host, collector.Port)
+
+	client := collector.GetHttpClient()
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("o-node", "*")
+
+	ctx, cancel := context.WithTimeout(req.Context(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	startConnect := time.Now()
+	resp, err := client.Do(req)
+	stopConnect := time.Now()
+	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC Connect took: %s\n", stopConnect.Sub(startConnect))
+	}
+	if err != nil {
+		if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: ", err)
+		}
+		return nil, err
+	}
+
+	defer client.CloseIdleConnections()
+	defer resp.Body.Close()
+
+	startRead := time.Now()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	endRead := time.Now()
+	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC Read response took: %s\n", endRead.Sub(startRead))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
+
+	result := gjson.ParseBytes(body)
+	pools := make([]string, 0)
+
+	if result.IsArray() {
+		for _, item := range result.Array() {
+			if item.Type == gjson.String {
+				pools = append(pools, item.String())
+				continue
+			}
+			if name := item.Get("name"); name.Exists() {
+				pools = append(pools, name.String())
+			}
+		}
+	} else if nodes := result.Get("nodes"); nodes.Exists() && nodes.IsObject() {
+		nodes.ForEach(func(_, nodeData gjson.Result) bool {
+			nodeData.ForEach(func(poolName, poolData gjson.Result) bool {
+				if poolName.String() != "" {
+					pools = append(pools, poolName.String())
+				}
+				if name := poolData.Get("name"); name.Exists() {
+					pools = append(pools, name.String())
+				}
+				return true
+			})
+			return true
+		})
+	} else if result.IsObject() {
+		result.ForEach(func(key, value gjson.Result) bool {
+			if key.String() != "status" && key.String() != "data" && key.String() != "error" {
+				pools = append(pools, key.String())
+			}
+			if name := value.Get("name"); name.Exists() {
+				pools = append(pools, name.String())
+			}
+			return true
+		})
+		if data := result.Get("data"); data.Exists() && data.IsArray() {
+			for _, item := range data.Array() {
+				if item.Type == gjson.String {
+					pools = append(pools, item.String())
+					continue
+				}
+				if name := item.Get("name"); name.Exists() {
+					pools = append(pools, name.String())
+				}
+			}
+		}
+	}
+
+	return normalizeStringList(pools), nil
 }
 
 func (collector *Collector) GetServiceNodeFromState(svc string) ([]string, error) {

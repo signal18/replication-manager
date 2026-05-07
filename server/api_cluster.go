@@ -90,6 +90,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterOpenSVCDaemonStatus)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/opensvc-pools", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterOpenSVCPoolList)),
+	))
+
 	//PROTECTED ENDPOINTS FOR CLUSTERS ACTIONS
 	router.Handle("/api/clusters/{clusterName}/settings", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -9148,6 +9153,54 @@ func (repman *ReplicationManager) handlerMuxClusterOpenSVCDaemonStatus(w http.Re
 		_, err = w.Write(statsJSON)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
+			http.Error(w, "Error writing response: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handlerMuxClusterOpenSVCPoolList handles the HTTP request to retrieve the OpenSVC pool list of a cluster.
+// @Summary Get OpenSVC Pool List
+// @Description Retrieves the OpenSVC storage pool names of the specified cluster.
+// @Tags ClusterGateway
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} string "OpenSVC pool list fetched"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster" or "Error getting OpenSVC pool list"
+// @Router /api/clusters/{clusterName}/opensvc-pools [get]
+func (repman *ReplicationManager) handlerMuxClusterOpenSVCPoolList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+
+		pools, err := mycluster.OpenSVCGetPoolList()
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting OpenSVC pool list: %s", err)
+			http.Error(w, "Error getting OpenSVC pool list: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		poolsJSON, err := json.Marshal(pools)
+		if err != nil {
+			http.Error(w, "Error marshalling pool list: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err = w.Write(poolsJSON)
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: %s", err)
 			http.Error(w, "Error writing response: "+err.Error(), http.StatusInternalServerError)
 			return
 		}

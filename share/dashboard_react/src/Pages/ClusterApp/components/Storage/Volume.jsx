@@ -22,7 +22,7 @@ const maskString = (str, mask = '*') => {
 
 const VolumeSection = ({
     rows = [],
-    volumePools = "",
+    opensvcPools = [],
     fieldName = "volumes",
     title = "Saved Volumes",
     newTitle = "Add New Volume",
@@ -37,19 +37,17 @@ const VolumeSection = ({
     const [isVisible, setIsVisible] = useState(false);
 
     const poolOptions = useMemo(() => {
-        if (!volumePools) {
+        if (!Array.isArray(opensvcPools) || opensvcPools.length === 0) {
             return [];
         }
-        // The source will be a comma-separated string of pool names with characteristics
-        // Example: "tank:local,drbd:shared:failover"
-        return volumePools.split(',').map((pool) => {
-            const parts = pool.trim().split(':');
-            return {
-                value: parts[0].trim(),
-                name: parts[0].trim() + (parts.length > 1 ? ` (${parts.slice(1).join(':').trim()})` : ''),
-            };
-        });
-    }, [volumePools]);
+
+        return [...new Set(opensvcPools.filter(Boolean))]
+            .sort((a, b) => a.localeCompare(b))
+            .map((poolName) => ({
+                value: poolName,
+                name: poolName,
+            }));
+    }, [opensvcPools]);
 
     const handleAddItem = () => {
         setIsVisible(true);
@@ -103,7 +101,7 @@ const VolumeSection = ({
                 cell: () => null,
             }
         ],
-        [fieldName, onRowArrayChange, onRowDropIndex]
+        [fieldName, onRowArrayChange, onRowDropIndex, poolOptions]
     )
 
     return (

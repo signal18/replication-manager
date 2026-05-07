@@ -163,6 +163,47 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 	return hosts, nil
 }
 
+func (collector *Collector) GetPoolListV3() ([]string, error) {
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+
+	resp, err := client.GetPools(ctx, nil, collector.RequestCloserV3())
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.LogModulePrintf(config.ConstLogModOrchestrator, config.LvlDbg, "OpenSVC v3 get pools status=%d body=%q", resp.StatusCode, string(body))
+	}
+
+	if !handleSuccessGroup(resp.StatusCode) {
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
+	}
+
+	names := make([]string, 0)
+	for _, item := range gjson.GetBytes(body, "items").Array() {
+		if name := item.Get("name"); name.Exists() {
+			names = append(names, name.String())
+		}
+	}
+
+	return normalizeStringList(names), nil
+}
+
 func (collector *Collector) CreateObjectV3(namespace, kind, service string, data []byte) ([]byte, error) {
 	var resp *http.Response
 	var err error

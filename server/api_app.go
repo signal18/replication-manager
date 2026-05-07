@@ -1946,7 +1946,11 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 		}
 
 		if row.VolumeName == "" {
-			row.Volume = mycluster.SetAppLocalMountVolume(node)
+			row.Volume, err = mycluster.SetAppLocalMountVolume(node)
+			if err != nil {
+				http.Error(w, "Volume selection required before adding storage: "+err.Error(), http.StatusBadRequest)
+				return
+			}
 			row.VolumeName = row.Volume.Name
 			row.VolumeDir = filepath.Join(row.Volume.VolumeDir, row.Name)
 		}

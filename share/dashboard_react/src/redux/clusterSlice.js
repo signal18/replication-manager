@@ -78,6 +78,9 @@ const fulfilledHandlers = {
   'cluster/getOpenSVCStats': (state, action) => {
     state.opensvcStats = action.payload.data
   },
+  'cluster/getOpenSVCPools': (state, action) => {
+    state.opensvcPools = action.payload.data
+  },
   'cluster/getBackups': (state, action) => {
     state.backups.list = action.payload.data
   },
@@ -260,6 +263,16 @@ export const getOpenSVCStats = createGuardedAsyncThunk('cluster/getOpenSVCStats'
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
     const { data, status } = await clusterService.getOpenSVCStats(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const getOpenSVCPools = createGuardedAsyncThunk('cluster/getOpenSVCPools', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.getOpenSVCPools(clusterName, baseURL)
     return { data, status }
   } catch (error) {
     return handleError(error, thunkAPI)
@@ -2532,6 +2545,7 @@ const initialState = {
   },
   topProcess: null,
   opensvcStats: null,
+  opensvcPools: null,
   jobs: null,
   shardSchema: null,
   queryRules: null,

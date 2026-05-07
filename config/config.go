@@ -667,7 +667,7 @@ type Config struct {
 	ProvProxyStopScript                       string                       `mapstructure:"prov-proxy-stop-script" toml:"prov-proxy-stop-script" json:"provProxyStopScript"`
 	ProvDBCompliance                          string                       `mapstructure:"prov-db-compliance" toml:"prov-db-compliance" json:"provDBCompliance"`
 	ProvProxyCompliance                       string                       `mapstructure:"prov-proxy-compliance" toml:"prov-proxy-compliance" json:"provProxyCompliance"`
-	ProvAutoUpdateCompliance                bool                         `mapstructure:"prov-auto-update-compliance" toml:"prov-auto-update-compliance" json:"provAutoUpdateCompliance"`
+	ProvAutoUpdateCompliance                  bool                         `mapstructure:"prov-auto-update-compliance" toml:"prov-auto-update-compliance" json:"provAutoUpdateCompliance"`
 	ProvDockerRegistryCredentials             string                       `mapstructure:"prov-docker-registry-credentials" toml:"prov-docker-registry-credentials" json:"provDockerRegistryCredentials"`
 	AppOn                                     bool                         `mapstructure:"app" toml:"app" json:"app"`
 	AppHosts                                  string                       `mapstructure:"app-hosts" toml:"app-hosts" json:"appHosts"`
@@ -676,7 +676,6 @@ type Config struct {
 	AppRefreshConcurrency                     int                          `mapstructure:"app-refresh-concurrency" toml:"app-refresh-concurrency" json:"appRefreshConcurrency"`
 	ProvAppMem                                string                       `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory" groups:"apps"`
 	ProvAppDisk                               string                       `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize" groups:"apps"`
-	ProvAppVolumePools                        string                       `mapstructure:"prov-app-volume-pools" toml:"prov-app-volume-pools" json:"provAppVolumePools" groups:"apps"`
 	ProvAppCpuCores                           string                       `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores" groups:"apps"`
 	ProvAppAgents                             string                       `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents" groups:"apps"`
 	ProvAppHATopology                         string                       `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology" groups:"apps"`
@@ -927,10 +926,10 @@ type Config struct {
 	Cloud18InfraCertifications             string                 `mapstructure:"cloud18-infra-certifications"  toml:"cloud18-infra-certifications" json:"cloud18InfraCertifications"`
 	Cloud18OpenDbops                       bool                   `mapstructure:"cloud18-open-dbops"  toml:"cloud18-open-dbops" json:"cloud18OpenDbops"`
 	Cloud18SubscribedDbops                 bool                   `mapstructure:"cloud18-subscribed-dbops"  toml:"cloud18-subscribed-dbops" json:"cloud18SubscribedDbops"`
-	Cloud18SubscriptionPlan               string                 `scope:"server" mapstructure:"cloud18-subscription-plan" toml:"cloud18-subscription-plan" json:"cloud18SubscriptionPlan"`
-	Cloud18PeerHealthMode                 string                 `scope:"server" mapstructure:"cloud18-peer-health-mode" toml:"cloud18-peer-health-mode" json:"cloud18PeerHealthMode"`
-	Cloud18DisablePeers                   bool                   `scope:"server" mapstructure:"cloud18-disable-peers" toml:"cloud18-disable-peers" json:"cloud18DisablePeers"`
-	Cloud18DisableForSale                 bool                   `scope:"server" mapstructure:"cloud18-disable-for-sale" toml:"cloud18-disable-for-sale" json:"cloud18DisableForSale"`
+	Cloud18SubscriptionPlan                string                 `scope:"server" mapstructure:"cloud18-subscription-plan" toml:"cloud18-subscription-plan" json:"cloud18SubscriptionPlan"`
+	Cloud18PeerHealthMode                  string                 `scope:"server" mapstructure:"cloud18-peer-health-mode" toml:"cloud18-peer-health-mode" json:"cloud18PeerHealthMode"`
+	Cloud18DisablePeers                    bool                   `scope:"server" mapstructure:"cloud18-disable-peers" toml:"cloud18-disable-peers" json:"cloud18DisablePeers"`
+	Cloud18DisableForSale                  bool                   `scope:"server" mapstructure:"cloud18-disable-for-sale" toml:"cloud18-disable-for-sale" json:"cloud18DisableForSale"`
 	Cloud18OpenSysops                      bool                   `mapstructure:"cloud18-open-sysops"  toml:"cloud18-open-sysops" json:"cloud18OpenSysops"`
 	Cloud18DatabaseReadWriteSplitSrvRecord string                 `mapstructure:"cloud18-database-read-write-split-srv-record"  toml:"cloud18-database-read-write-split-srv-record" json:"cloud18DatabaseReadWriteSplitSrvRecord"`
 	Cloud18DatabaseReadSrvRecord           string                 `mapstructure:"cloud18-database-read-srv-record"  toml:"cloud18-database-read-srv-record" json:"cloud18DatabaseReadSrvRecord"`
@@ -1279,13 +1278,11 @@ type Tag struct {
 }
 */
 
-
 const (
 	ExternalActive  string = "active"
 	ExternalPending string = "pending"
 	ExternalQuote   string = "quote"
 )
-
 
 const (
 	ConstOrchestratorOpenSVC    string = "opensvc"
@@ -1352,7 +1349,7 @@ const (
 	// ConstLogModMaintenance covers planned-operations modules (backup, SST,
 	// task execution, purge, orchestrator provisioning). Routed to maintenance.log
 	// when configured so operational noise does not pollute the HA main log.
-	ConstLogModMaintenance    = 31
+	ConstLogModMaintenance = 31
 )
 
 /*
@@ -2322,7 +2319,6 @@ func (conf *Config) GetMemoryPctThreaded() (map[string]int, error) {
 	}
 	return engines, nil
 }
-
 
 func (conf *Config) GetDockerRepos(file string, is_not_embed bool) ([]DockerRepo, error) {
 	var repos DockerRepos
@@ -3588,52 +3584,6 @@ func ParseUnitMeasurementToInt(tag, vstr string, clampToLimit bool) (int, error)
 	}
 
 	return val, nil
-}
-
-type VolumePool struct {
-	Name        string `json:"name"`
-	Type        string `json:"type"`
-	Mode        string `json:"mode"`
-	Description string `json:"description"`
-}
-
-const PoolTypeLocal = "local"
-const PoolTypeRemote = "shared"
-
-func (conf *Config) GetAppVolumePools(pooltype string) map[string]VolumePool {
-	pools := make(map[string]VolumePool)
-
-	vols := strings.Split(conf.ProvAppVolumePools, ",")
-	for _, vol := range vols {
-		var name, poolType, mode, description string
-		parts := strings.SplitN(vol, ":", 4)
-		name = strings.TrimSpace(parts[0])
-		poolType = PoolTypeLocal
-		if len(parts) > 1 {
-			poolType = strings.TrimSpace(parts[1])
-		}
-
-		if pooltype != "" && poolType != pooltype {
-			continue
-		}
-
-		if len(parts) > 2 {
-			mode = strings.TrimSpace(parts[2])
-		}
-
-		if len(parts) > 3 {
-			description = strings.TrimSpace(parts[3])
-		}
-
-		pools[name] = VolumePool{
-			Name:        name,
-			Type:        poolType,
-			Mode:        mode,
-			Description: description,
-		}
-	}
-
-	return pools
 }
 
 func (conf *Config) LoadAppTemplateList() ([]string, error) {
