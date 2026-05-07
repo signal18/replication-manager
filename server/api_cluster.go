@@ -45,6 +45,11 @@ import (
 
 type LogLevelEnum string
 
+type PoolOption struct {
+	Value string `json:"value"`
+	Name  string `json:"name"`
+}
+
 const (
 	LogLevelErr   LogLevelEnum = "ERROR"
 	LogLevelWarn  LogLevelEnum = "WARN"
@@ -9169,7 +9174,7 @@ func (repman *ReplicationManager) handlerMuxClusterOpenSVCDaemonStatus(w http.Re
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {array} string "OpenSVC pool list fetched"
+// @Success 200 {array} PoolOption "OpenSVC pool list fetched"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster" or "Error getting OpenSVC pool list"
 // @Router /api/clusters/{clusterName}/opensvc-pools [get]
@@ -9190,16 +9195,17 @@ func (repman *ReplicationManager) handlerMuxClusterOpenSVCPoolList(w http.Respon
 			return
 		}
 
-		poolsJSON, err := json.Marshal(pools)
-		if err != nil {
-			http.Error(w, "Error marshalling pool list: "+err.Error(), http.StatusInternalServerError)
-			return
+		options := make([]PoolOption, 0, len(pools))
+		for _, pool := range pools {
+			if pool == "" {
+				continue
+			}
+			options = append(options, PoolOption{Value: pool, Name: pool})
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, err = w.Write(poolsJSON)
-		if err != nil {
+		if err := json.NewEncoder(w).Encode(options); err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: %s", err)
 			http.Error(w, "Error writing response: "+err.Error(), http.StatusInternalServerError)
 			return

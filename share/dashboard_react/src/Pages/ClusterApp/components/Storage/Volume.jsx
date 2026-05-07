@@ -41,12 +41,34 @@ const VolumeSection = ({
             return [];
         }
 
-        return [...new Set(opensvcPools.filter(Boolean))]
-            .sort((a, b) => a.localeCompare(b))
-            .map((poolName) => ({
-                value: poolName,
-                name: poolName,
-            }));
+        const normalized = opensvcPools
+            .map((pool) => {
+                if (typeof pool === 'string') {
+                    const value = pool.trim();
+                    return value ? { value, name: value } : null;
+                }
+
+                if (pool && typeof pool === 'object') {
+                    const value = String(pool.value ?? pool.name ?? '').trim();
+                    if (!value) {
+                        return null;
+                    }
+                    const name = String(pool.name ?? value).trim() || value;
+                    return { value, name };
+                }
+
+                return null;
+            })
+            .filter(Boolean);
+
+        const dedup = new Map();
+        for (const option of normalized) {
+            if (!dedup.has(option.value)) {
+                dedup.set(option.value, option);
+            }
+        }
+
+        return [...dedup.values()].sort((a, b) => a.name.localeCompare(b.name));
     }, [opensvcPools]);
 
     const handleAddItem = () => {
