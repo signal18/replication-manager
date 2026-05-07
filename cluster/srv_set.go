@@ -373,6 +373,30 @@ func (server *ServerMonitor) SetWaitStopCookie() error {
 	return server.createCookie("cookie_waitstop")
 }
 
+func (server *ServerMonitor) SetWaitRestartCookie() error {
+	return server.createCookie("cookie_waitrestart")
+}
+
+func (server *ServerMonitor) SetWaitOptimizeCookie() error {
+	return server.createCookie("cookie_waitoptimize")
+}
+
+func (server *ServerMonitor) SetWaitReseedXtrabackupCookie() error {
+	return server.createCookie("cookie_waitreseedxtrabackup")
+}
+
+func (server *ServerMonitor) SetWaitReseedMariabackupCookie() error {
+	return server.createCookie("cookie_waitreseedmariabackup")
+}
+
+func (server *ServerMonitor) SetWaitFlashbackXtrabackupCookie() error {
+	return server.createCookie("cookie_waitflashbackxtrabackup")
+}
+
+func (server *ServerMonitor) SetWaitFlashbackMariabackupCookie() error {
+	return server.createCookie("cookie_waitflashbackmariabackup")
+}
+
 func (server *ServerMonitor) SetReprovCookie() error {
 	return server.createCookie("cookie_reprov")
 }

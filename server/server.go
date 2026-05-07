@@ -823,6 +823,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.SchedulerRollingReprovCron, "scheduler-rolling-reprov-cron", "0 30 10 * * 5", "Rolling reprov cron expression represents a set of times, using 6 space-separated fields.")
 	flags.BoolVar(&conf.SchedulerJobsSSH, "scheduler-jobs-ssh", false, "Schedule remote execution of dbjobs via ssh ")
 	flags.StringVar(&conf.SchedulerJobsSSHCron, "scheduler-jobs-ssh-cron", "0 * * * * *", "Remote execution of dbjobs via ssh ")
+	flags.StringVar(&conf.SchedulerJobsMode, "scheduler-jobs-mode", "sql", "Job dispatch mode: sql (poll jobs table) or api (dbjobs checks cookies via API)")
 	flags.BoolVar(&conf.SchedulerAlertDisable, "scheduler-alert-disable", false, "Schedule to disable alerting")
 	flags.StringVar(&conf.SchedulerAlertDisableCron, "scheduler-alert-disable-cron", "0 0 0 * * 0-4", "Disabling alert cron expression represents a set of times, using 6 space-separated fields.")
 	flags.IntVar(&conf.SchedulerAlertDisableTime, "scheduler-alert-disable-time", 3600, "Time in seconds to disable alerting")

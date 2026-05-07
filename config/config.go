@@ -757,6 +757,7 @@ type Config struct {
 	SchedulerRollingReprovCron                string                       `mapstructure:"scheduler-rolling-reprov-cron" toml:"scheduler-rolling-reprov-cron" json:"schedulerRollingReprovCron"`
 	SchedulerJobsSSH                          bool                         `mapstructure:"scheduler-jobs-ssh" toml:"scheduler-jobs-ssh" json:"schedulerJobsSsh"`
 	SchedulerJobsSSHCron                      string                       `mapstructure:"scheduler-jobs-ssh-cron" toml:"scheduler-jobs-ssh-cron" json:"schedulerJobsSshCron"`
+	SchedulerJobsMode                         string                       `mapstructure:"scheduler-jobs-mode" toml:"scheduler-jobs-mode" json:"schedulerJobsMode"`
 	Backup                                    bool                         `mapstructure:"backup" toml:"backup" json:"backup"`
 	BackupLogicalType                         string                       `mapstructure:"backup-logical-type" toml:"backup-logical-type" json:"backupLogicalType"`
 	BackupLogicalLoadThreads                  int                          `mapstructure:"backup-logical-load-threads" toml:"backup-logical-load-threads" json:"backupLogicalLoadThreads"`

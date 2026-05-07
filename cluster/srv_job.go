@@ -362,6 +362,16 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 		return 0, errors.New("In super read-only")
 	}
 
+	// In API mode, set a cookie instead of inserting into the jobs table.
+	// The dbjobs script will discover the task via the needs API endpoint.
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		if err := server.setTaskCookie(task); err != nil {
+			return 0, fmt.Errorf("Failed to set cookie for task %s: %v", task, err)
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "API mode: set cookie for task %s on %s", task, server.URL)
+		return 0, nil
+	}
+
 	if server.Conn == nil {
 		return 0, fmt.Errorf("No pool connection")
 	}
@@ -427,6 +437,52 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 
 	server.SetNeedRefreshJobs(true)
 	return res.LastInsertId()
+}
+
+// setTaskCookie maps a remote task name to the corresponding wait cookie for
+// API mode. Only remote tasks (executed by the dbjobs script on the database
+// host) are listed here. Logical tasks (mysqldump, mydumper, analyze, etc.)
+// are executed directly by replication-manager and must NOT have cookies set,
+// otherwise the dbjobs script would also attempt to run them.
+func (server *ServerMonitor) setTaskCookie(task string) error {
+	switch config.TaskName(task) {
+	// Physical backup — dbjobs runs xtrabackup/mariabackup on DB host
+	case config.ConstTaskXB, config.ConstTaskMB:
+		return server.SetWaitPhysicalBackupCookie()
+	// Optimize — dbjobs runs mysqlcheck on DB host
+	case config.ConstTaskOptimize:
+		return server.SetWaitOptimizeCookie()
+	// Service control — dbjobs runs systemctl on DB host
+	case config.ConstTaskRestart:
+		return server.SetWaitRestartCookie()
+	case config.ConstTaskStop:
+		return server.SetWaitStopCookie()
+	case config.ConstTaskStart:
+		return server.SetWaitStartCookie()
+	// Reseed/flashback — dbjobs receives stream and prepares on DB host
+	case config.ConstTaskReseedXB:
+		return server.SetWaitReseedXtrabackupCookie()
+	case config.ConstTaskReseedMB:
+		return server.SetWaitReseedMariabackupCookie()
+	case config.ConstTaskFlashXB:
+		return server.SetWaitFlashbackXtrabackupCookie()
+	case config.ConstTaskFlashMB:
+		return server.SetWaitFlashbackMariabackupCookie()
+	// Log collection — dbjobs reads local log files on DB host
+	case config.ConstTaskError:
+		return server.SetWaitErrorlogCookie()
+	case config.ConstTaskSlowQuery:
+		return server.SetWaitSlowqueryCookie()
+	case config.ConstTaskAuditLog:
+		return server.SetWaitAuditlogCookie()
+	case config.ConstTaskSqlError:
+		return server.SetWaitSqlErrorlogCookie()
+	// ZFS — dbjobs runs zfs rollback on DB host
+	case config.ConstTaskZFS:
+		return server.createCookie("cookie_waitzfssnapback")
+	default:
+		return fmt.Errorf("no cookie mapping for task %s", task)
+	}
 }
 
 func (server *ServerMonitor) HasRunningDBJobs() (bool, error) {

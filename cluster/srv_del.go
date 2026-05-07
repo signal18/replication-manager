@@ -42,6 +42,30 @@ func (server *ServerMonitor) DelWaitStopCookie() error {
 	return server.delCookie("cookie_waitstop")
 }
 
+func (server *ServerMonitor) DelWaitRestartCookie() error {
+	return server.delCookie("cookie_waitrestart")
+}
+
+func (server *ServerMonitor) DelWaitOptimizeCookie() error {
+	return server.delCookie("cookie_waitoptimize")
+}
+
+func (server *ServerMonitor) DelWaitReseedXtrabackupCookie() error {
+	return server.delCookie("cookie_waitreseedxtrabackup")
+}
+
+func (server *ServerMonitor) DelWaitReseedMariabackupCookie() error {
+	return server.delCookie("cookie_waitreseedmariabackup")
+}
+
+func (server *ServerMonitor) DelWaitFlashbackXtrabackupCookie() error {
+	return server.delCookie("cookie_waitflashbackxtrabackup")
+}
+
+func (server *ServerMonitor) DelWaitFlashbackMariabackupCookie() error {
+	return server.delCookie("cookie_waitflashbackmariabackup")
+}
+
 func (server *ServerMonitor) DelWaitDBACredCookie() error {
 	return server.delCookie("cookie_waitdbacred")
 }
