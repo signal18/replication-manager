@@ -11,6 +11,7 @@ export const clusterService = {
   getClusterCertificates,
   getTopProcess,
   getOpenSVCStats,
+  getOpenSVCPools,
   getBackups,
   getBackupStats,
   deleteBackup,
@@ -225,6 +226,10 @@ function getTopProcess(clusterName, baseURL) {
 
 function getOpenSVCStats(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/opensvc-stats`)
+}
+
+function getOpenSVCPools(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/opensvc-pools`)
 }
 
 function getBackups(clusterName, baseURL) {

@@ -45,6 +45,12 @@ import (
 
 type LogLevelEnum string
 
+type PoolOption struct {
+	Value  string `json:"value"`
+	Name   string `json:"name"`
+	Shared bool   `json:"shared"`
+}
+
 const (
 	LogLevelErr   LogLevelEnum = "ERROR"
 	LogLevelWarn  LogLevelEnum = "WARN"
@@ -88,6 +94,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/opensvc-stats", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterOpenSVCDaemonStatus)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/opensvc-pools", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterOpenSVCPoolList)),
 	))
 
 	//PROTECTED ENDPOINTS FOR CLUSTERS ACTIONS
@@ -5312,8 +5323,8 @@ func (repman *ReplicationManager) handlerMuxGetTagContent(w http.ResponseWriter,
 	}
 
 	type tagContentResponse struct {
-		Tag     string                     `json:"tag"`
-		Content string                     `json:"content"`
+		Tag     string                      `json:"tag"`
+		Content string                      `json:"content"`
 		DocHelp *configurator.DocHelpResult `json:"doc_help,omitempty"`
 	}
 
@@ -9150,6 +9161,52 @@ func (repman *ReplicationManager) handlerMuxClusterOpenSVCDaemonStatus(w http.Re
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
 			http.Error(w, "Error writing response: "+err.Error(), http.StatusInternalServerError)
 			return
+		}
+	} else {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handlerMuxClusterOpenSVCPoolList handles the HTTP request to retrieve the OpenSVC pool list of a cluster.
+// @Summary Get OpenSVC Pool List
+// @Description Retrieves the OpenSVC storage pool names of the specified cluster.
+// @Tags ClusterGateway
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} PoolOption "OpenSVC pool list fetched"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster" or "Error getting OpenSVC pool list"
+// @Router /api/clusters/{clusterName}/opensvc-pools [get]
+func (repman *ReplicationManager) handlerMuxClusterOpenSVCPoolList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+
+		pools, err := mycluster.OpenSVCGetPoolInfoList()
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting OpenSVC pool list: %s", err)
+			http.Error(w, "Error getting OpenSVC pool list: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		options := make([]PoolOption, 0, len(pools))
+		for _, pool := range pools {
+			if pool.Name == "" {
+				continue
+			}
+			options = append(options, PoolOption{Value: pool.Name, Name: pool.Name, Shared: pool.Shared})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(options); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: %s", err)
 		}
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)

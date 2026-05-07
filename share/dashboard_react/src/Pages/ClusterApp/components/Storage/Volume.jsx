@@ -22,7 +22,8 @@ const maskString = (str, mask = '*') => {
 
 const VolumeSection = ({
     rows = [],
-    volumePools = "",
+    opensvcPools = [],
+    appHaTopology = '',
     fieldName = "volumes",
     title = "Saved Volumes",
     newTitle = "Add New Volume",
@@ -37,19 +38,47 @@ const VolumeSection = ({
     const [isVisible, setIsVisible] = useState(false);
 
     const poolOptions = useMemo(() => {
-        if (!volumePools) {
+        if (!Array.isArray(opensvcPools) || opensvcPools.length === 0) {
             return [];
         }
-        // The source will be a comma-separated string of pool names with characteristics
-        // Example: "tank:local,drbd:shared:failover"
-        return volumePools.split(',').map((pool) => {
-            const parts = pool.trim().split(':');
-            return {
-                value: parts[0].trim(),
-                name: parts[0].trim() + (parts.length > 1 ? ` (${parts.slice(1).join(':').trim()})` : ''),
-            };
-        });
-    }, [volumePools]);
+
+        const normalized = opensvcPools
+            .map((pool) => {
+                if (typeof pool === 'string') {
+                    const value = pool.trim();
+                    return value ? { value, name: value, shared: false } : null;
+                }
+
+                if (pool && typeof pool === 'object') {
+                    const value = String(pool.value ?? pool.name ?? '').trim();
+                    if (!value) {
+                        return null;
+                    }
+                    const name = String(pool.name ?? value).trim() || value;
+                    return { value, name, shared: Boolean(pool.shared) };
+                }
+
+                return null;
+            })
+            .filter(Boolean);
+
+        const dedup = new Map();
+        for (const option of normalized) {
+            if (!dedup.has(option.value)) {
+                dedup.set(option.value, option);
+            } else if (option.shared) {
+                const current = dedup.get(option.value);
+                dedup.set(option.value, { ...current, shared: true });
+            }
+        }
+
+        let options = [...dedup.values()];
+        if (appHaTopology === 'failover') {
+            options = options.filter((option) => option.shared);
+        }
+
+        return options.sort((a, b) => a.name.localeCompare(b.name));
+    }, [opensvcPools, appHaTopology]);
 
     const handleAddItem = () => {
         setIsVisible(true);
@@ -103,7 +132,7 @@ const VolumeSection = ({
                 cell: () => null,
             }
         ],
-        [fieldName, onRowArrayChange, onRowDropIndex]
+        [fieldName, onRowArrayChange, onRowDropIndex, poolOptions]
     )
 
     return (

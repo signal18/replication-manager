@@ -1148,3 +1148,44 @@ func TestIsURLPassACLComprehensiveCoverage(t *testing.T) {
 		})
 	}
 }
+
+func TestIsURLPassACLOpenSVCPools(t *testing.T) {
+	cluster := setupACLTestCluster()
+	cluster.Name = "test"
+
+	cluster.APIUsers["app_deploy_user"] = APIUser{
+		User: "app_deploy_user",
+		Grants: map[string]bool{
+			config.GrantAppDeployment: true,
+		},
+	}
+
+	tests := []struct {
+		name     string
+		user     string
+		url      string
+		expected bool
+	}{
+		{
+			name:     "allow app deployment grant",
+			user:     "app_deploy_user",
+			url:      "/api/clusters/test/opensvc-pools",
+			expected: true,
+		},
+		{
+			name:     "deny without grants",
+			user:     "user_no_grants",
+			url:      "/api/clusters/test/opensvc-pools",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := cluster.IsURLPassACL(tt.user, tt.url, false)
+			if result != tt.expected {
+				t.Errorf("User %s on URL %s: Expected %v, got %v", tt.user, tt.url, tt.expected, result)
+			}
+		})
+	}
+}

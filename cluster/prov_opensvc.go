@@ -26,6 +26,7 @@ var (
 )
 
 const defaultOpenSVCV3ProvisionDelay = 10
+const defaultOpenSVCPoolInfoCacheTTL = 5 * time.Minute
 
 func isOpenSVCAlreadyExists(err error) bool {
 	if err == nil {
@@ -187,6 +188,74 @@ func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
 		agents = append(agents, agent)
 	}
 	return agents, nil
+}
+
+func (cluster *Cluster) OpenSVCGetPoolList() ([]string, error) {
+	pools, err := cluster.OpenSVCGetPoolInfoList()
+	if err != nil {
+		return nil, err
+	}
+
+	names := make([]string, 0, len(pools))
+	for _, pool := range pools {
+		if pool.Name == "" {
+			continue
+		}
+		names = append(names, pool.Name)
+	}
+
+	return names, nil
+}
+
+func (cluster *Cluster) OpenSVCGetPoolInfoList() ([]opensvc.PoolInfo, error) {
+	return cluster.openSVCGetPoolInfoList(defaultOpenSVCPoolInfoCacheTTL, false)
+}
+
+func (cluster *Cluster) OpenSVCGetPoolInfoListFresh() ([]opensvc.PoolInfo, error) {
+	return cluster.openSVCGetPoolInfoList(defaultOpenSVCPoolInfoCacheTTL, true)
+}
+
+func cloneOpenSVCPoolInfoList(pools []opensvc.PoolInfo) []opensvc.PoolInfo {
+	if len(pools) == 0 {
+		return nil
+	}
+
+	cloned := make([]opensvc.PoolInfo, len(pools))
+	for i, p := range pools {
+		caps := make([]string, len(p.Capabilities))
+		copy(caps, p.Capabilities)
+		p.Capabilities = caps
+		cloned[i] = p
+	}
+	return cloned
+}
+
+func (cluster *Cluster) openSVCGetPoolInfoList(ttl time.Duration, forceRefresh bool) ([]opensvc.PoolInfo, error) {
+	if !forceRefresh && ttl > 0 {
+		cluster.opensvcPoolInfoCacheMu.RLock()
+		cacheFresh := !cluster.opensvcPoolInfoCacheAt.IsZero() && time.Since(cluster.opensvcPoolInfoCacheAt) < ttl
+		if cacheFresh {
+			cached := cloneOpenSVCPoolInfoList(cluster.opensvcPoolInfoCache)
+			cluster.opensvcPoolInfoCacheMu.RUnlock()
+			return cached, nil
+		}
+		cluster.opensvcPoolInfoCacheMu.RUnlock()
+	}
+
+	// Multiple goroutines may reach here concurrently after the read-lock window.
+	// The last writer wins; results are deterministic, so this is benign for a long TTL.
+	svc := cluster.OpenSVCConnect()
+	pools, err := svc.GetPoolInfoList()
+	if err != nil {
+		return nil, err
+	}
+
+	cluster.opensvcPoolInfoCacheMu.Lock()
+	cluster.opensvcPoolInfoCache = cloneOpenSVCPoolInfoList(pools)
+	cluster.opensvcPoolInfoCacheAt = time.Now()
+	cluster.opensvcPoolInfoCacheMu.Unlock()
+
+	return cloneOpenSVCPoolInfoList(pools), nil
 }
 
 func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {

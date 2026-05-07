@@ -3,19 +3,27 @@ import GitCloneSection from "./GitClone";
 import VolumeSection from "./Volume";
 import S3DirectorySection from "./S3Directory";
 import styles from "./styles.module.scss";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import AccordionComponent from "../../../../components/AccordionComponent";
 import ConfirmModal from "../../../../components/Modals/ConfirmModal";
-import { addS3Provider, pauseAutoReload, selectClusterS3Providers, storageFieldChange, storageFieldIndexAdd, storageFieldIndexDrop, previewS3MountSync, applyS3MountSync, getClusterData } from "../../../../redux/clusterSlice";
+import { addS3Provider, pauseAutoReload, selectClusterS3Providers, storageFieldChange, storageFieldIndexAdd, storageFieldIndexDrop, previewS3MountSync, applyS3MountSync, getClusterData, getOpenSVCPools } from "../../../../redux/clusterSlice";
 
-export default function StoragePage({ clusterName, appId, user }) {
+export default function StoragePage({ clusterName, appId, appConfig, user }) {
   const dispatch = useDispatch();
   const storages = useSelector((state) => state.cluster?.app?.deployment?.storages);
-  const volumePools = useSelector((state) => state.cluster?.clusterData?.config?.provAppVolumePools);
+  const opensvcPools = useSelector((state) => state.cluster?.opensvcPools || []);
+  const isOpenSVCOrchestrator = useSelector((state) => state.cluster?.clusterData?.config?.provOrchestrator === "opensvc");
   const s3Providers = useSelector((state) => state.cluster?.clusterData?.appS3Providers);
   const clusterS3Providers = useSelector(selectClusterS3Providers);
   const clusterApps = useSelector((state) => state.cluster?.clusterApps || []);
+
+  useEffect(() => {
+    if (!clusterName || !isOpenSVCOrchestrator) {
+      return;
+    }
+    dispatch(getOpenSVCPools({ clusterName }));
+  }, [clusterName, dispatch, isOpenSVCOrchestrator]);
 
   const getAppEndpoint = useCallback((app) => {
     if (!app) return "";
@@ -167,7 +175,8 @@ export default function StoragePage({ clusterName, appId, user }) {
 
   const volumeComponent = useMemo(() => (
       <VolumeSection
-        volumePools={volumePools}
+        opensvcPools={opensvcPools}
+        appHaTopology={appConfig?.provAppHaTopology}
         fieldName="volumes"
         title="Saved Volumes"
         newTitle="Add New Volume"
@@ -176,7 +185,7 @@ export default function StoragePage({ clusterName, appId, user }) {
         rows={volumes}
         {...actionProps}
       />
-  ), [volumes, actionProps]);
+  ), [volumes, opensvcPools, appConfig?.provAppHaTopology, actionProps]);
 
   const s3Component = useMemo(() => (
       <S3DirectorySection appId={appId} rows={s3Mounts} s3ProvOptions={s3ProvOptions} clusterS3Providers={clusterS3Providers} {...actionProps} />
