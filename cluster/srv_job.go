@@ -366,13 +366,22 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 		return 0, errors.New("In super read-only")
 	}
 
-	// In API mode, set a cookie instead of inserting into the jobs table.
-	// The dbjobs script will discover the task via the needs API endpoint.
+	// In API mode, dispatch depends on the task's execution mode.
+	// Remote tasks: set a cookie so the dbjobs script discovers them via the needs API.
+	// Local tasks (mysqldump, mydumper): only track state in memory — repman runs them directly.
 	if cluster.Conf.SchedulerJobsMode == "api" {
-		if err := server.setTaskCookie(task); err != nil {
-			return 0, fmt.Errorf("Failed to set cookie for task %s: %v", task, err)
+		if cluster.Conf.SchedulerJobsExecOverrides == nil {
+			cluster.Conf.ParseJobsExecOverrides()
 		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "API mode: set cookie for task %s on %s", task, server.URL)
+		if config.IsRemoteTask(config.TaskName(task), cluster.Conf.SchedulerJobsExecOverrides) {
+			if err := server.setTaskCookie(task); err != nil {
+				return 0, fmt.Errorf("Failed to set cookie for remote task %s: %v", task, err)
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "API mode: set cookie for task %s on %s", task, server.URL)
+		} else {
+			// Local task — track in memory only, no cookie, no dbjobs dispatch
+			server.JobsUpdateState(task, "", 0, 0)
+		}
 		return 0, nil
 	}
 

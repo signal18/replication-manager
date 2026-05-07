@@ -758,6 +758,8 @@ type Config struct {
 	SchedulerJobsSSH                          bool                         `mapstructure:"scheduler-jobs-ssh" toml:"scheduler-jobs-ssh" json:"schedulerJobsSsh"`
 	SchedulerJobsSSHCron                      string                       `mapstructure:"scheduler-jobs-ssh-cron" toml:"scheduler-jobs-ssh-cron" json:"schedulerJobsSshCron"`
 	SchedulerJobsMode                         string                       `mapstructure:"scheduler-jobs-mode" toml:"scheduler-jobs-mode" json:"schedulerJobsMode"`
+	SchedulerJobsExecRemote                   string                       `mapstructure:"scheduler-jobs-exec-remote" toml:"scheduler-jobs-exec-remote" json:"schedulerJobsExecRemote"`
+	SchedulerJobsExecOverrides                map[TaskName]bool            `json:"-" toml:"-" mapstructure:"-"` // parsed from SchedulerJobsExecRemote
 	Backup                                    bool                         `mapstructure:"backup" toml:"backup" json:"backup"`
 	BackupLogicalType                         string                       `mapstructure:"backup-logical-type" toml:"backup-logical-type" json:"backupLogicalType"`
 	BackupLogicalLoadThreads                  int                          `mapstructure:"backup-logical-load-threads" toml:"backup-logical-load-threads" json:"backupLogicalLoadThreads"`
@@ -1420,6 +1422,97 @@ const (
 	ConstTaskJobsCheck          TaskName = "jobs-check"
 	ConstTaskJobsUpgrade        TaskName = "jobs-upgrade"
 )
+
+// TaskExecCapability defines what execution modes a task supports.
+type TaskExecCapability int
+
+const (
+	TaskCapLocalOnly  TaskExecCapability = iota // Can only run locally in repman (e.g. analyze)
+	TaskCapRemoteOnly                           // Can only run remotely via dbjobs (e.g. systemctl, physical backup)
+	TaskCapBoth                                 // User decides via config (e.g. mysqldump, optimize)
+)
+
+// TaskDef describes a task's execution capabilities and default mode.
+type TaskDef struct {
+	Name       TaskName
+	Capability TaskExecCapability
+	DefaultRemote bool // When Capability is TaskCapBoth, true = remote by default
+}
+
+// TaskRegistry defines each task's execution capabilities.
+//
+// LocalOnly:  repman always executes directly — no dbjobs dispatch possible.
+// RemoteOnly: dbjobs always executes on the DB host — needs filesystem/systemctl access.
+// Both:       user chooses via scheduler-jobs-exec-{task} config (default in DefaultRemote).
+var TaskRegistry = map[TaskName]TaskDef{
+	// RemoteOnly — requires DB host filesystem or system access
+	ConstTaskXB:                {Name: ConstTaskXB, Capability: TaskCapRemoteOnly},
+	ConstTaskMB:                {Name: ConstTaskMB, Capability: TaskCapRemoteOnly},
+	ConstTaskReseedXB:          {Name: ConstTaskReseedXB, Capability: TaskCapRemoteOnly},
+	ConstTaskReseedMB:          {Name: ConstTaskReseedMB, Capability: TaskCapRemoteOnly},
+	ConstTaskFlashXB:           {Name: ConstTaskFlashXB, Capability: TaskCapRemoteOnly},
+	ConstTaskFlashMB:           {Name: ConstTaskFlashMB, Capability: TaskCapRemoteOnly},
+	ConstTaskRestart:           {Name: ConstTaskRestart, Capability: TaskCapRemoteOnly},
+	ConstTaskStop:              {Name: ConstTaskStop, Capability: TaskCapRemoteOnly},
+	ConstTaskStart:             {Name: ConstTaskStart, Capability: TaskCapRemoteOnly},
+	ConstTaskError:             {Name: ConstTaskError, Capability: TaskCapRemoteOnly},
+	ConstTaskSlowQuery:         {Name: ConstTaskSlowQuery, Capability: TaskCapRemoteOnly},
+	ConstTaskSqlError:          {Name: ConstTaskSqlError, Capability: TaskCapRemoteOnly},
+	ConstTaskAuditLog:          {Name: ConstTaskAuditLog, Capability: TaskCapRemoteOnly},
+	ConstTaskZFS:               {Name: ConstTaskZFS, Capability: TaskCapRemoteOnly},
+	ConstTaskJobsCheck:         {Name: ConstTaskJobsCheck, Capability: TaskCapRemoteOnly},
+	ConstTaskJobsUpgrade:       {Name: ConstTaskJobsUpgrade, Capability: TaskCapRemoteOnly},
+	ConstTaskPrintCurrentConfig: {Name: ConstTaskPrintCurrentConfig, Capability: TaskCapRemoteOnly},
+	ConstTaskPrintDummyConfig:  {Name: ConstTaskPrintDummyConfig, Capability: TaskCapRemoteOnly},
+
+	// Both — user can choose local (repman) or remote (dbjobs)
+	ConstTaskDump:      {Name: ConstTaskDump, Capability: TaskCapBoth, DefaultRemote: false},
+	ConstTaskMydumper:  {Name: ConstTaskMydumper, Capability: TaskCapBoth, DefaultRemote: false},
+	ConstTaskOptimize:  {Name: ConstTaskOptimize, Capability: TaskCapBoth, DefaultRemote: true},
+	ConstTaskReseedDump: {Name: ConstTaskReseedDump, Capability: TaskCapBoth, DefaultRemote: false},
+	ConstTaskFlashDump: {Name: ConstTaskFlashDump, Capability: TaskCapBoth, DefaultRemote: false},
+}
+
+// IsRemoteTask returns true if the task should be dispatched to the dbjobs
+// script given the current configuration. For TaskCapBoth tasks, it checks
+// the user override map; if absent, falls back to the DefaultRemote field.
+func IsRemoteTask(task TaskName, overrides map[TaskName]bool) bool {
+	def, ok := TaskRegistry[task]
+	if !ok {
+		return false
+	}
+	switch def.Capability {
+	case TaskCapRemoteOnly:
+		return true
+	case TaskCapLocalOnly:
+		return false
+	case TaskCapBoth:
+		if v, exists := overrides[task]; exists {
+			return v
+		}
+		return def.DefaultRemote
+	}
+	return false
+}
+
+// ParseJobsExecOverrides parses the SchedulerJobsExecRemote comma-separated
+// string into the SchedulerJobsExecOverrides map. Tasks listed are forced
+// remote (true). Call this after config is loaded.
+func (conf *Config) ParseJobsExecOverrides() {
+	conf.SchedulerJobsExecOverrides = make(map[TaskName]bool)
+	if conf.SchedulerJobsExecRemote == "" {
+		return
+	}
+	for _, s := range strings.Split(conf.SchedulerJobsExecRemote, ",") {
+		task := TaskName(strings.TrimSpace(s))
+		if task == "" {
+			continue
+		}
+		if def, ok := TaskRegistry[task]; ok && def.Capability == TaskCapBoth {
+			conf.SchedulerJobsExecOverrides[task] = true
+		}
+	}
+}
 
 /*
 This is the list of graphite template
