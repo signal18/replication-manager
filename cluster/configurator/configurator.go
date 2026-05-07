@@ -962,6 +962,19 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 		}
 	}
 
+	// Override the dbjobs_new script from the embedded full version.
+	// The compliance moduleset variable is truncated at 65535 bytes (MySQL TEXT
+	// column limit in the OpenSVC collector), so we replace it with the complete
+	// script embedded in the binary via go:embed share/scripts/dbjobs_new.sh.
+	if scriptBytes, err := share.EmbededDbModuleFS.ReadFile("scripts/dbjobs_new.sh"); err == nil {
+		dbjobsPath := filepath.Join(Datadir, "init", "init", "dbjobs_new")
+		os.MkdirAll(filepath.Dir(dbjobsPath), 0775)
+		content := misc.ExtractKey(string(scriptBytes), TemplateEnv)
+		if err := os.WriteFile(dbjobsPath, []byte(content), 0755); err != nil {
+			configurator.Logger.Errorf("Failed to write embedded dbjobs_new: %s", err)
+		}
+	}
+
 	configurator.TarGz(Datadir+"/config.tar.gz", Datadir+"/init")
 
 	return nil

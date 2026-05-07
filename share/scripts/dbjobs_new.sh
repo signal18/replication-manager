@@ -1,6 +1,6 @@
 #!/bin/bash
 # This script is given as sample and might be overwritten on upgrade
-# The real script is auto generated based on compliance json 
+# The real script is auto generated based on compliance json
 
 # %%ENV:GENLINE%%
 
@@ -89,12 +89,17 @@ readonly MAX_RETRIES=3
 readonly API_LOG_FILE="${LOG_DIR}/api_calls.log"
 readonly LOG_MAX_SIZE=1048576  # 1MB
 
+# Job dispatch mode: "sql" (poll jobs table) or "api" (check cookies via API)
+# Container mode: %%ENV:SVC_CONF_ENV_JOBS_MODE%% is substituted at tarball build
+# SSH mode: REPLICATION_MANAGER_JOBS_MODE is exported by GetSshEnv()
+readonly JOBS_MODE="${REPLICATION_MANAGER_JOBS_MODE:-%%ENV:SVC_CONF_ENV_JOBS_MODE%%}"
+
 # Job types
 readonly -a JOBS=(
-    "xtrabackup" "mariabackup" "errorlog" "slowquery" 
-    "auditlog" "sqlerrorlog" "zfssnapback" "optimize" 
-    "reseedxtrabackup" "reseedmariabackup" 
-    "flashbackxtrabackup" "flashbackmariadbackup" 
+    "xtrabackup" "mariabackup" "errorlog" "slowquery"
+    "auditlog" "sqlerrorlog" "zfssnapback" "optimize"
+    "reseedxtrabackup" "reseedmariabackup"
+    "flashbackxtrabackup" "flashbackmariadbackup"
     "stop" "restart" "start"
 )
 
@@ -159,14 +164,14 @@ validate_environment() {
         "MYSQL_PORT"
         "CLUSTER_NAME"
     )
-    
+
     local missing=()
     for var in "${required_vars[@]}"; do
         if [[ -z "${!var:-}" ]]; then
             missing+=("$var")
         fi
     done
-    
+
     if [[ ${#missing[@]} -gt 0 ]]; then
         echo "ERROR: Missing required environment variables: ${missing[*]}" >&2
         return 1
@@ -242,28 +247,28 @@ send_http_request() {
     local accept="${6:-application/json}"
     local auth_token="${7:-}"
     local timeout="${8:-60}"  # Default 60 seconds timeout
-    
+
     # Default to port 10005 if not specified
     if [[ -z "$port" || "$port" == "$host" ]]; then
         port=10005
     fi
-    
+
     # Use HTTP/1.0 for binary downloads to avoid chunked transfer encoding corruption
     # Use HTTP/1.1 for JSON/text responses to benefit from persistent connections
     local http_version="HTTP/1.1"
     if [[ "$accept" == "application/octet-stream" ]]; then
         http_version="HTTP/1.0"
     fi
-    
+
     # Build request (use original host with brackets for HTTP Host header)
     local request="$method $endpoint $http_version\r\nHost: $host\r\n"
     request+="Accept: $accept\r\n"
-    
+
     # Add Authorization header if token provided
     if [[ -n "$auth_token" ]]; then
         request+="Authorization: Bearer $auth_token\r\n"
     fi
-    
+
     if [[ -n "$data" ]]; then
         request+="Content-Type: application/json\r\n"
         request+="Content-Length: ${#data}\r\n"
@@ -271,18 +276,18 @@ send_http_request() {
     else
         request+="\r\n"
     fi
-    
+
     # Choose protocol based on port (IPv6 brackets are REQUIRED for socat)
     local socat_target
     # Only use connect-timeout, do NOT use readbytes (it truncates large files)
     local socat_opts="connect-timeout=$timeout"
-    
+
     if is_ssl_port "$port"; then
         socat_target="OPENSSL:$host:$port,verify=0,$socat_opts"
     else
         socat_target="TCP:$host:$port,$socat_opts"
     fi
-    
+
     echo -en "$request" | socat - "$socat_target" 2> >(grep -v "refusing to set empty SNI host name" >&2)
 }
 
@@ -305,7 +310,7 @@ send_http_get_authenticated() {
     local port="$2"
     local endpoint="$3"
     local token="$4"
-    
+
     send_http_request "GET" "$host" "$port" "$endpoint" "" "application/json" "$token"
 }
 
@@ -317,18 +322,18 @@ send_encrypted_api_request() {
     local api_endpoint="$3"
     local raw_data="$4"
     local password="${5:-$MYSQL_ROOT_PASSWORD}"
-    
+
     # Default to port 10005 if not specified
     if [[ -z "$port" || "$port" == "$host" ]]; then
         port=10005
     fi
-    
+
     # Encrypt the data if provided
     local encrypted_data=""
     if [[ -n "$raw_data" ]]; then
         encrypted_data=$(encrypt_data "$raw_data" "$password")
     fi
-    
+
     local json_data="{\"data\":\"$encrypted_data\"}"
     send_http_request "POST" "$host" "$port" "$api_endpoint" "$json_data"
 }
@@ -337,11 +342,11 @@ send_encrypted_api_request() {
 rotate_log_file() {
     local log_file="$1"
     local max_size="${2:-1048576}"  # Default 1MB
-    
+
     if [[ ! -f "$log_file" ]]; then
         return 0
     fi
-    
+
     local filesize=$(stat -c%s "$log_file" 2>/dev/null || echo 0)
     if ((filesize > max_size)); then
         cp -f "$log_file" "${log_file}.bak"
@@ -359,32 +364,32 @@ send_to_api_with_retry() {
     local max_retries="${5:-3}"
     local password="${6:-$MYSQL_ROOT_PASSWORD}"
     local log_file="${7:-$LOG_DIR/api_calls.log}"
-    
+
     local attempt=0
-    
+
     while ((attempt < max_retries)); do
         local response=$(send_encrypted_api_request "$api_host" "$api_port" "$api_endpoint" "$raw_data" "$password")
         local http_code=$(extract_http_code "$response")
-        
+
         if [[ "$http_code" == "200" ]]; then
             return 0
         fi
-        
+
         ((attempt++))
         [[ $attempt -lt $max_retries ]] && sleep 2
     done
-    
+
     # Log failure
     mkdir -p "$(dirname "$log_file")"
     rotate_log_file "$log_file"
-    
+
     {
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] API call failed after $max_retries attempts"
         echo "Destination: $api_host:$api_port Endpoint: $api_endpoint"
         echo "Response: $response"
         echo "---"
     } >> "$log_file"
-    
+
     return 1
 }
 
@@ -396,13 +401,13 @@ check_log_level() {
     local log_level="$3"
     local api_host="$REPLICATION_MANAGER_HOST"
     local api_port="$REPLICATION_MANAGER_PORT"
-    
+
     local endpoint="/api/clusters/${cluster}/jobs-log-level/${taskname}/${log_level}"
     local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "")
 
     local http_code=$(extract_http_code "$response")
     local body=$(extract_http_body "$response" | tr -d '\n')
-    
+
     if [[ "$http_code" == "200" && "$body" == "true" ]]; then
         return 0
     elif [[ "$http_code" == "500" && "$body" == "false" ]]; then
@@ -445,7 +450,7 @@ check_task_needs() {
 
     local http_code=$(extract_http_code "$response")
     local body=$(extract_http_body "$response" | tr -d '\n')
-    
+
     if [[ "$http_code" == "200" && "$body" == "true" ]]; then
         return 0
     elif [[ "$http_code" == "500" && "$body" == "false" ]]; then
@@ -453,6 +458,58 @@ check_task_needs() {
     else
         return 2
     fi
+}
+
+# Get receiver address from repman API for tasks that need socat streaming.
+# Sets RECEIVER_ADDRESS variable. Returns 0 on success.
+# Usage: get_task_receiver "cluster" "server" "port" "taskname"
+get_task_receiver() {
+    local cluster="$1"
+    local server="$2"
+    local port="$3"
+    local taskname="$4"
+    local api_host="$REPLICATION_MANAGER_HOST"
+    local api_port="$REPLICATION_MANAGER_PORT"
+
+    local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/receive-task/${taskname}"
+    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+
+    local http_code=$(extract_http_code "$response")
+    local body=$(extract_http_body "$response" | tr -d '\n')
+
+    if [[ "$http_code" == "200" ]]; then
+        if [[ "$body" == "NO_RECEIVER_NEEDED" ]]; then
+            RECEIVER_ADDRESS=""
+            return 0
+        fi
+        local rcv_port=$(echo "$body" | sed -n 's/RECEIVER_PORT=//p')
+        if [[ -n "$rcv_port" ]]; then
+            RECEIVER_ADDRESS="${api_host}:${rcv_port}"
+            return 0
+        fi
+    fi
+    RECEIVER_ADDRESS=""
+    return 1
+}
+
+# Report job state to repman API (api mode only).
+# Usage: report_job_state "taskname" "state"
+# States: processing, done, error, waiting
+report_job_state() {
+    local taskname="$1"
+    local jobstate="$2"
+    local api_host="$REPLICATION_MANAGER_HOST"
+    local api_port="$REPLICATION_MANAGER_PORT"
+
+    local endpoint="/api/clusters/${CLUSTER_NAME}/servers/${MYSQL_SERVER}/${MYSQL_PORT}/actions/job-state/${taskname}/${jobstate}"
+    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+
+    local http_code=$(extract_http_code "$response")
+    if [[ "$http_code" != "200" ]]; then
+        send_lines_to_api "Failed to report job state $jobstate for $taskname (HTTP $http_code)" "$taskname" "$LVL_ERROR"
+        return 1
+    fi
+    return 0
 }
 
 ##################################
@@ -470,23 +527,23 @@ secret_login() {
     local encrypted_secret="$(encrypt_data "{\"server\":\"$server:$port\", \"secret\":\"$MYSQL_ROOT_PASSWORD\"}")"
     local api_host="$REPLICATION_MANAGER_HOST"
     local api_port="$REPLICATION_MANAGER_PORT"
-    
+
     # Build endpoint
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/secret-login"
-    
+
     # Prepare JSON payload
     local json_data="{\"data\":\"$encrypted_secret\"}"
-    
+
     # Send request
     local response=$(send_http_request "POST" "$api_host" "$api_port" "$endpoint" "$json_data")
     local http_code=$(extract_http_code "$response")
     local body=$(extract_http_body "$response")
-    
+
     # Handle response codes
     if [[ "$http_code" == "200" ]]; then
         # Extract token from JSON response
         local token=$(echo "$body" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-        
+
         if [[ -n "$token" ]]; then
             echo "$token"
             return 0
@@ -506,21 +563,21 @@ secret_login() {
 fetch_config_receiver() {
     local urlpost="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/config-receiver"
     local response
-    
+
     # Use authenticated request if TOKEN is available
     if [[ -n "$TOKEN" ]]; then
         response=$(send_http_get_authenticated "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$urlpost" "$TOKEN")
     else
         response=$(send_http_get "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$urlpost")
     fi
-    
+
     local http_code=$(extract_http_code "$response")
-    
+
     if [[ "$http_code" != "200" ]]; then
         send_lines_to_api "ERROR: Failed to fetch config receiver, HTTP $http_code" "print-defaults" "$LVL_ERROR"
         return 1
     fi
-    
+
     extract_http_body "$response"
 }
 
@@ -529,7 +586,7 @@ need_refresh_config() {
     local urlpost="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/need-config-refresh"
     local response=$(send_http_get "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$urlpost")
     local http_code=$(extract_http_code "$response")
-    
+
     [[ "$http_code" == "200" ]]
 }
 
@@ -540,18 +597,18 @@ fetch_and_extract_config() {
     local extract_dir="$1"
     local token="${2:-}"
     local config_sender_url="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/config-dummy-sender"
-    
+
     send_lines_to_api "Requesting config send via cookie-based push mechanism..." "print-defaults" "$LVL_DEBUG"
-    
+
     # Remove existing directory and create new one
     rm -rf "$extract_dir"
     mkdir -p "$extract_dir"
-    
+
     # Step 1: POST to queue the config send and get SST port info
     local request_timeout=10  # API should respond quickly (just queues request)
-    
+
     send_lines_to_api "Connecting to: $REPLICATION_MANAGER_HOST:$REPLICATION_MANAGER_PORT" "print-defaults" "$LVL_DEBUG"
-    
+
     local response
     if [[ -n "$token" ]]; then
         send_lines_to_api "Using authenticated POST request with token" "print-defaults" "$LVL_DEBUG"
@@ -560,11 +617,11 @@ fetch_and_extract_config() {
         send_lines_to_api "Using non-authenticated POST request" "print-defaults" "$LVL_DEBUG"
         response=$(send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$config_sender_url" "" "application/json" "" "$request_timeout" 2>"$LOG_DIR/config_request.err")
     fi
-    
+
     if [[ -z "$response" ]]; then
         send_lines_to_api "ERROR: No response received from API" "print-defaults" "$LVL_ERROR"
         send_lines_to_api "Connection: $REPLICATION_MANAGER_HOST:$REPLICATION_MANAGER_PORT" "print-defaults" "$LVL_ERROR"
-        
+
         if [ -f "$LOG_DIR/config_request.err" ]; then
             local err_content=$(cat "$LOG_DIR/config_request.err" 2>/dev/null)
             if [[ -n "$err_content" ]]; then
@@ -573,54 +630,54 @@ fetch_and_extract_config() {
         fi
         return 1
     fi
-    
+
     # Extract HTTP status and body
     local http_status=$(extract_http_code "$response")
     local json_body=$(extract_http_body "$response")
-    
+
     send_lines_to_api "HTTP Status: $http_status" "print-defaults" "$LVL_DEBUG"
-    
+
     if [[ "$http_status" != "200" ]]; then
         send_lines_to_api "ERROR: API returned status $http_status" "print-defaults" "$LVL_ERROR"
         return 1
     fi
-    
+
     # Parse SST port and host from JSON response
     local sst_port=$(echo "$json_body" | grep -o '"sst_port":"[^"]*"' | cut -d'"' -f4)
     local sst_host=$(echo "$json_body" | grep -o '"sst_host":"[^"]*"' | cut -d'"' -f4)
     local status=$(echo "$json_body" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
-    
+
     if [[ -z "$sst_port" || -z "$sst_host" ]]; then
         send_lines_to_api "ERROR: Failed to parse SST port/host from API response" "print-defaults" "$LVL_ERROR"
         return 1
     fi
-    
+
     send_lines_to_api "Config send queued (status: $status)" "print-defaults" "$LVL_INFO"
     send_lines_to_api "Config will be sent to $sst_host:$sst_port" "print-defaults" "$LVL_DEBUG"
-    
+
     # Step 2: Open TCP listener on the SST port to receive the config
     local config_file="$extract_dir/config.tar.gz"
     local listener_timeout=300  # 5 minutes timeout for config delivery
-    
+
     send_lines_to_api "Opening TCP listener on port $sst_port..." "print-defaults" "$LVL_DEBUG"
-    
+
     # Use socat to listen and save received data to file
     # Format: socat -u TCP-LISTEN:port,reuseaddr,fork OPEN:file,creat,trunc
     if ! command -v socat >/dev/null 2>&1; then
         send_lines_to_api "ERROR: 'socat' command not found - required for receiving config" "print-defaults" "$LVL_ERROR"
         return 1
     fi
-    
+
     # Start listener in background and capture PID
     timeout "$listener_timeout" socat -u "TCP-LISTEN:$sst_port,reuseaddr" "OPEN:$config_file,creat,trunc" > "$LOG_DIR/socat_listener.log" 2>&1 &
     local socat_pid=$!
-    
+
     send_lines_to_api "Listener started (PID: $socat_pid), waiting for config delivery (timeout: ${listener_timeout}s)..." "print-defaults" "$LVL_DEBUG"
-    
+
     # Wait for socat to complete or timeout
     wait $socat_pid
     local socat_exit=$?
-    
+
     if [[ $socat_exit -eq 124 ]]; then
         send_lines_to_api "ERROR: Timeout waiting for config delivery after ${listener_timeout}s" "print-defaults" "$LVL_ERROR"
         return 1
@@ -631,68 +688,68 @@ fetch_and_extract_config() {
         fi
         return 1
     fi
-    
+
     # Verify config file was received
     if [[ ! -s "$config_file" ]]; then
         local filesize=$(stat -c%s "$config_file" 2>/dev/null || echo 0)
         send_lines_to_api "ERROR: Received config file is empty (size: $filesize bytes)" "print-defaults" "$LVL_ERROR"
         return 1
     fi
-    
+
     local filesize=$(stat -c%s "$config_file" 2>/dev/null || echo 0)
     send_lines_to_api "Received config file: $filesize bytes" "print-defaults" "$LVL_DEBUG"
-    
+
     # Check file type before extraction
     local file_type=$(file -b "$config_file" 2>/dev/null || echo "unknown")
     send_lines_to_api "File type: $file_type" "print-defaults" "$LVL_DEBUG"
-    
+
     # Check first few bytes (magic numbers)
     local first_bytes=$(head -c 20 "$config_file" | od -An -tx1 | tr -d ' \n')
     send_lines_to_api "First bytes (hex): ${first_bytes:0:40}" "print-defaults" "$LVL_DEBUG"
-    
+
     # Check if it looks like an HTTP error response
     if head -c 100 "$config_file" | grep -q "^HTTP\|^<html\|^{"; then
         send_lines_to_api "ERROR: Received file appears to be an HTTP error response, not a tarball" "print-defaults" "$LVL_ERROR"
         send_lines_to_api "First 200 bytes: $(head -c 200 "$config_file")" "print-defaults" "$LVL_ERROR"
         return 1
     fi
-    
+
     # Try to extract tarball
     local tar_output
     send_lines_to_api "Attempting gzip extraction (tar xzf)..." "print-defaults" "$LVL_DEBUG"
-    
+
     if tar_output=$(tar xzf "$config_file" -C "$extract_dir" 2>&1); then
         send_lines_to_api "Successfully extracted as gzip compressed tar" "print-defaults" "$LVL_DEBUG"
     else
         send_lines_to_api "Gzip extraction failed: $tar_output" "print-defaults" "$LVL_WARN"
-        
+
         # Try without gzip (maybe it's already uncompressed)
         send_lines_to_api "Trying uncompressed extraction (tar xf)..." "print-defaults" "$LVL_DEBUG"
-        
+
         if tar_output=$(tar xf "$config_file" -C "$extract_dir" 2>&1); then
             send_lines_to_api "Successfully extracted as uncompressed tar" "print-defaults" "$LVL_DEBUG"
         else
             send_lines_to_api "ERROR: All extraction methods failed" "print-defaults" "$LVL_ERROR"
             send_lines_to_api "Final tar error: $tar_output" "print-defaults" "$LVL_ERROR"
-            
+
             # Show what we actually got
             send_lines_to_api "First 200 chars of file: $(head -c 200 "$config_file" | cat -v)" "print-defaults" "$LVL_ERROR"
-            
+
             # Try to identify the file type more specifically
             if command -v file >/dev/null 2>&1; then
                 local detailed_type=$(file "$config_file" 2>/dev/null)
                 send_lines_to_api "Detailed file type: $detailed_type" "print-defaults" "$LVL_ERROR"
             fi
-            
+
             return 1
         fi
     fi
-    
+
     # Set ownership if running as root
     if [[ "$(id -u)" == "0" && -d "$extract_dir/etc/mysql" ]]; then
         chown -R 999:999 "$extract_dir/etc/mysql" 2>/dev/null || true
     fi
-    
+
     return 0
 }
 
@@ -700,23 +757,23 @@ fetch_and_extract_config() {
 create_dummy_config_file() {
     local base_dir="$1"
     local dummy_config_file="$base_dir/dummy.cnf"
-    
+
     cat > "$dummy_config_file" <<EOF
 [mysqld]
 !includedir $base_dir/etc/mysql/conf.d
 !includedir $base_dir/etc/mysql/custom.d
 EOF
-    
+
     if [[ $? -ne 0 ]]; then
         send_lines_to_api "ERROR: Failed to create dummy.cnf" "print-defaults" "$LVL_ERROR"
         return 1
     fi
-    
+
     # Set ownership if running as root
     if [[ "$(id -u)" == "0" ]]; then
         chown 999:999 "$dummy_config_file" 2>/dev/null || true
     fi
-    
+
     return 0
 }
 
@@ -725,42 +782,42 @@ send_mariadb_defaults() {
     local defaults_file="$1"
     local receiver_addr="$2"
     local log_file="$3"
-    
+
     # Check if mariadbd exists, otherwise use mysqld
     local command="mariadbd"
     if ! command -v "$command" >/dev/null 2>&1; then
         send_lines_to_api "'mariadbd' not found, falling back to 'mysqld'" "print-defaults" "$LVL_INFO"
         command="mysqld"
     fi
-    
+
     if ! command -v "$command" >/dev/null 2>&1; then
         send_lines_to_api "ERROR: Neither 'mariadbd' nor 'mysqld' found in PATH" "print-defaults" "$LVL_ERROR"
         return 1
     fi
-    
+
     # Run command and capture output
     local output=$($command --defaults-file="$defaults_file" --print-defaults 2>&1)
-    
+
     if [[ $? -ne 0 ]]; then
         send_lines_to_api "ERROR: Failed to execute $command: $output" "print-defaults" "$LVL_ERROR"
         return 1
     fi
-    
+
     # Process output: replace ' --' with newline
     local processed_output=$(echo "$output" | sed 's/ --/\n--/g')
-    
+
     # Send over TCP using socat
     local recv_host="${receiver_addr%%:*}"
     local recv_port="${receiver_addr##*:}"
-    
+
     if ! echo "$processed_output" | socat -u STDIN "TCP:$recv_host:$recv_port"; then
         send_lines_to_api "ERROR: Failed to send data to $receiver_addr" "print-defaults" "$LVL_ERROR"
         return 1
     fi
-    
+
     # Log output
     echo "$processed_output" > "$log_file"
-    
+
     send_lines_to_api "Output sent to $receiver_addr and logged to $log_file" "print-defaults" "$LVL_DEBUG"
     return 0
 }
@@ -769,12 +826,12 @@ send_mariadb_defaults() {
 read_cmdline_args() {
     local pid="$1"
     local cmdline_path="/proc/$pid/cmdline"
-    
+
     if [[ ! -f "$cmdline_path" ]]; then
         send_lines_to_api "ERROR: Cannot read cmdline for PID $pid" "print-defaults" "$LVL_ERROR"
         return 1
     fi
-    
+
     tr '\0' '\n' < "$cmdline_path"
 }
 
@@ -785,28 +842,28 @@ print_defaults_from_pidfile() {
     local current_pid_file="$3"
     local default_config_path="$4"
     local log_file="$5"
-    
+
     # If pid_file doesn't exist, use default config
     if [[ -z "$current_pid_file" || ! -f "$current_pid_file" ]]; then
         send_lines_to_api "PID file not found, using default config path" "print-defaults" "$LVL_INFO"
         send_mariadb_defaults "$default_config_path" "$monitor_addr:$current_port" "$log_file"
         return $?
     fi
-    
+
     # Read PID from file
     local pid=$(cat "$current_pid_file" | tr -d '[:space:]')
-    
+
     if [[ -z "$pid" ]]; then
         send_lines_to_api "PID file is empty" "print-defaults" "$LVL_WARN"
         return 1
     fi
-    
+
     # Check if process exists
     if [[ ! -d "/proc/$pid" ]]; then
         send_lines_to_api "Process with PID $pid not found" "print-defaults" "$LVL_WARN"
         return 1
     fi
-    
+
     # Read command line arguments
     local defaults_file=""
     while IFS= read -r arg; do
@@ -815,12 +872,12 @@ print_defaults_from_pidfile() {
             break
         fi
     done < <(read_cmdline_args "$pid")
-    
+
     # Use default if not found
     if [[ -z "$defaults_file" ]]; then
         defaults_file="$default_config_path"
     fi
-    
+
     # Send defaults
     send_mariadb_defaults "$defaults_file" "$monitor_addr:$current_port" "$log_file"
 }
@@ -831,21 +888,21 @@ print_defaults_for_fetch() {
     local dummy_port="$2"
     local default_config_path="$3"
     local log_file="$4"
-    
+
     local extract_dir="/bootstrap/dummy"
-    
+
     # Fetch and extract configuration (use global TOKEN if available)
     if ! fetch_and_extract_config "$extract_dir" "$TOKEN"; then
         send_lines_to_api "ERROR: Failed to fetch and extract configuration" "print-defaults" "$LVL_ERROR"
         return 1
     fi
-    
+
     # Create dummy config file
     if ! create_dummy_config_file "$extract_dir"; then
         send_lines_to_api "ERROR: Failed to create dummy.cnf file" "print-defaults" "$LVL_ERROR"
         return 1
     fi
-    
+
     # Run mariadbd with dummy configuration
     if send_mariadb_defaults "$extract_dir/dummy.cnf" "$monitor_addr:$dummy_port" "$log_file"; then
         send_lines_to_api "Dry run (dummy) completed successfully" "print-defaults" "$LVL_DEBUG"
@@ -866,42 +923,42 @@ parse_json_field() {
 # Main function to run config print jobs
 run_config_print_jobs() {
     send_lines_to_api "Fetching config receiver information..." "print-defaults" "$LVL_DEBUG"
-    
+
     # Fetch receiver info
     local receiver_json=$(fetch_config_receiver) || return 1
-    
+
     # Parse JSON response
     local monitor_address=$(parse_json_field "$receiver_json" "monitor_address")
     local dummy_config_port=$(parse_json_field "$receiver_json" "dummy_config_port")
     local current_config_port=$(parse_json_field "$receiver_json" "current_config_port")
     local current_pid_file=$(parse_json_field "$receiver_json" "current_pid_file")
     local default_config_path=$(parse_json_field "$receiver_json" "default_config_dir")
-    
+
     send_lines_to_api "Monitor Address: $monitor_address, Dummy Port: $dummy_config_port, Current Port: $current_config_port" "print-defaults" "$LVL_DEBUG"
-    
+
     # Prepare log files
     local dummy_log="$LOG_DIR/dummy.log"
     local current_log="$LOG_DIR/current.log"
-    
+
     # Run both jobs in parallel
     print_defaults_for_fetch "$monitor_address" "$dummy_config_port" "$default_config_path" "$dummy_log" &
     local pid_dummy=$!
-    
+
     print_defaults_from_pidfile "$monitor_address" "$current_config_port" "$current_pid_file" "$default_config_path" "$current_log" &
     local pid_current=$!
-    
+
     # Wait for both to complete
     wait $pid_dummy
     local status_dummy=$?
-    
+
     wait $pid_current
     local status_current=$?
-    
+
     # Log results
     send_lines_to_api "Both configuration checks completed." "print-defaults" "$LVL_INFO"
     send_lines_to_api "Dummy result: $([ $status_dummy -eq 0 ] && echo 'Success' || echo 'Failed') - Output in $dummy_log" "print-defaults" "$LVL_INFO"
     send_lines_to_api "Current result: $([ $status_current -eq 0 ] && echo 'Success' || echo 'Failed') - Output in $current_log" "print-defaults" "$LVL_INFO"
-    
+
     return 0
 }
 
@@ -916,17 +973,17 @@ check_jobs_receiver() {
     local port="$3"
     local api_host="$REPLICATION_MANAGER_HOST"
     local api_port="$REPLICATION_MANAGER_PORT"
-    
+
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/receive-jobs-check"
     local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
 
     local http_code=$(extract_http_code "$response")
     local body=$(extract_http_body "$response")
-    
+
     # Process successful response
     if [[ "$http_code" == "200" && "$body" == RECEIVER_PORT=* ]]; then
         local recv_port="${body#RECEIVER_PORT=}"
-        
+
         # Validate the port is numeric and within range
         if [[ "$recv_port" =~ ^[0-9]+$ && "$recv_port" -ge 1 && "$recv_port" -le 65535 ]]; then
             echo "$recv_port"
@@ -950,7 +1007,7 @@ request_jobs_upgrade() {
     local api_port="$REPLICATION_MANAGER_PORT"
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/send-jobs-upgrade"
     local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
-    
+
     local http_code=$(extract_http_code "$response")
     [[ "$http_code" == "200" ]]
 }
@@ -1056,7 +1113,7 @@ read_log_file() {
     local job="$3"
     local run_lockdir="$4"
     local batch_var="$5"
-    
+
     local last_read=0
     local current_line=$((last_read + 1))
     local num_lines=$(wc -l < "$log_file")
@@ -1167,7 +1224,7 @@ process_log_file() {
     if [ "$current_line" -le "$num_lines" ] && [ -f "$log_file" ]; then
         while IFS= read -r line; do
             escaped=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\n/\\n/g')
-            
+
             batch+="$escaped\n"
             if ((current_line % BATCH_SIZE == 0)); then
                 send_lines_to_api "$batch" "$job" "$LVL_DEBUG"
@@ -1177,7 +1234,7 @@ process_log_file() {
             echo "$current_line" >"$checkpoint_file"
             ((current_line++))
         done < <(sed -n "${current_line},\$p" "$log_file")
-        
+
         if [[ -n "$batch" ]]; then
             send_lines_to_api "$batch" "$job" "$LVL_DEBUG"
         fi
@@ -1267,7 +1324,7 @@ doneJob() {
         fi
         ;;
     esac
-    
+
     if [ $jobstate -eq 3 ]; then
         send_lines_to_api "Job $job ended with state: Finished" "$job" "$LVL_INFO"
     else
@@ -1277,12 +1334,16 @@ doneJob() {
 }
 
 pauseJob() {
-    $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set state=2, result='waiting' WHERE id='$ID';" &
+    if [[ "$JOBS_MODE" == "api" ]]; then
+        report_job_state "$job" "waiting"
+    else
+        $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set state=2, result='waiting' WHERE id='$ID';" &
+    fi
 }
 
 partialRestore() {
     send_lines_to_api "Starting partial restore..." "$job" "$LVL_INFO"
-    chown -R mysql:mysql $BACKUPDIR 
+    chown -R mysql:mysql $BACKUPDIR
     $BINARY_CLIENT -e "set sql_log_bin=0;install plugin BLACKHOLE soname 'ha_blackhole.so'"
     for dir in $(ls -d $BACKUPDIR/*/ | xargs -n 1 basename | grep -vE 'mysql|performance_schema|replication_manager_schema'); do
         send_lines_to_api "Restoring $dir..." "$job" "$LVL_DEBUG"
@@ -1419,7 +1480,7 @@ jobsUpgrade() {
 
     export LOG_DIR CHECKPOINT_DIR LOCK_DIR  # ensure subshells inherit them
     process_log_file "jobs-upgrade" &
-    
+
     echo "Waiting new script." >"$LOG_DIR/jobs-upgrade.process.out"
 
     # Open receiver port to get the new script to a temporary file
@@ -1440,7 +1501,7 @@ jobsUpgrade() {
         if ! grep -q '^# EOF$' "$TEMP_FILE"; then
             send_lines_to_api "Received script is invalid (missing EOF marker)." "jobs-upgrade" "$LVL_ERROR"
             rm -f "$TEMP_FILE"
-        else 
+        else
             # Replace the current script
             chmod +x "$TEMP_FILE"
             cp "$TEMP_FILE" "${BASH_SOURCE[0]}"
@@ -1506,12 +1567,37 @@ fi
 
 for job in "${JOBS[@]}"; do
 
-    TASK=($(echo "SELECT concat(id,'@',server,':',port) FROM replication_manager_schema.jobs WHERE task='$job' and done=0 AND state=0 order by id desc limit 1" | $BINARY_CLIENT -N))
+    TASK_NEEDED=false
+    ADDRESS=""
+    ID=""
 
-    ADDRESS=($(echo $TASK | awk -F@ '{ print $2 }'))
-    ID=($(echo $TASK | awk -F@ '{ print $1 }'))
+    if [[ "$JOBS_MODE" == "api" ]]; then
+        # API mode: check cookies via the needs API endpoint
+        if check_task_needs "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT" "$job"; then
+            TASK_NEEDED=true
+            # For tasks that stream data, get the receiver address from the API
+            case "$job" in
+                mariabackup|xtrabackup|reseedmariabackup|reseedxtrabackup|flashbackmariabackup|flashbackxtrabackup|errorlog|slowquery|auditlog|sqlerrorlog)
+                    if get_task_receiver "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT" "$job"; then
+                        ADDRESS="$RECEIVER_ADDRESS"
+                    else
+                        send_lines_to_api "Failed to get receiver for $job" "$job" "$LVL_ERROR"
+                        TASK_NEEDED=false
+                    fi
+                    ;;
+            esac
+        fi
+    else
+        # SQL mode (default): poll the jobs table
+        TASK=($(echo "SELECT concat(id,'@',server,':',port) FROM replication_manager_schema.jobs WHERE task='$job' and done=0 AND state=0 order by id desc limit 1" | $BINARY_CLIENT -N))
+        ADDRESS=($(echo $TASK | awk -F@ '{ print $2 }'))
+        ID=($(echo $TASK | awk -F@ '{ print $1 }'))
+        if [ "$ID" != "" ]; then
+            TASK_NEEDED=true
+        fi
+    fi
 
-    if [ "$ID" != "" ]; then
+    if $TASK_NEEDED; then
         send_lines_to_api "Job $job initiated. Clearing previous logs..." "$job" "$LVL_INFO"
         case "$job" in
             mariabackup|xtrabackup)
@@ -1527,30 +1613,20 @@ for job in "${JOBS[@]}"; do
 
         rm -f "$LOG_DIR/$job.out"
         rm -f "$CHECKPOINT_DIR/$job.checkpoint"
-    fi
-
-
-    if [ "$ADDRESS" == "" ]; then
-        # echo "No $job needed"
-        case "$job" in
-        start)
-            if [ "curl -so /dev/null -w '%{response_code}'   http://$REPLICATION_MANAGER_ADDR/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/need-start" == "200" ]; then
-                curl http://$REPLICATION_MANAGER_ADDR/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/config | tar xzvf etc/* - -C $CONFDIR/../..
-                systemctl start mysql
-            fi
-            ;;
-        esac
-    else
 
         mkdir -p "$LOG_DIR/$job.run"
         process_log_file "$job" &
-        # Ensure run lockdir for current job is removed on script exit. Intended to replace the previous job trap which already removed at the end of loop entry.
         trap 'remove_run_lockdir "$job"' EXIT
         echo "Processing $job"
-        
-        #purge de past
-        $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set done=1 WHERE done=0 AND task='$job' AND ID<>$ID;"
-        $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set state=1, result='processing' WHERE task='$job' AND ID=$ID;"
+
+        # Report job as processing
+        if [[ "$JOBS_MODE" == "api" ]]; then
+            report_job_state "$job" "processing"
+        elif [[ -n "$ID" ]]; then
+            $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set done=1 WHERE done=0 AND task='$job' AND ID<>$ID;"
+            $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set state=1, result='processing' WHERE task='$job' AND ID=$ID;"
+        fi
+
         case "$job" in
         reseedxtrabackup)
             rm -rf $BACKUPDIR
@@ -1631,9 +1707,49 @@ for job in "${JOBS[@]}"; do
             journalctl -u mysql >"$LOG_DIR/$job.process.out"
             ;;
         esac
-        doneJob "$job"
-        remove_run_lockdir "$job" 
+
+        # Report job completion
+        if [[ "$JOBS_MODE" == "api" ]]; then
+            # Check backup success the same way doneJob does
+            local api_job_result="done"
+            case "$job" in
+            mariabackup|xtrabackup)
+                if ! grep -q '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} completed OK!' "$LOG_DIR/backup.out" 2>/dev/null; then
+                    api_job_result="error"
+                fi
+                ;;
+            reseedmariabackup|reseedxtrabackup)
+                if ! grep -q '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} completed OK!' "$LOG_DIR/reseed.out" 2>/dev/null; then
+                    api_job_result="error"
+                fi
+                ;;
+            flashbackmariabackup|flashbackxtrabackup)
+                if ! grep -q '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} completed OK!' "$LOG_DIR/flash.out" 2>/dev/null; then
+                    api_job_result="error"
+                fi
+                ;;
+            esac
+            report_job_state "$job" "$api_job_result"
+            if [[ "$api_job_result" == "done" ]]; then
+                send_lines_to_api "Job $job completed" "$job" "$LVL_INFO"
+            else
+                send_lines_to_api "Job $job ended with error" "$job" "$LVL_ERROR"
+            fi
+        else
+            doneJob "$job"
+        fi
+        remove_run_lockdir "$job"
         trap - EXIT
+    else
+        # No task needed — handle special start case
+        case "$job" in
+        start)
+            if [ "curl -so /dev/null -w '%{response_code}'   http://$REPLICATION_MANAGER_ADDR/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/need-start" == "200" ]; then
+                curl http://$REPLICATION_MANAGER_ADDR/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/config | tar xzvf etc/* - -C $CONFDIR/../..
+                systemctl start mysql
+            fi
+            ;;
+        esac
     fi
 done
 
