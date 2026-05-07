@@ -1452,9 +1452,10 @@ var TaskRegistry = map[TaskName]TaskDef{
 	ConstTaskReseedMB:          {Name: ConstTaskReseedMB, Capability: TaskCapRemoteOnly},
 	ConstTaskFlashXB:           {Name: ConstTaskFlashXB, Capability: TaskCapRemoteOnly},
 	ConstTaskFlashMB:           {Name: ConstTaskFlashMB, Capability: TaskCapRemoteOnly},
-	ConstTaskRestart:           {Name: ConstTaskRestart, Capability: TaskCapRemoteOnly},
-	ConstTaskStop:              {Name: ConstTaskStop, Capability: TaskCapRemoteOnly},
-	ConstTaskStart:             {Name: ConstTaskStart, Capability: TaskCapRemoteOnly},
+	// Both — orchestrator API (OpenSVC/K8S) handles locally, dbjobs uses systemctl
+	ConstTaskRestart:           {Name: ConstTaskRestart, Capability: TaskCapBoth, DefaultRemote: true},
+	ConstTaskStop:              {Name: ConstTaskStop, Capability: TaskCapBoth, DefaultRemote: true},
+	ConstTaskStart:             {Name: ConstTaskStart, Capability: TaskCapBoth, DefaultRemote: true},
 	ConstTaskError:             {Name: ConstTaskError, Capability: TaskCapRemoteOnly},
 	ConstTaskSlowQuery:         {Name: ConstTaskSlowQuery, Capability: TaskCapRemoteOnly},
 	ConstTaskSqlError:          {Name: ConstTaskSqlError, Capability: TaskCapRemoteOnly},

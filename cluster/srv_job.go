@@ -567,7 +567,7 @@ func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 func (server *ServerMonitor) JobsCheckRunning() error {
 	cluster := server.ClusterGroup
 	if cluster.Conf.SchedulerJobsMode == "api" {
-		return nil
+		return server.jobsCheckRunningFromMemory()
 	}
 	if server.IsDown() || cluster.InRollingRestart {
 		return nil
@@ -627,6 +627,38 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 		}
 	}
 
+	return nil
+}
+
+// jobsCheckRunningFromMemory scans JobResults for pending tasks in API mode
+// and sets the same WARN states as the SQL-based JobsCheckRunning.
+func (server *ServerMonitor) jobsCheckRunningFromMemory() error {
+	cluster := server.ClusterGroup
+	server.JobResults.Range(func(k, v any) bool {
+		t := v.(*config.Task)
+		if t.Done == 1 {
+			return true // skip completed
+		}
+		switch config.TaskName(t.Task) {
+		case config.ConstTaskOptimize:
+			cluster.SetState("WARN0072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0072"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		case config.ConstTaskRestart:
+			cluster.SetState("WARN0096", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0096"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		case config.ConstTaskStop:
+			cluster.SetState("WARN0097", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0097"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		case config.ConstTaskXB, config.ConstTaskMB:
+			cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0073"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		case config.ConstTaskReseedXB, config.ConstTaskReseedMB:
+			cluster.SetState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0074"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		case config.ConstTaskReseedDump:
+			cluster.SetState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0075"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		case config.ConstTaskFlashXB, config.ConstTaskFlashMB:
+			cluster.SetState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0076"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		case config.ConstTaskFlashDump:
+			cluster.SetState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0077"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		}
+		return true
+	})
 	return nil
 }
 
