@@ -165,6 +165,9 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReceiveTask)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/job-state/{taskname}/{jobstate}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobState)),
+	))
 }
 
 func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router) {
@@ -5037,6 +5040,57 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Task receiver port %s opened for %s on %s", rcvPort, taskname, node.Name)
 	w.WriteHeader(200)
 	w.Write([]byte("RECEIVER_PORT=" + rcvPort))
+}
+
+// handlerMuxServerJobState receives job state updates from the dbjobs script
+// in API mode. The script calls this instead of updating the jobs SQL table.
+// @Summary Update job state from dbjobs script
+// @Tags DatabaseTasks
+// @Param clusterName path string true "Cluster name"
+// @Param serverName path string true "Server hostname"
+// @Param serverPort path string true "Server port"
+// @Param taskname path string true "Task name"
+// @Param jobstate path string true "Job state: processing, done, error"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/job-state/{taskname}/{jobstate} [post]
+func (repman *ReplicationManager) handlerMuxServerJobState(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), errcode)
+		return
+	}
+	if node == nil {
+		http.Error(w, "No server", 500)
+		return
+	}
+
+	taskname := vars["taskname"]
+	jobstate := vars["jobstate"]
+
+	switch jobstate {
+	case "processing":
+		node.JobsUpdateState(taskname, "processing", cluster.JobStateRunning, 0)
+	case "done":
+		node.JobsUpdateState(taskname, "completed", cluster.JobStateSuccess, 1)
+	case "error":
+		node.JobsUpdateState(taskname, "error", cluster.JobStateErrorExec, 0)
+	case "waiting":
+		node.JobsUpdateState(taskname, "waiting", cluster.JobStateHalted, 0)
+	default:
+		http.Error(w, "Unknown state: "+jobstate, 400)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "API job state: %s=%s on %s", taskname, jobstate, node.URL)
+	w.WriteHeader(200)
+	w.Write([]byte("ok"))
 }
 
 // handlerMuxServerAllowJobsUpgrade handles the HTTP request to allow jobs upgrade on a specific server within a cluster.

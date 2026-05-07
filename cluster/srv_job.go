@@ -116,6 +116,10 @@ WHERE table_schema = 'replication_manager_schema'
 
 func (server *ServerMonitor) JobsCreateTable() error {
 	cluster := server.ClusterGroup
+	// In API mode the jobs table is not used — skip creation entirely
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return nil
+	}
 	if err := server.jobsCreateTable(); err != nil {
 		cluster.SetState("WARN0153", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0153"], server.URL, err), ErrFrom: "JOB"})
 	}
@@ -486,6 +490,9 @@ func (server *ServerMonitor) setTaskCookie(task string) error {
 }
 
 func (server *ServerMonitor) HasRunningDBJobs() (bool, error) {
+	if server.ClusterGroup.Conf.SchedulerJobsMode == "api" {
+		return false, nil
+	}
 	if server.Conn == nil {
 		return false, errors.New("no pool connection")
 	}
@@ -550,6 +557,9 @@ func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 
 func (server *ServerMonitor) JobsCheckRunning() error {
 	cluster := server.ClusterGroup
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return nil
+	}
 	if server.IsDown() || cluster.InRollingRestart {
 		return nil
 	}
@@ -612,6 +622,9 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 }
 
 func (server *ServerMonitor) JobsCheckPending(Conn *sqlx.Conn) error {
+	if server.ClusterGroup.Conf.SchedulerJobsMode == "api" {
+		return nil
+	}
 	var err error
 	// Prevent interrupting current reseed
 	if inReseed, task := server.GetReseedingState(); inReseed {
@@ -1053,6 +1066,11 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job state updated in runtime. Continue to update state in jobs table.")
 
+	// In API mode, state is tracked in memory only — no jobs table
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return nil
+	}
+
 	if !cluster.Conf.MonitorScheduler {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Monitoring scheduler is inactive, task only updated in runtime")
 		return nil
@@ -1089,6 +1107,10 @@ func (server *ServerMonitor) JobsUpdatePayload(task, payload string) error {
 		t.Payload = payload
 	} else {
 		t.Payload = payload
+	}
+
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return nil
 	}
 
 	if !cluster.Conf.MonitorScheduler {
