@@ -47,6 +47,7 @@ import QueryRules from '../QueryRules'
 import PeerClusterList from '../PeerClusterList'
 import ClustersGlobalSettings from '../ClustersGlobalSettings'
 import GlobalItems from '../GlobalItems'
+import Billing from '../Billing'
 import NewClusterModal from '../../components/Modals/NewClusterModal'
 import { FaPlus } from 'react-icons/fa'
 import { setBaseURL } from '../../redux/authSlice'
@@ -87,6 +88,9 @@ function Home() {
   useEffect(() => {
     if (monitor?.config?.cloud18) {
       globalTabsRef.current = ['Clusters Local', 'Clusters Peer', 'Clusters For Sale']
+      if (isSSOUser) {
+        globalTabsRef.current.push('Billing')
+      }
 
     } else {
       globalTabsRef.current = ['Clusters Local']
@@ -95,7 +99,7 @@ function Home() {
       globalTabsRef.current.push('Settings')
     }
     globalTabsRef.current.push('Dashboard')
-  }, [monitor?.config?.cloud18, loggedUser?.User])
+  }, [monitor?.config?.cloud18, loggedUser?.User, isSSOUser])
 
   // For SSO users: if local clusters are empty after loading, advance to Peer,
   // then to For Sale if Peer is also empty.
@@ -355,6 +359,9 @@ function Home() {
               : [
                   ...(globalTabsRef.current.includes('Clusters Peer')
                     ? [<PeerClusterList onLogin={setDashboardTab} />, <PeerClusterList mode='shared' />]
+                    : []),
+                  ...(globalTabsRef.current.includes('Billing')
+                    ? [<Billing />]
                     : []),
                   ...(globalTabsRef.current.includes('Settings')
                     ? [<ClustersGlobalSettings user={loggedUser} />]

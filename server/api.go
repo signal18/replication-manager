@@ -291,6 +291,21 @@ func (repman *ReplicationManager) apiserver() {
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxWhoAmI)),
 	))
 
+	router.Handle("/api/billing/personal", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerBillingPersonal)),
+	))
+
+	router.Handle("/api/billing/subscription", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerBillingSubscription)),
+	))
+
+	router.Handle("/api/billing/transactions", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerBillingTransactions)),
+	))
+
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
 	))
@@ -523,6 +538,31 @@ func (repman *ReplicationManager) GetJWTClaims(r *http.Request) (map[string]stri
 	return nil, err
 }
 
+// GetJWTGitLabToken extracts the GitLab OAuth token embedded in JWT claims.
+func (repman *ReplicationManager) GetJWTGitLabToken(r *http.Request) (string, error) {
+	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
+		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
+		return vk, nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	claims := token.Claims.(jwt.MapClaims)
+	rawToken, ok := claims["token"]
+	if !ok {
+		return "", fmt.Errorf("gitlab token missing from jwt")
+	}
+
+	gitlabToken, _ := rawToken.(string)
+	gitlabToken = strings.TrimSpace(gitlabToken)
+	if gitlabToken == "" {
+		return "", fmt.Errorf("gitlab token missing from jwt")
+	}
+
+	return gitlabToken, nil
+}
+
 func (repman *ReplicationManager) GetUserFromRequest(r *http.Request) string {
 
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
@@ -626,6 +666,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		tok, _ = githelper.GetGitLabTokenBasicAuth(user.Username, user.Password, false)
 		// if login successfull, get the email from gitlab
 		if tok != "" {
+			repman.ensureCRMSessionBootstrappedAsync(tok)
 			//	swapp the current user with email if needed
 			email, err := githelper.GetGitLabUserEmail(tok, true)
 			if email != "" {
@@ -906,6 +947,7 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 	for _, cluster := range repman.Clusters {
 		//validate user credentials
 		if cluster.IsValidACL(userInfo.Email, cluster.APIUsers[userInfo.Email].Password, r.URL.Path, "oidc") {
+			repman.ensureCRMSessionBootstrappedAsync(oauth2Token.AccessToken)
 			apiuser := cluster.APIUsers[userInfo.Email]
 			apiuser.GitToken = oauth2Token.AccessToken
 			tmp := strings.Split(userInfo.Profile, "/")
@@ -946,6 +988,7 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 			claims["iat"] = time.Now().Unix()
 			claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
 			claims["jti"] = "1" // should be user ID(?)
+			claims["token"] = oauth2Token.AccessToken
 			claims["CustomUserInfo"] = struct {
 				Name     string
 				Role     string

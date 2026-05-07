@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -127,6 +128,10 @@ var basicEmailRegexp = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
 var crmHTTPClient15s = &http.Client{Timeout: 15 * time.Second}
 var crmHTTPClient30s = &http.Client{Timeout: 30 * time.Second}
+
+const crmBootstrapMaxInFlight = 32
+
+var crmBootstrapSem = make(chan struct{}, crmBootstrapMaxInFlight)
 
 const (
 	signupRatePerMinute      = 5
@@ -907,6 +912,299 @@ func crmGetSubscription(crmBase, gitlabToken, uri string) (int, []byte, error) {
 	return resp.StatusCode, body, err
 }
 
+func crmGetPersonalCredits(crmBase, gitlabToken string) (int, []byte, error) {
+	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/credits/personal", nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+gitlabToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := crmHTTPClient15s.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
+}
+
+func crmBootstrapSession(crmBase, gitlabToken string) (int, []byte, error) {
+	req, err := http.NewRequest(http.MethodPost, crmBase+"/api/session/bootstrap", nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+gitlabToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := crmHTTPClient30s.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
+}
+
+func crmGetDBaaSSubscription(crmBase, gitlabToken string) (int, []byte, error) {
+	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/clients/dbaas/subscription", nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+gitlabToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := crmHTTPClient15s.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
+}
+
+func crmGetUserTransactions(crmBase, gitlabToken string, limit, offset int, direction string) (int, []byte, error) {
+	query := url.Values{}
+	if limit > 0 {
+		query.Set("limit", strconv.Itoa(limit))
+	}
+	if offset > 0 {
+		query.Set("offset", strconv.Itoa(offset))
+	}
+	if direction != "" {
+		query.Set("direction", direction)
+	}
+
+	endpoint := crmBase + "/api/users/transactions"
+	if encoded := query.Encode(); encoded != "" {
+		endpoint += "?" + encoded
+	}
+
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+gitlabToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := crmHTTPClient15s.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
+}
+
+func (repman *ReplicationManager) fetchWithSessionBootstrap(gitlabToken string, fetch func() (int, []byte, error)) (int, []byte, error) {
+	status, body, err := fetch()
+	if err != nil {
+		return 0, nil, err
+	}
+	if status != http.StatusPreconditionRequired {
+		return status, body, nil
+	}
+
+	bootStatus, bootBody, err := crmBootstrapSession(repman.crmBase(), gitlabToken)
+	if err != nil {
+		return 0, nil, err
+	}
+	if bootStatus < http.StatusOK || bootStatus >= http.StatusMultipleChoices {
+		return bootStatus, bootBody, nil
+	}
+
+	return fetch()
+}
+
+// handlerBillingPersonal — GET /api/billing/personal (JWT required)
+func (repman *ReplicationManager) handlerBillingPersonal(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	gitlabToken, err := repman.GetJWTGitLabToken(r)
+	if err != nil {
+		writeJSONError(w, http.StatusPreconditionFailed, "gitlab sso token required")
+		return
+	}
+
+	status, body, err := repman.fetchWithSessionBootstrap(gitlabToken, func() (int, []byte, error) {
+		return crmGetPersonalCredits(repman.crmBase(), gitlabToken)
+	})
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "CRM API unreachable")
+		return
+	}
+
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
+}
+
+// handlerBillingSubscription — GET /api/billing/subscription (JWT required)
+func (repman *ReplicationManager) handlerBillingSubscription(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	gitlabToken, err := repman.GetJWTGitLabToken(r)
+	if err != nil {
+		writeJSONError(w, http.StatusPreconditionFailed, "gitlab sso token required")
+		return
+	}
+
+	status, body, err := crmGetDBaaSSubscription(repman.crmBase(), gitlabToken)
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "CRM API unreachable")
+		return
+	}
+
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
+}
+
+// handlerBillingTransactions — GET /api/billing/transactions (JWT required)
+func (repman *ReplicationManager) handlerBillingTransactions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	gitlabToken, err := repman.GetJWTGitLabToken(r)
+	if err != nil {
+		writeJSONError(w, http.StatusPreconditionFailed, "gitlab sso token required")
+		return
+	}
+
+	query := r.URL.Query()
+	limit := 20
+	if rawLimit := strings.TrimSpace(query.Get("limit")); rawLimit != "" {
+		parsed, parseErr := strconv.Atoi(rawLimit)
+		if parseErr != nil || parsed <= 0 {
+			writeJSONError(w, http.StatusBadRequest, "invalid limit")
+			return
+		}
+		limit = parsed
+	}
+
+	offset := 0
+	if rawOffset := strings.TrimSpace(query.Get("offset")); rawOffset != "" {
+		parsed, parseErr := strconv.Atoi(rawOffset)
+		if parseErr != nil || parsed < 0 {
+			writeJSONError(w, http.StatusBadRequest, "invalid offset")
+			return
+		}
+		offset = parsed
+	}
+
+	direction := strings.ToLower(strings.TrimSpace(query.Get("direction")))
+	if direction == "" {
+		direction = "desc"
+	}
+	if direction != "asc" && direction != "desc" {
+		writeJSONError(w, http.StatusBadRequest, "invalid direction")
+		return
+	}
+
+	status, body, err := repman.fetchWithSessionBootstrap(gitlabToken, func() (int, []byte, error) {
+		return crmGetUserTransactions(repman.crmBase(), gitlabToken, limit, offset, direction)
+	})
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "CRM API unreachable")
+		return
+	}
+
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
+}
+
+// ensureCRMSessionBootstrapped runs a best-effort CRM bootstrap flow for SSO logins.
+func (repman *ReplicationManager) ensureCRMSessionBootstrapped(gitlabToken string) {
+	if strings.TrimSpace(gitlabToken) == "" {
+		return
+	}
+
+	status, _, err := crmGetPersonalCredits(repman.crmBase(), gitlabToken)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"crm bootstrap: credits lookup failed: %s", err)
+		return
+	}
+
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"crm bootstrap: credits lookup returned status %d", status)
+
+	if status != http.StatusPreconditionRequired {
+		return
+	}
+
+	bootStatus, _, err := crmBootstrapSession(repman.crmBase(), gitlabToken)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"crm bootstrap: session bootstrap call failed: %s", err)
+		return
+	}
+
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"crm bootstrap: session bootstrap returned status %d", bootStatus)
+
+	if bootStatus < http.StatusOK || bootStatus >= http.StatusMultipleChoices {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"crm bootstrap: session bootstrap unsuccessful (status %d), skipping credits retry", bootStatus)
+		return
+	}
+
+	retryStatus, _, err := crmGetPersonalCredits(repman.crmBase(), gitlabToken)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"crm bootstrap: credits retry failed: %s", err)
+		return
+	}
+
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"crm bootstrap: credits retry returned status %d", retryStatus)
+}
+
+// ensureCRMSessionBootstrappedAsync starts CRM bootstrap flow in a background
+// goroutine so authentication responses are not blocked by CRM latencies.
+func (repman *ReplicationManager) ensureCRMSessionBootstrappedAsync(gitlabToken string) {
+	if repman == nil || strings.TrimSpace(gitlabToken) == "" {
+		return
+	}
+
+	select {
+	case crmBootstrapSem <- struct{}{}:
+		// proceed
+	default:
+		if repman.Conf != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"crm bootstrap: skipped async bootstrap, too many in-flight requests")
+		}
+		return
+	}
+
+	go func() {
+		defer func() {
+			<-crmBootstrapSem
+			if r := recover(); r != nil {
+				if repman.Conf != nil {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+						"crm bootstrap: recovered panic in async flow: %v", r)
+				}
+			}
+		}()
+
+		repman.ensureCRMSessionBootstrapped(gitlabToken)
+	}()
+}
+
 // crmChangeSubscription changes the plan for a specific URI on CRM using a GitLab PAT.
 func crmChangeSubscription(crmBase, gitlabToken, uri, plan string) (int, []byte, error) {
 	b, _ := json.Marshal(changeSubPayload{URI: uri, Plan: plan})
@@ -1096,7 +1394,6 @@ func (repman *ReplicationManager) handlerChangeSubscription(w http.ResponseWrite
 	w.WriteHeader(status)
 	w.Write(respBody)
 }
-
 
 // handlerUnregister — POST /api/register/unregister  (admin JWT required)
 //
