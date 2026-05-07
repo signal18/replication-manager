@@ -2629,6 +2629,7 @@ export const clusterSlice = createSlice({
         getDatabaseService.fulfilled,
         getTopProcess.fulfilled,
         getOpenSVCStats.fulfilled,
+        getOpenSVCPools.fulfilled,
         getShardSchema.fulfilled,
         getQueryRules.fulfilled,
         getBackups.fulfilled,
