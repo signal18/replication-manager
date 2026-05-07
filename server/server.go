@@ -363,7 +363,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.MonitorIgnoreErrors, "monitoring-ignore-errors", "", "Comma separated list of error or warning to ignore")
 	flags.BoolVar(&conf.MonitorSchemaChange, "monitoring-schema-change", true, "Monitor schema change")
 	flags.BoolVar(&conf.MonitorSchemaScheduler, "monitoring-schema-scheduler", true, "Cron format schedule for schema monitoring")
-	flags.StringVar(&conf.MonitorSchemaSchedulerCron, "monitoring-schema-scheduler-cron", "0 0 1 1 * *", "Cron format schedule for schema monitoring, using 6 space-separated fields")
+	flags.StringVar(&conf.MonitorSchemaSchedulerCron, "monitoring-schema-scheduler-cron", "0 0 2 * * *", "Cron format schedule for schema monitoring, using 6 space-separated fields")
 	flags.BoolVar(&conf.MonitorChecksumScheduler, "monitoring-checksum-scheduler", false, "Cron format schedule for checksum all tables")
 	flags.StringVar(&conf.MonitorChecksumSchedulerCron, "monitoring-checksum-scheduler-cron", "0 0 2 * * 5", "Cron format schedule for checksum all tables, using 6 space-separated fields")
 	flags.BoolVar(&conf.MonitorSchemaColumns, "monitoring-schema-columns", true, "Monitor schema columns changes")

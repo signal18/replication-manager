@@ -840,6 +840,26 @@ func (cluster *Cluster) Run() {
 					cluster.CleanupRestartCookies()
 					// Scan cluster.WorkingDir/plugins/ for subscription plugin binaries
 					cluster.ReloadLogPlugins()
+					// If master has no cached DictTables (no serverstate.json or old
+					// version without dictTables), trigger schema monitoring once so
+					// the table list is populated on startup.
+					if master := cluster.GetMaster(); master != nil {
+						cachedTables := master.DictTables.ToNewMap()
+						if len(cachedTables) == 0 {
+							go cluster.MonitorSchema()
+						} else {
+							// Recompute workload totals from cached DictTables so the
+							// dashboard gauges show table/index sizes before the first
+							// scheduled MonitorSchema run.
+							var tottablesize, totindexsize int64
+							for _, t := range cachedTables {
+								tottablesize += t.DataLength
+								totindexsize += t.IndexLength
+							}
+							cluster.WorkLoad.DBTableSize = tottablesize
+							cluster.WorkLoad.DBIndexSize = totindexsize
+						}
+					}
 					cluster.runOnceAfterTopology = false
 				} else {
 
