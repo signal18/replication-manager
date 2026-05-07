@@ -26,6 +26,7 @@ var (
 )
 
 const defaultOpenSVCV3ProvisionDelay = 10
+const defaultOpenSVCPoolInfoCacheTTL = 5 * time.Minute
 
 func isOpenSVCAlreadyExists(err error) bool {
 	if err == nil {
@@ -190,8 +191,64 @@ func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
 }
 
 func (cluster *Cluster) OpenSVCGetPoolList() ([]string, error) {
+	pools, err := cluster.OpenSVCGetPoolInfoList()
+	if err != nil {
+		return nil, err
+	}
+
+	names := make([]string, 0, len(pools))
+	for _, pool := range pools {
+		if pool.Name == "" {
+			continue
+		}
+		names = append(names, pool.Name)
+	}
+
+	return names, nil
+}
+
+func (cluster *Cluster) OpenSVCGetPoolInfoList() ([]opensvc.PoolInfo, error) {
+	return cluster.openSVCGetPoolInfoList(defaultOpenSVCPoolInfoCacheTTL, false)
+}
+
+func (cluster *Cluster) OpenSVCGetPoolInfoListFresh() ([]opensvc.PoolInfo, error) {
+	return cluster.openSVCGetPoolInfoList(defaultOpenSVCPoolInfoCacheTTL, true)
+}
+
+func cloneOpenSVCPoolInfoList(pools []opensvc.PoolInfo) []opensvc.PoolInfo {
+	if len(pools) == 0 {
+		return nil
+	}
+
+	cloned := make([]opensvc.PoolInfo, len(pools))
+	copy(cloned, pools)
+	return cloned
+}
+
+func (cluster *Cluster) openSVCGetPoolInfoList(ttl time.Duration, forceRefresh bool) ([]opensvc.PoolInfo, error) {
+	if !forceRefresh && ttl > 0 {
+		cluster.opensvcPoolInfoCacheMu.RLock()
+		cacheFresh := !cluster.opensvcPoolInfoCacheAt.IsZero() && time.Since(cluster.opensvcPoolInfoCacheAt) < ttl
+		if cacheFresh {
+			cached := cloneOpenSVCPoolInfoList(cluster.opensvcPoolInfoCache)
+			cluster.opensvcPoolInfoCacheMu.RUnlock()
+			return cached, nil
+		}
+		cluster.opensvcPoolInfoCacheMu.RUnlock()
+	}
+
 	svc := cluster.OpenSVCConnect()
-	return svc.GetPoolList()
+	pools, err := svc.GetPoolInfoList()
+	if err != nil {
+		return nil, err
+	}
+
+	cluster.opensvcPoolInfoCacheMu.Lock()
+	cluster.opensvcPoolInfoCache = cloneOpenSVCPoolInfoList(pools)
+	cluster.opensvcPoolInfoCacheAt = time.Now()
+	cluster.opensvcPoolInfoCacheMu.Unlock()
+
+	return cloneOpenSVCPoolInfoList(pools), nil
 }
 
 func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {

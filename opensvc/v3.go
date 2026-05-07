@@ -164,6 +164,20 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 }
 
 func (collector *Collector) GetPoolListV3() ([]string, error) {
+	poolInfos, err := collector.GetPoolInfoListV3()
+	if err != nil {
+		return nil, err
+	}
+
+	names := make([]string, 0, len(poolInfos))
+	for _, pool := range poolInfos {
+		names = append(names, pool.Name)
+	}
+
+	return normalizeStringList(names), nil
+}
+
+func (collector *Collector) GetPoolInfoListV3() ([]PoolInfo, error) {
 	client, err := collector.GetClientV3()
 	if err != nil {
 		return nil, err
@@ -194,14 +208,15 @@ func (collector *Collector) GetPoolListV3() ([]string, error) {
 		}
 	}
 
-	names := make([]string, 0)
+	poolInfos := make([]PoolInfo, 0)
 	for _, item := range gjson.GetBytes(body, "items").Array() {
-		if name := item.Get("name"); name.Exists() {
-			names = append(names, name.String())
+		if !item.IsObject() {
+			continue
 		}
+		poolInfos = append(poolInfos, poolInfoFromResult(item, ""))
 	}
 
-	return normalizeStringList(names), nil
+	return normalizePoolInfoList(poolInfos), nil
 }
 
 func (collector *Collector) CreateObjectV3(namespace, kind, service string, data []byte) ([]byte, error) {

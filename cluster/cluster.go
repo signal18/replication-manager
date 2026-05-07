@@ -308,6 +308,9 @@ type Cluster struct {
 	OrchestratorVersion   string       `json:"-"`
 	orchestratorVersionMu sync.RWMutex `json:"-"`
 	lastOrchestratorProbe time.Time    `json:"-"`
+	opensvcPoolInfoCache   []opensvc.PoolInfo `json:"-"`
+	opensvcPoolInfoCacheAt time.Time          `json:"-"`
+	opensvcPoolInfoCacheMu sync.RWMutex       `json:"-"`
 	// Per-cluster preserved variables (replaces ProvDBConfigPreserveVars mechanism)
 	preservedVars               map[string]string          `json:"-"`
 	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}

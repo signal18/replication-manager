@@ -9,7 +9,7 @@ import AccordionComponent from "../../../../components/AccordionComponent";
 import ConfirmModal from "../../../../components/Modals/ConfirmModal";
 import { addS3Provider, pauseAutoReload, selectClusterS3Providers, storageFieldChange, storageFieldIndexAdd, storageFieldIndexDrop, previewS3MountSync, applyS3MountSync, getClusterData, getOpenSVCPools } from "../../../../redux/clusterSlice";
 
-export default function StoragePage({ clusterName, appId, user }) {
+export default function StoragePage({ clusterName, appId, appConfig, user }) {
   const dispatch = useDispatch();
   const storages = useSelector((state) => state.cluster?.app?.deployment?.storages);
   const opensvcPools = useSelector((state) => state.cluster?.opensvcPools || []);
@@ -176,6 +176,7 @@ export default function StoragePage({ clusterName, appId, user }) {
   const volumeComponent = useMemo(() => (
       <VolumeSection
         opensvcPools={opensvcPools}
+        appHaTopology={appConfig?.provAppHaTopology}
         fieldName="volumes"
         title="Saved Volumes"
         newTitle="Add New Volume"
@@ -184,7 +185,7 @@ export default function StoragePage({ clusterName, appId, user }) {
         rows={volumes}
         {...actionProps}
       />
-  ), [volumes, opensvcPools, actionProps]);
+  ), [volumes, opensvcPools, appConfig?.provAppHaTopology, actionProps]);
 
   const s3Component = useMemo(() => (
       <S3DirectorySection appId={appId} rows={s3Mounts} s3ProvOptions={s3ProvOptions} clusterS3Providers={clusterS3Providers} {...actionProps} />

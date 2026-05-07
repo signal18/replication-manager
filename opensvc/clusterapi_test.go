@@ -601,3 +601,88 @@ func TestGetPoolListV3_StatusAndParsing(t *testing.T) {
 		}
 	})
 }
+
+func TestGetPoolInfoListV2_ParsesSharedCapabilities(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/get_pools", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"poolA":{"capabilities":["blk"]},"poolB":{"capabilities":["shared","blk"]},"nodes":{"n1":{"poolC":{"name":"poolC","capabilities":["shared"]}}}}`))
+	})
+
+	server := httptest.NewUnstartedServer(mux)
+	server.EnableHTTP2 = true
+	server.TLS = &tls.Config{NextProtos: []string{"h2"}}
+	server.StartTLS()
+	defer server.Close()
+
+	collector := newTestCollector(t, server)
+	collector.ContextTimeoutSecond = 2
+
+	infos, err := collector.GetPoolInfoListV2()
+	if err != nil {
+		t.Fatalf("GetPoolInfoListV2 failed: %v", err)
+	}
+
+	byName := make(map[string]PoolInfo)
+	for _, info := range infos {
+		byName[info.Name] = info
+	}
+
+	if len(byName) != 3 {
+		t.Fatalf("unexpected pool count: got %d want 3", len(byName))
+	}
+	if byName["poolA"].Shared {
+		t.Fatalf("poolA should not be shared")
+	}
+	if !byName["poolB"].Shared {
+		t.Fatalf("poolB should be shared")
+	}
+	if !byName["poolC"].Shared {
+		t.Fatalf("poolC should be shared")
+	}
+}
+
+func TestGetPoolInfoListV3_ParsesShared(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"items":[{"name":"pool-a","shared":true},{"name":"pool-b","capabilities":["shared"]},{"name":"pool-c"}]}`))
+	})
+
+	server := httptest.NewTLSServer(mux)
+	defer server.Close()
+
+	parsed, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse server url: %v", err)
+	}
+
+	collector := &Collector{
+		Host:                 parsed.Hostname(),
+		Port:                 parsed.Port(),
+		RplMgrUser:           "user",
+		RplMgrPassword:       "pass",
+		ClusterApiVersion:    "v3",
+		ContextTimeoutSecond: 2,
+	}
+
+	infos, err := collector.GetPoolInfoListV3()
+	if err != nil {
+		t.Fatalf("GetPoolInfoListV3 failed: %v", err)
+	}
+
+	byName := make(map[string]PoolInfo)
+	for _, info := range infos {
+		byName[info.Name] = info
+	}
+
+	if !byName["pool-a"].Shared {
+		t.Fatalf("pool-a should be shared")
+	}
+	if !byName["pool-b"].Shared {
+		t.Fatalf("pool-b should be shared")
+	}
+	if byName["pool-c"].Shared {
+		t.Fatalf("pool-c should not be shared")
+	}
+}

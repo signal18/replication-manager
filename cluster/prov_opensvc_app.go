@@ -492,7 +492,7 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 	volumemap := deployment.Storages.Volumes.GroupByPool()
 	pathmap := deployment.Paths.GetVolumeDirs()
 
-	poolList, err := cluster.OpenSVCGetPoolList()
+	poolList, err := cluster.OpenSVCGetPoolInfoListFresh()
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch OpenSVC pool list before app volume provisioning: %w", err)
 	}
@@ -500,16 +500,17 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 		return nil, errors.New("OpenSVC pool list is empty; cannot provision app volumes")
 	}
 
-	poolSet := make(map[string]struct{}, len(poolList))
-	for _, poolName := range poolList {
-		if poolName != "" {
-			poolSet[poolName] = struct{}{}
+	poolSet := make(map[string]opensvc.PoolInfo, len(poolList))
+	for _, pool := range poolList {
+		if pool.Name != "" {
+			poolSet[pool.Name] = pool
 		}
 	}
 
 	seq := 1
 	for pool, volumes := range volumemap {
-		if _, ok := poolSet[pool]; !ok {
+		poolInfo, ok := poolSet[pool]
+		if !ok {
 			return nil, fmt.Errorf("OpenSVC pool %q not found in runtime pool list", pool)
 		}
 
@@ -517,6 +518,9 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 		svcvol["name"] = app.GetAppVolumeName(pool, false)
 		svcvol["pool"] = pool
 		svcvol["size"] = "{env.size}"
+		if poolInfo.Shared {
+			svcvol["shared"] = "true"
+		}
 
 		// Use set to avoid duplicate directories
 		directorySet := make(map[string]struct{})

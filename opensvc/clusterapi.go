@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -971,6 +972,12 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 	}
 }
 
+type PoolInfo struct {
+	Name         string
+	Shared       bool
+	Capabilities []string
+}
+
 func normalizeStringList(values []string) []string {
 	uniq := make(map[string]struct{}, len(values))
 	for _, value := range values {
@@ -989,15 +996,125 @@ func normalizeStringList(values []string) []string {
 	return result
 }
 
-func (collector *Collector) GetPoolList() ([]string, error) {
-	if collector.IsV3() {
-		return collector.GetPoolListV3()
+func normalizePoolInfoList(values []PoolInfo) []PoolInfo {
+	if len(values) == 0 {
+		return values
 	}
 
-	return collector.GetPoolListV2()
+	byName := make(map[string]PoolInfo, len(values))
+	for _, value := range values {
+		name := strings.TrimSpace(value.Name)
+		if name == "" {
+			continue
+		}
+
+		normalizedCaps := normalizeStringList(value.Capabilities)
+		value.Name = name
+		value.Capabilities = normalizedCaps
+		value.Shared = value.Shared || slicesContains(normalizedCaps, "shared")
+
+		if existing, ok := byName[name]; ok {
+			existing.Shared = existing.Shared || value.Shared
+			existing.Capabilities = normalizeStringList(append(existing.Capabilities, value.Capabilities...))
+			existing.Shared = existing.Shared || slicesContains(existing.Capabilities, "shared")
+			byName[name] = existing
+			continue
+		}
+
+		byName[name] = value
+	}
+
+	result := make([]PoolInfo, 0, len(byName))
+	for _, value := range byName {
+		result = append(result, value)
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
+
+	return result
+}
+
+func slicesContains(values []string, needle string) bool {
+	for _, v := range values {
+		if v == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func parseCapabilities(result gjson.Result) []string {
+	capabilities := make([]string, 0)
+	if !result.Exists() {
+		return capabilities
+	}
+
+	if result.IsArray() {
+		for _, item := range result.Array() {
+			if item.Type == gjson.String {
+				capabilities = append(capabilities, strings.TrimSpace(item.String()))
+			}
+		}
+	}
+
+	return normalizeStringList(capabilities)
+}
+
+func poolInfoFromResult(result gjson.Result, fallbackName string) PoolInfo {
+	name := strings.TrimSpace(result.Get("name").String())
+	if name == "" {
+		name = strings.TrimSpace(fallbackName)
+	}
+
+	capabilities := parseCapabilities(result.Get("capabilities"))
+	shared := result.Get("shared").Bool() || slicesContains(capabilities, "shared")
+
+	return PoolInfo{
+		Name:         name,
+		Shared:       shared,
+		Capabilities: capabilities,
+	}
+}
+
+func (collector *Collector) GetPoolInfoList() ([]PoolInfo, error) {
+	if collector.IsV3() {
+		return collector.GetPoolInfoListV3()
+	}
+
+	return collector.GetPoolInfoListV2()
+}
+
+func (collector *Collector) GetPoolList() ([]string, error) {
+	poolInfos, err := collector.GetPoolInfoList()
+	if err != nil {
+		return nil, err
+	}
+
+	names := make([]string, 0, len(poolInfos))
+	for _, pool := range poolInfos {
+		names = append(names, pool.Name)
+	}
+
+	return normalizeStringList(names), nil
 }
 
 func (collector *Collector) GetPoolListV2() ([]string, error) {
+	poolInfos, err := collector.GetPoolInfoListV2()
+	if err != nil {
+		return nil, err
+	}
+
+	names := make([]string, 0, len(poolInfos))
+	for _, pool := range poolInfos {
+		names = append(names, pool.Name)
+	}
+
+	return normalizeStringList(names), nil
+}
+
+func (collector *Collector) GetPoolInfoListV2() ([]PoolInfo, error) {
 	url := fmt.Sprintf("https://%s:%s/get_pools", collector.Host, collector.Port)
 
 	client := collector.GetHttpClient()
@@ -1041,55 +1158,47 @@ func (collector *Collector) GetPoolListV2() ([]string, error) {
 	}
 
 	result := gjson.ParseBytes(body)
-	pools := make([]string, 0)
+	poolInfos := make([]PoolInfo, 0)
 
 	if result.IsArray() {
 		for _, item := range result.Array() {
 			if item.Type == gjson.String {
-				pools = append(pools, item.String())
+				poolInfos = append(poolInfos, PoolInfo{Name: strings.TrimSpace(item.String())})
 				continue
 			}
-			if name := item.Get("name"); name.Exists() {
-				pools = append(pools, name.String())
-			}
+			poolInfos = append(poolInfos, poolInfoFromResult(item, ""))
 		}
-	} else if nodes := result.Get("nodes"); nodes.Exists() && nodes.IsObject() {
+	}
+
+	if nodes := result.Get("nodes"); nodes.Exists() && nodes.IsObject() {
 		nodes.ForEach(func(_, nodeData gjson.Result) bool {
 			nodeData.ForEach(func(poolName, poolData gjson.Result) bool {
-				if poolName.String() != "" {
-					pools = append(pools, poolName.String())
-				}
-				if name := poolData.Get("name"); name.Exists() {
-					pools = append(pools, name.String())
-				}
+				poolInfos = append(poolInfos, poolInfoFromResult(poolData, poolName.String()))
 				return true
 			})
 			return true
 		})
-	} else if result.IsObject() {
+	}
+
+	if result.IsObject() {
 		result.ForEach(func(key, value gjson.Result) bool {
-			if key.String() != "status" && key.String() != "data" && key.String() != "error" {
-				pools = append(pools, key.String())
-			}
-			if name := value.Get("name"); name.Exists() {
-				pools = append(pools, name.String())
+			if key.String() != "status" && key.String() != "data" && key.String() != "error" && key.String() != "nodes" {
+				poolInfos = append(poolInfos, poolInfoFromResult(value, key.String()))
 			}
 			return true
 		})
 		if data := result.Get("data"); data.Exists() && data.IsArray() {
 			for _, item := range data.Array() {
 				if item.Type == gjson.String {
-					pools = append(pools, item.String())
+					poolInfos = append(poolInfos, PoolInfo{Name: strings.TrimSpace(item.String())})
 					continue
 				}
-				if name := item.Get("name"); name.Exists() {
-					pools = append(pools, name.String())
-				}
+				poolInfos = append(poolInfos, poolInfoFromResult(item, ""))
 			}
 		}
 	}
 
-	return normalizeStringList(pools), nil
+	return normalizePoolInfoList(poolInfos), nil
 }
 
 func (collector *Collector) GetServiceNodeFromState(svc string) ([]string, error) {

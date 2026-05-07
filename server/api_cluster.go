@@ -46,8 +46,9 @@ import (
 type LogLevelEnum string
 
 type PoolOption struct {
-	Value string `json:"value"`
-	Name  string `json:"name"`
+	Value  string `json:"value"`
+	Name   string `json:"name"`
+	Shared bool   `json:"shared"`
 }
 
 const (
@@ -5322,8 +5323,8 @@ func (repman *ReplicationManager) handlerMuxGetTagContent(w http.ResponseWriter,
 	}
 
 	type tagContentResponse struct {
-		Tag     string                     `json:"tag"`
-		Content string                     `json:"content"`
+		Tag     string                      `json:"tag"`
+		Content string                      `json:"content"`
 		DocHelp *configurator.DocHelpResult `json:"doc_help,omitempty"`
 	}
 
@@ -9188,7 +9189,7 @@ func (repman *ReplicationManager) handlerMuxClusterOpenSVCPoolList(w http.Respon
 			return
 		}
 
-		pools, err := mycluster.OpenSVCGetPoolList()
+		pools, err := mycluster.OpenSVCGetPoolInfoList()
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting OpenSVC pool list: %s", err)
 			http.Error(w, "Error getting OpenSVC pool list: "+err.Error(), http.StatusInternalServerError)
@@ -9197,10 +9198,10 @@ func (repman *ReplicationManager) handlerMuxClusterOpenSVCPoolList(w http.Respon
 
 		options := make([]PoolOption, 0, len(pools))
 		for _, pool := range pools {
-			if pool == "" {
+			if pool.Name == "" {
 				continue
 			}
-			options = append(options, PoolOption{Value: pool, Name: pool})
+			options = append(options, PoolOption{Value: pool.Name, Name: pool.Name, Shared: pool.Shared})
 		}
 
 		w.Header().Set("Content-Type", "application/json")
