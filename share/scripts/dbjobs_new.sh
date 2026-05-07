@@ -114,6 +114,10 @@ BINARY_CLIENT=""
 BINARY_CHECK=""
 BINARY_DUMP=""
 
+# Partial restore status tracking
+PR_STATUS=0
+PR_LOG=""
+
 TOKEN=""
 
 # OSX support
@@ -1307,23 +1311,14 @@ doneJob() {
             echo "No successful record (complete OK!) found in $LOG_DIR/backup.out." >>$LOG_DIR/$job.out
         fi
         ;;
-        reseedmariabackup | reseedxtrabackup)
-        matches=$(sed -n '/[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} completed OK!/p' $LOG_DIR/reseed.out)
-        if [ ! -n "$matches" ]; then
-            jobstate=5
-            done=0
-            echo "No successful record (complete OK!) found in $LOG_DIR/reseed.out." >>$LOG_DIR/$job.out
-        fi
-        ;;
-        flashbackmariabackup | flashbackxtrabackup)
-        matches=$(sed -n '/[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} completed OK!/p' $LOG_DIR/flash.out)
-        if [ ! -n "$matches" ]; then
-            jobstate=5
-            done=0
-            echo "No successful record (complete OK!) found in $LOG_DIR/flash.out." >>$LOG_DIR/$job.out
-        fi
-        ;;
     esac
+
+    if [[ "$job" == reseed* || "$job" == flashback* ]]; then
+        if [ "$PR_STATUS" -ne 0 ]; then
+            jobstate=5
+            done=0
+        fi
+    fi
 
     if [ $jobstate -eq 3 ]; then
         send_lines_to_api "Job $job ended with state: Finished" "$job" "$LVL_INFO"
@@ -1341,42 +1336,168 @@ pauseJob() {
     fi
 }
 
+pr_log() {
+    local l="$1"
+    local t
+    t=$(date '+%Y-%m-%d %H:%M:%S')
+    [[ -z "$PR_LOG" ]] && PR_LOG="$LOG_DIR/$job.out"
+    echo "[$t] $l" >>"$PR_LOG"
+}
+
+pr_cmd() {
+    local d="$1"
+    shift
+    pr_log "CMD: $d"
+    "$@" >>"$PR_LOG" 2>&1
+    local r=$?
+    if [[ $r -ne 0 ]]; then
+        pr_log "ERROR: $d (exit $r)"
+        PR_STATUS=1
+    fi
+}
+
+pr_pipe() {
+    local d="$1"
+    local p="$2"
+    pr_log "CMD: $d"
+    bash -o pipefail -c "$p" >>"$PR_LOG" 2>&1
+    local r=$?
+    if [[ $r -ne 0 ]]; then
+        pr_log "ERROR: $d (exit $r)"
+        PR_STATUS=1
+    fi
+}
+
 partialRestore() {
     send_lines_to_api "Starting partial restore..." "$job" "$LVL_INFO"
-    chown -R mysql:mysql $BACKUPDIR
-    $BINARY_CLIENT -e "set sql_log_bin=0;install plugin BLACKHOLE soname 'ha_blackhole.so'"
+    PR_STATUS=0
+    case "$job" in
+    reseed*)
+        PR_LOG="$LOG_DIR/reseed.out"
+        ;;
+    flashback*)
+        PR_LOG="$LOG_DIR/flash.out"
+        ;;
+    *)
+        PR_LOG="$LOG_DIR/$job.out"
+        ;;
+    esac
+
+    pr_log "Partial restore started for job $job."
+
+    local isr=0
+    [[ "$(id -u)" == "0" ]] && isr=1
+
+    if [[ $isr -eq 1 ]]; then
+        pr_cmd "Chown backup directory" chown -R mysql:mysql "$BACKUPDIR"
+    else
+        pr_log "Skipping chown of backup directory; not running as root."
+    fi
+
+    local bhc=""
+    bhc=$($BINARY_CLIENT -N -e "SELECT COUNT(*) FROM information_schema.plugins WHERE plugin_name='BLACKHOLE' AND plugin_status='ACTIVE';" 2>>"$PR_LOG")
+    local bhr=$?
+    if [[ $bhr -ne 0 ]]; then
+        pr_log "ERROR: Failed to check BLACKHOLE plugin status (exit $bhr)."
+        PR_STATUS=1
+        pr_cmd "Install BLACKHOLE plugin" $BINARY_CLIENT -e "set sql_log_bin=0;install plugin BLACKHOLE soname 'ha_blackhole.so'"
+    elif [[ "$bhc" == "0" ]]; then
+        pr_cmd "Install BLACKHOLE plugin" $BINARY_CLIENT -e "set sql_log_bin=0;install plugin BLACKHOLE soname 'ha_blackhole.so'"
+    else
+        pr_log "BLACKHOLE plugin already installed."
+    fi
+
+    local oe=(exp cfg TRG)
+    local de=(MYD CSV)
+
     for dir in $(ls -d $BACKUPDIR/*/ | xargs -n 1 basename | grep -vE 'mysql|performance_schema|replication_manager_schema'); do
+        pr_log "Restoring database $dir."
         send_lines_to_api "Restoring $dir..." "$job" "$LVL_DEBUG"
-        $BINARY_CLIENT -e "set sql_log_bin=0;drop database IF EXISTS $dir; CREATE DATABASE $dir;"
+        pr_cmd "Create database $dir" $BINARY_CLIENT -e "set sql_log_bin=0;drop database IF EXISTS $dir; CREATE DATABASE $dir;"
 
         for file in $(find $BACKUPDIR/$dir/ -name "*.ibd" | xargs -n 1 basename | cut -d'.' --complement -f2-); do
-            cat $BACKUPDIR/$dir/$file.frm | sed -e 's/\x06\x00\x49\x6E\x6E\x6F\x44\x42\x00\x00\x00/\x09\x00\x42\x4C\x41\x43\x4B\x48\x4F\x4C\x45/g' >$DATADIR/$dir/mrm_pivo.frm
-            chown mysql:mysql $DATADIR/$dir/mrm_pivo.frm
-            $BINARY_CLIENT -e "set sql_log_bin=0;ALTER TABLE $dir.mrm_pivo  engine=innodb;RENAME TABLE $dir.mrm_pivo TO $dir.$file; ALTER TABLE $dir.$file DISCARD TABLESPACE;"
-            mv $BACKUPDIR/$dir/$file.ibd $DATADIR/$dir/$file.ibd
-            mv $BACKUPDIR/$dir/$file.exp $DATADIR/$dir/$file.exp
-            mv $BACKUPDIR/$dir/$file.cfg $DATADIR/$dir/$file.cfg
-            mv $BACKUPDIR/$dir/$file.TRG $DATADIR/$dir/$file.TRG
-            $BINARY_CLIENT -e "set sql_log_bin=0;ALTER TABLE $dir.$file IMPORT TABLESPACE"
+            pr_pipe "Create FRM stub for $dir.$file" "cat \"$BACKUPDIR/$dir/$file.frm\" | sed -e 's/\\x06\\x00\\x49\\x6E\\x6E\\x6F\\x44\\x42\\x00\\x00\\x00/\\x09\\x00\\x42\\x4C\\x41\\x43\\x4B\\x48\\x4F\\x4C\\x45/g' >\"$DATADIR/$dir/mrm_pivo.frm\""
+            if [[ $isr -eq 1 ]]; then
+                pr_cmd "Chown FRM stub for $dir.$file" chown mysql:mysql "$DATADIR/$dir/mrm_pivo.frm"
+            else
+                pr_log "Skipping chown for $dir.$file; not running as root."
+            fi
+            pr_cmd "Prepare table $dir.$file for import" $BINARY_CLIENT -e "set sql_log_bin=0;ALTER TABLE $dir.mrm_pivo  engine=innodb;RENAME TABLE $dir.mrm_pivo TO $dir.$file; ALTER TABLE $dir.$file DISCARD TABLESPACE;"
+            pr_cmd "Move .ibd for $dir.$file" mv "$BACKUPDIR/$dir/$file.ibd" "$DATADIR/$dir/$file.ibd"
+            for ext in "${oe[@]}"; do
+                local s="$BACKUPDIR/$dir/$file.$ext"
+                local d="$DATADIR/$dir/$file.$ext"
+                if [[ -f "$s" ]]; then
+                    pr_cmd "Move .$ext for $dir.$file" mv "$s" "$d"
+                else
+                    pr_log "Skipping .$ext for $dir.$file (not found)."
+                fi
+            done
+            pr_cmd "Import tablespace for $dir.$file" $BINARY_CLIENT -e "set sql_log_bin=0;ALTER TABLE $dir.$file IMPORT TABLESPACE"
         done
-        for file in $(find $BACKUPDIR/$dir/ -name "*.MYD" | xargs -n 1 basename | cut -d'.' --complement -f2-); do
-            mv $BACKUPDIR/$dir/$file.* $DATADIR/$dir/
-            $BINARY_CLIENT -e "set sql_log_bin=0;FLUSH TABLE $dir.$file"
-        done
-        for file in $(find $BACKUPDIR/$dir/ -name "*.CSV" | xargs -n 1 basename | cut -d'.' --complement -f2-); do
-            mv $BACKUPDIR/$dir/$file.* $DATADIR/$dir/
-            $BINARY_CLIENT -e "set sql_log_bin=0;FLUSH TABLE $dir.$file"
+        for ext in "${de[@]}"; do
+            for file in $(find $BACKUPDIR/$dir/ -name "*.$ext" | xargs -n 1 basename | cut -d'.' --complement -f2-); do
+                pr_cmd "Move $ext files for $dir.$file" mv "$BACKUPDIR/$dir/$file."* "$DATADIR/$dir/"
+                pr_cmd "Flush table $dir.$file" $BINARY_CLIENT -e "set sql_log_bin=0;FLUSH TABLE $dir.$file"
+            done
         done
     done
     for file in $(find $BACKUPDIR/mysql/ -name "*.MYD" | xargs -n 1 basename | cut -d'.' --complement -f2-); do
-        mv $BACKUPDIR/mysql/$file.* $DATADIR/mysql/
-        $BINARY_CLIENT -e "set sql_log_bin=0;FLUSH TABLE mysql.$file"
+        pr_cmd "Move MyISAM files for mysql.$file" mv "$BACKUPDIR/mysql/$file."* "$DATADIR/mysql/"
+        pr_cmd "Flush table mysql.$file" $BINARY_CLIENT -e "set sql_log_bin=0;FLUSH TABLE mysql.$file"
     done
     send_lines_to_api "Setting GTID of the last change..." "$job" "$LVL_DEBUG"
-    cat $BACKUPDIR/xtrabackup_info | grep binlog_pos | awk -F, '{ print $3 }' | sed -e 's/GTID of the last change/set sql_log_bin=0;set global gtid_slave_pos=/g' | $BINARY_CLIENT
+    local g=""
+    local f
+    for f in "$BACKUPDIR/mariadb_backup_binlog_info" "$BACKUPDIR/xtrabackup_binlog_info"; do
+        if [[ -f "$f" ]]; then
+            g=$(awk '{print $3}' "$f" 2>>"$PR_LOG")
+            [[ -n "$g" ]] && break
+        fi
+    done
+    if [[ -z "$g" ]]; then
+        for f in "$BACKUPDIR/mariadb_backup_info" "$BACKUPDIR/xtrabackup_info"; do
+            if [[ -f "$f" ]]; then
+                local l
+                l=$(grep -m1 '^binlog_pos' "$f" 2>>"$PR_LOG")
+                if [[ -n "$l" ]]; then
+                    g=$(echo "$l" | awk -F, '{print $3}')
+                    if [[ -n "$g" ]]; then
+                        g=$(echo "$g" | sed -e 's/.*GTID of the last change[: ]*//')
+                    else
+                        g=$(echo "$l" | awk -F'= ' '{print $2}' | awk '{print $3}')
+                    fi
+                fi
+                [[ -n "$g" ]] && break
+            fi
+        done
+    fi
+    if [[ -n "$g" ]]; then
+        g=$(echo "$g" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    fi
+    if [[ -n "$g" ]]; then
+        pr_cmd "Set GTID of the last change" $BINARY_CLIENT -e "set sql_log_bin=0;set global gtid_slave_pos='$g'"
+    else
+        pr_log "No GTID info found; skip GTID set."
+    fi
     send_lines_to_api "Flushing privileges..." "$job" "$LVL_DEBUG"
-    $BINARY_CLIENT -e"set sql_log_bin=0;flush privileges;start slave;"
-    send_lines_to_api "Partial restore done." "$job" "$LVL_INFO"
+    pr_cmd "Flush privileges" $BINARY_CLIENT -e "set sql_log_bin=0;flush privileges;"
+    local mh=""
+    mh=$($BINARY_CLIENT -N -e "SHOW SLAVE STATUS" 2>>"$PR_LOG" | awk -F '	' 'NR==1{print $2}')
+    if [[ -n "$mh" && "$mh" != "NULL" ]]; then
+        pr_cmd "Start slave" $BINARY_CLIENT -e "set sql_log_bin=0;start slave;"
+    else
+        pr_log "No Master_Host configured; skip start slave."
+    fi
+
+    if [[ "$PR_STATUS" -eq 0 ]]; then
+        echo "Partial restore completed successfully. See $PR_LOG." >>"$LOG_DIR/$job.out"
+        send_lines_to_api "Partial restore done." "$job" "$LVL_INFO"
+    else
+        echo "Partial restore completed with errors. See $PR_LOG." >>"$LOG_DIR/$job.out"
+        send_lines_to_api "Partial restore completed with errors." "$job" "$LVL_ERROR"
+    fi
+    return $PR_STATUS
 }
 
 jobsCheck() {
