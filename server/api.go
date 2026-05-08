@@ -278,6 +278,45 @@ func (repman *ReplicationManager) apiserver() {
 	router.HandleFunc("/api/dashboard-token", repman.dashboardTokenHandler)
 	router.HandleFunc("/api/version", repman.handlerVersion)
 
+	router.Handle("/api/register", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerRegister)),
+	))
+
+	router.Handle("/api/register/confirm", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerRegisterConfirm)),
+	))
+
+	router.Handle("/api/register/status", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerRegisterStatus)),
+	))
+
+	router.Handle("/api/register/unregister", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerUnregister)),
+	))
+
+	router.Handle("/api/register/subscription/plans", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerGetSubscriptionPlans)),
+	))
+
+	router.Handle("/api/register/subscription", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				repman.handlerGetSubscription(w, r)
+			case http.MethodPost:
+				repman.handlerChangeSubscription(w, r)
+			default:
+				http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			}
+		})),
+	))
+
 	router.Handle("/api/terms", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTerms)),
 	))
@@ -299,6 +338,16 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/api/billing/subscription", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerBillingSubscription)),
+	))
+
+	router.Handle("/api/billing/subscription/plans", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerBillingSubscriptionPlans)),
+	))
+
+	router.Handle("/api/billing/subscription/change", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerBillingSubscriptionChange)),
 	))
 
 	router.Handle("/api/billing/transactions", negroni.New(

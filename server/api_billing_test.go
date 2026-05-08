@@ -1,6 +1,7 @@
 package server
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -99,7 +100,7 @@ func TestHandlerBillingPersonal_BootstrapAndRetry(t *testing.T) {
 
 func TestHandlerBillingSubscription_ProxiesCRM(t *testing.T) {
 	crm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/clients/dbaas/subscription" {
+		if r.URL.Path != "/api/users/dbaas/subscription" {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -125,6 +126,183 @@ func TestHandlerBillingSubscription_ProxiesCRM(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "starter") {
 		t.Fatalf("expected subscription payload, got %q", w.Body.String())
+	}
+}
+
+func TestHandlerBillingSubscriptionPlans_ProxiesCRM(t *testing.T) {
+	crm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/subscriptions/plans/dbaas" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.Method != http.MethodGet {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Fatalf("unexpected authorization header forwarded to CRM: %q", got)
+		}
+		if got := r.Header.Get("Accept"); got != "application/json" {
+			t.Fatalf("unexpected accept header: %q", got)
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"plans":[{"code":"starter","label":"Starter"}]}`))
+	}))
+	defer crm.Close()
+
+	repman := &ReplicationManager{Conf: &config.Config{Cloud18CrmApiUrl: crm.URL}}
+	tok := makeJWTWithGitLabToken(t, "user-token")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/billing/subscription/plans", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+
+	repman.handlerBillingSubscriptionPlans(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected status 202, got %d body=%q", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "starter") {
+		t.Fatalf("expected plans payload passthrough, got %q", w.Body.String())
+	}
+}
+
+func TestHandlerBillingSubscriptionChange_ProxiesCRM(t *testing.T) {
+	crm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/users/dbaas/subscription" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.Method != http.MethodPut {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer user-token" {
+			t.Fatalf("unexpected authorization header: %q", got)
+		}
+		if got := r.Header.Get("Content-Type"); !strings.Contains(got, "application/json") {
+			t.Fatalf("unexpected content-type header: %q", got)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if !strings.Contains(string(body), `"subscription":"bronze"`) {
+			t.Fatalf("unexpected body: %q", string(body))
+		}
+
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"ok":true,"subscription":"bronze"}`))
+	}))
+	defer crm.Close()
+
+	repman := &ReplicationManager{Conf: &config.Config{Cloud18CrmApiUrl: crm.URL}}
+	tok := makeJWTWithGitLabToken(t, "user-token")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/billing/subscription/change", strings.NewReader(`{"subscription":"Bronze"}`))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	repman.handlerBillingSubscriptionChange(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected status 202, got %d body=%q", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "subscription") {
+		t.Fatalf("expected passthrough response body, got %q", w.Body.String())
+	}
+}
+
+func TestHandlerBillingSubscriptionChange_RequiresSubscription(t *testing.T) {
+	repman := &ReplicationManager{Conf: &config.Config{Cloud18CrmApiUrl: "http://127.0.0.1:1"}}
+	tok := makeJWTWithGitLabToken(t, "user-token")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/billing/subscription/change", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	repman.handlerBillingSubscriptionChange(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d body=%q", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "subscription is required") {
+		t.Fatalf("expected subscription required error, got %q", w.Body.String())
+	}
+}
+
+func TestHandlerBillingSubscriptionChange_CRMUnavailable(t *testing.T) {
+	repman := &ReplicationManager{Conf: &config.Config{Cloud18CrmApiUrl: "http://127.0.0.1:1"}}
+	tok := makeJWTWithGitLabToken(t, "user-token")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/billing/subscription/change", strings.NewReader(`{"subscription":"developer"}`))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	repman.handlerBillingSubscriptionChange(w, req)
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("expected status 502, got %d body=%q", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "CRM API unreachable") {
+		t.Fatalf("expected crm unavailable error, got %q", w.Body.String())
+	}
+}
+
+func TestHandlerBillingSubscriptionChange_BootstrapAndRetry(t *testing.T) {
+	var changeCalls int
+	var bootstrapCalls int
+
+	crm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer user-token" {
+			t.Fatalf("unexpected authorization header: %q", got)
+		}
+
+		switch r.URL.Path {
+		case "/api/users/dbaas/subscription":
+			if r.Method != http.MethodPut {
+				t.Fatalf("unexpected method: %s", r.Method)
+			}
+			changeCalls++
+			if changeCalls == 1 {
+				w.WriteHeader(http.StatusPreconditionRequired)
+				_, _ = w.Write([]byte(`{"error":"session_bootstrap_required"}`))
+				return
+			}
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/api/session/bootstrap":
+			if r.Method != http.MethodPost {
+				t.Fatalf("unexpected bootstrap method: %s", r.Method)
+			}
+			bootstrapCalls++
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer crm.Close()
+
+	repman := &ReplicationManager{Conf: &config.Config{Cloud18CrmApiUrl: crm.URL}}
+	tok := makeJWTWithGitLabToken(t, "user-token")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/billing/subscription/change", strings.NewReader(`{"subscription":"bronze"}`))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	repman.handlerBillingSubscriptionChange(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected status 202, got %d body=%q", w.Code, w.Body.String())
+	}
+	if changeCalls != 2 {
+		t.Fatalf("expected 2 change calls, got %d", changeCalls)
+	}
+	if bootstrapCalls != 1 {
+		t.Fatalf("expected 1 bootstrap call, got %d", bootstrapCalls)
 	}
 }
 
@@ -198,5 +376,58 @@ func TestHandlerBillingTransactions_BootstrapAndRetry(t *testing.T) {
 	}
 	if bootstrapCalls != 1 {
 		t.Fatalf("expected 1 bootstrap call, got %d", bootstrapCalls)
+	}
+}
+
+func TestHandlerBillingTransactions_DefaultLimit(t *testing.T) {
+	crm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer user-token" {
+			t.Fatalf("unexpected authorization header: %q", got)
+		}
+
+		if r.URL.Path != "/api/users/transactions" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if got := r.URL.Query().Get("limit"); got != "25" {
+			t.Fatalf("expected default limit=25, got %q", got)
+		}
+		if got := r.URL.Query().Get("direction"); got != "desc" {
+			t.Fatalf("expected default direction=desc, got %q", got)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"transactions":[]}`))
+	}))
+	defer crm.Close()
+
+	repman := &ReplicationManager{Conf: &config.Config{Cloud18CrmApiUrl: crm.URL}}
+	tok := makeJWTWithGitLabToken(t, "user-token")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/billing/transactions", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+
+	repman.handlerBillingTransactions(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%q", w.Code, w.Body.String())
+	}
+}
+
+func TestHandlerBillingTransactions_RejectsLimitAboveMax(t *testing.T) {
+	repman := &ReplicationManager{Conf: &config.Config{Cloud18CrmApiUrl: "http://127.0.0.1:1"}}
+	tok := makeJWTWithGitLabToken(t, "user-token")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/billing/transactions?limit=101", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+
+	repman.handlerBillingTransactions(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d body=%q", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "invalid limit") {
+		t.Fatalf("expected invalid limit error, got %q", w.Body.String())
 	}
 }

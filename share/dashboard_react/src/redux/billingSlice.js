@@ -5,13 +5,19 @@ import { extractApiErrorMessage } from '../utils/apiError'
 const initialState = {
   balance: null,
   subscription: null,
+  plansCatalog: [],
+  changeSubscriptionResult: null,
   transactions: [],
   transactionsMeta: null,
   loadingBalance: false,
   loadingSubscription: false,
+  loadingPlansCatalog: false,
+  loadingChangeSubscription: false,
   loadingTransactions: false,
   errorBalance: null,
   errorSubscription: null,
+  errorPlansCatalog: null,
+  errorChangeSubscription: null,
   errorTransactions: null
 }
 
@@ -38,11 +44,35 @@ const normalizeTransactions = (payload) => {
   return { rows: [], meta: null }
 }
 
+const normalizeBillingErrorMessage = (response, fallbackMessage, crmUnavailableMessage) => {
+  const status = Number(response?.status || 0)
+  if (status === 502) {
+    return crmUnavailableMessage
+  }
+
+  const apiMessage = typeof response?.data === 'object'
+    ? (response.data?.error || response.data?.message)
+    : ''
+
+  return apiMessage || fallbackMessage
+}
+
 export const fetchPersonalBalance = createAsyncThunk('billing/fetchPersonalBalance', async (_, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
     const response = await billingService.getPersonalBalance(baseURL)
-    return response
+    const status = Number(response?.status || 0)
+    if (status >= 200 && status < 300) {
+      return response
+    }
+
+    return thunkAPI.rejectWithValue({
+      message: normalizeBillingErrorMessage(
+        response,
+        'Failed to fetch personal balance',
+        'The CRM billing service is temporarily unavailable. Personal balance cannot be loaded right now.'
+      )
+    })
   } catch (error) {
     return thunkAPI.rejectWithValue({ message: extractApiErrorMessage(error, 'Failed to fetch personal balance') })
   }
@@ -52,9 +82,41 @@ export const fetchBillingSubscription = createAsyncThunk('billing/fetchBillingSu
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
     const response = await billingService.getSubscription(baseURL)
-    return response
+    const status = Number(response?.status || 0)
+    if (status >= 200 && status < 300) {
+      return response
+    }
+
+    return thunkAPI.rejectWithValue({
+      message: normalizeBillingErrorMessage(
+        response,
+        'Failed to fetch billing subscription',
+        'The DBaaS subscription service is temporarily unavailable. Subscription details cannot be loaded right now.'
+      )
+    })
   } catch (error) {
     return thunkAPI.rejectWithValue({ message: extractApiErrorMessage(error, 'Failed to fetch billing subscription') })
+  }
+})
+
+export const fetchBillingPlansCatalog = createAsyncThunk('billing/fetchBillingPlansCatalog', async (_, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const response = await billingService.getSubscriptionPlans(baseURL)
+    const status = Number(response?.status || 0)
+    if (status >= 200 && status < 300) {
+      return response
+    }
+
+    return thunkAPI.rejectWithValue({
+      message: normalizeBillingErrorMessage(
+        response,
+        'Failed to fetch billing plans catalog',
+        'The DBaaS plans catalog service is temporarily unavailable. Plan choices cannot be loaded right now.'
+      )
+    })
+  } catch (error) {
+    return thunkAPI.rejectWithValue({ message: extractApiErrorMessage(error, 'Failed to fetch billing plans catalog') })
   }
 })
 
@@ -62,9 +124,45 @@ export const fetchBillingTransactions = createAsyncThunk('billing/fetchBillingTr
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
     const response = await billingService.getTransactions({ limit, offset, direction }, baseURL)
-    return response
+    const status = Number(response?.status || 0)
+    if (status >= 200 && status < 300) {
+      return response
+    }
+
+    return thunkAPI.rejectWithValue({
+      message: normalizeBillingErrorMessage(
+        response,
+        'Failed to fetch billing transactions',
+        'The CRM billing ledger service is temporarily unavailable. Transactions cannot be loaded right now.'
+      )
+    })
   } catch (error) {
     return thunkAPI.rejectWithValue({ message: extractApiErrorMessage(error, 'Failed to fetch billing transactions') })
+  }
+})
+
+export const requestBillingSubscriptionChange = createAsyncThunk('billing/requestBillingSubscriptionChange', async ({ subscription }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const response = await billingService.changeSubscriptionPlan(subscription, baseURL)
+    const status = Number(response?.status || 0)
+    if (status === 200 || status === 202) {
+      return response
+    }
+
+    if (status === 502) {
+      return thunkAPI.rejectWithValue({
+        message: 'The DBaaS subscription service is temporarily unavailable. Your subscription was not changed. Please try again shortly.'
+      })
+    }
+
+    const apiMessage = typeof response?.data === 'object'
+      ? (response.data?.error || response.data?.message)
+      : ''
+
+    return thunkAPI.rejectWithValue({ message: apiMessage || 'Failed to change billing subscription' })
+  } catch (error) {
+    return thunkAPI.rejectWithValue({ message: extractApiErrorMessage(error, 'Failed to change billing subscription') })
   }
 })
 
@@ -74,6 +172,9 @@ const billingSlice = createSlice({
   reducers: {
     clearBillingState: (state) => {
       Object.assign(state, initialState)
+    },
+    clearChangeSubscriptionError: (state) => {
+      state.errorChangeSubscription = null
     }
   },
   extraReducers: (builder) => {
@@ -102,6 +203,18 @@ const billingSlice = createSlice({
         state.loadingSubscription = false
         state.errorSubscription = action.payload?.message || action.error?.message || 'Failed to fetch billing subscription'
       })
+      .addCase(fetchBillingPlansCatalog.pending, (state) => {
+        state.loadingPlansCatalog = true
+        state.errorPlansCatalog = null
+      })
+      .addCase(fetchBillingPlansCatalog.fulfilled, (state, action) => {
+        state.loadingPlansCatalog = false
+        state.plansCatalog = normalizeMaybeWrapped(action.payload?.data)
+      })
+      .addCase(fetchBillingPlansCatalog.rejected, (state, action) => {
+        state.loadingPlansCatalog = false
+        state.errorPlansCatalog = action.payload?.message || action.error?.message || 'Failed to fetch billing plans catalog'
+      })
       .addCase(fetchBillingTransactions.pending, (state) => {
         state.loadingTransactions = true
         state.errorTransactions = null
@@ -116,8 +229,21 @@ const billingSlice = createSlice({
         state.loadingTransactions = false
         state.errorTransactions = action.payload?.message || action.error?.message || 'Failed to fetch billing transactions'
       })
+      .addCase(requestBillingSubscriptionChange.pending, (state) => {
+        state.loadingChangeSubscription = true
+        state.errorChangeSubscription = null
+      })
+      .addCase(requestBillingSubscriptionChange.fulfilled, (state, action) => {
+        state.loadingChangeSubscription = false
+        state.errorChangeSubscription = null
+        state.changeSubscriptionResult = normalizeMaybeWrapped(action.payload?.data)
+      })
+      .addCase(requestBillingSubscriptionChange.rejected, (state, action) => {
+        state.loadingChangeSubscription = false
+        state.errorChangeSubscription = action.payload?.message || action.error?.message || 'Failed to change billing subscription'
+      })
   }
 })
 
-export const { clearBillingState } = billingSlice.actions
+export const { clearBillingState, clearChangeSubscriptionError } = billingSlice.actions
 export default billingSlice.reducer

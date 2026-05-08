@@ -234,6 +234,16 @@ func (repman *ReplicationManager) httpserver() {
 		negroni.Wrap(http.HandlerFunc(repman.handlerBillingSubscription)),
 	))
 
+	router.Handle("/api/billing/subscription/plans", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerBillingSubscriptionPlans)),
+	))
+
+	router.Handle("/api/billing/subscription/change", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerBillingSubscriptionChange)),
+	))
+
 	router.Handle("/api/billing/transactions", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerBillingTransactions)),

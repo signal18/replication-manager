@@ -346,7 +346,7 @@ func (repman *ReplicationManager) registeredInstanceURI() string {
 // ---------------------------------------------------------------------------
 
 // crmCallConfirm calls the CRM /api/register/confirm endpoint once.
-func crmCallConfirm(crmBase string, payload crmConfirmPayload) (int, []byte, error) {
+func crmCallConfirm(crmBase, gitlabToken string, payload crmConfirmPayload) (int, []byte, error) {
 	b, err := json.Marshal(payload)
 	if err != nil {
 		return 0, nil, err
@@ -357,6 +357,7 @@ func crmCallConfirm(crmBase string, payload crmConfirmPayload) (int, []byte, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+gitlabToken)
 
 	resp, err := crmHTTPClient30s.Do(req)
 	if err != nil {
@@ -419,10 +420,22 @@ func (repman *ReplicationManager) pollConfirmLoop(crmBase string, payload crmCon
 	ticker := time.NewTicker(confirmPollInterval)
 	defer ticker.Stop()
 
+	gitlabToken := ""
+
 	for time.Now().Before(deadline) {
 		<-ticker.C
 
-		status, respBody, err := crmCallConfirm(crmBase, payload)
+		if gitlabToken == "" {
+			tok, err := githelper.GetGitLabTokenBasicAuth(email, password, repman.Conf.Verbose)
+			if err != nil {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"register: token exchange failed for %s: %s (retrying)", email, err)
+				continue
+			}
+			gitlabToken = tok
+		}
+
+		status, respBody, err := crmCallConfirm(crmBase, gitlabToken, payload)
 		if err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 				"register: confirm poll error: %s (retrying)", err)
@@ -439,6 +452,19 @@ func (repman *ReplicationManager) pollConfirmLoop(crmBase string, payload crmCon
 		if status == http.StatusBadRequest {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 				"register: waiting for %s to confirm email…", email)
+			continue
+		}
+
+		if status == http.StatusAccepted {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"register: confirmation pending for %s (HTTP %d)", email, status)
+			continue
+		}
+
+		if status == http.StatusUnauthorized {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"register: confirm unauthorized for %s, refreshing token", email)
+			gitlabToken = ""
 			continue
 		}
 
@@ -818,7 +844,13 @@ func (repman *ReplicationManager) handlerRegisterConfirm(w http.ResponseWriter, 
 
 	crmBase := repman.crmBase()
 
-	status, respBody, err := crmCallConfirm(crmBase, crmConfirmPayload{
+	gitlabToken, err := githelper.GetGitLabTokenBasicAuth(email, req.Password, repman.Conf.Verbose)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"could not obtain GitLab token: %s"}`, err), http.StatusBadGateway)
+		return
+	}
+
+	status, respBody, err := crmCallConfirm(crmBase, gitlabToken, crmConfirmPayload{
 		Email: email, Password: req.Password,
 		Domain: domain, Subdomain: subdomain, Zone: zone,
 	})
@@ -849,21 +881,51 @@ func (repman *ReplicationManager) handlerRegisterConfirm(w http.ResponseWriter, 
 // Subscription plans
 // ---------------------------------------------------------------------------
 
-const (
-	SubPlanFree     = "free"
-	SubPlanSupport  = "support"
-	SubPlanServices = "support-services"
-	SubPlanPartner  = "partner"
-)
-
 type changeSubPayload struct {
 	URI  string `json:"uri"`
 	Plan string `json:"plan"`
 }
 
+func isAllowedOfflineInstancePlan(plan string) bool {
+	switch plan {
+	case "free", "support", "support-services", "partner", "developer":
+		return true
+	default:
+		return false
+	}
+}
+
+func (repman *ReplicationManager) persistInstanceSubscriptionPlan(plan, uri string) {
+	repman.Conf.Cloud18SubscriptionPlan = plan
+	if repman.ConfigManager != nil {
+		repman.ConfigManager.SaveConfig(repman, false)
+	}
+	for _, cl := range repman.Clusters {
+		cl.Conf.Cloud18SubscriptionPlan = plan
+		if cl.ConfigManager != nil {
+			cl.ConfigManager.SaveConfig(cl, false)
+		}
+	}
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"subscription: plan changed to %s for URI %s (persisted to config)", plan, uri)
+}
+
+func writeOfflineSubscriptionQueued(w http.ResponseWriter, plan, uri, detail string) {
+	out, _ := json.Marshal(map[string]interface{}{
+		"status":                    "queued_for_git_processing",
+		"mode":                      "offline_fallback",
+		"plan":                      plan,
+		"uri":                       uri,
+		"message":                   "CRM unreachable — subscription plan saved locally and queued for git processing",
+		"connectivity_error_detail": detail,
+	})
+	w.WriteHeader(http.StatusAccepted)
+	_, _ = w.Write(out)
+}
+
 // crmGetPlans fetches the available subscription plans from the CRM (no auth required).
 func crmGetPlans(crmBase string) (int, []byte, error) {
-	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/subscription/plans", nil)
+	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/subscriptions/plans/instance", nil)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -946,12 +1008,50 @@ func crmBootstrapSession(crmBase, gitlabToken string) (int, []byte, error) {
 }
 
 func crmGetDBaaSSubscription(crmBase, gitlabToken string) (int, []byte, error) {
-	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/clients/dbaas/subscription", nil)
+	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/users/dbaas/subscription", nil)
 	if err != nil {
 		return 0, nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+gitlabToken)
 	req.Header.Set("Accept", "application/json")
+	resp, err := crmHTTPClient15s.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
+}
+
+func crmGetDBaaSPlans(crmBase string) (int, []byte, error) {
+	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/subscriptions/plans/dbaas", nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := crmHTTPClient15s.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
+}
+
+func crmChangeDBaaSSubscription(crmBase, gitlabToken, subscription string) (int, []byte, error) {
+	payload, err := json.Marshal(map[string]string{"subscription": subscription})
+	if err != nil {
+		return 0, nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, crmBase+"/api/users/dbaas/subscription", bytes.NewReader(payload))
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+gitlabToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
 	resp, err := crmHTTPClient15s.Do(req)
 	if err != nil {
 		return 0, nil, err
@@ -1067,6 +1167,68 @@ func (repman *ReplicationManager) handlerBillingSubscription(w http.ResponseWrit
 	_, _ = w.Write(body)
 }
 
+// handlerBillingSubscriptionPlans — GET /api/billing/subscription/plans (JWT required)
+func (repman *ReplicationManager) handlerBillingSubscriptionPlans(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	status, body, err := crmGetDBaaSPlans(repman.crmBase())
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "CRM API unreachable")
+		return
+	}
+
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
+}
+
+// handlerBillingSubscriptionChange — POST /api/billing/subscription/change (JWT required)
+func (repman *ReplicationManager) handlerBillingSubscriptionChange(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	gitlabToken, err := repman.GetJWTGitLabToken(r)
+	if err != nil {
+		writeJSONError(w, http.StatusPreconditionFailed, "gitlab sso token required")
+		return
+	}
+
+	var reqBody struct {
+		Subscription string `json:"subscription"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "subscription is required")
+		return
+	}
+
+	subscription := strings.ToLower(strings.TrimSpace(reqBody.Subscription))
+	if subscription == "" {
+		writeJSONError(w, http.StatusBadRequest, "subscription is required")
+		return
+	}
+
+	status, body, err := repman.fetchWithSessionBootstrap(gitlabToken, func() (int, []byte, error) {
+		return crmChangeDBaaSSubscription(repman.crmBase(), gitlabToken, subscription)
+	})
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "CRM API unreachable")
+		return
+	}
+
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
+}
+
 // handlerBillingTransactions — GET /api/billing/transactions (JWT required)
 func (repman *ReplicationManager) handlerBillingTransactions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -1084,10 +1246,10 @@ func (repman *ReplicationManager) handlerBillingTransactions(w http.ResponseWrit
 	}
 
 	query := r.URL.Query()
-	limit := 20
+	limit := 25
 	if rawLimit := strings.TrimSpace(query.Get("limit")); rawLimit != "" {
 		parsed, parseErr := strconv.Atoi(rawLimit)
-		if parseErr != nil || parsed <= 0 {
+		if parseErr != nil || parsed < 1 || parsed > 100 {
 			writeJSONError(w, http.StatusBadRequest, "invalid limit")
 			return
 		}
@@ -1322,7 +1484,9 @@ func (repman *ReplicationManager) handlerGetSubscription(w http.ResponseWriter, 
 // handlerChangeSubscription — POST /api/register/subscription  (admin JWT required)
 //
 // Validates the requested plan, calls the CRM to change the subscription, and
-// persists the new plan in the local configuration on success.
+// persists the new plan in local configuration on success.
+// When CRM (or token exchange) is unreachable, strict offline fallback accepts
+// only known plans and queues local persistence for later git-based processing.
 func (repman *ReplicationManager) handlerChangeSubscription(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1355,40 +1519,41 @@ func (repman *ReplicationManager) handlerChangeSubscription(w http.ResponseWrite
 		http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
 		return
 	}
+	req.Plan = strings.TrimSpace(strings.ToLower(req.Plan))
 
-	switch req.Plan {
-	case SubPlanFree, SubPlanSupport, SubPlanServices, SubPlanPartner:
-	default:
-		http.Error(w, fmt.Sprintf(`{"error":"invalid plan %q — must be one of free, support, support-services, partner"}`, req.Plan),
+	if req.Plan == "" {
+		http.Error(w, `{"error":"plan is required"}`,
 			http.StatusBadRequest)
 		return
 	}
 
+	uri := repman.registeredInstanceURI()
 	tok, err := repman.gitlabTokenFromConfig()
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err), http.StatusBadGateway)
+		if isAllowedOfflineInstancePlan(req.Plan) {
+			repman.persistInstanceSubscriptionPlan(req.Plan, uri)
+			writeOfflineSubscriptionQueued(w, req.Plan, uri, err.Error())
+			return
+		}
+		writeJSONError(w, http.StatusBadRequest,
+			fmt.Sprintf("invalid plan %q for offline mode — must be one of free, support, support-services, partner, developer", req.Plan))
 		return
 	}
 
-	uri := repman.registeredInstanceURI()
-
 	status, respBody, err := crmChangeSubscription(repman.crmBase(), tok, uri, req.Plan)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"CRM unreachable: %s"}`, err), http.StatusBadGateway)
+		if isAllowedOfflineInstancePlan(req.Plan) {
+			repman.persistInstanceSubscriptionPlan(req.Plan, uri)
+			writeOfflineSubscriptionQueued(w, req.Plan, uri, err.Error())
+			return
+		}
+		writeJSONError(w, http.StatusBadRequest,
+			fmt.Sprintf("CRM unreachable and plan %q is not allowed in offline mode — must be one of free, support, support-services, partner, developer", req.Plan))
 		return
 	}
 
 	if status == http.StatusOK || status == http.StatusCreated {
-		repman.Conf.Cloud18SubscriptionPlan = req.Plan
-		// Persist to server-level config (default.toml) and all cluster configs
-		// so the plan survives restart and is visible to the back office via git push.
-		repman.ConfigManager.SaveConfig(repman, false)
-		for _, cl := range repman.Clusters {
-			cl.Conf.Cloud18SubscriptionPlan = req.Plan
-			cl.ConfigManager.SaveConfig(cl, false)
-		}
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"subscription: plan changed to %s for URI %s (persisted to config)", req.Plan, uri)
+		repman.persistInstanceSubscriptionPlan(req.Plan, uri)
 	}
 
 	w.WriteHeader(status)
