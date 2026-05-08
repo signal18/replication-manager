@@ -417,7 +417,7 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 	// Configurator read-only endpoints — no specific grant required beyond auth.
 	// Write endpoints under /configurator/ must be added to clusterACLRules.
 	if strings.HasPrefix(URL, "/api/clusters/"+cluster.Name+"/configurator/") {
-		if strings.HasSuffix(URL, "/content") || strings.HasSuffix(URL, "/compliance-diff") {
+		if strings.HasSuffix(URL, "/content") {
 			return true
 		}
 	}

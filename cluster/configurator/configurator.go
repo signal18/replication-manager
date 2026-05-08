@@ -15,6 +15,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"sync"
 	"strconv"
 	"strings"
 
@@ -41,6 +43,7 @@ type Configurator struct {
 	ProxyTagsDiscover     []string          `json:"proxyServersTagsDiscover"`
 	WorkingDir            string            `json:"-"` // working dir is the place to generate the all cluster config
 	DocHelp               *DocHelp          `json:"-"` // variable documentation lookup (singleton, lazy-loaded)
+	complianceMu          sync.Mutex        // protects Pending/Active CRC fields, DBModule, ProxyModule during compliance check/accept
 	// ActiveDBCRC and ActivePrxCRC are CRC32 checksums of the compliance
 	// modules last accepted by the user. Persisted to disk so upgrades
 	// (new embedded module) and BO pushes are both detected on restart.
@@ -174,15 +177,22 @@ func (configurator *Configurator) complianceCRC(module config.Compliance) uint32
 // - Embedded module changes from a binary upgrade
 // Sets PendingDBCRC/PendingPrxCRC when a change is pending.
 func (configurator *Configurator) CheckComplianceUpdate(pluginDataDir string) bool {
+	configurator.complianceMu.Lock()
+	defer configurator.complianceMu.Unlock()
+
 	pending := false
 
-	// Check PluginDataDir first (BO push takes priority over embedded)
+	// Always use complianceCRC (json.Marshal) for consistent comparison.
+	// When a BO file exists, unmarshal it first then compute CRC from the
+	// re-marshalled output — same path as ActiveDBCRC computation.
 	dbCRC := uint32(0)
 	dbFile := filepath.Join(pluginDataDir, "moduleset_mariadb.svc.mrm.db.json")
 	if data, err := os.ReadFile(dbFile); err == nil {
-		dbCRC = crc32.ChecksumIEEE(data)
+		var module config.Compliance
+		if err := json.Unmarshal(data, &module); err == nil {
+			dbCRC = configurator.complianceCRC(module)
+		}
 	} else {
-		// No BO file — check the current in-memory (embedded) module
 		dbCRC = configurator.complianceCRC(configurator.DBModule)
 	}
 	if dbCRC != 0 && dbCRC != configurator.ActiveDBCRC {
@@ -195,7 +205,10 @@ func (configurator *Configurator) CheckComplianceUpdate(pluginDataDir string) bo
 	prxCRC := uint32(0)
 	prxFile := filepath.Join(pluginDataDir, "moduleset_mariadb.svc.mrm.proxy.json")
 	if data, err := os.ReadFile(prxFile); err == nil {
-		prxCRC = crc32.ChecksumIEEE(data)
+		var module config.Compliance
+		if err := json.Unmarshal(data, &module); err == nil {
+			prxCRC = configurator.complianceCRC(module)
+		}
 	} else {
 		prxCRC = configurator.complianceCRC(configurator.ProxyModule)
 	}
@@ -212,6 +225,8 @@ func (configurator *Configurator) CheckComplianceUpdate(pluginDataDir string) bo
 // HasPendingComplianceUpdate returns true when new compliance files are
 // available but not yet accepted by the user.
 func (configurator *Configurator) HasPendingComplianceUpdate() bool {
+	configurator.complianceMu.Lock()
+	defer configurator.complianceMu.Unlock()
 	return configurator.PendingDBCRC != 0 || configurator.PendingPrxCRC != 0
 }
 
@@ -220,6 +235,9 @@ func (configurator *Configurator) HasPendingComplianceUpdate() bool {
 // modules, persists the full accepted compliance to disk, and clears the
 // pending state. On next restart the accepted version is loaded from disk.
 func (configurator *Configurator) AcceptComplianceUpdate(pluginDataDir string) error {
+	configurator.complianceMu.Lock()
+	defer configurator.complianceMu.Unlock()
+
 	// Try loading from PluginDataDir first (BO push)
 	reloaded, _ := configurator.ReloadComplianceFromDataDir(pluginDataDir)
 	if !reloaded {
@@ -253,22 +271,40 @@ func (configurator *Configurator) saveAcceptedCompliance() {
 	if configurator.WorkingDir == "" {
 		return
 	}
-	// Rotate: current accepted → .old (for diffing)
 	dbPath := filepath.Join(configurator.WorkingDir, acceptedDBFile)
 	prxPath := filepath.Join(configurator.WorkingDir, acceptedPrxFile)
-	if _, err := os.Stat(dbPath); err == nil {
-		os.Rename(dbPath, filepath.Join(configurator.WorkingDir, previousDBFile))
+
+	// Write to temp file first, then rename atomically.
+	// Only rotate current→.old after the new file is safely written.
+	writeAtomically := func(path, oldPath string, module config.Compliance) {
+		data, err := json.Marshal(module)
+		if err != nil {
+			if configurator.Logger != nil {
+				configurator.Logger.Errorf("Failed to marshal compliance for %s: %s", path, err)
+			}
+			return
+		}
+		tmpPath := path + ".tmp"
+		if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+			if configurator.Logger != nil {
+				configurator.Logger.Errorf("Failed to write temp compliance file %s: %s", tmpPath, err)
+			}
+			return
+		}
+		// Rotate: current → .old (only after temp write succeeded)
+		if _, err := os.Stat(path); err == nil {
+			os.Rename(path, oldPath)
+		}
+		// Promote temp → current
+		if err := os.Rename(tmpPath, path); err != nil {
+			if configurator.Logger != nil {
+				configurator.Logger.Errorf("Failed to rename %s to %s: %s", tmpPath, path, err)
+			}
+		}
 	}
-	if _, err := os.Stat(prxPath); err == nil {
-		os.Rename(prxPath, filepath.Join(configurator.WorkingDir, previousPrxFile))
-	}
-	// Write new accepted
-	if data, err := json.Marshal(configurator.DBModule); err == nil {
-		os.WriteFile(dbPath, data, 0644)
-	}
-	if data, err := json.Marshal(configurator.ProxyModule); err == nil {
-		os.WriteFile(prxPath, data, 0644)
-	}
+
+	writeAtomically(dbPath, filepath.Join(configurator.WorkingDir, previousDBFile), configurator.DBModule)
+	writeAtomically(prxPath, filepath.Join(configurator.WorkingDir, previousPrxFile), configurator.ProxyModule)
 }
 
 // loadAcceptedCompliance reads previously accepted compliance modules from
@@ -412,6 +448,11 @@ func (configurator *Configurator) diffModuleTags(oldMod, newMod *config.Complian
 			})
 		}
 	}
+
+	// Sort for deterministic output
+	sort.Slice(changes, func(i, j int) bool {
+		return changes[i].Tag < changes[j].Tag
+	})
 
 	return changes
 }
