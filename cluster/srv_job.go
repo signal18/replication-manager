@@ -134,7 +134,7 @@ func (server *ServerMonitor) JobsCreateTable() error {
 }
 
 // ensureReplicationManagerSchema creates the replication_manager_schema database
-// if it doesn't exist. Needed even in API mode for checksum, benchmarks, etc.
+// only if it doesn't already exist. Needed even in API mode for checksum, benchmarks, etc.
 func (server *ServerMonitor) ensureReplicationManagerSchema() {
 	if server.IsDown() || server.Conn == nil {
 		return
@@ -144,11 +144,17 @@ func (server *ServerMonitor) ensureReplicationManagerSchema() {
 		return
 	}
 	defer conn.Close()
-	server.ConnExecQueryWithTimeout(conn, JobTimeout, "/* replication-manager */ CREATE DATABASE IF NOT EXISTS replication_manager_schema")
+	var count int
+	server.ConnGetQueryWithTimeout(conn, JobTimeout, &count,
+		"/* replication-manager */ SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name='replication_manager_schema'")
+	if count == 0 {
+		server.ConnExecQueryWithTimeout(conn, JobTimeout, "/* replication-manager */ CREATE DATABASE IF NOT EXISTS replication_manager_schema")
+	}
 }
 
 // jobsDropTable drops the jobs table when switching to API mode.
-// Uses sql_log_bin=0 to avoid replication of the DDL.
+// Checks information_schema first to avoid unnecessary DDL.
+// Uses sql_log_bin=0 to avoid replication.
 func (server *ServerMonitor) jobsDropTable() {
 	cluster := server.ClusterGroup
 	if server.IsDown() || server.Conn == nil {
@@ -159,8 +165,13 @@ func (server *ServerMonitor) jobsDropTable() {
 		return
 	}
 	defer conn.Close()
-	// /* replication-manager */ DROP IF EXISTS avoids errors when table is already gone
-	_, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "/* replication-manager */ DROP TABLE IF EXISTS replication_manager_schema.jobs")
+	var count int
+	err = server.ConnGetQueryWithTimeout(conn, JobTimeout, &count,
+		"/* replication-manager */ SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='replication_manager_schema' AND table_name='jobs'")
+	if err != nil || count == 0 {
+		return
+	}
+	_, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "/* replication-manager */ DROP TABLE replication_manager_schema.jobs")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to drop jobs table on %s: %s", server.URL, err)
 	} else {
