@@ -840,7 +840,13 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn,
 				"LoginHandler: lazily initialized LoginUpgradeStore for user %s", user.Username)
 		}
-		upgradeID, job := repman.LoginUpgradeStore.createJob()
+		upgradeID, job, err := repman.LoginUpgradeStore.createJob(user.Username, r.RemoteAddr)
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr,
+				"loginHandler: failed to create SSO upgrade job for user %s: %v", user.Username, err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 		go repman.runAsyncSSOUpgrade(user.Username, user.Password, r.RemoteAddr, job)
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg,
 			"LoginHandler: started async SSO upgrade %s for user %s", upgradeID, user.Username)

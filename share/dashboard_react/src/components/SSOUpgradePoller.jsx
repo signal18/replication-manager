@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { authService } from '../services/authService'
-import { clearSSOUpgrade } from '../redux/authSlice'
+import { clearSSOUpgrade, whoami } from '../redux/authSlice'
 import { showWarningToast } from '../redux/toastSlice'
 
 import { REASON_HINTS } from './ssoUpgradeReasons.js'
@@ -59,6 +59,8 @@ function SSOUpgradePoller() {
           const token = response.data?.token
           if (token) {
             localStorage.setItem('user_token', token)
+            // Fix 4: refresh Redux auth state so components see the new SSO claims.
+            dispatch(whoami())
           }
         } else if (response.status === 409) {
           const reason = response.data?.reason || 'unknown_non_retryable'

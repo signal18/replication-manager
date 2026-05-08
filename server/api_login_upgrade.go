@@ -8,7 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"math/big"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -21,9 +21,10 @@ import (
 )
 
 const (
-	upgradeJobTTL        = 60 * time.Second
-	upgradeJobGracePeriod = 2 * upgradeJobTTL
-	upgradeMaxAttempts   = 3
+	upgradeJobTTL              = 60 * time.Second
+	upgradeJobReadyDeliveryTTL = 30 * time.Second // window from ready→consumed before expiry
+	upgradeJobGracePeriod      = 2 * upgradeJobTTL
+	upgradeMaxAttempts         = 3
 )
 
 var upgradeBackoffDelays = []time.Duration{250 * time.Millisecond, 750 * time.Millisecond}
@@ -37,6 +38,9 @@ type LoginUpgradeJob struct {
 	Error     string    // internal detail, never exposed to client
 	Attempts  int
 	CreatedAt time.Time
+	ReadyAt   time.Time // set when SSO upgrade succeeds; governs delivery TTL
+	Owner     string    // username from the login JWT; used to bind poll requests
+	SourceIP  string    // login request IP; used for soft change detection
 }
 
 // LoginUpgradeStore is an in-memory map of upgrade jobs keyed by upgrade_id.
@@ -51,29 +55,38 @@ func newLoginUpgradeStore() *LoginUpgradeStore {
 	}
 }
 
-func newUpgradeID() string {
+func newUpgradeID() (string, error) {
 	b := make([]byte, 16)
-	for i := range b {
-		n, err := rand.Int(rand.Reader, big.NewInt(256))
-		if err != nil {
-			b[i] = 0
-		} else {
-			b[i] = byte(n.Int64())
-		}
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("newUpgradeID: crypto/rand unavailable: %w", err)
 	}
-	return fmt.Sprintf("%x", b)
+	return fmt.Sprintf("%x", b), nil
 }
 
-func (s *LoginUpgradeStore) createJob() (string, *LoginUpgradeJob) {
-	id := newUpgradeID()
+// clientIP strips the port from an addr:port string so IPs can be compared.
+func clientIP(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return remoteAddr
+	}
+	return host
+}
+
+func (s *LoginUpgradeStore) createJob(owner, sourceIP string) (string, *LoginUpgradeJob, error) {
+	id, err := newUpgradeID()
+	if err != nil {
+		return "", nil, err
+	}
 	job := &LoginUpgradeJob{
 		Status:    "pending",
 		CreatedAt: time.Now(),
+		Owner:     owner,
+		SourceIP:  sourceIP,
 	}
 	s.mu.Lock()
 	s.Jobs[id] = job
 	s.mu.Unlock()
-	return id, job
+	return id, job, nil
 }
 
 func (s *LoginUpgradeStore) get(id string) (*LoginUpgradeJob, bool) {
@@ -86,7 +99,23 @@ func (s *LoginUpgradeStore) get(id string) (*LoginUpgradeJob, bool) {
 // upgradeHandler serves GET /api/login/upgrade?upgrade_id=<id>
 func (repman *ReplicationManager) upgradeHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Fix 2: answer CORS preflight before any other processing.
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
+
+	// Fix 1: require the local JWT issued at login; bind poll to its owner.
+	owner := repman.GetUserFromRequest(r)
+	if owner == "" {
+		http.Error(w, `{"error":"authorization required"}`, http.StatusUnauthorized)
+		return
+	}
 
 	id := r.URL.Query().Get("upgrade_id")
 	if id == "" {
@@ -108,8 +137,25 @@ func (repman *ReplicationManager) upgradeHandler(w http.ResponseWriter, r *http.
 	job.mu.Lock()
 	defer job.mu.Unlock()
 
-	// Mark TTL-exceeded pending/ready jobs as expired before responding.
-	if (job.Status == "pending" || job.Status == "ready") && time.Since(job.CreatedAt) > upgradeJobTTL {
+	// Fix 1 (cont.): verify the polling client owns this job.
+	if job.Owner != owner {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+
+	// Fix 1 (soft): log if source IP changed (mobile/VPN can legitimately change IP).
+	if job.SourceIP != "" && clientIP(r.RemoteAddr) != clientIP(job.SourceIP) {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn,
+			"SSO upgrade poll from different IP: job=%s poll=%s user=%s",
+			clientIP(job.SourceIP), clientIP(r.RemoteAddr), owner)
+	}
+
+	// Fix 3: expire only pending jobs on the pending TTL; ready jobs have their
+	// own delivery window measured from when the upgrade completed.
+	if job.Status == "pending" && time.Since(job.CreatedAt) > upgradeJobTTL {
+		job.Status = "expired"
+	}
+	if job.Status == "ready" && !job.ReadyAt.IsZero() && time.Since(job.ReadyAt) > upgradeJobReadyDeliveryTTL {
 		job.Status = "expired"
 	}
 
@@ -162,8 +208,11 @@ func (repman *ReplicationManager) cleanupExpiredLoginUpgradeJobs() {
 		job.mu.Lock()
 		age := time.Since(job.CreatedAt)
 
-		// Mark pending/ready jobs as expired if TTL exceeded.
-		if (job.Status == "pending" || job.Status == "ready") && age > upgradeJobTTL {
+		// Fix 3: separate TTLs for pending and ready states.
+		if job.Status == "pending" && age > upgradeJobTTL {
+			job.Status = "expired"
+		}
+		if job.Status == "ready" && !job.ReadyAt.IsZero() && time.Since(job.ReadyAt) > upgradeJobReadyDeliveryTTL {
 			job.Status = "expired"
 		}
 
@@ -447,6 +496,7 @@ func (repman *ReplicationManager) runAsyncSSOUpgrade(
 	job.mu.Lock()
 	job.Status = "ready"
 	job.NewJWT = newJWT
+	job.ReadyAt = time.Now()
 	job.mu.Unlock()
 
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo,

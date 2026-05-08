@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,6 +11,27 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 )
+
+// makeAuthedUpgradeRequest builds a GET /api/login/upgrade request carrying a
+// valid JWT for the given username, signed with the repman test keys.
+func makeAuthedUpgradeRequest(t *testing.T, repman *ReplicationManager, upgradeID, username string) *http.Request {
+	t.Helper()
+	tokenStr, err := repman.issueJWT(struct {
+		Name     string
+		Role     string
+		Password string
+	}{username, "Member", "enc"}, "")
+	if err != nil {
+		t.Fatalf("makeAuthedUpgradeRequest: issueJWT: %v", err)
+	}
+	url := "/api/login/upgrade"
+	if upgradeID != "" {
+		url += "?upgrade_id=" + upgradeID
+	}
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	return req
+}
 
 // ─── classifySSOAuthError ────────────────────────────────────────────────────
 
@@ -59,9 +79,9 @@ func TestClassifySSOAuthError_UnknownNonRetryable(t *testing.T) {
 	cases := []string{
 		"API error: invalid_grant - The provided authorization grant is invalid",
 		"API error: invalid_grant - some other reason",
-		"API error: unauthorized - user not found",   // broad "not found" → must NOT classify as not_registered
+		"API error: unauthorized - user not found",
 		"some completely unknown error",
-		"resource owner error",                        // must NOT classify as not_registered
+		"resource owner error",
 	}
 	for _, msg := range cases {
 		if got := classifySSOAuthError(errors.New(msg)); got != "unknown_non_retryable" {
@@ -70,11 +90,37 @@ func TestClassifySSOAuthError_UnknownNonRetryable(t *testing.T) {
 	}
 }
 
+// ─── clientIP ────────────────────────────────────────────────────────────────
+
+func TestClientIP_StripPort(t *testing.T) {
+	cases := []struct{ addr, want string }{
+		{"1.2.3.4:56789", "1.2.3.4"},
+		{"[::1]:8080", "::1"},
+		{"192.168.1.1:0", "192.168.1.1"},
+		{"bare-host", "bare-host"}, // no port: returned as-is
+	}
+	for _, c := range cases {
+		if got := clientIP(c.addr); got != c.want {
+			t.Errorf("clientIP(%q) = %q, want %q", c.addr, got, c.want)
+		}
+	}
+}
+
+// mustCreateJob calls createJob and fatals the test if the store returns an error.
+func mustCreateJob(t *testing.T, s *LoginUpgradeStore, owner, sourceIP string) (string, *LoginUpgradeJob) {
+	t.Helper()
+	id, job, err := s.createJob(owner, sourceIP)
+	if err != nil {
+		t.Fatalf("mustCreateJob: unexpected error: %v", err)
+	}
+	return id, job
+}
+
 // ─── LoginUpgradeStore ───────────────────────────────────────────────────────
 
 func TestLoginUpgradeStore_CreateAndGet(t *testing.T) {
 	s := newLoginUpgradeStore()
-	id, job := s.createJob()
+	id, job := mustCreateJob(t, s, "alice", "1.2.3.4:0")
 	if id == "" {
 		t.Fatal("expected non-empty upgrade_id")
 	}
@@ -91,6 +137,12 @@ func TestLoginUpgradeStore_CreateAndGet(t *testing.T) {
 	if got.Status != "pending" {
 		t.Fatalf("expected status=pending, got %q", got.Status)
 	}
+	if got.Owner != "alice" {
+		t.Errorf("expected Owner=alice, got %q", got.Owner)
+	}
+	if got.SourceIP != "1.2.3.4:0" {
+		t.Errorf("expected SourceIP=1.2.3.4:0, got %q", got.SourceIP)
+	}
 }
 
 func TestLoginUpgradeStore_MissingID(t *testing.T) {
@@ -105,7 +157,7 @@ func TestLoginUpgradeStore_UniqueIDs(t *testing.T) {
 	s := newLoginUpgradeStore()
 	seen := make(map[string]bool)
 	for i := 0; i < 100; i++ {
-		id, _ := s.createJob()
+		id, _ := mustCreateJob(t, s, "u", "")
 		if seen[id] {
 			t.Fatalf("duplicate upgrade_id generated: %s", id)
 		}
@@ -118,15 +170,59 @@ func TestLoginUpgradeStore_UniqueIDs(t *testing.T) {
 func newTestRepmanWithStore(t *testing.T) *ReplicationManager {
 	t.Helper()
 	repman := &ReplicationManager{}
-	repman.Conf = &config.Config{}
+	repman.Conf = &config.Config{TokenTimeout: 1} // non-zero so JWTs don't expire immediately
 	repman.LoginUpgradeStore = newLoginUpgradeStore()
 	repman.initKeys()
 	return repman
 }
 
+// ── auth / security ──
+
+func TestUpgradeHandler_OPTIONS_Preflight(t *testing.T) {
+	repman := newTestRepmanWithStore(t)
+	req := httptest.NewRequest(http.MethodOptions, "/api/login/upgrade", nil)
+	w := httptest.NewRecorder()
+	repman.upgradeHandler(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for OPTIONS, got %d", w.Code)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Methods"); got == "" {
+		t.Error("expected Access-Control-Allow-Methods header on OPTIONS")
+	}
+	if got := w.Header().Get("Access-Control-Allow-Headers"); got == "" {
+		t.Error("expected Access-Control-Allow-Headers header on OPTIONS")
+	}
+}
+
+func TestUpgradeHandler_NoAuth_401(t *testing.T) {
+	repman := newTestRepmanWithStore(t)
+	id, _ := mustCreateJob(t, repman.LoginUpgradeStore, "alice", "")
+	req := httptest.NewRequest(http.MethodGet, "/api/login/upgrade?upgrade_id="+id, nil)
+	// deliberately no Authorization header
+	w := httptest.NewRecorder()
+	repman.upgradeHandler(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 with no auth, got %d", w.Code)
+	}
+}
+
+func TestUpgradeHandler_WrongUser_403(t *testing.T) {
+	repman := newTestRepmanWithStore(t)
+	id, _ := mustCreateJob(t, repman.LoginUpgradeStore, "alice", "")
+	// request signed as "bob", not the owner "alice"
+	req := makeAuthedUpgradeRequest(t, repman, id, "bob")
+	w := httptest.NewRecorder()
+	repman.upgradeHandler(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for wrong user, got %d", w.Code)
+	}
+}
+
+// ── missing / unknown id ──
+
 func TestUpgradeHandler_MissingID(t *testing.T) {
 	repman := newTestRepmanWithStore(t)
-	req := httptest.NewRequest(http.MethodGet, "/api/login/upgrade", nil)
+	req := makeAuthedUpgradeRequest(t, repman, "", "alice")
 	w := httptest.NewRecorder()
 	repman.upgradeHandler(w, req)
 	if w.Code != http.StatusBadRequest {
@@ -136,7 +232,7 @@ func TestUpgradeHandler_MissingID(t *testing.T) {
 
 func TestUpgradeHandler_UnknownID(t *testing.T) {
 	repman := newTestRepmanWithStore(t)
-	req := httptest.NewRequest(http.MethodGet, "/api/login/upgrade?upgrade_id=doesnotexist", nil)
+	req := makeAuthedUpgradeRequest(t, repman, "doesnotexist", "alice")
 	w := httptest.NewRecorder()
 	repman.upgradeHandler(w, req)
 	if w.Code != http.StatusNotFound {
@@ -144,12 +240,13 @@ func TestUpgradeHandler_UnknownID(t *testing.T) {
 	}
 }
 
+// ── state machine ──
+
 func TestUpgradeHandler_Pending(t *testing.T) {
 	repman := newTestRepmanWithStore(t)
-	id, _ := repman.LoginUpgradeStore.createJob()
-	req := httptest.NewRequest(http.MethodGet, "/api/login/upgrade?upgrade_id="+id, nil)
+	id, _ := mustCreateJob(t, repman.LoginUpgradeStore, "alice", "")
 	w := httptest.NewRecorder()
-	repman.upgradeHandler(w, req)
+	repman.upgradeHandler(w, makeAuthedUpgradeRequest(t, repman, id, "alice"))
 	if w.Code != http.StatusAccepted {
 		t.Fatalf("expected 202, got %d", w.Code)
 	}
@@ -157,18 +254,17 @@ func TestUpgradeHandler_Pending(t *testing.T) {
 
 func TestUpgradeHandler_Ready_OneTimeDelivery(t *testing.T) {
 	repman := newTestRepmanWithStore(t)
-	id, job := repman.LoginUpgradeStore.createJob()
+	id, job := mustCreateJob(t, repman.LoginUpgradeStore, "alice", "")
 
-	// Simulate SSO upgrade completing.
 	job.mu.Lock()
 	job.Status = "ready"
 	job.NewJWT = "test-jwt-string"
+	job.ReadyAt = time.Now()
 	job.mu.Unlock()
 
 	// First poll: expect 200 with token.
-	req := httptest.NewRequest(http.MethodGet, "/api/login/upgrade?upgrade_id="+id, nil)
 	w := httptest.NewRecorder()
-	repman.upgradeHandler(w, req)
+	repman.upgradeHandler(w, makeAuthedUpgradeRequest(t, repman, id, "alice"))
 	if w.Code != http.StatusOK {
 		t.Fatalf("first poll: expected 200, got %d", w.Code)
 	}
@@ -191,9 +287,8 @@ func TestUpgradeHandler_Ready_OneTimeDelivery(t *testing.T) {
 	job.mu.Unlock()
 
 	// Second poll: expect 410 consumed.
-	req2 := httptest.NewRequest(http.MethodGet, "/api/login/upgrade?upgrade_id="+id, nil)
 	w2 := httptest.NewRecorder()
-	repman.upgradeHandler(w2, req2)
+	repman.upgradeHandler(w2, makeAuthedUpgradeRequest(t, repman, id, "alice"))
 	if w2.Code != http.StatusGone {
 		t.Fatalf("second poll: expected 410, got %d", w2.Code)
 	}
@@ -217,15 +312,14 @@ func TestUpgradeHandler_Failed_409WithReason(t *testing.T) {
 	for _, reason := range reasons {
 		t.Run(reason, func(t *testing.T) {
 			repman := newTestRepmanWithStore(t)
-			id, job := repman.LoginUpgradeStore.createJob()
+			id, job := mustCreateJob(t, repman.LoginUpgradeStore, "alice", "")
 			job.mu.Lock()
 			job.Status = "failed"
 			job.Reason = reason
 			job.mu.Unlock()
 
-			req := httptest.NewRequest(http.MethodGet, "/api/login/upgrade?upgrade_id="+id, nil)
 			w := httptest.NewRecorder()
-			repman.upgradeHandler(w, req)
+			repman.upgradeHandler(w, makeAuthedUpgradeRequest(t, repman, id, "alice"))
 			if w.Code != http.StatusConflict {
 				t.Fatalf("reason=%s: expected 409, got %d", reason, w.Code)
 			}
@@ -236,7 +330,6 @@ func TestUpgradeHandler_Failed_409WithReason(t *testing.T) {
 			if resp["reason"] != reason {
 				t.Errorf("expected reason=%s in body, got %v", reason, resp["reason"])
 			}
-			// Verify no raw internal error is exposed.
 			if _, ok := resp["error"]; ok {
 				t.Error("internal error detail must not be in 409 body")
 			}
@@ -246,15 +339,14 @@ func TestUpgradeHandler_Failed_409WithReason(t *testing.T) {
 
 func TestUpgradeHandler_Expired_410(t *testing.T) {
 	repman := newTestRepmanWithStore(t)
-	id, job := repman.LoginUpgradeStore.createJob()
+	id, job := mustCreateJob(t, repman.LoginUpgradeStore, "alice", "")
 	job.mu.Lock()
 	job.Status = "pending"
-	job.CreatedAt = time.Now().Add(-upgradeJobTTL - time.Second) // simulate TTL elapsed
+	job.CreatedAt = time.Now().Add(-upgradeJobTTL - time.Second)
 	job.mu.Unlock()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/login/upgrade?upgrade_id="+id, nil)
 	w := httptest.NewRecorder()
-	repman.upgradeHandler(w, req)
+	repman.upgradeHandler(w, makeAuthedUpgradeRequest(t, repman, id, "alice"))
 	if w.Code != http.StatusGone {
 		t.Fatalf("expected 410 for expired job, got %d", w.Code)
 	}
@@ -267,23 +359,56 @@ func TestUpgradeHandler_Expired_410(t *testing.T) {
 	}
 }
 
+// Fix 3: ready job must NOT be expired by the pending TTL — it has its own window.
+func TestUpgradeHandler_ReadyJob_NotExpiredByPendingTTL(t *testing.T) {
+	repman := newTestRepmanWithStore(t)
+	id, job := mustCreateJob(t, repman.LoginUpgradeStore, "alice", "")
+	job.mu.Lock()
+	// Simulate SSO completing just before the pending TTL would expire.
+	job.CreatedAt = time.Now().Add(-upgradeJobTTL - time.Second)
+	job.Status = "ready"
+	job.NewJWT = "sso-jwt"
+	job.ReadyAt = time.Now() // just became ready; delivery window is fresh
+	job.mu.Unlock()
+
+	w := httptest.NewRecorder()
+	repman.upgradeHandler(w, makeAuthedUpgradeRequest(t, repman, id, "alice"))
+	if w.Code != http.StatusOK {
+		t.Fatalf("ready job past pending TTL should still deliver 200, got %d", w.Code)
+	}
+}
+
+// Fix 3: ready job expires after its own delivery TTL.
+func TestUpgradeHandler_ReadyJob_ExpiresAfterDeliveryTTL(t *testing.T) {
+	repman := newTestRepmanWithStore(t)
+	id, job := mustCreateJob(t, repman.LoginUpgradeStore, "alice", "")
+	job.mu.Lock()
+	job.Status = "ready"
+	job.NewJWT = "sso-jwt"
+	job.ReadyAt = time.Now().Add(-upgradeJobReadyDeliveryTTL - time.Second)
+	job.mu.Unlock()
+
+	w := httptest.NewRecorder()
+	repman.upgradeHandler(w, makeAuthedUpgradeRequest(t, repman, id, "alice"))
+	if w.Code != http.StatusGone {
+		t.Fatalf("ready job past delivery TTL should return 410, got %d", w.Code)
+	}
+}
+
 // ─── cleanup goroutine ───────────────────────────────────────────────────────
 
 func TestCleanupExpiredJobs(t *testing.T) {
 	repman := newTestRepmanWithStore(t)
 
-	// A fresh pending job — should NOT be deleted.
-	freshID, _ := repman.LoginUpgradeStore.createJob()
+	freshID, _ := mustCreateJob(t, repman.LoginUpgradeStore, "u", "")
 
-	// An expired job older than grace period — should be deleted.
-	expiredID, expiredJob := repman.LoginUpgradeStore.createJob()
+	expiredID, expiredJob := mustCreateJob(t, repman.LoginUpgradeStore, "u", "")
 	expiredJob.mu.Lock()
 	expiredJob.Status = "expired"
 	expiredJob.CreatedAt = time.Now().Add(-(upgradeJobGracePeriod + time.Second))
 	expiredJob.mu.Unlock()
 
-	// A consumed job older than grace period — should be deleted.
-	consumedID, consumedJob := repman.LoginUpgradeStore.createJob()
+	consumedID, consumedJob := mustCreateJob(t, repman.LoginUpgradeStore, "u", "")
 	consumedJob.mu.Lock()
 	consumedJob.Status = "consumed"
 	consumedJob.CreatedAt = time.Now().Add(-(upgradeJobGracePeriod + time.Second))
@@ -304,7 +429,7 @@ func TestCleanupExpiredJobs(t *testing.T) {
 
 func TestCleanupMarksPendingAsExpired(t *testing.T) {
 	repman := newTestRepmanWithStore(t)
-	id, job := repman.LoginUpgradeStore.createJob()
+	id, job := mustCreateJob(t, repman.LoginUpgradeStore, "u", "")
 	job.mu.Lock()
 	job.CreatedAt = time.Now().Add(-(upgradeJobTTL + time.Second))
 	job.mu.Unlock()
@@ -313,7 +438,6 @@ func TestCleanupMarksPendingAsExpired(t *testing.T) {
 
 	got, ok := repman.LoginUpgradeStore.get(id)
 	if !ok {
-		// Within grace period so it should still exist, just expired.
 		t.Fatal("expected job still present within grace period")
 	}
 	got.mu.Lock()
@@ -321,6 +445,31 @@ func TestCleanupMarksPendingAsExpired(t *testing.T) {
 	got.mu.Unlock()
 	if status != "expired" {
 		t.Fatalf("expected status=expired after TTL, got %q", status)
+	}
+}
+
+// Fix 3: cleanup must not expire a ready job based on pending TTL.
+func TestCleanupDoesNotExpireReadyJobByPendingTTL(t *testing.T) {
+	repman := newTestRepmanWithStore(t)
+	id, job := mustCreateJob(t, repman.LoginUpgradeStore, "u", "")
+	job.mu.Lock()
+	job.Status = "ready"
+	job.NewJWT = "jwt"
+	job.CreatedAt = time.Now().Add(-(upgradeJobTTL + time.Second))
+	job.ReadyAt = time.Now() // fresh delivery window
+	job.mu.Unlock()
+
+	repman.cleanupExpiredLoginUpgradeJobs()
+
+	got, ok := repman.LoginUpgradeStore.get(id)
+	if !ok {
+		t.Fatal("ready job within delivery window should still be in store")
+	}
+	got.mu.Lock()
+	status := got.Status
+	got.mu.Unlock()
+	if status != "ready" {
+		t.Fatalf("ready job should remain ready, got %q", status)
 	}
 }
 
@@ -365,7 +514,6 @@ func TestIssueJWT_SSO_IncludesGitLabToken(t *testing.T) {
 		t.Fatalf("issueJWT: %v", err)
 	}
 
-	// Verify the token claim round-trips correctly.
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 	gitlabTok, err := repman.GetJWTGitLabToken(req)
@@ -390,9 +538,7 @@ func newClusterWithUser(username string, grants map[string]bool) *cluster.Cluste
 func TestIsAdminUser_Admin(t *testing.T) {
 	repman := &ReplicationManager{}
 	repman.Clusters = map[string]*cluster.Cluster{
-		"c1": newClusterWithUser("admin", map[string]bool{
-			config.GrantGlobalAdminShow: true,
-		}),
+		"c1": newClusterWithUser("admin", map[string]bool{config.GrantGlobalAdminShow: true}),
 	}
 	if !repman.isAdminUser("admin") {
 		t.Error("expected admin to be detected as admin")
@@ -402,9 +548,7 @@ func TestIsAdminUser_Admin(t *testing.T) {
 func TestIsAdminUser_NonAdmin(t *testing.T) {
 	repman := &ReplicationManager{}
 	repman.Clusters = map[string]*cluster.Cluster{
-		"c1": newClusterWithUser("alice", map[string]bool{
-			config.GrantGlobalAdminShow: false,
-		}),
+		"c1": newClusterWithUser("alice", map[string]bool{config.GrantGlobalAdminShow: false}),
 	}
 	if repman.isAdminUser("alice") {
 		t.Error("expected alice not to be an admin")
@@ -414,9 +558,7 @@ func TestIsAdminUser_NonAdmin(t *testing.T) {
 func TestIsAdminUser_UnknownUser(t *testing.T) {
 	repman := &ReplicationManager{}
 	repman.Clusters = map[string]*cluster.Cluster{
-		"c1": newClusterWithUser("admin", map[string]bool{
-			config.GrantGlobalAdminShow: true,
-		}),
+		"c1": newClusterWithUser("admin", map[string]bool{config.GrantGlobalAdminShow: true}),
 	}
 	if repman.isAdminUser("nobody") {
 		t.Error("expected unknown user not to be detected as admin")
@@ -478,15 +620,15 @@ func TestAuthTokenWithUpgrade_IncludesUpgradeIDWhenSet(t *testing.T) {
 
 func TestUpgradeHandler_PendingBecomesExpiredAtHandler(t *testing.T) {
 	repman := newTestRepmanWithStore(t)
-	id, job := repman.LoginUpgradeStore.createJob()
+	id, job := mustCreateJob(t, repman.LoginUpgradeStore, "alice", "")
 	job.mu.Lock()
 	job.CreatedAt = time.Now().Add(-(upgradeJobTTL + time.Second))
 	job.mu.Unlock()
 
-	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/login/upgrade?upgrade_id=%s", id), nil)
 	w := httptest.NewRecorder()
-	repman.upgradeHandler(w, req)
+	repman.upgradeHandler(w, makeAuthedUpgradeRequest(t, repman, id, "alice"))
 	if w.Code != http.StatusGone {
 		t.Fatalf("expected 410 for TTL-exceeded pending job at handler, got %d", w.Code)
 	}
 }
+
