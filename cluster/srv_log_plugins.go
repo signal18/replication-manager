@@ -314,16 +314,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			}
 		}
 
-		if len(result.Findings) == 0 {
-			noFindMsg := fmt.Sprintf("[logplugin:%s] no findings for server %s", p.Name(), server.URL)
-			if isSecurityPlugin {
-				cluster.logPluginDebugSec(p.Name(), noFindMsg)
-			} else if isWorkloadPlugin {
-				cluster.logPluginDebugWork(p.Name(), noFindMsg)
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg, "%s", noFindMsg)
-			}
-		}
+		// No findings is the normal state — nothing to log
 	}
 }
 
