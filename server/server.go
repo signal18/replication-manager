@@ -170,7 +170,8 @@ type ReplicationManager struct {
 	SessionManager       *tty.SessionManager            `json:"-"`
 	ConfigManager        *manager.ConfigManager         `json:"-"`
 	MeetUserID           string                         `json:"-"`
-	LoginUpgradeStore    *LoginUpgradeStore              `json:"-"`
+	LoginUpgradeStore    *LoginUpgradeStore             `json:"-"`
+	LoginUpgradeInitOnce sync.Once                      `json:"-"`
 	DiskStatManager      *misc.DiskStatManager          `json:"-"`
 	OpenSVCStats         atomic.Value                   `json:"-"`
 	inFetchOpenSVCStats  bool                           `json:"-"`
@@ -2574,8 +2575,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.Logrus.Infof("repman.Conf.ShareDir : %s", repman.Conf.ShareDir)
 
 	repman.initKeys()
-	repman.LoginUpgradeStore = newLoginUpgradeStore()
-	repman.startLoginUpgradeCleanup()
+	repman.ensureLoginUpgradeInfra()
 
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)
 	if repman.Conf.ApiServ {

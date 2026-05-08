@@ -836,6 +836,10 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			http.Error(w, "Error signing token: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+		if repman.ensureLoginUpgradeInfra() {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn,
+				"LoginHandler: lazily initialized LoginUpgradeStore for user %s", user.Username)
+		}
 		upgradeID, job := repman.LoginUpgradeStore.createJob()
 		go repman.runAsyncSSOUpgrade(user.Username, user.Password, r.RemoteAddr, job)
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg,

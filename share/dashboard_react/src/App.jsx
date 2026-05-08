@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import PropTypes from 'prop-types'
 import './App.css'
 import ToastManager from './components/ToastManager'
+import SSOUpgradePoller from './components/SSOUpgradePoller'
 import Login from './Pages/Login'
 import Signup from './Pages/Signup'
 // const Login = lazy(() => import('./Pages/Login'))
@@ -17,6 +18,7 @@ function App() {
   return (
     <BrowserRouter>
       <ToastManager />
+      <SSOUpgradePoller />
       <Routes>
         <Route
           path={'/'}

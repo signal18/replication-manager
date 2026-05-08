@@ -191,6 +191,22 @@ func (repman *ReplicationManager) startLoginUpgradeCleanup() {
 	}()
 }
 
+// ensureLoginUpgradeInfra initializes the in-memory login upgrade store and
+// cleanup goroutine exactly once in a concurrency-safe way.
+//
+// Returns true only when this call had to create the store lazily.
+func (repman *ReplicationManager) ensureLoginUpgradeInfra() bool {
+	created := false
+	repman.LoginUpgradeInitOnce.Do(func() {
+		if repman.LoginUpgradeStore == nil {
+			repman.LoginUpgradeStore = newLoginUpgradeStore()
+			created = true
+		}
+		repman.startLoginUpgradeCleanup()
+	})
+	return created
+}
+
 // classifySSOAuthError maps a GitLab auth error to one of the contract reason
 // codes. Returns "" for success (err == nil), or one of:
 //
@@ -242,9 +258,8 @@ func classifySSOAuthError(err error) string {
 }
 
 // resolveUserEmail returns a best-effort email address for the given username.
-// If the username already looks like an email it is returned directly.
-// Otherwise the function searches cluster APIUsers for a matching GitUser that
-// carries an email; failing that it returns "".
+// If the username looks like an email it is returned directly; otherwise the
+// cluster APIUsers are searched for a matching GitUser that carries an email.
 func (repman *ReplicationManager) resolveUserEmail(username string) string {
 	if strings.Contains(username, "@") {
 		return username
@@ -257,9 +272,70 @@ func (repman *ReplicationManager) resolveUserEmail(username string) string {
 	return ""
 }
 
+// emitSSOLoginSecurityAlert fires a Cloud18 Slack alert and sends an email to
+// the user when local auth succeeded but SSO authentication was explicitly
+// rejected (credential_mismatch). The alert is a security notification so
+// operators can review the login event.
+func (repman *ReplicationManager) emitSSOLoginSecurityAlert(username, email, remoteAddr string) {
+	uri := repman.registeredInstanceURI()
+	if uri == "" {
+		uri = "unknown-instance"
+	}
+
+	// Security log (always).
+	repman.logSecurityEvent("api_login_local_sso_mismatch", username, remoteAddr,
+		fmt.Sprintf("Local user login detected with user: %s", username))
+
+	// Cloud18 / Slack — concise operational message with structured fields.
+	cloudMsg := fmt.Sprintf("Local user login detected with user: %s", username)
+	for _, cl := range repman.Clusters {
+		if cl.LogSlack != nil && cl.LogSlack.IsHookActive("cloud18") {
+			cl.LogSlack.WithFields(map[string]interface{}{
+				"event":        "api_login_local_sso_mismatch",
+				"username":     username,
+				"user_email":   email,
+				"source_ip":    remoteAddr,
+				"instance_uri": uri,
+				"timestamp":    time.Now().UTC().Format(time.RFC3339),
+			}).Warn(cloudMsg)
+			break
+		}
+	}
+
+	// Email — user-facing, with reassurance and escalation lines.
+	if repman.Mailer != nil && email != "" {
+		account := email
+		if account == "" {
+			account = username
+		}
+		body := fmt.Sprintf(
+			"Security Notice\n\n"+
+				"We detected a local login using your account %s on instance %s.\n\n"+
+				"Timestamp: %s\n"+
+				"Source IP: %s\n\n"+
+				"SSO authentication could not be completed for the same login request.\n\n"+
+				"Please ignore this message if this was you.\n"+
+				"If this was not you, please contact support immediately.",
+			account, uri,
+			time.Now().UTC().Format(time.RFC1123),
+			remoteAddr,
+		)
+		edata := mailer.Email{
+			To:      email,
+			Subject: "Security Notice: Local login detected",
+			Message: body,
+		}
+		if err := repman.Mailer.SendEmailMessage(edata); err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn,
+				"SSO security alert: could not send email to %s: %v", email, err)
+		}
+	}
+}
+
 // runAsyncSSOUpgrade performs the async SSO upgrade in a background goroutine.
-// On success it marks the job ready with the new JWT. On failure it records the
-// reason and, for credential_mismatch, emits a Cloud18 + email alert.
+// On success it marks the job ready with the new JWT. On credential_mismatch it
+// emits a security alert so operators can review the login event. Other failure
+// reasons are logged only.
 func (repman *ReplicationManager) runAsyncSSOUpgrade(
 	username, password, remoteAddr string,
 	job *LoginUpgradeJob,
@@ -314,10 +390,10 @@ func (repman *ReplicationManager) runAsyncSSOUpgrade(
 
 		if failReason == "credential_mismatch" {
 			resolvedEmail := repman.resolveUserEmail(username)
-			repman.emitSSOCredentialMismatchAlert(username, resolvedEmail, remoteAddr)
+			repman.emitSSOLoginSecurityAlert(username, resolvedEmail, remoteAddr)
 		} else {
-			repman.logSecurityEvent("api_login_local_sso_"+failReason, username, remoteAddr,
-				"SSO upgrade completed with non-critical result: "+failReason)
+			repman.logSecurityEvent("api_login_sso_upgrade_"+failReason, username, remoteAddr,
+				"SSO upgrade did not complete: "+failReason)
 		}
 		return
 	}
@@ -377,51 +453,3 @@ func (repman *ReplicationManager) runAsyncSSOUpgrade(
 		"SSO upgrade completed for user %s", username)
 }
 
-// emitSSOCredentialMismatchAlert fires a Cloud18 Slack alert and sends an email
-// to the user when local auth succeeds but SSO fails with confirmed credential mismatch.
-func (repman *ReplicationManager) emitSSOCredentialMismatchAlert(username, email, remoteAddr string) {
-	fields := map[string]interface{}{
-		"event":      "api_login_local_sso_mismatch",
-		"username":   username,
-		"user_email": email,
-		"source_ip":  remoteAddr,
-		"auth_path":  "local_success_sso_credential_mismatch",
-		"timestamp":  time.Now().UTC().Format(time.RFC3339),
-	}
-	msg := fmt.Sprintf("Security: local login succeeded but SSO credential mismatch for user %s from %s", username, remoteAddr)
-
-	repman.logSecurityEvent("api_login_local_sso_mismatch", username, remoteAddr, msg)
-
-	// Cloud18/Slack alert via first cluster with an active cloud18 hook.
-	for _, cl := range repman.Clusters {
-		if cl.LogSlack != nil && cl.LogSlack.IsHookActive("cloud18") {
-			cl.LogSlack.WithFields(logrusFields(fields)).Warn(msg)
-			break
-		}
-	}
-
-	// Email notification to the affected user.
-	if repman.Mailer != nil && email != "" {
-		body := fmt.Sprintf(
-			"Security Notice\n\nTimestamp: %s\nSource IP: %s\n\n"+
-				"Your local replication-manager login succeeded but the SSO (GitLab) login failed with a credential mismatch.\n\n"+
-				"If you did not change your SSO password recently, please verify your credentials and rotate them if this was unexpected.\n\n"+
-				"Please contact your administrator if you need assistance.",
-			time.Now().UTC().Format(time.RFC1123), remoteAddr,
-		)
-		edata := mailer.Email{
-			To:      email,
-			Subject: "Security Notice: Local login succeeded but SSO login failed",
-			Message: body,
-		}
-		if err := repman.Mailer.SendEmailMessage(edata); err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn,
-				"SSO mismatch alert: could not send email to %s: %v", email, err)
-		}
-	}
-}
-
-// logrusFields converts a map[string]interface{} to logrus.Fields.
-func logrusFields(m map[string]interface{}) map[string]interface{} {
-	return m
-}
