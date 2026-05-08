@@ -128,6 +128,47 @@ type token struct {
 	Token string `json:"token"`
 }
 
+// AuthTokenWithUpgrade is returned by loginHandler for non-admin Cloud18 users
+// when local auth succeeds and an async SSO upgrade has been started.
+// UpgradeID is omitted when no async upgrade is in progress.
+type AuthTokenWithUpgrade struct {
+	Token     string `json:"token"`
+	UpgradeID string `json:"upgrade_id,omitempty"`
+}
+
+// issueJWT builds and signs an RS256 JWT with the supplied userInfo and GitLab
+// token claims.  gitlabToken may be empty for local-only users.
+func (repman *ReplicationManager) issueJWT(userInfo interface{}, gitlabToken string) (string, error) {
+	signer := jwt.New(jwt.SigningMethodRS256)
+	claims := signer.Claims.(jwt.MapClaims)
+	claims["iss"] = "https://api.replication-manager.signal18.io"
+	claims["iat"] = time.Now().Unix()
+	claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
+	claims["jti"] = "1"
+	claims["token"] = gitlabToken
+	claims["CustomUserInfo"] = userInfo
+	signer.Claims = claims
+	sk, err := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
+	if err != nil {
+		return "", fmt.Errorf("error parsing signing key: %w", err)
+	}
+	return signer.SignedString(sk)
+}
+
+// isAdminUser returns true when username has the global-admin-show grant in at
+// least one cluster, identifying it as an administrative account that should
+// authenticate via local credentials only (no SSO path).
+func (repman *ReplicationManager) isAdminUser(username string) bool {
+	for _, cl := range repman.Clusters {
+		if u, ok := cl.APIUsers[username]; ok {
+			if u.Grants[config.GrantGlobalAdminShow] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (repman *ReplicationManager) SharedirHandler(folder string) http.Handler {
 	sub, err := fs.Sub(share.EmbededDbModuleFS, folder)
 	if err != nil {
@@ -270,6 +311,7 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/api/terminal/connect", http.HandlerFunc(repman.handlerTerminal))
 
 	router.HandleFunc("/api/login", repman.loginHandler)
+	router.HandleFunc("/api/login/upgrade", repman.upgradeHandler).Methods(http.MethodGet, http.MethodOptions)
 	// Public auth routes are intentionally wired in both api.go and http.go because
 	// replication-manager can run this API server path independently of httpserver().
 	router.HandleFunc("/api/signup", repman.handlerSignup).Methods(http.MethodPost, http.MethodOptions)
@@ -662,7 +704,7 @@ func (repman *ReplicationManager) UserHasGlobalGrant(r *http.Request, grant stri
 // @Accept  json
 // @Produce  json
 // @Param userCredentials body userCredentials true "User credentials"
-// @Success 200 {object} token "JWT token"
+// @Success 200 {object} AuthTokenWithUpgrade "JWT token (upgrade_id present when async SSO upgrade started)"
 // @Failure 403 {string} string "Error in request"
 // @Failure 429 {string} string "Too many requests"
 // @Failure 401 {string} string "Invalid credentials"
@@ -672,191 +714,202 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	var user userCredentials
 
-	//decode request into UserCredentials struct
-	err := json.NewDecoder(r.Body).Decode(&user)
-	if err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		w.WriteHeader(http.StatusForbidden)
 		fmt.Fprintf(w, "Error in request")
 		return
 	}
 
+	// Rate-limit: lock account after 3 failures within 3 minutes.
 	if v, ok := repman.UserAuthTry.Load(user.Username); ok {
-		auth_try := v.(authTry)
-		if auth_try.Try == 3 {
-			if time.Now().Before(auth_try.Time.Add(3 * time.Minute)) {
-				response := "3 authentication errors for the user " + user.Username + ", please try again in 3 minutes"
+		authT := v.(authTry)
+		if authT.Try == 3 {
+			if time.Now().Before(authT.Time.Add(3 * time.Minute)) {
 				repman.logSecurityEvent("api_account_locked", user.Username, r.RemoteAddr, "API account locked for 3 min after repeated authentication failures")
-				http.Error(w, response, http.StatusTooManyRequests)
+				http.Error(w, "3 authentication errors for the user "+user.Username+", please try again in 3 minutes", http.StatusTooManyRequests)
 				return
-			} else {
-				auth_try.Try = 1
-				auth_try.Time = time.Now()
-				repman.UserAuthTry.Store(user.Username, auth_try)
 			}
+			authT.Try = 1
+			authT.Time = time.Now()
+			repman.UserAuthTry.Store(user.Username, authT)
 		} else {
-			auth_try.Try += 1
-			repman.UserAuthTry.Store(user.Username, auth_try)
+			authT.Try++
+			repman.UserAuthTry.Store(user.Username, authT)
 		}
 	} else {
-		var auth_try = authTry{
-			User: user.Username,
-			Try:  1,
-			Time: time.Now(),
-		}
-		repman.UserAuthTry.Store(user.Username, auth_try)
+		repman.UserAuthTry.Store(user.Username, authTry{User: user.Username, Try: 1, Time: time.Now()})
 	}
 
-	var tok string
-	var userInfo interface{}
-	var meetUserID string
+	resetAuthTry := func() {
+		repman.UserAuthTry.Store(user.Username, authTry{User: user.Username, Try: 0, Time: time.Now()})
+	}
+	authFail := func() {
+		repman.logSecurityEvent("api_auth_failure", user.Username, r.RemoteAddr, "API authentication failure: invalid credentials")
+		http.Error(w, "Error logging in: Invalid credentials", http.StatusUnauthorized)
+	}
 
-	if repman.Conf.Cloud18 {
-		var meetUser, meetPassword string
-		tok, _ = githelper.GetGitLabTokenBasicAuth(user.Username, user.Password, false)
-		// if login successfull, get the email from gitlab
-		if tok != "" {
-			repman.ensureCRMSessionBootstrappedAsync(tok)
-			//	swapp the current user with email if needed
-			email, err := githelper.GetGitLabUserEmail(tok, true)
-			if email != "" {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Switch from gitlab user to email  : %s", email)
-				meetUser = email
-			} else {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving email from gitlab: %e", err)
-				meetUser = user.Username
-			}
-
-			meetPassword = user.Password
-
-			//to get meet token and create a client while login
-			meetUserID, err = meethelper.CreateMeetUserClient(meetUser, meetPassword, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
-			if err != nil {
-				if repman.Conf.LogSupport {
-					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving meet token: %e", err)
-				}
-			} else {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
-			}
-
-			userInfo = struct {
-				Name       string
-				Role       string
-				Password   string
-				Email      string `json:"email"`
-				Profile    string `json:"profile"`
-				MeetUserID string `json:"meet_user_id"`
-			}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), email, repman.Conf.OAuthProvider, meetUserID}
-
-		} else {
-
-			// not a gitlab user, login via local password and set global gitlab user as the meet user
-			loggedIn := false
-			for _, cl := range repman.Clusters {
-				//validate user credentials
-				if !cl.IsValidACL(user.Username, user.Password, r.URL.Path, "password") {
-					continue
-				}
-				loggedIn = true
-			}
-
-			if !loggedIn {
-				repman.logSecurityEvent("api_auth_failure", user.Username, r.RemoteAddr, "API authentication failure: invalid credentials")
-				http.Error(w, "Error logging in: Invalid credentials", http.StatusUnauthorized)
-				return
-			}
-
-			meetUser = repman.Conf.Cloud18GitUser
-			meetPassword = repman.Conf.GetDecryptedPassword("cloud18-gitlab-password", repman.Conf.Cloud18GitPassword)
-
-			//to get meet token and create a client while login
-			meetUserID, err = meethelper.CreateMeetUserClient(meetUser, meetPassword, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
-			if err != nil {
-				if repman.Conf.LogSupport {
-					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving meet token: %e", err)
-				}
-			} else {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
-			}
-
-			userInfo = struct {
-				Name       string
-				Role       string
-				Password   string
-				MeetUserID string `json:"meet_user_id"`
-			}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID}
-
-		}
-
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "LoginHandler: meet userID %s", meetUserID)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "LoginHandler: userInfo after meet userID %v", userInfo)
-
-	} else { // CLoud18 unregister instance
-		loggedIn := false
+	// tryLocalAuth validates credentials against cluster ACLs and returns
+	// the matching userInfo struct, or (nil, false) on failure.
+	tryLocalAuth := func() (interface{}, bool) {
 		for _, cl := range repman.Clusters {
-			//validate user credentials
-			if !cl.IsValidACL(user.Username, user.Password, r.URL.Path, "password") {
-				continue
+			if cl.IsValidACL(user.Username, user.Password, r.URL.Path, "password") {
+				ui := struct {
+					Name     string
+					Role     string
+					Password string
+				}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password)}
+				return ui, true
 			}
-			loggedIn = true
-			userInfo = struct {
-				Name     string
-				Role     string
-				Password string
-			}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password)}
 		}
+		return nil, false
+	}
 
-		if !loggedIn {
-			repman.logSecurityEvent("api_auth_failure", user.Username, r.RemoteAddr, "API authentication failure: invalid credentials")
-			http.Error(w, "Error logging in: Invalid credentials", http.StatusUnauthorized)
+	sendToken := func(tokenString string, upgradeID string) {
+		if repman.Conf.MonitoringLogAPILogin && !repman.isAPILoginSilenced(user.Username) {
+			repman.logSecurityEvent("api_login_success", user.Username, r.RemoteAddr, "API login successful")
+		}
+		if strings.Contains(r.Header.Get("Accept"), "text/html") {
+			w.Write([]byte(tokenString))
 			return
 		}
+		repman.jsonResponse(AuthTokenWithUpgrade{Token: tokenString, UpgradeID: upgradeID}, w)
 	}
 
-	// Reset the auth try counter
-	var auth_try = authTry{
-		User: user.Username,
-		Try:  0,
-		Time: time.Now(),
+	// ── Non-Cloud18: local auth only ──────────────────────────────────────────
+	if !repman.Conf.Cloud18 {
+		userInfo, ok := tryLocalAuth()
+		if !ok {
+			authFail()
+			return
+		}
+		resetAuthTry()
+		tokenString, err := repman.issueJWT(userInfo, "")
+		if err != nil {
+			http.Error(w, "Error signing token: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		sendToken(tokenString, "")
+		return
 	}
-	repman.UserAuthTry.Store(user.Username, auth_try)
 
-	signer := jwt.New(jwt.SigningMethodRS256)
-	claims := signer.Claims.(jwt.MapClaims)
-	//set claims
-	claims["iss"] = "https://api.replication-manager.signal18.io"
-	claims["iat"] = time.Now().Unix()
-	claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
-	claims["jti"] = "1"   // should be user ID(?)
-	claims["token"] = tok // store gitlab token
-	claims["CustomUserInfo"] = userInfo
-	signer.Claims = claims
-	sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
+	// ── Cloud18 ───────────────────────────────────────────────────────────────
 
-	tokenString, err := signer.SignedString(sk)
+	// Admin users always authenticate via local credentials only; no SSO.
+	if repman.isAdminUser(user.Username) {
+		userInfo, ok := tryLocalAuth()
+		if !ok {
+			authFail()
+			return
+		}
+		resetAuthTry()
+		meetUser := repman.Conf.Cloud18GitUser
+		meetPassword := repman.Conf.GetDecryptedPassword("cloud18-gitlab-password", repman.Conf.Cloud18GitPassword)
+		meetUserID, err := meethelper.CreateMeetUserClient(meetUser, meetPassword,
+			repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+		if err != nil {
+			if repman.Conf.LogSupport {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving meet token: %v", err)
+			}
+		}
+		finalInfo := struct {
+			Name       string
+			Role       string
+			Password   string
+			MeetUserID string `json:"meet_user_id"`
+		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID}
+		_ = userInfo // replaced by finalInfo with MeetUserID
+		tokenString, err := repman.issueJWT(finalInfo, "")
+		if err != nil {
+			http.Error(w, "Error signing token: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		sendToken(tokenString, "")
+		return
+	}
+
+	// Non-admin Cloud18 path: try local auth first.
+	if localInfo, localOK := tryLocalAuth(); localOK {
+		// Local auth succeeded: issue local JWT immediately, then start async SSO upgrade.
+		resetAuthTry()
+		tokenString, err := repman.issueJWT(localInfo, "")
+		if err != nil {
+			http.Error(w, "Error signing token: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		upgradeID, job := repman.LoginUpgradeStore.createJob()
+		go repman.runAsyncSSOUpgrade(user.Username, user.Password, r.RemoteAddr, job)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg,
+			"LoginHandler: started async SSO upgrade %s for user %s", upgradeID, user.Username)
+		sendToken(tokenString, upgradeID)
+		return
+	}
+
+	// Local auth failed: synchronous SSO fallback.
+	tok, ssoErr := githelper.GetGitLabTokenBasicAuth(user.Username, user.Password, false)
+	if ssoErr != nil || tok == "" {
+		// Retry only for transient failures (same policy as async path).
+		backoff := []time.Duration{250 * time.Millisecond, 750 * time.Millisecond}
+		for attempt := 0; attempt < len(backoff) && (ssoErr != nil || tok == "") &&
+			classifySSOAuthError(ssoErr) == "transient"; attempt++ {
+			time.Sleep(backoff[attempt])
+			tok, ssoErr = githelper.GetGitLabTokenBasicAuth(user.Username, user.Password, false)
+		}
+	}
+
+	if tok == "" {
+		authFail()
+		return
+	}
+
+	// SSO fallback succeeded: build SSO JWT and return without upgrade_id.
+	resetAuthTry()
+	repman.ensureCRMSessionBootstrappedAsync(tok)
+	email, err := githelper.GetGitLabUserEmail(tok, true)
 	if err != nil {
-		fmt.Fprintln(w, "Error while signing the token")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving email from gitlab: %v", err)
+	}
+	meetUser := email
+	if meetUser == "" {
+		meetUser = user.Username
+	}
+	meetUserID, err := meethelper.CreateMeetUserClient(meetUser, user.Password,
+		repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	if err != nil {
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving meet token: %v", err)
+		}
+	} else {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
+	}
+
+	var ssoUserInfo interface{}
+	if email != "" {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Switch from gitlab user to email: %s", email)
+		ssoUserInfo = struct {
+			Name       string
+			Role       string
+			Password   string
+			Email      string `json:"email"`
+			Profile    string `json:"profile"`
+			MeetUserID string `json:"meet_user_id"`
+		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), email, repman.Conf.OAuthProvider, meetUserID}
+	} else {
+		ssoUserInfo = struct {
+			Name       string
+			Role       string
+			Password   string
+			MeetUserID string `json:"meet_user_id"`
+		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID}
+	}
+
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "LoginHandler: meet userID %s", meetUserID)
+
+	tokenString, err := repman.issueJWT(ssoUserInfo, tok)
+	if err != nil {
 		http.Error(w, "Error signing token: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	if repman.Conf.MonitoringLogAPILogin && !repman.isAPILoginSilenced(user.Username) {
-		repman.logSecurityEvent("api_login_success", user.Username, r.RemoteAddr, "API login successful")
-	}
-
-	//create a token instance using the token string
-	specs := r.Header.Get("Accept")
-	//resp := token{tokenString}
-
-	resp := AuthToken{
-		Token: tokenString,
-	}
-
-	if strings.Contains(specs, "text/html") {
-		w.Write([]byte(tokenString))
-		return
-	}
-
-	repman.jsonResponse(resp, w)
+	sendToken(tokenString, "")
 }
 
 // resolveUserPassword returns the plaintext password for username by looking it up in
