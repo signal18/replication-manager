@@ -1466,6 +1466,17 @@ func (repman *ReplicationManager) handlerGetSubscriptionPlans(w http.ResponseWri
 
 // handlerGetSubscription — GET /api/register/subscription  (admin JWT required)
 //
+// handlerSubscriptionPreflight responds to CORS preflight requests for
+// /api/register/subscription, advertising that GET and POST are accepted.
+// It is registered as a dedicated OPTIONS route so the business handlers
+// (handlerGetSubscription, handlerChangeSubscription) never receive OPTIONS.
+func (repman *ReplicationManager) handlerSubscriptionPreflight(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // Uses the stored GitLab PAT to query the CRM for the current subscription
 // plan and confirmed email address.
 func (repman *ReplicationManager) handlerGetSubscription(w http.ResponseWriter, r *http.Request) {

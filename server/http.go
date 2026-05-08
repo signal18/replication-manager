@@ -176,17 +176,13 @@ func (repman *ReplicationManager) httpserver() {
 
 	router.Handle("/api/register/subscription", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.Method {
-			case http.MethodGet:
-				repman.handlerGetSubscription(w, r)
-			case http.MethodPost:
-				repman.handlerChangeSubscription(w, r)
-			default:
-				http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
-			}
-		})),
-	))
+		negroni.Wrap(http.HandlerFunc(repman.handlerGetSubscription)),
+	)).Methods(http.MethodGet)
+	router.Handle("/api/register/subscription", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerChangeSubscription)),
+	)).Methods(http.MethodPost)
+	router.HandleFunc("/api/register/subscription", repman.handlerSubscriptionPreflight).Methods(http.MethodOptions)
 
 	router.HandleFunc("/api/version", repman.handlerVersion)
 

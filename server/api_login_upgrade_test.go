@@ -10,6 +10,7 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/githelper"
 )
 
 // makeAuthedUpgradeRequest builds a GET /api/login/upgrade request carrying a
@@ -42,50 +43,78 @@ func TestClassifySSOAuthError_Nil(t *testing.T) {
 }
 
 func TestClassifySSOAuthError_Transient(t *testing.T) {
-	cases := []string{
+	// Transport errors (plain errors, not OAuthError).
+	transportCases := []string{
 		"error sending request: connection refused",
 		"error creating request: bad url",
-		"API error: received non-OK HTTP status 503 and failed to parse error response",
-		"received non-OK HTTP status 500 ...",
-		"received non-OK HTTP status 429 ...",
 	}
-	for _, msg := range cases {
+	for _, msg := range transportCases {
 		if got := classifySSOAuthError(errors.New(msg)); got != "transient" {
-			t.Errorf("msg=%q: expected transient, got %q", msg, got)
+			t.Errorf("transport msg=%q: expected transient, got %q", msg, got)
+		}
+	}
+
+	// HTTP-level transient failures (OAuthError with 5xx or 429 status).
+	httpCases := []struct {
+		status int
+		code   string
+		desc   string
+	}{
+		{503, "http_error", "status 503, unparseable response body"},
+		{500, "http_error", "status 500, unparseable response body"},
+		{429, "http_error", "status 429, unparseable response body"},
+	}
+	for _, c := range httpCases {
+		err := &githelper.OAuthError{Code: c.code, Description: c.desc, HTTPStatus: c.status}
+		if got := classifySSOAuthError(err); got != "transient" {
+			t.Errorf("OAuthError status=%d: expected transient, got %q", c.status, got)
 		}
 	}
 }
 
 func TestClassifySSOAuthError_CredentialMismatch(t *testing.T) {
-	cases := []string{
-		"API error: invalid_grant - Invalid credentials",
-		"API error: invalid_grant - invalid credentials for user",
+	cases := []struct{ desc string }{
+		{"Invalid credentials"},
+		{"invalid credentials for user"},
 	}
-	for _, msg := range cases {
-		if got := classifySSOAuthError(errors.New(msg)); got != "credential_mismatch" {
-			t.Errorf("msg=%q: expected credential_mismatch, got %q", msg, got)
+	for _, c := range cases {
+		err := &githelper.OAuthError{Code: "invalid_grant", Description: c.desc, HTTPStatus: 401}
+		if got := classifySSOAuthError(err); got != "credential_mismatch" {
+			t.Errorf("desc=%q: expected credential_mismatch, got %q", c.desc, got)
 		}
 	}
 }
 
 func TestClassifySSOAuthError_NotRegistered(t *testing.T) {
-	msg := "API error: invalid_grant - authenticatable_not_found"
-	if got := classifySSOAuthError(errors.New(msg)); got != "not_registered" {
-		t.Errorf("msg=%q: expected not_registered, got %q", msg, got)
+	err := &githelper.OAuthError{Code: "invalid_grant", Description: "authenticatable_not_found", HTTPStatus: 401}
+	if got := classifySSOAuthError(err); got != "not_registered" {
+		t.Errorf("expected not_registered, got %q", got)
 	}
 }
 
 func TestClassifySSOAuthError_UnknownNonRetryable(t *testing.T) {
-	cases := []string{
-		"API error: invalid_grant - The provided authorization grant is invalid",
-		"API error: invalid_grant - some other reason",
-		"API error: unauthorized - user not found",
-		"some completely unknown error",
-		"resource owner error",
+	// OAuthError cases with ambiguous codes or descriptions.
+	oauthCases := []struct {
+		code   string
+		desc   string
+		status int
+	}{
+		{"invalid_grant", "The provided authorization grant is invalid", 401},
+		{"invalid_grant", "some other reason", 401},
+		{"unauthorized", "user not found", 401},
 	}
-	for _, msg := range cases {
+	for _, c := range oauthCases {
+		err := &githelper.OAuthError{Code: c.code, Description: c.desc, HTTPStatus: c.status}
+		if got := classifySSOAuthError(err); got != "unknown_non_retryable" {
+			t.Errorf("OAuthError code=%s desc=%q: expected unknown_non_retryable, got %q", c.code, c.desc, got)
+		}
+	}
+
+	// Plain non-transport errors also fall through to unknown_non_retryable.
+	plainCases := []string{"some completely unknown error", "resource owner error"}
+	for _, msg := range plainCases {
 		if got := classifySSOAuthError(errors.New(msg)); got != "unknown_non_retryable" {
-			t.Errorf("msg=%q: expected unknown_non_retryable, got %q", msg, got)
+			t.Errorf("plain msg=%q: expected unknown_non_retryable, got %q", msg, got)
 		}
 	}
 }

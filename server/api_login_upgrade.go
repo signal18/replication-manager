@@ -7,6 +7,7 @@ package server
 import (
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -25,6 +26,15 @@ const (
 	upgradeJobReadyDeliveryTTL = 30 * time.Second // window from ready→consumed before expiry
 	upgradeJobGracePeriod      = 2 * upgradeJobTTL
 	upgradeMaxAttempts         = 3
+)
+
+// Job status values as typed constants so any typo is caught at compile time.
+const (
+	upgradeStatusPending  = "pending"
+	upgradeStatusReady    = "ready"
+	upgradeStatusFailed   = "failed"
+	upgradeStatusConsumed = "consumed"
+	upgradeStatusExpired  = "expired"
 )
 
 var upgradeBackoffDelays = []time.Duration{250 * time.Millisecond, 750 * time.Millisecond}
@@ -92,7 +102,7 @@ func (s *LoginUpgradeStore) createJob(owner, sourceIP string) (string, *LoginUpg
 		return "", nil, err
 	}
 	job := &LoginUpgradeJob{
-		Status:    "pending",
+		Status:    upgradeStatusPending,
 		CreatedAt: time.Now(),
 		Owner:     owner,
 		SourceIP:  sourceIP,
@@ -111,6 +121,9 @@ func (s *LoginUpgradeStore) get(id string) (*LoginUpgradeJob, bool) {
 }
 
 // upgradeHandler serves GET /api/login/upgrade?upgrade_id=<id>
+// CORS: Access-Control-Allow-Origin is set to "*" consistent with the rest of
+// the API. The endpoint requires a valid Bearer JWT before returning any data,
+// so a wildcard origin does not introduce CSRF risk (cookies are not involved).
 func (repman *ReplicationManager) upgradeHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -166,40 +179,40 @@ func (repman *ReplicationManager) upgradeHandler(w http.ResponseWriter, r *http.
 
 	// Fix 3: expire only pending jobs on the pending TTL; ready jobs have their
 	// own delivery window measured from when the upgrade completed.
-	if job.Status == "pending" && time.Since(job.CreatedAt) > upgradeJobTTL {
-		job.Status = "expired"
+	if job.Status == upgradeStatusPending && time.Since(job.CreatedAt) > upgradeJobTTL {
+		job.Status = upgradeStatusExpired
 		job.TerminalAt = time.Now()
 	}
-	if job.Status == "ready" && !job.ReadyAt.IsZero() && time.Since(job.ReadyAt) > upgradeJobReadyDeliveryTTL {
-		job.Status = "expired"
+	if job.Status == upgradeStatusReady && !job.ReadyAt.IsZero() && time.Since(job.ReadyAt) > upgradeJobReadyDeliveryTTL {
+		job.Status = upgradeStatusExpired
 		job.TerminalAt = time.Now()
 	}
 
 	switch job.Status {
-	case "pending":
+	case upgradeStatusPending:
 		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(map[string]string{"status": "pending"})
+		json.NewEncoder(w).Encode(map[string]string{"status": upgradeStatusPending})
 
-	case "ready":
+	case upgradeStatusReady:
 		newJWT := job.NewJWT
-		job.Status = "consumed"
+		job.Status = upgradeStatusConsumed
 		job.TerminalAt = time.Now()
 		job.NewJWT = "" // one-time delivery; clear immediately to prevent replay
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"token": newJWT})
 
-	case "consumed":
+	case upgradeStatusConsumed:
 		w.WriteHeader(http.StatusGone)
-		json.NewEncoder(w).Encode(map[string]string{"status": "consumed"})
+		json.NewEncoder(w).Encode(map[string]string{"status": upgradeStatusConsumed})
 
-	case "expired":
+	case upgradeStatusExpired:
 		w.WriteHeader(http.StatusGone)
-		json.NewEncoder(w).Encode(map[string]string{"status": "expired"})
+		json.NewEncoder(w).Encode(map[string]string{"status": upgradeStatusExpired})
 
-	case "failed":
+	case upgradeStatusFailed:
 		w.WriteHeader(http.StatusConflict)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status": "failed",
+			"status": upgradeStatusFailed,
 			"reason": job.Reason,
 		})
 
@@ -226,12 +239,12 @@ func (repman *ReplicationManager) cleanupExpiredLoginUpgradeJobs() {
 		age := time.Since(job.CreatedAt)
 
 		// Fix 3: separate TTLs for pending and ready states.
-		if job.Status == "pending" && age > upgradeJobTTL {
-			job.Status = "expired"
+		if job.Status == upgradeStatusPending && age > upgradeJobTTL {
+			job.Status = upgradeStatusExpired
 			job.TerminalAt = time.Now()
 		}
-		if job.Status == "ready" && !job.ReadyAt.IsZero() && time.Since(job.ReadyAt) > upgradeJobReadyDeliveryTTL {
-			job.Status = "expired"
+		if job.Status == upgradeStatusReady && !job.ReadyAt.IsZero() && time.Since(job.ReadyAt) > upgradeJobReadyDeliveryTTL {
+			job.Status = upgradeStatusExpired
 			job.TerminalAt = time.Now()
 		}
 
@@ -239,7 +252,7 @@ func (repman *ReplicationManager) cleanupExpiredLoginUpgradeJobs() {
 		// Measuring from TerminalAt (not CreatedAt) ensures the full grace window
 		// is always available for repeat polls, regardless of how long the job
 		// spent in pending/ready before reaching its terminal state.
-		isTerminal := job.Status == "consumed" || job.Status == "expired" || job.Status == "failed"
+		isTerminal := job.Status == upgradeStatusConsumed || job.Status == upgradeStatusExpired || job.Status == upgradeStatusFailed
 		shouldDelete := isTerminal && !job.TerminalAt.IsZero() && time.Since(job.TerminalAt) > upgradeJobGracePeriod
 		job.mu.Unlock()
 
@@ -295,45 +308,48 @@ func (repman *ReplicationManager) ensureLoginUpgradeInfra() bool {
 //	"not_registered"          – GitLab explicit "authenticatable_not_found" signal
 //	"unknown_non_retryable"   – all other auth failures (invalid_grant, 401, etc.)
 //
-// Only exact GitLab error_description phrases are mapped to credential_mismatch or
-// not_registered; everything else remains unknown_non_retryable to avoid false
-// security alerts on ambiguous responses.
+// When the error is a *githelper.OAuthError (produced by GetGitLabTokenBasicAuth),
+// classification uses structured Code + Description fields. Transport errors are
+// classified by message prefix. All ambiguous failures return unknown_non_retryable.
 func classifySSOAuthError(err error) string {
 	if err == nil {
 		return ""
 	}
-	msg := strings.ToLower(err.Error())
 
-	// Network / transport failures are transient (retryable).
+	// Structured path: type-assert to *OAuthError for reliable field-level matching.
+	var oauthErr *githelper.OAuthError
+	if errors.As(err, &oauthErr) {
+		return classifyOAuthError(oauthErr)
+	}
+
+	// Transport / request-construction errors are transient.
+	msg := strings.ToLower(err.Error())
 	if strings.HasPrefix(msg, "error sending request") ||
 		strings.HasPrefix(msg, "error creating request") {
 		return "transient"
 	}
 
-	// HTTP 5xx or 429 responses that could not be parsed as an OAuth error body.
-	// The githelper formats these as "received non-OK HTTP status N ...".
-	if strings.Contains(msg, "non-ok http status 5") ||
-		strings.Contains(msg, "non-ok http status 429") {
+	return "unknown_non_retryable"
+}
+
+// classifyOAuthError classifies a structured *githelper.OAuthError.
+func classifyOAuthError(e *githelper.OAuthError) string {
+	// HTTP-level transient failures.
+	if e.HTTPStatus == http.StatusTooManyRequests || e.HTTPStatus >= 500 {
 		return "transient"
 	}
 
-	// Explicit GitLab wrong-credential signal.
-	// GitLab sets error_description="Invalid credentials" for a known user with
-	// a wrong password on the resource-owner password grant.
-	if strings.Contains(msg, "invalid credentials") {
-		return "credential_mismatch"
+	if e.Code == "invalid_grant" {
+		desc := strings.ToLower(e.Description)
+		if strings.Contains(desc, "invalid credentials") {
+			return "credential_mismatch"
+		}
+		if strings.Contains(desc, "authenticatable_not_found") {
+			return "not_registered"
+		}
 	}
 
-	// Explicit GitLab user-not-registered signal.
-	// GitLab sets error_description to a string containing "authenticatable_not_found"
-	// when the username does not exist in the provider.
-	if strings.Contains(msg, "authenticatable_not_found") {
-		return "not_registered"
-	}
-
-	// Everything else (invalid_grant without a discriminating description, generic
-	// 401, parse errors, etc.) is treated as ambiguous and must not trigger a
-	// credential-mismatch alert.
+	// Ambiguous: includes invalid_grant with no discriminating description, 401, etc.
 	return "unknown_non_retryable"
 }
 
@@ -461,7 +477,7 @@ func (repman *ReplicationManager) runAsyncSSOUpgrade(
 			failReason = "unknown_non_retryable"
 		}
 		job.mu.Lock()
-		job.Status = "failed"
+		job.Status = upgradeStatusFailed
 		job.Reason = failReason
 		job.TerminalAt = time.Now()
 		if lastErr != nil {
@@ -518,7 +534,7 @@ func (repman *ReplicationManager) runAsyncSSOUpgrade(
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr,
 			"SSO upgrade: error issuing JWT: %v", err)
 		job.mu.Lock()
-		job.Status = "failed"
+		job.Status = upgradeStatusFailed
 		job.Reason = "claim_mismatch"
 		job.TerminalAt = time.Now()
 		job.Error = err.Error()
@@ -527,7 +543,7 @@ func (repman *ReplicationManager) runAsyncSSOUpgrade(
 	}
 
 	job.mu.Lock()
-	job.Status = "ready"
+	job.Status = upgradeStatusReady
 	job.NewJWT = newJWT
 	job.ReadyAt = time.Now()
 	job.mu.Unlock()

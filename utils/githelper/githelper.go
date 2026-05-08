@@ -270,6 +270,20 @@ type ErrorResponse struct {
 	ErrorDescription string `json:"error_description"`
 }
 
+// OAuthError is a typed error returned when the GitLab OAuth endpoint responds
+// with a non-200 status. It carries the machine-readable code and human-readable
+// description separately so callers can classify failures on structured fields
+// rather than by string-matching formatted error messages.
+type OAuthError struct {
+	Code        string // OAuth error code, e.g. "invalid_grant"
+	Description string // Provider description, e.g. "Invalid credentials"
+	HTTPStatus  int    // HTTP response status code from the provider
+}
+
+func (e *OAuthError) Error() string {
+	return fmt.Sprintf("API error: %s - %s", e.Code, e.Description)
+}
+
 func GetGitLabTokenBasicAuth(user string, password string, log_git bool) (string, error) {
 	escpasswd := url.QueryEscape(password)
 	url := "https://gitlab.signal18.io/oauth/token"
@@ -293,12 +307,19 @@ func GetGitLabTokenBasicAuth(user string, password string, log_git bool) (string
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		// Parse the error response into Main struct
 		var apiError ErrorResponse
 		if err := json.Unmarshal(body, &apiError); err != nil {
-			return "", fmt.Errorf("received non-OK HTTP status %d and failed to parse error response: %w", resp.StatusCode, err)
+			return "", &OAuthError{
+				Code:        "http_error",
+				Description: fmt.Sprintf("status %d, unparseable response body", resp.StatusCode),
+				HTTPStatus:  resp.StatusCode,
+			}
 		}
-		return "", fmt.Errorf("API error: %s - %s", apiError.Error, apiError.ErrorDescription)
+		return "", &OAuthError{
+			Code:        apiError.Error,
+			Description: apiError.ErrorDescription,
+			HTTPStatus:  resp.StatusCode,
+		}
 	}
 
 	var accessToken AccessToken
@@ -319,13 +340,13 @@ func GetGitLabUserId(acces_token string, log_git bool) (int, error) {
 
 	req, err := http.NewRequest("GET", "https://gitlab.signal18.io/api/v4/user", nil)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab User API Error: ", err)
+		return 0, fmt.Errorf("Gitlab User API Error: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+acces_token)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab User API Error: ", err)
+		return 0, fmt.Errorf("Gitlab User API Error: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -348,7 +369,7 @@ func GetGitLabUserId(acces_token string, log_git bool) (int, error) {
 
 	err = json.Unmarshal(body, &userId)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab User API Unmarshall Error: ", err)
+		return 0, fmt.Errorf("Gitlab User API Unmarshall Error: %w", err)
 	}
 
 	return userId.ID, nil
@@ -360,13 +381,13 @@ func GetGitLabUserEmail(acces_token string, log_git bool) (string, error) {
 
 	req, err := http.NewRequest("GET", "https://gitlab.signal18.io/api/v4/user/emails", nil)
 	if err != nil {
-		return "", fmt.Errorf("Gitlab User API Error: ", err)
+		return "", fmt.Errorf("Gitlab User API Error: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+acces_token)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("Gitlab User API Error: ", err)
+		return "", fmt.Errorf("Gitlab User API Error: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -389,7 +410,7 @@ func GetGitLabUserEmail(acces_token string, log_git bool) (string, error) {
 
 	err = json.Unmarshal(body, &emails)
 	if err != nil {
-		return "", fmt.Errorf("Gitlab User API Unmarshall Error: ", err)
+		return "", fmt.Errorf("Gitlab User API Unmarshall Error: %w", err)
 	}
 
 	return emails[0].EMail, nil
@@ -403,13 +424,13 @@ func InitGroupAccessLevel(acces_token, domain string, user_id int, log_git bool)
 
 	req, err := http.NewRequest("GET", "https://gitlab.signal18.io/api/v4/groups/"+domain, nil)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab API Error: ", err)
+		return 0, fmt.Errorf("Gitlab API Error: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+acces_token)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab API Error: ", err)
+		return 0, fmt.Errorf("Gitlab API Error: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -431,7 +452,7 @@ func InitGroupAccessLevel(acces_token, domain string, user_id int, log_git bool)
 	var groupId GroupId
 	err = json.Unmarshal(body, &groupId)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab User API Unmarshall Error: ", err)
+		return 0, fmt.Errorf("Gitlab User API Unmarshall Error: %w", err)
 	}
 
 	// Return Group Access Level
@@ -442,14 +463,14 @@ func CreateCloud18Domain(acces_token, domain string, log_git bool) (int, error) 
 	data := "name=" + domain + "&path=" + domain
 	req, err := http.NewRequest("POST", "https://gitlab.signal18.io/api/v4/groups", strings.NewReader(data))
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab API Error: ", err)
+		return 0, fmt.Errorf("Gitlab API Error: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+acces_token)
 	req.Header.Add("content-type", "application/x-www-form-urlencoded")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab API Error: ", err)
+		return 0, fmt.Errorf("Gitlab API Error: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -472,7 +493,7 @@ func CreateCloud18Domain(acces_token, domain string, log_git bool) (int, error) 
 
 	err = json.Unmarshal(body, &groupId)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab User API Unmarshall Error: ", err)
+		return 0, fmt.Errorf("Gitlab User API Unmarshall Error: %w", err)
 	}
 
 	return groupId.ID, nil
@@ -486,13 +507,13 @@ func GetGroupUserAccess(acces_token, domain string, user_id int, log_git bool) (
 
 	req, err := http.NewRequest("GET", "https://gitlab.signal18.io/api/v4/groups/"+domain+"/members/"+strconv.Itoa(user_id), nil)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab API Error: ", err)
+		return 0, fmt.Errorf("Gitlab API Error: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+acces_token)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab API Error: ", err)
+		return 0, fmt.Errorf("Gitlab API Error: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -515,7 +536,7 @@ func GetGroupUserAccess(acces_token, domain string, user_id int, log_git bool) (
 	var groupAccess GroupAccess
 	err = json.Unmarshal(body, &groupAccess)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab User API Unmarshall Error: ", err)
+		return 0, fmt.Errorf("Gitlab User API Unmarshall Error: %w", err)
 	}
 
 	return groupAccess.AccessLevel, nil
@@ -524,14 +545,14 @@ func GetGroupUserAccess(acces_token, domain string, user_id int, log_git bool) (
 func RegisterToCloud18Domain(acces_token, domain string, log_git bool) (int, error) {
 	req, err := http.NewRequest("POST", "https://gitlab.signal18.io/api/v4/groups/"+domain+"/access_requests", nil)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab API Error: ", err)
+		return 0, fmt.Errorf("Gitlab API Error: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+acces_token)
 	req.Header.Add("content-type", "application/x-www-form-urlencoded")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab API Error: ", err)
+		return 0, fmt.Errorf("Gitlab API Error: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -562,7 +583,7 @@ func RegisterToCloud18Domain(acces_token, domain string, log_git bool) (int, err
 
 	err = json.Unmarshal(body, &reqId)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab User API Unmarshall Error: ", err)
+		return 0, fmt.Errorf("Gitlab User API Unmarshall Error: %w", err)
 	}
 
 	return reqId.ID, nil
@@ -572,14 +593,14 @@ func RegisterToCloud18Domain(acces_token, domain string, log_git bool) (int, err
 func RegisterToCloud18Project(acces_token, project string, log_git bool) (int, error) {
 	req, err := http.NewRequest("POST", "https://gitlab.signal18.io/api/v4/projects/"+project+"/access_requests", nil)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab API Error: ", err)
+		return 0, fmt.Errorf("Gitlab API Error: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+acces_token)
 	req.Header.Add("content-type", "application/x-www-form-urlencoded")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab API Error: ", err)
+		return 0, fmt.Errorf("Gitlab API Error: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -602,7 +623,7 @@ func RegisterToCloud18Project(acces_token, project string, log_git bool) (int, e
 
 	err = json.Unmarshal(body, &reqId)
 	if err != nil {
-		return 0, fmt.Errorf("Gitlab User API Unmarshall Error: ", err)
+		return 0, fmt.Errorf("Gitlab User API Unmarshall Error: %w", err)
 	}
 
 	return reqId.ID, nil

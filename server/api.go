@@ -351,17 +351,13 @@ func (repman *ReplicationManager) apiserver() {
 
 	router.Handle("/api/register/subscription", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.Method {
-			case http.MethodGet:
-				repman.handlerGetSubscription(w, r)
-			case http.MethodPost:
-				repman.handlerChangeSubscription(w, r)
-			default:
-				http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
-			}
-		})),
-	))
+		negroni.Wrap(http.HandlerFunc(repman.handlerGetSubscription)),
+	)).Methods(http.MethodGet)
+	router.Handle("/api/register/subscription", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerChangeSubscription)),
+	)).Methods(http.MethodPost)
+	router.HandleFunc("/api/register/subscription", repman.handlerSubscriptionPreflight).Methods(http.MethodOptions)
 
 	router.Handle("/api/terms", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTerms)),
@@ -961,12 +957,17 @@ func (repman *ReplicationManager) autologinHandler(w http.ResponseWriter, r *htt
 		Password string
 	}{username, "Member", repman.Conf.GetEncryptedString(password)}
 
+	jti, err := newUpgradeID()
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 	signer := jwt.New(jwt.SigningMethodRS256)
 	claims := signer.Claims.(jwt.MapClaims)
 	claims["iss"] = "https://api.replication-manager.signal18.io"
 	claims["iat"] = time.Now().Unix()
 	claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
-	claims["jti"] = "1"
+	claims["jti"] = jti
 	claims["token"] = ""
 	claims["CustomUserInfo"] = userInfo
 	signer.Claims = claims
@@ -1005,12 +1006,17 @@ func (repman *ReplicationManager) dashboardTokenHandler(w http.ResponseWriter, r
 		Password string
 	}{username, "Member", repman.Conf.GetEncryptedString(password)}
 
+	dashJTI, err := newUpgradeID()
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 	signer := jwt.New(jwt.SigningMethodRS256)
 	claims := signer.Claims.(jwt.MapClaims)
 	claims["iss"] = "https://api.replication-manager.signal18.io"
 	claims["iat"] = time.Now().Unix()
 	claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
-	claims["jti"] = "1"
+	claims["jti"] = dashJTI
 	claims["token"] = ""
 	claims["CustomUserInfo"] = userInfo
 	signer.Claims = claims
@@ -1097,13 +1103,17 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 
 			}
 
+			callbackJTI, jtiErr := newUpgradeID()
+			if jtiErr != nil {
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+				return
+			}
 			signer := jwt.New(jwt.SigningMethodRS256)
 			claims := signer.Claims.(jwt.MapClaims)
-			//set claims
 			claims["iss"] = "https://api.replication-manager.signal18.io"
 			claims["iat"] = time.Now().Unix()
 			claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
-			claims["jti"] = "1" // should be user ID(?)
+			claims["jti"] = callbackJTI
 			claims["token"] = oauth2Token.AccessToken
 			claims["CustomUserInfo"] = struct {
 				Name     string
