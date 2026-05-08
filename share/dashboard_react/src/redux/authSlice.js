@@ -60,16 +60,19 @@ export const whoami = createAsyncThunk('auth/whoami', async (_, thunkAPI) => {
 
 export const authSlice = createSlice({
   name: 'auth',
-  initialState: { 
-    user: null, 
-    loading: false, 
-    loadingGitLogin: false, 
-    loadingPeerLogin: false, 
+  initialState: {
+    user: null,
+    loading: false,
+    loadingGitLogin: false,
+    loadingPeerLogin: false,
     isLoadingUserData: false,
-    error: null, 
-    isLogged: false, 
-    isPeerLogged: false, 
+    error: null,
+    isLogged: false,
+    isPeerLogged: false,
     baseURL: '',
+    // SSO async upgrade state. ssoUpgradeId is set when login returns an upgrade_id.
+    // SSOUpgradePoller reads this and replaces user_token once the upgrade completes.
+    ssoUpgradeId: null,
   },
   reducers: {
     logout: (state, action) => {
@@ -78,6 +81,7 @@ export const authSlice = createSlice({
       sessionStorage.removeItem('meet_unavailable')
       state.user = null
       state.isLogged = false
+      state.ssoUpgradeId = null
     },
     setUserData: (state, action) => {
       const username = localStorage.getItem('username')
@@ -92,6 +96,9 @@ export const authSlice = createSlice({
     setBaseURL: (state, action) => {
       state.baseURL = action.payload.baseURL
     },
+    clearSSOUpgrade: (state) => {
+      state.ssoUpgradeId = null
+    },
   },
   extraReducers: (builder) => {
     builder.addMatcher(isAnyOf(login.pending, peerLogin.pending), (state, action) => {
@@ -105,16 +112,18 @@ export const authSlice = createSlice({
       const { payload, meta } = action
       const { data } = payload
       const { arg } = meta
-      //localStorage.setItem('userID', typeof data === 'string' ? JSON.parse(data)?.user_id : data?.user_id)
-      localStorage.setItem('user_token', typeof data === 'string' ? JSON.parse(data)?.token : data?.token)
+      const parsed = typeof data === 'string' ? JSON.parse(data) : data
+      localStorage.setItem('user_token', parsed?.token)
       localStorage.setItem('username', arg.username)
       state.isLogged = true
-      state.user = {
-        username: arg.username
-      }
+      state.user = { username: arg.username }
       if (action.type === 'login') {
         state.loading = false
       }
+      // Always reset ssoUpgradeId so a previous stale id can never persist
+      // into a fresh login session (regardless of whether this login returned
+      // an upgrade_id or not).
+      state.ssoUpgradeId = parsed?.upgrade_id ?? null
     })
     builder.addMatcher(isAnyOf(peerLogin.fulfilled), (state, action) => {
       const { payload, meta } = action
@@ -162,7 +171,7 @@ export const authSlice = createSlice({
 })
 
 // this is for dispatch
-export const { logout, setUserData, setBaseURL } = authSlice.actions
+export const { logout, setUserData, setBaseURL, clearSSOUpgrade } = authSlice.actions
 
 // this is for configureStore
 export default authSlice.reducer

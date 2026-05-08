@@ -141,6 +141,7 @@ func (repman *ReplicationManager) httpserver() {
 	})
 
 	router.HandleFunc("/api/login", repman.loginHandler)
+	router.HandleFunc("/api/login/upgrade", repman.upgradeHandler).Methods(http.MethodGet, http.MethodOptions)
 	// Public auth routes are intentionally wired in both http.go and api.go because
 	// replication-manager can run either HTTP API path depending on runtime flags.
 	router.HandleFunc("/api/signup", repman.handlerSignup).Methods(http.MethodPost, http.MethodOptions)
@@ -175,17 +176,13 @@ func (repman *ReplicationManager) httpserver() {
 
 	router.Handle("/api/register/subscription", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.Method {
-			case http.MethodGet:
-				repman.handlerGetSubscription(w, r)
-			case http.MethodPost:
-				repman.handlerChangeSubscription(w, r)
-			default:
-				http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
-			}
-		})),
-	))
+		negroni.Wrap(http.HandlerFunc(repman.handlerGetSubscription)),
+	)).Methods(http.MethodGet)
+	router.Handle("/api/register/subscription", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerChangeSubscription)),
+	)).Methods(http.MethodPost)
+	router.HandleFunc("/api/register/subscription", repman.handlerSubscriptionPreflight).Methods(http.MethodOptions)
 
 	router.HandleFunc("/api/version", repman.handlerVersion)
 
@@ -222,6 +219,31 @@ func (repman *ReplicationManager) httpserver() {
 	router.Handle("/api/whoami", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxWhoAmI)),
+	))
+
+	router.Handle("/api/billing/personal", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerBillingPersonal)),
+	))
+
+	router.Handle("/api/billing/subscription", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerBillingSubscription)),
+	))
+
+	router.Handle("/api/billing/subscription/plans", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerBillingSubscriptionPlans)),
+	))
+
+	router.Handle("/api/billing/subscription/change", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerBillingSubscriptionChange)),
+	))
+
+	router.Handle("/api/billing/transactions", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerBillingTransactions)),
 	))
 
 	router.Handle("/api/prometheus", negroni.New(

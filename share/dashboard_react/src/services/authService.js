@@ -1,11 +1,12 @@
-import { getApi, publicApi } from './apiHelper'
+import { getApi, localApi, publicApi } from './apiHelper'
 
 export const authService = {
   login,
   gitLogin,
   signup,
   whoami,
-  getSignupPromo
+  getSignupPromo,
+  pollUpgrade,
 }
 
 function login(username, password, baseURL) {
@@ -32,4 +33,8 @@ function signup(payload, baseURL) {
 
 function getSignupPromo() {
   return publicApi.get('signup/promo')
+}
+
+function pollUpgrade(upgradeId) {
+  return localApi.get('login/upgrade', { upgrade_id: upgradeId })
 }

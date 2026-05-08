@@ -366,7 +366,34 @@ Start create an account in https://gitlab.signal18.io
     { value: 'support',          label: 'Contributing under Support',              desc: 'Support ticket access, SLA, and community priority queue' },
     { value: 'support-services', label: 'Contributing under Support and Services', desc: 'Full support + managed DBA/SysOps services access' },
     { value: 'partner',          label: 'Market Place Partner',                    desc: 'Marketplace listing, revenue sharing, and partner API access' },
+    { value: 'developer',        label: 'Developer',                               desc: 'Developer-focused plan for self-managed environments' },
   ]
+
+  const normalizeInstancePlans = (raw) => {
+    const source = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.plans)
+        ? raw.plans
+        : Array.isArray(raw?.subscriptions)
+          ? raw.subscriptions
+          : []
+
+    return source
+      .map((plan) => {
+        if (!plan || typeof plan !== 'object') return null
+
+        const value = String(plan.value || plan.code || plan.slug || plan.plan || '').trim()
+        if (!value) return null
+
+        return {
+          value,
+          label: String(plan.label || plan.name || value),
+          desc: String(plan.desc || plan.description || '')
+        }
+      })
+      .filter(Boolean)
+  }
+
   const [plans, setPlans] = useState(PLANS_FALLBACK)
 
   const openSubModal = async () => {
@@ -381,7 +408,8 @@ Start create an account in https://gitlab.signal18.io
     ])
     setSubLoading(false)
     const plansData = plansResult?.payload?.data
-    if (Array.isArray(plansData) && plansData.length > 0) setPlans(plansData)
+    const normalizedPlans = normalizeInstancePlans(plansData)
+    if (normalizedPlans.length > 0) setPlans(normalizedPlans)
     const subData = subResult?.payload?.data
     if (subData?.email) {
       setSubInfo(subData)
@@ -419,7 +447,7 @@ Start create an account in https://gitlab.signal18.io
   const hSubdomain = `**Subdomain**\n\nDatacenter or environment identifier (e.g. \`ovh\`, \`aws\`).\nCreates a subgroup under your domain group, allowing multiple independent deployment environments.\n\nConfig: \`cloud18-sub-domain\``
   const hZone = `**Subdomain Zone**\n\nGeographic zone or region (e.g. \`fr-1\`, \`us-east\`).\nCompletes the three-part URI: \`domain.subdomain.zone\`. This URI uniquely identifies your instance on Cloud18.\n\nConfig: \`cloud18-sub-domain-zone\``
   const hConnect = `**Connect / Disconnect / Register**\n\nWhen credentials are stored: **Connect** activates Cloud18 using the stored GitLab credentials, or **Disconnect** deactivates it (credentials are preserved). When connected, **Unregister** drops the GitLab projects for this URI and unlocks fields so you can change the URI.\n\nWhen no credentials are stored: **Register** creates a GitLab account and links this instance.\n\nConfig: \`cloud18\``
-  const hSubscription = `**Subscription Plan**\n\nYour Signal18 Cloud18 subscription level. Clicking **Change** verifies your registration with the CRM using your GitLab token and lets you switch plan.\n\n| Plan | Description |\n|------|-------------|\n| Free | Community access, config backup, basic alerting |\n| Contributing under Support | Support tickets, SLA |\n| Contributing under Support and Services | Full support + managed services |\n| Market Place Partner | Marketplace listing, revenue sharing, partner API |\n\nConfig: \`cloud18-subscription-plan\``
+  const hSubscription = `**Subscription Plan**\n\nYour Signal18 Cloud18 subscription level. Clicking **Change** verifies your registration with the CRM using your GitLab token and lets you switch plan.\n\nIf CRM is unreachable (for example behind a firewall), replication-manager can still queue known plans locally for later git-based processing.\n\n| Plan | Description |\n|------|-------------|\n| Free | Community access, config backup, basic alerting |\n| Contributing under Support | Support tickets, SLA |\n| Contributing under Support and Services | Full support + managed services |\n| Market Place Partner | Marketplace listing, revenue sharing, partner API |\n| Developer | Developer-focused self-managed plan |\n\nConfig: \`cloud18-subscription-plan\``
 
   const isConnected = !!config?.cloud18
 

@@ -170,6 +170,8 @@ type ReplicationManager struct {
 	SessionManager       *tty.SessionManager            `json:"-"`
 	ConfigManager        *manager.ConfigManager         `json:"-"`
 	MeetUserID           string                         `json:"-"`
+	LoginUpgradeStore    *LoginUpgradeStore             `json:"-"`
+	LoginUpgradeInitOnce sync.Once                      `json:"-"`
 	DiskStatManager      *misc.DiskStatManager          `json:"-"`
 	OpenSVCStats         atomic.Value                   `json:"-"`
 	inFetchOpenSVCStats  bool                           `json:"-"`
@@ -1104,7 +1106,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.Cloud18DisablePeers, "cloud18-disable-peers", false, "Hide peer clusters from dashboard")
 	flags.BoolVar(&conf.Cloud18DisableForSale, "cloud18-disable-for-sale", false, "Hide clusters for sale from marketplace (paid plans only)")
 	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 janitor gateway DNS ")
-	flags.StringVar(&conf.Cloud18SubscriptionPlan, "cloud18-subscription-plan", "free", "Cloud18 subscription plan: free, support, support-services, partner")
+	flags.StringVar(&conf.Cloud18SubscriptionPlan, "cloud18-subscription-plan", "free", "Cloud18 subscription plan code (validated by CRM)")
 	flags.StringVar(&conf.Cloud18CrmApiUrl, "cloud18-crm-api-url", "https://api.crm.ovh-fr-2.signal18.cloud18.io", "Cloud18 CRM API base URL used for cluster registration")
 	flags.IntVar(&conf.Cloud18ApplicationCredits, "cloud18-application-credits", 2, "Cloud18 application credits(1 core 4G Ram 8G Disk)")
 	flags.IntVar(&conf.Cloud18ApplicationCreditsPrice, "cloud18-application-credits-price", 20, "Cloud18 application credits price in Eur")
@@ -2576,6 +2578,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.Logrus.Infof("repman.Conf.ShareDir : %s", repman.Conf.ShareDir)
 
 	repman.initKeys()
+	repman.ensureLoginUpgradeInfra()
 
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)
 	if repman.Conf.ApiServ {
@@ -2950,6 +2953,10 @@ func (repman *ReplicationManager) Stop() {
 
 	if repman.globalScheduler != nil {
 		repman.globalScheduler.Stop()
+	}
+
+	if repman.LoginUpgradeStore != nil {
+		repman.LoginUpgradeStore.Shutdown()
 	}
 
 	httpCtx, httpCancel := context.WithTimeout(context.Background(), 15*time.Second)

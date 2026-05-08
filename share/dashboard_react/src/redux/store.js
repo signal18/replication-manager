@@ -7,6 +7,7 @@ import configReducer from '../redux/configSlice'
 import commonReducer from '../redux/commonSlice'
 import toastReducer from '../redux/toastSlice'
 import meetReducer from '../redux/meetSlice'
+import billingReducer from '../redux/billingSlice'
 import { createLogger } from 'redux-logger'
 import pathReducer from './pathSlice'
 
@@ -25,6 +26,7 @@ export default configureStore({
     common: commonReducer,
     toast: toastReducer,
     meet: meetReducer,
+    billing: billingReducer,
     globalClusters: globalClustersReducer,
     paths: pathReducer,
   },

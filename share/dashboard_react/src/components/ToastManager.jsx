@@ -27,11 +27,12 @@ const ToastManager = () => {
         toast.close(toastIdRef.current)
         toastIdRef.current = null
       }
+      const TOAST_DURATIONS = { error: 5000, success: 3000, warning: 6000 }
       toast({
         title,
         description,
         status: status,
-        duration: status === 'error' ? 5000 : status === 'success' ? 3000 : null,
+        duration: TOAST_DURATIONS[status] ?? null,
         isClosable: true,
         position: 'top-right'
       })
