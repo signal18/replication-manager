@@ -65,6 +65,9 @@ func (server *ServerMonitor) JobRun() {
 
 func (server *ServerMonitor) JobsCheckSchedulerTable() error {
 	cluster := server.ClusterGroup
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return nil
+	}
 	if server.IsDown() || cluster.IsInFailover() {
 		return nil
 	}
@@ -116,8 +119,10 @@ WHERE table_schema = 'replication_manager_schema'
 
 func (server *ServerMonitor) JobsCreateTable() error {
 	cluster := server.ClusterGroup
-	// In API mode the jobs table is not used — drop it if it exists and skip creation
+	// In API mode the jobs table is not used — but still ensure the
+	// replication_manager_schema database exists (needed by checksum, benchmarks, etc.)
 	if cluster.Conf.SchedulerJobsMode == "api" {
+		server.ensureReplicationManagerSchema()
 		server.jobsDropTable()
 		return nil
 	}
@@ -126,6 +131,20 @@ func (server *ServerMonitor) JobsCreateTable() error {
 	}
 
 	return nil
+}
+
+// ensureReplicationManagerSchema creates the replication_manager_schema database
+// if it doesn't exist. Needed even in API mode for checksum, benchmarks, etc.
+func (server *ServerMonitor) ensureReplicationManagerSchema() {
+	if server.IsDown() || server.Conn == nil {
+		return
+	}
+	conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	server.ConnExecQueryWithTimeout(conn, JobTimeout, "/* replication-manager */ CREATE DATABASE IF NOT EXISTS replication_manager_schema")
 }
 
 // jobsDropTable drops the jobs table when switching to API mode.
