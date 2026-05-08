@@ -89,6 +89,14 @@ var databaseACLRules = []ACLRule{
 	{"/actions/wait-innodb-purge", nil, []string{config.GrantDBMaintenance}},
 	{"/actions/jobs-upgrade", nil, []string{config.GrantDBMaintenance}},
 
+	// Job dispatch actions (dbjobs script API)
+	{"/needs/", nil, []string{config.GrantDBJobs}},
+	{"/write-log/", nil, []string{config.GrantDBJobs}},
+	{"/actions/receive-task/", nil, []string{config.GrantDBJobs}},
+	{"/actions/job-state/", nil, []string{config.GrantDBJobs}},
+	{"/actions/receive-jobs-check", nil, []string{config.GrantDBJobs}},
+	{"/actions/send-jobs-upgrade", nil, []string{config.GrantDBJobs}},
+
 	// Show actions
 	{"/variables", nil, []string{config.GrantDBShowVariables}},
 	{"/tables", nil, []string{config.GrantDBShowSchema}},

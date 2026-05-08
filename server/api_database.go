@@ -89,9 +89,7 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-in-errstate/{errstate}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerIsInErrorState)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{taskname}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeeds)),
-	))
+	// needs/{taskname} moved to apiDatabaseProtectedHandler (requires db-jobs grant)
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-restart", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedRestart)),
 	))
@@ -159,15 +157,7 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-path-preserve/{preserve}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfigPathPreserve)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{task}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersWriteLog)),
-	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReceiveTask)),
-	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/job-state/{taskname}/{jobstate}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobState)),
-	))
+	// write-log, receive-task, job-state moved to apiDatabaseProtectedHandler (requires db-jobs grant)
 }
 
 func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router) {
@@ -527,17 +517,21 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxQueryAnalyzeSlowLog)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/jobs-create-table", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsCreateTable)),
+	))
+	// Job dispatch endpoints — require db-jobs grant via ACL rules
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{taskname}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeeds)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{task}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersWriteLog)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-jobs-check", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsCheckReceiver)),
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReceiveTask)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/send-jobs-upgrade", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsUpgradeSender)),
-	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/jobs-create-table", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsCreateTable)),
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/job-state/{taskname}/{jobstate}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobState)),
 	))
 	router.Handle("/api/terminal/connect/clusters/{clusterName}/servers/{serverName}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),

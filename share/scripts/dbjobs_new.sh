@@ -299,12 +299,12 @@ send_http_request() {
 # API Functions        #
 ########################
 
-# Send HTTP GET request (reuses send_http_request)
+# Send HTTP GET request (reuses send_http_request, passes TOKEN if available)
 send_http_get() {
     local host="$1"
     local port="$2"
     local endpoint="$3"
-    send_http_request "GET" "$host" "$port" "$endpoint"
+    send_http_request "GET" "$host" "$port" "$endpoint" "" "application/json" "$TOKEN"
 }
 
 # Send authenticated HTTP GET request with Bearer token
@@ -339,7 +339,7 @@ send_encrypted_api_request() {
     fi
 
     local json_data="{\"data\":\"$encrypted_data\"}"
-    send_http_request "POST" "$host" "$port" "$api_endpoint" "$json_data"
+    send_http_request "POST" "$host" "$port" "$api_endpoint" "$json_data" "application/json" "$TOKEN"
 }
 
 # Rotate log file if it exceeds size limit

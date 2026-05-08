@@ -67,6 +67,7 @@ const (
 	GrantDBConfigFlag               string = "db-config-flag"
 	GrantDBConfigGet                string = "db-config-get"
 	GrantDBConfigAcceptCompliance   string = "db-config-accept-compliance"
+	GrantDBJobs                     string = "db-jobs"
 
 	GrantClusterCreate             string = "cluster-create"
 	GrantClusterDelete             string = "cluster-delete"
@@ -172,6 +173,7 @@ func GetGrantType() map[string]string {
 		GrantDBConfigFlag:              GrantDBConfigFlag,
 		GrantDBConfigAcceptCompliance:  GrantDBConfigAcceptCompliance,
 		GrantDBConfigGet:               GrantDBConfigGet,
+		GrantDBJobs:                    GrantDBJobs,
 		GrantDBShowVariables:           GrantDBShowVariables,
 		GrantDBShowStatus:              GrantDBShowStatus,
 		GrantDBShowSchema:              GrantDBShowSchema,
@@ -278,6 +280,7 @@ func GetGrantDB() []string {
 		GrantDBShowSchema,
 		GrantDBShowProcess,
 		GrantDBShowLogs,
+		GrantDBJobs,
 	}
 }
 
