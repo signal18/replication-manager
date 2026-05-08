@@ -1093,6 +1093,17 @@ func crmGetUserTransactions(crmBase, gitlabToken string, limit, offset int, dire
 	return resp.StatusCode, body, err
 }
 
+// crmStatusToHTTP translates a raw CRM HTTP status into a safe status for the
+// Repman API response. CRM 401 is remapped to 502 Bad Gateway so that the
+// frontend's global 401 handler never confuses a downstream auth failure with
+// an expired Repman JWT and triggers an unintended logout.
+func crmStatusToHTTP(crmStatus int) int {
+	if crmStatus == http.StatusUnauthorized {
+		return http.StatusBadGateway
+	}
+	return crmStatus
+}
+
 func (repman *ReplicationManager) fetchWithSessionBootstrap(gitlabToken string, fetch func() (int, []byte, error)) (int, []byte, error) {
 	status, body, err := fetch()
 	if err != nil {
@@ -1137,7 +1148,7 @@ func (repman *ReplicationManager) handlerBillingPersonal(w http.ResponseWriter, 
 		return
 	}
 
-	w.WriteHeader(status)
+	w.WriteHeader(crmStatusToHTTP(status))
 	_, _ = w.Write(body)
 }
 
@@ -1157,13 +1168,15 @@ func (repman *ReplicationManager) handlerBillingSubscription(w http.ResponseWrit
 		return
 	}
 
-	status, body, err := crmGetDBaaSSubscription(repman.crmBase(), gitlabToken)
+	status, body, err := repman.fetchWithSessionBootstrap(gitlabToken, func() (int, []byte, error) {
+		return crmGetDBaaSSubscription(repman.crmBase(), gitlabToken)
+	})
 	if err != nil {
 		writeJSONError(w, http.StatusBadGateway, "CRM API unreachable")
 		return
 	}
 
-	w.WriteHeader(status)
+	w.WriteHeader(crmStatusToHTTP(status))
 	_, _ = w.Write(body)
 }
 
@@ -1183,7 +1196,7 @@ func (repman *ReplicationManager) handlerBillingSubscriptionPlans(w http.Respons
 		return
 	}
 
-	w.WriteHeader(status)
+	w.WriteHeader(crmStatusToHTTP(status))
 	_, _ = w.Write(body)
 }
 
@@ -1225,7 +1238,7 @@ func (repman *ReplicationManager) handlerBillingSubscriptionChange(w http.Respon
 		return
 	}
 
-	w.WriteHeader(status)
+	w.WriteHeader(crmStatusToHTTP(status))
 	_, _ = w.Write(body)
 }
 
@@ -1283,7 +1296,7 @@ func (repman *ReplicationManager) handlerBillingTransactions(w http.ResponseWrit
 		return
 	}
 
-	w.WriteHeader(status)
+	w.WriteHeader(crmStatusToHTTP(status))
 	_, _ = w.Write(body)
 }
 
