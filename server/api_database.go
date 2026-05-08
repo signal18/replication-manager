@@ -89,9 +89,7 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-in-errstate/{errstate}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerIsInErrorState)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{taskname}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeeds)),
-	))
+	// needs/{taskname} moved to apiDatabaseProtectedHandler (requires db-jobs grant)
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-restart", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedRestart)),
 	))
@@ -159,9 +157,7 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-path-preserve/{preserve}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfigPathPreserve)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{task}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersWriteLog)),
-	))
+	// write-log, receive-task, job-state moved to apiDatabaseProtectedHandler (requires db-jobs grant)
 }
 
 func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router) {
@@ -521,17 +517,33 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxQueryAnalyzeSlowLog)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/jobs-create-table", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsCreateTable)),
+	))
+	// Job dispatch endpoints — require db-jobs grant via ACL rules
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{taskname}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeeds)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{task}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersWriteLog)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReceiveTask)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/job-state/{taskname}/{jobstate}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobState)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-jobs-check", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsCheckReceiver)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/send-jobs-upgrade", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsUpgradeSender)),
-	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/jobs-create-table", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsCreateTable)),
 	))
 	router.Handle("/api/terminal/connect/clusters/{clusterName}/servers/{serverName}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
@@ -4964,6 +4976,127 @@ func (repman *ReplicationManager) handlerMuxServerJobsCheckReceiver(w http.Respo
 	} else {
 		http.Error(w, "No cluster", 500)
 	}
+}
+
+// handlerMuxServerReceiveTask opens a TCP receiver for a given remote task and
+// returns the receiver address. Used in API job mode so the dbjobs script can
+// discover where to stream data (backups, logs) without polling the jobs table.
+// @Summary Open a TCP receiver for a remote task
+// @Tags DatabaseTasks
+// @Param clusterName path string true "Cluster name"
+// @Param serverName path string true "Server hostname"
+// @Param serverPort path string true "Server port"
+// @Param taskname path string true "Task name (xtrabackup, mariabackup, errorlog, etc.)"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname} [post]
+func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	defer mycluster.LogPanicToFile("receive-task")
+
+	node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), errcode)
+		return
+	}
+	if node == nil {
+		http.Error(w, "No server", 500)
+		return
+	}
+
+	taskname := vars["taskname"]
+
+	// Determine destination based on task type
+	var dest string
+	var rcvPort string
+	switch config.TaskName(taskname) {
+	case config.ConstTaskXB, config.ConstTaskMB:
+		backupext := ".xbtream"
+		if mycluster.GetConf().CompressBackups {
+			backupext += ".gz"
+		}
+		dest = node.GetMyBackupDirectory() + mycluster.GetConf().BackupPhysicalType + backupext
+		if mycluster.GetConf().CompressBackups {
+			rcvPort, err = mycluster.SSTRunReceiverToGZip(node, dest, cluster.ConstJobCreateFile, taskname)
+		} else {
+			rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
+		}
+	case config.ConstTaskError, config.ConstTaskSlowQuery, config.ConstTaskAuditLog, config.ConstTaskSqlError:
+		dest = node.GetMyBackupDirectory() + taskname
+		rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
+	case config.ConstTaskReseedXB, config.ConstTaskReseedMB, config.ConstTaskFlashXB, config.ConstTaskFlashMB:
+		dest = node.GetMyBackupDirectory() + taskname
+		rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
+	default:
+		// Tasks that don't need a receiver (optimize, restart, stop, start)
+		w.WriteHeader(200)
+		w.Write([]byte("NO_RECEIVER_NEEDED"))
+		return
+	}
+
+	if err != nil {
+		http.Error(w, "Error opening receiver port: "+err.Error(), 500)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Task receiver port %s opened for %s on %s", rcvPort, taskname, node.Name)
+	w.WriteHeader(200)
+	w.Write([]byte("RECEIVER_PORT=" + rcvPort))
+}
+
+// handlerMuxServerJobState receives job state updates from the dbjobs script
+// in API mode. The script calls this instead of updating the jobs SQL table.
+// @Summary Update job state from dbjobs script
+// @Tags DatabaseTasks
+// @Param clusterName path string true "Cluster name"
+// @Param serverName path string true "Server hostname"
+// @Param serverPort path string true "Server port"
+// @Param taskname path string true "Task name"
+// @Param jobstate path string true "Job state: processing, done, error"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/job-state/{taskname}/{jobstate} [post]
+func (repman *ReplicationManager) handlerMuxServerJobState(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), errcode)
+		return
+	}
+	if node == nil {
+		http.Error(w, "No server", 500)
+		return
+	}
+
+	taskname := vars["taskname"]
+	jobstate := vars["jobstate"]
+
+	switch jobstate {
+	case "processing":
+		node.JobsUpdateState(taskname, "processing", cluster.JobStateRunning, 0)
+	case "done":
+		node.JobsUpdateState(taskname, "completed", cluster.JobStateSuccess, 1)
+	case "error":
+		node.JobsUpdateState(taskname, "error", cluster.JobStateErrorExec, 1)
+	case "waiting":
+		node.JobsUpdateState(taskname, "waiting", cluster.JobStateHalted, 0)
+	default:
+		http.Error(w, "Unknown state: "+jobstate, 400)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "API job state: %s=%s on %s", taskname, jobstate, node.URL)
+	w.WriteHeader(200)
+	w.Write([]byte("ok"))
 }
 
 // handlerMuxServerAllowJobsUpgrade handles the HTTP request to allow jobs upgrade on a specific server within a cluster.

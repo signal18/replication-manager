@@ -175,6 +175,30 @@ func (server *ServerMonitor) HasWaitStopCookie() bool {
 	return server.hasCookie("cookie_waitstop")
 }
 
+func (server *ServerMonitor) HasWaitRestartCookie() bool {
+	return server.hasCookie("cookie_waitrestart")
+}
+
+func (server *ServerMonitor) HasWaitOptimizeCookie() bool {
+	return server.hasCookie("cookie_waitoptimize")
+}
+
+func (server *ServerMonitor) HasWaitReseedXtrabackupCookie() bool {
+	return server.hasCookie("cookie_waitreseedxtrabackup")
+}
+
+func (server *ServerMonitor) HasWaitReseedMariabackupCookie() bool {
+	return server.hasCookie("cookie_waitreseedmariabackup")
+}
+
+func (server *ServerMonitor) HasWaitFlashbackXtrabackupCookie() bool {
+	return server.hasCookie("cookie_waitflashbackxtrabackup")
+}
+
+func (server *ServerMonitor) HasWaitFlashbackMariabackupCookie() bool {
+	return server.hasCookie("cookie_waitflashbackmariabackup")
+}
+
 func (server *ServerMonitor) HasRestartCookie() bool {
 	return server.hasCookie("cookie_restart")
 }

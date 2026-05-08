@@ -616,6 +616,57 @@ func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
 			server.DelWaitJobsUpgradeCookie()
 			return true, nil
 		}
+	// Remote tasks only — logical tasks (mysqldump, mydumper, analyze) are
+	// executed directly by replication-manager and must not be dispatched to
+	// the dbjobs script to avoid double execution.
+	case config.ConstTaskXB, config.ConstTaskMB:
+		if server.HasWaitPhysicalBackupCookie() {
+			server.DelWaitPhysicalBackupCookie()
+			return true, nil
+		}
+	case config.ConstTaskOptimize:
+		if server.HasWaitOptimizeCookie() {
+			server.DelWaitOptimizeCookie()
+			return true, nil
+		}
+	case config.ConstTaskRestart:
+		if server.HasWaitRestartCookie() {
+			server.DelWaitRestartCookie()
+			return true, nil
+		}
+	case config.ConstTaskStop:
+		if server.HasWaitStopCookie() {
+			server.DelWaitStopCookie()
+			return true, nil
+		}
+	case config.ConstTaskStart:
+		if server.HasWaitStartCookie() {
+			server.DelWaitStartCookie()
+			return true, nil
+		}
+	case config.ConstTaskReseedXB:
+		if server.HasWaitReseedXtrabackupCookie() {
+			server.DelWaitReseedXtrabackupCookie()
+			return true, nil
+		}
+	case config.ConstTaskReseedMB:
+		if server.HasWaitReseedMariabackupCookie() {
+			server.DelWaitReseedMariabackupCookie()
+			return true, nil
+		}
+	case config.ConstTaskFlashXB:
+		if server.HasWaitFlashbackXtrabackupCookie() {
+			server.DelWaitFlashbackXtrabackupCookie()
+			return true, nil
+		}
+	case config.ConstTaskFlashMB:
+		if server.HasWaitFlashbackMariabackupCookie() {
+			server.DelWaitFlashbackMariabackupCookie()
+			return true, nil
+		}
+	case config.ConstTaskZFS:
+		// ZFS snapback has no wait cookie — always delegate to script
+		return false, nil
 	default:
 		return false, fmt.Errorf("unknown checktype %s", checktype)
 	}

@@ -8,5 +8,5 @@ import (
 	_ "embed"
 )
 
-//go:embed opensvc/moduleset_mariadb.svc.mrm.db.json opensvc/moduleset_mariadb.svc.mrm.proxy.json app dashboard repo serviceplan.csv whitelist.conf.grafana whitelist.conf.minimal blacklist.conf.template grafana scripts/staging_refresh.sh mysql_defaults.cnf plugins/data/enterprise-dochelp-variables.json
+//go:embed opensvc/moduleset_mariadb.svc.mrm.db.json opensvc/moduleset_mariadb.svc.mrm.proxy.json app dashboard repo serviceplan.csv whitelist.conf.grafana whitelist.conf.minimal blacklist.conf.template grafana scripts/staging_refresh.sh scripts/dbjobs_new.sh mysql_defaults.cnf plugins/data/enterprise-dochelp-variables.json
 var EmbededDbModuleFS embed.FS

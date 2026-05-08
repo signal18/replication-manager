@@ -1,4 +1,4 @@
-import { Box, Flex } from '@chakra-ui/react'
+import { Box, Flex, Input, HStack } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
@@ -6,6 +6,9 @@ import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import Scheduler from './Scheduler'
+import Dropdown from '../../components/Dropdown'
+import RMButton from '../../components/RMButton'
+import ConfirmModal from '../../components/Modals/ConfirmModal'
 import CommonModal from '../../components/Modals/CommonModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
 import Markdown from 'react-markdown'
@@ -17,6 +20,8 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
   const dispatch = useDispatch()
   const [action, setAction] = useState({ title: '', body: <></> })
   const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
+  const [execRemoteValue, setExecRemoteValue] = useState(selectedCluster?.config?.schedulerJobsExecRemote || '')
+  const [isExecRemoteConfirmOpen, setIsExecRemoteConfirmOpen] = useState(false)
 
   const openInfoModal = (title, content) => {
     setAction({ title, body: <Box className={modalStyles.infoTooltip}><Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown></Box> })
@@ -43,6 +48,9 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
   const hSchemaMonitor = cronHelp('Monitor Schema Changes', 'Schedules schema change detection scans instead of scanning every monitoring cycle.', 'monitoring-schema-scheduler / monitoring-schema-scheduler-cron')
   const hChecksumTables = cronHelp('Monitor Checksum Tables', 'Schedules periodic table checksum verification to detect silent data divergence.', 'monitoring-checksum-scheduler / monitoring-checksum-scheduler-cron')
 
+  const hJobsMode = `**Job Dispatch Mode**\n\nControls how remote maintenance tasks are dispatched to database hosts:\n\n- **sql** (default): Tasks are inserted into the \`replication_manager_schema.jobs\` table. The dbjobs script polls this table.\n- **api**: Tasks are signaled via cookies. The dbjobs script checks cookies via the repman REST API. No jobs table needed.\n\nConfig: \`scheduler-jobs-mode\``
+  const hExecRemote = `**Force Remote Execution**\n\nComma-separated list of tasks to force remote execution via the dbjobs script instead of running locally in replication-manager.\n\nApplies to tasks that support both modes: \`mysqldump\`, \`mydumper\`, \`optimize\`, \`stop\`, \`start\`, \`restart\`.\n\nExample: \`mysqldump,optimize\` — mysqldump will run on the DB host using the local client binary (avoids version mismatch), and optimize will use \`mysqlcheck\` on the DB host.\n\nConfig: \`scheduler-jobs-exec-remote\``
+
   const sc = (sw, swKey, cronKey, cronSetting, title, hasSwitch = true) => (
     <Scheduler user={user} value={selectedCluster?.config?.[cronKey]} switchConfirmTitle={`Confirm switch settings for ${sw}?`} isSwitchChecked={selectedCluster?.config?.[swKey]} confirmTitle={`Confirm save ${title} scheduler to: `} onSwitchChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: sw }))} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: cronSetting, value: v }))} hasSwitch={hasSwitch} />
   )
@@ -50,6 +58,46 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
   const dataObject = [
     { key: 'Scheduler', help: h(hScheduler, 'Scheduler'), value: (<RMSwitch confirmTitle={'Confirm switch settings for monitoring-scheduler?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-scheduler' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.monitoringScheduler} />) },
     { key: 'Run Jobs via SSH', help: h(hSSH, 'Run Jobs via SSH'), value: sc('scheduler-jobs-ssh', 'schedulerJobsSsh', 'schedulerJobsSshCron', 'scheduler-jobs-ssh-cron', 'Run Jobs via SSH') },
+    { key: 'Job Dispatch Mode', help: h(hJobsMode, 'Job Dispatch Mode'), value: (
+      <Dropdown
+        options={[
+          { value: 'sql', label: 'SQL (poll jobs table)' },
+          { value: 'api', label: 'API (cookie-based)' }
+        ]}
+        selectedValue={selectedCluster?.config?.schedulerJobsMode || 'sql'}
+        confirmTitle="Confirm job dispatch mode: "
+        onChange={(opt) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'scheduler-jobs-mode', value: opt.value }))}
+      />
+    )},
+    { key: 'Force Remote Execution', help: h(hExecRemote, 'Force Remote Execution'), value: (
+      <HStack>
+        <Input
+          size='sm'
+          width='250px'
+          placeholder='e.g. mysqldump,optimize'
+          value={execRemoteValue}
+          onChange={(e) => setExecRemoteValue(e.target.value)}
+        />
+        <RMButton
+          size='sm'
+          isDisabled={execRemoteValue === (selectedCluster?.config?.schedulerJobsExecRemote || '')}
+          onClick={() => setIsExecRemoteConfirmOpen(true)}
+        >
+          Save
+        </RMButton>
+        {isExecRemoteConfirmOpen && (
+          <ConfirmModal
+            isOpen={isExecRemoteConfirmOpen}
+            closeModal={() => setIsExecRemoteConfirmOpen(false)}
+            title={`Confirm force remote tasks: ${execRemoteValue || '(none)'}`}
+            onConfirmClick={() => {
+              dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'scheduler-jobs-exec-remote', value: execRemoteValue }))
+              setIsExecRemoteConfirmOpen(false)
+            }}
+          />
+        )}
+      </HStack>
+    )},
     { key: 'Analyze Tables Use PERSISTENT', help: h(hPersistent, 'Analyze Tables Use PERSISTENT'), value: (<RMSwitch confirmTitle={'Confirm switch settings for analyze-use-persistent?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'analyze-use-persistent' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.analyzeUsePersistent} />) },
     ...(selectedCluster?.config?.monitoringScheduler ? [
       { key: 'Logical Backup', help: h(hLogical, 'Logical Backup'), value: sc('scheduler-db-servers-logical-backup', 'schedulerDbServersLogicalBackup', 'schedulerDbServersLogicalBackupCron', 'scheduler-db-servers-logical-backup-cron', 'Logical Backup') },

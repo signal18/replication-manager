@@ -65,6 +65,9 @@ func (server *ServerMonitor) JobRun() {
 
 func (server *ServerMonitor) JobsCheckSchedulerTable() error {
 	cluster := server.ClusterGroup
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return nil
+	}
 	if server.IsDown() || cluster.IsInFailover() {
 		return nil
 	}
@@ -116,11 +119,69 @@ WHERE table_schema = 'replication_manager_schema'
 
 func (server *ServerMonitor) JobsCreateTable() error {
 	cluster := server.ClusterGroup
+	// In API mode the jobs table is not used — but still ensure the
+	// replication_manager_schema database exists (needed by checksum, benchmarks, etc.)
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		if !server.jobsAPIHousekeepingDone {
+			server.ensureReplicationManagerSchema()
+			server.jobsDropTable()
+			server.jobsAPIHousekeepingDone = true
+		}
+		return nil
+	}
+	// Reset if mode switches back to sql
+	server.jobsAPIHousekeepingDone = false
 	if err := server.jobsCreateTable(); err != nil {
 		cluster.SetState("WARN0153", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0153"], server.URL, err), ErrFrom: "JOB"})
 	}
 
 	return nil
+}
+
+// ensureReplicationManagerSchema creates the replication_manager_schema database
+// only if it doesn't already exist. Needed even in API mode for checksum, benchmarks, etc.
+func (server *ServerMonitor) ensureReplicationManagerSchema() {
+	if server.IsDown() || server.Conn == nil {
+		return
+	}
+	conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	var count int
+	server.ConnGetQueryWithTimeout(conn, JobTimeout, &count,
+		"/* replication-manager */ SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name='replication_manager_schema'")
+	if count == 0 {
+		server.ConnExecQueryWithTimeout(conn, JobTimeout, "/* replication-manager */ CREATE DATABASE IF NOT EXISTS replication_manager_schema")
+	}
+}
+
+// jobsDropTable drops the jobs table when switching to API mode.
+// Checks information_schema first to avoid unnecessary DDL.
+// Uses sql_log_bin=0 to avoid replication.
+func (server *ServerMonitor) jobsDropTable() {
+	cluster := server.ClusterGroup
+	if server.IsDown() || server.Conn == nil {
+		return
+	}
+	conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	var count int
+	err = server.ConnGetQueryWithTimeout(conn, JobTimeout, &count,
+		"/* replication-manager */ SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='replication_manager_schema' AND table_name='jobs'")
+	if err != nil || count == 0 {
+		return
+	}
+	_, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "/* replication-manager */ DROP TABLE replication_manager_schema.jobs")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to drop jobs table on %s: %s", server.URL, err)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Dropped jobs table on %s (switched to API mode)", server.URL)
+	}
 }
 
 func (server *ServerMonitor) jobsCreateTable() error {
@@ -147,19 +208,32 @@ func (server *ServerMonitor) jobsCreateTable() error {
 		return nil
 	}
 
-	_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
-	if err != nil {
-		return fmt.Errorf("Failed to create replication_manager_schema: %v", err)
+	// Check if schema exists before CREATE to avoid metadata lock on every tick
+	var schemaExists int
+	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &schemaExists,
+		"/* replication-manager */ SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name='replication_manager_schema'")
+	if schemaExists == 0 {
+		_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "/* replication-manager */ CREATE DATABASE IF NOT EXISTS replication_manager_schema")
+		if err != nil {
+			return fmt.Errorf("Failed to create replication_manager_schema: %v", err)
+		}
 	}
 
-	createquery := `CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result MEDIUMTEXT, payload MEDIUMTEXT, start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb`
-	_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, createquery)
-	if err != nil {
-		return fmt.Errorf("Failed to create jobs table: %v", err)
+	createquery := `/* replication-manager */ CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result MEDIUMTEXT, payload MEDIUMTEXT, start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb`
+
+	// Check if jobs table exists before CREATE to avoid metadata lock on every tick
+	var tableExists int
+	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &tableExists,
+		"/* replication-manager */ SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='replication_manager_schema' AND table_name='jobs'")
+	if tableExists == 0 {
+		_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, createquery)
+		if err != nil {
+			return fmt.Errorf("Failed to create jobs table: %v", err)
+		}
 	}
 
 	var exist int
-	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "SELECT COUNT(CASE WHEN COLUMN_KEY = 'UNI' THEN 1 END) AS num_task_unique FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
+	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "/* replication-manager */ SELECT COUNT(CASE WHEN COLUMN_KEY = 'UNI' THEN 1 END) AS num_task_unique FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
 
 	if exist == 0 {
 		server.ConnExecQueryWithTimeout(Conn, JobTimeout, "DROP TABLE IF EXISTS replication_manager_schema.jobs")
@@ -362,6 +436,22 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 		return 0, errors.New("In super read-only")
 	}
 
+	// In API mode, dispatch depends on the task's execution mode.
+	// Remote tasks: set a cookie so the dbjobs script discovers them via the needs API.
+	// Local tasks (mysqldump, mydumper): only track state in memory — repman runs them directly.
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		if config.IsRemoteTask(config.TaskName(task), cluster.Conf.SchedulerJobsExecOverrides) {
+			if err := server.setTaskCookie(task); err != nil {
+				return 0, fmt.Errorf("Failed to set cookie for remote task %s: %v", task, err)
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "API mode: set cookie for task %s on %s", task, server.URL)
+		} else {
+			// Local task — track in memory only, no cookie, no dbjobs dispatch
+			server.JobsUpdateState(task, "", 0, 0)
+		}
+		return 0, nil
+	}
+
 	if server.Conn == nil {
 		return 0, fmt.Errorf("No pool connection")
 	}
@@ -429,7 +519,56 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 	return res.LastInsertId()
 }
 
+// setTaskCookie maps a remote task name to the corresponding wait cookie for
+// API mode. Only remote tasks (executed by the dbjobs script on the database
+// host) are listed here. Logical tasks (mysqldump, mydumper, analyze, etc.)
+// are executed directly by replication-manager and must NOT have cookies set,
+// otherwise the dbjobs script would also attempt to run them.
+func (server *ServerMonitor) setTaskCookie(task string) error {
+	switch config.TaskName(task) {
+	// Physical backup — dbjobs runs xtrabackup/mariabackup on DB host
+	case config.ConstTaskXB, config.ConstTaskMB:
+		return server.SetWaitPhysicalBackupCookie()
+	// Optimize — dbjobs runs mysqlcheck on DB host
+	case config.ConstTaskOptimize:
+		return server.SetWaitOptimizeCookie()
+	// Service control — dbjobs runs systemctl on DB host
+	case config.ConstTaskRestart:
+		return server.SetWaitRestartCookie()
+	case config.ConstTaskStop:
+		return server.SetWaitStopCookie()
+	case config.ConstTaskStart:
+		return server.SetWaitStartCookie()
+	// Reseed/flashback — dbjobs receives stream and prepares on DB host
+	case config.ConstTaskReseedXB:
+		return server.SetWaitReseedXtrabackupCookie()
+	case config.ConstTaskReseedMB:
+		return server.SetWaitReseedMariabackupCookie()
+	case config.ConstTaskFlashXB:
+		return server.SetWaitFlashbackXtrabackupCookie()
+	case config.ConstTaskFlashMB:
+		return server.SetWaitFlashbackMariabackupCookie()
+	// Log collection — dbjobs reads local log files on DB host
+	case config.ConstTaskError:
+		return server.SetWaitErrorlogCookie()
+	case config.ConstTaskSlowQuery:
+		return server.SetWaitSlowqueryCookie()
+	case config.ConstTaskAuditLog:
+		return server.SetWaitAuditlogCookie()
+	case config.ConstTaskSqlError:
+		return server.SetWaitSqlErrorlogCookie()
+	// ZFS — dbjobs runs zfs rollback on DB host
+	case config.ConstTaskZFS:
+		return server.createCookie("cookie_waitzfssnapback")
+	default:
+		return fmt.Errorf("no cookie mapping for task %s", task)
+	}
+}
+
 func (server *ServerMonitor) HasRunningDBJobs() (bool, error) {
+	if server.ClusterGroup.Conf.SchedulerJobsMode == "api" {
+		return false, nil
+	}
 	if server.Conn == nil {
 		return false, errors.New("no pool connection")
 	}
@@ -494,6 +633,9 @@ func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 
 func (server *ServerMonitor) JobsCheckRunning() error {
 	cluster := server.ClusterGroup
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return server.jobsCheckRunningFromMemory()
+	}
 	if server.IsDown() || cluster.InRollingRestart {
 		return nil
 	}
@@ -555,7 +697,42 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 	return nil
 }
 
+// jobsCheckRunningFromMemory scans JobResults for pending tasks in API mode
+// and sets the same WARN states as the SQL-based JobsCheckRunning.
+func (server *ServerMonitor) jobsCheckRunningFromMemory() error {
+	cluster := server.ClusterGroup
+	server.JobResults.Range(func(k, v any) bool {
+		t := v.(*config.Task)
+		if t.Done == 1 {
+			return true // skip completed
+		}
+		switch config.TaskName(t.Task) {
+		case config.ConstTaskOptimize:
+			cluster.SetState("WARN0072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0072"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		case config.ConstTaskRestart:
+			cluster.SetState("WARN0096", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0096"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		case config.ConstTaskStop:
+			cluster.SetState("WARN0097", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0097"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		case config.ConstTaskXB, config.ConstTaskMB:
+			cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0073"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		case config.ConstTaskReseedXB, config.ConstTaskReseedMB:
+			cluster.SetState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0074"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		case config.ConstTaskReseedDump:
+			cluster.SetState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0075"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		case config.ConstTaskFlashXB, config.ConstTaskFlashMB:
+			cluster.SetState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0076"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		case config.ConstTaskFlashDump:
+			cluster.SetState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0077"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		}
+		return true
+	})
+	return nil
+}
+
 func (server *ServerMonitor) JobsCheckPending(Conn *sqlx.Conn) error {
+	if server.ClusterGroup.Conf.SchedulerJobsMode == "api" {
+		return nil
+	}
 	var err error
 	// Prevent interrupting current reseed
 	if inReseed, task := server.GetReseedingState(); inReseed {
@@ -997,6 +1174,11 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job state updated in runtime. Continue to update state in jobs table.")
 
+	// In API mode, state is tracked in memory only — no jobs table
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return nil
+	}
+
 	if !cluster.Conf.MonitorScheduler {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Monitoring scheduler is inactive, task only updated in runtime")
 		return nil
@@ -1033,6 +1215,10 @@ func (server *ServerMonitor) JobsUpdatePayload(task, payload string) error {
 		t.Payload = payload
 	} else {
 		t.Payload = payload
+	}
+
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return nil
 	}
 
 	if !cluster.Conf.MonitorScheduler {

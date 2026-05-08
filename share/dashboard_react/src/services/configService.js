@@ -60,5 +60,5 @@ function getComplianceDiff(clusterName, baseURL) {
 }
 
 function acceptCompliance(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/accept-compliance`)
+  return getApi(baseURL).post(`clusters/${clusterName}/settings/actions/accept-compliance`)
 }

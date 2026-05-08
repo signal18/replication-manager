@@ -229,6 +229,7 @@ type ServerMonitor struct {
 	IsRefreshingBinlog          bool
 	IsRefreshingBinlogMeta      bool
 	IsLoadingJobList            bool
+	jobsAPIHousekeepingDone     bool                        // true after schema ensured + jobs table dropped in API mode
 	NeedRefreshJobs             bool
 	lastJobsRefreshAttempt      time.Time
 	PointInTimeMeta             backupmgr.PointInTimeMeta
@@ -1702,6 +1703,7 @@ func (server *ServerMonitor) SaveInfos() error {
 		SlaveStatus           []dbhelper.SlaveStatus     `json:"slavestatus"`
 		MaxSlowQueryTimestamp int64                      `json:"maxSlowQueryTimestamp"`
 		DictTables            map[string]*dbhelper.Table `json:"dictTables,omitempty"`
+		JobResults            map[string]*config.Task    `json:"jobResults,omitempty"`
 	}
 	var clsave Save
 	clsave.Variables = server.SensitiveVariables.ToNewMap()
@@ -1711,6 +1713,9 @@ func (server *ServerMonitor) SaveInfos() error {
 	clsave.MaxSlowQueryTimestamp = server.MaxSlowQueryTimestamp
 	if server.DictTables != nil {
 		clsave.DictTables = server.DictTables.ToNewMap()
+	}
+	if server.JobResults != nil {
+		clsave.JobResults = server.JobResults.ToNewMap()
 	}
 	saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
 	err := os.WriteFile(server.Datadir+"/serverstate.json", saveJSON, 0644)
@@ -1729,6 +1734,7 @@ func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 		SlaveStatus           []dbhelper.SlaveStatus     `json:"slavestatus"`
 		MaxSlowQueryTimestamp int64                      `json:"maxSlowQueryTimestamp"`
 		DictTables            map[string]*dbhelper.Table `json:"dictTables,omitempty"`
+		JobResults            map[string]*config.Task    `json:"jobResults,omitempty"`
 	}
 
 	var clsave Save
@@ -1760,6 +1766,18 @@ func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"Restored %d table definitions from cache for server %s", len(clsave.DictTables), server.URL)
+	}
+	// Restore job results — preserves last task states across restarts so
+	// the maintenance tab shows history and in-progress detection works.
+	if len(clsave.JobResults) > 0 {
+		if server.JobResults == nil {
+			server.JobResults = config.NewTasksMap()
+		}
+		for k, v := range clsave.JobResults {
+			server.JobResults.Set(k, v)
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Restored %d job results from cache for server %s", len(clsave.JobResults), server.URL)
 	}
 	return nil
 }

@@ -268,7 +268,7 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/settings/actions/accept-compliance", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAcceptCompliance)),
-	))
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/configurator/compliance-diff", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxComplianceDiff)),
@@ -5694,7 +5694,8 @@ func (repman *ReplicationManager) handlerMuxAcceptCompliance(w http.ResponseWrit
 		return
 	}
 	if err := mycluster.AcceptComplianceUpdate(); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err), http.StatusInternalServerError)
+		errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
+		http.Error(w, string(errJSON), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -5709,6 +5710,10 @@ func (repman *ReplicationManager) handlerMuxComplianceDiff(w http.ResponseWriter
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
 		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
 

@@ -89,6 +89,14 @@ var databaseACLRules = []ACLRule{
 	{"/actions/wait-innodb-purge", nil, []string{config.GrantDBMaintenance}},
 	{"/actions/jobs-upgrade", nil, []string{config.GrantDBMaintenance}},
 
+	// Job dispatch actions (dbjobs script API)
+	{"/needs/", nil, []string{config.GrantDBJobs}},
+	{"/write-log/", nil, []string{config.GrantDBJobs}},
+	{"/actions/receive-task/", nil, []string{config.GrantDBJobs}},
+	{"/actions/job-state/", nil, []string{config.GrantDBJobs}},
+	{"/actions/receive-jobs-check", nil, []string{config.GrantDBJobs}},
+	{"/actions/send-jobs-upgrade", nil, []string{config.GrantDBJobs}},
+
 	// Show actions
 	{"/variables", nil, []string{config.GrantDBShowVariables}},
 	{"/tables", nil, []string{config.GrantDBShowSchema}},
@@ -214,6 +222,7 @@ var clusterACLRules = []ACLRule{
 	{"/settings/actions/reload", nil, []string{config.GrantClusterSettings}},
 	{"/settings/actions/reload-plan-info", nil, []string{config.GrantClusterSettings}},
 	{"/settings/actions/accept-compliance", nil, []string{config.GrantDBConfigAcceptCompliance, config.GrantProxyConfigAcceptCompliance}},
+	{"/configurator/compliance-diff", nil, []string{config.GrantDBConfigGet}},
 	{"/settings/actions/switch", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/set", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/clear", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
