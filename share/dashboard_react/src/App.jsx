@@ -87,6 +87,17 @@ function App() {
             <TerminalComponent />
           </PrivateRoute>
         } />
+        {/* /billing is served by Home — the Billing tab is rendered inside Home
+            for SSO users when Cloud18 is enabled. This route allows deep-linking
+            and programmatic navigation to that section without a dedicated page. */}
+        <Route
+          path='/billing'
+          element={
+            <PrivateRoute>
+              <Home />
+            </PrivateRoute>
+          }
+        />
         <Route path='/login' element={<Login />} />
         <Route path='/signup' element={<Signup />} />
         <Route path='/dashboard' element={<Login dashboard />} />

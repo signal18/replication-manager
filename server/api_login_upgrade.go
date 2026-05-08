@@ -127,7 +127,8 @@ func (s *LoginUpgradeStore) get(id string) (*LoginUpgradeJob, bool) {
 func (repman *ReplicationManager) upgradeHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	// Fix 2: answer CORS preflight before any other processing.
+	// Answer CORS preflight before auth so the browser receives CORS headers
+	// on the preflight response rather than an auth failure (401/400).
 	if r.Method == http.MethodOptions {
 		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
@@ -137,7 +138,8 @@ func (repman *ReplicationManager) upgradeHandler(w http.ResponseWriter, r *http.
 
 	w.Header().Set("Content-Type", "application/json")
 
-	// Fix 1: require the local JWT issued at login; bind poll to its owner.
+	// Require the local JWT issued at login so the upgrade_id cannot be
+	// redeemed by a different user, even if it leaks (e.g. from logs or headers).
 	owner := repman.GetUserFromRequest(r)
 	if owner == "" {
 		http.Error(w, `{"error":"authorization required"}`, http.StatusUnauthorized)
@@ -164,7 +166,7 @@ func (repman *ReplicationManager) upgradeHandler(w http.ResponseWriter, r *http.
 	job.mu.Lock()
 	defer job.mu.Unlock()
 
-	// Fix 1 (cont.): verify the polling client owns this job.
+	// Enforce ownership: the poll must come from the same user who initiated the login.
 	if job.Owner != owner {
 		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 		return
@@ -177,8 +179,8 @@ func (repman *ReplicationManager) upgradeHandler(w http.ResponseWriter, r *http.
 			clientIP(job.SourceIP), clientIP(r.RemoteAddr), owner)
 	}
 
-	// Fix 3: expire only pending jobs on the pending TTL; ready jobs have their
-	// own delivery window measured from when the upgrade completed.
+	// Pending and ready jobs have independent TTLs. A job that completes near
+	// the end of the pending window still has the full delivery window available.
 	if job.Status == upgradeStatusPending && time.Since(job.CreatedAt) > upgradeJobTTL {
 		job.Status = upgradeStatusExpired
 		job.TerminalAt = time.Now()
@@ -238,7 +240,6 @@ func (repman *ReplicationManager) cleanupExpiredLoginUpgradeJobs() {
 		job.mu.Lock()
 		age := time.Since(job.CreatedAt)
 
-		// Fix 3: separate TTLs for pending and ready states.
 		if job.Status == upgradeStatusPending && age > upgradeJobTTL {
 			job.Status = upgradeStatusExpired
 			job.TerminalAt = time.Now()
@@ -510,6 +511,9 @@ func (repman *ReplicationManager) runAsyncSSOUpgrade(
 			"SSO upgrade: error retrieving meet token: %v", err)
 	}
 
+	// TODO(deferred): The encrypted password is still embedded in JWT claims
+	// because several routes extract it for peer-login and ACL checks. Removing
+	// it from the token is a separate JWT claim-contract migration (own PR).
 	var userInfo interface{}
 	if email != "" {
 		userInfo = struct {
