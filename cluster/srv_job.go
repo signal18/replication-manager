@@ -116,8 +116,9 @@ WHERE table_schema = 'replication_manager_schema'
 
 func (server *ServerMonitor) JobsCreateTable() error {
 	cluster := server.ClusterGroup
-	// In API mode the jobs table is not used — skip creation entirely
+	// In API mode the jobs table is not used — drop it if it exists and skip creation
 	if cluster.Conf.SchedulerJobsMode == "api" {
+		server.jobsDropTable()
 		return nil
 	}
 	if err := server.jobsCreateTable(); err != nil {
@@ -125,6 +126,27 @@ func (server *ServerMonitor) JobsCreateTable() error {
 	}
 
 	return nil
+}
+
+// jobsDropTable drops the jobs table when switching to API mode.
+// Uses sql_log_bin=0 to avoid replication of the DDL.
+func (server *ServerMonitor) jobsDropTable() {
+	cluster := server.ClusterGroup
+	if server.IsDown() || server.Conn == nil {
+		return
+	}
+	conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	// /* replication-manager */ DROP IF EXISTS avoids errors when table is already gone
+	_, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "/* replication-manager */ DROP TABLE IF EXISTS replication_manager_schema.jobs")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to drop jobs table on %s: %s", server.URL, err)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Dropped jobs table on %s (switched to API mode)", server.URL)
+	}
 }
 
 func (server *ServerMonitor) jobsCreateTable() error {
