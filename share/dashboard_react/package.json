@@ -26,7 +26,7 @@
     "@xterm/xterm": "^5.5.0",
     "@zag-js/react": "^1.15.0",
     "@zag-js/tree-view": "^1.15.0",
-    "axios": "^1.15.0",
+    "axios": "^1.15.2",
     "cubism": "^1.6.0",
     "framer-motion": "^11.18.2",
     "lodash": "^4.18.1",
