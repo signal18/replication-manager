@@ -122,10 +122,15 @@ func (server *ServerMonitor) JobsCreateTable() error {
 	// In API mode the jobs table is not used — but still ensure the
 	// replication_manager_schema database exists (needed by checksum, benchmarks, etc.)
 	if cluster.Conf.SchedulerJobsMode == "api" {
-		server.ensureReplicationManagerSchema()
-		server.jobsDropTable()
+		if !server.jobsAPIHousekeepingDone {
+			server.ensureReplicationManagerSchema()
+			server.jobsDropTable()
+			server.jobsAPIHousekeepingDone = true
+		}
 		return nil
 	}
+	// Reset if mode switches back to sql
+	server.jobsAPIHousekeepingDone = false
 	if err := server.jobsCreateTable(); err != nil {
 		cluster.SetState("WARN0153", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0153"], server.URL, err), ErrFrom: "JOB"})
 	}
@@ -435,9 +440,6 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 	// Remote tasks: set a cookie so the dbjobs script discovers them via the needs API.
 	// Local tasks (mysqldump, mydumper): only track state in memory — repman runs them directly.
 	if cluster.Conf.SchedulerJobsMode == "api" {
-		if cluster.Conf.SchedulerJobsExecOverrides == nil {
-			cluster.Conf.ParseJobsExecOverrides()
-		}
 		if config.IsRemoteTask(config.TaskName(task), cluster.Conf.SchedulerJobsExecOverrides) {
 			if err := server.setTaskCookie(task); err != nil {
 				return 0, fmt.Errorf("Failed to set cookie for remote task %s: %v", task, err)

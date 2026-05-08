@@ -229,6 +229,7 @@ type ServerMonitor struct {
 	IsRefreshingBinlog          bool
 	IsRefreshingBinlogMeta      bool
 	IsLoadingJobList            bool
+	jobsAPIHousekeepingDone     bool                        // true after schema ensured + jobs table dropped in API mode
 	NeedRefreshJobs             bool
 	lastJobsRefreshAttempt      time.Time
 	PointInTimeMeta             backupmgr.PointInTimeMeta

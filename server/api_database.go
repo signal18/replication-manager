@@ -522,16 +522,28 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	))
 	// Job dispatch endpoints — require db-jobs grant via ACL rules
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{taskname}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeeds)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{task}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersWriteLog)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReceiveTask)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/job-state/{taskname}/{jobstate}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobState)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-jobs-check", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsCheckReceiver)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/send-jobs-upgrade", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsUpgradeSender)),
 	))
 	router.Handle("/api/terminal/connect/clusters/{clusterName}/servers/{serverName}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
@@ -4975,7 +4987,7 @@ func (repman *ReplicationManager) handlerMuxServerJobsCheckReceiver(w http.Respo
 // @Param serverName path string true "Server hostname"
 // @Param serverPort path string true "Server port"
 // @Param taskname path string true "Task name (xtrabackup, mariabackup, errorlog, etc.)"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname} [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname} [post]
 func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -5074,7 +5086,7 @@ func (repman *ReplicationManager) handlerMuxServerJobState(w http.ResponseWriter
 	case "done":
 		node.JobsUpdateState(taskname, "completed", cluster.JobStateSuccess, 1)
 	case "error":
-		node.JobsUpdateState(taskname, "error", cluster.JobStateErrorExec, 0)
+		node.JobsUpdateState(taskname, "error", cluster.JobStateErrorExec, 1)
 	case "waiting":
 		node.JobsUpdateState(taskname, "waiting", cluster.JobStateHalted, 0)
 	default:

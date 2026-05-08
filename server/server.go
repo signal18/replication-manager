@@ -1499,6 +1499,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 
 	repman.PeerManager = peer.NewPeerManager(repman.Conf.Cloud18HealthRefreshInterval)
 	repman.PeerManager.HealthMode = repman.Conf.Cloud18PeerHealthMode
+	conf.ParseJobsExecOverrides()
 	repman.ModTimes = make(map[string]time.Time)
 	repman.ServerScopeList = make(map[string]bool)
 	repman.VersionConfs = make(map[string]*config.ConfVersion)

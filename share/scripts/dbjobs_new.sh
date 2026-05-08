@@ -92,7 +92,13 @@ readonly LOG_MAX_SIZE=1048576  # 1MB
 # Job dispatch mode: "sql" (poll jobs table) or "api" (check cookies via API)
 # Container mode: %%ENV:SVC_CONF_ENV_JOBS_MODE%% is substituted at tarball build
 # SSH mode: REPLICATION_MANAGER_JOBS_MODE is exported by GetSshEnv()
-readonly JOBS_MODE="${REPLICATION_MANAGER_JOBS_MODE:-%%ENV:SVC_CONF_ENV_JOBS_MODE%%}"
+# Resolve jobs mode: env var (SSH mode) → template placeholder (container mode) → default "sql"
+_JOBS_MODE="${REPLICATION_MANAGER_JOBS_MODE:-%%ENV:SVC_CONF_ENV_JOBS_MODE%%}"
+# If template was not substituted, fall back to sql
+if [[ "$_JOBS_MODE" == *"%%ENV:"* ]]; then
+    _JOBS_MODE="sql"
+fi
+readonly JOBS_MODE="$_JOBS_MODE"
 
 # Job types
 readonly -a JOBS=(
