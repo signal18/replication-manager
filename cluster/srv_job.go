@@ -203,19 +203,32 @@ func (server *ServerMonitor) jobsCreateTable() error {
 		return nil
 	}
 
-	_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
-	if err != nil {
-		return fmt.Errorf("Failed to create replication_manager_schema: %v", err)
+	// Check if schema exists before CREATE to avoid metadata lock on every tick
+	var schemaExists int
+	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &schemaExists,
+		"/* replication-manager */ SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name='replication_manager_schema'")
+	if schemaExists == 0 {
+		_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "/* replication-manager */ CREATE DATABASE IF NOT EXISTS replication_manager_schema")
+		if err != nil {
+			return fmt.Errorf("Failed to create replication_manager_schema: %v", err)
+		}
 	}
 
-	createquery := `CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result MEDIUMTEXT, payload MEDIUMTEXT, start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb`
-	_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, createquery)
-	if err != nil {
-		return fmt.Errorf("Failed to create jobs table: %v", err)
+	createquery := `/* replication-manager */ CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result MEDIUMTEXT, payload MEDIUMTEXT, start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb`
+
+	// Check if jobs table exists before CREATE to avoid metadata lock on every tick
+	var tableExists int
+	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &tableExists,
+		"/* replication-manager */ SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='replication_manager_schema' AND table_name='jobs'")
+	if tableExists == 0 {
+		_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, createquery)
+		if err != nil {
+			return fmt.Errorf("Failed to create jobs table: %v", err)
+		}
 	}
 
 	var exist int
-	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "SELECT COUNT(CASE WHEN COLUMN_KEY = 'UNI' THEN 1 END) AS num_task_unique FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
+	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "/* replication-manager */ SELECT COUNT(CASE WHEN COLUMN_KEY = 'UNI' THEN 1 END) AS num_task_unique FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
 
 	if exist == 0 {
 		server.ConnExecQueryWithTimeout(Conn, JobTimeout, "DROP TABLE IF EXISTS replication_manager_schema.jobs")
