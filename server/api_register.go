@@ -898,12 +898,18 @@ func isAllowedOfflineInstancePlan(plan string) bool {
 func (repman *ReplicationManager) persistInstanceSubscriptionPlan(plan, uri string) {
 	repman.Conf.Cloud18SubscriptionPlan = plan
 	if repman.ConfigManager != nil {
-		repman.ConfigManager.SaveConfig(repman, false)
+		repman.ConfigManager.SaveConfig(repman, true)
+	} else {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"persistInstanceSubscriptionPlan: repman ConfigManager unavailable, plan %q not persisted to disk", plan)
 	}
 	for _, cl := range repman.Clusters {
 		cl.Conf.Cloud18SubscriptionPlan = plan
 		if cl.ConfigManager != nil {
-			cl.ConfigManager.SaveConfig(cl, false)
+			cl.ConfigManager.SaveConfig(cl, true)
+		} else {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"persistInstanceSubscriptionPlan: cluster %q ConfigManager unavailable, plan %q not persisted to disk", cl.GetName(), plan)
 		}
 	}
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,

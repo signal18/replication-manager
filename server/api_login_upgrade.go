@@ -31,28 +31,42 @@ var upgradeBackoffDelays = []time.Duration{250 * time.Millisecond, 750 * time.Mi
 
 // LoginUpgradeJob tracks the state of an async SSO upgrade started during login.
 type LoginUpgradeJob struct {
-	mu        sync.Mutex
-	Status    string    // pending, ready, failed, consumed, expired
-	NewJWT    string    // set on success, cleared after one-time delivery
-	Reason    string    // credential_mismatch, not_registered, unknown_non_retryable, claim_mismatch, retry_exhausted
-	Error     string    // internal detail, never exposed to client
-	Attempts  int
-	CreatedAt time.Time
-	ReadyAt   time.Time // set when SSO upgrade succeeds; governs delivery TTL
-	Owner     string    // username from the login JWT; used to bind poll requests
-	SourceIP  string    // login request IP; used for soft change detection
+	mu         sync.Mutex
+	Status     string    // pending, ready, failed, consumed, expired
+	NewJWT     string    // set on success, cleared after one-time delivery
+	Reason     string    // credential_mismatch, not_registered, unknown_non_retryable, claim_mismatch, retry_exhausted
+	Error      string    // internal detail, never exposed to client
+	Attempts   int
+	CreatedAt  time.Time
+	ReadyAt    time.Time // set when SSO upgrade succeeds; governs delivery TTL
+	TerminalAt time.Time // set when job first reaches a terminal state; grace period measured from here
+	Owner      string    // username from the login JWT; used to bind poll requests
+	SourceIP   string    // login request IP; used for soft change detection
 }
 
 // LoginUpgradeStore is an in-memory map of upgrade jobs keyed by upgrade_id.
 type LoginUpgradeStore struct {
-	mu   sync.RWMutex
-	Jobs map[string]*LoginUpgradeJob
+	mu           sync.RWMutex
+	Jobs         map[string]*LoginUpgradeJob
+	done         chan struct{} // closed by Shutdown to stop the background cleanup goroutine
+	shutdownOnce sync.Once
 }
 
 func newLoginUpgradeStore() *LoginUpgradeStore {
 	return &LoginUpgradeStore{
 		Jobs: make(map[string]*LoginUpgradeJob),
+		done: make(chan struct{}),
 	}
+}
+
+// Shutdown stops the background cleanup goroutine associated with this store.
+// It is safe to call multiple times (subsequent calls are no-ops).
+func (s *LoginUpgradeStore) Shutdown() {
+	s.shutdownOnce.Do(func() {
+		if s.done != nil {
+			close(s.done)
+		}
+	})
 }
 
 func newUpgradeID() (string, error) {
@@ -154,9 +168,11 @@ func (repman *ReplicationManager) upgradeHandler(w http.ResponseWriter, r *http.
 	// own delivery window measured from when the upgrade completed.
 	if job.Status == "pending" && time.Since(job.CreatedAt) > upgradeJobTTL {
 		job.Status = "expired"
+		job.TerminalAt = time.Now()
 	}
 	if job.Status == "ready" && !job.ReadyAt.IsZero() && time.Since(job.ReadyAt) > upgradeJobReadyDeliveryTTL {
 		job.Status = "expired"
+		job.TerminalAt = time.Now()
 	}
 
 	switch job.Status {
@@ -167,6 +183,7 @@ func (repman *ReplicationManager) upgradeHandler(w http.ResponseWriter, r *http.
 	case "ready":
 		newJWT := job.NewJWT
 		job.Status = "consumed"
+		job.TerminalAt = time.Now()
 		job.NewJWT = "" // one-time delivery; clear immediately to prevent replay
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"token": newJWT})
@@ -211,15 +228,19 @@ func (repman *ReplicationManager) cleanupExpiredLoginUpgradeJobs() {
 		// Fix 3: separate TTLs for pending and ready states.
 		if job.Status == "pending" && age > upgradeJobTTL {
 			job.Status = "expired"
+			job.TerminalAt = time.Now()
 		}
 		if job.Status == "ready" && !job.ReadyAt.IsZero() && time.Since(job.ReadyAt) > upgradeJobReadyDeliveryTTL {
 			job.Status = "expired"
+			job.TerminalAt = time.Now()
 		}
 
-		// Delete once the grace period has passed (gives repeat polls a
-		// deterministic 410 response before the marker disappears).
-		shouldDelete := age > upgradeJobGracePeriod &&
-			(job.Status == "consumed" || job.Status == "expired" || job.Status == "failed")
+		// Delete once the grace period has passed since the job became terminal.
+		// Measuring from TerminalAt (not CreatedAt) ensures the full grace window
+		// is always available for repeat polls, regardless of how long the job
+		// spent in pending/ready before reaching its terminal state.
+		isTerminal := job.Status == "consumed" || job.Status == "expired" || job.Status == "failed"
+		shouldDelete := isTerminal && !job.TerminalAt.IsZero() && time.Since(job.TerminalAt) > upgradeJobGracePeriod
 		job.mu.Unlock()
 
 		if shouldDelete {
@@ -229,19 +250,29 @@ func (repman *ReplicationManager) cleanupExpiredLoginUpgradeJobs() {
 }
 
 // startLoginUpgradeCleanup launches the background goroutine that sweeps
-// stale upgrade jobs every 30 seconds. Call once during server init.
+// stale upgrade jobs every 30 seconds. The goroutine exits when the store's
+// done channel is closed via LoginUpgradeStore.Shutdown().
 func (repman *ReplicationManager) startLoginUpgradeCleanup() {
+	done := repman.LoginUpgradeStore.done
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
-		for range ticker.C {
-			repman.cleanupExpiredLoginUpgradeJobs()
+		for {
+			select {
+			case <-ticker.C:
+				repman.cleanupExpiredLoginUpgradeJobs()
+			case <-done:
+				return
+			}
 		}
 	}()
 }
 
 // ensureLoginUpgradeInfra initializes the in-memory login upgrade store and
-// cleanup goroutine exactly once in a concurrency-safe way.
+// cleanup goroutine exactly once in a concurrency-safe way. The cleanup
+// goroutine is only started when the store itself is created here; if
+// LoginUpgradeStore was set externally (e.g., in tests) the caller owns the
+// cleanup lifecycle.
 //
 // Returns true only when this call had to create the store lazily.
 func (repman *ReplicationManager) ensureLoginUpgradeInfra() bool {
@@ -249,9 +280,9 @@ func (repman *ReplicationManager) ensureLoginUpgradeInfra() bool {
 	repman.LoginUpgradeInitOnce.Do(func() {
 		if repman.LoginUpgradeStore == nil {
 			repman.LoginUpgradeStore = newLoginUpgradeStore()
+			repman.startLoginUpgradeCleanup()
 			created = true
 		}
-		repman.startLoginUpgradeCleanup()
 	})
 	return created
 }
@@ -432,6 +463,7 @@ func (repman *ReplicationManager) runAsyncSSOUpgrade(
 		job.mu.Lock()
 		job.Status = "failed"
 		job.Reason = failReason
+		job.TerminalAt = time.Now()
 		if lastErr != nil {
 			job.Error = lastErr.Error()
 		}
@@ -488,6 +520,7 @@ func (repman *ReplicationManager) runAsyncSSOUpgrade(
 		job.mu.Lock()
 		job.Status = "failed"
 		job.Reason = "claim_mismatch"
+		job.TerminalAt = time.Now()
 		job.Error = err.Error()
 		job.mu.Unlock()
 		return
@@ -502,4 +535,3 @@ func (repman *ReplicationManager) runAsyncSSOUpgrade(
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo,
 		"SSO upgrade completed for user %s", username)
 }
-

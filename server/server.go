@@ -2952,6 +2952,10 @@ func (repman *ReplicationManager) Stop() {
 		repman.globalScheduler.Stop()
 	}
 
+	if repman.LoginUpgradeStore != nil {
+		repman.LoginUpgradeStore.Shutdown()
+	}
+
 	httpCtx, httpCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer httpCancel()
 

@@ -173,6 +173,7 @@ func newTestRepmanWithStore(t *testing.T) *ReplicationManager {
 	repman.Conf = &config.Config{TokenTimeout: 1} // non-zero so JWTs don't expire immediately
 	repman.LoginUpgradeStore = newLoginUpgradeStore()
 	repman.initKeys()
+	t.Cleanup(func() { repman.LoginUpgradeStore.Shutdown() })
 	return repman
 }
 
@@ -405,13 +406,13 @@ func TestCleanupExpiredJobs(t *testing.T) {
 	expiredID, expiredJob := mustCreateJob(t, repman.LoginUpgradeStore, "u", "")
 	expiredJob.mu.Lock()
 	expiredJob.Status = "expired"
-	expiredJob.CreatedAt = time.Now().Add(-(upgradeJobGracePeriod + time.Second))
+	expiredJob.TerminalAt = time.Now().Add(-(upgradeJobGracePeriod + time.Second))
 	expiredJob.mu.Unlock()
 
 	consumedID, consumedJob := mustCreateJob(t, repman.LoginUpgradeStore, "u", "")
 	consumedJob.mu.Lock()
 	consumedJob.Status = "consumed"
-	consumedJob.CreatedAt = time.Now().Add(-(upgradeJobGracePeriod + time.Second))
+	consumedJob.TerminalAt = time.Now().Add(-(upgradeJobGracePeriod + time.Second))
 	consumedJob.mu.Unlock()
 
 	repman.cleanupExpiredLoginUpgradeJobs()

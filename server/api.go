@@ -139,12 +139,16 @@ type AuthTokenWithUpgrade struct {
 // issueJWT builds and signs an RS256 JWT with the supplied userInfo and GitLab
 // token claims.  gitlabToken may be empty for local-only users.
 func (repman *ReplicationManager) issueJWT(userInfo interface{}, gitlabToken string) (string, error) {
+	jti, err := newUpgradeID()
+	if err != nil {
+		return "", fmt.Errorf("issueJWT: failed to generate token ID: %w", err)
+	}
 	signer := jwt.New(jwt.SigningMethodRS256)
 	claims := signer.Claims.(jwt.MapClaims)
 	claims["iss"] = "https://api.replication-manager.signal18.io"
 	claims["iat"] = time.Now().Unix()
 	claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
-	claims["jti"] = "1"
+	claims["jti"] = jti
 	claims["token"] = gitlabToken
 	claims["CustomUserInfo"] = userInfo
 	signer.Claims = claims
