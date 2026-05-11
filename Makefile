@@ -35,7 +35,7 @@ pro osc emb pro-basedir : react
 
 react:
 	$(Building react frontend $(REACT))
-	@if [ $(WITH_REACT) = "ON" ]; then rm -r ./share/dashboard/assets; npm --prefix=./share/dashboard_react install; npm --prefix=./share/dashboard_react run build; cp -rp ./share/dashboard_react/dist/* ./share/dashboard/; fi
+	@if [ $(WITH_REACT) = "ON" ]; then rm -rf ./share/dashboard/assets; npm --prefix=./share/dashboard_react install; npm --prefix=./share/dashboard_react run build; cp -rp ./share/dashboard_react/dist/* ./share/dashboard/; fi
 
 osc: osc-bin plugins
 
