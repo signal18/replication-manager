@@ -66,7 +66,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
         ]}
         selectedValue={selectedCluster?.config?.schedulerJobsMode || 'sql'}
         confirmTitle="Confirm job dispatch mode: "
-        onChange={(opt) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'scheduler-jobs-mode', value: opt.value }))}
+        onChange={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'scheduler-jobs-mode', value: value }))}
       />
     )},
     { key: 'Force Remote Execution', help: h(hExecRemote, 'Force Remote Execution'), value: (
