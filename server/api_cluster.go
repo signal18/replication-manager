@@ -3579,6 +3579,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetSchedulerSlaRotateCron(value)
 	case "scheduler-jobs-ssh-cron":
 		mycluster.SetSchedulerJobsSshCron(value)
+	case "scheduler-jobs-mode":
+		mycluster.Conf.SchedulerJobsMode = value
+	case "scheduler-jobs-exec-remote":
+		mycluster.Conf.SchedulerJobsExecRemote = value
+		mycluster.Conf.ParseJobsExecOverrides()
 	case "scheduler-alert-disable-cron":
 		mycluster.SetSchedulerAlertDisableCron(value)
 	case "monitoring-schema-scheduler-cron":
