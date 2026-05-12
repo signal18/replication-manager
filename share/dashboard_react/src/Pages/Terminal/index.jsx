@@ -98,7 +98,7 @@ const TerminalComponent = () => {
     if (clusterData) {
       const servers = clusterData.dbServers || [];
       const proxies = clusterData.proxyServers || [];
-      const apps = clusterData.apps || [];
+      const apps = clusterData.appServers || [];
 
       if (serverName) {
         if (!servers.find(srv => srv === serverName)) {
@@ -109,7 +109,7 @@ const TerminalComponent = () => {
           navigate(`/`);
         }
       } else if (appName) {
-        if (!apps.find(app => app.id === appName)) {
+        if (!apps.find(app => app === appName)) {
           navigate(`/`);
         }
       }

@@ -39,7 +39,7 @@ function AppTable({ apps = [], isDesktop, clusterName, showGridView, user, state
           width: '40px'
         }
       ),
-      columnHelper.accessor((row) => (<Link to={`/clusters/${clusterName}/app/${row?.id}`}>
+      columnHelper.accessor((row) => (<Link to={`/clusters/${clusterName}/apps/${row?.id}`}>
         <ServerName name={`${row.host}`} />
       </Link>), {
         cell: (info) => info.getValue(),

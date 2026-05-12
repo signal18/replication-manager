@@ -26,8 +26,8 @@ function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView',
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (row?.appId) {
-      setAppName(`${row.server} (${row.appId})`)
+    if (row?.id) {
+      setAppName(`${row.host}:${row.port} (${row.id})`)
     }
   }, [row])
 

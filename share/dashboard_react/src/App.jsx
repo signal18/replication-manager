@@ -45,7 +45,7 @@ function App() {
           }
         />
         <Route
-          path={'/clusters/:cluster/app/:appname'}
+          path={'/clusters/:cluster/apps/:appname'}
           element={
             <PrivateRoute>
               <ClusterApp />
