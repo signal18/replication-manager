@@ -94,6 +94,7 @@ PLUGIN_COMMON_SRCS := $(wildcard cluster/logplugin/*.go) $(wildcard cluster/logp
 PLUGIN_BINDIR   := build/plugins
 
 # Wire protocol version — read directly from source so it never drifts.
+# Bump WireVersion in wire.go only when the stdin/stdout JSON protocol changes.
 WIRE_VERSION := $(shell grep -m1 'WireVersion = ' cluster/logplugin/plugins/wire/wire.go | awk '{print $$NF}')
 
 # Standalone plugin signing tool — no repman-server dependency.
@@ -162,8 +163,27 @@ plugins: $(PLUGIN_SIGNER_BIN)
 	elif [ -n "$(PLUGIN_SIGNER_USER)" ] && [ -n "$(PLUGIN_SIGNER_TOKEN)" ] && [ -d "$(PLUGIN_SIGNER_CLONE)/.git" ]; then \
 		WIREDIR="$(PLUGIN_SIGNER_CLONE)/plugins/$(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)"; \
 		if [ ! -d "$$WIREDIR" ]; then \
-			echo "New wire version detected (wire-v$(WIRE_VERSION)) — auto-pushing to signer repo"; \
+			echo "New wire version detected (wire-v$(WIRE_VERSION)) — pushing to signer repo"; \
 			$(MAKE) plugin-push; \
+		else \
+			CHANGED=0; \
+			for name in $(PLUGIN_NAMES); do \
+				LOCAL="$(PLUGIN_BINDIR)/$$name"; \
+				REMOTE="$$WIREDIR/$$name"; \
+				if [ -f "$$LOCAL" ] && [ -f "$$REMOTE" ]; then \
+					L=$$(sha256sum "$$LOCAL" | awk '{print $$1}'); \
+					R=$$(sha256sum "$$REMOTE" | awk '{print $$1}'); \
+					if [ "$$L" != "$$R" ]; then CHANGED=1; break; fi; \
+				elif [ -f "$$LOCAL" ]; then \
+					CHANGED=1; break; \
+				fi; \
+			done; \
+			if [ "$$CHANGED" = "1" ]; then \
+				echo "Plugin binaries changed — pushing to signer repo"; \
+				$(MAKE) plugin-push; \
+			else \
+				echo "Plugin binaries unchanged — skipping push"; \
+			fi; \
 		fi; \
 	fi
 
