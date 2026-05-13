@@ -130,6 +130,7 @@ PLUGIN_SIGNER_BIN := build/tools/plugin-signer
 PLUGIN_SIGNER_REPO  ?= https://github.com/signal18/replication-manager-plugin-signer
 PLUGIN_SIGNER_USER  ?=
 PLUGIN_SIGNER_TOKEN ?=
+PLUGIN_PUSH         ?= OFF
 PLUGIN_KEY_DIR      ?= $(HOME)/.replication-manager
 PLUGIN_SIGNING_KEY  ?= $(PLUGIN_KEY_DIR)/plugin-signing.key
 PLUGIN_SIGNING_PUB  ?= $(PLUGIN_KEY_DIR)/plugin-signing.pub
@@ -155,7 +156,8 @@ plugins: $(PLUGIN_SIGNER_BIN)
 		    -o $(PLUGIN_BINDIR)/$$name \
 		    ./cluster/logplugin/plugins/$$name/... || exit 1; \
 	done
-	$(MAKE) plugin-sigs plugin-push
+	$(MAKE) plugin-sigs
+	@if [ "$(PLUGIN_PUSH)" = "ON" ]; then $(MAKE) plugin-push; fi
 
 $(PLUGIN_SIGNER_BIN):
 	@mkdir -p $(dir $(PLUGIN_SIGNER_BIN))
