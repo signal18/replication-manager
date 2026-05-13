@@ -987,7 +987,12 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 }
 
 func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
+	agents := app.GetAppAgents()
 	svc := cluster.OpenSVCConnect()
+	numBE := len(agents)
+	if app.AppConfig.ProvAppHATopology == "failover" {
+		numBE = 1
+	}
 
 	cloud18GatewayServiceConfig := strings.Split(cluster.Conf.Cloud18GatewayService, "/")
 
@@ -1030,7 +1035,7 @@ backend ` + backend + `
     cookie SERVER insert indirect nocache dynamic
     balance roundrobin
     dynamic-cookie-key mysecretphrase
-    server-template srv 2 ` + app.Name + `.` + cluster.Name + `.svc.` + cluster.Conf.ProvOrchestratorCluster + `:` + route.Port + ` resolvers cluster check init-addr none
+    server srv ` + fmt.Sprintf("%d", numBE) + ` ` + app.Name + `.` + cluster.Name + `.svc.` + cluster.Conf.ProvOrchestratorCluster + `:` + route.Port + ` resolvers cluster check init-addr none
 `
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Creating app route fragment %s %s %s %s", cloud18GatewayServiceConfig[0], cloud18GatewayServiceConfig[2], "haproxy.cfg.d/"+backend, haproxyfragment)
 
