@@ -990,7 +990,10 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 	agents := app.GetAppAgents()
 	svc := cluster.OpenSVCConnect()
 	numBE := len(agents)
-	if app.AppConfig.ProvAppHATopology == "failover" {
+	if app.AppConfig != nil && app.AppConfig.ProvAppHATopology == "failover" {
+		numBE = 1
+	}
+	if numBE < 1 {
 		numBE = 1
 	}
 
