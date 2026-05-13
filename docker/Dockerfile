@@ -7,7 +7,9 @@ RUN apt-get update && apt-get -y install curl ca-certificates && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 COPY . .
-RUN make osc cli
+ARG PLUGIN_SIGNER_USER=""
+ARG PLUGIN_SIGNER_TOKEN=""
+RUN make osc cli PLUGIN_SIGNER_USER="$PLUGIN_SIGNER_USER" PLUGIN_SIGNER_TOKEN="$PLUGIN_SIGNER_TOKEN"
 RUN go install github.com/moul/gotty-client/cmd/gotty-client@v1.10.0
 
 FROM debian:bookworm-slim
