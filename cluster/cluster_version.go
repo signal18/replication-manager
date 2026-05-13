@@ -88,6 +88,25 @@ func (cluster *Cluster) AcceptComplianceUpdate() error {
 	return nil
 }
 
+// ReloadDockerRepos checks if a BO-pushed repos.json exists in PluginDataDir
+// and reloads the docker image tag list. Called periodically from the monitoring loop.
+// ReloadDockerRepos checks if a BO-pushed repos.json exists in PluginDataDir
+// and updates the cluster's DockerRepos list. The server-level ServiceRepos
+// is updated by the caller if needed.
+func (cluster *Cluster) ReloadDockerRepos() {
+	repos, err := cluster.Conf.GetDockerRepos("", false)
+	if err != nil {
+		return
+	}
+	if len(repos) > 0 && len(repos) != len(cluster.DockerRepos) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Docker image repos updated: %d repos loaded from back office plugins/data/repos.json", len(repos))
+	}
+	if len(repos) > 0 {
+		cluster.DockerRepos = repos
+	}
+}
+
 func (cluster *Cluster) SetDBClientVersion(v *version.Version) error {
 	if v == nil {
 		return fmt.Errorf("nil version provided")

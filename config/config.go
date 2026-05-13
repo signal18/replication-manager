@@ -2418,7 +2418,12 @@ func (conf *Config) GetMemoryPctThreaded() (map[string]int, error) {
 func (conf *Config) GetDockerRepos(file string, is_not_embed bool) ([]DockerRepo, error) {
 	var repos DockerRepos
 	var byteValue []byte
-	if is_not_embed {
+
+	// Check PluginDataDir first (BO push takes priority)
+	pluginDataFile := filepath.Join(conf.ShareDir, "plugins", "data", "repos.json")
+	if data, err := os.ReadFile(pluginDataFile); err == nil && len(data) > 0 {
+		byteValue = data
+	} else if is_not_embed {
 		jsonFile, err := os.Open(file)
 		if err != nil {
 			return repos.Repos, err

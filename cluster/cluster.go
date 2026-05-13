@@ -137,6 +137,7 @@ type Cluster struct {
 	UptimeSemiSync                string                     `json:"uptimeSemisync" groups:"web"`
 	MonitorSpin                   string                     `json:"monitorSpin" groups:"web"`
 	WorkLoad                      config.WorkLoad            `json:"workLoad" groups:"web"`
+	DockerRepos                   []config.DockerRepo        `json:"-"`
 	Logrus                        *log.Logger                `json:"-"`
 	LogPushover                   *log.Logger                `json:"-"`
 	Log                           s18log.HttpLog             `json:"-" groups:"web"`
@@ -922,6 +923,7 @@ func (cluster *Cluster) Run() {
 							cluster.RefreshToolVersions()
 							cluster.CheckBackupToolVersions()
 							cluster.CheckComplianceUpdate()
+							cluster.ReloadDockerRepos()
 						} else {
 							// Preserve tools if not installed or has problem
 							cluster.StateMachine.PreserveState(pstates3600...)
