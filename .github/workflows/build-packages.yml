@@ -65,6 +65,9 @@ jobs:
         run: rm -rf build/
 
       - name: Build packages (amd64)
+        env:
+          PLUGIN_SIGNER_USER: ${{ secrets.PLUGIN_SIGNER_USER }}
+          PLUGIN_SIGNER_TOKEN: ${{ secrets.PLUGIN_SIGNER_TOKEN }}
         run: |
           branch="${GITHUB_REF_NAME}"
           mkdir -p /builds/"$branch"
@@ -72,6 +75,9 @@ jobs:
           mv build/release/* /builds/"$branch"/
 
       - name: Build packages (arm64)
+        env:
+          PLUGIN_SIGNER_USER: ${{ secrets.PLUGIN_SIGNER_USER }}
+          PLUGIN_SIGNER_TOKEN: ${{ secrets.PLUGIN_SIGNER_TOKEN }}
         run: |
           branch="${GITHUB_REF_NAME}"
           export architecture=arm64
