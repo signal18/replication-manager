@@ -69,6 +69,7 @@ jobs:
           PLUGIN_SIGNER_USER: ${{ secrets.PLUGIN_SIGNER_USER }}
           PLUGIN_SIGNER_TOKEN: ${{ secrets.PLUGIN_SIGNER_TOKEN }}
         run: |
+          echo "::add-mask::${PLUGIN_SIGNER_USER}:${PLUGIN_SIGNER_TOKEN}"
           branch="${GITHUB_REF_NAME}"
           mkdir -p /builds/"$branch"
           bash -x ./package_linux.sh
@@ -79,6 +80,7 @@ jobs:
           PLUGIN_SIGNER_USER: ${{ secrets.PLUGIN_SIGNER_USER }}
           PLUGIN_SIGNER_TOKEN: ${{ secrets.PLUGIN_SIGNER_TOKEN }}
         run: |
+          echo "::add-mask::${PLUGIN_SIGNER_USER}:${PLUGIN_SIGNER_TOKEN}"
           branch="${GITHUB_REF_NAME}"
           export architecture=arm64
           bash -x ./package_linux.sh
