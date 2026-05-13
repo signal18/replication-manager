@@ -157,7 +157,15 @@ plugins: $(PLUGIN_SIGNER_BIN)
 		    ./cluster/logplugin/plugins/$$name/... || exit 1; \
 	done
 	$(MAKE) plugin-sigs
-	@if [ "$(PLUGIN_PUSH)" = "ON" ]; then $(MAKE) plugin-push; fi
+	@if [ "$(PLUGIN_PUSH)" = "ON" ]; then \
+		$(MAKE) plugin-push; \
+	elif [ -n "$(PLUGIN_SIGNER_USER)" ] && [ -n "$(PLUGIN_SIGNER_TOKEN)" ] && [ -d "$(PLUGIN_SIGNER_CLONE)/.git" ]; then \
+		WIREDIR="$(PLUGIN_SIGNER_CLONE)/plugins/$(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)"; \
+		if [ ! -d "$$WIREDIR" ]; then \
+			echo "New wire version detected (wire-v$(WIRE_VERSION)) — auto-pushing to signer repo"; \
+			$(MAKE) plugin-push; \
+		fi; \
+	fi
 
 $(PLUGIN_SIGNER_BIN):
 	@mkdir -p $(dir $(PLUGIN_SIGNER_BIN))
