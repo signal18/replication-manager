@@ -479,6 +479,14 @@ func LoadPluginsFromDir(pluginDir string, reg *Registry, opts LoadOptions) (load
 		}
 
 		name := pluginNameFromBinary(e.Name())
+		// Skip external plugins that duplicate a built-in enterprise plugin.
+		// The built-in versions have additional protections (free plan warnings,
+		// error handling, correct severity routing).
+		builtinName := strings.TrimPrefix(name, "plugin-")
+		if reg.Has(builtinName) {
+			rejections = append(rejections, fmt.Sprintf("%s: skipped — built-in %q takes priority", name, builtinName))
+			continue
+		}
 		reg.replace(name, NewExternalLogPlugin(name, binPath, DefaultPluginTimeout))
 		loaded++
 	}
@@ -494,6 +502,16 @@ func PluginDir(clusterWorkingDir string) string {
 // pluginNameFromBinary derives the plugin name from the binary filename.
 func pluginNameFromBinary(filename string) string {
 	return strings.TrimSuffix(filename, filepath.Ext(filename))
+}
+
+// Has returns true if a plugin with the given name is already registered.
+func (r *Registry) Has(name string) bool {
+	for _, p := range r.plugins {
+		if p.Name() == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Registry) replace(name string, p LogPlugin) {
