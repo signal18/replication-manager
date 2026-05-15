@@ -470,6 +470,33 @@ skip_name_resolve
 	}
 }
 
+func TestVariablesMapDuplicateBooleanKey(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Duplicate bare boolean keys previously caused "cannot add shadow to boolean key".
+	// The last occurrence should win (value "true").
+	content := `[mysqld]
+skip_name_resolve
+skip_name_resolve
+`
+	path := filepath.Join(tmpDir, "dupbool.cnf")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	vm := NewVariablesMap()
+	if err := vm.LoadFromConfigFile(path, "config"); err != nil {
+		t.Fatalf("Duplicate boolean keys caused error: %v", err)
+	}
+
+	state := vm.Get("skip_name_resolve")
+	if state == nil || state.Config == nil {
+		t.Fatal("skip_name_resolve not loaded")
+	}
+	if state.Config.String() != "true" {
+		t.Errorf("Expected 'true', got '%s'", state.Config.String())
+	}
+}
+
 // TestVariablesMapINIShadows tests that INI shadows (duplicate keys) are handled
 func TestVariablesMapINIShadows(t *testing.T) {
 	tmpDir := t.TempDir()
