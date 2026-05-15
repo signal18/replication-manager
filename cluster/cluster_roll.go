@@ -224,20 +224,6 @@ func (cluster *Cluster) RollingUpgrade() error {
 	}
 	masterID := master.Id
 
-	cluster.Conf.ProvOpensvcImageForcePull = true
-	defer func() {
-		cluster.Conf.ProvOpensvcImageForcePull = false
-		// Push clean config (without image_pull_policy=always) so future restarts don't silently upgrade
-		for _, server := range cluster.Servers {
-			if server == nil || server.IsIgnored() {
-				continue
-			}
-			if cfgErr := cluster.UpdateDatabaseServiceConfig(server); cfgErr != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to reset service config for %s: %s", server.URL, cfgErr)
-			}
-		}
-	}()
-
 	for _, slave := range cluster.slaves {
 		if slave == nil || slave.IsIgnored() {
 			continue
@@ -248,9 +234,11 @@ func (cluster *Cluster) RollingUpgrade() error {
 		if !slave.IsMaintenance {
 			slave.SwitchMaintenance()
 		}
+		cluster.Conf.ProvOpensvcImageForcePull = true
 		if cfgErr := cluster.UpdateDatabaseServiceConfig(slave); cfgErr != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to push service config for %s: %s", slave.URL, cfgErr)
 		}
+		cluster.Conf.ProvOpensvcImageForcePull = false
 		err := cluster.StopDatabaseService(slave)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling upgrade stop failed on slave %s %s", slave.URL, err)
@@ -273,6 +261,33 @@ func (cluster *Cluster) RollingUpgrade() error {
 			return errors.New("No master found for sync during rolling upgrade")
 		}
 		slave.WaitSyncToMaster(currentMaster)
+
+		// Remove force_pull from config, then start again with clean config
+		if cfgErr := cluster.UpdateDatabaseServiceConfig(slave); cfgErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to reset service config for %s: %s", slave.URL, cfgErr)
+		}
+		err = cluster.StopDatabaseService(slave)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling upgrade stop failed on slave %s %s (clean config)", slave.URL, err)
+			slave.SwitchMaintenance()
+			return err
+		}
+		err = cluster.WaitDatabaseFailed(slave)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling upgrade slave does not transit failed %s %s (clean config)", slave.URL, err)
+			slave.SwitchMaintenance()
+			return err
+		}
+		err = cluster.StartDatabaseWaitRejoin(slave)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling upgrade slave does not restart %s %s (clean config)", slave.URL, err)
+			return err
+		}
+		currentMaster = cluster.GetMaster()
+		if currentMaster == nil {
+			return errors.New("No master found for sync during rolling upgrade (clean config)")
+		}
+		slave.WaitSyncToMaster(currentMaster)
 		slave.SwitchMaintenance()
 	}
 
@@ -291,9 +306,11 @@ func (cluster *Cluster) RollingUpgrade() error {
 	if !master.IsMaintenance {
 		master.SwitchMaintenance()
 	}
+	cluster.Conf.ProvOpensvcImageForcePull = true
 	if cfgErr := cluster.UpdateDatabaseServiceConfig(master); cfgErr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to push service config for %s: %s", master.URL, cfgErr)
 	}
+	cluster.Conf.ProvOpensvcImageForcePull = false
 	err := cluster.StopDatabaseService(master)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling upgrade old master stop failed %s %s", master.URL, err)
@@ -307,6 +324,27 @@ func (cluster *Cluster) RollingUpgrade() error {
 	err = cluster.StartDatabaseWaitRejoin(master)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling upgrade old master does not restart %s %s", master.URL, err)
+		return err
+	}
+	master.WaitSyncToMaster(cluster.master)
+
+	// Remove force_pull from config, then start again with clean config
+	if cfgErr := cluster.UpdateDatabaseServiceConfig(master); cfgErr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to reset service config for %s: %s", master.URL, cfgErr)
+	}
+	err = cluster.StopDatabaseService(master)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling upgrade old master stop failed %s %s (clean config)", master.URL, err)
+		return err
+	}
+	err = cluster.WaitDatabaseFailed(master)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling upgrade old master does not transit failed %s %s (clean config)", master.URL, err)
+		return err
+	}
+	err = cluster.StartDatabaseWaitRejoin(master)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling upgrade old master does not restart %s %s (clean config)", master.URL, err)
 		return err
 	}
 	master.WaitSyncToMaster(cluster.master)

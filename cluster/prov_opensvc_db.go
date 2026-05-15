@@ -200,7 +200,7 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseServiceConfig(s *ServerMonitor) err
 		return err
 	}
 
-	cfg, err := ini.Load(bytes.NewReader(raw))
+	cfg, err := ini.LoadSources(ini.LoadOptions{IgnoreInlineComment: true}, bytes.NewReader(raw))
 	if err != nil {
 		return fmt.Errorf("failed to parse service config for %s: %w", s.ServiceName, err)
 	}
