@@ -215,6 +215,108 @@ func (cluster *Cluster) RollingOptimize() {
 	}
 }
 
+func (cluster *Cluster) RollingUpgrade() error {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling upgrade")
+
+	master := cluster.GetMaster()
+	if master == nil {
+		return errors.New("No master found for rolling upgrade")
+	}
+	masterID := master.Id
+
+	cluster.Conf.ProvOpensvcImageForcePull = true
+	defer func() {
+		cluster.Conf.ProvOpensvcImageForcePull = false
+		// Push clean config (without image_pull_policy=always) so future restarts don't silently upgrade
+		for _, server := range cluster.Servers {
+			if server == nil || server.IsIgnored() {
+				continue
+			}
+			if cfgErr := cluster.UpdateDatabaseServiceConfig(server); cfgErr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to reset service config for %s: %s", server.URL, cfgErr)
+			}
+		}
+	}()
+
+	for _, slave := range cluster.slaves {
+		if slave == nil || slave.IsIgnored() {
+			continue
+		}
+		if slave.IsDown() {
+			continue
+		}
+		if !slave.IsMaintenance {
+			slave.SwitchMaintenance()
+		}
+		if cfgErr := cluster.UpdateDatabaseServiceConfig(slave); cfgErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to push service config for %s: %s", slave.URL, cfgErr)
+		}
+		err := cluster.StopDatabaseService(slave)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling upgrade stop failed on slave %s %s", slave.URL, err)
+			slave.SwitchMaintenance()
+			return err
+		}
+		err = cluster.WaitDatabaseFailed(slave)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling upgrade slave does not transit failed %s %s", slave.URL, err)
+			slave.SwitchMaintenance()
+			return err
+		}
+		err = cluster.StartDatabaseWaitRejoin(slave)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling upgrade slave does not restart %s %s", slave.URL, err)
+			return err
+		}
+		currentMaster := cluster.GetMaster()
+		if currentMaster == nil {
+			return errors.New("No master found for sync during rolling upgrade")
+		}
+		slave.WaitSyncToMaster(currentMaster)
+		slave.SwitchMaintenance()
+	}
+
+	cluster.SwitchoverWaitTest()
+	master = cluster.GetServerFromName(masterID)
+	if cluster.master == nil {
+		return errors.New("No master found after switchover during rolling upgrade")
+	}
+	if cluster.master.DSN == master.DSN {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling upgrade original master %s is the same %s after switchover", master.URL, cluster.master.URL)
+		return nil
+	}
+	if master.IsDown() {
+		return errors.New("Cancel rolling upgrade: original master is down")
+	}
+	if !master.IsMaintenance {
+		master.SwitchMaintenance()
+	}
+	if cfgErr := cluster.UpdateDatabaseServiceConfig(master); cfgErr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to push service config for %s: %s", master.URL, cfgErr)
+	}
+	err := cluster.StopDatabaseService(master)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling upgrade old master stop failed %s %s", master.URL, err)
+		return err
+	}
+	err = cluster.WaitDatabaseFailed(master)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling upgrade old master does not transit failed %s %s", master.URL, err)
+		return err
+	}
+	err = cluster.StartDatabaseWaitRejoin(master)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling upgrade old master does not restart %s %s", master.URL, err)
+		return err
+	}
+	master.WaitSyncToMaster(cluster.master)
+	master.SwitchMaintenance()
+	cluster.SwitchOver()
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling upgrade completed")
+	return nil
+}
+
 func (cluster *Cluster) RollingJobsUpgrade() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling jobs upgrade")
 	var ts time.Time

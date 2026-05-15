@@ -204,7 +204,6 @@ var clusterACLRules = []ACLRule{
 	{"/actions/rolling", nil, []string{config.GrantClusterRolling}},
 	{"/actions/cancel-rolling-restart", nil, []string{config.GrantClusterRolling}},
 	{"/actions/cancel-rolling-reprov", nil, []string{config.GrantClusterRolling}},
-	{"/actions/jobs-upgrade", nil, []string{config.GrantClusterRolling}},
 
 	// Security
 	{"/actions/rotate-passwords", nil, []string{config.GrantClusterRotatePasswords}},

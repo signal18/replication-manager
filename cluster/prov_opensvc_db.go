@@ -172,6 +172,31 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	return
 }
 
+// OpenSVCUpdateDatabaseServiceConfig pushes an updated service config template to OpenSVC without
+// provisioning or restarting the service. Used after rolling upgrade to clear image_pull_policy.
+func (cluster *Cluster) OpenSVCUpdateDatabaseServiceConfig(s *ServerMonitor) error {
+	svc := cluster.OpenSVCConnect()
+	_, err := cluster.OpenSVCFoundDatabaseAgent(s)
+	if err != nil {
+		return err
+	}
+
+	if svc.IsV3() {
+		res, err := s.GenerateDBTemplateV3()
+		if err != nil {
+			return err
+		}
+		_, err = svc.CreateTemplateV3(cluster.Name, s.ServiceName, s.Agent, res)
+		return err
+	}
+
+	res, err := s.GenerateDBTemplateV2()
+	if err != nil {
+		return err
+	}
+	return svc.CreateTemplateV2(cluster.Name, s.ServiceName, s.Agent, res)
+}
+
 func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error {
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
@@ -448,6 +473,9 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["##docker_image"] = "quay.io/mariadb-foundation/mariadb-debug:10.11-mdev-33798-knielsen-pkgtest"
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/mysql-files:/var/lib/mysql-files:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
 		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
+		if server.ClusterGroup.Conf.ProvOpensvcImageForcePull {
+			svccontainer["image_pull_policy"] = "always"
+		}
 
 		//Proceed with galera specific
 		if server.ClusterGroup.GetTopology() == config.TopoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() {
@@ -474,6 +502,9 @@ func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string 
 		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
 		svccontainer["command"] = "/docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm"
 		svccontainer["entrypoint"] = "/bin/bash"
+		if server.ClusterGroup.Conf.ProvOpensvcImageForcePull {
+			svccontainer["image_pull_policy"] = "always"
+		}
 	}
 	return svccontainer
 }
