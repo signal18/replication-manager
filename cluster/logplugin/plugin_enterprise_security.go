@@ -35,17 +35,25 @@
 package logplugin
 
 import (
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/signal18/replication-manager/share"
 )
 
+// Default advisory data loaded from the shared embed FS at init time.
+// Falls back to empty if the file is not found (e.g. client builds).
 var enterpriseSecurityDefaultData []byte
 
-func init() { Register(&EnterpriseSecurityPlugin{}) }
+func init() {
+	if data, err := share.EmbededDbModuleFS.ReadFile("plugins/data/enterprise-security-issues.json"); err == nil {
+		enterpriseSecurityDefaultData = data
+	}
+	Register(&EnterpriseSecurityPlugin{})
+}
 
 // EnterpriseSecurityPlugin implements LogPlugin.
 type EnterpriseSecurityPlugin struct{}
