@@ -13,6 +13,7 @@ import {
   physicalBackupMaster,
   promoteToLeader,
   provisionDatabase,
+  updateOpensvcTemplate,
   reseedLogicalFromBackup,
   reseedLogicalFromMaster,
   reseedPhysicalFromBackup,
@@ -419,6 +420,17 @@ function ServerMenu({
                         setConfirmHandler(
                           () => () =>
                             dispatch(restartDatabase({ clusterName, serverId: row.id, rid: OpenSVCTerminalRID.Jobs }))
+                        )
+                      }
+                    },
+                    {
+                      name: 'Update OpenSVC Template',
+                      isDisabled: !user?.grants['prov-db-provision'],
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm update OpenSVC template for ${serverName}?`)
+                        setConfirmHandler(
+                          () => () => dispatch(updateOpensvcTemplate({ clusterName, serverId: row.id }))
                         )
                       }
                     }

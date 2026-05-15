@@ -147,6 +147,33 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseV3(s *ServerMonitor, svc opensvc
 	return svc.ProvisionServiceV3(cluster.Name, s.ServiceName)
 }
 
+// OpenSVCUpdateDatabaseTemplate regenerates the service config for a single
+// server and pushes it to OpenSVC via UpdateObjectV3.  It does not trigger
+// provisioning or wait for the service to start — safe to run on a live node.
+func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
+	svc := cluster.OpenSVCConnect()
+	if !svc.IsV3() {
+		return fmt.Errorf("update-opensvc-template requires OpenSVC v3 API")
+	}
+	_, err := cluster.OpenSVCFoundDatabaseAgent(s)
+	if err != nil {
+		return err
+	}
+	res, err := s.GenerateDBTemplateV3()
+	if err != nil {
+		return err
+	}
+	svcparts := strings.SplitN(s.ServiceName, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service name format %q, expected namespace/kind/name", s.ServiceName)
+	}
+	ns, kind, svcname := svcparts[0], svcparts[1], svcparts[2]
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"Refreshing OpenSVC template for %s", s.ServiceName)
+	_, err = svc.UpdateObjectV3(ns, kind, svcname, res)
+	return err
+}
+
 func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	svc := cluster.OpenSVCConnect()
 	agent, err := cluster.OpenSVCFoundDatabaseAgent(s)

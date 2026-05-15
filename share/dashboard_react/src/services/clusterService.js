@@ -94,6 +94,7 @@ export const clusterService = {
   restartDatabase,
   provisionDatabase,
   unprovisionDatabase,
+  updateOpensvcTemplate,
   runRemoteJobs,
   optimizeServer,
   skipReplicationEvent,
@@ -502,6 +503,10 @@ function provisionDatabase(clusterName, serverId, baseURL) {
 
 function unprovisionDatabase(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/unprovision`)
+}
+
+function updateOpensvcTemplate(clusterName, serverId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/update-opensvc-template`)
 }
 
 function runRemoteJobs(clusterName, serverId, baseURL) {

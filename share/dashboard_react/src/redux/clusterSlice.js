@@ -1269,6 +1269,21 @@ export const unprovisionDatabase = createGuardedAsyncThunk(
   }
 )
 
+export const updateOpensvcTemplate = createGuardedAsyncThunk(
+  'cluster/updateOpensvcTemplate',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.updateOpensvcTemplate(clusterName, serverId, baseURL)
+      showSuccessBanner('OpenSVC template updated!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('OpenSVC template update failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const runRemoteJobs = createGuardedAsyncThunk(
   'cluster/runRemoteJobs',
   async ({ clusterName, serverId }, thunkAPI) => {
@@ -2722,6 +2737,7 @@ export const clusterSlice = createSlice({
         restartDatabase.pending,
         provisionDatabase.pending,
         unprovisionDatabase.pending,
+        updateOpensvcTemplate.pending,
         runRemoteJobs.pending,
         optimizeServer.pending,
         skipReplicationEvent.pending,
@@ -2807,6 +2823,7 @@ export const clusterSlice = createSlice({
         restartDatabase.fulfilled,
         provisionDatabase.fulfilled,
         unprovisionDatabase.fulfilled,
+        updateOpensvcTemplate.fulfilled,
         runRemoteJobs.fulfilled,
         optimizeServer.fulfilled,
         skipReplicationEvent.fulfilled,
@@ -2893,6 +2910,7 @@ export const clusterSlice = createSlice({
         restartDatabase.rejected,
         provisionDatabase.rejected,
         unprovisionDatabase.rejected,
+        updateOpensvcTemplate.rejected,
         runRemoteJobs.rejected,
         optimizeServer.rejected,
         skipReplicationEvent.rejected,
