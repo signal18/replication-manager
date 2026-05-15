@@ -1484,7 +1484,8 @@ func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWr
 
 // handlerMuxRollingAction dispatches rolling cluster actions based on the {action} path parameter.
 // @Summary Trigger a rolling action on a cluster
-// @Description Triggers one of: restart, reprov, upgrade (rolling jobs upgrade), jobs-upgrade (flag servers for upgrade).
+// @Description Triggers one of: restart, reprov, upgrade, jobs-upgrade.
+// @Description reprov and upgrade are long-running and return 202 Accepted immediately; the operation runs in the background.
 // @Tags ClusterMaintenance
 // @Accept json
 // @Produce json
@@ -1492,6 +1493,7 @@ func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWr
 // @Param clusterName path string true "Cluster Name"
 // @Param action path string true "Rolling action" Enums(restart,reprov,upgrade,jobs-upgrade)
 // @Success 200 {string} string "Action triggered successfully"
+// @Success 202 {string} string "Long-running action started in background (reprov, upgrade)"
 // @Failure 400 {string} string "Unknown rolling action"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
@@ -1515,15 +1517,13 @@ func (repman *ReplicationManager) handlerMuxRollingAction(w http.ResponseWriter,
 			return
 		}
 	case "reprov":
-		if err := mycluster.RollingReprov(); err != nil {
-			http.Error(w, "Rolling reprov failed: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
+		go func() { mycluster.RollingReprov() }()
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte("Rolling reprov started"))
 	case "upgrade":
-		if err := mycluster.RollingUpgrade(); err != nil {
-			http.Error(w, "Rolling upgrade failed: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
+		go func() { mycluster.RollingUpgrade() }()
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte("Rolling upgrade started"))
 	case "jobs-upgrade":
 		mycluster.SetRollingJobsUpgradeState()
 		w.Write([]byte("Cluster flagged for jobs upgrade"))

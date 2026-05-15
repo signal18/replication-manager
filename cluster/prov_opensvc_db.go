@@ -209,11 +209,19 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseServiceConfig(s *ServerMonitor, for
 	}
 
 	if !svc.IsV3() {
-		res, err := s.GenerateDBTemplateV2()
-		if err != nil {
-			return err
+		const dbSection = "container#db"
+		const jobsSection = "container#jobs"
+		const key = "image_pull_policy"
+		if forcePull {
+			return svc.SetServiceConfigKeysV2(s.ServiceName, s.Agent, []string{
+				dbSection + "." + key + "=always",
+				jobsSection + "." + key + "=always",
+			})
 		}
-		return svc.CreateTemplateV2(cluster.Name, s.ServiceName, s.Agent, res)
+		return svc.UnsetServiceConfigKeysV2(s.ServiceName, s.Agent, []string{
+			dbSection + "." + key,
+			jobsSection + "." + key,
+		})
 	}
 
 	svcparts := strings.SplitN(s.ServiceName, "/", 3)

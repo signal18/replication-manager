@@ -27,7 +27,8 @@ func (cluster *Cluster) RollingReprov() error {
 		}
 
 		if !slave.IsDown() {
-			if !slave.IsMaintenance {
+			maintenanceEnabled := !slave.IsMaintenance
+			if maintenanceEnabled {
 				slave.SwitchMaintenance()
 			}
 			err := cluster.UnprovisionDatabaseService(slave)
@@ -56,7 +57,9 @@ func (cluster *Cluster) RollingReprov() error {
 				return errors.New("No master found for sync during rolling reprovisionning")
 			}
 			slave.WaitSyncToMaster(currentMaster)
-			slave.SwitchMaintenance()
+			if maintenanceEnabled {
+				slave.SwitchMaintenance()
+			}
 		}
 	}
 	cluster.SwitchoverWaitTest()
@@ -69,7 +72,8 @@ func (cluster *Cluster) RollingReprov() error {
 		return nil
 	}
 	if !master.IsDown() {
-		if !master.IsMaintenance {
+		maintenanceEnabled := !master.IsMaintenance
+		if maintenanceEnabled {
 			master.SwitchMaintenance()
 		}
 		err := cluster.UnprovisionDatabaseService(master)
@@ -93,7 +97,9 @@ func (cluster *Cluster) RollingReprov() error {
 			return err
 		}
 		master.WaitSyncToMaster(cluster.master)
-		master.SwitchMaintenance()
+		if maintenanceEnabled {
+			master.SwitchMaintenance()
+		}
 		cluster.SwitchOver()
 	}
 	return nil
@@ -116,10 +122,10 @@ func (cluster *Cluster) RollingRestart() error {
 		if slave == nil || slave.IsIgnored() {
 			continue
 		}
+		maintenanceEnabled := false
 		if !slave.IsDown() {
-			//slave.SetMaintenance()
-			//proxy.
-			if !slave.IsMaintenance {
+			maintenanceEnabled = !slave.IsMaintenance
+			if maintenanceEnabled {
 				slave.SwitchMaintenance()
 			}
 
@@ -135,14 +141,18 @@ func (cluster *Cluster) RollingRestart() error {
 			err := cluster.StopDatabaseService(slave)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.URL, err)
-				slave.SwitchMaintenance()
+				if maintenanceEnabled {
+					slave.SwitchMaintenance()
+				}
 				return err
 			}
 
 			err = cluster.WaitDatabaseFailed(slave)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling stop slave does not transit Failed %s %s", slave.URL, err)
-				slave.SwitchMaintenance()
+				if maintenanceEnabled {
+					slave.SwitchMaintenance()
+				}
 				return err
 			}
 
@@ -157,7 +167,9 @@ func (cluster *Cluster) RollingRestart() error {
 			return errors.New("No master found for sync during rolling restart")
 		}
 		slave.WaitSyncToMaster(currentMaster)
-		slave.SwitchMaintenance()
+		if maintenanceEnabled {
+			slave.SwitchMaintenance()
+		}
 	}
 	cluster.SwitchoverWaitTest()
 	master = cluster.GetServerFromName(masterID)
@@ -172,7 +184,8 @@ func (cluster *Cluster) RollingRestart() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling original master is down %s", master.URL)
 		return errors.New("Cancel rolling restart original master down")
 	}
-	if !master.IsMaintenance {
+	maintenanceEnabled := !master.IsMaintenance
+	if maintenanceEnabled {
 		master.SwitchMaintenance()
 	}
 	writeOnce := true
@@ -199,7 +212,9 @@ func (cluster *Cluster) RollingRestart() error {
 		return err
 	}
 	master.WaitSyncToMaster(cluster.master)
-	master.SwitchMaintenance()
+	if maintenanceEnabled {
+		master.SwitchMaintenance()
+	}
 	cluster.SwitchOver()
 
 	return nil
@@ -224,14 +239,17 @@ func (cluster *Cluster) RollingUpgrade() error {
 	}
 	masterID := master.Id
 
+	// Loop 1 — pull: set image_pull_policy=always and restart every slave so
+	// OpenSVC re-pulls the new image. OpenSVC only reads this key at container
+	// start time, so the stop→start cycle is required to trigger the pull.
+	// Maintenance is toggled per node and cleared after sync, so nodes are only
+	// in maintenance during their own stop/start cycle.
 	for _, slave := range cluster.slaves {
-		if slave == nil || slave.IsIgnored() {
+		if slave == nil || slave.IsIgnored() || slave.IsDown() {
 			continue
 		}
-		if slave.IsDown() {
-			continue
-		}
-		if !slave.IsMaintenance {
+		maintEnabled := !slave.IsMaintenance
+		if maintEnabled {
 			slave.SwitchMaintenance()
 		}
 		if cfgErr := cluster.UpdateDatabaseServiceConfig(slave, true); cfgErr != nil {
@@ -240,61 +258,91 @@ func (cluster *Cluster) RollingUpgrade() error {
 		err := cluster.StopDatabaseService(slave)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: stop failed on slave %s %s", slave.URL, err)
-			slave.SwitchMaintenance()
+			if maintEnabled {
+				slave.SwitchMaintenance()
+			}
 			return err
 		}
 		err = cluster.WaitDatabaseFailed(slave)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: slave does not transit failed %s %s", slave.URL, err)
-			slave.SwitchMaintenance()
+			if maintEnabled {
+				slave.SwitchMaintenance()
+			}
 			return err
 		}
 		err = cluster.StartDatabaseWaitRejoin(slave)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: slave does not restart %s %s", slave.URL, err)
-			slave.SwitchMaintenance()
+			if maintEnabled {
+				slave.SwitchMaintenance()
+			}
 			return err
 		}
 		currentMaster := cluster.GetMaster()
 		if currentMaster == nil {
-			if slave.IsMaintenance {
+			if maintEnabled {
 				slave.SwitchMaintenance()
 			}
 			return errors.New("No master found for sync during rolling upgrade")
 		}
 		slave.WaitSyncToMaster(currentMaster)
+		if maintEnabled {
+			slave.SwitchMaintenance()
+		}
+	}
 
-		// Remove force_pull from config, then start again with clean config
+	// Loop 2 — clean: strip image_pull_policy=always and restart every slave so
+	// the key is absent from the live config. Docker will not re-pull the
+	// already-local image, so this cycle costs only container restart time.
+	// Maintenance is re-evaluated per node; nodes were cleared at the end of
+	// loop 1 so they served traffic between the two loops.
+	for _, slave := range cluster.slaves {
+		if slave == nil || slave.IsIgnored() || slave.IsDown() {
+			continue
+		}
+		maintEnabled := !slave.IsMaintenance
+		if maintEnabled {
+			slave.SwitchMaintenance()
+		}
 		if cfgErr := cluster.UpdateDatabaseServiceConfig(slave, false); cfgErr != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to reset service config for %s: %s", slave.URL, cfgErr)
 		}
-		err = cluster.StopDatabaseService(slave)
+		err := cluster.StopDatabaseService(slave)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: stop failed on slave %s %s (clean config)", slave.URL, err)
-			slave.SwitchMaintenance()
+			if maintEnabled {
+				slave.SwitchMaintenance()
+			}
 			return err
 		}
 		err = cluster.WaitDatabaseFailed(slave)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: slave does not transit failed %s %s (clean config)", slave.URL, err)
-			slave.SwitchMaintenance()
+			if maintEnabled {
+				slave.SwitchMaintenance()
+			}
 			return err
 		}
 		err = cluster.StartDatabaseWaitRejoin(slave)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: slave does not restart %s %s (clean config)", slave.URL, err)
-			slave.SwitchMaintenance()
+			if maintEnabled {
+				slave.SwitchMaintenance()
+			}
 			return err
 		}
-		currentMaster = cluster.GetMaster()
+		currentMaster := cluster.GetMaster()
 		if currentMaster == nil {
-			if slave.IsMaintenance {
+			if maintEnabled {
 				slave.SwitchMaintenance()
 			}
 			return errors.New("No master found for sync during rolling upgrade (clean config)")
 		}
 		slave.WaitSyncToMaster(currentMaster)
-		slave.SwitchMaintenance()
+		if maintEnabled {
+			slave.SwitchMaintenance()
+		}
 	}
 
 	cluster.SwitchoverWaitTest()
@@ -309,56 +357,73 @@ func (cluster *Cluster) RollingUpgrade() error {
 	if master.IsDown() {
 		return errors.New("Rolling upgrade: original master is down after switchover")
 	}
-	if !master.IsMaintenance {
+	maintenanceEnabled := !master.IsMaintenance
+	if maintenanceEnabled {
 		master.SwitchMaintenance()
 	}
+
+	// Phase 1: pull new image on the old master (now a replica after switchover).
 	if cfgErr := cluster.UpdateDatabaseServiceConfig(master, true); cfgErr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to push service config for %s: %s", master.URL, cfgErr)
 	}
 	err := cluster.StopDatabaseService(master)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: old master stop failed %s %s", master.URL, err)
-		master.SwitchMaintenance()
+		if maintenanceEnabled {
+			master.SwitchMaintenance()
+		}
 		return err
 	}
 	err = cluster.WaitDatabaseFailed(master)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: old master does not transit failed %s %s", master.URL, err)
-		master.SwitchMaintenance()
+		if maintenanceEnabled {
+			master.SwitchMaintenance()
+		}
 		return err
 	}
 	err = cluster.StartDatabaseWaitRejoin(master)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: old master does not restart %s %s", master.URL, err)
-		master.SwitchMaintenance()
+		if maintenanceEnabled {
+			master.SwitchMaintenance()
+		}
 		return err
 	}
 	master.WaitSyncToMaster(cluster.master)
 
-	// Remove force_pull from config, then start again with clean config
+	// Phase 2: strip image_pull_policy=always (see slave phase 2 comment above).
 	if cfgErr := cluster.UpdateDatabaseServiceConfig(master, false); cfgErr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to reset service config for %s: %s", master.URL, cfgErr)
 	}
 	err = cluster.StopDatabaseService(master)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: old master stop failed %s %s (clean config)", master.URL, err)
-		master.SwitchMaintenance()
+		if maintenanceEnabled {
+			master.SwitchMaintenance()
+		}
 		return err
 	}
 	err = cluster.WaitDatabaseFailed(master)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: old master does not transit failed %s %s (clean config)", master.URL, err)
-		master.SwitchMaintenance()
+		if maintenanceEnabled {
+			master.SwitchMaintenance()
+		}
 		return err
 	}
 	err = cluster.StartDatabaseWaitRejoin(master)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: old master does not restart %s %s (clean config)", master.URL, err)
-		master.SwitchMaintenance()
+		if maintenanceEnabled {
+			master.SwitchMaintenance()
+		}
 		return err
 	}
 	master.WaitSyncToMaster(cluster.master)
-	master.SwitchMaintenance()
+	if maintenanceEnabled {
+		master.SwitchMaintenance()
+	}
 	cluster.SwitchOver()
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling upgrade completed")

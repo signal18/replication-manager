@@ -60,6 +60,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
   const confirmBootrapMessage = 'Bootstrap operation will destroy your existing replication setup. \n Are you sure?'
 
   const openConfirmModal = () => {
+    setConfirmBody('')
     setIsConfirmModalOpen(true)
   }
   const closeConfirmModal = () => {
