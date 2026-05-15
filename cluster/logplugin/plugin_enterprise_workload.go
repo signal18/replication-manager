@@ -17,18 +17,23 @@
 package logplugin
 
 import (
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/signal18/replication-manager/share"
 )
 
-//go:embed plugins/plugin-enterprise-workload/enterprise-workload-issues.json
 var enterpriseWorkloadDefaultData []byte
 
-func init() { Register(&EnterpriseWorkloadPlugin{}) }
+func init() {
+	if data, err := share.EmbededDbModuleFS.ReadFile("plugins/data/enterprise-workload-issues.json"); err == nil {
+		enterpriseWorkloadDefaultData = data
+	}
+	Register(&EnterpriseWorkloadPlugin{})
+}
 
 // EnterpriseWorkloadPlugin implements LogPlugin.
 type EnterpriseWorkloadPlugin struct{}

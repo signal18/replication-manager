@@ -19,18 +19,23 @@
 package logplugin
 
 import (
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/signal18/replication-manager/share"
 )
 
-//go:embed plugins/plugin-enterprise-replication/enterprise-replication-issues.json
 var enterpriseReplicationDefaultData []byte
 
-func init() { Register(&EnterpriseReplicationPlugin{}) }
+func init() {
+	if data, err := share.EmbededDbModuleFS.ReadFile("plugins/data/enterprise-replication-issues.json"); err == nil {
+		enterpriseReplicationDefaultData = data
+	}
+	Register(&EnterpriseReplicationPlugin{})
+}
 
 // EnterpriseReplicationPlugin implements LogPlugin.
 type EnterpriseReplicationPlugin struct{}
