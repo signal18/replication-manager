@@ -201,7 +201,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 
 // OpenSVCUpdateDatabaseServiceConfig patches image_pull_policy in the live service config on
 // OpenSVC without touching any other keys, cfg objects, or secret objects.
-func (cluster *Cluster) OpenSVCUpdateDatabaseServiceConfig(s *ServerMonitor) error {
+func (cluster *Cluster) OpenSVCUpdateDatabaseServiceConfig(s *ServerMonitor, forcePull bool) error {
 	svc := cluster.OpenSVCConnect()
 	_, err := cluster.OpenSVCFoundDatabaseAgent(s)
 	if err != nil {
@@ -237,7 +237,7 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseServiceConfig(s *ServerMonitor) err
 		if name != "container#db" && name != "container#jobs" {
 			continue
 		}
-		if cluster.Conf.ProvOpensvcImageForcePull {
+		if forcePull {
 			section.Key("image_pull_policy").SetValue("always")
 		} else {
 			section.DeleteKey("image_pull_policy")

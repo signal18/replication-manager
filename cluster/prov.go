@@ -391,10 +391,10 @@ func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error 
 	return nil
 }
 
-func (cluster *Cluster) UpdateDatabaseServiceConfig(server *ServerMonitor) error {
+func (cluster *Cluster) UpdateDatabaseServiceConfig(server *ServerMonitor, forcePull bool) error {
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
-		return cluster.OpenSVCUpdateDatabaseServiceConfig(server)
+		return cluster.OpenSVCUpdateDatabaseServiceConfig(server, forcePull)
 	default:
 		return nil
 	}

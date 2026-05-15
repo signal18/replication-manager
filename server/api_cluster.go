@@ -1526,6 +1526,7 @@ func (repman *ReplicationManager) handlerMuxRollingAction(w http.ResponseWriter,
 		}
 	case "jobs-upgrade":
 		mycluster.SetRollingJobsUpgradeState()
+		w.Write([]byte("Cluster flagged for jobs upgrade"))
 	default:
 		http.Error(w, "Unknown rolling action: "+vars["action"], http.StatusBadRequest)
 	}
