@@ -20,14 +20,15 @@
 // JSON schema — see cluster/logplugin/plugins/plugin-enterprise-security/enterprise-security-issues.json
 //
 // Each issue entry has:
-//   id            string  Finding.ErrKey (e.g. "ENT0001")
-//   severity      string  "SECURITY" | "WARNING" | "ERROR"
-//   title         string  Short title (used in description)
-//   description   string  Supports {server_url} {flavor} {version} placeholders
-//   flavor        string  "MariaDB" | "MySQL" | "Percona" | "repman" | "" (all)
-//   affected_from string  "major.minor.release" or "" (all from start)
-//   fixed_in      string  "major.minor.release" or "" (not yet fixed)
-//   remediations  []...
+//
+//	id            string  Finding.ErrKey (e.g. "ENT0001")
+//	severity      string  "SECURITY" | "WARNING" | "ERROR"
+//	title         string  Short title (used in description)
+//	description   string  Supports {server_url} {flavor} {version} placeholders
+//	flavor        string  "MariaDB" | "MySQL" | "Percona" | "repman" | "" (all)
+//	affected_from string  "major.minor.release" or "" (all from start)
+//	fixed_in      string  "major.minor.release" or "" (not yet fixed)
+//	remediations  []...
 //
 // The finding auto-resolves once the server upgrades past fixed_in — no manual
 // suppression needed.
@@ -42,7 +43,6 @@ import (
 	"strings"
 )
 
-//go:embed plugins/plugin-enterprise-security/enterprise-security-issues.json
 var enterpriseSecurityDefaultData []byte
 
 func init() { Register(&EnterpriseSecurityPlugin{}) }
