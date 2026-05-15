@@ -172,8 +172,8 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	return
 }
 
-// OpenSVCUpdateDatabaseServiceConfig pushes an updated service config template to OpenSVC without
-// provisioning or restarting the service. Used after rolling upgrade to clear image_pull_policy.
+// OpenSVCUpdateDatabaseServiceConfig patches image_pull_policy in the live service config on
+// OpenSVC without touching any other keys, cfg objects, or secret objects.
 func (cluster *Cluster) OpenSVCUpdateDatabaseServiceConfig(s *ServerMonitor) error {
 	svc := cluster.OpenSVCConnect()
 	_, err := cluster.OpenSVCFoundDatabaseAgent(s)
@@ -181,20 +181,49 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseServiceConfig(s *ServerMonitor) err
 		return err
 	}
 
-	if svc.IsV3() {
-		res, err := s.GenerateDBTemplateV3()
+	if !svc.IsV3() {
+		res, err := s.GenerateDBTemplateV2()
 		if err != nil {
 			return err
 		}
-		_, err = svc.CreateTemplateV3(cluster.Name, s.ServiceName, s.Agent, res)
-		return err
+		return svc.CreateTemplateV2(cluster.Name, s.ServiceName, s.Agent, res)
 	}
 
-	res, err := s.GenerateDBTemplateV2()
+	svcparts := strings.SplitN(s.ServiceName, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service name format %q, expected namespace/kind/name", s.ServiceName)
+	}
+	ns, kind, svcname := svcparts[0], svcparts[1], svcparts[2]
+
+	raw, err := svc.GetObjectConfigFileV3(ns, kind, svcname)
 	if err != nil {
 		return err
 	}
-	return svc.CreateTemplateV2(cluster.Name, s.ServiceName, s.Agent, res)
+
+	cfg, err := ini.Load(bytes.NewReader(raw))
+	if err != nil {
+		return fmt.Errorf("failed to parse service config for %s: %w", s.ServiceName, err)
+	}
+
+	for _, section := range cfg.Sections() {
+		name := section.Name()
+		if name != "container#db" && name != "container#jobs" {
+			continue
+		}
+		if cluster.Conf.ProvOpensvcImageForcePull {
+			section.Key("image_pull_policy").SetValue("always")
+		} else {
+			section.DeleteKey("image_pull_policy")
+		}
+	}
+
+	var buf bytes.Buffer
+	if _, err = cfg.WriteTo(&buf); err != nil {
+		return fmt.Errorf("failed to serialize patched service config for %s: %w", s.ServiceName, err)
+	}
+
+	_, err = svc.UpdateObjectV3(ns, kind, svcname, buf.Bytes())
+	return err
 }
 
 func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error {
