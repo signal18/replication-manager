@@ -1512,10 +1512,9 @@ func (repman *ReplicationManager) handlerMuxRollingAction(w http.ResponseWriter,
 	}
 	switch vars["action"] {
 	case "restart":
-		if err := mycluster.RollingRestart(); err != nil {
-			http.Error(w, "Rolling restart failed: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
+		go func() { mycluster.RollingRestart() }()
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte("Rolling restart started"))
 	case "reprov":
 		go func() { mycluster.RollingReprov() }()
 		w.WriteHeader(http.StatusAccepted)

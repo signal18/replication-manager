@@ -34,26 +34,41 @@ func (cluster *Cluster) RollingReprov() error {
 			err := cluster.UnprovisionDatabaseService(slave)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov %s", err)
+				if maintenanceEnabled {
+					slave.SwitchMaintenance()
+				}
 				return err
 			}
 			err = cluster.WaitDatabaseFailed(slave)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart slave does not transit suspect %s %s", slave.URL, err)
+				if maintenanceEnabled {
+					slave.SwitchMaintenance()
+				}
 				return err
 			}
 			err = cluster.InitDatabaseService(slave)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov %s", err)
+				if maintenanceEnabled {
+					slave.SwitchMaintenance()
+				}
 				return err
 			}
 			err = cluster.StartDatabaseWaitRejoin(slave)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov %s", err)
+				if maintenanceEnabled {
+					slave.SwitchMaintenance()
+				}
 				return err
 			}
 
 			currentMaster := cluster.GetMaster()
 			if currentMaster == nil {
+				if maintenanceEnabled {
+					slave.SwitchMaintenance()
+				}
 				return errors.New("No master found for sync during rolling reprovisionning")
 			}
 			slave.WaitSyncToMaster(currentMaster)
@@ -67,7 +82,7 @@ func (cluster *Cluster) RollingReprov() error {
 	if cluster.master == nil {
 		return errors.New("No master found after switchover during rolling reprovisionning")
 	}
-	if cluster.master.DSN == master.DSN {
+	if master == nil || cluster.master.DSN == master.DSN {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart master is the same after Switchover")
 		return nil
 	}
@@ -79,21 +94,33 @@ func (cluster *Cluster) RollingReprov() error {
 		err := cluster.UnprovisionDatabaseService(master)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov %s", err)
+			if maintenanceEnabled {
+				master.SwitchMaintenance()
+			}
 			return err
 		}
 		err = cluster.WaitDatabaseFailed(master)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart slave does not transit suspect %s %s", master.URL, err)
+			if maintenanceEnabled {
+				master.SwitchMaintenance()
+			}
 			return err
 		}
 		err = cluster.InitDatabaseService(master)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov %s", err)
+			if maintenanceEnabled {
+				master.SwitchMaintenance()
+			}
 			return err
 		}
 		err = cluster.WaitDatabaseStart(master)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov %s", err)
+			if maintenanceEnabled {
+				master.SwitchMaintenance()
+			}
 			return err
 		}
 		master.WaitSyncToMaster(cluster.master)
@@ -159,11 +186,17 @@ func (cluster *Cluster) RollingRestart() error {
 			err = cluster.StartDatabaseWaitRejoin(slave)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.URL, err)
+				if maintenanceEnabled {
+					slave.SwitchMaintenance()
+				}
 				return err
 			}
 		}
 		currentMaster := cluster.GetMaster()
 		if currentMaster == nil {
+			if maintenanceEnabled {
+				slave.SwitchMaintenance()
+			}
 			return errors.New("No master found for sync during rolling restart")
 		}
 		slave.WaitSyncToMaster(currentMaster)
@@ -176,8 +209,8 @@ func (cluster *Cluster) RollingRestart() error {
 	if cluster.master == nil {
 		return errors.New("No master found after switchover during rolling restart")
 	}
-	if cluster.master.DSN == master.DSN {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling original master %s is the same %s after switchover", master.URL, cluster.master.URL)
+	if master == nil || cluster.master.DSN == master.DSN {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling original master is the same after switchover")
 		return nil
 	}
 	if master.IsDown() {
@@ -199,16 +232,25 @@ func (cluster *Cluster) RollingRestart() error {
 	err := cluster.StopDatabaseService(master)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master stop failed %s %s", master.URL, err)
+		if maintenanceEnabled {
+			master.SwitchMaintenance()
+		}
 		return err
 	}
 	err = cluster.WaitDatabaseFailed(master)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not transit suspect %s %s", master.URL, err)
+		if maintenanceEnabled {
+			master.SwitchMaintenance()
+		}
 		return err
 	}
 	err = cluster.StartDatabaseWaitRejoin(master)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not restart %s %s", master.URL, err)
+		if maintenanceEnabled {
+			master.SwitchMaintenance()
+		}
 		return err
 	}
 	master.WaitSyncToMaster(cluster.master)
