@@ -57,8 +57,7 @@ export const clusterService = {
   setCredentials,
   rotateDBCredential,
   rollingOptimize,
-  rollingJobsUpgrade,
-  rollingRestart,
+  rollingAction,
   rotateCertificates,
   reloadCertificates,
   cancelRollingRestart,
@@ -95,6 +94,7 @@ export const clusterService = {
   restartDatabase,
   provisionDatabase,
   unprovisionDatabase,
+  updateOpensvcTemplate,
   runRemoteJobs,
   optimizeServer,
   skipReplicationEvent,
@@ -356,12 +356,8 @@ function rollingOptimize(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/optimize`)
 }
 
-function rollingJobsUpgrade(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/actions/jobs-upgrade`)
-}
-
-function rollingRestart(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/actions/rolling`)
+function rollingAction(clusterName, action, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/rolling/${action}`)
 }
 
 function rotateCertificates(clusterName, baseURL) {
@@ -507,6 +503,10 @@ function provisionDatabase(clusterName, serverId, baseURL) {
 
 function unprovisionDatabase(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/unprovision`)
+}
+
+function updateOpensvcTemplate(clusterName, serverId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/update-opensvc-template`)
 }
 
 function runRemoteJobs(clusterName, serverId, baseURL) {

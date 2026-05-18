@@ -1,11 +1,14 @@
 package cluster
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/signal18/replication-manager/opensvc"
+	ini "gopkg.in/ini.v1"
 )
 
 func TestIsOpenSVCAlreadyExists(t *testing.T) {
@@ -50,6 +53,71 @@ func TestNormalizeOpenSVCV3ProvisionDelay(t *testing.T) {
 				t.Fatalf("normalizeOpenSVCV3ProvisionDelay(%d) = %d, want %d", tt.delay, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestIniRoundTripPreservesHashInValues verifies that values containing "#"
+// (e.g. "container#01") survive a parse→patch→write cycle without corruption.
+// Without IgnoreInlineComment:true the "#" is treated as an inline comment
+// delimiter: "container#01" is parsed as value="container" + comment="01",
+// then written back as "# 01\nnetns = container".
+func TestIniRoundTripPreservesHashInValues(t *testing.T) {
+	const raw = `
+[container#db]
+image          = mariadb:10.11
+netns          = container#01
+image_pull_policy = always
+
+[container#jobs]
+image = mariadb:10.11
+netns = container#01
+`
+	// Demonstrate the broken behaviour (default options).
+	broken, err := ini.Load(bytes.NewReader([]byte(raw)))
+	if err != nil {
+		t.Fatalf("ini.Load: %v", err)
+	}
+	brokenVal := broken.Section("container#db").Key("netns").Value()
+	if brokenVal == "container#01" {
+		t.Log("NOTE: default ini.Load already preserves the value – library behaviour may have changed")
+	} else if brokenVal != "container" {
+		t.Logf("default ini.Load produced unexpected value %q (expected truncation to \"container\")", brokenVal)
+	}
+
+	// Verify the fixed behaviour.
+	cfg, err := ini.LoadSources(ini.LoadOptions{IgnoreInlineComment: true}, bytes.NewReader([]byte(raw)))
+	if err != nil {
+		t.Fatalf("ini.LoadSources: %v", err)
+	}
+
+	// Simulate the patch step (what OpenSVCUpdateDatabaseServiceConfig does).
+	for _, sec := range cfg.Sections() {
+		if sec.Name() == "container#db" || sec.Name() == "container#jobs" {
+			sec.Key("image_pull_policy").SetValue("always")
+		}
+	}
+
+	var buf bytes.Buffer
+	if _, err := cfg.WriteTo(&buf); err != nil {
+		t.Fatalf("cfg.WriteTo: %v", err)
+	}
+	out := buf.String()
+
+	// The written output must contain the full value, not the truncated one.
+	for _, sec := range []string{"container#db", "container#jobs"} {
+		cfg2, err := ini.LoadSources(ini.LoadOptions{IgnoreInlineComment: true}, bytes.NewReader(buf.Bytes()))
+		if err != nil {
+			t.Fatalf("re-parse: %v", err)
+		}
+		got := cfg2.Section(sec).Key("netns").Value()
+		if got != "container#01" {
+			t.Errorf("[%s] netns = %q, want \"container#01\"\nfull output:\n%s", sec, got, out)
+		}
+	}
+
+	// Also assert the raw output string doesn't contain the mangled comment form.
+	if strings.Contains(out, "# 01") {
+		t.Errorf("output contains mangled comment '# 01':\n%s", out)
 	}
 }
 

@@ -253,6 +253,69 @@ func (collector *Collector) CreateObjectV3(namespace, kind, service string, data
 	return body, nil
 }
 
+func (collector *Collector) GetObjectConfigFileV3(namespace, kind, service string) ([]byte, error) {
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+
+	oKind := apiv3.Kind(kind)
+	resp, err := client.GetObjectConfigFile(ctx, namespace, oKind, service, collector.RequestCloserV3())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get object config for %s/%s/%s: %w", namespace, kind, service, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if !handleSuccessGroup(resp.StatusCode) {
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
+	}
+
+	return body, nil
+}
+
+func (collector *Collector) UpdateObjectV3(namespace, kind, service string, data []byte) ([]byte, error) {
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+
+	oKind := apiv3.Kind(kind)
+	resp, err := client.PutObjectConfigFileWithBody(ctx, namespace, oKind, service, "application/octet-stream", bytes.NewReader(data), collector.RequestCloserV3())
+	if err != nil {
+		return nil, fmt.Errorf("failed to update object in %s/%s/%s: %w", namespace, kind, service, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if !handleSuccessGroup(resp.StatusCode) {
+		return nil, &StatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+		}
+	}
+
+	return body, nil
+}
+
+
 type ObjectGetterFunc func([]byte) ([]byte, error)
 
 func (collector *Collector) GetObjectV3(namespace, kind, service string, getFunc ObjectGetterFunc) ([]byte, error) {

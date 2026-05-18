@@ -1210,6 +1210,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 			flags.StringVar(&conf.KubeConfig, "kube-config", "", "path to ks8 config file")
 			flags.StringVar(&conf.ProvOpensvcCollectorAccount, "opensvc-collector-account", "/etc/replication-manager/account.yaml", "Openscv collector account")
 			flags.IntVar(&conf.ProvOpensvcV3ProvisionDelay, "opensvc-v3-provision-delay", 10, "Seconds to wait after template creation before provisioning in V3")
+			flags.BoolVar(&conf.ProvOpensvcImageForcePull, "opensvc-image-force-pull", false, "Force docker image pull when generating the service template")
 
 			if conf.ProvOpensvcUseCollectorAPI {
 				dbConfig := viper.New()

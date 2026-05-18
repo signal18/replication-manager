@@ -391,7 +391,13 @@ func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error 
 	return nil
 }
 
-func (cluster *Cluster) RollingUpgrade() {
+func (cluster *Cluster) UpdateDatabaseServiceConfig(server *ServerMonitor, forcePull bool) error {
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
+		return cluster.OpenSVCUpdateDatabaseServiceConfig(server, forcePull)
+	default:
+		return nil
+	}
 }
 
 func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
