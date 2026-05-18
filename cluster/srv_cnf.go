@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -838,6 +839,19 @@ func (server *ServerMonitor) ReadPreservedVariables() error {
 		}
 	}
 
+	// Load dropped variables state from disk
+	droppedpath := filepath.Join(server.Datadir, "dropped_variables.json")
+	if data, err := os.ReadFile(droppedpath); err == nil {
+		var droppedVars []string
+		if err := json.Unmarshal(data, &droppedVars); err == nil {
+			for _, varName := range droppedVars {
+				if varState, exists := server.VariablesMap.ToNewMap()[varName]; exists {
+					varState.Dropped = true
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -860,12 +874,23 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 		if v.Preserved != nil {
 			continue
 		}
+		// Skip variables marked as dropped (removed in newer version, acknowledged by user)
+		if v.Dropped {
+			continue
+		}
 
 		// Runtime fallback is intentionally disabled here. Delta files only persist
 		// deployed values that differ from config and are not preserved.
 		deltaLine := strings.TrimSpace(v.PrintDeployedDelta())
 		if deltaLine == "" {
 			continue
+		}
+
+		// Prefix with loose_ if the variable has no config counterpart (may have
+		// been removed in a newer version). This ensures the config file is valid
+		// across version upgrades without requiring manual user intervention.
+		if v.Config == nil && !strings.HasPrefix(deltaLine, "loose_") && !strings.HasPrefix(deltaLine, "loose-") {
+			deltaLine = "loose_" + deltaLine
 		}
 
 		content.WriteString(deltaLine + "\n")
@@ -950,14 +975,36 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 	for key, v := range server.VariablesMap.ToNewMap() {
 		// If preserve is set, write to preserve.cnf or agreed.cnf
 		if v.Preserved != nil {
+			// Prefix with loose_ if the variable has no config counterpart
+			// (may be removed in newer version) — ensures valid config across upgrades
+			varKey := key
+			if v.Config == nil && !strings.HasPrefix(key, "loose_") && !strings.HasPrefix(key, "loose-") {
+				varKey = "loose_" + key
+			}
 			if v.IsPreserved() {
 				// Write preserved variables to preserve.cnf
-				preservedContent.WriteString(fmt.Sprintf("%s=%s\n", key, v.Preserved.String()))
+				preservedContent.WriteString(fmt.Sprintf("%s=%s\n", varKey, v.Preserved.String()))
 			} else {
 				// Write non-preserved variables to agreed.cnf
-				agreedContent.WriteString(fmt.Sprintf("%s=%s\n", key, v.Preserved.String()))
+				agreedContent.WriteString(fmt.Sprintf("%s=%s\n", varKey, v.Preserved.String()))
 			}
 		}
+	}
+
+	// Persist dropped variables so the state survives restarts
+	droppedpath := filepath.Join(server.Datadir, "dropped_variables.json")
+	var droppedVars []string
+	for key, v := range server.VariablesMap.ToNewMap() {
+		if v.Dropped {
+			droppedVars = append(droppedVars, key)
+		}
+	}
+	if len(droppedVars) > 0 {
+		if data, err := json.Marshal(droppedVars); err == nil {
+			atomicWriteFile(droppedpath, data, 0644)
+		}
+	} else {
+		os.Remove(droppedpath)
 	}
 
 	// Write both files atomically
@@ -1039,7 +1086,9 @@ func (server *ServerMonitor) SetVariableCustomPreserved(variableName string, cus
 	return server.WritePreservedVariables()
 }
 
-// SetVariableAccepted marks a variable difference as "accepted" (use config value)
+// SetVariableAccepted marks a variable difference as "accepted" (use config value).
+// If the variable has no config value (e.g. removed in a newer version), it is
+// marked as dropped so it no longer appears in the delta.
 func (server *ServerMonitor) SetVariableAccepted(variableName string) error {
 	cluster := server.ClusterGroup
 
@@ -1048,13 +1097,16 @@ func (server *ServerMonitor) SetVariableAccepted(variableName string) error {
 		return fmt.Errorf("variable %s not found", variableName)
 	}
 
-	// Set preserved to config value to accept config value
 	if varState.Config != nil {
+		// Accept the config value
 		varState.Preserved = varState.Config
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"Variable %s marked as accepted with value: %s", variableName, varState.Config.String())
 	} else {
-		return fmt.Errorf("variable %s has no config value", variableName)
+		// Variable has no config value (removed in newer version) — mark as dropped
+		varState.Dropped = true
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Variable %s marked as dropped (no config value — removed in newer version)", variableName)
 	}
 
 	// Write preserved variables to files

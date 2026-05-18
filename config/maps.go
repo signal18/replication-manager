@@ -751,6 +751,7 @@ type VariableState struct {
 	PreservedSource       string        `json:"preservedSource,omitempty"`       // "server-specific", "cluster-level", or empty
 	PreservedPriority     int           `json:"preservedPriority,omitempty"`     // 1=server-specific, 2=cluster-level, 3=none/excluded
 	IsExcludedFromCluster bool          `json:"isExcludedFromCluster,omitempty"` // true if server is excluded from cluster-level preserved var
+	Dropped               bool          `json:"dropped,omitempty"`               // true if variable was intentionally removed (e.g. deprecated in newer version)
 }
 
 type LastConfigUpdate struct {
