@@ -4080,6 +4080,30 @@ func (cluster *Cluster) CreateTmpClientConfFile() (string, error) {
 
 }
 
+// hasPrintDefaultsContent checks if a .tmp file received from dbjobs contains
+// actual mariadbd --print-defaults output (at least one "--" prefixed line).
+// Returns false if the file is missing, empty, or has no variable lines.
+// This prevents overwriting good config files when the receiver got no data
+// (e.g. repman shutdown, network failure, or dbjobs timeout).
+func hasPrintDefaultsContent(tmpFile string) bool {
+	info, err := os.Stat(tmpFile)
+	if err != nil || info.Size() == 0 {
+		return false
+	}
+	f, err := os.Open(tmpFile)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		if strings.HasPrefix(scanner.Text(), "--") {
+			return true
+		}
+	}
+	return false
+}
+
 func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	cluster := server.ClusterGroup
 
@@ -4130,8 +4154,19 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		cluster.SetInPhysicalBackupState(false)
 	case "printdefault-current":
 		filename := filepath.Join(server.Datadir, "current.cnf")
+		tmpFile := filename + ".tmp"
+
+		// Guard: do not overwrite good data with empty .tmp (e.g. repman shutdown
+		// before dbjobs could send, or network failure). If the .tmp has no usable
+		// content, keep the existing file and skip.
+		if !hasPrintDefaultsContent(tmpFile) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"Skipping current.cnf update: %s is empty or missing (receiver got no data)", tmpFile)
+			break
+		}
+
 		os.Rename(filename, filename+".old")
-		err := server.LoadFromTempConfigFile(filename+".tmp", filename)
+		err := server.LoadFromTempConfigFile(tmpFile, filename)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Load from temp config error: %s", err)
 			return err
@@ -4144,9 +4179,19 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		}
 	case "printdefault-dummy":
 		filename := filepath.Join(server.Datadir, "dummy.cnf")
-		os.Rename(filename, filename+".old")
+		tmpFile := filename + ".tmp"
 
-		err := server.LoadFromTempConfigFile(filename+".tmp", filename)
+		// Guard: do not overwrite good data with empty .tmp (e.g. repman shutdown
+		// before dbjobs could send, or network failure). If the .tmp has no usable
+		// content, keep the existing file and skip.
+		if !hasPrintDefaultsContent(tmpFile) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"Skipping dummy.cnf update: %s is empty or missing (receiver got no data)", tmpFile)
+			break
+		}
+
+		os.Rename(filename, filename+".old")
+		err := server.LoadFromTempConfigFile(tmpFile, filename)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Load from temp config error: %s", err)
 			return err

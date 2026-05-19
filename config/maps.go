@@ -997,6 +997,34 @@ func FromVariablesMap(m *VariablesMap, c *VariablesMap) *VariablesMap {
 	return m
 }
 
+// HasConfigValues returns true if any variable has a non-nil Config value.
+// Used to guard delta computation: without config data (e.g. dummy.cnf missing),
+// every deployed variable would appear deprecated.
+func (m *VariablesMap) HasConfigValues() bool {
+	hasConfig := false
+	m.Range(func(key, value any) bool {
+		if state, ok := value.(*VariableState); ok && state.Config != nil {
+			hasConfig = true
+			return false
+		}
+		return true
+	})
+	return hasConfig
+}
+
+// HasDeployedValues returns true if any variable has a non-nil Deployed value.
+func (m *VariablesMap) HasDeployedValues() bool {
+	hasDeployed := false
+	m.Range(func(key, value any) bool {
+		if state, ok := value.(*VariableState); ok && state.Deployed != nil {
+			hasDeployed = true
+			return false
+		}
+		return true
+	})
+	return hasDeployed
+}
+
 func (m *VariablesMap) EmptyDeployedValues() {
 	m.Range(func(key, value any) bool {
 		if state, ok := value.(*VariableState); ok {

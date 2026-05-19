@@ -517,6 +517,7 @@ function DBConfigs({ selectedCluster, user }) {
                   />
                 ))}
             </HStack>
+            <ConfigFilesPanel selectedCluster={selectedCluster} />
             <AccordionComponent
                   heading={'Cluster Preserved Variables (Table & Editor)'}
                   className={styles.accordion}
@@ -564,7 +565,6 @@ function DBConfigs({ selectedCluster, user }) {
         acceptLoading={acceptLoading}
       />
 
-      <ConfigFilesPanel selectedCluster={selectedCluster} />
     </VStack>
   )
 }

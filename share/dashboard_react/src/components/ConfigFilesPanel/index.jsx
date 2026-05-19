@@ -113,13 +113,13 @@ function ConfigFilesPanel({ selectedCluster }) {
   const [selectedServer, setSelectedServer] = useState('')
   const [configFiles, setConfigFiles] = useState({ preserved: '', delta: '', agreed: '' })
   const [loading, setLoading] = useState(false)
-  const { auth: { baseURL } } = useSelector((state) => state)
+  const { auth: { baseURL }, cluster: { clusterServers } } = useSelector((state) => state)
 
-  const servers = selectedCluster?.dbServers || []
+  const servers = clusterServers || []
 
   useEffect(() => {
     if (servers.length > 0 && !selectedServer) {
-      setSelectedServer(servers[0])
+      setSelectedServer(servers[0]?.id || '')
     }
   }, [servers])
 
@@ -144,7 +144,7 @@ function ConfigFilesPanel({ selectedCluster }) {
           onChange={(e) => setSelectedServer(e.target.value)}
         >
           {servers.map((srv) => (
-            <option key={srv} value={srv}>{srv}</option>
+            <option key={srv.id} value={srv.id}>{srv.host}:{srv.port}</option>
           ))}
         </Select>
       </HStack>
@@ -152,7 +152,7 @@ function ConfigFilesPanel({ selectedCluster }) {
       {loading ? (
         <Text>Loading...</Text>
       ) : (
-        <Flex gap={3} wrap='wrap'>
+        <VStack spacing={3} align='stretch'>
           <FilePanel
             title='01_preserved.cnf'
             content={configFiles.preserved}
@@ -168,7 +168,7 @@ function ConfigFilesPanel({ selectedCluster }) {
             content={configFiles.agreed}
             emptyText='No accepted deviations'
           />
-        </Flex>
+        </VStack>
       )}
     </VStack>
   )

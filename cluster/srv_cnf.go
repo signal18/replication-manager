@@ -863,6 +863,24 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 		return nil
 	}
 
+	// Skip delta computation when the server is down. Without both config snapshots
+	// (dummy.cnf from tags + current.cnf from deployed), the diff is unreliable:
+	// missing dummy.cnf makes every deployed variable look deprecated, and missing
+	// current.cnf makes every expected variable look like drift.
+	if server.IsDown() {
+		return nil
+	}
+
+	// Also skip if we don't have both config and deployed data loaded.
+	// This catches edge cases where files are missing regardless of server state.
+	if server.VariablesMap == nil || !server.VariablesMap.HasConfigValues() || !server.VariablesMap.HasDeployedValues() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+			"Skipping delta computation for %s: incomplete config data (config=%v, deployed=%v)",
+			server.URL, server.VariablesMap != nil && server.VariablesMap.HasConfigValues(),
+			server.VariablesMap != nil && server.VariablesMap.HasDeployedValues())
+		return nil
+	}
+
 	// Build content in memory first
 	var content strings.Builder
 	content.WriteString("[mysqld]\n")
