@@ -63,6 +63,19 @@ func NewGenericGitClient(user, pass string) (*GenericGitClient, error) {
 	return &GenericGitClient{User: user, Pass: pass}, nil
 }
 
+// normalizeRepoURL ensures HTTPS repository URLs have the .git suffix required
+// by the git wire protocol. GitHub accepts both forms; GitLab requires .git.
+// SSH and local paths are returned unchanged.
+func normalizeRepoURL(repoURL string) string {
+	if strings.HasPrefix(repoURL, "git@") ||
+		strings.HasPrefix(repoURL, "/") ||
+		strings.HasPrefix(repoURL, "./") ||
+		strings.HasSuffix(repoURL, ".git") {
+		return repoURL
+	}
+	return repoURL + ".git"
+}
+
 func (g *GenericGitClient) basicAuth() *githttp.BasicAuth {
 	if g.User == "" && g.Pass == "" {
 		return nil
@@ -76,6 +89,8 @@ func (g *GenericGitClient) CheckRepo(repoURL, branch string, timeout time.Durati
 	if timeout <= 0 {
 		timeout = genericDefaultTimeout
 	}
+
+	repoURL = normalizeRepoURL(repoURL)
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -117,6 +132,8 @@ func (g *GenericGitClient) GetRepositoryTree(cacheDir, repoURL, branch string, t
 	if timeout <= 0 {
 		timeout = genericDefaultTimeout
 	}
+
+	repoURL = normalizeRepoURL(repoURL)
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -196,6 +213,8 @@ func (g *GenericGitClient) DownloadFileFromRepo(repoURL, branch, filePath string
 	if timeout <= 0 {
 		timeout = genericDefaultTimeout
 	}
+
+	repoURL = normalizeRepoURL(repoURL)
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()

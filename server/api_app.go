@@ -2083,7 +2083,6 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					}
 
 				case "repo":
-					newValue = strings.TrimSuffix(newValue, ".git")
 					if gc.GitRepo == newValue {
 						http.Error(w, "Repo is the same as the current repo", http.StatusInternalServerError)
 						return
