@@ -349,11 +349,20 @@ func (configurator *Configurator) GetActiveDBOsFamily() *DBOsFamily {
 }
 
 // GetActiveDBDeployMethod returns the deploy method (docker/tarball/repository) matching the cluster's active DB tags.
+// For container orchestrators (OpenSVC, K8S), defaults to docker even without an explicit docker tag.
 func (configurator *Configurator) GetActiveDBDeployMethod() *DBDeployMethod {
 	if configurator.DBDistributions == nil {
 		return nil
 	}
-	return configurator.DBDistributions.GetDeployMethod(configurator.HaveDBTag)
+	dm := configurator.DBDistributions.GetDeployMethod(configurator.HaveDBTag)
+	// If no explicit deploy tag matched and the orchestrator is container-based,
+	// the default should be docker, not repository.
+	if dm != nil && dm.Filter == "" && isContainerOrchestrator(configurator.ClusterConfig.ProvOrchestrator) {
+		if dockerDM := configurator.DBDistributions.GetDeployMethodByType("docker"); dockerDM != nil {
+			return dockerDM
+		}
+	}
+	return dm
 }
 
 func (configurator *Configurator) GetSshUpgradeDBScript() string {

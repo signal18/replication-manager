@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/share"
 )
 
@@ -107,6 +108,25 @@ func (d *DBDistributions) GetDeployMethod(haveTag func(string) bool) *DBDeployMe
 		}
 	}
 	return defaultMethod
+}
+
+// GetDeployMethodByType returns a deploy method by its type name (docker, tarball, repository).
+func (d *DBDistributions) GetDeployMethodByType(typeName string) *DBDeployMethod {
+	if d == nil {
+		return nil
+	}
+	for i := range d.DeployMethods {
+		if d.DeployMethods[i].Type == typeName {
+			return &d.DeployMethods[i]
+		}
+	}
+	return nil
+}
+
+// isContainerOrchestrator returns true for orchestrators that deploy via containers.
+func isContainerOrchestrator(orchestrator string) bool {
+	return orchestrator == config.ConstOrchestratorOpenSVC ||
+		orchestrator == config.ConstOrchestratorKubernetes
 }
 
 // ResolveRepoURL builds the full repository URL for a given MariaDB version.
