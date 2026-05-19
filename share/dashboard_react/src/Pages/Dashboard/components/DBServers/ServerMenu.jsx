@@ -400,6 +400,15 @@ function ServerMenu({
                   setConfirmHandler(() => () => dispatch(startDatabase({ clusterName, serverId: row.id })))
                 }
               },
+              {
+                name: 'Restart Database',
+                isDisabled: !user?.grants['db-start'] || !user?.grants['db-stop'],
+                onClick: () => {
+                  openConfirmModal()
+                  setConfirmTitle(`Confirm restart for ${serverName}?`)
+                  setConfirmHandler(() => () => dispatch(restartDatabase({ clusterName, serverId: row.id })))
+                }
+              },
               ...(orchestrator === 'opensvc'
                 ? [
                     {

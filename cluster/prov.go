@@ -529,6 +529,19 @@ func (cluster *Cluster) RestartDatabaseService(server *ServerMonitor, node strin
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		err = cluster.OpenSVCRestartDatabaseService(server, node, rid)
+	case config.ConstOrchestratorOnPremise:
+		// On-premise has no atomic restart — stop then start
+		err = cluster.OnPremiseStopDatabaseService(server)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Restart stop phase failed for %s: %s", server.URL, err)
+			return err
+		}
+		err = cluster.WaitDatabaseFailed(server)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Restart wait-failed phase for %s: %s", server.URL, err)
+			return err
+		}
+		err = cluster.OnPremiseStartDatabaseService(server)
 	default:
 		return errors.New("Restart not supported for this orchestrator yet")
 	}
