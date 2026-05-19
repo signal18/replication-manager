@@ -1,4 +1,4 @@
-import { Box, Flex, HStack, Select, Text, VStack, Code, Badge } from '@chakra-ui/react'
+import { Box, Button, Flex, HStack, Select, Text, VStack, Code, Badge } from '@chakra-ui/react'
 import React, { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { clusterService } from '../../services/clusterService'
@@ -113,6 +113,7 @@ function ConfigFilesPanel({ selectedCluster }) {
   const [selectedServer, setSelectedServer] = useState('')
   const [configFiles, setConfigFiles] = useState({ preserved: '', delta: '', agreed: '' })
   const [loading, setLoading] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
   const { auth: { baseURL }, cluster: { clusterServers } } = useSelector((state) => state)
 
   const servers = clusterServers || []
@@ -131,7 +132,14 @@ function ConfigFilesPanel({ selectedCluster }) {
         .catch(() => setConfigFiles({ preserved: '', delta: '', agreed: '' }))
         .finally(() => setLoading(false))
     }
-  }, [selectedCluster?.name, selectedServer])
+  }, [selectedCluster?.name, selectedServer, refreshKey])
+
+  const handleClearDelta = () => {
+    if (!selectedCluster?.name || !selectedServer) return
+    clusterService.clearServerDelta(selectedCluster.name, selectedServer, baseURL)
+      .then(() => setRefreshKey((k) => k + 1))
+      .catch(() => {})
+  }
 
   return (
     <VStack className={styles.container} align='stretch' spacing={3}>
@@ -158,11 +166,51 @@ function ConfigFilesPanel({ selectedCluster }) {
             content={configFiles.preserved}
             emptyText='No preserved variables'
           />
-          <FilePanel
-            title='02_delta.cnf'
-            content={configFiles.delta}
-            emptyText='No delta — server is fully converged'
-          />
+          <Box className={styles.filePanel}>
+            <Flex className={styles.fileTitle} justify='space-between' align='center'>
+              <Text fontWeight={600} fontSize='0.85rem' fontFamily='monospace'>02_delta.cnf</Text>
+              {configFiles.delta && parseConfigLines(configFiles.delta).length > 0 && (
+                <Button size='xs' colorScheme='red' variant='outline' onClick={handleClearDelta}>
+                  Clear Delta
+                </Button>
+              )}
+            </Flex>
+            <Box className={styles.fileContent}>
+              {parseConfigLines(configFiles.delta).length === 0 ? (
+                <Text className={styles.emptyText}>No delta — server is fully converged</Text>
+              ) : (
+                parseConfigLines(configFiles.delta).map((line, idx) => {
+                  const colors = line.comment ? COMMENT_COLORS[line.comment] : null
+                  if (line.type === 'dropped') {
+                    return (
+                      <Flex key={idx} className={styles.fileLine} bg={COMMENT_COLORS['agreed:dropped'].bg}>
+                        <Badge colorScheme='red' size='sm' mr={2}>Dropped</Badge>
+                        <Code className={styles.lineText} color={COMMENT_COLORS['agreed:dropped'].color}>
+                          {line.text.replace('#', '').trim()}
+                        </Code>
+                      </Flex>
+                    )
+                  }
+                  return (
+                    <Flex key={idx} className={styles.fileLine} bg={colors?.bg || 'transparent'}>
+                      {colors && (
+                        <Badge size='sm' mr={2} bg={colors.bg} color={colors.color} border='1px solid' borderColor={colors.color}>
+                          {colors.label}
+                        </Badge>
+                      )}
+                      {line.isLoose && (
+                        <Badge colorScheme='orange' size='sm' mr={2}>loose</Badge>
+                      )}
+                      <Code className={styles.lineText}>
+                        <Text as='span' fontWeight='bold'>{line.name}</Text>
+                        <Text as='span'> = {line.value}</Text>
+                      </Code>
+                    </Flex>
+                  )
+                })
+              )}
+            </Box>
+          </Box>
           <FilePanel
             title='03_agreed.cnf'
             content={configFiles.agreed}
