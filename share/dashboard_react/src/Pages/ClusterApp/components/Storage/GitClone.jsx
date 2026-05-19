@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import PropTypes from "prop-types";
 import { VStack, Input, HStack, Heading, Flex, Box, Text } from "@chakra-ui/react";
 import styles from "./styles.module.scss";
 import PasswordControl from "../../../../components/PasswordControl";
@@ -43,7 +44,7 @@ const maskString = (str, mask = '*') => {
     return str.replaceAll(/./g, mask)
 }
 
-export default React.memo(function GitCloneSection({
+const GitCloneSection = React.memo(function GitCloneSection({
     rows = [],
     volumeOptions = [],
     fieldName = "gitClones",
@@ -70,6 +71,9 @@ export default React.memo(function GitCloneSection({
     const handleSaveAdd = useCallback((formData) => {
         onSaveAdd(fieldName, formData).then(() => {
             setIsVisible(false);
+            onResumeAutoReload();
+        }).catch(() => {
+            // Error banner shown by redux. Resume auto-reload so the UI doesn't stay paused.
             onResumeAutoReload();
         });
     }, [fieldName, onSaveAdd, onResumeAutoReload]);
@@ -168,7 +172,7 @@ export default React.memo(function GitCloneSection({
     )
 })
 
-const GitRowForm = React.memo(({ fieldName, gitClone, index, onChange, volumeOptions, onCheckGit = null }) => {
+const GitRowForm = React.memo(function GitRowForm({ fieldName, gitClone, index, onChange, volumeOptions, onCheckGit = null }) {
     const gc = gitClone || defaultGit;
     const { theme } = useTheme();
     const { name, repo, branch, user, pass, volumename, volumedir } = gc;
@@ -268,7 +272,7 @@ const GitRowForm = React.memo(({ fieldName, gitClone, index, onChange, volumeOpt
     )
 })
 
-const GitNewForm = React.memo(({ volumeOptions, onSave = () => { }, onCancel = () => { }, onCheckGit = null }) => {
+const GitNewForm = React.memo(function GitNewForm({ volumeOptions, onSave = () => { }, onCancel = () => { }, onCheckGit = null }) {
     const [gc, setGc] = useState(defaultGit);
     const [checkState, setCheckState] = useState({ status: 'idle', message: '' });
     const { theme } = useTheme();
@@ -392,3 +396,40 @@ const GitNewForm = React.memo(({ volumeOptions, onSave = () => { }, onCancel = (
         </Flex>
     )
 })
+
+const volumeOptionShape = PropTypes.shape({
+    value: PropTypes.string,
+    name: PropTypes.string,
+    volumedir: PropTypes.string,
+})
+
+GitCloneSection.propTypes = {
+    rows: PropTypes.array,
+    volumeOptions: PropTypes.arrayOf(volumeOptionShape),
+    fieldName: PropTypes.string,
+    onRowArrayChange: PropTypes.func,
+    onRowDropIndex: PropTypes.func,
+    onSaveAdd: PropTypes.func,
+    onCheckGit: PropTypes.func,
+    onCheckGitNew: PropTypes.func,
+    onPauseAutoReload: PropTypes.func,
+    onResumeAutoReload: PropTypes.func,
+}
+
+GitRowForm.propTypes = {
+    fieldName: PropTypes.string,
+    gitClone: PropTypes.object,
+    index: PropTypes.number,
+    onChange: PropTypes.func,
+    volumeOptions: PropTypes.arrayOf(volumeOptionShape),
+    onCheckGit: PropTypes.func,
+}
+
+GitNewForm.propTypes = {
+    volumeOptions: PropTypes.arrayOf(volumeOptionShape),
+    onSave: PropTypes.func,
+    onCancel: PropTypes.func,
+    onCheckGit: PropTypes.func,
+}
+
+export default GitCloneSection

@@ -96,6 +96,8 @@ const S3DirectorySection = ({
       onSaveAdd(fieldName, formData).then(() => {
         setIsVisible(false);
         onResumeAutoReload();
+      }).catch(() => {
+        onResumeAutoReload();
       });
     }
 

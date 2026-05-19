@@ -10,8 +10,12 @@ import (
 )
 
 // setupLocalRepo creates a temporary git repo with a branch and test files.
+// Skips the test if git is not available in PATH.
 func setupLocalRepo(t *testing.T) string {
 	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available in PATH")
+	}
 	repoDir := t.TempDir()
 
 	run := func(args ...string) {
@@ -51,7 +55,7 @@ func setupLocalRepo(t *testing.T) string {
 
 func TestGenericGitClient_CheckRepo(t *testing.T) {
 	repoDir := setupLocalRepo(t)
-	gc, _ := NewGenericGitClient("", "")
+	gc := NewGenericGitClient("", "")
 
 	msg, err := gc.CheckRepo(repoDir, "main", 30*time.Second)
 	if err != nil {
@@ -64,7 +68,7 @@ func TestGenericGitClient_CheckRepo(t *testing.T) {
 
 func TestGenericGitClient_CheckRepo_MissingBranch(t *testing.T) {
 	repoDir := setupLocalRepo(t)
-	gc, _ := NewGenericGitClient("", "")
+	gc := NewGenericGitClient("", "")
 
 	_, err := gc.CheckRepo(repoDir, "does-not-exist", 30*time.Second)
 	if err == nil {
@@ -73,7 +77,7 @@ func TestGenericGitClient_CheckRepo_MissingBranch(t *testing.T) {
 }
 
 func TestGenericGitClient_CheckRepo_BadPath(t *testing.T) {
-	gc, _ := NewGenericGitClient("", "")
+	gc := NewGenericGitClient("", "")
 	_, err := gc.CheckRepo("/nonexistent/repo/path", "main", 30*time.Second)
 	if err == nil {
 		t.Error("expected error for non-existent repo, got nil")
@@ -83,7 +87,7 @@ func TestGenericGitClient_CheckRepo_BadPath(t *testing.T) {
 func TestGenericGitClient_GetRepositoryTree(t *testing.T) {
 	repoDir := setupLocalRepo(t)
 	cacheDir := t.TempDir()
-	gc, _ := NewGenericGitClient("", "")
+	gc := NewGenericGitClient("", "")
 
 	tree, err := gc.GetRepositoryTree(cacheDir, repoDir, "main", 30*time.Second, true)
 	if err != nil {
@@ -97,7 +101,7 @@ func TestGenericGitClient_GetRepositoryTree(t *testing.T) {
 func TestGenericGitClient_GetRepositoryTree_CacheHit(t *testing.T) {
 	repoDir := setupLocalRepo(t)
 	cacheDir := t.TempDir()
-	gc, _ := NewGenericGitClient("", "")
+	gc := NewGenericGitClient("", "")
 
 	if _, err := gc.GetRepositoryTree(cacheDir, repoDir, "main", 30*time.Second, true); err != nil {
 		t.Fatalf("first GetRepositoryTree failed: %v", err)
@@ -114,7 +118,7 @@ func TestGenericGitClient_GetRepositoryTree_CacheHit(t *testing.T) {
 
 func TestGenericGitClient_DownloadFileFromRepo(t *testing.T) {
 	repoDir := setupLocalRepo(t)
-	gc, _ := NewGenericGitClient("", "")
+	gc := NewGenericGitClient("", "")
 
 	content, err := gc.DownloadFileFromRepo(repoDir, "main", "hello.txt", 30*time.Second)
 	if err != nil {
@@ -128,7 +132,7 @@ func TestGenericGitClient_DownloadFileFromRepo(t *testing.T) {
 func TestGenericGitClient_NoCredentialsInProcessArgs(t *testing.T) {
 	// Verify that credentials are stored as Go struct values and that the
 	// basicAuth() helper returns them correctly without any string encoding.
-	gc, _ := NewGenericGitClient("user", "s3cr3t")
+	gc := NewGenericGitClient("user", "s3cr3t")
 	auth := gc.basicAuth()
 	if auth == nil {
 		t.Fatal("expected non-nil auth")

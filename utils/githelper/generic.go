@@ -2,6 +2,7 @@ package githelper
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -21,7 +22,7 @@ import (
 	gitclient "github.com/go-git/go-git/v5/plumbing/transport/client"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	gogitmem "github.com/go-git/go-git/v5/storage/memory"
-	"errors"
+
 	"github.com/signal18/replication-manager/utils/treehelper"
 )
 
@@ -59,19 +60,17 @@ type GenericGitClient struct {
 }
 
 // NewGenericGitClient creates a GenericGitClient for any HTTPS or SSH repository.
-func NewGenericGitClient(user, pass string) (*GenericGitClient, error) {
-	return &GenericGitClient{User: user, Pass: pass}, nil
+func NewGenericGitClient(user, pass string) *GenericGitClient {
+	return &GenericGitClient{User: user, Pass: pass}
 }
 
-// normalizeRepoURL ensures a repository URL is usable by go-git:
-//   - Adds https:// when no scheme is present (and not SSH/local)
-//   - Adds .git suffix for HTTPS URLs that don't already have it (GitLab requires it)
-//
-// SSH (git@host:path) and local paths (/path, ./path) are returned unchanged.
+// normalizeRepoURL ensures the URL has a scheme (defaults to https://).
+// It does NOT add a .git suffix — servers that require it are handled by
+// openUploadPackSession which retries with .git on 404.
+// SSH (git@host:path) and local paths are returned unchanged.
 func normalizeRepoURL(repoURL string) string {
 	repoURL = strings.TrimSpace(repoURL)
 
-	// SSH short form and local paths need no modification.
 	if strings.HasPrefix(repoURL, "git@") ||
 		strings.HasPrefix(repoURL, "/") ||
 		strings.HasPrefix(repoURL, "./") ||
@@ -79,17 +78,76 @@ func normalizeRepoURL(repoURL string) string {
 		return repoURL
 	}
 
-	// Add https:// if no scheme is present.
 	if !strings.Contains(repoURL, "://") {
 		repoURL = "https://" + repoURL
 	}
 
-	// GitLab requires the .git suffix on the wire protocol endpoint.
-	if !strings.HasSuffix(repoURL, ".git") {
-		repoURL = repoURL + ".git"
+	return repoURL
+}
+
+// openUploadPackSession opens a single git upload-pack session and fetches
+// the server's advertised references. This gives us:
+//   - The commit SHA for the requested branch (for cache validation)
+//   - The server's capabilities (shallow, filter, sideband) for the upload-pack request
+//
+// If the server returns 404 and the URL doesn't already end in .git, the call
+// is retried with .git appended. GitLab requires .git; GitHub and most others
+// accept both forms. This avoids unconditionally appending .git which can
+// break servers that don't recognise the suffix.
+//
+// Returns the open session (caller must Close()), the advertised refs, the
+// commit hash for branch, and the effective URL used (may differ from repoURL
+// when the .git retry succeeded).
+func (g *GenericGitClient) openUploadPackSession(ctx context.Context, repoURL, branch string) (
+	transport.UploadPackSession, *packp.AdvRefs, plumbing.Hash, string, error,
+) {
+	sess, ar, err := g.tryOpenSession(ctx, repoURL)
+	if err != nil {
+		// Retry with .git for servers that require it (e.g. some GitLab configs).
+		if errors.Is(err, transport.ErrRepositoryNotFound) && !strings.HasSuffix(repoURL, ".git") {
+			sess, ar, err = g.tryOpenSession(ctx, repoURL+".git")
+			if err == nil {
+				repoURL = repoURL + ".git"
+			}
+		}
+		if err != nil {
+			return nil, nil, plumbing.ZeroHash, repoURL, classifyGitError(err)
+		}
 	}
 
-	return repoURL
+	branchRef := plumbing.NewBranchReferenceName(branch)
+	commitHash, ok := ar.References[branchRef.String()]
+	if !ok {
+		sess.Close()
+		return nil, nil, plumbing.ZeroHash, repoURL, fmt.Errorf("branch %q not found in repository", branch)
+	}
+
+	return sess, ar, commitHash, repoURL, nil
+}
+
+func (g *GenericGitClient) tryOpenSession(ctx context.Context, repoURL string) (transport.UploadPackSession, *packp.AdvRefs, error) {
+	ep, err := transport.NewEndpoint(repoURL)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid repository URL: %w", err)
+	}
+
+	c, err := gitclient.NewClient(ep)
+	if err != nil {
+		return nil, nil, fmt.Errorf("unsupported protocol %q", ep.Protocol)
+	}
+
+	sess, err := c.NewUploadPackSession(ep, g.basicAuth())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	ar, err := sess.AdvertisedReferencesContext(ctx)
+	if err != nil {
+		sess.Close()
+		return nil, nil, err
+	}
+
+	return sess, ar, nil
 }
 
 func (g *GenericGitClient) basicAuth() *githttp.BasicAuth {
@@ -133,17 +191,18 @@ func (g *GenericGitClient) CheckRepo(repoURL, branch string, timeout time.Durati
 
 // GetRepositoryTree retrieves the full file tree for a branch.
 //
-// Cache path (fast): resolves the branch commit SHA via Remote.List with no
-// object download, then serves the cached tree immediately if SHA matches.
+// A single upload-pack session is opened. AdvertisedReferences gives the commit
+// SHA (used for cache validation) without downloading any objects. If the cache
+// is valid, the session is closed immediately — no upload-pack request is made.
+// On a cache miss the same session continues to the upload-pack phase.
 //
-// Fetch path (cache miss): uses the low-level git upload-pack protocol directly.
-// If the server advertises the "filter" capability, it sends FilterBlobNone so
-// only commit and tree objects are transferred — blobs are never downloaded.
-// If the server does not support filtering, it falls back to a full depth=1
-// shallow clone (same as before, still no blobs decompressed).
+// If the server advertises "filter", blob:none is requested so only commit and
+// tree objects are transferred. Tree walking uses tree entries (not tree.Files())
+// so blob objects are never decompressed even when present in the pack.
 //
-// Tree walking uses tree entries directly (not tree.Files()) so blob objects
-// are never accessed even when they happen to be present in the pack.
+// If the initial connection returns 404 and the URL has no .git suffix, the
+// call is retried with .git appended. GitLab requires it; GitHub and most others
+// accept both forms.
 func (g *GenericGitClient) GetRepositoryTree(cacheDir, repoURL, branch string, timeout time.Duration, refresh bool) (*treehelper.FileTreeCache, error) {
 	if timeout <= 0 {
 		timeout = genericDefaultTimeout
@@ -154,21 +213,25 @@ func (g *GenericGitClient) GetRepositoryTree(cacheDir, repoURL, branch string, t
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	commitSHA, err := g.resolveCommitSHA(ctx, repoURL, branch)
+	// One session open: AdvertisedReferences gives the commit SHA for cache
+	// validation without downloading any objects.
+	sess, ar, commitHash, repoURL, err := g.openUploadPackSession(ctx, repoURL, branch)
 	if err != nil {
 		return nil, err
 	}
+	defer sess.Close()
 
+	commitSHA := commitHash.String()
 	cacheRef := sanitizeCacheRef(repoURL)
 
 	if !refresh {
 		if cache := g.LoadTreeFromCache(cacheDir, cacheRef, commitSHA); cache != nil {
-			return cache, nil
+			return cache, nil // session closes via defer, no upload-pack sent
 		}
 	}
 
-	// Use low-level transport to fetch only tree objects (blob:none if supported).
-	s, commitHash, err := g.fetchTreeObjects(ctx, repoURL, branch)
+	// Cache miss: send the upload-pack request on the already-open session.
+	s, err := g.doUploadPack(ctx, sess, ar, commitHash)
 	if err != nil {
 		return nil, err
 	}
@@ -183,13 +246,14 @@ func (g *GenericGitClient) GetRepositoryTree(cacheDir, repoURL, branch string, t
 		return nil, fmt.Errorf("failed to get root tree: %w", err)
 	}
 
-	root, err := buildTreeByWalkingEntries(s, gitTree, commitSHA)
+	root, truncated, err := buildTreeByWalkingEntries(s, gitTree, commitSHA)
 	if err != nil {
 		return nil, err
 	}
 
 	cache := &treehelper.FileTreeCache{
 		Tree:       root,
+		Truncated:  truncated,
 		Reference:  cacheRef,
 		Layers:     []string{commitSHA},
 		IsCached:   true,
@@ -278,53 +342,20 @@ func (g *GenericGitClient) DownloadFileFromRepo(repoURL, branch, filePath string
 // fetchTreeObjects uses the raw git upload-pack protocol to fetch only commit
 // and tree objects. If the server supports the "filter" capability it sends
 // FilterBlobNone(), otherwise it falls back to a standard depth=1 pack.
-// Returns a populated in-memory object store and the resolved commit hash.
-func (g *GenericGitClient) fetchTreeObjects(ctx context.Context, repoURL, branch string) (storer.EncodedObjectStorer, plumbing.Hash, error) {
-	ep, err := transport.NewEndpoint(repoURL)
-	if err != nil {
-		return nil, plumbing.ZeroHash, fmt.Errorf("invalid repository URL: %w", err)
-	}
-
-	c, err := gitclient.NewClient(ep)
-	if err != nil {
-		return nil, plumbing.ZeroHash, fmt.Errorf("unsupported protocol %q", ep.Protocol)
-	}
-
-	sess, err := c.NewUploadPackSession(ep, g.basicAuth())
-	if err != nil {
-		return nil, plumbing.ZeroHash, classifyGitError(err)
-	}
-	defer sess.Close()
-
-	// Discover server capabilities and refs.
-	ar, err := sess.AdvertisedReferencesContext(ctx)
-	if err != nil {
-		return nil, plumbing.ZeroHash, classifyGitError(err)
-	}
-
-	// Find the commit hash at the branch tip.
-	branchRef := plumbing.NewBranchReferenceName(branch)
-	commitHash, ok := ar.References[branchRef.String()]
-	if !ok {
-		return nil, plumbing.ZeroHash, fmt.Errorf("branch %q not found in repository", branch)
-	}
-
-	// Build the upload-pack request.
-	// NewUploadPackRequestFromCapabilities returns *UploadPackRequest (embeds UploadRequest).
+// doUploadPack sends the upload-pack request on an already-open session whose
+// AdvertisedReferences have already been fetched. The session must stay open
+// until this function returns.
+func (g *GenericGitClient) doUploadPack(ctx context.Context, sess transport.UploadPackSession, ar *packp.AdvRefs, commitHash plumbing.Hash) (storer.EncodedObjectStorer, error) {
 	req := packp.NewUploadPackRequestFromCapabilities(ar.Capabilities)
 	req.Wants = []plumbing.Hash{commitHash}
 
-	// Only request a shallow clone when the server advertises the capability.
-	// NewUploadPackRequestFromCapabilities does not copy shallow automatically,
-	// so we must add it to req.Capabilities explicitly when using depth.
+	// Shallow clone when the server supports it — only adds req.Capabilities.
 	if ar.Capabilities.Supports(capability.Shallow) {
 		req.Capabilities.Set(capability.Shallow)
 		req.Depth = packp.DepthCommits(1)
 	}
 
-	// Request blob:none filter if the server supports it.
-	// This tells the server to send only commit and tree objects,
-	// skipping all blob objects — exactly what we need for tree listing.
+	// blob:none filter: server sends only commit + tree objects, no blobs.
 	if ar.Capabilities.Supports(capability.Filter) {
 		req.Capabilities.Set(capability.Filter)
 		req.Filter = packp.FilterBlobNone()
@@ -332,49 +363,24 @@ func (g *GenericGitClient) fetchTreeObjects(ctx context.Context, repoURL, branch
 
 	resp, err := sess.UploadPack(ctx, req)
 	if err != nil {
-		return nil, plumbing.ZeroHash, classifyGitError(err)
+		return nil, classifyGitError(err)
 	}
 	defer resp.Close()
 
-	// The response is wrapped in a sideband stream (progress + data multiplexed).
-	// Demux it so packfile.UpdateObjectStorage receives only the raw pack data.
 	packReader := demuxSideband(req.Capabilities, resp)
 
 	s := gogitmem.NewStorage()
 	if err := packfile.UpdateObjectStorage(s, packReader); err != nil {
-		return nil, plumbing.ZeroHash, fmt.Errorf("failed to unpack objects: %w", err)
+		return nil, fmt.Errorf("failed to unpack objects: %w", err)
 	}
 
-	return s, commitHash, nil
-}
-
-// resolveCommitSHA fetches only ref metadata (no objects) to get the commit SHA.
-// Equivalent to git ls-remote — fast and cheap.
-func (g *GenericGitClient) resolveCommitSHA(ctx context.Context, repoURL, branch string) (string, error) {
-	rem := gogit.NewRemote(gogitmem.NewStorage(), &gogitcfg.RemoteConfig{
-		Name: "origin",
-		URLs: []string{repoURL},
-	})
-
-	refs, err := rem.ListContext(ctx, &gogit.ListOptions{Auth: g.basicAuth()})
-	if err != nil {
-		return "", classifyGitError(err)
-	}
-
-	target := plumbing.NewBranchReferenceName(branch)
-	for _, ref := range refs {
-		if ref.Name() == target {
-			return ref.Hash().String(), nil
-		}
-	}
-
-	return "", fmt.Errorf("branch %q not found in repository", branch)
+	return s, nil
 }
 
 // buildTreeByWalkingEntries recursively walks tree.Entries without ever
-// accessing blob objects. This is correct even when the storer was populated
-// with FilterBlobNone() (blobs absent) because we only read tree entries.
-func buildTreeByWalkingEntries(s storer.EncodedObjectStorer, tree *object.Tree, commitSHA string) (*treehelper.FileEntry, error) {
+// accessing blob objects. Returns the root entry and a truncated flag that is
+// true when genericMaxFiles was reached before the full tree was traversed.
+func buildTreeByWalkingEntries(s storer.EncodedObjectStorer, tree *object.Tree, commitSHA string) (*treehelper.FileEntry, bool, error) {
 	root := &treehelper.FileEntry{
 		Name:     "root",
 		Type:     "directory",
@@ -390,10 +396,10 @@ func buildTreeByWalkingEntries(s storer.EncodedObjectStorer, tree *object.Tree, 
 
 	count := 0
 	if err := walkEntries(s, tree, "", root, &count); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	return root, nil
+	return root, count >= genericMaxFiles, nil
 }
 
 // walkEntries recurses through tree entries, building the FileEntry hierarchy.
@@ -455,9 +461,10 @@ func demuxSideband(caps *capability.List, r io.Reader) io.Reader {
 // response body — useful for diagnosing credential and permission problems).
 //
 // HTTP mapping (errors.Is works because go-git uses %w):
-//   401 → ErrAuthenticationRequired  e.g. "authentication required: Bad credentials"
-//   403 → ErrAuthorizationFailed     e.g. "authorization failed: insufficient scope"
-//   404 → ErrRepositoryNotFound      e.g. "repository not found: Not Found"
+//
+//	401 → ErrAuthenticationRequired  e.g. "authentication required: Bad credentials"
+//	403 → ErrAuthorizationFailed     e.g. "authorization failed: insufficient scope"
+//	404 → ErrRepositoryNotFound      e.g. "repository not found: Not Found"
 func classifyGitError(err error) error {
 	if err == nil {
 		return nil

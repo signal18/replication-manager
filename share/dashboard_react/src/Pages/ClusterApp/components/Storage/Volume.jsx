@@ -88,6 +88,8 @@ const VolumeSection = ({
       onSaveAdd(fieldName, formData).then(() => {
         setIsVisible(false);
         onResumeAutoReload();
+      }).catch(() => {
+        onResumeAutoReload();
       });
     }
 

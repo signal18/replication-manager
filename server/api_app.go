@@ -165,6 +165,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGitCheckRepo)),
 	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/check", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGitCheckRepoByName)),
+	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appHost}/{appPort}/actions/drop", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppDropByName)),
@@ -2706,6 +2710,10 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 			http.Error(w, "Git Clone Not Found", http.StatusInternalServerError)
 			return
 		}
+		if isSSRFTarget(gc.GitRepo) {
+			http.Error(w, "repo URL not allowed", http.StatusBadRequest)
+			return
+		}
 
 		gitpass := mycluster.Conf.GetDecryptedPassword(gc.Name, gc.GitPass)
 
@@ -2717,11 +2725,7 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 
 		// All providers use GenericGitClient (go-git) over the git wire protocol.
 		// No provider-specific REST API is needed for tree operations.
-		gitClient, err := githelper.NewGenericGitClient(gc.GitUser, gitpass)
-		if err != nil {
-			http.Error(w, "Error creating Git client: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
+		gitClient := githelper.NewGenericGitClient(gc.GitUser, gitpass)
 
 		tree, err := gitClient.GetRepositoryTree(cacheDir, gc.GitRepo, gc.GitBranch, timeout, force)
 		if err != nil {
@@ -2736,6 +2740,7 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 		return
 	}
 }
+
 
 // handlerMuxGitCheckRepo validates a git repository URL, branch, and credentials
 // before the user creates path mappings. Uses git ls-remote internally.
@@ -2784,6 +2789,10 @@ func (repman *ReplicationManager) handlerMuxGitCheckRepo(w http.ResponseWriter, 
 		http.Error(w, "repo is required", http.StatusBadRequest)
 		return
 	}
+	if isSSRFTarget(req.Repo) {
+		http.Error(w, "repo URL not allowed", http.StatusBadRequest)
+		return
+	}
 	if req.Branch == "" {
 		req.Branch = "main"
 	}
@@ -2798,25 +2807,81 @@ func (repman *ReplicationManager) handlerMuxGitCheckRepo(w http.ResponseWriter, 
 		Message string `json:"message"`
 	}
 
-	gc, gerr := githelper.NewGenericGitClient(req.User, req.Pass)
-	if gerr != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(CheckResponse{OK: false, Message: "Failed to create git client: " + gerr.Error()})
+	gc := githelper.NewGenericGitClient(req.User, req.Pass)
+
+	msg, err := gc.CheckRepo(req.Repo, req.Branch, timeout)
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		json.NewEncoder(w).Encode(CheckResponse{OK: false, Message: err.Error()})
+	} else {
+		json.NewEncoder(w).Encode(CheckResponse{OK: true, Message: msg})
+	}
+}
+
+// handlerMuxGitCheckRepoByName checks an existing saved git clone using server-side
+// credentials. The gitName path parameter is used to look up the clone from the app
+// deployment; the password is decrypted server-side, so the frontend never needs to
+// send a credential (which would be masked/encrypted in UI state anyway).
+// @Summary Check Git Repository by Name
+// @Tags GitRepository
+// @Produce json
+// @Param clusterName path string true "Cluster Name"
+// @Param appId path string true "App ID"
+// @Param gitName path string true "Git Clone Name"
+// @Success 200 {object} map[string]interface{}
+// @Failure 422 {object} map[string]interface{}
+// @Router /api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/check [post]
+func (repman *ReplicationManager) handlerMuxGitCheckRepoByName(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
 
-	msg, err := gc.CheckRepo(req.Repo, req.Branch, timeout)
-	resp := CheckResponse{}
-	if err != nil {
-		resp.OK = false
-		resp.Message = err.Error()
-	} else {
-		resp.OK = true
-		resp.Message = msg
+	app := mycluster.GetAppFromName(vars["appId"])
+	if app == nil {
+		http.Error(w, "App not found", http.StatusNotFound)
+		return
 	}
 
+	gc, _ := app.GetGitClone(vars["gitName"])
+	if gc == nil {
+		http.Error(w, "Git clone not found", http.StatusNotFound)
+		return
+	}
+	if isSSRFTarget(gc.GitRepo) {
+		http.Error(w, "repo URL not allowed", http.StatusBadRequest)
+		return
+	}
+
+	type CheckResponse struct {
+		OK      bool   `json:"ok"`
+		Message string `json:"message"`
+	}
+
+	gitpass := mycluster.Conf.GetDecryptedPassword(gc.Name, gc.GitPass)
+	timeout := time.Duration(gc.Timeout) * time.Second
+	if gc.Timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
+	client := githelper.NewGenericGitClient(gc.GitUser, gitpass)
+	msg, err := client.CheckRepo(gc.GitRepo, gc.GitBranch, timeout)
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	if err != nil {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		json.NewEncoder(w).Encode(CheckResponse{OK: false, Message: err.Error()})
+	} else {
+		json.NewEncoder(w).Encode(CheckResponse{OK: true, Message: msg})
+	}
 }
 
 // @Summary Get App Service Config

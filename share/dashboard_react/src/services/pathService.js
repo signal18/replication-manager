@@ -5,6 +5,7 @@ export const pathService = {
   getDockerDirectoryTree,
   getGitDirectoryTree,
   checkGitRepo,
+  checkGitRepoByName,
 }
 
 function getDockerDirectoryTree(clusterName, dockerImage, baseURL) {
@@ -17,4 +18,8 @@ function getGitDirectoryTree(clusterName, appId, gitName, baseURL) {
 
 function checkGitRepo(clusterName, appName, payload, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/apps/${appName}/git/actions/check`, payload)
+}
+
+function checkGitRepoByName(clusterName, appId, gitName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/git/${encodeURIComponent(gitName)}/actions/check`)
 }

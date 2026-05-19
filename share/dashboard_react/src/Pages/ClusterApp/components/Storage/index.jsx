@@ -8,7 +8,7 @@ import { useDispatch, useSelector } from "react-redux";
 import AccordionComponent from "../../../../components/AccordionComponent";
 import ConfirmModal from "../../../../components/Modals/ConfirmModal";
 import { addS3Provider, pauseAutoReload, selectClusterS3Providers, storageFieldChange, storageFieldIndexAdd, storageFieldIndexDrop, previewS3MountSync, applyS3MountSync, getClusterData, getOpenSVCPools } from "../../../../redux/clusterSlice";
-import { clearCache, getGitTree, checkGitRepo } from "../../../../redux/pathSlice";
+import { clearCache, checkGitRepo, checkGitRepoByName } from "../../../../redux/pathSlice";
 
 const GIT_CREDENTIAL_KEYS = ['repo', 'branch', 'pass', 'user'];
 
@@ -135,10 +135,7 @@ export default function StoragePage({ clusterName, appId, appConfig }) {
   );
 
   const handleCheckGit = useCallback(
-    (gitName) => {
-      dispatch(clearCache({ type: 'git', hash: gitName }));
-      return dispatch(getGitTree({ clusterName, appId, gitName })).unwrap();
-    },
+    (gitName) => dispatch(checkGitRepoByName({ clusterName, appId, gitName })).unwrap(),
     [clusterName, appId, dispatch]
   );
 
