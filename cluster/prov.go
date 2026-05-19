@@ -422,24 +422,38 @@ func (cluster *Cluster) UpgradeDatabaseService(server *ServerMonitor) error {
 // safe version upgrades, then delegates to the orchestrator-specific stop.
 // Use this before upgrading MariaDB — it ensures InnoDB performs a full purge
 // and change buffer merge so redo logs are compatible with the new version.
+// StopDatabaseServiceClean stops the database with innodb_fast_shutdown=0 for
+// safe version upgrades. For masters, it also issues SHUTDOWN WAIT FOR ALL SLAVES
+// via SQL so replicas receive all pending events before the master goes down.
+// The orchestrator stop follows to ensure a clean service state transition.
 func (cluster *Cluster) StopDatabaseServiceClean(server *ServerMonitor) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"Clean-stopping database service for upgrade %s", cluster.Name+"/svc/"+server.URL)
 
-	// Set innodb_fast_shutdown=0 while the DB is still running. This ensures InnoDB
-	// performs a full purge and change buffer merge when the process stops — required
-	// for safe major version upgrades where redo log format may change.
-	// Do NOT issue SQL SHUTDOWN here: let the orchestrator stop the service so it
-	// transitions to a clean "stopped" state (avoids OpenSVC warn/409 on next start).
 	if server.Conn != nil {
+		// Set innodb_fast_shutdown=0 while the DB is still running.
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"Setting innodb_fast_shutdown=0 on %s for clean upgrade shutdown", server.URL)
 		if _, err := server.Conn.Exec("SET GLOBAL innodb_fast_shutdown = 0"); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 				"Failed to set innodb_fast_shutdown=0 on %s: %s (proceeding with stop)", server.URL, err)
 		}
+
+		// If this is a master (user upgrading a master directly, not via rolling),
+		// wait for all slaves to receive pending binlog events before stopping.
+		if server.IsMaster() && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 4 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Master %s: issuing SHUTDOWN WAIT FOR ALL SLAVES", server.URL)
+			_, err := server.Conn.Exec("SHUTDOWN WAIT FOR ALL SLAVES")
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"SHUTDOWN WAIT FOR ALL SLAVES failed on %s: %s (falling back to orchestrator stop)", server.URL, err)
+			}
+		}
 	}
 
+	// Always tell the orchestrator to stop — ensures clean state transition
+	// and stops ALL containers (db + jobs) so both get the new image on start.
 	return cluster.StopDatabaseService(server)
 }
 
