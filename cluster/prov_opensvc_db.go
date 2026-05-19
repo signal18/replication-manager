@@ -302,18 +302,20 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 		}
 		svc.StartService(agent.Node_id, service.Svc_id)
 	} else if svc.IsV3() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"Using OpenSVC V3 API for start on %s", server.URL)
-		err := cluster.startServiceV3WithRetry(svc, server)
+		// Optimistic clear: always clear instance state before start to avoid
+		// 409 "failover object is warn state" from a previous failed start.
+		// Clear is cheap and harmless if the service is already in a clean state.
+		cluster.OpenSVCClearDatabaseInstanceState(server, "")
+
+		err := svc.StartServiceV3(cluster.Name, server.ServiceName)
 		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start database: %s", err)
 			return err
 		}
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
-			"Using OpenSVC V2 API for start on %s (V3 not detected)", server.URL)
 		err := svc.StartServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start database:  %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start database: %s", err)
 			return err
 		}
 	}
@@ -321,86 +323,6 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 	return nil
 }
 
-// startServiceV3WithRetry handles OpenSVC v3 start with automatic error recovery:
-// - 409 (warn state): clear instance monitor state, then retry
-// - 408 (daemon timeout): retry with backoff up to 3 attempts
-func (cluster *Cluster) startServiceV3WithRetry(svc opensvc.Collector, server *ServerMonitor) error {
-	const maxRetries = 3
-	var err error
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		err = svc.StartServiceV3(cluster.Name, server.ServiceName)
-		if err == nil {
-			return nil
-		}
-
-		if isOpenSVC409(err) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
-				"Start returned 409 (warn state) for %s, clearing instance state and retrying (attempt %d/%d)",
-				server.URL, attempt, maxRetries)
-			if clearErr := cluster.OpenSVCClearDatabaseInstanceState(server, ""); clearErr != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
-					"Failed to clear instance state for %s: %s", server.URL, clearErr)
-			}
-			time.Sleep(3 * time.Second)
-			continue
-		}
-
-		if isOpenSVC408(err) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
-				"Start returned 408 (daemon timeout) for %s, retrying (attempt %d/%d)",
-				server.URL, attempt, maxRetries)
-			time.Sleep(time.Duration(attempt*5) * time.Second)
-			continue
-		}
-
-		// Non-retryable error
-		break
-	}
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
-		"Can not start database after %d attempts: %s", maxRetries, err)
-	return err
-}
-
-// restartServiceV3WithRetry handles OpenSVC v3 restart with automatic error recovery.
-func (cluster *Cluster) restartServiceV3WithRetry(svc opensvc.Collector, server *ServerMonitor, agent string) error {
-	const maxRetries = 3
-	var err error
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		err = svc.RestartServiceV3(cluster.Name, server.ServiceName)
-		if err == nil {
-			return nil
-		}
-
-		if isOpenSVC409(err) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
-				"Restart returned 409 (warn state) for %s, clearing instance state and retrying (attempt %d/%d)",
-				server.URL, attempt, maxRetries)
-			if clearErr := cluster.OpenSVCClearDatabaseInstanceState(server, agent); clearErr != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
-					"Failed to clear instance state for %s: %s", server.URL, clearErr)
-			}
-			time.Sleep(3 * time.Second)
-			continue
-		}
-
-		if isOpenSVC408(err) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
-				"Restart returned 408 (daemon timeout) for %s, retrying (attempt %d/%d)",
-				server.URL, attempt, maxRetries)
-			time.Sleep(time.Duration(attempt*5) * time.Second)
-			continue
-		}
-
-		break
-	}
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
-		"Can not restart database after %d attempts: %s", maxRetries, err)
-	return err
-}
 
 func (cluster *Cluster) OpenSVCRestartDatabaseService(server *ServerMonitor, node string, rid string) error {
 	svc := cluster.OpenSVCConnect()
@@ -423,7 +345,10 @@ func (cluster *Cluster) OpenSVCRestartDatabaseService(server *ServerMonitor, nod
 		if rid != "" {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "RID restart is not supported in OpenSVC v3, falling back to full service restart")
 		}
-		err := cluster.restartServiceV3WithRetry(svc, server, agent)
+		// Optimistic clear before restart
+		cluster.OpenSVCClearDatabaseInstanceState(server, agent)
+
+		err := svc.RestartServiceV3(cluster.Name, server.ServiceName)
 		if err != nil {
 			return err
 		}
