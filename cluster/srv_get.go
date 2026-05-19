@@ -67,15 +67,25 @@ func (server *ServerMonitor) GetSshEnv() string {
 		";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + server.ClusterGroup.Name + "\"" +
 		";export REPLICATION_MANAGER_JOBS_MODE=\"" + server.ClusterGroup.Conf.SchedulerJobsMode + "\""
 
-	// Upgrade-related env vars (empty values are exported so scripts can detect "not set")
-	if server.ClusterGroup.Conf.ProvDBVersionTarget != "" {
-		env += ";export REPLICATION_MANAGER_DB_VERSION_TARGET=\"" + server.ClusterGroup.Conf.ProvDBVersionTarget + "\""
+	// Export the Docker image tag so upgrade scripts can parse the target version
+	if server.ClusterGroup.Conf.ProvDbImg != "" {
+		env += ";export REPLICATION_MANAGER_DB_DOCKER_IMG=\"" + server.ClusterGroup.Conf.ProvDbImg + "\""
 	}
-	if server.ClusterGroup.Conf.ProvDBRepositoryURL != "" {
-		env += ";export REPLICATION_MANAGER_DB_REPOSITORY_URL=\"" + server.ClusterGroup.Conf.ProvDBRepositoryURL + "\""
+
+	// Export resolved OS family info from db_distributions.json (tag-filtered)
+	if osf := server.ClusterGroup.Configurator.GetActiveDBOsFamily(); osf != nil {
+		env += ";export REPLICATION_MANAGER_DB_REPO_TYPE=\"" + osf.RepoType + "\""
+		if osf.RepoBaseURL != "" {
+			env += ";export REPLICATION_MANAGER_DB_REPO_BASE_URL=\"" + osf.RepoBaseURL + "\""
+		}
+		if osf.RepoKeyURL != "" {
+			env += ";export REPLICATION_MANAGER_DB_REPO_KEY_URL=\"" + osf.RepoKeyURL + "\""
+		}
 	}
-	if server.ClusterGroup.Conf.ProvDBOsCodename != "" {
-		env += ";export REPLICATION_MANAGER_DB_OS_CODENAME=\"" + server.ClusterGroup.Conf.ProvDBOsCodename + "\""
+
+	// Export resolved deploy method from db_distributions.json (tag-filtered)
+	if dm := server.ClusterGroup.Configurator.GetActiveDBDeployMethod(); dm != nil {
+		env += ";export REPLICATION_MANAGER_DB_DEPLOY_METHOD=\"" + dm.Type + "\""
 	}
 
 	return env + "\n"

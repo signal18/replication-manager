@@ -275,6 +275,12 @@ func (cluster *Cluster) RollingOptimize() {
 func (cluster *Cluster) RollingUpgrade() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling upgrade")
 
+	// On-premise upgrades use a dedicated upgrade script (installs new packages +
+	// runs mariadb-upgrade) instead of the OpenSVC image-pull two-phase approach.
+	if cluster.GetOrchestrator() == config.ConstOrchestratorOnPremise {
+		return cluster.rollingUpgradeOnPremise()
+	}
+
 	master := cluster.GetMaster()
 	if master == nil {
 		return errors.New("No master found for rolling upgrade")
@@ -469,6 +475,167 @@ func (cluster *Cluster) RollingUpgrade() error {
 	cluster.SwitchOver()
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling upgrade completed")
+	return nil
+}
+
+// rollingUpgradeOnPremise performs a rolling version upgrade for on-premise (SSH) deployments.
+// Each node is: maintenance on → stop → run upgrade script (package upgrade + mariadb-upgrade + start) → wait sync → maintenance off.
+func (cluster *Cluster) rollingUpgradeOnPremise() error {
+	cluster.SetInRollingRestart(true)
+	defer cluster.SetInRollingRestart(false)
+
+	master := cluster.GetMaster()
+	if master == nil {
+		return errors.New("No master found for on-premise rolling upgrade")
+	}
+	masterID := master.Id
+	saveFailoverMode := cluster.Conf.FailSync
+	cluster.SetFailSync(false)
+	defer cluster.SetFailSync(saveFailoverMode)
+
+	for _, slave := range cluster.slaves {
+		if slave == nil || slave.IsIgnored() || slave.IsDown() {
+			continue
+		}
+		maintEnabled := !slave.IsMaintenance
+		if maintEnabled {
+			slave.SwitchMaintenance()
+		}
+		writeOnce := true
+		for slave.IsBackingUpBinaryLog {
+			if writeOnce {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+					"Waiting slave %s to finish binlog backup", slave.URL)
+				writeOnce = false
+			}
+			time.Sleep(time.Second)
+		}
+
+		err := cluster.StopDatabaseService(slave)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Rolling upgrade: stop failed on slave %s: %s", slave.URL, err)
+			if maintEnabled {
+				slave.SwitchMaintenance()
+			}
+			return err
+		}
+		err = cluster.WaitDatabaseFailed(slave)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Rolling upgrade: slave does not transit failed %s: %s", slave.URL, err)
+			if maintEnabled {
+				slave.SwitchMaintenance()
+			}
+			return err
+		}
+
+		err = cluster.UpgradeDatabaseService(slave)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Rolling upgrade: upgrade failed on slave %s: %s", slave.URL, err)
+			if maintEnabled {
+				slave.SwitchMaintenance()
+			}
+			return err
+		}
+
+		err = cluster.WaitDatabaseStart(slave)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Rolling upgrade: slave does not come back %s: %s", slave.URL, err)
+			if maintEnabled {
+				slave.SwitchMaintenance()
+			}
+			return err
+		}
+		currentMaster := cluster.GetMaster()
+		if currentMaster == nil {
+			if maintEnabled {
+				slave.SwitchMaintenance()
+			}
+			return errors.New("No master found for sync during on-premise rolling upgrade")
+		}
+		slave.WaitSyncToMaster(currentMaster)
+		if maintEnabled {
+			slave.SwitchMaintenance()
+		}
+	}
+
+	cluster.SwitchoverWaitTest()
+	master = cluster.GetServerFromName(masterID)
+	if cluster.master == nil {
+		return errors.New("No master found after switchover during on-premise rolling upgrade")
+	}
+	if master == nil || cluster.master.DSN == master.DSN {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"On-premise rolling upgrade: original master is the same after switchover, skipping")
+		return nil
+	}
+	if master.IsDown() {
+		return errors.New("On-premise rolling upgrade: original master is down after switchover")
+	}
+
+	maintEnabled := !master.IsMaintenance
+	if maintEnabled {
+		master.SwitchMaintenance()
+	}
+	writeOnce := true
+	for master.IsBackingUpBinaryLog {
+		if writeOnce {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Waiting master %s to finish binlog backup", master.URL)
+			writeOnce = false
+		}
+		time.Sleep(time.Second)
+	}
+
+	err := cluster.StopDatabaseService(master)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Rolling upgrade: old master stop failed %s: %s", master.URL, err)
+		if maintEnabled {
+			master.SwitchMaintenance()
+		}
+		return err
+	}
+	err = cluster.WaitDatabaseFailed(master)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Rolling upgrade: old master does not transit failed %s: %s", master.URL, err)
+		if maintEnabled {
+			master.SwitchMaintenance()
+		}
+		return err
+	}
+
+	err = cluster.UpgradeDatabaseService(master)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Rolling upgrade: upgrade failed on old master %s: %s", master.URL, err)
+		if maintEnabled {
+			master.SwitchMaintenance()
+		}
+		return err
+	}
+
+	err = cluster.WaitDatabaseStart(master)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Rolling upgrade: old master does not come back %s: %s", master.URL, err)
+		if maintEnabled {
+			master.SwitchMaintenance()
+		}
+		return err
+	}
+	master.WaitSyncToMaster(cluster.master)
+	if maintEnabled {
+		master.SwitchMaintenance()
+	}
+	cluster.SwitchOver()
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"On-premise rolling upgrade completed")
 	return nil
 }
 

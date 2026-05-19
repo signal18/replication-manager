@@ -340,6 +340,22 @@ func (configurator *Configurator) GetSshStartDBScript() string {
 	return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/debian/" + dbtype + "/start"
 }
 
+// GetActiveDBOsFamily returns the OS family (apt/yum) matching the cluster's active DB tags.
+func (configurator *Configurator) GetActiveDBOsFamily() *DBOsFamily {
+	if configurator.DBDistributions == nil {
+		return nil
+	}
+	return configurator.DBDistributions.GetOsFamily(configurator.HaveDBTag)
+}
+
+// GetActiveDBDeployMethod returns the deploy method (docker/tarball/repository) matching the cluster's active DB tags.
+func (configurator *Configurator) GetActiveDBDeployMethod() *DBDeployMethod {
+	if configurator.DBDistributions == nil {
+		return nil
+	}
+	return configurator.DBDistributions.GetDeployMethod(configurator.HaveDBTag)
+}
+
 func (configurator *Configurator) GetSshUpgradeDBScript() string {
 	dbtype := "mariadb"
 	if configurator.ClusterConfig.OnPremiseSSHUpgradeDbScript != "" {

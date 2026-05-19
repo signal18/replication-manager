@@ -76,19 +76,15 @@ log_info "Current MariaDB version: ${CURRENT_VERSION:-unknown}"
 ########################
 
 # Target can come from env var or from repman API (prov-db-docker-img often contains the version)
-TARGET_VERSION="${REPLICATION_MANAGER_DB_VERSION_TARGET:-}"
-
-if [ -z "$TARGET_VERSION" ]; then
-    # Try to get from repman cluster config
-    CLUSTER_CONFIG=$(get "$REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/settings" 2>/dev/null || true)
-    if [ -n "$CLUSTER_CONFIG" ]; then
-        # Extract version from prov-db-docker-img (format: "mariadb:11.8" or "mariadb:11.8.1")
-        TARGET_VERSION=$(echo "$CLUSTER_CONFIG" | grep -oP '"provDbDockerImg"\s*:\s*"[^"]*:([0-9]+\.[0-9]+[^"]*)"' | grep -oP '[0-9]+\.[0-9]+[0-9.]*' || true)
-    fi
+# Target version is parsed from prov-db-docker-img (e.g. "mariadb:11.8" → "11.8")
+# exported by repman as REPLICATION_MANAGER_DB_DOCKER_IMG
+TARGET_VERSION=""
+if [ -n "${REPLICATION_MANAGER_DB_DOCKER_IMG:-}" ]; then
+    TARGET_VERSION=$(echo "$REPLICATION_MANAGER_DB_DOCKER_IMG" | grep -oP ':\K[0-9]+\.[0-9]+[0-9.]*' || true)
 fi
 
 if [ -z "$TARGET_VERSION" ]; then
-    log_error "No target version specified. Set REPLICATION_MANAGER_DB_VERSION_TARGET or prov-db-docker-img"
+    log_error "No target version found in REPLICATION_MANAGER_DB_DOCKER_IMG"
     exit 1
 fi
 
@@ -140,35 +136,23 @@ fi
 
 log_info "Configuring MariaDB $TARGET_MAJOR_MINOR repository"
 
-# Repository URL and OS codename can be set via repman config (prov-db-repository-url,
-# prov-db-os-codename) or auto-detected from the host. Repman exports them as env vars.
-REPO_BASE_URL="${REPLICATION_MANAGER_DB_REPOSITORY_URL:-}"
-OS_CODENAME="${REPLICATION_MANAGER_DB_OS_CODENAME:-}"
+# Repository info comes from db_distributions.json (tag-filtered, exported by repman).
+# Falls back to auto-detection if not set.
+REPO_BASE_URL="${REPLICATION_MANAGER_DB_REPO_BASE_URL:-https://mirror.mariadb.org/repo}"
+REPO_KEY_URL="${REPLICATION_MANAGER_DB_REPO_KEY_URL:-https://mariadb.org/mariadb_release_signing_key.pgp}"
 
-# Auto-detect OS details if not provided by repman
-if [ -z "$OS_CODENAME" ]; then
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        OS_ID="${ID}"
-        OS_CODENAME="${VERSION_CODENAME:-$(lsb_release -cs 2>/dev/null || echo '')}"
-    else
-        OS_ID="debian"
-        OS_CODENAME=$(lsb_release -cs 2>/dev/null || echo "bookworm")
-    fi
+# Auto-detect OS details from the host
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    OS_ID="${ID}"
+    OS_CODENAME="${VERSION_CODENAME:-$(lsb_release -cs 2>/dev/null || echo 'bookworm')}"
 else
-    # Still need OS_ID for the repo URL
-    OS_ID=$(. /etc/os-release 2>/dev/null && echo "$ID" || echo "debian")
+    OS_ID="debian"
+    OS_CODENAME=$(lsb_release -cs 2>/dev/null || echo "bookworm")
 fi
 
-# Build repo URL: custom base or default MariaDB mirror
-if [ -n "$REPO_BASE_URL" ]; then
-    REPO_URL="${REPO_BASE_URL}/${TARGET_MAJOR_MINOR}/${OS_ID}"
-else
-    REPO_URL="https://mirror.mariadb.org/repo/${TARGET_MAJOR_MINOR}/${OS_ID}"
-fi
-
+REPO_URL="${REPO_BASE_URL}/${TARGET_MAJOR_MINOR}/${OS_ID}"
 REPO_FILE="/etc/apt/sources.list.d/mariadb.list"
-REPO_KEY_URL="https://mariadb.org/mariadb_release_signing_key.pgp"
 
 # Import signing key if not present
 if ! apt-key list 2>/dev/null | grep -qi mariadb; then

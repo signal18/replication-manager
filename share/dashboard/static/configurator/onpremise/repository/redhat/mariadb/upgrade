@@ -74,17 +74,15 @@ log_info "Current MariaDB version: ${CURRENT_VERSION:-unknown}"
 # Determine target version
 ########################
 
-TARGET_VERSION="${REPLICATION_MANAGER_DB_VERSION_TARGET:-}"
-
-if [ -z "$TARGET_VERSION" ]; then
-    CLUSTER_CONFIG=$(get "$REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/settings" 2>/dev/null || true)
-    if [ -n "$CLUSTER_CONFIG" ]; then
-        TARGET_VERSION=$(echo "$CLUSTER_CONFIG" | grep -oP '"provDbDockerImg"\s*:\s*"[^"]*:([0-9]+\.[0-9]+[^"]*)"' | grep -oP '[0-9]+\.[0-9]+[0-9.]*' || true)
-    fi
+# Target version is parsed from prov-db-docker-img (e.g. "mariadb:11.8" → "11.8")
+# exported by repman as REPLICATION_MANAGER_DB_DOCKER_IMG
+TARGET_VERSION=""
+if [ -n "${REPLICATION_MANAGER_DB_DOCKER_IMG:-}" ]; then
+    TARGET_VERSION=$(echo "$REPLICATION_MANAGER_DB_DOCKER_IMG" | grep -oP ':\K[0-9]+\.[0-9]+[0-9.]*' || true)
 fi
 
 if [ -z "$TARGET_VERSION" ]; then
-    log_error "No target version specified. Set REPLICATION_MANAGER_DB_VERSION_TARGET or prov-db-docker-img"
+    log_error "No target version found in REPLICATION_MANAGER_DB_DOCKER_IMG"
     exit 1
 fi
 
@@ -131,25 +129,15 @@ fi
 
 log_info "Configuring MariaDB $TARGET_MAJOR_MINOR repository"
 
-# Repository URL and OS codename/version can be set via repman config
-# (prov-db-repository-url, prov-db-os-codename) or auto-detected.
-REPO_BASE_URL="${REPLICATION_MANAGER_DB_REPOSITORY_URL:-}"
-OS_VERSION="${REPLICATION_MANAGER_DB_OS_CODENAME:-}"
+# Repository info comes from db_distributions.json (tag-filtered, exported by repman).
+# Falls back to auto-detection if not set.
+REPO_BASE_URL="${REPLICATION_MANAGER_DB_REPO_BASE_URL:-https://mirror.mariadb.org/yum}"
+REPO_KEY_URL="${REPLICATION_MANAGER_DB_REPO_KEY_URL:-https://mariadb.org/mariadb_release_signing_key.asc}"
 
-# Auto-detect RHEL version if not provided (prov-db-os-codename accepts "el8", "el9", "8", "9")
-if [ -z "$OS_VERSION" ]; then
-    OS_VERSION=$(rpm -E %{rhel} 2>/dev/null || echo "8")
-else
-    # Strip "el" prefix if present (e.g. "el9" → "9")
-    OS_VERSION="${OS_VERSION#el}"
-fi
+# Auto-detect RHEL version
+OS_VERSION=$(rpm -E %{rhel} 2>/dev/null || echo "8")
 
-# Build repo URL: custom base or default MariaDB mirror
-if [ -n "$REPO_BASE_URL" ]; then
-    REPO_FULL_URL="${REPO_BASE_URL}/yum/${TARGET_MAJOR_MINOR}/rhel/${OS_VERSION}/x86_64"
-else
-    REPO_FULL_URL="https://mirror.mariadb.org/yum/${TARGET_MAJOR_MINOR}/rhel/${OS_VERSION}/x86_64"
-fi
+REPO_FULL_URL="${REPO_BASE_URL}/${TARGET_MAJOR_MINOR}/rhel/${OS_VERSION}/x86_64"
 
 REPO_FILE="/etc/yum.repos.d/MariaDB.repo"
 cat > "$REPO_FILE" <<EOF
@@ -157,7 +145,7 @@ cat > "$REPO_FILE" <<EOF
 [mariadb]
 name = MariaDB $TARGET_MAJOR_MINOR
 baseurl = $REPO_FULL_URL
-gpgkey = https://mariadb.org/mariadb_release_signing_key.asc
+gpgkey = $REPO_KEY_URL
 gpgcheck = 1
 module_hotfixes = 1
 EOF

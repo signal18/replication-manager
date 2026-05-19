@@ -43,6 +43,7 @@ type Configurator struct {
 	ProxyTagsDiscover     []string          `json:"proxyServersTagsDiscover"`
 	WorkingDir            string            `json:"-"` // working dir is the place to generate the all cluster config
 	DocHelp               *DocHelp          `json:"-"` // variable documentation lookup (singleton, lazy-loaded)
+	DBDistributions       *DBDistributions  `json:"-"` // install/upgrade distribution info per tag
 	complianceMu          sync.Mutex        // protects Pending/Active CRC fields, DBModule, ProxyModule during compliance check/accept
 	// ActiveDBCRC and ActivePrxCRC are CRC32 checksums of the compliance
 	// modules last accepted by the user. Persisted to disk so upgrades
@@ -71,6 +72,7 @@ func (configurator *Configurator) Init(conf config.Config, logger *logrus.Logger
 	configurator.ConfigDBTags = configurator.GetDBModuleTags()
 	configurator.ConfigPrxTags = configurator.GetProxyModuleTags()
 	configurator.DocHelp = NewDocHelp(conf.ShareDir + "/plugins/data")
+	configurator.DBDistributions, _ = LoadDBDistributions(conf.ShareDir + "/plugins/data")
 	if conf.ProvAutoUpdateCompliance {
 		// Trust mode (default): always use the current module (embedded or BO-pushed).
 		// Save it to disk so it becomes the baseline for future comparisons.

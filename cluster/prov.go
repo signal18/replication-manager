@@ -400,6 +400,24 @@ func (cluster *Cluster) UpdateDatabaseServiceConfig(server *ServerMonitor, force
 	}
 }
 
+func (cluster *Cluster) UpgradeDatabaseService(server *ServerMonitor) error {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Upgrading database service %s", cluster.Name+"/svc/"+server.URL)
+	var err error
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOnPremise:
+		err = cluster.OnPremiseUpgradeDatabaseService(server)
+	default:
+		// For container orchestrators (OpenSVC, K8S), the image tag change handles
+		// the binary upgrade. The upgrade script is only needed for on-premise.
+		// Fall back to a regular start which pulls the new container image.
+		err = cluster.StartDatabaseService(server)
+	}
+	if err == nil {
+		server.SetConfigRefreshCookie()
+	}
+	return err
+}
+
 func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stopping database service %s", cluster.Name+"/svc/"+server.URL)
 	var err error
