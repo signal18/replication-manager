@@ -124,23 +124,51 @@ func (cluster *Cluster) reloadPreservedVarsUnsafe() error {
 	content, err = os.ReadFile(preservedPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// File doesn't exist - create empty template
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-				"Preserved variables file not found at %s, creating empty template", preservedPath)
-
 			cluster.preservedVars = make(map[string]string)
-			cluster.preservedVarsLoaded = true
 
-			// Save empty template to cluster directory
-			if saveErr := cluster.savePreservedVarsToFile(); saveErr != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-					"Failed to save preserved variables template to %s: %v", preservedPath, saveErr)
+			// Auto-migrate from legacy ProvDBConfigPreserveVars if set
+			if cluster.Conf.ProvDBConfigPreserveVars != "" {
+				list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ";")
+				for _, opt := range list {
+					opt = strings.TrimSpace(opt)
+					if opt == "" {
+						continue
+					}
+					parts := strings.SplitN(opt, "=", 2)
+					key := strings.TrimSpace(parts[0])
+					value := ""
+					if len(parts) == 2 {
+						value = strings.TrimSpace(parts[1])
+					}
+					if key != "" {
+						// Normalize: lowercase, hyphens to underscores, strip loose_ prefix
+						key = strings.ToLower(strings.ReplaceAll(key, "-", "_"))
+						key = strings.TrimPrefix(key, "loose_")
+						cluster.preservedVars[key] = value
+					}
+				}
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+					"Migrated %d variables from prov-db-config-preserve-vars to preserved_variables.cnf",
+					len(cluster.preservedVars))
+				source = "migrated from prov-db-config-preserve-vars"
 			} else {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-					"Saved preserved variables template to %s", preservedPath)
+					"Preserved variables file not found at %s, creating empty template", preservedPath)
+				source = "empty template"
 			}
 
-			source = "empty template (saved to " + preservedPath + ")"
+			cluster.preservedVarsLoaded = true
+
+			// Save to cluster directory
+			if saveErr := cluster.savePreservedVarsToFile(); saveErr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"Failed to save preserved variables to %s: %v", preservedPath, saveErr)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+					"Saved preserved variables to %s", preservedPath)
+			}
+
+			source += " (saved to " + preservedPath + ")"
 		} else {
 			return fmt.Errorf("failed to read preserved variables from %s: %v", preservedPath, err)
 		}
