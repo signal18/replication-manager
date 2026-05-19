@@ -1,0 +1,285 @@
+#!/bin/bash
+# On-premise MariaDB upgrade script for RHEL/CentOS/Rocky/Alma (repository-based)
+# Called by replication-manager during rolling upgrade via SSH.
+# The rolling upgrade flow is: maintenance on → stop → upgrade → start → rejoin → maintenance off
+#
+# Required environment (set by repman via GetSshEnv):
+#   REPLICATION_MANAGER_USER, REPLICATION_MANAGER_PASSWORD
+#   REPLICATION_MANAGER_URL, REPLICATION_MANAGER_CLUSTER_NAME
+#   REPLICATION_MANAGER_HOST_NAME, REPLICATION_MANAGER_HOST_PORT
+#   REPLICATION_MANAGER_HOST_USER, REPLICATION_MANAGER_HOST_PASSWORD
+#
+# Optional:
+#   REPLICATION_MANAGER_DB_VERSION_TARGET  — target MariaDB version (e.g. "11.8")
+#   REPLICATION_MANAGER_FORCE_CONFIG       — "true" to overwrite user-edited my.cnf
+
+set -euo pipefail
+
+function help {
+    echo "Required Environment:" >&2
+    echo "  REPLICATION_MANAGER_USER" >&2
+    echo "  REPLICATION_MANAGER_PASSWORD" >&2
+    echo "  REPLICATION_MANAGER_URL" >&2
+    echo "  REPLICATION_MANAGER_CLUSTER_NAME" >&2
+    echo "  REPLICATION_MANAGER_HOST_NAME" >&2
+    echo "  REPLICATION_MANAGER_HOST_PORT" >&2
+}
+
+[ -z "${REPLICATION_MANAGER_USER:-}" ] && help && exit 1
+[ -z "${REPLICATION_MANAGER_PASSWORD:-}" ] && help && exit 1
+[ -z "${REPLICATION_MANAGER_URL:-}" ] && help && exit 1
+[ -z "${REPLICATION_MANAGER_CLUSTER_NAME:-}" ] && help && exit 1
+[ -z "${REPLICATION_MANAGER_HOST_NAME:-}" ] && help && exit 1
+[ -z "${REPLICATION_MANAGER_HOST_PORT:-}" ] && help && exit 1
+
+LOG_TAG="[repman-upgrade]"
+
+log_info()  { echo "$LOG_TAG INFO: $*"; }
+log_warn()  { echo "$LOG_TAG WARN: $*" >&2; }
+log_error() { echo "$LOG_TAG ERROR: $*" >&2; }
+
+########################
+# API Helper
+########################
+
+GET="wget -q --no-check-certificate -O- --header Content-Type:application/json"
+AUTH_DATA="{\"username\": \"$REPLICATION_MANAGER_USER\", \"password\": \"$REPLICATION_MANAGER_PASSWORD\"}"
+TOKEN=$($GET --post-data "$AUTH_DATA" --header Accept:text/html "$REPLICATION_MANAGER_URL/api/login") || {
+    log_error "Failed to authenticate with replication-manager"
+    exit 1
+}
+
+function get {
+    $GET --header Accept:application/json --header "Authorization: Bearer $TOKEN" "$@"
+}
+
+########################
+# Detect current version
+########################
+
+CURRENT_VERSION=""
+if command -v mariadbd >/dev/null 2>&1; then
+    CURRENT_VERSION=$(mariadbd --version 2>/dev/null | grep -oP 'Ver \K[0-9]+\.[0-9]+\.[0-9]+' || true)
+elif command -v mysqld >/dev/null 2>&1; then
+    CURRENT_VERSION=$(mysqld --version 2>/dev/null | grep -oP 'Ver \K[0-9]+\.[0-9]+\.[0-9]+' || true)
+fi
+
+if [ -z "$CURRENT_VERSION" ]; then
+    CURRENT_VERSION=$(rpm -q MariaDB-server 2>/dev/null | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+fi
+
+log_info "Current MariaDB version: ${CURRENT_VERSION:-unknown}"
+
+########################
+# Determine target version
+########################
+
+TARGET_VERSION="${REPLICATION_MANAGER_DB_VERSION_TARGET:-}"
+
+if [ -z "$TARGET_VERSION" ]; then
+    CLUSTER_CONFIG=$(get "$REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/settings" 2>/dev/null || true)
+    if [ -n "$CLUSTER_CONFIG" ]; then
+        TARGET_VERSION=$(echo "$CLUSTER_CONFIG" | grep -oP '"provDbDockerImg"\s*:\s*"[^"]*:([0-9]+\.[0-9]+[^"]*)"' | grep -oP '[0-9]+\.[0-9]+[0-9.]*' || true)
+    fi
+fi
+
+if [ -z "$TARGET_VERSION" ]; then
+    log_error "No target version specified. Set REPLICATION_MANAGER_DB_VERSION_TARGET or prov-db-docker-img"
+    exit 1
+fi
+
+TARGET_MAJOR_MINOR=$(echo "$TARGET_VERSION" | grep -oP '^[0-9]+\.[0-9]+')
+
+log_info "Target MariaDB version: $TARGET_VERSION (repo: $TARGET_MAJOR_MINOR)"
+
+########################
+# Version comparison
+########################
+
+if [ "$CURRENT_VERSION" = "$TARGET_VERSION" ]; then
+    log_info "Already at target version $TARGET_VERSION, nothing to upgrade"
+    exit 0
+fi
+
+CURRENT_MAJOR_MINOR=$(echo "$CURRENT_VERSION" | grep -oP '^[0-9]+\.[0-9]+' || true)
+
+if [ -n "$CURRENT_MAJOR_MINOR" ] && [ "$CURRENT_MAJOR_MINOR" = "$TARGET_MAJOR_MINOR" ]; then
+    log_info "Minor upgrade: $CURRENT_VERSION → $TARGET_VERSION"
+else
+    log_info "Major upgrade: $CURRENT_VERSION → $TARGET_VERSION"
+fi
+
+########################
+# Pre-upgrade checks
+########################
+
+if systemctl is-active --quiet mariadb 2>/dev/null || systemctl is-active --quiet mysql 2>/dev/null; then
+    log_warn "MariaDB is still running, stopping before upgrade"
+    systemctl stop mariadb 2>/dev/null || systemctl stop mysql 2>/dev/null || true
+    sleep 2
+fi
+
+FREE_SPACE_MB=$(df -m /usr 2>/dev/null | awk 'NR==2 {print $4}')
+if [ -n "$FREE_SPACE_MB" ] && [ "$FREE_SPACE_MB" -lt 1024 ]; then
+    log_error "Insufficient disk space: ${FREE_SPACE_MB}MB free, need at least 1024MB"
+    exit 1
+fi
+
+########################
+# Update repository
+########################
+
+log_info "Configuring MariaDB $TARGET_MAJOR_MINOR repository"
+
+# Repository URL and OS codename/version can be set via repman config
+# (prov-db-repository-url, prov-db-os-codename) or auto-detected.
+REPO_BASE_URL="${REPLICATION_MANAGER_DB_REPOSITORY_URL:-}"
+OS_VERSION="${REPLICATION_MANAGER_DB_OS_CODENAME:-}"
+
+# Auto-detect RHEL version if not provided (prov-db-os-codename accepts "el8", "el9", "8", "9")
+if [ -z "$OS_VERSION" ]; then
+    OS_VERSION=$(rpm -E %{rhel} 2>/dev/null || echo "8")
+else
+    # Strip "el" prefix if present (e.g. "el9" → "9")
+    OS_VERSION="${OS_VERSION#el}"
+fi
+
+# Build repo URL: custom base or default MariaDB mirror
+if [ -n "$REPO_BASE_URL" ]; then
+    REPO_FULL_URL="${REPO_BASE_URL}/yum/${TARGET_MAJOR_MINOR}/rhel/${OS_VERSION}/x86_64"
+else
+    REPO_FULL_URL="https://mirror.mariadb.org/yum/${TARGET_MAJOR_MINOR}/rhel/${OS_VERSION}/x86_64"
+fi
+
+REPO_FILE="/etc/yum.repos.d/MariaDB.repo"
+cat > "$REPO_FILE" <<EOF
+# MariaDB $TARGET_MAJOR_MINOR repository — managed by replication-manager
+[mariadb]
+name = MariaDB $TARGET_MAJOR_MINOR
+baseurl = $REPO_FULL_URL
+gpgkey = https://mariadb.org/mariadb_release_signing_key.asc
+gpgcheck = 1
+module_hotfixes = 1
+EOF
+
+log_info "Repository configured: $REPO_FULL_URL"
+
+########################
+# Upgrade packages
+########################
+
+# Detect package manager
+if command -v dnf >/dev/null 2>&1; then
+    PKG_MGR="dnf"
+else
+    PKG_MGR="yum"
+fi
+
+log_info "Upgrading MariaDB packages via $PKG_MGR"
+$PKG_MGR clean all -q
+$PKG_MGR upgrade -y -q \
+    MariaDB-server MariaDB-client MariaDB-backup 2>&1 | while read -r line; do
+    log_info "$PKG_MGR: $line"
+done
+
+# Verify new version
+NEW_VERSION=""
+if command -v mariadbd >/dev/null 2>&1; then
+    NEW_VERSION=$(mariadbd --version 2>/dev/null | grep -oP 'Ver \K[0-9]+\.[0-9]+\.[0-9]+' || true)
+fi
+
+if [ -z "$NEW_VERSION" ]; then
+    log_error "Failed to detect MariaDB version after upgrade"
+    exit 1
+fi
+
+log_info "Upgraded to MariaDB $NEW_VERSION"
+
+########################
+# Deploy config from repman
+########################
+
+log_info "Fetching configuration from replication-manager"
+get "$REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/config" > /tmp/config.tar.gz
+if [ $? -eq 0 ] && [ -s /tmp/config.tar.gz ]; then
+    mkdir -p /tmp/bootstrap
+    tar xzf /tmp/config.tar.gz -C /tmp/bootstrap
+
+    if [ -f /etc/mysql/my.cnf ]; then
+        first_line=$(head -n 1 /etc/mysql/my.cnf)
+        line_count=$(wc -l < /etc/mysql/my.cnf)
+        if [[ $first_line != '# Generated by Signal18'* ]] && (( line_count > 1 )) && [ "${REPLICATION_MANAGER_FORCE_CONFIG:-}" != "true" ]; then
+            cp /etc/mysql/my.cnf /etc/mysql/my.cnf.pre-upgrade
+            log_info "Preserved existing my.cnf as my.cnf.pre-upgrade"
+        fi
+    fi
+
+    chown -R mysql:mysql /tmp/bootstrap/data/.system 2>/dev/null || true
+    cp -rpn /tmp/bootstrap/data/.system /var/lib/mysql/ 2>/dev/null || true
+    cp -r /tmp/bootstrap/etc/mysql/* /etc/mysql/ 2>/dev/null || true
+
+    rm -rf /tmp/config.tar.gz /tmp/bootstrap
+    log_info "Configuration deployed"
+else
+    log_warn "Failed to fetch config from repman, starting with existing config"
+fi
+
+########################
+# Start MariaDB
+########################
+
+log_info "Starting MariaDB $NEW_VERSION"
+systemctl start mariadb 2>/dev/null || systemctl start mysql 2>/dev/null || {
+    log_error "Failed to start MariaDB after upgrade"
+    exit 1
+}
+
+for i in $(seq 1 30); do
+    if mariadb -u"${REPLICATION_MANAGER_HOST_USER:-root}" -p"${REPLICATION_MANAGER_HOST_PASSWORD:-$MYSQL_ROOT_PASSWORD}" -e "SELECT 1" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+########################
+# Run mariadb-upgrade
+########################
+
+log_info "Running mariadb-upgrade"
+if command -v mariadb-upgrade >/dev/null 2>&1; then
+    mariadb-upgrade \
+        -u"${REPLICATION_MANAGER_HOST_USER:-root}" \
+        -p"${REPLICATION_MANAGER_HOST_PASSWORD:-$MYSQL_ROOT_PASSWORD}" \
+        --force 2>&1 | while read -r line; do
+        log_info "upgrade: $line"
+    done
+elif command -v mysql_upgrade >/dev/null 2>&1; then
+    mysql_upgrade \
+        -u"${REPLICATION_MANAGER_HOST_USER:-root}" \
+        -p"${REPLICATION_MANAGER_HOST_PASSWORD:-$MYSQL_ROOT_PASSWORD}" \
+        --force 2>&1 | while read -r line; do
+        log_info "upgrade: $line"
+    done
+else
+    log_warn "Neither mariadb-upgrade nor mysql_upgrade found, skipping"
+fi
+
+########################
+# Update repman CLI
+########################
+
+MONITOR_VERSION=$(get "$REPLICATION_MANAGER_URL/api/version" 2>/dev/null || true)
+CURRENT_CLI_VERSION=$(cat version.txt 2>/dev/null || echo "0.0.0")
+
+if [ -n "$MONITOR_VERSION" ] && [ "$MONITOR_VERSION" != "$CURRENT_CLI_VERSION" ]; then
+    log_info "Upgrading replication-manager-cli to $MONITOR_VERSION"
+    get "$REPLICATION_MANAGER_URL/static/configurator/bin/replication-manager-cli" > /tmp/replication-manager-cli
+    if [ $? -eq 0 ] && [ -s /tmp/replication-manager-cli ]; then
+        cp /tmp/replication-manager-cli /usr/bin/replication-manager-cli
+        chmod +x /usr/bin/replication-manager-cli
+        echo "$MONITOR_VERSION" > version.txt
+    fi
+    rm -f /tmp/replication-manager-cli
+fi
+
+log_info "Upgrade complete: $CURRENT_VERSION → $NEW_VERSION"

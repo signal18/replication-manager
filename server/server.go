@@ -1056,6 +1056,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.OnPremiseSSHStartProxyScript, "onpremise-ssh-start-proxy-script", "", "Run via ssh a custom script to start Proxy")
 	flags.StringVar(&conf.OnPremiseSSHStopProxyScript, "onpremise-ssh-stop-proxy-script", "", "Run via ssh a custom script to stop Proxy")
 	flags.StringVar(&conf.OnPremiseSSHDbJobScript, "onpremise-ssh-db-job-script", "", "Run via ssh a custom script to execute database jobs")
+	flags.StringVar(&conf.OnPremiseSSHUpgradeDbScript, "onpremise-ssh-upgrade-db-script", "", "Run via ssh a custom script to upgrade database version")
+	flags.StringVar(&conf.ProvDBVersionTarget, "prov-db-version-target", "", "Target MariaDB version for rolling upgrade (e.g. 11.8)")
+	flags.StringVar(&conf.ProvDBRepositoryURL, "prov-db-repository-url", "", "MariaDB repository base URL (default: auto-detect from mirror.mariadb.org)")
+	flags.StringVar(&conf.ProvDBOsCodename, "prov-db-os-codename", "", "OS codename for repository (e.g. bookworm, jammy, el9). Auto-detected if empty")
 
 	flags.BoolVar(&conf.Cloud18, "cloud18", false, "Enable Cloud 18 DBAAS")
 	flags.StringVar(&conf.Cloud18Domain, "cloud18-domain", "", "DNS sub domain per organisation")

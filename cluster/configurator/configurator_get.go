@@ -340,6 +340,20 @@ func (configurator *Configurator) GetSshStartDBScript() string {
 	return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/debian/" + dbtype + "/start"
 }
 
+func (configurator *Configurator) GetSshUpgradeDBScript() string {
+	dbtype := "mariadb"
+	if configurator.ClusterConfig.OnPremiseSSHUpgradeDbScript != "" {
+		return configurator.ClusterConfig.OnPremiseSSHUpgradeDbScript
+	}
+	if configurator.HaveDBTag("rpm") {
+		return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/redhat/" + dbtype + "/upgrade"
+	}
+	if configurator.HaveDBTag("package") {
+		return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/package/linux/" + dbtype + "/upgrade"
+	}
+	return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/debian/" + dbtype + "/upgrade"
+}
+
 func (configurator *Configurator) GetSshPrintDefaultDBScript() string {
 	dbtype := "mariadb"
 	if configurator.HaveDBTag("rpm") {

@@ -54,7 +54,31 @@ func (server *ServerMonitor) GetSshEnv() string {
 	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
 		adminpassword = user.Password
 	}
-	return "export REPLICATION_MANAGER_HOST_USER=\"" + server.User + "\";export REPLICATION_MANAGER_HOST_PASSWORD=\"" + server.Pass + "\";export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\";export REPLICATION_MANAGER_URL=\"https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_URL_HOST=\"" + server.ClusterGroup.Conf.MonitorAddress + "\";export REPLICATION_MANAGER_URL_PORT=\"" + server.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + server.Host + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + server.Port + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + server.ClusterGroup.Name + "\";export REPLICATION_MANAGER_JOBS_MODE=\"" + server.ClusterGroup.Conf.SchedulerJobsMode + "\"\n"
+	env := "export REPLICATION_MANAGER_HOST_USER=\"" + server.User + "\"" +
+		";export REPLICATION_MANAGER_HOST_PASSWORD=\"" + server.Pass + "\"" +
+		";export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\"" +
+		";export REPLICATION_MANAGER_URL=\"https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort + "\"" +
+		";export REPLICATION_MANAGER_URL_HOST=\"" + server.ClusterGroup.Conf.MonitorAddress + "\"" +
+		";export REPLICATION_MANAGER_URL_PORT=\"" + server.ClusterGroup.Conf.APIPort + "\"" +
+		";export REPLICATION_MANAGER_USER=\"" + adminuser + "\"" +
+		";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\"" +
+		";export REPLICATION_MANAGER_HOST_NAME=\"" + server.Host + "\"" +
+		";export REPLICATION_MANAGER_HOST_PORT=\"" + server.Port + "\"" +
+		";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + server.ClusterGroup.Name + "\"" +
+		";export REPLICATION_MANAGER_JOBS_MODE=\"" + server.ClusterGroup.Conf.SchedulerJobsMode + "\""
+
+	// Upgrade-related env vars (empty values are exported so scripts can detect "not set")
+	if server.ClusterGroup.Conf.ProvDBVersionTarget != "" {
+		env += ";export REPLICATION_MANAGER_DB_VERSION_TARGET=\"" + server.ClusterGroup.Conf.ProvDBVersionTarget + "\""
+	}
+	if server.ClusterGroup.Conf.ProvDBRepositoryURL != "" {
+		env += ";export REPLICATION_MANAGER_DB_REPOSITORY_URL=\"" + server.ClusterGroup.Conf.ProvDBRepositoryURL + "\""
+	}
+	if server.ClusterGroup.Conf.ProvDBOsCodename != "" {
+		env += ";export REPLICATION_MANAGER_DB_OS_CODENAME=\"" + server.ClusterGroup.Conf.ProvDBOsCodename + "\""
+	}
+
+	return env + "\n"
 }
 
 func (server *ServerMonitor) GetUniversalGtidServerID() uint64 {

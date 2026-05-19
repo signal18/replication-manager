@@ -546,6 +546,10 @@ type Config struct {
 	OnPremiseSSHStartProxyScript              string                       `mapstructure:"onpremise-ssh-start-proxy-script" toml:"onpremise-ssh-start-proxy-script" json:"onpremiseSshStartProxyScript"`
 	OnPremiseSSHStopProxyScript               string                       `mapstructure:"onpremise-ssh-stop-proxy-script" toml:"onpremise-ssh-stop-proxy-script" json:"onpremiseSshStopProxyScript"`
 	OnPremiseSSHDbJobScript                   string                       `mapstructure:"onpremise-ssh-db-job-script" toml:"onpremise-ssh-db-job-script" json:"onpremiseSshDbJobScript"`
+	OnPremiseSSHUpgradeDbScript               string                       `mapstructure:"onpremise-ssh-upgrade-db-script" toml:"onpremise-ssh-upgrade-db-script" json:"onpremiseSshUpgradeDbScript"`
+	ProvDBVersionTarget                       string                       `mapstructure:"prov-db-version-target" toml:"prov-db-version-target" json:"provDbVersionTarget"`
+	ProvDBRepositoryURL                       string                       `mapstructure:"prov-db-repository-url" toml:"prov-db-repository-url" json:"provDbRepositoryUrl"`
+	ProvDBOsCodename                          string                       `mapstructure:"prov-db-os-codename" toml:"prov-db-os-codename" json:"provDbOsCodename"`
 	ProvOpensvcP12Certificate                 string                       `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificate" json:"opensvcP12Certificate"`
 	ProvOpensvcP12Secret                      string                       `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`
 	ProvOpensvcUseCollectorAPI                bool                         `mapstructure:"opensvc-use-collector-api" toml:"opensvc-use-collector-api" json:"opensvcUseCollectorApi"`
