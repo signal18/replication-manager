@@ -526,32 +526,41 @@ func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 func (cluster *Cluster) RestartDatabaseService(server *ServerMonitor, node string, rid string) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restarting Database service %s", cluster.Name+"/svc/"+server.Name)
 	var err error
-	switch cluster.GetOrchestrator() {
-	case config.ConstOrchestratorOpenSVC:
+
+	// OpenSVC supports atomic restart with optional RID targeting
+	if cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC && rid != "" {
 		err = cluster.OpenSVCRestartDatabaseService(server, node, rid)
-	case config.ConstOrchestratorOnPremise:
-		// On-premise has no atomic restart — stop then start
-		err = cluster.OnPremiseStopDatabaseService(server)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Restart stop phase failed for %s: %s", server.URL, err)
-			return err
+		if err == nil {
+			server.DelRestartContainerCookie()
+			server.RestartNode = ""
+			server.RestartRid = ""
 		}
-		err = cluster.WaitDatabaseFailed(server)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Restart wait-failed phase for %s: %s", server.URL, err)
-			return err
-		}
-		err = cluster.OnPremiseStartDatabaseService(server)
-	default:
-		return errors.New("Restart not supported for this orchestrator yet")
+		return err
 	}
-	if err == nil {
-		server.DelRestartContainerCookie()
-		// Clear stored parameters
-		server.RestartNode = ""
-		server.RestartRid = ""
+
+	// Generic restart: stop → wait failed → start
+	// This allows pre-stop hooks (e.g. innodb_fast_shutdown=0 before upgrade)
+	// and post-stop hooks (e.g. redo log relocation) between the two phases.
+	err = cluster.StopDatabaseService(server)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Restart stop phase failed for %s: %s", server.URL, err)
+		return err
 	}
-	return err
+	err = cluster.WaitDatabaseFailed(server)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Restart wait-failed phase for %s: %s", server.URL, err)
+		return err
+	}
+	err = cluster.StartDatabaseService(server)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Restart start phase failed for %s: %s", server.URL, err)
+		return err
+	}
+
+	server.DelRestartContainerCookie()
+	server.RestartNode = ""
+	server.RestartRid = ""
+	return nil
 }
 
 func (cluster *Cluster) StartAllNodes() error {
