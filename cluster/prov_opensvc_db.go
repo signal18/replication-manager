@@ -274,15 +274,19 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 		}
 		svc.StopService(agent.Node_id, service.Svc_id)
 	} else if svc.IsV3() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"OpenSVC V3 stop for %s", server.URL)
 		err := svc.StopServiceV3(cluster.Name, server.ServiceName)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop database:  %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop database: %s", err)
 			return err
 		}
 	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"OpenSVC V2 stop for %s", server.URL)
 		err := svc.StopServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop database:  %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop database: %s", err)
 			return err
 		}
 	}
@@ -304,15 +308,24 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 	} else if svc.IsV3() {
 		// Optimistic clear: always clear instance state before start to avoid
 		// 409 "failover object is warn state" from a previous failed start.
-		// Clear is cheap and harmless if the service is already in a clean state.
-		cluster.OpenSVCClearDatabaseInstanceState(server, "")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"OpenSVC V3 start: clearing instance state before start for %s", server.URL)
+		if clearErr := cluster.OpenSVCClearDatabaseInstanceState(server, ""); clearErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+				"OpenSVC V3 start: clear failed for %s: %s (proceeding with start)", server.URL, clearErr)
+		}
 
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"OpenSVC V3 start: calling StartServiceV3 for %s", server.URL)
 		err := svc.StartServiceV3(cluster.Name, server.ServiceName)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start database: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+				"OpenSVC V3 start: failed for %s: %s", server.URL, err)
 			return err
 		}
 	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"OpenSVC V2 start for %s", server.URL)
 		err := svc.StartServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start database: %s", err)
@@ -372,6 +385,8 @@ func (cluster *Cluster) OpenSVCAbortDatabaseService(server *ServerMonitor) error
 		return err
 	}
 
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"Aborting orchestration for %s", server.ServiceName)
 	err := svc.AbortServiceV3(cluster.Name, server.ServiceName)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not abort database: %s", err)
