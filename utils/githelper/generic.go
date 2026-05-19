@@ -21,6 +21,7 @@ import (
 	gitclient "github.com/go-git/go-git/v5/plumbing/transport/client"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	gogitmem "github.com/go-git/go-git/v5/storage/memory"
+	"errors"
 	"github.com/signal18/replication-manager/utils/treehelper"
 )
 
@@ -414,26 +415,47 @@ func demuxSideband(caps *capability.List, r io.Reader) io.Reader {
 	}
 }
 
-// classifyGitError converts go-git transport errors into user-friendly messages.
+// classifyGitError annotates go-git transport errors with a category prefix
+// while preserving the original error message (which includes the server's HTTP
+// response body — useful for diagnosing credential and permission problems).
+//
+// HTTP mapping (errors.Is works because go-git uses %w):
+//   401 → ErrAuthenticationRequired  e.g. "authentication required: Bad credentials"
+//   403 → ErrAuthorizationFailed     e.g. "authorization failed: insufficient scope"
+//   404 → ErrRepositoryNotFound      e.g. "repository not found: Not Found"
 func classifyGitError(err error) error {
 	if err == nil {
 		return nil
 	}
-	msg := err.Error()
-	lower := strings.ToLower(msg)
+
 	switch {
-	case strings.Contains(lower, "authentication required") ||
-		strings.Contains(lower, "unauthorized") ||
-		strings.Contains(lower, "403") ||
-		strings.Contains(lower, "invalid credentials"):
-		return fmt.Errorf("authentication denied: check username and password/token")
-	case strings.Contains(lower, "repository not found") ||
-		strings.Contains(lower, "not found"):
-		return fmt.Errorf("repository not reachable or not found")
-	case strings.Contains(lower, "timeout") ||
-		strings.Contains(lower, "deadline exceeded"):
-		return fmt.Errorf("timeout: repository check timed out")
+	case errors.Is(err, transport.ErrAuthenticationRequired):
+		// 401: wrong or missing credentials. Return original — it contains the
+		// server's response body which explains why auth failed.
+		return fmt.Errorf("authentication required: %w", err)
+
+	case errors.Is(err, transport.ErrAuthorizationFailed):
+		// 403: credentials valid but token lacks the required scope/permission.
+		return fmt.Errorf("access forbidden: %w", err)
+
+	case errors.Is(err, transport.ErrRepositoryNotFound):
+		// 404: repo does not exist, OR private repo with missing/wrong credentials
+		// (servers return 404 to avoid confirming private repo existence).
+		return fmt.Errorf("repository not found (private repos also return this when credentials are wrong): %w", err)
+
+	case errors.Is(err, transport.ErrEmptyUploadPackRequest):
+		return fmt.Errorf("repository is empty: %w", err)
 	}
+
+	// String fallback for connection-level errors that don't use sentinel types.
+	lower := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(lower, "timeout") || strings.Contains(lower, "deadline exceeded"):
+		return fmt.Errorf("timeout: %w", err)
+	case strings.Contains(lower, "no such host") || strings.Contains(lower, "no route to host"):
+		return fmt.Errorf("host unreachable: %w", err)
+	}
+
 	return err
 }
 
