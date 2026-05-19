@@ -25,6 +25,7 @@ var databaseACLRules = []ACLRule{
 	// Actions requiring single grants
 	{"/actions/run-jobs", nil, []string{config.GrantClusterProcess}},
 	{"/actions/provision", nil, []string{config.GrantProvDBProvision}},
+	{"/actions/update-opensvc-template", nil, []string{config.GrantProvDBProvision}},
 	{"/service-opensvc", nil, []string{config.GrantProvDBProvision}},
 	{"/actions/unprovision", nil, []string{config.GrantProvDBUnprovision}},
 	{"/actions/start", nil, []string{config.GrantDBStart}},
@@ -204,7 +205,6 @@ var clusterACLRules = []ACLRule{
 	{"/actions/rolling", nil, []string{config.GrantClusterRolling}},
 	{"/actions/cancel-rolling-restart", nil, []string{config.GrantClusterRolling}},
 	{"/actions/cancel-rolling-reprov", nil, []string{config.GrantClusterRolling}},
-	{"/actions/jobs-upgrade", nil, []string{config.GrantClusterRolling}},
 
 	// Security
 	{"/actions/rotate-passwords", nil, []string{config.GrantClusterRotatePasswords}},

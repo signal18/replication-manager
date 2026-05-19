@@ -22,10 +22,11 @@ type FileEntry struct {
 
 type FileTreeCache struct {
 	IsCached   bool       `json:"isCached"`
+	Truncated  bool       `json:"truncated,omitempty"` // true when file count exceeded the limit
 	Layers     []string   `json:"layers"`
 	Tree       *FileEntry `json:"tree"`
-	Reference  string     `json:"reference,omitempty"`  // Reference to the image or repository
-	LastUpdate time.Time  `json:"lastUpdate,omitempty"` // Last update time of the cache
+	Reference  string     `json:"reference,omitempty"`
+	LastUpdate time.Time  `json:"lastUpdate,omitempty"`
 }
 
 func AddToFileTree(parent *FileEntry, parts []string, fileType string) {

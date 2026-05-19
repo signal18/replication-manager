@@ -717,40 +717,35 @@ export const rollingOptimize = createGuardedAsyncThunk('cluster/rollingOptimize'
   }
 })
 
-export const rollingJobsUpgrade = createGuardedAsyncThunk(
-  'cluster/rollingJobsUpgrade',
-  async ({ clusterName }, thunkAPI) => {
+const rollingActionLabels = {
+  restart: 'Rolling restart',
+  reprov: 'Rolling reprov',
+  upgrade: 'Rolling upgrade',
+  'jobs-upgrade': 'Rolling jobs upgrade'
+}
+
+export const rollingAction = createGuardedAsyncThunk(
+  'cluster/rollingAction',
+  async ({ clusterName, action }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.rollingJobsUpgrade(clusterName, baseURL)
-      showSuccessBanner('Rolling jobs upgrade successful!', status, thunkAPI)
+      const { data, status } = await clusterService.rollingAction(clusterName, action, baseURL)
+      showSuccessBanner(`${rollingActionLabels[action] ?? 'Rolling action'} successful!`, status, thunkAPI)
       return { data, status }
     } catch (error) {
-      showErrorBanner('Rolling jobs upgrade failed!', error, thunkAPI)
+      showErrorBanner(`${rollingActionLabels[action] ?? 'Rolling action'} failed!`, error, thunkAPI)
       return handleError(error, thunkAPI)
     }
   },
   {
     condition: (_, { getState }) => {
       const { cluster } = getState()
-      if (cluster.loadingStates.menuActions) {
+      if (cluster.loadingStates.rollingAction) {
         return false
       }
     }
   }
 )
-
-export const rollingRestart = createGuardedAsyncThunk('cluster/rollingRestart', async ({ clusterName }, thunkAPI) => {
-  try {
-    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await clusterService.rollingRestart(clusterName, baseURL)
-    showSuccessBanner('Rolling restart successful!', status, thunkAPI)
-    return { data, status }
-  } catch (error) {
-    showErrorBanner('Rolling restart failed!', error, thunkAPI)
-    return handleError(error, thunkAPI)
-  }
-})
 
 export const rotateCertificates = createGuardedAsyncThunk(
   'cluster/rotateCertificates',
@@ -1269,6 +1264,21 @@ export const unprovisionDatabase = createGuardedAsyncThunk(
       return { data, status }
     } catch (error) {
       showErrorBanner('Unprovision database failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const updateOpensvcTemplate = createGuardedAsyncThunk(
+  'cluster/updateOpensvcTemplate',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.updateOpensvcTemplate(clusterName, serverId, baseURL)
+      showSuccessBanner('OpenSVC template updated!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('OpenSVC template update failed!', error, thunkAPI)
       return handleError(error, thunkAPI)
     }
   }
@@ -2286,6 +2296,7 @@ export const storageFieldChange = createGuardedAsyncThunk(
         throw new Error(data)
       }
       showSuccessBanner('storage field updated!', status, thunkAPI)
+      thunkAPI.dispatch(getAppService({ clusterName, serviceName: 'deployment', appId }))
       return { data, status }
     } catch (error) {
       showErrorBanner('Error while updating storage field', error, thunkAPI)
@@ -2304,6 +2315,7 @@ export const storageFieldIndexAdd = createGuardedAsyncThunk(
         throw new Error(data)
       }
       showSuccessBanner('New storage field row added!', status, thunkAPI)
+      thunkAPI.dispatch(getAppService({ clusterName, serviceName: 'deployment', appId }))
       return { data, status }
     } catch (error) {
       showErrorBanner('Error while adding a new storage field row', error, thunkAPI)
@@ -2321,6 +2333,7 @@ export const storageFieldIndexDrop = createGuardedAsyncThunk(
         throw new Error(data)
       }
       showSuccessBanner('storage field row dropped!', status, thunkAPI)
+      thunkAPI.dispatch(getAppService({ clusterName, serviceName: 'deployment', appId }))
       return { data, status }
     } catch (error) {
       showErrorBanner('Error while dropping a storage field row', error, thunkAPI)
@@ -2553,7 +2566,8 @@ const initialState = {
   loadingStates: {
     switchOver: false,
     failOver: false,
-    menuActions: false
+    menuActions: false,
+    rollingAction: false
   },
   app: {
     substitution: null,
@@ -2695,7 +2709,6 @@ export const clusterSlice = createSlice({
         sendCredentials.pending,
         rotateDBCredential.pending,
         rollingOptimize.pending,
-        rollingRestart.pending,
         rotateCertificates.pending,
         reloadCertificates.pending,
         cancelRollingRestart.pending,
@@ -2727,6 +2740,7 @@ export const clusterSlice = createSlice({
         restartDatabase.pending,
         provisionDatabase.pending,
         unprovisionDatabase.pending,
+        updateOpensvcTemplate.pending,
         runRemoteJobs.pending,
         optimizeServer.pending,
         skipReplicationEvent.pending,
@@ -2754,7 +2768,6 @@ export const clusterSlice = createSlice({
         refreshStaging.pending,
         killThread.pending,
         killQuery.pending,
-        rollingJobsUpgrade.pending,
         monitorAllSchemas.pending
       ),
       (state, action) => {
@@ -2782,7 +2795,6 @@ export const clusterSlice = createSlice({
         sendCredentials.fulfilled,
         rotateDBCredential.fulfilled,
         rollingOptimize.fulfilled,
-        rollingRestart.fulfilled,
         rotateCertificates.fulfilled,
         reloadCertificates.fulfilled,
         cancelRollingRestart.fulfilled,
@@ -2814,6 +2826,7 @@ export const clusterSlice = createSlice({
         restartDatabase.fulfilled,
         provisionDatabase.fulfilled,
         unprovisionDatabase.fulfilled,
+        updateOpensvcTemplate.fulfilled,
         runRemoteJobs.fulfilled,
         optimizeServer.fulfilled,
         skipReplicationEvent.fulfilled,
@@ -2841,7 +2854,6 @@ export const clusterSlice = createSlice({
         refreshStaging.fulfilled,
         killThread.fulfilled,
         killQuery.fulfilled,
-        rollingJobsUpgrade.fulfilled,
         monitorAllSchemas.fulfilled
       ),
       (state, action) => {
@@ -2870,7 +2882,6 @@ export const clusterSlice = createSlice({
         sendCredentials.rejected,
         rotateDBCredential.rejected,
         rollingOptimize.rejected,
-        rollingRestart.rejected,
         rotateCertificates.rejected,
         reloadCertificates.rejected,
         cancelRollingRestart.rejected,
@@ -2902,6 +2913,7 @@ export const clusterSlice = createSlice({
         restartDatabase.rejected,
         provisionDatabase.rejected,
         unprovisionDatabase.rejected,
+        updateOpensvcTemplate.rejected,
         runRemoteJobs.rejected,
         optimizeServer.rejected,
         skipReplicationEvent.rejected,
@@ -2929,7 +2941,6 @@ export const clusterSlice = createSlice({
         refreshStaging.rejected,
         killThread.rejected,
         killQuery.rejected,
-        rollingJobsUpgrade.rejected,
         monitorAllSchemas.rejected
       ),
       (state, action) => {
@@ -2942,6 +2953,12 @@ export const clusterSlice = createSlice({
         }
       }
     )
+    builder.addMatcher(isAnyOf(rollingAction.pending), (state) => {
+      state.loadingStates.rollingAction = true
+    })
+    builder.addMatcher(isAnyOf(rollingAction.fulfilled, rollingAction.rejected), (state) => {
+      state.loadingStates.rollingAction = false
+    })
     builder.addMatcher(isAnyOf(getAppService.fulfilled), (state, action) => {
       const { serviceName } = action.meta.arg
       if (serviceName === 'deployment') {

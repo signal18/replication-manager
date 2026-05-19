@@ -343,6 +343,10 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerProvision)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/update-opensvc-template", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerUpdateOpensvcTemplate)),
+	)).Methods("POST")
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/backup-physical", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -2694,6 +2698,47 @@ func (repman *ReplicationManager) handlerMuxServerProvision(w http.ResponseWrite
 		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
+}
+
+// handlerMuxServerUpdateOpensvcTemplate regenerates and pushes the OpenSVC service
+// config for a single DB node without triggering a reprovision.
+// @Summary Update OpenSVC template for a server
+// @Description Regenerates the OpenSVC service config template for the specified server and pushes it to OpenSVC. Does not reprovision or restart the service.
+// @Tags DatabaseProvision
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Success 200 {object} map[string]string "Template refreshed successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or error message
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/update-opensvc-template [post]
+func (repman *ReplicationManager) handlerMuxServerUpdateOpensvcTemplate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	node := mycluster.GetServerFromName(vars["serverName"])
+	if node == nil {
+		http.Error(w, "Server Not Found", http.StatusInternalServerError)
+		return
+	}
+	if err := mycluster.OpenSVCUpdateDatabaseTemplate(node); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "OpenSVC template refreshed successfully",
+		"server":  node.Name,
+	})
 }
 
 // handlerMuxServerUnprovision handles the HTTP request to unprovision a server within a cluster.

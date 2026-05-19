@@ -69,6 +69,37 @@ export const getGitTree = createAsyncThunk('settings/getGitTree', async ({ clust
   }
 )
 
+// checkGitRepo validates a new (unsaved) git clone using credentials from the form.
+export const checkGitRepo = createAsyncThunk('settings/checkGitRepo', async ({ clusterName, appName, payload }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await pathService.checkGitRepo(clusterName, appName, payload, baseURL)
+    if (status === 200) {
+      return { data, status }
+    } else {
+      throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+    }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
+// checkGitRepoByName validates an existing saved git clone using server-side
+// decrypted credentials. The frontend never sends the password (which is masked).
+export const checkGitRepoByName = createAsyncThunk('settings/checkGitRepoByName', async ({ clusterName, appId, gitName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await pathService.checkGitRepoByName(clusterName, appId, gitName, baseURL)
+    if (status === 200) {
+      return { data, status }
+    } else {
+      throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+    }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
 const initialState = {
   dockerTreeList: {},
   gitTreeList: {},
@@ -161,7 +192,6 @@ export const pathSlice = createSlice({
         const { data, status } = action.payload
         if (status === 200) {
           const gitName = action.meta.arg.gitName
-          console.log(`Git ${gitName} tree data:`, data)
           if (!isEqual(state.gitTreeList[gitName], data)) {
             state.gitTreeList[gitName] = data
             state.timestamps.gitTree[gitName] = Date.now()

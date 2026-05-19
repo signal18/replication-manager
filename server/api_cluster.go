@@ -490,13 +490,9 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerDrop)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/jobs-upgrade", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/rolling/{action}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterAllowJobsUpgrade)),
-	))
-	router.Handle("/api/clusters/{clusterName}/actions/rolling", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRolling)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRollingAction)),
 	))
 	router.Handle("/api/clusters/{clusterName}/actions/rotate-passwords", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -1486,31 +1482,52 @@ func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWr
 	}
 }
 
-// handlerMuxRolling handles the rolling restart process for a given cluster.
-// @Summary Handles the rolling restart process for a given cluster.
-// @Description This endpoint triggers a rolling restart for the specified cluster.
+// handlerMuxRollingAction dispatches rolling cluster actions based on the {action} path parameter.
+// @Summary Trigger a rolling action on a cluster
+// @Description Triggers one of: restart, reprov, upgrade, jobs-upgrade.
+// @Description reprov and upgrade are long-running and return 202 Accepted immediately; the operation runs in the background.
 // @Tags ClusterMaintenance
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {string} string "Successfully triggered rolling restart"
+// @Param action path string true "Rolling action" Enums(restart,reprov,upgrade,jobs-upgrade)
+// @Success 200 {string} string "Action triggered successfully"
+// @Success 202 {string} string "Long-running action started in background (reprov, upgrade)"
+// @Failure 400 {string} string "Unknown rolling action"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
-// @Router /api/clusters/{clusterName}/actions/rolling [post]
-func (repman *ReplicationManager) handlerMuxRolling(w http.ResponseWriter, r *http.Request) {
+// @Router /api/clusters/{clusterName}/actions/rolling/{action} [post]
+func (repman *ReplicationManager) handlerMuxRollingAction(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", http.StatusForbidden)
-			return
-		}
-		mycluster.RollingRestart()
-	} else {
+	if mycluster == nil {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	switch vars["action"] {
+	case "restart":
+		go func() { mycluster.RollingRestart() }()
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte("Rolling restart started"))
+	case "reprov":
+		go func() { mycluster.RollingReprov() }()
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte("Rolling reprov started"))
+	case "upgrade":
+		go func() { mycluster.RollingUpgrade() }()
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte("Rolling upgrade started"))
+	case "jobs-upgrade":
+		mycluster.SetRollingJobsUpgradeState()
+		w.Write([]byte("Cluster flagged for jobs upgrade"))
+	default:
+		http.Error(w, "Unknown rolling action: "+vars["action"], http.StatusBadRequest)
 	}
 }
 
@@ -9261,35 +9278,6 @@ func (repman *ReplicationManager) handlerMuxClusterIsInErrState(w http.ResponseW
 	}
 }
 
-// handlerMuxClusterAllowJobsUpgrade handles the HTTP request to allow jobs upgrade on all server within a cluster.
-// @Summary Allow Jobs Upgrade on Cluster Servers
-// @Description Flags all servers within the specified cluster to allow jobs upgrade.
-// @Tags ClusterJobs
-// @Produce json
-// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Param clusterName path string true "Cluster Name"
-// @Success 200 {string} string "Flagged for jobs upgrade"
-// @Failure 403 {string} string "No valid ACL"
-// @Failure 500 {string} string "No cluster" or "No server"
-// @Router /api/clusters/{clusterName}/actions/jobs-upgrade [get]
-func (repman *ReplicationManager) handlerMuxClusterAllowJobsUpgrade(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", http.StatusForbidden)
-			return
-		}
-
-		mycluster.SetRollingJobsUpgradeState()
-		w.WriteHeader(200)
-		w.Write([]byte("Cluster flagged for jobs upgrade"))
-		return
-	} else {
-		http.Error(w, "No cluster", http.StatusInternalServerError)
-	}
-}
 
 // handlerMuxClusterCheckLogLevel handles the HTTP request to check if a specific log level is enabled for a given task in a cluster.
 // @Summary Check Cluster Log Level

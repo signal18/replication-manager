@@ -147,6 +147,33 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseV3(s *ServerMonitor, svc opensvc
 	return svc.ProvisionServiceV3(cluster.Name, s.ServiceName)
 }
 
+// OpenSVCUpdateDatabaseTemplate regenerates the service config for a single
+// server and pushes it to OpenSVC via UpdateObjectV3.  It does not trigger
+// provisioning or wait for the service to start — safe to run on a live node.
+func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
+	svc := cluster.OpenSVCConnect()
+	if !svc.IsV3() {
+		return fmt.Errorf("update-opensvc-template requires OpenSVC v3 API")
+	}
+	_, err := cluster.OpenSVCFoundDatabaseAgent(s)
+	if err != nil {
+		return err
+	}
+	res, err := s.GenerateDBTemplateV3()
+	if err != nil {
+		return err
+	}
+	svcparts := strings.SplitN(s.ServiceName, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service name format %q, expected namespace/kind/name", s.ServiceName)
+	}
+	ns, kind, svcname := svcparts[0], svcparts[1], svcparts[2]
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"Refreshing OpenSVC template for %s", s.ServiceName)
+	_, err = svc.UpdateObjectV3(ns, kind, svcname, res)
+	return err
+}
+
 func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	svc := cluster.OpenSVCConnect()
 	agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
@@ -170,6 +197,68 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 
 	cluster.errorChan <- nil
 	return
+}
+
+// OpenSVCUpdateDatabaseServiceConfig patches image_pull_policy in the live service config on
+// OpenSVC without touching any other keys, cfg objects, or secret objects.
+func (cluster *Cluster) OpenSVCUpdateDatabaseServiceConfig(s *ServerMonitor, forcePull bool) error {
+	svc := cluster.OpenSVCConnect()
+	_, err := cluster.OpenSVCFoundDatabaseAgent(s)
+	if err != nil {
+		return err
+	}
+
+	if !svc.IsV3() {
+		const dbSection = "container#db"
+		const jobsSection = "container#jobs"
+		const key = "image_pull_policy"
+		if forcePull {
+			return svc.SetServiceConfigKeysV2(s.ServiceName, s.Agent, []string{
+				dbSection + "." + key + "=always",
+				jobsSection + "." + key + "=always",
+			})
+		}
+		return svc.UnsetServiceConfigKeysV2(s.ServiceName, s.Agent, []string{
+			dbSection + "." + key,
+			jobsSection + "." + key,
+		})
+	}
+
+	svcparts := strings.SplitN(s.ServiceName, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service name format %q, expected namespace/kind/name", s.ServiceName)
+	}
+	ns, kind, svcname := svcparts[0], svcparts[1], svcparts[2]
+
+	raw, err := svc.GetObjectConfigFileV3(ns, kind, svcname)
+	if err != nil {
+		return err
+	}
+
+	cfg, err := ini.LoadSources(ini.LoadOptions{IgnoreInlineComment: true}, bytes.NewReader(raw))
+	if err != nil {
+		return fmt.Errorf("failed to parse service config for %s: %w", s.ServiceName, err)
+	}
+
+	for _, section := range cfg.Sections() {
+		name := section.Name()
+		if name != "container#db" && name != "container#jobs" {
+			continue
+		}
+		if forcePull {
+			section.Key("image_pull_policy").SetValue("always")
+		} else {
+			section.DeleteKey("image_pull_policy")
+		}
+	}
+
+	var buf bytes.Buffer
+	if _, err = cfg.WriteTo(&buf); err != nil {
+		return fmt.Errorf("failed to serialize patched service config for %s: %w", s.ServiceName, err)
+	}
+
+	_, err = svc.UpdateObjectV3(ns, kind, svcname, buf.Bytes())
+	return err
 }
 
 func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error {
@@ -478,6 +567,9 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["##docker_image"] = "quay.io/mariadb-foundation/mariadb-debug:10.11-mdev-33798-knielsen-pkgtest"
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/mysql-files:/var/lib/mysql-files:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
 		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
+		if server.ClusterGroup.Conf.ProvOpensvcImageForcePull {
+			svccontainer["image_pull_policy"] = "always"
+		}
 
 		//Proceed with galera specific
 		if server.ClusterGroup.GetTopology() == config.TopoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() {
@@ -504,6 +596,9 @@ func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string 
 		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
 		svccontainer["command"] = "/docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm"
 		svccontainer["entrypoint"] = "/bin/bash"
+		if server.ClusterGroup.Conf.ProvOpensvcImageForcePull {
+			svccontainer["image_pull_policy"] = "always"
+		}
 	}
 	return svccontainer
 }

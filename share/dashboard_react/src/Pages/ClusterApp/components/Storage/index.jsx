@@ -1,4 +1,4 @@
-import { Box, VStack, Heading, Flex } from "@chakra-ui/react";
+import { VStack, Flex } from "@chakra-ui/react";
 import GitCloneSection from "./GitClone";
 import VolumeSection from "./Volume";
 import S3DirectorySection from "./S3Directory";
@@ -8,8 +8,11 @@ import { useDispatch, useSelector } from "react-redux";
 import AccordionComponent from "../../../../components/AccordionComponent";
 import ConfirmModal from "../../../../components/Modals/ConfirmModal";
 import { addS3Provider, pauseAutoReload, selectClusterS3Providers, storageFieldChange, storageFieldIndexAdd, storageFieldIndexDrop, previewS3MountSync, applyS3MountSync, getClusterData, getOpenSVCPools } from "../../../../redux/clusterSlice";
+import { clearCache, checkGitRepo, checkGitRepoByName } from "../../../../redux/pathSlice";
 
-export default function StoragePage({ clusterName, appId, appConfig, user }) {
+const GIT_CREDENTIAL_KEYS = ['repo', 'branch', 'pass', 'user'];
+
+export default function StoragePage({ clusterName, appId, appConfig }) {
   const dispatch = useDispatch();
   const storages = useSelector((state) => state.cluster?.app?.deployment?.storages);
   const opensvcPools = useSelector((state) => state.cluster?.opensvcPools || []);
@@ -66,21 +69,25 @@ export default function StoragePage({ clusterName, appId, appConfig, user }) {
     index: null,
   })
 
-  useMemo(() => {
-    if (!storages) {
-      return;
-    }
-  }, [storages]);
-
   const { isOpen: isConfirmOpen, field, index } = modalState;
 
   const dropConfirmText = useMemo(() => field
     ? `Are you sure you want to remove this ${field} item? This action cannot be undone.`
     : "Are you sure you want to remove this item?", [field]);
 
+  const gitClones = useMemo(() => storages?.gitClones || [], [storages]);
+  const volumes = useMemo(() => storages?.volumes || [], [storages]);
+  const s3Mounts = useMemo(() => storages?.s3Mounts || [], [storages]);
+
   const handleSaveArrayChange = useCallback(
-    (field, index, key, value) => dispatch(storageFieldChange({ clusterName, appId, field, index, key, value })),
-    [clusterName, appId, dispatch]
+    (field, index, key, value) => {
+      if (field === 'gitClones' && GIT_CREDENTIAL_KEYS.includes(key)) {
+        const gitName = gitClones[index]?.name;
+        if (gitName) dispatch(clearCache({ type: 'git', hash: gitName }));
+      }
+      return dispatch(storageFieldChange({ clusterName, appId, field, index, key, value }));
+    },
+    [clusterName, appId, dispatch, gitClones]
   )
 
   const handleSaveAddItem = useCallback(
@@ -106,7 +113,7 @@ export default function StoragePage({ clusterName, appId, appConfig, user }) {
   )
 
   const handleSaveAsProvider = useCallback(
-    (name, s3, providerSource) => {  // P2: use providerSource from form
+    (name, s3, providerSource) => {
       const source = providerSource || "custom";
       const payload = { name, providerSource: source, region: s3.region || "" };
       if (source === "app") {
@@ -124,6 +131,28 @@ export default function StoragePage({ clusterName, appId, appConfig, user }) {
   const handlePreviewSync = useCallback(
     (providerName, mountName) =>
       dispatch(previewS3MountSync({ clusterName, providerName, appId, mountName })).unwrap(),
+    [clusterName, appId, dispatch]
+  );
+
+  const handleCheckGit = useCallback(
+    async (gitName) => {
+      const result = await dispatch(checkGitRepoByName({ clusterName, appId, gitName })).unwrap();
+      if (result?.data?.ok === false) {
+        throw new Error(result?.data?.message || 'Connection check failed.');
+      }
+      return result;
+    },
+    [clusterName, appId, dispatch]
+  );
+
+  const handleCheckGitNew = useCallback(
+    async (payload) => {
+      const result = await dispatch(checkGitRepo({ clusterName, appName: appId, payload })).unwrap();
+      if (result?.data?.ok === false) {
+        throw new Error(result?.data?.message || 'Connection check failed.');
+      }
+      return result;
+    },
     [clusterName, appId, dispatch]
   );
 
@@ -148,7 +177,9 @@ export default function StoragePage({ clusterName, appId, appConfig, user }) {
     onSaveAsProvider: handleSaveAsProvider,
     onPreviewSync: handlePreviewSync,
     onApplySync: handleApplySync,
-  }), [handleSaveArrayChange, handleSaveAddItem, handleDropIndex, handlePauseAutoReload, handleResumeAutoReload, handleSaveAsProvider, handlePreviewSync, handleApplySync]);
+    onCheckGit: handleCheckGit,
+    onCheckGitNew: handleCheckGitNew,
+  }), [handleSaveArrayChange, handleSaveAddItem, handleDropIndex, handlePauseAutoReload, handleResumeAutoReload, handleSaveAsProvider, handlePreviewSync, handleApplySync, handleCheckGit, handleCheckGitNew]);
 
   const handleCloseConfirm = useCallback(() => {
     setModalState({ isOpen: false, field: null, index: null });
@@ -156,14 +187,14 @@ export default function StoragePage({ clusterName, appId, appConfig, user }) {
 
   const handleConfirmDrop = useCallback(() => {
     if (field && typeof index === 'number') {
+      if (field === 'gitClones') {
+        const gitName = gitClones[index]?.name;
+        if (gitName) dispatch(clearCache({ type: 'git', hash: gitName }));
+      }
       dispatch(storageFieldIndexDrop({ clusterName, appId, field, index }));
       handleCloseConfirm();
     }
-  }, [clusterName, appId, field, index, dispatch, handleCloseConfirm]);  // P5: add handleCloseConfirm
-
-  const gitClones = storages?.gitClones || [];
-  const volumes = storages?.volumes || [];
-  const s3Mounts = storages?.s3Mounts || [];
+  }, [clusterName, appId, field, index, dispatch, handleCloseConfirm, gitClones]);
 
   const volumeOptions = useMemo(() => {
     return volumes.map((vol) => ({ value: vol.name, name: vol.name, volumedir: vol.volumedir }));

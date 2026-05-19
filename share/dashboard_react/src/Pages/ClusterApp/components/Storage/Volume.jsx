@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { VStack, Input, HStack, Heading, Flex, Select, Box, Text } from "@chakra-ui/react";
+import { VStack, Input, HStack, Heading, Flex, Box, Text } from "@chakra-ui/react";
 import styles from "./styles.module.scss";
 import TextForm from "../../../../components/TextForm";
 import { createColumnHelper } from "@tanstack/react-table";
@@ -12,13 +12,7 @@ import { HiTrash } from "react-icons/hi";
 
 const defaultVol = { name: "", poolname: "", volumedir: "" };
 
-const volumeDirs = ["etc", "var", "log"].map((dir) => ({ value: dir, name: dir }));
-
 const columnHelper = createColumnHelper()
-
-const maskString = (str, mask = '*') => {
-    return str.replaceAll(/./g, mask)
-}
 
 const VolumeSection = ({
     rows = [],
@@ -82,23 +76,23 @@ const VolumeSection = ({
 
     const handleAddItem = () => {
         setIsVisible(true);
-        onPauseAutoReload(); // Pause auto-reload when adding a new item
+        onPauseAutoReload();
     };
 
     const handleCancel = () => {
-        setIsVisible(false); // Hide the form without saving
-        onResumeAutoReload(); // Resume auto-reload after canceling
+        setIsVisible(false);
+        onResumeAutoReload();
     };
 
     const handleSaveAdd = (formData) => {
       onSaveAdd(fieldName, formData).then(() => {
-        setIsVisible(false); // Hide the form after saving
-        onResumeAutoReload(); // Resume auto-reload after saving
-        return Promise.resolve();
-      }, (error) => {
-        return Promise.reject(error);
+        setIsVisible(false);
+        onResumeAutoReload();
+      }).catch(() => {
+        // Error banner shown by storageFieldIndexAdd in redux. Resume auto-reload so UI doesn't stay paused.
+        onResumeAutoReload();
       });
-  }
+    }
 
     const columnsRowForm = useMemo(
         () => [
@@ -172,24 +166,20 @@ export default React.memo(VolumeSection);
 const VolumeRowForm = React.memo(({ fieldName, volume, index, poolOptions = [], onChange }) => {
     const vol = volume || defaultVol;
 
-    const onRowArrayChange = (fieldName, index, key, value) => {
-        onChange(fieldName, index, key, value);
-    };
-
     return (
         <Flex className={styles.variableRowForm} w="100%" align="flex-start" gap={4}>
             <Flex direction="column" flex="1" minW="300px" gap={2}>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Name:</Text>
-                    <TextForm placeholder="Name" value={vol.name} onSave={(value) => onRowArrayChange(fieldName, index, "name", value)} />
+                    <TextForm placeholder="Name" value={vol.name} onSave={(value) => onChange(fieldName, index, "name", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Pool Name:</Text>
-                    <Dropdown placeholder="Pool Name" confirmTitle="Change Pool Name" options={poolOptions} selectedValue={vol.poolname} onChange={(value) => onRowArrayChange(fieldName, index, "poolname", value)} />
+                    <Dropdown placeholder="Pool Name" confirmTitle="Change Pool Name" options={poolOptions} selectedValue={vol.poolname} onChange={(value) => onChange(fieldName, index, "poolname", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>
-                    <TextForm placeholder="Volume Dir" confirmTitle="Change Volume Dir" value={vol.volumedir} onSave={(value) => onRowArrayChange(fieldName, index, "volumedir", value)} />
+                    <TextForm placeholder="Volume Dir" confirmTitle="Change Volume Dir" value={vol.volumedir} onSave={(value) => onChange(fieldName, index, "volumedir", value)} />
                 </Flex>
             </Flex>
         </Flex>
@@ -201,7 +191,7 @@ const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => 
 
     const valid = useMemo(() => {
         return vol.name && vol.poolname && vol.volumedir;
-    }, [vol]);
+    }, [vol.name, vol.poolname, vol.volumedir]);
 
     const handleArrayChange = (key, value) => {
         setVol((prev) => ({ ...prev, [key]: value }));
@@ -214,7 +204,7 @@ const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => 
     };
 
     const handleCancel = () => {
-        setVol(defaultVol); // Reset form on cancel
+        setVol(defaultVol);
         onCancel();
     };
 

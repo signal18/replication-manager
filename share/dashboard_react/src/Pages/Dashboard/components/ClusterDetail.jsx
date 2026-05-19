@@ -22,9 +22,8 @@ import {
   reloadCertificates,
   resetFailOverCounter,
   resetSLA,
-  rollingJobsUpgrade,
+  rollingAction,
   rollingOptimize,
-  rollingRestart,
   rotateCertificates,
   rotateDBCredential,
   switchOverCluster,
@@ -46,6 +45,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
   const clusterServers = useSelector((state) => state.cluster.clusterServers)
   const clusterProxies = useSelector((state) => state.cluster.clusterProxies)
   const menuActionsLoading = useSelector((state) => state.cluster.loadingStates.menuActions)
+  const rollingActionLoading = useSelector((state) => state.cluster.loadingStates.rollingAction)
 
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [isNewServerModalOpen, setIsNewServerModalOpen] = useState(false)
@@ -55,10 +55,12 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
   const [clipboardText, setClipboardText] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [confirmTitle, setConfirmTitle] = useState('')
+  const [confirmBody, setConfirmBody] = useState('')
   const [credentialType, setCredentialType] = useState('')
   const confirmBootrapMessage = 'Bootstrap operation will destroy your existing replication setup. \n Are you sure?'
 
   const openConfirmModal = () => {
+    setConfirmBody('')
     setIsConfirmModalOpen(true)
   }
   const closeConfirmModal = () => {
@@ -66,6 +68,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
     setIsClipboardModalOpen(false)
     setConfirmHandler(null)
     setConfirmTitle('')
+    setConfirmBody('')
     setClipboardText('')
   }
 
@@ -269,20 +272,39 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
         },
         {
           name: 'Rolling Jobs Upgrade',
-          isDisabled: !g['cluster-rolling'],
+          isDisabled: !g['cluster-rolling'] || rollingActionLoading,
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Rolling jobs upgrade?')
-            setConfirmHandler(() => () => dispatch(rollingJobsUpgrade({ clusterName: selectedCluster?.name })))
+            setConfirmHandler(() => () => dispatch(rollingAction({ clusterName: selectedCluster?.name, action: 'jobs-upgrade' })))
           }
         },
         {
           name: 'Rolling Restart',
-          isDisabled: !g['cluster-rolling'],
+          isDisabled: !g['cluster-rolling'] || rollingActionLoading,
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Rolling restart?')
-            setConfirmHandler(() => () => dispatch(rollingRestart({ clusterName: selectedCluster?.name })))
+            setConfirmHandler(() => () => dispatch(rollingAction({ clusterName: selectedCluster?.name, action: 'restart' })))
+          }
+        },
+        {
+          name: 'Rolling Reprov',
+          isDisabled: !g['cluster-rolling'] || rollingActionLoading,
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Rolling reprovision?')
+            setConfirmBody('Each server will be unprovisioned then re-provisioned one by one, starting with replicas before the primary. The cluster remains available throughout.')
+            setConfirmHandler(() => () => dispatch(rollingAction({ clusterName: selectedCluster?.name, action: 'reprov' })))
+          }
+        },
+        {
+          name: 'Rolling Upgrade',
+          isDisabled: !g['cluster-rolling'] || rollingActionLoading,
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Rolling upgrade?')
+            setConfirmHandler(() => () => dispatch(rollingAction({ clusterName: selectedCluster?.name, action: 'upgrade' })))
           }
         },
         {
@@ -502,6 +524,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
           isOpen={isConfirmModalOpen}
           closeModal={closeConfirmModal}
           title={confirmTitle}
+          body={confirmBody || undefined}
           onConfirmClick={() => {
             confirmHandler()
             closeConfirmModal()

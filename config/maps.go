@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -1218,12 +1219,44 @@ func normalizeConfigVarName(name string) string {
 }
 
 func LoadMySQLConfigSection(path string) (*ini.Section, error) {
-	// Allow shadows to handle multiple same options
-	cfgFile, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, AllowBooleanKeys: true}, path)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	// Convert bare boolean keys (no '=') to 'key = ' so AllowShadows works for
+	// duplicate boolean keys too. The ini library forbids shadowing boolean keys.
+	preprocessed := preprocessMySQLConfigContent(string(raw))
+	cfgFile, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true}, []byte(preprocessed))
 	if err != nil {
 		return nil, err
 	}
 	return cfgFile.Section("mysqld"), nil
+}
+
+// preprocessMySQLConfigContent converts bare boolean keys (keys without '=') to
+// 'key = ' so that AllowShadows can handle duplicate occurrences of them.
+func preprocessMySQLConfigContent(content string) string {
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || trimmed[0] == '#' || trimmed[0] == ';' || trimmed[0] == '[' {
+			continue
+		}
+		// Strip inline comment to check if the key portion has '='
+		keyPart := trimmed
+		for _, ch := range []string{"#", ";"} {
+			if idx := strings.Index(keyPart, ch); idx != -1 {
+				keyPart = strings.TrimSpace(keyPart[:idx])
+			}
+		}
+		if keyPart != "" && !strings.Contains(keyPart, "=") {
+			// Boolean key — rewrite as 'key = true' so the ini parser treats it as a
+			// regular key. This allows AllowShadows to work for duplicate occurrences.
+			leading := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+			lines[i] = leading + keyPart + " = true"
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m *VariablesMap) loadFromSection(section *ini.Section, cnftype string) {

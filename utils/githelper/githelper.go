@@ -15,9 +15,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/signal18/replication-manager/utils/treehelper"
 	"github.com/sirupsen/logrus"
 )
 
@@ -630,51 +628,3 @@ func RegisterToCloud18Project(acces_token, project string, log_git bool) (int, e
 
 }
 
-type GitClientInterface interface {
-	// GetRepositoryTree retrieves the repository tree for a given project ID and path.
-	GetDirectoryFromRepository(cacheDir, projectID, branch, dir string, timeout time.Duration, refresh bool) (*treehelper.FileTreeCache, error)
-	GetRepositoryTree(cacheDir, projectID, branch string, timeout time.Duration, refresh bool) (*treehelper.FileTreeCache, error)
-	DownloadFileFromRepo(projectID, branch, filePath string, timeout time.Duration) ([]byte, error)
-}
-
-type GitClient struct {
-}
-
-func (gc GitClient) LoadTreeFromCache(cacheDir, gitRef, commitSHA string) *treehelper.FileTreeCache {
-	cache := treehelper.TryReadFileTreeCache(cacheDir, gitRef)
-	if cache != nil && cache.Tree != nil && cache.Layers != nil && cache.Layers[0] == commitSHA {
-		return cache
-	}
-	return nil
-}
-
-func GetTemplateFromRepo(gitrepo, gitpass, gitbranch, cacheDir string, timeout int, refresh bool) (*treehelper.FileTreeCache, error) {
-	var err error
-	var gClient GitClientInterface
-	var baseURL, projectID string
-
-	if strings.Contains(gitrepo, "github") {
-		_, projectID, err = ParseGitHubURL(gitrepo)
-		if err != nil {
-			return nil, err
-		}
-		gClient, err = NewGithubClient(gitpass)
-	} else {
-		baseURL, projectID, err = ParseGitLabURL(gitrepo)
-		if err != nil {
-			return nil, err
-		}
-		gClient, err = NewGitlabClient(baseURL, gitpass)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	// Get the repository tree
-
-	gitTimeout := time.Duration(timeout) * time.Second
-	if timeout <= 0 {
-		gitTimeout = 15 * time.Second // Default timeout if not specified
-	}
-	return gClient.GetRepositoryTree(cacheDir, projectID, gitbranch, gitTimeout, refresh)
-}

@@ -325,6 +325,83 @@ func (collector *Collector) StopServiceV2(cluster string, srv string, node strin
 	return nil
 }
 
+// SetServiceConfigKeysV2 surgically sets one or more INI keys on a live service
+// via POST /service_action with action "set". Each entry in kw must be
+// "section.key=value" (e.g. "container#db.image_pull_policy=always").
+//
+// API handler:  opensvc/daemon/handlers/object/action/post.py (b2.1)
+//   https://github.com/opensvc/opensvc/blob/b2.1/opensvc/daemon/handlers/object/action/post.py
+// --kw option (action="append", supports multiple entries per call):
+//   https://github.com/opensvc/opensvc/blob/b2.1/opensvc/utilities/render/command.py
+//   https://github.com/opensvc/opensvc/blob/b2.1/opensvc/commands/mgr/parser.py
+func (collector *Collector) SetServiceConfigKeysV2(srv string, node string, kw []string) error {
+	reqparams := ActionRequest{
+		Path:   srv,
+		Action: "set",
+		Sync:   true,
+		Options: map[string]interface{}{
+			"kw": kw,
+		},
+	}
+	return collector.postServiceAction(reqparams, node)
+}
+
+// UnsetServiceConfigKeysV2 removes one or more INI keys from a live service
+// via POST /service_action with action "unset". Each entry in kw must be
+// "section.key" (e.g. "container#db.image_pull_policy").
+//
+// API handler:  opensvc/daemon/handlers/object/action/post.py (b2.1)
+//   https://github.com/opensvc/opensvc/blob/b2.1/opensvc/daemon/handlers/object/action/post.py
+// "unset" is in ADMIN_ACTIONS and follows the standard format_command path.
+func (collector *Collector) UnsetServiceConfigKeysV2(srv string, node string, kw []string) error {
+	reqparams := ActionRequest{
+		Path:   srv,
+		Action: "unset",
+		Sync:   true,
+		Options: map[string]interface{}{
+			"kw": kw,
+		},
+	}
+	return collector.postServiceAction(reqparams, node)
+}
+
+func (collector *Collector) postServiceAction(reqparams ActionRequest, node string) error {
+	jsondata, err := json.Marshal(reqparams)
+	if err != nil {
+		if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("JSON Marshal Error: ", err)
+		}
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
+
+	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Printf("API Request: %s Header: o-node=%s Payload: %s", urlpost, node, string(jsondata))
+	}
+
+	req, err := http.NewRequest("POST", urlpost, bytes.NewBuffer(jsondata))
+	if err != nil {
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", node)
+
+	client := collector.GetHttpClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlInfo) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
+	return nil
+}
+
 func (collector *Collector) PurgeServiceV2(cluster string, srv string, node string) error {
 
 	// jsondata := `{"path": "` + srv + `", "global_expect": "purged", "options": {}}`
