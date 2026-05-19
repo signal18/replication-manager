@@ -303,9 +303,9 @@ func (cluster *Cluster) RollingUpgrade() error {
 		if cfgErr := cluster.UpdateDatabaseServiceConfig(slave, true); cfgErr != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to push service config for %s: %s", slave.URL, cfgErr)
 		}
-		err := cluster.StopDatabaseService(slave)
+		err := cluster.StopDatabaseServiceClean(slave)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: stop failed on slave %s %s", slave.URL, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: clean stop failed on slave %s %s", slave.URL, err)
 			if maintEnabled {
 				slave.SwitchMaintenance()
 			}
@@ -414,9 +414,9 @@ func (cluster *Cluster) RollingUpgrade() error {
 	if cfgErr := cluster.UpdateDatabaseServiceConfig(master, true); cfgErr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to push service config for %s: %s", master.URL, cfgErr)
 	}
-	err := cluster.StopDatabaseService(master)
+	err := cluster.StopDatabaseServiceClean(master)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: old master stop failed %s %s", master.URL, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: old master clean stop failed %s %s", master.URL, err)
 		if maintenanceEnabled {
 			master.SwitchMaintenance()
 		}
@@ -511,10 +511,10 @@ func (cluster *Cluster) rollingUpgradeOnPremise() error {
 			time.Sleep(time.Second)
 		}
 
-		err := cluster.StopDatabaseService(slave)
+		err := cluster.StopDatabaseServiceClean(slave)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-				"Rolling upgrade: stop failed on slave %s: %s", slave.URL, err)
+				"Rolling upgrade: clean stop failed on slave %s: %s", slave.URL, err)
 			if maintEnabled {
 				slave.SwitchMaintenance()
 			}
@@ -590,10 +590,10 @@ func (cluster *Cluster) rollingUpgradeOnPremise() error {
 		time.Sleep(time.Second)
 	}
 
-	err := cluster.StopDatabaseService(master)
+	err := cluster.StopDatabaseServiceClean(master)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-			"Rolling upgrade: old master stop failed %s: %s", master.URL, err)
+			"Rolling upgrade: old master clean stop failed %s: %s", master.URL, err)
 		if maintEnabled {
 			master.SwitchMaintenance()
 		}
