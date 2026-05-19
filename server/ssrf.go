@@ -59,6 +59,11 @@ func isSSRFTarget(repoURL string) bool {
 
 	var host string
 	if strings.HasPrefix(repoURL, "git@") {
+		// SSH short form: git@host:path — extract hostname only.
+		// No early return here: host falls through to the IP-literal check and
+		// DNS resolution below, so SSH hostnames receive the same validation
+		// as HTTPS ones. (safeDialContext covers HTTP/HTTPS at connect-time;
+		// SSH transport requires key negotiation, so the residual risk is lower.)
 		part := strings.TrimPrefix(repoURL, "git@")
 		if idx := strings.Index(part, ":"); idx != -1 {
 			host = part[:idx]
@@ -78,15 +83,19 @@ func isSSRFTarget(repoURL string) bool {
 		return true
 	}
 
+	// Well-known loopback names — skip DNS round-trip.
 	switch strings.ToLower(host) {
 	case "localhost", "ip6-localhost", "ip6-loopback":
 		return true
 	}
 
+	// IP literal: check directly.
 	if ip := net.ParseIP(host); ip != nil {
 		return isPrivateIP(ip)
 	}
 
+	// Hostname: resolve and check every returned address (SSH and HTTPS).
+	// Fail-closed on DNS error to prevent unknown destinations.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
@@ -151,7 +160,9 @@ var safeGitHTTPClient = &http.Client{
 		MaxIdleConns:          10,
 		IdleConnTimeout:       90 * time.Second,
 	},
-	Timeout: 60 * time.Second,
+	// No client-level Timeout: all callers pass a context deadline, which
+	// cancels first. A fixed client Timeout would conflict with per-request
+	// context timeouts and is never reached in practice.
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if isSSRFTarget(req.URL.String()) {
 			return errors.New("redirect to private/internal address blocked")

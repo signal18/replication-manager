@@ -273,8 +273,11 @@ func (g *GenericGitClient) GetDirectoryFromRepository(cacheDir, repoURL, branch,
 	}
 
 	cache, err := g.GetRepositoryTree(cacheDir, repoURL, branch, timeout, refresh)
-	if cache == nil || cache.Tree == nil {
+	if err != nil {
 		return nil, err
+	}
+	if cache == nil || cache.Tree == nil {
+		return nil, fmt.Errorf("repository tree is empty or unavailable")
 	}
 
 	subtree, err := treehelper.TraverseFileTree(cache.Tree, dir)

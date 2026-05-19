@@ -197,7 +197,6 @@ export const pathSlice = createSlice({
         const { data, status } = action.payload
         if (status === 200) {
           const gitName = action.meta.arg.gitName
-          console.log(`Git ${gitName} tree data:`, data)
           if (!isEqual(state.gitTreeList[gitName], data)) {
             state.gitTreeList[gitName] = data
             state.timestamps.gitTree[gitName] = Date.now()
