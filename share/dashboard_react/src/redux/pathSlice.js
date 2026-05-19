@@ -57,13 +57,8 @@ export const getGitTree = createAsyncThunk('settings/getGitTree', async ({ clust
       throw new Error(data)
     }
   } catch (error) {
-    const rawMsg = error?.message || '';
-    const isGitLabAuth = /\/api\/v4\//i.test(rawMsg) || /\b(401|unauthorized)\b/i.test(rawMsg);
-    const displayError = isGitLabAuth
-      ? new Error('GitLab API check failed: unauthorized. The Git tree browser requires a GitLab token with repository/API read access.')
-      : error;
-    showErrorBanner(`Fetching Git directory tree failed!`, displayError, thunkAPI)
-    return handleError(displayError, thunkAPI)
+    showErrorBanner(`Fetching Git directory tree failed!`, error, thunkAPI)
+    return handleError(error, thunkAPI)
   }
 },
   {

@@ -2720,7 +2720,7 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 		cacheDir := filepath.Join(mycluster.WorkingDir, ".cache", "git", "repos")
 		timeout := time.Duration(gc.Timeout) * time.Second
 		if gc.Timeout <= 0 {
-			timeout = 15 * time.Second
+			timeout = 30 * time.Second // tree fetch downloads pack objects; needs at least as much time as a bare check
 		}
 
 		// All providers use GenericGitClient (go-git) over the git wire protocol.
@@ -2812,7 +2812,6 @@ func (repman *ReplicationManager) handlerMuxGitCheckRepo(w http.ResponseWriter, 
 	msg, err := gc.CheckRepo(req.Repo, req.Branch, timeout)
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
-		w.WriteHeader(http.StatusUnprocessableEntity)
 		json.NewEncoder(w).Encode(CheckResponse{OK: false, Message: err.Error()})
 	} else {
 		json.NewEncoder(w).Encode(CheckResponse{OK: true, Message: msg})
@@ -2872,12 +2871,16 @@ func (repman *ReplicationManager) handlerMuxGitCheckRepoByName(w http.ResponseWr
 		timeout = 30 * time.Second
 	}
 
+	branch := gc.GitBranch
+	if branch == "" {
+		branch = "main"
+	}
+
 	client := githelper.NewGenericGitClient(gc.GitUser, gitpass)
-	msg, err := client.CheckRepo(gc.GitRepo, gc.GitBranch, timeout)
+	msg, err := client.CheckRepo(gc.GitRepo, branch, timeout)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
-		w.WriteHeader(http.StatusUnprocessableEntity)
 		json.NewEncoder(w).Encode(CheckResponse{OK: false, Message: err.Error()})
 	} else {
 		json.NewEncoder(w).Encode(CheckResponse{OK: true, Message: msg})
