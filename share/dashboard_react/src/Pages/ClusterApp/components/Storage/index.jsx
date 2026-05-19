@@ -75,6 +75,10 @@ export default function StoragePage({ clusterName, appId, appConfig }) {
     ? `Are you sure you want to remove this ${field} item? This action cannot be undone.`
     : "Are you sure you want to remove this item?", [field]);
 
+  const gitClones = useMemo(() => storages?.gitClones || [], [storages]);
+  const volumes = useMemo(() => storages?.volumes || [], [storages]);
+  const s3Mounts = useMemo(() => storages?.s3Mounts || [], [storages]);
+
   const handleSaveArrayChange = useCallback(
     (field, index, key, value) => {
       if (field === 'gitClones' && GIT_CREDENTIAL_KEYS.includes(key)) {
@@ -182,10 +186,6 @@ export default function StoragePage({ clusterName, appId, appConfig }) {
       handleCloseConfirm();
     }
   }, [clusterName, appId, field, index, dispatch, handleCloseConfirm, gitClones]);
-
-  const gitClones = useMemo(() => storages?.gitClones || [], [storages]);
-  const volumes = useMemo(() => storages?.volumes || [], [storages]);
-  const s3Mounts = useMemo(() => storages?.s3Mounts || [], [storages]);
 
   const volumeOptions = useMemo(() => {
     return volumes.map((vol) => ({ value: vol.name, name: vol.name, volumedir: vol.volumedir }));
