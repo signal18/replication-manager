@@ -119,6 +119,7 @@ export const clusterService = {
   // Database service APIs
   getDatabaseService,
   preserveVariable,
+  getServerConfigFiles,
   setCustomVariableValue,
   updateLongQueryTime,
   toggleDatabaseActions,
@@ -606,6 +607,10 @@ function preserveVariable(clusterName, dbId, variableName, action, baseURL) {
   return getApi(baseURL).post(
     `clusters/${clusterName}/servers/${dbId}/variables-${action}?variableName=${variableName}`
   )
+}
+
+function getServerConfigFiles(clusterName, serverName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverName}/config-files`)
 }
 
 function setCustomVariableValue(clusterName, dbId, variableName, customValue, baseURL) {
