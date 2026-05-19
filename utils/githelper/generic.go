@@ -63,17 +63,33 @@ func NewGenericGitClient(user, pass string) (*GenericGitClient, error) {
 	return &GenericGitClient{User: user, Pass: pass}, nil
 }
 
-// normalizeRepoURL ensures HTTPS repository URLs have the .git suffix required
-// by the git wire protocol. GitHub accepts both forms; GitLab requires .git.
-// SSH and local paths are returned unchanged.
+// normalizeRepoURL ensures a repository URL is usable by go-git:
+//   - Adds https:// when no scheme is present (and not SSH/local)
+//   - Adds .git suffix for HTTPS URLs that don't already have it (GitLab requires it)
+//
+// SSH (git@host:path) and local paths (/path, ./path) are returned unchanged.
 func normalizeRepoURL(repoURL string) string {
+	repoURL = strings.TrimSpace(repoURL)
+
+	// SSH short form and local paths need no modification.
 	if strings.HasPrefix(repoURL, "git@") ||
 		strings.HasPrefix(repoURL, "/") ||
 		strings.HasPrefix(repoURL, "./") ||
-		strings.HasSuffix(repoURL, ".git") {
+		strings.HasPrefix(repoURL, "../") {
 		return repoURL
 	}
-	return repoURL + ".git"
+
+	// Add https:// if no scheme is present.
+	if !strings.Contains(repoURL, "://") {
+		repoURL = "https://" + repoURL
+	}
+
+	// GitLab requires the .git suffix on the wire protocol endpoint.
+	if !strings.HasSuffix(repoURL, ".git") {
+		repoURL = repoURL + ".git"
+	}
+
+	return repoURL
 }
 
 func (g *GenericGitClient) basicAuth() *githttp.BasicAuth {
