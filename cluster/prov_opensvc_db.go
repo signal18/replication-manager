@@ -215,8 +215,24 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 	} else if svc.IsV3() {
 		err := svc.StartServiceV3(cluster.Name, server.ServiceName)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start database:  %s ", err)
-			return err
+			// OpenSVC v3 returns 409 when the service is in warn state (e.g. after
+			// a failed start). Clear the instance monitor state and retry once.
+			if isOpenSVC409(err) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+					"Start returned 409 (warn state) for %s, clearing instance state and retrying", server.URL)
+				if clearErr := cluster.OpenSVCClearDatabaseInstanceState(server, ""); clearErr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+						"Failed to clear instance state for %s: %s", server.URL, clearErr)
+					return err
+				}
+				// Brief pause to let the daemon process the clear
+				time.Sleep(2 * time.Second)
+				err = svc.StartServiceV3(cluster.Name, server.ServiceName)
+			}
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start database:  %s ", err)
+				return err
+			}
 		}
 	} else {
 		err := svc.StartServiceV2(cluster.Name, server.ServiceName, server.Agent)
@@ -252,8 +268,22 @@ func (cluster *Cluster) OpenSVCRestartDatabaseService(server *ServerMonitor, nod
 		}
 		err := svc.RestartServiceV3(cluster.Name, server.ServiceName)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart database:  %s ", err)
-			return err
+			// OpenSVC v3 returns 409 when the service is in warn state. Clear and retry.
+			if isOpenSVC409(err) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+					"Restart returned 409 (warn state) for %s, clearing instance state and retrying", server.URL)
+				if clearErr := cluster.OpenSVCClearDatabaseInstanceState(server, agent); clearErr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+						"Failed to clear instance state for %s: %s", server.URL, clearErr)
+					return err
+				}
+				time.Sleep(2 * time.Second)
+				err = svc.RestartServiceV3(cluster.Name, server.ServiceName)
+			}
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart database:  %s ", err)
+				return err
+			}
 		}
 		return nil
 	}

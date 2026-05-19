@@ -25,6 +25,19 @@ var (
 	ErrOpenSVCClearNotSupported = errors.New("clear not supported for this OpenSVC API version")
 )
 
+// isOpenSVC409 checks if an error from the OpenSVC v3 API is a 409 Conflict,
+// typically returned when trying to start/restart a service in warn state.
+func isOpenSVC409(err error) bool {
+	if err == nil {
+		return false
+	}
+	var statusErr *opensvc.StatusError
+	if errors.As(err, &statusErr) {
+		return statusErr.StatusCode == 409
+	}
+	return false
+}
+
 const defaultOpenSVCV3ProvisionDelay = 10
 const defaultOpenSVCPoolInfoCacheTTL = 5 * time.Minute
 
