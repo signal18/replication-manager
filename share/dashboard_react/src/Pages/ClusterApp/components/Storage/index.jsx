@@ -135,12 +135,24 @@ export default function StoragePage({ clusterName, appId, appConfig }) {
   );
 
   const handleCheckGit = useCallback(
-    (gitName) => dispatch(checkGitRepoByName({ clusterName, appId, gitName })).unwrap(),
+    async (gitName) => {
+      const result = await dispatch(checkGitRepoByName({ clusterName, appId, gitName })).unwrap();
+      if (result?.data?.ok === false) {
+        throw new Error(result?.data?.message || 'Connection check failed.');
+      }
+      return result;
+    },
     [clusterName, appId, dispatch]
   );
 
   const handleCheckGitNew = useCallback(
-    (payload) => dispatch(checkGitRepo({ clusterName, appName: appId, payload })).unwrap(),
+    async (payload) => {
+      const result = await dispatch(checkGitRepo({ clusterName, appName: appId, payload })).unwrap();
+      if (result?.data?.ok === false) {
+        throw new Error(result?.data?.message || 'Connection check failed.');
+      }
+      return result;
+    },
     [clusterName, appId, dispatch]
   );
 

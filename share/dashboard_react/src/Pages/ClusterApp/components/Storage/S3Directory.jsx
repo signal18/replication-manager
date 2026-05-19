@@ -97,6 +97,7 @@ const S3DirectorySection = ({
         setIsVisible(false);
         onResumeAutoReload();
       }).catch(() => {
+        // Error banner shown by storageFieldIndexAdd in redux. Resume auto-reload so UI doesn't stay paused.
         onResumeAutoReload();
       });
     }

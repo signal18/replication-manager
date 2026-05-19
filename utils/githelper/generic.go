@@ -407,6 +407,10 @@ func buildTreeByWalkingEntries(s storer.EncodedObjectStorer, tree *object.Tree, 
 
 // walkEntries recurses through tree entries, building the FileEntry hierarchy.
 // Directories → recurse into subtree object. Files → add to tree by path parts.
+//
+// *count tracks files only (blobs + submodules), not directory entries.
+// Directories are structural nodes and do not consume path-browser quota.
+// Truncated is set when *count reaches genericMaxFiles file entries.
 func walkEntries(s storer.EncodedObjectStorer, tree *object.Tree, prefix string, root *treehelper.FileEntry, count *int) error {
 	for _, entry := range tree.Entries {
 		if *count >= genericMaxFiles {
@@ -429,6 +433,7 @@ func walkEntries(s storer.EncodedObjectStorer, tree *object.Tree, prefix string,
 			// Submodules are listed as directory-like entries; record path but don't recurse.
 			parts := strings.Split(fullPath, "/")
 			treehelper.AddToFileTree(root, parts, "submodule")
+			*count++
 
 		default:
 			// Regular file, executable, symlink — record the path.
