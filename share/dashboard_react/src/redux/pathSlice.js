@@ -74,6 +74,22 @@ export const getGitTree = createAsyncThunk('settings/getGitTree', async ({ clust
   }
 )
 
+// checkGitRepo calls the lightweight check endpoint (git ls-remote) to validate
+// repo URL, branch, and credentials before a git clone is saved. Returns {ok, provider, message}.
+export const checkGitRepo = createAsyncThunk('settings/checkGitRepo', async ({ clusterName, appName, payload }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await pathService.checkGitRepo(clusterName, appName, payload, baseURL)
+    if (status === 200) {
+      return { data, status }
+    } else {
+      throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
+    }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
 const initialState = {
   dockerTreeList: {},
   gitTreeList: {},

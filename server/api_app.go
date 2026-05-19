@@ -161,6 +161,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGitRepoTree)),
 	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/git/actions/check", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGitCheckRepo)),
+	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appHost}/{appPort}/actions/drop", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppDropByName)),
@@ -2704,37 +2708,23 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 			return
 		}
 
-		var err error
-		var gClient githelper.GitClientInterface
-		var baseURL, projectID string
 		gitpass := mycluster.Conf.GetDecryptedPassword(gc.Name, gc.GitPass)
-		if strings.Contains(gc.GitRepo, "github") {
-			_, projectID, err = githelper.ParseGitHubURL(gc.GitRepo)
-			if err != nil {
-				http.Error(w, "Invalid GitHub repository URL: "+err.Error(), http.StatusBadRequest)
-				return
-			}
-			gClient, err = githelper.NewGithubClient(gitpass)
-		} else {
-			baseURL, projectID, err = githelper.ParseGitLabURL(gc.GitRepo)
-			if err != nil {
-				http.Error(w, "Invalid GitLab repository URL: "+err.Error(), http.StatusBadRequest)
-				return
-			}
-			gClient, err = githelper.NewGitlabClient(baseURL, gitpass)
+
+		cacheDir := filepath.Join(mycluster.WorkingDir, ".cache", "git", "repos")
+		timeout := time.Duration(gc.Timeout) * time.Second
+		if gc.Timeout <= 0 {
+			timeout = 15 * time.Second
 		}
+
+		// All providers use GenericGitClient (go-git) over the git wire protocol.
+		// No provider-specific REST API is needed for tree operations.
+		gitClient, err := githelper.NewGenericGitClient(gc.GitUser, gitpass)
 		if err != nil {
 			http.Error(w, "Error creating Git client: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// Get the repository tree
-		cacheDir := filepath.Join(mycluster.WorkingDir, ".cache", "git", "repos")
-		timeout := time.Duration(gc.Timeout) * time.Second
-		if gc.Timeout <= 0 {
-			timeout = 15 * time.Second // Default timeout if not specified
-		}
-		tree, err := gClient.GetRepositoryTree(cacheDir, projectID, gc.GitBranch, timeout, force)
+		tree, err := gitClient.GetRepositoryTree(cacheDir, gc.GitRepo, gc.GitBranch, timeout, force)
 		if err != nil {
 			http.Error(w, "Error getting repository tree: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -2746,6 +2736,88 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
+}
+
+// handlerMuxGitCheckRepo validates a git repository URL, branch, and credentials
+// before the user creates path mappings. Uses git ls-remote internally.
+// @Summary Check Git Repository
+// @Description Validates that a Git repository is reachable with the given credentials and that the branch exists.
+// @Tags GitRepository
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Success 200 {object} map[string]interface{} "Check result"
+// @Failure 400 {string} string "Invalid request"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Internal error"
+// @Router /api/clusters/{clusterName}/apps/{appName}/git/actions/check [post]
+func (repman *ReplicationManager) handlerMuxGitCheckRepo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	type CheckRequest struct {
+		Repo    string `json:"repo"`
+		Branch  string `json:"branch"`
+		User    string `json:"user"`
+		Pass    string `json:"pass"`
+		Timeout int    `json:"timeout"`
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	var req CheckRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Repo == "" {
+		http.Error(w, "repo is required", http.StatusBadRequest)
+		return
+	}
+	if req.Branch == "" {
+		req.Branch = "main"
+	}
+
+	timeout := time.Duration(req.Timeout) * time.Second
+	if req.Timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
+	type CheckResponse struct {
+		OK      bool   `json:"ok"`
+		Message string `json:"message"`
+	}
+
+	gc, gerr := githelper.NewGenericGitClient(req.User, req.Pass)
+	if gerr != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(CheckResponse{OK: false, Message: "Failed to create git client: " + gerr.Error()})
+		return
+	}
+
+	msg, err := gc.CheckRepo(req.Repo, req.Branch, timeout)
+	resp := CheckResponse{}
+	if err != nil {
+		resp.OK = false
+		resp.Message = err.Error()
+	} else {
+		resp.OK = true
+		resp.Message = msg
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 // @Summary Get App Service Config

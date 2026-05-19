@@ -8,7 +8,7 @@ import { useDispatch, useSelector } from "react-redux";
 import AccordionComponent from "../../../../components/AccordionComponent";
 import ConfirmModal from "../../../../components/Modals/ConfirmModal";
 import { addS3Provider, pauseAutoReload, selectClusterS3Providers, storageFieldChange, storageFieldIndexAdd, storageFieldIndexDrop, previewS3MountSync, applyS3MountSync, getClusterData, getOpenSVCPools } from "../../../../redux/clusterSlice";
-import { clearCache, getGitTree } from "../../../../redux/pathSlice";
+import { clearCache, getGitTree, checkGitRepo } from "../../../../redux/pathSlice";
 
 const GIT_CREDENTIAL_KEYS = ['repo', 'branch', 'pass', 'user'];
 
@@ -138,6 +138,11 @@ export default function StoragePage({ clusterName, appId, appConfig }) {
     [clusterName, appId, dispatch]
   );
 
+  const handleCheckGitNew = useCallback(
+    (payload) => dispatch(checkGitRepo({ clusterName, appName: appId, payload })).unwrap(),
+    [clusterName, appId, dispatch]
+  );
+
   const handleApplySync = useCallback(
     async (providerName, mountName, revisionToken) => {
       const resp = await dispatch(applyS3MountSync({ clusterName, providerName, appId, mountName, revisionToken })).unwrap();
@@ -160,7 +165,8 @@ export default function StoragePage({ clusterName, appId, appConfig }) {
     onPreviewSync: handlePreviewSync,
     onApplySync: handleApplySync,
     onCheckGit: handleCheckGit,
-  }), [handleSaveArrayChange, handleSaveAddItem, handleDropIndex, handlePauseAutoReload, handleResumeAutoReload, handleSaveAsProvider, handlePreviewSync, handleApplySync, handleCheckGit]);
+    onCheckGitNew: handleCheckGitNew,
+  }), [handleSaveArrayChange, handleSaveAddItem, handleDropIndex, handlePauseAutoReload, handleResumeAutoReload, handleSaveAsProvider, handlePreviewSync, handleApplySync, handleCheckGit, handleCheckGitNew]);
 
   const handleCloseConfirm = useCallback(() => {
     setModalState({ isOpen: false, field: null, index: null });

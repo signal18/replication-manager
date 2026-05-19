@@ -26,11 +26,17 @@ const defaultGit = {
 const columnHelper = createColumnHelper()
 
 const formatGitError = (err) => {
-  const msg = typeof err === 'string' ? err : (err?.errorMessage || err?.message || '');
-  if (/\/api\/v4\//i.test(msg) || /\b(401|unauthorized)\b/i.test(msg)) {
-    return 'GitLab API check failed: unauthorized. The Git tree browser requires a GitLab token with repository/API read access.';
-  }
-  return msg || 'Connection check failed.';
+    const msg = typeof err === 'string' ? err : (err?.errorMessage || err?.message || '');
+    if (/authentication denied/i.test(msg)) {
+        return 'Authentication failed: check your username and password/token.';
+    }
+    if (/not found/i.test(msg) && /branch/i.test(msg)) {
+        return msg;
+    }
+    if (/repository not reachable/i.test(msg) || /timed out/i.test(msg)) {
+        return msg;
+    }
+    return msg || 'Connection check failed.';
 };
 
 const maskString = (str, mask = '*') => {
@@ -45,6 +51,7 @@ export default React.memo(function GitCloneSection({
     onRowDropIndex,
     onSaveAdd,
     onCheckGit = null,
+    onCheckGitNew = null,
     onPauseAutoReload = () => { },
     onResumeAutoReload = () => { },
 }) {
@@ -61,10 +68,10 @@ export default React.memo(function GitCloneSection({
     };
 
     const handleSaveAdd = useCallback((formData) => {
-      onSaveAdd(fieldName, formData).then(() => {
-        setIsVisible(false);
-        onResumeAutoReload();
-      });
+        onSaveAdd(fieldName, formData).then(() => {
+            setIsVisible(false);
+            onResumeAutoReload();
+        });
     }, [fieldName, onSaveAdd, onResumeAutoReload]);
 
     const columnsRowForm = useMemo(
@@ -74,24 +81,15 @@ export default React.memo(function GitCloneSection({
             }),
             columnHelper.accessor((row) => row.repo, {
                 header: 'Repo',
-                cell: (info) => {
-                    const repo = info.getValue();
-                    return repo ? repo : "N/A";
-                },
+                cell: (info) => info.getValue() || "N/A",
             }),
             columnHelper.accessor((row) => row.branch, {
                 header: 'Branch',
-                cell: (info) => {
-                    const branch = info.getValue();
-                    return branch ? branch : "N/A";
-                },
+                cell: (info) => info.getValue() || "N/A",
             }),
             columnHelper.accessor((row) => row.user, {
                 header: 'User',
-                cell: (info) => {
-                    const user = info.getValue();
-                    return user ? user : "N/A";
-                },
+                cell: (info) => info.getValue() || "N/A",
             }),
             columnHelper.accessor((row) => row.pass, {
                 header: 'Password',
@@ -120,9 +118,17 @@ export default React.memo(function GitCloneSection({
                 id: 'expansion',
                 header: '',
                 meta: {
-                    renderExpansion: (row) => {
-                        return (<GitRowForm key={row.index} fieldName={fieldName} volumeOptions={volumeOptions} gitClone={row.original} index={row.index} onChange={onRowArrayChange} onCheckGit={onCheckGit} />);
-                    },
+                    renderExpansion: (row) => (
+                        <GitRowForm
+                            key={row.index}
+                            fieldName={fieldName}
+                            volumeOptions={volumeOptions}
+                            gitClone={row.original}
+                            index={row.index}
+                            onChange={onRowArrayChange}
+                            onCheckGit={onCheckGit}
+                        />
+                    ),
                 },
                 cell: () => null,
             }
@@ -146,7 +152,7 @@ export default React.memo(function GitCloneSection({
                         Add New Git Clone
                     </Heading>
                     <Box className={styles.tableContainer}>
-                        <GitNewForm volumeOptions={volumeOptions} onSave={handleSaveAdd} onCancel={handleCancel} />
+                        <GitNewForm volumeOptions={volumeOptions} onSave={handleSaveAdd} onCancel={handleCancel} onCheckGit={onCheckGitNew} />
                     </Box>
                 </VStack>
             ) : (
@@ -205,19 +211,19 @@ const GitRowForm = React.memo(({ fieldName, gitClone, index, onChange, volumeOpt
             <Flex direction="column" flex="1" minW="300px" gap={2}>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Name:</Text>
-                    <TextForm placeholder="Name" value={name} onSave={(value) => onChange(fieldName, index,"name", value)} />
+                    <TextForm placeholder="Name" value={name} onSave={(value) => onChange(fieldName, index, "name", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Repo:</Text>
-                    <TextForm placeholder="Repo" value={repo} onSave={(value) => onChange(fieldName, index,"repo", value)} />
+                    <TextForm placeholder="Repo" value={repo} onSave={(value) => onChange(fieldName, index, "repo", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Branch:</Text>
-                    <TextForm placeholder="Branch" value={branch} onSave={(value) => onChange(fieldName, index,"branch", value)} />
+                    <TextForm placeholder="Branch" value={branch} onSave={(value) => onChange(fieldName, index, "branch", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>User:</Text>
-                    <TextForm placeholder="User" value={user} onSave={(value) => onChange(fieldName, index,"user", value)} />
+                    <TextForm placeholder="User" value={user} onSave={(value) => onChange(fieldName, index, "user", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Password:</Text>
@@ -228,7 +234,7 @@ const GitRowForm = React.memo(({ fieldName, gitClone, index, onChange, volumeOpt
                         labelClassName={theme === 'dark' ? styles.darkLoginText : ""}
                         placeholder="Password"
                         value={pass}
-                        onSave={(value) => onChange(fieldName, index,"pass", value)} />
+                        onSave={(value) => onChange(fieldName, index, "pass", value)} />
                 </Flex>
                 {onCheckGit && (
                     <Flex direction="column" flex="1" gap={1}>
@@ -262,8 +268,9 @@ const GitRowForm = React.memo(({ fieldName, gitClone, index, onChange, volumeOpt
     )
 })
 
-const GitNewForm = React.memo(({ volumeOptions, onSave = () => { }, onCancel = () => { } }) => {
+const GitNewForm = React.memo(({ volumeOptions, onSave = () => { }, onCancel = () => { }, onCheckGit = null }) => {
     const [gc, setGc] = useState(defaultGit);
+    const [checkState, setCheckState] = useState({ status: 'idle', message: '' });
     const { theme } = useTheme();
     const { name, repo, branch, user, pass, volumename, volumedir, subpath } = gc;
 
@@ -272,18 +279,14 @@ const GitNewForm = React.memo(({ volumeOptions, onSave = () => { }, onCancel = (
         return vol ? vol.volumedir : "";
     }, [volumeOptions, volumename]);
 
-    const valid = useMemo(() => {
-        return name && repo && branch && volumedir;
-    }, [name, repo, branch, volumedir]);
+    const valid = useMemo(() => name && repo && branch && volumedir, [name, repo, branch, volumedir]);
 
     const handleArrayChange = useCallback((key, value) => {
         setGc((prev) => ({ ...prev, [key]: value }));
-    },[]);
+    }, []);
 
     const handleSaveAdd = useCallback(() => {
-        if (valid) {
-            onSave(gc);
-        }
+        if (valid) onSave(gc);
     }, [onSave, gc, valid]);
 
     const handleCancel = useCallback(() => {
@@ -304,6 +307,20 @@ const GitNewForm = React.memo(({ volumeOptions, onSave = () => { }, onCancel = (
         const newValue = srcbasepath + (newSubpath.startsWith("/") ? newSubpath : "/" + newSubpath);
         handleArrayChange("volumedir", newValue);
     }, [name, srcbasepath, handleArrayChange]);
+
+    const handleCheckRepo = useCallback(async () => {
+        if (!onCheckGit || !repo || !branch) return;
+        setCheckState({ status: 'checking', message: '' });
+        try {
+            const result = await onCheckGit({ repo, branch, user, pass });
+            setCheckState({
+                status: result?.data?.ok ? 'ok' : 'error',
+                message: result?.data?.message || (result?.data?.ok ? 'Repository reachable.' : 'Check failed.'),
+            });
+        } catch (err) {
+            setCheckState({ status: 'error', message: formatGitError(err) });
+        }
+    }, [onCheckGit, repo, branch, user, pass]);
 
     return (
         <Flex className={styles.gitRowForm} w="100%" align="flex-start" gap={4}>
@@ -334,6 +351,23 @@ const GitNewForm = React.memo(({ volumeOptions, onSave = () => { }, onCancel = (
                         value={pass}
                         onChange={(e) => handleArrayChange("pass", e.target.value)} />
                 </Flex>
+                {onCheckGit && (
+                    <Flex direction="column" flex="1" gap={1}>
+                        <RMButton
+                            onClick={handleCheckRepo}
+                            isDisabled={checkState.status === 'checking' || !repo || !branch}
+                            size="sm"
+                        >
+                            {checkState.status === 'checking' ? 'Checking…' : 'Check Repo'}
+                        </RMButton>
+                        {checkState.status === 'ok' && (
+                            <Text fontSize="sm" color="green.400">{checkState.message}</Text>
+                        )}
+                        {checkState.status === 'error' && (
+                            <Text fontSize="sm" color="red.400">{checkState.message}</Text>
+                        )}
+                    </Flex>
+                )}
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume:</Text>
                     <Dropdown key={`volume-new`} placeholder="Volume" options={volumeOptions} selectedValue={volumename} onChange={(option) => handleVolume(option)} />
