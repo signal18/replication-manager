@@ -2296,6 +2296,7 @@ export const storageFieldChange = createGuardedAsyncThunk(
         throw new Error(data)
       }
       showSuccessBanner('storage field updated!', status, thunkAPI)
+      thunkAPI.dispatch(getAppService({ clusterName, serviceName: 'deployment', appId }))
       return { data, status }
     } catch (error) {
       showErrorBanner('Error while updating storage field', error, thunkAPI)
@@ -2314,6 +2315,7 @@ export const storageFieldIndexAdd = createGuardedAsyncThunk(
         throw new Error(data)
       }
       showSuccessBanner('New storage field row added!', status, thunkAPI)
+      thunkAPI.dispatch(getAppService({ clusterName, serviceName: 'deployment', appId }))
       return { data, status }
     } catch (error) {
       showErrorBanner('Error while adding a new storage field row', error, thunkAPI)
@@ -2331,6 +2333,7 @@ export const storageFieldIndexDrop = createGuardedAsyncThunk(
         throw new Error(data)
       }
       showSuccessBanner('storage field row dropped!', status, thunkAPI)
+      thunkAPI.dispatch(getAppService({ clusterName, serviceName: 'deployment', appId }))
       return { data, status }
     } catch (error) {
       showErrorBanner('Error while dropping a storage field row', error, thunkAPI)
