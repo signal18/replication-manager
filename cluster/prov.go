@@ -426,16 +426,18 @@ func (cluster *Cluster) StopDatabaseServiceClean(server *ServerMonitor) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"Clean-stopping database service for upgrade %s", cluster.Name+"/svc/"+server.URL)
 
-	// Set innodb_fast_shutdown=0 and use SHUTDOWN WAIT FOR ALL SLAVES if master
+	// Set innodb_fast_shutdown=0 and use SHUTDOWN WAIT FOR ALL SLAVES if master.
+	// This ensures InnoDB performs a full purge before the binary is upgraded.
 	if err := server.ShutdownClean(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 			"Clean SQL shutdown failed for %s: %s, falling back to orchestrator stop", server.URL, err)
-		// Fall through to orchestrator stop as fallback
-		return cluster.StopDatabaseService(server)
 	}
-	cluster.StopDatabaseScript(server)
-	server.DelRestartCookie()
-	return nil
+
+	// Always tell the orchestrator to stop the service, even if SQL SHUTDOWN
+	// already killed the process. This ensures the orchestrator transitions to
+	// a clean "stopped" state rather than "warn/failed" (which blocks subsequent
+	// start requests with 409 on OpenSVC v3).
+	return cluster.StopDatabaseService(server)
 }
 
 func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
