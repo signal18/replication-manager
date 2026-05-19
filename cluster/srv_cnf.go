@@ -886,11 +886,14 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 			continue
 		}
 
-		// Prefix with loose_ if the variable has no config counterpart (may have
-		// been removed in a newer version). This ensures the config file is valid
-		// across version upgrades without requiring manual user intervention.
-		if v.Config == nil && !strings.HasPrefix(deltaLine, "loose_") && !strings.HasPrefix(deltaLine, "loose-") {
-			deltaLine = "loose_" + deltaLine
+		// Add origin comment and prefix with loose_ for deprecated variables
+		if v.Config == nil {
+			content.WriteString("# delta:no-config\n")
+			if !strings.HasPrefix(deltaLine, "loose_") && !strings.HasPrefix(deltaLine, "loose-") {
+				deltaLine = "loose_" + deltaLine
+			}
+		} else {
+			content.WriteString("# delta:value-differs\n")
 		}
 
 		content.WriteString(deltaLine + "\n")
@@ -973,21 +976,32 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 	agreedContent.WriteString("[mysqld]\n")
 
 	for key, v := range server.VariablesMap.ToNewMap() {
-		// If preserve is set, write to preserve.cnf or agreed.cnf
 		if v.Preserved != nil {
 			// Prefix with loose_ if the variable has no config counterpart
-			// (may be removed in newer version) — ensures valid config across upgrades
 			varKey := key
+			looseTag := ""
 			if v.Config == nil && !strings.HasPrefix(key, "loose_") && !strings.HasPrefix(key, "loose-") {
 				varKey = "loose_" + key
+				looseTag = " (loose)"
 			}
 			if v.IsPreserved() {
-				// Write preserved variables to preserve.cnf
+				// Determine origin comment for preserved variables
+				source := v.PreservedSource
+				if source == "" {
+					source = "unknown"
+				}
+				preservedContent.WriteString(fmt.Sprintf("# preserved:%s%s\n", source, looseTag))
 				preservedContent.WriteString(fmt.Sprintf("%s=%s\n", varKey, v.Preserved.String()))
 			} else {
-				// Write non-preserved variables to agreed.cnf
+				// Agreed variables
+				agreedContent.WriteString(fmt.Sprintf("# agreed:accepted%s\n", looseTag))
 				agreedContent.WriteString(fmt.Sprintf("%s=%s\n", varKey, v.Preserved.String()))
 			}
+		}
+		// Write dropped variables as commented lines in agreed.cnf
+		if v.Dropped {
+			agreedContent.WriteString(fmt.Sprintf("# agreed:dropped\n"))
+			agreedContent.WriteString(fmt.Sprintf("# %s (removed in newer version)\n", key))
 		}
 	}
 
