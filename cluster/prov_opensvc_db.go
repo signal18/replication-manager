@@ -274,9 +274,10 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 		}
 		svc.StopService(agent.Node_id, service.Svc_id)
 	} else if svc.IsV3() {
+		agent := server.Agent
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"OpenSVC V3 stop for %s", server.URL)
-		err := svc.StopServiceV3(cluster.Name, server.ServiceName)
+			"OpenSVC V3 instance stop for %s on node %s", server.URL, agent)
+		err := svc.StopInstanceV3(agent, server.ServiceName)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop database: %s", err)
 			return err
@@ -306,21 +307,17 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 		}
 		svc.StartService(agent.Node_id, service.Svc_id)
 	} else if svc.IsV3() {
-		// Optimistic clear: always clear instance state before start to avoid
-		// 409 "failover object is warn state" from a previous failed start.
+		// Use instance-level start (om start --local) instead of orchestrated start.
+		// The orchestrated start checks global monitor state and rejects with 409
+		// when the service is in warn state (e.g. after a failed start). The
+		// instance-level start bypasses this check and starts containers directly.
+		agent := server.Agent
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"OpenSVC V3 start: clearing instance state before start for %s", server.URL)
-		if clearErr := cluster.OpenSVCClearDatabaseInstanceState(server, ""); clearErr != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
-				"OpenSVC V3 start: clear failed for %s: %s (proceeding with start)", server.URL, clearErr)
-		}
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"OpenSVC V3 start: calling StartServiceV3 for %s", server.URL)
-		err := svc.StartServiceV3(cluster.Name, server.ServiceName)
+			"OpenSVC V3 instance start for %s on node %s", server.URL, agent)
+		err := svc.StartInstanceV3(agent, server.ServiceName)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
-				"OpenSVC V3 start: failed for %s: %s", server.URL, err)
+				"OpenSVC V3 instance start failed for %s: %s", server.URL, err)
 			return err
 		}
 	} else {
