@@ -5482,7 +5482,7 @@ func (repman *ReplicationManager) handlerMuxServerConfigFiles(w http.ResponseWri
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
 		return
 	}
 	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
@@ -5491,7 +5491,7 @@ func (repman *ReplicationManager) handlerMuxServerConfigFiles(w http.ResponseWri
 	}
 	node := mycluster.GetServerFromName(vars["serverName"])
 	if node == nil {
-		http.Error(w, "Server Not Found", 500)
+		http.Error(w, "Server Not Found", http.StatusNotFound)
 		return
 	}
 
@@ -5524,10 +5524,14 @@ func (repman *ReplicationManager) handlerMuxServerConfigFiles(w http.ResponseWri
 // @Router /api/clusters/{clusterName}/servers/{serverName}/config-files-clear-delta [post]
 func (repman *ReplicationManager) handlerMuxServerClearDelta(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
 		return
 	}
 	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
@@ -5536,7 +5540,7 @@ func (repman *ReplicationManager) handlerMuxServerClearDelta(w http.ResponseWrit
 	}
 	node := mycluster.GetServerFromName(vars["serverName"])
 	if node == nil {
-		http.Error(w, "Server Not Found", 500)
+		http.Error(w, "Server Not Found", http.StatusNotFound)
 		return
 	}
 

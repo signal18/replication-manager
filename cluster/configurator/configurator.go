@@ -73,7 +73,11 @@ func (configurator *Configurator) Init(conf config.Config, logger *logrus.Logger
 	configurator.ConfigDBTags = configurator.GetDBModuleTags()
 	configurator.ConfigPrxTags = configurator.GetProxyModuleTags()
 	configurator.DocHelp = NewDocHelp(conf.ShareDir + "/plugins/data")
-	configurator.DBDistributions, _ = LoadDBDistributions(conf.ShareDir + "/plugins/data")
+	if dist, err := LoadDBDistributions(conf.ShareDir + "/plugins/data"); err != nil {
+		configurator.Logger.Warnf("Failed to load db_distributions.json: %s (upgrade scripts will use auto-detection)", err)
+	} else {
+		configurator.DBDistributions = dist
+	}
 	configurator.PluginDataDir = conf.ShareDir + "/plugins/data"
 	if conf.ProvAutoUpdateCompliance {
 		// Trust mode (default): always use the current module (embedded or BO-pushed).

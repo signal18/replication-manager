@@ -564,10 +564,11 @@ func (cluster *Cluster) rollingUpgradeOnPremise() error {
 
 	cluster.SwitchoverWaitTest()
 	master = cluster.GetServerFromName(masterID)
-	if cluster.master == nil {
+	currentMaster := cluster.GetMaster()
+	if currentMaster == nil {
 		return errors.New("No master found after switchover during on-premise rolling upgrade")
 	}
-	if master == nil || cluster.master.DSN == master.DSN {
+	if master == nil || currentMaster.DSN == master.DSN {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"On-premise rolling upgrade: original master is the same after switchover, skipping")
 		return nil
@@ -628,7 +629,7 @@ func (cluster *Cluster) rollingUpgradeOnPremise() error {
 		}
 		return err
 	}
-	master.WaitSyncToMaster(cluster.master)
+	master.WaitSyncToMaster(currentMaster)
 	if maintEnabled {
 		master.SwitchMaintenance()
 	}

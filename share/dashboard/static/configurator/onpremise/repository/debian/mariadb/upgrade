@@ -42,7 +42,9 @@ log_error() { echo "$LOG_TAG ERROR: $*" >&2; }
 # API Helper
 ########################
 
-GET="wget -q --no-check-certificate -O- --header Content-Type:application/json"
+# --no-check-certificate: repman typically uses self-signed certs for internal API.
+# Set REPLICATION_MANAGER_WGET_OPTS to override (e.g. "--ca-certificate=/path/to/ca.pem").
+GET="wget -q ${REPLICATION_MANAGER_WGET_OPTS:---no-check-certificate} -O- --header Content-Type:application/json"
 AUTH_DATA="{\"username\": \"$REPLICATION_MANAGER_USER\", \"password\": \"$REPLICATION_MANAGER_PASSWORD\"}"
 TOKEN=$($GET --post-data "$AUTH_DATA" --header Accept:text/html "$REPLICATION_MANAGER_URL/api/login") || {
     log_error "Failed to authenticate with replication-manager"
