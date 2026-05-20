@@ -1950,6 +1950,39 @@ func (server *ServerMonitor) Shutdown() error {
 	return nil
 }
 
+// ShutdownClean performs a clean shutdown suitable for version upgrades.
+// Sets innodb_fast_shutdown=0 so InnoDB performs a full purge and change buffer
+// merge before stopping — required for safe major version upgrades where redo log
+// format may change. Masters also use SHUTDOWN WAIT FOR ALL SLAVES.
+func (server *ServerMonitor) ShutdownClean() error {
+	if server.Conn == nil {
+		return errors.New("No database connection pool")
+	}
+	cluster := server.ClusterGroup
+
+	// Force full InnoDB purge before shutdown — required for version upgrades
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Setting innodb_fast_shutdown=0 on %s for clean upgrade shutdown", server.URL)
+	_, err := server.Conn.Exec("SET GLOBAL innodb_fast_shutdown = 0")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"Failed to set innodb_fast_shutdown=0 on %s: %s (proceeding with shutdown)", server.URL, err)
+		// Non-fatal: proceed with shutdown anyway
+	}
+
+	cmd := "SHUTDOWN"
+	if server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 4 && server.IsMaster() {
+		cmd = "SHUTDOWN WAIT FOR ALL SLAVES"
+	}
+	_, err = server.Conn.Exec(cmd)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Clean shutdown failed on %s: %s", server.URL, err)
+		return err
+	}
+	return nil
+}
+
 func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gitd string) error {
 	logs := ""
 	cluster := server.ClusterGroup

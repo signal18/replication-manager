@@ -227,6 +227,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testResticReseedMariabackup" {
 			res = regtest.TestResticReseedMariabackup(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testOpenSVCUpgradeWarnRecovery" {
+			res = regtest.TestOpenSVCUpgradeWarnRecovery(cl, test.ConfigFile, &test)
+		}
 
 		test.Result = regtest.GetTestResultLabel(res)
 		if testExp == "SUITE" {

@@ -1,0 +1,51 @@
+.container {
+  width: 100%;
+  padding: 10px 0;
+}
+
+.filePanel {
+  flex: 1;
+  min-width: 280px;
+  border: 1px solid var(--chakra-colors-gray-200);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.fileTitle {
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 6px 10px;
+  background: var(--chakra-colors-gray-50);
+  border-bottom: 1px solid var(--chakra-colors-gray-200);
+  font-family: monospace;
+}
+
+.fileContent {
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.fileLine {
+  padding: 3px 10px;
+  align-items: center;
+  font-size: 0.8rem;
+  border-bottom: 1px solid var(--chakra-colors-gray-50);
+}
+
+.fileLine:hover {
+  background: var(--chakra-colors-gray-50) !important;
+}
+
+.lineText {
+  font-size: 0.8rem;
+  background: transparent !important;
+  padding: 0;
+}
+
+.emptyText {
+  padding: 10px;
+  color: var(--chakra-colors-gray-400);
+  font-style: italic;
+  font-size: 0.85rem;
+}

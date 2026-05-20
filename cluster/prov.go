@@ -400,6 +400,62 @@ func (cluster *Cluster) UpdateDatabaseServiceConfig(server *ServerMonitor, force
 	}
 }
 
+func (cluster *Cluster) UpgradeDatabaseService(server *ServerMonitor) error {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Upgrading database service %s", cluster.Name+"/svc/"+server.URL)
+	var err error
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOnPremise:
+		err = cluster.OnPremiseUpgradeDatabaseService(server)
+	default:
+		// For container orchestrators (OpenSVC, K8S), the image tag change handles
+		// the binary upgrade. The upgrade script is only needed for on-premise.
+		// Fall back to a regular start which pulls the new container image.
+		err = cluster.StartDatabaseService(server)
+	}
+	if err == nil {
+		server.SetConfigRefreshCookie()
+	}
+	return err
+}
+
+// StopDatabaseServiceClean stops the database with innodb_fast_shutdown=0 for
+// safe version upgrades. For masters, it also issues SHUTDOWN WAIT FOR ALL SLAVES
+// via SQL so replicas receive all pending events before the master goes down.
+// The orchestrator stop always follows to ensure a clean service state transition
+// and to stop all containers (db + jobs) so both get the new image on start.
+func (cluster *Cluster) StopDatabaseServiceClean(server *ServerMonitor) error {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Clean-stopping database service for upgrade %s", cluster.Name+"/svc/"+server.URL)
+
+	if server.Conn != nil {
+		// Set innodb_fast_shutdown=0 while the DB is still running.
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Setting innodb_fast_shutdown=0 on %s for clean upgrade shutdown", server.URL)
+		if _, err := server.Conn.Exec("SET GLOBAL innodb_fast_shutdown = 0"); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"Failed to set innodb_fast_shutdown=0 on %s: %s (proceeding with stop)", server.URL, err)
+		}
+
+		// If this is a master (user upgrading a master directly, not via rolling),
+		// wait for all slaves to receive pending binlog events before stopping.
+		if server.IsMaster() && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 4 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Master %s: issuing SHUTDOWN WAIT FOR ALL SLAVES", server.URL)
+			_, err := server.Conn.Exec("SHUTDOWN WAIT FOR ALL SLAVES")
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"SHUTDOWN WAIT FOR ALL SLAVES failed on %s: %s (falling back to orchestrator stop)", server.URL, err)
+			}
+		}
+	}
+
+	// The orchestrator stop follows unconditionally. For container orchestrators
+	// this is required to stop ALL containers (db + jobs). For on-premise, the SQL
+	// SHUTDOWN may have already killed the process — the redundant stop is harmless
+	// (Shutdown() on a dead connection returns nil).
+	return cluster.StopDatabaseService(server)
+}
+
 func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stopping database service %s", cluster.Name+"/svc/"+server.URL)
 	var err error
@@ -508,19 +564,41 @@ func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 func (cluster *Cluster) RestartDatabaseService(server *ServerMonitor, node string, rid string) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restarting Database service %s", cluster.Name+"/svc/"+server.Name)
 	var err error
-	switch cluster.GetOrchestrator() {
-	case config.ConstOrchestratorOpenSVC:
+
+	// OpenSVC supports atomic restart with optional RID targeting
+	if cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC && rid != "" {
 		err = cluster.OpenSVCRestartDatabaseService(server, node, rid)
-	default:
-		return errors.New("Restart not supported for this orchestrator yet")
+		if err == nil {
+			server.DelRestartContainerCookie()
+			server.RestartNode = ""
+			server.RestartRid = ""
+		}
+		return err
 	}
-	if err == nil {
-		server.DelRestartContainerCookie()
-		// Clear stored parameters
-		server.RestartNode = ""
-		server.RestartRid = ""
+
+	// Generic restart: stop → wait failed → start
+	// This allows pre-stop hooks (e.g. innodb_fast_shutdown=0 before upgrade)
+	// and post-stop hooks (e.g. redo log relocation) between the two phases.
+	err = cluster.StopDatabaseService(server)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Restart stop phase failed for %s: %s", server.URL, err)
+		return err
 	}
-	return err
+	err = cluster.WaitDatabaseFailed(server)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Restart wait-failed phase for %s: %s", server.URL, err)
+		return err
+	}
+	err = cluster.StartDatabaseService(server)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Restart start phase failed for %s: %s", server.URL, err)
+		return err
+	}
+
+	server.DelRestartContainerCookie()
+	server.RestartNode = ""
+	server.RestartRid = ""
+	return nil
 }
 
 func (cluster *Cluster) StartAllNodes() error {

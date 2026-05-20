@@ -340,6 +340,45 @@ func (configurator *Configurator) GetSshStartDBScript() string {
 	return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/debian/" + dbtype + "/start"
 }
 
+// GetActiveDBOsFamily returns the OS family (apt/yum) matching the cluster's active DB tags.
+func (configurator *Configurator) GetActiveDBOsFamily() *DBOsFamily {
+	if configurator.DBDistributions == nil {
+		return nil
+	}
+	return configurator.DBDistributions.GetOsFamily(configurator.HaveDBTag)
+}
+
+// GetActiveDBDeployMethod returns the deploy method (docker/tarball/repository) matching the cluster's active DB tags.
+// For container orchestrators (OpenSVC, K8S), defaults to docker even without an explicit docker tag.
+func (configurator *Configurator) GetActiveDBDeployMethod() *DBDeployMethod {
+	if configurator.DBDistributions == nil {
+		return nil
+	}
+	dm := configurator.DBDistributions.GetDeployMethod(configurator.HaveDBTag)
+	// If no explicit deploy tag matched and the orchestrator is container-based,
+	// the default should be docker, not repository.
+	if dm != nil && dm.Filter == "" && isContainerOrchestrator(configurator.ClusterConfig.ProvOrchestrator) {
+		if dockerDM := configurator.DBDistributions.GetDeployMethodByType("docker"); dockerDM != nil {
+			return dockerDM
+		}
+	}
+	return dm
+}
+
+func (configurator *Configurator) GetSshUpgradeDBScript() string {
+	dbtype := "mariadb"
+	if configurator.ClusterConfig.OnPremiseSSHUpgradeDbScript != "" {
+		return configurator.ClusterConfig.OnPremiseSSHUpgradeDbScript
+	}
+	if configurator.HaveDBTag("rpm") {
+		return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/redhat/" + dbtype + "/upgrade"
+	}
+	if configurator.HaveDBTag("package") {
+		return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/package/linux/" + dbtype + "/upgrade"
+	}
+	return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/debian/" + dbtype + "/upgrade"
+}
+
 func (configurator *Configurator) GetSshPrintDefaultDBScript() string {
 	dbtype := "mariadb"
 	if configurator.HaveDBTag("rpm") {

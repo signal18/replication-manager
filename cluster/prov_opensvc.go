@@ -25,6 +25,28 @@ var (
 	ErrOpenSVCClearNotSupported = errors.New("clear not supported for this OpenSVC API version")
 )
 
+// isOpenSVCStatus checks if an error from the OpenSVC v3 API has a specific HTTP status code.
+func isOpenSVCStatus(err error, statusCode int) bool {
+	if err == nil {
+		return false
+	}
+	var statusErr *opensvc.StatusError
+	if errors.As(err, &statusErr) {
+		return statusErr.StatusCode == statusCode
+	}
+	return false
+}
+
+// isOpenSVC409 checks if an error is a 409 Conflict (service in warn state).
+func isOpenSVC409(err error) bool {
+	return isOpenSVCStatus(err, 409)
+}
+
+// isOpenSVC408 checks if an error is a 408 Timeout (daemon publish timeout).
+func isOpenSVC408(err error) bool {
+	return isOpenSVCStatus(err, 408)
+}
+
 const defaultOpenSVCV3ProvisionDelay = 10
 const defaultOpenSVCPoolInfoCacheTTL = 5 * time.Minute
 

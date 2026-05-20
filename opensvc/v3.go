@@ -616,6 +616,19 @@ func (collector *Collector) StartServiceV3(cluster, svc string) error {
 	return err
 }
 
+// StartInstanceV3 starts the service instance on a specific node (om start --local).
+// Unlike StartServiceV3 (orchestrated), this bypasses the daemon's global monitor
+// state check, so it works even when the service is in warn state.
+func (collector *Collector) StartInstanceV3(node, svc string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+
+	_, err := collector.handleInstanceActionV3(node, svcparts[0], svcparts[1], svcparts[2], "start", nil)
+	return err
+}
+
 func (collector *Collector) StopServiceV3(cluster, svc string) error {
 
 	svcparts := strings.SplitN(svc, "/", 3)
@@ -628,6 +641,17 @@ func (collector *Collector) StopServiceV3(cluster, svc string) error {
 	svcname := svcparts[2]
 
 	_, err := collector.handleObjectActionV3(ns, kind, svcname, "stop", nil)
+	return err
+}
+
+// StopInstanceV3 stops the service instance on a specific node (om stop --local).
+func (collector *Collector) StopInstanceV3(node, svc string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+
+	_, err := collector.handleInstanceActionV3(node, svcparts[0], svcparts[1], svcparts[2], "stop", nil)
 	return err
 }
 

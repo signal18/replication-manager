@@ -197,6 +197,14 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerVariableClear)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config-files", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerConfigFiles)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config-files-clear-delta", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerClearDelta)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/variables-set-custom", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerVariableSetCustom)),
@@ -5457,6 +5465,94 @@ func (repman *ReplicationManager) handlerMuxServerVariableClear(w http.ResponseW
 		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
+}
+
+// handlerMuxServerConfigFiles returns the raw content of the three config override files
+// (01_preserved.cnf, 02_delta.cnf, 03_agreed.cnf) for a specific server.
+// The files contain origin comments (# preserved:server-specific, # delta:value-differs, etc.)
+// that the GUI uses for color-coding.
+// @Summary Get config override files for a server
+// @Tags Database
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Success 200 {object} map[string]string "Config file contents"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/config-files [get]
+func (repman *ReplicationManager) handlerMuxServerConfigFiles(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	node := mycluster.GetServerFromName(vars["serverName"])
+	if node == nil {
+		http.Error(w, "Server Not Found", http.StatusNotFound)
+		return
+	}
+
+	readFile := func(name string) string {
+		data, err := os.ReadFile(filepath.Join(node.Datadir, name))
+		if err != nil {
+			return ""
+		}
+		return string(data)
+	}
+
+	result := map[string]string{
+		"preserved": readFile("01_preserved.cnf"),
+		"delta":     readFile("02_delta.cnf"),
+		"agreed":    readFile("03_agreed.cnf"),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// handlerMuxServerClearDelta resets the 02_delta.cnf file to an empty [mysqld] section.
+// Use this when the delta file contains stale or bogus entries (e.g. after repman shutdown
+// caused an empty config overwrite).
+// @Summary Clear delta config file for a server
+// @Tags DatabaseConfig
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Success 200 {string} string "Delta cleared"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/config-files-clear-delta [post]
+func (repman *ReplicationManager) handlerMuxServerClearDelta(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	node := mycluster.GetServerFromName(vars["serverName"])
+	if node == nil {
+		http.Error(w, "Server Not Found", http.StatusNotFound)
+		return
+	}
+
+	deltapath := filepath.Join(node.Datadir, "02_delta.cnf")
+	if err := os.WriteFile(deltapath, []byte("[mysqld]\n"), 0644); err != nil {
+		http.Error(w, "Failed to clear delta: "+err.Error(), 500)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Delta config cleared for server %s via API", node.URL)
+	w.Write([]byte("Delta cleared"))
 }
 
 // handlerMuxServerVariableSetCustom handles the HTTP request to set a custom value for a variable on a specific server within a cluster.

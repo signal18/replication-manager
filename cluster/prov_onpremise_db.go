@@ -104,6 +104,45 @@ func (cluster *Cluster) OnPremiseStopDatabaseService(server *ServerMonitor) erro
 	return nil
 }
 
+func (cluster *Cluster) OnPremiseUpgradeDatabaseService(server *ServerMonitor) error {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise upgrade database via ssh script")
+	client, err := cluster.OnPremiseConnect(server)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise upgrade database via ssh failed: %s", err)
+		return err
+	}
+	defer client.Close()
+
+	cmd := cluster.Configurator.GetSshUpgradeDBScript()
+
+	filerc, err := os.Open(cmd)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise upgrade database via ssh script %s failed: %s", cmd, err)
+		return fmt.Errorf("can't open upgrade script: %s", cmd)
+	}
+	defer filerc.Close()
+
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(filerc)
+
+	buf2 := strings.NewReader(server.GetSshEnv())
+	r := io.MultiReader(buf2, buf)
+
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+	)
+	if err := client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise upgrade database via ssh error: %s", stderr.String())
+		return err
+	}
+	out := stdout.String()
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise upgrade script: %s, out: %s, err: %s", cmd, out, stderr.String())
+
+	return nil
+}
+
 func (cluster *Cluster) OnPremiseGetNodes() ([]Agent, error) {
 	//cat proc/cpuinfo | grep "cpu cores" | wc -l
 	//nb de cpu

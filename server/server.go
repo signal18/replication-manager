@@ -1056,6 +1056,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.OnPremiseSSHStartProxyScript, "onpremise-ssh-start-proxy-script", "", "Run via ssh a custom script to start Proxy")
 	flags.StringVar(&conf.OnPremiseSSHStopProxyScript, "onpremise-ssh-stop-proxy-script", "", "Run via ssh a custom script to stop Proxy")
 	flags.StringVar(&conf.OnPremiseSSHDbJobScript, "onpremise-ssh-db-job-script", "", "Run via ssh a custom script to execute database jobs")
+	flags.StringVar(&conf.OnPremiseSSHUpgradeDbScript, "onpremise-ssh-upgrade-db-script", "", "Run via ssh a custom script to upgrade database version")
 
 	flags.BoolVar(&conf.Cloud18, "cloud18", false, "Enable Cloud 18 DBAAS")
 	flags.StringVar(&conf.Cloud18Domain, "cloud18-domain", "", "DNS sub domain per organisation")
@@ -1211,6 +1212,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 			flags.StringVar(&conf.ProvOpensvcCollectorAccount, "opensvc-collector-account", "/etc/replication-manager/account.yaml", "Openscv collector account")
 			flags.IntVar(&conf.ProvOpensvcV3ProvisionDelay, "opensvc-v3-provision-delay", 10, "Seconds to wait after template creation before provisioning in V3")
 			flags.BoolVar(&conf.ProvOpensvcImageForcePull, "opensvc-image-force-pull", false, "Force docker image pull when generating the service template")
+			flags.BoolVar(&conf.ProvOpensvcUseOrchestratedStart, "opensvc-use-orchestrated-start", false, "Use orchestrated abort+restart instead of instance-level start for HA-safe recovery from warn state")
 
 			if conf.ProvOpensvcUseCollectorAPI {
 				dbConfig := viper.New()

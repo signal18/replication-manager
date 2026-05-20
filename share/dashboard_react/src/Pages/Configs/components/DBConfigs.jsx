@@ -22,6 +22,7 @@ import remarkGfm from 'remark-gfm'
 import modalStyles from '../../../components/Modals/styles.module.scss'
 
 import PreservedVariablesEditor from '../../../components/PreservedVariablesEditor'
+import ConfigFilesPanel from '../../../components/ConfigFilesPanel'
 import { convertSize } from '../../../utility/common'
 
 function DBConfigs({ selectedCluster, user }) {
@@ -516,6 +517,7 @@ function DBConfigs({ selectedCluster, user }) {
                   />
                 ))}
             </HStack>
+            <ConfigFilesPanel selectedCluster={selectedCluster} />
             <AccordionComponent
                   heading={'Cluster Preserved Variables (Table & Editor)'}
                   className={styles.accordion}
@@ -562,6 +564,7 @@ function DBConfigs({ selectedCluster, user }) {
         onAccept={hasPendingCompliance ? handleAcceptCompliance : undefined}
         acceptLoading={acceptLoading}
       />
+
     </VStack>
   )
 }

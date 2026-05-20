@@ -546,12 +546,14 @@ type Config struct {
 	OnPremiseSSHStartProxyScript              string                       `mapstructure:"onpremise-ssh-start-proxy-script" toml:"onpremise-ssh-start-proxy-script" json:"onpremiseSshStartProxyScript"`
 	OnPremiseSSHStopProxyScript               string                       `mapstructure:"onpremise-ssh-stop-proxy-script" toml:"onpremise-ssh-stop-proxy-script" json:"onpremiseSshStopProxyScript"`
 	OnPremiseSSHDbJobScript                   string                       `mapstructure:"onpremise-ssh-db-job-script" toml:"onpremise-ssh-db-job-script" json:"onpremiseSshDbJobScript"`
+	OnPremiseSSHUpgradeDbScript               string                       `mapstructure:"onpremise-ssh-upgrade-db-script" toml:"onpremise-ssh-upgrade-db-script" json:"onpremiseSshUpgradeDbScript"`
 	ProvOpensvcP12Certificate                 string                       `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificate" json:"opensvcP12Certificate"`
 	ProvOpensvcP12Secret                      string                       `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`
 	ProvOpensvcUseCollectorAPI                bool                         `mapstructure:"opensvc-use-collector-api" toml:"opensvc-use-collector-api" json:"opensvcUseCollectorApi"`
 	ProvOpensvcCollectorAccount               string                       `mapstructure:"opensvc-collector-account" toml:"opensvc-collector-account" json:"opensvcCollectorAccount"`
 	ProvOpensvcV3ProvisionDelay               int                          `mapstructure:"opensvc-v3-provision-delay" toml:"opensvc-v3-provision-delay" json:"opensvcV3ProvisionDelay"`
 	ProvOpensvcImageForcePull                 bool                         `mapstructure:"opensvc-image-force-pull" toml:"opensvc-image-force-pull" json:"opensvcImageForcePull"`
+	ProvOpensvcUseOrchestratedStart           bool                         `mapstructure:"opensvc-use-orchestrated-start" toml:"opensvc-use-orchestrated-start" json:"opensvcUseOrchestratedStart"`
 	ProvUser                                  string                       `mapstructure:"opensvc-user" toml:"opensvc-user" json:"opensvcUser"`
 	ProvCodeApp                               string                       `mapstructure:"opensvc-codeapp" toml:"opensvc-codeapp" json:"opensvcCodeapp"`
 	ProvEventTimeout                          int                          `mapstructure:"prov-timeout" toml:"prov-timeout" json:"provEventTimeout"`

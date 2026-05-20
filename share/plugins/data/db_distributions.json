@@ -1,0 +1,39 @@
+{
+  "version": "1",
+  "generated_at": "2026-05-19T00:00:00Z",
+  "os_families": [
+    {
+      "filter": "rpm",
+      "repo_type": "yum",
+      "repo_base_url": "https://mirror.mariadb.org/yum",
+      "repo_key_url": "https://mariadb.org/mariadb_release_signing_key.asc",
+      "os_versions": ["8", "9"],
+      "url_pattern": "{repo_base_url}/{major_minor}/rhel/{os_version}/x86_64"
+    },
+    {
+      "filter": "",
+      "repo_type": "apt",
+      "repo_base_url": "https://mirror.mariadb.org/repo",
+      "repo_key_url": "https://mariadb.org/mariadb_release_signing_key.pgp",
+      "codenames": ["bookworm", "trixie", "jammy", "noble"],
+      "url_pattern": "{repo_base_url}/{major_minor}/{os_id}"
+    }
+  ],
+  "deploy_methods": [
+    {
+      "filter": "docker",
+      "type": "docker",
+      "image": "mariadb"
+    },
+    {
+      "filter": "package",
+      "type": "tarball",
+      "tarball_base_url": "https://downloads.mariadb.org/interstitial"
+    },
+    {
+      "filter": "",
+      "type": "repository",
+      "comment": "uses os_family repo to install via apt-get or yum/dnf"
+    }
+  ]
+}
