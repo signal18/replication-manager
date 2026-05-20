@@ -1251,6 +1251,75 @@ type DockerRepos struct {
 	Repos []DockerRepo `json:"repos"`
 }
 
+// sortDockerTagsDesc sorts Docker tag results by semantic version descending.
+// Tags starting with a number sort before non-numeric tags (e.g. "latest", "noble").
+// Within numeric tags, version parts are compared numerically: 11.8.6 > 11.8.5 > 11.8.10.
+func sortDockerTagsDesc(tags []TagResult) {
+	slices.SortFunc(tags, func(a, b TagResult) int {
+		return compareDockerTagDesc(a.Name, b.Name)
+	})
+}
+
+func compareDockerTagDesc(a, b string) int {
+	partsA := strings.Split(a, ".")
+	partsB := strings.Split(b, ".")
+
+	// Tags starting with a digit sort before non-numeric tags
+	aNumeric := len(partsA) > 0 && len(partsA[0]) > 0 && partsA[0][0] >= '0' && partsA[0][0] <= '9'
+	bNumeric := len(partsB) > 0 && len(partsB[0]) > 0 && partsB[0][0] >= '0' && partsB[0][0] <= '9'
+	if aNumeric && !bNumeric {
+		return -1
+	}
+	if !aNumeric && bNumeric {
+		return 1
+	}
+	if !aNumeric && !bNumeric {
+		return strings.Compare(a, b)
+	}
+
+	// Compare version parts numerically
+	maxLen := len(partsA)
+	if len(partsB) > maxLen {
+		maxLen = len(partsB)
+	}
+	for i := 0; i < maxLen; i++ {
+		var sa, sb string
+		if i < len(partsA) {
+			sa = partsA[i]
+		}
+		if i < len(partsB) {
+			sb = partsB[i]
+		}
+		// Split on dash for suffixes like "11.8.6-noble"
+		numA, suffA, _ := strings.Cut(sa, "-")
+		numB, suffB, _ := strings.Cut(sb, "-")
+
+		na, errA := strconv.Atoi(numA)
+		nb, errB := strconv.Atoi(numB)
+		if errA == nil && errB == nil {
+			if na != nb {
+				return nb - na // descending
+			}
+			// Same number, compare suffix (empty suffix = plain version, sorts first)
+			if suffA != suffB {
+				if suffA == "" {
+					return -1
+				}
+				if suffB == "" {
+					return 1
+				}
+				return strings.Compare(suffA, suffB)
+			}
+		} else {
+			cmp := strings.Compare(sa, sb)
+			if cmp != 0 {
+				return cmp
+			}
+		}
+	}
+	return 0
+}
+
 // Stucture to hold header of mytop
 type TopMetrics struct {
 	Name  string `json:"name"`
@@ -2441,6 +2510,12 @@ func (conf *Config) GetDockerRepos(file string, is_not_embed bool) ([]DockerRepo
 	err := json.Unmarshal([]byte(byteValue), &repos)
 	if err != nil {
 		return repos.Repos, err
+	}
+
+	// Sort tags by semantic version descending so the GUI shows newest first.
+	// Tags like "11.8.6" sort before "11.8.5"; non-numeric tags ("latest", "noble") go last.
+	for i := range repos.Repos {
+		sortDockerTagsDesc(repos.Repos[i].Tags.Results)
 	}
 
 	return repos.Repos, nil
