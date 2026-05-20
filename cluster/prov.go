@@ -419,13 +419,10 @@ func (cluster *Cluster) UpgradeDatabaseService(server *ServerMonitor) error {
 }
 
 // StopDatabaseServiceClean stops the database with innodb_fast_shutdown=0 for
-// safe version upgrades, then delegates to the orchestrator-specific stop.
-// Use this before upgrading MariaDB — it ensures InnoDB performs a full purge
-// and change buffer merge so redo logs are compatible with the new version.
-// StopDatabaseServiceClean stops the database with innodb_fast_shutdown=0 for
 // safe version upgrades. For masters, it also issues SHUTDOWN WAIT FOR ALL SLAVES
 // via SQL so replicas receive all pending events before the master goes down.
-// The orchestrator stop follows to ensure a clean service state transition.
+// The orchestrator stop always follows to ensure a clean service state transition
+// and to stop all containers (db + jobs) so both get the new image on start.
 func (cluster *Cluster) StopDatabaseServiceClean(server *ServerMonitor) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"Clean-stopping database service for upgrade %s", cluster.Name+"/svc/"+server.URL)
@@ -452,8 +449,10 @@ func (cluster *Cluster) StopDatabaseServiceClean(server *ServerMonitor) error {
 		}
 	}
 
-	// Always tell the orchestrator to stop — ensures clean state transition
-	// and stops ALL containers (db + jobs) so both get the new image on start.
+	// The orchestrator stop follows unconditionally. For container orchestrators
+	// this is required to stop ALL containers (db + jobs). For on-premise, the SQL
+	// SHUTDOWN may have already killed the process — the redundant stop is harmless
+	// (Shutdown() on a dead connection returns nil).
 	return cluster.StopDatabaseService(server)
 }
 

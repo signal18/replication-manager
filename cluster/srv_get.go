@@ -54,38 +54,52 @@ func (server *ServerMonitor) GetSshEnv() string {
 	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
 		adminpassword = user.Password
 	}
-	env := "export REPLICATION_MANAGER_HOST_USER=\"" + server.User + "\"" +
-		";export REPLICATION_MANAGER_HOST_PASSWORD=\"" + server.Pass + "\"" +
-		";export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\"" +
-		";export REPLICATION_MANAGER_URL=\"https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort + "\"" +
-		";export REPLICATION_MANAGER_URL_HOST=\"" + server.ClusterGroup.Conf.MonitorAddress + "\"" +
-		";export REPLICATION_MANAGER_URL_PORT=\"" + server.ClusterGroup.Conf.APIPort + "\"" +
-		";export REPLICATION_MANAGER_USER=\"" + adminuser + "\"" +
-		";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\"" +
-		";export REPLICATION_MANAGER_HOST_NAME=\"" + server.Host + "\"" +
-		";export REPLICATION_MANAGER_HOST_PORT=\"" + server.Port + "\"" +
-		";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + server.ClusterGroup.Name + "\"" +
-		";export REPLICATION_MANAGER_JOBS_MODE=\"" + server.ClusterGroup.Conf.SchedulerJobsMode + "\""
+
+	// shellEsc escapes single quotes for safe embedding in shell single-quoted strings.
+	// Using single quotes avoids issues with double quotes, backslashes, and dollar signs
+	// in passwords and other values.
+	shellEsc := func(s string) string {
+		return strings.ReplaceAll(s, "'", "'\"'\"'")
+	}
+
+	// Build shell exports using single-quoted values to prevent injection from
+	// passwords containing double quotes, backslashes, or dollar signs.
+	shellExport := func(name, value string) string {
+		return "export " + name + "='" + shellEsc(value) + "'"
+	}
+
+	env := shellExport("REPLICATION_MANAGER_HOST_USER", server.User) +
+		";" + shellExport("REPLICATION_MANAGER_HOST_PASSWORD", server.Pass) +
+		";" + shellExport("MYSQL_ROOT_PASSWORD", server.Pass) +
+		";" + shellExport("REPLICATION_MANAGER_URL", "https://"+server.ClusterGroup.Conf.MonitorAddress+":"+server.ClusterGroup.Conf.APIPort) +
+		";" + shellExport("REPLICATION_MANAGER_URL_HOST", server.ClusterGroup.Conf.MonitorAddress) +
+		";" + shellExport("REPLICATION_MANAGER_URL_PORT", server.ClusterGroup.Conf.APIPort) +
+		";" + shellExport("REPLICATION_MANAGER_USER", adminuser) +
+		";" + shellExport("REPLICATION_MANAGER_PASSWORD", adminpassword) +
+		";" + shellExport("REPLICATION_MANAGER_HOST_NAME", server.Host) +
+		";" + shellExport("REPLICATION_MANAGER_HOST_PORT", server.Port) +
+		";" + shellExport("REPLICATION_MANAGER_CLUSTER_NAME", server.ClusterGroup.Name) +
+		";" + shellExport("REPLICATION_MANAGER_JOBS_MODE", server.ClusterGroup.Conf.SchedulerJobsMode)
 
 	// Export the Docker image tag so upgrade scripts can parse the target version
 	if server.ClusterGroup.Conf.ProvDbImg != "" {
-		env += ";export REPLICATION_MANAGER_DB_DOCKER_IMG=\"" + server.ClusterGroup.Conf.ProvDbImg + "\""
+		env += ";" + shellExport("REPLICATION_MANAGER_DB_DOCKER_IMG", server.ClusterGroup.Conf.ProvDbImg)
 	}
 
 	// Export resolved OS family info from db_distributions.json (tag-filtered)
 	if osf := server.ClusterGroup.Configurator.GetActiveDBOsFamily(); osf != nil {
-		env += ";export REPLICATION_MANAGER_DB_REPO_TYPE=\"" + osf.RepoType + "\""
+		env += ";" + shellExport("REPLICATION_MANAGER_DB_REPO_TYPE", osf.RepoType)
 		if osf.RepoBaseURL != "" {
-			env += ";export REPLICATION_MANAGER_DB_REPO_BASE_URL=\"" + osf.RepoBaseURL + "\""
+			env += ";" + shellExport("REPLICATION_MANAGER_DB_REPO_BASE_URL", osf.RepoBaseURL)
 		}
 		if osf.RepoKeyURL != "" {
-			env += ";export REPLICATION_MANAGER_DB_REPO_KEY_URL=\"" + osf.RepoKeyURL + "\""
+			env += ";" + shellExport("REPLICATION_MANAGER_DB_REPO_KEY_URL", osf.RepoKeyURL)
 		}
 	}
 
 	// Export resolved deploy method from db_distributions.json (tag-filtered)
 	if dm := server.ClusterGroup.Configurator.GetActiveDBDeployMethod(); dm != nil {
-		env += ";export REPLICATION_MANAGER_DB_DEPLOY_METHOD=\"" + dm.Type + "\""
+		env += ";" + shellExport("REPLICATION_MANAGER_DB_DEPLOY_METHOD", dm.Type)
 	}
 
 	return env + "\n"
