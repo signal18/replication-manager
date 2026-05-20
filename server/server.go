@@ -1212,6 +1212,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 			flags.StringVar(&conf.ProvOpensvcCollectorAccount, "opensvc-collector-account", "/etc/replication-manager/account.yaml", "Openscv collector account")
 			flags.IntVar(&conf.ProvOpensvcV3ProvisionDelay, "opensvc-v3-provision-delay", 10, "Seconds to wait after template creation before provisioning in V3")
 			flags.BoolVar(&conf.ProvOpensvcImageForcePull, "opensvc-image-force-pull", false, "Force docker image pull when generating the service template")
+			flags.BoolVar(&conf.ProvOpensvcUseOrchestratedStart, "opensvc-use-orchestrated-start", false, "Use orchestrated abort+restart instead of instance-level start for HA-safe recovery from warn state")
 
 			if conf.ProvOpensvcUseCollectorAPI {
 				dbConfig := viper.New()

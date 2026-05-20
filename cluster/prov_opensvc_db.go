@@ -307,18 +307,35 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 		}
 		svc.StartService(agent.Node_id, service.Svc_id)
 	} else if svc.IsV3() {
-		// Use instance-level start (om start --local) instead of orchestrated start.
-		// The orchestrated start checks global monitor state and rejects with 409
-		// when the service is in warn state (e.g. after a failed start). The
-		// instance-level start bypasses this check and starts containers directly.
-		agent := server.Agent
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"OpenSVC V3 instance start for %s on node %s", server.URL, agent)
-		err := svc.StartInstanceV3(agent, server.ServiceName)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
-				"OpenSVC V3 instance start failed for %s: %s", server.URL, err)
-			return err
+		if cluster.Conf.ProvOpensvcUseOrchestratedStart {
+			// HA-safe path: abort (clears warn + cancels pending orchestration)
+			// then restart (atomic stop+start, avoids race with repman detecting
+			// the service as down between stop and start).
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+				"OpenSVC V3 orchestrated start: abort + restart for %s", server.URL)
+			if abortErr := svc.AbortServiceV3(cluster.Name, server.ServiceName); abortErr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+					"OpenSVC V3 abort before start failed for %s: %s (proceeding)", server.URL, abortErr)
+			}
+			err := svc.RestartServiceV3(cluster.Name, server.ServiceName)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+					"OpenSVC V3 orchestrated restart failed for %s: %s", server.URL, err)
+				return err
+			}
+		} else {
+			// Default: instance-level start (om start --local). Bypasses the
+			// orchestrator's global monitor state check so it works even when the
+			// service is in warn state. Does not coordinate failover volumes.
+			agent := server.Agent
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+				"OpenSVC V3 instance start for %s on node %s", server.URL, agent)
+			err := svc.StartInstanceV3(agent, server.ServiceName)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+					"OpenSVC V3 instance start failed for %s: %s", server.URL, err)
+				return err
+			}
 		}
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,

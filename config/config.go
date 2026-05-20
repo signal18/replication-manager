@@ -553,6 +553,7 @@ type Config struct {
 	ProvOpensvcCollectorAccount               string                       `mapstructure:"opensvc-collector-account" toml:"opensvc-collector-account" json:"opensvcCollectorAccount"`
 	ProvOpensvcV3ProvisionDelay               int                          `mapstructure:"opensvc-v3-provision-delay" toml:"opensvc-v3-provision-delay" json:"opensvcV3ProvisionDelay"`
 	ProvOpensvcImageForcePull                 bool                         `mapstructure:"opensvc-image-force-pull" toml:"opensvc-image-force-pull" json:"opensvcImageForcePull"`
+	ProvOpensvcUseOrchestratedStart           bool                         `mapstructure:"opensvc-use-orchestrated-start" toml:"opensvc-use-orchestrated-start" json:"opensvcUseOrchestratedStart"`
 	ProvUser                                  string                       `mapstructure:"opensvc-user" toml:"opensvc-user" json:"opensvcUser"`
 	ProvCodeApp                               string                       `mapstructure:"opensvc-codeapp" toml:"opensvc-codeapp" json:"opensvcCodeapp"`
 	ProvEventTimeout                          int                          `mapstructure:"prov-timeout" toml:"prov-timeout" json:"provEventTimeout"`
