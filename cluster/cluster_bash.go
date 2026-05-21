@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -48,6 +49,27 @@ func (cluster *Cluster) BashScriptProvDNS(cname string) error {
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling provision add domain script: %s", string(out))
 	}
+	return nil
+}
+
+// BashScriptVariableChange calls the monitoring-variable-change-script when
+// server variables change over time. The diff is piped to stdin.
+// Args: $1=cluster $2=server_url
+func (cluster *Cluster) BashScriptVariableChange(serverURL, diff string) error {
+	if cluster.Conf.MonitorVariableChangeScript == "" {
+		return nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO",
+		"Calling variable change script for %s", serverURL)
+	cmd := exec.Command(cluster.Conf.MonitorVariableChangeScript, cluster.Name, serverURL)
+	cmd.Stdin = strings.NewReader(diff)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR",
+			"Variable change script error: %s", err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO",
+		"Variable change script complete: %s", string(out))
 	return nil
 }
 

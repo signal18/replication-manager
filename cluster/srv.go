@@ -164,6 +164,7 @@ type ServerMonitor struct {
 	EventStatus                 []dbhelper.Event            `json:"eventStatus"`
 	FullProcessList             []dbhelper.Processlist      `json:"-"`
 	Variables                   *config.StringsMap          `json:"-"`
+	PrevVariables               *config.StringsMap          `json:"-"`
 	SensitiveVariables          *config.StringsMap          `json:"-"`
 	VariablesMap                *config.VariablesMap        `json:"-"`
 	EngineInnoDB                *config.StringsMap          `json:"engineInnodb"`
