@@ -5,7 +5,9 @@ export const billingService = {
   getSubscription,
   getSubscriptionPlans,
   changeSubscriptionPlan,
-  getTransactions
+  getTransactions,
+  getBillingProfile,
+  updateBillingProfile
 }
 
 function getPersonalBalance(baseURL = '') {
@@ -26,4 +28,12 @@ function changeSubscriptionPlan(subscription, baseURL = '') {
 
 function getTransactions({ limit = 20, offset = 0, direction = 'desc' } = {}, baseURL = '') {
   return getApi(baseURL).get('billing/transactions', { limit, offset, direction })
+}
+
+function getBillingProfile(baseURL = '') {
+  return getApi(baseURL).get('billing/profile')
+}
+
+function updateBillingProfile(profile, baseURL = '') {
+  return getApi(baseURL).put('billing/profile', { billing_profile: profile })
 }

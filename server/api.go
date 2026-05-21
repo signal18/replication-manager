@@ -397,6 +397,11 @@ func (repman *ReplicationManager) apiserver() {
 		negroni.Wrap(http.HandlerFunc(repman.handlerBillingTransactions)),
 	))
 
+	router.Handle("/api/billing/profile", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerBillingProfile)),
+	))
+
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
 	))

@@ -1643,3 +1643,90 @@ func (repman *ReplicationManager) handlerUnregister(w http.ResponseWriter, r *ht
 	w.WriteHeader(http.StatusOK)
 	w.Write(respBody)
 }
+
+func crmGetBillingProfile(crmBase, gitlabToken string) (int, []byte, error) {
+	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/profile", nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+gitlabToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := crmHTTPClient15s.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
+}
+
+func crmUpdateBillingProfile(crmBase, gitlabToken string, profile json.RawMessage) (int, []byte, error) {
+	payload, err := json.Marshal(map[string]json.RawMessage{"billing_profile": profile})
+	if err != nil {
+		return 0, nil, err
+	}
+	req, err := http.NewRequest(http.MethodPut, crmBase+"/api/profile", bytes.NewReader(payload))
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+gitlabToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := crmHTTPClient30s.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
+}
+
+// handlerBillingProfile — GET /api/billing/profile and PUT /api/billing/profile (JWT required)
+func (repman *ReplicationManager) handlerBillingProfile(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	gitlabToken, err := repman.GetJWTGitLabToken(r)
+	if err != nil {
+		writeJSONError(w, http.StatusPreconditionFailed, "gitlab sso token required")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		status, body, err := repman.fetchWithSessionBootstrap(gitlabToken, func() (int, []byte, error) {
+			return crmGetBillingProfile(repman.crmBase(), gitlabToken)
+		})
+		if err != nil {
+			writeJSONError(w, http.StatusBadGateway, "CRM API unreachable")
+			return
+		}
+		w.WriteHeader(crmStatusToHTTP(status))
+		_, _ = w.Write(body)
+
+	case http.MethodPut:
+		var reqBody struct {
+			BillingProfile json.RawMessage `json:"billing_profile"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&reqBody); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		if len(reqBody.BillingProfile) == 0 {
+			writeJSONError(w, http.StatusBadRequest, "billing_profile is required")
+			return
+		}
+		status, body, err := repman.fetchWithSessionBootstrap(gitlabToken, func() (int, []byte, error) {
+			return crmUpdateBillingProfile(repman.crmBase(), gitlabToken, reqBody.BillingProfile)
+		})
+		if err != nil {
+			writeJSONError(w, http.StatusBadGateway, "CRM API unreachable")
+			return
+		}
+		w.WriteHeader(crmStatusToHTTP(status))
+		_, _ = w.Write(body)
+
+	default:
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}

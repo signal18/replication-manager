@@ -6,7 +6,10 @@ import {
   Button,
   Divider,
   Flex,
+  FormControl,
+  FormLabel,
   HStack,
+  Input,
   Modal,
   ModalBody,
   ModalCloseButton,
@@ -15,6 +18,7 @@ import {
   ModalHeader,
   ModalOverlay,
   Select,
+  SimpleGrid,
   Spinner,
   Table,
   Tbody,
@@ -28,11 +32,14 @@ import {
 } from '@chakra-ui/react'
 import {
   clearChangeSubscriptionError,
+  clearUpdateBillingProfileStatus,
   fetchBillingPlansCatalog,
+  fetchBillingProfile,
   fetchBillingSubscription,
   fetchBillingTransactions,
   fetchPersonalBalance,
-  requestBillingSubscriptionChange
+  requestBillingSubscriptionChange,
+  updateBillingProfile
 } from '../../redux/billingSlice'
 import { useTheme } from '../../ThemeProvider'
 import parentStyles from '../../components/Modals/styles.module.scss'
@@ -63,17 +70,26 @@ function Billing() {
     subscription,
     plansCatalog,
     transactions,
+    billingProfile,
     loadingBalance,
     loadingSubscription,
     loadingPlansCatalog,
     loadingChangeSubscription,
     loadingTransactions,
+    loadingBillingProfile,
+    loadingUpdateBillingProfile,
     errorBalance,
     errorSubscription,
     errorPlansCatalog,
     errorChangeSubscription,
-    errorTransactions
+    errorTransactions,
+    errorBillingProfile,
+    errorUpdateBillingProfile,
+    updateBillingProfileSuccess
   } = useSelector((state) => state.billing)
+
+  const emptyProfile = { name: '', email: '', phone: '', address: '', city: '', country: '', postal_code: '', vat_number: '' }
+  const [profileForm, setProfileForm] = useState(emptyProfile)
 
   const rows = useMemo(() => (Array.isArray(transactions) ? transactions : []), [transactions])
 
@@ -81,7 +97,24 @@ function Billing() {
     dispatch(fetchPersonalBalance())
     dispatch(fetchBillingSubscription())
     dispatch(fetchBillingPlansCatalog())
+    dispatch(fetchBillingProfile())
   }, [dispatch])
+
+  useEffect(() => {
+    if (billingProfile && typeof billingProfile === 'object') {
+      const bp = billingProfile.billing_profile || billingProfile
+      setProfileForm({
+        name: bp.name || '',
+        email: bp.email || '',
+        phone: bp.phone || '',
+        address: bp.address || '',
+        city: bp.city || '',
+        country: bp.country || '',
+        postal_code: bp.postal_code || '',
+        vat_number: bp.vat_number || ''
+      })
+    }
+  }, [billingProfile])
 
   useEffect(() => {
     dispatch(fetchBillingTransactions({ limit: PAGE_SIZE, offset, direction: 'desc' }))
@@ -109,8 +142,21 @@ function Billing() {
     return Array.isArray(source) ? source : []
   }, [plansCatalog])
 
+  const handleProfileChange = (e) => {
+    const { name, value } = e.target
+    setProfileForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleProfileSubmit = async () => {
+    dispatch(clearUpdateBillingProfileStatus())
+    const result = await dispatch(updateBillingProfile(profileForm))
+    if (updateBillingProfile.fulfilled.match(result)) {
+      dispatch(fetchBillingProfile())
+    }
+  }
+
   const crmUnavailableMessage = useMemo(() => {
-    const candidates = [errorBalance, errorSubscription, errorPlansCatalog, errorTransactions, errorChangeSubscription]
+    const candidates = [errorBalance, errorSubscription, errorPlansCatalog, errorTransactions, errorChangeSubscription, errorBillingProfile]
       .filter((msg) => typeof msg === 'string' && msg.trim().length > 0)
 
     const unavailable = candidates.find((msg) => {
@@ -119,7 +165,7 @@ function Billing() {
     })
 
     return unavailable || null
-  }, [errorBalance, errorSubscription, errorPlansCatalog, errorTransactions, errorChangeSubscription])
+  }, [errorBalance, errorSubscription, errorPlansCatalog, errorTransactions, errorChangeSubscription, errorBillingProfile])
 
   const isDBaaSServiceUnavailable = useMemo(() => {
     const dbassCandidates = [errorSubscription, errorPlansCatalog, errorChangeSubscription]
@@ -242,7 +288,7 @@ function Billing() {
                 <Box borderWidth='1px' borderColor={pendingBorderColor} borderRadius='md' p={2} w='full' bg={pendingBoxBg}>
                   <Text fontSize='xs' color='var(--warning-primary-color)' fontWeight='bold' textTransform='uppercase' letterSpacing='wide'>Pending Request</Text>
                   <Text fontSize='sm' color='var(--text-color)'>
-                    {String(pendingChangeRequest.requested_plan || pendingChangeRequest.requested_subscription || 'change request')} ({String(pendingChangeRequest.status || 'pending')})
+                    {String(pendingChangeRequest.requested_subscription || pendingChangeRequest.requested_plan || 'change request')} ({String(pendingChangeRequest.status || 'pending')})
                   </Text>
                 </Box>
               )}
@@ -271,6 +317,70 @@ function Billing() {
           )}
         </Box>
       </HStack>
+
+      <Divider />
+
+      <Box borderWidth='1px' borderColor={cardBorderColor} borderRadius='lg' p={5} boxShadow='sm' bg={sectionCardBg}>
+        <Text fontSize='md' fontWeight='semibold' mb={4}>Billing Profile</Text>
+        {loadingBillingProfile ? (
+          <HStack py={3}><Spinner size='sm' /><Text fontSize='sm'>Loading profile…</Text></HStack>
+        ) : errorBillingProfile && showInlineServiceErrors ? (
+          <Text fontSize='sm' color='red.500' mb={3}>{errorBillingProfile}</Text>
+        ) : null}
+        {updateBillingProfileSuccess && (
+          <Box borderWidth='1px' borderColor='var(--success-secondary-color, #68d391)' borderRadius='md' p={2} mb={3} bg='var(--success-tertiary-color, #f0fff4)'>
+            <Text fontSize='sm' color='var(--success-primary-color, #276749)'>Billing profile updated successfully.</Text>
+          </Box>
+        )}
+        {errorUpdateBillingProfile && (
+          <Text fontSize='sm' color='red.500' mb={3}>{errorUpdateBillingProfile}</Text>
+        )}
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          <FormControl>
+            <FormLabel fontSize='sm'>Name</FormLabel>
+            <Input size='sm' name='name' value={profileForm.name} onChange={handleProfileChange} placeholder='Acme Corp' />
+          </FormControl>
+          <FormControl>
+            <FormLabel fontSize='sm'>Billing Email</FormLabel>
+            <Input size='sm' name='email' value={profileForm.email} onChange={handleProfileChange} placeholder='billing@acme.com' />
+          </FormControl>
+          <FormControl>
+            <FormLabel fontSize='sm'>Phone</FormLabel>
+            <Input size='sm' name='phone' value={profileForm.phone} onChange={handleProfileChange} placeholder='+33 1 23 45 67 89' />
+          </FormControl>
+          <FormControl>
+            <FormLabel fontSize='sm'>Address</FormLabel>
+            <Input size='sm' name='address' value={profileForm.address} onChange={handleProfileChange} placeholder='12 rue de la Paix' />
+          </FormControl>
+          <FormControl>
+            <FormLabel fontSize='sm'>City</FormLabel>
+            <Input size='sm' name='city' value={profileForm.city} onChange={handleProfileChange} placeholder='Paris' />
+          </FormControl>
+          <FormControl>
+            <FormLabel fontSize='sm'>Country</FormLabel>
+            <Input size='sm' name='country' value={profileForm.country} onChange={handleProfileChange} placeholder='FR' />
+          </FormControl>
+          <FormControl>
+            <FormLabel fontSize='sm'>Postal Code</FormLabel>
+            <Input size='sm' name='postal_code' value={profileForm.postal_code} onChange={handleProfileChange} placeholder='75001' />
+          </FormControl>
+          <FormControl>
+            <FormLabel fontSize='sm'>VAT Number</FormLabel>
+            <Input size='sm' name='vat_number' value={profileForm.vat_number} onChange={handleProfileChange} placeholder='FR12345678901' />
+          </FormControl>
+        </SimpleGrid>
+        <Box mt={4}>
+          <Button
+            size='sm'
+            colorScheme='blue'
+            onClick={handleProfileSubmit}
+            isLoading={loadingUpdateBillingProfile}
+            isDisabled={loadingBillingProfile}
+          >
+            Save Profile
+          </Button>
+        </Box>
+      </Box>
 
       <Divider />
 
