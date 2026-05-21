@@ -144,6 +144,8 @@ type Cluster struct {
 	LogTask                       s18log.HttpLog             `json:"-" groups:"web"`
 	LogSecurity                   s18log.HttpLog             `json:"-" groups:"web"`
 	LogWorkload                   s18log.HttpLog             `json:"-" groups:"web"`
+	LogDDL                        s18log.HttpLog             `json:"-" groups:"web"`
+	LogVariableChange             s18log.HttpLog             `json:"-" groups:"web"`
 	LogSlack                      *slackman.SlackManager     `json:"-"`
 	JobResults                    *config.TasksMap           `json:"jobResults" groups:"web"`
 	FalsePositiveChecks           map[string]bool            `json:"falsePositiveChecks" groups:"web"`
@@ -494,6 +496,8 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.LogTask = s18log.NewHttpLog(200)
 	cluster.LogSecurity = s18log.NewHttpLog(200)
 	cluster.LogWorkload = s18log.NewHttpLog(200)
+	cluster.LogDDL = s18log.NewHttpLog(200)
+	cluster.LogVariableChange = s18log.NewHttpLog(200)
 
 	cluster.MonitorType = config.GetMonitorType()
 	cluster.TopologyType = config.GetTopologyType()
@@ -2195,6 +2199,13 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 			if err == nil {
 				oldCols = oldtable.TableColumns
 			}
+			diff := columnDiff(t.TableSchema, t.TableName, oldCols, t.TableColumns)
+			cluster.LogDDL.Add(s18log.HttpMessage{
+				Group:     cluster.Name,
+				Level:     "INFO",
+				Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+				Text:      fmt.Sprintf("Server %s: %s %s.%s\n%s", cmaster.URL, changeType, t.TableSchema, t.TableName, diff),
+			})
 			cluster.BashScriptSchemaChange(cmaster.URL, t.TableSchema, t.TableName, changeType, oldCols, t.TableColumns)
 		}
 
@@ -2238,6 +2249,13 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 	for fqn, oldT := range oldTables {
 		if _, exists := tables[fqn]; !exists {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Dropped table %s", fqn)
+			diff := columnDiff(oldT.TableSchema, oldT.TableName, oldT.TableColumns, nil)
+			cluster.LogDDL.Add(s18log.HttpMessage{
+				Group:     cluster.Name,
+				Level:     "INFO",
+				Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+				Text:      fmt.Sprintf("Server %s: dropped %s\n%s", cmaster.URL, fqn, diff),
+			})
 			cluster.BashScriptSchemaChange(cmaster.URL, oldT.TableSchema, oldT.TableName, "dropped", oldT.TableColumns, nil)
 		}
 	}
