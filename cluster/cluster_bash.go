@@ -51,6 +51,22 @@ func (cluster *Cluster) BashScriptProvDNS(cname string) error {
 	return nil
 }
 
+func (cluster *Cluster) BashScriptSchemaChange(serverURL, schema, table, changeType string) error {
+	if cluster.Conf.MonitorSchemaChangeScript == "" {
+		return nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO",
+		"Calling schema change script for %s.%s (%s) on %s", schema, table, changeType, serverURL)
+	out, err := exec.Command(cluster.Conf.MonitorSchemaChangeScript, cluster.Name, serverURL, schema, table, changeType).CombinedOutput()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR",
+			"Schema change script error: %s", err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO",
+		"Schema change script complete: %s", string(out))
+	return nil
+}
+
 func (cluster *Cluster) BashScriptOpenSate(state state.State) error {
 	if cluster.Conf.MonitoringOpenStateScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling open state script")

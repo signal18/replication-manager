@@ -2170,20 +2170,28 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 		tableCluster = append(tableCluster, cluster.GetName())
 		oldtable, err := cmaster.GetTableFromDict(t.TableSchema + "." + t.TableName)
 		haschanged := false
+		changeType := ""
 		if err != nil {
 			if err.Error() == "Empty" {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Init table %s", t.TableSchema+"."+t.TableName)
 				haschanged = true
+				changeType = "init"
 			} else {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "New table %s", t.TableSchema+"."+t.TableName)
 				haschanged = true
+				changeType = "new"
 			}
 		} else {
 			if oldtable.TableCrc != t.TableCrc {
 				haschanged = true
+				changeType = "altered"
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Change table %s", t.TableSchema+"."+t.TableName)
 			}
 			t.TableSync = oldtable.TableSync
+		}
+
+		if haschanged && changeType != "init" {
+			cluster.BashScriptSchemaChange(cmaster.URL, t.TableSchema, t.TableName, changeType)
 		}
 
 		// If shardproxy is enabled, check for duplicates in child clusters
