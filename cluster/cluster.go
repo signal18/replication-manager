@@ -2229,6 +2229,15 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 		}
 	}
 
+	// Detect dropped tables: in old cache but not in current scan
+	oldTables := cmaster.DictTables.ToNewMap()
+	for fqn, oldT := range oldTables {
+		if _, exists := tables[fqn]; !exists {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Dropped table %s", fqn)
+			cluster.BashScriptSchemaChange(cmaster.URL, oldT.TableSchema, oldT.TableName, "dropped", oldT.TableColumns, nil)
+		}
+	}
+
 	cluster.WorkLoad.DBIndexSize = totindexsize
 	cluster.WorkLoad.DBTableSize = tottablesize
 	cmaster.DictTables = dbhelper.FromNormalTablesMap(cmaster.DictTables, tables)
