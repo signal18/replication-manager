@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux'
 import ClusterWorkload from './components/ClusterWorkload'
 import { Flex, HStack, Tooltip, Box, Text } from '@chakra-ui/react'
 import AccordionComponent from '../../components/AccordionComponent/index.jsx'
-import { GeneralLogs, TaskLogs, SecurityLogs, WorkloadLogs } from './components/Logs'
+import { GeneralLogs, TaskLogs, SecurityLogs, WorkloadLogs, DDLLogs, VariableChangeLogs } from './components/Logs'
 import DBServers from './components/DBServers'
 import Proxies from './components/Proxies'
 import Apps from './components/Apps/index.jsx'
@@ -97,6 +97,24 @@ function Dashboard({ selectedCluster, user }) {
           />
         }
         body={<WorkloadLogs />}
+      />
+      <AccordionComponent
+        heading={
+          <LogHeading
+            title='DDL Change Logs'
+            description='Schema changes detected by the monitoring loop: CREATE TABLE, ALTER TABLE (column additions, modifications, drops), DROP TABLE. Each entry includes the column diff showing before/after definitions.'
+          />
+        }
+        body={<DDLLogs />}
+      />
+      <AccordionComponent
+        heading={
+          <LogHeading
+            title='Variable Change Logs'
+            description='Runtime variable changes detected on any server (SET GLOBAL). Shows before/after values. Requires monitoring-variable-change = true.'
+          />
+        }
+        body={<VariableChangeLogs />}
       />
     </Flex>
   )
