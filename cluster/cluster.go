@@ -2077,6 +2077,7 @@ func (cluster *Cluster) buildVariableChangeIgnoreSet(srv *ServerMonitor) map[str
 	// 2. Dynamic: query auto-tuned variables from the server
 	if srv.Conn != nil {
 		if srv.IsMariaDB() && srv.DBVersion.GreaterEqual("10.1") {
+			// MariaDB 10.1+ exposes GLOBAL_VALUE_ORIGIN in INFORMATION_SCHEMA
 			rows, err := srv.Conn.Query("SELECT UPPER(VARIABLE_NAME) FROM INFORMATION_SCHEMA.SYSTEM_VARIABLES WHERE GLOBAL_VALUE_ORIGIN = 'AUTO'")
 			if err == nil {
 				defer rows.Close()
@@ -2087,8 +2088,8 @@ func (cluster *Cluster) buildVariableChangeIgnoreSet(srv *ServerMonitor) map[str
 					}
 				}
 			}
-		} else if srv.DBVersion.IsMySQLOrPerconaGreater57() {
-			// MySQL 8.0+: variables_info shows which variables were set by the system
+		} else if srv.DBVersion.IsMySQLOrPerconaGreater8() {
+			// MySQL 8.0+: performance_schema.variables_info tracks who set each variable
 			rows, err := srv.Conn.Query("SELECT UPPER(VARIABLE_NAME) FROM performance_schema.variables_info WHERE SET_USER IS NULL AND SET_TIME IS NOT NULL")
 			if err == nil {
 				defer rows.Close()
