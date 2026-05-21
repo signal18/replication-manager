@@ -62,7 +62,7 @@ func (cluster *Cluster) BashScriptSchemaChange(serverURL, schema, table, changeT
 	if cluster.Conf.MonitorSchemaChangeScript == "" {
 		return nil
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO",
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"Calling schema change script for %s.%s (%s) on %s", schema, table, changeType, serverURL)
 
 	diff := columnDiff(schema, table, oldCols, newCols)
@@ -73,17 +73,50 @@ func (cluster *Cluster) BashScriptSchemaChange(serverURL, schema, table, changeT
 	cmd.Stdin = strings.NewReader(diff)
 	out, err := cmd.CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR",
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 			"Schema change script timed out after 30s for %s.%s", schema, table)
 		return ctx.Err()
 	}
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR",
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 			"Schema change script error: %s", err)
 	}
 	if len(out) > 0 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO",
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"Schema change script output: %s", string(out))
+	}
+	return nil
+}
+
+// BashScriptVariableChange calls the monitoring-variable-change-script when
+// server variables change over time. The diff is piped to stdin.
+// Args: $1=cluster $2=server_url
+// Runs with a 30-second timeout to avoid stalling the monitoring loop.
+func (cluster *Cluster) BashScriptVariableChange(serverURL, diff string) error {
+	if cluster.Conf.MonitorVariableChangeScript == "" {
+		return nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Calling variable change script for %s", serverURL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, cluster.Conf.MonitorVariableChangeScript, cluster.Name, serverURL)
+	cmd.Stdin = strings.NewReader(diff)
+	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Variable change script timed out after 30s for %s", serverURL)
+		return ctx.Err()
+	}
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Variable change script error for %s: %s %s", serverURL, err, string(out))
+		return err
+	}
+	if len(out) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Variable change script output: %s", string(out))
 	}
 	return nil
 }
@@ -104,14 +137,12 @@ func columnDiff(schema, table string, oldCols, newCols []dbhelper.Column) string
 		newMap[c.Name] = c
 	}
 
-	// Dropped columns (in old but not in new)
 	for _, c := range oldCols {
 		if _, exists := newMap[c.Name]; !exists {
 			b.WriteString("- " + formatColumn(c) + "\n")
 		}
 	}
 
-	// New or altered columns
 	for _, c := range newCols {
 		old, exists := oldMap[c.Name]
 		if !exists {
@@ -138,7 +169,6 @@ func formatColumn(c dbhelper.Column) string {
 	}
 	return s
 }
-
 func (cluster *Cluster) BashScriptOpenSate(state state.State) error {
 	if cluster.Conf.MonitoringOpenStateScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling open state script")

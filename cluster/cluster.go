@@ -900,6 +900,7 @@ func (cluster *Cluster) Run() {
 							go cluster.initOrchetratorNodes()
 							cluster.MonitorQueryRules()
 							cluster.MonitorVariablesDiff()
+							cluster.MonitorVariablesChange()
 							cluster.IsValidBackup = cluster.HasValidBackup()
 							go cluster.CheckCredentialRotation()
 							cluster.CheckCanSaveDynamicConfig()
@@ -2129,6 +2130,48 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 			return
 		}
 		cluster.SetState("WARN0084", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0084"], string(jtext)), ErrFrom: "MON", ServerUrl: cluster.GetMaster().URL})
+	}
+}
+
+// MonitorVariablesChange detects when a variable value changes over time on any
+// server (temporal change, not cross-server diff). Compares current Variables
+// with PrevVariables snapshot and calls the monitoring-variable-change-script.
+func (cluster *Cluster) MonitorVariablesChange() {
+	if !cluster.Conf.MonitorVariableChange {
+		return
+	}
+	for _, srv := range cluster.Servers {
+		if srv == nil || srv.State == stateFailed || srv.Variables == nil {
+			continue
+		}
+		if srv.PrevVariables == nil {
+			// First run: snapshot current variables, no diff yet
+			srv.PrevVariables = config.FromStringSyncMap(nil, srv.Variables)
+			continue
+		}
+		currentVars := srv.Variables.ToNewMap()
+		prevVars := srv.PrevVariables.ToNewMap()
+
+		var changes []string
+		for k, v := range currentVars {
+			if old, exists := prevVars[k]; exists && old != v {
+				changes = append(changes, "- "+k+" = "+old)
+				changes = append(changes, "+ "+k+" = "+v)
+			}
+		}
+
+		if len(changes) > 0 {
+			diff := "--- " + srv.URL + " (before)\n+++ " + srv.URL + " (after)\n"
+			for _, line := range changes {
+				diff += line + "\n"
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Variable change detected on %s: %d variable(s) changed", srv.URL, len(changes)/2)
+			cluster.BashScriptVariableChange(srv.URL, diff)
+		}
+
+		// Update snapshot
+		srv.PrevVariables = config.FromStringSyncMap(nil, srv.Variables)
 	}
 }
 

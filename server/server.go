@@ -351,6 +351,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorWriteHeartbeat, "monitoring-write-heartbeat", false, "Inject heartbeat into proxy or via external vip")
 	flags.StringVar(&conf.MonitorWriteHeartbeatCredential, "monitoring-write-heartbeat-credential", "", "Database user:password to inject traffic into proxy or via external vip")
 	flags.BoolVar(&conf.MonitorVariableDiff, "monitoring-variable-diff", true, "Monitor variable difference beetween nodes")
+	flags.BoolVar(&conf.MonitorVariableChange, "monitoring-variable-change", false, "Monitor variable changes over time on each server")
+	flags.StringVar(&conf.MonitorVariableChangeScript, "monitoring-variable-change-script", "", "Script called when a variable changes on a server")
 	flags.BoolVar(&conf.MonitorPFS, "monitoring-performance-schema", true, "Monitor performance schema")
 	flags.BoolVar(&conf.MonitorPFSInstruments, "monitoring-performance-schema-instruments", true, "Monitor performance schema instruments")
 	flags.BoolVar(&conf.MonitorPFSMutex, "monitoring-performance-schema-mutex", true, "Monitor mutex metrics")
