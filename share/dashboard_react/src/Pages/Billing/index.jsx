@@ -90,6 +90,7 @@ function Billing() {
 
   const emptyProfile = { name: '', email: '', phone: '', address: '', city: '', country: '', postal_code: '', vat_number: '' }
   const [profileForm, setProfileForm] = useState(emptyProfile)
+  const [isEditingProfile, setIsEditingProfile] = useState(false)
 
   const rows = useMemo(() => (Array.isArray(transactions) ? transactions : []), [transactions])
 
@@ -147,10 +148,33 @@ function Billing() {
     setProfileForm((prev) => ({ ...prev, [name]: value }))
   }
 
+  const handleProfileEdit = () => {
+    dispatch(clearUpdateBillingProfileStatus())
+    setIsEditingProfile(true)
+  }
+
+  const handleProfileCancel = () => {
+    if (billingProfile && typeof billingProfile === 'object') {
+      setProfileForm({
+        name: billingProfile.name || '',
+        email: billingProfile.email || '',
+        phone: billingProfile.phone || '',
+        address: billingProfile.address || '',
+        city: billingProfile.city || '',
+        country: billingProfile.country || '',
+        postal_code: billingProfile.postal_code || '',
+        vat_number: billingProfile.vat_number || ''
+      })
+    }
+    dispatch(clearUpdateBillingProfileStatus())
+    setIsEditingProfile(false)
+  }
+
   const handleProfileSubmit = async () => {
     dispatch(clearUpdateBillingProfileStatus())
     const result = await dispatch(updateBillingProfile(profileForm))
     if (updateBillingProfile.fulfilled.match(result)) {
+      setIsEditingProfile(false)
       dispatch(fetchBillingProfile())
     }
   }
@@ -322,65 +346,92 @@ function Billing() {
       <Divider />
 
       <Box borderWidth='1px' borderColor={cardBorderColor} borderRadius='lg' p={5} boxShadow='sm' bg={sectionCardBg}>
-        <Text fontSize='md' fontWeight='semibold' mb={4}>Billing Profile</Text>
+        <Flex justify='space-between' align='center' mb={4}>
+          <Text fontSize='md' fontWeight='semibold'>Billing Profile</Text>
+          {!isEditingProfile && !loadingBillingProfile && (
+            <Button size='sm' variant='outline' onClick={handleProfileEdit} isDisabled={!!errorBillingProfile}>
+              Edit
+            </Button>
+          )}
+        </Flex>
         {loadingBillingProfile ? (
           <HStack py={3}><Spinner size='sm' /><Text fontSize='sm'>Loading profile…</Text></HStack>
         ) : errorBillingProfile && showInlineServiceErrors ? (
-          <Text fontSize='sm' color='red.500' mb={3}>{errorBillingProfile}</Text>
-        ) : null}
-        {updateBillingProfileSuccess && (
-          <Box borderWidth='1px' borderColor='var(--success-secondary-color, #68d391)' borderRadius='md' p={2} mb={3} bg='var(--success-tertiary-color, #f0fff4)'>
-            <Text fontSize='sm' color='var(--success-primary-color, #276749)'>Billing profile updated successfully.</Text>
-          </Box>
+          <Text fontSize='sm' color='red.500'>{errorBillingProfile}</Text>
+        ) : isEditingProfile ? (
+          <>
+            {errorUpdateBillingProfile && (
+              <Text fontSize='sm' color='red.500' mb={3}>{errorUpdateBillingProfile}</Text>
+            )}
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+              <FormControl>
+                <FormLabel fontSize='sm'>Name</FormLabel>
+                <Input size='sm' name='name' value={profileForm.name} onChange={handleProfileChange} placeholder='Acme Corp' />
+              </FormControl>
+              <FormControl>
+                <FormLabel fontSize='sm'>Billing Email</FormLabel>
+                <Input size='sm' name='email' value={profileForm.email} onChange={handleProfileChange} placeholder='billing@acme.com' />
+              </FormControl>
+              <FormControl>
+                <FormLabel fontSize='sm'>Phone</FormLabel>
+                <Input size='sm' name='phone' value={profileForm.phone} onChange={handleProfileChange} placeholder='+33 1 23 45 67 89' />
+              </FormControl>
+              <FormControl>
+                <FormLabel fontSize='sm'>Address</FormLabel>
+                <Input size='sm' name='address' value={profileForm.address} onChange={handleProfileChange} placeholder='12 rue de la Paix' />
+              </FormControl>
+              <FormControl>
+                <FormLabel fontSize='sm'>City</FormLabel>
+                <Input size='sm' name='city' value={profileForm.city} onChange={handleProfileChange} placeholder='Paris' />
+              </FormControl>
+              <FormControl>
+                <FormLabel fontSize='sm'>Country</FormLabel>
+                <Input size='sm' name='country' value={profileForm.country} onChange={handleProfileChange} placeholder='FR' />
+              </FormControl>
+              <FormControl>
+                <FormLabel fontSize='sm'>Postal Code</FormLabel>
+                <Input size='sm' name='postal_code' value={profileForm.postal_code} onChange={handleProfileChange} placeholder='75001' />
+              </FormControl>
+              <FormControl>
+                <FormLabel fontSize='sm'>VAT Number</FormLabel>
+                <Input size='sm' name='vat_number' value={profileForm.vat_number} onChange={handleProfileChange} placeholder='FR12345678901' />
+              </FormControl>
+            </SimpleGrid>
+            <HStack mt={4}>
+              <Button size='sm' colorScheme='blue' onClick={handleProfileSubmit} isLoading={loadingUpdateBillingProfile}>
+                Save
+              </Button>
+              <Button size='sm' variant='ghost' onClick={handleProfileCancel} isDisabled={loadingUpdateBillingProfile}>
+                Cancel
+              </Button>
+            </HStack>
+          </>
+        ) : (
+          <>
+            {updateBillingProfileSuccess && (
+              <Box borderWidth='1px' borderColor='var(--success-secondary-color, #68d391)' borderRadius='md' p={2} mb={3} bg='var(--success-tertiary-color, #f0fff4)'>
+                <Text fontSize='sm' color='var(--success-primary-color, #276749)'>Billing profile updated successfully.</Text>
+              </Box>
+            )}
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+              {[
+                { label: 'Name', value: profileForm.name },
+                { label: 'Billing Email', value: profileForm.email },
+                { label: 'Phone', value: profileForm.phone },
+                { label: 'Address', value: profileForm.address },
+                { label: 'City', value: profileForm.city },
+                { label: 'Country', value: profileForm.country },
+                { label: 'Postal Code', value: profileForm.postal_code },
+                { label: 'VAT Number', value: profileForm.vat_number }
+              ].map(({ label, value }) => (
+                <Box key={label}>
+                  <Text fontSize='xs' color={mutedTextColor} textTransform='uppercase' letterSpacing='wider'>{label}</Text>
+                  <Text fontSize='sm'>{value || '—'}</Text>
+                </Box>
+              ))}
+            </SimpleGrid>
+          </>
         )}
-        {errorUpdateBillingProfile && (
-          <Text fontSize='sm' color='red.500' mb={3}>{errorUpdateBillingProfile}</Text>
-        )}
-        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-          <FormControl>
-            <FormLabel fontSize='sm'>Name</FormLabel>
-            <Input size='sm' name='name' value={profileForm.name} onChange={handleProfileChange} placeholder='Acme Corp' />
-          </FormControl>
-          <FormControl>
-            <FormLabel fontSize='sm'>Billing Email</FormLabel>
-            <Input size='sm' name='email' value={profileForm.email} onChange={handleProfileChange} placeholder='billing@acme.com' />
-          </FormControl>
-          <FormControl>
-            <FormLabel fontSize='sm'>Phone</FormLabel>
-            <Input size='sm' name='phone' value={profileForm.phone} onChange={handleProfileChange} placeholder='+33 1 23 45 67 89' />
-          </FormControl>
-          <FormControl>
-            <FormLabel fontSize='sm'>Address</FormLabel>
-            <Input size='sm' name='address' value={profileForm.address} onChange={handleProfileChange} placeholder='12 rue de la Paix' />
-          </FormControl>
-          <FormControl>
-            <FormLabel fontSize='sm'>City</FormLabel>
-            <Input size='sm' name='city' value={profileForm.city} onChange={handleProfileChange} placeholder='Paris' />
-          </FormControl>
-          <FormControl>
-            <FormLabel fontSize='sm'>Country</FormLabel>
-            <Input size='sm' name='country' value={profileForm.country} onChange={handleProfileChange} placeholder='FR' />
-          </FormControl>
-          <FormControl>
-            <FormLabel fontSize='sm'>Postal Code</FormLabel>
-            <Input size='sm' name='postal_code' value={profileForm.postal_code} onChange={handleProfileChange} placeholder='75001' />
-          </FormControl>
-          <FormControl>
-            <FormLabel fontSize='sm'>VAT Number</FormLabel>
-            <Input size='sm' name='vat_number' value={profileForm.vat_number} onChange={handleProfileChange} placeholder='FR12345678901' />
-          </FormControl>
-        </SimpleGrid>
-        <Box mt={4}>
-          <Button
-            size='sm'
-            colorScheme='blue'
-            onClick={handleProfileSubmit}
-            isLoading={loadingUpdateBillingProfile}
-            isDisabled={loadingBillingProfile}
-          >
-            Save Profile
-          </Button>
-        </Box>
       </Box>
 
       <Divider />
