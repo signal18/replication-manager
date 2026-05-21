@@ -1466,6 +1466,17 @@ func (repman *ReplicationManager) handlerGetSubscriptionPlans(w http.ResponseWri
 
 // handlerGetSubscription — GET /api/register/subscription  (admin JWT required)
 //
+// handlerBillingProfilePreflight responds to CORS preflight requests for
+// /api/billing/profile, advertising that GET and PUT are accepted.
+// It is registered as a dedicated OPTIONS route so handlerBillingProfile
+// never receives OPTIONS (which it would otherwise reject with 405).
+func (repman *ReplicationManager) handlerBillingProfilePreflight(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, PUT, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handlerSubscriptionPreflight responds to CORS preflight requests for
 // /api/register/subscription, advertising that GET and POST are accepted.
 // It is registered as a dedicated OPTIONS route so the business handlers

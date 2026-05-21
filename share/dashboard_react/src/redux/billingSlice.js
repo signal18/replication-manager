@@ -34,6 +34,14 @@ const normalizeMaybeWrapped = (payload) => {
   return payload
 }
 
+const normalizeBillingProfile = (payload) => {
+  const unwrapped = normalizeMaybeWrapped(payload)
+  if (unwrapped && typeof unwrapped === 'object') {
+    return unwrapped.billing_profile || unwrapped
+  }
+  return null
+}
+
 const normalizeTransactions = (payload) => {
   const unwrapped = normalizeMaybeWrapped(payload)
   if (Array.isArray(unwrapped)) {
@@ -295,7 +303,7 @@ const billingSlice = createSlice({
       })
       .addCase(fetchBillingProfile.fulfilled, (state, action) => {
         state.loadingBillingProfile = false
-        state.billingProfile = normalizeMaybeWrapped(action.payload?.data)
+        state.billingProfile = normalizeBillingProfile(action.payload?.data)
       })
       .addCase(fetchBillingProfile.rejected, (state, action) => {
         state.loadingBillingProfile = false

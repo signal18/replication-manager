@@ -94,6 +94,7 @@ function Billing() {
   const rows = useMemo(() => (Array.isArray(transactions) ? transactions : []), [transactions])
 
   useEffect(() => {
+    dispatch(clearUpdateBillingProfileStatus())
     dispatch(fetchPersonalBalance())
     dispatch(fetchBillingSubscription())
     dispatch(fetchBillingPlansCatalog())
@@ -102,16 +103,15 @@ function Billing() {
 
   useEffect(() => {
     if (billingProfile && typeof billingProfile === 'object') {
-      const bp = billingProfile.billing_profile || billingProfile
       setProfileForm({
-        name: bp.name || '',
-        email: bp.email || '',
-        phone: bp.phone || '',
-        address: bp.address || '',
-        city: bp.city || '',
-        country: bp.country || '',
-        postal_code: bp.postal_code || '',
-        vat_number: bp.vat_number || ''
+        name: billingProfile.name || '',
+        email: billingProfile.email || '',
+        phone: billingProfile.phone || '',
+        address: billingProfile.address || '',
+        city: billingProfile.city || '',
+        country: billingProfile.country || '',
+        postal_code: billingProfile.postal_code || '',
+        vat_number: billingProfile.vat_number || ''
       })
     }
   }, [billingProfile])
@@ -288,6 +288,7 @@ function Billing() {
                 <Box borderWidth='1px' borderColor={pendingBorderColor} borderRadius='md' p={2} w='full' bg={pendingBoxBg}>
                   <Text fontSize='xs' color='var(--warning-primary-color)' fontWeight='bold' textTransform='uppercase' letterSpacing='wide'>Pending Request</Text>
                   <Text fontSize='sm' color='var(--text-color)'>
+                    {/* requested_subscription is the current DBaaS API field; requested_plan is the legacy field / next_plan shim */}
                     {String(pendingChangeRequest.requested_subscription || pendingChangeRequest.requested_plan || 'change request')} ({String(pendingChangeRequest.status || 'pending')})
                   </Text>
                 </Box>
