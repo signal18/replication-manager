@@ -88,6 +88,9 @@ type Config struct {
 	MonitorGlobalHeartbeatStallThreshold      int                          `scope:"server" mapstructure:"monitoring-global-heartbeat-stall-threshold" toml:"monitoring-global-heartbeat-stall-threshold" json:"monitoringGlobalHeartbeatStallThreshold"`
 	MonitorWriteHeartbeatCredential           string                       `mapstructure:"monitoring-write-heartbeat-credential" toml:"monitoring-write-heartbeat-credential" json:"monitoringWriteHeartbeatCredential"`
 	MonitorVariableDiff                       bool                         `mapstructure:"monitoring-variable-diff" toml:"monitoring-variable-diff" json:"monitoringVariableDiff"`
+	MonitorVariableChange                     bool                         `mapstructure:"monitoring-variable-change" toml:"monitoring-variable-change" json:"monitoringVariableChange"`
+	MonitorVariableChangeScript               string                       `mapstructure:"monitoring-variable-change-script" toml:"monitoring-variable-change-script" json:"monitoringVariableChangeScript"`
+	MonitorVariableChangeIgnore               string                       `mapstructure:"monitoring-variable-change-ignore" toml:"monitoring-variable-change-ignore" json:"monitoringVariableChangeIgnore"`
 	MonitorSchemaChange                       bool                         `mapstructure:"monitoring-schema-change" toml:"monitoring-schema-change" json:"monitoringSchemaChange"`
 	MonitorSchemaColumns                      bool                         `mapstructure:"monitoring-schema-columns" toml:"monitoring-schema-columns" json:"monitoringSchemaColumns"`
 	MonitorSchemaIndexes                      bool                         `mapstructure:"monitoring-schema-indexes" toml:"monitoring-schema-indexes" json:"monitoringSchemaIndexes"`

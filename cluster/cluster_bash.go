@@ -7,16 +7,19 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -51,6 +54,121 @@ func (cluster *Cluster) BashScriptProvDNS(cname string) error {
 	return nil
 }
 
+// BashScriptSchemaChange calls the monitoring-schema-change-script when a table
+// change is detected. The diff of column definitions is piped to stdin.
+// Args: $1=cluster $2=server_url $3=schema $4=table $5=change_type(new/altered/dropped)
+// The script runs with a 30-second timeout to avoid stalling the monitoring loop.
+func (cluster *Cluster) BashScriptSchemaChange(serverURL, schema, table, changeType string, oldCols, newCols []dbhelper.Column) error {
+	if cluster.Conf.MonitorSchemaChangeScript == "" {
+		return nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Calling schema change script for %s.%s (%s) on %s", schema, table, changeType, serverURL)
+
+	diff := columnDiff(schema, table, oldCols, newCols)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, cluster.Conf.MonitorSchemaChangeScript, cluster.Name, serverURL, schema, table, changeType)
+	cmd.Stdin = strings.NewReader(diff)
+	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Schema change script timed out after 30s for %s.%s", schema, table)
+		return ctx.Err()
+	}
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Schema change script error: %s", err)
+	}
+	if len(out) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Schema change script output: %s", string(out))
+	}
+	return nil
+}
+
+// BashScriptVariableChange calls the monitoring-variable-change-script when
+// server variables change over time. The diff is piped to stdin.
+// Args: $1=cluster $2=server_url
+// Runs with a 30-second timeout to avoid stalling the monitoring loop.
+func (cluster *Cluster) BashScriptVariableChange(serverURL, diff string) error {
+	if cluster.Conf.MonitorVariableChangeScript == "" {
+		return nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Calling variable change script for %s", serverURL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, cluster.Conf.MonitorVariableChangeScript, cluster.Name, serverURL)
+	cmd.Stdin = strings.NewReader(diff)
+	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Variable change script timed out after 30s for %s", serverURL)
+		return ctx.Err()
+	}
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Variable change script error for %s: %s %s", serverURL, err, string(out))
+		return err
+	}
+	if len(out) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Variable change script output: %s", string(out))
+	}
+	return nil
+}
+
+// columnDiff produces a unified-style diff of column definitions between old and new.
+func columnDiff(schema, table string, oldCols, newCols []dbhelper.Column) string {
+	fqn := schema + "." + table
+	var b strings.Builder
+	b.WriteString("--- " + fqn + " (before)\n")
+	b.WriteString("+++ " + fqn + " (after)\n")
+
+	oldMap := make(map[string]dbhelper.Column)
+	for _, c := range oldCols {
+		oldMap[c.Name] = c
+	}
+	newMap := make(map[string]dbhelper.Column)
+	for _, c := range newCols {
+		newMap[c.Name] = c
+	}
+
+	for _, c := range oldCols {
+		if _, exists := newMap[c.Name]; !exists {
+			b.WriteString("- " + formatColumn(c) + "\n")
+		}
+	}
+
+	for _, c := range newCols {
+		old, exists := oldMap[c.Name]
+		if !exists {
+			b.WriteString("+ " + formatColumn(c) + "\n")
+		} else if formatColumn(old) != formatColumn(c) {
+			b.WriteString("- " + formatColumn(old) + "\n")
+			b.WriteString("+ " + formatColumn(c) + "\n")
+		}
+	}
+
+	return b.String()
+}
+
+func formatColumn(c dbhelper.Column) string {
+	s := c.Name + " " + c.Type
+	if !c.Nullable {
+		s += " NOT NULL"
+	}
+	if c.Default != nil {
+		s += " DEFAULT " + *c.Default
+	}
+	if c.Extra != "" {
+		s += " " + c.Extra
+	}
+	return s
+}
 func (cluster *Cluster) BashScriptOpenSate(state state.State) error {
 	if cluster.Conf.MonitoringOpenStateScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling open state script")

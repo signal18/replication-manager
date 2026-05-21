@@ -116,4 +116,14 @@ export const WorkloadLogs = ({ className }) => {
   return <Logs key={"workload"} logs={workloadLogs?.buffer} className={className} />
 }
 
+export const DDLLogs = ({ className }) => {
+  const ddlLogs = useSelector((state) => state.cluster.clusterLogs.ddl)
+  return <Logs key={"ddl"} logs={ddlLogs?.buffer} className={className} searchable={true} />
+}
+
+export const VariableChangeLogs = ({ className }) => {
+  const varChangeLogs = useSelector((state) => state.cluster.clusterLogs['variable-change'])
+  return <Logs key={"variable-change"} logs={varChangeLogs?.buffer} className={className} searchable={true} />
+}
+
 export default Logs

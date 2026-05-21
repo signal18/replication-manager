@@ -1812,6 +1812,10 @@ func (cluster *Cluster) GetWebLogsByType(logtype string) any {
 		return &cluster.LogSecurity
 	case "workload":
 		return &cluster.LogWorkload
+	case "ddl":
+		return &cluster.LogDDL
+	case "variable-change":
+		return &cluster.LogVariableChange
 	default:
 		return nil
 	}
@@ -1823,6 +1827,8 @@ func (cluster *Cluster) GetAllWebLogs() map[string]any {
 	logs["task"] = &cluster.LogTask
 	logs["security"] = &cluster.LogSecurity
 	logs["workload"] = &cluster.LogWorkload
+	logs["ddl"] = &cluster.LogDDL
+	logs["variable-change"] = &cluster.LogVariableChange
 	return logs
 }
 

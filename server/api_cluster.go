@@ -2699,6 +2699,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchMonitoringInnoDBStatus()
 	case "monitoring-variable-diff":
 		mycluster.SwitchMonitoringVariableDiff()
+	case "monitoring-variable-change":
+		mycluster.Conf.MonitorVariableChange = !mycluster.Conf.MonitorVariableChange
 	case "monitoring-processlist":
 		mycluster.SwitchMonitoringProcesslist()
 	case "monitoring-processlist-inactive":
@@ -3716,6 +3718,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetMonitorIgnoreErrors(value)
 	case "monitoring-capture-trigger":
 		mycluster.SetMonitorCaptureTrigger(value)
+	case "monitoring-variable-change-script":
+		mycluster.Conf.MonitorVariableChangeScript = value
+	case "monitoring-variable-change-ignore":
+		mycluster.Conf.MonitorVariableChangeIgnore = value
+	case "monitoring-schema-change-script":
+		mycluster.Conf.MonitorSchemaChangeScript = value
 	case "api-token-timeout":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.SetApiTokenTimeout(val)

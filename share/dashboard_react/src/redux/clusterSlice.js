@@ -2553,7 +2553,9 @@ const initialState = {
   clusterAlerts: null,
   clusterLogs: {
     general: null,
-    task: null
+    task: null,
+    ddl: null,
+    'variable-change': null
   },
   clusterMaster: null,
   clusterServers: null,

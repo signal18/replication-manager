@@ -144,6 +144,8 @@ type Cluster struct {
 	LogTask                       s18log.HttpLog             `json:"-" groups:"web"`
 	LogSecurity                   s18log.HttpLog             `json:"-" groups:"web"`
 	LogWorkload                   s18log.HttpLog             `json:"-" groups:"web"`
+	LogDDL                        s18log.HttpLog             `json:"-" groups:"web"`
+	LogVariableChange             s18log.HttpLog             `json:"-" groups:"web"`
 	LogSlack                      *slackman.SlackManager     `json:"-"`
 	JobResults                    *config.TasksMap           `json:"jobResults" groups:"web"`
 	FalsePositiveChecks           map[string]bool            `json:"falsePositiveChecks" groups:"web"`
@@ -494,6 +496,8 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.LogTask = s18log.NewHttpLog(200)
 	cluster.LogSecurity = s18log.NewHttpLog(200)
 	cluster.LogWorkload = s18log.NewHttpLog(200)
+	cluster.LogDDL = s18log.NewHttpLog(200)
+	cluster.LogVariableChange = s18log.NewHttpLog(200)
 
 	cluster.MonitorType = config.GetMonitorType()
 	cluster.TopologyType = config.GetTopologyType()
@@ -896,6 +900,7 @@ func (cluster *Cluster) Run() {
 							go cluster.initOrchetratorNodes()
 							cluster.MonitorQueryRules()
 							cluster.MonitorVariablesDiff()
+							cluster.MonitorVariablesChange()
 							cluster.IsValidBackup = cluster.HasValidBackup()
 							go cluster.CheckCredentialRotation()
 							cluster.CheckCanSaveDynamicConfig()
@@ -2051,46 +2056,100 @@ func (cluster *Cluster) ResetCrashes() {
 	cluster.Crashes = nil
 }
 
+// buildVariableChangeIgnoreSet builds the set of variable names to exclude from
+// temporal change detection. Merges three sources:
+// 1. Static config list (monitoring-variable-change-ignore)
+// 2. MariaDB 10.1+: GLOBAL_VALUE_ORIGIN = 'AUTO' from INFORMATION_SCHEMA
+// 3. MySQL 8.0+: SET_USER IS NULL from performance_schema.variables_info
+func (cluster *Cluster) buildVariableChangeIgnoreSet(srv *ServerMonitor) map[string]bool {
+	ignore := make(map[string]bool)
+
+	// 1. Static config list
+	if cluster.Conf.MonitorVariableChangeIgnore != "" {
+		for _, v := range strings.Split(cluster.Conf.MonitorVariableChangeIgnore, ",") {
+			v = strings.TrimSpace(strings.ToUpper(v))
+			if v != "" {
+				ignore[v] = true
+			}
+		}
+	}
+
+	// 2. Dynamic: query auto-tuned variables from the server
+	if srv.Conn != nil {
+		if srv.IsMariaDB() && srv.DBVersion.GreaterEqual("10.1") {
+			// MariaDB 10.1+ exposes GLOBAL_VALUE_ORIGIN in INFORMATION_SCHEMA
+			rows, err := srv.Conn.Query("SELECT UPPER(VARIABLE_NAME) FROM INFORMATION_SCHEMA.SYSTEM_VARIABLES WHERE GLOBAL_VALUE_ORIGIN = 'AUTO'")
+			if err == nil {
+				defer rows.Close()
+				for rows.Next() {
+					var name string
+					if rows.Scan(&name) == nil {
+						ignore[name] = true
+					}
+				}
+			}
+		} else if srv.DBVersion.IsMySQLOrPerconaGreater8() {
+			// MySQL 8.0+: performance_schema.variables_info tracks who set each variable
+			rows, err := srv.Conn.Query("SELECT UPPER(VARIABLE_NAME) FROM performance_schema.variables_info WHERE SET_USER IS NULL AND SET_TIME IS NOT NULL")
+			if err == nil {
+				defer rows.Close()
+				for rows.Next() {
+					var name string
+					if rows.Scan(&name) == nil {
+						ignore[name] = true
+					}
+				}
+			}
+		}
+	}
+
+	return ignore
+}
+
+// variableExceptions lists variables that legitimately differ between servers
+// and should be excluded from cross-server diff (MonitorVariablesDiff).
+var variableExceptions = map[string]bool{
+	"PORT":                true,
+	"SERVER_ID":           true,
+	"PID_FILE":            true,
+	"WSREP_NODE_NAME":     true,
+	"LOG_BIN_INDEX":       true,
+	"LOG_BIN_BASENAME":    true,
+	"LOG_ERROR":           true,
+	"READ_ONLY":           true,
+	"IN_TRANSACTION":      true,
+	"GTID_SLAVE_POS":      true,
+	"GTID_CURRENT_POS":    true,
+	"GTID_BINLOG_POS":     true,
+	"GTID_BINLOG_STATE":   true,
+	"GENERAL_LOG_FILE":    true,
+	"TIMESTAMP":           true,
+	"SLOW_QUERY_LOG_FILE": true,
+	"REPORT_HOST":         true,
+	"SERVER_UUID":         true,
+	"GTID_PURGED":         true,
+	"HOSTNAME":            true,
+	"SUPER_READ_ONLY":     true,
+	"GTID_EXECUTED":       true,
+	"WSREP_DATA_HOME_DIR": true,
+	"REPORT_PORT":         true,
+	"SOCKET":              true,
+	"DATADIR":             true,
+	"THREAD_POOL_SIZE":    true,
+	"RELAY_LOG":           true,
+	"RELAY_LOG_BASENAME":  true,
+	"RELAY_LOG_INDEX":     true,
+	"LOG_SLOW_QUERY_FILE": true,
+	"PLUGIN_DIR":          true,
+	"SERVER_UID":          true,
+}
+
 func (cluster *Cluster) MonitorVariablesDiff() {
 	if !cluster.Conf.MonitorVariableDiff || cluster.GetMaster() == nil {
 		return
 	}
 	masterVariables := cluster.GetMaster().Variables.ToNewMap()
-	exceptVariables := map[string]bool{
-		"PORT":                true,
-		"SERVER_ID":           true,
-		"PID_FILE":            true,
-		"WSREP_NODE_NAME":     true,
-		"LOG_BIN_INDEX":       true,
-		"LOG_BIN_BASENAME":    true,
-		"LOG_ERROR":           true,
-		"READ_ONLY":           true,
-		"IN_TRANSACTION":      true,
-		"GTID_SLAVE_POS":      true,
-		"GTID_CURRENT_POS":    true,
-		"GTID_BINLOG_POS":     true,
-		"GTID_BINLOG_STATE":   true,
-		"GENERAL_LOG_FILE":    true,
-		"TIMESTAMP":           true,
-		"SLOW_QUERY_LOG_FILE": true,
-		"REPORT_HOST":         true,
-		"SERVER_UUID":         true,
-		"GTID_PURGED":         true,
-		"HOSTNAME":            true,
-		"SUPER_READ_ONLY":     true,
-		"GTID_EXECUTED":       true,
-		"WSREP_DATA_HOME_DIR": true,
-		"REPORT_PORT":         true,
-		"SOCKET":              true,
-		"DATADIR":             true,
-		"THREAD_POOL_SIZE":    true,
-		"RELAY_LOG":           true,
-		"RELAY_LOG_BASENAME":  true,
-		"RELAY_LOG_INDEX":     true,
-		"LOG_SLOW_QUERY_FILE": true,
-		"PLUGIN_DIR":          true,
-		"SERVER_UID":          true,
-	}
+	exceptVariables := variableExceptions
 	variablesdiff := ""
 	var alldiff []VariableDiff
 	for k, v := range masterVariables {
@@ -2125,6 +2184,80 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 			return
 		}
 		cluster.SetState("WARN0084", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0084"], string(jtext)), ErrFrom: "MON", ServerUrl: cluster.GetMaster().URL})
+	}
+}
+
+// MonitorVariablesChange detects when a variable value changes over time on any
+// server (temporal change, not cross-server diff). Compares current Variables
+// with PrevVariables snapshot and calls the monitoring-variable-change-script.
+func (cluster *Cluster) MonitorVariablesChange() {
+	if !cluster.Conf.MonitorVariableChange {
+		return
+	}
+	for _, srv := range cluster.Servers {
+		if srv == nil || srv.State == stateFailed || srv.State == stateUnconn || srv.Variables == nil {
+			// Reset snapshot on failure/disconnect so recovery diff is clean
+			if srv != nil && srv.PrevVariables != nil && (srv.State == stateFailed || srv.State == stateUnconn) {
+				srv.PrevVariables = nil
+			}
+			continue
+		}
+		if srv.PrevVariables == nil {
+			// First run or post-recovery: snapshot current variables, no diff yet
+			srv.PrevVariables = config.FromStringSyncMap(nil, srv.Variables)
+			continue
+		}
+		currentVars := srv.Variables.ToNewMap()
+		prevVars := srv.PrevVariables.ToNewMap()
+
+		// Build ignore set: static config + dynamic SQL query
+		ignoreSet := cluster.buildVariableChangeIgnoreSet(srv)
+
+		var sb strings.Builder
+		sb.WriteString("--- " + srv.URL + " (before)\n")
+		sb.WriteString("+++ " + srv.URL + " (after)\n")
+		changeCount := 0
+
+		// Detect changed and removed variables
+		for k, old := range prevVars {
+			if ignoreSet[k] {
+				continue
+			}
+			if v, exists := currentVars[k]; !exists {
+				sb.WriteString("- " + k + " = " + old + "\n")
+				changeCount++
+			} else if old != v {
+				sb.WriteString("- " + k + " = " + old + "\n")
+				sb.WriteString("+ " + k + " = " + v + "\n")
+				changeCount++
+			}
+		}
+		// Detect new variables (in current but not in prev)
+		for k, v := range currentVars {
+			if ignoreSet[k] {
+				continue
+			}
+			if _, exists := prevVars[k]; !exists {
+				sb.WriteString("+ " + k + " = " + v + "\n")
+				changeCount++
+			}
+		}
+
+		if changeCount > 0 {
+			diffStr := sb.String()
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Variable change detected on %s: %d variable(s) changed", srv.URL, changeCount)
+			cluster.LogVariableChange.Add(s18log.HttpMessage{
+				Group:     cluster.Name,
+				Level:     "INFO",
+				Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+				Text:      fmt.Sprintf("Server %s: %d variable(s) changed\n%s", srv.URL, changeCount, diffStr),
+			})
+			cluster.BashScriptVariableChange(srv.URL, diffStr)
+		}
+
+		// Update snapshot
+		srv.PrevVariables = config.FromStringSyncMap(nil, srv.Variables)
 	}
 }
 
@@ -2170,20 +2303,39 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 		tableCluster = append(tableCluster, cluster.GetName())
 		oldtable, err := cmaster.GetTableFromDict(t.TableSchema + "." + t.TableName)
 		haschanged := false
+		changeType := ""
 		if err != nil {
 			if err.Error() == "Empty" {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Init table %s", t.TableSchema+"."+t.TableName)
 				haschanged = true
+				changeType = "init"
 			} else {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "New table %s", t.TableSchema+"."+t.TableName)
 				haschanged = true
+				changeType = "new"
 			}
 		} else {
 			if oldtable.TableCrc != t.TableCrc {
 				haschanged = true
+				changeType = "altered"
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Change table %s", t.TableSchema+"."+t.TableName)
 			}
 			t.TableSync = oldtable.TableSync
+		}
+
+		if haschanged && changeType != "init" {
+			var oldCols []dbhelper.Column
+			if err == nil {
+				oldCols = oldtable.TableColumns
+			}
+			diff := columnDiff(t.TableSchema, t.TableName, oldCols, t.TableColumns)
+			cluster.LogDDL.Add(s18log.HttpMessage{
+				Group:     cluster.Name,
+				Level:     "INFO",
+				Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+				Text:      fmt.Sprintf("Server %s: %s %s.%s\n%s", cmaster.URL, changeType, t.TableSchema, t.TableName, diff),
+			})
+			cluster.BashScriptSchemaChange(cmaster.URL, t.TableSchema, t.TableName, changeType, oldCols, t.TableColumns)
 		}
 
 		// If shardproxy is enabled, check for duplicates in child clusters
@@ -2218,6 +2370,22 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 					}
 				}
 			}
+		}
+	}
+
+	// Detect dropped tables: in old cache but not in current scan
+	oldTables := cmaster.DictTables.ToNewMap()
+	for fqn, oldT := range oldTables {
+		if _, exists := tables[fqn]; !exists {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Dropped table %s", fqn)
+			diff := columnDiff(oldT.TableSchema, oldT.TableName, oldT.TableColumns, nil)
+			cluster.LogDDL.Add(s18log.HttpMessage{
+				Group:     cluster.Name,
+				Level:     "INFO",
+				Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+				Text:      fmt.Sprintf("Server %s: dropped %s\n%s", cmaster.URL, fqn, diff),
+			})
+			cluster.BashScriptSchemaChange(cmaster.URL, oldT.TableSchema, oldT.TableName, "dropped", oldT.TableColumns, nil)
 		}
 	}
 
