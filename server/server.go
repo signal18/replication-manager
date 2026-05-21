@@ -353,6 +353,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorVariableDiff, "monitoring-variable-diff", true, "Monitor variable difference beetween nodes")
 	flags.BoolVar(&conf.MonitorVariableChange, "monitoring-variable-change", false, "Monitor variable changes over time on each server")
 	flags.StringVar(&conf.MonitorVariableChangeScript, "monitoring-variable-change-script", "", "Script called when a variable changes on a server")
+	flags.StringVar(&conf.MonitorVariableChangeIgnore, "monitoring-variable-change-ignore", "GTID_BINLOG_POS,GTID_BINLOG_STATE,GTID_CURRENT_POS,GTID_SLAVE_POS,GTID_PURGED,GTID_EXECUTED,TIMESTAMP,IN_TRANSACTION,ERROR_COUNT,WARNING_COUNT,LAST_INSERT_ID,IDENTITY,INSERT_ID,PSEUDO_THREAD_ID,RAND_SEED1,RAND_SEED2,CHARACTER_SET_DATABASE,COLLATION_DATABASE", "Comma-separated list of variable names to ignore in temporal change detection. Merged with auto-detected variables from GLOBAL_VALUE_ORIGIN on MariaDB 10.1+")
 	flags.BoolVar(&conf.MonitorPFS, "monitoring-performance-schema", true, "Monitor performance schema")
 	flags.BoolVar(&conf.MonitorPFSInstruments, "monitoring-performance-schema-instruments", true, "Monitor performance schema instruments")
 	flags.BoolVar(&conf.MonitorPFSMutex, "monitoring-performance-schema-mutex", true, "Monitor mutex metrics")

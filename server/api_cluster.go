@@ -3720,6 +3720,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetMonitorCaptureTrigger(value)
 	case "monitoring-variable-change-script":
 		mycluster.Conf.MonitorVariableChangeScript = value
+	case "monitoring-variable-change-ignore":
+		mycluster.Conf.MonitorVariableChangeIgnore = value
 	case "monitoring-schema-change-script":
 		mycluster.Conf.MonitorSchemaChangeScript = value
 	case "api-token-timeout":
