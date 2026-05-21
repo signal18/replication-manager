@@ -299,6 +299,10 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerRestart)),
 	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/upgrade", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerUpgrade)),
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/abort", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerAbort)),
@@ -2548,6 +2552,61 @@ func (repman *ReplicationManager) handlerMuxServerRestart(w http.ResponseWriter,
 		"node":    nodeParam,
 		"rid":     ridParam,
 	})
+}
+
+// handlerMuxServerUpgrade performs a single-server database upgrade.
+// Runs StopDatabaseServiceClean (innodb_fast_shutdown=0, WAIT FOR ALL SLAVES on master)
+// then UpgradeDatabaseService (on-premise: SSH upgrade script, container: start with new image).
+// @Summary Upgrade a single database server
+// @Tags DatabaseActions
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Success 202 {string} string "Upgrade started"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "Not Found"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/upgrade [post]
+func (repman *ReplicationManager) handlerMuxServerUpgrade(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	node := mycluster.GetServerFromName(vars["serverName"])
+	if node == nil {
+		http.Error(w, "Server Not Found", http.StatusNotFound)
+		return
+	}
+
+	go func() {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Upgrading database server %s", node.URL)
+		if err := mycluster.StopDatabaseServiceClean(node); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Upgrade stop failed for %s: %s", node.URL, err)
+			return
+		}
+		if err := mycluster.WaitDatabaseFailed(node); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Upgrade wait-failed for %s: %s", node.URL, err)
+			return
+		}
+		if err := mycluster.UpgradeDatabaseService(node); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Upgrade failed for %s: %s", node.URL, err)
+			return
+		}
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Upgrade completed for %s", node.URL)
+	}()
+
+	w.WriteHeader(http.StatusAccepted)
+	w.Write([]byte("Upgrade started"))
 }
 
 func (repman *ReplicationManager) handlerMuxServerAbort(w http.ResponseWriter, r *http.Request) {

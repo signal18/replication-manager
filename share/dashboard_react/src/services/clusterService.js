@@ -92,6 +92,7 @@ export const clusterService = {
   clearDatabase,
   startDatabase,
   restartDatabase,
+  upgradeDatabase,
   provisionDatabase,
   unprovisionDatabase,
   updateOpensvcTemplate,
@@ -497,6 +498,10 @@ function startDatabase(clusterName, serverId, baseURL) {
 function restartDatabase(clusterName, serverId, rid, baseURL) {
   const params = rid ? `?rid=${encodeURIComponent(rid)}` : ''
   return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/restart${params}`)
+}
+
+function upgradeDatabase(clusterName, serverId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/upgrade`)
 }
 
 function provisionDatabase(clusterName, serverId, baseURL) {

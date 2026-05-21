@@ -28,6 +28,7 @@ import {
   skipReplicationEvent,
   startDatabase,
   restartDatabase,
+  upgradeDatabase,
   startSlave,
   stopDatabase,
   stopSlave,
@@ -407,6 +408,15 @@ function ServerMenu({
                   openConfirmModal()
                   setConfirmTitle(`Confirm restart for ${serverName}?`)
                   setConfirmHandler(() => () => dispatch(restartDatabase({ clusterName, serverId: row.id })))
+                }
+              },
+              {
+                name: 'Upgrade Database',
+                isDisabled: !user?.grants['db-start'] || !user?.grants['db-stop'],
+                onClick: () => {
+                  openConfirmModal()
+                  setConfirmTitle(`Confirm upgrade for ${serverName}? This will stop the database, upgrade to the target version, and restart.`)
+                  setConfirmHandler(() => () => dispatch(upgradeDatabase({ clusterName, serverId: row.id })))
                 }
               },
               ...(orchestrator === 'opensvc'

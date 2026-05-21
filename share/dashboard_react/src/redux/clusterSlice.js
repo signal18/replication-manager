@@ -1239,6 +1239,22 @@ export const restartDatabase = createGuardedAsyncThunk(
   }
 )
 
+export const upgradeDatabase = createGuardedAsyncThunk(
+  'cluster/upgradeDatabase',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.upgradeDatabase(clusterName, serverId, baseURL)
+      showSuccessBanner('Database upgrade started!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      console.log('error in upgradeDatabase::', error)
+      showErrorBanner('Database upgrade failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const provisionDatabase = createGuardedAsyncThunk(
   'cluster/provisionDatabase',
   async ({ clusterName, serverId }, thunkAPI) => {
