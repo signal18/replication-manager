@@ -2141,33 +2141,49 @@ func (cluster *Cluster) MonitorVariablesChange() {
 		return
 	}
 	for _, srv := range cluster.Servers {
-		if srv == nil || srv.State == stateFailed || srv.Variables == nil {
+		if srv == nil || srv.State == stateFailed || srv.State == stateUnconn || srv.Variables == nil {
+			// Reset snapshot on failure/disconnect so recovery diff is clean
+			if srv != nil && srv.PrevVariables != nil && (srv.State == stateFailed || srv.State == stateUnconn) {
+				srv.PrevVariables = nil
+			}
 			continue
 		}
 		if srv.PrevVariables == nil {
-			// First run: snapshot current variables, no diff yet
+			// First run or post-recovery: snapshot current variables, no diff yet
 			srv.PrevVariables = config.FromStringSyncMap(nil, srv.Variables)
 			continue
 		}
 		currentVars := srv.Variables.ToNewMap()
 		prevVars := srv.PrevVariables.ToNewMap()
 
-		var changes []string
+		var sb strings.Builder
+		sb.WriteString("--- " + srv.URL + " (before)\n")
+		sb.WriteString("+++ " + srv.URL + " (after)\n")
+		changeCount := 0
+
+		// Detect changed and removed variables
+		for k, old := range prevVars {
+			if v, exists := currentVars[k]; !exists {
+				sb.WriteString("- " + k + " = " + old + "\n")
+				changeCount++
+			} else if old != v {
+				sb.WriteString("- " + k + " = " + old + "\n")
+				sb.WriteString("+ " + k + " = " + v + "\n")
+				changeCount++
+			}
+		}
+		// Detect new variables (in current but not in prev)
 		for k, v := range currentVars {
-			if old, exists := prevVars[k]; exists && old != v {
-				changes = append(changes, "- "+k+" = "+old)
-				changes = append(changes, "+ "+k+" = "+v)
+			if _, exists := prevVars[k]; !exists {
+				sb.WriteString("+ " + k + " = " + v + "\n")
+				changeCount++
 			}
 		}
 
-		if len(changes) > 0 {
-			diff := "--- " + srv.URL + " (before)\n+++ " + srv.URL + " (after)\n"
-			for _, line := range changes {
-				diff += line + "\n"
-			}
+		if changeCount > 0 {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-				"Variable change detected on %s: %d variable(s) changed", srv.URL, len(changes)/2)
-			cluster.BashScriptVariableChange(srv.URL, diff)
+				"Variable change detected on %s: %d variable(s) changed", srv.URL, changeCount)
+			cluster.BashScriptVariableChange(srv.URL, sb.String())
 		}
 
 		// Update snapshot
