@@ -2181,9 +2181,16 @@ func (cluster *Cluster) MonitorVariablesChange() {
 		}
 
 		if changeCount > 0 {
+			diffStr := sb.String()
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 				"Variable change detected on %s: %d variable(s) changed", srv.URL, changeCount)
-			cluster.BashScriptVariableChange(srv.URL, sb.String())
+			cluster.LogVariableChange.Add(s18log.HttpMessage{
+				Group:     cluster.Name,
+				Level:     "INFO",
+				Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+				Text:      fmt.Sprintf("Server %s: %d variable(s) changed\n%s", srv.URL, changeCount, diffStr),
+			})
+			cluster.BashScriptVariableChange(srv.URL, diffStr)
 		}
 
 		// Update snapshot
