@@ -103,12 +103,6 @@ function Billing() {
   }, [dispatch])
 
   useEffect(() => {
-    if (pendingInvoiceUrl) {
-      setPaymentUrl(pendingInvoiceUrl)
-    }
-  }, [pendingInvoiceUrl])
-
-  useEffect(() => {
     if (billingProfile && typeof billingProfile === 'object') {
       setProfileForm({
         name: billingProfile.name || '',
@@ -145,6 +139,13 @@ function Billing() {
       ? { requested_plan: typeof subscription.next_plan === 'object' ? (subscription.next_plan.code || subscription.next_plan.plan) : subscription.next_plan, status: 'scheduled' }
       : null
   const pendingInvoiceUrl = pendingChangeRequest?.invoice?.payment_url || null
+
+  useEffect(() => {
+    if (pendingInvoiceUrl) {
+      setPaymentUrl(pendingInvoiceUrl)
+    }
+  }, [pendingInvoiceUrl])
+
   const catalogPlans = useMemo(() => {
     const source = Array.isArray(plansCatalog) ? plansCatalog : plansCatalog?.plans
     return Array.isArray(source) ? source : []
