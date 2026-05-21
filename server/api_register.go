@@ -1582,7 +1582,7 @@ func (repman *ReplicationManager) handlerChangeSubscription(w http.ResponseWrite
 		return
 	}
 
-	if status == http.StatusOK || status == http.StatusCreated {
+	if status == http.StatusOK || status == http.StatusCreated || status == http.StatusAccepted {
 		repman.persistInstanceSubscriptionPlan(req.Plan, uri)
 	}
 

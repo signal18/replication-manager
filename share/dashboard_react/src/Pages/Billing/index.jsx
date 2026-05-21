@@ -43,6 +43,7 @@ function Billing() {
   const dispatch = useDispatch()
   const [offset, setOffset] = useState(0)
   const [selectedPlanCode, setSelectedPlanCode] = useState('')
+  const [paymentUrl, setPaymentUrl] = useState(null)
   const { isOpen, onOpen, onClose } = useDisclosure()
   const { theme } = useTheme()
 
@@ -100,7 +101,9 @@ function Billing() {
   const statusLabel = currentSubscription?.status || null
   const pendingChangeRequest = subscription?.pending_change_request && typeof subscription.pending_change_request === 'object'
     ? subscription.pending_change_request
-    : null
+    : subscription?.next_plan
+      ? { requested_plan: typeof subscription.next_plan === 'object' ? (subscription.next_plan.code || subscription.next_plan.plan) : subscription.next_plan, status: 'scheduled' }
+      : null
   const catalogPlans = useMemo(() => {
     const source = Array.isArray(plansCatalog) ? plansCatalog : plansCatalog?.plans
     return Array.isArray(source) ? source : []
@@ -154,6 +157,10 @@ function Billing() {
     const result = await dispatch(requestBillingSubscriptionChange({ subscription: selectedPlanCode }))
     if (requestBillingSubscriptionChange.fulfilled.match(result)) {
       handleCloseChangePlan()
+      const url = result.payload?.data?.invoice?.payment_url
+      if (url) {
+        setPaymentUrl(url)
+      }
       dispatch(fetchBillingSubscription())
       dispatch(fetchBillingPlansCatalog())
     }
@@ -166,6 +173,17 @@ function Billing() {
         <Box borderWidth='1px' borderColor='var(--warning-secondary-color)' borderRadius='md' p={3} bg='var(--warning-tertiary-color)'>
           <Text fontSize='sm' color='var(--warning-primary-color)' fontWeight='semibold'>Billing service notice</Text>
           <Text fontSize='sm' color='var(--text-color)'>{crmUnavailableMessage}</Text>
+        </Box>
+      )}
+      {paymentUrl && (
+        <Box borderWidth='1px' borderColor='var(--info-secondary-color, #63b3ed)' borderRadius='md' p={3} bg='var(--info-tertiary-color, #ebf8ff)'>
+          <Text fontSize='sm' color='var(--info-primary-color, #2b6cb0)' fontWeight='semibold'>Payment required to activate plan change</Text>
+          <Text fontSize='sm' color='var(--text-color)'>
+            Complete payment to finalize your subscription upgrade:{' '}
+            <Text as='a' href={paymentUrl} target='_blank' rel='noopener noreferrer' color='var(--primary-color)' textDecoration='underline'>
+              Pay now
+            </Text>
+          </Text>
         </Box>
       )}
       <HStack align='stretch' spacing={4} flexWrap='wrap'>
@@ -224,7 +242,7 @@ function Billing() {
                 <Box borderWidth='1px' borderColor={pendingBorderColor} borderRadius='md' p={2} w='full' bg={pendingBoxBg}>
                   <Text fontSize='xs' color='var(--warning-primary-color)' fontWeight='bold' textTransform='uppercase' letterSpacing='wide'>Pending Request</Text>
                   <Text fontSize='sm' color='var(--text-color)'>
-                    {String(pendingChangeRequest.requested_subscription || 'change request')} ({String(pendingChangeRequest.status || 'pending')})
+                    {String(pendingChangeRequest.requested_plan || pendingChangeRequest.requested_subscription || 'change request')} ({String(pendingChangeRequest.status || 'pending')})
                   </Text>
                 </Box>
               )}
