@@ -246,6 +246,13 @@ func (repman *ReplicationManager) httpserver() {
 		negroni.Wrap(http.HandlerFunc(repman.handlerBillingTransactions)),
 	))
 
+	router.Handle("/api/billing/profile", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerBillingProfile)),
+	)).Methods(http.MethodGet, http.MethodPut)
+
+	router.HandleFunc("/api/billing/profile", repman.handlerBillingProfilePreflight).Methods(http.MethodOptions)
+
 	router.Handle("/api/prometheus", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPrometheus)),
 	))

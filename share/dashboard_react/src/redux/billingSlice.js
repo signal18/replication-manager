@@ -9,16 +9,22 @@ const initialState = {
   changeSubscriptionResult: null,
   transactions: [],
   transactionsMeta: null,
+  billingProfile: null,
   loadingBalance: false,
   loadingSubscription: false,
   loadingPlansCatalog: false,
   loadingChangeSubscription: false,
   loadingTransactions: false,
+  loadingBillingProfile: false,
+  loadingUpdateBillingProfile: false,
   errorBalance: null,
   errorSubscription: null,
   errorPlansCatalog: null,
   errorChangeSubscription: null,
-  errorTransactions: null
+  errorTransactions: null,
+  errorBillingProfile: null,
+  errorUpdateBillingProfile: null,
+  updateBillingProfileSuccess: false
 }
 
 const normalizeMaybeWrapped = (payload) => {
@@ -26,6 +32,14 @@ const normalizeMaybeWrapped = (payload) => {
     return payload.data
   }
   return payload
+}
+
+const normalizeBillingProfile = (payload) => {
+  const unwrapped = normalizeMaybeWrapped(payload)
+  if (unwrapped && typeof unwrapped === 'object') {
+    return unwrapped.billing_profile || unwrapped
+  }
+  return null
 }
 
 const normalizeTransactions = (payload) => {
@@ -166,6 +180,43 @@ export const requestBillingSubscriptionChange = createAsyncThunk('billing/reques
   }
 })
 
+export const fetchBillingProfile = createAsyncThunk('billing/fetchBillingProfile', async (_, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const response = await billingService.getBillingProfile(baseURL)
+    const status = Number(response?.status || 0)
+    if (status >= 200 && status < 300) {
+      return response
+    }
+    return thunkAPI.rejectWithValue({
+      message: normalizeBillingErrorMessage(
+        response,
+        'Failed to fetch billing profile',
+        'The CRM billing service is temporarily unavailable. Billing profile cannot be loaded right now.'
+      )
+    })
+  } catch (error) {
+    return thunkAPI.rejectWithValue({ message: extractApiErrorMessage(error, 'Failed to fetch billing profile') })
+  }
+})
+
+export const updateBillingProfile = createAsyncThunk('billing/updateBillingProfile', async (profile, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const response = await billingService.updateBillingProfile(profile, baseURL)
+    const status = Number(response?.status || 0)
+    if (status >= 200 && status < 300) {
+      return response
+    }
+    const apiMessage = typeof response?.data === 'object'
+      ? (response.data?.error || response.data?.message)
+      : ''
+    return thunkAPI.rejectWithValue({ message: apiMessage || 'Failed to update billing profile' })
+  } catch (error) {
+    return thunkAPI.rejectWithValue({ message: extractApiErrorMessage(error, 'Failed to update billing profile') })
+  }
+})
+
 const billingSlice = createSlice({
   name: 'billing',
   initialState,
@@ -175,6 +226,10 @@ const billingSlice = createSlice({
     },
     clearChangeSubscriptionError: (state) => {
       state.errorChangeSubscription = null
+    },
+    clearUpdateBillingProfileStatus: (state) => {
+      state.errorUpdateBillingProfile = null
+      state.updateBillingProfileSuccess = false
     }
   },
   extraReducers: (builder) => {
@@ -242,8 +297,33 @@ const billingSlice = createSlice({
         state.loadingChangeSubscription = false
         state.errorChangeSubscription = action.payload?.message || action.error?.message || 'Failed to change billing subscription'
       })
+      .addCase(fetchBillingProfile.pending, (state) => {
+        state.loadingBillingProfile = true
+        state.errorBillingProfile = null
+      })
+      .addCase(fetchBillingProfile.fulfilled, (state, action) => {
+        state.loadingBillingProfile = false
+        state.billingProfile = normalizeBillingProfile(action.payload?.data)
+      })
+      .addCase(fetchBillingProfile.rejected, (state, action) => {
+        state.loadingBillingProfile = false
+        state.errorBillingProfile = action.payload?.message || action.error?.message || 'Failed to fetch billing profile'
+      })
+      .addCase(updateBillingProfile.pending, (state) => {
+        state.loadingUpdateBillingProfile = true
+        state.errorUpdateBillingProfile = null
+        state.updateBillingProfileSuccess = false
+      })
+      .addCase(updateBillingProfile.fulfilled, (state) => {
+        state.loadingUpdateBillingProfile = false
+        state.updateBillingProfileSuccess = true
+      })
+      .addCase(updateBillingProfile.rejected, (state, action) => {
+        state.loadingUpdateBillingProfile = false
+        state.errorUpdateBillingProfile = action.payload?.message || action.error?.message || 'Failed to update billing profile'
+      })
   }
 })
 
-export const { clearBillingState, clearChangeSubscriptionError } = billingSlice.actions
+export const { clearBillingState, clearChangeSubscriptionError, clearUpdateBillingProfileStatus } = billingSlice.actions
 export default billingSlice.reducer
