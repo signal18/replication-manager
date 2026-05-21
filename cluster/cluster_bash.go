@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -56,6 +57,7 @@ func (cluster *Cluster) BashScriptProvDNS(cname string) error {
 // BashScriptSchemaChange calls the monitoring-schema-change-script when a table
 // change is detected. The diff of column definitions is piped to stdin.
 // Args: $1=cluster $2=server_url $3=schema $4=table $5=change_type(new/altered/dropped)
+// The script runs with a 30-second timeout to avoid stalling the monitoring loop.
 func (cluster *Cluster) BashScriptSchemaChange(serverURL, schema, table, changeType string, oldCols, newCols []dbhelper.Column) error {
 	if cluster.Conf.MonitorSchemaChangeScript == "" {
 		return nil
@@ -63,18 +65,26 @@ func (cluster *Cluster) BashScriptSchemaChange(serverURL, schema, table, changeT
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO",
 		"Calling schema change script for %s.%s (%s) on %s", schema, table, changeType, serverURL)
 
-	// Build column diff
 	diff := columnDiff(schema, table, oldCols, newCols)
 
-	cmd := exec.Command(cluster.Conf.MonitorSchemaChangeScript, cluster.Name, serverURL, schema, table, changeType)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, cluster.Conf.MonitorSchemaChangeScript, cluster.Name, serverURL, schema, table, changeType)
 	cmd.Stdin = strings.NewReader(diff)
 	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR",
+			"Schema change script timed out after 30s for %s.%s", schema, table)
+		return ctx.Err()
+	}
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR",
 			"Schema change script error: %s", err)
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO",
-		"Schema change script complete: %s", string(out))
+	if len(out) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO",
+			"Schema change script output: %s", string(out))
+	}
 	return nil
 }
 
