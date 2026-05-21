@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -55,21 +56,33 @@ func (cluster *Cluster) BashScriptProvDNS(cname string) error {
 // BashScriptVariableChange calls the monitoring-variable-change-script when
 // server variables change over time. The diff is piped to stdin.
 // Args: $1=cluster $2=server_url
+// Runs with a 30-second timeout to avoid stalling the monitoring loop.
 func (cluster *Cluster) BashScriptVariableChange(serverURL, diff string) error {
 	if cluster.Conf.MonitorVariableChangeScript == "" {
 		return nil
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO",
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"Calling variable change script for %s", serverURL)
-	cmd := exec.Command(cluster.Conf.MonitorVariableChangeScript, cluster.Name, serverURL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, cluster.Conf.MonitorVariableChangeScript, cluster.Name, serverURL)
 	cmd.Stdin = strings.NewReader(diff)
 	out, err := cmd.CombinedOutput()
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR",
-			"Variable change script error: %s", err)
+	if ctx.Err() == context.DeadlineExceeded {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Variable change script timed out after 30s for %s", serverURL)
+		return ctx.Err()
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO",
-		"Variable change script complete: %s", string(out))
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Variable change script error for %s: %s %s", serverURL, err, string(out))
+		return err
+	}
+	if len(out) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Variable change script output: %s", string(out))
+	}
 	return nil
 }
 
