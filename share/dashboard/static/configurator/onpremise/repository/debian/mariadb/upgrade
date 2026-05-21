@@ -177,10 +177,24 @@ log_info "Repository configured: $REPO_URL $OS_CODENAME"
 log_info "Updating package index"
 apt-get update -qq
 
-log_info "Upgrading MariaDB packages"
+log_info "Upgrading MariaDB packages to ${TARGET_VERSION}"
+
+# Pin to the exact target version if it has a patch component (e.g. 11.8.6),
+# otherwise install the latest available in the repo (e.g. 11.8).
+APT_VERSION=""
+if [[ "$TARGET_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    # Check if the exact version is available in the repo
+    APT_CANDIDATE=$(apt-cache madison mariadb-server 2>/dev/null | grep "$TARGET_VERSION" | head -1 | awk '{print $3}')
+    if [[ -n "$APT_CANDIDATE" ]]; then
+        APT_VERSION="=${APT_CANDIDATE}"
+        log_info "Pinning to version: $APT_CANDIDATE"
+    else
+        log_warn "Exact version $TARGET_VERSION not found in repo, installing latest in $TARGET_MAJOR_MINOR series"
+    fi
+fi
+
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-    --only-upgrade \
-    mariadb-server mariadb-client mariadb-backup 2>&1 | while read -r line; do
+    "mariadb-server${APT_VERSION}" "mariadb-client${APT_VERSION}" mariadb-backup 2>&1 | while read -r line; do
     log_info "apt: $line"
 done
 

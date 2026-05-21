@@ -165,10 +165,19 @@ else
     PKG_MGR="yum"
 fi
 
-log_info "Upgrading MariaDB packages via $PKG_MGR"
+log_info "Upgrading MariaDB packages to ${TARGET_VERSION} via $PKG_MGR"
 $PKG_MGR clean all -q
-$PKG_MGR upgrade -y -q \
-    MariaDB-server MariaDB-client MariaDB-backup 2>&1 | while read -r line; do
+
+# Pin to the exact target version if it has a patch component (e.g. 11.8.6),
+# otherwise install the latest available in the repo (e.g. 11.8).
+YUM_VERSION=""
+if [[ "$TARGET_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    YUM_VERSION="-${TARGET_VERSION}"
+    log_info "Pinning to version: $TARGET_VERSION"
+fi
+
+$PKG_MGR install -y -q \
+    "MariaDB-server${YUM_VERSION}" "MariaDB-client${YUM_VERSION}" MariaDB-backup 2>&1 | while read -r line; do
     log_info "$PKG_MGR: $line"
 done
 
