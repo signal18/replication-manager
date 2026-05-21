@@ -2191,7 +2191,7 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 		}
 
 		if haschanged && changeType != "init" {
-			cluster.BashScriptSchemaChange(cmaster.URL, t.TableSchema, t.TableName, changeType)
+			cluster.BashScriptSchemaChange(cmaster.URL, t.TableSchema, t.TableName, changeType, oldtable.TableColumns, t.TableColumns)
 		}
 
 		// If shardproxy is enabled, check for duplicates in child clusters
