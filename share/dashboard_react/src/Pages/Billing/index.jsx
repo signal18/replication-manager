@@ -103,6 +103,12 @@ function Billing() {
   }, [dispatch])
 
   useEffect(() => {
+    if (pendingInvoiceUrl) {
+      setPaymentUrl(pendingInvoiceUrl)
+    }
+  }, [pendingInvoiceUrl])
+
+  useEffect(() => {
     if (billingProfile && typeof billingProfile === 'object') {
       setProfileForm({
         name: billingProfile.name || '',
@@ -138,6 +144,7 @@ function Billing() {
     : subscription?.next_plan
       ? { requested_plan: typeof subscription.next_plan === 'object' ? (subscription.next_plan.code || subscription.next_plan.plan) : subscription.next_plan, status: 'scheduled' }
       : null
+  const pendingInvoiceUrl = pendingChangeRequest?.invoice?.payment_url || null
   const catalogPlans = useMemo(() => {
     const source = Array.isArray(plansCatalog) ? plansCatalog : plansCatalog?.plans
     return Array.isArray(source) ? source : []
@@ -227,9 +234,12 @@ function Billing() {
     const result = await dispatch(requestBillingSubscriptionChange({ subscription: selectedPlanCode }))
     if (requestBillingSubscriptionChange.fulfilled.match(result)) {
       handleCloseChangePlan()
-      const url = result.payload?.data?.invoice?.payment_url
+      const raw = result.payload?.data
+      const body = (raw && typeof raw === 'object' && 'data' in raw) ? raw.data : raw
+      const url = body?.pending_change_request?.invoice?.payment_url
       if (url) {
         setPaymentUrl(url)
+        window.open(url, '_blank', 'noopener,noreferrer')
       }
       dispatch(fetchBillingSubscription())
       dispatch(fetchBillingPlansCatalog())
@@ -315,6 +325,13 @@ function Billing() {
                     {/* requested_subscription is the current DBaaS API field; requested_plan is the legacy field / next_plan shim */}
                     {String(pendingChangeRequest.requested_subscription || pendingChangeRequest.requested_plan || 'change request')} ({String(pendingChangeRequest.status || 'pending')})
                   </Text>
+                  {pendingChangeRequest.invoice?.payment_url && (
+                    <Text fontSize='sm' mt={1}>
+                      <Text as='a' href={pendingChangeRequest.invoice.payment_url} target='_blank' rel='noopener noreferrer' color='var(--primary-color)' textDecoration='underline'>
+                        Pay invoice {pendingChangeRequest.invoice.ref || ''} ({pendingChangeRequest.invoice.amount} {pendingChangeRequest.invoice.currency})
+                      </Text>
+                    </Text>
+                  )}
                 </Box>
               )}
               <Box>
