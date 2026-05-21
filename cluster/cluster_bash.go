@@ -12,11 +12,13 @@ import (
 	"os/exec"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -51,13 +53,22 @@ func (cluster *Cluster) BashScriptProvDNS(cname string) error {
 	return nil
 }
 
-func (cluster *Cluster) BashScriptSchemaChange(serverURL, schema, table, changeType string) error {
+// BashScriptSchemaChange calls the monitoring-schema-change-script when a table
+// change is detected. The diff of column definitions is piped to stdin.
+// Args: $1=cluster $2=server_url $3=schema $4=table $5=change_type(new/altered/dropped)
+func (cluster *Cluster) BashScriptSchemaChange(serverURL, schema, table, changeType string, oldCols, newCols []dbhelper.Column) error {
 	if cluster.Conf.MonitorSchemaChangeScript == "" {
 		return nil
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO",
 		"Calling schema change script for %s.%s (%s) on %s", schema, table, changeType, serverURL)
-	out, err := exec.Command(cluster.Conf.MonitorSchemaChangeScript, cluster.Name, serverURL, schema, table, changeType).CombinedOutput()
+
+	// Build column diff
+	diff := columnDiff(schema, table, oldCols, newCols)
+
+	cmd := exec.Command(cluster.Conf.MonitorSchemaChangeScript, cluster.Name, serverURL, schema, table, changeType)
+	cmd.Stdin = strings.NewReader(diff)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR",
 			"Schema change script error: %s", err)
@@ -65,6 +76,57 @@ func (cluster *Cluster) BashScriptSchemaChange(serverURL, schema, table, changeT
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO",
 		"Schema change script complete: %s", string(out))
 	return nil
+}
+
+// columnDiff produces a unified-style diff of column definitions between old and new.
+func columnDiff(schema, table string, oldCols, newCols []dbhelper.Column) string {
+	fqn := schema + "." + table
+	var b strings.Builder
+	b.WriteString("--- " + fqn + " (before)\n")
+	b.WriteString("+++ " + fqn + " (after)\n")
+
+	oldMap := make(map[string]dbhelper.Column)
+	for _, c := range oldCols {
+		oldMap[c.Name] = c
+	}
+	newMap := make(map[string]dbhelper.Column)
+	for _, c := range newCols {
+		newMap[c.Name] = c
+	}
+
+	// Dropped columns (in old but not in new)
+	for _, c := range oldCols {
+		if _, exists := newMap[c.Name]; !exists {
+			b.WriteString("- " + formatColumn(c) + "\n")
+		}
+	}
+
+	// New or altered columns
+	for _, c := range newCols {
+		old, exists := oldMap[c.Name]
+		if !exists {
+			b.WriteString("+ " + formatColumn(c) + "\n")
+		} else if formatColumn(old) != formatColumn(c) {
+			b.WriteString("- " + formatColumn(old) + "\n")
+			b.WriteString("+ " + formatColumn(c) + "\n")
+		}
+	}
+
+	return b.String()
+}
+
+func formatColumn(c dbhelper.Column) string {
+	s := c.Name + " " + c.Type
+	if !c.Nullable {
+		s += " NOT NULL"
+	}
+	if c.Default != nil {
+		s += " DEFAULT " + *c.Default
+	}
+	if c.Extra != "" {
+		s += " " + c.Extra
+	}
+	return s
 }
 
 func (cluster *Cluster) BashScriptOpenSate(state state.State) error {
