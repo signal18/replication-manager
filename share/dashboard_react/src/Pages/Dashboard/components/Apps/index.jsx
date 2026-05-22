@@ -6,8 +6,6 @@ import AppGrid from './AppGrid'
 function Apps({ selectedCluster, user }) {
   const isDesktop = useSelector((state) => state.common.isDesktop)
   const clusterApps = useSelector((state) => state.cluster.clusterApps)
-  const clusterAppStates = useSelector((state) => state.cluster.clusterAppStates)
-
   const [viewType, setViewType] = useState('table')
 
   const showGridView = () => {
@@ -23,11 +21,8 @@ function Apps({ selectedCluster, user }) {
         apps={clusterApps}
         isDesktop={isDesktop}
         clusterName={selectedCluster?.name}
-        showGridView={showGridView}
-        isMenuOptionsVisible={true}
         orchestrator={selectedCluster?.config?.provOrchestrator}
         user={user}
-        states={clusterAppStates}
       />
     ) : (
       <AppGrid
@@ -35,10 +30,8 @@ function Apps({ selectedCluster, user }) {
         isDesktop={isDesktop}
         clusterName={selectedCluster?.name}
         showTableView={showTableView}
-        isMenuOptionsVisible={true}
         orchestrator={selectedCluster?.config?.provOrchestrator}
         user={user}
-        states={clusterAppStates}
       />
     )
   ) : null
