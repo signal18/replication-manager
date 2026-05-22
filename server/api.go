@@ -320,6 +320,7 @@ func (repman *ReplicationManager) apiserver() {
 	// replication-manager can run this API server path independently of httpserver().
 	router.HandleFunc("/api/signup", repman.handlerSignup).Methods(http.MethodPost, http.MethodOptions)
 	router.HandleFunc("/api/signup/promo", repman.handlerSignupPromo).Methods(http.MethodGet, http.MethodOptions)
+	router.HandleFunc("/api/signup/status", repman.handlerSignupStatus).Methods(http.MethodGet, http.MethodOptions)
 	router.HandleFunc("/api/autologin", repman.autologinHandler)
 	router.HandleFunc("/api/dashboard-token", repman.dashboardTokenHandler)
 	router.HandleFunc("/api/version", repman.handlerVersion)

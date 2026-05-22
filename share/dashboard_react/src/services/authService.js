@@ -6,6 +6,7 @@ export const authService = {
   signup,
   whoami,
   getSignupPromo,
+  getSignupStatus,
   pollUpgrade,
 }
 
@@ -33,6 +34,10 @@ function signup(payload, baseURL) {
 
 function getSignupPromo() {
   return publicApi.get('signup/promo')
+}
+
+function getSignupStatus(email) {
+  return publicApi.get('signup/status', { email })
 }
 
 function pollUpgrade(upgradeId) {

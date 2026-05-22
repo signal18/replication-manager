@@ -765,6 +765,45 @@ func (repman *ReplicationManager) handlerSignupPromo(w http.ResponseWriter, r *h
 	w.Write(body)
 }
 
+// handlerSignupStatus — GET /api/signup/status?email=xxx (public, no JWT required)
+//
+// Proxies to the CRM to check whether a user's email has been confirmed in
+// GitLab.  Called by the signup page every 5s after account creation so the
+// frontend can auto-login once the user clicks the confirmation link.
+func (repman *ReplicationManager) handlerSignupStatus(w http.ResponseWriter, r *http.Request) {
+	repman.setSignupCORSHeaders(w, r)
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	email := strings.TrimSpace(r.URL.Query().Get("email"))
+	if email == "" {
+		writeJSONError(w, http.StatusBadRequest, "missing email parameter")
+		return
+	}
+
+	status, body, err := crmGetSignupStatus(repman.crmBase(), email)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"signup/status: CRM unreachable: %s", err)
+		writeJSONError(w, http.StatusBadGateway, "CRM API unreachable")
+		return
+	}
+
+	w.WriteHeader(status)
+	w.Write(body)
+}
+
 // handlerRegisterStatus — GET /api/register/status  (admin JWT required)
 //
 // Returns the current registration state so the GUI or CLI can poll until
@@ -949,6 +988,23 @@ func crmGetPlans(crmBase string) (int, []byte, error) {
 // from the CRM (no auth required).
 func crmGetSignupPromo(crmBase string) (int, []byte, error) {
 	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/signup/promo", nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := crmHTTPClient15s.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
+}
+
+// crmGetSignupStatus checks whether a user's email has been confirmed via the
+// CRM (which queries GitLab admin API). No auth required — public endpoint.
+func crmGetSignupStatus(crmBase, email string) (int, []byte, error) {
+	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/signup/status?email="+url.QueryEscape(email), nil)
 	if err != nil {
 		return 0, nil, err
 	}

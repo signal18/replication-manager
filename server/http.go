@@ -146,6 +146,7 @@ func (repman *ReplicationManager) httpserver() {
 	// replication-manager can run either HTTP API path depending on runtime flags.
 	router.HandleFunc("/api/signup", repman.handlerSignup).Methods(http.MethodPost, http.MethodOptions)
 	router.HandleFunc("/api/signup/promo", repman.handlerSignupPromo).Methods(http.MethodGet, http.MethodOptions)
+	router.HandleFunc("/api/signup/status", repman.handlerSignupStatus).Methods(http.MethodGet, http.MethodOptions)
 	router.HandleFunc("/api/autologin", repman.autologinHandler)
 	router.HandleFunc("/api/dashboard-token", repman.dashboardTokenHandler)
 
