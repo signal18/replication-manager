@@ -381,7 +381,7 @@ function Home() {
                 ...(user?.grants['cluster-show-backups']
                   ? [<Maintenance user={user} selectedCluster={selectedCluster} onOpenBackupSettings={openBackupSettings} onOpenSchedulerSettings={openSchedulerSettings} onOpenLogsSettings={openLogsSettings} />]
                   : []),
-                ...(user?.grants['db-show-process'] ? [<Top selectedCluster={selectedCluster} onOpenSettings={openMonitoringSettings} />] : []),
+                ...(user?.grants['db-show-process'] ? [<Top selectedCluster={selectedCluster} onOpenMonitoringSettings={openMonitoringSettings} onOpenTopologySettings={openTopologySettings} />] : []),
                 ...(selectedCluster?.config?.proxysql && user?.grants['cluster-show-agents']
                   ? [<QueryRules selectedCluster={selectedCluster} />]
                   : []),

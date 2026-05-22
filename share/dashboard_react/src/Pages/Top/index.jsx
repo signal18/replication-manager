@@ -18,7 +18,7 @@ import OpenSVCWorkload from '../Dashboard/components/OpenSVCWorkload/OpenSVCWork
 import RMIconButton from '../../components/RMIconButton'
 import { HiCog } from 'react-icons/hi'
 
-function Top({ selectedCluster, onOpenSettings }) {
+function Top({ selectedCluster, onOpenMonitoringSettings, onOpenTopologySettings }) {
   const dispatch = useDispatch()
   const [topProcessData, setTopProcessData] = useState([])
   const [numberOfRows, setNumberOfRows] = useState(convertObjectToArrayForDropdown([10, 15, 30, 40, 50]))
@@ -149,6 +149,7 @@ function Top({ selectedCluster, onOpenSettings }) {
         className={styles.accordion}
         headerClassName={styles.accordionHeader}
         heading={'Tests'}
+        headerActions={onOpenTopologySettings ? <RMIconButton icon={HiCog} tooltip='Topology Settings (Test Mode)' onClick={onOpenTopologySettings} size='xs' variant='ghost' /> : null}
         body={<RunTests selectedCluster={selectedCluster} />}
       />
       {selectedCluster?.config?.provOrchestrator == "opensvc" && opensvcStats && (
@@ -182,7 +183,7 @@ function Top({ selectedCluster, onOpenSettings }) {
               headerClassName={`${styles.accordionHeader} ${styles[color]}`}
               panelClassName={`${styles.accordionBody} ${styles[color]}`}
               className={styles.accordion}
-              headerActions={onOpenSettings ? <RMIconButton icon={HiCog} tooltip='Monitoring Settings' onClick={onOpenSettings} size='xs' variant='ghost' /> : null}
+              headerActions={onOpenMonitoringSettings ? <RMIconButton icon={HiCog} tooltip='Monitoring Settings' onClick={onOpenMonitoringSettings} size='xs' variant='ghost' /> : null}
               heading={
                 <HStack>
                   <Text> {topP.url}</Text>
