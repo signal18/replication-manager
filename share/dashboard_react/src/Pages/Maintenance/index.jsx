@@ -125,7 +125,7 @@ const resticTaskDetail = (row) => {
 
 
 // section: undefined = full page, 'backup' = backup accordions only, 'jobs' = jobs accordion only
-function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onOpenSchedulerSettings }) {
+function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onOpenSchedulerSettings, onOpenLogsSettings }) {
   const [data, setData] = useState([])
   const [snapshotData, setSnapshotData] = useState([])
   const [queueData, setQueueData] = useState([])
@@ -637,6 +637,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       headerClassName={styles.accordionHeader}
       panelClassName={styles.accordionPanel}
       heading={'Job Logs'}
+      headerActions={settingsButton(onOpenLogsSettings, 'Open Log Settings')}
       body={<TaskLogs />}
     />
   )

@@ -328,6 +328,13 @@ function Home() {
 
   const openBackupSettings = () => openSettingsSection(['isBackupOpen', 'isS3ProvidersOpen'])
   const openSchedulerSettings = () => openSettingsSection(['isSchedulerOpen'])
+  const openTopologySettings = () => openSettingsSection(['isGeneralOpen'])
+  const openProxiesSettings = () => openSettingsSection(['isProxiesOpen'])
+  const openLogsSettings = () => openSettingsSection(['isLogsOpen'])
+  const openMonitoringSettings = () => openSettingsSection(['isMonitoringOpen'])
+  const openPluginsSettings = () => openSettingsSection(['isPluginsOpen'])
+  const openGraphsSettings = () => openSettingsSection(['isGraphsOpen'])
+  const openFailoverSettings = () => openSettingsSection(['isRepFailOverOpen'])
   const openNewClusterModal = (e) => {
     e.stopPropagation()
     setIsNewClusterModalOpen(true)
@@ -361,7 +368,7 @@ function Home() {
             <ClusterList onClick={setDashboardTab} />,
             ...(isClusterOpenRef.current
               ? [
-                <Dashboard user={user} selectedCluster={selectedCluster} />,
+                <Dashboard user={user} selectedCluster={selectedCluster} openSettings={{ topology: openTopologySettings, proxies: openProxiesSettings, logs: openLogsSettings, scheduler: openSchedulerSettings, monitoring: openMonitoringSettings, plugins: openPluginsSettings, graphs: openGraphsSettings, failover: openFailoverSettings }} />,
                 <Settings user={user} selectedCluster={selectedCluster} onTabChange={handleTabChange} monitor={monitor} />,
                 <Configs user={user} selectedCluster={selectedCluster} />,
                 ...(selectedCluster?.config?.graphiteMetrics && user?.grants['cluster-show-graphs']
@@ -371,13 +378,13 @@ function Home() {
                   ? [<Agents user={user} selectedCluster={selectedCluster} />]
                   : []),
                 ...(user?.grants['cluster-show-backups']
-                  ? [<Maintenance user={user} selectedCluster={selectedCluster} onOpenBackupSettings={openBackupSettings} onOpenSchedulerSettings={openSchedulerSettings} />]
+                  ? [<Maintenance user={user} selectedCluster={selectedCluster} onOpenBackupSettings={openBackupSettings} onOpenSchedulerSettings={openSchedulerSettings} onOpenLogsSettings={openLogsSettings} />]
                   : []),
                 ...(user?.grants['db-show-process'] ? [<Top selectedCluster={selectedCluster} />] : []),
                 ...(selectedCluster?.config?.proxysql && user?.grants['cluster-show-agents']
                   ? [<QueryRules selectedCluster={selectedCluster} />]
                   : []),
-                ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} user={user} onOpenSchedulerSettings={openMaintenanceScheduler} />] : []),
+                ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} user={user} onOpenSchedulerSettings={openMaintenanceScheduler} onOpenLogsSettings={openLogsSettings} />] : []),
                 ...(user?.grants['cluster-grant'] ? [<Users selectedCluster={selectedCluster} user={user} />] : [])
               ]
               : [

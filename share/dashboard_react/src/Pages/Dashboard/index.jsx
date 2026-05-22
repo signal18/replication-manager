@@ -9,6 +9,8 @@ import { GeneralLogs, TaskLogs, SecurityLogs, WorkloadLogs, DDLLogs, VariableCha
 import DBServers from './components/DBServers'
 import Proxies from './components/Proxies'
 import Apps from './components/Apps/index.jsx'
+import RMIconButton from '../../components/RMIconButton'
+import { HiCog } from 'react-icons/hi'
 // Accordion heading with a "?" tooltip explaining log content
 function LogHeading({ title, description }) {
   return (
@@ -37,8 +39,13 @@ function LogHeading({ title, description }) {
   )
 }
 
-function Dashboard({ selectedCluster, user }) {
+function Dashboard({ selectedCluster, user, openSettings = {} }) {
   const isDesktop = useSelector((state) => state.common.isDesktop)
+
+  const gearButton = (onClick, tooltip) =>
+    onClick ? (
+      <RMIconButton icon={HiCog} tooltip={tooltip} onClick={onClick} size='xs' variant='ghost' />
+    ) : null
 
   return (
     <Flex direction='column' gap='8px'>
@@ -60,6 +67,7 @@ function Dashboard({ selectedCluster, user }) {
         <AccordionComponent
           heading={'Database servers'}
           panelSX={{ overflowX: 'auto', p: 0 }}
+          headerActions={gearButton(openSettings.topology, 'Topology Settings')}
           body={<DBServers selectedCluster={selectedCluster} user={user} />}
         />
       )}
@@ -68,6 +76,7 @@ function Dashboard({ selectedCluster, user }) {
         <AccordionComponent
           heading={'Proxies'}
           panelSX={{ overflowX: 'auto', p: 0 }}
+          headerActions={gearButton(openSettings.proxies, 'Proxy Settings')}
           body={<Proxies selectedCluster={selectedCluster} user={user} />}
         />)}
 
@@ -78,8 +87,8 @@ function Dashboard({ selectedCluster, user }) {
           body={<Apps selectedCluster={selectedCluster} user={user} />}
         />)}
 
-      <AccordionComponent heading={'Cluster Logs'} body={<GeneralLogs />} />
-      <AccordionComponent heading={'Job Logs'} body={<TaskLogs />} />
+      <AccordionComponent heading={'Cluster Logs'} headerActions={gearButton(openSettings.logs, 'Log Settings')} body={<GeneralLogs />} />
+      <AccordionComponent heading={'Job Logs'} headerActions={gearButton(openSettings.scheduler, 'Scheduler Settings')} body={<TaskLogs />} />
       <AccordionComponent
         heading={
           <LogHeading
@@ -87,6 +96,7 @@ function Dashboard({ selectedCluster, user }) {
             description='Security compliance findings from audit plugins (SEC0xxx): empty passwords, weak auth, no SSL, missing audit plugin, etc. Also includes API login failures and account lockouts. Does not appear in the main Cluster Logs.'
           />
         }
+        headerActions={gearButton(openSettings.plugins, 'Plugin Settings')}
         body={<SecurityLogs />}
       />
       <AccordionComponent
@@ -96,6 +106,7 @@ function Dashboard({ selectedCluster, user }) {
             description='Performance spike detections based on Graphite time-series analysis: slow query regressions, connection storms, tmp-table storms, full table scan spikes, metadata lock contention, replication lag predictions, error storms. Does not appear in the main Cluster Logs.'
           />
         }
+        headerActions={gearButton(openSettings.graphs, 'Graph Settings')}
         body={<WorkloadLogs />}
       />
       <AccordionComponent
@@ -105,6 +116,7 @@ function Dashboard({ selectedCluster, user }) {
             description='Schema changes detected by the monitoring loop: CREATE TABLE, ALTER TABLE (column additions, modifications, drops), DROP TABLE. Each entry includes the column diff showing before/after definitions.'
           />
         }
+        headerActions={gearButton(openSettings.monitoring, 'Monitoring Settings')}
         body={<DDLLogs />}
       />
       <AccordionComponent
@@ -114,6 +126,7 @@ function Dashboard({ selectedCluster, user }) {
             description='Runtime variable changes detected on any server (SET GLOBAL). Shows before/after values. Requires monitoring-variable-change = true.'
           />
         }
+        headerActions={gearButton(openSettings.monitoring, 'Monitoring Settings')}
         body={<VariableChangeLogs />}
       />
     </Flex>

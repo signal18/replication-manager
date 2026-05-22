@@ -19,6 +19,8 @@ import Gauge from '../../components/Gauge'
 import AccordionComponent from '../../components/AccordionComponent'
 import { GeneralLogs, TaskLogs } from '../Dashboard/components/Logs'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
+import RMIconButton from '../../components/RMIconButton'
+import { HiCog } from 'react-icons/hi'
 import { sizeOf } from '../../utility/common'
 import SchemaGraph from './SchemaGraph'
 import { useTheme } from '../../ThemeProvider'
@@ -157,7 +159,7 @@ function ViewToggleBtn({ active, onClick, children }) {
 }
 
 // ─── Main Shards page ─────────────────────────────────────────────────────────
-function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
+function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSettings }) {
   const dispatch = useDispatch()
 
   // ── Redux selectors ────────────────────────────────────────────────────────
@@ -749,11 +751,13 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
       <AccordionComponent
         className={styles.accordion}
         heading="Cluster Logs"
+        headerActions={onOpenLogsSettings ? <RMIconButton icon={HiCog} tooltip='Log Settings' onClick={onOpenLogsSettings} size='xs' variant='ghost' /> : null}
         body={<GeneralLogs />}
       />
       <AccordionComponent
         className={styles.accordion}
         heading="Job Logs"
+        headerActions={onOpenLogsSettings ? <RMIconButton icon={HiCog} tooltip='Log Settings' onClick={onOpenLogsSettings} size='xs' variant='ghost' /> : null}
         body={<TaskLogs />}
       />
 
