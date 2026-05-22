@@ -7,8 +7,10 @@ import Dropdown from '../../components/Dropdown'
 import ChartLatchTracing from '../../components/ChartLatchTracing';
 import ChartMultiMetric from '../../components/ChartMultiMetric';
 import ChartBarStack from '../../components/ChartBarStack';
+import RMIconButton from '../../components/RMIconButton'
+import { HiCog } from 'react-icons/hi'
 
-function Graphs({ selectedCluster }) {
+function Graphs({ selectedCluster, onOpenSettings }) {
   const qpsRef = useRef()
   const coreRef = useRef()
   const netRef = useRef()
@@ -65,6 +67,9 @@ function Graphs({ selectedCluster }) {
     return (
     <Flex className={styles.graphContainer}>
       <Flex className={styles.filters}>
+        {onOpenSettings && (
+          <RMIconButton icon={HiCog} tooltip='Graph Settings' onClick={onOpenSettings} size='sm' variant='ghost' />
+        )}
         <Dropdown
           label={'Last N hours'}
           options={hourOptions}
