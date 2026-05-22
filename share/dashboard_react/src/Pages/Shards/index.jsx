@@ -176,7 +176,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
   // FIX: store the last-seen data in a ref so shardSchema comparisons don't
   // trigger unnecessary re-renders when the selector fires with the same data.
   const [data, setData]                                             = useState(shardSchema || [])
-  const prevShardsRef                                               = useRef(shardSchema)
+  const prevShardsRef                                               = useRef(null)
   const [isChecksumAllRunning, setIsChecksumAllRunning]             = useState(false)
   const [isChecksumRepairAllRunning, setIsChecksumRepairAllRunning] = useState(false)
   const [isSchemaConfirmOpen, setIsSchemaConfirmOpen]               = useState(false)
