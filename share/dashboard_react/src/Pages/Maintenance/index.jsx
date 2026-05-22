@@ -12,7 +12,7 @@ import DatabaseJobs from './DatabaseJobs'
 import { deleteBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
-import { HiPause, HiPlay, HiTrash } from 'react-icons/hi'
+import { HiCog, HiPause, HiPlay, HiTrash } from 'react-icons/hi'
 import { showWarningToast } from '../../redux/toastSlice'
 
 const QueueMoveForm = React.memo(({ list = [], currentId, onChange = (dir, afterId) => { } }) => {
@@ -125,7 +125,7 @@ const resticTaskDetail = (row) => {
 
 
 // section: undefined = full page, 'backup' = backup accordions only, 'jobs' = jobs accordion only
-function Maintenance({ selectedCluster, user, section }) {
+function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onOpenSchedulerSettings }) {
   const [data, setData] = useState([])
   const [snapshotData, setSnapshotData] = useState([])
   const [queueData, setQueueData] = useState([])
@@ -558,6 +558,17 @@ function Maintenance({ selectedCluster, user, section }) {
     })
   ])
 
+  const settingsButton = (onClick, tooltip) =>
+    onClick ? (
+      <RMIconButton
+        icon={HiCog}
+        tooltip={tooltip}
+        onClick={onClick}
+        size='xs'
+        variant='ghost'
+      />
+    ) : null
+
   const backupSection = (
     <>
       <AccordionComponent
@@ -567,6 +578,7 @@ function Maintenance({ selectedCluster, user, section }) {
         className={styles.accordion}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        headerActions={settingsButton(onOpenBackupSettings, 'Open Backup Settings')}
         body={
           <VStack className={styles.snapshotContainer}>
             <TableType3 dataArray={backupDataStats} className={styles.statsTable} />
@@ -581,6 +593,7 @@ function Maintenance({ selectedCluster, user, section }) {
         className={styles.accordion}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        headerActions={settingsButton(onOpenBackupSettings, 'Open Backup Settings')}
         body={
           <VStack className={styles.snapshotContainer}>
             <Box className={styles.repoRow}>
@@ -611,6 +624,7 @@ function Maintenance({ selectedCluster, user, section }) {
       className={styles.accordion}
       headerClassName={styles.accordionHeader}
       panelClassName={styles.accordionPanel}
+      headerActions={settingsButton(onOpenSchedulerSettings, 'Open Scheduler Settings')}
       body={<DatabaseJobs clusterName={selectedCluster?.name} user={user} />}
     />
   )

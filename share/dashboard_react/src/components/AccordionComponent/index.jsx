@@ -11,7 +11,8 @@ function AccordionComponent({
   panelClassName,
   isOpen = null,
   allowToggle = true,
-  onToggle
+  onToggle,
+  headerActions
 }) {
   return (
     <Accordion
@@ -28,6 +29,11 @@ function AccordionComponent({
             <Box as='h4' flex='1' textAlign='left'>
               {heading}
             </Box>
+            {headerActions && (
+              <Box mr={2} onClick={(e) => e.stopPropagation()}>
+                {headerActions}
+              </Box>
+            )}
             {allowToggle && <AccordionIcon className={styles.icon} />}
           </AccordionButton>
         </h2>
