@@ -589,7 +589,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
           )}
           {sizeTotalsInfo.useLocalTotals && (
             <Flex className={styles.timeoutMessage}>
-              <span>Size percentage uses table list totals (cluster totals missing).</span>
+              <span>Size percentage uses table list totals (cluster workload totals not yet available).</span>
             </Flex>
           )}
         </Flex>
