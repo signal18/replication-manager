@@ -267,6 +267,8 @@ function Home() {
     intervalTickerRef.current += 1
   }
   const handleTabChange = (tabIndex) => {
+    // Clear settings filter when user manually clicks a tab
+    localStorage.removeItem('settingsFilter')
     selectedTabRef.current = tabIndex
     setSelectedTab(tabIndex)
     if (tabIndex === 0) {
@@ -305,6 +307,28 @@ function Home() {
       }
     }
   }
+
+  const openSettingsSection = (visibleSections) => {
+    // Store filter so Settings page only shows the requested sections
+    localStorage.setItem('settingsFilter', JSON.stringify(visibleSections))
+    // Open the filtered sections, close everything else
+    const allSections = [
+      'isGeneralOpen', 'isRepFailOverOpen', 'isRepConfigOpen', 'isMonitoringOpen',
+      'isAlertsOpen', 'isLogsOpen', 'isPluginsOpen', 'isRejoinOpen', 'isProxiesOpen',
+      'isGraphsOpen', 'isCloud18Open', 'isSchedulerOpen', 'isBackupOpen',
+      'isS3ProvidersOpen', 'isAppTemplateRepoOpen'
+    ]
+    allSections.forEach((key) => localStorage.setItem(key, JSON.stringify(visibleSections.includes(key))))
+    const settingsIndex = dashboardTabsRef.current.indexOf('Settings')
+    if (settingsIndex >= 0) {
+      const tabIndex = settingsIndex + 1
+      selectedTabRef.current = tabIndex
+      setSelectedTab(tabIndex)
+    }
+  }
+
+  const openBackupSettings = () => openSettingsSection(['isBackupOpen', 'isS3ProvidersOpen'])
+  const openSchedulerSettings = () => openSettingsSection(['isSchedulerOpen'])
   const openNewClusterModal = (e) => {
     e.stopPropagation()
     setIsNewClusterModalOpen(true)
@@ -348,7 +372,7 @@ function Home() {
                   ? [<Agents user={user} selectedCluster={selectedCluster} />]
                   : []),
                 ...(user?.grants['cluster-show-backups']
-                  ? [<Maintenance user={user} selectedCluster={selectedCluster} />]
+                  ? [<Maintenance user={user} selectedCluster={selectedCluster} onOpenBackupSettings={openBackupSettings} onOpenSchedulerSettings={openSchedulerSettings} />]
                   : []),
                 ...(user?.grants['db-show-process'] ? [<Top selectedCluster={selectedCluster} />] : []),
                 ...(selectedCluster?.config?.proxysql && user?.grants['cluster-show-agents']
