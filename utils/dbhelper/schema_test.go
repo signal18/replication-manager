@@ -289,7 +289,9 @@ func TestGetTablesQueryAlignment(t *testing.T) {
 			"table_rows",
 			"data_length",
 			"index_length",
-		}).AddRow(schema, table, "InnoDB", "BASE TABLE", "Dynamic", "utf8mb4_general_ci", "", "", 0, 1, 1024, 0))
+			"data_free",
+			"avg_row_length",
+		}).AddRow(schema, table, "InnoDB", "BASE TABLE", "Dynamic", "utf8mb4_general_ci", "", "", 0, 1, 1024, 0, 0, 0))
 
 	columnsSQL := columnDefQueryAll(ver)
 	mock.ExpectQuery(regexp.QuoteMeta(columnsSQL)).

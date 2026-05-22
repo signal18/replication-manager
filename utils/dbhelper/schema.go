@@ -276,6 +276,8 @@ func getAllTables(ext schemaExecutor, myver *version.Version, timeout time.Durat
 			&t.TableRows,
 			&t.DataLength,
 			&t.IndexLength,
+			&t.DataFree,
+			&t.AvgRowLength,
 		); err != nil {
 			return nil, query, err
 		}
@@ -293,14 +295,15 @@ func tablesQueryAll(myver *version.Version) string {
 		return `SELECT table_schema, table_name, 'BASE TABLE' AS engine, table_type,
 			'' AS row_format, '' AS table_collation, '' AS create_options, '' AS table_comment,
 			0::bigint AS auto_increment, 0::bigint AS table_rows, 0::bigint AS data_length,
-			0::bigint AS index_length
+			0::bigint AS index_length, 0::bigint AS data_free, 0::bigint AS avg_row_length
 			FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
 			ORDER BY table_schema, table_name`
 	}
 	return `SELECT table_schema, table_name, engine, table_type,
 		COALESCE(row_format, ''), COALESCE(table_collation, ''), COALESCE(create_options, ''),
 		COALESCE(table_comment, ''), COALESCE(auto_increment, 0),
-		table_rows, data_length, index_length
+		table_rows, data_length, index_length,
+		COALESCE(data_free, 0), COALESCE(avg_row_length, 0)
 		FROM information_schema.TABLES
 		WHERE table_schema NOT IN ('information_schema','mysql','performance_schema','sys')
 		AND table_schema NOT LIKE '#%' AND table_type = 'BASE TABLE'

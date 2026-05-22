@@ -406,9 +406,10 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
       (acc, row) => {
         acc.table += Number(row?.data_length  || 0)
         acc.index += Number(row?.index_length || 0)
+        acc.free  += Number(row?.data_free    || 0)
         return acc
       },
-      { table: 0, index: 0 }
+      { table: 0, index: 0, free: 0 }
     )
   }, [data])
 
@@ -458,6 +459,30 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
     columnHelper.accessor(row => row.table_rows,    { header: 'Rows' }),
     columnHelper.accessor(row => sizeOf(row.data_length),  { header: 'Data' }),
     columnHelper.accessor(row => sizeOf(row.index_length), { header: 'Index' }),
+    columnHelper.accessor(row => sizeOf(row.data_free),    { header: 'Free' }),
+    columnHelper.accessor(
+      row => {
+        const total = (row.data_length || 0) + (row.index_length || 0)
+        if (total === 0) return 0
+        // Max of data_free ratio and row-based estimate
+        const freeRatio = (row.data_free || 0) / total * 100
+        const rowBased = row.data_length > 0 && row.table_rows > 0 && row.avg_row_length > 0
+          ? Math.max(0, (row.data_length - row.table_rows * row.avg_row_length) / row.data_length * 100)
+          : 0
+        return Math.round(Math.max(freeRatio, rowBased) * 10) / 10
+      },
+      {
+        id: 'fragPct',
+        header: 'Frag %',
+        enableSorting: true,
+        cell: info => {
+          const v = info.getValue()
+          if (v === 0) return <span style={{ color: 'var(--darkgray-color)' }}>—</span>
+          const color = v > 30 ? '#e53e3e' : v > 10 ? '#dd6b20' : 'inherit'
+          return <span style={{ color, fontWeight: v > 10 ? 600 : 400 }}>{v}%</span>
+        },
+      }
+    ),
     columnHelper.accessor(row => row.table_clusters, { header: 'Shards' }),
     columnHelper.accessor(row => row.table_sync, {
       id: 'syncStatus',
@@ -597,6 +622,9 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
           <span><strong>Total Data:</strong> {sizeOf(sizeTotalsInfo.tableTotal)}</span>
           <span><strong>Total Index:</strong> {sizeOf(sizeTotalsInfo.indexTotal)}</span>
           <span><strong>Total:</strong> {sizeOf(sizeTotalsInfo.tableTotal + sizeTotalsInfo.indexTotal)}</span>
+          {localSizeTotals.free > 0 && (
+            <span><strong>Free (reclaimable):</strong> {sizeOf(localSizeTotals.free)}</span>
+          )}
         </Flex>
       )}
 
