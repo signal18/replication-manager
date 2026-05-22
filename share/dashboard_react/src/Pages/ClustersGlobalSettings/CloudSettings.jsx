@@ -23,6 +23,7 @@ import modalStyles from '../../components/Modals/styles.module.scss'
 import remarkGfm from 'remark-gfm'
 import SignupForm from '../../components/Auth/SignupForm'
 import { authService } from '../../services/authService'
+import { isConfirmedSignupResponse, isPendingSignupResponse } from '../../components/Auth/signupResponse'
 
 function CloudSettings({ config }) {
   const dispatch = useDispatch()
@@ -35,7 +36,7 @@ function CloudSettings({ config }) {
   const [showPassword, setShowPassword] = useState(false)
   const [registerForm, setRegisterForm] = useState({ email: '', password: '', domain: '', subdomain: '', zone: '' })
   const [registerErrors, setRegisterErrors] = useState({})
-  const [signupSeed, setSignupSeed] = useState(null) // { email } from successful signup
+  const [signupSeed, setSignupSeed] = useState(null) // { email, pendingEmailConfirmation }
   const [isSignupModalOpen, setIsSignupModalOpen] = useState(false)
   const signupCloseTimerRef = useRef(null)
   const [isSendingCode, setIsSendingCode] = useState(false)
@@ -139,14 +140,19 @@ Start create an account in https://gitlab.signal18.io
     setRegisterErrors(e => ({ ...e, email: undefined, password: undefined }))
   }
 
-  const handleSignupSuccess = (_, payload) => {
+  const handleSignupSuccess = (response, payload) => {
+    const pendingEmailConfirmation = isPendingSignupResponse(response)
+    const confirmedSignup = isConfirmedSignupResponse(response)
     const seeded = {
-      email: payload?.email || ''
+      email: payload?.email || '',
+      pendingEmailConfirmation
     }
     setSignupSeed(seeded)
     setRegisterForm(f => ({ ...f, email: seeded.email }))
     clearTimeout(signupCloseTimerRef.current)
-    signupCloseTimerRef.current = setTimeout(() => setIsSignupModalOpen(false), 1500)
+    if (confirmedSignup) {
+      signupCloseTimerRef.current = setTimeout(() => setIsSignupModalOpen(false), 1500)
+    }
   }
 
   // Start polling when step 2 becomes active
@@ -262,8 +268,12 @@ Start create an account in https://gitlab.signal18.io
         <FormErrorMessage>{registerErrors.password}</FormErrorMessage>
       </FormControl>
       {signupSeed && (
-        <HStack justify='space-between' align='center' bg='green.50' borderRadius='md' p={3}>
-          <Text fontSize='xs' color='green.700'>Using newly created GitLab SSO account.</Text>
+        <HStack justify='space-between' align='center' bg={signupSeed.pendingEmailConfirmation ? 'orange.50' : 'green.50'} borderRadius='md' p={3}>
+          <Text fontSize='xs' color={signupSeed.pendingEmailConfirmation ? 'orange.700' : 'green.700'}>
+            {signupSeed.pendingEmailConfirmation
+              ? 'Signup is waiting for GitLab email confirmation. Confirm your email before continuing registration.'
+              : 'Using confirmed GitLab SSO signup account.'}
+          </Text>
           <RMButton size='xs' variant='ghost' onClick={clearSignupSeed}>Use different account</RMButton>
         </HStack>
       )}
@@ -349,14 +359,14 @@ Start create an account in https://gitlab.signal18.io
     )
   })()
 
-  const signupSeedBadgeColor = registerStep === 1 ? 'blue' : 'orange'
+  const signupSeedBadgeColor = signupSeed?.pendingEmailConfirmation || registerStep !== 1 ? 'orange' : 'blue'
 
   const registerModalTitle = (
     <HStack spacing={2} align='center'>
       <Text>
         {registerStep === 1 ? 'Register with Signal18 Cloud18 (1/2)' : 'Waiting for email confirmation (2/2)'}
       </Text>
-      {signupSeed && <TagPill colorScheme={signupSeedBadgeColor} text='Using newly created account' />}
+      {signupSeed && <TagPill colorScheme={signupSeedBadgeColor} text={signupSeed.pendingEmailConfirmation ? 'Pending email confirmation' : 'Using confirmed signup account'} />}
     </HStack>
   )
 
@@ -648,8 +658,8 @@ Start create an account in https://gitlab.signal18.io
                 setIsSignupModalOpen(false)
               }}
               submitLabel='Create GitLab SSO account'
-              loadingText='Creating account'
-              successMessage='Account created. You can continue registration now.'
+              loadingText='Submitting signup'
+              successMessage='Email already confirmed. You can continue registration now.'
             />
           }
         />

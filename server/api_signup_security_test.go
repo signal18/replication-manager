@@ -119,6 +119,73 @@ func TestSignupHandlers_ErrorResponseJSONAndSanitized(t *testing.T) {
 	})
 }
 
+func TestHandlerSignup_PassesThroughCRMContractStatuses(t *testing.T) {
+	tests := []struct {
+		name       string
+		crmStatus  int
+		crmBody    string
+		wantStatus int
+	}{
+		{
+			name:       "created and already confirmed",
+			crmStatus:  http.StatusCreated,
+			crmBody:    `{"state":"created","identity":{"email_confirmed":true}}`,
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:       "accepted pending email confirmation",
+			crmStatus:  http.StatusAccepted,
+			crmBody:    `{"state":"pending","message":"waiting for email confirmation","identity":{"email_confirmed":false}}`,
+			wantStatus: http.StatusAccepted,
+		},
+		{
+			name:       "existing account conflict",
+			crmStatus:  http.StatusConflict,
+			crmBody:    `{"error":"account_exists","message":"GitLab account already exists for this email. Please log in."}`,
+			wantStatus: http.StatusConflict,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			signupLimiter.resetForTests()
+			t.Cleanup(signupLimiter.resetForTests)
+
+			crm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost {
+					t.Fatalf("expected method POST, got %s", r.Method)
+				}
+				if r.URL.Path != "/api/signup" {
+					t.Fatalf("expected path /api/signup, got %s", r.URL.Path)
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.crmStatus)
+				_, _ = w.Write([]byte(tt.crmBody))
+			}))
+			defer crm.Close()
+
+			repman := &ReplicationManager{Conf: &config.Config{Cloud18CrmApiUrl: crm.URL}}
+			payload := `{"first_name":"Ada","last_name":"Lovelace","username":"ada","email":"ADA@example.com","password":"secret-password"}`
+			req := httptest.NewRequest(http.MethodPost, "/api/signup", strings.NewReader(payload))
+			req.RemoteAddr = "203.0.113.20:12345"
+			w := httptest.NewRecorder()
+
+			repman.handlerSignup(w, req)
+
+			if w.Code != tt.wantStatus {
+				t.Fatalf("expected status %d, got %d: %s", tt.wantStatus, w.Code, w.Body.String())
+			}
+			if got := strings.TrimSpace(w.Body.String()); got != tt.crmBody {
+				t.Fatalf("expected CRM response body %s, got %s", tt.crmBody, got)
+			}
+			if got := w.Header().Get("Content-Type"); !strings.Contains(got, "application/json") {
+				t.Fatalf("expected JSON content type, got %q", got)
+			}
+		})
+	}
+}
+
 func TestSignupOptionsPreflight(t *testing.T) {
 	repman := &ReplicationManager{Conf: &config.Config{
 		APIPublicURL:         "https://public.example",

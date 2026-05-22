@@ -6,6 +6,7 @@ import RMButton from '../RMButton'
 import Message from '../Message'
 import loginStyles from '../../Pages/Login/styles.module.scss'
 import { authService } from '../../services/authService'
+import { resolveSignupErrorMessage, resolveSignupSuccessMessage } from './signupResponse'
 
 const emailRegex = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 
@@ -15,7 +16,7 @@ function SignupForm({
   onCancel,
   submitLabel = 'Create account',
   loadingText = 'Signing up',
-  successMessage = 'Signup successful',
+  successMessage = 'Signup submitted',
   className = '',
   splitLayout = false
 }) {
@@ -81,15 +82,12 @@ function SignupForm({
 
       const response = await onSubmit(payload)
       if (response.status >= 200 && response.status < 300) {
-        setLocalSuccessMessage(successMessage)
+        setLocalSuccessMessage(resolveSignupSuccessMessage(response, successMessage))
         if (onSuccess) {
           await Promise.resolve(onSuccess(response, payload))
         }
       } else {
-        const message = typeof response.data === 'object' && response.data?.error
-          ? response.data.error
-          : 'Signup failed'
-        setErrorMessage(message)
+        setErrorMessage(resolveSignupErrorMessage(response))
       }
     } catch (error) {
       setErrorMessage(error.message || 'Signup failed')

@@ -3,11 +3,14 @@ import { Container } from '@chakra-ui/react'
 import PageContainer from '../PageContainer'
 import SignupForm from '../../components/Auth/SignupForm'
 import { authService } from '../../services/authService'
+import { shouldRedirectToLoginAfterSignup } from '../../components/Auth/signupResponse'
 
 function Signup() {
   const navigate = useNavigate()
 
-  const handleSignupSuccess = () => {
+  const handleSignupSuccess = (response) => {
+    if (!shouldRedirectToLoginAfterSignup(response)) return
+
     setTimeout(() => navigate('/login'), 1500)
   }
 
@@ -18,7 +21,7 @@ function Signup() {
           splitLayout
           onSubmit={authService.signup}
           onSuccess={handleSignupSuccess}
-          successMessage='Signup successful. Redirecting to login...'
+          successMessage='Email already confirmed. Redirecting to login...'
         />
       </Container>
     </PageContainer>
