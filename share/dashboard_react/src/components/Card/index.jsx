@@ -40,11 +40,7 @@ function Card({
         )}
         {headerAction !== 'button' && isLoading && <Spinner label={loadingText} speed='1s' />}
         {header}
-        {extraHeaderActions && (
-          <Box ml='auto'>
-            {extraHeaderActions}
-          </Box>
-        )}
+        {extraHeaderActions}
       </HStack>
       {body}
     </Box>
