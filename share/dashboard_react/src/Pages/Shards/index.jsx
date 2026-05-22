@@ -587,11 +587,6 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
               <span>Schema repair monitoring timed out. Check server logs or retry later.</span>
             </Flex>
           )}
-          {sizeTotalsInfo.useLocalTotals && (
-            <Flex className={styles.timeoutMessage}>
-              <span>Size percentage uses table list totals (cluster workload totals not yet available).</span>
-            </Flex>
-          )}
         </Flex>
       </Flex>
 
