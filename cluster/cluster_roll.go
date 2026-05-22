@@ -264,11 +264,18 @@ func (cluster *Cluster) RollingRestart() error {
 
 func (cluster *Cluster) RollingOptimize() {
 	for _, s := range cluster.slaves {
-		if s == nil || s.IsIgnored() {
+		if s == nil || s.IsIgnored() || s.IsDown() {
 			continue
 		}
-		jobid, _ := s.JobOptimize()
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Optimize job id %d on %s ", jobid, s.URL)
+		if cluster.Conf.OptimizeUseSQL {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting SQL optimize on %s", s.URL)
+			if err := s.OptimizeSQL(); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "SQL optimize failed on %s: %s", s.URL, err)
+			}
+		} else {
+			jobid, _ := s.JobOptimize()
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Optimize job id %d on %s ", jobid, s.URL)
+		}
 	}
 }
 
