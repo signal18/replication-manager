@@ -11,6 +11,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { getClusterData, getClusterApps, setRefreshInterval, getAppService } from '../../redux/clusterSlice'
 import { refreshAppTemplateRepo } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
+import { isAutoReloadPaused } from '../../utility/autoReloadPause'
 
 function ClusterApp() {
   const params = useParams()
@@ -30,10 +31,9 @@ function ClusterApp() {
   const clusterData = useSelector((state) => state.cluster.clusterData)
 
   const callServices = () => {
-    const isAutoReloadPaused = localStorage.getItem('pause_auto_reload')
     dispatch(getClusterApps({ clusterName }))
     dispatch(getClusterData({ clusterName }))
-    if (!isAutoReloadPaused) {
+    if (!isAutoReloadPaused()) {
       if (tabs.current[selectedTabRef.current] === 'App Overview') {
         dispatch(getAppService({ clusterName, serviceName: 'deployment', appId }))
         dispatch(getAppService({ clusterName, serviceName: 'substitution', appId }))

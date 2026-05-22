@@ -30,6 +30,7 @@ import {
 } from '../../redux/clusterSlice'
 import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale, getGlobalAlerts, getGlobalMetrics, getGlobalLogs } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
+import { isAutoReloadPaused } from '../../utility/autoReloadPause'
 import styles from './styles.module.scss'
 import { useHref, useParams } from 'react-router-dom'
 import { HiArrowNarrowLeft } from 'react-icons/hi'
@@ -206,14 +207,14 @@ function Home() {
   }
 
   const callServices = () => {
-    const isAutoReloadPaused = localStorage.getItem('pause_auto_reload')
+    const isPaused = isAutoReloadPaused()
 
     if (!isClusterOpenRef.current) {
       if (
         globalTabsRef.current[selectedTabRef.current] === 'Clusters Local' ||
         globalTabsRef.current[selectedTabRef.current] === 'Settings'
       ) {
-        if (!isAutoReloadPaused) {
+        if (!isPaused) {
           dispatch(getMonitoredData({}))
           dispatch(getClusters({}))
         }
@@ -226,14 +227,14 @@ function Home() {
         dispatch(getClusterForSale({}))
       }
       if (globalTabsRef.current[selectedTabRef.current] === 'Dashboard') {
-        if (!isAutoReloadPaused) {
+        if (!isPaused) {
           dispatch(getGlobalAlerts({}))
           dispatch(getGlobalMetrics({}))
           dispatch(getGlobalLogs({}))
         }
       }
     } else if (selectedClusterNameRef.current) {
-      if (!isAutoReloadPaused) {
+      if (!isPaused) {
         dispatch(getClusterData({ clusterName: selectedClusterNameRef.current }))
         dispatch(getClusterLogs({ clusterName: selectedClusterNameRef.current }))
         dispatch(getClusterAlerts({ clusterName: selectedClusterNameRef.current }))
