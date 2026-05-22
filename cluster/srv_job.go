@@ -624,6 +624,53 @@ func (server *ServerMonitor) JobOptimize() (int64, error) {
 	return server.JobInsertTask("optimize", "0", cluster.Conf.MonitorAddress)
 }
 
+// OptimizeSQL runs OPTIMIZE TABLE directly via SQL on the server with
+// binlog disabled, iterating over all tables from the cached DictTables.
+func (server *ServerMonitor) OptimizeSQL() error {
+	cluster := server.ClusterGroup
+	if server.Conn == nil {
+		return fmt.Errorf("no connection pool on %s", server.URL)
+	}
+
+	conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return fmt.Errorf("failed to get no-binlog connection on %s: %s", server.URL, err)
+	}
+	defer conn.Close()
+
+	master := cluster.GetMaster()
+	if master == nil {
+		return fmt.Errorf("no master found, cannot get table list")
+	}
+
+	tables := master.DictTables.ToNewMap()
+	if len(tables) == 0 {
+		return fmt.Errorf("no tables in DictTables cache")
+	}
+
+	var optimized, failed int
+	for _, t := range tables {
+		if t.Engine != "InnoDB" {
+			continue
+		}
+		fqn := "`" + t.TableSchema + "`.`" + t.TableName + "`"
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModDbOptimize, config.LvlInfo,
+			"Optimizing %s on %s", fqn, server.URL)
+		_, err := server.ConnExecQueryWithTimeout(conn, 3600*time.Second, "OPTIMIZE TABLE "+fqn)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModDbOptimize, config.LvlErr,
+				"OPTIMIZE TABLE %s failed on %s: %s", fqn, server.URL, err)
+			failed++
+		} else {
+			optimized++
+		}
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModDbOptimize, config.LvlInfo,
+		"SQL optimize completed on %s: %d tables optimized, %d failed", server.URL, optimized, failed)
+	return nil
+}
+
 func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 	cluster := server.ClusterGroup
 	if server.IsDown() {
