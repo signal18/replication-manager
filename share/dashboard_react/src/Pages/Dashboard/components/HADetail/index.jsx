@@ -7,8 +7,10 @@ import TableType1 from '../../../../components/TableType1'
 import { failOverCluster, switchOverCluster } from '../../../../redux/clusterSlice'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import styles from './styles.module.scss'
+import RMIconButton from '../../../../components/RMIconButton'
+import { HiCog } from 'react-icons/hi'
 
-function HADetail({ selectedCluster, user, readOnly = false }) {
+function HADetail({ selectedCluster, user, readOnly = false, onOpenSettings }) {
   const clusterMaster = useSelector((state) => state.cluster.clusterMaster)
   const { switchOverLoading, failOverLoading } = useSelector((state) => state.cluster.loadingStates)
   const isDesktop = useSelector((state) => state.common.isDesktop)
@@ -83,6 +85,7 @@ function HADetail({ selectedCluster, user, readOnly = false }) {
               buttonText: clusterMaster.state === 'Failed' ? 'Failover' : 'Switchover'
             }
           : {})}
+        extraHeaderActions={onOpenSettings ? <RMIconButton icon={HiCog} tooltip='Failover Settings' onClick={onOpenSettings} size='xs' variant='ghost' /> : null}
       />
       {isModalOpen && (
         <ConfirmModal

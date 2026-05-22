@@ -17,7 +17,8 @@ function Card({
   loadingText,
   onClick,
   width,
-  className
+  className,
+  extraHeaderActions
 }) {
   const isDesktop = useSelector((state) => state.common.isDesktop)
 
@@ -39,6 +40,11 @@ function Card({
         )}
         {headerAction !== 'button' && isLoading && <Spinner label={loadingText} speed='1s' />}
         {header}
+        {extraHeaderActions && (
+          <Box ml='auto'>
+            {extraHeaderActions}
+          </Box>
+        )}
       </HStack>
       {body}
     </Box>

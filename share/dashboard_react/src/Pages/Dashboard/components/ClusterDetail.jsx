@@ -36,8 +36,10 @@ import parentStyles from '../styles.module.scss'
 import CopyTextModal from '../../../components/Modals/CopyTextModal'
 import SetCredentialsModal from '../../../components/Modals/SetCredentialsModal'
 import NewClusterModal from '../../../components/Modals/NewClusterModal'
+import RMIconButton from '../../../components/RMIconButton'
+import { HiCog } from 'react-icons/hi'
 
-function ClusterDetail({ selectedCluster, user, readOnly = false }) {
+function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings }) {
   const dispatch = useDispatch()
   const isDesktop = useSelector((state) => state.common.isDesktop)
   const monitor = useSelector((state) => state.globalClusters.monitor)
@@ -518,6 +520,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false }) {
         headerAction='menu'
         isLoading={menuActionsLoading}
         menuOptions={menuOptions}
+        extraHeaderActions={onOpenSettings ? <RMIconButton icon={HiCog} tooltip='Topology Settings' onClick={onOpenSettings} size='xs' variant='ghost' /> : null}
       />
       {isConfirmModalOpen && (
         <ConfirmModal
