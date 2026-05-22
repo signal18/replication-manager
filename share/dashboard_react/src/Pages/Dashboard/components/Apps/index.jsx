@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useSelector } from 'react-redux'
 import AppTable from './AppTable'
 import AppGrid from './AppGrid'
@@ -8,12 +8,8 @@ function Apps({ selectedCluster, user }) {
   const clusterApps = useSelector((state) => state.cluster.clusterApps)
   const [viewType, setViewType] = useState('table')
 
-  const showGridView = () => {
-    setViewType('grid')
-  }
-  const showTableView = () => {
-    setViewType('table')
-  }
+  const showGridView = useCallback(() => setViewType('grid'), [])
+  const showTableView = useCallback(() => setViewType('table'), [])
 
   return clusterApps ? (
     viewType === 'table' ? (
@@ -23,6 +19,7 @@ function Apps({ selectedCluster, user }) {
         clusterName={selectedCluster?.name}
         orchestrator={selectedCluster?.config?.provOrchestrator}
         user={user}
+        showGridView={showGridView}
       />
     ) : (
       <AppGrid

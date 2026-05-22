@@ -8,10 +8,12 @@ import { Link } from 'react-router-dom'
 import ServerName from '../../../../../components/ServerName'
 import TagPill from '../../../../../components/TagPill'
 import ServerStatus from '../../../../../components/ServerStatus'
+import RMIconButton from '../../../../../components/RMIconButton'
+import { HiViewGrid } from 'react-icons/hi'
 
 const columnHelper = createColumnHelper()
 
-function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator }) {
+function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator, showGridView }) {
   const columns = useMemo(
     () => [
       columnHelper.accessor(
@@ -27,7 +29,7 @@ function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator }) {
             />
           ),
           id: 'options',
-          header: '',
+          header: () => <RMIconButton onClick={showGridView} icon={HiViewGrid} tooltip='Show grid view' />,
           width: '40px'
         }
       ),
@@ -52,7 +54,7 @@ function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator }) {
         header: 'Routes'
       }),
     ],
-    [clusterName, isDesktop, orchestrator, user]
+    [clusterName, isDesktop, orchestrator, user, showGridView]
   )
 
   return (
