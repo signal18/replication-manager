@@ -217,16 +217,6 @@ function DBServerGrid({
                           ) : (
                             <CustomIcon icon={HiX} color='red' />
                           )
-                      },
-                      {
-                        key: 'Semi Sync',
-                        value:
-                          (rowData.state === 'Slave' && rowData.semiSyncSlaveStatus) ||
-                          (rowData.state === 'Master' && rowData.semiSyncMasterStatus) ? (
-                            <CustomIcon icon={HiCheck} color='green' />
-                          ) : (
-                            <CustomIcon icon={HiX} color='red' />
-                          )
                       }
                     ]
 

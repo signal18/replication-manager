@@ -46,16 +46,22 @@ function ProxyTable({
   const tableData = useMemo(() => {
     const data = []
     proxies.forEach((proxy) => {
-      let isNewProxy = false
-      proxy.backendsWrite?.forEach((writeData, index) => {
-        isNewProxy = index === 0
-        data.push(buildReadWriteRow(proxy, writeData, 'WRITE', isNewProxy))
+      // menuShown tracks whether the menu/logo row has been emitted for this proxy.
+      // The menu appears exactly once — on the very first row regardless of whether
+      // that row is a write or read backend.
+      let menuShown = false
+      const isFirst = () => {
+        if (menuShown) return false
+        menuShown = true
+        return true
+      }
+      proxy.backendsWrite?.forEach((writeData) => {
+        data.push(buildReadWriteRow(proxy, writeData, 'WRITE', isFirst()))
       })
-      proxy.backendsRead?.forEach((readData, index) => {
-        isNewProxy = !isNewProxy && index === 0
-        data.push(buildReadWriteRow(proxy, readData, 'READ', isNewProxy))
+      proxy.backendsRead?.forEach((readData) => {
+        data.push(buildReadWriteRow(proxy, readData, 'READ', isFirst()))
       })
-      if (!proxy.backendsRead && !proxy.backendsWrite) {
+      if (!proxy.backendsRead?.length && !proxy.backendsWrite?.length) {
         data.push({
           logo: <ProxyLogo proxyName={proxy.type} />,
           isStaging: proxy.isStaging,
