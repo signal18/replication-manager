@@ -380,11 +380,11 @@ function Home() {
                 ...(user?.grants['cluster-show-backups']
                   ? [<Maintenance user={user} selectedCluster={selectedCluster} onOpenBackupSettings={openBackupSettings} onOpenSchedulerSettings={openSchedulerSettings} onOpenLogsSettings={openLogsSettings} />]
                   : []),
-                ...(user?.grants['db-show-process'] ? [<Top selectedCluster={selectedCluster} />] : []),
+                ...(user?.grants['db-show-process'] ? [<Top selectedCluster={selectedCluster} onOpenSettings={openMonitoringSettings} />] : []),
                 ...(selectedCluster?.config?.proxysql && user?.grants['cluster-show-agents']
                   ? [<QueryRules selectedCluster={selectedCluster} />]
                   : []),
-                ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} user={user} onOpenSchedulerSettings={openMaintenanceScheduler} onOpenLogsSettings={openLogsSettings} />] : []),
+                ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} user={user} onOpenSchedulerSettings={openMaintenanceScheduler} onOpenLogsSettings={openLogsSettings} onOpenMonitoringSettings={openMonitoringSettings} />] : []),
                 ...(user?.grants['cluster-grant'] ? [<Users selectedCluster={selectedCluster} user={user} />] : [])
               ]
               : [

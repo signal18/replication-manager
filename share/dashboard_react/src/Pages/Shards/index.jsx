@@ -159,7 +159,7 @@ function ViewToggleBtn({ active, onClick, children }) {
 }
 
 // ─── Main Shards page ─────────────────────────────────────────────────────────
-function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSettings }) {
+function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSettings, onOpenMonitoringSettings }) {
   const dispatch = useDispatch()
 
   // ── Redux selectors ────────────────────────────────────────────────────────
@@ -572,6 +572,9 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
             >
               Open Scheduler Settings
             </RMButton>
+            {onOpenMonitoringSettings && (
+              <RMIconButton icon={HiCog} tooltip='Monitoring Settings' onClick={onOpenMonitoringSettings} size='sm' variant='ghost' />
+            )}
           </Flex>
 
           {checksumTimeout && (

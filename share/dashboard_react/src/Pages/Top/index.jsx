@@ -15,8 +15,10 @@ import RunTests from '../Dashboard/components/RunTests'
 import ServerStatus from '../../components/ServerStatus'
 import ShowMoreText from '../../components/ShowMoreText'
 import OpenSVCWorkload from '../Dashboard/components/OpenSVCWorkload/OpenSVCWorkload'
+import RMIconButton from '../../components/RMIconButton'
+import { HiCog } from 'react-icons/hi'
 
-function Top({ selectedCluster }) {
+function Top({ selectedCluster, onOpenSettings }) {
   const dispatch = useDispatch()
   const [topProcessData, setTopProcessData] = useState([])
   const [numberOfRows, setNumberOfRows] = useState(convertObjectToArrayForDropdown([10, 15, 30, 40, 50]))
@@ -163,13 +165,18 @@ function Top({ selectedCluster }) {
           body={<ClusterWorkload workload={selectedCluster?.workLoad} />}
         />
       )}
-      <Dropdown
-        label={'Select number of rows'}
-        options={numberOfRows}
-        selectedValue={selectedNumberOfRows.value}
-        classNameFormContainer={styles.dropdownRows}
-        onChange={(value) => setSelectedNumberOfRows(value)}
-      />
+      <Flex align='center' gap={2}>
+        <Dropdown
+          label={'Select number of rows'}
+          options={numberOfRows}
+          selectedValue={selectedNumberOfRows.value}
+          classNameFormContainer={styles.dropdownRows}
+          onChange={(value) => setSelectedNumberOfRows(value)}
+        />
+        {onOpenSettings && (
+          <RMIconButton icon={HiCog} tooltip='Monitoring Settings' onClick={onOpenSettings} size='sm' variant='ghost' />
+        )}
+      </Flex>
       {topProcessData?.length > 0 &&
         topProcessData.map((topP) => {
           const dbServer = clusterServers?.find((server) => server.id === topP.id)
