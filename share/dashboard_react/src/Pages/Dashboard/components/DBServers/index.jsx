@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useSelector } from 'react-redux'
 import { HiViewGrid } from 'react-icons/hi'
 import { DataTable } from '../../../../components/DataTable'
@@ -17,59 +17,37 @@ import CopyToClipboard from '../../../../components/CopyToClipboard'
 import { Tooltip } from '@chakra-ui/react'
 import { TbAlertCircle } from 'react-icons/tb'
 
+const columnHelper = createColumnHelper()
+
 function DBServers({ selectedCluster, user }) {
   const isDesktop = useSelector((state) => state.common.isDesktop)
   const clusterServers = useSelector((state) => state.cluster.clusterServers)
-  const clusterStates = useSelector((state) => state.cluster.clusterStates)
-  const clusterMaster = useSelector((state) => state.cluster.clusterMaster)
+  const clusterMasterId = useSelector((state) => state.cluster.clusterMaster?.id)
 
-  const [data, setData] = useState([])
   const [viewType, setViewType] = useState('table')
-  const [hasMariadbGtid, setHasMariadbGtid] = useState(false)
-  const [hasMysqlGtid, setHasMysqlGtid] = useState(false)
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false)
   const [compareServer, setCompareServer] = useState(null)
 
-  useEffect(() => {
-    if (clusterServers?.length > 0) {
-      setData(clusterServers)
+  const hasMariadbGtid = useMemo(
+    () => clusterServers?.some((s) => s.haveMariadbGtid) ?? false,
+    [clusterServers]
+  )
+  const hasMysqlGtid = useMemo(
+    () => clusterServers?.some((s) => s.haveMysqlGtid) ?? false,
+    [clusterServers]
+  )
 
-      setHasMariadbGtid(
-        clusterServers.some(function (currentServer) {
-          return currentServer.haveMariadbGtid
-        })
-      )
-      setHasMysqlGtid(
-        clusterServers.some(function (currentServer) {
-          return currentServer.haveMysqlGtid
-        })
-      )
-    }
+  const showGridView = useCallback(() => setViewType('grid'), [])
+  const showTableView = useCallback(() => setViewType('table'), [])
 
-    return () => {
-      setData([])
-      setHasMariadbGtid(false)
-      setHasMysqlGtid(false)
-    }
-  }, [clusterServers, clusterStates, clusterMaster?.id])
-
-  const showGridView = () => {
-    setViewType('grid')
-  }
-  const showTableView = () => {
-    setViewType('table')
-  }
-
-  const openCompareModal = (rowData) => {
+  const openCompareModal = useCallback((rowData) => {
     setIsCompareModalOpen(true)
     setCompareServer(rowData)
-  }
-  const closeCompareModal = () => {
+  }, [])
+  const closeCompareModal = useCallback(() => {
     setIsCompareModalOpen(false)
     setCompareServer(null)
-  }
-
-  const columnHelper = createColumnHelper()
+  }, [])
 
   const columns = useMemo(
     () => [
@@ -78,7 +56,7 @@ function DBServers({ selectedCluster, user }) {
           selectedCluster?.name ? (
             <ServerMenu
               clusterName={selectedCluster?.name}
-              clusterMasterId={clusterMaster?.id}
+              clusterMasterId={clusterMasterId}
               backupLogicalType={selectedCluster?.config?.backupLogicalType}
               backupPhysicalType={selectedCluster?.config?.backupPhysicalType}
               backupRestic={selectedCluster?.config?.backupRestic}
@@ -270,18 +248,25 @@ function DBServers({ selectedCluster, user }) {
       selectedCluster?.name,
       selectedCluster?.config?.backupPhysicalType,
       selectedCluster?.config?.backupLogicalType,
-      clusterStates,
+      selectedCluster?.config?.backupRestic,
+      selectedCluster?.config?.provOrchestrator,
+      selectedCluster?.config?.terminalSessionEnabled,
+      clusterMasterId,
+      isDesktop,
+      user,
+      openCompareModal,
+      showGridView,
     ]
   )
 
   return clusterServers?.length > 0 ? (
     <>
       {viewType === 'table' ? (
-        <DataTable key="dbservers" data={data} columns={columns} />
+        <DataTable data={clusterServers} columns={columns} />
       ) : (
         <DBServerGrid
-          allDBServers={data}
-          clusterMasterId={clusterMaster?.id}
+          allDBServers={clusterServers}
+          clusterMasterId={clusterMasterId}
           clusterName={selectedCluster?.name}
           backupLogicalType={selectedCluster?.config?.backupLogicalType}
           backupPhysicalType={selectedCluster?.config?.backupPhysicalType}
@@ -300,10 +285,10 @@ function DBServers({ selectedCluster, user }) {
         <CompareModal
           isOpen={isCompareModalOpen}
           closeModal={closeCompareModal}
-          allDBServers={data}
+          allDBServers={clusterServers}
           compareServer={compareServer}
           hasMariadbGtid={hasMariadbGtid}
-          hasMysqlGtid={hasMariadbGtid}
+          hasMysqlGtid={hasMysqlGtid}
         />
       )}
     </>

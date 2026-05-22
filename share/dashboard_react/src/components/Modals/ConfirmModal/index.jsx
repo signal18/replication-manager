@@ -7,7 +7,7 @@ import {
   ModalHeader,
   ModalOverlay
 } from '@chakra-ui/react'
-import React, { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import RMButton from '../../RMButton'
 import styles from './styles.module.scss'
 import { useTheme } from '../../../ThemeProvider'
@@ -31,24 +31,17 @@ function ConfirmModal({
   const { theme } = useTheme()
   const pauseRegisteredRef = useRef(false)
 
-  const pauseAutoReloadForConfirmModal = () => {
-    if (pauseRegisteredRef.current) {
-      return
-    }
-
+  const pauseAutoReloadForConfirmModal = useCallback(() => {
+    if (pauseRegisteredRef.current) return
     acquireAutoReloadPause()
     pauseRegisteredRef.current = true
-  }
+  }, [])
 
-  const resumeAutoReloadFromConfirmModal = () => {
-    if (!pauseRegisteredRef.current) {
-      return
-    }
-
+  const resumeAutoReloadFromConfirmModal = useCallback(() => {
+    if (!pauseRegisteredRef.current) return
     releaseAutoReloadPause()
-
     pauseRegisteredRef.current = false
-  }
+  }, [])
 
   useEffect(() => {
     if (isOpen) {
@@ -60,7 +53,7 @@ function ConfirmModal({
     return () => {
       resumeAutoReloadFromConfirmModal()
     }
-  }, [isOpen])
+  }, [isOpen, pauseAutoReloadForConfirmModal, resumeAutoReloadFromConfirmModal])
 
   return (
     <Modal isOpen={isOpen} onClose={closeModal} closeOnOverlayClick={closeOnOverlayClick} closeOnEsc={closeOnEsc}>

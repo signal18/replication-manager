@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState } from 'react'
+import { useMemo } from 'react'
 import { DataTable } from '../../../../../components/DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
 import { Box } from '@chakra-ui/react'
@@ -12,6 +12,26 @@ import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
 import ServerName from '../../../../../components/ServerName'
 
+const columnHelper = createColumnHelper()
+
+const buildReadWriteRow = (proxy, data, readWriteType, isNewProxy) => ({
+  logo: isNewProxy && <ProxyLogo proxyName={proxy.type} />,
+  proxyId: proxy.id,
+  isStaging: proxy.isStaging,
+  showMenu: isNewProxy,
+  server: `${proxy.host}:${data.port}`,
+  status: <ProxyStatus status={proxy.state} />,
+  group: <TagPill text={readWriteType} colorScheme={readWriteType === 'WRITE' ? 'blue' : 'gray'} />,
+  dbName: `${data.prxName}`,
+  dbStatus: <ServerStatus state={data.status} />,
+  pxStatus: data.prxStatus,
+  connections: data.prxConnections,
+  bytesOut: data.prxByteOut,
+  bytesIn: data.prxByteIn,
+  sessTime: data.prxLatency,
+  idGroup: data.prxHostgroup
+})
+
 function ProxyTable({
   proxies = [],
   isDesktop,
@@ -23,56 +43,32 @@ function ProxyTable({
   topoStaging,
   orchestrator
 }) {
-  const [tableData, setTableData] = useState([])
-  useEffect(() => {
-    if (proxies?.length > 0) {
-      const data = []
-      proxies.forEach((proxy) => {
-        let isNewProxy = false
-        proxy.backendsWrite?.forEach((writeData, index) => {
-          isNewProxy = index === 0
-          data.push(readWriteData(proxy, writeData, 'WRITE', isNewProxy))
-        })
-        proxy.backendsRead?.forEach((readData, index) => {
-          isNewProxy = !isNewProxy && index === 0
-          data.push(readWriteData(proxy, readData, 'READ', isNewProxy))
-        })
-        if (!proxy.backendsRead && !proxy.backendsWrite) {
-          data.push({
-            logo: <ProxyLogo proxyName={proxy.type} />,
-            isStaging: proxy.isStaging,
-            proxyId: proxy.id,
-            showMenu: true, // to show the menu icon
-            server: `${proxy.host}:${proxy.port}`,
-            status: <ProxyStatus status={proxy.state} />
-          })
-        }
+  const tableData = useMemo(() => {
+    const data = []
+    proxies.forEach((proxy) => {
+      let isNewProxy = false
+      proxy.backendsWrite?.forEach((writeData, index) => {
+        isNewProxy = index === 0
+        data.push(buildReadWriteRow(proxy, writeData, 'WRITE', isNewProxy))
       })
-      setTableData(data)
-    }
+      proxy.backendsRead?.forEach((readData, index) => {
+        isNewProxy = !isNewProxy && index === 0
+        data.push(buildReadWriteRow(proxy, readData, 'READ', isNewProxy))
+      })
+      if (!proxy.backendsRead && !proxy.backendsWrite) {
+        data.push({
+          logo: <ProxyLogo proxyName={proxy.type} />,
+          isStaging: proxy.isStaging,
+          proxyId: proxy.id,
+          showMenu: true,
+          server: `${proxy.host}:${proxy.port}`,
+          status: <ProxyStatus status={proxy.state} />
+        })
+      }
+    })
+    return data
   }, [proxies])
 
-  const readWriteData = (proxy, data, readWriteType, isNewProxy) => {
-    return {
-      logo: isNewProxy && <ProxyLogo proxyName={proxy.type} />,
-      proxyId: proxy.id,
-      isStaging: proxy.isStaging,
-      showMenu: isNewProxy,
-      server: `${proxy.host}:${data.port}`,
-      status: <ProxyStatus status={proxy.state} />,
-      group: <TagPill text={readWriteType} colorScheme={readWriteType === 'WRITE' ? 'blue' : 'gray'} />,
-      dbName: `${data.prxName}`,
-      dbStatus: <ServerStatus state={data.status} />,
-      pxStatus: data.prxStatus,
-      connections: data.prxConnections,
-      bytesOut: data.prxByteOut,
-      bytesIn: data.prxByteIn,
-      sessTime: data.prxLatency,
-      idGroup: data.prxHostgroup
-    }
-  }
-
-  const columnHelper = createColumnHelper()
   const columns = useMemo(
     () => [
       columnHelper.accessor(
@@ -162,7 +158,7 @@ function ProxyTable({
 
   return (
     <Box className={styles.tableContainer}>
-      <DataTable key="proxy" data={tableData} columns={columns} />
+      <DataTable data={tableData} columns={columns} />
     </Box>
   )
 }

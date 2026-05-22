@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import { useState, useMemo } from 'react'
 import TagPill from '../../../../components/TagPill'
 import { Box, Code, Flex, HStack, Input, VStack } from '@chakra-ui/react'
 import styles from './styles.module.scss'
@@ -6,44 +6,25 @@ import NotFound from '../../../../components/NotFound'
 import { useSelector } from 'react-redux'
 
 function Logs({ logs, className, searchable = false, isScrollable = true }) {
-  const [logsData, setLogsData] = useState([])
-  const [data, setData] = useState([])
   const [search, setSearch] = useState('')
 
-  const searchData = (serverData) => {
-    const searchedData = serverData.filter((x) => {
-      const searchValue = search.toLowerCase()
-      if (x.text.toLowerCase().includes(searchValue)) {
-        return x
-      }
-    })
-    return searchedData
-  }
+  const logsData = useMemo(
+    () => logs?.length > 0 ? logs.filter((log) => log.timestamp) : [],
+    [logs]
+  )
 
-  useEffect(() => {
-    if (logs?.length > 0) {
-      const nonEmptyLogs = logs.filter((log) => log.timestamp)
-      setLogsData(nonEmptyLogs)
-      setData(searchData(nonEmptyLogs))
-    }
-  }, [logs])
-
-  const handleClick = () => {
-    //setIsScrollable(true)
-  }
+  const data = useMemo(
+    () => logsData.filter((x) => x.text.toLowerCase().includes(search.toLowerCase())),
+    [logsData, search]
+  )
 
   const handleSearch = (e) => {
     setSearch(e.target.value)
   }
 
-  useEffect(() => {
-    setData(searchData(logsData))
-  }, [search])
-
   return (
     <Box
       className={`${styles.logContainer} ${className}`}
-      onClick={handleClick}
       overflow={isScrollable ? 'auto' : 'hidden'}>
       <VStack spacing={4} >
         {searchable && (

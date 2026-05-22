@@ -1,7 +1,7 @@
 import { useDispatch } from 'react-redux'
 import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import {
   abortProxy,
   clearProxy,
@@ -30,19 +30,14 @@ function ProxyMenu({
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
-  const [proxyName, setProxyName] = useState('')
-  const getHref = useHref('/').replace(/\/+$/, '');
-      
+  const proxyName = row?.proxyId ? `${row.server} (${row.proxyId})` : ''
+  const rawHref = useHref('/')
+  const getHref = useMemo(() => rawHref.replace(/\/+$/, ''), [rawHref])
+
   const openTerminalPage = useCallback((clusterName, prxId, commandType = '') => {
     const terminalURL = getHref.concat(`/terminal/clusters/${clusterName}/proxies/${prxId}/${commandType}`).replace(/\/+$/, '')
     window.open(terminalURL, '_blank')
   }, [getHref])
-
-  useEffect(() => {
-    if (row?.proxyId) {
-      setProxyName(`${row.server} (${row.proxyId})`)
-    }
-  }, [row])
 
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true)
@@ -176,7 +171,7 @@ function ProxyMenu({
             isDisabled: !user?.grants['cluster-drop-monitor'],
             onClick: () => {
               openConfirmModal()
-              setConfirmTitle(`Confirm removing monitor for ${row.proxyId} (${row.server})?`)
+              setConfirmTitle(`Confirm removing monitor for ${proxyName}?`)
               setConfirmHandler(() => () => dispatch(dropServerByName({ clusterName, serverName: row.proxyId })))
             }
           }
@@ -188,7 +183,7 @@ function ProxyMenu({
           closeModal={closeConfirmModal}
           title={confirmTitle}
           onConfirmClick={() => {
-            confirmHandler()
+            confirmHandler?.()
             closeConfirmModal()
           }}
         />
