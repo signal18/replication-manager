@@ -214,6 +214,7 @@ func (repman *ReplicationManager) PushAllConfigsToGit() error {
 	repman.AddPullToGitignore()
 	repman.AddTempDirToGitignore()
 	repman.AddPluginDirToGitignore()
+	repman.AddDictTablesToGitignore()
 
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Pushing All Configs To Git")
 
@@ -757,6 +758,12 @@ func (repman *ReplicationManager) AddTempDirToGitignore() {
 			fmt.Println("Error appending to .gitignore:", err)
 		}
 	}
+}
+
+// AddDictTablesToGitignore ensures "dicttables.json" is in .gitignore so
+// table size changes do not generate git diffs on every monitoring tick.
+func (repman *ReplicationManager) AddDictTablesToGitignore() {
+	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "dicttables.json")
 }
 
 // addLineToGitignore ensures a given line is present in the .gitignore file

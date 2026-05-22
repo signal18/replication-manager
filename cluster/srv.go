@@ -1712,9 +1712,7 @@ func (server *ServerMonitor) SaveInfos() error {
 	clsave.ProcessList = server.FullProcessList
 	clsave.SlaveStatus = server.LastSeenReplications
 	clsave.MaxSlowQueryTimestamp = server.MaxSlowQueryTimestamp
-	if server.DictTables != nil {
-		clsave.DictTables = server.DictTables.ToNewMap()
-	}
+	// DictTables saved separately in dicttables.json (not pushed to git)
 	if server.JobResults != nil {
 		clsave.JobResults = server.JobResults.ToNewMap()
 	}
@@ -1723,7 +1721,69 @@ func (server *ServerMonitor) SaveInfos() error {
 	if err != nil {
 		return errors.New("SaveInfos" + err.Error())
 	}
+	server.SaveDictTables()
 	return nil
+}
+
+// SaveDictTables persists table metadata to a separate file so that
+// size changes do not generate git diffs in serverstate.json.
+func (server *ServerMonitor) SaveDictTables() {
+	if server.DictTables == nil {
+		return
+	}
+	tables := server.DictTables.ToNewMap()
+	if len(tables) == 0 {
+		return
+	}
+	data, err := json.MarshalIndent(tables, "", "\t")
+	if err != nil {
+		return
+	}
+	os.WriteFile(server.Datadir+"/dicttables.json", data, 0644)
+}
+
+// ReloadDictTables restores DictTables from dicttables.json (preferred) or
+// from a legacy serverstate.json dictTables field. Also recomputes cluster
+// WorkLoad totals so the dashboard has them immediately on restart.
+func (server *ServerMonitor) ReloadDictTables(legacyTables map[string]*dbhelper.Table) {
+	cluster := server.ClusterGroup
+	tables := make(map[string]*dbhelper.Table)
+
+	// Try separate file first
+	if data, err := os.ReadFile(server.Datadir + "/dicttables.json"); err == nil {
+		if err := json.Unmarshal(data, &tables); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Error parsing dicttables.json for server %s: %v", server.URL, err)
+			tables = make(map[string]*dbhelper.Table)
+		}
+	}
+
+	// Fall back to legacy serverstate.json field
+	if len(tables) == 0 && len(legacyTables) > 0 {
+		tables = legacyTables
+	}
+
+	if len(tables) == 0 {
+		return
+	}
+
+	if server.DictTables == nil {
+		server.DictTables = dbhelper.NewTablesMap()
+	}
+	var tottablesize, totindexsize int64
+	for k, v := range tables {
+		server.DictTables.Set(k, v)
+		tottablesize += v.DataLength
+		totindexsize += v.IndexLength
+	}
+	// Make totals available immediately so the dashboard does not show
+	// "cluster totals missing" before topology discovery.
+	if tottablesize > 0 || totindexsize > 0 {
+		cluster.WorkLoad.DBTableSize = tottablesize
+		cluster.WorkLoad.DBIndexSize = totindexsize
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Restored %d table definitions from cache for server %s", len(tables), server.URL)
 }
 
 func (server *ServerMonitor) ReloadSaveInfosVariables() error {
@@ -1755,19 +1815,11 @@ func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 	server.SensitiveVariables = config.FromNormalStringMap(server.SensitiveVariables, clsave.Variables)
 	server.VariablesMap.SetRuntimeValues(clsave.Variables)
 	server.MaxSlowQueryTimestamp = clsave.MaxSlowQueryTimestamp
-	// Restore table dictionary — provides schema metadata immediately on
-	// restart before the first MonitorSchema cycle runs, and preserves
+	// Restore table dictionary from dicttables.json (preferred) or legacy
+	// serverstate.json dictTables field. Provides schema metadata immediately
+	// on restart before the first MonitorSchema cycle runs, and preserves
 	// checksum state (TableSync, TableChunksError) across restarts.
-	if len(clsave.DictTables) > 0 {
-		if server.DictTables == nil {
-			server.DictTables = dbhelper.NewTablesMap()
-		}
-		for k, v := range clsave.DictTables {
-			server.DictTables.Set(k, v)
-		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"Restored %d table definitions from cache for server %s", len(clsave.DictTables), server.URL)
-	}
+	server.ReloadDictTables(clsave.DictTables)
 	// Restore job results — preserves last task states across restarts so
 	// the maintenance tab shows history and in-progress detection works.
 	if len(clsave.JobResults) > 0 {

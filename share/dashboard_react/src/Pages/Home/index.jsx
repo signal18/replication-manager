@@ -157,7 +157,7 @@ function Home() {
               authorizedTabs.push('Query Rules')
             }
             if (apiUser.grants['db-show-schema']) {
-              authorizedTabs.push('Shards')
+              authorizedTabs.push('Schema')
             }
             if (apiUser.grants['cluster-grant']) {
               authorizedTabs.push('Users')
@@ -259,7 +259,7 @@ function Home() {
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Query Rules') {
         dispatch(getQueryRules({ clusterName: selectedClusterNameRef.current }))
       }
-      if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Shards') {
+      if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Schema') {
         dispatch(getShardSchema({ clusterName: selectedClusterNameRef.current }))
       }
     }
