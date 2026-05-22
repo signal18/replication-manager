@@ -134,6 +134,8 @@ type Table struct {
 	TableRows          int64              `protobuf:"varint,4,opt,name=table_rows,json=tableRows,proto3" json:"table_rows"`
 	DataLength         int64              `protobuf:"varint,5,opt,name=data_length,json=dataLength,proto3" json:"data_length"`
 	IndexLength        int64              `protobuf:"varint,6,opt,name=index_length,json=indexLength,proto3" json:"index_length"`
+	DataFree           int64              `protobuf:"varint,23,opt,name=data_free,json=dataFree,proto3" json:"data_free"`
+	AvgRowLength       int64              `protobuf:"varint,24,opt,name=avg_row_length,json=avgRowLength,proto3" json:"avg_row_length"`
 	TableCrc           uint64             `protobuf:"varint,7,opt,name=table_crc,json=tableCrc,proto3" json:"table_crc"`
 	TableClusters      string             `protobuf:"bytes,8,opt,name=table_clusters,json=tableClusters,proto3" json:"table_clusters,omitempty"`
 	TableSync          string             `protobuf:"bytes,9,opt,name=table_sync,json=tableSync,proto3" json:"table_sync"`
