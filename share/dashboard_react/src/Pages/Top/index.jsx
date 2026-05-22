@@ -165,18 +165,13 @@ function Top({ selectedCluster, onOpenSettings }) {
           body={<ClusterWorkload workload={selectedCluster?.workLoad} />}
         />
       )}
-      <Flex align='center' gap={2}>
-        <Dropdown
-          label={'Select number of rows'}
-          options={numberOfRows}
-          selectedValue={selectedNumberOfRows.value}
-          classNameFormContainer={styles.dropdownRows}
-          onChange={(value) => setSelectedNumberOfRows(value)}
-        />
-        {onOpenSettings && (
-          <RMIconButton icon={HiCog} tooltip='Monitoring Settings' onClick={onOpenSettings} size='sm' variant='ghost' />
-        )}
-      </Flex>
+      <Dropdown
+        label={'Select number of rows'}
+        options={numberOfRows}
+        selectedValue={selectedNumberOfRows.value}
+        classNameFormContainer={styles.dropdownRows}
+        onChange={(value) => setSelectedNumberOfRows(value)}
+      />
       {topProcessData?.length > 0 &&
         topProcessData.map((topP) => {
           const dbServer = clusterServers?.find((server) => server.id === topP.id)
