@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useState, useMemo } from 'react'
 import Card from '../../../../components/Card'
 import { Box, Grid, GridItem, Text } from '@chakra-ui/react'
 import TagPill from '../../../../components/TagPill'
@@ -15,26 +15,19 @@ function HADetail({ selectedCluster, user, readOnly = false }) {
       
   const dispatch = useDispatch()
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [failOverData, setFailOverData] = useState([])
-  const [SLAData, setSLAData] = useState([])
+  const failOverData = useMemo(() => selectedCluster ? [
+    { key: 'Checks', value: selectedCluster.monitorSpin },
+    { key: 'Failed', value: `${selectedCluster.failoverCounter} / ${selectedCluster?.config?.failoverLimit}` },
+    { key: 'Last Time', value: selectedCluster.failoverLastTime }
+  ] : [], [selectedCluster])
 
-  useEffect(() => {
-    if (selectedCluster) {
-      setFailOverData([
-        { key: 'Checks', value: selectedCluster.monitorSpin },
-        { key: 'Failed', value: `${selectedCluster.failoverCounter} / ${selectedCluster?.config?.failoverLimit}` },
-        { key: 'Last Time', value: selectedCluster.failoverLastTime }
-      ])
+  const SLAData = useMemo(() => selectedCluster ? [
+    { key: 'Master Up', value: `${selectedCluster.uptime}%` },
+    { key: 'Slaves Catch Up', value: `${selectedCluster.uptimeFailable}%` },
+    { key: 'Slaves Sync', value: `${selectedCluster.uptimeSemisync}%` }
+  ] : [], [selectedCluster])
 
-      setSLAData([
-        { key: 'Master Up', value: `${selectedCluster.uptime}%` },
-        { key: 'Slaves Catch Up', value: `${selectedCluster.uptimeFailable}%` },
-        { key: 'Slaves Sync', value: `${selectedCluster.uptimeSemisync}%` }
-      ])
-    }
-  }, [selectedCluster])
-
-  const openConfirmModal = (e) => {
+  const openConfirmModal = () => {
     setIsModalOpen(true)
   }
 

@@ -37,7 +37,7 @@ import {
   toggleSlowQueryCapture,
   unprovisionDatabase
 } from '../../../../redux/clusterSlice'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useHref } from 'react-router-dom'
 import { generateConfig } from '../../../../redux/configSlice'
 import { OpenSVCTerminalRID } from '../../../Terminal/ridUtils'
@@ -109,9 +109,10 @@ function ServerMenu({
   const [isReseedModalOpen, setIsReseedModalOpen] = useState(false)
   const [reseedOperationType, setReseedOperationType] = useState('')
 
-  const [serverName, setServerName] = useState('')
+  const serverName = row?.id ? `server ${row.host}:${row.port} (${row.id})` : ''
 
-  const getHref = useHref('/').replace(/\/+$/, '')
+  const rawHref = useHref('/')
+  const getHref = useMemo(() => rawHref.replace(/\/+$/, ''), [rawHref])
 
   const openTerminalPage = useCallback(
     (clusterName, srvId, commandType = '') => {
@@ -122,12 +123,6 @@ function ServerMenu({
     },
     [getHref]
   )
-
-  useEffect(() => {
-    if (row?.id) {
-      setServerName(`server ${row.host}:${row.port} (${row.id})`)
-    }
-  }, [row])
 
   // Handlers for basic ConfirmModal
   const openConfirmModal = () => {
@@ -591,7 +586,7 @@ function ServerMenu({
           closeModal={closeConfirmModal}
           title={confirmTitle}
           onConfirmClick={() => {
-            confirmHandler()
+            confirmHandler?.()
             closeConfirmModal()
           }}
         />

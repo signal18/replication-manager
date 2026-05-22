@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useSelector } from 'react-redux'
 import ProxyTable from './ProxyTable'
 import ProxyGrid from './ProxyGrid'
@@ -6,7 +6,6 @@ import ProxyGrid from './ProxyGrid'
 function Proxies({ selectedCluster, user }) {
   const isDesktop = useSelector((state) => state.common.isDesktop)
   const clusterProxies = useSelector((state) => state.cluster.clusterProxies)
-  const clusterProxiesStaging = useSelector((state) => state.cluster.clusterProxiesStaging)
 
   const [viewType, setViewType] = useState('table')
 
@@ -16,9 +15,6 @@ function Proxies({ selectedCluster, user }) {
   const showTableView = () => {
     setViewType('table')
   }
-
-  useEffect(() => {
-  }, [clusterProxiesStaging])
 
   return clusterProxies ? (
     viewType === 'table' ? (

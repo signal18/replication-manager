@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Menu, MenuButton, MenuList, MenuItem, IconButton, HStack, Spacer } from '@chakra-ui/react'
 import { HiChevronRight, HiDotsVertical } from 'react-icons/hi'
 import styles from './styles.module.scss'
@@ -13,37 +13,25 @@ function MenuOptions({
   className,
   ...rest
 }) {
-  const [menuOptions, setMenuOptions] = useState([])
   const menuPauseRegisteredRef = useRef(false)
 
-  const pauseAutoReloadForMenu = () => {
-    if (menuPauseRegisteredRef.current) {
-      return
-    }
-
+  const pauseAutoReloadForMenu = useCallback(() => {
+    if (menuPauseRegisteredRef.current) return
     acquireAutoReloadPause()
     menuPauseRegisteredRef.current = true
-  }
+  }, [])
 
-  const resumeAutoReloadFromMenu = () => {
-    if (!menuPauseRegisteredRef.current) {
-      return
-    }
-
+  const resumeAutoReloadFromMenu = useCallback(() => {
+    if (!menuPauseRegisteredRef.current) return
     releaseAutoReloadPause()
-
     menuPauseRegisteredRef.current = false
-  }
-
-  useEffect(() => {
-    setMenuOptions(options || [])
-  }, [options])
+  }, [])
 
   useEffect(() => {
     return () => {
       resumeAutoReloadFromMenu()
     }
-  }, [])
+  }, [resumeAutoReloadFromMenu])
 
   return (
     <Menu
@@ -54,11 +42,7 @@ function MenuOptions({
       {...rest}>
       <MenuButton
         colorScheme={colorScheme}
-        onClick={(event) => {
-          if (event) {
-            event.stopPropagation()
-          }
-        }}
+        onClick={(e) => e?.stopPropagation()}
         aria-label='Options'
         type='button'
         className={`${styles.menuButton} ${colorScheme === 'blue' ? styles.baseColor : ''} ${className}`}
@@ -66,12 +50,8 @@ function MenuOptions({
         icon={<HiDotsVertical />}></MenuButton>
       <MenuList
         className={styles.menuList}
-        onClick={(event) => {
-          if (event) {
-            event.stopPropagation()
-          }
-        }}>
-        {menuOptions?.map((option, index) => {
+        onClick={(e) => e?.stopPropagation()}>
+        {options.map((option, index) => {
           return option.subMenu ? (
             <Menu key={index} placement={subMenuPlacement}>
               <MenuItem key={`item-${index}`} as={MenuButton} type='button'>
@@ -82,22 +62,16 @@ function MenuOptions({
               <MenuList
                 key={`sub-${index}`}
                 className={styles.menuList}
-                onClick={(event) => {
-                  if (event) {
-                    event.stopPropagation()
-                  }
-                }}>
+                onClick={(e) => e?.stopPropagation()}>
                 {option.subMenu.map((subMenuOption, subIndex) => (
                   <MenuItem
-                    onClick={(event) => {
-                      if (event) {
-                        event.stopPropagation()
-                      }
-                      if (!subMenuOption.isDisabled && subMenuOption?.onClick) {
+                    onClick={(e) => {
+                      e?.stopPropagation()
+                      if (!subMenuOption.isDisabled && subMenuOption.onClick) {
                         subMenuOption.onClick()
                       }
                     }}
-                    {...(subMenuOption.isDisabled ? { isDisabled: subMenuOption.isDisabled } : {})}
+                    isDisabled={!!subMenuOption.isDisabled}
                     key={subIndex}>
                     {subMenuOption.name}
                   </MenuItem>
@@ -107,19 +81,13 @@ function MenuOptions({
           ) : (
             <MenuItem
               key={index}
-              {...(option.onClick
-                ? {
-                    onClick: (event) => {
-                      if (event) {
-                        event.stopPropagation()
-                      }
-                      if (!option.isDisabled) {
-                        option.onClick()
-                      }
-                    }
-                  }
-                : {})}
-              {...(option.isDisabled ? { isDisabled: option.isDisabled } : {})}
+              onClick={(e) => {
+                e?.stopPropagation()
+                if (!option.isDisabled && option.onClick) {
+                  option.onClick()
+                }
+              }}
+              isDisabled={!!option.isDisabled}
               >
               {option.name}
             </MenuItem>

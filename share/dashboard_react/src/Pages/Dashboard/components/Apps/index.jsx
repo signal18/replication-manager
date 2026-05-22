@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useSelector } from 'react-redux'
 import AppTable from './AppTable'
 import AppGrid from './AppGrid'
@@ -6,16 +6,10 @@ import AppGrid from './AppGrid'
 function Apps({ selectedCluster, user }) {
   const isDesktop = useSelector((state) => state.common.isDesktop)
   const clusterApps = useSelector((state) => state.cluster.clusterApps)
-  const clusterAppStates = useSelector((state) => state.cluster.clusterAppStates)
-
   const [viewType, setViewType] = useState('table')
 
-  const showGridView = () => {
-    setViewType('grid')
-  }
-  const showTableView = () => {
-    setViewType('table')
-  }
+  const showGridView = useCallback(() => setViewType('grid'), [])
+  const showTableView = useCallback(() => setViewType('table'), [])
 
   return clusterApps ? (
     viewType === 'table' ? (
@@ -23,11 +17,9 @@ function Apps({ selectedCluster, user }) {
         apps={clusterApps}
         isDesktop={isDesktop}
         clusterName={selectedCluster?.name}
-        showGridView={showGridView}
-        isMenuOptionsVisible={true}
         orchestrator={selectedCluster?.config?.provOrchestrator}
         user={user}
-        states={clusterAppStates}
+        showGridView={showGridView}
       />
     ) : (
       <AppGrid
@@ -35,10 +27,8 @@ function Apps({ selectedCluster, user }) {
         isDesktop={isDesktop}
         clusterName={selectedCluster?.name}
         showTableView={showTableView}
-        isMenuOptionsVisible={true}
         orchestrator={selectedCluster?.config?.provOrchestrator}
         user={user}
-        states={clusterAppStates}
       />
     )
   ) : null

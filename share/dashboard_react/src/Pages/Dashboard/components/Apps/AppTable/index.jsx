@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState } from 'react'
+import { useMemo } from 'react'
 import { DataTable } from '../../../../../components/DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
 import { Box, VStack } from '@chakra-ui/react'
@@ -7,19 +7,13 @@ import styles from './styles.module.scss'
 import { Link } from 'react-router-dom'
 import ServerName from '../../../../../components/ServerName'
 import TagPill from '../../../../../components/TagPill'
-import AppStatus from '../AppStatus'
 import ServerStatus from '../../../../../components/ServerStatus'
+import RMIconButton from '../../../../../components/RMIconButton'
+import { HiViewGrid } from 'react-icons/hi'
 
-function AppTable({ apps = [], isDesktop, clusterName, showGridView, user, states, orchestrator }) {
-  const [tableData, setTableData] = useState([])
-  useEffect(() => {
-    if (apps?.length > 0) {
-      setTableData(apps)
-    }
-    // console.log(apps)
-  }, [apps])
+const columnHelper = createColumnHelper()
 
-  const columnHelper = createColumnHelper()
+function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator, showGridView }) {
   const columns = useMemo(
     () => [
       columnHelper.accessor(
@@ -35,7 +29,7 @@ function AppTable({ apps = [], isDesktop, clusterName, showGridView, user, state
             />
           ),
           id: 'options',
-          header: '',
+          header: () => <RMIconButton onClick={showGridView} icon={HiViewGrid} tooltip='Show grid view' />,
           width: '40px'
         }
       ),
@@ -60,12 +54,12 @@ function AppTable({ apps = [], isDesktop, clusterName, showGridView, user, state
         header: 'Routes'
       }),
     ],
-    [clusterName, isDesktop, orchestrator, user]
+    [clusterName, isDesktop, orchestrator, user, showGridView]
   )
 
   return (
     <Box className={styles.tableContainer}>
-      <DataTable data={tableData} columns={columns} />
+      <DataTable data={apps} columns={columns} />
     </Box>
   )
 }

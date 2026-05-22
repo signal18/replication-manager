@@ -1,5 +1,4 @@
 import { Flex, HStack, SimpleGrid, Spacer, useDisclosure, VStack, Tooltip } from '@chakra-ui/react'
-import React, { useEffect } from 'react'
 import { useSelector } from 'react-redux'
 import ServerMenu from '../ServerMenu'
 import { HiCheck, HiTable, HiX } from 'react-icons/hi'
@@ -24,7 +23,6 @@ import DBFlavourIcon from '../../../../../components/Icons/DBFlavourIcon'
 import ServerName from '../../../../../components/ServerName'
 import AccordionComponent from '../../../../../components/AccordionComponent'
 import NotFound from '../../../../../components/NotFound'
-import GTID from '../../../../../components/GTID'
 import ServerStatus from '../../../../../components/ServerStatus'
 import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
@@ -48,13 +46,7 @@ function DBServerGrid({
   hasMysqlGtid,
   defaultOpenAll = false
 }) {
-  const {
-    common: { isDesktop },
-    cluster: { clusterStates }
-  } = useSelector((state) => state)
-
-  useEffect(() => {
-  }, [clusterStates])
+  const isDesktop = useSelector((state) => state.common.isDesktop)
 
   const { isOpen: isServiceInfoOpen, onToggle: onServiceInfoToggle } = useDisclosure({ defaultIsOpen: false })
   const { isOpen: isReplicationVarOpen, onToggle: onReplicationVarToggle } = useDisclosure({ defaultIsOpen: defaultOpenAll })
@@ -211,16 +203,6 @@ function DBServerGrid({
                         key: 'SQL Thread',
                         value:
                           replication.slaveSqlRunning?.String == 'Yes' ? (
-                            <CustomIcon icon={HiCheck} color='green' />
-                          ) : (
-                            <CustomIcon icon={HiX} color='red' />
-                          )
-                      },
-                      {
-                        key: 'Semi Sync',
-                        value:
-                          (rowData.state === 'Slave' && rowData.semiSyncSlaveStatus) ||
-                          (rowData.state === 'Master' && rowData.semiSyncMasterStatus) ? (
                             <CustomIcon icon={HiCheck} color='green' />
                           ) : (
                             <CustomIcon icon={HiX} color='red' />

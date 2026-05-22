@@ -22,6 +22,7 @@ import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { sizeOf } from '../../utility/common'
 import SchemaGraph from './SchemaGraph'
 import { useTheme } from '../../ThemeProvider'
+import { isAutoReloadPaused } from '../../utility/autoReloadPause'
 
 // ─── Sync badge (DataTable Sync column) ───────────────────────────────────────
 // Colours: [bg-light, fg-light, border-light, bg-dark, fg-dark, border-dark]
@@ -167,7 +168,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings }) {
   // pauseAutoReload (clusterSlice) writes ONLY to localStorage, never to Redux
   // state. There is no state.cluster.refreshing field. The correct check —
   // identical to Home/index.jsx::callServices() — is:
-  const isPaused = () => Boolean(localStorage.getItem('pause_auto_reload'))
+  const isPaused = isAutoReloadPaused
 
   // ── Local state ────────────────────────────────────────────────────────────
   // FIX: store the last-seen data in a ref so shardSchema comparisons don't

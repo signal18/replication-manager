@@ -2,7 +2,7 @@ import { useDispatch } from 'react-redux'
 import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import RestartAppModal from './RestartAppModal'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import {
   abortApp,
   clearApp,
@@ -22,14 +22,8 @@ function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView',
   const [isRestartModalOpen, setIsRestartModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
-  const [appName, setAppName] = useState('')
+  const appName = row?.id ? `${row.host}:${row.port} (${row.id})` : ''
   const navigate = useNavigate()
-
-  useEffect(() => {
-    if (row?.id) {
-      setAppName(`${row.host}:${row.port} (${row.id})`)
-    }
-  }, [row])
 
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true)
@@ -175,7 +169,7 @@ function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView',
           closeModal={closeConfirmModal}
           title={confirmTitle}
           onConfirmClick={() => {
-            confirmHandler()
+            confirmHandler?.()
             closeConfirmModal()
           }}
         />
