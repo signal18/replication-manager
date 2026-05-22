@@ -163,7 +163,7 @@ func TestHandlerSignup_PassesThroughCRMContractStatuses(t *testing.T) {
 				w.WriteHeader(tt.crmStatus)
 				_, _ = w.Write([]byte(tt.crmBody))
 			}))
-			defer crm.Close()
+			t.Cleanup(crm.Close)
 
 			repman := &ReplicationManager{Conf: &config.Config{Cloud18CrmApiUrl: crm.URL}}
 			payload := `{"first_name":"Ada","last_name":"Lovelace","username":"ada","email":"ADA@example.com","password":"secret-password"}`

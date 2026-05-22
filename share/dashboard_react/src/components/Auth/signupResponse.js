@@ -3,6 +3,8 @@ export const existingAccountMessage = 'Account already exists. Please log in.'
 
 export const isPendingSignupResponse = (response) => {
   const data = response?.data || {}
+  // email_confirmed === false also matches a 201 body where the CRM created the account
+  // but deferred confirmation (e.g. GitLab side-effect) — treat that as pending regardless of status.
   return response?.status === 202 || data?.state === 'pending' || data?.identity?.email_confirmed === false
 }
 
@@ -10,8 +12,6 @@ export const isConfirmedSignupResponse = (response) => {
   const data = response?.data || {}
   return response?.status === 201 && data?.state !== 'pending' && data?.identity?.email_confirmed !== false
 }
-
-export const shouldRedirectToLoginAfterSignup = (response) => isConfirmedSignupResponse(response)
 
 export const resolveSignupSuccessMessage = (response, fallbackMessage) => {
   if (isPendingSignupResponse(response)) {
@@ -25,7 +25,8 @@ export const resolveSignupSuccessMessage = (response, fallbackMessage) => {
 
 export const resolveSignupErrorMessage = (response) => {
   if (response?.status === 409) {
-    return existingAccountMessage
+    const msg = response?.data?.message || response?.data?.error
+    return msg || existingAccountMessage
   }
   if (typeof response?.data === 'object' && response.data?.message) {
     return response.data.message
