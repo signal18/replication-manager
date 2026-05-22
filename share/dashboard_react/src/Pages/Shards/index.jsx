@@ -591,6 +591,15 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
         </Flex>
       </Flex>
 
+      {/* ── Size summary ──────────────────────────────────────────────── */}
+      {(sizeTotalsInfo.tableTotal > 0 || sizeTotalsInfo.indexTotal > 0) && (
+        <Flex gap={4} px={3} py={2} fontSize='sm' color='gray.600'>
+          <span><strong>Total Data:</strong> {sizeOf(sizeTotalsInfo.tableTotal)}</span>
+          <span><strong>Total Index:</strong> {sizeOf(sizeTotalsInfo.indexTotal)}</span>
+          <span><strong>Total:</strong> {sizeOf(sizeTotalsInfo.tableTotal + sizeTotalsInfo.indexTotal)}</span>
+        </Flex>
+      )}
+
       {/* ── Toolbar ─────────────────────────────────────────────────────── */}
       <Flex className={styles.section} direction="column" gap={2}>
 
