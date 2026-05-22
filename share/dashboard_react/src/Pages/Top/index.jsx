@@ -187,6 +187,7 @@ function Top({ selectedCluster, onOpenSettings }) {
               headerClassName={`${styles.accordionHeader} ${styles[color]}`}
               panelClassName={`${styles.accordionBody} ${styles[color]}`}
               className={styles.accordion}
+              headerActions={onOpenSettings ? <RMIconButton icon={HiCog} tooltip='Monitoring Settings' onClick={onOpenSettings} size='xs' variant='ghost' /> : null}
               heading={
                 <HStack>
                   <Text> {topP.url}</Text>
