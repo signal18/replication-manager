@@ -106,7 +106,7 @@ function Dashboard({ selectedCluster, user, openSettings = {} }) {
             description='Performance spike detections based on Graphite time-series analysis: slow query regressions, connection storms, tmp-table storms, full table scan spikes, metadata lock contention, replication lag predictions, error storms. Does not appear in the main Cluster Logs.'
           />
         }
-        headerActions={gearButton(openSettings.graphs, 'Graph Settings')}
+        headerActions={gearButton(openSettings.plugins, 'Plugin Settings')}
         body={<WorkloadLogs />}
       />
       <AccordionComponent
