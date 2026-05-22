@@ -173,9 +173,6 @@ jobs:
             signal18/replication-manager:${{ steps.tag.outputs.tag }}-rootless
             signal18/replication-manager:latest-rootless
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            PLUGIN_SIGNER_USER=${{ secrets.PLUGIN_SIGNER_USER }}
-            PLUGIN_SIGNER_TOKEN=${{ secrets.PLUGIN_SIGNER_TOKEN }}
           cache-from: type=gha,scope=osc-rootless
           cache-to: type=gha,mode=max,scope=osc-rootless
 
@@ -319,9 +316,6 @@ jobs:
           push: true
           tags: signal18/replication-manager:${{ steps.tag.outputs.tag }}-pro-rootless
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            PLUGIN_SIGNER_USER=${{ secrets.PLUGIN_SIGNER_USER }}
-            PLUGIN_SIGNER_TOKEN=${{ secrets.PLUGIN_SIGNER_TOKEN }}
           cache-from: type=gha,scope=pro-rootless
           cache-to: type=gha,mode=max,scope=pro-rootless
 
@@ -445,9 +439,6 @@ jobs:
           push: true
           tags: signal18/replication-manager:nightly-rootless
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            PLUGIN_SIGNER_USER=${{ secrets.PLUGIN_SIGNER_USER }}
-            PLUGIN_SIGNER_TOKEN=${{ secrets.PLUGIN_SIGNER_TOKEN }}
           cache-from: type=gha,scope=nightly-rootless
           cache-to: type=gha,mode=max,scope=nightly-rootless
 
@@ -627,9 +618,6 @@ jobs:
           push: true
           tags: ${{ steps.tags.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            PLUGIN_SIGNER_USER=${{ secrets.PLUGIN_SIGNER_USER }}
-            PLUGIN_SIGNER_TOKEN=${{ secrets.PLUGIN_SIGNER_TOKEN }}
           cache-from: type=gha,scope=dev-rootless
           cache-to: type=gha,mode=max,scope=dev-rootless
 
@@ -773,9 +761,6 @@ jobs:
           push: true
           tags: signal18/replication-manager:${{ steps.tag.outputs.tag }}-slim-rootless
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            PLUGIN_SIGNER_USER=${{ secrets.PLUGIN_SIGNER_USER }}
-            PLUGIN_SIGNER_TOKEN=${{ secrets.PLUGIN_SIGNER_TOKEN }}
           cache-from: type=gha,scope=slim-rootless
           cache-to: type=gha,mode=max,scope=slim-rootless
 
