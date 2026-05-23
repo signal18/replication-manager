@@ -376,6 +376,7 @@ type Config struct {
 	MCPBindAddr                              string                       `scope:"server" mapstructure:"mcp-bind-address" toml:"mcp-bind-address" json:"mcpBindAddress"`
 	MCPAdvertiseAddr                         string                       `scope:"server" mapstructure:"mcp-advertise-address" toml:"mcp-advertise-address" json:"mcpAdvertiseAddress"`
 	MCPWriteEnabled                          bool                         `mapstructure:"mcp-write-enabled" toml:"mcp-write-enabled" json:"mcpWriteEnabled"`
+	MCPAuthEnabled                           bool                         `scope:"server" mapstructure:"mcp-auth-enabled" toml:"mcp-auth-enabled" json:"mcpAuthEnabled"`
 	HttpRoot                                 string                       `scope:"server" mapstructure:"http-root" toml:"http-root" json:"httpRoot"`
 	HttpAuth                                 bool                         `scope:"server" mapstructure:"http-auth" toml:"http-auth" json:"httpAuth"`
 	HttpUseReact                             bool                         `scope:"server" mapstructure:"http-use-react" toml:"http-use-react" json:"http-use-react"`

@@ -143,6 +143,30 @@ var versionClientCmd = &cobra.Command{
 	},
 }
 
+// mcpTokenCmd authenticates against the REST API and prints the resulting
+// JWT to stdout. The token can be used as the Bearer credential for the
+// MCP /sse and /message endpoints when mcp-auth-enabled is true. Output
+// is intentionally just the token (no trailing labels) so it pipes
+// cleanly into shell substitutions such as:
+//
+//	export REPLICATION_MANAGER_MCP_TOKEN=$(replication-manager-cli mcp-token \
+//	    --user admin --password mariadb)
+var mcpTokenCmd = &cobra.Command{
+	Use:   "mcp-token",
+	Short: "Print a JWT for authenticating to the MCP server",
+	Long: `Log in to the replication-manager REST API and print the resulting JWT to
+stdout. The same token authenticates the MCP server's /sse and /message
+endpoints when --mcp-auth-enabled is true (the default).`,
+	Run: func(cmd *cobra.Command, args []string) {
+		token, err := cliLogin()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "mcp-token: "+err.Error())
+			os.Exit(1)
+		}
+		fmt.Println(token)
+	},
+}
+
 var cliConn = http.Client{
 	Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
 	Timeout:   1800 * time.Second,
@@ -391,6 +415,9 @@ func init() {
 	initConfiguratorFlags(configuratorCmd)
 
 	rootClientCmd.AddCommand(versionClientCmd)
+
+	rootClientCmd.AddCommand(mcpTokenCmd)
+	initServerApiFlags(mcpTokenCmd)
 
 	rootClientCmd.AddCommand(printDefaultsCmd)
 	initPrintDefaultsFlags(printDefaultsCmd)

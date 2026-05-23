@@ -30,6 +30,10 @@ type RepmanProvider interface {
 	SetClusterSetting(cl *cluster.Cluster, key, value string) error
 	// SwitchClusterSetting toggles a boolean configuration key for a cluster.
 	SwitchClusterSetting(cl *cluster.Cluster, key string) error
+	// GetJWTVerificationKey returns the PEM-encoded RSA public key used to
+	// verify Bearer JWTs issued by /api/login. Used to authenticate MCP
+	// SSE/message requests against the same credential as the REST API.
+	GetJWTVerificationKey() []byte
 }
 
 // MCPServer encapsulates the MCP server and its configuration.
@@ -95,9 +99,14 @@ func (s *MCPServer) Start(ctx context.Context) error {
 		writeMode = "read-write"
 	}
 
+	authMode := "off"
+	if s.conf.MCPAuthEnabled {
+		authMode = "on"
+	}
+
 	switch transport {
 	case "stdio":
-		s.logger.Infof("MCP server started: transport=stdio version=%s mode=%s", s.conf.Version, writeMode)
+		s.logger.Infof("MCP server started: transport=stdio version=%s mode=%s auth=n/a", s.conf.Version, writeMode)
 		return mcpserver.ServeStdio(s.mcp)
 	case "sse", "":
 		ln, err := net.Listen("tcp", addr)
@@ -107,8 +116,9 @@ func (s *MCPServer) Start(ctx context.Context) error {
 		s.sseServer = mcpserver.NewSSEServer(s.mcp,
 			mcpserver.WithBaseURL(baseURL),
 		)
-		s.httpServer = &http.Server{Addr: addr, Handler: s.sseServer}
-		s.logger.Infof("MCP server started: transport=sse listen=%s version=%s mode=%s", ln.Addr(), s.conf.Version, writeMode)
+		handler := s.buildHTTPHandler(s.sseServer)
+		s.httpServer = &http.Server{Addr: addr, Handler: handler}
+		s.logger.Infof("MCP server started: transport=sse listen=%s version=%s mode=%s auth=%s", ln.Addr(), s.conf.Version, writeMode, authMode)
 		s.logger.Infof("MCP SSE endpoint: %s/sse  (use this URL with 'claude mcp add')", baseURL)
 		return s.httpServer.Serve(ln)
 	case "both":
@@ -119,8 +129,9 @@ func (s *MCPServer) Start(ctx context.Context) error {
 		s.sseServer = mcpserver.NewSSEServer(s.mcp,
 			mcpserver.WithBaseURL(baseURL),
 		)
-		s.httpServer = &http.Server{Addr: addr, Handler: s.sseServer}
-		s.logger.Infof("MCP server started: transport=both listen=%s version=%s mode=%s", ln.Addr(), s.conf.Version, writeMode)
+		handler := s.buildHTTPHandler(s.sseServer)
+		s.httpServer = &http.Server{Addr: addr, Handler: handler}
+		s.logger.Infof("MCP server started: transport=both listen=%s version=%s mode=%s auth=%s", ln.Addr(), s.conf.Version, writeMode, authMode)
 		s.logger.Infof("MCP SSE endpoint: %s/sse  (use this URL with 'claude mcp add')", baseURL)
 		go func() {
 			if err := s.httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
@@ -132,6 +143,18 @@ func (s *MCPServer) Start(ctx context.Context) error {
 	default:
 		return fmt.Errorf("unknown MCP transport: %s", transport)
 	}
+}
+
+// buildHTTPHandler returns the http.Handler used for the SSE/message TCP
+// endpoints, wrapping the SSE server with a JWT auth middleware when
+// MCPAuthEnabled is set. When auth is disabled, a startup WARN is
+// emitted because the endpoint is exposed without credentials.
+func (s *MCPServer) buildHTTPHandler(sse *mcpserver.SSEServer) http.Handler {
+	if !s.conf.MCPAuthEnabled {
+		s.logger.Warnf("MCP server: --mcp-auth-enabled=false; /sse and /message are exposed without authentication")
+		return sse
+	}
+	return authMiddleware(sse, s.repman.GetJWTVerificationKey(), s.logger)
 }
 
 // Stop shuts down the MCP server.
