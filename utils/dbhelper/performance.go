@@ -332,7 +332,7 @@ func GetPFSVariablesInstruments(db *sqlx.DB) (map[string]string, string, error) 
 func GetPFSVariablesConsumer(db *sqlx.DB) (map[string]string, string, error) {
 
 	vars := make(map[string]string)
-	query := "SELECT /*replication-manager*/ 'SLOW_QUERY_PFS' AS variable_name, IF(count(*)>0,'OFF','ON') AS VALUE from performance_schema.setup_consumers  WHERE NAME IN('events_statements_history_long','events_stages_history') AND ENABLED='NO'"
+	query := "SELECT /*replication-manager*/ 'SLOW_QUERY_PFS' AS variable_name, IF(count(*)>0,'OFF','ON') AS VALUE from performance_schema.setup_consumers  WHERE NAME IN('events_statements_current','events_statements_history_long','events_stages_history') AND ENABLED='NO'"
 	rows, err := db.Queryx(query)
 	if err != nil {
 		return vars, query, err

@@ -106,9 +106,9 @@ func (server *ServerMonitor) SwitchSlowQueryCapturePFS() {
 		return
 	}
 	if !server.HavePFSSlowQueryLog {
-		server.ExecQueryNoBinLog("update performance_schema.setup_consumers set ENABLED='YES' WHERE NAME IN('events_statements_history_long','events_stages_history')", 5*time.Second)
+		server.ExecQueryNoBinLog("update performance_schema.setup_consumers set ENABLED='YES' WHERE NAME IN('events_statements_current','events_statements_history_long','events_stages_history')", 5*time.Second)
 	} else {
-		server.ExecQueryNoBinLog("update performance_schema.setup_consumers set ENABLED='NO' WHERE NAME IN('events_statements_history_long','events_stages_history')", 5*time.Second)
+		server.ExecQueryNoBinLog("update performance_schema.setup_consumers set ENABLED='NO' WHERE NAME IN('events_statements_current','events_statements_history_long','events_stages_history')", 5*time.Second)
 	}
 }
 
