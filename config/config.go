@@ -110,6 +110,7 @@ type Config struct {
 	MonitorProcessListInactive                bool                         `mapstructure:"monitoring-processlist-inactive" toml:"monitoring-processlist-inactive" json:"monitoringProcesslistInactive"`
 	MonitorProcessListTransactions            bool                         `mapstructure:"monitoring-processlist-transactions" toml:"monitoring-processlist-transactions" json:"monitoringProcesslistTransactions"`
 	MonitorProcessListInformationSchema       bool                         `mapstructure:"monitoring-processlist-information-schema" toml:"monitoring-processlist-information-schema" json:"monitoringProcesslistInformationSchema"`
+	MonitorProcessListQueryLength             int                          `mapstructure:"monitoring-processlist-query-length" toml:"monitoring-processlist-query-length" json:"monitoringProcesslistQueryLength"`
 	MonitorQueries                            bool                         `mapstructure:"monitoring-queries" toml:"monitoring-queries" json:"monitoringQueries"`
 	MonitorPFS                                bool                         `mapstructure:"monitoring-performance-schema" toml:"monitoring-performance-schema" json:"monitoringPerformanceSchema"`
 	MonitorPFSInstruments                     bool                         `mapstructure:"monitoring-performance-schema-instruments" toml:"monitoring-performance-schema-instruments" json:"monitoringPerformanceSchemaInstruments"`

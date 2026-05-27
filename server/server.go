@@ -403,6 +403,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorProcessListInactive, "monitoring-processlist-inactive", false, " Show innactive transactions or queries in process")
 	flags.BoolVar(&conf.MonitorProcessListTransactions, "monitoring-processlist-transactions", false, "Report queries or transcations in process")
 	flags.BoolVar(&conf.MonitorProcessListInformationSchema, "monitoring-processlist-information-schema", true, "Use Information instead SHOW FULL PROCESSLIST")
+	flags.IntVar(&conf.MonitorProcessListQueryLength, "monitoring-processlist-query-length", 16384, "Maximum query text length to capture from processlist and PFS digest sample queries")
 	flags.StringVar(&conf.MonitorAddress, "monitoring-address", "localhost", "How to contact this monitoring")
 	flags.StringVar(&conf.MonitorTenant, "monitoring-tenant", "default", "Can be use to store multi tenant identifier")
 	flags.Int64Var(&conf.MonitorWaitRetry, "monitoring-wait-retry", 60, "Retry this number of time before giving up state transition <999999")

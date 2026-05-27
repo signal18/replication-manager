@@ -487,7 +487,7 @@ func TestGetProcesslistTable_Integration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pl, query, err := GetProcesslistTable(db, version, tt.inactive_querying,
-				tt.order_by_trx_time, tt.full_process_is, tt.limit, tt.user)
+				tt.order_by_trx_time, tt.full_process_is, tt.limit, tt.user, 16384)
 
 			if err != nil {
 				t.Fatalf("GetProcesslistTable() failed: %v", err)

@@ -313,12 +313,16 @@ func GetDisks(db *sqlx.DB, myver *version.Version) ([]Disk, string, error) {
 // full_process_is: use full processlist query (vs SHOW FULL PROCESSLIST)
 // limit: max number of processes to return
 // user: filter by specific user (empty string for all users)
-func GetProcesslistTable(db *sqlx.DB, version *version.Version, inactive_querying bool, order_by_trx_time bool, full_process_is bool, limit string, user string) ([]Processlist, string, error) {
+func GetProcesslistTable(db *sqlx.DB, version *version.Version, inactive_querying bool, order_by_trx_time bool, full_process_is bool, limit string, user string, queryLength int) ([]Processlist, string, error) {
 	pl := []Processlist{}
 	var err error
 	stmt := ""
 	filter_order_limit := ""
 	filter_user := "1=1"
+	if queryLength <= 0 {
+		queryLength = 16384
+	}
+	qlStr := strconv.Itoa(queryLength)
 
 	if user != "" {
 		filter_user = "  User='" + user + "' "
@@ -354,7 +358,7 @@ func GetProcesslistTable(db *sqlx.DB, version *version.Version, inactive_queryin
 			"IF(a.Command='Sleep' AND b.trx_isolation_level IS NOT NULL, 'Trx sleep', a.Command) as Command, " +
 			"a.Time_ms/1000 as Time, " +
 			"a.State, " +
-			"SUBSTRING(COALESCE(a.INFO_BINARY,''),1,1000) as Info, " +
+			"SUBSTRING(COALESCE(a.INFO_BINARY,''),1," + qlStr + ") as Info, " +
 			"CASE WHEN a.Max_Stage < 2 THEN Progress ELSE (a.Stage-1)/a.Max_Stage*100+a.Progress/a.Max_Stage END AS Progress, " +
 			"GREATEST(COALESCE(TIMESTAMPDIFF(SECOND,b.trx_started, now()),0),0) as trx_time, " +
 			"COALESCE(b.trx_isolation_level,'') as trx_isolation_level, " +
@@ -381,7 +385,7 @@ func GetProcesslistTable(db *sqlx.DB, version *version.Version, inactive_queryin
 			"IF(a.Command='Sleep' AND b.trx_isolation_level IS NOT NULL, 'Trx sleep', a.Command) as Command, " +
 			"a.Time as Time, " +
 			"a.State, " +
-			"SUBSTRING(COALESCE(a.INFO,''),1,1000) as Info, " +
+			"SUBSTRING(COALESCE(a.INFO,''),1," + qlStr + ") as Info, " +
 			"0 as Progress, " +
 			"GREATEST(COALESCE(TIMESTAMPDIFF(SECOND,b.trx_started, now()),0),0) as trx_time, " +
 			"COALESCE(b.trx_isolation_level,'') as trx_isolation_level, " +
@@ -404,7 +408,7 @@ func GetProcesslistTable(db *sqlx.DB, version *version.Version, inactive_queryin
 				"IF(a.Command='Sleep' AND b.trx_isolation_level IS NOT NULL, 'Trx sleep', a.Command) as Command, " +
 				"a.Time_ms as Time, " +
 				"a.State, " +
-				"SUBSTRING(COALESCE(a.INFO,''),1,1000) as Info, " +
+				"SUBSTRING(COALESCE(a.INFO,''),1," + qlStr + ") as Info, " +
 				"0 as Progress, " +
 				"GREATEST(COALESCE(TIMESTAMPDIFF(SECOND,b.trx_started, now()),0),0) as trx_time, " +
 				"COALESCE(b.trx_isolation_level,'') as trx_isolation_level, " +
