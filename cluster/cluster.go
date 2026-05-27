@@ -116,6 +116,7 @@ type Cluster struct {
 	IsGettingSlowLog              bool                       `json:"isGettingSlowLog" groups:"web"`
 	IsValidBackup                 bool                       `json:"isValidBackup" groups:"web"`
 	IsNotMonitoring               bool                       `json:"isNotMonitoring" groups:"web"`
+	HaveSSHKeyChecked             bool                       `json:"-"`
 	IsCapturing                   bool                       `json:"isCapturing" groups:"web"`
 	IsGitPull                     bool                       `json:"isGitPull" groups:"web"`
 	IsGitPush                     bool                       `json:"isGitPush" groups:"web"`
@@ -909,6 +910,7 @@ func (cluster *Cluster) Run() {
 							cluster.CheckAvailableCredit()
 							cluster.CheckOpenSVCTresholds()
 							cluster.JobsCheckSchedulerTable()
+							cluster.CheckOnPremiseSSHKey()
 							cluster.CheckGlobalDeprecatedKeys()
 							cluster.CheckClusterDeprecatedKeys()
 							cluster.CheckClusterServiceAgents()

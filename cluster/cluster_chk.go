@@ -1257,6 +1257,17 @@ func (cluster *Cluster) CheckOpenSVCTresholds() {
 	}
 }
 
+func (cluster *Cluster) CheckOnPremiseSSHKey() {
+	if !cluster.Conf.OnPremiseSSH || cluster.HaveSSHKeyChecked {
+		return
+	}
+	key := cluster.OnPremiseGetSSHKey()
+	if _, err := os.Stat(key); os.IsNotExist(err) {
+		cluster.SetState("WARN0169", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0169"], key), ErrFrom: "CHECK"})
+	}
+	cluster.HaveSSHKeyChecked = true
+}
+
 func (cluster *Cluster) CheckDBCredentials() {
 	// This check is to prevent invalid credentials configuration
 	// when both users are the same but passwords are different
