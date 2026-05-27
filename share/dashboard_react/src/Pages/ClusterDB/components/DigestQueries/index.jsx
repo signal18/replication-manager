@@ -60,9 +60,6 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
 
   const { isOpen, onOpen, onClose } = useDisclosure()
   const isLight = theme === 'light'
-  const codeBg = isLight ? 'gray.100' : 'gray.700'
-  const codeColor = isLight ? 'gray.800' : 'gray.50'
-  const tableBorderColor = isLight ? 'gray.200' : 'gray.600'
   const iconColor = isLight ? 'gray.600' : 'gray.200'
   const [explainData, setExplainData] = useState(null)
   const [explainLoading, setExplainLoading] = useState(false)
@@ -238,12 +235,12 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
               <Box
                 mb={4}
                 p={3}
-                bg={codeBg}
+                bg='var(--secondary-gray-color)'
                 borderRadius='md'
                 maxH='150px'
                 overflowY='auto'
               >
-                <Code whiteSpace='pre-wrap' wordBreak='break-all' fontSize='xs' display='block' bg='transparent' color={codeColor}>
+                <Code whiteSpace='pre-wrap' wordBreak='break-all' fontSize='xs' display='block' bg='transparent' color='var(--text-color)'>
                   {safeSQLFormat(explainQuery)}
                 </Code>
               </Box>
@@ -256,34 +253,34 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
             {explainData?.error && <Text color='red.500'>{String(explainData.error)}</Text>}
             {explainData && !explainData.error && Array.isArray(explainData) && (
               <Box overflowX='auto'>
-                <Table size='sm' variant='simple' borderColor={tableBorderColor} sx={{ tableLayout: 'auto', minW: '800px' }}>
+                <Table size='sm' variant='simple' borderColor='var(--tertiary-color)' sx={{ tableLayout: 'auto', minW: '800px' }}>
                   <Thead>
                     <Tr>
-                      <Th borderColor={tableBorderColor}>id</Th>
-                      <Th borderColor={tableBorderColor}>select_type</Th>
-                      <Th borderColor={tableBorderColor}>table</Th>
-                      <Th borderColor={tableBorderColor}>type</Th>
-                      <Th borderColor={tableBorderColor}>possible_keys</Th>
-                      <Th borderColor={tableBorderColor}>key</Th>
-                      <Th borderColor={tableBorderColor}>key_len</Th>
-                      <Th borderColor={tableBorderColor}>ref</Th>
-                      <Th borderColor={tableBorderColor}>rows</Th>
-                      <Th borderColor={tableBorderColor} minW='200px'>Extra</Th>
+                      <Th borderColor='var(--tertiary-color)'>id</Th>
+                      <Th borderColor='var(--tertiary-color)'>select_type</Th>
+                      <Th borderColor='var(--tertiary-color)'>table</Th>
+                      <Th borderColor='var(--tertiary-color)'>type</Th>
+                      <Th borderColor='var(--tertiary-color)'>possible_keys</Th>
+                      <Th borderColor='var(--tertiary-color)'>key</Th>
+                      <Th borderColor='var(--tertiary-color)'>key_len</Th>
+                      <Th borderColor='var(--tertiary-color)'>ref</Th>
+                      <Th borderColor='var(--tertiary-color)'>rows</Th>
+                      <Th borderColor='var(--tertiary-color)' minW='200px'>Extra</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
                     {explainData.map((row, i) => (
                       <Tr key={i}>
-                        <Td borderColor={tableBorderColor}>{row.id}</Td>
-                        <Td borderColor={tableBorderColor}>{row.selectType?.String || row.selectType?.Valid === false ? '-' : row.selectType}</Td>
-                        <Td borderColor={tableBorderColor}>{row.table?.String || '-'}</Td>
-                        <Td borderColor={tableBorderColor}>{row.type?.String || '-'}</Td>
-                        <Td borderColor={tableBorderColor}>{row.possibleKeys?.String || '-'}</Td>
-                        <Td borderColor={tableBorderColor}>{row.key?.String || '-'}</Td>
-                        <Td borderColor={tableBorderColor}>{row.keyLen?.String || '-'}</Td>
-                        <Td borderColor={tableBorderColor}>{row.ref?.String || '-'}</Td>
-                        <Td borderColor={tableBorderColor}>{row.rows?.String || '-'}</Td>
-                        <Td borderColor={tableBorderColor} whiteSpace='normal' minW='200px'>{row.extra?.String || '-'}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.id}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.selectType?.String || row.selectType?.Valid === false ? '-' : row.selectType}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.table?.String || '-'}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.type?.String || '-'}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.possibleKeys?.String || '-'}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.key?.String || '-'}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.keyLen?.String || '-'}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.ref?.String || '-'}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.rows?.String || '-'}</Td>
+                        <Td borderColor='var(--tertiary-color)' whiteSpace='normal' minW='200px'>{row.extra?.String || '-'}</Td>
                       </Tr>
                     ))}
                   </Tbody>
