@@ -185,6 +185,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
               <IconButton
                 size='xs'
                 variant='ghost'
+                colorScheme='gray'
                 icon={<HiSearchCircle size='16' />}
                 isDisabled={!hasSample}
                 onClick={() => handleExplain(row.digest, row.sampleQuery)}
