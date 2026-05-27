@@ -909,6 +909,9 @@ func (server *ServerMonitor) RunPFSExplainCapture(ctx context.Context, snapshot 
 		}
 		// Skip statements that can't be EXPLAINed and repman's own queries
 		upper := strings.ToUpper(strings.TrimLeft(q.Sample_query, " \t\n/*"))
+		if strings.HasPrefix(upper, "EXPLAIN") {
+			continue
+		}
 		canExplain := strings.HasPrefix(upper, "SELECT") ||
 			strings.HasPrefix(upper, "DELETE") ||
 			strings.HasPrefix(upper, "INSERT") ||
