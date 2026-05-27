@@ -20,6 +20,7 @@ import {
   Th,
   Td,
   useDisclosure,
+  useColorModeValue,
   Spinner,
   Text,
   Code
@@ -47,6 +48,8 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
   const prevDigestQueries = useRef(digestQueries)
 
   const { isOpen, onOpen, onClose } = useDisclosure()
+  const codeBg = useColorModeValue('gray.100', 'gray.800')
+  const codeColor = useColorModeValue('gray.800', 'gray.100')
   const [explainData, setExplainData] = useState(null)
   const [explainLoading, setExplainLoading] = useState(false)
   const [explainQuery, setExplainQuery] = useState('')
@@ -181,7 +184,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
               <IconButton
                 size='xs'
                 variant='ghost'
-                icon={<HiSearchCircle />}
+                icon={<HiSearchCircle size='16' />}
                 isDisabled={!hasSample}
                 onClick={() => handleExplain(row.digest, row.sampleQuery)}
                 aria-label='Explain query'
@@ -220,12 +223,12 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
               <Box
                 mb={4}
                 p={3}
-                bg='gray.800'
+                bg={codeBg}
                 borderRadius='md'
                 maxH='150px'
                 overflowY='auto'
               >
-                <Code colorScheme='gray' whiteSpace='pre-wrap' wordBreak='break-all' fontSize='xs' display='block' bg='transparent' color='gray.100'>
+                <Code whiteSpace='pre-wrap' wordBreak='break-all' fontSize='xs' display='block' bg='transparent' color={codeColor}>
                   {explainQuery}
                 </Code>
               </Box>
