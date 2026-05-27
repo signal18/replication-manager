@@ -7205,7 +7205,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/sales/end-external-ops": {
+        "/api/clusters/{clusterName}/ext-role/end": {
             "post": {
                 "description": "This endpoint removes external operations for the specified cluster.",
                 "consumes": [

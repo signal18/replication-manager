@@ -9777,7 +9777,7 @@ paths:
       summary: Accept a subscription for a specific cluster
       tags:
       - Cloud18
-  /api/clusters/{clusterName}/sales/end-external-ops:
+  /api/clusters/{clusterName}/ext-role/end:
     post:
       consumes:
       - application/json

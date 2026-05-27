@@ -55,7 +55,7 @@
 | POST | /api/clusters/{clusterName}/ext-role/refuse | [post API clusters cluster name ext role refuse](#post-api-clusters-cluster-name-ext-role-refuse) | Reject external operations for a specific cluster |
 | POST | /api/clusters/{clusterName}/ext-role/subscribe | [post API clusters cluster name ext role subscribe](#post-api-clusters-cluster-name-ext-role-subscribe) | subscribe external operations for a specific cluster |
 | POST | /api/clusters/{clusterName}/sales/accept-subscription | [post API clusters cluster name sales accept subscription](#post-api-clusters-cluster-name-sales-accept-subscription) | Accept a subscription for a specific cluster |
-| POST | /api/clusters/{clusterName}/sales/end-external-ops | [post API clusters cluster name sales end external ops](#post-api-clusters-cluster-name-sales-end-external-ops) | Remove external operations for a specific cluster |
+| POST | /api/clusters/{clusterName}/ext-role/end | [post API clusters cluster name sales end external ops](#post-api-clusters-cluster-name-sales-end-external-ops) | Remove external operations for a specific cluster |
 | POST | /api/clusters/{clusterName}/sales/end-subscription | [post API clusters cluster name sales end subscription](#post-api-clusters-cluster-name-sales-end-subscription) | Remove a sponsor from a specific cluster |
 | POST | /api/clusters/{clusterName}/sales/refuse-subscription | [post API clusters cluster name sales refuse subscription](#post-api-clusters-cluster-name-sales-refuse-subscription) | Reject a subscription for a specific cluster |
 | POST | /api/clusters/{clusterName}/subscribe | [post API clusters cluster name subscribe](#post-api-clusters-cluster-name-subscribe) | Subscribe a user to a cluster |
@@ -10553,7 +10553,7 @@ Status: Internal Server Error
 ### <span id="post-api-clusters-cluster-name-sales-end-external-ops"></span> Remove external operations for a specific cluster (*PostAPIClustersClusterNameSalesEndExternalOps*)
 
 ```
-POST /api/clusters/{clusterName}/sales/end-external-ops
+POST /api/clusters/{clusterName}/ext-role/end
 ```
 
 This endpoint removes external operations for the specified cluster.

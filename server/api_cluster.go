@@ -8022,7 +8022,7 @@ func (repman *ReplicationManager) handlerMuxRefuseExternalOps(w http.ResponseWri
 // @Success 200 {string} string "Sponsor partnership removed!"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Error removing sponsor partnership"
-// @Router /api/clusters/{clusterName}/sales/end-external-ops [post]
+// @Router /api/clusters/{clusterName}/ext-role/end [post]
 func (repman *ReplicationManager) handlerMuxRemoveExternalOps(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
