@@ -232,7 +232,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
                 overflowY='auto'
               >
                 <Code whiteSpace='pre-wrap' wordBreak='break-all' fontSize='xs' display='block' bg='transparent' color={codeColor}>
-                  {formatSQL(explainQuery, { language: 'mysql' })}
+                  {(() => { try { return formatSQL(explainQuery, { language: 'mysql' }) } catch { return explainQuery } })()}
                 </Code>
               </Box>
             )}
