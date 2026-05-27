@@ -11594,7 +11594,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/is-slave-Stop": {
+        "/api/clusters/{clusterName}/servers/{serverName}/is-slave-stopped": {
             "get": {
                 "description": "Checks if a specified server within a cluster is in a slave Stop state.",
                 "produces": [
@@ -14442,7 +14442,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-Stop": {
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-stopped": {
             "get": {
                 "description": "Checks if a specified server within a cluster is in a slave Stop state.",
                 "produces": [

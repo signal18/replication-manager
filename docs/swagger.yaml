@@ -11187,7 +11187,7 @@ paths:
       summary: Check if a server port is a slave
       tags:
       - Database
-  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-Stop:
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-stopped:
     get:
       description: Checks if a specified server within a cluster is in a slave Stop
         state.
@@ -14013,7 +14013,7 @@ paths:
       summary: Check if a server is a slave
       tags:
       - Database
-  /api/clusters/{clusterName}/servers/{serverName}/is-slave-Stop:
+  /api/clusters/{clusterName}/servers/{serverName}/is-slave-stopped:
     get:
       description: Checks if a specified server within a cluster is in a slave Stop
         state.

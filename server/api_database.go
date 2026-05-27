@@ -800,8 +800,8 @@ func (repman *ReplicationManager) handlerMuxServerIsSlaveErrorStatus(w http.Resp
 // @Param serverPort path string false "Server Port"
 // @Success 200 {string} string "200 -Server is in Slave Stop state!"
 // @Failure 500 {string} string "500 -Server is not in Slave Stop state!" or "500 -No valid server!" or "500 -No cluster!"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/is-slave-Stop [get]
-// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-Stop [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/is-slave-stopped [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-stopped [get]
 func (repman *ReplicationManager) handlerMuxServerIsSlaveStopStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)

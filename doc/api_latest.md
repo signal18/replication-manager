@@ -297,7 +297,7 @@
 | GET | /api/clusters/{clusterName}/servers/{serverName}/is-master | [get API clusters cluster name servers server name is master](#get-api-clusters-cluster-name-servers-server-name-is-master) | Check if a server is a master |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/is-slave | [get API clusters cluster name servers server name is slave](#get-api-clusters-cluster-name-servers-server-name-is-slave) | Check if a server is a slave |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/is-slave-error | [get API clusters cluster name servers server name is slave error](#get-api-clusters-cluster-name-servers-server-name-is-slave-error) | Check if a server is in slave error state |
-| GET | /api/clusters/{clusterName}/servers/{serverName}/is-slave-Stop | [get API clusters cluster name servers server name is slave stop](#get-api-clusters-cluster-name-servers-server-name-is-slave-stop) | Check if a server is in slave Stop state |
+| GET | /api/clusters/{clusterName}/servers/{serverName}/is-slave-stopped | [get API clusters cluster name servers server name is slave stop](#get-api-clusters-cluster-name-servers-server-name-is-slave-stop) | Check if a server is in slave Stop state |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/is-standalone | [get API clusters cluster name servers server name is standalone](#get-api-clusters-cluster-name-servers-server-name-is-standalone) | Check if a server is in standalone state |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/master-status | [get API clusters cluster name servers server name master status](#get-api-clusters-cluster-name-servers-server-name-master-status) | Get master status of a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/meta-data-locks | [get API clusters cluster name servers server name meta data locks](#get-api-clusters-cluster-name-servers-server-name-meta-data-locks) | Get metadata locks of a server |
@@ -307,7 +307,7 @@
 | GET | /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-master | [get API clusters cluster name servers server name server port is master](#get-api-clusters-cluster-name-servers-server-name-server-port-is-master) | Check if a server port is a master |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave | [get API clusters cluster name servers server name server port is slave](#get-api-clusters-cluster-name-servers-server-name-server-port-is-slave) | Check if a server port is a slave |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-error | [get API clusters cluster name servers server name server port is slave error](#get-api-clusters-cluster-name-servers-server-name-server-port-is-slave-error) | Check if a server is in slave error state |
-| GET | /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-Stop | [get API clusters cluster name servers server name server port is slave stop](#get-api-clusters-cluster-name-servers-server-name-server-port-is-slave-stop) | Check if a server is in slave Stop state |
+| GET | /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-stopped | [get API clusters cluster name servers server name server port is slave stop](#get-api-clusters-cluster-name-servers-server-name-server-port-is-slave-stop) | Check if a server is in slave Stop state |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-standalone | [get API clusters cluster name servers server name server port is standalone](#get-api-clusters-cluster-name-servers-server-name-server-port-is-standalone) | Check if a server is in standalone state |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-change | [get API clusters cluster name servers server name server port need config change](#get-api-clusters-cluster-name-servers-server-name-server-port-need-config-change) | Check if a server needs a config change |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-prov | [get API clusters cluster name servers server name server port need prov](#get-api-clusters-cluster-name-servers-server-name-server-port-need-prov) | Check if a server needs provisioning |
@@ -4291,7 +4291,7 @@ Status: Internal Server Error
 ### <span id="get-api-clusters-cluster-name-servers-server-name-is-slave-stop"></span> Check if a server is in slave Stop state (*GetAPIClustersClusterNameServersServerNameIsSlaveStop*)
 
 ```
-GET /api/clusters/{clusterName}/servers/{serverName}/is-slave-Stop
+GET /api/clusters/{clusterName}/servers/{serverName}/is-slave-stopped
 ```
 
 Checks if a specified server within a cluster is in a slave Stop state.
@@ -5330,7 +5330,7 @@ Status: Internal Server Error
 ### <span id="get-api-clusters-cluster-name-servers-server-name-server-port-is-slave-stop"></span> Check if a server is in slave Stop state (*GetAPIClustersClusterNameServersServerNameServerPortIsSlaveStop*)
 
 ```
-GET /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-Stop
+GET /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-stopped
 ```
 
 Checks if a specified server within a cluster is in a slave Stop state.
