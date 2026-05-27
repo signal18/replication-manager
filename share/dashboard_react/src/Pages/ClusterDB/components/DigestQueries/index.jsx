@@ -20,7 +20,6 @@ import {
   Th,
   Td,
   useDisclosure,
-  useColorModeValue,
   Spinner,
   Text,
   Code
@@ -60,10 +59,11 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
   const prevDigestQueries = useRef(digestQueries)
 
   const { isOpen, onOpen, onClose } = useDisclosure()
-  const codeBg = useColorModeValue('gray.100', 'gray.700')
-  const codeColor = useColorModeValue('gray.800', 'gray.50')
-  const tableBorderColor = useColorModeValue('gray.200', 'gray.600')
-  const iconColor = useColorModeValue('gray.600', 'gray.200')
+  const isLight = theme === 'light'
+  const codeBg = isLight ? 'gray.100' : 'gray.700'
+  const codeColor = isLight ? 'gray.800' : 'gray.50'
+  const tableBorderColor = isLight ? 'gray.200' : 'gray.600'
+  const iconColor = isLight ? 'gray.600' : 'gray.200'
   const [explainData, setExplainData] = useState(null)
   const [explainLoading, setExplainLoading] = useState(false)
   const [explainQuery, setExplainQuery] = useState('')
