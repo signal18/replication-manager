@@ -36,6 +36,14 @@ import { HiSearchCircle } from 'react-icons/hi'
 import { format as formatSQL } from 'sql-formatter'
 import { clusterService } from '../../../../services/clusterService'
 
+function safeSQLFormat(sql) {
+  try {
+    return formatSQL(sql, { language: 'mysql' })
+  } catch {
+    return sql
+  }
+}
+
 function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggleDigestMode }) {
   const dispatch = useDispatch()
 
@@ -233,7 +241,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
                 overflowY='auto'
               >
                 <Code whiteSpace='pre-wrap' wordBreak='break-all' fontSize='xs' display='block' bg='transparent' color={codeColor}>
-                  {(() => { try { return formatSQL(explainQuery, { language: 'mysql' }) } catch { return explainQuery } })()}
+                  {safeSQLFormat(explainQuery)}
                 </Code>
               </Box>
             )}
@@ -245,7 +253,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
             {explainData?.error && <Text color='red.500'>{String(explainData.error)}</Text>}
             {explainData && !explainData.error && Array.isArray(explainData) && (
               <Box overflowX='auto'>
-                <Table size='sm' variant='simple' borderColor={tableBorderColor}>
+                <Table size='sm' variant='simple' borderColor={tableBorderColor} sx={{ tableLayout: 'auto', minW: '800px' }}>
                   <Thead>
                     <Tr>
                       <Th borderColor={tableBorderColor}>id</Th>
@@ -257,7 +265,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
                       <Th borderColor={tableBorderColor}>key_len</Th>
                       <Th borderColor={tableBorderColor}>ref</Th>
                       <Th borderColor={tableBorderColor}>rows</Th>
-                      <Th borderColor={tableBorderColor}>Extra</Th>
+                      <Th borderColor={tableBorderColor} minW='200px'>Extra</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
@@ -272,7 +280,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
                         <Td borderColor={tableBorderColor}>{row.keyLen?.String || '-'}</Td>
                         <Td borderColor={tableBorderColor}>{row.ref?.String || '-'}</Td>
                         <Td borderColor={tableBorderColor}>{row.rows?.String || '-'}</Td>
-                        <Td borderColor={tableBorderColor}>{row.extra?.String || '-'}</Td>
+                        <Td borderColor={tableBorderColor} whiteSpace='normal' minW='200px'>{row.extra?.String || '-'}</Td>
                       </Tr>
                     ))}
                   </Tbody>
