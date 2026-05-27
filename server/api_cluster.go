@@ -8736,7 +8736,7 @@ func (repman *ReplicationManager) handlerMuxClusterHealth(w http.ResponseWriter,
 // @Success 200 {string} string "Reseed from parent queued"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
-// @Router /api/clusters/{clusterName}/actions/reseed-from-parent [post]
+// @Router /api/clusters/{clusterName}/actions/staging-reseed-from-parent [post]
 func (repman *ReplicationManager) handlerMuxReseedFromParent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	var strUser string

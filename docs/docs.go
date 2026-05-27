@@ -1620,7 +1620,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/actions/reseed-from-parent": {
+        "/api/clusters/{clusterName}/actions/staging-reseed-from-parent": {
             "post": {
                 "description": "Reseed the specified cluster from its parent cluster.",
                 "produces": [
