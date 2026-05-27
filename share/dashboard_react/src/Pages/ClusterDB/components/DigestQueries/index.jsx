@@ -52,6 +52,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
   const codeBg = useColorModeValue('gray.100', 'gray.700')
   const codeColor = useColorModeValue('gray.800', 'gray.50')
   const tableBorderColor = useColorModeValue('gray.200', 'gray.600')
+  const iconColor = useColorModeValue('gray.600', 'gray.200')
   const [explainData, setExplainData] = useState(null)
   const [explainLoading, setExplainLoading] = useState(false)
   const [explainQuery, setExplainQuery] = useState('')
@@ -186,7 +187,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
               <IconButton
                 size='xs'
                 variant='ghost'
-                colorScheme='gray'
+                color={iconColor}
                 icon={<HiSearchCircle size='16' />}
                 isDisabled={!hasSample}
                 onClick={() => handleExplain(row.digest, row.sampleQuery)}
