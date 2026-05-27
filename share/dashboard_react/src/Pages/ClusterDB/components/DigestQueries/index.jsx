@@ -35,6 +35,8 @@ import ShowMoreText from '../../../../components/ShowMoreText'
 import { HiSearchCircle } from 'react-icons/hi'
 import { format as formatSQL } from 'sql-formatter'
 import { clusterService } from '../../../../services/clusterService'
+import { useTheme } from '../../../../ThemeProvider'
+import parentStyles from '../../../../components/Modals/styles.module.scss'
 
 function safeSQLFormat(sql) {
   try {
@@ -46,6 +48,7 @@ function safeSQLFormat(sql) {
 
 function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggleDigestMode }) {
   const dispatch = useDispatch()
+  const { theme } = useTheme()
 
   const {
     cluster: {
@@ -227,7 +230,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
 
       <Modal isOpen={isOpen} onClose={onClose} size='xl'>
         <ModalOverlay />
-        <ModalContent maxW='900px'>
+        <ModalContent maxW='900px' className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
           <ModalHeader fontSize='sm'>EXPLAIN Plan</ModalHeader>
           <ModalCloseButton />
           <ModalBody pb={6}>
