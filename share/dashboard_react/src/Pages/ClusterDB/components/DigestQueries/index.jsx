@@ -49,8 +49,9 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
   const prevDigestQueries = useRef(digestQueries)
 
   const { isOpen, onOpen, onClose } = useDisclosure()
-  const codeBg = useColorModeValue('gray.100', 'gray.800')
-  const codeColor = useColorModeValue('gray.800', 'gray.100')
+  const codeBg = useColorModeValue('gray.100', 'gray.700')
+  const codeColor = useColorModeValue('gray.800', 'gray.50')
+  const tableBorderColor = useColorModeValue('gray.200', 'gray.600')
   const [explainData, setExplainData] = useState(null)
   const [explainLoading, setExplainLoading] = useState(false)
   const [explainQuery, setExplainQuery] = useState('')
@@ -243,34 +244,34 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
             {explainData?.error && <Text color='red.500'>{String(explainData.error)}</Text>}
             {explainData && !explainData.error && Array.isArray(explainData) && (
               <Box overflowX='auto'>
-                <Table size='sm' variant='simple'>
+                <Table size='sm' variant='simple' borderColor={tableBorderColor}>
                   <Thead>
                     <Tr>
-                      <Th>id</Th>
-                      <Th>select_type</Th>
-                      <Th>table</Th>
-                      <Th>type</Th>
-                      <Th>possible_keys</Th>
-                      <Th>key</Th>
-                      <Th>key_len</Th>
-                      <Th>ref</Th>
-                      <Th>rows</Th>
-                      <Th>Extra</Th>
+                      <Th borderColor={tableBorderColor}>id</Th>
+                      <Th borderColor={tableBorderColor}>select_type</Th>
+                      <Th borderColor={tableBorderColor}>table</Th>
+                      <Th borderColor={tableBorderColor}>type</Th>
+                      <Th borderColor={tableBorderColor}>possible_keys</Th>
+                      <Th borderColor={tableBorderColor}>key</Th>
+                      <Th borderColor={tableBorderColor}>key_len</Th>
+                      <Th borderColor={tableBorderColor}>ref</Th>
+                      <Th borderColor={tableBorderColor}>rows</Th>
+                      <Th borderColor={tableBorderColor}>Extra</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
                     {explainData.map((row, i) => (
                       <Tr key={i}>
-                        <Td>{row.id}</Td>
-                        <Td>{row.selectType?.String || row.selectType?.Valid === false ? '-' : row.selectType}</Td>
-                        <Td>{row.table?.String || '-'}</Td>
-                        <Td>{row.type?.String || '-'}</Td>
-                        <Td>{row.possibleKeys?.String || '-'}</Td>
-                        <Td>{row.key?.String || '-'}</Td>
-                        <Td>{row.keyLen?.String || '-'}</Td>
-                        <Td>{row.ref?.String || '-'}</Td>
-                        <Td>{row.rows?.String || '-'}</Td>
-                        <Td>{row.extra?.String || '-'}</Td>
+                        <Td borderColor={tableBorderColor}>{row.id}</Td>
+                        <Td borderColor={tableBorderColor}>{row.selectType?.String || row.selectType?.Valid === false ? '-' : row.selectType}</Td>
+                        <Td borderColor={tableBorderColor}>{row.table?.String || '-'}</Td>
+                        <Td borderColor={tableBorderColor}>{row.type?.String || '-'}</Td>
+                        <Td borderColor={tableBorderColor}>{row.possibleKeys?.String || '-'}</Td>
+                        <Td borderColor={tableBorderColor}>{row.key?.String || '-'}</Td>
+                        <Td borderColor={tableBorderColor}>{row.keyLen?.String || '-'}</Td>
+                        <Td borderColor={tableBorderColor}>{row.ref?.String || '-'}</Td>
+                        <Td borderColor={tableBorderColor}>{row.rows?.String || '-'}</Td>
+                        <Td borderColor={tableBorderColor}>{row.extra?.String || '-'}</Td>
                       </Tr>
                     ))}
                   </Tbody>
