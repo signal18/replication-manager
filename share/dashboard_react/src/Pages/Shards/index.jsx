@@ -146,7 +146,7 @@ function ViewToggleBtn({ active, onClick, children }) {
         padding: '4px 14px',
         border: `1px solid ${active ? 'var(--gray-color)' : 'transparent'}`,
         borderRadius: 6,
-        background: active ? 'var(--color-bg, white)' : 'transparent',
+        background: active ? 'var(--secondary-gray-color)' : 'transparent',
         color: active ? 'var(--text-color)' : 'var(--darkgray-color)',
         cursor: 'pointer',
         fontSize: 13,
