@@ -21,7 +21,8 @@ import {
   Td,
   useDisclosure,
   Spinner,
-  Text
+  Text,
+  Code
 } from '@chakra-ui/react'
 import { createColumnHelper } from '@tanstack/react-table'
 import { useDispatch, useSelector } from 'react-redux'
@@ -48,7 +49,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
   const { isOpen, onOpen, onClose } = useDisclosure()
   const [explainData, setExplainData] = useState(null)
   const [explainLoading, setExplainLoading] = useState(false)
-  const [explainDigest, setExplainDigest] = useState('')
+  const [explainQuery, setExplainQuery] = useState('')
 
   useEffect(() => {
     if (digestMode === 'pfs') {
@@ -67,8 +68,8 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
     }
   }, [digestQueries])
 
-  const handleExplain = async (digest) => {
-    setExplainDigest(digest)
+  const handleExplain = async (digest, sampleQuery) => {
+    setExplainQuery(sampleQuery || '')
     setExplainData(null)
     setExplainLoading(true)
     onOpen()
@@ -182,7 +183,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
                 variant='ghost'
                 icon={<HiSearchCircle />}
                 isDisabled={!hasSample}
-                onClick={() => handleExplain(row.digest)}
+                onClick={() => handleExplain(row.digest, row.sampleQuery)}
                 aria-label='Explain query'
               />
             </Tooltip>
@@ -215,6 +216,20 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
           <ModalHeader fontSize='sm'>EXPLAIN Plan</ModalHeader>
           <ModalCloseButton />
           <ModalBody pb={6}>
+            {explainQuery && (
+              <Box
+                mb={4}
+                p={3}
+                bg='gray.800'
+                borderRadius='md'
+                maxH='150px'
+                overflowY='auto'
+              >
+                <Code colorScheme='gray' whiteSpace='pre-wrap' wordBreak='break-all' fontSize='xs' display='block' bg='transparent' color='gray.100'>
+                  {explainQuery}
+                </Code>
+              </Box>
+            )}
             {explainLoading && (
               <Flex justify='center' py={4}>
                 <Spinner />
