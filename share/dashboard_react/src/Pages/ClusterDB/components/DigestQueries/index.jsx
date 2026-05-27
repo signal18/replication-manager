@@ -33,6 +33,7 @@ import { getDatabaseService } from '../../../../redux/clusterSlice'
 import Toolbar from '../Toolbar'
 import ShowMoreText from '../../../../components/ShowMoreText'
 import { HiSearchCircle } from 'react-icons/hi'
+import { format as formatSQL } from 'sql-formatter'
 import { clusterService } from '../../../../services/clusterService'
 
 function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggleDigestMode }) {
@@ -229,7 +230,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
                 overflowY='auto'
               >
                 <Code whiteSpace='pre-wrap' wordBreak='break-all' fontSize='xs' display='block' bg='transparent' color={codeColor}>
-                  {explainQuery}
+                  {formatSQL(explainQuery, { language: 'mysql' })}
                 </Code>
               </Box>
             )}

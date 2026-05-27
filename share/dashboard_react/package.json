@@ -48,6 +48,7 @@
     "redux-logger": "^3.0.6",
     "remark-gfm": "^4.0.1",
     "sass": "^1.85.0",
+    "sql-formatter": "^15.8.0",
     "typeface-fira-code": "^1.1.13"
   },
   "devDependencies": {
