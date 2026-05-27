@@ -1,4 +1,4 @@
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.25-bookworm AS builder
 
 RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager

@@ -39,10 +39,10 @@ jobs:
           echo "Checking out $tag"
           git checkout "$tag"
 
-      - name: Set up Go 1.24
+      - name: Set up Go 1.25
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
