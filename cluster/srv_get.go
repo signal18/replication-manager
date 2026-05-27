@@ -920,6 +920,17 @@ func (server *ServerMonitor) RunPFSExplainCapture(ctx context.Context, snapshot 
 		if strings.Contains(q.Sample_query, "replication-manager") {
 			continue
 		}
+		// Skip queries that could trigger side effects via EXPLAIN
+		// (stored procedures/functions can execute with elevated privileges)
+		upperFull := strings.ToUpper(q.Sample_query)
+		if strings.Contains(upperFull, "CALL ") ||
+			strings.Contains(upperFull, "EXECUTE ") ||
+			strings.Contains(upperFull, "PREPARE ") ||
+			strings.Contains(upperFull, "INFORMATION_SCHEMA") ||
+			strings.Contains(upperFull, "PERFORMANCE_SCHEMA") ||
+			strings.Contains(upperFull, "MYSQL.") {
+			continue
+		}
 		var capturedAt time.Time
 		server.PFSExplainCacheMu.Lock()
 		if rec, exists := server.PFSExplainCache[digest]; exists {
