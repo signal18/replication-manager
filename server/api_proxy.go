@@ -369,7 +369,7 @@ func (repman *ReplicationManager) handlerMuxProxyUnprovision(w http.ResponseWrit
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 404 {string} string "Something went wrong"
 // @Failure 500 {string} string "Cluster Not Found"
-// @Router /api/clusters/{clusterName}/sphinx/indexes [get]
+// @Router /api/clusters/{clusterName}/sphinx-indexes [get]
 func (repman *ReplicationManager) handlerMuxSphinxIndexes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)

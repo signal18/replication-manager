@@ -9697,6 +9697,9 @@ paths:
       summary: Reset Restic Task Queue
       tags:
       - ClusterRestic
+  /api/clusters/{clusterName}/restic/task-queue/pause:
+    post:
+      responses: {}
   /api/clusters/{clusterName}/restic/task-queue/resume:
     post:
       responses: {}
@@ -10524,7 +10527,7 @@ paths:
       summary: Get server details
       tags:
       - Database
-  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/create-jobs-table:
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/jobs-create-table:
     post:
       description: Creates a jobs tasks table on a specified server within a cluster
         if it does not already exist.
@@ -12209,7 +12212,7 @@ paths:
       summary: Provision a server
       tags:
       - DatabaseProvision
-  /api/clusters/{clusterName}/servers/{serverName}/actions/reseed-cancel/{task}:
+  /api/clusters/{clusterName}/servers/{serverName}/actions/reseed-cancel:
     get:
       description: Cancels a reseed task identified by its name on a specified server
         within a cluster.
@@ -16268,7 +16271,7 @@ paths:
       summary: Retrieve shard clusters for a specific cluster
       tags:
       - ClusterTopology
-  /api/clusters/{clusterName}/sphinx/indexes:
+  /api/clusters/{clusterName}/sphinx-indexes:
     get:
       consumes:
       - application/json
@@ -18545,7 +18548,7 @@ paths:
       summary: Identify the user
       tags:
       - User
-  /cluster/{clusterName}/actions/dropserver/{host}/{port}:
+  /api/clusters/{clusterName}/actions/dropserver/{host}/{port}:
     post:
       consumes:
       - application/json
@@ -18591,7 +18594,7 @@ paths:
       summary: Drop a server monitor from a cluster
       tags:
       - ClusterMonitor
-  /cluster/{clusterName}/actions/dropserver/{host}/{port}/{type}:
+  /api/clusters/{clusterName}/actions/dropserver/{host}/{port}/{type}:
     post:
       consumes:
       - application/json
@@ -18641,7 +18644,7 @@ paths:
       summary: Drop a server monitor from a cluster
       tags:
       - ClusterMonitor
-  /cluster/{clusterName}/actions/dropserver/{serverName}:
+  /api/clusters/{clusterName}/actions/dropserver/{serverName}:
     post:
       consumes:
       - application/json
@@ -19284,7 +19287,7 @@ paths:
       summary: View meet messages
       tags:
       - Meet
-  /replication/{clusterName}/{serverName}/slave-late-status:
+  /api/clusters/{clusterName}/servers/{serverName}/is-slave-late:
     get:
       description: Checks if the specified server within the cluster is in a "Slave
         Late" state.

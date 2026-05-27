@@ -848,7 +848,8 @@ func (repman *ReplicationManager) handlerMuxServerIsSlaveStopStatus(w http.Respo
 // @Param serverPort path string false "Server Port"
 // @Success 200 {string} string "200 -Server is in Slave Late state!"
 // @Failure 500 {string} string "500 -No valid server!" "500 -Server is not in Slave Late state!" "500 -No cluster!"
-// @Router /replication/{clusterName}/{serverName}/slave-late-status [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/is-slave-late [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-late [get]
 func (repman *ReplicationManager) handlerMuxServerIsSlaveLateStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1492,7 +1493,7 @@ func (repman *ReplicationManager) handlerMuxServerPITR(w http.ResponseWriter, r 
 // @Success 200 {string} string "Task canceled successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error canceling task"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/reseed-cancel/{task} [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/reseed-cancel [get]
 func (repman *ReplicationManager) handlerMuxServerReseedCancel(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -5333,7 +5334,7 @@ func (repman *ReplicationManager) handlerMuxServerJobsUpgradeSender(w http.Respo
 // @Success 200 {string} string "Jobs tasks table created"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error checking jobs tasks table" or "Error creating jobs tasks table"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/create-jobs-table [post]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/jobs-create-table [post]
 func (repman *ReplicationManager) handlerMuxServerJobsCreateTable(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)

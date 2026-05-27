@@ -7085,6 +7085,11 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/restic/task-queue/pause": {
+            "post": {
+                "responses": {}
+            }
+        },
         "/api/clusters/{clusterName}/restic/task-queue/resume": {
             "post": {
                 "responses": {}
@@ -8979,7 +8984,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/actions/reseed-cancel/{task}": {
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/reseed-cancel": {
             "get": {
                 "description": "Cancels a reseed task identified by its name on a specified server within a cluster.",
                 "produces": [
@@ -13509,7 +13514,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/create-jobs-table": {
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/jobs-create-table": {
             "post": {
                 "description": "Creates a jobs tasks table on a specified server within a cluster if it does not already exist.",
                 "produces": [
@@ -16585,7 +16590,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/sphinx/indexes": {
+        "/api/clusters/{clusterName}/sphinx-indexes": {
             "get": {
                 "description": "Get the Sphinx indexes for a given cluster",
                 "consumes": [
@@ -19440,7 +19445,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/cluster/{clusterName}/actions/dropserver/{host}/{port}": {
+        "/api/clusters/{clusterName}/actions/dropserver/{host}/{port}": {
             "post": {
                 "description": "This endpoint allows dropping a server monitor or proxy monitor from a specified cluster.",
                 "consumes": [
@@ -19506,7 +19511,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/cluster/{clusterName}/actions/dropserver/{host}/{port}/{type}": {
+        "/api/clusters/{clusterName}/actions/dropserver/{host}/{port}/{type}": {
             "post": {
                 "description": "This endpoint allows dropping a server monitor or proxy monitor from a specified cluster.",
                 "consumes": [
@@ -19578,7 +19583,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/cluster/{clusterName}/actions/dropserver/{serverName}": {
+        "/api/clusters/{clusterName}/actions/dropserver/{serverName}": {
             "post": {
                 "description": "This endpoint allows dropping a server monitor or proxy monitor from a specified cluster.",
                 "consumes": [
@@ -20516,7 +20521,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/replication/{clusterName}/{serverName}/slave-late-status": {
+        "/api/clusters/{clusterName}/servers/{serverName}/is-slave-late": {
             "get": {
                 "description": "Checks if the specified server within the cluster is in a \"Slave Late\" state.",
                 "produces": [

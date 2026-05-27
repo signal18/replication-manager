@@ -5972,8 +5972,8 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 // @Success 200 {string} string "Monitor dropped successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found"
-// @Router /cluster/{clusterName}/actions/dropserver/{host}/{port}/{type} [post]
-// @Router /cluster/{clusterName}/actions/dropserver/{host}/{port} [post]
+// @Router /api/clusters/{clusterName}/actions/dropserver/{host}/{port}/{type} [post]
+// @Router /api/clusters/{clusterName}/actions/dropserver/{host}/{port} [post]
 func (repman *ReplicationManager) handlerMuxServerDrop(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -6014,7 +6014,7 @@ func (repman *ReplicationManager) handlerMuxServerDrop(w http.ResponseWriter, r 
 // @Success 200 {string} string "Monitor dropped successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found"
-// @Router /cluster/{clusterName}/actions/dropserver/{serverName} [post]
+// @Router /api/clusters/{clusterName}/actions/dropserver/{serverName} [post]
 func (repman *ReplicationManager) handlerMuxServerDropByName(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -8520,7 +8520,7 @@ func (repman *ReplicationManager) handlerMuxResticTaskQueueResume(w http.Respons
 	})
 }
 
-// @Router /api/clusters/{clusterName}/restic/task-queue/resume [post]
+// @Router /api/clusters/{clusterName}/restic/task-queue/pause [post]
 func (repman *ReplicationManager) handlerMuxResticTaskQueuePause(w http.ResponseWriter, r *http.Request) {
 	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
 

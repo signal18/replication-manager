@@ -167,8 +167,8 @@
 |---------|---------|--------|---------|
 | POST | /api/clusters/{clusterName}/actions/addserver/{host}/{port} | [post API clusters cluster name actions addserver host port](#post-api-clusters-cluster-name-actions-addserver-host-port) | Add a server to a specific cluster |
 | POST | /api/clusters/{clusterName}/actions/addserver/{host}/{port}/{type} | [post API clusters cluster name actions addserver host port type](#post-api-clusters-cluster-name-actions-addserver-host-port-type) | Add a server to a specific cluster |
-| POST | /cluster/{clusterName}/actions/dropserver/{host}/{port} | [post cluster cluster name actions dropserver host port](#post-cluster-cluster-name-actions-dropserver-host-port) | Drop a server monitor from a cluster |
-| POST | /cluster/{clusterName}/actions/dropserver/{host}/{port}/{type} | [post cluster cluster name actions dropserver host port type](#post-cluster-cluster-name-actions-dropserver-host-port-type) | Drop a server monitor from a cluster |
+| POST | /api/clusters/{clusterName}/actions/dropserver/{host}/{port} | [post cluster cluster name actions dropserver host port](#post-cluster-cluster-name-actions-dropserver-host-port) | Drop a server monitor from a cluster |
+| POST | /api/clusters/{clusterName}/actions/dropserver/{host}/{port}/{type} | [post cluster cluster name actions dropserver host port type](#post-cluster-cluster-name-actions-dropserver-host-port-type) | Drop a server monitor from a cluster |
   
 
 
@@ -347,7 +347,7 @@
 | GET | /api/clusters/{clusterName}/servers/{serverName}/actions/backup-logical | [get API clusters cluster name servers server name actions backup logical](#get-api-clusters-cluster-name-servers-server-name-actions-backup-logical) | Perform a logical backup on a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/actions/backup-physical | [get API clusters cluster name servers server name actions backup physical](#get-api-clusters-cluster-name-servers-server-name-actions-backup-physical) | Perform a physical backup on a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/actions/reseed/{backupMethod} | [get API clusters cluster name servers server name actions reseed backup method](#get-api-clusters-cluster-name-servers-server-name-actions-reseed-backup-method) | Reseed a server |
-| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/reseed-cancel/{task} | [get API clusters cluster name servers server name actions reseed cancel task](#get-api-clusters-cluster-name-servers-server-name-actions-reseed-cancel-task) | Cancel a reseed task on a server |
+| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/reseed-cancel | [get API clusters cluster name servers server name actions reseed cancel task](#get-api-clusters-cluster-name-servers-server-name-actions-reseed-cancel-task) | Cancel a reseed task on a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/backup | [get API clusters cluster name servers server name server port backup](#get-api-clusters-cluster-name-servers-server-name-server-port-backup) | Perform a physical backup on a server port |
 | POST | /api/clusters/{clusterName}/servers/{serverName}/actions/pitr | [post API clusters cluster name servers server name actions pitr](#post-api-clusters-cluster-name-servers-server-name-actions-pitr) | Perform a point-in-time recovery on a server |
   
@@ -465,7 +465,7 @@
 | GET | /api/clusters/{clusterName}/proxies/{proxyName} | [get API clusters cluster name proxies proxy name](#get-api-clusters-cluster-name-proxies-proxy-name) | Shows the proxies for that specific named cluster |
 | GET | /api/clusters/{clusterName}/proxies/{proxyName}/actions/need-reprov | [get API clusters cluster name proxies proxy name actions need reprov](#get-api-clusters-cluster-name-proxies-proxy-name-actions-need-reprov) | Check if Proxy Needs Reprovision |
 | GET | /api/clusters/{clusterName}/proxies/{proxyName}/actions/need-restart | [get API clusters cluster name proxies proxy name actions need restart](#get-api-clusters-cluster-name-proxies-proxy-name-actions-need-restart) | Check if Proxy Needs Restart |
-| GET | /api/clusters/{clusterName}/sphinx/indexes | [get API clusters cluster name sphinx indexes](#get-api-clusters-cluster-name-sphinx-indexes) | Get Sphinx Indexes |
+| GET | /api/clusters/{clusterName}/sphinx-indexes | [get API clusters cluster name sphinx indexes](#get-api-clusters-cluster-name-sphinx-indexes) | Get Sphinx Indexes |
 | POST | /api/clusters/{clusterName}/proxies/{proxyName}/actions/provision | [post API clusters cluster name proxies proxy name actions provision](#post-api-clusters-cluster-name-proxies-proxy-name-actions-provision) | Provision Proxy Service |
 | POST | /api/clusters/{clusterName}/proxies/{proxyName}/actions/start | [post API clusters cluster name proxies proxy name actions start](#post-api-clusters-cluster-name-proxies-proxy-name-actions-start) | Start Proxy Service |
 | POST | /api/clusters/{clusterName}/proxies/{proxyName}/actions/stop | [post API clusters cluster name proxies proxy name actions stop](#post-api-clusters-cluster-name-proxies-proxy-name-actions-stop) | Stop Proxy Service |
@@ -491,7 +491,7 @@
 
 | Method  | URI     | Name   | Summary |
 |---------|---------|--------|---------|
-| GET | /replication/{clusterName}/{serverName}/slave-late-status | [get replication cluster name server name slave late status](#get-replication-cluster-name-server-name-slave-late-status) | Check if server is in Slave Late state |
+| GET | /api/clusters/{clusterName}/servers/{serverName}/is-slave-late | [get replication cluster name server name slave late status](#get-replication-cluster-name-server-name-slave-late-status) | Check if server is in Slave Late state |
   
 
 
@@ -2306,7 +2306,7 @@ Status: Internal Server Error
 ### <span id="get-api-clusters-cluster-name-servers-server-name-actions-reseed-cancel-task"></span> Cancel a reseed task on a server (*GetAPIClustersClusterNameServersServerNameActionsReseedCancelTask*)
 
 ```
-GET /api/clusters/{clusterName}/servers/{serverName}/actions/reseed-cancel/{task}
+GET /api/clusters/{clusterName}/servers/{serverName}/actions/reseed-cancel
 ```
 
 Cancels a reseed task identified by its name on a specified server within a cluster.
@@ -6342,7 +6342,7 @@ Status: Internal Server Error
 ### <span id="get-api-clusters-cluster-name-sphinx-indexes"></span> Get Sphinx Indexes (*GetAPIClustersClusterNameSphinxIndexes*)
 
 ```
-GET /api/clusters/{clusterName}/sphinx/indexes
+GET /api/clusters/{clusterName}/sphinx-indexes
 ```
 
 Get the Sphinx indexes for a given cluster
@@ -8119,7 +8119,7 @@ map of string
 ### <span id="get-replication-cluster-name-server-name-slave-late-status"></span> Check if server is in Slave Late state (*GetReplicationClusterNameServerNameSlaveLateStatus*)
 
 ```
-GET /replication/{clusterName}/{serverName}/slave-late-status
+GET /api/clusters/{clusterName}/servers/{serverName}/is-slave-late
 ```
 
 Checks if the specified server within the cluster is in a "Slave Late" state.
@@ -13025,7 +13025,7 @@ Status: Internal Server Error
 ### <span id="post-cluster-cluster-name-actions-dropserver-host-port"></span> Drop a server monitor from a cluster (*PostClusterClusterNameActionsDropserverHostPort*)
 
 ```
-POST /cluster/{clusterName}/actions/dropserver/{host}/{port}
+POST /api/clusters/{clusterName}/actions/dropserver/{host}/{port}
 ```
 
 This endpoint allows dropping a server monitor or proxy monitor from a specified cluster.
@@ -13085,7 +13085,7 @@ Status: Internal Server Error
 ### <span id="post-cluster-cluster-name-actions-dropserver-host-port-type"></span> Drop a server monitor from a cluster (*PostClusterClusterNameActionsDropserverHostPortType*)
 
 ```
-POST /cluster/{clusterName}/actions/dropserver/{host}/{port}/{type}
+POST /api/clusters/{clusterName}/actions/dropserver/{host}/{port}/{type}
 ```
 
 This endpoint allows dropping a server monitor or proxy monitor from a specified cluster.
