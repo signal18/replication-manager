@@ -206,7 +206,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
         }
       })
     ],
-    []
+    [iconColor]
   )
 
   return (
@@ -272,7 +272,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
                     {explainData.map((row, i) => (
                       <Tr key={i}>
                         <Td borderColor='var(--tertiary-color)'>{row.id}</Td>
-                        <Td borderColor='var(--tertiary-color)'>{row.selectType?.String || row.selectType?.Valid === false ? '-' : row.selectType}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.selectType?.String || '-'}</Td>
                         <Td borderColor='var(--tertiary-color)'>{row.table?.String || '-'}</Td>
                         <Td borderColor='var(--tertiary-color)'>{row.type?.String || '-'}</Td>
                         <Td borderColor='var(--tertiary-color)'>{row.possibleKeys?.String || '-'}</Td>
