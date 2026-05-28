@@ -839,6 +839,10 @@ func (server *ServerMonitor) ReadPreservedVariables() error {
 		}
 	}
 
+	// Load accepted variables from agreed.cnf so they survive repman restarts
+	// and stay out of delta until the DB is restarted with the compliance value
+	server.VariablesMap.LoadFromConfigFile(filepath.Join(server.Datadir, "03_agreed.cnf"), "preserved")
+
 	// Load dropped variables state from disk
 	droppedpath := filepath.Join(server.Datadir, "dropped_variables.json")
 	if data, err := os.ReadFile(droppedpath); err == nil {
