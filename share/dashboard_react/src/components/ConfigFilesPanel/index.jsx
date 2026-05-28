@@ -1,4 +1,5 @@
-import { Box, Button, Flex, HStack, Select, Text, VStack, Code, Badge } from '@chakra-ui/react'
+import { Box, Button, Flex, HStack, Select, Text, VStack, Code, Badge, IconButton, Tooltip } from '@chakra-ui/react'
+import { HiCheck, HiLockClosed, HiTrash } from 'react-icons/hi'
 import React, { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { clusterService } from '../../services/clusterService'
@@ -155,6 +156,13 @@ function ConfigFilesPanel({ selectedCluster }) {
       .catch(() => {})
   }
 
+  const handleVariableAction = (variableName, action) => {
+    if (!selectedCluster?.name || !selectedServer || !variableName) return
+    clusterService.preserveVariable(selectedCluster.name, selectedServer, variableName, action, baseURL)
+      .then(() => setRefreshKey((k) => k + 1))
+      .catch(() => {})
+  }
+
   return (
     <VStack className={styles.container} align='stretch' spacing={3}>
       <HStack>
@@ -207,19 +215,53 @@ function ConfigFilesPanel({ selectedCluster }) {
                     )
                   }
                   return (
-                    <Flex key={idx} className={styles.fileLine} bg={colors?.bg || 'transparent'}>
-                      {colors && (
-                        <Badge size='sm' mr={2} bg={colors.bg} color={colors.color} border='1px solid' borderColor={colors.color}>
-                          {colors.label}
-                        </Badge>
-                      )}
-                      {line.isLoose && (
-                        <Badge colorScheme='orange' size='sm' mr={2}>loose</Badge>
-                      )}
-                      <Code className={styles.lineText}>
-                        <Text as='span' fontWeight='bold'>{line.name}</Text>
-                        <Text as='span'> = {line.value}</Text>
-                      </Code>
+                    <Flex key={idx} className={styles.fileLine} bg={colors?.bg || 'transparent'} justify='space-between'>
+                      <Flex align='center' flex={1} minW={0}>
+                        {colors && (
+                          <Badge size='sm' mr={2} bg={colors.bg} color={colors.color} border='1px solid' borderColor={colors.color} flexShrink={0}>
+                            {colors.label}
+                          </Badge>
+                        )}
+                        {line.isLoose && (
+                          <Badge colorScheme='orange' size='sm' mr={2} flexShrink={0}>loose</Badge>
+                        )}
+                        <Code className={styles.lineText}>
+                          <Text as='span' fontWeight='bold'>{line.name}</Text>
+                          <Text as='span'> = {line.value}</Text>
+                        </Code>
+                      </Flex>
+                      <HStack spacing={1} flexShrink={0} ml={2}>
+                        <Tooltip label='Accept compliance value'>
+                          <IconButton
+                            size='xs'
+                            variant='ghost'
+                            colorScheme='green'
+                            icon={<HiCheck />}
+                            aria-label='Accept'
+                            onClick={() => handleVariableAction(line.name, 'accept')}
+                          />
+                        </Tooltip>
+                        <Tooltip label='Preserve current DB value'>
+                          <IconButton
+                            size='xs'
+                            variant='ghost'
+                            colorScheme='blue'
+                            icon={<HiLockClosed />}
+                            aria-label='Preserve'
+                            onClick={() => handleVariableAction(line.name, 'preserve')}
+                          />
+                        </Tooltip>
+                        <Tooltip label='Drop (deprecated variable)'>
+                          <IconButton
+                            size='xs'
+                            variant='ghost'
+                            colorScheme='red'
+                            icon={<HiTrash />}
+                            aria-label='Drop'
+                            onClick={() => handleVariableAction(line.name, 'clear')}
+                          />
+                        </Tooltip>
+                      </HStack>
                     </Flex>
                   )
                 })
