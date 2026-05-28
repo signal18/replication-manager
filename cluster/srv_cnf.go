@@ -997,10 +997,8 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 		if v.Preserved != nil {
 			// Prefix with loose_ if the variable has no config counterpart
 			varKey := key
-			looseTag := ""
 			if v.Config == nil && !strings.HasPrefix(key, "loose_") && !strings.HasPrefix(key, "loose-") {
 				varKey = "loose_" + key
-				looseTag = " (loose)"
 			}
 			if v.IsPreserved() {
 				// Determine origin comment for preserved variables
@@ -1008,11 +1006,11 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 				if source == "" {
 					source = "unknown"
 				}
-				preservedContent.WriteString(fmt.Sprintf("# preserved:%s%s\n", source, looseTag))
+				preservedContent.WriteString(fmt.Sprintf("# preserved:%s\n", source))
 				preservedContent.WriteString(fmt.Sprintf("%s=%s\n", varKey, v.Preserved.String()))
 			} else {
 				// Agreed variables
-				agreedContent.WriteString(fmt.Sprintf("# agreed:accepted%s\n", looseTag))
+				agreedContent.WriteString("# agreed:accepted\n")
 				agreedContent.WriteString(fmt.Sprintf("%s=%s\n", varKey, v.Preserved.String()))
 			}
 		}

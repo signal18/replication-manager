@@ -1011,7 +1011,13 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 	}
 
 	if preserve {
-		difflist := []string{"01_preserved.cnf", "02_delta.cnf", "03_agreed.cnf"}
+		// Deploy preserved and delta to the DB config.
+		// - preserved.cnf: user-set overrides that must persist across restarts
+		// - delta.cnf: current runtime values that differ from tags, preserving
+		//   the DB's state until the user explicitly accepts a change
+		// agreed.cnf is repman-internal — it tracks acknowledged deviations
+		// and should NOT be deployed to the DB config.
+		difflist := []string{"01_preserved.cnf", "02_delta.cnf"}
 
 		for _, fname := range difflist {
 			srcpath := filepath.Join(Datadir, fname)
