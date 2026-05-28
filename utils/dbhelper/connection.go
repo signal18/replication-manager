@@ -53,7 +53,7 @@ func GetHostFromProcessList(db *sqlx.DB, user string, version *version.Version) 
 	pl := []Processlist{}
 	var err error
 	logs := ""
-	pl, logs, err = GetProcesslistTable(db, version, false, false, false, "50", user)
+	pl, logs, err = GetProcesslistTable(db, version, false, false, false, "50", user, 16384)
 	if err != nil {
 		return "N/A", logs, err
 	}

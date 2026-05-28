@@ -2,6 +2,7 @@ import { Box, VStack, Text, Alert, AlertIcon, HStack, Button, useToast, Textarea
 import React, { useState, useEffect, useMemo } from 'react'
 import { getPreservedVarsCnf, savePreservedVarsCnf } from '../redux/configSlice'
 import { useDispatch } from 'react-redux'
+import { useTheme } from '../ThemeProvider'
 import { TbTable, TbCode, TbPlus, TbTrash, TbDeviceFloppy, TbInfoCircle } from 'react-icons/tb'
 import { DataTable } from './DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
@@ -11,6 +12,8 @@ import ConfirmModal from './Modals/ConfirmModal'
 import PropTypes from 'prop-types'
 
 function PreservedVariablesEditor({ clusterName, user, className }) {
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
   const [viewMode, setViewMode] = useState('table') // 'table' or 'editor'
   const [content, setContent] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -275,7 +278,7 @@ function PreservedVariablesEditor({ clusterName, user, className }) {
     <VStack align="stretch" spacing={4} className={className}>
       {/* Info Alert - Dismissible */}
       {showInfoAlert && (
-        <Alert status="info" variant="left-accent">
+        <Alert status="info" variant="left-accent" bg={isLight ? 'blue.50' : 'rgba(66,153,225,0.15)'} color="var(--text-color)">
           <AlertIcon />
           <Box fontSize="sm" flex="1">
             <Text fontWeight="bold" mb={1}>📋 Cluster-Level Preserved Variables</Text>
@@ -396,7 +399,7 @@ function PreservedVariablesEditor({ clusterName, user, className }) {
           {/* Variables Table */}
           <Box>
             {parsedData.length === 0 ? (
-              <Alert status="info">
+              <Alert status="info" bg={isLight ? 'blue.50' : 'rgba(66,153,225,0.15)'} color="var(--text-color)">
                 <AlertIcon />
                 No preserved variables defined. Click "Add Variable" to create one.
               </Alert>
@@ -410,7 +413,7 @@ function PreservedVariablesEditor({ clusterName, user, className }) {
           </Box>
 
           {/* Priority Information */}
-          <Box fontSize="xs" color="gray.600" p={3} borderWidth={1} borderRadius="md" bg="gray.50">
+          <Box fontSize="xs" color="var(--text-color)" p={3} borderWidth={1} borderColor="var(--tertiary-color)" borderRadius="md" bg="var(--secondary-gray-color)">
             <Text fontWeight="bold" mb={2}>📌 Priority System:</Text>
             <Text>• <strong>Priority 1 (Highest):</strong> Server-specific (01_preserved.cnf) - always wins</Text>
             <Text>• <strong>Priority 2 (Middle):</strong> Cluster-level (this file) - applies unless excluded</Text>
@@ -426,7 +429,7 @@ function PreservedVariablesEditor({ clusterName, user, className }) {
       {/* Editor View */}
       {viewMode === 'editor' && (
         <VStack align="stretch" spacing={2}>
-          <Text fontSize="sm" color="gray.600">
+          <Text fontSize="sm" color="var(--text-color)" opacity={0.7}>
             File: <strong>{clusterName}/preserved_variables.cnf</strong>
           </Text>
           <Textarea
@@ -438,7 +441,7 @@ function PreservedVariablesEditor({ clusterName, user, className }) {
             minH="400px"
             isDisabled={!user?.grants['cluster-settings']}
           />
-          <Box fontSize="xs" color="gray.600" p={3} borderWidth={1} borderRadius="md" bg="gray.50">
+          <Box fontSize="xs" color="var(--text-color)" p={3} borderWidth={1} borderColor="var(--tertiary-color)" borderRadius="md" bg="var(--secondary-gray-color)">
             <Text fontWeight="bold" mb={1}>💡 Syntax:</Text>
             <Text>• <code>variable_name = value</code> - Set cluster-level default</Text>
             <Text>• <code>variable_name.exclude = server1,server2</code> - Exclude servers from cluster default</Text>

@@ -119,6 +119,7 @@ export const clusterService = {
 
   // Database service APIs
   getDatabaseService,
+  getQueryExplainPFS,
   preserveVariable,
   getServerConfigFiles,
   clearServerDelta,
@@ -606,6 +607,10 @@ function getDatabaseService(clusterName, serviceName, dbId, baseURL, queryParams
   }
 
   return getApi(baseURL).get(path)
+}
+
+function getQueryExplainPFS(clusterName, dbId, queryDigest, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/queries/${queryDigest}/actions/explain-pfs`)
 }
 
 function preserveVariable(clusterName, dbId, variableName, action, baseURL) {

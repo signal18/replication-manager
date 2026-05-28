@@ -1,27 +1,69 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import styles from '../../styles.module.scss'
-import { Flex, HStack, Input, Tooltip, VStack, Text, Box } from '@chakra-ui/react'
+import {
+  Flex,
+  HStack,
+  VStack,
+  Box,
+  IconButton,
+  Tooltip,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalCloseButton,
+  Table,
+  Thead,
+  Tbody,
+  Tr,
+  Th,
+  Td,
+  useDisclosure,
+  Spinner,
+  Text,
+  Code
+} from '@chakra-ui/react'
 import { createColumnHelper } from '@tanstack/react-table'
 import { useDispatch, useSelector } from 'react-redux'
 import { DataTable } from '../../../../components/DataTable'
-import CopyToClipboard from '../../../../components/CopyToClipboard'
 import { isEqual } from 'lodash'
 import { getDatabaseService } from '../../../../redux/clusterSlice'
 import Toolbar from '../Toolbar'
 import ShowMoreText from '../../../../components/ShowMoreText'
+import { HiSearchCircle } from 'react-icons/hi'
+import { format as formatSQL } from 'sql-formatter'
+import { clusterService } from '../../../../services/clusterService'
+import { useTheme } from '../../../../ThemeProvider'
+import parentStyles from '../../../../components/Modals/styles.module.scss'
+
+function safeSQLFormat(sql) {
+  try {
+    return formatSQL(sql, { language: 'mysql' })
+  } catch {
+    return sql
+  }
+}
 
 function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggleDigestMode }) {
   const dispatch = useDispatch()
-  // const [search, setSearch] = useState('')
+  const { theme } = useTheme()
 
   const {
     cluster: {
       database: { digestQueries }
-    }
+    },
+    auth: { baseURL }
   } = useSelector((state) => state)
   const [data, setData] = useState(digestQueries || [])
-  // const [allData, setAllData] = useState(digestQueries || [])
   const prevDigestQueries = useRef(digestQueries)
+
+  const { isOpen, onOpen, onClose } = useDisclosure()
+  const isLight = theme === 'light'
+  const iconColor = isLight ? 'gray.600' : 'gray.200'
+  const [explainData, setExplainData] = useState(null)
+  const [explainLoading, setExplainLoading] = useState(false)
+  const [explainQuery, setExplainQuery] = useState('')
 
   useEffect(() => {
     if (digestMode === 'pfs') {
@@ -34,32 +76,27 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
   useEffect(() => {
     if (digestQueries?.length > 0) {
       if (!isEqual(digestQueries, prevDigestQueries.current)) {
-        // setAllData(digestQueries)
         setData(digestQueries)
-
-        // Update the previous digestQueries value
         prevDigestQueries.current = digestQueries
       }
     }
   }, [digestQueries])
 
-  // useEffect(() => {
-  //   setData(searchData(allData))
-  // }, [search])
+  const handleExplain = async (digest, sampleQuery) => {
+    setExplainQuery(sampleQuery || '')
+    setExplainData(null)
+    setExplainLoading(true)
+    onOpen()
+    try {
+      const response = await clusterService.getQueryExplainPFS(clusterName, dbId, digest, baseURL)
+      setExplainData(response.data)
+    } catch (err) {
+      setExplainData({ error: err?.response?.data || 'Failed to get explain plan' })
+    } finally {
+      setExplainLoading(false)
+    }
+  }
 
-  // const searchData = (serverData) => {
-  //   const searchedData = serverData.filter((x) => {
-  //     const searchValue = search.toLowerCase()
-  //     if (x.query.toLowerCase().includes(searchValue)) {
-  //       return x
-  //     }
-  //   })
-  //   return searchedData
-  // }
-
-  // const handleSearch = (e) => {
-  //   setSearch(e.target.value)
-  // }
   const columnHelper = createColumnHelper()
 
   const columns = useMemo(
@@ -81,11 +118,19 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
         cell: (info) => <ShowMoreText text={info.getValue()} />,
         textAlign: 'start'
       }),
+      columnHelper.accessor((row) => row.sampleQuery || '', {
+        header: 'Sample',
+        id: 'sample',
+        cell: (info) => {
+          const val = info.getValue()
+          return val ? <ShowMoreText text={val} maxLength={40} /> : '-'
+        },
+        textAlign: 'start'
+      }),
       columnHelper.accessor((row) => row.execCount, {
         header: 'Count',
         id: 'count'
       }),
-
       columnHelper.group({
         header: 'Times',
         columns: [
@@ -138,20 +183,35 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
             id: 'mem'
           })
         ]
+      }),
+      columnHelper.display({
+        header: 'Explain',
+        id: 'explain',
+        cell: (info) => {
+          const row = info.row.original
+          const hasSample = row.sampleQuery && row.sampleQuery.length > 0
+          return (
+            <Tooltip label={hasSample ? 'Run EXPLAIN' : 'No sample query available'}>
+              <IconButton
+                size='xs'
+                variant='ghost'
+                color={iconColor}
+                icon={<HiSearchCircle size='16' />}
+                isDisabled={!hasSample}
+                onClick={() => handleExplain(row.digest, row.sampleQuery)}
+                aria-label='Explain query'
+              />
+            </Tooltip>
+          )
+        }
       })
     ],
-    []
+    [iconColor]
   )
 
   return (
     <VStack className={styles.contentContainer}>
       <Flex className={styles.actions}>
-        {/* <HStack gap='4'>
-          <HStack className={styles.search}>
-            <label htmlFor='search'>Search</label>
-            <Input id='search' type='search' onChange={handleSearch} />
-          </HStack>
-        </HStack> */}
         <Toolbar
           clusterName={clusterName}
           tab='digestQueries'
@@ -162,8 +222,77 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
         />
       </Flex>
       <Box className={styles.tableContainer}>
-        <DataTable key="digest" data={data} columns={columns} className={styles.table} />
+        <DataTable key='digest' data={data} columns={columns} className={styles.table} />
       </Box>
+
+      <Modal isOpen={isOpen} onClose={onClose} size='xl'>
+        <ModalOverlay />
+        <ModalContent maxW='900px' className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
+          <ModalHeader fontSize='sm'>EXPLAIN Plan</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            {explainQuery && (
+              <Box
+                mb={4}
+                p={3}
+                bg='var(--secondary-gray-color)'
+                borderRadius='md'
+                maxH='150px'
+                overflowY='auto'
+              >
+                <Code whiteSpace='pre-wrap' wordBreak='break-all' fontSize='xs' display='block' bg='transparent' color='var(--text-color)'>
+                  {safeSQLFormat(explainQuery)}
+                </Code>
+              </Box>
+            )}
+            {explainLoading && (
+              <Flex justify='center' py={4}>
+                <Spinner />
+              </Flex>
+            )}
+            {explainData?.error && <Text color='red.500'>{String(explainData.error)}</Text>}
+            {explainData && !explainData.error && Array.isArray(explainData) && (
+              <Box overflowX='auto'>
+                <Table size='sm' variant='simple' borderColor='var(--tertiary-color)' sx={{ tableLayout: 'auto', minW: '800px' }}>
+                  <Thead>
+                    <Tr>
+                      <Th borderColor='var(--tertiary-color)'>id</Th>
+                      <Th borderColor='var(--tertiary-color)'>select_type</Th>
+                      <Th borderColor='var(--tertiary-color)'>table</Th>
+                      <Th borderColor='var(--tertiary-color)'>type</Th>
+                      <Th borderColor='var(--tertiary-color)'>possible_keys</Th>
+                      <Th borderColor='var(--tertiary-color)'>key</Th>
+                      <Th borderColor='var(--tertiary-color)'>key_len</Th>
+                      <Th borderColor='var(--tertiary-color)'>ref</Th>
+                      <Th borderColor='var(--tertiary-color)'>rows</Th>
+                      <Th borderColor='var(--tertiary-color)' minW='200px'>Extra</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {explainData.map((row, i) => (
+                      <Tr key={i}>
+                        <Td borderColor='var(--tertiary-color)'>{row.id}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.selectType?.String || '-'}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.table?.String || '-'}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.type?.String || '-'}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.possibleKeys?.String || '-'}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.key?.String || '-'}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.keyLen?.String || '-'}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.ref?.String || '-'}</Td>
+                        <Td borderColor='var(--tertiary-color)'>{row.rows?.String || '-'}</Td>
+                        <Td borderColor='var(--tertiary-color)' whiteSpace='normal' minW='200px'>{row.extra?.String || '-'}</Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              </Box>
+            )}
+            {explainData && !explainData.error && Array.isArray(explainData) && explainData.length === 0 && (
+              <Text>No explain data returned</Text>
+            )}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </VStack>
   )
 }

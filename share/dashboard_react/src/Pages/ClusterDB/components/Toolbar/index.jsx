@@ -47,7 +47,7 @@ function Toolbar({ tab, dbId, selectedDBServer, clusterName, digestMode, toggleD
     } else if (type === 'toggleMode') {
       setConfirmTitle(`Confirm toggle slow query mode between TABLE and FILE on server: ${serverName}`)
     } else if (type === 'togglePFSCapture') {
-      setConfirmTitle(`Confirm toggle slow query log PFS capture on server: ${serverName}`)
+      setConfirmTitle(`Confirm toggle PFS statement history capture on server: ${serverName}`)
     } else if (type === 'togglePFSMode') {
       setConfirmTitle(`Confirm  toggle digest mode between PFS and SLOW on server: ${serverName}`)
     } else if (type === 'resetDigestPFSQuery') {
@@ -76,7 +76,7 @@ function Toolbar({ tab, dbId, selectedDBServer, clusterName, digestMode, toggleD
         {tab === 'digestQueries' && (
           <RMIconButton
             onClick={() => openConfirmModal('togglePFSCapture')}
-            tooltip='Toggle slow query PFS capture'
+            tooltip='Toggle PFS statement history capture'
             icon={selectedDBServer?.havePFSSlowQueryLog ? HiStop : HiPlay}
           />
         )}

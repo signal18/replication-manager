@@ -2,9 +2,10 @@ import { Box, Button, Flex, HStack, Select, Text, VStack, Code, Badge } from '@c
 import React, { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { clusterService } from '../../services/clusterService'
+import { useTheme } from '../../ThemeProvider'
 import styles from './styles.module.scss'
 
-const COMMENT_COLORS = {
+const COMMENT_COLORS_LIGHT = {
   'preserved:server-specific': { bg: '#e3f2fd', color: '#1565c0', label: 'Server Preserved' },
   'preserved:cluster-level': { bg: '#e0f7fa', color: '#00838f', label: 'Cluster Preserved' },
   'preserved:legacy-migrated': { bg: '#f5f5f5', color: '#616161', label: 'Legacy Migrated' },
@@ -13,6 +14,17 @@ const COMMENT_COLORS = {
   'delta:value-differs': { bg: '#fffde7', color: '#f57f17', label: 'Value Differs' },
   'agreed:accepted': { bg: '#e8f5e9', color: '#2e7d32', label: 'Accepted' },
   'agreed:dropped': { bg: '#ffebee', color: '#c62828', label: 'Dropped' },
+}
+
+const COMMENT_COLORS_DARK = {
+  'preserved:server-specific': { bg: '#1a2a3a', color: '#90caf9', label: 'Server Preserved' },
+  'preserved:cluster-level': { bg: '#1a2e30', color: '#80deea', label: 'Cluster Preserved' },
+  'preserved:legacy-migrated': { bg: '#2a2a2a', color: '#9e9e9e', label: 'Legacy Migrated' },
+  'preserved:unknown': { bg: '#2a1e3a', color: '#b39ddb', label: 'Preserved' },
+  'delta:no-config': { bg: '#3a2a1a', color: '#ffb74d', label: 'Deprecated (loose)' },
+  'delta:value-differs': { bg: '#3a3a1a', color: '#fff176', label: 'Value Differs' },
+  'agreed:accepted': { bg: '#1a2e1a', color: '#81c784', label: 'Accepted' },
+  'agreed:dropped': { bg: '#3a1a1a', color: '#ef9a9a', label: 'Dropped' },
 }
 
 function parseConfigLines(content) {
@@ -29,7 +41,7 @@ function parseConfigLines(content) {
     if (trimmed.startsWith('#')) {
       const commentBody = trimmed.substring(1).trim()
       // Match known origin prefixes
-      for (const prefix of Object.keys(COMMENT_COLORS)) {
+      for (const prefix of Object.keys(COMMENT_COLORS_LIGHT)) {
         if (commentBody.startsWith(prefix)) {
           currentComment = prefix
           break
@@ -64,7 +76,7 @@ function parseConfigLines(content) {
   return result
 }
 
-function FilePanel({ title, content, emptyText }) {
+function FilePanel({ title, content, emptyText, commentColors }) {
   const lines = parseConfigLines(content)
 
   return (
@@ -75,12 +87,12 @@ function FilePanel({ title, content, emptyText }) {
           <Text className={styles.emptyText}>{emptyText || 'Empty'}</Text>
         ) : (
           lines.map((line, idx) => {
-            const colors = line.comment ? COMMENT_COLORS[line.comment] : null
+            const colors = line.comment ? commentColors[line.comment] : null
             if (line.type === 'dropped') {
               return (
-                <Flex key={idx} className={styles.fileLine} bg={COMMENT_COLORS['agreed:dropped'].bg}>
+                <Flex key={idx} className={styles.fileLine} bg={commentColors['agreed:dropped'].bg}>
                   <Badge colorScheme='red' size='sm' mr={2}>Dropped</Badge>
-                  <Code className={styles.lineText} color={COMMENT_COLORS['agreed:dropped'].color}>
+                  <Code className={styles.lineText} color={commentColors['agreed:dropped'].color}>
                     {line.text.replace('#', '').trim()}
                   </Code>
                 </Flex>
@@ -110,6 +122,8 @@ function FilePanel({ title, content, emptyText }) {
 }
 
 function ConfigFilesPanel({ selectedCluster }) {
+  const { theme } = useTheme()
+  const commentColors = theme === 'light' ? COMMENT_COLORS_LIGHT : COMMENT_COLORS_DARK
   const [selectedServer, setSelectedServer] = useState('')
   const [configFiles, setConfigFiles] = useState({ preserved: '', delta: '', agreed: '' })
   const [loading, setLoading] = useState(false)
@@ -165,6 +179,7 @@ function ConfigFilesPanel({ selectedCluster }) {
             title='01_preserved.cnf'
             content={configFiles.preserved}
             emptyText='No preserved variables'
+            commentColors={commentColors}
           />
           <Box className={styles.filePanel}>
             <Flex className={styles.fileTitle} justify='space-between' align='center'>
@@ -180,12 +195,12 @@ function ConfigFilesPanel({ selectedCluster }) {
                 <Text className={styles.emptyText}>No delta — server is fully converged</Text>
               ) : (
                 parseConfigLines(configFiles.delta).map((line, idx) => {
-                  const colors = line.comment ? COMMENT_COLORS[line.comment] : null
+                  const colors = line.comment ? commentColors[line.comment] : null
                   if (line.type === 'dropped') {
                     return (
-                      <Flex key={idx} className={styles.fileLine} bg={COMMENT_COLORS['agreed:dropped'].bg}>
+                      <Flex key={idx} className={styles.fileLine} bg={commentColors['agreed:dropped'].bg}>
                         <Badge colorScheme='red' size='sm' mr={2}>Dropped</Badge>
-                        <Code className={styles.lineText} color={COMMENT_COLORS['agreed:dropped'].color}>
+                        <Code className={styles.lineText} color={commentColors['agreed:dropped'].color}>
                           {line.text.replace('#', '').trim()}
                         </Code>
                       </Flex>
@@ -215,6 +230,7 @@ function ConfigFilesPanel({ selectedCluster }) {
             title='03_agreed.cnf'
             content={configFiles.agreed}
             emptyText='No accepted deviations'
+            commentColors={commentColors}
           />
         </VStack>
       )}

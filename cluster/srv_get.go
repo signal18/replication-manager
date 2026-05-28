@@ -907,6 +907,33 @@ func (server *ServerMonitor) RunPFSExplainCapture(ctx context.Context, snapshot 
 		if q.Sample_query == "" {
 			continue
 		}
+		// Skip statements that can't be EXPLAINed and repman's own queries
+		upper := strings.ToUpper(strings.TrimLeft(q.Sample_query, " \t\n/*"))
+		if strings.HasPrefix(upper, "EXPLAIN") {
+			continue
+		}
+		canExplain := strings.HasPrefix(upper, "SELECT") ||
+			strings.HasPrefix(upper, "DELETE") ||
+			strings.HasPrefix(upper, "INSERT") ||
+			strings.HasPrefix(upper, "UPDATE") ||
+			strings.HasPrefix(upper, "REPLACE")
+		if !canExplain {
+			continue
+		}
+		if strings.Contains(q.Sample_query, "replication-manager") {
+			continue
+		}
+		// Skip queries that could trigger side effects via EXPLAIN
+		// (stored procedures/functions can execute with elevated privileges)
+		upperFull := strings.ToUpper(q.Sample_query)
+		if strings.Contains(upperFull, "CALL ") ||
+			strings.Contains(upperFull, "EXECUTE ") ||
+			strings.Contains(upperFull, "PREPARE ") ||
+			strings.Contains(upperFull, "INFORMATION_SCHEMA") ||
+			strings.Contains(upperFull, "PERFORMANCE_SCHEMA") ||
+			strings.Contains(upperFull, "MYSQL.") {
+			continue
+		}
 		var capturedAt time.Time
 		server.PFSExplainCacheMu.Lock()
 		if rec, exists := server.PFSExplainCache[digest]; exists {

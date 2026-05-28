@@ -1362,6 +1362,10 @@ func (server *ServerMonitor) CheckJobsVersion() error {
 		return nil
 	}
 
+	if !server.HasProvisionCookie() {
+		return nil
+	}
+
 	if cluster.IsInFailover() {
 		return nil
 	}
