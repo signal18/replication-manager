@@ -2467,6 +2467,25 @@
                 }
             ],
             "fset_name": "mariadb.security.pwdcheckreuse"
+        },
+        {
+            "fset_stats": false,
+            "id": 426,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "badconfig",
+                        "f_table": "v_tags",
+                        "id": 382
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.test.badconfig"
         }
     ],
     "rulesets": [
@@ -4287,6 +4306,14 @@
                     "var_updated": "2026-04-12 16:03:28",
                     "var_name": "db_cnf_sec_with_checkpwdreuse",
                     "id": 6359
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_test_badconfig.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nthis_does_not_exist = 1\\nloose_this_also_does_not_exist = 1\"}",
+                    "var_updated": "2026-05-29 11:42:12",
+                    "var_name": "db_cnf_test_badconfig",
+                    "id": 6362
                 }
             ],
             "ruleset_public": false,
@@ -4417,7 +4444,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.withlogmutex",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withrepeatableread",
                 "mariadb.svc.mrm.db.cnf.generic.sec_withstrictssl",
-                "mariadb.svc.mrm.db.cnf.generic.sec_withcheckpwdreuse"
+                "mariadb.svc.mrm.db.cnf.generic.sec_withcheckpwdreuse",
+                "mariadb.svc.mrm.db.cnf.generic.test_badconfig"
             ],
             "publications": [
                 "replication-manager"
@@ -7773,6 +7801,30 @@
                 "replication-manager"
             ],
             "id": 1175,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.test.badconfig",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.test_badconfig",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/55_with_test_badconfig.cnf\",\"target\":\"../replication-manager.d/with_test_badconfig.cnf\"}",
+                    "var_updated": "2026-05-29 11:41:28",
+                    "var_name": "db_link_badconfig",
+                    "id": 6363
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1176,
             "responsibles": [
                 "replication-manager"
             ]
