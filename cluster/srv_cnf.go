@@ -658,7 +658,8 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype
 
 	// Parse unknown variable markers from dbjobs validation (# unknown:varname=value)
 	// These are variables in the compliance config that the DB doesn't recognize.
-	// Add them to the config side so they appear in the delta for user action.
+	// Route them to agreed.cnf (not delta) so the user can Drop them — putting
+	// them in delta would deploy them to DB config and crash on restart.
 	if cnftype == "config" {
 		if data, readErr := os.ReadFile(srcpath); readErr == nil {
 			for _, line := range strings.Split(string(data), "\n") {
@@ -672,9 +673,15 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype
 						varValue = strings.TrimSpace(parts[1])
 					}
 					if varName != "" {
+						// Set both Config and Preserved to the same value so:
+						// - Delta skips it (Preserved != nil)
+						// - WritePreservedVariables routes to agreed.cnf (Preserved == Config)
 						server.VariablesMap.SetConfigValue(varName, varValue)
+						if vs, exists := server.VariablesMap.CheckAndGet(varName); exists {
+							vs.Preserved = vs.Config
+						}
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-							"Unknown variable detected by DB validation: %s=%s", varName, varValue)
+							"Unknown variable detected by DB validation: %s=%s (routed to agreed.cnf)", varName, varValue)
 					}
 				}
 			}
