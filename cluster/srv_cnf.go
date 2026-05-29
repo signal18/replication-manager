@@ -661,8 +661,8 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype
 
 	// Parse unknown variable markers from dbjobs validation (# unknown:varname=value)
 	// These are variables in the compliance config that the DB doesn't recognize.
-	// Route them to agreed.cnf (not delta) so the user can Drop them — putting
-	// them in delta would deploy them to DB config and crash on restart.
+	// They must NOT be in delta or preserved (both deployed to DB = crash on restart).
+	// Route them to agreed.cnf with an explicit message so the user can see and fix.
 	if cnftype == "config" {
 		if data, readErr := os.ReadFile(srcpath); readErr == nil {
 			for _, line := range strings.Split(string(data), "\n") {
@@ -676,15 +676,27 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype
 						varValue = strings.TrimSpace(parts[1])
 					}
 					if varName != "" {
-						// Set both Config and Preserved to the same value so:
-						// - Delta skips it (Preserved != nil)
-						// - WritePreservedVariables routes to agreed.cnf (Preserved == Config)
-						server.VariablesMap.SetConfigValue(varName, varValue)
-						if vs, exists := server.VariablesMap.CheckAndGet(varName); exists {
+						// Normalize to match map keys
+						normalizedName := strings.ToLower(strings.TrimSpace(
+							strings.TrimPrefix(strings.ReplaceAll(varName, "-", "_"), "loose_")))
+
+						// Remove from preserved if present (would crash DB)
+						if vs, exists := server.VariablesMap.CheckAndGet(normalizedName); exists {
+							if vs.IsPreserved() {
+								vs.Preserved = nil
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+									"Removed unknown variable %s from preserved (would crash DB on restart)", varName)
+							}
+						}
+
+						// Set Config and Preserved equal so delta skips it and it routes to agreed
+						server.VariablesMap.SetConfigValue(normalizedName, varValue)
+						if vs, exists := server.VariablesMap.CheckAndGet(normalizedName); exists {
 							vs.Preserved = vs.Config
+							vs.PreservedSource = "unknown-variable"
 						}
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-							"Unknown variable detected by DB validation: %s=%s (routed to agreed.cnf)", varName, varValue)
+							"Unknown variable detected by DB: %s — removed from delta/preserved, added to agreed for review", varName)
 					}
 				}
 			}
@@ -1054,8 +1066,12 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 				preservedContent.WriteString(fmt.Sprintf("# preserved:%s\n", source))
 				preservedContent.WriteString(fmt.Sprintf("%s=%s\n", varKey, v.Preserved.String()))
 			} else {
-				// Agreed variables
-				agreedContent.WriteString("# agreed:accepted\n")
+				// Agreed variables — use specific comment for unknown variables
+				if v.PreservedSource == "unknown-variable" {
+					agreedContent.WriteString("# agreed:unknown-variable\n")
+				} else {
+					agreedContent.WriteString("# agreed:accepted\n")
+				}
 				agreedContent.WriteString(fmt.Sprintf("%s=%s\n", varKey, v.Preserved.String()))
 			}
 		}
