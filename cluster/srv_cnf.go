@@ -1111,8 +1111,11 @@ func (server *ServerMonitor) SetVariablePreserved(variableName string) error {
 		return fmt.Errorf("variable %s has no deployed value", variableName)
 	}
 
-	// Write preserved variables to files
-	return server.WritePreservedVariables()
+	// Write preserved variables and refresh delta to remove this entry
+	if err := server.WritePreservedVariables(); err != nil {
+		return err
+	}
+	return server.WriteDeltaVariables()
 }
 
 // SetVariableCustomPreserved sets a custom preserved value for a variable
@@ -1181,8 +1184,11 @@ func (server *ServerMonitor) SetVariableAccepted(variableName string) error {
 			"Variable %s marked as dropped (no config value — removed in newer version)", variableName)
 	}
 
-	// Write preserved variables to files
-	return server.WritePreservedVariables()
+	// Write preserved variables and refresh delta
+	if err := server.WritePreservedVariables(); err != nil {
+		return err
+	}
+	return server.WriteDeltaVariables()
 }
 
 // ClearVariablePreservation removes preservation status from a variable
@@ -1198,6 +1204,9 @@ func (server *ServerMonitor) ClearVariablePreservation(variableName string) erro
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"Variable %s preservation cleared", variableName)
 
-	// Write preserved variables to files
-	return server.WritePreservedVariables()
+	// Write preserved variables and refresh delta
+	if err := server.WritePreservedVariables(); err != nil {
+		return err
+	}
+	return server.WriteDeltaVariables()
 }
