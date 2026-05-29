@@ -1,41 +1,4 @@
 {
-    "modulesets": [
-        {
-            "modules": [],
-            "rulesets": [],
-            "modset_name": "mariadb.svc.mrm.db",
-            "modulesets": [
-                "mariadb.svc.mrm.db.cnf"
-            ],
-            "publications": [
-                "replication-manager"
-            ],
-            "id": 350,
-            "responsibles": [
-                "replication-manager"
-            ]
-        },
-        {
-            "modules": [
-                {
-                    "autofix": false,
-                    "modset_mod_name": "mariadb.svc.mrm.db.cnf"
-                }
-            ],
-            "rulesets": [
-                "mariadb.svc.mrm.db.cnf"
-            ],
-            "modset_name": "mariadb.svc.mrm.db.cnf",
-            "modulesets": [],
-            "publications": [
-                "replication-manager"
-            ],
-            "id": 351,
-            "responsibles": [
-                "replication-manager"
-            ]
-        }
-    ],
     "filtersets": [
         {
             "fset_stats": false,
@@ -3166,8 +3129,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_log_pfs.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nloose_performance_schema\\nloose_performance_schema_instrument=\\\"events_statements_history_long=ON\\\"\\nperformance_schema_consumer_events_statements_history=ON\\nloose_performance_schema_consumer_events_statements_history_long=ON\\nloose_performance_schema_consumer_events_statements_current=ON \\nloose_performance_schema_max_sql_text_length=16384                                                                                                      \\nloose_performance_schema_max_digest_text_length=16384 \"}",
-                    "var_updated": "2026-05-28 16:10:35",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_log_pfs.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nloose_performance_schema\\nloose_performance_schema_instrument=\\\"events_statements_history_long=ON\\\"\\nperformance_schema_consumer_events_statements_history=ON\\nloose_performance_schema_consumer_events_statements_history_long=ON\\nloose_performance_schema_consumer_events_statements_current=ON \\nloose_performance_schema_max_sql_text_length=16384\\n# MySQL only                                                                                                      \\nloose_performance_schema_max_digest_text_length=16384 \\n\\n[mariadb]\\n# MariaDB 10.0.21+\\nloose_performance_schema_max_digest_length=16384\"}",
+                    "var_updated": "2026-05-29 23:18:03",
                     "var_name": "db_cnf_log_with_pfs",
                     "id": 5949
                 },
