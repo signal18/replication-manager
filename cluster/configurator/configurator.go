@@ -1011,7 +1011,16 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 	}
 
 	if preserve {
-		difflist := []string{"01_preserved.cnf", "02_delta.cnf", "03_agreed.cnf"}
+		// Deploy config override files to the DB:
+		// - preserved.cnf: user-set overrides (keep DB runtime values)
+		// - delta.cnf: runtime diffs not yet decided (protect current state)
+		difflist := []string{"01_preserved.cnf", "02_delta.cnf"}
+
+		// Deploy an empty agreed.cnf to wipe stale entries from previous deployments.
+		// The real agreed.cnf stays in repman's datadir for acceptance tracking.
+		emptyAgreed := filepath.Join(Datadir, "init/etc/mysql/custom.d/", "03_agreed.cnf")
+		os.MkdirAll(filepath.Dir(emptyAgreed), 0755)
+		os.WriteFile(emptyAgreed, []byte("[mysqld]\n"), 0644)
 
 		for _, fname := range difflist {
 			srcpath := filepath.Join(Datadir, fname)

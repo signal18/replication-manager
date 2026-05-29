@@ -418,6 +418,9 @@ func (server *ServerMonitor) ReadVariablesFromConfigs() {
 	wg.Wait()
 
 	server.ReadPreservedVariables()
+	// Always rewrite delta to ensure consistency with preserved state.
+	// This also cleans up stale delta files from upgrades where
+	// WriteDeltaVariables wasn't called after preserve actions.
 	server.WriteDeltaVariables()
 	server.IsNeedPathCheck = true
 }
@@ -548,6 +551,12 @@ func (server *ServerMonitor) LoadFromTempConfigFile(srcpath, dstpath string) err
 	for scanner.Scan() {
 		line := scanner.Text()
 
+		// Pass through unknown variable markers from dbjobs validation
+		if strings.HasPrefix(line, "# unknown:") {
+			vars = append(vars, line)
+			continue
+		}
+
 		// Only process lines that start with --
 		if !strings.HasPrefix(line, "--") {
 			continue
@@ -648,6 +657,50 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
 		return err
+	}
+
+	// Parse unknown variable markers from dbjobs validation (# unknown:varname=value)
+	// These are variables in the compliance config that the DB doesn't recognize.
+	// They must NOT be in delta or preserved (both deployed to DB = crash on restart).
+	// Route them to agreed.cnf with an explicit message so the user can see and fix.
+	if cnftype == "config" {
+		if data, readErr := os.ReadFile(srcpath); readErr == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "# unknown:") {
+					varExpr := strings.TrimPrefix(line, "# unknown:")
+					parts := strings.SplitN(varExpr, "=", 2)
+					varName := strings.TrimSpace(parts[0])
+					varValue := ""
+					if len(parts) > 1 {
+						varValue = strings.TrimSpace(parts[1])
+					}
+					if varName != "" {
+						// Normalize to match map keys
+						normalizedName := strings.ToLower(strings.TrimSpace(
+							strings.TrimPrefix(strings.ReplaceAll(varName, "-", "_"), "loose_")))
+
+						// Remove from preserved if present (would crash DB)
+						if vs, exists := server.VariablesMap.CheckAndGet(normalizedName); exists {
+							if vs.IsPreserved() {
+								vs.Preserved = nil
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+									"Removed unknown variable %s from preserved (would crash DB on restart)", varName)
+							}
+						}
+
+						// Set Config and Preserved equal so delta skips it and it routes to agreed
+						server.VariablesMap.SetConfigValue(normalizedName, varValue)
+						if vs, exists := server.VariablesMap.CheckAndGet(normalizedName); exists {
+							vs.Preserved = vs.Config
+							vs.PreservedSource = "unknown-variable"
+						}
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+							"Unknown variable detected by DB: %s — removed from delta/preserved, added to agreed for review", varName)
+					}
+				}
+			}
+		}
 	}
 
 	return nil
@@ -839,6 +892,10 @@ func (server *ServerMonitor) ReadPreservedVariables() error {
 		}
 	}
 
+	// Load accepted variables from agreed.cnf so they survive repman restarts
+	// and stay out of delta until the DB is restarted with the compliance value
+	server.VariablesMap.LoadFromConfigFile(filepath.Join(server.Datadir, "03_agreed.cnf"), "preserved")
+
 	// Load dropped variables state from disk
 	droppedpath := filepath.Join(server.Datadir, "dropped_variables.json")
 	if data, err := os.ReadFile(droppedpath); err == nil {
@@ -997,10 +1054,8 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 		if v.Preserved != nil {
 			// Prefix with loose_ if the variable has no config counterpart
 			varKey := key
-			looseTag := ""
 			if v.Config == nil && !strings.HasPrefix(key, "loose_") && !strings.HasPrefix(key, "loose-") {
 				varKey = "loose_" + key
-				looseTag = " (loose)"
 			}
 			if v.IsPreserved() {
 				// Determine origin comment for preserved variables
@@ -1008,11 +1063,15 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 				if source == "" {
 					source = "unknown"
 				}
-				preservedContent.WriteString(fmt.Sprintf("# preserved:%s%s\n", source, looseTag))
+				preservedContent.WriteString(fmt.Sprintf("# preserved:%s\n", source))
 				preservedContent.WriteString(fmt.Sprintf("%s=%s\n", varKey, v.Preserved.String()))
 			} else {
-				// Agreed variables
-				agreedContent.WriteString(fmt.Sprintf("# agreed:accepted%s\n", looseTag))
+				// Agreed variables — use specific comment for unknown variables
+				if v.PreservedSource == "unknown-variable" {
+					agreedContent.WriteString("# agreed:unknown-variable\n")
+				} else {
+					agreedContent.WriteString("# agreed:accepted\n")
+				}
 				agreedContent.WriteString(fmt.Sprintf("%s=%s\n", varKey, v.Preserved.String()))
 			}
 		}
@@ -1071,8 +1130,11 @@ func (server *ServerMonitor) SetVariablePreserved(variableName string) error {
 		return fmt.Errorf("variable %s has no deployed value", variableName)
 	}
 
-	// Write preserved variables to files
-	return server.WritePreservedVariables()
+	// Write preserved variables and refresh delta to remove this entry
+	if err := server.WritePreservedVariables(); err != nil {
+		return err
+	}
+	return server.WriteDeltaVariables()
 }
 
 // SetVariableCustomPreserved sets a custom preserved value for a variable
@@ -1141,8 +1203,11 @@ func (server *ServerMonitor) SetVariableAccepted(variableName string) error {
 			"Variable %s marked as dropped (no config value — removed in newer version)", variableName)
 	}
 
-	// Write preserved variables to files
-	return server.WritePreservedVariables()
+	// Write preserved variables and refresh delta
+	if err := server.WritePreservedVariables(); err != nil {
+		return err
+	}
+	return server.WriteDeltaVariables()
 }
 
 // ClearVariablePreservation removes preservation status from a variable
@@ -1158,6 +1223,9 @@ func (server *ServerMonitor) ClearVariablePreservation(variableName string) erro
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"Variable %s preservation cleared", variableName)
 
-	// Write preserved variables to files
-	return server.WritePreservedVariables()
+	// Write preserved variables and refresh delta
+	if err := server.WritePreservedVariables(); err != nil {
+		return err
+	}
+	return server.WriteDeltaVariables()
 }

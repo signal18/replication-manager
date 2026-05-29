@@ -816,6 +816,17 @@ send_mariadb_defaults() {
     # Process output: replace ' --' with newline
     local processed_output=$(echo "$output" | sed 's/ --/\n--/g')
 
+    # Detect unknown variables via --help --verbose and append them
+    # so repman can present them in the configurator for user action
+    local unknown_vars=$($command --defaults-file="$defaults_file" --help --verbose 2>&1 | grep "unknown variable" | sed "s/.*unknown variable '\\([^']*\\)'.*/\\1/")
+    if [[ -n "$unknown_vars" ]]; then
+        while IFS= read -r bad_var; do
+            processed_output="${processed_output}
+# unknown:${bad_var}"
+            send_lines_to_api "Unknown variable detected: $bad_var" "print-defaults" "$LVL_WARN"
+        done <<< "$unknown_vars"
+    fi
+
     # Send over TCP using socat
     local recv_host="${receiver_addr%%:*}"
     local recv_port="${receiver_addr##*:}"
