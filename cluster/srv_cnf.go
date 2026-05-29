@@ -548,6 +548,12 @@ func (server *ServerMonitor) LoadFromTempConfigFile(srcpath, dstpath string) err
 	for scanner.Scan() {
 		line := scanner.Text()
 
+		// Pass through unknown variable markers from dbjobs validation
+		if strings.HasPrefix(line, "# unknown:") {
+			vars = append(vars, line)
+			continue
+		}
+
 		// Only process lines that start with --
 		if !strings.HasPrefix(line, "--") {
 			continue
@@ -648,6 +654,31 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
 		return err
+	}
+
+	// Parse unknown variable markers from dbjobs validation (# unknown:varname=value)
+	// These are variables in the compliance config that the DB doesn't recognize.
+	// Add them to the config side so they appear in the delta for user action.
+	if cnftype == "config" {
+		if data, readErr := os.ReadFile(srcpath); readErr == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "# unknown:") {
+					varExpr := strings.TrimPrefix(line, "# unknown:")
+					parts := strings.SplitN(varExpr, "=", 2)
+					varName := strings.TrimSpace(parts[0])
+					varValue := ""
+					if len(parts) > 1 {
+						varValue = strings.TrimSpace(parts[1])
+					}
+					if varName != "" {
+						server.VariablesMap.SetConfigValue(varName, varValue)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+							"Unknown variable detected by DB validation: %s=%s", varName, varValue)
+					}
+				}
+			}
+		}
 	}
 
 	return nil
