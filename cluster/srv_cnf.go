@@ -418,6 +418,9 @@ func (server *ServerMonitor) ReadVariablesFromConfigs() {
 	wg.Wait()
 
 	server.ReadPreservedVariables()
+	// Always rewrite delta to ensure consistency with preserved state.
+	// This also cleans up stale delta files from upgrades where
+	// WriteDeltaVariables wasn't called after preserve actions.
 	server.WriteDeltaVariables()
 	server.IsNeedPathCheck = true
 }
