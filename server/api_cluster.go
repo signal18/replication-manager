@@ -2609,6 +2609,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchTestMode()
 	case "prov-net-cni":
 		mycluster.SwitchProvNetCNI()
+	case "prov-db-config":
+		mycluster.Conf.ProvDBConfig = !mycluster.Conf.ProvDBConfig
 	case "prov-db-config-preserve":
 		mycluster.Conf.ProvDBConfigPreserve = !mycluster.Conf.ProvDBConfigPreserve
 	case "prov-db-start-fetch-config":
@@ -4250,6 +4252,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Test = applyIsActive(mycluster.Conf.Test, isactive)
 	case "prov-net-cni":
 		mycluster.Conf.ProvNetCNI = applyIsActive(mycluster.Conf.ProvNetCNI, isactive)
+	case "prov-db-config":
+		mycluster.Conf.ProvDBConfig = applyIsActive(mycluster.Conf.ProvDBConfig, isactive)
 	case "prov-db-config-preserve":
 		mycluster.Conf.ProvDBConfigPreserve = applyIsActive(mycluster.Conf.ProvDBConfigPreserve, isactive)
 	case "prov-db-start-fetch-config":
