@@ -270,6 +270,10 @@ func (server *ServerMonitor) GetDummyConfig() error {
 func (server *ServerMonitor) ProcessDummyConfigSendCookie() error {
 	cluster := server.ClusterGroup
 
+	if !cluster.Conf.ProvDBConfig {
+		return nil
+	}
+
 	if server.IsIgnored() {
 		return nil
 	}
@@ -400,6 +404,9 @@ func (server *ServerMonitor) RemovePreservedConfigPath() {
 }
 
 func (server *ServerMonitor) ReadVariablesFromConfigs() {
+	if !server.ClusterGroup.Conf.ProvDBConfig {
+		return
+	}
 	var wg sync.WaitGroup
 	wg.Add(2)
 
