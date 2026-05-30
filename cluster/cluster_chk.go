@@ -1272,8 +1272,9 @@ func (cluster *Cluster) CheckConfiguratorPrerequisites() {
 	if !cluster.Conf.ProvDBConfig {
 		return
 	}
-	// On-premise orchestrator needs scheduler + SSH for dbjobs to run
-	if cluster.Conf.ProvOrchestrator == "onpremise" || cluster.Conf.ProvOrchestrator == "" {
+	// On-premise needs scheduler + SSH for dbjobs to run
+	// OpenSVC/K8s run dbjobs inside containers — no scheduler or SSH needed
+	if cluster.Conf.ProvOrchestrator == "onpremise" || cluster.Conf.ProvOrchestrator == "local" || cluster.Conf.ProvOrchestrator == "" {
 		if !cluster.Conf.MonitorScheduler {
 			cluster.SetState("WARN0170", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0170"], "monitoring-scheduler is disabled — dbjobs cannot run"), ErrFrom: "CHECK"})
 		} else if !cluster.Conf.SchedulerJobsSSH {
