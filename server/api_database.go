@@ -3253,11 +3253,6 @@ func (repman *ReplicationManager) handlerMuxServerNeedConfigRefresh(w http.Respo
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !mycluster.Conf.ProvDBConfig {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("500 -Config tracking disabled (prov-db-config=false)"))
-			return
-		}
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil && !node.IsDown() {

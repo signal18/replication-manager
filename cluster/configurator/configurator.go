@@ -1010,7 +1010,7 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 		os.WriteFile(Datadir+"/init/root-checksum.txt", []byte(rootchk), 0644)
 	}
 
-	if preserve {
+	if preserve && configurator.ClusterConfig.ProvDBConfig {
 		// Deploy config override files to the DB:
 		// - preserved.cnf: user-set overrides (keep DB runtime values)
 		// - delta.cnf: runtime diffs not yet decided (protect current state)
