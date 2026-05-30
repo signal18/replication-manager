@@ -1370,6 +1370,12 @@ func (server *ServerMonitor) CheckJobsVersion() error {
 		return nil
 	}
 
+	// Skip check when using a custom dbjobs script — the embedded
+	// script CRC will always mismatch against the custom one
+	if cluster.Conf.OnPremiseSSHDbJobScript != "" {
+		return nil
+	}
+
 	scriptPath := filepath.Join(server.Datadir, "init/init", "dbjobs_new")
 	currentScriptPath := filepath.Join(server.Datadir, "dbjobs_new.current")
 
@@ -1398,7 +1404,9 @@ func (server *ServerMonitor) CheckJobsVersion() error {
 			checkerr = fmt.Errorf("Checksum mismatch")
 		}
 		cluster.SetState("WARN0147", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0147"], server.URL, newsum, sum, checkerr), ErrFrom: "JOB", ServerUrl: server.URL})
-		// Set cookie for next check
+		// Set upgrade cookie so dbjobs fetches the new script on next run
+		server.SetWaitJobsUpgradeCookie()
+		// Set check cookie for re-verification after upgrade
 		if finfo != nil && !finfo.ModTime().IsZero() && finfo.ModTime().Add(10*time.Minute).Before(time.Now()) {
 			server.SetWaitJobsCheckCookie()
 		}
