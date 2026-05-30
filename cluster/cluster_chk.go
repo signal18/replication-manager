@@ -1268,6 +1268,22 @@ func (cluster *Cluster) CheckOnPremiseSSHKey() {
 	cluster.HaveSSHKeyChecked = true
 }
 
+func (cluster *Cluster) CheckConfiguratorPrerequisites() {
+	if !cluster.Conf.ProvDBConfig {
+		return
+	}
+	// On-premise orchestrator needs scheduler + SSH for dbjobs to run
+	if cluster.Conf.ProvOrchestrator == "onpremise" || cluster.Conf.ProvOrchestrator == "" {
+		if !cluster.Conf.MonitorScheduler {
+			cluster.SetState("WARN0170", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0170"], "monitoring-scheduler is disabled — dbjobs cannot run"), ErrFrom: "CHECK"})
+		} else if !cluster.Conf.SchedulerJobsSSH {
+			cluster.SetState("WARN0170", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0170"], "scheduler-jobs-ssh is disabled — dbjobs cannot reach database servers"), ErrFrom: "CHECK"})
+		} else if !cluster.Conf.OnPremiseSSH {
+			cluster.SetState("WARN0170", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0170"], "onpremise-ssh is disabled — cannot connect to database servers"), ErrFrom: "CHECK"})
+		}
+	}
+}
+
 func (cluster *Cluster) CheckDBCredentials() {
 	// This check is to prevent invalid credentials configuration
 	// when both users are the same but passwords are different

@@ -911,6 +911,7 @@ func (cluster *Cluster) Run() {
 							cluster.CheckOpenSVCTresholds()
 							cluster.JobsCheckSchedulerTable()
 							cluster.CheckOnPremiseSSHKey()
+							cluster.CheckConfiguratorPrerequisites()
 							cluster.CheckGlobalDeprecatedKeys()
 							cluster.CheckClusterDeprecatedKeys()
 							cluster.CheckClusterServiceAgents()
