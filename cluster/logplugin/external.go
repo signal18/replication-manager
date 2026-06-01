@@ -549,7 +549,7 @@ func mdlToWire(mdls []StdioMDL) []StdioMDL {
 func pluginErrFinding(pluginName, serverURL, msg string) []Finding {
 	return []Finding{{
 		ErrKey:      "WARN0203",
-		Severity:    SeverityError,
+		Severity:    SeverityWarning,
 		Description: fmt.Sprintf("Plugin %s on %s: %s", pluginName, serverURL, msg),
 	}}
 }
