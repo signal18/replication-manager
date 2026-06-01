@@ -1214,7 +1214,7 @@ func validateVariablesConfigType(cnftype string) error {
 	return nil
 }
 
-func normalizeConfigVarName(name string) string {
+func NormalizeConfigVarName(name string) string {
 	return strings.TrimSpace(strings.TrimPrefix(strings.ReplaceAll(name, "-", "_"), "loose_"))
 }
 
@@ -1274,7 +1274,7 @@ func (m *VariablesMap) loadFromSection(section *ini.Section, cnftype string) {
 		quoteTrimmer := strings.NewReplacer("\u2018", "", "\u2019", "")
 
 		for _, key := range section.Keys() {
-			varname := normalizeConfigVarName(key.Name())
+			varname := NormalizeConfigVarName(key.Name())
 			// Use INI shadows to honor MySQL last-wins behavior for non-repeat options.
 			values := key.ValueWithShadows()
 			if len(values) == 0 {

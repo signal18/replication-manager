@@ -817,14 +817,20 @@ send_mariadb_defaults() {
     local processed_output=$(echo "$output" | sed 's/ --/\n--/g')
 
     # Detect unknown variables via --help --verbose and append them
-    # so repman can present them in the configurator for user action
-    local unknown_vars=$($command --defaults-file="$defaults_file" --help --verbose 2>&1 | grep "unknown variable" | sed "s/.*unknown variable '\\([^']*\\)'.*/\\1/")
+    # so repman can present them in the configurator for user action.
+    # The grep+sed pattern matches MariaDB/MySQL "unknown variable 'name=value'" format.
+    # If the message format changes in future versions, this silently produces no output.
+    local unknown_vars=$($command --defaults-file="$defaults_file" --help --verbose 2>&1 | grep "unknown variable" | sed "s/.*unknown variable '\\([^']*\\)'.*/\\1/" || true)
     if [[ -n "$unknown_vars" ]]; then
         while IFS= read -r bad_var; do
-            processed_output="${processed_output}
+            if [[ -n "$bad_var" ]]; then
+                processed_output="${processed_output}
 # unknown:${bad_var}"
-            send_lines_to_api "Unknown variable detected: $bad_var" "print-defaults" "$LVL_WARN"
+                send_lines_to_api "Unknown variable detected: $bad_var" "print-defaults" "$LVL_WARN"
+            fi
         done <<< "$unknown_vars"
+    else
+        send_lines_to_api "No unknown variables detected in config" "print-defaults" "$LVL_DEBUG"
     fi
 
     # Send over TCP using socat

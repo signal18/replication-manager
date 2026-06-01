@@ -660,10 +660,12 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype
 	}
 
 	// Parse unknown variable markers from dbjobs validation (# unknown:varname=value)
-	// These are variables in the compliance config that the DB doesn't recognize.
+	// These markers are preserved in the cnf file by LoadFromTempConfigFile.
 	// They must NOT be in delta or preserved (both deployed to DB = crash on restart).
 	// Route them to agreed.cnf with an explicit message so the user can see and fix.
 	if cnftype == "config" {
+		// Read comments from the file — ini parser skips them, so we scan directly.
+		// This is the same file already loaded above, but comments need raw access.
 		if data, readErr := os.ReadFile(srcpath); readErr == nil {
 			for _, line := range strings.Split(string(data), "\n") {
 				line = strings.TrimSpace(line)
@@ -893,8 +895,21 @@ func (server *ServerMonitor) ReadPreservedVariables() error {
 	}
 
 	// Load accepted variables from agreed.cnf so they survive repman restarts
-	// and stay out of delta until the DB is restarted with the compliance value
-	server.VariablesMap.LoadFromConfigFile(filepath.Join(server.Datadir, "03_agreed.cnf"), "preserved")
+	// and stay out of delta until the DB is restarted with the compliance value.
+	// Only set Preserved on variables not already preserved at higher priority
+	// (server-specific or cluster-level) to avoid overwriting explicit preserve decisions.
+	agreedPath := filepath.Join(server.Datadir, "03_agreed.cnf")
+	if section, err := config.LoadMySQLConfigSection(agreedPath); err == nil && section != nil {
+		for _, key := range section.Keys() {
+			varname := config.NormalizeConfigVarName(key.Name())
+			if vs, exists := server.VariablesMap.CheckAndGet(varname); exists {
+				if vs.Preserved != nil {
+					continue // already preserved at higher priority
+				}
+			}
+			server.VariablesMap.SetPreservedValue(varname, key.Value())
+		}
+	}
 
 	// Load dropped variables state from disk
 	droppedpath := filepath.Join(server.Datadir, "dropped_variables.json")

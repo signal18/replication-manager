@@ -178,7 +178,9 @@ function ConfigFilesPanel({ selectedCluster }) {
     if (!selectedCluster?.name || !selectedServer || !variableName) return
     clusterService.preserveVariable(selectedCluster.name, selectedServer, variableName, action, baseURL)
       .then(() => setRefreshKey((k) => k + 1))
-      .catch(() => {})
+      .catch((err) => {
+        console.error(`Failed to ${action} variable ${variableName}:`, err?.response?.data || err)
+      })
   }
 
   return (

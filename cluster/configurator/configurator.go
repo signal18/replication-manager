@@ -1019,8 +1019,12 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 		// Deploy an empty agreed.cnf to wipe stale entries from previous deployments.
 		// The real agreed.cnf stays in repman's datadir for acceptance tracking.
 		emptyAgreed := filepath.Join(Datadir, "init/etc/mysql/custom.d/", "03_agreed.cnf")
-		os.MkdirAll(filepath.Dir(emptyAgreed), 0755)
-		os.WriteFile(emptyAgreed, []byte("[mysqld]\n"), 0644)
+		if err := os.MkdirAll(filepath.Dir(emptyAgreed), 0755); err != nil {
+			configurator.Logger.Errorf("Failed to create custom.d directory: %s", err)
+		}
+		if err := os.WriteFile(emptyAgreed, []byte("[mysqld]\n"), 0644); err != nil {
+			configurator.Logger.Errorf("Failed to write empty agreed.cnf: %s", err)
+		}
 
 		for _, fname := range difflist {
 			srcpath := filepath.Join(Datadir, fname)

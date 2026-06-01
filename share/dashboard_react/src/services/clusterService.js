@@ -616,7 +616,7 @@ function getQueryExplainPFS(clusterName, dbId, queryDigest, baseURL) {
 function preserveVariable(clusterName, dbId, variableName, action, baseURL) {
   // action can be 'preserve', 'accept', or 'clear'
   return getApi(baseURL).post(
-    `clusters/${clusterName}/servers/${dbId}/variables-${action}?variableName=${variableName}`
+    `clusters/${clusterName}/servers/${dbId}/variables-${action}?variableName=${encodeURIComponent(variableName)}`
   )
 }
 
