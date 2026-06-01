@@ -168,7 +168,7 @@ function Navbar({ username }) {
               <AlertBadge
                 colorScheme={monitor?.isGlobalIntervention ? 'orange' : 'gray'}
                 icon={FaTools}
-                text={monitor?.isGlobalIntervention ? 'INTERVENTION' : 'Intervene'}
+                text={monitor?.isGlobalIntervention ? 'MUTED' : 'Mute'}
                 count={monitor?.isGlobalIntervention ? '' : ''}
                 onClick={() => {
                   if (monitor?.isGlobalIntervention) {
@@ -223,7 +223,7 @@ function Navbar({ username }) {
               <AlertBadge
                 colorScheme={clusterData?.isIntervention ? 'orange' : 'gray'}
                 icon={FaTools}
-                text={clusterData?.isIntervention ? 'INTERVENTION' : 'Intervene'}
+                text={clusterData?.isIntervention ? 'MUTED' : 'Mute'}
                 count={clusterData?.interventionSuppressedAlerts || ''}
                 onClick={() => {
                   if (clusterData?.isIntervention) {
