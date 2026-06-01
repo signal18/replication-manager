@@ -15,7 +15,7 @@ import { FaPowerOff, FaUserPlus, FaTools } from 'react-icons/fa'
 import { MdSecurity } from 'react-icons/md'
 import { RiSpeedFill } from 'react-icons/ri'
 import ConfirmModal from '../Modals/ConfirmModal'
-import InterventionModal from '../Modals/InterventionModal'
+import InterventionPanel from '../Modals/InterventionPanel'
 import { clusterService } from '../../services/clusterService'
 import { getApi } from '../../services/apiHelper'
 import styles from './styles.module.scss'
@@ -37,8 +37,7 @@ function Navbar({ username }) {
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false)
   const [isWorkloadModalOpen, setIsWorkloadModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
-  const [isInterventionModalOpen, setIsInterventionModalOpen] = useState(false)
-  const [isEndInterventionModalOpen, setIsEndInterventionModalOpen] = useState(false)
+  const [isInterventionPanelOpen, setIsInterventionPanelOpen] = useState(false)
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
   const [isChatOpen, setIsChatOpen] = useState(() => { return localStorage.getItem('chatOpen') === 'true'; });
   const [showImageLogo, setShowImageLogo] = useState(true)
@@ -168,15 +167,9 @@ function Navbar({ username }) {
               <AlertBadge
                 colorScheme={monitor?.isGlobalIntervention ? 'orange' : 'gray'}
                 icon={FaTools}
-                text={monitor?.isGlobalIntervention ? 'MUTED' : 'Mute'}
+                text={monitor?.isGlobalIntervention ? 'Muted' : 'Mute'}
                 count={monitor?.isGlobalIntervention ? '' : ''}
-                onClick={() => {
-                  if (monitor?.isGlobalIntervention) {
-                    setIsEndInterventionModalOpen(true)
-                  } else {
-                    setIsInterventionModalOpen(true)
-                  }
-                }}
+                onClick={() => setIsInterventionPanelOpen(true)}
                 showText={!isMobile}
                 blink={monitor?.isGlobalIntervention}
               />
@@ -223,15 +216,9 @@ function Navbar({ username }) {
               <AlertBadge
                 colorScheme={clusterData?.isIntervention ? 'orange' : 'gray'}
                 icon={FaTools}
-                text={clusterData?.isIntervention ? 'MUTED' : 'Mute'}
+                text={clusterData?.isIntervention ? 'Muted' : 'Mute'}
                 count={clusterData?.interventionSuppressedAlerts || ''}
-                onClick={() => {
-                  if (clusterData?.isIntervention) {
-                    setIsEndInterventionModalOpen(true)
-                  } else {
-                    setIsInterventionModalOpen(true)
-                  }
-                }}
+                onClick={() => setIsInterventionPanelOpen(true)}
                 showText={!isMobile}
                 blink={clusterData?.isIntervention}
               />
@@ -309,34 +296,25 @@ function Navbar({ username }) {
       {isWorkloadModalOpen && (
         <WorkloadModal isOpen={isWorkloadModalOpen} closeModal={() => setIsWorkloadModalOpen(false)} />
       )}
-      {isInterventionModalOpen && (
-        <InterventionModal
-          isOpen={isInterventionModalOpen}
-          closeModal={() => setIsInterventionModalOpen(false)}
-          onStart={({ reason }) => {
+      {isInterventionPanelOpen && (
+        <InterventionPanel
+          isOpen={isInterventionPanelOpen}
+          closeModal={() => setIsInterventionPanelOpen(false)}
+          isActive={clusterData ? clusterData?.isIntervention : monitor?.isGlobalIntervention}
+          current={clusterData ? clusterData?.interventionCurrent : monitor?.globalInterventionEntry}
+          history={clusterData ? (clusterData?.interventionHistory || []) : []}
+          suppressedAlerts={clusterData ? (clusterData?.interventionSuppressedAlerts || 0) : 0}
+          onStart={(reason) => {
             const api = clusterData
               ? clusterService.startIntervention(clusterData.name, reason, baseURL)
               : getApi(baseURL).post('actions/intervention-start', { reason })
-            api
-              .then(() => setIsInterventionModalOpen(false))
-              .catch((err) => console.error('Failed to start intervention:', err))
+            api.catch((err) => console.error('Failed to start intervention:', err))
           }}
-        />
-      )}
-      {isEndInterventionModalOpen && (
-        <ConfirmModal
-          isOpen={isEndInterventionModalOpen}
-          closeModal={() => setIsEndInterventionModalOpen(false)}
-          title={clusterData
-            ? `End intervention? (${clusterData?.interventionCurrent?.reason || 'active'}) — ${clusterData?.interventionSuppressedAlerts || 0} alerts suppressed`
-            : `End global intervention? (${monitor?.globalInterventionEntry?.reason || 'active'}) — all clusters will resume notifications`}
-          onConfirmClick={() => {
+          onEnd={() => {
             const api = clusterData
               ? clusterService.endIntervention(clusterData.name, baseURL)
               : getApi(baseURL).post('actions/intervention-end')
-            api
-              .then(() => setIsEndInterventionModalOpen(false))
-              .catch((err) => console.error('Failed to end intervention:', err))
+            api.catch((err) => console.error('Failed to end intervention:', err))
           }}
         />
       )}
