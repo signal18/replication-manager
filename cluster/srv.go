@@ -1047,7 +1047,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.FullProcessList, logs, err = dbhelper.GetProcesslistTable(server.Conn, server.DBVersion, server.GetCluster().Conf.MonitorProcessListInactive, server.GetCluster().Conf.MonitorProcessListTransactions, server.GetCluster().Conf.MonitorProcessListInformationSchema, server.GetCluster().Conf.MonitorProcessListLimit, "", server.GetCluster().Conf.MonitorProcessListQueryLength)
 			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get process %s %s", server.URL, err)
 			if err != nil {
-				cluster.SetState("ERR00075", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00075"], err), ServerUrl: server.URL, ErrFrom: "MON"})
+				cluster.SetState("ERR00075", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00075"], err), ServerUrl: server.URL, ErrFrom: "MON"})
 			}
 		}
 	}
