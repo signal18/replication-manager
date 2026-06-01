@@ -1050,6 +1050,36 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 		}
 	}
 
+	// Ensure preserved file-path variables have their referenced files in the tarball.
+	// When a tag is removed but its variables are preserved, the config fragment stays
+	// but the files it references (e.g. encryption key files) are no longer deployed.
+	preservedPath := filepath.Join(Datadir, "01_preserved.cnf")
+	if preservedData, err := os.ReadFile(preservedPath); err == nil {
+		for _, line := range strings.Split(string(preservedData), "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "#") || line == "" || line == "[mysqld]" {
+				continue
+			}
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			value := strings.TrimSpace(parts[1])
+			if strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") {
+				cleanPath := filepath.Clean(strings.TrimPrefix(value, "/"))
+				srcFile := filepath.Join(Datadir, cleanPath)
+				dstFile := filepath.Join(Datadir, "init", cleanPath)
+				if _, err := os.Stat(srcFile); err == nil {
+					if _, err := os.Stat(dstFile); os.IsNotExist(err) {
+						os.MkdirAll(filepath.Dir(dstFile), 0755)
+						misc.CopyFile(srcFile, dstFile)
+						configurator.Logger.Infof("Preserved file dependency: copied %s to config tarball", cleanPath)
+					}
+				}
+			}
+		}
+	}
+
 	configurator.TarGz(Datadir+"/config.tar.gz", Datadir+"/init")
 
 	return nil
