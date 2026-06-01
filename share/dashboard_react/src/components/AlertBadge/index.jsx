@@ -31,7 +31,7 @@ function AlertBadge({
       : isBlocking ? HiBan : isSupport ? BiSupport : HiExclamation
 
   const showBubble =
-    isBlocking || (!isBlocking && !isSupport) || (isSupport && isConnect)
+    (isBlocking || (!isBlocking && !isSupport) || (isSupport && isConnect)) && !(blink && (count === '' || count === 0))
 
   const bubbleClassName = `alertCount ${styles.alertCount} ${
     isBlocking ? styles.blocker : isSupport ? styles.support : styles.warning

@@ -17,6 +17,7 @@ import { RiSpeedFill } from 'react-icons/ri'
 import ConfirmModal from '../Modals/ConfirmModal'
 import InterventionModal from '../Modals/InterventionModal'
 import { clusterService } from '../../services/clusterService'
+import { getApi } from '../../services/apiHelper'
 import styles from './styles.module.scss'
 import RMButton from '../RMButton'
 import RMIconButton from '../RMIconButton'
@@ -164,6 +165,21 @@ function Navbar({ username }) {
                 onClick={() => setGlobalAlertModalType('warning')}
                 showText={!isMobile}
               />
+              <AlertBadge
+                colorScheme={monitor?.isGlobalIntervention ? 'orange' : 'gray'}
+                icon={FaTools}
+                text={monitor?.isGlobalIntervention ? 'INTERVENTION' : 'Intervene'}
+                count={monitor?.isGlobalIntervention ? '' : ''}
+                onClick={() => {
+                  if (monitor?.isGlobalIntervention) {
+                    setIsEndInterventionModalOpen(true)
+                  } else {
+                    setIsInterventionModalOpen(true)
+                  }
+                }}
+                showText={!isMobile}
+                blink={monitor?.isGlobalIntervention}
+              />
             </Flex>
           )}
 
@@ -208,7 +224,7 @@ function Navbar({ username }) {
                 colorScheme={clusterData?.isIntervention ? 'orange' : 'gray'}
                 icon={FaTools}
                 text={clusterData?.isIntervention ? 'INTERVENTION' : 'Intervene'}
-                count={clusterData?.interventionSuppressedAlerts || 0}
+                count={clusterData?.interventionSuppressedAlerts || ''}
                 onClick={() => {
                   if (clusterData?.isIntervention) {
                     setIsEndInterventionModalOpen(true)
@@ -298,7 +314,10 @@ function Navbar({ username }) {
           isOpen={isInterventionModalOpen}
           closeModal={() => setIsInterventionModalOpen(false)}
           onStart={({ reason }) => {
-            clusterService.startIntervention(clusterData?.name, reason, baseURL)
+            const api = clusterData
+              ? clusterService.startIntervention(clusterData.name, reason, baseURL)
+              : getApi(baseURL).post('actions/intervention-start', { reason })
+            api
               .then(() => setIsInterventionModalOpen(false))
               .catch((err) => console.error('Failed to start intervention:', err))
           }}
@@ -308,9 +327,14 @@ function Navbar({ username }) {
         <ConfirmModal
           isOpen={isEndInterventionModalOpen}
           closeModal={() => setIsEndInterventionModalOpen(false)}
-          title={`End intervention? (${clusterData?.interventionCurrent?.reason || 'active'}) — ${clusterData?.interventionSuppressedAlerts || 0} alerts suppressed`}
+          title={clusterData
+            ? `End intervention? (${clusterData?.interventionCurrent?.reason || 'active'}) — ${clusterData?.interventionSuppressedAlerts || 0} alerts suppressed`
+            : `End global intervention? (${monitor?.globalInterventionEntry?.reason || 'active'}) — all clusters will resume notifications`}
           onConfirmClick={() => {
-            clusterService.endIntervention(clusterData?.name, baseURL)
+            const api = clusterData
+              ? clusterService.endIntervention(clusterData.name, baseURL)
+              : getApi(baseURL).post('actions/intervention-end')
+            api
               .then(() => setIsEndInterventionModalOpen(false))
               .catch((err) => console.error('Failed to end intervention:', err))
           }}
