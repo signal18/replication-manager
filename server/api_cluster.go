@@ -10221,6 +10221,7 @@ func (repman *ReplicationManager) handlerMuxInterventionStart(w http.ResponseWri
 
 		var body struct {
 			Reason string `json:"reason"`
+			User   string `json:"user"`
 		}
 		if r.Body != nil {
 			json.NewDecoder(r.Body).Decode(&body)
@@ -10229,7 +10230,10 @@ func (repman *ReplicationManager) handlerMuxInterventionStart(w http.ResponseWri
 			body.Reason = "No reason provided"
 		}
 
-		user := repman.GetUserFromRequest(r)
+		user := body.User
+		if user == "" {
+			user = repman.GetUserFromRequest(r)
+		}
 		if err := mycluster.StartIntervention(user, body.Reason, "cluster"); err != nil {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return

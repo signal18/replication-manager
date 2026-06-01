@@ -15,7 +15,7 @@ import { FaPowerOff, FaUserPlus, FaTools } from 'react-icons/fa'
 import { MdSecurity } from 'react-icons/md'
 import { RiSpeedFill } from 'react-icons/ri'
 import ConfirmModal from '../Modals/ConfirmModal'
-import TextInputModal from '../Modals/TextInputModal'
+import InterventionModal from '../Modals/InterventionModal'
 import styles from './styles.module.scss'
 import RMButton from '../RMButton'
 import RMIconButton from '../RMIconButton'
@@ -294,13 +294,11 @@ function Navbar({ username }) {
         <WorkloadModal isOpen={isWorkloadModalOpen} closeModal={() => setIsWorkloadModalOpen(false)} />
       )}
       {isInterventionModalOpen && (
-        <TextInputModal
+        <InterventionModal
           isOpen={isInterventionModalOpen}
           closeModal={() => setIsInterventionModalOpen(false)}
-          title='Start Intervention — all notifications will be silenced'
-          fieldname='Reason (e.g. rolling restart, upgrade, config change)'
-          onSave={(reason) => {
-            clusterService.startIntervention(clusterData?.name, reason, baseURL)
+          onStart={({ user, reason }) => {
+            clusterService.startIntervention(clusterData?.name, reason, baseURL, user)
               .then(() => setIsInterventionModalOpen(false))
               .catch((err) => console.error('Failed to start intervention:', err))
           }}

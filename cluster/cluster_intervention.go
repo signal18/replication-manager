@@ -20,6 +20,9 @@ type InterventionEntry struct {
 	SuppressedAlerts int       `json:"suppressedAlerts"`
 }
 
+// The reason field contains both description and estimated time
+// formatted as: "description (est. 30 minutes)"
+
 var interventionMu sync.Mutex
 
 func (cluster *Cluster) StartIntervention(user string, reason string, scope string) error {
