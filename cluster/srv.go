@@ -539,8 +539,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		if server.State != stateFailed {
 			cluster.StateMachine.CopyOldStateFromUnknowServer(server.URL)
 		}
-		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlDbg, "Failure detection handling for server %s %s", server.URL, err)
-		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,config.LvlErr, "Failure detection handling for server %s %s", server.URL, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Failure detection handling for server %s %s", server.URL, err)
 
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlDbg, "Driver Error %s %d ", server.URL, driverErr.Number)
