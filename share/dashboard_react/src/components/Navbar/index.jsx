@@ -297,8 +297,8 @@ function Navbar({ username }) {
         <InterventionModal
           isOpen={isInterventionModalOpen}
           closeModal={() => setIsInterventionModalOpen(false)}
-          onStart={({ user, reason }) => {
-            clusterService.startIntervention(clusterData?.name, reason, baseURL, user)
+          onStart={({ reason }) => {
+            clusterService.startIntervention(clusterData?.name, reason, baseURL)
               .then(() => setIsInterventionModalOpen(false))
               .catch((err) => console.error('Failed to start intervention:', err))
           }}

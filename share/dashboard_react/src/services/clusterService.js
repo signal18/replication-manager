@@ -382,8 +382,8 @@ function cancelRollingReprov(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/cancel-rolling-reprov`)
 }
 
-function startIntervention(clusterName, reason, baseURL, user) {
-  return getApi(baseURL).post(`clusters/${clusterName}/actions/intervention-start`, { reason, user })
+function startIntervention(clusterName, reason, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/intervention-start`, { reason })
 }
 
 function endIntervention(clusterName, baseURL) {

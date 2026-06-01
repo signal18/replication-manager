@@ -9,7 +9,6 @@ import parentStyles from '../styles.module.scss'
 
 function InterventionModal({ isOpen, closeModal, onStart }) {
   const { theme } = useTheme()
-  const [user, setUser] = useState('')
   const [description, setDescription] = useState('')
   const [estimatedTime, setEstimatedTime] = useState('30')
   const [unit, setUnit] = useState('minutes')
@@ -17,8 +16,7 @@ function InterventionModal({ isOpen, closeModal, onStart }) {
   const handleStart = () => {
     const est = `${estimatedTime} ${unit}`
     const reason = description ? `${description} (est. ${est})` : `Intervention (est. ${est})`
-    onStart({ user, reason, estimatedTime: est })
-    setUser('')
+    onStart({ reason, estimatedTime: est })
     setDescription('')
     setEstimatedTime('30')
     setUnit('minutes')
@@ -31,15 +29,6 @@ function InterventionModal({ isOpen, closeModal, onStart }) {
         <ModalHeader fontSize='md'>Start Intervention — all notifications will be silenced</ModalHeader>
         <ModalCloseButton />
         <ModalBody pb={4}>
-          <FormControl mb={3}>
-            <FormLabel fontSize='sm'>Operator name</FormLabel>
-            <Input
-              size='sm'
-              placeholder='Who is performing the intervention'
-              value={user}
-              onChange={(e) => setUser(e.target.value)}
-            />
-          </FormControl>
           <FormControl mb={3} isRequired>
             <FormLabel fontSize='sm'>Description</FormLabel>
             <Textarea
