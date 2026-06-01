@@ -584,7 +584,7 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 		return nil
 	}
 
-	if cluster.IsIntervention {
+	if cluster.IsIntervention || cluster.IsAlertDisable {
 		cluster.IncrementSuppressedAlerts()
 		return nil
 	}

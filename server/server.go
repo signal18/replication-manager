@@ -129,6 +129,8 @@ type ReplicationManager struct {
 	GraphiteTemplateList map[string]bool             `json:"graphiteTemplateList"`
 	ServerScopeList      map[string]bool             `json:"-"`
 	currentCluster       *cluster.Cluster            `json:"-"`
+	IsGlobalIntervention bool                        `json:"isGlobalIntervention"`
+	GlobalInterventionEntry *cluster.InterventionEntry `json:"globalInterventionEntry,omitempty"`
 	UserAuthTry          sync.Map                    `json:"-"`
 	OAuthAccessToken     *oauth2.Token               `json:"-"`
 	ViperConfig          *viper.Viper                `json:"-"`
