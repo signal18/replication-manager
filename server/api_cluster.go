@@ -393,6 +393,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResetSla)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/intervention-start", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxInterventionStart)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/intervention-end", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxInterventionEnd)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/replication/bootstrap/{topology}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxBootstrapReplication)),
@@ -10198,5 +10206,57 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderSyncApply(w http.Re
 	e.SetIndent("", "\t")
 	if err := e.Encode(resp); err != nil {
 		http.Error(w, "Encoding error", http.StatusInternalServerError)
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxInterventionStart(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+
+		var body struct {
+			Reason string `json:"reason"`
+		}
+		if r.Body != nil {
+			json.NewDecoder(r.Body).Decode(&body)
+		}
+		if body.Reason == "" {
+			body.Reason = "No reason provided"
+		}
+
+		user := repman.GetUserFromRequest(r)
+		if err := mycluster.StartIntervention(user, body.Reason, "cluster"); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		w.Write([]byte("Intervention started"))
+	} else {
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxInterventionEnd(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+
+		user := repman.GetUserFromRequest(r)
+		if err := mycluster.EndIntervention(user); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		w.Write([]byte("Intervention ended"))
+	} else {
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 	}
 }
