@@ -1,6 +1,6 @@
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, ModalFooter,
-  FormControl, FormLabel, Input, Textarea, Select, HStack
+  FormControl, FormLabel, Textarea, Select, HStack, Input
 } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import RMButton from '../../RMButton'

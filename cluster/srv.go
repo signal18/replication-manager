@@ -539,7 +539,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		if server.State != stateFailed {
 			cluster.StateMachine.CopyOldStateFromUnknowServer(server.URL)
 		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Failure detection handling for server %s %s", server.URL, err)
+		cluster.SetState("WARN0171", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0171"], server.URL, err), ErrFrom: "MON", ServerUrl: server.URL})
 
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlDbg, "Driver Error %s %d ", server.URL, driverErr.Number)
@@ -681,7 +681,11 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			isStagingServer = true
 		}
 
-		if server.PrevState == stateFailed || server.PrevState == stateErrorAuth /*|| server.PrevState == stateSuspect*/ {
+		// stateSuspect intentionally excluded — enabling it would cause false standalone
+		// detection during network glitches (ab0e92ba0, Aug 2021). 2-node clusters
+		// without arbitrator cannot auto-recover after restart. Use an arbitrator.
+		// See: https://docs.signal18.io/faq/topology-deployment#15-4-2
+		if server.PrevState == stateFailed || server.PrevState == stateErrorAuth {
 			// If we reached this stage with a previously failed server, reintroduce it as unconnected server.master
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "State changed, init failed server %s as unconnected", server.URL)
 

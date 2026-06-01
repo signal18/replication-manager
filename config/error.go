@@ -245,6 +245,7 @@ var ClusterError = map[string]string{
 	"WARN0168":  "New compliance moduleset available from back office (DB CRC: %08x → %08x, Proxy CRC: %08x → %08x). Accept the update via Settings to apply.",
 	"WARN0169":  "On-premise SSH enabled but private key not found: %s. Generate a key for the repman user or set onpremise-ssh-private-key",
 	"WARN0170":  "Configurator enabled (prov-db-config=true) but %s. Config tracking will not work until this is resolved.",
+	"WARN0171":  "Server %s connection failed: %s",
 	// Log-tailer plugin state codes (WARN0200-WARN0299 reserved for logplugin)
 	"WARN0200":  "Server %s has recent ERROR entries in database error log (last 24h)",
 	"WARN0201":  "Server %s has recent SQL errors in SQL error log (last 24h)",

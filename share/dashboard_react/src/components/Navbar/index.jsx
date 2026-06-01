@@ -16,12 +16,12 @@ import { MdSecurity } from 'react-icons/md'
 import { RiSpeedFill } from 'react-icons/ri'
 import ConfirmModal from '../Modals/ConfirmModal'
 import InterventionModal from '../Modals/InterventionModal'
+import { clusterService } from '../../services/clusterService'
 import styles from './styles.module.scss'
 import RMButton from '../RMButton'
 import RMIconButton from '../RMIconButton'
 import { useTheme } from '../../ThemeProvider'
 import AddUserModal from '../Modals/AddUserModal'
-import { clusterService } from '../../services/clusterService'
 import MattermostIntegration from '../../Pages/Mattermost';
 import { getMeetInfo, logoutFromMeet } from '../../redux/meetSlice';
 import { selectMeetUIState } from '../../redux/memoize'
