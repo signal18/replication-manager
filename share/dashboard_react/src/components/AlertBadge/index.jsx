@@ -13,6 +13,7 @@ function AlertBadge({
   showText,
   isSupport = false,
   isConnect = true,
+  blink = false,
   // Optional overrides — when provided, bypass the isBlocking/isSupport logic
   colorScheme: colorSchemeProp,
   icon: iconProp,
@@ -34,14 +35,14 @@ function AlertBadge({
 
   const bubbleClassName = `alertCount ${styles.alertCount} ${
     isBlocking ? styles.blocker : isSupport ? styles.support : styles.warning
-  } ${isBlocking && count > 0 ? styles.blinking : ''}`
+  } ${(isBlocking && count > 0) || blink ? styles.blinking : ''}`
 
   return (
     <Badge
       as={'button'}
       {...(onClick ? { onClick: onClick } : {})}
       colorScheme={resolvedColorScheme}
-      className={styles.badge}>
+      className={`${styles.badge} ${blink ? styles.blinking : ''}`}>
       {showBubble && (
         <Box
           as='span'

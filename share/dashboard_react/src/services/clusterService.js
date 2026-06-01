@@ -62,6 +62,8 @@ export const clusterService = {
   reloadCertificates,
   cancelRollingRestart,
   cancelRollingReprov,
+  startIntervention,
+  endIntervention,
   bootstrapMasterSlave,
   bootstrapMasterSlaveNoGtid,
   bootstrapMultiMaster,
@@ -378,6 +380,14 @@ function cancelRollingRestart(clusterName, baseURL) {
 
 function cancelRollingReprov(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/cancel-rolling-reprov`)
+}
+
+function startIntervention(clusterName, reason, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/intervention-start`, { reason })
+}
+
+function endIntervention(clusterName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/intervention-end`)
 }
 
 function bootstrapMasterSlave(clusterName, baseURL) {

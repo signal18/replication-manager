@@ -11,15 +11,17 @@ import AlertBadge from '../AlertBadge'
 import AlertModal from '../Modals/AlertModal'
 import SecurityScoreModal from '../Modals/SecurityScoreModal'
 import WorkloadModal from '../Modals/WorkloadModal'
-import { FaPowerOff, FaUserPlus } from 'react-icons/fa'
+import { FaPowerOff, FaUserPlus, FaTools } from 'react-icons/fa'
 import { MdSecurity } from 'react-icons/md'
 import { RiSpeedFill } from 'react-icons/ri'
 import ConfirmModal from '../Modals/ConfirmModal'
+import TextInputModal from '../Modals/TextInputModal'
 import styles from './styles.module.scss'
 import RMButton from '../RMButton'
 import RMIconButton from '../RMIconButton'
 import { useTheme } from '../../ThemeProvider'
 import AddUserModal from '../Modals/AddUserModal'
+import { clusterService } from '../../services/clusterService'
 import MattermostIntegration from '../../Pages/Mattermost';
 import { getMeetInfo, logoutFromMeet } from '../../redux/meetSlice';
 import { selectMeetUIState } from '../../redux/memoize'
@@ -34,6 +36,8 @@ function Navbar({ username }) {
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false)
   const [isWorkloadModalOpen, setIsWorkloadModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
+  const [isInterventionModalOpen, setIsInterventionModalOpen] = useState(false)
+  const [isEndInterventionModalOpen, setIsEndInterventionModalOpen] = useState(false)
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
   const [isChatOpen, setIsChatOpen] = useState(() => { return localStorage.getItem('chatOpen') === 'true'; });
   const [showImageLogo, setShowImageLogo] = useState(true)
@@ -45,6 +49,7 @@ function Navbar({ username }) {
   const clusterData = useSelector((state) => state?.cluster?.clusterData)
   const globalAlerts = useSelector((state) => state?.globalClusters?.globalAlerts)
   const isLogged = useSelector((state) => state?.auth?.isLogged)
+  const baseURL = useSelector((state) => state?.auth?.baseURL)
   const monitor = useSelector((state) => state?.globalClusters?.monitor)
 
   useEffect(() => {
@@ -199,6 +204,21 @@ function Navbar({ username }) {
                 onClick={() => setIsWorkloadModalOpen(true)}
                 showText={!isMobile}
               />
+              <AlertBadge
+                colorScheme={clusterData?.isIntervention ? 'orange' : 'gray'}
+                icon={FaTools}
+                text={clusterData?.isIntervention ? 'INTERVENTION' : 'Intervene'}
+                count={clusterData?.interventionSuppressedAlerts || 0}
+                onClick={() => {
+                  if (clusterData?.isIntervention) {
+                    setIsEndInterventionModalOpen(true)
+                  } else {
+                    setIsInterventionModalOpen(true)
+                  }
+                }}
+                showText={!isMobile}
+                blink={clusterData?.isIntervention}
+              />
             </Flex>
           )}
 
@@ -272,6 +292,31 @@ function Navbar({ username }) {
       )}
       {isWorkloadModalOpen && (
         <WorkloadModal isOpen={isWorkloadModalOpen} closeModal={() => setIsWorkloadModalOpen(false)} />
+      )}
+      {isInterventionModalOpen && (
+        <TextInputModal
+          isOpen={isInterventionModalOpen}
+          closeModal={() => setIsInterventionModalOpen(false)}
+          title='Start Intervention — all notifications will be silenced'
+          fieldname='Reason (e.g. rolling restart, upgrade, config change)'
+          onSave={(reason) => {
+            clusterService.startIntervention(clusterData?.name, reason, baseURL)
+              .then(() => setIsInterventionModalOpen(false))
+              .catch((err) => console.error('Failed to start intervention:', err))
+          }}
+        />
+      )}
+      {isEndInterventionModalOpen && (
+        <ConfirmModal
+          isOpen={isEndInterventionModalOpen}
+          closeModal={() => setIsEndInterventionModalOpen(false)}
+          title={`End intervention? (${clusterData?.interventionCurrent?.reason || 'active'}) — ${clusterData?.interventionSuppressedAlerts || 0} alerts suppressed`}
+          onConfirmClick={() => {
+            clusterService.endIntervention(clusterData?.name, baseURL)
+              .then(() => setIsEndInterventionModalOpen(false))
+              .catch((err) => console.error('Failed to end intervention:', err))
+          }}
+        />
       )}
     </>
   )
