@@ -66,7 +66,7 @@ function InterventionPanel({ isOpen, closeModal, isGlobal = false, isActive, cur
                     <Text>By: {current.user}</Text>
                     <Text>Started: {formatTime(current.startedAt)}</Text>
                     <Text>Duration: {formatDuration(current.startedAt)}</Text>
-                    <Text>Suppressed: {suppressedAlerts}</Text>
+                    <Text>{suppressedAlerts} blocked notification{suppressedAlerts !== 1 ? 's' : ''}</Text>
                   </HStack>
                 </Box>
               )}
@@ -91,7 +91,7 @@ function InterventionPanel({ isOpen, closeModal, isGlobal = false, isActive, cur
                           <Text>By: {entry.user}</Text>
                           <Text>{formatTime(entry.startedAt)}</Text>
                           <Text>{formatDuration(entry.startedAt, entry.endedAt)}</Text>
-                          <Text>Suppressed: {entry.suppressedAlerts || 0}</Text>
+                          <Text>{entry.suppressedAlerts || 0} blocked</Text>
                           {entry.scope === 'global' && <Badge size='sm' colorScheme='purple'>Global</Badge>}
                         </HStack>
                       </Box>
