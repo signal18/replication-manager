@@ -28,7 +28,7 @@ import { getMeetInfo, logoutFromMeet } from '../../redux/meetSlice';
 import { selectMeetUIState } from '../../redux/memoize'
 import { clearClusters, getMonitoredData } from '../../redux/globalClustersSlice'
 
-function Navbar({ username }) {
+function Navbar({ username, user }) {
   const dispatch = useDispatch()
   const { theme } = useTheme()
   const [alertModalType, setAlertModalType] = useState('')
@@ -301,6 +301,7 @@ function Navbar({ username }) {
           isOpen={isInterventionPanelOpen}
           closeModal={() => setIsInterventionPanelOpen(false)}
           isGlobal={!clusterData}
+          canManage={!!user?.grants?.['db-maintenance']}
           isActive={clusterData ? (clusterData?.isIntervention || !!clusterData?.interventionPending) : (monitor?.activeInterventionCount > 0 || monitor?.isGlobalInterventionPending)}
           current={clusterData ? (clusterData?.interventionCurrent || clusterData?.interventionPending) : monitor?.globalInterventionEntry}
           isPending={clusterData ? (!!clusterData?.interventionPending && !clusterData?.isIntervention) : (monitor?.isGlobalInterventionPending && !monitor?.isGlobalIntervention)}

@@ -8,7 +8,7 @@ import InterventionModal from '../InterventionModal'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
 
-function InterventionPanel({ isOpen, closeModal, isGlobal = false, isActive, isPending = false, current, history = [], suppressedAlerts = 0, activeCount = 0, onStart, onEnd }) {
+function InterventionPanel({ isOpen, closeModal, isGlobal = false, isActive, isPending = false, current, history = [], suppressedAlerts = 0, activeCount = 0, canManage = false, onStart, onEnd }) {
   const { theme } = useTheme()
   const [isNewModalOpen, setIsNewModalOpen] = useState(false)
 
@@ -44,9 +44,11 @@ function InterventionPanel({ isOpen, closeModal, isGlobal = false, isActive, isP
                       <Badge colorScheme='orange'>{activeCount} Active</Badge>
                       <Text fontSize='sm'>{activeCount} cluster{activeCount > 1 ? 's' : ''} in intervention</Text>
                     </HStack>
-                    <RMButton size='xs' colorScheme='red' onClick={onEnd}>
-                      Close All
-                    </RMButton>
+                    {canManage && (
+                      <RMButton size='xs' colorScheme='red' onClick={onEnd}>
+                        Close All
+                      </RMButton>
+                    )}
                   </Flex>
                 </Box>
               )}
@@ -58,9 +60,11 @@ function InterventionPanel({ isOpen, closeModal, isGlobal = false, isActive, isP
                       <Badge colorScheme='blue'>Scheduled</Badge>
                       <Text fontSize='sm' fontWeight={600}>{current.reason}</Text>
                     </HStack>
-                    <RMButton size='xs' colorScheme='red' onClick={onEnd}>
-                      Cancel
-                    </RMButton>
+                    {canManage && (
+                      <RMButton size='xs' colorScheme='red' onClick={onEnd}>
+                        Cancel
+                      </RMButton>
+                    )}
                   </Flex>
                   <HStack spacing={4} fontSize='xs' color={theme === 'light' ? 'gray.600' : 'gray.400'}>
                     <Text>By: {current.user}</Text>
@@ -79,9 +83,11 @@ function InterventionPanel({ isOpen, closeModal, isGlobal = false, isActive, isP
                       <Badge colorScheme='orange'>{isGlobal && activeCount > 1 ? `${activeCount} Active` : 'Active'}</Badge>
                       <Text fontSize='sm' fontWeight={600}>{current.reason}</Text>
                     </HStack>
-                    <RMButton size='xs' colorScheme='red' onClick={onEnd}>
-                      {isGlobal ? 'Close All' : 'Close'}
-                    </RMButton>
+                    {canManage && (
+                      <RMButton size='xs' colorScheme='red' onClick={onEnd}>
+                        {isGlobal ? 'Close All' : 'Close'}
+                      </RMButton>
+                    )}
                   </Flex>
                   <HStack spacing={4} fontSize='xs' color={theme === 'light' ? 'gray.600' : 'gray.400'}>
                     <Text>By: {current.user}</Text>
@@ -92,7 +98,7 @@ function InterventionPanel({ isOpen, closeModal, isGlobal = false, isActive, isP
                 </Box>
               )}
 
-              {!isActive && !isPending && (
+              {!isActive && !isPending && canManage && (
                 <RMButton colorScheme='orange' onClick={() => setIsNewModalOpen(true)}>
                   Start Intervention
                 </RMButton>

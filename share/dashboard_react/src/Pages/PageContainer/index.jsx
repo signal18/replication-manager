@@ -75,7 +75,7 @@ function PageContainer({ children }) {
 
   return (
     <Box className={styles.container}>
-      <Navbar username={user?.username} />
+      <Navbar username={user?.username} user={user} />
       <Box className={styles.pageContent}>{children}</Box>
       <Box as='footer' className={styles.footer} textAlign={(location.pathname === '/login' || location.pathname === '/signup') ? 'right' : 'left'}>
         {(location.pathname === '/login' || location.pathname === '/signup')
