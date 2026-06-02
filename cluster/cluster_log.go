@@ -259,13 +259,15 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 			switch level {
 			case "ERROR":
 				targetLogger.WithFields(printfields).Errorf(cliformat, args...)
-				if !isMaintenance {
+				if !isMaintenance && !cluster.IsIntervention {
 					if cluster.Conf.SlackURL != "" {
 						cluster.LogSlack.WithFields(slackFields).Errorf(cliformat, args...)
 					}
 					if cluster.Conf.TeamsUrl != "" {
 						go cluster.sendMsTeams(level, format, args...)
 					}
+				} else if cluster.IsIntervention {
+					cluster.IncrementSuppressedAlerts()
 				}
 			case "INFO":
 				targetLogger.WithFields(printfields).Infof(cliformat, args...)
@@ -273,13 +275,15 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 				targetLogger.WithFields(printfields).Debugf(cliformat, args...)
 			case "WARN":
 				targetLogger.WithFields(printfields).Warnf(cliformat, args...)
-				if !isMaintenance {
+				if !isMaintenance && !cluster.IsIntervention {
 					if cluster.Conf.SlackURL != "" {
 						cluster.LogSlack.WithFields(slackFields).Warnf(cliformat, args...)
 					}
 					if cluster.Conf.TeamsUrl != "" {
 						go cluster.sendMsTeams(level, format, args...)
 					}
+				} else if cluster.IsIntervention {
+					cluster.IncrementSuppressedAlerts()
 				}
 			case "TEST":
 				printfields["type"] = "test"
@@ -293,44 +297,56 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 				printfields["type"] = "alert"
 				printfields["channel"] = "StdOut"
 				cluster.Logrus.WithFields(printfields).Errorf(cliformat, args...)
-				if cluster.Conf.Cloud18Alert && cluster.Conf.Cloud18SubscriptionPlan != "free" {
-					cluster.LogSlack.WithFields(slackFields).Errorf(cliformat, args...)
-				}
-				if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
-					printfields["channel"] = "Pushover"
-					cluster.LogPushover.WithFields(printfields).Errorf(cliformat, args...)
-				}
-				if cluster.Conf.TeamsUrl != "" {
-					go cluster.sendMsTeams(level, format, args...)
+				if !cluster.IsIntervention {
+					if cluster.Conf.Cloud18Alert && cluster.Conf.Cloud18SubscriptionPlan != "free" {
+						cluster.LogSlack.WithFields(slackFields).Errorf(cliformat, args...)
+					}
+					if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
+						printfields["channel"] = "Pushover"
+						cluster.LogPushover.WithFields(printfields).Errorf(cliformat, args...)
+					}
+					if cluster.Conf.TeamsUrl != "" {
+						go cluster.sendMsTeams(level, format, args...)
+					}
+				} else {
+					cluster.IncrementSuppressedAlerts()
 				}
 			case "START":
 				printfields["type"] = "alert"
 				printfields["channel"] = "StdOut"
 				cluster.Logrus.WithFields(printfields).Warnf(cliformat, args...)
-				if cluster.LogSlack.HasActiveHook() {
-					slackFields["type"] = "start"
-					cluster.LogSlack.WithFields(slackFields).Warnf(cliformat, args...)
-				}
-				if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
-					printfields["type"] = "start"
-					printfields["channel"] = "Pushover"
-					cluster.LogPushover.WithFields(printfields).Warnf(cliformat, args...)
-				}
-				if cluster.Conf.TeamsUrl != "" {
-					go cluster.sendMsTeams(level, format, args...)
+				if !cluster.IsIntervention {
+					if cluster.LogSlack.HasActiveHook() {
+						slackFields["type"] = "start"
+						cluster.LogSlack.WithFields(slackFields).Warnf(cliformat, args...)
+					}
+					if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
+						printfields["type"] = "start"
+						printfields["channel"] = "Pushover"
+						cluster.LogPushover.WithFields(printfields).Warnf(cliformat, args...)
+					}
+					if cluster.Conf.TeamsUrl != "" {
+						go cluster.sendMsTeams(level, format, args...)
+					}
+				} else {
+					cluster.IncrementSuppressedAlerts()
 				}
 			case "ALERTOK":
 				printfields["type"] = "alert"
 				printfields["channel"] = "StdOut"
 				cluster.Logrus.WithFields(printfields).Infof(cliformat, args...)
-				if cluster.Conf.Cloud18Alert && cluster.Conf.Cloud18SubscriptionPlan != "free" {
-					cluster.LogSlack.WithFields(slackFields).Infof(cliformat, args...)
-				}
-				if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
-					cluster.LogPushover.WithFields(printfields).Infof(cliformat, args...)
-				}
-				if cluster.Conf.TeamsUrl != "" {
-					go cluster.sendMsTeams(level, format, args...)
+				if !cluster.IsIntervention {
+					if cluster.Conf.Cloud18Alert && cluster.Conf.Cloud18SubscriptionPlan != "free" {
+						cluster.LogSlack.WithFields(slackFields).Infof(cliformat, args...)
+					}
+					if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
+						cluster.LogPushover.WithFields(printfields).Infof(cliformat, args...)
+					}
+					if cluster.Conf.TeamsUrl != "" {
+						go cluster.sendMsTeams(level, format, args...)
+					}
+				} else {
+					cluster.IncrementSuppressedAlerts()
 				}
 			default:
 				targetLogger.WithFields(printfields).Printf(cliformat, args...)
@@ -507,7 +523,7 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 		// wrap logrus levels
 		if resolved {
 			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "RESOLV", "code": st.ErrKey, "channel": "StdOut"}).Warn(st.ErrDesc)
-			if strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
+			if !cluster.IsIntervention && strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
 				if cluster.LogSlack.HasActiveHook() {
 					slackFields["status"] = "RESOLV"
 					cluster.LogSlack.WithFields(slackFields).Info(st.ErrDesc)
@@ -515,7 +531,7 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 			}
 		} else {
 			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "OPENED", "code": st.ErrKey, "channel": "StdOut"}).Warn(st.ErrDesc)
-			if strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
+			if !cluster.IsIntervention && strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
 				if cluster.LogSlack.HasActiveHook() {
 					slackFields["status"] = "OPENED"
 					cluster.LogSlack.WithFields(slackFields).Error(st.ErrDesc)
@@ -523,7 +539,7 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 			}
 		}
 
-		if cluster.Conf.TeamsUrl != "" && cluster.Conf.TeamsAlertState != "" {
+		if !cluster.IsIntervention && cluster.Conf.TeamsUrl != "" && cluster.Conf.TeamsAlertState != "" {
 			stateList := strings.Split(cluster.Conf.TeamsAlertState, ",")
 			for _, alertcode := range stateList {
 				if strings.Contains(st.ErrKey, alertcode) {
@@ -531,6 +547,10 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 					break
 				}
 			}
+		}
+
+		if cluster.IsIntervention && (strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) || (cluster.Conf.TeamsUrl != "" && cluster.Conf.TeamsAlertState != "")) {
+			cluster.IncrementSuppressedAlerts()
 		}
 	}
 

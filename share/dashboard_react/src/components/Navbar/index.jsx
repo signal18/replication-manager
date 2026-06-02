@@ -12,9 +12,12 @@ import AlertModal from '../Modals/AlertModal'
 import SecurityScoreModal from '../Modals/SecurityScoreModal'
 import WorkloadModal from '../Modals/WorkloadModal'
 import { FaPowerOff, FaUserPlus } from 'react-icons/fa'
-import { MdSecurity } from 'react-icons/md'
+import { MdSecurity, MdNotificationsOff } from 'react-icons/md'
 import { RiSpeedFill } from 'react-icons/ri'
 import ConfirmModal from '../Modals/ConfirmModal'
+import InterventionPanel from '../Modals/InterventionPanel'
+import { clusterService } from '../../services/clusterService'
+import { getApi } from '../../services/apiHelper'
 import styles from './styles.module.scss'
 import RMButton from '../RMButton'
 import RMIconButton from '../RMIconButton'
@@ -23,7 +26,7 @@ import AddUserModal from '../Modals/AddUserModal'
 import MattermostIntegration from '../../Pages/Mattermost';
 import { getMeetInfo, logoutFromMeet } from '../../redux/meetSlice';
 import { selectMeetUIState } from '../../redux/memoize'
-import { clearClusters } from '../../redux/globalClustersSlice'
+import { clearClusters, getMonitoredData } from '../../redux/globalClustersSlice'
 
 function Navbar({ username }) {
   const dispatch = useDispatch()
@@ -34,6 +37,7 @@ function Navbar({ username }) {
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false)
   const [isWorkloadModalOpen, setIsWorkloadModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
+  const [isInterventionPanelOpen, setIsInterventionPanelOpen] = useState(false)
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
   const [isChatOpen, setIsChatOpen] = useState(() => { return localStorage.getItem('chatOpen') === 'true'; });
   const [showImageLogo, setShowImageLogo] = useState(true)
@@ -45,6 +49,7 @@ function Navbar({ username }) {
   const clusterData = useSelector((state) => state?.cluster?.clusterData)
   const globalAlerts = useSelector((state) => state?.globalClusters?.globalAlerts)
   const isLogged = useSelector((state) => state?.auth?.isLogged)
+  const baseURL = useSelector((state) => state?.auth?.baseURL)
   const monitor = useSelector((state) => state?.globalClusters?.monitor)
 
   useEffect(() => {
@@ -159,6 +164,15 @@ function Navbar({ username }) {
                 onClick={() => setGlobalAlertModalType('warning')}
                 showText={!isMobile}
               />
+              <AlertBadge
+                colorScheme={monitor?.activeInterventionCount > 0 ? 'red' : monitor?.isGlobalInterventionPending ? 'orange' : 'teal'}
+                icon={MdNotificationsOff}
+                text={monitor?.activeInterventionCount > 0 ? 'Muted' : monitor?.isGlobalInterventionPending ? 'Scheduled' : 'Mute'}
+                count={monitor?.activeInterventionCount || ''}
+                onClick={() => setIsInterventionPanelOpen(true)}
+                showText={!isMobile}
+                blink={monitor?.activeInterventionCount > 0}
+              />
             </Flex>
           )}
 
@@ -198,6 +212,15 @@ function Navbar({ username }) {
                 }}
                 onClick={() => setIsWorkloadModalOpen(true)}
                 showText={!isMobile}
+              />
+              <AlertBadge
+                colorScheme={clusterData?.isIntervention ? 'red' : clusterData?.interventionPending ? 'orange' : 'teal'}
+                icon={MdNotificationsOff}
+                text={clusterData?.isIntervention ? 'Muted' : clusterData?.interventionPending ? 'Scheduled' : 'Mute'}
+                count={clusterData?.interventionSuppressedAlerts || ''}
+                onClick={() => setIsInterventionPanelOpen(true)}
+                showText={!isMobile}
+                blink={clusterData?.isIntervention}
               />
             </Flex>
           )}
@@ -272,6 +295,37 @@ function Navbar({ username }) {
       )}
       {isWorkloadModalOpen && (
         <WorkloadModal isOpen={isWorkloadModalOpen} closeModal={() => setIsWorkloadModalOpen(false)} />
+      )}
+      {isInterventionPanelOpen && (
+        <InterventionPanel
+          isOpen={isInterventionPanelOpen}
+          closeModal={() => setIsInterventionPanelOpen(false)}
+          isGlobal={!clusterData}
+          isActive={clusterData ? (clusterData?.isIntervention || !!clusterData?.interventionPending) : (monitor?.activeInterventionCount > 0 || monitor?.isGlobalInterventionPending)}
+          current={clusterData ? (clusterData?.interventionCurrent || clusterData?.interventionPending) : monitor?.globalInterventionEntry}
+          isPending={clusterData ? (!!clusterData?.interventionPending && !clusterData?.isIntervention) : (monitor?.isGlobalInterventionPending && !monitor?.isGlobalIntervention)}
+          history={clusterData ? (clusterData?.interventionHistory || []) : []}
+          suppressedAlerts={clusterData ? (clusterData?.interventionSuppressedAlerts || 0) : 0}
+          activeCount={!clusterData ? (monitor?.activeInterventionCount || 0) : 0}
+          onStart={(reason, startAt, endAt) => {
+            const api = clusterData
+              ? clusterService.startIntervention(clusterData.name, reason, baseURL, startAt, endAt)
+              : getApi(baseURL).post('actions/intervention-start', { reason, startAt, endAt })
+            api.then(() => {
+              dispatch(getMonitoredData({}))
+              setIsInterventionPanelOpen(false)
+            }).catch((err) => console.error('Failed to start intervention:', err))
+          }}
+          onEnd={() => {
+            const api = clusterData
+              ? clusterService.endIntervention(clusterData.name, baseURL)
+              : getApi(baseURL).post('actions/intervention-end')
+            api.then(() => {
+              dispatch(getMonitoredData({}))
+              setIsInterventionPanelOpen(false)
+            }).catch((err) => console.error('Failed to end intervention:', err))
+          }}
+        />
       )}
     </>
   )

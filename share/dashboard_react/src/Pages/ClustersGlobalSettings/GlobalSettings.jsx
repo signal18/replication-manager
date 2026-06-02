@@ -1,7 +1,7 @@
 import { Flex, HStack, Link } from '@chakra-ui/react'
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import styles from './styles.module.scss'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import { setGlobalSetting, switchGlobalSetting } from '../../redux/globalClustersSlice'
 import LogSlider from '../../components/Sliders/LogSlider'
@@ -10,15 +10,52 @@ import TextForm from '../../components/TextForm'
 import { TbApi } from 'react-icons/tb'
 import RMIconButton from '../../components/RMIconButton'
 import NumberInput from '../../components/NumberInput'
+import InterventionModal from '../../components/Modals/InterventionModal'
+import ConfirmModal from '../../components/Modals/ConfirmModal'
+import { getApi } from '../../services/apiHelper'
 
 function GlobalSettings({ config }) {
   const dispatch = useDispatch()
-  
+  const monitor = useSelector((state) => state?.globalClusters?.monitor)
+  const baseURL = useSelector((state) => state?.auth?.baseURL)
+  const [isInterventionModalOpen, setIsInterventionModalOpen] = useState(false)
+  const [isEndInterventionModalOpen, setIsEndInterventionModalOpen] = useState(false)
+
   useEffect(() => {
     // Re-render when the config prop changes
   }, [config]);
 
+  const handleStartGlobalIntervention = ({ reason }) => {
+    getApi(baseURL).post('actions/intervention-start', { reason })
+      .then(() => setIsInterventionModalOpen(false))
+      .catch((err) => console.error('Failed to start global intervention:', err))
+  }
+
+  const handleEndGlobalIntervention = () => {
+    getApi(baseURL).post('actions/intervention-end')
+      .then(() => setIsEndInterventionModalOpen(false))
+      .catch((err) => console.error('Failed to end global intervention:', err))
+  }
+
   const dataObject = [
+    {
+      key: 'Global Intervention',
+      value: (
+        <RMSwitch
+          isChecked={monitor?.isGlobalIntervention}
+          confirmTitle={monitor?.isGlobalIntervention
+            ? `End global intervention? (${monitor?.globalInterventionEntry?.reason || 'active'})`
+            : undefined}
+          onChange={() => {
+            if (monitor?.isGlobalIntervention) {
+              setIsEndInterventionModalOpen(true)
+            } else {
+              setIsInterventionModalOpen(true)
+            }
+          }}
+        />
+      )
+    },
     {
       key: 'API Token Timeout in Hours',
       value: (
@@ -256,9 +293,26 @@ function GlobalSettings({ config }) {
   ]
 
   return (
-    <Flex justify='space-between' gap='0'>
-      <TableType2 dataArray={dataObject} className={styles.table} />
-    </Flex>
+    <>
+      <Flex justify='space-between' gap='0'>
+        <TableType2 dataArray={dataObject} className={styles.table} />
+      </Flex>
+      {isInterventionModalOpen && (
+        <InterventionModal
+          isOpen={isInterventionModalOpen}
+          closeModal={() => setIsInterventionModalOpen(false)}
+          onStart={handleStartGlobalIntervention}
+        />
+      )}
+      {isEndInterventionModalOpen && (
+        <ConfirmModal
+          isOpen={isEndInterventionModalOpen}
+          closeModal={() => setIsEndInterventionModalOpen(false)}
+          title={`End global intervention? All clusters will resume notifications.`}
+          onConfirmClick={handleEndGlobalIntervention}
+        />
+      )}
+    </>
   )
 }
 

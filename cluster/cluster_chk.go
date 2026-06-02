@@ -584,6 +584,11 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 		return nil
 	}
 
+	if cluster.IsIntervention || cluster.IsAlertDisable {
+		cluster.IncrementSuppressedAlerts()
+		return nil
+	}
+
 	if cluster.Conf.MailTo != "" {
 		if cluster.Mailer == nil {
 			if err := cluster.InitMailer(); err != nil {

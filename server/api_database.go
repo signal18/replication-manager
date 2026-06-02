@@ -3836,7 +3836,7 @@ func (repman *ReplicationManager) handlerMuxServerErrorLog(w http.ResponseWriter
 			return
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil && !node.IsDown() {
+		if node != nil {
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
 			l := node.GetErrorLog()
@@ -3847,8 +3847,7 @@ func (repman *ReplicationManager) handlerMuxServerErrorLog(w http.ResponseWriter
 			}
 			return
 		} else {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("503 -Not a Valid Server!"))
+			http.Error(w, "Server not found", 500)
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
@@ -3878,7 +3877,7 @@ func (repman *ReplicationManager) handlerMuxServerSqlErrorLog(w http.ResponseWri
 			return
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil && !node.IsDown() {
+		if node != nil {
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
 			l := node.GetSqlErrorLog()
@@ -3889,8 +3888,7 @@ func (repman *ReplicationManager) handlerMuxServerSqlErrorLog(w http.ResponseWri
 			}
 			return
 		} else {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("503 -Not a Valid Server!"))
+			http.Error(w, "Server not found", 500)
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
@@ -3920,7 +3918,7 @@ func (repman *ReplicationManager) handlerMuxServerAuditLog(w http.ResponseWriter
 			return
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil && !node.IsDown() {
+		if node != nil {
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
 			l := node.GetAuditLog()
@@ -3931,8 +3929,7 @@ func (repman *ReplicationManager) handlerMuxServerAuditLog(w http.ResponseWriter
 			}
 			return
 		} else {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("503 -Not a Valid Server!"))
+			http.Error(w, "Server not found", 500)
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
@@ -3962,7 +3959,7 @@ func (repman *ReplicationManager) handlerMuxServerSlowLog(w http.ResponseWriter,
 			return
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil && !node.IsDown() {
+		if node != nil {
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
 			l := node.GetSlowLog()
@@ -3973,8 +3970,7 @@ func (repman *ReplicationManager) handlerMuxServerSlowLog(w http.ResponseWriter,
 			}
 			return
 		} else {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("503 -Not a Valid Server!"))
+			http.Error(w, "Server not found", 500)
 		}
 
 	} else {

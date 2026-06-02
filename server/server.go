@@ -129,6 +129,10 @@ type ReplicationManager struct {
 	GraphiteTemplateList map[string]bool             `json:"graphiteTemplateList"`
 	ServerScopeList      map[string]bool             `json:"-"`
 	currentCluster       *cluster.Cluster            `json:"-"`
+	IsGlobalIntervention        bool                        `json:"isGlobalIntervention"`
+	IsGlobalInterventionPending bool                        `json:"isGlobalInterventionPending"`
+	GlobalInterventionEntry     *cluster.InterventionEntry  `json:"globalInterventionEntry,omitempty"`
+	ActiveInterventionCount     int                         `json:"activeInterventionCount"`
 	UserAuthTry          sync.Map                    `json:"-"`
 	OAuthAccessToken     *oauth2.Token               `json:"-"`
 	ViperConfig          *viper.Viper                `json:"-"`
@@ -416,7 +420,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorCapture, "monitoring-capture", true, "Enable capture on error for 5 monitor loops")
 	flags.StringVar(&conf.MonitorCaptureTrigger, "monitoring-capture-trigger", "ERR00076,ERR00041", "List of errno triggering capture mode")
 	flags.IntVar(&conf.MonitorCaptureFileKeep, "monitoring-capture-file-keep", 5, "Purge capture file keep that number of them")
-	flags.StringVar(&conf.MonitoringAlertTrigger, "monitoring-alert-trigger", "ERR00027,ERR00042,ERR00087,ERR00002,WARN0023,WARN0100,WARN0115,WARN0116,WARN0139,WARN0140,WARN0141", "List of errno triggering an alert to be send")
+	flags.StringVar(&conf.MonitoringAlertTrigger, "monitoring-alert-trigger", "ERR00027,ERR00042,ERR00087,ERR00002,WARN0023,WARN0100,WARN0115,WARN0116,WARN0139,WARN0140,WARN0141,WARN0172,WARN0173", "List of errno triggering an alert to be send")
 
 	flags.BoolVar(&conf.LogSQLInMonitoring, "log-sql-in-monitoring", false, "Log SQL queries send to servers in monitoring")
 	flags.IntVar(&conf.LogSQLLevel, "log-level-sql", 2, "Log SQL Level")
