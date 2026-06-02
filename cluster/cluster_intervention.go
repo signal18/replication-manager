@@ -48,8 +48,8 @@ func (cluster *Cluster) StartInterventionAt(user string, reason string, scope st
 			AutoEndAt:   autoEndAt,
 		}
 		cluster.InterventionPending = entry
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"Intervention scheduled by %s at %s: %s", user, startAt.Format(time.RFC3339), reason)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT",
+			"Intervention scheduled by %s at %s: %s — notifications will be muted", user, startAt.Format(time.RFC3339), reason)
 		cluster.SetState("WARN0172", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.ClusterError["WARN0172"], startAt.Format(time.RFC3339), user, reason), ErrFrom: "INTERVENTION"})
 		cluster.SaveInterventionHistory()
 		return nil
@@ -63,12 +63,14 @@ func (cluster *Cluster) StartInterventionAt(user string, reason string, scope st
 		AutoEndAt: autoEndAt,
 	}
 
+	// Notify all channels BEFORE muting so the notification goes through
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT",
+		"Intervention started by %s: %s (scope: %s) — notifications are now muted", user, reason, scope)
+
 	cluster.IsIntervention = true
 	cluster.InterventionCurrent = entry
 	cluster.InterventionSuppressedAlerts = 0
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-		"Intervention started by %s: %s (scope: %s)", user, reason, scope)
 	cluster.SetState("WARN0173", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.ClusterError["WARN0173"], entry.StartedAt.Format(time.RFC3339), user, reason), ErrFrom: "INTERVENTION"})
 
 	cluster.SaveInterventionHistory()
@@ -87,15 +89,18 @@ func (cluster *Cluster) EndIntervention(user string) error {
 	cluster.InterventionCurrent.SuppressedAlerts = cluster.InterventionSuppressedAlerts
 
 	duration := cluster.InterventionCurrent.EndedAt.Sub(cluster.InterventionCurrent.StartedAt)
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-		"Intervention ended by %s. Duration: %s. Suppressed alerts: %d",
-		user, duration.Round(time.Second), cluster.InterventionSuppressedAlerts)
+	suppressedCount := cluster.InterventionSuppressedAlerts
+	reason := cluster.InterventionCurrent.Reason
 
 	cluster.InterventionHistory = append(cluster.InterventionHistory, *cluster.InterventionCurrent)
 	cluster.IsIntervention = false
 	cluster.InterventionCurrent = nil
 	cluster.InterventionSuppressedAlerts = 0
+
+	// Notify all channels AFTER unmuting so the notification goes through
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ALERTOK",
+		"Intervention ended by %s: %s. Duration: %s. Suppressed alerts: %d — notifications resumed",
+		user, reason, duration.Round(time.Second), suppressedCount)
 
 	cluster.SaveInterventionHistory()
 	return nil
