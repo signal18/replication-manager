@@ -9,31 +9,63 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 )
 
-// RefreshGlobalInterventionState counts active interventions across all clusters
-// and restores the global intervention flag if all clusters have a global-scope intervention.
+// RefreshGlobalInterventionState counts active and pending interventions across all clusters
+// and restores the global intervention flag on restart.
 func (repman *ReplicationManager) RefreshGlobalInterventionState() {
-	count := 0
-	globalCount := 0
+	activeCount := 0
+	globalActiveCount := 0
+	globalPendingCount := 0
 	for _, cl := range repman.Clusters {
 		if cl.IsIntervention {
-			count++
+			activeCount++
 			if cl.InterventionCurrent != nil && cl.InterventionCurrent.Scope == "global" {
-				globalCount++
+				globalActiveCount++
 			}
 		}
+		if cl.InterventionPending != nil && cl.InterventionPending.Scope == "global" {
+			globalPendingCount++
+		}
 	}
-	repman.ActiveInterventionCount = count
+	repman.ActiveInterventionCount = activeCount
 
-	// Restore global flag if all clusters have a global-scope intervention (restart recovery)
-	if !repman.IsGlobalIntervention && globalCount > 0 && globalCount == len(repman.Clusters) {
+	// Restore global flag from active interventions (restart recovery)
+	if !repman.IsGlobalIntervention && globalActiveCount > 0 && globalActiveCount == len(repman.Clusters) {
 		repman.IsGlobalIntervention = true
-		// Use the first cluster's entry as the global entry
 		for _, cl := range repman.Clusters {
 			if cl.InterventionCurrent != nil && cl.InterventionCurrent.Scope == "global" {
 				repman.GlobalInterventionEntry = cl.InterventionCurrent
 				break
 			}
 		}
+	}
+
+	// Restore global pending flag (restart recovery)
+	if !repman.IsGlobalIntervention && !repman.IsGlobalInterventionPending && globalPendingCount > 0 && globalPendingCount == len(repman.Clusters) {
+		repman.IsGlobalInterventionPending = true
+		for _, cl := range repman.Clusters {
+			if cl.InterventionPending != nil && cl.InterventionPending.Scope == "global" {
+				repman.GlobalInterventionEntry = cl.InterventionPending
+				break
+			}
+		}
+	}
+
+	// Transition: pending became active on all clusters
+	if repman.IsGlobalInterventionPending && globalActiveCount > 0 && globalPendingCount == 0 {
+		repman.IsGlobalInterventionPending = false
+		repman.IsGlobalIntervention = true
+		for _, cl := range repman.Clusters {
+			if cl.InterventionCurrent != nil && cl.InterventionCurrent.Scope == "global" {
+				repman.GlobalInterventionEntry = cl.InterventionCurrent
+				break
+			}
+		}
+	}
+
+	// Transition: active intervention ended on all clusters
+	if repman.IsGlobalIntervention && globalActiveCount == 0 {
+		repman.IsGlobalIntervention = false
+		repman.GlobalInterventionEntry = nil
 	}
 }
 
@@ -63,6 +95,12 @@ func (repman *ReplicationManager) handlerMuxGlobalInterventionStart(w http.Respo
 			repman.GlobalInterventionEntry.User), http.StatusConflict)
 		return
 	}
+	if repman.IsGlobalInterventionPending {
+		http.Error(w, fmt.Sprintf("Global intervention already scheduled at %s by %s",
+			repman.GlobalInterventionEntry.ScheduledAt.Format(time.RFC3339),
+			repman.GlobalInterventionEntry.User), http.StatusConflict)
+		return
+	}
 
 	startAt := time.Now()
 	if body.StartAt != "" {
@@ -78,22 +116,38 @@ func (repman *ReplicationManager) handlerMuxGlobalInterventionStart(w http.Respo
 	}
 
 	user := repman.GetUserFromRequest(r)
+	isScheduled := startAt.After(time.Now().Add(30 * time.Second))
 
-	repman.IsGlobalIntervention = true
-	repman.GlobalInterventionEntry = &cluster.InterventionEntry{
-		User:      user,
-		Reason:    body.Reason,
-		Scope:     "global",
-		StartedAt: startAt,
-		AutoEndAt: autoEndAt,
+	if isScheduled {
+		repman.IsGlobalInterventionPending = true
+		repman.GlobalInterventionEntry = &cluster.InterventionEntry{
+			User:        user,
+			Reason:      body.Reason,
+			Scope:       "global",
+			ScheduledAt: startAt,
+			AutoEndAt:   autoEndAt,
+		}
+	} else {
+		repman.IsGlobalIntervention = true
+		repman.GlobalInterventionEntry = &cluster.InterventionEntry{
+			User:      user,
+			Reason:    body.Reason,
+			Scope:     "global",
+			StartedAt: startAt,
+			AutoEndAt: autoEndAt,
+		}
 	}
 
-	// Start intervention on all clusters
+	// Start or schedule intervention on all clusters
 	for _, cl := range repman.Clusters {
 		cl.StartInterventionAt(user, body.Reason, "global", startAt, autoEndAt)
 	}
 
-	w.Write([]byte("Global intervention started on all clusters"))
+	if isScheduled {
+		w.Write([]byte(fmt.Sprintf("Global intervention scheduled at %s", startAt.Format(time.RFC3339))))
+	} else {
+		w.Write([]byte("Global intervention started on all clusters"))
+	}
 }
 
 func (repman *ReplicationManager) handlerMuxGlobalInterventionEnd(w http.ResponseWriter, r *http.Request) {
@@ -107,22 +161,29 @@ func (repman *ReplicationManager) handlerMuxGlobalInterventionEnd(w http.Respons
 	user := repman.GetUserFromRequest(r)
 
 	closed := 0
-	// End intervention on all clusters (both global and per-cluster)
+	cancelled := 0
+	// End active interventions on all clusters
 	for _, cl := range repman.Clusters {
 		if cl.IsIntervention {
 			cl.EndIntervention(user)
 			closed++
 		}
+		if cl.InterventionPending != nil {
+			cl.InterventionPending = nil
+			cl.SaveInterventionHistory()
+			cancelled++
+		}
 	}
 
 	repman.IsGlobalIntervention = false
+	repman.IsGlobalInterventionPending = false
 	repman.GlobalInterventionEntry = nil
 	repman.ActiveInterventionCount = 0
 
-	if closed == 0 {
-		http.Error(w, "No active interventions", http.StatusConflict)
+	if closed == 0 && cancelled == 0 {
+		http.Error(w, "No active or pending interventions", http.StatusConflict)
 		return
 	}
 
-	w.Write([]byte(fmt.Sprintf("Closed %d interventions across all clusters", closed)))
+	w.Write([]byte(fmt.Sprintf("Closed %d active, cancelled %d pending interventions", closed, cancelled)))
 }
