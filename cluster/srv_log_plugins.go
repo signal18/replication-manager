@@ -100,6 +100,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			BinlogEvents:     snapshotBinlogEvents(server),
 			ServerVersion:    snapshotServerVersion(server),
 			ServerVariables:  snapshotServerVariables(server),
+			ServerStatus:     snapshotServerStatus(server),
 			DatabaseUsers:    snapshotDatabaseUsers(server),
 			ClusterContext:   buildClusterContext(cluster, server),
 			PluginDataDir:    cluster.Conf.ShareDir + "/plugins/data",
@@ -769,6 +770,23 @@ func snapshotServerVariables(server *ServerMonitor) map[string]string {
 		return nil
 	}
 	raw := server.Variables.ToNewMap()
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		out[strings.ToLower(k)] = v
+	}
+	return out
+}
+
+// snapshotServerStatus returns a copy of the server's global status map
+// for consumption by plugins. Keys are lowercased.
+func snapshotServerStatus(server *ServerMonitor) map[string]string {
+	if server.Status == nil {
+		return nil
+	}
+	raw := server.Status.ToNewMap()
 	if len(raw) == 0 {
 		return nil
 	}

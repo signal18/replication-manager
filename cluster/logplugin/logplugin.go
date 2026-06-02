@@ -213,6 +213,9 @@ type LogSource struct {
 	// ServerVariables is a snapshot of SHOW GLOBAL VARIABLES (non-sensitive).
 	// Always populated when the server is reachable.
 	ServerVariables map[string]string
+	// ServerStatus is a snapshot of SHOW GLOBAL STATUS.
+	// Always populated when the server is reachable.
+	ServerStatus map[string]string
 	// DatabaseUsers is a snapshot of mysql.user rows (no password hashes).
 	// Always populated when the server is reachable.
 	DatabaseUsers []StdioDBUser
