@@ -46,7 +46,9 @@ func (repman *ReplicationManager) handlerMuxGlobalInterventionStart(w http.Respo
 	}
 
 	var body struct {
-		Reason string `json:"reason"`
+		Reason  string `json:"reason"`
+		StartAt string `json:"startAt"`
+		EndAt   string `json:"endAt"`
 	}
 	if r.Body != nil {
 		json.NewDecoder(r.Body).Decode(&body)
@@ -62,6 +64,19 @@ func (repman *ReplicationManager) handlerMuxGlobalInterventionStart(w http.Respo
 		return
 	}
 
+	startAt := time.Now()
+	if body.StartAt != "" {
+		if t, err := time.Parse(time.RFC3339, body.StartAt); err == nil {
+			startAt = t
+		}
+	}
+	var autoEndAt time.Time
+	if body.EndAt != "" {
+		if t, err := time.Parse(time.RFC3339, body.EndAt); err == nil {
+			autoEndAt = t
+		}
+	}
+
 	user := repman.GetUserFromRequest(r)
 
 	repman.IsGlobalIntervention = true
@@ -69,12 +84,13 @@ func (repman *ReplicationManager) handlerMuxGlobalInterventionStart(w http.Respo
 		User:      user,
 		Reason:    body.Reason,
 		Scope:     "global",
-		StartedAt: time.Now(),
+		StartedAt: startAt,
+		AutoEndAt: autoEndAt,
 	}
 
 	// Start intervention on all clusters
 	for _, cl := range repman.Clusters {
-		cl.StartIntervention(user, body.Reason, "global")
+		cl.StartInterventionAt(user, body.Reason, "global", startAt, autoEndAt)
 	}
 
 	w.Write([]byte("Global intervention started on all clusters"))
