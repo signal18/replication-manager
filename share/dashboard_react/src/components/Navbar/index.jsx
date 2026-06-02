@@ -165,9 +165,9 @@ function Navbar({ username }) {
                 showText={!isMobile}
               />
               <AlertBadge
-                colorScheme={monitor?.activeInterventionCount > 0 ? 'red' : 'teal'}
+                colorScheme={monitor?.activeInterventionCount > 0 ? 'red' : monitor?.isGlobalInterventionPending ? 'orange' : 'teal'}
                 icon={MdNotificationsOff}
-                text={monitor?.activeInterventionCount > 0 ? 'Muted' : 'Mute'}
+                text={monitor?.activeInterventionCount > 0 ? 'Muted' : monitor?.isGlobalInterventionPending ? 'Scheduled' : 'Mute'}
                 count={monitor?.activeInterventionCount || ''}
                 onClick={() => setIsInterventionPanelOpen(true)}
                 showText={!isMobile}
@@ -301,8 +301,9 @@ function Navbar({ username }) {
           isOpen={isInterventionPanelOpen}
           closeModal={() => setIsInterventionPanelOpen(false)}
           isGlobal={!clusterData}
-          isActive={clusterData ? clusterData?.isIntervention : (monitor?.activeInterventionCount > 0)}
+          isActive={clusterData ? clusterData?.isIntervention : (monitor?.activeInterventionCount > 0 || monitor?.isGlobalInterventionPending)}
           current={clusterData ? clusterData?.interventionCurrent : monitor?.globalInterventionEntry}
+          isPending={!clusterData && monitor?.isGlobalInterventionPending && !monitor?.isGlobalIntervention}
           history={clusterData ? (clusterData?.interventionHistory || []) : []}
           suppressedAlerts={clusterData ? (clusterData?.interventionSuppressedAlerts || 0) : 0}
           activeCount={!clusterData ? (monitor?.activeInterventionCount || 0) : 0}

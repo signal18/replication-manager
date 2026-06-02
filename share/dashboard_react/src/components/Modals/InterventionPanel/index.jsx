@@ -8,7 +8,7 @@ import InterventionModal from '../InterventionModal'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
 
-function InterventionPanel({ isOpen, closeModal, isGlobal = false, isActive, current, history = [], suppressedAlerts = 0, activeCount = 0, onStart, onEnd }) {
+function InterventionPanel({ isOpen, closeModal, isGlobal = false, isActive, isPending = false, current, history = [], suppressedAlerts = 0, activeCount = 0, onStart, onEnd }) {
   const { theme } = useTheme()
   const [isNewModalOpen, setIsNewModalOpen] = useState(false)
 
@@ -51,7 +51,28 @@ function InterventionPanel({ isOpen, closeModal, isGlobal = false, isActive, cur
                 </Box>
               )}
 
-              {isActive && current && (
+              {isPending && current && (
+                <Box p={3} borderRadius='md' border='1px solid' borderColor='blue.400' bg={theme === 'light' ? 'blue.50' : 'rgba(66,153,225,0.1)'}>
+                  <Flex justify='space-between' align='center' mb={2}>
+                    <HStack>
+                      <Badge colorScheme='blue'>Scheduled</Badge>
+                      <Text fontSize='sm' fontWeight={600}>{current.reason}</Text>
+                    </HStack>
+                    <RMButton size='xs' colorScheme='red' onClick={onEnd}>
+                      Cancel
+                    </RMButton>
+                  </Flex>
+                  <HStack spacing={4} fontSize='xs' color={theme === 'light' ? 'gray.600' : 'gray.400'}>
+                    <Text>By: {current.user}</Text>
+                    <Text>Starts at: {formatTime(current.scheduledAt)}</Text>
+                    {current.autoEndAt && current.autoEndAt !== '0001-01-01T00:00:00Z' && (
+                      <Text>Auto-unmute: {formatTime(current.autoEndAt)}</Text>
+                    )}
+                  </HStack>
+                </Box>
+              )}
+
+              {isActive && !isPending && current && (
                 <Box p={3} borderRadius='md' border='1px solid' borderColor='orange.400' bg={theme === 'light' ? 'orange.50' : 'rgba(237,137,54,0.1)'}>
                   <Flex justify='space-between' align='center' mb={2}>
                     <HStack>
@@ -71,7 +92,7 @@ function InterventionPanel({ isOpen, closeModal, isGlobal = false, isActive, cur
                 </Box>
               )}
 
-              {!isActive && (
+              {!isActive && !isPending && (
                 <RMButton colorScheme='orange' onClick={() => setIsNewModalOpen(true)}>
                   Start Intervention
                 </RMButton>
