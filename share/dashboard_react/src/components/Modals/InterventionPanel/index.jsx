@@ -8,7 +8,7 @@ import InterventionModal from '../InterventionModal'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
 
-function InterventionPanel({ isOpen, closeModal, isActive, current, history = [], suppressedAlerts = 0, onStart, onEnd }) {
+function InterventionPanel({ isOpen, closeModal, isGlobal = false, isActive, current, history = [], suppressedAlerts = 0, activeCount = 0, onStart, onEnd }) {
   const { theme } = useTheme()
   const [isNewModalOpen, setIsNewModalOpen] = useState(false)
 
@@ -37,15 +37,29 @@ function InterventionPanel({ isOpen, closeModal, isActive, current, history = []
           <ModalBody pb={6}>
             <VStack align='stretch' spacing={4}>
 
+              {isGlobal && activeCount > 0 && !current && (
+                <Box p={3} borderRadius='md' border='1px solid' borderColor='orange.400' bg={theme === 'light' ? 'orange.50' : 'rgba(237,137,54,0.1)'}>
+                  <Flex justify='space-between' align='center'>
+                    <HStack>
+                      <Badge colorScheme='orange'>{activeCount} Active</Badge>
+                      <Text fontSize='sm'>{activeCount} cluster{activeCount > 1 ? 's' : ''} in intervention</Text>
+                    </HStack>
+                    <RMButton size='xs' colorScheme='red' onClick={onEnd}>
+                      Close All
+                    </RMButton>
+                  </Flex>
+                </Box>
+              )}
+
               {isActive && current && (
                 <Box p={3} borderRadius='md' border='1px solid' borderColor='orange.400' bg={theme === 'light' ? 'orange.50' : 'rgba(237,137,54,0.1)'}>
                   <Flex justify='space-between' align='center' mb={2}>
                     <HStack>
-                      <Badge colorScheme='orange'>Active</Badge>
+                      <Badge colorScheme='orange'>{isGlobal && activeCount > 1 ? `${activeCount} Active` : 'Active'}</Badge>
                       <Text fontSize='sm' fontWeight={600}>{current.reason}</Text>
                     </HStack>
                     <RMButton size='xs' colorScheme='red' onClick={onEnd}>
-                      Close
+                      {isGlobal ? 'Close All' : 'Close'}
                     </RMButton>
                   </Flex>
                   <HStack spacing={4} fontSize='xs' color={theme === 'light' ? 'gray.600' : 'gray.400'}>

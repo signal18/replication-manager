@@ -165,13 +165,13 @@ function Navbar({ username }) {
                 showText={!isMobile}
               />
               <AlertBadge
-                colorScheme={monitor?.isGlobalIntervention ? 'orange' : 'gray'}
+                colorScheme={monitor?.activeInterventionCount > 0 ? 'orange' : 'gray'}
                 icon={FaTools}
-                text={monitor?.isGlobalIntervention ? 'Muted' : 'Mute'}
-                count={monitor?.isGlobalIntervention ? '' : ''}
+                text={monitor?.activeInterventionCount > 0 ? 'Muted' : 'Mute'}
+                count={monitor?.activeInterventionCount || ''}
                 onClick={() => setIsInterventionPanelOpen(true)}
                 showText={!isMobile}
-                blink={monitor?.isGlobalIntervention}
+                blink={monitor?.activeInterventionCount > 0}
               />
             </Flex>
           )}
@@ -300,10 +300,12 @@ function Navbar({ username }) {
         <InterventionPanel
           isOpen={isInterventionPanelOpen}
           closeModal={() => setIsInterventionPanelOpen(false)}
-          isActive={clusterData ? clusterData?.isIntervention : monitor?.isGlobalIntervention}
+          isGlobal={!clusterData}
+          isActive={clusterData ? clusterData?.isIntervention : (monitor?.activeInterventionCount > 0)}
           current={clusterData ? clusterData?.interventionCurrent : monitor?.globalInterventionEntry}
           history={clusterData ? (clusterData?.interventionHistory || []) : []}
           suppressedAlerts={clusterData ? (clusterData?.interventionSuppressedAlerts || 0) : 0}
+          activeCount={!clusterData ? (monitor?.activeInterventionCount || 0) : 0}
           onStart={(reason) => {
             const api = clusterData
               ? clusterService.startIntervention(clusterData.name, reason, baseURL)

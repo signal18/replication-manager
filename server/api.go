@@ -1171,6 +1171,7 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 // @Router /api/monitor [get]
 func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	repman.RefreshGlobalInterventionState()
 
 	var cl []string
 	for _, cluster := range repman.Clusters {

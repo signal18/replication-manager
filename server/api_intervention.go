@@ -9,6 +9,34 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 )
 
+// RefreshGlobalInterventionState counts active interventions across all clusters
+// and restores the global intervention flag if all clusters have a global-scope intervention.
+func (repman *ReplicationManager) RefreshGlobalInterventionState() {
+	count := 0
+	globalCount := 0
+	for _, cl := range repman.Clusters {
+		if cl.IsIntervention {
+			count++
+			if cl.InterventionCurrent != nil && cl.InterventionCurrent.Scope == "global" {
+				globalCount++
+			}
+		}
+	}
+	repman.ActiveInterventionCount = count
+
+	// Restore global flag if all clusters have a global-scope intervention (restart recovery)
+	if !repman.IsGlobalIntervention && globalCount > 0 && globalCount == len(repman.Clusters) {
+		repman.IsGlobalIntervention = true
+		// Use the first cluster's entry as the global entry
+		for _, cl := range repman.Clusters {
+			if cl.InterventionCurrent != nil && cl.InterventionCurrent.Scope == "global" {
+				repman.GlobalInterventionEntry = cl.InterventionCurrent
+				break
+			}
+		}
+	}
+}
+
 func (repman *ReplicationManager) handlerMuxGlobalInterventionStart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -60,22 +88,25 @@ func (repman *ReplicationManager) handlerMuxGlobalInterventionEnd(w http.Respons
 		return
 	}
 
-	if !repman.IsGlobalIntervention {
-		http.Error(w, "No active global intervention", http.StatusConflict)
-		return
-	}
-
 	user := repman.GetUserFromRequest(r)
 
-	// End intervention on all clusters
+	closed := 0
+	// End intervention on all clusters (both global and per-cluster)
 	for _, cl := range repman.Clusters {
 		if cl.IsIntervention {
 			cl.EndIntervention(user)
+			closed++
 		}
 	}
 
 	repman.IsGlobalIntervention = false
 	repman.GlobalInterventionEntry = nil
+	repman.ActiveInterventionCount = 0
 
-	w.Write([]byte("Global intervention ended on all clusters"))
+	if closed == 0 {
+		http.Error(w, "No active interventions", http.StatusConflict)
+		return
+	}
+
+	w.Write([]byte(fmt.Sprintf("Closed %d interventions across all clusters", closed)))
 }

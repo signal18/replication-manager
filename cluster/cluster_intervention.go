@@ -85,7 +85,7 @@ func (cluster *Cluster) IncrementSuppressedAlerts() {
 }
 
 func (cluster *Cluster) SaveInterventionHistory() {
-	path := filepath.Join(cluster.WorkingDir, cluster.Name, "interventions.json")
+	path := filepath.Join(cluster.WorkingDir, "interventions.json")
 	os.MkdirAll(filepath.Dir(path), 0755)
 
 	data := struct {
@@ -102,7 +102,7 @@ func (cluster *Cluster) SaveInterventionHistory() {
 }
 
 func (cluster *Cluster) LoadInterventionHistory() {
-	path := filepath.Join(cluster.WorkingDir, cluster.Name, "interventions.json")
+	path := filepath.Join(cluster.WorkingDir, "interventions.json")
 	bytes, err := os.ReadFile(path)
 	if err != nil {
 		return
