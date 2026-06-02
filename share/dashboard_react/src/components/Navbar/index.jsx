@@ -311,13 +311,19 @@ function Navbar({ username }) {
             const api = clusterData
               ? clusterService.startIntervention(clusterData.name, reason, baseURL, startAt, endAt)
               : getApi(baseURL).post('actions/intervention-start', { reason, startAt, endAt })
-            api.then(() => dispatch(getMonitoredData({}))).catch((err) => console.error('Failed to start intervention:', err))
+            api.then(() => {
+              dispatch(getMonitoredData({}))
+              setIsInterventionPanelOpen(false)
+            }).catch((err) => console.error('Failed to start intervention:', err))
           }}
           onEnd={() => {
             const api = clusterData
               ? clusterService.endIntervention(clusterData.name, baseURL)
               : getApi(baseURL).post('actions/intervention-end')
-            api.then(() => dispatch(getMonitoredData({}))).catch((err) => console.error('Failed to end intervention:', err))
+            api.then(() => {
+              dispatch(getMonitoredData({}))
+              setIsInterventionPanelOpen(false)
+            }).catch((err) => console.error('Failed to end intervention:', err))
           }}
         />
       )}
