@@ -214,9 +214,9 @@ function Navbar({ username }) {
                 showText={!isMobile}
               />
               <AlertBadge
-                colorScheme={clusterData?.isIntervention ? 'red' : 'teal'}
+                colorScheme={clusterData?.isIntervention ? 'red' : clusterData?.interventionPending ? 'orange' : 'teal'}
                 icon={MdNotificationsOff}
-                text={clusterData?.isIntervention ? 'Muted' : 'Mute'}
+                text={clusterData?.isIntervention ? 'Muted' : clusterData?.interventionPending ? 'Scheduled' : 'Mute'}
                 count={clusterData?.interventionSuppressedAlerts || ''}
                 onClick={() => setIsInterventionPanelOpen(true)}
                 showText={!isMobile}
@@ -301,9 +301,9 @@ function Navbar({ username }) {
           isOpen={isInterventionPanelOpen}
           closeModal={() => setIsInterventionPanelOpen(false)}
           isGlobal={!clusterData}
-          isActive={clusterData ? clusterData?.isIntervention : (monitor?.activeInterventionCount > 0 || monitor?.isGlobalInterventionPending)}
-          current={clusterData ? clusterData?.interventionCurrent : monitor?.globalInterventionEntry}
-          isPending={!clusterData && monitor?.isGlobalInterventionPending && !monitor?.isGlobalIntervention}
+          isActive={clusterData ? (clusterData?.isIntervention || !!clusterData?.interventionPending) : (monitor?.activeInterventionCount > 0 || monitor?.isGlobalInterventionPending)}
+          current={clusterData ? (clusterData?.interventionCurrent || clusterData?.interventionPending) : monitor?.globalInterventionEntry}
+          isPending={clusterData ? (!!clusterData?.interventionPending && !clusterData?.isIntervention) : (monitor?.isGlobalInterventionPending && !monitor?.isGlobalIntervention)}
           history={clusterData ? (clusterData?.interventionHistory || []) : []}
           suppressedAlerts={clusterData ? (clusterData?.interventionSuppressedAlerts || 0) : 0}
           activeCount={!clusterData ? (monitor?.activeInterventionCount || 0) : 0}
