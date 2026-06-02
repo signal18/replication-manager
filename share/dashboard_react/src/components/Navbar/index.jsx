@@ -26,7 +26,7 @@ import AddUserModal from '../Modals/AddUserModal'
 import MattermostIntegration from '../../Pages/Mattermost';
 import { getMeetInfo, logoutFromMeet } from '../../redux/meetSlice';
 import { selectMeetUIState } from '../../redux/memoize'
-import { clearClusters } from '../../redux/globalClustersSlice'
+import { clearClusters, getMonitoredData } from '../../redux/globalClustersSlice'
 
 function Navbar({ username }) {
   const dispatch = useDispatch()
@@ -311,13 +311,13 @@ function Navbar({ username }) {
             const api = clusterData
               ? clusterService.startIntervention(clusterData.name, reason, baseURL, startAt, endAt)
               : getApi(baseURL).post('actions/intervention-start', { reason, startAt, endAt })
-            api.catch((err) => console.error('Failed to start intervention:', err))
+            api.then(() => dispatch(getMonitoredData({}))).catch((err) => console.error('Failed to start intervention:', err))
           }}
           onEnd={() => {
             const api = clusterData
               ? clusterService.endIntervention(clusterData.name, baseURL)
               : getApi(baseURL).post('actions/intervention-end')
-            api.catch((err) => console.error('Failed to end intervention:', err))
+            api.then(() => dispatch(getMonitoredData({}))).catch((err) => console.error('Failed to end intervention:', err))
           }}
         />
       )}
