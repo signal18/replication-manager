@@ -11,8 +11,8 @@ import AlertBadge from '../AlertBadge'
 import AlertModal from '../Modals/AlertModal'
 import SecurityScoreModal from '../Modals/SecurityScoreModal'
 import WorkloadModal from '../Modals/WorkloadModal'
-import { FaPowerOff, FaUserPlus, FaTools } from 'react-icons/fa'
-import { MdSecurity } from 'react-icons/md'
+import { FaPowerOff, FaUserPlus } from 'react-icons/fa'
+import { MdSecurity, MdConstruction } from 'react-icons/md'
 import { RiSpeedFill } from 'react-icons/ri'
 import ConfirmModal from '../Modals/ConfirmModal'
 import InterventionPanel from '../Modals/InterventionPanel'
@@ -165,8 +165,8 @@ function Navbar({ username }) {
                 showText={!isMobile}
               />
               <AlertBadge
-                colorScheme={monitor?.activeInterventionCount > 0 ? 'orange' : 'gray'}
-                icon={FaTools}
+                colorScheme={monitor?.activeInterventionCount > 0 ? 'red' : 'teal'}
+                icon={MdConstruction}
                 text={monitor?.activeInterventionCount > 0 ? 'Muted' : 'Mute'}
                 count={monitor?.activeInterventionCount || ''}
                 onClick={() => setIsInterventionPanelOpen(true)}
@@ -214,8 +214,8 @@ function Navbar({ username }) {
                 showText={!isMobile}
               />
               <AlertBadge
-                colorScheme={clusterData?.isIntervention ? 'orange' : 'gray'}
-                icon={FaTools}
+                colorScheme={clusterData?.isIntervention ? 'red' : 'teal'}
+                icon={MdConstruction}
                 text={clusterData?.isIntervention ? 'Muted' : 'Mute'}
                 count={clusterData?.interventionSuppressedAlerts || ''}
                 onClick={() => setIsInterventionPanelOpen(true)}

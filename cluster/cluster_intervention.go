@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 type InterventionEntry struct {
@@ -49,6 +50,7 @@ func (cluster *Cluster) StartInterventionAt(user string, reason string, scope st
 		cluster.InterventionPending = entry
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"Intervention scheduled by %s at %s: %s", user, startAt.Format(time.RFC3339), reason)
+		cluster.SetState("WARN0172", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.ClusterError["WARN0172"], startAt.Format(time.RFC3339), user, reason), ErrFrom: "INTERVENTION"})
 		cluster.SaveInterventionHistory()
 		return nil
 	}
@@ -67,6 +69,7 @@ func (cluster *Cluster) StartInterventionAt(user string, reason string, scope st
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"Intervention started by %s: %s (scope: %s)", user, reason, scope)
+	cluster.SetState("WARN0173", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.ClusterError["WARN0173"], entry.StartedAt.Format(time.RFC3339), user, reason), ErrFrom: "INTERVENTION"})
 
 	cluster.SaveInterventionHistory()
 	return nil
@@ -101,6 +104,16 @@ func (cluster *Cluster) EndIntervention(user string) error {
 // CheckInterventionSchedule checks if a pending intervention should start
 // or if an active intervention should auto-end. Called from the monitoring loop.
 func (cluster *Cluster) CheckInterventionSchedule() {
+	// Re-set warning states each tick (state machine is cleared per tick)
+	if cluster.InterventionPending != nil && !cluster.IsIntervention {
+		pending := cluster.InterventionPending
+		cluster.SetState("WARN0172", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.ClusterError["WARN0172"], pending.ScheduledAt.Format(time.RFC3339), pending.User, pending.Reason), ErrFrom: "INTERVENTION"})
+	}
+	if cluster.IsIntervention && cluster.InterventionCurrent != nil {
+		cur := cluster.InterventionCurrent
+		cluster.SetState("WARN0173", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.ClusterError["WARN0173"], cur.StartedAt.Format(time.RFC3339), cur.User, cur.Reason), ErrFrom: "INTERVENTION"})
+	}
+
 	// Check pending → start
 	if cluster.InterventionPending != nil && !cluster.IsIntervention {
 		if time.Now().After(cluster.InterventionPending.ScheduledAt) {
