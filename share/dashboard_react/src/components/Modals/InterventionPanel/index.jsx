@@ -81,10 +81,10 @@ function InterventionPanel({ isOpen, closeModal, isGlobal = false, isActive, cur
                 <>
                   <Divider />
                   <Text fontSize='sm' fontWeight={600} color={theme === 'light' ? 'gray.600' : 'gray.400'}>
-                    History ({history.length})
+                    Last interventions
                   </Text>
                   <VStack align='stretch' spacing={2} maxH='300px' overflowY='auto'>
-                    {[...history].reverse().map((entry, i) => (
+                    {[...history].reverse().slice(0, 5).map((entry, i) => (
                       <Box key={i} p={2} borderRadius='md' bg={theme === 'light' ? 'gray.50' : 'rgba(255,255,255,0.05)'} fontSize='xs'>
                         <Text fontWeight={600} mb={1}>{entry.reason}</Text>
                         <HStack spacing={3} color={theme === 'light' ? 'gray.500' : 'gray.500'}>
