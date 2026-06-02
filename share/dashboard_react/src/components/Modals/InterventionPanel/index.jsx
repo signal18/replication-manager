@@ -115,8 +115,8 @@ function InterventionPanel({ isOpen, closeModal, isGlobal = false, isActive, cur
         <InterventionModal
           isOpen={isNewModalOpen}
           closeModal={() => setIsNewModalOpen(false)}
-          onStart={({ reason }) => {
-            onStart(reason)
+          onStart={({ reason, startAt, endAt }) => {
+            onStart(reason, startAt, endAt)
             setIsNewModalOpen(false)
           }}
         />

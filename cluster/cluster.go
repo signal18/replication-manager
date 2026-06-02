@@ -128,6 +128,7 @@ type Cluster struct {
 	InterventionCurrent           *InterventionEntry         `json:"interventionCurrent,omitempty" groups:"web"`
 	InterventionHistory           []InterventionEntry        `json:"interventionHistory" groups:"web"`
 	InterventionSuppressedAlerts  int                        `json:"interventionSuppressedAlerts" groups:"web"`
+	InterventionPending           *InterventionEntry         `json:"interventionPending,omitempty" groups:"web"`
 	IsRefreshStaging              bool                       `json:"isRefreshStaging" groups:"web"`
 	IsNeedStagingChange           bool                       `json:"isNeedStagingChange" groups:"web"`
 	IsConfigPathChange            bool                       `json:"isConfigPathChange" groups:"web"`
@@ -838,6 +839,9 @@ func (cluster *Cluster) Run() {
 				wg.Add(1)
 				go cluster.Heartbeat(wg)
 				wg.Wait()
+				// Check scheduled/auto-end interventions on every tick
+				cluster.CheckInterventionSchedule()
+
 				// Heartbeat switchover or failover controller runs only on active repman
 
 				if cluster.runOnceAfterTopology {

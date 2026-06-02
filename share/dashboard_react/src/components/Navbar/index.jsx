@@ -306,10 +306,10 @@ function Navbar({ username }) {
           history={clusterData ? (clusterData?.interventionHistory || []) : []}
           suppressedAlerts={clusterData ? (clusterData?.interventionSuppressedAlerts || 0) : 0}
           activeCount={!clusterData ? (monitor?.activeInterventionCount || 0) : 0}
-          onStart={(reason) => {
+          onStart={(reason, startAt, endAt) => {
             const api = clusterData
-              ? clusterService.startIntervention(clusterData.name, reason, baseURL)
-              : getApi(baseURL).post('actions/intervention-start', { reason })
+              ? clusterService.startIntervention(clusterData.name, reason, baseURL, startAt, endAt)
+              : getApi(baseURL).post('actions/intervention-start', { reason, startAt, endAt })
             api.catch((err) => console.error('Failed to start intervention:', err))
           }}
           onEnd={() => {

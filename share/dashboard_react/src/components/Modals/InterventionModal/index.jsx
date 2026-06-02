@@ -1,6 +1,6 @@
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, ModalFooter,
-  FormControl, FormLabel, Textarea, Select, HStack, Input
+  FormControl, FormLabel, Textarea, Select, HStack, Input, Checkbox
 } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import RMButton from '../../RMButton'
@@ -12,14 +12,34 @@ function InterventionModal({ isOpen, closeModal, onStart }) {
   const [description, setDescription] = useState('')
   const [estimatedTime, setEstimatedTime] = useState('30')
   const [unit, setUnit] = useState('minutes')
+  const [autoUnmute, setAutoUnmute] = useState(true)
+
+  // Default start time: now, formatted for datetime-local input
+  const nowLocal = () => {
+    const d = new Date()
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
+    return d.toISOString().slice(0, 16)
+  }
+  const [startTime, setStartTime] = useState(nowLocal())
 
   const handleStart = () => {
     const est = `${estimatedTime} ${unit}`
     const reason = description ? `${description} (est. ${est})` : `Intervention (est. ${est})`
-    onStart({ reason, estimatedTime: est })
+    const startAt = new Date(startTime).toISOString()
+    let endAt = ''
+    if (autoUnmute) {
+      const start = new Date(startTime)
+      const durationMs = unit === 'hours'
+        ? parseInt(estimatedTime) * 60 * 60 * 1000
+        : parseInt(estimatedTime) * 60 * 1000
+      endAt = new Date(start.getTime() + durationMs).toISOString()
+    }
+    onStart({ reason, startAt, endAt, autoUnmute })
     setDescription('')
     setEstimatedTime('30')
     setUnit('minutes')
+    setAutoUnmute(true)
+    setStartTime(nowLocal())
   }
 
   return (
@@ -39,7 +59,17 @@ function InterventionModal({ isOpen, closeModal, onStart }) {
               rows={3}
             />
           </FormControl>
-          <FormControl>
+          <FormControl mb={3}>
+            <FormLabel fontSize='sm'>Start time</FormLabel>
+            <Input
+              size='sm'
+              type='datetime-local'
+              width='250px'
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+            />
+          </FormControl>
+          <FormControl mb={3}>
             <FormLabel fontSize='sm'>Estimated duration</FormLabel>
             <HStack>
               <Input
@@ -55,6 +85,15 @@ function InterventionModal({ isOpen, closeModal, onStart }) {
               </Select>
             </HStack>
           </FormControl>
+          <FormControl>
+            <Checkbox
+              isChecked={autoUnmute}
+              onChange={(e) => setAutoUnmute(e.target.checked)}
+              size='sm'
+            >
+              Auto-unmute after estimated duration
+            </Checkbox>
+          </FormControl>
         </ModalBody>
         <ModalFooter>
           <RMButton onClick={closeModal} mr={3}>Cancel</RMButton>
@@ -63,7 +102,7 @@ function InterventionModal({ isOpen, closeModal, onStart }) {
             onClick={handleStart}
             isDisabled={!description}
           >
-            Start Intervention
+            {new Date(startTime) > new Date() ? 'Schedule Intervention' : 'Start Intervention'}
           </RMButton>
         </ModalFooter>
       </ModalContent>
