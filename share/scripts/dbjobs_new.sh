@@ -1778,7 +1778,7 @@ for job in "${JOBS[@]}"; do
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
-            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
+            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
             $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/reseed.out"
             partialRestore
             ;;
@@ -1788,7 +1788,7 @@ for job in "${JOBS[@]}"; do
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
-            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | mbstream -x -C $BACKUPDIR
+            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | mbstream -x -C $BACKUPDIR
             # mbstream -p, --parallel
             $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/reseed.out"
             partialRestore
@@ -1799,7 +1799,7 @@ for job in "${JOBS[@]}"; do
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
-            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
+            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
             $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
             partialRestore
             ;;
@@ -1809,7 +1809,7 @@ for job in "${JOBS[@]}"; do
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
-            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
+            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
             $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
             partialRestore
             ;;
