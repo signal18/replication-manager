@@ -753,6 +753,16 @@ definitions:
         type: boolean
       inRollingRestart:
         type: boolean
+      interventionCurrent:
+        $ref: '#/definitions/cluster.InterventionEntry'
+      interventionHistory:
+        items:
+          $ref: '#/definitions/cluster.InterventionEntry'
+        type: array
+      interventionPending:
+        $ref: '#/definitions/cluster.InterventionEntry'
+      interventionSuppressedAlerts:
+        type: integer
       isAlertDisable:
         type: boolean
       isAllDbUp:
@@ -776,6 +786,8 @@ definitions:
       isGitPull:
         type: boolean
       isGitPush:
+        type: boolean
+      isIntervention:
         type: boolean
       isLostMajority:
         type: boolean
@@ -1034,6 +1046,28 @@ definitions:
       whitelist:
         type: string
     type: object
+  cluster.InterventionEntry:
+    properties:
+      autoEndAt:
+        description: auto-unmute time (zero = manual)
+        type: string
+      endedAt:
+        type: string
+      reason:
+        type: string
+      scheduledAt:
+        description: future start time (zero = immediate)
+        type: string
+      scope:
+        description: '"cluster" or "global"'
+        type: string
+      startedAt:
+        type: string
+      suppressedAlerts:
+        type: integer
+      user:
+        type: string
+    type: object
   cluster.PFSExplainRecord:
     properties:
       capturedAt:
@@ -1110,6 +1144,10 @@ definitions:
       slaposDatadir:
         type: string
       state:
+        type: string
+      templateMD5:
+        type: string
+      templateMD5Prov:
         type: string
       tunnel:
         type: boolean
@@ -1905,23 +1943,43 @@ definitions:
   config.Route:
     properties:
       cname:
+        description: Existing host-route fields kept for backward compatibility.
+        type: string
+      destPort:
+        type: string
+      mode:
+        description: Explicit source/destination fields.
+        type: string
+      name:
         type: string
       port:
         type: string
       primary:
         type: boolean
       protocol:
+        type: string
+      sourcePort:
         type: string
     type: object
   config.RouteStatus:
     properties:
       cname:
+        description: Existing host-route fields kept for backward compatibility.
+        type: string
+      destPort:
+        type: string
+      mode:
+        description: Explicit source/destination fields.
+        type: string
+      name:
         type: string
       port:
         type: string
       primary:
         type: boolean
       protocol:
+        type: string
+      sourcePort:
         type: string
       status:
         type: string
@@ -2184,6 +2242,13 @@ definitions:
         items:
           type: string
         type: array
+      pendingDBCRC:
+        description: |-
+          PendingDBCRC and PendingPrxCRC are CRC32 checksums of new compliance
+          files found in PluginDataDir or embedded. Non-zero when an update is pending.
+        type: integer
+      pendingPrxCRC:
+        type: integer
       proxyServersTags:
         items:
           type: string
@@ -2353,6 +2418,10 @@ definitions:
         type: boolean
       analyzeUseSql:
         type: boolean
+      apiAutologin:
+        type: boolean
+      apiAutologinUser:
+        type: string
       apiBind:
         type: string
       apiCredentials:
@@ -2369,6 +2438,8 @@ definitions:
         type: string
       apiCredentialsSecureConfig:
         type: boolean
+      apiDashboardUser:
+        type: string
       apiErrorDisregardPort:
         type: boolean
       apiErrorLimit:
@@ -2727,6 +2798,8 @@ definitions:
         type: integer
       cloud18CostCurrency:
         type: string
+      cloud18CrmApiUrl:
+        type: string
       cloud18DatabaseReadSrvRecord:
         type: string
       cloud18DatabaseReadWriteSplitSrvRecord:
@@ -2737,6 +2810,10 @@ definitions:
         type: string
       cloud18DbaUserCredential:
         type: string
+      cloud18DisableForSale:
+        type: boolean
+      cloud18DisablePeers:
+        type: boolean
       cloud18Domain:
         type: string
       cloud18DomainAddScript:
@@ -2793,6 +2870,8 @@ definitions:
         type: boolean
       cloud18OpenSysops:
         type: boolean
+      cloud18PeerHealthMode:
+        type: string
       cloud18PlatformDescription:
         type: string
       cloud18PromotionPct:
@@ -2823,6 +2902,8 @@ definitions:
         type: string
       cloud18SubscribedDbops:
         type: boolean
+      cloud18SubscriptionPlan:
+        type: string
       clusterHead:
         type: string
       compressBackups:
@@ -3314,6 +3395,10 @@ definitions:
         type: string
       monitoringKeyPathGitOverwrite:
         type: boolean
+      monitoringLogApiLogin:
+        type: boolean
+      monitoringLogApiLoginSilentUsers:
+        type: string
       monitoringLongQueryLogLength:
         type: integer
       monitoringLongQueryScript:
@@ -3360,6 +3445,8 @@ definitions:
         type: boolean
       monitoringProcesslistLimit:
         type: string
+      monitoringProcesslistQueryLength:
+        type: integer
       monitoringProcesslistTransactions:
         type: boolean
       monitoringQueries:
@@ -3417,6 +3504,12 @@ definitions:
       monitoringTunnelHost:
         type: string
       monitoringTunnelKeyPath:
+        type: string
+      monitoringVariableChange:
+        type: boolean
+      monitoringVariableChangeIgnore:
+        type: string
+      monitoringVariableChangeScript:
         type: string
       monitoringVariableDiff:
         type: boolean
@@ -3476,6 +3569,8 @@ definitions:
         type: string
       onpremiseSshStopProxyScript:
         type: string
+      onpremiseSshUpgradeDbScript:
+        type: string
       opensvcAdminUser:
         type: string
       opensvcCodeapp:
@@ -3484,6 +3579,8 @@ definitions:
         type: string
       opensvcHost:
         type: string
+      opensvcImageForcePull:
+        type: boolean
       opensvcP12Certificate:
         type: string
       opensvcP12Secret:
@@ -3492,8 +3589,12 @@ definitions:
         type: boolean
       opensvcUseCollectorApi:
         type: boolean
+      opensvcUseOrchestratedStart:
+        type: boolean
       opensvcUser:
         type: string
+      opensvcV3ProvisionDelay:
+        type: integer
       optimizeUseSql:
         type: boolean
       pluginConfig:
@@ -3532,8 +3633,8 @@ definitions:
         type: integer
       provAppTemplateRepoUser:
         type: string
-      provAppVolumePools:
-        type: string
+      provAutoUpdateCompliance:
+        type: boolean
       provDBApplyDynamicConfig:
         type: boolean
       provDBCompliance:
@@ -3556,6 +3657,8 @@ definitions:
         type: string
       provDbClientBasedir:
         type: string
+      provDbConfig:
+        type: boolean
       provDbConfigPreserve:
         type: boolean
       provDbConfigPreserveVars:
@@ -3933,6 +4036,10 @@ definitions:
       schedulerDbServersReceiverUseSSL:
         type: boolean
       schedulerDbServersSenderPorts:
+        type: string
+      schedulerJobsExecRemote:
+        type: string
+      schedulerJobsMode:
         type: string
       schedulerJobsSsh:
         type: boolean
@@ -4498,6 +4605,8 @@ definitions:
         type: string
       prov-service-plan:
         type: string
+      repmgrVersion:
+        type: string
     type: object
   peer.PeerHealth:
     properties:
@@ -4586,6 +4695,13 @@ definitions:
       success:
         type: boolean
     type: object
+  server.AuthTokenWithUpgrade:
+    properties:
+      token:
+        type: string
+      upgrade_id:
+        type: string
+    type: object
   server.CloudUserForm:
     properties:
       cost:
@@ -4660,6 +4776,15 @@ definitions:
       message:
         type: string
     type: object
+  server.PoolOption:
+    properties:
+      name:
+        type: string
+      shared:
+        type: boolean
+      value:
+        type: string
+    type: object
   server.PreservedVarsCnfRequest:
     properties:
       content:
@@ -4672,6 +4797,8 @@ definitions:
     type: object
   server.ReplicationManager:
     properties:
+      activeInterventionCount:
+        type: integer
       agents:
         items:
           $ref: '#/definitions/opensvc.Host'
@@ -4710,6 +4837,8 @@ definitions:
         type: string
       fullVersion:
         type: string
+      globalInterventionEntry:
+        $ref: '#/definitions/cluster.InterventionEntry'
       graphiteTemplateList:
         additionalProperties:
           type: boolean
@@ -4721,6 +4850,10 @@ definitions:
       isGitPull:
         type: boolean
       isGitPush:
+        type: boolean
+      isGlobalIntervention:
+        type: boolean
+      isGlobalInterventionPending:
         type: boolean
       isSavingConfig:
         type: boolean
@@ -5062,11 +5195,6 @@ definitions:
       stats:
         $ref: '#/definitions/backupmgr.BackupStat'
     type: object
-  server.token:
-    properties:
-      token:
-        type: string
-    type: object
   server.userCredentials:
     properties:
       password:
@@ -5148,17 +5276,18 @@ definitions:
       isCached:
         type: boolean
       lastUpdate:
-        description: Last update time of the cache
         type: string
       layers:
         items:
           type: string
         type: array
       reference:
-        description: Reference to the image or repository
         type: string
       tree:
         $ref: '#/definitions/treehelper.FileEntry'
+      truncated:
+        description: true when file count exceeded the limit
+        type: boolean
     type: object
   user.User:
     properties:
@@ -5671,6 +5800,143 @@ paths:
       summary: Compute Repair for all tables in a specific cluster
       tags:
       - ClusterSchema
+  /api/clusters/{clusterName}/actions/dropserver/{host}/{port}:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint allows dropping a server monitor or proxy monitor
+        from a specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Host
+        in: path
+        name: host
+        required: true
+        type: string
+      - description: Port
+        in: path
+        name: port
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Monitor dropped successfully
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: Drop a server monitor from a cluster
+      tags:
+      - ClusterMonitor
+  /api/clusters/{clusterName}/actions/dropserver/{host}/{port}/{type}:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint allows dropping a server monitor or proxy monitor
+        from a specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Monitor Type (proxy or database)
+        in: path
+        name: type
+        type: string
+      - description: Host
+        in: path
+        name: host
+        required: true
+        type: string
+      - description: Port
+        in: path
+        name: port
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Monitor dropped successfully
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: Drop a server monitor from a cluster
+      tags:
+      - ClusterMonitor
+  /api/clusters/{clusterName}/actions/dropserver/{serverName}:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint allows dropping a server monitor or proxy monitor
+        from a specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Monitor Server ID
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Monitor dropped successfully
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: Drop a server monitor from a cluster by name
+      tags:
+      - ClusterMonitor
   /api/clusters/{clusterName}/actions/failover:
     post:
       consumes:
@@ -5706,39 +5972,6 @@ paths:
       summary: Handles the failover process for a given cluster.
       tags:
       - ClusterActions
-  /api/clusters/{clusterName}/actions/jobs-upgrade:
-    get:
-      description: Flags all servers within the specified cluster to allow jobs upgrade.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Flagged for jobs upgrade
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: No cluster" or "No server
-          schema:
-            type: string
-      summary: Allow Jobs Upgrade on Cluster Servers
-      tags:
-      - ClusterJobs
   /api/clusters/{clusterName}/actions/master-physical-backup:
     post:
       consumes:
@@ -5954,39 +6187,6 @@ paths:
       summary: Cleanup replication bootstrap for a specific cluster
       tags:
       - ClusterReplication
-  /api/clusters/{clusterName}/actions/staging-reseed-from-parent:
-    post:
-      description: Reseed the specified cluster from its parent cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Reseed from parent queued
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: No cluster
-          schema:
-            type: string
-      summary: Reseed from Parent Cluster
-      tags:
-      - ClusterReplication
   /api/clusters/{clusterName}/actions/reset-failover-control:
     post:
       consumes:
@@ -6104,11 +6304,13 @@ paths:
       summary: Toggle restic mount on/off
       tags:
       - Restic
-  /api/clusters/{clusterName}/actions/rolling:
+  /api/clusters/{clusterName}/actions/rolling/{action}:
     post:
       consumes:
       - application/json
-      description: This endpoint triggers a rolling restart for the specified cluster.
+      description: |-
+        Triggers one of: restart, reprov, upgrade, jobs-upgrade.
+        reprov and upgrade are long-running and return 202 Accepted immediately; the operation runs in the background.
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -6121,11 +6323,29 @@ paths:
         name: clusterName
         required: true
         type: string
+      - description: Rolling action
+        enum:
+        - restart
+        - reprov
+        - upgrade
+        - jobs-upgrade
+        in: path
+        name: action
+        required: true
+        type: string
       produces:
       - application/json
       responses:
         "200":
-          description: Successfully triggered rolling restart
+          description: Action triggered successfully
+          schema:
+            type: string
+        "202":
+          description: Long-running action started in background (reprov, upgrade)
+          schema:
+            type: string
+        "400":
+          description: Unknown rolling action
           schema:
             type: string
         "403":
@@ -6136,7 +6356,7 @@ paths:
           description: No cluster
           schema:
             type: string
-      summary: Handles the rolling restart process for a given cluster.
+      summary: Trigger a rolling action on a cluster
       tags:
       - ClusterMaintenance
   /api/clusters/{clusterName}/actions/rotate-passwords:
@@ -6331,6 +6551,39 @@ paths:
       summary: Reload Staging Script
       tags:
       - ClusterActions
+  /api/clusters/{clusterName}/actions/staging-reseed-from-parent:
+    post:
+      description: Reseed the specified cluster from its parent cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Reseed from parent queued
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Reseed from Parent Cluster
+      tags:
+      - ClusterReplication
   /api/clusters/{clusterName}/actions/start-traffic:
     post:
       consumes:
@@ -6629,6 +6882,40 @@ paths:
       summary: Drop App Monitor
       tags:
       - Apps
+  /api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/check:
+    post:
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App ID
+        in: path
+        name: appId
+        required: true
+        type: string
+      - description: Git Clone Name
+        in: path
+        name: gitName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Check Git Repository by Name
+      tags:
+      - GitRepository
   /api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/get-repo-tree:
     get:
       consumes:
@@ -7321,6 +7608,51 @@ paths:
       summary: Unprovision App Service
       tags:
       - Apps
+  /api/clusters/{clusterName}/apps/{appName}/actions/update-routes:
+    post:
+      consumes:
+      - application/json
+      description: Push route configuration to the OpenSVC gateway service for a given
+        app
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: App Routes Updated
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: App Not Found
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: Update App Routes
+      tags:
+      - Apps
   /api/clusters/{clusterName}/apps/{appName}/deployment:
     get:
       description: Shows the deployments for that specific named app
@@ -7526,6 +7858,52 @@ paths:
       summary: Drop Deployment Field Row
       tags:
       - Apps
+  /api/clusters/{clusterName}/apps/{appName}/git/actions/check:
+    post:
+      consumes:
+      - application/json
+      description: Validates that a Git repository is reachable with the given credentials
+        and that the branch exists.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Check result
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Internal error
+          schema:
+            type: string
+      summary: Check Git Repository
+      tags:
+      - GitRepository
   /api/clusters/{clusterName}/apps/{appName}/resolve-template:
     post:
       consumes:
@@ -7951,7 +8329,9 @@ paths:
       - Apps
   /api/clusters/{clusterName}/backups:
     get:
-      description: This endpoint retrieves the backups for the specified cluster.
+      description: |-
+        This endpoint retrieves the backups for the specified cluster.
+        Required grant: cluster-show-backups
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -7988,7 +8368,9 @@ paths:
       - ClusterBackups
   /api/clusters/{clusterName}/backups/{backupID}/delete:
     post:
-      description: Deletes a non-restic backup for the specified cluster.
+      description: |-
+        Deletes a non-restic backup for the specified cluster.
+        Required grant: db-backup
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -8035,8 +8417,9 @@ paths:
       - ClusterBackups
   /api/clusters/{clusterName}/backups/reconcile:
     post:
-      description: This endpoint triggers a manual reconciliation check to detect
-        drift between backup metadata files and restic snapshots.
+      description: |-
+        This endpoint triggers a manual reconciliation check to detect drift between backup metadata files and restic snapshots.
+        Required grant: db-backup
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -8073,7 +8456,9 @@ paths:
       - ClusterBackup
   /api/clusters/{clusterName}/backups/stats:
     get:
-      description: This endpoint retrieves the backup stats for the specified cluster.
+      description: |-
+        This endpoint retrieves the backup stats for the specified cluster.
+        Required grant: cluster-show-backups
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -8305,6 +8690,47 @@ paths:
           schema:
             type: string
       summary: Accept external operations for a specific cluster
+      tags:
+      - Cloud18
+  /api/clusters/{clusterName}/ext-role/end:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint removes external operations for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: User Form
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.CloudUserForm'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sponsor partnership removed!
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error removing sponsor partnership
+          schema:
+            type: string
+      summary: Remove external operations for a specific cluster
       tags:
       - Cloud18
   /api/clusters/{clusterName}/ext-role/quote:
@@ -8716,6 +9142,41 @@ paths:
           schema:
             type: string
       summary: Get Cluster Gateway Nodes
+      tags:
+      - ClusterGateway
+  /api/clusters/{clusterName}/opensvc-pools:
+    get:
+      description: Retrieves the OpenSVC storage pool names of the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OpenSVC pool list fetched
+          schema:
+            items:
+              $ref: '#/definitions/server.PoolOption'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster" or "Error getting OpenSVC pool list
+          schema:
+            type: string
+      summary: Get OpenSVC Pool List
       tags:
       - ClusterGateway
   /api/clusters/{clusterName}/opensvc-stats:
@@ -9304,7 +9765,9 @@ paths:
       - Restic
   /api/clusters/{clusterName}/restic/purge/{snapshotID}:
     post:
-      description: Purges the restic backup for the specified cluster.
+      description: |-
+        Purges the restic backup for the specified cluster.
+        Required grant: db-backup
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -9664,6 +10127,9 @@ paths:
       summary: Modify Restic Task Queue
       tags:
       - ClusterRestic
+  /api/clusters/{clusterName}/restic/task-queue/pause:
+    post:
+      responses: {}
   /api/clusters/{clusterName}/restic/task-queue/reset:
     get:
       description: Empty the restic task queue for the specified cluster.
@@ -9697,9 +10163,6 @@ paths:
       summary: Reset Restic Task Queue
       tags:
       - ClusterRestic
-  /api/clusters/{clusterName}/restic/task-queue/pause:
-    post:
-      responses: {}
   /api/clusters/{clusterName}/restic/task-queue/resume:
     post:
       responses: {}
@@ -9775,47 +10238,6 @@ paths:
           schema:
             type: string
       summary: Accept a subscription for a specific cluster
-      tags:
-      - Cloud18
-  /api/clusters/{clusterName}/ext-role/end:
-    post:
-      consumes:
-      - application/json
-      description: This endpoint removes external operations for the specified cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      - description: User Form
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/server.CloudUserForm'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Sponsor partnership removed!
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: Error removing sponsor partnership
-          schema:
-            type: string
-      summary: Remove external operations for a specific cluster
       tags:
       - Cloud18
   /api/clusters/{clusterName}/sales/end-subscription:
@@ -10527,6 +10949,38 @@ paths:
       summary: Get server details
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/job-state/{taskname}/{jobstate}:
+    post:
+      parameters:
+      - description: Cluster name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server hostname
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server port
+        in: path
+        name: serverPort
+        required: true
+        type: string
+      - description: Task name
+        in: path
+        name: taskname
+        required: true
+        type: string
+      - description: 'Job state: processing, done, error'
+        in: path
+        name: jobstate
+        required: true
+        type: string
+      responses: {}
+      summary: Update job state from dbjobs script
+      tags:
+      - DatabaseTasks
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/jobs-create-table:
     post:
       description: Creates a jobs tasks table on a specified server within a cluster
@@ -10609,6 +11063,33 @@ paths:
           schema:
             type: string
       summary: Check jobs on a server
+      tags:
+      - DatabaseTasks
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname}:
+    post:
+      parameters:
+      - description: Cluster name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server hostname
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server port
+        in: path
+        name: serverPort
+        required: true
+        type: string
+      - description: Task name (xtrabackup, mariabackup, errorlog, etc.)
+        in: path
+        name: taskname
+        required: true
+        type: string
+      responses: {}
+      summary: Open a TCP receiver for a remote task
       tags:
       - DatabaseTasks
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/send-jobs-upgrade:
@@ -11190,40 +11671,6 @@ paths:
       summary: Check if a server port is a slave
       tags:
       - Database
-  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-stopped:
-    get:
-      description: Checks if a specified server within a cluster is in a slave Stop
-        state.
-      parameters:
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      - description: Server Name
-        in: path
-        name: serverName
-        required: true
-        type: string
-      - description: Server Port
-        in: path
-        name: serverPort
-        type: string
-      produces:
-      - text/plain
-      responses:
-        "200":
-          description: 200 -Server is in Slave Stop state!
-          schema:
-            type: string
-        "500":
-          description: 500 -Server is not in Slave Stop state!" or "500 -No valid
-            server!" or "500 -No cluster!
-          schema:
-            type: string
-      summary: Check if a server is in slave Stop state
-      tags:
-      - Database
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-error:
     get:
       description: Checks if a specified server within a cluster is in a slave error
@@ -11256,6 +11703,74 @@ paths:
           schema:
             type: string
       summary: Check if a server is in slave error state
+      tags:
+      - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-late:
+    get:
+      description: Checks if the specified server within the cluster is in a "Slave
+        Late" state.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: 200 -Server is in Slave Late state!
+          schema:
+            type: string
+        "500":
+          description: 500 -No valid server!" "500 -Server is not in Slave Late state!"
+            "500 -No cluster!
+          schema:
+            type: string
+      summary: Check if server is in Slave Late state
+      tags:
+      - replication
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-stopped:
+    get:
+      description: Checks if a specified server within a cluster is in a slave Stop
+        state.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: 200 -Server is in Slave Stop state!
+          schema:
+            type: string
+        "500":
+          description: 500 -Server is not in Slave Stop state!" or "500 -No valid
+            server!" or "500 -No cluster!
+          schema:
+            type: string
+      summary: Check if a server is in slave Stop state
       tags:
       - Database
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-standalone:
@@ -13423,6 +13938,76 @@ paths:
       summary: Unprovision a server
       tags:
       - DatabaseProvision
+  /api/clusters/{clusterName}/servers/{serverName}/actions/update-opensvc-template:
+    post:
+      description: Regenerates the OpenSVC service config template for the specified
+        server and pushes it to OpenSVC. Does not reprovision or restart the service.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Template refreshed successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or error message
+          schema:
+            type: string
+      summary: Update OpenSVC template for a server
+      tags:
+      - DatabaseProvision
+  /api/clusters/{clusterName}/servers/{serverName}/actions/upgrade:
+    post:
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      responses:
+        "202":
+          description: Upgrade started
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: Upgrade a single database server
+      tags:
+      - DatabaseActions
   /api/clusters/{clusterName}/servers/{serverName}/actions/wait-innodb-purge:
     get:
       description: Waits for InnoDB purge on a specified server within a cluster.
@@ -13673,6 +14258,50 @@ paths:
       summary: Generate and send dummy config to client receiver port
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/config-files:
+    get:
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Config file contents
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get config override files for a server
+      tags:
+      - Database
+  /api/clusters/{clusterName}/servers/{serverName}/config-files-clear-delta:
+    post:
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Delta cleared
+          schema:
+            type: string
+      summary: Clear delta config file for a server
+      tags:
+      - DatabaseConfig
   /api/clusters/{clusterName}/servers/{serverName}/config-path-preserve/{preserve}:
     get:
       description: Preserves or removes the configuration path for a specified server
@@ -14016,36 +14645,6 @@ paths:
       summary: Check if a server is a slave
       tags:
       - Database
-  /api/clusters/{clusterName}/servers/{serverName}/is-slave-stopped:
-    get:
-      description: Checks if a specified server within a cluster is in a slave Stop
-        state.
-      parameters:
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      - description: Server Name
-        in: path
-        name: serverName
-        required: true
-        type: string
-      produces:
-      - text/plain
-      responses:
-        "200":
-          description: 200 -Server is in Slave Stop state!
-          schema:
-            type: string
-        "500":
-          description: 500 -Server is not in Slave Stop state!" or "500 -No valid
-            server!" or "500 -No cluster!
-          schema:
-            type: string
-      summary: Check if a server is in slave Stop state
-      tags:
-      - Database
   /api/clusters/{clusterName}/servers/{serverName}/is-slave-error:
     get:
       description: Checks if a specified server within a cluster is in a slave error
@@ -14074,6 +14673,66 @@ paths:
           schema:
             type: string
       summary: Check if a server is in slave error state
+      tags:
+      - Database
+  /api/clusters/{clusterName}/servers/{serverName}/is-slave-late:
+    get:
+      description: Checks if the specified server within the cluster is in a "Slave
+        Late" state.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: 200 -Server is in Slave Late state!
+          schema:
+            type: string
+        "500":
+          description: 500 -No valid server!" "500 -Server is not in Slave Late state!"
+            "500 -No cluster!
+          schema:
+            type: string
+      summary: Check if server is in Slave Late state
+      tags:
+      - replication
+  /api/clusters/{clusterName}/servers/{serverName}/is-slave-stopped:
+    get:
+      description: Checks if a specified server within a cluster is in a slave Stop
+        state.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: 200 -Server is in Slave Stop state!
+          schema:
+            type: string
+        "500":
+          description: 500 -Server is not in Slave Stop state!" or "500 -No valid
+            server!" or "500 -No cluster!
+          schema:
+            type: string
+      summary: Check if a server is in slave Stop state
       tags:
       - Database
   /api/clusters/{clusterName}/servers/{serverName}/is-standalone:
@@ -18071,9 +18730,9 @@ paths:
       - application/json
       responses:
         "200":
-          description: JWT token
+          description: JWT token (upgrade_id present when async SSO upgrade started)
           schema:
-            $ref: '#/definitions/server.token'
+            $ref: '#/definitions/server.AuthTokenWithUpgrade'
         "401":
           description: Invalid credentials
           schema:
@@ -18213,8 +18872,8 @@ paths:
         name: Authorization
         required: true
         type: string
-      - description: 'OpenSVC server bash terminal container RID (allowed: container#db,
-          container#jobs)'
+      - description: 'OpenSVC bash terminal container RID (server allowed: container#db,
+          container#jobs; app allowed: container#app)'
         in: query
         name: rid
         type: string
@@ -18230,7 +18889,85 @@ paths:
           schema:
             type: string
         "500":
-          description: No valid node" or "No valid cluster
+          description: No valid terminal target" or "No valid cluster
+          schema:
+            type: string
+      summary: Terminal
+      tags:
+      - Terminal
+  /api/terminal/connect/clusters/{clusterName}/apps/{appName}:
+    get:
+      consumes:
+      - application/json
+      description: Establishes a WebSocket connection for a terminal session.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        type: string
+      - description: 'OpenSVC bash terminal container RID (server allowed: container#db,
+          container#jobs; app allowed: container#app)'
+        in: query
+        name: rid
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Connected successfully
+          schema:
+            type: string
+        "400":
+          description: No user provided
+          schema:
+            type: string
+        "500":
+          description: No valid terminal target" or "No valid cluster
+          schema:
+            type: string
+      summary: Terminal
+      tags:
+      - Terminal
+  /api/terminal/connect/clusters/{clusterName}/apps/{appName}/{command}:
+    get:
+      consumes:
+      - application/json
+      description: Establishes a WebSocket connection for a terminal session.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        type: string
+      - description: 'OpenSVC bash terminal container RID (server allowed: container#db,
+          container#jobs; app allowed: container#app)'
+        in: query
+        name: rid
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Connected successfully
+          schema:
+            type: string
+        "400":
+          description: No user provided
+          schema:
+            type: string
+        "500":
+          description: No valid terminal target" or "No valid cluster
           schema:
             type: string
       summary: Terminal
@@ -18256,8 +18993,8 @@ paths:
         in: path
         name: serverName
         type: string
-      - description: 'OpenSVC server bash terminal container RID (allowed: container#db,
-          container#jobs)'
+      - description: 'OpenSVC bash terminal container RID (server allowed: container#db,
+          container#jobs; app allowed: container#app)'
         in: query
         name: rid
         type: string
@@ -18273,7 +19010,7 @@ paths:
           schema:
             type: string
         "500":
-          description: No valid node" or "No valid cluster
+          description: No valid terminal target" or "No valid cluster
           schema:
             type: string
       summary: Terminal
@@ -18299,8 +19036,8 @@ paths:
         in: path
         name: serverName
         type: string
-      - description: 'OpenSVC server bash terminal container RID (allowed: container#db,
-          container#jobs)'
+      - description: 'OpenSVC bash terminal container RID (server allowed: container#db,
+          container#jobs; app allowed: container#app)'
         in: query
         name: rid
         type: string
@@ -18316,7 +19053,7 @@ paths:
           schema:
             type: string
         "500":
-          description: No valid node" or "No valid cluster
+          description: No valid terminal target" or "No valid cluster
           schema:
             type: string
       summary: Terminal
@@ -18342,8 +19079,8 @@ paths:
         in: path
         name: serverName
         type: string
-      - description: 'OpenSVC server bash terminal container RID (allowed: container#db,
-          container#jobs)'
+      - description: 'OpenSVC bash terminal container RID (server allowed: container#db,
+          container#jobs; app allowed: container#app)'
         in: query
         name: rid
         type: string
@@ -18359,7 +19096,7 @@ paths:
           schema:
             type: string
         "500":
-          description: No valid node" or "No valid cluster
+          description: No valid terminal target" or "No valid cluster
           schema:
             type: string
       summary: Terminal
@@ -18385,8 +19122,8 @@ paths:
         in: path
         name: serverName
         type: string
-      - description: 'OpenSVC server bash terminal container RID (allowed: container#db,
-          container#jobs)'
+      - description: 'OpenSVC bash terminal container RID (server allowed: container#db,
+          container#jobs; app allowed: container#app)'
         in: query
         name: rid
         type: string
@@ -18402,7 +19139,7 @@ paths:
           schema:
             type: string
         "500":
-          description: No valid node" or "No valid cluster
+          description: No valid terminal target" or "No valid cluster
           schema:
             type: string
       summary: Terminal
@@ -18548,143 +19285,6 @@ paths:
       summary: Identify the user
       tags:
       - User
-  /api/clusters/{clusterName}/actions/dropserver/{host}/{port}:
-    post:
-      consumes:
-      - application/json
-      description: This endpoint allows dropping a server monitor or proxy monitor
-        from a specified cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      - description: Host
-        in: path
-        name: host
-        required: true
-        type: string
-      - description: Port
-        in: path
-        name: port
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Monitor dropped successfully
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: Cluster Not Found
-          schema:
-            type: string
-      summary: Drop a server monitor from a cluster
-      tags:
-      - ClusterMonitor
-  /api/clusters/{clusterName}/actions/dropserver/{host}/{port}/{type}:
-    post:
-      consumes:
-      - application/json
-      description: This endpoint allows dropping a server monitor or proxy monitor
-        from a specified cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      - description: Monitor Type (proxy or database)
-        in: path
-        name: type
-        type: string
-      - description: Host
-        in: path
-        name: host
-        required: true
-        type: string
-      - description: Port
-        in: path
-        name: port
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Monitor dropped successfully
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: Cluster Not Found
-          schema:
-            type: string
-      summary: Drop a server monitor from a cluster
-      tags:
-      - ClusterMonitor
-  /api/clusters/{clusterName}/actions/dropserver/{serverName}:
-    post:
-      consumes:
-      - application/json
-      description: This endpoint allows dropping a server monitor or proxy monitor
-        from a specified cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      - description: Monitor Server ID
-        in: path
-        name: serverName
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Monitor dropped successfully
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: Cluster Not Found
-          schema:
-            type: string
-      summary: Drop a server monitor from a cluster by name
-      tags:
-      - ClusterMonitor
   /meet/add/{channelId}/{userId}:
     get:
       description: Adds a user to a specific channel
@@ -19287,38 +19887,4 @@ paths:
       summary: View meet messages
       tags:
       - Meet
-  /api/clusters/{clusterName}/servers/{serverName}/is-slave-late:
-    get:
-      description: Checks if the specified server within the cluster is in a "Slave
-        Late" state.
-      parameters:
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      - description: Server Name
-        in: path
-        name: serverName
-        required: true
-        type: string
-      - description: Server Port
-        in: path
-        name: serverPort
-        type: string
-      produces:
-      - text/plain
-      responses:
-        "200":
-          description: 200 -Server is in Slave Late state!
-          schema:
-            type: string
-        "500":
-          description: 500 -No valid server!" "500 -Server is not in Slave Late state!"
-            "500 -No cluster!
-          schema:
-            type: string
-      summary: Check if server is in Slave Late state
-      tags:
-      - replication
 swagger: "2.0"

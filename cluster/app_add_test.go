@@ -49,7 +49,9 @@ func TestAddAppAndAddAppToList_UseSameInitialization(t *testing.T) {
 
 	appFromList := newTestAppForAddApp("app1", "8080", "a1,a2")
 	list := []*App{}
-	right.addAppToList(&list, appFromList)
+	if err := right.addAppToList(&list, appFromList); err != nil {
+		t.Fatalf("addAppToList failed: %v", err)
+	}
 
 	if len(list) != 1 {
 		t.Fatalf("expected addAppToList to append one app, got %d", len(list))

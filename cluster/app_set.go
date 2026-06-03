@@ -12,6 +12,7 @@ package cluster
 
 import (
 	"errors"
+	"fmt"
 	"hash/crc64"
 	"os"
 	"strconv"
@@ -181,17 +182,23 @@ func (app *App) SetMaintenance(maintenance bool) {
 	}
 }
 
-func (app *App) SetDefaultRoute(cloud18Domain, cloud18SubDomain, cloud18SubDomainZone, clusterName string) {
-	if len(app.AppConfig.Deployment.Routes) == 0 {
-		app.AppConfig.Deployment.Routes = make([]config.Route, 0)
-
-		app.AppConfig.Deployment.Routes = append(app.AppConfig.Deployment.Routes, config.Route{
+func (app *App) SetDefaultRoute(cloud18Domain, cloud18SubDomain, cloud18SubDomainZone, clusterName string) error {
+	if len(app.AppConfig.Deployment.Routes) > 0 {
+		return nil
+	}
+	app.AppConfig.Deployment.Routes = []config.Route{
+		{
 			CName:    app.Name + "." + clusterName + "." + cloud18SubDomain + "-" + cloud18SubDomainZone + "." + cloud18Domain + ".cloud18.io",
 			Port:     app.AppConfig.AppPort,
 			Protocol: "https",
-		})
+		},
 	}
-
+	app.AppConfig.Deployment.NormalizeRoutes()
+	if err := app.AppConfig.Deployment.ValidateRoutes(); err != nil {
+		app.AppConfig.Deployment.Routes = nil
+		return fmt.Errorf("default route for app %s is invalid: %w", app.Name, err)
+	}
+	return nil
 }
 
 func (app *App) UpdateVariable(vIndex int, field, newValue string) error {

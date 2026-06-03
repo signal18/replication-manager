@@ -2698,8 +2698,10 @@ func (c *Cluster) AddProxy(prx DatabaseProxy) {
 	c.Proxies = append(c.Proxies, prx)
 }
 
-func (c *Cluster) AddApp(app *App) {
-	c.initializeAppForRegistration(app)
+func (c *Cluster) AddApp(app *App) error {
+	if err := c.initializeAppForRegistration(app); err != nil {
+		return err
+	}
 	c.Lock()
 	c.Apps = append(c.Apps, app)
 	c.bumpAppListVersion()
@@ -2713,6 +2715,7 @@ func (c *Cluster) AddApp(app *App) {
 	} else {
 		c.Conf.Cloud18ApplicationCreditsUsed += app.AppConfig.ProvAppCreditUsed
 	}
+	return nil
 }
 
 func (cluster *Cluster) ConfigDiscovery() error {

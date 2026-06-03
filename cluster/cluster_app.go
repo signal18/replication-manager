@@ -175,6 +175,14 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 			}
 			return fmt.Errorf("invalid deployment path mapping in app config %q", filename)
 		}
+		// Normalize routes eagerly so in-memory state always has canonical
+		// mode/sourcePort/destPort values, regardless of how old the TOML is.
+		appcnf.Deployment.NormalizeRoutes()
+		if err := appcnf.Deployment.ValidateRoutes(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
+				"App config %q has invalid routes: %v — fix route config before restarting", filename, err)
+			return fmt.Errorf("invalid routes in app config %q: %w", filename, err)
+		}
 	}
 
 	if canonicalRes.Changed {
@@ -575,6 +583,13 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 				}
 				rollbackAddedApp()
 				return fmt.Errorf("invalid deployment path mapping for template %q", template)
+			}
+			appcnf.Deployment.NormalizeRoutes()
+			if err := appcnf.Deployment.ValidateRoutes(); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
+					"App template %q has invalid routes: %v", template, err)
+				rollbackAddedApp()
+				return fmt.Errorf("invalid routes in template %q: %w", template, err)
 			}
 		}
 	}

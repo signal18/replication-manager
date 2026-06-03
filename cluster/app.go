@@ -11,6 +11,7 @@
 package cluster
 
 import (
+	"fmt"
 	"os"
 	"slices"
 	"sync"
@@ -91,7 +92,9 @@ func (cluster *Cluster) newAppList() error {
 	// All apps are constructed — now build the final slice and swap in one step.
 	newApps := make([]*App, 0, len(pending))
 	for _, p := range pending {
-		cluster.addAppToList(&newApps, p.app)
+		if err := cluster.addAppToList(&newApps, p.app); err != nil {
+			return fmt.Errorf("app list rebuild failed on %s: %w", p.app.Name, err)
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg,
 			"New HA App created: %s %s (id=%s)", p.app.GetHost(), p.app.GetPort(), p.app.Id)
 		if p.s3Prov {
@@ -118,26 +121,32 @@ func (cluster *Cluster) newAppList() error {
 
 // initializeAppForRegistration performs the shared app bootstrap sequence used by
 // both addAppToList and AddApp.
-func (c *Cluster) initializeAppForRegistration(app *App) {
+func (c *Cluster) initializeAppForRegistration(app *App) error {
 	app.SetCluster(c)
 	app.SetID()
 	app.SetDataDir()
 	app.SetServiceName(c.Name)
-	app.SetDefaultRoute(c.Conf.Cloud18Domain, c.Conf.Cloud18SubDomain, c.Conf.Cloud18SubDomainZone, c.Name)
+	if err := app.SetDefaultRoute(c.Conf.Cloud18Domain, c.Conf.Cloud18SubDomain, c.Conf.Cloud18SubDomainZone, c.Name); err != nil {
+		return fmt.Errorf("app %s: default route generation failed: %w", app.Name, err)
+	}
 	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"New application monitored %s: %s:%s", app.GetType(), app.GetHost(), app.GetPort())
 	app.SetState(stateSuspect)
 	if app.AppConfig.ProvAppCreditPlanned == 0 {
 		app.AppConfig.ProvAppCreditPlanned = len(app.GetAppAgents())
 	}
+	return nil
 }
 
 // addAppToList initialises an App and appends it to the supplied slice.
 // It mirrors AddApp but writes to the provided slice instead of cluster.Apps,
 // allowing newAppList to build the full list before the atomic swap.
-func (c *Cluster) addAppToList(list *[]*App, app *App) {
-	c.initializeAppForRegistration(app)
+func (c *Cluster) addAppToList(list *[]*App, app *App) error {
+	if err := c.initializeAppForRegistration(app); err != nil {
+		return err
+	}
 	*list = append(*list, app)
+	return nil
 }
 
 func (app *App) FetchStats() {

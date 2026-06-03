@@ -1,6 +1,7 @@
-import { VStack, HStack, Text, Heading, Input, Select, Flex } from '@chakra-ui/react'
+import { VStack, HStack, Text, Heading, Input, Select, Flex, Tooltip, Code } from '@chakra-ui/react'
 import React, { useState } from 'react'
-import { HiTrash } from 'react-icons/hi'
+import { HiTrash, HiInformationCircle } from 'react-icons/hi'
+import PropTypes from 'prop-types';
 import TextForm from '../../../../components/TextForm';
 import RMIconButton from '../../../../components/RMIconButton';
 import RMButton from '../../../../components/RMButton';
@@ -8,12 +9,69 @@ import styles from './styles.module.scss';
 import { uniqueId } from 'lodash';
 import Dropdown from '../../../../components/Dropdown';
 
-const protocolOptions = [
+const modeOptions = [
+  { value: 'host', name: 'Host' },
+  { value: 'port', name: 'Port' },
+];
+
+const hostProtocolOptions = [
   { value: 'https', name: 'HTTPS' },
+];
+
+const portProtocolOptions = [
+  { value: 'http', name: 'HTTP' },
   { value: 'tcp', name: 'TCP' },
 ];
 
-export default React.memo(function Routes({
+const COMMON_SETUPS_TOOLTIP = [
+  'Common setups:',
+  '',
+  'MinIO object store',
+  '  minio.example.com → 9000  (host / HTTPS)',
+  '  console.minio.example.com → 9001  (host / HTTPS)',
+  '',
+  'Database TCP proxy',
+  '  public :3307 → backend :3306  (port / TCP)',
+  '',
+  'HTTP API',
+  '  api.example.com → 8080  (host / HTTPS)',
+  '  — or —',
+  '  public :8080 → backend :8080  (port / HTTP)',
+  '',
+  'You can mix host and port routes in the same app.',
+  'Hostnames must be unique across all host routes.',
+  'Public ports must be unique across all port routes.',
+].join('\n');
+
+function effectiveMode(row) {
+  if (row.mode) return row.mode;
+  return row.protocol === 'tcp' ? 'port' : 'host';
+}
+
+function defaultProtocolForMode(mode) {
+  return mode === 'port' ? 'tcp' : 'https';
+}
+
+function routePreview(p) {
+  const mode = effectiveMode(p);
+  const backendPort = p.destPort || p.port;
+  if (mode === 'host') {
+    const proto = p.protocol || 'https';
+    const host = p.cname || '(public hostname)';
+    return `${proto}://${host}  →  backend :${backendPort || '?'}`;
+  }
+  return `public :${p.sourcePort || '?'}  →  backend :${backendPort || '?'}`;
+}
+
+function newRoutePreview(p) {
+  const backendPort = p.mode === 'host' ? (p.port || '?') : (p.destPort || '?');
+  if (p.mode === 'host') {
+    return `${p.protocol || 'https'}://${p.cname || '(public hostname)'}  →  backend :${backendPort}`;
+  }
+  return `public :${p.sourcePort || '?'}  →  backend :${backendPort}`;
+}
+
+const Routes = React.memo(function Routes({
   gateway = "",
   rows = [],
   fieldName = 'routes',
@@ -27,20 +85,42 @@ export default React.memo(function Routes({
   const [formData, setFormData] = useState([]);
 
   const handleArrayChange = (index, key, value) => {
-    setFormData(prevState => [...prevState.map((item, i) => i === index ? { ...item, [key]: value } : item)]);
+    setFormData(prevState => prevState.map((item, i) => {
+      if (i !== index) return item;
+      const updated = { ...item, [key]: value };
+      if (key === 'mode') {
+        updated.protocol = defaultProtocolForMode(value);
+        if (value === 'host') {
+          updated.port = item.destPort || item.port || '';
+          updated.destPort = '';
+          updated.sourcePort = '';
+        } else {
+          updated.destPort = item.port || item.destPort || '';
+          updated.port = '';
+          updated.cname = '';
+        }
+      }
+      return updated;
+    }));
   };
 
   const handleAddItem = () => {
-    setFormData(prevState => [...prevState, { id: uniqueId(), cname: "", port: "", protocol: "https" }]);
-    onPauseAutoReload(); // Pause auto-reload when adding a new item
+    setFormData(prevState => [...prevState, {
+      id: uniqueId(),
+      mode: 'host',
+      cname: '',
+      port: '',
+      sourcePort: '',
+      destPort: '',
+      protocol: 'https',
+    }]);
+    onPauseAutoReload();
   };
 
   const handleRemoveItem = (index) => {
     setFormData(prevState => {
-      const newState = [...prevState.filter((_, i) => i !== index)];
-      if (newState.length === 0) {
-        onResumeAutoReload(); // Resume auto-reload when no items left
-      }
+      const newState = prevState.filter((_, i) => i !== index);
+      if (newState.length === 0) onResumeAutoReload();
       return newState;
     });
   };
@@ -48,76 +128,219 @@ export default React.memo(function Routes({
   const handleSaveAdd = () => {
     if (formData.length > 0) {
       onSaveAdd(fieldName, formData).then(() => {
-        setFormData([]); // Clear the form after saving
-        onResumeAutoReload(); // Resume auto-reload after saving
-      })
+        setFormData([]);
+        onResumeAutoReload();
+      });
     }
-  }
+  };
 
   const sanitizePort = (port) => {
-    const sanitizedPort = parseInt(port, 10);
-    return isNaN(sanitizedPort) || sanitizedPort < 1 ? "" : sanitizedPort > "65535" ? "65535" : `${sanitizedPort}`;
-  }
+    const n = parseInt(port, 10);
+    return isNaN(n) || n < 1 ? '' : n > 65535 ? '65535' : `${n}`;
+  };
 
   return (
     <Flex direction="column" className={`${styles.sectionWrapper}`}>
       <VStack spacing={3} align="stretch">
-        <Heading as="h3" size="md">
-          Domain Gateway
-        </Heading>
+        <Heading as="h3" size="md">Domain Gateway</Heading>
         <Text fontWeight={"bold"}>{gateway}</Text>
       </VStack>
+
       <VStack spacing={3} align="stretch">
-        <Heading as="h3" size="md">
-          Saved route mappings
-        </Heading>
-        <Text>These are the route mappings that will be used for your deployment. Make sure the domain already points to our gateway.</Text>
-        {rows?.length > 0 ?
-          rows?.map((p, index) => (
-            <HStack key={`row_${p.port}`}>
-              <TextForm confirmTitle={"CNAME changed"} name={`row_${p.port}.cname`} placeholder="CNAME" value={p.cname} onSave={(value) => onRowArrayChange(fieldName, index, "cname", value)} />
-              <TextForm confirmTitle={"Port changed"} pattern='^[0-9]{1,5}$' name={`row_${p.port}.port`} placeholder="Port" value={p.port} onSave={(value) => onRowArrayChange(fieldName, index, "port", sanitizePort(value))} />
-              <Dropdown confirmTitle={"Protocol changed"} name={`row_${p.port}.volumedir`} selectedValue={p.protocol} onChange={(value) => onRowArrayChange(fieldName, index, "protocol", value)} options={protocolOptions} />
-              <RMIconButton icon={HiTrash} aria-label="Delete Route" onClick={() => onRowDropIndex(fieldName, index)} />
-            </HStack>
-          )) : (
-            <Text>No saved route mappings</Text>
-          )}
+        <HStack spacing={2} align="center">
+          <Heading as="h3" size="md">Route mappings</Heading>
+          <Tooltip
+            label={<Text whiteSpace="pre" fontFamily="mono" fontSize="xs">{COMMON_SETUPS_TOOLTIP}</Text>}
+            placement="right"
+            hasArrow
+          >
+            <span><HiInformationCircle size={16} style={{ cursor: 'pointer', color: 'gray' }} /></span>
+          </Tooltip>
+        </HStack>
+        <Text fontSize="sm" color="gray.600">
+          Each row exposes one public entrypoint.{' '}
+          <strong>Host</strong> routes by hostname (HTTPS).{' '}
+          <strong>Port</strong> routes by public port number (TCP or HTTP).{' '}
+          You can mix both in the same app.
+        </Text>
+
+        {rows?.length > 0
+          ? rows.map((p, index) => {
+            const mode = effectiveMode(p);
+            const isHost = mode === 'host';
+            const protocolOpts = isHost ? hostProtocolOptions : portProtocolOptions;
+            const rowKey = `row_${index}`;
+            const availableModeOptions = !isHost && !p.cname
+              ? modeOptions.filter(o => o.value !== 'host')
+              : modeOptions;
+            const modeHelp = isHost
+              ? 'Clients connect using this hostname. Traffic is forwarded to the backend port.'
+              : 'Clients connect to the public port. Traffic is forwarded to the backend port.';
+            return (
+              <VStack key={rowKey} align="stretch" spacing={1}>
+                <HStack align="center">
+                  <Tooltip label={modeHelp} placement="top" hasArrow>
+                    <span>
+                      <Dropdown
+                        confirmTitle={"Route mode changed — protocol will be reset to the new mode's default"}
+                        name={`${rowKey}.mode`}
+                        selectedValue={mode}
+                        onChange={(value) => onRowArrayChange(fieldName, index, "mode", value)}
+                        options={availableModeOptions}
+                      />
+                    </span>
+                  </Tooltip>
+                  {isHost ? (
+                    <>
+                      <TextForm
+                        confirmTitle={"Public hostname changed"}
+                        name={`${rowKey}.cname`}
+                        placeholder="Public hostname"
+                        value={p.cname}
+                        onSave={(value) => onRowArrayChange(fieldName, index, "cname", value)}
+                      />
+                      <TextForm
+                        confirmTitle={"Backend port changed"}
+                        pattern='^[0-9]{1,5}$'
+                        name={`${rowKey}.port`}
+                        placeholder="Backend port"
+                        value={p.destPort || p.port}
+                        onSave={(value) => onRowArrayChange(fieldName, index, "port", sanitizePort(value))}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <TextForm
+                        confirmTitle={"Public port changed"}
+                        pattern='^[0-9]{1,5}$'
+                        name={`${rowKey}.sourcePort`}
+                        placeholder="Public port"
+                        value={p.sourcePort}
+                        onSave={(value) => onRowArrayChange(fieldName, index, "sourceport", sanitizePort(value))}
+                      />
+                      <TextForm
+                        confirmTitle={"Backend port changed"}
+                        pattern='^[0-9]{1,5}$'
+                        name={`${rowKey}.destPort`}
+                        placeholder="Backend port"
+                        value={p.destPort || p.port}
+                        onSave={(value) => onRowArrayChange(fieldName, index, "destport", sanitizePort(value))}
+                      />
+                    </>
+                  )}
+                  <Dropdown
+                    confirmTitle={"Protocol changed"}
+                    name={`${rowKey}.protocol`}
+                    selectedValue={p.protocol}
+                    onChange={(value) => onRowArrayChange(fieldName, index, "protocol", value)}
+                    options={protocolOpts}
+                  />
+                  <RMIconButton icon={HiTrash} aria-label="Delete Route" onClick={() => onRowDropIndex(fieldName, index)} />
+                </HStack>
+                <Code fontSize="xs" color="gray.500" bg="transparent" pl={1}>{routePreview(p)}</Code>
+              </VStack>
+            );
+          })
+          : <Text>No saved route mappings</Text>
+        }
       </VStack>
+
       {formData.length > 0 && (
         <VStack spacing={3} align="stretch">
-          <Heading as="h3" size="md">
-            New Route Mapping
-          </Heading>
-          <Text>Enter the route mappings for your deployment. Select a volume directory and specify the source and destination Routes.</Text>
-          {formData.map((p, index) => (
-            <HStack key={`new_${p.id}`}>
-              <Input name={`new_${p.id}.cname`} placeholder="CNAME" value={p.cname} onChange={(e) => handleArrayChange(index, "cname", e.target.value)} />
-              <Input name={`new_${p.id}.port`} pattern='^[0-9]{1,5}$' placeholder="Port" value={p.port} onChange={(e) => handleArrayChange(index, "port", sanitizePort(e.target.value))} />
-              <Select value={p.protocol} onChange={(e) => handleArrayChange(index, "protocol", e.target.value)} >
-                {protocolOptions.map(option => (
-                  <option key={option.value} value={option.value}>
-                    {option.name}
-                  </option>
-                ))}
-              </Select>
-              <RMIconButton icon={HiTrash} aria-label="Delete Route" onClick={() => handleRemoveItem(index)} />
-            </HStack>
-          ))}
+          <Heading as="h3" size="md">New Route</Heading>
+          {formData.map((p, index) => {
+            const isHost = p.mode === 'host';
+            const protocolOpts = isHost ? hostProtocolOptions : portProtocolOptions;
+            const modeHelp = isHost
+              ? 'Clients connect using this hostname over HTTPS. Traffic is forwarded to the backend port.'
+              : 'Clients connect to the public port. Traffic is forwarded to the backend port.';
+            return (
+              <VStack key={`new_${p.id}`} align="stretch" spacing={1}>
+                <HStack align="center">
+                  <Tooltip label={modeHelp} placement="top" hasArrow>
+                    <Select
+                      value={p.mode}
+                      onChange={(e) => handleArrayChange(index, 'mode', e.target.value)}
+                      maxW="110px"
+                    >
+                      {modeOptions.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.name}</option>
+                      ))}
+                    </Select>
+                  </Tooltip>
+                  {isHost ? (
+                    <>
+                      <Input
+                        name={`new_${p.id}.cname`}
+                        placeholder="Public hostname"
+                        value={p.cname}
+                        onChange={(e) => handleArrayChange(index, 'cname', e.target.value)}
+                      />
+                      <Input
+                        name={`new_${p.id}.port`}
+                        pattern='^[0-9]{1,5}$'
+                        placeholder="Backend port"
+                        value={p.port}
+                        onChange={(e) => handleArrayChange(index, 'port', sanitizePort(e.target.value))}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Input
+                        name={`new_${p.id}.sourcePort`}
+                        pattern='^[0-9]{1,5}$'
+                        placeholder="Public port"
+                        value={p.sourcePort}
+                        onChange={(e) => handleArrayChange(index, 'sourcePort', sanitizePort(e.target.value))}
+                      />
+                      <Input
+                        name={`new_${p.id}.destPort`}
+                        pattern='^[0-9]{1,5}$'
+                        placeholder="Backend port"
+                        value={p.destPort}
+                        onChange={(e) => handleArrayChange(index, 'destPort', sanitizePort(e.target.value))}
+                      />
+                    </>
+                  )}
+                  <Select
+                    value={p.protocol}
+                    onChange={(e) => handleArrayChange(index, 'protocol', e.target.value)}
+                    maxW="100px"
+                  >
+                    {protocolOpts.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.name}</option>
+                    ))}
+                  </Select>
+                  <RMIconButton icon={HiTrash} aria-label="Delete Route" onClick={() => handleRemoveItem(index)} />
+                </HStack>
+                <Code fontSize="xs" color="gray.500" bg="transparent" pl={1}>{newRoutePreview(p)}</Code>
+              </VStack>
+            );
+          })}
         </VStack>
       )}
+
       <VStack spacing={3} align="stretch">
         <HStack>
           {formData?.length > 0 && (
-            <RMButton onClick={handleSaveAdd}>
-              Save Route
-            </RMButton>
+            <RMButton onClick={handleSaveAdd}>Save Route</RMButton>
           )}
-          <RMButton onClick={handleAddItem}>
-            Add Route
-          </RMButton>
+          <RMButton onClick={handleAddItem}>Add Route</RMButton>
         </HStack>
       </VStack>
     </Flex>
-  )
+  );
 })
+
+Routes.propTypes = {
+  gateway: PropTypes.string,
+  rows: PropTypes.array,
+  fieldName: PropTypes.string,
+  onRowArrayChange: PropTypes.func,
+  onRowDropIndex: PropTypes.func,
+  onSaveAdd: PropTypes.func,
+  onPauseAutoReload: PropTypes.func,
+  onResumeAutoReload: PropTypes.func,
+}
+
+export default Routes

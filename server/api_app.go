@@ -1136,6 +1136,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
+			node.AppConfig.Deployment.NormalizeRoutes()
 			dep, err := json.MarshalIndent(node.AppConfig.Deployment, "", "\t")
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
@@ -1271,41 +1272,79 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					return
 				}
 
-				// Modify field based on key
+				originalRow := node.AppConfig.Deployment.Routes[index]
+				row := originalRow
 				switch vars["key"] {
-				case "cname":
-					if node.AppConfig.Deployment.Routes[index].CName == newValue {
-						http.Error(w, "CNAME unchanged", http.StatusInternalServerError)
-						return
+				case "name":
+					row.Name = newValue
+				case "mode":
+					row.Mode = strings.ToLower(strings.TrimSpace(newValue))
+					// Auto-align protocol to a valid default for the new mode so that
+					// the mode change doesn't fail validation mid-transition.
+					// host requires https; port requires http or tcp.
+					switch row.Mode {
+					case "host":
+						row.Protocol = "https"
+					case "port":
+						if row.Protocol != "http" && row.Protocol != "tcp" {
+							row.Protocol = "tcp"
+						}
 					}
-					for _, existing := range node.AppConfig.Deployment.Routes {
-						if existing.CName == newValue {
-							http.Error(w, "Cannot duplicate route with same CName", http.StatusInternalServerError)
+				case "cname":
+					cname := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(newValue)), ".")
+					for i, existing := range node.AppConfig.Deployment.Routes {
+						existing.Normalize() // handle legacy unnormalized in-memory routes
+						if i != index && strings.EqualFold(existing.CName, cname) {
+							http.Error(w, "Cannot duplicate route with same CName", http.StatusBadRequest)
 							return
 						}
 					}
-					node.AppConfig.Deployment.Routes[index].CName = newValue
+					row.CName = cname
 				case "port":
-					if node.AppConfig.Deployment.Routes[index].Port == newValue {
-						http.Error(w, "Port unchanged", http.StatusInternalServerError)
-						return
+					row.Port = newValue
+					// Normalize() only copies Port into DestinationPort/SourcePort
+					// when those fields are empty.  After first normalization they are
+					// already set, so a "port" edit would be a silent no-op for the
+					// effective routing port.  Reset the derived fields here so
+					// Normalize() re-derives them from the new Port value.
+					row.DestinationPort = ""
+					effectiveMode := strings.ToLower(strings.TrimSpace(row.Mode))
+					if effectiveMode == "port" {
+						row.SourcePort = ""
 					}
-					node.AppConfig.Deployment.Routes[index].Port = newValue
+				case "sourceport", "sourcePort":
+					row.SourcePort = newValue
+				case "destport", "destPort":
+					row.DestinationPort = newValue
 				case "protocol":
-					if node.AppConfig.Deployment.Routes[index].Protocol == newValue {
-						http.Error(w, "Protocol unchanged", http.StatusInternalServerError)
-						return
-					}
-
-					if newValue != "tcp" && newValue != "https" {
-						http.Error(w, "Invalid protocol. Must be 'tcp' or 'https'", http.StatusInternalServerError)
-						return
-					}
-					node.AppConfig.Deployment.Routes[index].Protocol = newValue
+					row.Protocol = strings.ToLower(strings.TrimSpace(newValue))
+				case "primary":
+					row.Primary = newValue == "true"
 				default:
-					http.Error(w, "Invalid key for routes", http.StatusInternalServerError)
+					http.Error(w, "Invalid key for routes", http.StatusBadRequest)
 					return
 				}
+
+				row.Normalize()
+				if err := row.Validate(); err != nil {
+					http.Error(w, "Invalid route: "+err.Error(), http.StatusBadRequest)
+					return
+				}
+				node.AppConfig.Deployment.Routes[index] = row
+				node.AppConfig.Deployment.EnforceSinglePrimary()
+
+				// Cross-cluster gateway conflict check against the full updated route set.
+				others := repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
+				if err := config.CheckGatewayConflicts(node.AppConfig.Deployment.Routes, others...); err != nil {
+					// Roll back the change.
+					node.AppConfig.Deployment.Routes[index] = originalRow
+					node.AppConfig.Deployment.EnforceSinglePrimary()
+					http.Error(w, "Gateway conflict: "+err.Error(), http.StatusBadRequest)
+					return
+				}
+
+				// DNS cleanup for renamed or rekeyed managed host routes happens
+				// via the full reconcile path (update-routes / provision), not here.
 			case "variables":
 				if index >= len(node.AppConfig.Deployment.Variables) {
 					http.Error(w, "Index out of range for variables", http.StatusInternalServerError)
@@ -1530,6 +1569,49 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 	}
 }
 
+// allExternalGatewayRoutes returns one normalized route-slice per app that
+// shares the same gateway as the named cluster, excluding the named cluster+app
+// so the caller can use the result as the "others" argument to
+// config.CheckGatewayConflicts.
+//
+// Apps on clusters with a different (or empty) Cloud18GatewayService cannot
+// conflict on the shared gateway, so they are excluded.
+func (repman *ReplicationManager) allExternalGatewayRoutes(excludeClusterName, excludeAppName string) [][]config.Route {
+	// Determine the gateway service that the excluded cluster belongs to.
+	// Cloud18GatewayService (namespace/type/service) uniquely identifies the
+	// shared HAProxy instance.  Two clusters with the same service share a
+	// single listener, so their routes can conflict.
+	var thisGateway string
+	if cl, ok := repman.Clusters[excludeClusterName]; ok {
+		thisGateway = strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
+	}
+	if thisGateway == "" {
+		// No gateway service configured — no shared-gateway conflicts possible.
+		return nil
+	}
+
+	var others [][]config.Route
+	for _, cl := range repman.Clusters {
+		clGateway := strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
+		if clGateway != thisGateway {
+			continue
+		}
+		for _, app := range cl.Apps {
+			if app == nil || app.AppConfig == nil {
+				continue
+			}
+			if cl.Name == excludeClusterName && app.Name == excludeAppName {
+				continue
+			}
+			normalized := config.NormalizedCopy(app.AppConfig.Deployment.Routes)
+			if len(normalized) > 0 {
+				others = append(others, normalized)
+			}
+		}
+	}
+	return others
+}
+
 // @Summary Add Deployment Field Row
 // @Description Add a new row to a specific field in a deployment for a given cluster and app
 // @Tags Apps
@@ -1578,31 +1660,38 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		}
 
 		for _, row := range body {
-			if !isValidPortFormat(row.Port) {
-				http.Error(w, "Invalid port format. Expected hostPort with valid port numbers", http.StatusInternalServerError)
+			row.Normalize()
+			if err := row.Validate(); err != nil {
+				http.Error(w, "Invalid route: "+err.Error(), http.StatusBadRequest)
 				return
 			}
 
-			if row.CName == "" {
-				http.Error(w, "CName must be provided for route", http.StatusInternalServerError)
-				return
-			}
-
-			if row.Protocol != "tcp" && row.Protocol != "https" {
-				http.Error(w, "Invalid protocol. Must be 'tcp' or 'https'", http.StatusInternalServerError)
-				return
-			}
-
-			// Check for duplicate route
+			// Duplicate check: host routes must have unique cname, port routes unique sourcePort.
+			// Normalize existing rows so legacy data with empty Mode doesn't slip through.
 			for _, existing := range node.AppConfig.Deployment.Routes {
-				if existing.CName == row.CName {
-					http.Error(w, "Cannot duplicate route with same CName", http.StatusInternalServerError)
+				existing.Normalize()
+				if existing.Mode == "host" && row.Mode == "host" && strings.EqualFold(existing.CName, row.CName) {
+					http.Error(w, "Cannot duplicate route with same CName", http.StatusBadRequest)
+					return
+				}
+				if existing.Mode == "port" && row.Mode == "port" && existing.SourcePort == row.SourcePort {
+					http.Error(w, "Cannot duplicate port route with same source port", http.StatusBadRequest)
 					return
 				}
 			}
 
+			// Cross-cluster gateway conflict check.
+			others := repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
+			if err := config.CheckGatewayConflicts([]config.Route{row}, others...); err != nil {
+				http.Error(w, "Gateway conflict: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+
 			node.AppConfig.Deployment.Routes = append(node.AppConfig.Deployment.Routes, row)
 			affected = true
+		}
+		if affected {
+			node.AppConfig.Deployment.EnforceSinglePrimary()
 		}
 
 	case "variables":
@@ -1705,17 +1794,11 @@ func decodeSlice[T any](r *http.Request, w http.ResponseWriter, typename string)
 }
 
 func isValidPortFormat(value string) bool {
-	parts := strings.Split(value, ":")
-	if len(parts) > 2 {
+	if strings.Contains(value, ":") {
 		return false
 	}
-	for _, part := range parts {
-		p, err := strconv.Atoi(part)
-		if err != nil || p < 0 || p > 65535 {
-			return false
-		}
-	}
-	return true
+	p, err := strconv.Atoi(value)
+	return err == nil && p >= 1 && p <= 65535
 }
 
 // @Summary Drop Deployment Field Row
@@ -1773,6 +1856,9 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 			return
 		}
 		node.AppConfig.Deployment.Routes = append(node.AppConfig.Deployment.Routes[:index], node.AppConfig.Deployment.Routes[index+1:]...)
+		node.AppConfig.Deployment.EnforceSinglePrimary()
+		// DNS cleanup for dropped managed host routes happens via the full
+		// reconcile path (update-routes / provision), not here.
 	case "variables":
 		if index >= len(node.AppConfig.Deployment.Variables) {
 			http.Error(w, "Index out of range for variables", http.StatusInternalServerError)

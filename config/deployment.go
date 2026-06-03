@@ -1,10 +1,13 @@
 package config
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -501,10 +504,257 @@ func (d *Deployment) GetVariableByName(name string, lock bool) (*VariableMapping
 type Routes []Route
 
 type Route struct {
-	CName    string `mapstructure:"cname"  toml:"cname" json:"cname" groups:"apps"`
-	Port     string `mapstructure:"port"  toml:"port" json:"port" groups:"apps"`
-	Protocol string `mapstructure:"protocol"  toml:"protocol" json:"protocol" options:"https|tcp" groups:"apps"`
-	Primary  bool   `mapstructure:"primary"  toml:"primary" json:"primary" groups:"apps"`
+	Name string `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
+
+	// Existing host-route fields kept for backward compatibility.
+	CName    string `mapstructure:"cname" toml:"cname" json:"cname" groups:"apps"`
+	Port     string `mapstructure:"port" toml:"port" json:"port,omitempty" groups:"apps"`
+	Protocol string `mapstructure:"protocol" toml:"protocol" json:"protocol" groups:"apps"`
+	Primary  bool   `mapstructure:"primary" toml:"primary" json:"primary" groups:"apps"`
+
+	// Explicit source/destination fields.
+	Mode            string `mapstructure:"mode" toml:"mode" json:"mode" groups:"apps"`            // host | port
+	SourcePort      string `mapstructure:"sourceport" toml:"sourceport" json:"sourcePort" groups:"apps"`
+	DestinationPort string `mapstructure:"destport" toml:"destport" json:"destPort" groups:"apps"`
+}
+
+// Normalize fills in defaults and copies legacy fields so the Route is in
+// canonical form.  It is idempotent and must be called before Validate.
+func (r *Route) Normalize() {
+	r.Mode = strings.ToLower(strings.TrimSpace(r.Mode))
+	r.Protocol = strings.ToLower(strings.TrimSpace(r.Protocol))
+	r.CName = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(r.CName)), ".")
+
+	if r.Mode == "" {
+		// Legacy compatibility: a route saved with protocol=tcp but no explicit
+		// mode is a TCP port-forward, not a host-mode HTTP route.
+		if r.Protocol == "tcp" {
+			r.Mode = "port"
+		} else {
+			r.Mode = "host"
+		}
+	}
+
+	if r.Mode == "host" {
+		if r.Protocol == "" {
+			r.Protocol = "https"
+		}
+		// Legacy: port means destination port for host routes.
+		if r.DestinationPort == "" && r.Port != "" {
+			r.DestinationPort = r.Port
+		}
+		// SourcePort is intentionally left empty for host routes because the
+		// shared gateway frontend owns the bind port.
+	}
+
+	if r.Mode == "port" {
+		if r.SourcePort == "" && r.Port != "" {
+			r.SourcePort = r.Port
+		}
+		if r.DestinationPort == "" && r.Port != "" {
+			r.DestinationPort = r.Port
+		}
+	}
+}
+
+// Validate returns an error when the route is not in a legal state.
+// Call Normalize before Validate.
+func (r *Route) Validate() error {
+	if r.Mode != "host" && r.Mode != "port" {
+		return fmt.Errorf("route mode must be 'host' or 'port', got %q", r.Mode)
+	}
+
+	if r.Port != "" && strings.Contains(r.Port, ":") {
+		return fmt.Errorf("legacy port must be a single port number, got %q", r.Port)
+	}
+	if r.Port != "" {
+		if err := validateSinglePort(r.Port); err != nil {
+			return fmt.Errorf("legacy port: %w", err)
+		}
+	}
+
+	if r.SourcePort != "" {
+		if strings.Contains(r.SourcePort, ":") {
+			return fmt.Errorf("sourcePort must be a single port number, got %q", r.SourcePort)
+		}
+		if err := validateSinglePort(r.SourcePort); err != nil {
+			return fmt.Errorf("sourcePort: %w", err)
+		}
+	}
+	if r.DestinationPort != "" {
+		if strings.Contains(r.DestinationPort, ":") {
+			return fmt.Errorf("destPort must be a single port number, got %q", r.DestinationPort)
+		}
+		if err := validateSinglePort(r.DestinationPort); err != nil {
+			return fmt.Errorf("destPort: %w", err)
+		}
+	}
+
+	switch r.Mode {
+	case "host":
+		if r.Protocol == "tcp" {
+			return fmt.Errorf("host-mode tcp route must be migrated manually to mode=port")
+		}
+		if r.Protocol != "https" {
+			return fmt.Errorf("host route protocol must be 'https' in phase 1, got %q", r.Protocol)
+		}
+		if r.CName == "" {
+			return errors.New("host route requires a cname")
+		}
+		if r.DestinationPort == "" {
+			return errors.New("host route requires a destination port")
+		}
+	case "port":
+		if r.Protocol != "http" && r.Protocol != "tcp" {
+			return fmt.Errorf("port route protocol must be 'http' or 'tcp' in phase 1, got %q", r.Protocol)
+		}
+		if r.SourcePort == "" {
+			return errors.New("port route requires a source port")
+		}
+		if r.DestinationPort == "" {
+			return errors.New("port route requires a destination port")
+		}
+	}
+
+	return nil
+}
+
+func validateSinglePort(s string) error {
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 || n > 65535 {
+		return fmt.Errorf("%q is not a valid port number", s)
+	}
+	return nil
+}
+
+// NormalizeRoutes normalizes all routes in the deployment and enforces a
+// single primary route.
+func (d *Deployment) NormalizeRoutes() {
+	for i := range d.Routes {
+		d.Routes[i].Normalize()
+	}
+	d.EnforceSinglePrimary()
+}
+
+// ValidateRoutes validates all routes after normalization.  It returns the
+// first error found and the index of the offending route.
+func (d *Deployment) ValidateRoutes() error {
+	for i, r := range d.Routes {
+		if err := r.Validate(); err != nil {
+			return fmt.Errorf("route[%d]: %w", i, err)
+		}
+	}
+	return nil
+}
+
+// NormalizedCopy returns a new slice with every route normalized so that
+// CheckGatewayConflicts sees canonical Mode/SourcePort values even for routes
+// that were persisted before normalization was applied on write.
+func NormalizedCopy(routes []Route) []Route {
+	out := make([]Route, len(routes))
+	copy(out, routes)
+	for i := range out {
+		out[i].Normalize()
+	}
+	return out
+}
+
+// CheckGatewayConflicts returns an error when any two routes in d that share
+// the same gateway would create an ambiguous HAProxy configuration:
+//   - two host routes with the same cname
+//   - two port routes with the same sourcePort
+//
+// It also accepts an external set of route slices (from other apps on the
+// same gateway) to detect cross-app conflicts.
+func CheckGatewayConflicts(current []Route, others ...[]Route) error {
+	seen := struct {
+		cnames      map[string]bool
+		sourcePorts map[string]bool
+	}{
+		cnames:      make(map[string]bool),
+		sourcePorts: make(map[string]bool),
+	}
+
+	for _, routes := range append([][]Route{current}, others...) {
+		for _, r := range routes {
+			switch r.Mode {
+			case "host":
+				if r.CName != "" {
+					if seen.cnames[r.CName] {
+						return fmt.Errorf("cname %q is already reserved by another route on the shared gateway", r.CName)
+					}
+					seen.cnames[r.CName] = true
+				}
+			case "port":
+				if r.SourcePort != "" {
+					if seen.sourcePorts[r.SourcePort] {
+						return fmt.Errorf("sourcePort %q is already reserved by another route on the shared gateway", r.SourcePort)
+					}
+					seen.sourcePorts[r.SourcePort] = true
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// EnforceSinglePrimary ensures exactly one route is marked primary.  If
+// multiple routes are already primary, the first wins and the rest are
+// demoted.  If none is primary, the first route is promoted.
+// PrimaryRoute is updated in sync with the flags.
+func (d *Deployment) EnforceSinglePrimary() {
+	foundPrimary := -1
+	for i, r := range d.Routes {
+		if r.Primary {
+			if foundPrimary == -1 {
+				foundPrimary = i
+			} else {
+				d.Routes[i].Primary = false
+			}
+		}
+	}
+	if foundPrimary == -1 && len(d.Routes) > 0 {
+		d.Routes[0].Primary = true
+		foundPrimary = 0
+	}
+	if foundPrimary >= 0 {
+		d.PrimaryRoute = d.Routes[foundPrimary]
+	} else {
+		d.PrimaryRoute = Route{}
+	}
+}
+
+var routeTokenSanitizerRe = regexp.MustCompile(`[^a-zA-Z0-9_]`)
+
+// sanitizeToken replaces non-alphanumeric/underscore characters with '_' and
+// lowercases the result.
+func sanitizeToken(s string) string {
+	return strings.ToLower(routeTokenSanitizerRe.ReplaceAllString(s, "_"))
+}
+
+// shortHash returns an 6-character hex prefix of the SHA-256 hash of s.
+func shortHash(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return fmt.Sprintf("%x", h[:3])
+}
+
+// BuildRouteToken returns a stable per-route fragment identity string.
+//
+//	host route -> host_<destPort>_<shortHash(cname)>
+//	port route -> port_<sourcePort>_<destPort>_<shortHash(sourcePort+destPort)>
+func BuildRouteToken(r Route) string {
+	switch r.Mode {
+	case "port":
+		return sanitizeToken(fmt.Sprintf("port_%s_%s_%s", r.SourcePort, r.DestinationPort, shortHash(r.SourcePort+r.DestinationPort)))
+	default: // host
+		return sanitizeToken(fmt.Sprintf("host_%s_%s", r.DestinationPort, shortHash(r.CName)))
+	}
+}
+
+// BuildGlobalRouteToken returns the globally unique HAProxy object name prefix
+// derived from cluster, app, and route identity.
+func BuildGlobalRouteToken(clusterName, appName string, routeToken string) string {
+	return sanitizeToken(clusterName + "_" + appName + "_" + routeToken)
 }
 
 type RouteStatus struct {
