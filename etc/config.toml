@@ -76,7 +76,7 @@ include = "/etc/replication-manager/cluster.d"
 
 # api-port = "10005"
 # api-credentials = "admin:repman"
-# api-credentials-acl-allow = "admin:cluster db prov"
+# api-credentials-acl-allow = "admin:cluster db proxy prov global grant show sale extrole terminal app"
 # api-credentials-acl-discard = ""
 
 ## force https with ssl key path and disbale http for web client
