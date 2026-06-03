@@ -48,6 +48,9 @@ performance_schema = ON
 max_binlog_size = 1073741824
 binlog_expire_logs_seconds = 2592000
 sync_binlog = 1
+# Larger row-event packing improves ROW-based replication throughput.
+# MariaDB/MySQL server default is 8K (8192); 131072 (128K) modernizes it.
+binlog_row_event_max_size = 131072
 
 # Transaction Settings
 transaction_isolation = REPEATABLE-READ
