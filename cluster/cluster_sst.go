@@ -424,7 +424,7 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, uncom
 	var err error
 	port, _ := strconv.Atoi(sv.SSTPort)
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlWarn, "SST Reseed to port %s server %s", sv.SSTPort, sv.Host)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST Reseed to port %s server %s", sv.SSTPort, sv.Host)
 
 	if cluster.Conf.SchedulerReceiverUseSSL {
 		return cluster.SSTRunSenderSSL(backupfile, sv)
@@ -455,7 +455,7 @@ func (cluster *Cluster) SSTRunSenderStream(sourceName string, opener SSTStreamOp
 	var err error
 	port, _ := strconv.Atoi(sv.SSTPort)
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlWarn, "SST Reseed stream to port %s server %s", sv.SSTPort, sv.Host)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST Reseed stream to port %s server %s", sv.SSTPort, sv.Host)
 
 	if cluster.Conf.SchedulerReceiverUseSSL {
 		return cluster.SSTRunSenderStreamSSL(sourceName, opener, sv, uncompress)
