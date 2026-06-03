@@ -159,12 +159,12 @@ plugins: $(PLUGIN_SIGNER_BIN)
 	done
 	$(MAKE) plugin-sigs
 	@if [ "$(PLUGIN_PUSH)" = "ON" ]; then \
-		$(MAKE) plugin-push; \
+		$(MAKE) plugin-push || echo "WARNING: plugin-push failed (non-fatal)"; \
 	elif [ -n "$(PLUGIN_SIGNER_USER)" ] && [ -n "$(PLUGIN_SIGNER_TOKEN)" ] && [ -d "$(PLUGIN_SIGNER_CLONE)/.git" ]; then \
 		WIREDIR="$(PLUGIN_SIGNER_CLONE)/plugins/$(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)"; \
 		if [ ! -d "$$WIREDIR" ]; then \
 			echo "New wire version detected (wire-v$(WIRE_VERSION)) — pushing to signer repo"; \
-			$(MAKE) plugin-push; \
+			$(MAKE) plugin-push || echo "WARNING: plugin-push failed (non-fatal)"; \
 		else \
 			CHANGED=0; \
 			for name in $(PLUGIN_NAMES); do \
@@ -180,7 +180,7 @@ plugins: $(PLUGIN_SIGNER_BIN)
 			done; \
 			if [ "$$CHANGED" = "1" ]; then \
 				echo "Plugin binaries changed — pushing to signer repo"; \
-				$(MAKE) plugin-push; \
+				$(MAKE) plugin-push || echo "WARNING: plugin-push failed (non-fatal)"; \
 			else \
 				echo "Plugin binaries unchanged — skipping push"; \
 			fi; \
@@ -312,6 +312,7 @@ plugin-push:
 		git diff --cached --quiet || \
 		  git commit -m "plugins: $(VERSION) [$(PLUGIN_PLATFORM)] → wire-v$(WIRE_VERSION) [$(FULLVERSION)]" && \
 		AUTH_URL=$$(echo "$(PLUGIN_SIGNER_REPO)" | sed "s|https://|https://$(PLUGIN_SIGNER_USER):$(PLUGIN_SIGNER_TOKEN)@|"); \
+		git fetch --quiet "$$AUTH_URL" main && git rebase FETCH_HEAD --quiet 2>/dev/null || true; \
 		git -c http.postBuffer=104857600 push "$$AUTH_URL" HEAD:main && \
 		echo "Pushed $(VERSION) → $(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION) to signer repo"; \
 	else \

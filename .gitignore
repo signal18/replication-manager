@@ -22,6 +22,10 @@ googleapis/
 .local/
 .ssh/
 share/dashboard_react/node_modules
+share/plugins/*.sig
+share/plugins/plugin-signing.pub
+share/plugins/*.sig
+share/plugins/plugin-signing.pub
 .vim/
 share/dashboard_react/.vite/
 .gitconfig
