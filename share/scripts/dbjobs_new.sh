@@ -1629,7 +1629,7 @@ jobsUpgrade() {
 
     # Open receiver port to get the new script to a temporary file
     TEMP_FILE="${BASH_SOURCE[0]}.tmp"
-    socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND - > "$TEMP_FILE" 2>>"$LOG_DIR/jobs-upgrade.process.out" &
+    timeout 120 socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND - > "$TEMP_FILE" 2>>"$LOG_DIR/jobs-upgrade.process.out" &
     SOCAT_PID=$!
 
     # Request the upgrade
