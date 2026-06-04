@@ -48,7 +48,7 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
             <Box p={3} borderRadius='md' bg={theme === 'light' ? 'gray.50' : 'rgba(255,255,255,0.05)'}>
               <HStack spacing={4}>
                 <Text fontSize='sm' fontWeight={600}>User:</Text>
-                <Text fontSize='sm'>{user?.User || user?.username || '-'}</Text>
+                <Text fontSize='sm'>{user?.DisplayName || user?.User || user?.username || '-'}</Text>
               </HStack>
               {user?.Email && (
                 <HStack spacing={4}>

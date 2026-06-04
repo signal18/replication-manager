@@ -602,6 +602,9 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 	UserInfoMap["Password"] = mycutinfo["Password"].(string)
 	UserInfoMap["Role"] = mycutinfo["Role"].(string)
 	UserInfoMap["Email"] = ""
+	if dn, ok := mycutinfo["display_name"]; ok && dn != nil {
+		UserInfoMap["DisplayName"] = dn.(string)
+	}
 	_, ok := mycutinfo["profile"]
 	if ok {
 		profile := mycutinfo["profile"].(string)
@@ -882,9 +885,19 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	// SSO fallback succeeded: build SSO JWT and return without upgrade_id.
 	resetAuthTry()
 	repman.ensureCRMSessionBootstrappedAsync(tok)
-	email, err := githelper.GetGitLabUserEmail(tok, true)
-	if err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving email from gitlab: %v", err)
+	// Fetch full profile (name + email) from GitLab
+	var email, displayName string
+	if profile, profileErr := githelper.GetGitLabUserProfile(tok); profileErr == nil {
+		email = profile.Email
+		displayName = profile.Name
+	} else {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving profile from gitlab: %v", profileErr)
+		// Fallback to email-only endpoint
+		var emailErr error
+		email, emailErr = githelper.GetGitLabUserEmail(tok, true)
+		if emailErr != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving email from gitlab: %v", emailErr)
+		}
 	}
 	meetUser := email
 	if meetUser == "" {
@@ -904,20 +917,22 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	if email != "" {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Switch from gitlab user to email: %s", email)
 		ssoUserInfo = struct {
-			Name       string
-			Role       string
-			Password   string
-			Email      string `json:"email"`
-			Profile    string `json:"profile"`
-			MeetUserID string `json:"meet_user_id"`
-		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), email, repman.Conf.OAuthProvider, meetUserID}
+			Name        string
+			DisplayName string `json:"display_name"`
+			Role        string
+			Password    string
+			Email       string `json:"email"`
+			Profile     string `json:"profile"`
+			MeetUserID  string `json:"meet_user_id"`
+		}{user.Username, displayName, "Member", repman.Conf.GetEncryptedString(user.Password), email, repman.Conf.OAuthProvider, meetUserID}
 	} else {
 		ssoUserInfo = struct {
-			Name       string
-			Role       string
-			Password   string
-			MeetUserID string `json:"meet_user_id"`
-		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID}
+			Name        string
+			DisplayName string `json:"display_name"`
+			Role        string
+			Password    string
+			MeetUserID  string `json:"meet_user_id"`
+		}{user.Username, displayName, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID}
 	}
 
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "LoginHandler: meet userID %s", meetUserID)

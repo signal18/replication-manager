@@ -415,6 +415,37 @@ func GetGitLabUserEmail(acces_token string, log_git bool) (string, error) {
 
 }
 
+// GitLabUserProfile holds the display name and email from /api/v4/user.
+type GitLabUserProfile struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// GetGitLabUserProfile fetches the authenticated user's profile (name + email).
+func GetGitLabUserProfile(accessToken string) (*GitLabUserProfile, error) {
+	req, err := http.NewRequest("GET", "https://gitlab.signal18.io/api/v4/user", nil)
+	if err != nil {
+		return nil, fmt.Errorf("gitlab user profile API error: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("gitlab user profile API error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("gitlab user profile API returned %d", resp.StatusCode)
+	}
+
+	var profile GitLabUserProfile
+	if err := json.NewDecoder(resp.Body).Decode(&profile); err != nil {
+		return nil, fmt.Errorf("gitlab user profile decode error: %w", err)
+	}
+	return &profile, nil
+}
+
 // Get User Access Level
 func InitGroupAccessLevel(acces_token, domain string, user_id int, log_git bool) (int, error) {
 	var body = make([]byte, 0)
