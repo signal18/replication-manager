@@ -50,7 +50,7 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
                 <Text fontSize='sm' fontWeight={600}>User:</Text>
                 <Text fontSize='sm'>{user?.DisplayName || user?.User || user?.username || '-'}</Text>
                 <Box as='span' px={2} py={0.5} borderRadius='md' fontSize='xs' fontWeight='bold'
-                  bg={user?.AuthType === 'SSO' ? 'purple.600' : 'blue.600'} color='white'>
+                  sx={{ bg: user?.AuthType === 'SSO' ? 'purple.600' : 'blue.600', color: 'white !important' }}>
                   {user?.AuthType || 'Local'}
                 </Box>
               </HStack>
@@ -101,7 +101,7 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
                           {clusterNames.map(name => (
                             <Td key={name} textAlign='center'>
                               <Box as='span' px={2} py={0.5} borderRadius='md' fontSize='xs' fontWeight='bold' textAlign='center' minW='24px' display='inline-block'
-                                bg={roles[name]?.[role] ? cellBgYes : cellBgNo} color={roles[name]?.[role] ? cellColorYes : cellColorNo}>
+                                sx={{ bg: roles[name]?.[role] ? cellBgYes : cellBgNo, color: (roles[name]?.[role] ? cellColorYes : cellColorNo) + ' !important' }}>
                                 {roles[name]?.[role] ? checkMark : '-'}
                               </Box>
                             </Td>
@@ -137,7 +137,7 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
                           {clusterNames.map(name => (
                             <Td key={name} textAlign='center'>
                               <Box as='span' px={2} py={0.5} borderRadius='md' fontSize='xs' fontWeight='bold' textAlign='center' minW='24px' display='inline-block'
-                                bg={grants[name]?.[grant] ? cellBgYes : cellBgNo} color={grants[name]?.[grant] ? cellColorYes : cellColorNo}>
+                                sx={{ bg: grants[name]?.[grant] ? cellBgYes : cellBgNo, color: (grants[name]?.[grant] ? cellColorYes : cellColorNo) + ' !important' }}>
                                 {grants[name]?.[grant] ? checkMark : '-'}
                               </Box>
                             </Td>
