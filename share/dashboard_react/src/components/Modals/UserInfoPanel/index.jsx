@@ -1,6 +1,6 @@
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton,
-  Box, VStack, HStack, Text, Badge, Divider, Table, Thead, Tbody, Tr, Th, Td
+  Box, VStack, HStack, Text, Divider, Table, Thead, Tbody, Tr, Th, Td
 } from '@chakra-ui/react'
 import React from 'react'
 import { HiMoon, HiSun } from 'react-icons/hi'
@@ -100,9 +100,10 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
                           <Td position='sticky' left={0} bg={stickyBg} fontSize='xs'>{role}</Td>
                           {clusterNames.map(name => (
                             <Td key={name} textAlign='center'>
-                              <Badge bg={roles[name]?.[role] ? cellBgYes : cellBgNo} color={roles[name]?.[role] ? cellColorYes : cellColorNo} size='sm'>
+                              <Box as='span' px={2} py={0.5} borderRadius='md' fontSize='xs' fontWeight='bold' textAlign='center' minW='24px' display='inline-block'
+                                bg={roles[name]?.[role] ? cellBgYes : cellBgNo} color={roles[name]?.[role] ? cellColorYes : cellColorNo}>
                                 {roles[name]?.[role] ? checkMark : '-'}
-                              </Badge>
+                              </Box>
                             </Td>
                           ))}
                         </Tr>
@@ -135,9 +136,10 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
                           <Td position='sticky' left={0} bg={stickyBg} fontSize='xs'>{grant}</Td>
                           {clusterNames.map(name => (
                             <Td key={name} textAlign='center'>
-                              <Badge bg={grants[name]?.[grant] ? cellBgYes : cellBgNo} color={grants[name]?.[grant] ? cellColorYes : cellColorNo} size='sm'>
+                              <Box as='span' px={2} py={0.5} borderRadius='md' fontSize='xs' fontWeight='bold' textAlign='center' minW='24px' display='inline-block'
+                                bg={grants[name]?.[grant] ? cellBgYes : cellBgNo} color={grants[name]?.[grant] ? cellColorYes : cellColorNo}>
                                 {grants[name]?.[grant] ? checkMark : '-'}
-                              </Badge>
+                              </Box>
                             </Td>
                           ))}
                         </Tr>
