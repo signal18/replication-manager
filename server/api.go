@@ -1256,35 +1256,8 @@ func (repman *ReplicationManager) handlerMuxWhoAmI(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Add per-cluster grants to the response
-	username := user["User"]
-	if username == "" {
-		username = user["Name"]
-	}
-	clusterGrants := repman.resolveUserClusterGrants(username)
-	if clusterGrants != nil {
-		res, _ = sjson.SetBytes(res, "grants", clusterGrants)
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(res)
-}
-
-// resolveUserClusterGrants returns a map of cluster name → grant map for the given user.
-func (repman *ReplicationManager) resolveUserClusterGrants(username string) map[string]map[string]bool {
-	if username == "" {
-		return nil
-	}
-	result := make(map[string]map[string]bool)
-	for _, cl := range repman.Clusters {
-		if apiUser, ok := cl.APIUsers[username]; ok {
-			result[cl.Name] = apiUser.Grants
-		}
-	}
-	if len(result) == 0 {
-		return nil
-	}
-	return result
 }
 
 // handlerMuxAddClusterUser handles the addition of a new user to a cluster.
