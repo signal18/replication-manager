@@ -8,12 +8,17 @@ import RMButton from '../../RMButton'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
 
+// Static checkmark character for grant/role indicators
+const CHECK_MARK = '\u2713'
+
 function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
   const { theme, toggleTheme } = useTheme()
+  const badgeVariant = theme === 'dark' ? 'solid' : 'subtle'
 
   const grants = user?.grants || {}
   const roles = user?.roles || {}
-  const clusterNames = Object.keys(grants).sort()
+  // Derive cluster names from both grants and roles in case a user has roles but no grants
+  const clusterNames = [...new Set([...Object.keys(grants), ...Object.keys(roles)])].sort()
 
   // Collect all unique grant names across clusters
   const allGrants = new Set()
@@ -29,7 +34,6 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
   })
   const roleList = [...allRoles].sort()
 
-  const checkMark = '\u2713'
   const stickyBg = theme === 'light' ? 'white' : 'gray.800'
 
   return (
@@ -44,8 +48,8 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
             <Box p={3} borderRadius='md' bg={theme === 'light' ? 'gray.50' : 'rgba(255,255,255,0.05)'}>
               <HStack spacing={4}>
                 <Text fontSize='sm' fontWeight={600}>User:</Text>
-                <Text fontSize='sm'>{user?.DisplayName || user?.User || user?.username || '-'}</Text>
-                <Badge variant={theme === 'dark' ? 'solid' : 'subtle'} colorScheme={user?.AuthType === 'SSO' ? 'purple' : 'blue'} size='sm'>
+                <Text fontSize='sm'>{user?.DisplayName || user?.User || '-'}</Text>
+                <Badge variant={badgeVariant} colorScheme={user?.AuthType === 'SSO' ? 'purple' : 'blue'} size='sm'>
                   {user?.AuthType || 'Local'}
                 </Badge>
               </HStack>
@@ -95,8 +99,8 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
                           <Td position='sticky' left={0} bg={stickyBg} fontSize='xs'>{role}</Td>
                           {clusterNames.map(name => (
                             <Td key={name} textAlign='center'>
-                              <Badge variant={theme === 'dark' ? 'solid' : 'subtle'} colorScheme={roles[name]?.[role] ? 'blue' : 'gray'} size='sm'>
-                                {roles[name]?.[role] ? checkMark : '-'}
+                              <Badge variant={badgeVariant} colorScheme={roles[name]?.[role] ? 'blue' : 'gray'} size='sm'>
+                                {roles[name]?.[role] ? CHECK_MARK : '-'}
                               </Badge>
                             </Td>
                           ))}
@@ -106,6 +110,12 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
                   </Table>
                 </Box>
               </>
+            )}
+
+            {clusterNames.length > 0 && roleList.length === 0 && (
+              <Text fontSize='sm' color={theme === 'light' ? 'gray.500' : 'gray.500'} textAlign='center' py={2}>
+                No roles assigned
+              </Text>
             )}
 
             {clusterNames.length > 0 && (
@@ -130,8 +140,8 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
                           <Td position='sticky' left={0} bg={stickyBg} fontSize='xs'>{grant}</Td>
                           {clusterNames.map(name => (
                             <Td key={name} textAlign='center'>
-                              <Badge variant={theme === 'dark' ? 'solid' : 'subtle'} colorScheme={grants[name]?.[grant] ? 'blue' : 'gray'} size='sm'>
-                                {grants[name]?.[grant] ? checkMark : '-'}
+                              <Badge variant={badgeVariant} colorScheme={grants[name]?.[grant] ? 'blue' : 'gray'} size='sm'>
+                                {grants[name]?.[grant] ? CHECK_MARK : '-'}
                               </Badge>
                             </Td>
                           ))}

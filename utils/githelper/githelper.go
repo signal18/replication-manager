@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -422,14 +423,16 @@ type GitLabUserProfile struct {
 }
 
 // GetGitLabUserProfile fetches the authenticated user's profile (name + email).
+// Uses a 10-second timeout to avoid blocking the login goroutine if GitLab is slow.
 func GetGitLabUserProfile(accessToken string) (*GitLabUserProfile, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequest("GET", "https://gitlab.signal18.io/api/v4/user", nil)
 	if err != nil {
 		return nil, fmt.Errorf("gitlab user profile API error: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("gitlab user profile API error: %w", err)
 	}

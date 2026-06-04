@@ -1273,21 +1273,29 @@ func (repman *ReplicationManager) handlerMuxWhoAmI(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Add per-cluster grants and roles to the response
+	// Add per-cluster grants and roles to the response.
+	// user["User"] is the canonical username; user["Name"] is the fallback
+	// for local users where GetUserInfoMap sets User = Name (SSO sets User = email).
 	username := user["User"]
 	if username == "" {
 		username = user["Name"]
 	}
 	clusterGrants, clusterRoles := repman.resolveUserClusterGrantsAndRoles(username)
 	if clusterGrants != nil {
-		res, _ = sjson.SetBytes(res, "grants", clusterGrants)
+		if res, err = sjson.SetBytes(res, "grants", clusterGrants); err != nil {
+			log.Errorf("handlerMuxWhoAmI sjson grants error: %v", err)
+		}
 	}
 	if clusterRoles != nil {
-		res, _ = sjson.SetBytes(res, "roles", clusterRoles)
+		if res, err = sjson.SetBytes(res, "roles", clusterRoles); err != nil {
+			log.Errorf("handlerMuxWhoAmI sjson roles error: %v", err)
+		}
 	}
 	// For registered instances, set admin email from Cloud18 registration
 	if repman.Conf.Cloud18 && repman.Conf.Cloud18GitUser != "" && repman.isAdminUser(username) {
-		res, _ = sjson.SetBytes(res, "Email", repman.Conf.Cloud18GitUser)
+		if res, err = sjson.SetBytes(res, "Email", repman.Conf.Cloud18GitUser); err != nil {
+			log.Errorf("handlerMuxWhoAmI sjson email error: %v", err)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1295,6 +1303,7 @@ func (repman *ReplicationManager) handlerMuxWhoAmI(w http.ResponseWriter, r *htt
 }
 
 // resolveUserClusterGrantsAndRoles returns per-cluster grant and role maps for the given user.
+// Returns shallow copies of the grant/role maps to avoid data races with the monitoring loop.
 func (repman *ReplicationManager) resolveUserClusterGrantsAndRoles(username string) (map[string]map[string]bool, map[string]map[string]bool) {
 	if username == "" {
 		return nil, nil
@@ -1303,11 +1312,20 @@ func (repman *ReplicationManager) resolveUserClusterGrantsAndRoles(username stri
 	roles := make(map[string]map[string]bool)
 	for _, cl := range repman.Clusters {
 		if apiUser, ok := cl.APIUsers[username]; ok {
-			grants[cl.Name] = apiUser.Grants
-			roles[cl.Name] = apiUser.Roles
+			grantsCopy := make(map[string]bool, len(apiUser.Grants))
+			for k, v := range apiUser.Grants {
+				grantsCopy[k] = v
+			}
+			grants[cl.Name] = grantsCopy
+
+			rolesCopy := make(map[string]bool, len(apiUser.Roles))
+			for k, v := range apiUser.Roles {
+				rolesCopy[k] = v
+			}
+			roles[cl.Name] = rolesCopy
 		}
 	}
-	if len(grants) == 0 {
+	if len(grants) == 0 && len(roles) == 0 {
 		return nil, nil
 	}
 	return grants, roles
