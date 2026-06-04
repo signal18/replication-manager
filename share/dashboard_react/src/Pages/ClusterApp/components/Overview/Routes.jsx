@@ -1,4 +1,4 @@
-import { VStack, HStack, Text, Heading, Input, Select, Flex, Tooltip, Code } from '@chakra-ui/react'
+import { VStack, HStack, Text, Heading, Input, Select, Flex, Tooltip, Code, Box } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import { HiTrash, HiInformationCircle } from 'react-icons/hi'
 import PropTypes from 'prop-types';
@@ -12,6 +12,12 @@ import Dropdown from '../../../../components/Dropdown';
 const modeOptions = [
   { value: 'host', name: 'Host' },
   { value: 'port', name: 'Port' },
+];
+
+const authTypeOptions = [
+  { value: 'none', name: 'None' },
+  { value: 'basic', name: 'Basic' },
+  { value: 'bearer', name: 'Bearer' },
 ];
 
 const hostProtocolOptions = [
@@ -78,9 +84,48 @@ function newRoutePreview(p) {
   return `${listener}  →  backend :${backendPort}`;
 }
 
+function isHTTPMonitorCapable(route) {
+  const mode = effectiveMode(route);
+  const proto = route.protocol || (mode === 'host' ? 'https' : 'tcp');
+  return (mode === 'host' && proto === 'https') || (mode === 'port' && proto === 'http');
+}
+
+function secretVariableOptions(variables) {
+  return (variables || [])
+    .filter(v => v.type === 'secret')
+    .map(v => ({ value: v.name, name: v.name }));
+}
+
+function hasMonitorConfig(route) {
+  const m = route.monitor;
+  if (!m) return false;
+  return !!(m.path || m.authType || m.authUser || m.authSecretVar || m.expectStatus);
+}
+
+function normalizeNewRouteMonitorDraft(draft) {
+  const { id, monitorPath, monitorAuthType, monitorAuthUser, monitorAuthSecretVar, monitorExpectStatus, ...routeFields } = draft;
+  const mode = routeFields.mode || 'host';
+  const protocol = routeFields.protocol || (mode === 'host' ? 'https' : 'tcp');
+  const httpCapable = (mode === 'host' && protocol === 'https') || (mode === 'port' && protocol === 'http');
+  if (!httpCapable) return routeFields;
+  const hasMonitor = monitorPath || (monitorAuthType && monitorAuthType !== 'none') || monitorAuthUser || monitorAuthSecretVar || monitorExpectStatus;
+  if (!hasMonitor) return routeFields;
+  return {
+    ...routeFields,
+    monitor: {
+      path: monitorPath || '',
+      authType: monitorAuthType !== 'none' ? (monitorAuthType || '') : '',
+      authUser: monitorAuthUser || '',
+      authSecretVar: monitorAuthSecretVar || '',
+      expectStatus: monitorExpectStatus || '',
+    },
+  };
+}
+
 const Routes = React.memo(function Routes({
   gateway = "",
   rows = [],
+  variables = [],
   fieldName = 'routes',
   onRowArrayChange,
   onRowDropIndex,
@@ -90,6 +135,7 @@ const Routes = React.memo(function Routes({
 }) {
 
   const [formData, setFormData] = useState([]);
+  const secretVarOpts = secretVariableOptions(variables);
 
   const handleArrayChange = (index, key, value) => {
     setFormData(prevState => prevState.map((item, i) => {
@@ -121,6 +167,11 @@ const Routes = React.memo(function Routes({
       sourcePort: '',
       destPort: '',
       protocol: 'https',
+      monitorPath: '',
+      monitorAuthType: 'none',
+      monitorAuthUser: '',
+      monitorAuthSecretVar: '',
+      monitorExpectStatus: '',
     }]);
     onPauseAutoReload();
   };
@@ -135,7 +186,8 @@ const Routes = React.memo(function Routes({
 
   const handleSaveAdd = () => {
     if (formData.length > 0) {
-      onSaveAdd(fieldName, formData).then(() => {
+      const normalized = formData.map(normalizeNewRouteMonitorDraft);
+      onSaveAdd(fieldName, normalized).then(() => {
         setFormData([]);
         onResumeAutoReload();
       });
@@ -194,6 +246,9 @@ const Routes = React.memo(function Routes({
             const modeHelp = isHost
               ? 'Clients connect using this hostname over HTTPS via the shared gateway frontend. Traffic is forwarded to the backend port.'
               : 'Clients connect to the listener endpoint (cname:sourcePort). The gateway resolves the listener CNAME to a local bind address — wildcard binds are not allowed.';
+            const monitorCapable = isHTTPMonitorCapable(p);
+            const authType = p.monitor?.authType || 'none';
+            const savedSecretVarOpts = [{ value: '__none__', name: '— none —' }, ...secretVarOpts];
             return (
               <VStack key={rowKey} align="stretch" spacing={1}>
                 <HStack align="center">
@@ -263,6 +318,58 @@ const Routes = React.memo(function Routes({
                   <RMIconButton icon={HiTrash} aria-label="Delete Route" onClick={() => onRowDropIndex(fieldName, index)} />
                 </HStack>
                 <Code fontSize="xs" color="gray.500" bg="transparent" pl={1}>{routePreview(p)}</Code>
+                {monitorCapable && (
+                  <Box pl={1} pt={1} borderLeft="2px solid" borderColor="gray.200">
+                    <HStack spacing={2} flexWrap="wrap" align="flex-start">
+                      <Text fontSize="xs" color="gray.400" fontWeight="semibold" minW="75px" pt={1}>Monitoring</Text>
+                      <TextForm
+                        confirmTitle="Monitor path changed"
+                        name={`${rowKey}.monitor.path`}
+                        placeholder="/health"
+                        value={p.monitor?.path || ''}
+                        onSave={(value) => onRowArrayChange(fieldName, index, 'monitor.path', value)}
+                      />
+                      <Dropdown
+                        confirmTitle="Monitor auth type changed"
+                        name={`${rowKey}.monitor.auth-type`}
+                        selectedValue={authType}
+                        onChange={(value) => onRowArrayChange(fieldName, index, 'monitor.auth-type', value)}
+                        options={authTypeOptions}
+                      />
+                      {authType === 'basic' && (
+                        <TextForm
+                          confirmTitle="Monitor auth user changed"
+                          name={`${rowKey}.monitor.auth-user`}
+                          placeholder="Username"
+                          value={p.monitor?.authUser || ''}
+                          onSave={(value) => onRowArrayChange(fieldName, index, 'monitor.auth-user', value)}
+                        />
+                      )}
+                      {(authType === 'basic' || authType === 'bearer') && (
+                        <Dropdown
+                          confirmTitle="Monitor secret variable changed"
+                          name={`${rowKey}.monitor.auth-secret-var`}
+                          selectedValue={p.monitor?.authSecretVar || '__none__'}
+                          onChange={(value) => onRowArrayChange(fieldName, index, 'monitor.auth-secret-var', value === '__none__' ? '' : value)}
+                          options={savedSecretVarOpts}
+                          placeholder="Secret var"
+                        />
+                      )}
+                      <TextForm
+                        confirmTitle="Expected status codes changed"
+                        name={`${rowKey}.monitor.expect-status`}
+                        placeholder="200"
+                        value={p.monitor?.expectStatus || ''}
+                        onSave={(value) => onRowArrayChange(fieldName, index, 'monitor.expect-status', value)}
+                      />
+                      {hasMonitorConfig(p) && (
+                        <RMButton size="xs" variant="outline" onClick={() => onRowArrayChange(fieldName, index, 'monitor.clear', 'true')}>
+                          Clear Monitoring
+                        </RMButton>
+                      )}
+                    </HStack>
+                  </Box>
+                )}
               </VStack>
             );
           })
@@ -279,6 +386,8 @@ const Routes = React.memo(function Routes({
             const modeHelp = isHost
               ? 'Clients connect using this hostname over HTTPS via the shared gateway frontend. Traffic is forwarded to the backend port.'
               : 'Clients connect to the listener endpoint (cname:sourcePort). The gateway resolves the listener CNAME to a local bind address — wildcard binds are not allowed.';
+            const newMonitorCapable = isHost ? p.protocol === 'https' : p.protocol === 'http';
+            const newMonitorAuthType = p.monitorAuthType || 'none';
             return (
               <VStack key={`new_${p.id}`} align="stretch" spacing={1}>
                 <HStack align="center">
@@ -345,6 +454,78 @@ const Routes = React.memo(function Routes({
                   <RMIconButton icon={HiTrash} aria-label="Delete Route" onClick={() => handleRemoveItem(index)} />
                 </HStack>
                 <Code fontSize="xs" color="gray.500" bg="transparent" pl={1}>{newRoutePreview(p)}</Code>
+                {newMonitorCapable && (
+                  <Box pl={1} pt={1} borderLeft="2px solid" borderColor="gray.200">
+                    <HStack spacing={2} flexWrap="wrap" align="flex-start">
+                      <Text fontSize="xs" color="gray.400" fontWeight="semibold" minW="75px" pt={1}>Monitoring</Text>
+                      <Input
+                        name={`new_${p.id}.monitor.path`}
+                        placeholder="/health"
+                        value={p.monitorPath}
+                        size="sm"
+                        maxW="160px"
+                        onChange={(e) => handleArrayChange(index, 'monitorPath', e.target.value)}
+                      />
+                      <Select
+                        value={p.monitorAuthType}
+                        size="sm"
+                        maxW="110px"
+                        onChange={(e) => handleArrayChange(index, 'monitorAuthType', e.target.value)}
+                      >
+                        {authTypeOptions.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.name}</option>
+                        ))}
+                      </Select>
+                      {newMonitorAuthType === 'basic' && (
+                        <Input
+                          name={`new_${p.id}.monitor.auth-user`}
+                          placeholder="Username"
+                          value={p.monitorAuthUser}
+                          size="sm"
+                          maxW="140px"
+                          onChange={(e) => handleArrayChange(index, 'monitorAuthUser', e.target.value)}
+                        />
+                      )}
+                      {(newMonitorAuthType === 'basic' || newMonitorAuthType === 'bearer') && (
+                        secretVarOpts.length > 0 ? (
+                          <Select
+                            value={p.monitorAuthSecretVar}
+                            size="sm"
+                            maxW="180px"
+                            onChange={(e) => handleArrayChange(index, 'monitorAuthSecretVar', e.target.value)}
+                          >
+                            <option value="">— secret var —</option>
+                            {secretVarOpts.map(opt => (
+                              <option key={opt.value} value={opt.value}>{opt.name}</option>
+                            ))}
+                          </Select>
+                        ) : (
+                          <Input
+                            name={`new_${p.id}.monitor.auth-secret-var`}
+                            placeholder="Secret variable name"
+                            value={p.monitorAuthSecretVar}
+                            size="sm"
+                            maxW="180px"
+                            onChange={(e) => handleArrayChange(index, 'monitorAuthSecretVar', e.target.value)}
+                          />
+                        )
+                      )}
+                      <Input
+                        name={`new_${p.id}.monitor.expect-status`}
+                        placeholder="200"
+                        value={p.monitorExpectStatus}
+                        size="sm"
+                        maxW="120px"
+                        onChange={(e) => handleArrayChange(index, 'monitorExpectStatus', e.target.value)}
+                      />
+                    </HStack>
+                    {(newMonitorAuthType === 'basic' || newMonitorAuthType === 'bearer') && secretVarOpts.length === 0 && (
+                      <Text fontSize="xs" color="gray.400" pl={1} mt={1}>
+                        Create the secret first in ENV Variables, then reference it here.
+                      </Text>
+                    )}
+                  </Box>
+                )}
               </VStack>
             );
           })}
@@ -366,6 +547,7 @@ const Routes = React.memo(function Routes({
 Routes.propTypes = {
   gateway: PropTypes.string,
   rows: PropTypes.array,
+  variables: PropTypes.array,
   fieldName: PropTypes.string,
   onRowArrayChange: PropTypes.func,
   onRowDropIndex: PropTypes.func,

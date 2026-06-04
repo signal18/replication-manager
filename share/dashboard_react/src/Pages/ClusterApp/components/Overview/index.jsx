@@ -94,8 +94,8 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
     const gateway = useMemo(() => config?.cloud18GatewayDomainName || '', [config]);
 
     const routeComponent = useMemo(() => {
-        return <Routes rows={routes} fieldName={'routes'} user={user} gateway={gateway} {...actionProps} />
-    }, [routes, actionProps, user, gateway]);
+        return <Routes rows={routes} variables={variables} fieldName={'routes'} user={user} gateway={gateway} {...actionProps} />
+    }, [routes, variables, actionProps, user, gateway]);
 
     const pathComponent = useMemo(() => {
         return <PathSection storages={storages} rows={paths} fieldName={'paths'} clusterName={clusterName} appId={appId} dockerImage={dockerImage} gitCloneRows={gitClones} user={user} {...actionProps} />;
