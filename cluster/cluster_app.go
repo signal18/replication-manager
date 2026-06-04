@@ -184,30 +184,21 @@ func (cluster *Cluster) validateIntraClusterGatewayRoutes() error {
 	return firstErr
 }
 
-// ValidateGatewayRouteConflicts runs the cross-cluster gateway conflict check.
-// It must be called AFTER all clusters have had SetClusterList called so the
-// cross-cluster view is complete.
+// ValidateGatewayRouteConflicts runs the cross-cluster gateway conflict check
+// against priorRoutes — the already-committed routes from clusters processed
+// before this one in startup order.  Callers must iterate clusters in their
+// desired priority order and accumulate surviving routes via OwnGatewayRoutes
+// so that the first cluster in the list always wins any listener conflict.
 //
-// Apps whose routes conflict with apps on peer clusters are removed from
-// cluster.Conf.Apps and the live app list, and an error is returned.
-func (cluster *Cluster) ValidateGatewayRouteConflicts() error {
+// Apps whose routes conflict with priorRoutes are removed from cluster.Conf.Apps
+// and the live app list, and an error is returned.
+func (cluster *Cluster) ValidateGatewayRouteConflicts(priorRoutes [][]config.Route) error {
 	gateway := strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService))
 	if gateway == "" {
 		return nil
 	}
 
-	var externalRoutes [][]config.Route
-	for _, cl := range cluster.clusterList {
-		if cl == nil || cl.Name == cluster.Name {
-			continue
-		}
-		if strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService)) != gateway {
-			continue
-		}
-		externalRoutes = append(externalRoutes, cl.allAppRoutes()...)
-	}
-
-	if len(externalRoutes) == 0 {
+	if len(priorRoutes) == 0 {
 		return nil
 	}
 
@@ -225,7 +216,7 @@ func (cluster *Cluster) ValidateGatewayRouteConflicts() error {
 			continue
 		}
 
-		if err := config.CheckGatewayConflicts(normalized, externalRoutes...); err != nil {
+		if err := config.CheckGatewayConflicts(normalized, priorRoutes...); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
 				"App %q removed from runtime state: cross-cluster gateway conflict: %v — fix route config to re-enable", appcnf.AppHost, err)
 			if firstErr == nil {
@@ -243,6 +234,17 @@ func (cluster *Cluster) ValidateGatewayRouteConflicts() error {
 	}
 
 	return firstErr
+}
+
+// OwnGatewayRoutes returns the normalized routes contributed by this cluster's
+// surviving apps, filtered to the given gateway service.  Returns nil when the
+// cluster is not attached to that gateway.  Used by the startup loop to build
+// the cumulative prior-routes slice in ClusterList order.
+func (cluster *Cluster) OwnGatewayRoutes(gateway string) [][]config.Route {
+	if strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService)) != gateway {
+		return nil
+	}
+	return cluster.allAppRoutes()
 }
 
 // pruneEjectedAppsFromLiveList removes entries from cluster.Apps that no longer

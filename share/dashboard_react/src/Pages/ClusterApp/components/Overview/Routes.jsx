@@ -1,7 +1,7 @@
 import { VStack, HStack, Text, Heading, Input, Select, Flex, Tooltip, Code, Box } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import { HiTrash, HiInformationCircle } from 'react-icons/hi'
-import PropTypes from 'prop-types';
+import PropTypes from 'prop-types'
 import TextForm from '../../../../components/TextForm';
 import RMIconButton from '../../../../components/RMIconButton';
 import RMButton from '../../../../components/RMButton';

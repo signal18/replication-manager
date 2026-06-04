@@ -1414,6 +1414,13 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 						http.Error(w, "Variable name unchanged", http.StatusInternalServerError)
 						return
 					}
+					// Cascade rename into any route monitor that references this variable.
+					oldName := row.Name
+					for i, r := range node.AppConfig.Deployment.Routes {
+						if r.Monitor != nil && r.Monitor.AuthSecretVar == oldName {
+							node.AppConfig.Deployment.Routes[i].Monitor.AuthSecretVar = newValue
+						}
+					}
 					row.Name = newValue
 				case "value":
 					if row.Value == newValue {
@@ -1425,6 +1432,13 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					if row.Type == newValue {
 						http.Error(w, "Variable type unchanged", http.StatusInternalServerError)
 						return
+					}
+					// Reject type changes away from 'secret' when routes reference this variable.
+					if row.Type == config.VariableTypeSecret && newValue != config.VariableTypeSecret {
+						if refs := routesReferencingSecretVar(node.AppConfig.Deployment.Routes, row.Name); len(refs) > 0 {
+							http.Error(w, fmt.Sprintf("cannot change type of variable %q: referenced as auth-secret-var in %d route(s)", row.Name, len(refs)), http.StatusBadRequest)
+							return
+						}
 					}
 					row.Type = newValue
 				case "conditional":
@@ -1618,6 +1632,18 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
+}
+
+// routesReferencingSecretVar returns the indices of routes whose
+// monitor.auth-secret-var equals varName.
+func routesReferencingSecretVar(routes []config.Route, varName string) []int {
+	var out []int
+	for i, r := range routes {
+		if r.Monitor != nil && r.Monitor.AuthSecretVar == varName {
+			out = append(out, i)
+		}
+	}
+	return out
 }
 
 // allExternalGatewayRoutes returns one normalized route-slice per app that
@@ -1914,6 +1940,11 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 		}
 		if node.AppConfig.Deployment.Variables[index].Locked {
 			http.Error(w, "Unable to drop locked variable. Please drop the source of the variable instead.", http.StatusInternalServerError)
+			return
+		}
+		varName := node.AppConfig.Deployment.Variables[index].Name
+		if refs := routesReferencingSecretVar(node.AppConfig.Deployment.Routes, varName); len(refs) > 0 {
+			http.Error(w, fmt.Sprintf("cannot delete variable %q: referenced as auth-secret-var in %d route(s) — clear the monitor config first", varName, len(refs)), http.StatusBadRequest)
 			return
 		}
 		node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables[:index], node.AppConfig.Deployment.Variables[index+1:]...)

@@ -181,9 +181,10 @@ func TestValidateCrossCluster_ConflictEjectsApp(t *testing.T) {
 	cl2.Apps = []*App{
 		{Name: "app-b", Host: "app-b", Port: "80", AppConfig: appBCnf, Mutex: &sync.Mutex{}},
 	}
-	cl2.clusterList = map[string]*Cluster{"cluster1": cl1}
 
-	err := cl2.ValidateGatewayRouteConflicts()
+	// Simulate server startup loop: cl1 was processed first, so pass its routes as prior.
+	priorRoutes := cl1.OwnGatewayRoutes(gw)
+	err := cl2.ValidateGatewayRouteConflicts(priorRoutes)
 	if err == nil {
 		t.Fatal("expected cross-cluster conflict error, got nil")
 	}
@@ -213,9 +214,9 @@ func TestValidateCrossCluster_NoConflict_DifferentCNameSamePort(t *testing.T) {
 	cl2.Apps = []*App{
 		{Name: "app-b", Host: "app-b", Port: "80", AppConfig: appBCnf, Mutex: &sync.Mutex{}},
 	}
-	cl2.clusterList = map[string]*Cluster{"cluster1": cl1}
 
-	if err := cl2.ValidateGatewayRouteConflicts(); err != nil {
+	priorRoutes := cl1.OwnGatewayRoutes(gw)
+	if err := cl2.ValidateGatewayRouteConflicts(priorRoutes); err != nil {
 		t.Fatalf("expected no conflict for different cnames, got: %v", err)
 	}
 	if len(cl2.Conf.Apps) != 1 {
@@ -227,18 +228,14 @@ func TestValidateCrossCluster_NoConflict_DifferentCNameSamePort(t *testing.T) {
 }
 
 func TestValidateCrossCluster_NoPeerOnSameGateway(t *testing.T) {
-	cl1 := newTestClusterForGateway(t, "cluster1", "ns/svc/gw-a")
+	const gwA = "ns/svc/gw-a"
+	cl1 := newTestClusterForGateway(t, "cluster1", gwA)
 	cl1.Conf.Apps = []*config.AppConfig{
 		portRouteApp("app-a", "gw.example.com", "9000", "9000"),
 	}
 
-	cl2 := newTestClusterForGateway(t, "cluster2", "ns/svc/gw-b") // different gateway
-	cl2.Conf.Apps = []*config.AppConfig{
-		portRouteApp("app-b", "gw.example.com", "9000", "9001"),
-	}
-	cl1.clusterList = map[string]*Cluster{"cluster2": cl2}
-
-	if err := cl1.ValidateGatewayRouteConflicts(); err != nil {
+	// cl2 is on a different gateway — its routes must not be passed as prior for cl1.
+	if err := cl1.ValidateGatewayRouteConflicts(nil); err != nil {
 		t.Fatalf("expected no conflict across different gateways, got: %v", err)
 	}
 	if len(cl1.Conf.Apps) != 1 {

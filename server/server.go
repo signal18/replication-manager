@@ -2628,15 +2628,22 @@ func (repman *ReplicationManager) Run() error {
 	// app is live.  Iterate in ClusterList order (a slice) so the first cluster
 	// in the list always wins any listener conflict, making startup deterministic
 	// across restarts regardless of Go map iteration order.
+	//
+	// priorRoutesByGateway accumulates committed routes in declaration order so
+	// each cluster is only checked against clusters that appeared before it.
+	priorRoutesByGateway := make(map[string][][]config.Route)
 	for _, gl := range repman.ClusterList {
 		cl, ok := repman.Clusters[gl]
 		if !ok {
 			continue
 		}
-		if err := cl.ValidateGatewayRouteConflicts(); err != nil {
+		gw := strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
+		if err := cl.ValidateGatewayRouteConflicts(priorRoutesByGateway[gw]); err != nil {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
 				"Cross-cluster gateway conflict at startup — one or more apps removed from runtime state: %v", err)
 		}
+		// Accumulate surviving routes for clusters that follow in the list.
+		priorRoutesByGateway[gw] = append(priorRoutesByGateway[gw], cl.OwnGatewayRoutes(gw)...)
 	}
 
 	// Phase 4: start monitoring goroutines after all validation is complete.
