@@ -41,6 +41,9 @@ jobs:
               - '**/*.go'
               - 'Dockerfile*'
               - 'docker/Dockerfile*'
+              - 'Makefile'
+              - 'share/**'
+              - 'etc/**'
 
   # OSC (Open Source Community) - Only on tags
   build-osc:
