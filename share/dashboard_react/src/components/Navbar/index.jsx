@@ -2,7 +2,6 @@ import { Box, Flex, Image, Spacer, Text, HStack, VStack, Button, useDisclosure }
 import React, { useState, useEffect} from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../redux/authSlice'
-import ThemeIcon from '../Icons/ThemeIcon'
 import RefreshCounter from '../RefreshCounter'
 import { isAuthorized } from '../../utility/common'
 import { Link } from 'react-router-dom'
@@ -11,10 +10,9 @@ import AlertBadge from '../AlertBadge'
 import AlertModal from '../Modals/AlertModal'
 import SecurityScoreModal from '../Modals/SecurityScoreModal'
 import WorkloadModal from '../Modals/WorkloadModal'
-import { FaPowerOff, FaUserPlus, FaUserCircle } from 'react-icons/fa'
+import { FaUserPlus, FaUserCircle } from 'react-icons/fa'
 import { MdSecurity, MdNotificationsOff } from 'react-icons/md'
 import { RiSpeedFill } from 'react-icons/ri'
-import ConfirmModal from '../Modals/ConfirmModal'
 import InterventionPanel from '../Modals/InterventionPanel'
 import UserInfoPanel from '../Modals/UserInfoPanel'
 import { clusterService } from '../../services/clusterService'
@@ -34,7 +32,6 @@ function Navbar({ username, user }) {
   const { theme } = useTheme()
   const [alertModalType, setAlertModalType] = useState('')
   const [globalAlertModalType, setGlobalAlertModalType] = useState('')
-  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false)
   const [isWorkloadModalOpen, setIsWorkloadModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
@@ -109,12 +106,6 @@ function Navbar({ username, user }) {
     setAlertModalType('')
   }
 
-  const openLogoutModal = () => {
-    setIsLogoutModalOpen(true)
-  }
-  const closeLogoutModal = () => {
-    setIsLogoutModalOpen(false)
-  }
 
   const handleLogout = () => {
     dispatch(logoutFromMeet())
@@ -234,32 +225,17 @@ function Navbar({ username, user }) {
 
           {isAuthorized() && (
             <>
-              {username && isDesktop && (
-                  <>
-                      <RMButton variant='ghost' size='small' onClick={() => setIsUserInfoPanelOpen(true)}>
-                        <HStack spacing={1}>
-                          <FaUserCircle />
-                          <Text>{username.length > 5 ? username.substring(0, 5) + '..' : username}</Text>
-                        </HStack>
-                      </RMButton>
-                      {monitor?.config?.cloud18 && (
-                        <Flex className={styles.chatIcon}>
-                          <AlertBadge
-                            isSupport={true}
-                            isConnect={!meetError}
-                            text={meetError ? 'Support (disconnected)' : 'Support'}
-                            count={unreadMessagesCount || 0}
-                            onClick={toggleChat}
-                            showText={!isMobile}
-                          />
-                        </Flex>
-                      )}
-                  </>
-              )}
-              {isMobile ? (
-                <RMIconButton onClick={openLogoutModal} border='none' icon={FaPowerOff} />
-              ) : (
-                <RMButton onClick={openLogoutModal}>Logout</RMButton>
+              {username && isDesktop && monitor?.config?.cloud18 && (
+                <Flex className={styles.chatIcon}>
+                  <AlertBadge
+                    isSupport={true}
+                    isConnect={!meetError}
+                    text={meetError ? 'Support (disconnected)' : 'Support'}
+                    count={unreadMessagesCount || 0}
+                    onClick={toggleChat}
+                    showText={!isMobile}
+                  />
+                </Flex>
               )}
               {clusterData && monitor?.config?.monitoringSaveConfig && monitor?.config?.cloud18GitUser?.length > 0 && (
                 <RMIconButton
@@ -270,10 +246,16 @@ function Navbar({ username, user }) {
                   onClick={openAddUserModal}
                 />
               )}
+              <AlertBadge
+                colorScheme='blue'
+                icon={FaUserCircle}
+                text={username ? (username.length > 5 ? username.substring(0, 5) + '..' : username) : ''}
+                count=''
+                onClick={() => setIsUserInfoPanelOpen(true)}
+                showText={!isMobile}
+              />
             </>
           )}
-
-          <ThemeIcon />
 
         </HStack>
       </Flex>
@@ -290,14 +272,6 @@ function Navbar({ username, user }) {
       )}
       {globalAlertModalType && (
         <AlertModal type={globalAlertModalType} isOpen={globalAlertModalType.length !== 0} closeModal={() => setGlobalAlertModalType('')} alerts={globalAlerts} />
-      )}
-      {isLogoutModalOpen && (
-        <ConfirmModal
-          onConfirmClick={handleLogout}
-          closeModal={closeLogoutModal}
-          isOpen={isLogoutModalOpen}
-          title={'Are you sure you want to log out?'}
-        />
       )}
       {isAddUserModalOpen && (
         <AddUserModal clusterName={clusterData?.name} isOpen={isAddUserModalOpen} closeModal={closeAddUserModal} />
@@ -345,6 +319,10 @@ function Navbar({ username, user }) {
           isOpen={isUserInfoPanelOpen}
           closeModal={() => setIsUserInfoPanelOpen(false)}
           user={user}
+          onLogout={() => {
+            setIsUserInfoPanelOpen(false)
+            handleLogout()
+          }}
         />
       )}
     </>

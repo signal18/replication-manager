@@ -1,13 +1,15 @@
 import {
-  Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton,
-  Box, VStack, HStack, Text, Badge, Divider, Flex, Table, Thead, Tbody, Tr, Th, Td
+  Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, ModalFooter,
+  Box, VStack, HStack, Text, Badge, Divider, Table, Thead, Tbody, Tr, Th, Td
 } from '@chakra-ui/react'
 import React from 'react'
+import { HiMoon, HiSun } from 'react-icons/hi'
+import RMButton from '../../RMButton'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
 
-function UserInfoPanel({ isOpen, closeModal, user, clusters }) {
-  const { theme } = useTheme()
+function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
+  const { theme, toggleTheme } = useTheme()
 
   const grants = user?.grants || {}
   const clusterNames = Object.keys(grants).sort()
@@ -25,7 +27,7 @@ function UserInfoPanel({ isOpen, closeModal, user, clusters }) {
       <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
         <ModalHeader fontSize='md'>User Profile</ModalHeader>
         <ModalCloseButton />
-        <ModalBody pb={6}>
+        <ModalBody pb={4}>
           <VStack align='stretch' spacing={4}>
 
             <Box p={3} borderRadius='md' bg={theme === 'light' ? 'gray.50' : 'rgba(255,255,255,0.05)'}>
@@ -89,6 +91,23 @@ function UserInfoPanel({ isOpen, closeModal, user, clusters }) {
 
           </VStack>
         </ModalBody>
+        <ModalFooter>
+          <HStack spacing={3} width='100%' justify='space-between'>
+            <RMButton
+              variant='ghost'
+              size='small'
+              onClick={toggleTheme}
+            >
+              <HStack spacing={1}>
+                {theme === 'light' ? <HiMoon color='midnightblue' /> : <HiSun color='gold' />}
+                <Text fontSize='sm'>{theme === 'light' ? 'Dark mode' : 'Light mode'}</Text>
+              </HStack>
+            </RMButton>
+            <RMButton colorScheme='red' onClick={onLogout}>
+              Logout
+            </RMButton>
+          </HStack>
+        </ModalFooter>
       </ModalContent>
     </Modal>
   )
