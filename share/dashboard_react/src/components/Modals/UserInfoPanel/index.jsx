@@ -45,7 +45,7 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
               <HStack spacing={4}>
                 <Text fontSize='sm' fontWeight={600}>User:</Text>
                 <Text fontSize='sm'>{user?.DisplayName || user?.User || user?.username || '-'}</Text>
-                <Badge colorScheme={user?.AuthType === 'SSO' ? 'purple' : 'blue'} size='sm'>
+                <Badge variant={theme === 'dark' ? 'solid' : 'subtle'} colorScheme={user?.AuthType === 'SSO' ? 'purple' : 'blue'} size='sm'>
                   {user?.AuthType || 'Local'}
                 </Badge>
               </HStack>
@@ -95,7 +95,7 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
                           <Td position='sticky' left={0} bg={stickyBg} fontSize='xs'>{role}</Td>
                           {clusterNames.map(name => (
                             <Td key={name} textAlign='center'>
-                              <Badge colorScheme={roles[name]?.[role] ? 'blue' : 'gray'} size='sm'>
+                              <Badge variant={theme === 'dark' ? 'solid' : 'subtle'} colorScheme={roles[name]?.[role] ? 'blue' : 'gray'} size='sm'>
                                 {roles[name]?.[role] ? checkMark : '-'}
                               </Badge>
                             </Td>
@@ -130,7 +130,7 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
                           <Td position='sticky' left={0} bg={stickyBg} fontSize='xs'>{grant}</Td>
                           {clusterNames.map(name => (
                             <Td key={name} textAlign='center'>
-                              <Badge colorScheme={grants[name]?.[grant] ? 'blue' : 'gray'} size='sm'>
+                              <Badge variant={theme === 'dark' ? 'solid' : 'subtle'} colorScheme={grants[name]?.[grant] ? 'blue' : 'gray'} size='sm'>
                                 {grants[name]?.[grant] ? checkMark : '-'}
                               </Badge>
                             </Td>
