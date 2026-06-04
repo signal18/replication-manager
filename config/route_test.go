@@ -271,3 +271,354 @@ func TestNormalize_PortRouteFromLegacyTCPPort(t *testing.T) {
 		t.Errorf("expected destPort=3306, got %q", r.DestinationPort)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// RouteMonitor.Normalize — defaults and canonicalization
+// ---------------------------------------------------------------------------
+
+func TestMonitorNormalize_EmptyBecomesDefaults(t *testing.T) {
+	var m RouteMonitor
+	m.Normalize()
+	if m.Path != "/" {
+		t.Errorf("expected path=/, got %q", m.Path)
+	}
+	if m.ExpectStatus != "200" {
+		t.Errorf("expected expectStatus=200, got %q", m.ExpectStatus)
+	}
+	if m.AuthType != "" {
+		t.Errorf("expected authType empty, got %q", m.AuthType)
+	}
+}
+
+func TestMonitorNormalize_NoneAuthTypeCleared(t *testing.T) {
+	m := RouteMonitor{AuthType: "none"}
+	m.Normalize()
+	if m.AuthType != "" {
+		t.Errorf("expected authType empty after normalizing 'none', got %q", m.AuthType)
+	}
+}
+
+func TestMonitorNormalize_PathWithoutLeadingSlashFixed(t *testing.T) {
+	m := RouteMonitor{Path: "health"}
+	m.Normalize()
+	if m.Path != "/health" {
+		t.Errorf("expected /health, got %q", m.Path)
+	}
+}
+
+func TestMonitorNormalize_AuthTypeLowercased(t *testing.T) {
+	m := RouteMonitor{AuthType: "BASIC", AuthUser: "u", AuthSecretVar: "S"}
+	m.Normalize()
+	if m.AuthType != "basic" {
+		t.Errorf("expected basic, got %q", m.AuthType)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RouteMonitor.Validate — structural checks
+// ---------------------------------------------------------------------------
+
+func TestMonitorValidate_EmptyMonitorPasses(t *testing.T) {
+	var m RouteMonitor
+	m.Normalize()
+	if err := m.Validate(); err != nil {
+		t.Fatalf("expected empty monitor to pass, got: %v", err)
+	}
+}
+
+func TestMonitorValidate_BasicRequiresAuthUser(t *testing.T) {
+	m := RouteMonitor{AuthType: "basic", AuthSecretVar: "MY_SECRET"}
+	m.Normalize()
+	if err := m.Validate(); err == nil {
+		t.Fatal("expected error for basic auth without auth-user, got nil")
+	}
+}
+
+func TestMonitorValidate_BasicRequiresAuthSecretVar(t *testing.T) {
+	m := RouteMonitor{AuthType: "basic", AuthUser: "monitor"}
+	m.Normalize()
+	if err := m.Validate(); err == nil {
+		t.Fatal("expected error for basic auth without auth-secret-var, got nil")
+	}
+}
+
+func TestMonitorValidate_BasicWithBothFieldsPasses(t *testing.T) {
+	m := RouteMonitor{AuthType: "basic", AuthUser: "monitor", AuthSecretVar: "MY_SECRET"}
+	m.Normalize()
+	if err := m.Validate(); err != nil {
+		t.Fatalf("unexpected error for valid basic auth monitor: %v", err)
+	}
+}
+
+func TestMonitorValidate_BearerRequiresAuthSecretVar(t *testing.T) {
+	m := RouteMonitor{AuthType: "bearer"}
+	m.Normalize()
+	if err := m.Validate(); err == nil {
+		t.Fatal("expected error for bearer auth without auth-secret-var, got nil")
+	}
+}
+
+func TestMonitorValidate_BearerWithSecretVarPasses(t *testing.T) {
+	m := RouteMonitor{AuthType: "bearer", AuthSecretVar: "MY_TOKEN"}
+	m.Normalize()
+	if err := m.Validate(); err != nil {
+		t.Fatalf("unexpected error for valid bearer auth monitor: %v", err)
+	}
+}
+
+func TestMonitorValidate_InvalidAuthTypeFails(t *testing.T) {
+	m := RouteMonitor{AuthType: "digest"}
+	if err := m.Validate(); err == nil {
+		t.Fatal("expected error for invalid auth-type 'digest', got nil")
+	}
+}
+
+func TestMonitorValidate_InvalidExpectStatusFails(t *testing.T) {
+	m := RouteMonitor{ExpectStatus: "ok"}
+	if err := m.Validate(); err == nil {
+		t.Fatal("expected error for non-numeric expect-status, got nil")
+	}
+}
+
+func TestMonitorValidate_ValidExpectStatusPasses(t *testing.T) {
+	m := RouteMonitor{ExpectStatus: "200,204"}
+	m.Normalize()
+	if err := m.Validate(); err != nil {
+		t.Fatalf("unexpected error for valid expect-status '200,204': %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ParseExpectStatus
+// ---------------------------------------------------------------------------
+
+func TestParseExpectStatus_SingleCode(t *testing.T) {
+	codes, err := ParseExpectStatus("200")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(codes) != 1 || codes[0] != 200 {
+		t.Fatalf("expected [200], got %v", codes)
+	}
+}
+
+func TestParseExpectStatus_MultipleCodesWithSpaces(t *testing.T) {
+	codes, err := ParseExpectStatus("200, 204, 302")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(codes) != 3 {
+		t.Fatalf("expected 3 codes, got %v", codes)
+	}
+}
+
+func TestParseExpectStatus_DuplicatesDeduped(t *testing.T) {
+	codes, err := ParseExpectStatus("200,200,204")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(codes) != 2 {
+		t.Fatalf("expected 2 codes after dedup, got %v", codes)
+	}
+}
+
+func TestParseExpectStatus_EmptyElementFails(t *testing.T) {
+	if _, err := ParseExpectStatus("200,,204"); err == nil {
+		t.Fatal("expected error for empty element in '200,,204', got nil")
+	}
+}
+
+func TestParseExpectStatus_NonNumericFails(t *testing.T) {
+	if _, err := ParseExpectStatus("ok"); err == nil {
+		t.Fatal("expected error for non-numeric code, got nil")
+	}
+}
+
+func TestParseExpectStatus_OutOfRangeFails(t *testing.T) {
+	if _, err := ParseExpectStatus("9999"); err == nil {
+		t.Fatal("expected error for out-of-range code 9999, got nil")
+	}
+}
+
+func TestParseExpectStatus_BoundaryCodesAccepted(t *testing.T) {
+	codes, err := ParseExpectStatus("100,599")
+	if err != nil {
+		t.Fatalf("unexpected error for boundary codes: %v", err)
+	}
+	if len(codes) != 2 {
+		t.Fatalf("expected 2 codes, got %v", codes)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RouteMonitor.ValidateSecretRef
+// ---------------------------------------------------------------------------
+
+func TestValidateSecretRef_NilReceiverPasses(t *testing.T) {
+	var m *RouteMonitor
+	if err := m.ValidateSecretRef(VariableMaps{}); err != nil {
+		t.Fatalf("expected nil for nil receiver, got: %v", err)
+	}
+}
+
+func TestValidateSecretRef_EmptyVarNamePasses(t *testing.T) {
+	m := RouteMonitor{}
+	vars := VariableMaps{{Name: "FOO", Type: VariableTypeSecret}}
+	if err := m.ValidateSecretRef(vars); err != nil {
+		t.Fatalf("expected nil for empty auth-secret-var, got: %v", err)
+	}
+}
+
+func TestValidateSecretRef_MissingVarFails(t *testing.T) {
+	m := RouteMonitor{AuthSecretVar: "MISSING"}
+	vars := VariableMaps{}
+	if err := m.ValidateSecretRef(vars); err == nil {
+		t.Fatal("expected error for missing variable, got nil")
+	}
+}
+
+func TestValidateSecretRef_NonSecretTypeFails(t *testing.T) {
+	m := RouteMonitor{AuthSecretVar: "MY_VAR"}
+	vars := VariableMaps{{Name: "MY_VAR", Type: VariableTypeEnv}}
+	if err := m.ValidateSecretRef(vars); err == nil {
+		t.Fatal("expected error when referenced variable is not type 'secret', got nil")
+	}
+}
+
+func TestValidateSecretRef_SecretTypePasses(t *testing.T) {
+	m := RouteMonitor{AuthSecretVar: "MY_SECRET"}
+	vars := VariableMaps{{Name: "MY_SECRET", Type: VariableTypeSecret}}
+	if err := m.ValidateSecretRef(vars); err != nil {
+		t.Fatalf("unexpected error for valid secret ref: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Route.Validate — monitor block integrated
+// ---------------------------------------------------------------------------
+
+func TestValidate_RouteWithValidMonitorPasses(t *testing.T) {
+	r := Route{
+		Mode:            "host",
+		Protocol:        "https",
+		CName:           "app.example.com",
+		DestinationPort: "8080",
+		Monitor:         &RouteMonitor{Path: "/health", ExpectStatus: "200,204"},
+	}
+	r.Normalize()
+	if err := r.Validate(); err != nil {
+		t.Fatalf("unexpected error for route with valid monitor: %v", err)
+	}
+}
+
+func TestValidate_RouteWithInvalidMonitorFails(t *testing.T) {
+	r := Route{
+		Mode:            "host",
+		Protocol:        "https",
+		CName:           "app.example.com",
+		DestinationPort: "8080",
+		Monitor:         &RouteMonitor{AuthType: "basic"}, // missing auth-user and auth-secret-var
+	}
+	r.Normalize()
+	if err := r.Validate(); err == nil {
+		t.Fatal("expected error for route with invalid monitor (basic auth missing fields), got nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Route.Clone — pointer safety
+// ---------------------------------------------------------------------------
+
+func TestRouteClone_NilMonitorClonesClean(t *testing.T) {
+	r := Route{Mode: "host", Protocol: "https", CName: "app.example.com", DestinationPort: "80"}
+	c := r.Clone()
+	if c.Monitor != nil {
+		t.Fatal("expected nil monitor on clone of route with no monitor")
+	}
+}
+
+func TestRouteClone_MonitorIsDeepCopied(t *testing.T) {
+	m := &RouteMonitor{Path: "/health"}
+	r := Route{Monitor: m}
+	c := r.Clone()
+	c.Monitor.Path = "/changed"
+	if m.Path != "/health" {
+		t.Fatal("clone modified the original monitor — Monitor pointer was not deep-copied")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// NormalizedCopy — legacy route does not acquire a monitor
+// ---------------------------------------------------------------------------
+
+func TestNormalizedCopy_LegacyRouteKeepsNilMonitor(t *testing.T) {
+	routes := []Route{
+		{CName: "legacy.example.com", Port: "80", Protocol: "https"},
+	}
+	out := NormalizedCopy(routes)
+	if out[0].Monitor != nil {
+		t.Fatal("NormalizedCopy injected a synthetic monitor into a legacy route that had none")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Deployment.ValidateRoutes — secret-ref checked in shared path
+// ---------------------------------------------------------------------------
+
+func TestDeploymentValidateRoutes_BrokenSecretRefFails(t *testing.T) {
+	d := &Deployment{
+		Routes: Routes{
+			{
+				Mode: "host", Protocol: "https", CName: "app.example.com", DestinationPort: "80",
+				Monitor: &RouteMonitor{AuthType: "bearer", AuthSecretVar: "MISSING_VAR"},
+			},
+		},
+		Variables: VariableMaps{},
+	}
+	d.NormalizeRoutes()
+	if err := d.ValidateRoutes(); err == nil {
+		t.Fatal("expected validation error for broken secret ref in ValidateRoutes, got nil")
+	}
+}
+
+func TestDeploymentValidateRoutes_ValidSecretRefPasses(t *testing.T) {
+	d := &Deployment{
+		Routes: Routes{
+			{
+				Mode: "host", Protocol: "https", CName: "app.example.com", DestinationPort: "80",
+				Monitor: &RouteMonitor{AuthType: "bearer", AuthSecretVar: "MY_TOKEN"},
+			},
+		},
+		Variables: VariableMaps{{Name: "MY_TOKEN", Type: VariableTypeSecret}},
+	}
+	d.NormalizeRoutes()
+	if err := d.ValidateRoutes(); err != nil {
+		t.Fatalf("unexpected error for valid secret ref: %v", err)
+	}
+}
+
+func TestDeploymentValidateRoutes_NoMonitorNoSecretCheck(t *testing.T) {
+	d := &Deployment{
+		Routes: Routes{
+			{Mode: "host", Protocol: "https", CName: "legacy.example.com", DestinationPort: "443"},
+		},
+		Variables: VariableMaps{},
+	}
+	d.NormalizeRoutes()
+	if err := d.ValidateRoutes(); err != nil {
+		t.Fatalf("backward-compat: unexpected error for route without monitor: %v", err)
+	}
+}
+
+func TestValidate_RouteWithoutMonitorBackwardCompat(t *testing.T) {
+	r := Route{
+		Mode:            "host",
+		Protocol:        "https",
+		CName:           "legacy.example.com",
+		DestinationPort: "443",
+	}
+	r.Normalize()
+	if err := r.Validate(); err != nil {
+		t.Fatalf("backward-compat: unexpected error for route without monitor: %v", err)
+	}
+}

@@ -264,9 +264,15 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 	if route.Mode == "port" && route.SourcePort != "" {
 		host = route.CName + ":" + route.SourcePort
 	}
-	urlpost := "https://" + host
+
+	monPath := "/"
+	if route.Monitor != nil && route.Monitor.Path != "" {
+		monPath = route.Monitor.Path
+	}
+
+	urlpost := "https://" + host + monPath
 	if route.Protocol == "http" {
-		urlpost = "http://" + host
+		urlpost = "http://" + host + monPath
 		client.Transport = &http.Transport{} // Reset transport for HTTP
 	}
 
@@ -274,6 +280,34 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlpost, nil)
 	if err != nil {
 		return -1, nil, fmt.Errorf("failed to create request to %s: %v", urlpost, err)
+	}
+
+	// Inject auth header when configured (HTTP/HTTPS only).
+	if route.Monitor != nil {
+		switch route.Monitor.AuthType {
+		case "basic":
+			if route.Monitor.AuthSecretVar != "" {
+				secret, serr := cluster.GetAppDecryptedVariableValue(app, route.Monitor.AuthSecretVar)
+				if serr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+						"monitor basic auth: cannot resolve secret var %q for app %s route %s: %v",
+						route.Monitor.AuthSecretVar, app.Name, route.CName, serr)
+				} else {
+					req.SetBasicAuth(route.Monitor.AuthUser, secret)
+				}
+			}
+		case "bearer":
+			if route.Monitor.AuthSecretVar != "" {
+				secret, serr := cluster.GetAppDecryptedVariableValue(app, route.Monitor.AuthSecretVar)
+				if serr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+						"monitor bearer auth: cannot resolve secret var %q for app %s route %s: %v",
+						route.Monitor.AuthSecretVar, app.Name, route.CName, serr)
+				} else {
+					req.Header.Set("Authorization", "Bearer "+secret)
+				}
+			}
+		}
 	}
 
 	resp, err := client.Do(req)
@@ -287,7 +321,21 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 		return resp.StatusCode, nil, fmt.Errorf("error reading response body from %s: %v", urlpost, err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	// Determine accepted status codes from the monitor config; default to 200.
+	expectedCodes := []int{200}
+	if route.Monitor != nil && route.Monitor.ExpectStatus != "" {
+		if codes, perr := config.ParseExpectStatus(route.Monitor.ExpectStatus); perr == nil && len(codes) > 0 {
+			expectedCodes = codes
+		}
+	}
+	accepted := false
+	for _, code := range expectedCodes {
+		if resp.StatusCode == code {
+			accepted = true
+			break
+		}
+	}
+	if !accepted {
 		return resp.StatusCode, body, errors.New("unexpected status code")
 	}
 

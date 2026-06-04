@@ -1273,7 +1273,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				}
 
 				originalRow := node.AppConfig.Deployment.Routes[index]
-				row := originalRow
+				row := originalRow.Clone()
 				switch vars["key"] {
 				case "name":
 					row.Name = newValue
@@ -1320,6 +1320,50 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					row.Protocol = strings.ToLower(strings.TrimSpace(newValue))
 				case "primary":
 					row.Primary = newValue == "true"
+				case "monitor.clear":
+					row.Monitor = nil
+				case "monitor.path":
+					if row.Monitor == nil {
+						row.Monitor = &config.RouteMonitor{}
+					}
+					row.Monitor.Path = newValue
+				case "monitor.auth-type":
+					if row.Monitor == nil {
+						row.Monitor = &config.RouteMonitor{}
+					}
+					row.Monitor.AuthType = strings.ToLower(strings.TrimSpace(newValue))
+				case "monitor.auth-user":
+					if row.Monitor == nil {
+						row.Monitor = &config.RouteMonitor{}
+					}
+					row.Monitor.AuthUser = newValue
+				case "monitor.auth-secret-var":
+					if newValue != "" {
+						v, verr := node.AppConfig.Deployment.GetVariableByName(newValue, true)
+						if verr != nil {
+							http.Error(w, "monitor auth-secret-var: variable not found: "+verr.Error(), http.StatusBadRequest)
+							return
+						}
+						if v.Type != config.VariableTypeSecret {
+							http.Error(w, "monitor auth-secret-var must reference a variable of type 'secret'", http.StatusBadRequest)
+							return
+						}
+					}
+					if row.Monitor == nil {
+						row.Monitor = &config.RouteMonitor{}
+					}
+					row.Monitor.AuthSecretVar = newValue
+				case "monitor.expect-status":
+					if newValue != "" {
+						if _, perr := config.ParseExpectStatus(newValue); perr != nil {
+							http.Error(w, "monitor expect-status: "+perr.Error(), http.StatusBadRequest)
+							return
+						}
+					}
+					if row.Monitor == nil {
+						row.Monitor = &config.RouteMonitor{}
+					}
+					row.Monitor.ExpectStatus = newValue
 				default:
 					http.Error(w, "Invalid key for routes", http.StatusBadRequest)
 					return
@@ -1328,6 +1372,10 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				row.Normalize()
 				if err := row.Validate(); err != nil {
 					http.Error(w, "Invalid route: "+err.Error(), http.StatusBadRequest)
+					return
+				}
+				if err := row.Monitor.ValidateSecretRef(node.AppConfig.Deployment.Variables); err != nil {
+					http.Error(w, "Invalid route monitor: "+err.Error(), http.StatusBadRequest)
 					return
 				}
 				node.AppConfig.Deployment.Routes[index] = row
@@ -1663,6 +1711,10 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 			row.Normalize()
 			if err := row.Validate(); err != nil {
 				http.Error(w, "Invalid route: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := row.Monitor.ValidateSecretRef(node.AppConfig.Deployment.Variables); err != nil {
+				http.Error(w, "Invalid route monitor: "+err.Error(), http.StatusBadRequest)
 				return
 			}
 

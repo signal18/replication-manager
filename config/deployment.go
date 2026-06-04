@@ -503,6 +503,111 @@ func (d *Deployment) GetVariableByName(name string, lock bool) (*VariableMapping
 
 type Routes []Route
 
+// RouteMonitor holds optional per-route monitoring customization for HTTP/HTTPS routes.
+type RouteMonitor struct {
+	Path          string `mapstructure:"path" toml:"path" json:"path,omitempty" groups:"apps"`
+	AuthType      string `mapstructure:"auth-type" toml:"auth-type" json:"authType,omitempty" groups:"apps"`
+	AuthUser      string `mapstructure:"auth-user" toml:"auth-user" json:"authUser,omitempty" groups:"apps"`
+	AuthSecretVar string `mapstructure:"auth-secret-var" toml:"auth-secret-var" json:"authSecretVar,omitempty" groups:"apps"`
+	ExpectStatus  string `mapstructure:"expect-status" toml:"expect-status" json:"expectStatus,omitempty" groups:"apps"`
+}
+
+// Normalize fills in defaults and canonicalizes all fields.  It is idempotent
+// and must be called before Validate.
+func (m *RouteMonitor) Normalize() {
+	m.Path = strings.TrimSpace(m.Path)
+	m.AuthType = strings.ToLower(strings.TrimSpace(m.AuthType))
+	m.AuthUser = strings.TrimSpace(m.AuthUser)
+	m.AuthSecretVar = strings.TrimSpace(m.AuthSecretVar)
+	m.ExpectStatus = strings.TrimSpace(m.ExpectStatus)
+
+	if m.AuthType == "none" {
+		m.AuthType = ""
+	}
+	if m.Path == "" {
+		m.Path = "/"
+	} else if !strings.HasPrefix(m.Path, "/") {
+		m.Path = "/" + m.Path
+	}
+	if m.ExpectStatus == "" {
+		m.ExpectStatus = "200"
+	}
+}
+
+// Validate returns an error when the monitor config is structurally invalid.
+// Call Normalize before Validate.
+func (m *RouteMonitor) Validate() error {
+	switch m.AuthType {
+	case "", "basic", "bearer":
+	default:
+		return fmt.Errorf("auth-type must be 'none', 'basic', or 'bearer', got %q", m.AuthType)
+	}
+	if m.AuthType == "basic" {
+		if m.AuthUser == "" {
+			return errors.New("basic auth requires auth-user")
+		}
+		if m.AuthSecretVar == "" {
+			return errors.New("basic auth requires auth-secret-var")
+		}
+	}
+	if m.AuthType == "bearer" && m.AuthSecretVar == "" {
+		return errors.New("bearer auth requires auth-secret-var")
+	}
+	if m.Path != "" && !strings.HasPrefix(m.Path, "/") {
+		return fmt.Errorf("path must start with '/', got %q", m.Path)
+	}
+	if m.ExpectStatus != "" {
+		if _, err := ParseExpectStatus(m.ExpectStatus); err != nil {
+			return fmt.Errorf("expect-status: %w", err)
+		}
+	}
+	return nil
+}
+
+// ValidateSecretRef checks that auth-secret-var references an existing secret variable.
+// It is nil-safe: a nil receiver returns nil immediately.
+func (m *RouteMonitor) ValidateSecretRef(variables VariableMaps) error {
+	if m == nil || m.AuthSecretVar == "" {
+		return nil
+	}
+	for _, v := range variables {
+		if v.Name == m.AuthSecretVar {
+			if v.Type != VariableTypeSecret {
+				return fmt.Errorf("auth-secret-var %q must reference a variable of type 'secret', got %q", m.AuthSecretVar, v.Type)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("auth-secret-var %q references a variable that does not exist", m.AuthSecretVar)
+}
+
+// ParseExpectStatus parses a comma-separated list of HTTP status codes.
+// Each code must be a valid integer in the range 100-599.  Duplicates are
+// silently deduplicated.
+func ParseExpectStatus(s string) ([]int, error) {
+	parts := strings.Split(s, ",")
+	seen := make(map[int]bool)
+	var codes []int
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, errors.New("empty element in expect-status")
+		}
+		n, err := strconv.Atoi(part)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a valid HTTP status code", part)
+		}
+		if n < 100 || n > 599 {
+			return nil, fmt.Errorf("%d is not a valid HTTP status code (must be 100–599)", n)
+		}
+		if !seen[n] {
+			seen[n] = true
+			codes = append(codes, n)
+		}
+	}
+	return codes, nil
+}
+
 type Route struct {
 	Name string `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
 
@@ -516,6 +621,20 @@ type Route struct {
 	Mode            string `mapstructure:"mode" toml:"mode" json:"mode" groups:"apps"`            // host | port
 	SourcePort      string `mapstructure:"sourceport" toml:"sourceport" json:"sourcePort" groups:"apps"`
 	DestinationPort string `mapstructure:"destport" toml:"destport" json:"destPort" groups:"apps"`
+
+	// Optional per-route monitoring customization.  Nil means no monitor block
+	// was configured; legacy routes keep nil so no defaults are injected.
+	Monitor *RouteMonitor `mapstructure:"monitor" toml:"monitor" json:"monitor,omitempty" groups:"apps"`
+}
+
+// Clone returns a deep copy of the Route, duplicating the Monitor pointer so
+// mutations to the copy do not affect the original.
+func (r Route) Clone() Route {
+	if r.Monitor != nil {
+		m := *r.Monitor
+		r.Monitor = &m
+	}
+	return r
 }
 
 // Normalize fills in defaults and copies legacy fields so the Route is in
@@ -524,6 +643,9 @@ func (r *Route) Normalize() {
 	r.Mode = strings.ToLower(strings.TrimSpace(r.Mode))
 	r.Protocol = strings.ToLower(strings.TrimSpace(r.Protocol))
 	r.CName = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(r.CName)), ".")
+	if r.Monitor != nil {
+		r.Monitor.Normalize()
+	}
 
 	if r.Mode == "" {
 		// Legacy compatibility: a route saved with protocol=tcp but no explicit
@@ -619,6 +741,12 @@ func (r *Route) Validate() error {
 		}
 	}
 
+	if r.Monitor != nil {
+		if err := r.Monitor.Validate(); err != nil {
+			return fmt.Errorf("monitor: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -640,22 +768,31 @@ func (d *Deployment) NormalizeRoutes() {
 }
 
 // ValidateRoutes validates all routes after normalization.  It returns the
-// first error found and the index of the offending route.
+// first error found and the index of the offending route.  It also validates
+// monitor secret-var references against d.Variables so the check runs on every
+// write path (API save, deployment load).
 func (d *Deployment) ValidateRoutes() error {
 	for i, r := range d.Routes {
 		if err := r.Validate(); err != nil {
 			return fmt.Errorf("route[%d]: %w", i, err)
 		}
+		if r.Monitor != nil {
+			if err := r.Monitor.ValidateSecretRef(d.Variables); err != nil {
+				return fmt.Errorf("route[%d] monitor: %w", i, err)
+			}
+		}
 	}
 	return nil
 }
 
-// NormalizedCopy returns a new slice with every route normalized so that
-// CheckGatewayConflicts sees canonical Mode/SourcePort values even for routes
-// that were persisted before normalization was applied on write.
+// NormalizedCopy returns a new slice with every route cloned and normalized so
+// that CheckGatewayConflicts sees canonical Mode/SourcePort values even for
+// routes that were persisted before normalization was applied on write.
 func NormalizedCopy(routes []Route) []Route {
 	out := make([]Route, len(routes))
-	copy(out, routes)
+	for i, r := range routes {
+		out[i] = r.Clone()
+	}
 	for i := range out {
 		out[i].Normalize()
 	}
