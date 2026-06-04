@@ -12,6 +12,7 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
   const { theme, toggleTheme } = useTheme()
 
   const grants = user?.grants || {}
+  const roles = user?.roles || {}
   const clusterNames = Object.keys(grants).sort()
 
   // Collect all unique grant names across clusters
@@ -20,6 +21,12 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
     Object.keys(grants[name] || {}).forEach(g => allGrants.add(g))
   })
   const grantList = [...allGrants].sort()
+
+  // Collect active roles per cluster
+  const getUserRoles = (clusterName) => {
+    const r = roles[clusterName] || {}
+    return Object.keys(r).filter(k => r[k]).sort()
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={closeModal} size='xl'>
@@ -41,10 +48,20 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
                   <Text fontSize='sm'>{user.Email}</Text>
                 </HStack>
               )}
-              <HStack spacing={4}>
-                <Text fontSize='sm' fontWeight={600}>Role:</Text>
-                <Text fontSize='sm'>{user?.Role || '-'}</Text>
-              </HStack>
+              {clusterNames.length > 0 && (
+                <HStack spacing={4} flexWrap='wrap'>
+                  <Text fontSize='sm' fontWeight={600}>Roles:</Text>
+                  {clusterNames.map(name => {
+                    const r = getUserRoles(name)
+                    return r.length > 0 ? (
+                      <HStack key={name} spacing={1}>
+                        <Text fontSize='xs' color={theme === 'light' ? 'gray.500' : 'gray.400'}>{name}:</Text>
+                        {r.map(role => <Badge key={role} colorScheme='purple' size='sm'>{role}</Badge>)}
+                      </HStack>
+                    ) : null
+                  })}
+                </HStack>
+              )}
             </Box>
 
             {clusterNames.length > 0 && (

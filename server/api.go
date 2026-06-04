@@ -1256,35 +1256,44 @@ func (repman *ReplicationManager) handlerMuxWhoAmI(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Add per-cluster grants to the response
+	// Add per-cluster grants and roles to the response
 	username := user["User"]
 	if username == "" {
 		username = user["Name"]
 	}
-	clusterGrants := repman.resolveUserClusterGrants(username)
+	clusterGrants, clusterRoles := repman.resolveUserClusterGrantsAndRoles(username)
 	if clusterGrants != nil {
 		res, _ = sjson.SetBytes(res, "grants", clusterGrants)
+	}
+	if clusterRoles != nil {
+		res, _ = sjson.SetBytes(res, "roles", clusterRoles)
+	}
+	// For registered instances, set admin email from Cloud18 registration
+	if repman.Conf.Cloud18 && repman.Conf.Cloud18GitUser != "" && repman.isAdminUser(username) {
+		res, _ = sjson.SetBytes(res, "Email", repman.Conf.Cloud18GitUser)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(res)
 }
 
-// resolveUserClusterGrants returns a map of cluster name → grant map for the given user.
-func (repman *ReplicationManager) resolveUserClusterGrants(username string) map[string]map[string]bool {
+// resolveUserClusterGrantsAndRoles returns per-cluster grant and role maps for the given user.
+func (repman *ReplicationManager) resolveUserClusterGrantsAndRoles(username string) (map[string]map[string]bool, map[string]map[string]bool) {
 	if username == "" {
-		return nil
+		return nil, nil
 	}
-	result := make(map[string]map[string]bool)
+	grants := make(map[string]map[string]bool)
+	roles := make(map[string]map[string]bool)
 	for _, cl := range repman.Clusters {
 		if apiUser, ok := cl.APIUsers[username]; ok {
-			result[cl.Name] = apiUser.Grants
+			grants[cl.Name] = apiUser.Grants
+			roles[cl.Name] = apiUser.Roles
 		}
 	}
-	if len(result) == 0 {
-		return nil
+	if len(grants) == 0 {
+		return nil, nil
 	}
-	return result
+	return grants, roles
 }
 
 // handlerMuxAddClusterUser handles the addition of a new user to a cluster.
