@@ -995,19 +995,15 @@ func appRouteFragmentPrefix(clusterName, appName string) string {
 // buildRouteFragment generates the HAProxy config fragment and its gateway
 // fragment key for the given route.  It does not perform DNS provisioning.
 //
-// For port routes, bindAddress must be the resolved local bind address returned
-// by ResolvePortRouteBindTarget.  Passing an empty bindAddress for a port route
-// returns an error because wildcard binds are forbidden on a shared gateway.
-func buildRouteFragment(route config.Route, clusterName, appName, opensvcDNS, bindAddress string, numBE int) (fragmentKey, haproxyfragment string, err error) {
+// For port routes the listener binds on cname:sourcePort so the gateway
+// resolves the CNAME itself; repman does not need to know the VIP.
+func buildRouteFragment(route config.Route, clusterName, appName, opensvcDNS string, numBE int) (fragmentKey, haproxyfragment string, err error) {
 	routeToken := config.BuildRouteToken(route)
 	globalToken := config.BuildGlobalRouteToken(clusterName, appName, routeToken)
 	fragmentKey = appRouteFragmentPrefix(clusterName, appName) + routeToken + ".cfg"
 
 	switch route.Mode {
 	case "port":
-		if bindAddress == "" {
-			return "", "", fmt.Errorf("port route (cname=%s sourcePort=%s) has no resolved bind address — wildcard binds are forbidden on a shared gateway", route.CName, route.SourcePort)
-		}
 		frontend := "fe_" + globalToken
 		backend := "be_" + globalToken
 		if route.Protocol == "tcp" {
@@ -1022,7 +1018,7 @@ backend %s
     balance leastconn
     default-server inter 5s fastinter 2s downinter 10s fall 3 rise 2
     server-template srv %d %s:%s resolvers cluster check init-addr none
-`, frontend, bindAddress, route.SourcePort, backend, backend, numBE, opensvcDNS, route.DestinationPort)
+`, frontend, route.CName, route.SourcePort, backend, backend, numBE, opensvcDNS, route.DestinationPort)
 		} else {
 			haproxyfragment = fmt.Sprintf(`
 frontend %s
@@ -1038,7 +1034,7 @@ backend %s
     option http-ignore-probes
     default-server inter 5s fastinter 2s downinter 10s fall 3 rise 2
     server-template srv %d %s:%s resolvers cluster check init-addr none
-`, frontend, bindAddress, route.SourcePort, backend, backend, numBE, opensvcDNS, route.DestinationPort)
+`, frontend, route.CName, route.SourcePort, backend, backend, numBE, opensvcDNS, route.DestinationPort)
 		}
 	default: // host
 		backend := "be_" + globalToken
@@ -1054,60 +1050,6 @@ backend %s
 `, backend, route.CName, backend, numBE, opensvcDNS, route.DestinationPort)
 	}
 	return fragmentKey, haproxyfragment, nil
-}
-
-// ResolvePortRouteBindTarget maps a port-route listener CNAME to the single
-// canonical local bind address that the shared gateway service owns.
-//
-// The authoritative source is the comma-separated Cloud18GatewayBindAddresses
-// config value.  DNS is used only to verify that the CNAME resolves to one of
-// those declared addresses.  If the CNAME resolves to zero, multiple, or
-// non-local addresses, the function returns an error so that callers can fail
-// closed instead of emitting a wildcard bind.
-func (cluster *Cluster) ResolvePortRouteBindTarget(cname string) (string, error) {
-	if cluster.Conf.Cloud18GatewayBindAddresses == "" {
-		return "", fmt.Errorf("cloud18-gateway-bind-addresses is not configured — cannot resolve bind target for port route cname %q", cname)
-	}
-
-	bindSet := make(map[string]bool)
-	for _, a := range strings.Split(cluster.Conf.Cloud18GatewayBindAddresses, ",") {
-		a = strings.TrimSpace(a)
-		if a != "" {
-			bindSet[a] = true
-		}
-	}
-
-	ips, err := net.LookupHost(cname)
-	if err != nil {
-		return "", fmt.Errorf("cannot resolve listener cname %q: %w", cname, err)
-	}
-
-	matches := uniqueBindMatches(ips, bindSet)
-
-	switch len(matches) {
-	case 0:
-		return "", fmt.Errorf("listener cname %q resolves to %v but none match gateway bind addresses — update cloud18-gateway-bind-addresses or fix DNS", cname, ips)
-	case 1:
-		return matches[0], nil
-	default:
-		return "", fmt.Errorf("listener cname %q resolves to multiple gateway bind addresses %v — use a more specific cname", cname, matches)
-	}
-}
-
-// uniqueBindMatches returns the deduplicated subset of ips that appear in
-// bindSet.  DNS answers sometimes repeat the same address; deduplication
-// ensures that a single matching VIP does not trigger the "multiple addresses"
-// error path.
-func uniqueBindMatches(ips []string, bindSet map[string]bool) []string {
-	seen := make(map[string]bool, len(ips))
-	var result []string
-	for _, ip := range ips {
-		if bindSet[ip] && !seen[ip] {
-			seen[ip] = true
-			result = append(result, ip)
-		}
-	}
-	return result
 }
 
 func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
@@ -1137,12 +1079,7 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 
 	// Step 2: gateway-scoped conflict check.
 	// Collect normalized route slices from every app in every cluster that
-	// shares the same Cloud18GatewayService, excluding this app.  Routes
-	// from other apps are normalized before comparison so that legacy/unnormalized
-	// persisted data doesn't slip past the check.
-	//
-	// Apps on clusters with a different (or empty) gateway service cannot
-	// conflict on the shared HAProxy frontend, so they are excluded.
+	// shares the same Cloud18GatewayService, excluding this app.
 	// Cloud18GatewayService (namespace/type/service) uniquely identifies the
 	// shared HAProxy instance regardless of DNS domain aliases.
 	thisGateway := strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService))
@@ -1171,8 +1108,7 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 			}
 			collectOthers(cl)
 		}
-		resolver := config.PortRouteBindResolver(cluster.ResolvePortRouteBindTarget)
-		if err := config.CheckGatewayConflictsWithResolver(resolver, app.AppConfig.Deployment.Routes, externalRoutes...); err != nil {
+		if err := config.CheckGatewayConflicts(app.AppConfig.Deployment.Routes, externalRoutes...); err != nil {
 			return fmt.Errorf("gateway conflict for app %q: %w", app.Name, err)
 		}
 	}
@@ -1245,16 +1181,7 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 			}
 		}
 
-		bindAddress := ""
-		if route.Mode == "port" {
-			var resolveErr error
-			bindAddress, resolveErr = cluster.ResolvePortRouteBindTarget(route.CName)
-			if resolveErr != nil {
-				return fmt.Errorf("cannot resolve bind target for port route (cname=%s, app %s): %w", route.CName, app.Name, resolveErr)
-			}
-		}
-
-		key, frag, fragErr := buildRouteFragment(route, cluster.Name, app.Name, opensvcDNS, bindAddress, numBE)
+		key, frag, fragErr := buildRouteFragment(route, cluster.Name, app.Name, opensvcDNS, numBE)
 		if fragErr != nil {
 			return fmt.Errorf("cannot build route fragment for app %s: %w", app.Name, fragErr)
 		}

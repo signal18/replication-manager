@@ -662,29 +662,12 @@ func NormalizedCopy(routes []Route) []Route {
 	return out
 }
 
-// PortRouteBindResolver resolves a port-route listener CNAME to the canonical
-// local bind address on the shared gateway service.  The returned address is
-// used as the HAProxy bind operand and as the collision-detection key.
-type PortRouteBindResolver func(cname string) (bindAddress string, err error)
-
-// CheckGatewayConflicts checks for shared-gateway collisions without a
-// bind-address resolver.  Port-route collision keys are (cname, sourcePort).
-// Use CheckGatewayConflictsWithResolver for the full environmental check.
+// CheckGatewayConflicts checks for shared-gateway collisions.
+// Host-route collision keys are (cname).
+// Port-route collision keys are (cname, sourcePort).
 func CheckGatewayConflicts(current []Route, others ...[]Route) error {
-	return checkGatewayConflictsInner(nil, current, others...)
-}
-
-// CheckGatewayConflictsWithResolver checks for shared-gateway collisions using
-// a resolver to map port-route CNAMEs to concrete bind addresses.  Collision
-// keys become (bindAddress, sourcePort) which prevents two different CNAMEs
-// that map to the same gateway VIP from claiming the same listener port.
-func CheckGatewayConflictsWithResolver(resolver PortRouteBindResolver, current []Route, others ...[]Route) error {
-	return checkGatewayConflictsInner(resolver, current, others...)
-}
-
-func checkGatewayConflictsInner(resolver PortRouteBindResolver, current []Route, others ...[]Route) error {
 	seenCNames := make(map[string]bool)
-	seenListeners := make(map[string]bool) // bindAddress:sourcePort or cname:sourcePort
+	seenListeners := make(map[string]bool) // cname:sourcePort
 
 	for _, routes := range append([][]Route{current}, others...) {
 		for _, r := range routes {
@@ -699,13 +682,6 @@ func checkGatewayConflictsInner(resolver PortRouteBindResolver, current []Route,
 			case "port":
 				if r.SourcePort != "" {
 					listenerKey := r.CName + ":" + r.SourcePort
-					if resolver != nil {
-						bindAddr, resolveErr := resolver(r.CName)
-						if resolveErr != nil {
-							return fmt.Errorf("cannot resolve bind target for port route cname %q: %w", r.CName, resolveErr)
-						}
-						listenerKey = bindAddr + ":" + r.SourcePort
-					}
 					if seenListeners[listenerKey] {
 						return fmt.Errorf("listener %q is already reserved by another route on the shared gateway", listenerKey)
 					}
@@ -760,7 +736,7 @@ func shortHash(s string) string {
 // BuildRouteToken returns a stable per-route fragment identity string.
 //
 //	host route -> host_<destPort>_<shortHash(cname)>
-//	port route -> port_<sourcePort>_<destPort>_<shortHash(sourcePort+destPort)>
+//	port route -> port_<sourcePort>_<destPort>_<shortHash(cname+sourcePort+destPort)>
 func BuildRouteToken(r Route) string {
 	switch r.Mode {
 	case "port":
@@ -774,6 +750,25 @@ func BuildRouteToken(r Route) string {
 // derived from cluster, app, and route identity.
 func BuildGlobalRouteToken(clusterName, appName string, routeToken string) string {
 	return sanitizeToken(clusterName + "_" + appName + "_" + routeToken)
+}
+
+// BuildRouteStateKey returns a stable monitoring/debounce key for the route.
+// It includes mode, protocol, ports, and a hash of the CNAME so it survives
+// route renames while remaining distinct from the HAProxy fragment identity
+// (BuildRouteToken).  The key changes only when route identity or protocol
+// changes, not on cosmetic name edits.
+//
+//	host route -> monitor_host_<protocol>_<destPort>_<shortHash(cname)>
+//	port route -> monitor_port_<protocol>_<sourcePort>_<destPort>_<shortHash(cname)>
+func BuildRouteStateKey(r Route) string {
+	switch r.Mode {
+	case "port":
+		return sanitizeToken(fmt.Sprintf("monitor_port_%s_%s_%s_%s",
+			r.Protocol, r.SourcePort, r.DestinationPort, shortHash(r.CName+r.SourcePort+r.DestinationPort)))
+	default: // host
+		return sanitizeToken(fmt.Sprintf("monitor_host_%s_%s_%s",
+			r.Protocol, r.DestinationPort, shortHash(r.CName)))
+	}
 }
 
 type RouteStatus struct {

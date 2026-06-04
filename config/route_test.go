@@ -7,7 +7,6 @@
 package config
 
 import (
-	"errors"
 	"testing"
 )
 
@@ -92,7 +91,7 @@ func TestValidate_HostModeTCPRejected(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// CheckGatewayConflicts — structural (no resolver)
+// CheckGatewayConflicts — collision detection
 // ---------------------------------------------------------------------------
 
 func TestCheckGatewayConflicts_DuplicateHostCName(t *testing.T) {
@@ -107,76 +106,52 @@ func TestCheckGatewayConflicts_DuplicateHostCName(t *testing.T) {
 	}
 }
 
-func TestCheckGatewayConflicts_DuplicatePortRouteSourcePort(t *testing.T) {
+func TestCheckGatewayConflicts_SameCNameSameSourcePort_Conflict(t *testing.T) {
+	routes := []Route{
+		{Mode: "port", CName: "gw.example.com", SourcePort: "9000", DestinationPort: "9000"},
+	}
+	others := [][]Route{
+		{{Mode: "port", CName: "gw.example.com", SourcePort: "9000", DestinationPort: "9001"}},
+	}
+	if err := CheckGatewayConflicts(routes, others...); err == nil {
+		t.Fatal("expected conflict for same cname+sourcePort, got nil")
+	}
+}
+
+func TestCheckGatewayConflicts_SameCNameDifferentSourcePort_NoConflict(t *testing.T) {
+	routes := []Route{
+		{Mode: "port", CName: "gw.example.com", SourcePort: "9000", DestinationPort: "9000"},
+	}
+	others := [][]Route{
+		{{Mode: "port", CName: "gw.example.com", SourcePort: "9001", DestinationPort: "9001"}},
+	}
+	if err := CheckGatewayConflicts(routes, others...); err != nil {
+		t.Fatalf("expected no conflict for same cname with different sourcePort, got: %v", err)
+	}
+}
+
+func TestCheckGatewayConflicts_DifferentCNameSameSourcePort_NoConflict(t *testing.T) {
 	routes := []Route{
 		{Mode: "port", CName: "a.gw.example.com", SourcePort: "9000", DestinationPort: "9000"},
 	}
 	others := [][]Route{
 		{{Mode: "port", CName: "b.gw.example.com", SourcePort: "9000", DestinationPort: "9001"}},
 	}
-	// Without resolver, keyed on cname:sourcePort — different cnames, same port = no conflict.
 	if err := CheckGatewayConflicts(routes, others...); err != nil {
-		t.Fatalf("expected no conflict for different cnames without resolver, got: %v", err)
+		t.Fatalf("expected no conflict for different cnames same sourcePort, got: %v", err)
 	}
 }
 
-// ---------------------------------------------------------------------------
-// CheckGatewayConflictsWithResolver — environmental checks
-// ---------------------------------------------------------------------------
-
-func makeResolver(mapping map[string]string) PortRouteBindResolver {
-	return func(cname string) (string, error) {
-		if addr, ok := mapping[cname]; ok {
-			return addr, nil
-		}
-		return "", errors.New("cname not in gateway bind addresses")
+func TestCheckGatewayConflicts_HostAndPortSameCName_NoConflict(t *testing.T) {
+	// A host route and a port route may share the same CNAME — different key spaces.
+	hostRoute := []Route{
+		{Mode: "host", CName: "minio.example.com", DestinationPort: "9001", Protocol: "https"},
 	}
-}
-
-func TestCheckGatewayConflictsWithResolver_SameBindAddrAndPort(t *testing.T) {
-	resolver := makeResolver(map[string]string{
-		"a.gw.example.com": "10.10.10.25",
-		"b.gw.example.com": "10.10.10.25",
-	})
-	current := []Route{
-		{Mode: "port", CName: "a.gw.example.com", SourcePort: "9000", DestinationPort: "9000"},
+	portRoute := [][]Route{
+		{{Mode: "port", CName: "minio.example.com", SourcePort: "9000", DestinationPort: "9000", Protocol: "http"}},
 	}
-	others := [][]Route{
-		{{Mode: "port", CName: "b.gw.example.com", SourcePort: "9000", DestinationPort: "9001"}},
-	}
-	// Both CNAMEs resolve to the same VIP, same source port — must conflict.
-	if err := CheckGatewayConflictsWithResolver(resolver, current, others...); err == nil {
-		t.Fatal("expected conflict for same resolved bindAddress:sourcePort, got nil")
-	}
-}
-
-func TestCheckGatewayConflictsWithResolver_DifferentBindAddrSamePort(t *testing.T) {
-	resolver := makeResolver(map[string]string{
-		"a.gw.example.com": "10.10.10.25",
-		"b.gw.example.com": "10.10.10.26",
-	})
-	current := []Route{
-		{Mode: "port", CName: "a.gw.example.com", SourcePort: "9000", DestinationPort: "9000"},
-	}
-	others := [][]Route{
-		{{Mode: "port", CName: "b.gw.example.com", SourcePort: "9000", DestinationPort: "9001"}},
-	}
-	// Different VIPs, same source port — must NOT conflict.
-	if err := CheckGatewayConflictsWithResolver(resolver, current, others...); err != nil {
-		t.Fatalf("expected no conflict for different bind addresses, got: %v", err)
-	}
-}
-
-func TestCheckGatewayConflictsWithResolver_ResolverErrorFailsClosed(t *testing.T) {
-	failResolver := PortRouteBindResolver(func(cname string) (string, error) {
-		return "", errors.New("DNS lookup failed")
-	})
-	current := []Route{
-		{Mode: "port", CName: "broken.gw.example.com", SourcePort: "9000", DestinationPort: "9000"},
-	}
-	// Resolver error must propagate — fail closed, not fall back to cname:sourcePort.
-	if err := CheckGatewayConflictsWithResolver(failResolver, current); err == nil {
-		t.Fatal("expected error when resolver fails, got nil (should fail closed)")
+	if err := CheckGatewayConflicts(hostRoute, portRoute...); err != nil {
+		t.Fatalf("expected no conflict for host+port routes sharing a cname, got: %v", err)
 	}
 }
 
@@ -207,6 +182,52 @@ func TestBuildRouteToken_TwoDifferentCNamesProduceDifferentTokens(t *testing.T) 
 	r2 := Route{Mode: "port", CName: "b.gw.example.com", SourcePort: "9000", DestinationPort: "9000"}
 	if BuildRouteToken(r1) == BuildRouteToken(r2) {
 		t.Fatal("expected different route tokens for different cnames on same port")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// BuildRouteStateKey — stable monitoring debounce key
+// ---------------------------------------------------------------------------
+
+func TestBuildRouteStateKey_HostRouteIncludesProtocolAndDestPort(t *testing.T) {
+	r := Route{Mode: "host", Protocol: "https", CName: "app.example.com", DestinationPort: "9001"}
+	key := BuildRouteStateKey(r)
+	if key == "" {
+		t.Fatal("expected non-empty state key")
+	}
+	// Key must not change when only the route Name changes (cosmetic rename).
+	r2 := r
+	r2.Name = "renamed"
+	if BuildRouteStateKey(r2) != key {
+		t.Fatal("expected stable key after cosmetic name change")
+	}
+}
+
+func TestBuildRouteStateKey_PortRouteIncludesSourcePortAndProtocol(t *testing.T) {
+	r := Route{Mode: "port", Protocol: "http", CName: "minio.example.com", SourcePort: "9000", DestinationPort: "9000"}
+	key := BuildRouteStateKey(r)
+	// Changing source port must produce a different key.
+	r2 := r
+	r2.SourcePort = "9001"
+	if BuildRouteStateKey(r2) == key {
+		t.Fatal("expected different key for different sourcePort")
+	}
+}
+
+func TestBuildRouteStateKey_ProtocolChangeProducesDifferentKey(t *testing.T) {
+	http := Route{Mode: "port", Protocol: "http", CName: "api.example.com", SourcePort: "8080", DestinationPort: "8080"}
+	tcp := http
+	tcp.Protocol = "tcp"
+	if BuildRouteStateKey(http) == BuildRouteStateKey(tcp) {
+		t.Fatal("expected different keys for different protocols on same port route")
+	}
+}
+
+func TestBuildRouteStateKey_HostAndPortRoutesDifferEvenWithSameCName(t *testing.T) {
+	host := Route{Mode: "host", Protocol: "https", CName: "shared.example.com", DestinationPort: "9001"}
+	port := Route{Mode: "port", Protocol: "http", CName: "shared.example.com", SourcePort: "9000", DestinationPort: "9000"}
+	if BuildRouteStateKey(host) == BuildRouteStateKey(port) {
+		t.Fatal("expected host and port routes to produce different state keys even when cname matches")
 	}
 }
 

@@ -1335,11 +1335,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 
 				// Cross-cluster gateway conflict check against the full updated route set.
 				others := repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
-				var resolver config.PortRouteBindResolver
-				if cl, ok := repman.Clusters[vars["clusterName"]]; ok {
-					resolver = config.PortRouteBindResolver(cl.ResolvePortRouteBindTarget)
-				}
-				if err := config.CheckGatewayConflictsWithResolver(resolver, node.AppConfig.Deployment.Routes, others...); err != nil {
+				if err := config.CheckGatewayConflicts(node.AppConfig.Deployment.Routes, others...); err != nil {
 					// Roll back the change.
 					node.AppConfig.Deployment.Routes[index] = originalRow
 					node.AppConfig.Deployment.EnforceSinglePrimary()
@@ -1670,24 +1666,16 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 				return
 			}
 
-			// Obtain the resolver once; used for both intra-app and cross-app checks.
-			var resolver config.PortRouteBindResolver
-			if cl, ok := repman.Clusters[vars["clusterName"]]; ok {
-				resolver = config.PortRouteBindResolver(cl.ResolvePortRouteBindTarget)
-			}
-
-			// Intra-app duplicate check using the same listener-key model as the
-			// gateway conflict check: host routes key on cname, port routes key on
-			// resolved bindAddress:sourcePort (or cname:sourcePort when no resolver).
+			// Intra-app duplicate check: host routes key on cname, port routes on cname:sourcePort.
 			existing := config.NormalizedCopy(node.AppConfig.Deployment.Routes)
-			if err := config.CheckGatewayConflictsWithResolver(resolver, []config.Route{row}, existing); err != nil {
+			if err := config.CheckGatewayConflicts([]config.Route{row}, existing); err != nil {
 				http.Error(w, "Duplicate route: "+err.Error(), http.StatusBadRequest)
 				return
 			}
 
-			// Cross-cluster gateway conflict check with bind-address resolver.
+			// Cross-cluster gateway conflict check.
 			others := repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
-			if err := config.CheckGatewayConflictsWithResolver(resolver, []config.Route{row}, others...); err != nil {
+			if err := config.CheckGatewayConflicts([]config.Route{row}, others...); err != nil {
 				http.Error(w, "Gateway conflict: "+err.Error(), http.StatusBadRequest)
 				return
 			}

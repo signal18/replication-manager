@@ -27,20 +27,9 @@ func (app *App) GetMonitoringStatus() string {
 		failureThreshold = appErrFailureThreshold
 	}
 	routeEndpoint := func(route config.Route) string {
-		port := route.DestinationPort
-		if port == "" {
-			port = route.Port
-		}
-		if route.Mode == "port" {
-			if route.CName != "" {
-				return fmt.Sprintf("%s://%s:%s", route.Protocol, route.CName, route.SourcePort)
-			}
-			return fmt.Sprintf("local_%s://%s:%s", route.Protocol, app.GetHost(), port)
-		}
-		if route.CName != "" {
-			return fmt.Sprintf("%s://%s:%s", route.Protocol, route.CName, port)
-		}
-		return fmt.Sprintf("%s://%s:%s", route.Protocol, app.GetHost(), port)
+		normalized := route
+		normalized.Normalize()
+		return config.BuildRouteStateKey(normalized)
 	}
 	debouncedRecordAppErr := func(routeKey string, states []state.State, routeErr error) {
 		failCount := app.IncAppErrConsecutiveCnt(routeKey)
