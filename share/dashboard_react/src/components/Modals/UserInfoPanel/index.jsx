@@ -1,5 +1,5 @@
 import {
-  Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, ModalFooter,
+  Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton,
   Box, VStack, HStack, Text, Badge, Divider, Table, Thead, Tbody, Tr, Th, Td
 } from '@chakra-ui/react'
 import React from 'react'
@@ -60,6 +60,22 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
                 </HStack>
               )}
             </Box>
+
+            <HStack spacing={3} width='100%' justify='space-between'>
+              <RMButton
+                variant='ghost'
+                size='small'
+                onClick={toggleTheme}
+              >
+                <HStack spacing={1}>
+                  {theme === 'light' ? <HiMoon color='midnightblue' /> : <HiSun color='gold' />}
+                  <Text fontSize='sm'>{theme === 'light' ? 'Dark mode' : 'Light mode'}</Text>
+                </HStack>
+              </RMButton>
+              <RMButton colorScheme='red' onClick={onLogout}>
+                Logout
+              </RMButton>
+            </HStack>
 
             {clusterNames.length > 0 && roleList.length > 0 && (
               <>
@@ -139,23 +155,6 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
 
           </VStack>
         </ModalBody>
-        <ModalFooter>
-          <HStack spacing={3} width='100%' justify='space-between'>
-            <RMButton
-              variant='ghost'
-              size='small'
-              onClick={toggleTheme}
-            >
-              <HStack spacing={1}>
-                {theme === 'light' ? <HiMoon color='midnightblue' /> : <HiSun color='gold' />}
-                <Text fontSize='sm'>{theme === 'light' ? 'Dark mode' : 'Light mode'}</Text>
-              </HStack>
-            </RMButton>
-            <RMButton colorScheme='red' onClick={onLogout}>
-              Logout
-            </RMButton>
-          </HStack>
-        </ModalFooter>
       </ModalContent>
     </Modal>
   )
