@@ -987,9 +987,16 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 }
 
 // appRouteFragmentPrefix returns the shared prefix for all HAProxy fragment
-// keys owned by this app.
-func appRouteFragmentPrefix(clusterName, appName string) string {
-	return "haproxy.cfg.d/repman_" + clusterName + "_" + appName + "_"
+// keys owned by this app, matching the origin/develop naming convention.
+func appRouteFragmentPrefix(opensvcDNS string) string {
+	return "haproxy.cfg.d/" + opensvcDNS + "_"
+}
+
+func buildRouteObjectName(route config.Route, opensvcDNS string) string {
+	if route.Mode == "port" {
+		return opensvcDNS + "_" + route.CName + "_" + route.SourcePort + "_" + route.DestinationPort
+	}
+	return opensvcDNS + "_" + route.DestinationPort
 }
 
 // buildRouteFragment generates the HAProxy config fragment and its gateway
@@ -997,15 +1004,14 @@ func appRouteFragmentPrefix(clusterName, appName string) string {
 //
 // For port routes the listener binds on cname:sourcePort so the gateway
 // resolves the CNAME itself; repman does not need to know the VIP.
-func buildRouteFragment(route config.Route, clusterName, appName, opensvcDNS string, numBE int) (fragmentKey, haproxyfragment string, err error) {
-	routeToken := config.BuildRouteToken(route)
-	globalToken := config.BuildGlobalRouteToken(clusterName, appName, routeToken)
-	fragmentKey = appRouteFragmentPrefix(clusterName, appName) + routeToken + ".cfg"
+func buildRouteFragment(route config.Route, opensvcDNS string, numBE int) (fragmentKey, haproxyfragment string, err error) {
+	routeName := buildRouteObjectName(route, opensvcDNS)
+	fragmentKey = "haproxy.cfg.d/" + routeName
 
 	switch route.Mode {
 	case "port":
-		frontend := "fe_" + globalToken
-		backend := "be_" + globalToken
+		frontend := routeName + "_frontend"
+		backend := routeName + "_backend"
 		if route.Protocol == "tcp" {
 			haproxyfragment = fmt.Sprintf(`
 frontend %s
@@ -1037,7 +1043,7 @@ backend %s
 `, frontend, route.CName, route.SourcePort, backend, backend, numBE, opensvcDNS, route.DestinationPort)
 		}
 	default: // host
-		backend := "be_" + globalToken
+		backend := routeName
 		haproxyfragment = fmt.Sprintf(`
 frontend https
     use_backend %s if { hdr(host) -i %s }
@@ -1156,7 +1162,7 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 			}
 		}
 
-		key, frag, fragErr := buildRouteFragment(route, cluster.Name, app.Name, opensvcDNS, numBE)
+		key, frag, fragErr := buildRouteFragment(route, opensvcDNS, numBE)
 		if fragErr != nil {
 			return fmt.Errorf("cannot build route fragment for app %s: %w", app.Name, fragErr)
 		}
@@ -1166,12 +1172,12 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 	// Step 4: list existing gateway fragments and delete stale or legacy ones.
 	//
 	// Two naming schemes may coexist after an upgrade:
-	//   new: haproxy.cfg.d/repman_<cluster>_<app>_<routeToken>.cfg
-	//   old: haproxy.cfg.d/<opensvcDNS>_<port>   (pre-prefix scheme)
+	//   desired: haproxy.cfg.d/<opensvcDNS>_<route...>
+	//   stale branch scheme: haproxy.cfg.d/repman_<cluster>_<app>_<routeToken>.cfg
 	//
 	// Both are discovered and removed if no longer in the desired set.
-	newPrefix := appRouteFragmentPrefix(cluster.Name, app.Name)
-	legacyPrefix := "haproxy.cfg.d/" + opensvcDNS + "_"
+	ownerPrefix := appRouteFragmentPrefix(opensvcDNS)
+	staleBranchPrefix := "haproxy.cfg.d/repman_" + cluster.Name + "_" + app.Name + "_"
 
 	existingKeys, listErr := svc.ListConfigKeys(gwNamespace, gwService)
 	if listErr != nil {
@@ -1179,17 +1185,18 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 	}
 
 	for _, key := range existingKeys {
-		isNew := strings.HasPrefix(key, newPrefix)
-		isLegacy := strings.HasPrefix(key, legacyPrefix)
-		if !isNew && !isLegacy {
+		isOwned := strings.HasPrefix(key, ownerPrefix)
+		isStaleBranch := strings.HasPrefix(key, staleBranchPrefix)
+		if !isOwned && !isStaleBranch {
 			continue
 		}
-		if isNew {
+		if isOwned {
 			if _, stillWanted := desired[key]; stillWanted {
 				continue
 			}
 		}
-		// Legacy keys are always stale once we reconcile with the new scheme.
+		// Branch-specific repman_ keys are always stale once we reconcile with
+		// the restored origin/develop naming scheme.
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"Deleting stale route fragment key=%s (app %s)", key, app.Name)
 		if delErr := svc.DeleteConfigKeyValue(gwNamespace, gwService, key); delErr != nil {
