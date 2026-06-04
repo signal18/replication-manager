@@ -1381,14 +1381,17 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				node.AppConfig.Deployment.Routes[index] = row
 				node.AppConfig.Deployment.EnforceSinglePrimary()
 
-				// Cross-cluster gateway conflict check against the full updated route set.
-				others := repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
-				if err := config.CheckGatewayConflicts(node.AppConfig.Deployment.Routes, others...); err != nil {
-					// Roll back the change.
-					node.AppConfig.Deployment.Routes[index] = originalRow
-					node.AppConfig.Deployment.EnforceSinglePrimary()
-					http.Error(w, "Gateway conflict: "+err.Error(), http.StatusBadRequest)
-					return
+				// Monitor-only edits do not change route identity (cname, sourcePort,
+				// mode, protocol), so gateway conflict checks are not needed.
+				if !strings.HasPrefix(vars["key"], "monitor") {
+					others := repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
+					if err := config.CheckGatewayConflicts(node.AppConfig.Deployment.Routes, others...); err != nil {
+						// Roll back the change.
+						node.AppConfig.Deployment.Routes[index] = originalRow
+						node.AppConfig.Deployment.EnforceSinglePrimary()
+						http.Error(w, "Gateway conflict: "+err.Error(), http.StatusBadRequest)
+						return
+					}
 				}
 
 				// DNS cleanup for renamed or rekeyed managed host routes happens

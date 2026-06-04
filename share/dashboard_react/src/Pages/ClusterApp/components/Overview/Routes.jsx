@@ -103,7 +103,8 @@ function hasMonitorConfig(route) {
 }
 
 function normalizeNewRouteMonitorDraft(draft) {
-  const { id, monitorPath, monitorAuthType, monitorAuthUser, monitorAuthSecretVar, monitorExpectStatus, ...routeFields } = draft;
+  const { monitorPath, monitorAuthType, monitorAuthUser, monitorAuthSecretVar, monitorExpectStatus, ...routeFields } = draft;
+  delete routeFields.id;
   const mode = routeFields.mode || 'host';
   const protocol = routeFields.protocol || (mode === 'host' ? 'https' : 'tcp');
   const httpCapable = (mode === 'host' && protocol === 'https') || (mode === 'port' && protocol === 'http');
@@ -325,7 +326,7 @@ const Routes = React.memo(function Routes({
                       <TextForm
                         confirmTitle="Monitor path changed"
                         name={`${rowKey}.monitor.path`}
-                        placeholder="/health"
+                        placeholder="/ (default)"
                         value={p.monitor?.path || ''}
                         onSave={(value) => onRowArrayChange(fieldName, index, 'monitor.path', value)}
                       />
@@ -460,7 +461,7 @@ const Routes = React.memo(function Routes({
                       <Text fontSize="xs" color="gray.400" fontWeight="semibold" minW="75px" pt={1}>Monitoring</Text>
                       <Input
                         name={`new_${p.id}.monitor.path`}
-                        placeholder="/health"
+                        placeholder="/ (default)"
                         value={p.monitorPath}
                         size="sm"
                         maxW="160px"
