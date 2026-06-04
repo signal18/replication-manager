@@ -1137,37 +1137,12 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 			}
 		}
 
-		// Determine stale CNAMEs (in old set but not new).
-		var staleCNAMEs []string
-		for cname := range oldManagedCNAMEs {
-			if _, stillWanted := newManagedCNAMEs[cname]; !stillWanted {
-				staleCNAMEs = append(staleCNAMEs, cname)
-			}
+		persisted, reconcileErr := cluster.reconcileStaleManagedCNAMEs(app, oldManagedCNAMEs, newManagedCNAMEs)
+		if reconcileErr != nil {
+			return reconcileErr
 		}
 
-		if len(staleCNAMEs) > 0 {
-			if cluster.Conf.Cloud18DomainDropScript == "" {
-				return fmt.Errorf("app %s has %d stale managed DNS record(s) to remove but cloud18-domain-drop-script is not configured — configure it before reconciling", app.Name, len(staleCNAMEs))
-			}
-			for _, fqdn := range staleCNAMEs {
-				shortLabel, managed := cluster.ManagedHostCNAME(fqdn)
-				if !managed {
-					// The FQDN was recorded under a previous managed suffix (cluster
-					// rename, domain/subdomain/zone config change, etc.).  We cannot
-					// derive the correct script label from it, so refuse to proceed
-					// rather than calling the drop-script with an empty or wrong label.
-					return fmt.Errorf("stale CNAME %s (app %s) does not match the current managed suffix — the cluster config may have changed; delete %s to reset", fqdn, app.Name, managedCNAMEsFile(app))
-				}
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-					"Deleting stale managed DNS record %s (app %s)", fqdn, app.Name)
-				if err := cluster.BashScriptDeprovDNS(shortLabel); err != nil {
-					return fmt.Errorf("failed to delete stale managed DNS record %s (app %s): %w", fqdn, app.Name, err)
-				}
-			}
-		}
-
-		// Persist the new desired set (written regardless of whether stale cleanup ran).
-		if err := saveProvisionedManagedCNAMEs(app, newManagedCNAMEs); err != nil {
+		if err := saveProvisionedManagedCNAMEs(app, persisted); err != nil {
 			return fmt.Errorf("cannot save managed CNAME state for app %s: %w", app.Name, err)
 		}
 	}
@@ -1335,6 +1310,69 @@ func saveProvisionedManagedCNAMEs(app *App, set map[string]struct{}) error {
 		return err
 	}
 	return os.WriteFile(managedCNAMEsFile(app), data, 0644)
+}
+
+// reconcileStaleManagedCNAMEs computes the persisted managed CNAME set after
+// attempting to remove stale entries (those in old but not in new).
+//
+// When stale entries exist and cloud18-domain-drop-script is not configured,
+// cleanup is skipped with a warning and the stale entries are merged back into
+// the returned persisted set so they can be cleaned later once a drop script is
+// available.  This allows HAProxy fragment generation to continue even when the
+// optional DNS cleanup cannot run.
+func (cluster *Cluster) reconcileStaleManagedCNAMEs(
+	app *App,
+	oldManagedCNAMEs map[string]struct{},
+	newManagedCNAMEs map[string]struct{},
+) (persisted map[string]struct{}, err error) {
+	// Collect stale entries: in old but not desired.
+	var staleCNAMEs []string
+	for cname := range oldManagedCNAMEs {
+		if _, stillWanted := newManagedCNAMEs[cname]; !stillWanted {
+			staleCNAMEs = append(staleCNAMEs, cname)
+		}
+	}
+
+	// Start persisted set from the desired (new) set.
+	persisted = make(map[string]struct{}, len(newManagedCNAMEs))
+	for k := range newManagedCNAMEs {
+		persisted[k] = struct{}{}
+	}
+
+	if len(staleCNAMEs) == 0 {
+		return persisted, nil
+	}
+
+	if cluster.Conf.Cloud18DomainDropScript == "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"App %s has %d stale managed DNS record(s) %v but cloud18-domain-drop-script is not configured — "+
+				"proceeding with route reconcile; stale entries retained in state for later cleanup",
+			app.Name, len(staleCNAMEs), staleCNAMEs)
+		// Retain stale entries so they are not forgotten and can be cleaned
+		// once a drop script is configured.
+		for k := range oldManagedCNAMEs {
+			persisted[k] = struct{}{}
+		}
+		return persisted, nil
+	}
+
+	for _, fqdn := range staleCNAMEs {
+		shortLabel, managed := cluster.ManagedHostCNAME(fqdn)
+		if !managed {
+			// The FQDN was recorded under a previous managed suffix (cluster
+			// rename, domain/subdomain/zone config change, etc.).  Refuse to
+			// proceed rather than calling the drop-script with an empty or wrong
+			// label.
+			return nil, fmt.Errorf("stale CNAME %s (app %s) does not match the current managed suffix — the cluster config may have changed; delete %s to reset", fqdn, app.Name, managedCNAMEsFile(app))
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Deleting stale managed DNS record %s (app %s)", fqdn, app.Name)
+		if err := cluster.BashScriptDeprovDNS(shortLabel); err != nil {
+			return nil, fmt.Errorf("failed to delete stale managed DNS record %s (app %s): %w", fqdn, app.Name, err)
+		}
+	}
+
+	return persisted, nil
 }
 
 type ErrSlice []error
