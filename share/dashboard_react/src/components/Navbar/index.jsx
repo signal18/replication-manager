@@ -11,11 +11,12 @@ import AlertBadge from '../AlertBadge'
 import AlertModal from '../Modals/AlertModal'
 import SecurityScoreModal from '../Modals/SecurityScoreModal'
 import WorkloadModal from '../Modals/WorkloadModal'
-import { FaPowerOff, FaUserPlus } from 'react-icons/fa'
+import { FaPowerOff, FaUserPlus, FaUserCircle } from 'react-icons/fa'
 import { MdSecurity, MdNotificationsOff } from 'react-icons/md'
 import { RiSpeedFill } from 'react-icons/ri'
 import ConfirmModal from '../Modals/ConfirmModal'
 import InterventionPanel from '../Modals/InterventionPanel'
+import UserInfoPanel from '../Modals/UserInfoPanel'
 import { clusterService } from '../../services/clusterService'
 import { getApi } from '../../services/apiHelper'
 import styles from './styles.module.scss'
@@ -38,6 +39,7 @@ function Navbar({ username, user }) {
   const [isWorkloadModalOpen, setIsWorkloadModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [isInterventionPanelOpen, setIsInterventionPanelOpen] = useState(false)
+  const [isUserInfoPanelOpen, setIsUserInfoPanelOpen] = useState(false)
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
   const [isChatOpen, setIsChatOpen] = useState(() => { return localStorage.getItem('chatOpen') === 'true'; });
   const [showImageLogo, setShowImageLogo] = useState(true)
@@ -234,7 +236,12 @@ function Navbar({ username, user }) {
             <>
               {username && isDesktop && (
                   <>
-                      <Text>{`Welcome, ${username}`}</Text>
+                      <RMButton variant='ghost' size='small' onClick={() => setIsUserInfoPanelOpen(true)}>
+                        <HStack spacing={1}>
+                          <FaUserCircle />
+                          <Text>{username.length > 5 ? username.substring(0, 5) + '..' : username}</Text>
+                        </HStack>
+                      </RMButton>
                       {monitor?.config?.cloud18 && (
                         <Flex className={styles.chatIcon}>
                           <AlertBadge
@@ -331,6 +338,13 @@ function Navbar({ username, user }) {
               setIsInterventionPanelOpen(false)
             }).catch((err) => console.error('Failed to end intervention:', err))
           }}
+        />
+      )}
+      {isUserInfoPanelOpen && (
+        <UserInfoPanel
+          isOpen={isUserInfoPanelOpen}
+          closeModal={() => setIsUserInfoPanelOpen(false)}
+          user={user}
         />
       )}
     </>
