@@ -1,6 +1,6 @@
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton,
-  Box, VStack, HStack, Text, Divider, Table, Thead, Tbody, Tr, Th, Td
+  Box, VStack, HStack, Text, Badge, Divider, Table, Thead, Tbody, Tr, Th, Td
 } from '@chakra-ui/react'
 import React from 'react'
 import { HiMoon, HiSun } from 'react-icons/hi'
@@ -30,10 +30,6 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
   const roleList = [...allRoles].sort()
 
   const checkMark = '\u2713'
-  const cellBgYes = theme === 'light' ? 'blue.500' : 'blue.400'
-  const cellColorYes = 'white'
-  const cellBgNo = theme === 'light' ? 'gray.100' : 'gray.700'
-  const cellColorNo = theme === 'light' ? 'gray.400' : 'gray.500'
   const stickyBg = theme === 'light' ? 'white' : 'gray.800'
 
   return (
@@ -49,10 +45,9 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
               <HStack spacing={4}>
                 <Text fontSize='sm' fontWeight={600}>User:</Text>
                 <Text fontSize='sm'>{user?.DisplayName || user?.User || user?.username || '-'}</Text>
-                <Box as='span' px={2} py={0.5} borderRadius='md' fontSize='xs' fontWeight='bold'
-                  sx={{ bg: user?.AuthType === 'SSO' ? 'purple.600' : 'blue.600', color: 'white !important' }}>
+                <Badge variant='solid' colorScheme={user?.AuthType === 'SSO' ? 'purple' : 'blue'} size='sm'>
                   {user?.AuthType || 'Local'}
-                </Box>
+                </Badge>
               </HStack>
               {user?.Email && (
                 <HStack spacing={4}>
@@ -100,10 +95,9 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
                           <Td position='sticky' left={0} bg={stickyBg} fontSize='xs'>{role}</Td>
                           {clusterNames.map(name => (
                             <Td key={name} textAlign='center'>
-                              <Box as='span' px={2} py={0.5} borderRadius='md' fontSize='xs' fontWeight='bold' textAlign='center' minW='24px' display='inline-block'
-                                sx={{ bg: roles[name]?.[role] ? cellBgYes : cellBgNo, color: (roles[name]?.[role] ? cellColorYes : cellColorNo) + ' !important' }}>
+                              <Badge variant='solid' colorScheme={roles[name]?.[role] ? 'blue' : 'gray'} size='sm'>
                                 {roles[name]?.[role] ? checkMark : '-'}
-                              </Box>
+                              </Badge>
                             </Td>
                           ))}
                         </Tr>
@@ -136,10 +130,9 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
                           <Td position='sticky' left={0} bg={stickyBg} fontSize='xs'>{grant}</Td>
                           {clusterNames.map(name => (
                             <Td key={name} textAlign='center'>
-                              <Box as='span' px={2} py={0.5} borderRadius='md' fontSize='xs' fontWeight='bold' textAlign='center' minW='24px' display='inline-block'
-                                sx={{ bg: grants[name]?.[grant] ? cellBgYes : cellBgNo, color: (grants[name]?.[grant] ? cellColorYes : cellColorNo) + ' !important' }}>
+                              <Badge variant='solid' colorScheme={grants[name]?.[grant] ? 'blue' : 'gray'} size='sm'>
                                 {grants[name]?.[grant] ? checkMark : '-'}
-                              </Box>
+                              </Badge>
                             </Td>
                           ))}
                         </Tr>
