@@ -602,6 +602,9 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 	UserInfoMap["Password"] = mycutinfo["Password"].(string)
 	UserInfoMap["Role"] = mycutinfo["Role"].(string)
 	UserInfoMap["Email"] = ""
+	if dn, ok := mycutinfo["display_name"]; ok && dn != nil {
+		UserInfoMap["DisplayName"] = dn.(string)
+	}
 	_, ok := mycutinfo["profile"]
 	if ok {
 		profile := mycutinfo["profile"].(string)
@@ -613,6 +616,7 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 			UserInfoMap["User"] = mycutinfo["email"].(string)
 			UserInfoMap["Email"] = mycutinfo["email"].(string)
 			UserInfoMap["profile"] = profile
+			UserInfoMap["AuthType"] = "SSO"
 			return UserInfoMap, nil
 		}
 		return nil, fmt.Errorf("invalid oauth provider")
@@ -622,6 +626,7 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 		UserInfoMap["MeetUserID"] = mycutinfo["meet_user_id"].(string)
 	}
 	UserInfoMap["User"] = mycutinfo["Name"].(string)
+	UserInfoMap["AuthType"] = "Local"
 	return UserInfoMap, nil
 }
 
@@ -882,9 +887,19 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	// SSO fallback succeeded: build SSO JWT and return without upgrade_id.
 	resetAuthTry()
 	repman.ensureCRMSessionBootstrappedAsync(tok)
-	email, err := githelper.GetGitLabUserEmail(tok, true)
-	if err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving email from gitlab: %v", err)
+	// Fetch full profile (name + email) from GitLab
+	var email, displayName string
+	if profile, profileErr := githelper.GetGitLabUserProfile(tok); profileErr == nil {
+		email = profile.Email
+		displayName = profile.Name
+	} else {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving profile from gitlab: %v", profileErr)
+		// Fallback to email-only endpoint
+		var emailErr error
+		email, emailErr = githelper.GetGitLabUserEmail(tok, true)
+		if emailErr != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving email from gitlab: %v", emailErr)
+		}
 	}
 	meetUser := email
 	if meetUser == "" {
@@ -904,20 +919,22 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	if email != "" {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Switch from gitlab user to email: %s", email)
 		ssoUserInfo = struct {
-			Name       string
-			Role       string
-			Password   string
-			Email      string `json:"email"`
-			Profile    string `json:"profile"`
-			MeetUserID string `json:"meet_user_id"`
-		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), email, repman.Conf.OAuthProvider, meetUserID}
+			Name        string
+			DisplayName string `json:"display_name"`
+			Role        string
+			Password    string
+			Email       string `json:"email"`
+			Profile     string `json:"profile"`
+			MeetUserID  string `json:"meet_user_id"`
+		}{user.Username, displayName, "Member", repman.Conf.GetEncryptedString(user.Password), email, repman.Conf.OAuthProvider, meetUserID}
 	} else {
 		ssoUserInfo = struct {
-			Name       string
-			Role       string
-			Password   string
-			MeetUserID string `json:"meet_user_id"`
-		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID}
+			Name        string
+			DisplayName string `json:"display_name"`
+			Role        string
+			Password    string
+			MeetUserID  string `json:"meet_user_id"`
+		}{user.Username, displayName, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID}
 	}
 
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "LoginHandler: meet userID %s", meetUserID)
@@ -1256,8 +1273,62 @@ func (repman *ReplicationManager) handlerMuxWhoAmI(w http.ResponseWriter, r *htt
 		return
 	}
 
+	// Add per-cluster grants and roles to the response.
+	// user["User"] is the canonical username; user["Name"] is the fallback
+	// for local users where GetUserInfoMap sets User = Name (SSO sets User = email).
+	username := user["User"]
+	if username == "" {
+		username = user["Name"]
+	}
+	clusterGrants, clusterRoles := repman.resolveUserClusterGrantsAndRoles(username)
+	if clusterGrants != nil {
+		if res, err = sjson.SetBytes(res, "grants", clusterGrants); err != nil {
+			log.Errorf("handlerMuxWhoAmI sjson grants error: %v", err)
+		}
+	}
+	if clusterRoles != nil {
+		if res, err = sjson.SetBytes(res, "roles", clusterRoles); err != nil {
+			log.Errorf("handlerMuxWhoAmI sjson roles error: %v", err)
+		}
+	}
+	// For registered instances, set admin email from Cloud18 registration
+	if repman.Conf.Cloud18 && repman.Conf.Cloud18GitUser != "" && repman.isAdminUser(username) {
+		if res, err = sjson.SetBytes(res, "Email", repman.Conf.Cloud18GitUser); err != nil {
+			log.Errorf("handlerMuxWhoAmI sjson email error: %v", err)
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(res)
+}
+
+// resolveUserClusterGrantsAndRoles returns per-cluster grant and role maps for the given user.
+// Returns shallow copies of the grant/role maps to avoid data races with the monitoring loop.
+func (repman *ReplicationManager) resolveUserClusterGrantsAndRoles(username string) (map[string]map[string]bool, map[string]map[string]bool) {
+	if username == "" {
+		return nil, nil
+	}
+	grants := make(map[string]map[string]bool)
+	roles := make(map[string]map[string]bool)
+	for _, cl := range repman.Clusters {
+		if apiUser, ok := cl.APIUsers[username]; ok {
+			grantsCopy := make(map[string]bool, len(apiUser.Grants))
+			for k, v := range apiUser.Grants {
+				grantsCopy[k] = v
+			}
+			grants[cl.Name] = grantsCopy
+
+			rolesCopy := make(map[string]bool, len(apiUser.Roles))
+			for k, v := range apiUser.Roles {
+				rolesCopy[k] = v
+			}
+			roles[cl.Name] = rolesCopy
+		}
+	}
+	if len(grants) == 0 && len(roles) == 0 {
+		return nil, nil
+	}
+	return grants, roles
 }
 
 // handlerMuxAddClusterUser handles the addition of a new user to a cluster.

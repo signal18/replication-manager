@@ -2,7 +2,6 @@ import { Box, Flex, Image, Spacer, Text, HStack, VStack, Button, useDisclosure }
 import React, { useState, useEffect} from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../redux/authSlice'
-import ThemeIcon from '../Icons/ThemeIcon'
 import RefreshCounter from '../RefreshCounter'
 import { isAuthorized } from '../../utility/common'
 import { Link } from 'react-router-dom'
@@ -11,11 +10,11 @@ import AlertBadge from '../AlertBadge'
 import AlertModal from '../Modals/AlertModal'
 import SecurityScoreModal from '../Modals/SecurityScoreModal'
 import WorkloadModal from '../Modals/WorkloadModal'
-import { FaPowerOff, FaUserPlus } from 'react-icons/fa'
+import { FaUserPlus, FaUserCircle } from 'react-icons/fa'
 import { MdSecurity, MdNotificationsOff } from 'react-icons/md'
 import { RiSpeedFill } from 'react-icons/ri'
-import ConfirmModal from '../Modals/ConfirmModal'
 import InterventionPanel from '../Modals/InterventionPanel'
+import UserInfoPanel from '../Modals/UserInfoPanel'
 import { clusterService } from '../../services/clusterService'
 import { getApi } from '../../services/apiHelper'
 import styles from './styles.module.scss'
@@ -33,11 +32,11 @@ function Navbar({ username, user }) {
   const { theme } = useTheme()
   const [alertModalType, setAlertModalType] = useState('')
   const [globalAlertModalType, setGlobalAlertModalType] = useState('')
-  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false)
   const [isWorkloadModalOpen, setIsWorkloadModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [isInterventionPanelOpen, setIsInterventionPanelOpen] = useState(false)
+  const [isUserInfoPanelOpen, setIsUserInfoPanelOpen] = useState(false)
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
   const [isChatOpen, setIsChatOpen] = useState(() => { return localStorage.getItem('chatOpen') === 'true'; });
   const [showImageLogo, setShowImageLogo] = useState(true)
@@ -52,9 +51,9 @@ function Navbar({ username, user }) {
   const baseURL = useSelector((state) => state?.auth?.baseURL)
   const monitor = useSelector((state) => state?.globalClusters?.monitor)
 
-  // Resolve cluster-level API user (has grants) from clusterData.apiUsers
-  const clusterUser = clusterData?.apiUsers && user
-    ? (clusterData.apiUsers[user.User] || clusterData.apiUsers[user.Email] || clusterData.apiUsers[user.username])
+  // Resolve per-cluster grants from auth.user.grants (populated by whoami)
+  const userClusterGrants = clusterData?.name && user?.grants
+    ? user.grants[clusterData.name]
     : null
 
   useEffect(() => {
@@ -107,12 +106,6 @@ function Navbar({ username, user }) {
     setAlertModalType('')
   }
 
-  const openLogoutModal = () => {
-    setIsLogoutModalOpen(true)
-  }
-  const closeLogoutModal = () => {
-    setIsLogoutModalOpen(false)
-  }
 
   const handleLogout = () => {
     dispatch(logoutFromMeet())
@@ -232,27 +225,17 @@ function Navbar({ username, user }) {
 
           {isAuthorized() && (
             <>
-              {username && isDesktop && (
-                  <>
-                      <Text>{`Welcome, ${username}`}</Text>
-                      {monitor?.config?.cloud18 && (
-                        <Flex className={styles.chatIcon}>
-                          <AlertBadge
-                            isSupport={true}
-                            isConnect={!meetError}
-                            text={meetError ? 'Support (disconnected)' : 'Support'}
-                            count={unreadMessagesCount || 0}
-                            onClick={toggleChat}
-                            showText={!isMobile}
-                          />
-                        </Flex>
-                      )}
-                  </>
-              )}
-              {isMobile ? (
-                <RMIconButton onClick={openLogoutModal} border='none' icon={FaPowerOff} />
-              ) : (
-                <RMButton onClick={openLogoutModal}>Logout</RMButton>
+              {username && isDesktop && monitor?.config?.cloud18 && (
+                <Flex className={styles.chatIcon}>
+                  <AlertBadge
+                    isSupport={true}
+                    isConnect={!meetError}
+                    text={meetError ? 'Support (disconnected)' : 'Support'}
+                    count={unreadMessagesCount || 0}
+                    onClick={toggleChat}
+                    showText={!isMobile}
+                  />
+                </Flex>
               )}
               {clusterData && monitor?.config?.monitoringSaveConfig && monitor?.config?.cloud18GitUser?.length > 0 && (
                 <RMIconButton
@@ -263,10 +246,16 @@ function Navbar({ username, user }) {
                   onClick={openAddUserModal}
                 />
               )}
+              <AlertBadge
+                colorScheme='blue'
+                icon={FaUserCircle}
+                text={username ? (username.length > 5 ? username.substring(0, 5) + '..' : username) : ''}
+                count=''
+                onClick={() => setIsUserInfoPanelOpen(true)}
+                showText={!isMobile}
+              />
             </>
           )}
-
-          <ThemeIcon />
 
         </HStack>
       </Flex>
@@ -284,14 +273,6 @@ function Navbar({ username, user }) {
       {globalAlertModalType && (
         <AlertModal type={globalAlertModalType} isOpen={globalAlertModalType.length !== 0} closeModal={() => setGlobalAlertModalType('')} alerts={globalAlerts} />
       )}
-      {isLogoutModalOpen && (
-        <ConfirmModal
-          onConfirmClick={handleLogout}
-          closeModal={closeLogoutModal}
-          isOpen={isLogoutModalOpen}
-          title={'Are you sure you want to log out?'}
-        />
-      )}
       {isAddUserModalOpen && (
         <AddUserModal clusterName={clusterData?.name} isOpen={isAddUserModalOpen} closeModal={closeAddUserModal} />
       )}
@@ -306,7 +287,7 @@ function Navbar({ username, user }) {
           isOpen={isInterventionPanelOpen}
           closeModal={() => setIsInterventionPanelOpen(false)}
           isGlobal={!clusterData}
-          canManage={!!clusterUser?.grants?.['db-maintenance'] || !clusterData}
+          canManage={!!userClusterGrants?.['db-maintenance'] || !clusterData}
           isActive={clusterData ? (clusterData?.isIntervention || !!clusterData?.interventionPending) : (monitor?.activeInterventionCount > 0 || monitor?.isGlobalInterventionPending)}
           current={clusterData ? (clusterData?.interventionCurrent || clusterData?.interventionPending) : monitor?.globalInterventionEntry}
           isPending={clusterData ? (!!clusterData?.interventionPending && !clusterData?.isIntervention) : (monitor?.isGlobalInterventionPending && !monitor?.isGlobalIntervention)}
@@ -330,6 +311,17 @@ function Navbar({ username, user }) {
               dispatch(getMonitoredData({}))
               setIsInterventionPanelOpen(false)
             }).catch((err) => console.error('Failed to end intervention:', err))
+          }}
+        />
+      )}
+      {isUserInfoPanelOpen && (
+        <UserInfoPanel
+          isOpen={isUserInfoPanelOpen}
+          closeModal={() => setIsUserInfoPanelOpen(false)}
+          user={user}
+          onLogout={() => {
+            setIsUserInfoPanelOpen(false)
+            handleLogout()
           }}
         />
       )}
