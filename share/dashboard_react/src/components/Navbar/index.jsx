@@ -52,9 +52,9 @@ function Navbar({ username, user }) {
   const baseURL = useSelector((state) => state?.auth?.baseURL)
   const monitor = useSelector((state) => state?.globalClusters?.monitor)
 
-  // Resolve cluster-level API user (has grants) from clusterData.apiUsers
-  const clusterUser = clusterData?.apiUsers && user
-    ? (clusterData.apiUsers[user.User] || clusterData.apiUsers[user.Email] || clusterData.apiUsers[user.username])
+  // Resolve per-cluster grants from auth.user.grants (populated by whoami)
+  const userClusterGrants = clusterData?.name && user?.grants
+    ? user.grants[clusterData.name]
     : null
 
   useEffect(() => {
@@ -306,7 +306,7 @@ function Navbar({ username, user }) {
           isOpen={isInterventionPanelOpen}
           closeModal={() => setIsInterventionPanelOpen(false)}
           isGlobal={!clusterData}
-          canManage={!!clusterUser?.grants?.['db-maintenance'] || !clusterData}
+          canManage={!!userClusterGrants?.['db-maintenance'] || !clusterData}
           isActive={clusterData ? (clusterData?.isIntervention || !!clusterData?.interventionPending) : (monitor?.activeInterventionCount > 0 || monitor?.isGlobalInterventionPending)}
           current={clusterData ? (clusterData?.interventionCurrent || clusterData?.interventionPending) : monitor?.globalInterventionEntry}
           isPending={clusterData ? (!!clusterData?.interventionPending && !clusterData?.isIntervention) : (monitor?.isGlobalInterventionPending && !monitor?.isGlobalIntervention)}
