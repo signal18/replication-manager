@@ -44,6 +44,7 @@ jobs:
               - 'Makefile'
               - 'share/**'
               - 'etc/**'
+              - '.github/workflows/**'
 
   # OSC (Open Source Community) - Only on tags
   build-osc:
