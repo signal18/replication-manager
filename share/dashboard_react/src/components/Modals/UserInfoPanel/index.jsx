@@ -70,8 +70,8 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
                           {clusterNames.map(name => (
                             <Td key={name} textAlign='center'>
                               {grants[name]?.[grant]
-                                ? <Badge colorScheme='green' size='sm'>Y</Badge>
-                                : <Badge colorScheme='gray' size='sm'>-</Badge>
+                                ? <Badge bg='green.600' color='white' size='sm'>Y</Badge>
+                                : <Badge bg={theme === 'light' ? 'gray.200' : 'gray.600'} color={theme === 'light' ? 'gray.500' : 'gray.400'} size='sm'>-</Badge>
                               }
                             </Td>
                           ))}
