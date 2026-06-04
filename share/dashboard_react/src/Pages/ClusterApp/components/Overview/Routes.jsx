@@ -26,21 +26,22 @@ const portProtocolOptions = [
 const COMMON_SETUPS_TOOLTIP = [
   'Common setups:',
   '',
-  'MinIO object store',
-  '  minio.example.com → 9000  (host / HTTPS)',
-  '  console.minio.example.com → 9001  (host / HTTPS)',
+  'MinIO object store (port routes)',
+  '  s3.gw.example.com:9000 → backend :9000  (port / HTTP)',
+  '  console.gw.example.com:9001 → backend :9001  (port / HTTP)',
   '',
-  'Database TCP proxy',
-  '  public :3307 → backend :3306  (port / TCP)',
+  'Database TCP proxy (port route)',
+  '  db.gw.example.com:3307 → backend :3306  (port / TCP)',
   '',
-  'HTTP API',
-  '  api.example.com → 8080  (host / HTTPS)',
-  '  — or —',
-  '  public :8080 → backend :8080  (port / HTTP)',
+  'HTTP API (host route)',
+  '  api.example.com → backend :8080  (host / HTTPS)',
   '',
   'You can mix host and port routes in the same app.',
-  'Hostnames must be unique across all host routes.',
-  'Public ports must be unique across all port routes.',
+  'Host routes: hostname must be unique on the shared gateway.',
+  'Port routes: listener endpoint (cname:sourcePort) must be',
+  '  unique across all apps on the shared gateway.',
+  '  The gateway resolves the listener CNAME to a bind address',
+  '  — wildcard binds are not allowed.',
 ].join('\n');
 
 function effectiveMode(row) {
@@ -60,7 +61,10 @@ function routePreview(p) {
     const host = p.cname || '(public hostname)';
     return `${proto}://${host}  →  backend :${backendPort || '?'}`;
   }
-  return `public :${p.sourcePort || '?'}  →  backend :${backendPort || '?'}`;
+  const listener = p.cname
+    ? `${p.cname}:${p.sourcePort || '?'}`
+    : `(listener cname):${p.sourcePort || '?'}`;
+  return `${listener}  →  backend :${backendPort || '?'}`;
 }
 
 function newRoutePreview(p) {
@@ -68,7 +72,10 @@ function newRoutePreview(p) {
   if (p.mode === 'host') {
     return `${p.protocol || 'https'}://${p.cname || '(public hostname)'}  →  backend :${backendPort}`;
   }
-  return `public :${p.sourcePort || '?'}  →  backend :${backendPort}`;
+  const listener = p.cname
+    ? `${p.cname}:${p.sourcePort || '?'}`
+    : `(listener cname):${p.sourcePort || '?'}`;
+  return `${listener}  →  backend :${backendPort}`;
 }
 
 const Routes = React.memo(function Routes({
@@ -94,10 +101,11 @@ const Routes = React.memo(function Routes({
           updated.port = item.destPort || item.port || '';
           updated.destPort = '';
           updated.sourcePort = '';
+          // cname is kept — host routes use it as the public hostname
         } else {
           updated.destPort = item.port || item.destPort || '';
           updated.port = '';
-          updated.cname = '';
+          // cname is kept — port routes require it as the listener CNAME
         }
       }
       return updated;
@@ -150,17 +158,27 @@ const Routes = React.memo(function Routes({
         <HStack spacing={2} align="center">
           <Heading as="h3" size="md">Route mappings</Heading>
           <Tooltip
-            label={<Text whiteSpace="pre" fontFamily="mono" fontSize="xs">{COMMON_SETUPS_TOOLTIP}</Text>}
+            label={COMMON_SETUPS_TOOLTIP}
             placement="right"
             hasArrow
+            bg="gray.800"
+            color="gray.100"
+            fontSize="xs"
+            fontFamily="mono"
+            whiteSpace="pre"
+            px={3}
+            py={2}
+            borderRadius="md"
+            maxW="420px"
           >
             <span><HiInformationCircle size={16} style={{ cursor: 'pointer', color: 'gray' }} /></span>
           </Tooltip>
         </HStack>
         <Text fontSize="sm" color="gray.600">
           Each row exposes one public entrypoint.{' '}
-          <strong>Host</strong> routes by hostname (HTTPS).{' '}
-          <strong>Port</strong> routes by public port number (TCP or HTTP).{' '}
+          <strong>Host</strong> routes by hostname (HTTPS) via the shared gateway frontend.{' '}
+          <strong>Port</strong> routes by listener hostname + port (TCP or HTTP) — the gateway binds the
+          resolved listener address; wildcard binds are not allowed.{' '}
           You can mix both in the same app.
         </Text>
 
@@ -174,8 +192,8 @@ const Routes = React.memo(function Routes({
               ? modeOptions.filter(o => o.value !== 'host')
               : modeOptions;
             const modeHelp = isHost
-              ? 'Clients connect using this hostname. Traffic is forwarded to the backend port.'
-              : 'Clients connect to the public port. Traffic is forwarded to the backend port.';
+              ? 'Clients connect using this hostname over HTTPS via the shared gateway frontend. Traffic is forwarded to the backend port.'
+              : 'Clients connect to the listener endpoint (cname:sourcePort). The gateway resolves the listener CNAME to a local bind address — wildcard binds are not allowed.';
             return (
               <VStack key={rowKey} align="stretch" spacing={1}>
                 <HStack align="center">
@@ -211,18 +229,25 @@ const Routes = React.memo(function Routes({
                   ) : (
                     <>
                       <TextForm
-                        confirmTitle={"Public port changed"}
+                        confirmTitle={"Listener CNAME changed — gateway will re-resolve the bind address on next reconcile"}
+                        name={`${rowKey}.cname`}
+                        placeholder="Listener CNAME"
+                        value={p.cname}
+                        onSave={(value) => onRowArrayChange(fieldName, index, "cname", value)}
+                      />
+                      <TextForm
+                        confirmTitle={"Source port changed"}
                         pattern='^[0-9]{1,5}$'
                         name={`${rowKey}.sourcePort`}
-                        placeholder="Public port"
+                        placeholder="Source port"
                         value={p.sourcePort}
                         onSave={(value) => onRowArrayChange(fieldName, index, "sourceport", sanitizePort(value))}
                       />
                       <TextForm
-                        confirmTitle={"Backend port changed"}
+                        confirmTitle={"Destination port changed"}
                         pattern='^[0-9]{1,5}$'
                         name={`${rowKey}.destPort`}
-                        placeholder="Backend port"
+                        placeholder="Dest port"
                         value={p.destPort || p.port}
                         onSave={(value) => onRowArrayChange(fieldName, index, "destport", sanitizePort(value))}
                       />
@@ -252,8 +277,8 @@ const Routes = React.memo(function Routes({
             const isHost = p.mode === 'host';
             const protocolOpts = isHost ? hostProtocolOptions : portProtocolOptions;
             const modeHelp = isHost
-              ? 'Clients connect using this hostname over HTTPS. Traffic is forwarded to the backend port.'
-              : 'Clients connect to the public port. Traffic is forwarded to the backend port.';
+              ? 'Clients connect using this hostname over HTTPS via the shared gateway frontend. Traffic is forwarded to the backend port.'
+              : 'Clients connect to the listener endpoint (cname:sourcePort). The gateway resolves the listener CNAME to a local bind address — wildcard binds are not allowed.';
             return (
               <VStack key={`new_${p.id}`} align="stretch" spacing={1}>
                 <HStack align="center">
@@ -287,16 +312,22 @@ const Routes = React.memo(function Routes({
                   ) : (
                     <>
                       <Input
+                        name={`new_${p.id}.cname`}
+                        placeholder="Listener CNAME"
+                        value={p.cname}
+                        onChange={(e) => handleArrayChange(index, 'cname', e.target.value)}
+                      />
+                      <Input
                         name={`new_${p.id}.sourcePort`}
                         pattern='^[0-9]{1,5}$'
-                        placeholder="Public port"
+                        placeholder="Source port"
                         value={p.sourcePort}
                         onChange={(e) => handleArrayChange(index, 'sourcePort', sanitizePort(e.target.value))}
                       />
                       <Input
                         name={`new_${p.id}.destPort`}
                         pattern='^[0-9]{1,5}$'
-                        placeholder="Backend port"
+                        placeholder="Dest port"
                         value={p.destPort}
                         onChange={(e) => handleArrayChange(index, 'destPort', sanitizePort(e.target.value))}
                       />
