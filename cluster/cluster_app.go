@@ -121,7 +121,201 @@ func (cluster *Cluster) LoadAppConfigs() error {
 	if failedCount > 0 {
 		return fmt.Errorf("failed to load %d app config file(s): %w", failedCount, firstErr)
 	}
+
+	// Second-pass environmental validation: check intra-cluster gateway conflicts
+	// for all apps that were successfully loaded. Cross-cluster conflicts are
+	// caught by ValidateGatewayRouteConflicts, which is called from the server
+	// after all clusters have their clusterList populated.
+	if envErr := cluster.validateIntraClusterGatewayRoutes(); envErr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
+			"Gateway route conflicts detected on load: %v", envErr)
+		return envErr
+	}
+
 	return nil
+}
+
+// validateIntraClusterGatewayRoutes is the production entry-point for the
+// intra-cluster second-pass check.
+func (cluster *Cluster) validateIntraClusterGatewayRoutes() error {
+	return cluster.validateIntraClusterGatewayRoutesWithResolver(
+		config.PortRouteBindResolver(cluster.ResolvePortRouteBindTarget),
+	)
+}
+
+// validateIntraClusterGatewayRoutesWithResolver runs resolver-based collision
+// detection across all apps in this cluster that share the same gateway
+// service.  Apps whose routes conflict with already-accepted apps are removed
+// from cluster.Conf.Apps so they never enter the live app list.
+func (cluster *Cluster) validateIntraClusterGatewayRoutesWithResolver(resolver config.PortRouteBindResolver) error {
+	gateway := strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService))
+	if gateway == "" {
+		return nil
+	}
+
+	// Walk apps in load order.  For each app, check its routes against all
+	// previously accepted apps.  First-loaded wins; conflicting latecomers are
+	// removed so they never enter runtime state.
+	var accepted []*config.AppConfig
+	var firstErr error
+
+	for _, appcnf := range cluster.Conf.Apps {
+		if appcnf == nil || appcnf.Deployment == nil {
+			accepted = append(accepted, appcnf)
+			continue
+		}
+		normalized := config.NormalizedCopy(appcnf.Deployment.Routes)
+		if len(normalized) == 0 {
+			accepted = append(accepted, appcnf)
+			continue
+		}
+
+		// Build "others" from already-accepted apps.
+		var others [][]config.Route
+		for _, acc := range accepted {
+			if acc == nil || acc.Deployment == nil {
+				continue
+			}
+			if r := config.NormalizedCopy(acc.Deployment.Routes); len(r) > 0 {
+				others = append(others, r)
+			}
+		}
+
+		if err := config.CheckGatewayConflictsWithResolver(resolver, normalized, others...); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
+				"App %q removed from runtime state: intra-cluster gateway conflict: %v", appcnf.AppHost, err)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("app %q (cluster %s): %w", appcnf.AppHost, cluster.Name, err)
+			}
+			// Do not append to accepted — this app is ejected.
+			continue
+		}
+		accepted = append(accepted, appcnf)
+	}
+
+	// Replace the app list with only the accepted (non-conflicting) apps.
+	cluster.Conf.Apps = accepted
+	return firstErr
+}
+
+// ValidateGatewayRouteConflicts runs the full server-scoped, resolver-based
+// cross-cluster gateway conflict check.  It must be called AFTER all clusters
+// have had SetClusterList called so the cross-cluster view is complete.
+//
+// Apps whose routes conflict with apps on peer clusters are removed from
+// cluster.Conf.Apps (rejected from runtime state) and an error is returned.
+func (cluster *Cluster) ValidateGatewayRouteConflicts() error {
+	return cluster.validateGatewayRouteConflictsWithResolver(
+		config.PortRouteBindResolver(cluster.ResolvePortRouteBindTarget),
+	)
+}
+
+// validateGatewayRouteConflictsWithResolver is the resolver-injectable form
+// used in tests.
+func (cluster *Cluster) validateGatewayRouteConflictsWithResolver(resolver config.PortRouteBindResolver) error {
+	gateway := strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService))
+	if gateway == "" {
+		return nil
+	}
+
+	// Collect normalized route slices from all peer clusters on the same gateway.
+	var externalRoutes [][]config.Route
+	for _, cl := range cluster.clusterList {
+		if cl == nil || cl.Name == cluster.Name {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService)) != gateway {
+			continue
+		}
+		externalRoutes = append(externalRoutes, cl.allAppRoutes()...)
+	}
+
+	if len(externalRoutes) == 0 {
+		return nil
+	}
+
+	// Check each app individually so the offender can be identified and removed.
+	var remaining []*config.AppConfig
+	var firstErr error
+
+	for _, appcnf := range cluster.Conf.Apps {
+		if appcnf == nil || appcnf.Deployment == nil {
+			remaining = append(remaining, appcnf)
+			continue
+		}
+		normalized := config.NormalizedCopy(appcnf.Deployment.Routes)
+		if len(normalized) == 0 {
+			remaining = append(remaining, appcnf)
+			continue
+		}
+
+		if err := config.CheckGatewayConflictsWithResolver(resolver, normalized, externalRoutes...); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
+				"App %q removed from runtime state: cross-cluster gateway conflict: %v — fix route config to re-enable", appcnf.AppHost, err)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("app %q (cluster %s): %w", appcnf.AppHost, cluster.Name, err)
+			}
+			// Ejected — do not add to remaining.
+			continue
+		}
+		remaining = append(remaining, appcnf)
+	}
+
+	cluster.Conf.Apps = remaining
+
+	// Sync the live runtime app list to match the pruned config slice.
+	// This must run even when the cluster goroutine is already active:
+	// pruneEjectedAppsFromLiveList acquires the cluster lock before mutating Apps.
+	if firstErr != nil {
+		cluster.pruneEjectedAppsFromLiveList()
+	}
+
+	return firstErr
+}
+
+// pruneEjectedAppsFromLiveList removes entries from cluster.Apps that no longer
+// have a corresponding AppConfig in cluster.Conf.Apps, rebuilds AppS3Providers
+// to match, and bumps appListEpoch so snapshot consumers detect the change.
+// It uses pointer equality (app.AppConfig is the same pointer stored in
+// Conf.Apps) and acquires the cluster lock for the atomic swap.
+func (cluster *Cluster) pruneEjectedAppsFromLiveList() {
+	accepted := make(map[*config.AppConfig]bool, len(cluster.Conf.Apps))
+	for _, appcnf := range cluster.Conf.Apps {
+		accepted[appcnf] = true
+	}
+
+	cluster.Lock()
+	filtered := make([]*App, 0, len(cluster.Apps))
+	newS3Providers := make([]string, 0)
+	for _, app := range cluster.Apps {
+		if app == nil || app.AppConfig == nil || !accepted[app.AppConfig] {
+			continue
+		}
+		filtered = append(filtered, app)
+		if app.AppConfig.AppS3Provider {
+			hostport := app.GetHost() + ":" + app.GetPort()
+			newS3Providers = append(newS3Providers, hostport)
+		}
+	}
+	cluster.Apps = filtered
+	cluster.AppS3Providers = newS3Providers
+	cluster.bumpAppListVersion()
+	cluster.Unlock()
+}
+
+// allAppRoutes returns a normalized route slice per loaded app for this cluster.
+func (cluster *Cluster) allAppRoutes() [][]config.Route {
+	var result [][]config.Route
+	for _, appcnf := range cluster.Conf.Apps {
+		if appcnf == nil || appcnf.Deployment == nil {
+			continue
+		}
+		normalized := config.NormalizedCopy(appcnf.Deployment.Routes)
+		if len(normalized) > 0 {
+			result = append(result, normalized)
+		}
+	}
+	return result
 }
 
 // LoadConfig loads the configuration from a file to the configuration struct.

@@ -608,6 +608,9 @@ func (r *Route) Validate() error {
 		if r.Protocol != "http" && r.Protocol != "tcp" {
 			return fmt.Errorf("port route protocol must be 'http' or 'tcp' in phase 1, got %q", r.Protocol)
 		}
+		if r.CName == "" {
+			return errors.New("port route requires a cname so the gateway listener can be resolved")
+		}
 		if r.SourcePort == "" {
 			return errors.New("port route requires a source port")
 		}
@@ -659,38 +662,54 @@ func NormalizedCopy(routes []Route) []Route {
 	return out
 }
 
-// CheckGatewayConflicts returns an error when any two routes in d that share
-// the same gateway would create an ambiguous HAProxy configuration:
-//   - two host routes with the same cname
-//   - two port routes with the same sourcePort
-//
-// It also accepts an external set of route slices (from other apps on the
-// same gateway) to detect cross-app conflicts.
+// PortRouteBindResolver resolves a port-route listener CNAME to the canonical
+// local bind address on the shared gateway service.  The returned address is
+// used as the HAProxy bind operand and as the collision-detection key.
+type PortRouteBindResolver func(cname string) (bindAddress string, err error)
+
+// CheckGatewayConflicts checks for shared-gateway collisions without a
+// bind-address resolver.  Port-route collision keys are (cname, sourcePort).
+// Use CheckGatewayConflictsWithResolver for the full environmental check.
 func CheckGatewayConflicts(current []Route, others ...[]Route) error {
-	seen := struct {
-		cnames      map[string]bool
-		sourcePorts map[string]bool
-	}{
-		cnames:      make(map[string]bool),
-		sourcePorts: make(map[string]bool),
-	}
+	return checkGatewayConflictsInner(nil, current, others...)
+}
+
+// CheckGatewayConflictsWithResolver checks for shared-gateway collisions using
+// a resolver to map port-route CNAMEs to concrete bind addresses.  Collision
+// keys become (bindAddress, sourcePort) which prevents two different CNAMEs
+// that map to the same gateway VIP from claiming the same listener port.
+func CheckGatewayConflictsWithResolver(resolver PortRouteBindResolver, current []Route, others ...[]Route) error {
+	return checkGatewayConflictsInner(resolver, current, others...)
+}
+
+func checkGatewayConflictsInner(resolver PortRouteBindResolver, current []Route, others ...[]Route) error {
+	seenCNames := make(map[string]bool)
+	seenListeners := make(map[string]bool) // bindAddress:sourcePort or cname:sourcePort
 
 	for _, routes := range append([][]Route{current}, others...) {
 		for _, r := range routes {
 			switch r.Mode {
 			case "host":
 				if r.CName != "" {
-					if seen.cnames[r.CName] {
+					if seenCNames[r.CName] {
 						return fmt.Errorf("cname %q is already reserved by another route on the shared gateway", r.CName)
 					}
-					seen.cnames[r.CName] = true
+					seenCNames[r.CName] = true
 				}
 			case "port":
 				if r.SourcePort != "" {
-					if seen.sourcePorts[r.SourcePort] {
-						return fmt.Errorf("sourcePort %q is already reserved by another route on the shared gateway", r.SourcePort)
+					listenerKey := r.CName + ":" + r.SourcePort
+					if resolver != nil {
+						bindAddr, resolveErr := resolver(r.CName)
+						if resolveErr != nil {
+							return fmt.Errorf("cannot resolve bind target for port route cname %q: %w", r.CName, resolveErr)
+						}
+						listenerKey = bindAddr + ":" + r.SourcePort
 					}
-					seen.sourcePorts[r.SourcePort] = true
+					if seenListeners[listenerKey] {
+						return fmt.Errorf("listener %q is already reserved by another route on the shared gateway", listenerKey)
+					}
+					seenListeners[listenerKey] = true
 				}
 			}
 		}
@@ -745,7 +764,7 @@ func shortHash(s string) string {
 func BuildRouteToken(r Route) string {
 	switch r.Mode {
 	case "port":
-		return sanitizeToken(fmt.Sprintf("port_%s_%s_%s", r.SourcePort, r.DestinationPort, shortHash(r.SourcePort+r.DestinationPort)))
+		return sanitizeToken(fmt.Sprintf("port_%s_%s_%s", r.SourcePort, r.DestinationPort, shortHash(r.CName+r.SourcePort+r.DestinationPort)))
 	default: // host
 		return sanitizeToken(fmt.Sprintf("host_%s_%s", r.DestinationPort, shortHash(r.CName)))
 	}

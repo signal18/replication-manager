@@ -1136,6 +1136,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	if WithProvisioning == "ON" {
 		flags.StringVar(&conf.Cloud18GatewayService, "cloud18-gateway-service", "", "Cloud18 OpenSVC service of the janitor proxy")
+		flags.StringVar(&conf.Cloud18GatewayBindAddresses, "cloud18-gateway-bind-addresses", "", "Comma-separated list of bindable local IP addresses owned by the shared gateway service (used for port-route HAProxy bind generation)")
 		flags.StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
 		flags.StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")
 		flags.StringVar(&conf.ProvDiskTempSize, "prov-db-disk-temp-size", "128", "Disk in m for micro service VM")
@@ -2611,14 +2612,39 @@ func (repman *ReplicationManager) Run() error {
 
 	repman.LimitPrivileges()
 
+	// Phase 1: initialise every cluster without starting monitoring goroutines.
 	for _, gl := range repman.ClusterList {
-		repman.StartCluster(gl)
+		repman.initCluster(gl)
 	}
 
+	// Phase 2: wire cross-cluster state now that all clusters are initialised.
 	for _, cluster := range repman.Clusters {
 		cluster.SetClusterList(repman.Clusters)
 		cluster.SetDeprecatedKeys(repman.DeprecatedKeys)
 		cluster.SetCarbonLogger(repman.clog)
+	}
+
+	// Phase 3: cross-cluster gateway validation — eject conflicting apps BEFORE
+	// any monitoring goroutine starts so there is no window where a conflicting
+	// app is live.  Iterate in ClusterList order (a slice) so the first cluster
+	// in the list always wins any listener conflict, making startup deterministic
+	// across restarts regardless of Go map iteration order.
+	for _, gl := range repman.ClusterList {
+		cl, ok := repman.Clusters[gl]
+		if !ok {
+			continue
+		}
+		if err := cl.ValidateGatewayRouteConflicts(); err != nil {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
+				"Cross-cluster gateway conflict at startup — one or more apps removed from runtime state: %v", err)
+		}
+	}
+
+	// Phase 4: start monitoring goroutines after all validation is complete.
+	for _, gl := range repman.ClusterList {
+		if cl, ok := repman.Clusters[gl]; ok {
+			go cl.Run()
+		}
 	}
 
 	// Send initial email
@@ -2770,8 +2796,11 @@ func (repman *ReplicationManager) Run() error {
 
 }
 
-func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Cluster, error) {
-
+// initCluster initialises a cluster and registers it in repman.Clusters but
+// does NOT start its monitoring goroutine.  Call go cl.Run() (or StartCluster)
+// separately.  The startup sequence uses initCluster so cross-cluster gateway
+// validation can run before any goroutine is live.
+func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Cluster, error) {
 	repman.currentCluster = new(cluster.Cluster)
 	repman.currentCluster.Logrus = repman.Logrus
 	repman.currentCluster.SecurityLogrus = repman.SecurityLogrus
@@ -2803,7 +2832,6 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Starting cluster: %s workingdir %s", clusterName, myClusterConf.WorkingDir)
 
 	repman.VersionConfs[clusterName].ConfInit = myClusterConf
-	//log.Infof("Default config for %s workingdir:\n %v", clusterName, myClusterConf.DefaultFlagMap)
 
 	// Use default key if cluster key is not found
 	k, _ := repman.VersionConfs[clusterName].ConfInit.LoadEncrytionKey()
@@ -2840,8 +2868,20 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.ConfigManager.UpdateLoggerConfig(clusterName, repman.currentCluster.Conf)
 	repman.ConfigManager.SaveConfig(repman.currentCluster, true)
 
-	go repman.currentCluster.Run()
 	return repman.currentCluster, nil
+}
+
+// StartCluster initialises a cluster and immediately starts its monitoring
+// goroutine.  Used for dynamic cluster creation (API, git auto-discovery).
+// The server startup sequence uses initCluster + go cl.Run() directly so that
+// cross-cluster gateway validation can run before any goroutine is live.
+func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Cluster, error) {
+	cl, err := repman.initCluster(clusterName)
+	if err != nil {
+		return nil, err
+	}
+	go cl.Run()
+	return cl, nil
 }
 
 func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitbrain bool) bool {

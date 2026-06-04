@@ -652,7 +652,10 @@ func (cluster *Cluster) InitFromConf() {
 	}
 	cluster.SqlGeneralLog.AddHook(hookgen)
 
-	cluster.LoadAppConfigs()
+	if loadErr := cluster.LoadAppConfigs(); loadErr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
+			"Startup app config load failed (some apps may have been ejected): %v", loadErr)
+	}
 
 	// Configurator generates base configuration from tags, which is overridden by:
 	// 1. Cluster-wide preserved variables
