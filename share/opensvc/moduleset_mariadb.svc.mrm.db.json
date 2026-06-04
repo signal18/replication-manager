@@ -1,4 +1,41 @@
 {
+    "modulesets": [
+        {
+            "modules": [],
+            "rulesets": [],
+            "modset_name": "mariadb.svc.mrm.db",
+            "modulesets": [
+                "mariadb.svc.mrm.db.cnf"
+            ],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 350,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "modules": [
+                {
+                    "autofix": false,
+                    "modset_mod_name": "mariadb.svc.mrm.db.cnf"
+                }
+            ],
+            "rulesets": [
+                "mariadb.svc.mrm.db.cnf"
+            ],
+            "modset_name": "mariadb.svc.mrm.db.cnf",
+            "modulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 351,
+            "responsibles": [
+                "replication-manager"
+            ]
+        }
+    ],
     "filtersets": [
         {
             "fset_stats": false,
@@ -3081,8 +3118,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/default_replication.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# REPLICATION\\n# -----------  \\n\\n# mariadb_command: SET GLOBAL server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%;EXECUTE IMMEDIATE IF(@@relay_log_space_limit=0,\\\"SELECT 'Unchanged relay_log_space_limit'\\\" ,\\\"SET GLOBAL relay_log_space_limit = 0\\\");SET GLOBAL binlog_format = MIXED;SET GLOBAL binlog_checksum = 1; SET GLOBAL binlog_cache_size = 1*1024*1024;SET GLOBAL binlog_stmt_cache_size = 1*1024*1024;SET GLOBAL expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%;SET GLOBAL sync_binlog = 1;EXECUTE IMMEDIATE IF(@@report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%',\\\"SELECT 'Unchanged report_host'\\\", \\\"SET GLOBAL report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\\");EXECUTE IMMEDIATE IF(@@log_slave_updates=1,\\\"SELECT 'Unchanged log_slave_updates'\\\",\\\"SET GLOBAL log_slave_updates = ON\\\");SET GLOBAL log_bin_trust_function_creators = ON;SET GLOBAL slave_type_conversions = 'ALL_NON_LOSSY';EXECUTE IMMEDIATE IF(@@replicate_annotate_row_events=1,\\\"SELECT 'Unchanged replicate_annotate_row_events'\\\", \\\"SET GLOBAL replicate_annotate_row_events = 1\\\");EXECUTE IMMEDIATE IF(@@binlog_annotate_row_events=1,\\\"SELECT 'Unchanged binlog_annotate_row_events'\\\", \\\"SET GLOBAL binlog_annotate_row_events = 1\\\");SET GLOBAL gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%;STOP SLAVE; SET GLOBAL slave_parallel_mode = conservative;SET GLOBAL slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_max_queued =2*1024*1024;/*!100800 SET GLOBAL  binlog_alter_two_phase=1*/;START SLAVE;\\n\\n# mysql_command: SET GLOBAL server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%;SET GLOBAL relay_log_space_limit = 0;SET GLOBAL binlog_format = MIXED;SET GLOBAL binlog_checksum = 1;SET GLOBAL binlog_cache_size = 1*1024*1024;SET GLOBAL binlog_stmt_cache_size = 1*1024*1024;SET GLOBAL expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%;SET GLOBAL sync_binlog = 1;SET GLOBAL report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%';SET GLOBAL log_slave_updates = ON;SET GLOBAL log_bin_trust_function_creators = ON;SET GLOBAL binlog_rows_query_log_events = 1;SET GLOBAL slave_type_conversions = 'ALL_NON_LOSSY';SET GLOBAL replicate_annotate_row_events = 1;SET GLOBAL binlog_annotate_row_events = 1;SET GLOBAL gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%;SET GLOBAL slave_parallel_mode = conservative;SET GLOBAL slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_max_queued =2*1024*1024;\\n\\n[mysqld]\\nserver_id = %%ENV:SVC_CONF_ENV_SERVER_ID%%\\nrelay_log_space_limit = 0\\nbinlog_format = MIXED\\nbinlog_checksum = 1\\nbinlog_cache_size = 1M\\nbinlog_stmt_cache_size = 1M\\nloose_expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%% \\nsync_binlog = 1\\nreport_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\nlog_slave_updates = ON\\nlog_bin_trust_function_creators = ON\\nloose_binlog_rows_query_log_events = 1\\n\\n[mariadb]\\nloose_slave_type_conversions = 'ALL_NON_LOSSY'\\nloose_replicate_annotate_row_events = 1\\nloose_binlog_annotate_row_events = 1\\n#loose_gtid-strict-mode = 1\\nloose_gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%\\nloose_slave_parallel_mode = conservative\\nloose_slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nloose_slave_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nloose_slave_parallel_max_queued =2M\\n# 10.8\\nloose_binlog_alter_two_phase = 1\\n\"}",
-                    "var_updated": "2026-05-28 15:36:50",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/default_replication.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# REPLICATION\\n# -----------  \\n\\n# mariadb_command: SET GLOBAL server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%;EXECUTE IMMEDIATE IF(@@relay_log_space_limit=0,\\\"SELECT 'Unchanged relay_log_space_limit'\\\" ,\\\"SET GLOBAL relay_log_space_limit = 0\\\");SET GLOBAL binlog_format = MIXED;SET GLOBAL binlog_checksum = 1; SET GLOBAL binlog_cache_size = 1*1024*1024;SET GLOBAL binlog_stmt_cache_size = 1*1024*1024;SET GLOBAL expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%;SET GLOBAL sync_binlog = 1;EXECUTE IMMEDIATE IF(@@report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%',\\\"SELECT 'Unchanged report_host'\\\", \\\"SET GLOBAL report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\\");EXECUTE IMMEDIATE IF(@@log_slave_updates=1,\\\"SELECT 'Unchanged log_slave_updates'\\\",\\\"SET GLOBAL log_slave_updates = ON\\\");SET GLOBAL log_bin_trust_function_creators = ON;SET GLOBAL slave_type_conversions = 'ALL_NON_LOSSY';EXECUTE IMMEDIATE IF(@@replicate_annotate_row_events=1,\\\"SELECT 'Unchanged replicate_annotate_row_events'\\\", \\\"SET GLOBAL replicate_annotate_row_events = 1\\\");EXECUTE IMMEDIATE IF(@@binlog_annotate_row_events=1,\\\"SELECT 'Unchanged binlog_annotate_row_events'\\\", \\\"SET GLOBAL binlog_annotate_row_events = 1\\\");SET GLOBAL gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%;STOP SLAVE; SET GLOBAL slave_parallel_mode = conservative;SET GLOBAL slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_max_queued =2*1024*1024;/*!100800 SET GLOBAL  binlog_alter_two_phase=1*/;SET GLOBAL binlog_row_event_max_size = 131072  ;START SLAVE;\\n\\n# mysql_command: SET GLOBAL server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%;SET GLOBAL relay_log_space_limit = 0;SET GLOBAL binlog_format = MIXED;SET GLOBAL binlog_checksum = 1;SET GLOBAL binlog_cache_size = 1*1024*1024;SET GLOBAL binlog_stmt_cache_size = 1*1024*1024;SET GLOBAL expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%;SET GLOBAL sync_binlog = 1;SET GLOBAL report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%';SET GLOBAL log_slave_updates = ON;SET GLOBAL log_bin_trust_function_creators = ON;SET GLOBAL binlog_rows_query_log_events = 1;SET GLOBAL slave_type_conversions = 'ALL_NON_LOSSY';SET GLOBAL replicate_annotate_row_events = 1;SET GLOBAL binlog_annotate_row_events = 1;SET GLOBAL gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%;SET GLOBAL slave_parallel_mode = conservative;SET GLOBAL slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_max_queued =2*1024*1024;SET GLOBAL binlog_row_event_max_size = 131072; \\n\\n[mysqld]\\nloose_server_id = %%ENV:SVC_CONF_ENV_SERVER_ID%%\\nloose_relay_log_space_limit = 0\\nloose_binlog_format = MIXED\\nloose_binlog_checksum = 1\\nloose_binlog_cache_size = 1M\\nloose_binlog_stmt_cache_size = 1M\\nloose_expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%% \\nloose_sync_binlog = 1\\nloose_report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\nloose_log_slave_updates = ON\\nloose_log_bin_trust_function_creators = ON\\nloose_binlog_rows_query_log_events = 1\\nloose_binlog_row_event_max_size = 131072 \\n\\n[mariadb]\\nloose_slave_type_conversions = 'ALL_NON_LOSSY'\\nloose_replicate_annotate_row_events = 1\\nloose_binlog_annotate_row_events = 1\\n#loose_gtid-strict-mode = 1\\nloose_gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%\\nloose_slave_parallel_mode = conservative\\nloose_slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nloose_slave_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nloose_slave_parallel_max_queued =2M\\n# 10.8\\nloose_binlog_alter_two_phase = 1\\n\"}",
+                    "var_updated": "2026-06-04 23:10:35",
                     "var_name": "db_cnf_default_replication",
                     "id": 5943
                 },
