@@ -49,6 +49,9 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
               <HStack spacing={4}>
                 <Text fontSize='sm' fontWeight={600}>User:</Text>
                 <Text fontSize='sm'>{user?.DisplayName || user?.User || user?.username || '-'}</Text>
+                <Badge colorScheme={user?.AuthType === 'SSO' ? 'purple' : 'blue'} size='sm'>
+                  {user?.AuthType || 'Local'}
+                </Badge>
               </HStack>
               {user?.Email && (
                 <HStack spacing={4}>

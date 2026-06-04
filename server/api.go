@@ -616,6 +616,7 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 			UserInfoMap["User"] = mycutinfo["email"].(string)
 			UserInfoMap["Email"] = mycutinfo["email"].(string)
 			UserInfoMap["profile"] = profile
+			UserInfoMap["AuthType"] = "SSO"
 			return UserInfoMap, nil
 		}
 		return nil, fmt.Errorf("invalid oauth provider")
@@ -625,6 +626,7 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 		UserInfoMap["MeetUserID"] = mycutinfo["meet_user_id"].(string)
 	}
 	UserInfoMap["User"] = mycutinfo["Name"].(string)
+	UserInfoMap["AuthType"] = "Local"
 	return UserInfoMap, nil
 }
 
