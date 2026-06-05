@@ -49,12 +49,9 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
     // Use repman's graphite proxy route, not direct graphite port
     const apiUrl = ''
 
-    // Get master hostname from server variables (same as graphite metric key)
-    const servers = clusterData?.servers || []
-    const master = servers.find(s => s.isMaster || s.state === 'Master') || servers[0]
-    // graphiteHostname uses @@hostname from SHOW VARIABLES, with dots replaced by dashes
-    const masterHostname = master?.hostname || clusterName
-    const hostname = masterHostname.replace(/\./g, '-').replace(/[`? ()/<'"]/g, '-')
+    // Use graphiteHost from the run entry (@@hostname with graphite replacements)
+    // Falls back to first run's graphiteHost or cluster name
+    const hostname = runs[0]?.graphiteHost || clusterName
 
     // Wrap cumulative counters in perSecond() for rate-based display
     const rateMetrics = [

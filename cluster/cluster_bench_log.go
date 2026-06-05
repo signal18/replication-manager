@@ -33,6 +33,7 @@ type SysbenchLogEntry struct {
 	Scale        int                          `json:"scale"`        // sysbench-scale (tpcc warehouses)
 	DBFlavor     string                       `json:"dbFlavor"`     // MariaDB, MySQL, Percona, PostgreSQL
 	DBVersion    string                       `json:"dbVersion"`
+	GraphiteHost string                       `json:"graphiteHost"` // graphite metric hostname (@@hostname with replacements)
 	ProxyType    string                       `json:"proxyType"`    // proxysql, haproxy, maxscale, myproxy
 	ProxyVersion string                       `json:"proxyVersion"`
 	Replicas     int                          `json:"replicas"`
@@ -116,6 +117,7 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 	if master := cluster.GetMaster(); master != nil && master.DBVersion != nil {
 		entry.DBFlavor = master.DBVersion.Flavor
 		entry.DBVersion = master.DBVersion.ToString()
+		entry.GraphiteHost = master.graphiteHostname()
 	}
 
 	// Proxy info
