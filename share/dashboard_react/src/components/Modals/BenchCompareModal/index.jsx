@@ -88,7 +88,7 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
       'mysql_global_status_bytes_sent', 'mysql_global_status_bytes_received'
     ]
     const rawMetric = `mysql.${hostname}.${metric}`
-    const fullMetric = rateMetrics.includes(metric) ? `perSecond(${rawMetric})` : rawMetric
+    const fullMetric = rateMetrics.includes(metric) ? `perSecond(keepLastValue(${rawMetric}))` : rawMetric
 
     // Find the newest run to align all others
     let newest = runs[0]
