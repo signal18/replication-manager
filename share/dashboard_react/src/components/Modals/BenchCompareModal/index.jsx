@@ -49,13 +49,22 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
     // Use repman's graphite proxy route, not direct graphite port
     const apiUrl = ''
 
-    // Get master hostname for metric path
+    // Get master hostname from server variables (same as graphite metric key)
     const servers = clusterData?.servers || []
     const master = servers.find(s => s.isMaster || s.state === 'Master') || servers[0]
+    // graphiteHostname uses @@hostname from SHOW VARIABLES, with dots replaced by dashes
     const masterHostname = master?.hostname || clusterName
     const hostname = masterHostname.replace(/\./g, '-').replace(/[`? ()/<'"]/g, '-')
 
-    const fullMetric = `mysql.${hostname}.${metric}`
+    // Wrap cumulative counters in perSecond() for rate-based display
+    const rateMetrics = [
+      'mysql_global_status_questions', 'mysql_global_status_com_select',
+      'mysql_global_status_com_insert', 'mysql_global_status_com_update',
+      'mysql_global_status_com_delete', 'mysql_global_status_connections',
+      'mysql_global_status_created_tmp_disk_tables', 'mysql_global_status_innodb_row_lock_waits'
+    ]
+    const rawMetric = `mysql.${hostname}.${metric}`
+    const fullMetric = rateMetrics.includes(metric) ? `perSecond(${rawMetric})` : rawMetric
 
     // Find the newest run to align all others
     let newest = runs[0]
