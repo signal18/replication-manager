@@ -46,14 +46,14 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
   const buildGraphiteUrl = () => {
     if (runs.length === 0) return
 
-    // Get graphite API URL from monitor config
-    const graphiteHost = monitor?.config?.graphiteCarbonHost || '127.0.0.1'
-    const graphitePort = monitor?.config?.graphiteCarbonApiPort || 10002
-    const apiUrl = `http://${graphiteHost}:${graphitePort}`
+    // Use repman's graphite proxy route, not direct graphite port
+    const apiUrl = ''
 
     // Get master hostname for metric path
-    const masterHost = clusterData?.master?.host || clusterName
-    const hostname = masterHost.replace(/\./g, '-').replace(/[`? ()/<'"]/g, '-')
+    const servers = clusterData?.servers || []
+    const master = servers.find(s => s.isMaster || s.state === 'Master') || servers[0]
+    const masterHostname = master?.hostname || clusterName
+    const hostname = masterHostname.replace(/\./g, '-').replace(/[`? ()/<'"]/g, '-')
 
     const fullMetric = `mysql.${hostname}.${metric}`
 
@@ -87,7 +87,7 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
     params.set('width', '800')
     params.set('height', '300')
 
-    setGraphiteUrl(`${apiUrl}/render/?${params.toString()}`)
+    setGraphiteUrl(`/graphite/render?${params.toString()}`)
   }
 
   const formatDate = (t) => t ? new Date(t).toLocaleString() : '-'
