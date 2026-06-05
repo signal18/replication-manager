@@ -1,11 +1,12 @@
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton,
-  Box, VStack, HStack, Text, Badge, Divider, Table, Thead, Tbody, Tr, Th, Td, Select
+  Box, VStack, HStack, Text, Badge, Table, Thead, Tbody, Tr, Th, Td, Select
 } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 import { useSelector } from 'react-redux'
 import { useTheme } from '../../../ThemeProvider'
 import { clusterService } from '../../../services/clusterService'
+import RMButton from '../../RMButton'
 import parentStyles from '../styles.module.scss'
 
 const METRICS = [
@@ -23,10 +24,11 @@ const METRICS = [
 function BenchCompareModal({ isOpen, closeModal, clusterName }) {
   const { theme } = useTheme()
   const baseURL = useSelector((state) => state?.auth?.baseURL)
+  const monitor = useSelector((state) => state?.globalClusters?.monitor)
+  const clusterData = useSelector((state) => state?.cluster?.clusterData)
   const [runs, setRuns] = useState([])
   const [metric, setMetric] = useState('mysql_global_status_questions')
-  const [compareResult, setCompareResult] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [graphiteUrl, setGraphiteUrl] = useState('')
 
   const badgeVariant = theme === 'dark' ? 'solid' : 'subtle'
 
@@ -35,27 +37,60 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
       clusterService.getSysbenchHistory(clusterName, baseURL)
         .then(res => {
           const data = res.data
-          // http-logs returns the SysbenchLog struct with entries field
           setRuns(Array.isArray(data) ? data : data?.Entries || data?.entries || [])
         })
         .catch(() => setRuns([]))
     }
   }, [isOpen, clusterName, baseURL])
 
-  const handleCompare = () => {
-    setLoading(true)
-    clusterService.getSysbenchCompare(clusterName, metric, baseURL)
-      .then(res => setCompareResult(res.data))
-      .catch(() => setCompareResult(null))
-      .finally(() => setLoading(false))
+  const buildGraphiteUrl = () => {
+    if (runs.length === 0) return
+
+    // Get graphite API URL from monitor config
+    const graphiteHost = monitor?.config?.graphiteCarbonHost || '127.0.0.1'
+    const graphitePort = monitor?.config?.graphiteCarbonApiPort || 10002
+    const apiUrl = `http://${graphiteHost}:${graphitePort}`
+
+    // Get master hostname for metric path
+    const masterHost = clusterData?.master?.host || clusterName
+    const hostname = masterHost.replace(/\./g, '-').replace(/[`? ()/<'"]/g, '-')
+
+    const fullMetric = `mysql.${hostname}.${metric}`
+
+    // Find the newest run to align all others
+    let newest = runs[0]
+    runs.forEach(r => {
+      if (new Date(r.startedAt) > new Date(newest.startedAt)) newest = r
+    })
+
+    const newestStart = Math.floor(new Date(newest.startedAt).getTime() / 1000)
+    const newestEnd = Math.floor(new Date(newest.endedAt).getTime() / 1000)
+
+    let targets = []
+    runs.forEach((run, i) => {
+      const label = `Run${i + 1} ${run.testType} ${run.threads}t ${run.dbFlavor || ''}/${run.dbVersion || ''}`
+      const runStart = Math.floor(new Date(run.startedAt).getTime() / 1000)
+
+      if (runStart === newestStart) {
+        targets.push(`alias(${fullMetric},'${label}')`)
+      } else {
+        const shift = newestStart - runStart
+        targets.push(`alias(timeShift(${fullMetric},'${shift}s'),'${label}')`)
+      }
+    })
+
+    const params = new URLSearchParams()
+    params.set('from', newestStart.toString())
+    params.set('until', newestEnd.toString())
+    targets.forEach(t => params.append('target', t))
+    params.set('format', 'png')
+    params.set('width', '800')
+    params.set('height', '300')
+
+    setGraphiteUrl(`${apiUrl}/render/?${params.toString()}`)
   }
 
   const formatDate = (t) => t ? new Date(t).toLocaleString() : '-'
-  const formatDuration = (start, end) => {
-    if (!start || !end) return '-'
-    const ms = new Date(end) - new Date(start)
-    return `${Math.round(ms / 1000)}s`
-  }
 
   return (
     <Modal isOpen={isOpen} onClose={closeModal} size='xl'>
@@ -66,17 +101,9 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
         <ModalBody pb={6}>
           <VStack align='stretch' spacing={4}>
 
-            <HStack spacing={3}>
-              <Select size='sm' value={metric} onChange={(e) => setMetric(e.target.value)} flex={1}>
-                {METRICS.map(m => (
-                  <option key={m.value} value={m.value}>{m.label}</option>
-                ))}
-              </Select>
-            </HStack>
-
             {runs.length > 0 && (
               <>
-                <Box maxH='400px' overflowY='auto' fontSize='xs'>
+                <Box maxH='300px' overflowY='auto' fontSize='xs'>
                   <Table size='sm' variant='simple'>
                     <Thead>
                       <Tr>
@@ -89,7 +116,6 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
                         <Th>DBU</Th>
                         <Th>TPS/DBU</Th>
                         <Th>Flavor</Th>
-                        <Th>Tags</Th>
                       </Tr>
                     </Thead>
                     <Tbody>
@@ -106,27 +132,32 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
                           <Td>{run.clusterDbu?.toFixed(1)}</Td>
                           <Td>{run.tpsPerDbu?.toFixed(2)}</Td>
                           <Td>{run.dbFlavor} {run.dbVersion}</Td>
-                          <Td maxW='150px' isTruncated>{run.configTags}</Td>
                         </Tr>
                       ))}
                     </Tbody>
                   </Table>
                 </Box>
 
-                {compareResult?.graphiteUrl && (
-                  <>
-                    <Divider />
-                    <Text fontSize='sm' fontWeight={600}>
-                      Graphite overlay: {METRICS.find(m => m.value === metric)?.label}
-                    </Text>
-                    <Box borderRadius='md' overflow='hidden'>
-                      <img
-                        src={compareResult.graphiteUrl + '&width=800&height=300&format=png'}
-                        alt='Benchmark comparison'
-                        style={{ width: '100%' }}
-                      />
-                    </Box>
-                  </>
+                <HStack spacing={3}>
+                  <Select size='sm' value={metric} onChange={(e) => setMetric(e.target.value)} flex={1}>
+                    {METRICS.map(m => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </Select>
+                  <RMButton size='small' colorScheme='blue' onClick={buildGraphiteUrl}>
+                    Show Graph
+                  </RMButton>
+                </HStack>
+
+                {graphiteUrl && (
+                  <Box borderRadius='md' overflow='hidden' bg={theme === 'light' ? 'gray.50' : 'rgba(255,255,255,0.05)'} p={2}>
+                    <img
+                      src={graphiteUrl}
+                      alt='Benchmark comparison'
+                      style={{ width: '100%' }}
+                      onError={(e) => { e.target.style.display = 'none' }}
+                    />
+                  </Box>
                 )}
               </>
             )}
