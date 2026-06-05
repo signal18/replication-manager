@@ -313,6 +313,7 @@ type Cluster struct {
 	VersionsMap           *config.VersionsMap
 	SessionManager        *tty.SessionManager `json:"-"`
 	SysBenchTpcMResults   []SysBenchTpcResultPerMinute
+	SysbenchHistory       SysbenchLog                  `json:"sysbenchHistory"  groups:"web"`
 	OpenSVCStats          atomic.Value `json:"-"`
 	OrchestratorVersion   string       `json:"-"`
 	orchestratorVersionMu sync.RWMutex `json:"-"`

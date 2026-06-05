@@ -322,6 +322,7 @@ func (cluster *Cluster) ChecksumBench() bool {
 }
 
 func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize string, myTime string, myMode string) error {
+	startedAt := time.Now()
 	prx := cluster.GetProxies()[0]
 	if prx == nil {
 		return errors.New("No proxy")
@@ -373,6 +374,13 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 
 	cluster.ExtractSybenchTPCM(records)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", strings.ReplaceAll(string(out), cluster.GetDbPass(), "XXXX"))
+
+	// Log run to history
+	iThreads, _ := strconv.Atoi(myThreads)
+	iTableSize, _ := strconv.Atoi(mySize)
+	iDuration, _ := strconv.Atoi(myTime)
+	cluster.LogSysbenchRun(myTest, myMode, iThreads, iTableSize, iDuration, startedAt, records)
+
 	return nil
 }
 

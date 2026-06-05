@@ -397,6 +397,10 @@ func (p *Proxy) GetType() string {
 	return p.Type
 }
 
+func (p *Proxy) GetVersion() string {
+	return p.Version
+}
+
 func (p *Proxy) GetHost() string {
 	return p.Host
 }
