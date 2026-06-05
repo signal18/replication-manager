@@ -873,10 +873,10 @@ func sanitizeToken(s string) string {
 	return strings.ToLower(routeTokenSanitizerRe.ReplaceAllString(s, "_"))
 }
 
-// shortHash returns an 6-character hex prefix of the SHA-256 hash of s.
+// shortHash returns an 8-character hex prefix of the SHA-256 hash of s.
 func shortHash(s string) string {
 	h := sha256.Sum256([]byte(s))
-	return fmt.Sprintf("%x", h[:3])
+	return fmt.Sprintf("%x", h[:4])
 }
 
 // BuildRouteToken returns a stable per-route fragment identity string.

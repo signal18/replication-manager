@@ -1137,15 +1137,33 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
-			node.AppConfig.Deployment.NormalizeRoutes()
-			dep, err := json.MarshalIndent(node.AppConfig.Deployment, "", "\t")
+			// Take a locked JSON snapshot, then normalise and mask a copy so the
+			// GET path never mutates live deployment state.
+			node.Lock()
+			snapshot, snapErr := json.Marshal(node.AppConfig.Deployment)
+			node.Unlock()
+			if snapErr != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", snapErr)
+				http.Error(w, "Encoding error", http.StatusInternalServerError)
+				return
+			}
+
+			var depCopy config.Deployment
+			if unmarshalErr := json.Unmarshal(snapshot, &depCopy); unmarshalErr != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error decoding JSON: ", unmarshalErr)
+				http.Error(w, "Encoding error", http.StatusInternalServerError)
+				return
+			}
+			depCopy.NormalizeRoutes()
+
+			dep, err := json.MarshalIndent(&depCopy, "", "\t")
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				return
 			}
 
-			for vidx, v := range node.AppConfig.Deployment.Variables {
+			for vidx, v := range depCopy.Variables {
 				if v.Type == "secret" {
 					dep, err = sjson.SetBytes(dep, fmt.Sprintf("variables.%d.value", vidx), "*****")
 					if err != nil {
@@ -1156,7 +1174,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 				}
 			}
 
-			for gidx := range node.AppConfig.Deployment.Storages.GitClones {
+			for gidx := range depCopy.Storages.GitClones {
 				dep, err = sjson.SetBytes(dep, fmt.Sprintf("storages.gitClones.%d.pass", gidx), "*****")
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
@@ -1165,7 +1183,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 				}
 			}
 
-			for midx := range node.AppConfig.Deployment.Storages.S3Mounts {
+			for midx := range depCopy.Storages.S3Mounts {
 				dep, err = sjson.SetBytes(dep, fmt.Sprintf("storages.s3Mounts.%d.secretkey", midx), "*****")
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
@@ -1255,13 +1273,13 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 			}
 
 			if index < 0 {
-				http.Error(w, "Index cannot be negative", http.StatusInternalServerError)
+				http.Error(w, "Index cannot be negative", http.StatusBadRequest)
 				return
 			}
 
 			if vars["key"] == "" || vars["key"] == "undefined" {
 				// For gitClones, variables, and path, key is required
-				http.Error(w, "Key not provided", http.StatusInternalServerError)
+				http.Error(w, "Key not provided", http.StatusBadRequest)
 				return
 			}
 
@@ -1477,20 +1495,20 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				// via the full reconcile path (update-routes / provision), not here.
 			case "variables":
 				if index >= len(node.AppConfig.Deployment.Variables) {
-					http.Error(w, "Index out of range for variables", http.StatusInternalServerError)
+					http.Error(w, "Index out of range for variables", http.StatusBadRequest)
 					return
 				}
 
 				row := node.AppConfig.Deployment.Variables[index]
 				if row.Locked {
-					http.Error(w, "Unable to change name of locked variable. Please change the source of the variable instead.", http.StatusInternalServerError)
+					http.Error(w, "Unable to change name of locked variable. Please change the source of the variable instead.", http.StatusBadRequest)
 					return
 				}
 				// Modify field based on key
 				switch vars["key"] {
 				case "name":
 					if row.Name == newValue {
-						http.Error(w, "Variable name unchanged", http.StatusInternalServerError)
+						http.Error(w, "Variable name unchanged", http.StatusBadRequest)
 						return
 					}
 					// Cascade rename into any route monitor that references this variable.
@@ -1505,13 +1523,13 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					row.Name = newValue
 				case "value":
 					if row.Value == newValue {
-						http.Error(w, "Variable value unchanged", http.StatusInternalServerError)
+						http.Error(w, "Variable value unchanged", http.StatusBadRequest)
 						return
 					}
 					row.Value = newValue
 				case "type":
 					if row.Type == newValue {
-						http.Error(w, "Variable type unchanged", http.StatusInternalServerError)
+						http.Error(w, "Variable type unchanged", http.StatusBadRequest)
 						return
 					}
 					// Reject type changes away from 'secret' when routes reference this variable.
@@ -2329,13 +2347,13 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 			}
 
 			if index < 0 {
-				http.Error(w, "Index cannot be negative", http.StatusInternalServerError)
+				http.Error(w, "Index cannot be negative", http.StatusBadRequest)
 				return
 			}
 
 			if vars["key"] == "" || vars["key"] == "undefined" {
 				// For gitClones, variables, and path, key is required
-				http.Error(w, "Key not provided", http.StatusInternalServerError)
+				http.Error(w, "Key not provided", http.StatusBadRequest)
 				return
 			}
 

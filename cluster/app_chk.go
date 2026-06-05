@@ -284,23 +284,19 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 			if route.Monitor.AuthSecretVar != "" {
 				secret, serr := cluster.GetAppDecryptedVariableValue(app, route.Monitor.AuthSecretVar)
 				if serr != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
-						"monitor basic auth: cannot resolve secret var %q for app %s route %s: %v",
+					return -1, nil, fmt.Errorf("monitor basic auth: cannot resolve secret var %q for app %s route %s: %v",
 						route.Monitor.AuthSecretVar, app.Name, route.CName, serr)
-				} else {
-					req.SetBasicAuth(route.Monitor.AuthUser, secret)
 				}
+				req.SetBasicAuth(route.Monitor.AuthUser, secret)
 			}
 		case "bearer":
 			if route.Monitor.AuthSecretVar != "" {
 				secret, serr := cluster.GetAppDecryptedVariableValue(app, route.Monitor.AuthSecretVar)
 				if serr != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
-						"monitor bearer auth: cannot resolve secret var %q for app %s route %s: %v",
+					return -1, nil, fmt.Errorf("monitor bearer auth: cannot resolve secret var %q for app %s route %s: %v",
 						route.Monitor.AuthSecretVar, app.Name, route.CName, serr)
-				} else {
-					req.Header.Set("Authorization", "Bearer "+secret)
 				}
+				req.Header.Set("Authorization", "Bearer "+secret)
 			}
 		}
 	}

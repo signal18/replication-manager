@@ -1228,6 +1228,11 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 			}
 		}
 
+		if route.Mode == "host" || route.Mode == "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+				"app %s route %s: host-mode fragment adds a use_backend rule to the shared 'frontend https' block; ensure the gateway base config defines that frontend or the HAProxy reload will fail",
+				app.Name, route.CName)
+		}
 		key, frag, fragErr := buildRouteFragment(route, opensvcDNS, numBE)
 		if fragErr != nil {
 			return fmt.Errorf("cannot build route fragment for app %s: %w", app.Name, fragErr)
