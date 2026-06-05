@@ -49,6 +49,8 @@ import (
 	_ "github.com/signal18/replication-manager/docs"
 	log "github.com/sirupsen/logrus"
 	httpSwagger "github.com/swaggo/http-swagger"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 type HandlerManager struct {
@@ -370,14 +372,19 @@ func (repman *ReplicationManager) httpserver() {
 
 	repman.IsHttpListenerReady = true
 
+	corsHandler := handlers.CORS(
+		handlers.AllowCredentials(),
+		handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}),
+		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS"}),
+		handlers.AllowedOriginValidator(repman.handleOriginValidator),
+	)(router)
+
+	// Wrap with h2c for HTTP/2 over plain TCP (reverse proxy use case)
+	h2cHandler := h2c.NewHandler(corsHandler, &http2.Server{})
+
 	server := &http.Server{
-		Addr: repman.Conf.BindAddr + ":" + repman.Conf.HttpPort,
-		Handler: handlers.CORS(
-			handlers.AllowCredentials(),
-			handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}),
-			handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS"}),
-			handlers.AllowedOriginValidator(repman.handleOriginValidator),
-		)(router),
+		Addr:     repman.Conf.BindAddr + ":" + repman.Conf.HttpPort,
+		Handler:  h2cHandler,
 		ErrorLog: basiclog.New(repman.ApiLogAdapter, "", 0),
 	}
 	repman.httpServer = server
