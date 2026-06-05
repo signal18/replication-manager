@@ -379,11 +379,15 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 	cluster.ExtractSybenchTPCM(records)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", strings.ReplaceAll(string(out), cluster.GetDbPass(), "XXXX"))
 
-	// Log run to history
+	// Log run to history — use actual test name (v1 overrides myTest with SysbenchTest)
+	loggedTest := myTest
+	if useV1Syntax {
+		loggedTest = cluster.Conf.SysbenchTest
+	}
 	iThreads, _ := strconv.Atoi(myThreads)
 	iTableSize, _ := strconv.Atoi(mySize)
 	iDuration, _ := strconv.Atoi(myTime)
-	cluster.LogSysbenchRun(myTest, myMode, iThreads, iTableSize, iDuration, startedAt, records, string(out))
+	cluster.LogSysbenchRun(loggedTest, myMode, iThreads, iTableSize, iDuration, startedAt, records, string(out))
 
 	return nil
 }
