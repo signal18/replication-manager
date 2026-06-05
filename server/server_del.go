@@ -8,6 +8,7 @@ package server
 
 import (
 	"os"
+	"strings"
 
 	"github.com/signal18/replication-manager/config"
 	log "github.com/sirupsen/logrus"
@@ -16,7 +17,13 @@ import (
 func (repman *ReplicationManager) DeleteCluster(clusterName string) error {
 	log.Warnf("Delete Cluster %s \n", clusterName)
 	cl := repman.getClusterByName(clusterName)
+
+	// Capture and normalize the gateway before removal.
+	// recomputeConflictsForGateway compares against normalized peer values
+	// (strings.ToLower + TrimSpace), so prevGateway must match that form.
+	var prevGateway string
 	if cl != nil {
+		prevGateway = strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
 		//if cl.IsProvision {
 		err := cl.Unprovision()
 		if err != nil {
@@ -38,6 +45,12 @@ func (repman *ReplicationManager) DeleteCluster(clusterName string) error {
 	repman.ClusterList = newClusterList
 	delete(repman.Clusters, clusterName)
 	repman.Unlock()
+
+	repman.refreshAllPeers()
+	// RecomputeGatewayConflicts early-returns when the cluster is already gone
+	// from the map, so call the inner function directly with the captured gateway
+	// to unblock any peers that were blocked by this cluster.
+	repman.recomputeConflictsForGateway(prevGateway)
 
 	err := os.RemoveAll(repman.Conf.WorkingDir + "/" + clusterName)
 	if err != nil {

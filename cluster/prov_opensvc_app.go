@@ -1029,9 +1029,22 @@ func (cluster *Cluster) withdrawGatewayRoutes(app *App) error {
 	return errors.Join(errs...)
 }
 
+// sanitizeRouteNameToken replaces characters that are unsafe in HAProxy object
+// names and OpenSVC config keys with '_', preserving HAProxy-safe chars
+// ([A-Za-z0-9._:-]) so distinct CNAMEs remain distinct.
+func sanitizeRouteNameToken(s string) string {
+	return strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '_' || r == '-' || r == '.' || r == ':' {
+			return r
+		}
+		return '_'
+	}, s)
+}
+
 func buildRouteObjectName(route config.Route, opensvcDNS string) string {
 	if route.Mode == "port" {
-		return opensvcDNS + "_" + route.CName + "_" + route.SourcePort + "_" + route.DestinationPort
+		return opensvcDNS + "_" + sanitizeRouteNameToken(route.CName) + "_" + route.SourcePort + "_" + route.DestinationPort
 	}
 	return opensvcDNS + "_" + route.DestinationPort
 }
@@ -1141,7 +1154,7 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 			if strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService)) != thisGateway {
 				return
 			}
-			for _, other := range cl.Apps {
+			for _, other := range cl.GetAppsCopy() {
 				if other == nil || other.AppConfig == nil {
 					continue
 				}
@@ -1153,7 +1166,7 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 				if conflicted, _ := cl.IsAppGatewayConflicted(other.AppConfig.AppHost, other.AppConfig.AppPort); conflicted {
 					continue
 				}
-				if normalized := config.NormalizedCopy(other.AppConfig.Deployment.Routes); len(normalized) > 0 {
+				if normalized := config.NormalizedCopy(other.GetDeploymentRoutesSnapshot()); len(normalized) > 0 {
 					externalRoutes = append(externalRoutes, normalized)
 				}
 			}
@@ -1377,7 +1390,9 @@ func loadProvisionedManagedCNAMEs(app *App) (map[string]struct{}, error) {
 	return set, nil
 }
 
-// saveProvisionedManagedCNAMEs writes the current managed CNAME set to disk.
+// saveProvisionedManagedCNAMEs writes the current managed CNAME set to disk
+// atomically: write to a temp file in the same directory then rename so that
+// a crash cannot leave an empty or partially-written file.
 func saveProvisionedManagedCNAMEs(app *App, set map[string]struct{}) error {
 	list := make([]string, 0, len(set))
 	for c := range set {
@@ -1387,7 +1402,32 @@ func saveProvisionedManagedCNAMEs(app *App, set map[string]struct{}) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(managedCNAMEsFile(app), data, 0644)
+	dest := managedCNAMEsFile(app)
+	tmp, err := os.CreateTemp(filepath.Dir(dest), ".managed_cnames_*.json")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	if err := tmp.Chmod(0644); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return os.Rename(tmpName, dest)
 }
 
 // reconcileStaleManagedCNAMEs computes the persisted managed CNAME set after

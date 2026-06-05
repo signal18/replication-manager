@@ -91,3 +91,20 @@ func TestBuildRouteFragment_PortRoutesDifferentCNamesHaveDifferentKeys(t *testin
 		t.Fatalf("expected distinct fragment keys for distinct port-route cnames, both got %q", keyA)
 	}
 }
+
+func TestBuildRouteFragment_HostRouteEmitsLegacyCookieKey(t *testing.T) {
+	route := config.Route{
+		Mode:            "host",
+		Protocol:        "https",
+		CName:           "app.example.com",
+		DestinationPort: "8080",
+	}
+
+	_, fragment, err := buildRouteFragment(route, "app.cluster.svc.local", 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(fragment, "dynamic-cookie-key mysecretphrase") {
+		t.Fatalf("host-route fragment must preserve legacy dynamic-cookie-key; got:\n%s", fragment)
+	}
+}
