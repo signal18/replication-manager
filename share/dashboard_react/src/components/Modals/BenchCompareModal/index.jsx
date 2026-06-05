@@ -66,10 +66,22 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
     const newestStart = Math.floor(new Date(newest.startedAt).getTime() / 1000)
     const newestEnd = Math.floor(new Date(newest.endedAt).getTime() / 1000)
 
+    // First run is the reference, others show delta from reference TPS
+    const refRun = runs[0]
+    const refTPS = refRun?.avgTps || 0
+
     let targets = []
     runs.forEach((run, i) => {
-      const label = `Run${i + 1} ${run.testType} ${run.threads}t ${run.dbFlavor || ''}/${run.dbVersion || ''}`
       const runStart = Math.floor(new Date(run.startedAt).getTime() / 1000)
+      let label
+      if (i === 0) {
+        label = `REF ${run.testType} ${run.threads}t ${run.dbFlavor || ''}/${run.dbVersion || ''} TPS:${run.avgTps?.toFixed(0)}`
+      } else {
+        const diff = (run.avgTps || 0) - refTPS
+        const pct = refTPS > 0 ? ((diff / refTPS) * 100).toFixed(1) : '0'
+        const sign = diff >= 0 ? '+' : ''
+        label = `${run.testType} ${run.threads}t ${run.dbFlavor || ''}/${run.dbVersion || ''} TPS:${run.avgTps?.toFixed(0)} (${sign}${pct}%)`
+      }
 
       if (runStart === newestStart) {
         targets.push(`alias(${fullMetric},'${label}')`)
@@ -79,7 +91,9 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
       }
     })
 
+    const metricLabel = METRICS.find(m => m.value === metric)?.label || metric
     const params = new URLSearchParams()
+    params.set('title', `${metricLabel} — ref: ${refRun.testType} ${refRun.threads}t ${refRun.dbFlavor}/${refRun.dbVersion}`)
     params.set('from', newestStart.toString())
     params.set('until', newestEnd.toString())
     targets.forEach(t => params.append('target', t))
