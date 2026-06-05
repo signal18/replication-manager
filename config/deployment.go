@@ -676,14 +676,36 @@ func (r *Route) Normalize() {
 		}
 		// SourcePort is intentionally left empty for host routes because the
 		// shared gateway frontend owns the bind port.
+		if r.DestinationPort != "" {
+			r.Port = r.DestinationPort
+		}
 	}
 
 	if r.Mode == "port" {
-		if r.SourcePort == "" && r.Port != "" {
-			r.SourcePort = r.Port
+		sourceFromPort := r.Port
+		destinationFromPort := r.Port
+		if idx := strings.Index(r.Port, ":"); idx >= 0 {
+			sourceFromPort = r.Port[:idx]
+			destinationFromPort = r.Port[idx+1:]
 		}
-		if r.DestinationPort == "" && r.Port != "" {
-			r.DestinationPort = r.Port
+		if r.Port != "" && r.SourcePort == "" && r.DestinationPort == "" {
+			// Legacy "9000:9001" means asymmetric port-forward; "9000" means symmetric.
+			r.SourcePort = sourceFromPort
+			r.DestinationPort = destinationFromPort
+		} else {
+			if r.SourcePort == "" && r.Port != "" {
+				r.SourcePort = sourceFromPort
+			}
+			if r.DestinationPort == "" && r.Port != "" {
+				r.DestinationPort = destinationFromPort
+			}
+		}
+		if r.SourcePort != "" || r.DestinationPort != "" {
+			if r.SourcePort == r.DestinationPort {
+				r.Port = r.SourcePort
+			} else {
+				r.Port = r.SourcePort + ":" + r.DestinationPort
+			}
 		}
 	}
 }
@@ -693,15 +715,6 @@ func (r *Route) Normalize() {
 func (r *Route) Validate() error {
 	if r.Mode != "host" && r.Mode != "port" {
 		return fmt.Errorf("route mode must be 'host' or 'port', got %q", r.Mode)
-	}
-
-	if r.Port != "" && strings.Contains(r.Port, ":") {
-		return fmt.Errorf("legacy port must be a single port number, got %q", r.Port)
-	}
-	if r.Port != "" {
-		if err := validateSinglePort(r.Port); err != nil {
-			return fmt.Errorf("legacy port: %w", err)
-		}
 	}
 
 	if r.SourcePort != "" {
@@ -723,6 +736,9 @@ func (r *Route) Validate() error {
 
 	switch r.Mode {
 	case "host":
+		if r.Port != "" && strings.Contains(r.Port, ":") {
+			return fmt.Errorf("host route port must be a single port number, got %q", r.Port)
+		}
 		if r.Protocol == "tcp" {
 			return fmt.Errorf("host-mode tcp route must be migrated manually to mode=port")
 		}

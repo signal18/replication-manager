@@ -1355,14 +1355,13 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 							effectiveMode = "host"
 						}
 					}
-					if effectiveMode == "port" && row.SourcePort != "" && row.DestinationPort != "" && row.SourcePort != row.DestinationPort {
-						// Resetting both derived ports from a single "port" value would
-						// silently collapse an asymmetric route (different SourcePort and
-						// DestinationPort) into a symmetric one.  Reject the edit and
-						// require the caller to use "sourceport" / "destport" explicitly.
+					isAsymmetric := effectiveMode == "port" &&
+						row.SourcePort != "" && row.DestinationPort != "" &&
+						row.SourcePort != row.DestinationPort
+					if isAsymmetric && !strings.Contains(newValue, ":") {
 						node.Unlock()
 						gwUnlock()
-						http.Error(w, "use 'sourceport' and 'destport' to edit an asymmetric port-mode route", http.StatusBadRequest)
+						http.Error(w, "use 'src:dst' format or 'sourceport'/'destport' to edit an asymmetric port-mode route", http.StatusBadRequest)
 						return
 					}
 					row.Port = newValue
@@ -1377,8 +1376,10 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					}
 				case "sourceport", "sourcePort":
 					row.SourcePort = newValue
+					row.Port = ""
 				case "destport", "destPort":
 					row.DestinationPort = newValue
+					row.Port = ""
 				case "protocol":
 					row.Protocol = strings.ToLower(strings.TrimSpace(newValue))
 				case "primary":

@@ -7,6 +7,7 @@
 package config
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -696,5 +697,216 @@ func TestNormalize_AsymmetricPortRoute_CollapseAfterClear(t *testing.T) {
 	}
 	if r.DestinationPort != "9999" {
 		t.Errorf("expected DestinationPort collapsed to Port value, got %q", r.DestinationPort)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Backward-compatibility layer — Port back-population
+// ---------------------------------------------------------------------------
+
+func TestNormalize_LegacyHostRoute_PortBackPopulated(t *testing.T) {
+	r := Route{CName: "app.example.com", Protocol: "https", Port: "8080"}
+	r.Normalize()
+	if r.DestinationPort != "8080" {
+		t.Errorf("expected destPort=8080, got %q", r.DestinationPort)
+	}
+	if r.Port != "8080" {
+		t.Errorf("expected Port=8080 for old clients, got %q", r.Port)
+	}
+}
+
+func TestNormalize_LegacyTCPSinglePort_PortBackPopulated(t *testing.T) {
+	r := Route{CName: "gw.example.com", Protocol: "tcp", Port: "3306"}
+	r.Normalize()
+	if r.SourcePort != "3306" || r.DestinationPort != "3306" {
+		t.Errorf("expected src=3306 dst=3306, got src=%q dst=%q", r.SourcePort, r.DestinationPort)
+	}
+	if r.Port != "3306" {
+		t.Errorf("expected Port=3306 for old clients, got %q", r.Port)
+	}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
+func TestNormalize_ColonPort_AsymmetricSplit(t *testing.T) {
+	r := Route{CName: "gw.example.com", Protocol: "tcp", Port: "9000:9001"}
+	r.Normalize()
+	if r.SourcePort != "9000" || r.DestinationPort != "9001" {
+		t.Errorf("expected src=9000 dst=9001, got src=%q dst=%q", r.SourcePort, r.DestinationPort)
+	}
+	if r.Port != "9000:9001" {
+		t.Errorf("expected Port=9000:9001 for old clients, got %q", r.Port)
+	}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("unexpected validation error after colon-port split: %v", err)
+	}
+}
+
+func TestNormalize_ColonPort_WithSourcePortPreset_FillsDestinationOnly(t *testing.T) {
+	r := Route{
+		Mode:       "port",
+		Protocol:   "tcp",
+		CName:      "gw.example.com",
+		Port:       "9000:9001",
+		SourcePort: "9000",
+	}
+	r.Normalize()
+	if r.SourcePort != "9000" || r.DestinationPort != "9001" {
+		t.Fatalf("expected src=9000 dst=9001, got src=%q dst=%q", r.SourcePort, r.DestinationPort)
+	}
+	if r.Port != "9000:9001" {
+		t.Fatalf("expected Port=9000:9001 after partial migration normalize, got %q", r.Port)
+	}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("unexpected validation error after partial migration normalize: %v", err)
+	}
+}
+
+func TestNormalize_ColonPort_WithDestinationPortPreset_FillsSourceOnly(t *testing.T) {
+	r := Route{
+		Mode:            "port",
+		Protocol:        "tcp",
+		CName:           "gw.example.com",
+		Port:            "9000:9001",
+		DestinationPort: "9001",
+	}
+	r.Normalize()
+	if r.SourcePort != "9000" || r.DestinationPort != "9001" {
+		t.Fatalf("expected src=9000 dst=9001, got src=%q dst=%q", r.SourcePort, r.DestinationPort)
+	}
+	if r.Port != "9000:9001" {
+		t.Fatalf("expected Port=9000:9001 after partial migration normalize, got %q", r.Port)
+	}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("unexpected validation error after partial migration normalize: %v", err)
+	}
+}
+
+func TestNormalize_CanonicalPortOverridesStaleLegacyPort(t *testing.T) {
+	r := Route{
+		Mode:            "port",
+		Protocol:        "tcp",
+		CName:           "gw.example.com",
+		Port:            "3306",
+		SourcePort:      "9000",
+		DestinationPort: "9001",
+	}
+	r.Normalize()
+	if r.Port != "9000:9001" {
+		t.Fatalf("expected Port re-derived from canonical fields to be 9000:9001, got %q", r.Port)
+	}
+}
+
+func TestNormalize_HostCanonicalDestPortOverridesStaleLegacyPort(t *testing.T) {
+	r := Route{
+		Mode:            "host",
+		Protocol:        "https",
+		CName:           "app.example.com",
+		Port:            "8080",
+		DestinationPort: "9090",
+	}
+	r.Normalize()
+	if r.Port != "9090" {
+		t.Fatalf("expected Port to follow DestinationPort=9090, got %q", r.Port)
+	}
+}
+
+func TestNormalize_Idempotent_PortConsistent(t *testing.T) {
+	r := Route{CName: "gw.example.com", Protocol: "tcp", Port: "9000:9001"}
+	r.Normalize()
+	port1, src1, dst1 := r.Port, r.SourcePort, r.DestinationPort
+	r.Normalize()
+	if r.Port != port1 || r.SourcePort != src1 || r.DestinationPort != dst1 {
+		t.Errorf("Normalize not idempotent: first={%s/%s/%s} second={%s/%s/%s}",
+			port1, src1, dst1, r.Port, r.SourcePort, r.DestinationPort)
+	}
+}
+
+func TestNormalize_SymmetricPortEdit_OldClient(t *testing.T) {
+	r := Route{Mode: "port", Protocol: "tcp", CName: "gw.example.com",
+		Port: "3306", SourcePort: "3306", DestinationPort: "3306"}
+	r.Port = "5432"
+	r.SourcePort = ""
+	r.DestinationPort = ""
+	r.Normalize()
+	if r.SourcePort != "5432" || r.DestinationPort != "5432" {
+		t.Errorf("expected src=5432 dst=5432, got src=%q dst=%q", r.SourcePort, r.DestinationPort)
+	}
+	if r.Port != "5432" {
+		t.Errorf("expected Port=5432 for old clients, got %q", r.Port)
+	}
+}
+
+func TestNormalize_AsymmetricPortEdit_ColonForm_OldClient(t *testing.T) {
+	r := Route{Mode: "port", Protocol: "tcp", CName: "gw.example.com",
+		Port: "9000:9001", SourcePort: "9000", DestinationPort: "9001"}
+	r.Port = "8000:8001"
+	r.SourcePort = ""
+	r.DestinationPort = ""
+	r.Normalize()
+	if r.SourcePort != "8000" || r.DestinationPort != "8001" {
+		t.Errorf("expected src=8000 dst=8001, got src=%q dst=%q", r.SourcePort, r.DestinationPort)
+	}
+	if r.Port != "8000:8001" {
+		t.Errorf("expected Port=8000:8001 for old clients, got %q", r.Port)
+	}
+}
+
+func TestNormalize_DestPortEdit_PortBackPopulated(t *testing.T) {
+	r := Route{Mode: "host", Protocol: "https", CName: "app.example.com",
+		Port: "8080", DestinationPort: "8080"}
+	r.DestinationPort = "9090"
+	r.Port = ""
+	r.Normalize()
+	if r.Port != "9090" {
+		t.Errorf("expected Port=9090 after destport edit, got %q", r.Port)
+	}
+}
+
+func TestRoute_JSONMarshal_LegacyPortPresent(t *testing.T) {
+	r := Route{CName: "app.example.com", Protocol: "https", Port: "8080"}
+	r.Normalize()
+	b, err := json.Marshal(r)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	var m map[string]interface{}
+	json.Unmarshal(b, &m)
+	if m["port"] != "8080" {
+		t.Fatalf("expected port=8080 in JSON for old clients, got %v", m["port"])
+	}
+}
+
+func TestRoute_JSONMarshal_AsymmetricPortPresent(t *testing.T) {
+	r := Route{CName: "gw.example.com", Protocol: "tcp", Port: "9000:9001"}
+	r.Normalize()
+	b, err := json.Marshal(r)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	var m map[string]interface{}
+	json.Unmarshal(b, &m)
+	if m["port"] != "9000:9001" {
+		t.Fatalf("expected port=9000:9001 in JSON for old clients, got %v", m["port"])
+	}
+}
+
+func TestValidate_HostRouteColonPortStillRejected(t *testing.T) {
+	r := Route{Mode: "host", Protocol: "https", CName: "app.example.com",
+		Port: "9000:9001", DestinationPort: "9000"}
+	if err := r.Validate(); err == nil {
+		t.Fatal("expected error: host route with colon Port must be rejected by Validate()")
+	}
+}
+
+func TestNormalize_ColonPort_ProvisioningFields(t *testing.T) {
+	r := Route{Protocol: "tcp", CName: "gw.example.com", Port: "9000:9001"}
+	r.Normalize()
+	if r.SourcePort != "9000" {
+		t.Errorf("HAProxy bind port: expected SourcePort=9000, got %q", r.SourcePort)
+	}
+	if r.DestinationPort != "9001" {
+		t.Errorf("HAProxy backend port: expected DestinationPort=9001, got %q", r.DestinationPort)
 	}
 }

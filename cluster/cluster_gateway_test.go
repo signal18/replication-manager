@@ -199,6 +199,9 @@ func TestDetectCrossCluster_DuplicateRoute_ReportsConflict(t *testing.T) {
 	cl1 := newTestClusterForGateway(t, "cluster1", gw)
 	appACnf := portRouteApp("app-a", "gw.example.com", "9000", "9000")
 	cl1.Conf.Apps = []*config.AppConfig{appACnf}
+	cl1.Apps = []*App{
+		{Name: "app-a", Host: "app-a", Port: "80", AppConfig: appACnf, Mutex: &sync.Mutex{}},
+	}
 
 	// cluster2 claims the same cname:sourcePort — conflict.
 	cl2 := newTestClusterForGateway(t, "cluster2", gw)
@@ -233,8 +236,10 @@ func TestDetectCrossCluster_NoConflict_DifferentCNameSamePort(t *testing.T) {
 	const gw = "ns/svc/shared-gw"
 
 	cl1 := newTestClusterForGateway(t, "cluster1", gw)
-	cl1.Conf.Apps = []*config.AppConfig{
-		portRouteApp("app-a", "a.gw.example.com", "9000", "9000"),
+	appACnf := portRouteApp("app-a", "a.gw.example.com", "9000", "9000")
+	cl1.Conf.Apps = []*config.AppConfig{appACnf}
+	cl1.Apps = []*App{
+		{Name: "app-a", Host: "app-a", Port: "80", AppConfig: appACnf, Mutex: &sync.Mutex{}},
 	}
 
 	// Different CNAME, same sourcePort — no conflict.
