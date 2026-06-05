@@ -13,6 +13,20 @@ import { HiViewGrid } from 'react-icons/hi'
 
 const columnHelper = createColumnHelper()
 
+function routePillText(route) {
+  const mode = route.mode || (route.protocol === 'tcp' ? 'port' : 'host')
+  if (mode === 'port') {
+    const prefix = route.name ? `${route.name} ` : ''
+    const cname = route.cname || ''
+    const sourcePort = route.sourcePort || ''
+    if (cname && sourcePort) return `${prefix}${cname}:${sourcePort}`
+    if (cname) return `${prefix}${cname}`
+    if (sourcePort) return `${prefix}:${sourcePort}`
+    return route.name || 'port route'
+  }
+  return route.cname || ''
+}
+
 function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator, showGridView }) {
   const columns = useMemo(
     () => [
@@ -48,7 +62,9 @@ function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator, showG
         header: 'Docker Image'
       }),
       columnHelper.accessor((row) => (<VStack>
-        {row.routeStatus?.filter((route) => route.primary).map((route, idx) => (<TagPill key={idx} colorScheme="blue" text={route.cname} />))}
+        {row.routeStatus?.filter((route) => route.primary).map((route, idx) => (
+          <TagPill key={idx} colorScheme="blue" text={routePillText(route)} />
+        ))}
       </VStack>), {
         cell: (info) => info.getValue(),
         header: 'Routes'

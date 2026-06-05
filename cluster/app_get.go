@@ -278,7 +278,18 @@ func (app *App) GetOpenSVCDeploymentAppEnv(vartype string) string {
 func (app *App) GetExternalFQDN() string {
 	for _, route := range app.AppConfig.Deployment.Routes {
 		if route.Primary {
-			return route.CName
+			if route.CName != "" {
+				return route.CName
+			}
+			// Port route without cname: return a *:sourcePort display string.
+			if route.Mode == "port" && route.SourcePort != "" {
+				name := route.Name
+				if name == "" {
+					name = "port-route"
+				}
+				return name + " (*:" + route.SourcePort + ")"
+			}
+			return ""
 		}
 	}
 	return ""

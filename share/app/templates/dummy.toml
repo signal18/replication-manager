@@ -6,8 +6,9 @@ prov-app-ha-topology = "flex"
 [deployment]
 
   [[deployment.routes]]
+    mode = "host"
     cname = "{{app.name}}.{{name}}.{{config.cloud18SubDomain}}-{{config.cloud18SubDomainZone}}.{{config.cloud18Domain}}.cloud18.io"
-    port = "{{app.port}}"
+    destport = "{{app.port}}"
     primary = true
     protocol = "https"
 

@@ -15,6 +15,7 @@ var ClusterError = map[string]string{
 	"APPERR002": "Unexpected status for application %s. Code: %d",
 	"APPERR003": "Error connecting to application %s via TCP. Err: %s",
 	"APPERR004": "Unsupported protocol %s for application %s",
+	"APPERR005": "Gateway route conflict for application %s: %s — gateway routes blocked, fix route config to resolve",
 	"CREDIT01":  "Cluster has exceeded available credits. Credits: (%d), Total Usage: (%d). Additional charge may apply.",
 	"CREDIT02":  "Application %s has negative planned credit (%d). Please check the configuration.",
 	"CREDIT03":  "Application %s has negative used credit (%d). Please check the configuration.",

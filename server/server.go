@@ -160,6 +160,7 @@ type ReplicationManager struct {
 	IsGitPull            bool                           `json:"isGitPull"`
 	IsGitPush            bool                           `json:"isGitPush"`
 	GitPushLock          sync.Mutex                     `json:"-"`
+	gatewayMu            sync.Map                       `json:"-"`
 	IsNeedGitPush        bool                           `json:"-"`
 	CanConnectVault      bool                           `json:"canConnectVault"`
 	IsExportPush         bool                           `json:"-"`
@@ -2611,14 +2612,64 @@ func (repman *ReplicationManager) Run() error {
 
 	repman.LimitPrivileges()
 
+	// Phase 1: initialise every cluster without starting monitoring goroutines.
 	for _, gl := range repman.ClusterList {
-		repman.StartCluster(gl)
+		repman.initCluster(gl)
 	}
 
+	// Phase 2: wire cross-cluster state now that all clusters are initialised.
 	for _, cluster := range repman.Clusters {
 		cluster.SetClusterList(repman.Clusters)
+		cluster.SetClusterOrder(repman.ClusterList)
 		cluster.SetDeprecatedKeys(repman.DeprecatedKeys)
 		cluster.SetCarbonLogger(repman.clog)
+	}
+
+	// Phase 3: gateway conflict detection.
+	// Both intra- and cross-cluster conflicts are cached in GatewayConflicts so
+	// that APPERR005 fires, route ownership is accurate, and stale gateway
+	// fragments are withdrawn.  Conflicts never prevent cluster start, monitoring,
+	// or replication; the hard publish blocks live in OpenSVCProvisionRoute and the
+	// API reject path.
+
+	// 3a: intra-cluster — cache so APPERR005 fires for same-cluster route collisions.
+	for _, gl := range repman.ClusterList {
+		cl, ok := repman.Clusters[gl]
+		if !ok {
+			continue
+		}
+		if conflicts, _ := cl.DetectIntraClusterGatewayConflicts(); len(conflicts) > 0 {
+			cl.MarkGatewayConflicts(conflicts)
+			cl.WithdrawConflictedGatewayRoutes()
+		}
+	}
+
+	// 3b: cross-cluster — cache conflicts and withdraw stale fragments, same as 3a.
+	// Detection runs in ClusterList order so each cluster sees only routes from
+	// earlier (higher-priority) clusters.  After marking, OwnGatewayRoutes excludes
+	// the newly-conflicted apps so later clusters are not blocked by routes that
+	// cannot actually be published.
+	priorRoutesByGateway := make(map[string][][]config.Route)
+	for _, gl := range repman.ClusterList {
+		cl, ok := repman.Clusters[gl]
+		if !ok {
+			continue
+		}
+		gw := strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
+		if conflicts, _ := cl.DetectCrossClusterGatewayConflicts(priorRoutesByGateway[gw]); len(conflicts) > 0 {
+			cl.MarkGatewayConflicts(conflicts)
+			cl.WithdrawConflictedGatewayRoutes()
+		}
+		// OwnGatewayRoutes now excludes apps marked conflicted in either 3a or 3b,
+		// so only genuinely publishable routes accumulate in the prior-routes pile.
+		priorRoutesByGateway[gw] = append(priorRoutesByGateway[gw], cl.OwnGatewayRoutes(gw)...)
+	}
+
+	// Phase 4: start monitoring goroutines after all validation is complete.
+	for _, gl := range repman.ClusterList {
+		if cl, ok := repman.Clusters[gl]; ok {
+			go cl.Run()
+		}
 	}
 
 	// Send initial email
@@ -2770,8 +2821,11 @@ func (repman *ReplicationManager) Run() error {
 
 }
 
-func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Cluster, error) {
-
+// initCluster initialises a cluster and registers it in repman.Clusters but
+// does NOT start its monitoring goroutine.  Call go cl.Run() (or StartCluster)
+// separately.  The startup sequence uses initCluster so cross-cluster gateway
+// validation can run before any goroutine is live.
+func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Cluster, error) {
 	repman.currentCluster = new(cluster.Cluster)
 	repman.currentCluster.Logrus = repman.Logrus
 	repman.currentCluster.SecurityLogrus = repman.SecurityLogrus
@@ -2803,7 +2857,6 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Starting cluster: %s workingdir %s", clusterName, myClusterConf.WorkingDir)
 
 	repman.VersionConfs[clusterName].ConfInit = myClusterConf
-	//log.Infof("Default config for %s workingdir:\n %v", clusterName, myClusterConf.DefaultFlagMap)
 
 	// Use default key if cluster key is not found
 	k, _ := repman.VersionConfs[clusterName].ConfInit.LoadEncrytionKey()
@@ -2821,7 +2874,9 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster.DiskStatManager = repman.DiskStatManager
 	repman.currentCluster.Mailer = repman.Mailer
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
+	repman.Lock()
 	repman.Clusters[clusterName] = repman.currentCluster
+	repman.Unlock()
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
 
 	if repman.currentCluster.Conf.SecretKey == nil {
@@ -2840,8 +2895,177 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.ConfigManager.UpdateLoggerConfig(clusterName, repman.currentCluster.Conf)
 	repman.ConfigManager.SaveConfig(repman.currentCluster, true)
 
-	go repman.currentCluster.Run()
 	return repman.currentCluster, nil
+}
+
+// StartCluster initialises a cluster and immediately starts its monitoring
+// goroutine.  Used for dynamic cluster creation (API, git auto-discovery).
+// The server startup sequence uses initCluster + go cl.Run() directly so that
+// cross-cluster gateway validation can run before any goroutine is live.
+func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Cluster, error) {
+	cl, err := repman.initCluster(clusterName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Snapshot cluster map and order under the lock so Mirror phases 2 and 3b
+	// don't race with concurrent StartCluster / DeleteCluster mutations.
+	repman.Lock()
+	clustersCopy := make(map[string]*cluster.Cluster, len(repman.Clusters))
+	for k, v := range repman.Clusters {
+		clustersCopy[k] = v
+	}
+	clusterOrderCopy := make([]string, len(repman.ClusterList))
+	copy(clusterOrderCopy, repman.ClusterList)
+	repman.Unlock()
+
+	// Mirror Phase 2: wire cross-cluster state so the new cluster can see peers.
+	cl.SetClusterList(clustersCopy)
+	cl.SetClusterOrder(clusterOrderCopy)
+	cl.SetDeprecatedKeys(repman.DeprecatedKeys)
+	cl.SetCarbonLogger(repman.clog)
+
+	// Mirror Phase 3a: refresh intra-cluster conflict cache.
+	cl.RefreshGatewayConflicts()
+	cl.WithdrawConflictedGatewayRoutes()
+
+	// Mirror Phase 3b: cache cross-cluster conflicts and withdraw stale fragments —
+	// same policy as full startup and ReloadConfig.  Applies to git auto-discovery
+	// and dynamic API adds so that APPERR005 fires, route ownership is accurate,
+	// and previously published fragments for a losing cluster are cleaned up.
+	gw := strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
+	if gw != "" {
+		var priorRoutes [][]config.Route
+		for _, name := range clusterOrderCopy {
+			if name == clusterName {
+				break
+			}
+			peer := clustersCopy[name]
+			if peer == nil {
+				continue
+			}
+			if strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) == gw {
+				priorRoutes = append(priorRoutes, peer.OwnGatewayRoutes(gw)...)
+			}
+		}
+		if conflicts, _ := cl.DetectCrossClusterGatewayConflicts(priorRoutes); len(conflicts) > 0 {
+			cl.MarkGatewayConflicts(conflicts)
+			cl.WithdrawConflictedGatewayRoutes()
+		}
+	}
+
+	go cl.Run()
+	return cl, nil
+}
+
+// refreshAllPeers propagates the current cluster map and priority order to
+// every running cluster.  Must be called after any mutation of repman.Clusters
+// or repman.ClusterList (dynamic API add, git auto-discovery) so that
+// cross-cluster lookups stay consistent across all clusters, not just the
+// newly started one.  It is intentionally separate from StartCluster() because
+// callers control when the ClusterList append is done relative to the start —
+// future StartCluster() callers must invoke this helper themselves after the
+// list is fully updated.
+func (repman *ReplicationManager) refreshAllPeers() {
+	repman.Lock()
+	clusterList := make([]string, len(repman.ClusterList))
+	copy(clusterList, repman.ClusterList)
+	clusters := make(map[string]*cluster.Cluster, len(repman.Clusters))
+	for k, v := range repman.Clusters {
+		clusters[k] = v
+	}
+	repman.Unlock()
+
+	for _, cl := range clusters {
+		cl.SetClusterList(clusters)
+		cl.SetClusterOrder(clusterList)
+	}
+}
+
+// recomputeConflictsForGateway performs a full intra- and cross-cluster gateway
+// conflict recomputation for every cluster currently attached to gw.
+// Phase 1 rebuilds each cluster's intra-cluster snapshot; Phase 2 runs
+// cross-cluster detection in ClusterList priority order, marking conflicts and
+// withdrawing stale fragments so that OwnGatewayRoutes stays accurate.
+func (repman *ReplicationManager) recomputeConflictsForGateway(gw string) {
+	if gw == "" {
+		return
+	}
+	// Snapshot ClusterList order and Cluster pointers under the repman lock to
+	// avoid racing with StartCluster / cluster removal which mutate both under
+	// that same lock.  The cluster objects themselves are not removed while we
+	// hold a pointer — only the map entry may disappear.
+	repman.Lock()
+	clusterOrder := make([]string, len(repman.ClusterList))
+	copy(clusterOrder, repman.ClusterList)
+	clusters := make(map[string]*cluster.Cluster, len(repman.Clusters))
+	for k, v := range repman.Clusters {
+		clusters[k] = v
+	}
+	repman.Unlock()
+
+	// Phase 1: intra-cluster snapshots must be fresh before Phase 2 reads
+	// OwnGatewayRoutes (which filters the GatewayConflicts map).
+	for _, name := range clusterOrder {
+		peer := clusters[name]
+		if peer == nil || strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) != gw {
+			continue
+		}
+		peer.RefreshGatewayConflicts()
+		peer.WithdrawConflictedGatewayRoutes()
+	}
+	// Phase 2: cross-cluster detection in priority order.
+	var priorRoutes [][]config.Route
+	for _, name := range clusterOrder {
+		peer := clusters[name]
+		if peer == nil || strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) != gw {
+			continue
+		}
+		if conflicts, _ := peer.DetectCrossClusterGatewayConflicts(priorRoutes); len(conflicts) > 0 {
+			peer.MarkGatewayConflicts(conflicts)
+			peer.WithdrawConflictedGatewayRoutes()
+		}
+		priorRoutes = append(priorRoutes, peer.OwnGatewayRoutes(gw)...)
+	}
+}
+
+// RecomputeGatewayConflicts performs a full intra- and cross-cluster gateway
+// conflict recomputation for every cluster that shares the same gateway as
+// changedClusterName.  Call this after any route mutation (add / modify / drop)
+// so that peer clusters' cached GatewayConflicts entries are kept accurate.
+//
+// prevGateway must be the Cloud18GatewayService value the cluster held BEFORE
+// the change was applied.  When the gateway is unchanged pass "".  When it
+// differs from the current value (e.g. after a config reload that moved the
+// cluster from one gateway to another), this function also recomputes the old
+// gateway's peers so they are no longer blocked by a cluster that has left.
+//
+// When changedClusterName has no current gateway, only its intra-cluster cache
+// is refreshed (unless prevGateway is set, in which case old peers are cleared).
+func (repman *ReplicationManager) RecomputeGatewayConflicts(changedClusterName, prevGateway string) {
+	repman.Lock()
+	changed := repman.Clusters[changedClusterName]
+	repman.Unlock()
+	if changed == nil {
+		return
+	}
+
+	gw := strings.ToLower(strings.TrimSpace(changed.Conf.Cloud18GatewayService))
+	prev := strings.ToLower(strings.TrimSpace(prevGateway))
+
+	if gw != "" {
+		repman.recomputeConflictsForGateway(gw)
+	} else {
+		// No current gateway: local intra-cluster refresh only.
+		changed.RefreshGatewayConflicts()
+		changed.WithdrawConflictedGatewayRoutes()
+	}
+
+	// If the cluster moved to a different gateway (or left entirely), recompute
+	// the old gateway so peers that were blocked by this cluster are unblocked.
+	if prev != "" && prev != gw {
+		repman.recomputeConflictsForGateway(prev)
+	}
 }
 
 func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitbrain bool) bool {

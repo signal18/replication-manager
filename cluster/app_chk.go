@@ -19,18 +19,31 @@ func (app *App) GetMonitoringStatus() string {
 	cluster := app.ClusterGroup
 	routes := app.GetAppConfig().Deployment.Routes
 	var primaryStatus = stateAppRunning
-	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto}
+	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict}
 	errStates := make(map[string]state.State)
+
+	// Gateway conflict check: surface the conflict as WARN state and let the rest
+	// of the monitoring checks run — local reachability is independent of gateway
+	// route ownership.
+	if app.AppConfig != nil {
+		if conflicted, reason := cluster.IsAppGatewayConflicted(app.AppConfig.AppHost, app.AppConfig.AppPort); conflicted {
+			errStates[ErrAppGatewayConflict] = state.State{
+				ErrType:   "WARN",
+				ErrKey:    ErrAppGatewayConflict,
+				ErrDesc:   fmt.Sprintf(config.ClusterError[ErrAppGatewayConflict], app.GetId(), reason),
+				ServerUrl: app.Host,
+			}
+		}
+	}
 	failureThreshold := cluster.Conf.AppErrorDebounceThreshold
 	if failureThreshold <= 0 {
 		// Keep legacy default when the cluster-level override is unset/invalid.
 		failureThreshold = appErrFailureThreshold
 	}
 	routeEndpoint := func(route config.Route) string {
-		if route.CName != "" {
-			return fmt.Sprintf("%s://%s:%s", route.Protocol, route.CName, route.Port)
-		}
-		return fmt.Sprintf("%s://%s:%s", route.Protocol, app.GetHost(), route.Port)
+		normalized := route
+		normalized.Normalize()
+		return config.BuildRouteStateKey(normalized)
 	}
 	debouncedRecordAppErr := func(routeKey string, states []state.State, routeErr error) {
 		failCount := app.IncAppErrConsecutiveCnt(routeKey)
@@ -72,6 +85,9 @@ func (app *App) GetMonitoringStatus() string {
 	for _, route := range routes {
 		routeKey := routeEndpoint(route)
 		routeStatus := config.RouteStatus{Route: route, Status: stateAppRunning}
+		routeNorm := route
+		routeNorm.Normalize()
+		routeLabel := " on route " + routeNorm.Label()
 		switch route.Protocol {
 		case "https":
 			httpStatus, _, err := app.GetAppHTTPStatus(route, false)
@@ -79,7 +95,7 @@ func (app *App) GetMonitoringStatus() string {
 				markSuccessfulRouteCheck(routeKey)
 			} else {
 				routeStatus.Status = stateAppWarning
-				primaryStatus = stateAppWarning
+				// Don't set primaryStatus yet — defer until local check outcome is known.
 
 				errKey := ErrAppConnectFailed
 				errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
@@ -98,7 +114,7 @@ func (app *App) GetMonitoringStatus() string {
 						errDesc = fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
 					}
 
-					debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc, ServerUrl: app.Host}}, err)
+					debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc + routeLabel, ServerUrl: app.Host}}, err)
 
 					if route.Primary {
 						primaryStatus = stateFailed
@@ -110,8 +126,40 @@ func (app *App) GetMonitoringStatus() string {
 					markSuccessfulRouteCheck(routeKey)
 				}
 			}
+		case "http":
+			httpStatus, _, err := app.GetAppHTTPStatus(route, false)
+			if err == nil {
+				markSuccessfulRouteCheck(routeKey)
+			} else {
+				routeStatus.Status = stateAppWarning
+				// Don't set primaryStatus yet — defer until local check outcome is known.
+				errKey := ErrAppConnectFailed
+				errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
+				if strings.HasPrefix(err.Error(), "unexpected status code") {
+					errKey = ErrAppUnexpectedStatus
+					errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), httpStatus)
+				}
+				httpStatus, _, err = app.GetAppLocalHTTPStatus(route, false)
+				if err != nil {
+					if strings.HasPrefix(err.Error(), "unexpected status code") {
+						errKey = ErrAppUnexpectedStatus
+						errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), httpStatus)
+					} else {
+						errKey = ErrAppConnectFailed
+						errDesc = fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
+					}
+					debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc + routeLabel, ServerUrl: app.Host}}, err)
+					if route.Primary {
+						primaryStatus = stateFailed
+					} else {
+						primaryStatus = stateAppWarning
+					}
+					routeStatus.Status = stateFailed
+				} else {
+					markSuccessfulRouteCheck(routeKey)
+				}
+			}
 		case "tcp":
-			// For TCP routes, we assume the app is running if it can connect
 			err := app.GetAppTCPStatus(route)
 			if err == nil {
 				markSuccessfulRouteCheck(routeKey)
@@ -122,8 +170,8 @@ func (app *App) GetMonitoringStatus() string {
 				if err := app.GetAppLocalTCPStatus(route); err != nil {
 					// Temporary compatibility: emit APPERR003 (canonical) and APPERR001 together.
 					debouncedRecordAppErr(routeKey, []state.State{
-						{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), err), ServerUrl: app.Host},
-						{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err), ServerUrl: app.Host},
+						{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), err) + routeLabel, ServerUrl: app.Host},
+						{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err) + routeLabel, ServerUrl: app.Host},
 					}, err)
 
 					routeStatus.Status = stateFailed
@@ -136,7 +184,7 @@ func (app *App) GetMonitoringStatus() string {
 			}
 		default:
 			// Keep APPERR004 argument order aligned with config.ClusterError format string.
-			errStates[ErrAppUnsupportedProto] = state.State{ErrType: "WARN", ErrKey: ErrAppUnsupportedProto, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppUnsupportedProto], route.Protocol, app.GetId()), ServerUrl: app.Host}
+			errStates[ErrAppUnsupportedProto] = state.State{ErrType: "WARN", ErrKey: ErrAppUnsupportedProto, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppUnsupportedProto], route.Protocol, app.GetId()) + routeLabel, ServerUrl: app.Host}
 			app.ResetAppErrConsecutiveCnt(routeKey)
 			routeStatus.Status = stateFailed
 
@@ -163,14 +211,39 @@ func (app *App) GetMonitoringStatus() string {
 }
 
 func (app *App) GetAppLocalHTTPStatus(route config.Route, getBody bool) (int, []byte, error) {
-	route.CName = app.GetHost() + ":" + route.Port
+	port := route.DestinationPort
+	if port == "" {
+		port = route.Port
+	}
+	route.CName = app.GetHost() + ":" + port
+	// Clear Mode so GetAppHTTPStatus doesn't re-append SourcePort on top of the
+	// already-resolved host:destPort address.
+	route.Mode = ""
 	a, b, err := app.GetAppHTTPStatus(route, getBody)
 	if err != nil {
-		route.Protocol = "http"
-		return app.GetAppHTTPStatus(route, getBody)
-	} else {
-		return a, b, nil
+		// TLS terminates at HAProxy for all gateway-hosted routes, so the
+		// backend always speaks plain HTTP regardless of the external protocol
+		// or any auth configuration.  Always fall back to HTTP so a healthy
+		// backend is not misreported as down when the HTTPS check fails.
+		fallback := route
+		fallback.Protocol = "http"
+		return app.GetAppHTTPStatus(fallback, getBody)
 	}
+	return a, b, nil
+}
+
+// GetDeploymentRoutesSnapshot returns a copy of the app's current deployment
+// routes taken under the app lock.  Use this when reading routes outside the
+// app's own goroutine to avoid racing with API route mutations.
+func (app *App) GetDeploymentRoutesSnapshot() []config.Route {
+	app.Lock()
+	defer app.Unlock()
+	if app.AppConfig == nil || app.AppConfig.Deployment == nil || len(app.AppConfig.Deployment.Routes) == 0 {
+		return nil
+	}
+	cp := make([]config.Route, len(app.AppConfig.Deployment.Routes))
+	copy(cp, app.AppConfig.Deployment.Routes)
+	return cp
 }
 
 func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte, error) {
@@ -182,9 +255,19 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{Transport: tr}
 
-	urlpost := "https://" + route.CName
+	host := route.CName
+	if route.Mode == "port" && route.SourcePort != "" {
+		host = route.CName + ":" + route.SourcePort
+	}
+
+	monPath := "/"
+	if route.Monitor != nil && route.Monitor.Path != "" {
+		monPath = route.Monitor.Path
+	}
+
+	urlpost := "https://" + host + monPath
 	if route.Protocol == "http" {
-		urlpost = "http://" + route.CName
+		urlpost = "http://" + host + monPath
 		client.Transport = &http.Transport{} // Reset transport for HTTP
 	}
 
@@ -192,6 +275,30 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlpost, nil)
 	if err != nil {
 		return -1, nil, fmt.Errorf("failed to create request to %s: %v", urlpost, err)
+	}
+
+	// Inject auth header when configured (HTTP/HTTPS only).
+	if route.Monitor != nil {
+		switch route.Monitor.AuthType {
+		case "basic":
+			if route.Monitor.AuthSecretVar != "" {
+				secret, serr := cluster.GetAppDecryptedVariableValue(app, route.Monitor.AuthSecretVar)
+				if serr != nil {
+					return -1, nil, fmt.Errorf("monitor basic auth: cannot resolve secret var %q for app %s route %s: %v",
+						route.Monitor.AuthSecretVar, app.Name, route.CName, serr)
+				}
+				req.SetBasicAuth(route.Monitor.AuthUser, secret)
+			}
+		case "bearer":
+			if route.Monitor.AuthSecretVar != "" {
+				secret, serr := cluster.GetAppDecryptedVariableValue(app, route.Monitor.AuthSecretVar)
+				if serr != nil {
+					return -1, nil, fmt.Errorf("monitor bearer auth: cannot resolve secret var %q for app %s route %s: %v",
+						route.Monitor.AuthSecretVar, app.Name, route.CName, serr)
+				}
+				req.Header.Set("Authorization", "Bearer "+secret)
+			}
+		}
 	}
 
 	resp, err := client.Do(req)
@@ -205,7 +312,21 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 		return resp.StatusCode, nil, fmt.Errorf("error reading response body from %s: %v", urlpost, err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	// Determine accepted status codes from the monitor config; default to 200.
+	expectedCodes := []int{200}
+	if route.Monitor != nil && route.Monitor.ExpectStatus != "" {
+		if codes, perr := config.ParseExpectStatus(route.Monitor.ExpectStatus); perr == nil && len(codes) > 0 {
+			expectedCodes = codes
+		}
+	}
+	accepted := false
+	for _, code := range expectedCodes {
+		if resp.StatusCode == code {
+			accepted = true
+			break
+		}
+	}
+	if !accepted {
 		return resp.StatusCode, body, errors.New("unexpected status code")
 	}
 
@@ -217,7 +338,14 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 }
 
 func (app *App) GetAppLocalTCPStatus(route config.Route) error {
+	port := route.DestinationPort
+	if port == "" {
+		port = route.Port
+	}
 	route.CName = app.GetHost()
+	route.Port = port
+	// Clear Mode so GetAppTCPStatus doesn't override Port with SourcePort.
+	route.Mode = ""
 	return app.GetAppTCPStatus(route)
 }
 
@@ -227,13 +355,22 @@ func (app *App) GetAppTCPStatus(route config.Route) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.Timeout)*time.Second)
 	defer cancel()
 
-	conn, err := dialer.DialContext(ctx, "tcp", fmt.Sprintf("%s:%s", route.CName, route.Port))
+	// For external TCP checks use the source port (the gateway listener port).
+	// For local checks the caller has already set route.Port to the destination port.
+	port := route.Port
+	if route.Mode == "port" && route.CName != "" && route.SourcePort != "" {
+		port = route.SourcePort
+	}
+	if port == "" {
+		port = route.DestinationPort
+	}
+
+	conn, err := dialer.DialContext(ctx, "tcp", fmt.Sprintf("%s:%s", route.CName, port))
 	if err != nil {
-		return fmt.Errorf("error connecting to %s:%s: %v", route.CName, route.Port, err)
+		return fmt.Errorf("error connecting to %s:%s: %v", route.CName, port, err)
 	}
 	defer conn.Close()
 
-	// If we can connect, the app is running
 	return nil
 }
 

@@ -1289,6 +1289,16 @@ func (cluster *Cluster) SetClusterList(clusters map[string]*Cluster) {
 	cluster.Unlock()
 }
 
+// SetClusterOrder stores the ordered cluster-name slice that determines
+// gateway-route ownership priority (first entry = highest priority).
+// Must be called alongside SetClusterList so OpenSVCProvisionRoute can
+// apply "first wins" conflict resolution at publish time.
+func (cluster *Cluster) SetClusterOrder(order []string) {
+	cluster.Lock()
+	cluster.clusterOrder = order
+	cluster.Unlock()
+}
+
 func (cluster *Cluster) SetDeprecatedKeys(keys map[string]map[string]bool) {
 	cluster.deprecatedKeys = keys
 }

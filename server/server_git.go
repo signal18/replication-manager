@@ -333,11 +333,13 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 					}
 					repman.Confs[f.Name()] = repman.GetClusterConfig(repman.ViperConfig, repman.Conf.ImmuableFlagMap, repman.Conf.DynamicFlagMap, f.Name(), *repman.Conf)
 					repman.StartCluster(f.Name())
-					repman.Clusters[f.Name()].IsGitPull = true
-					for _, cluster := range repman.Clusters {
-						cluster.SetClusterList(repman.Clusters)
+					repman.Lock()
+					if c, ok := repman.Clusters[f.Name()]; ok {
+						c.IsGitPull = true
 					}
 					repman.ClusterList = append(repman.ClusterList, f.Name())
+					repman.Unlock()
+					repman.refreshAllPeers()
 				}
 			}
 		}

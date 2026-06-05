@@ -456,6 +456,99 @@ func (collector *Collector) CreateConfigKeyValue(namespace string, service strin
 	return collector.CreateConfigKeyValueV2(namespace, service, key, value)
 }
 
+// DeleteConfigKeyValue deletes a single key from a cfg data store object.
+func (collector *Collector) DeleteConfigKeyValue(namespace, service, key string) error {
+	if collector.IsV3() {
+		return collector.DeleteConfigKeyValueV3(namespace, service, key)
+	}
+	return collector.DeleteConfigKeyValueV2(namespace, service, key)
+}
+
+// DeleteConfigKeyValueV2 deletes a key from a V2 cfg object via DELETE /key.
+func (collector *Collector) DeleteConfigKeyValueV2(namespace, service, key string) error {
+	urldelete := fmt.Sprintf("https://%s:%s/key", collector.Host, collector.Port)
+	requestData := ConfigKeyValueRequest{
+		Path: fmt.Sprintf("%s/cfg/%s", namespace, service),
+		Key:  key,
+	}
+	jsonData, err := json.Marshal(requestData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+	client := collector.GetHttpClient()
+	req, err := http.NewRequest("DELETE", urldelete, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", "ANY")
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete key: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP DELETE /key failed with status %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+// ListConfigKeys returns all key names stored in a cfg data store object.
+func (collector *Collector) ListConfigKeys(namespace, service string) ([]string, error) {
+	if collector.IsV3() {
+		return collector.ListConfigKeysV3(namespace, service)
+	}
+	return collector.ListConfigKeysV2(namespace, service)
+}
+
+// ListConfigKeysV2 lists keys in a V2 cfg object via GET /object_keys.
+func (collector *Collector) ListConfigKeysV2(namespace, service string) ([]string, error) {
+	path := fmt.Sprintf("%s/cfg/%s", namespace, service)
+	urlget := fmt.Sprintf("https://%s:%s/object_keys?path=%s", collector.Host, collector.Port, url.QueryEscape(path))
+	client := collector.GetHttpClient()
+	req, err := http.NewRequest("GET", urlget, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", "ANY")
+	ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list keys: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("HTTP GET /object_keys failed with status %d: %s", resp.StatusCode, string(body))
+	}
+	data := gjson.GetBytes(body, "data")
+	if gjson.GetBytes(body, "nodes").Exists() {
+		data = gjson.GetBytes(body, "nodes.@values.0.data")
+	}
+	var keys []string
+	for _, item := range data.Array() {
+		if item.Type == gjson.String {
+			keys = append(keys, item.String())
+		} else if item.IsObject() {
+			if name := item.Get("name"); name.Exists() {
+				keys = append(keys, name.String())
+			}
+		}
+	}
+	return keys, nil
+}
+
 func (collector *Collector) CreateConfigKeyValueV2(namespace string, service string, key string, value string) error {
 	// Construction de l'URL de manière plus propre
 	urlpost := fmt.Sprintf("https://%s:%s/key", collector.Host, collector.Port)
