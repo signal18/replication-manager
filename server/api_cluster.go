@@ -5532,9 +5532,10 @@ func (repman *ReplicationManager) handlerMuxLog(w http.ResponseWriter, r *http.R
 // @Success 200 {object} map[string]interface{} "Log data"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found"
+// @Router /api/clusters/{clusterName}/topology/logs/{logType} [get]
 // @Router /api/clusters/{clusterName}/topology/http-logs [get]
 // @Router /api/clusters/{clusterName}/topology/http-logs/{logType} [get]
-// @Router /api/clusters/{clusterName}/topology/logs/{logType} [get]
+// @Deprecated Use /topology/logs/{logType} instead of /topology/http-logs/{logType}
 func (repman *ReplicationManager) handlerMuxWebLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
