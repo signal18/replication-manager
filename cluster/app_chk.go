@@ -127,45 +127,28 @@ func (app *App) GetMonitoringStatus() string {
 				}
 			}
 		case "http":
-			// Port-route HTTP: skip external check when no cname is defined.
-			if route.CName != "" {
-				httpStatus, _, err := app.GetAppHTTPStatus(route, false)
-				if err == nil {
-					markSuccessfulRouteCheck(routeKey)
-				} else {
-					routeStatus.Status = stateAppWarning
-					// Don't set primaryStatus yet — defer until local check outcome is known.
-					errKey := ErrAppConnectFailed
-					errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
+			httpStatus, _, err := app.GetAppHTTPStatus(route, false)
+			if err == nil {
+				markSuccessfulRouteCheck(routeKey)
+			} else {
+				routeStatus.Status = stateAppWarning
+				// Don't set primaryStatus yet — defer until local check outcome is known.
+				errKey := ErrAppConnectFailed
+				errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
+				if strings.HasPrefix(err.Error(), "unexpected status code") {
+					errKey = ErrAppUnexpectedStatus
+					errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), httpStatus)
+				}
+				httpStatus, _, err = app.GetAppLocalHTTPStatus(route, false)
+				if err != nil {
 					if strings.HasPrefix(err.Error(), "unexpected status code") {
 						errKey = ErrAppUnexpectedStatus
 						errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), httpStatus)
-					}
-					httpStatus, _, err = app.GetAppLocalHTTPStatus(route, false)
-					if err != nil {
-						if strings.HasPrefix(err.Error(), "unexpected status code") {
-							errKey = ErrAppUnexpectedStatus
-							errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), httpStatus)
-						} else {
-							errKey = ErrAppConnectFailed
-							errDesc = fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
-						}
-						debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc + routeLabel, ServerUrl: app.Host}}, err)
-						if route.Primary {
-							primaryStatus = stateFailed
-						} else {
-							primaryStatus = stateAppWarning
-						}
-						routeStatus.Status = stateFailed
 					} else {
-						markSuccessfulRouteCheck(routeKey)
+						errKey = ErrAppConnectFailed
+						errDesc = fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
 					}
-				}
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo,
-					"Port-route HTTP check skipped for app %s (no cname defined), using local/backend check only", app.Name)
-				if err := app.GetAppLocalHTTPStatus2xx(route); err != nil {
-					debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err) + routeLabel, ServerUrl: app.Host}}, err)
+					debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc + routeLabel, ServerUrl: app.Host}}, err)
 					if route.Primary {
 						primaryStatus = stateFailed
 					} else {
@@ -177,25 +160,6 @@ func (app *App) GetMonitoringStatus() string {
 				}
 			}
 		case "tcp":
-			// For port-mode TCP routes without a CNAME there is no external gateway
-			// endpoint to probe — skip directly to the local/backend check.
-			if route.Mode == "port" && route.CName == "" {
-				if err := app.GetAppLocalTCPStatus(route); err != nil {
-					debouncedRecordAppErr(routeKey, []state.State{
-						{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), err) + routeLabel, ServerUrl: app.Host},
-						{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err) + routeLabel, ServerUrl: app.Host},
-					}, err)
-					routeStatus.Status = stateFailed
-					if route.Primary {
-						primaryStatus = stateFailed
-					} else {
-						primaryStatus = stateAppWarning
-					}
-				} else {
-					markSuccessfulRouteCheck(routeKey)
-				}
-				break
-			}
 			err := app.GetAppTCPStatus(route)
 			if err == nil {
 				markSuccessfulRouteCheck(routeKey)
@@ -268,11 +232,18 @@ func (app *App) GetAppLocalHTTPStatus(route config.Route, getBody bool) (int, []
 	return a, b, nil
 }
 
-// GetAppLocalHTTPStatus2xx performs a local HTTP check using the destination
-// port and returns nil when the response is 2xx.
-func (app *App) GetAppLocalHTTPStatus2xx(route config.Route) error {
-	_, _, err := app.GetAppLocalHTTPStatus(route, false)
-	return err
+// GetDeploymentRoutesSnapshot returns a copy of the app's current deployment
+// routes taken under the app lock.  Use this when reading routes outside the
+// app's own goroutine to avoid racing with API route mutations.
+func (app *App) GetDeploymentRoutesSnapshot() []config.Route {
+	app.Lock()
+	defer app.Unlock()
+	if app.AppConfig == nil || app.AppConfig.Deployment == nil || len(app.AppConfig.Deployment.Routes) == 0 {
+		return nil
+	}
+	cp := make([]config.Route, len(app.AppConfig.Deployment.Routes))
+	copy(cp, app.AppConfig.Deployment.Routes)
+	return cp
 }
 
 func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte, error) {

@@ -160,6 +160,7 @@ type ReplicationManager struct {
 	IsGitPull            bool                           `json:"isGitPull"`
 	IsGitPush            bool                           `json:"isGitPush"`
 	GitPushLock          sync.Mutex                     `json:"-"`
+	gatewayMu            sync.Map                       `json:"-"`
 	IsNeedGitPush        bool                           `json:"-"`
 	CanConnectVault      bool                           `json:"canConnectVault"`
 	IsExportPush         bool                           `json:"-"`
@@ -2873,7 +2874,9 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	repman.currentCluster.DiskStatManager = repman.DiskStatManager
 	repman.currentCluster.Mailer = repman.Mailer
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
+	repman.Lock()
 	repman.Clusters[clusterName] = repman.currentCluster
+	repman.Unlock()
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
 
 	if repman.currentCluster.Conf.SecretKey == nil {
@@ -2905,9 +2908,20 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 		return nil, err
 	}
 
+	// Snapshot cluster map and order under the lock so Mirror phases 2 and 3b
+	// don't race with concurrent StartCluster / DeleteCluster mutations.
+	repman.Lock()
+	clustersCopy := make(map[string]*cluster.Cluster, len(repman.Clusters))
+	for k, v := range repman.Clusters {
+		clustersCopy[k] = v
+	}
+	clusterOrderCopy := make([]string, len(repman.ClusterList))
+	copy(clusterOrderCopy, repman.ClusterList)
+	repman.Unlock()
+
 	// Mirror Phase 2: wire cross-cluster state so the new cluster can see peers.
-	cl.SetClusterList(repman.Clusters)
-	cl.SetClusterOrder(repman.ClusterList)
+	cl.SetClusterList(clustersCopy)
+	cl.SetClusterOrder(clusterOrderCopy)
 	cl.SetDeprecatedKeys(repman.DeprecatedKeys)
 	cl.SetCarbonLogger(repman.clog)
 
@@ -2922,11 +2936,11 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	gw := strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
 	if gw != "" {
 		var priorRoutes [][]config.Route
-		for _, name := range repman.ClusterList {
+		for _, name := range clusterOrderCopy {
 			if name == clusterName {
 				break
 			}
-			peer := repman.Clusters[name]
+			peer := clustersCopy[name]
 			if peer == nil {
 				continue
 			}
@@ -2953,11 +2967,24 @@ func (repman *ReplicationManager) recomputeConflictsForGateway(gw string) {
 	if gw == "" {
 		return
 	}
+	// Snapshot ClusterList order and Cluster pointers under the repman lock to
+	// avoid racing with StartCluster / cluster removal which mutate both under
+	// that same lock.  The cluster objects themselves are not removed while we
+	// hold a pointer — only the map entry may disappear.
+	repman.Lock()
+	clusterOrder := make([]string, len(repman.ClusterList))
+	copy(clusterOrder, repman.ClusterList)
+	clusters := make(map[string]*cluster.Cluster, len(repman.Clusters))
+	for k, v := range repman.Clusters {
+		clusters[k] = v
+	}
+	repman.Unlock()
+
 	// Phase 1: intra-cluster snapshots must be fresh before Phase 2 reads
 	// OwnGatewayRoutes (which filters the GatewayConflicts map).
-	for _, name := range repman.ClusterList {
-		peer, ok := repman.Clusters[name]
-		if !ok || peer == nil || strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) != gw {
+	for _, name := range clusterOrder {
+		peer := clusters[name]
+		if peer == nil || strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) != gw {
 			continue
 		}
 		peer.RefreshGatewayConflicts()
@@ -2965,9 +2992,9 @@ func (repman *ReplicationManager) recomputeConflictsForGateway(gw string) {
 	}
 	// Phase 2: cross-cluster detection in priority order.
 	var priorRoutes [][]config.Route
-	for _, name := range repman.ClusterList {
-		peer, ok := repman.Clusters[name]
-		if !ok || peer == nil || strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) != gw {
+	for _, name := range clusterOrder {
+		peer := clusters[name]
+		if peer == nil || strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) != gw {
 			continue
 		}
 		if conflicts, _ := peer.DetectCrossClusterGatewayConflicts(priorRoutes); len(conflicts) > 0 {
@@ -2992,8 +3019,10 @@ func (repman *ReplicationManager) recomputeConflictsForGateway(gw string) {
 // When changedClusterName has no current gateway, only its intra-cluster cache
 // is refreshed (unless prevGateway is set, in which case old peers are cleared).
 func (repman *ReplicationManager) RecomputeGatewayConflicts(changedClusterName, prevGateway string) {
-	changed, ok := repman.Clusters[changedClusterName]
-	if !ok || changed == nil {
+	repman.Lock()
+	changed := repman.Clusters[changedClusterName]
+	repman.Unlock()
+	if changed == nil {
 		return
 	}
 

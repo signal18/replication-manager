@@ -638,13 +638,9 @@ func (r Route) Clone() Route {
 }
 
 // Label returns a compact human-readable identifier for the route.
-// Host routes: "cname:destPort". Port routes with cname: "cname:sourcePort -> destPort".
-// Port routes without cname (local-only checks): "sourcePort -> destPort".
+// Host routes: "cname:destPort". Port routes: "cname:sourcePort -> destPort".
 func (r Route) Label() string {
 	if r.Mode == "port" {
-		if r.CName == "" {
-			return r.SourcePort + " -> " + r.DestinationPort
-		}
 		return r.CName + ":" + r.SourcePort + " -> " + r.DestinationPort
 	}
 	return r.CName + ":" + r.DestinationPort

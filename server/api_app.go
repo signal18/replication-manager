@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/codegangsta/negroni"
@@ -1267,13 +1268,35 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 			switch vars["field"] {
 			// fields which are arrays of objects
 			case "routes":
+				// For identity-changing edits (non-monitor), acquire the per-gateway mutex
+				// before node.Lock() so that external-route snapshot and commit are
+				// serialized across clusters sharing the same gateway.
+				// gwUnlock is a no-op for monitor-only edits or when no gateway is set;
+				// it is called explicitly at every exit so the mutex is released right
+				// after the commit and before any post-commit I/O (SaveConfig, etc.).
+				gwUnlock := func() {}
+				var externalRoutes [][]config.Route
+				if !strings.HasPrefix(vars["key"], "monitor") {
+					gw := strings.ToLower(strings.TrimSpace(mycluster.Conf.Cloud18GatewayService))
+					if gw != "" {
+						gwMu := repman.getGatewayMutex(gw)
+						gwMu.Lock()
+						gwUnlock = gwMu.Unlock
+					}
+					externalRoutes = repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
+				}
+
+				// Hold node.Lock() for the full validate-mutate-write sequence so that:
+				//   a) the base row is always the live value (no stale-base overwrite), and
+				//   b) validation and commit are atomic w.r.t. concurrent same-app edits.
+				node.Lock()
 				if index >= len(node.AppConfig.Deployment.Routes) {
+					node.Unlock()
+					gwUnlock()
 					http.Error(w, "Index out of range for routes", http.StatusInternalServerError)
 					return
 				}
-
-				originalRow := node.AppConfig.Deployment.Routes[index]
-				row := originalRow.Clone()
+				row := node.AppConfig.Deployment.Routes[index].Clone()
 				switch vars["key"] {
 				case "name":
 					row.Name = newValue
@@ -1295,6 +1318,8 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					for i, existing := range node.AppConfig.Deployment.Routes {
 						existing.Normalize() // handle legacy unnormalized in-memory routes
 						if i != index && strings.EqualFold(existing.CName, cname) {
+							node.Unlock()
+							gwUnlock()
 							http.Error(w, "Cannot duplicate route with same CName", http.StatusBadRequest)
 							return
 						}
@@ -1341,10 +1366,14 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					if newValue != "" {
 						v, verr := node.AppConfig.Deployment.GetVariableByName(newValue, true)
 						if verr != nil {
+							node.Unlock()
+							gwUnlock()
 							http.Error(w, "monitor auth-secret-var: variable not found: "+verr.Error(), http.StatusBadRequest)
 							return
 						}
 						if v.Type != config.VariableTypeSecret {
+							node.Unlock()
+							gwUnlock()
 							http.Error(w, "monitor auth-secret-var must reference a variable of type 'secret'", http.StatusBadRequest)
 							return
 						}
@@ -1356,6 +1385,8 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				case "monitor.expect-status":
 					if newValue != "" {
 						if _, perr := config.ParseExpectStatus(newValue); perr != nil {
+							node.Unlock()
+							gwUnlock()
 							http.Error(w, "monitor expect-status: "+perr.Error(), http.StatusBadRequest)
 							return
 						}
@@ -1365,25 +1396,25 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					}
 					row.Monitor.ExpectStatus = newValue
 				default:
+					node.Unlock()
+					gwUnlock()
 					http.Error(w, "Invalid key for routes", http.StatusBadRequest)
 					return
 				}
 
 				row.Normalize()
 				if err := row.Validate(); err != nil {
+					node.Unlock()
+					gwUnlock()
 					http.Error(w, "Invalid route: "+err.Error(), http.StatusBadRequest)
 					return
 				}
 				if err := row.Monitor.ValidateSecretRef(node.AppConfig.Deployment.Variables); err != nil {
+					node.Unlock()
+					gwUnlock()
 					http.Error(w, "Invalid route monitor: "+err.Error(), http.StatusBadRequest)
 					return
 				}
-
-				// Intra-app duplicate check: identity fields (cname, sourcePort,
-				// mode, protocol) are the same target as on the add path — two
-				// routes with the same listener key inside one app are incoherent
-				// regardless of other clusters, so this is always a hard reject.
-				// Monitor-only edits leave identity unchanged, so skip the check.
 				if !strings.HasPrefix(vars["key"], "monitor") {
 					peers := make([]config.Route, 0, len(node.AppConfig.Deployment.Routes)-1)
 					for i, r := range node.AppConfig.Deployment.Routes {
@@ -1392,19 +1423,22 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 						}
 					}
 					if err := config.CheckGatewayConflicts([]config.Route{row}, config.NormalizedCopy(peers)); err != nil {
+						node.Unlock()
+						gwUnlock()
 						http.Error(w, "Duplicate route: "+err.Error(), http.StatusBadRequest)
 						return
 					}
-
-					others := repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
-					if err := config.CheckGatewayConflicts([]config.Route{row}, others...); err != nil {
+					if err := config.CheckGatewayConflicts([]config.Route{row}, externalRoutes...); err != nil {
+						node.Unlock()
+						gwUnlock()
 						http.Error(w, "Gateway conflict: "+err.Error(), http.StatusBadRequest)
 						return
 					}
 				}
-
 				node.AppConfig.Deployment.Routes[index] = row
 				node.AppConfig.Deployment.EnforceSinglePrimary()
+				node.Unlock()
+				gwUnlock()
 
 				if row.Monitor != nil && row.Monitor.AuthType != "" {
 					switch row.Protocol {
@@ -1418,11 +1452,6 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 							node.Name, row.Monitor.AuthType, row.CName)
 					}
 				}
-
-				// Monitor-only edits do not change route identity (cname, sourcePort,
-				// mode, protocol), so gateway conflict detection is not needed.
-				// Non-monitor edits have within-app duplicates and cross-cluster
-				// gateway conflicts rejected immediately above.
 
 				// DNS cleanup for renamed or rekeyed managed host routes happens
 				// via the full reconcile path (update-routes / provision), not here.
@@ -1446,11 +1475,13 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					}
 					// Cascade rename into any route monitor that references this variable.
 					oldName := row.Name
+					node.Lock()
 					for i, r := range node.AppConfig.Deployment.Routes {
 						if r.Monitor != nil && r.Monitor.AuthSecretVar == oldName {
 							node.AppConfig.Deployment.Routes[i].Monitor.AuthSecretVar = newValue
 						}
 					}
+					node.Unlock()
 					row.Name = newValue
 				case "value":
 					if row.Value == newValue {
@@ -1677,23 +1708,43 @@ func routesReferencingSecretVar(routes []config.Route, varName string) []int {
 	return out
 }
 
+// getGatewayMutex returns the per-gateway serialization mutex for gw, creating
+// it on first use.  Holding this mutex across allExternalGatewayRoutes + node.Lock()
+// prevents two concurrent requests on different clusters from both passing the
+// cross-cluster conflict check and both committing conflicting routes.
+func (repman *ReplicationManager) getGatewayMutex(gw string) *sync.Mutex {
+	actual, _ := repman.gatewayMu.LoadOrStore(gw, new(sync.Mutex))
+	return actual.(*sync.Mutex)
+}
+
 // allExternalGatewayRoutes returns one normalized route-slice per app that
 // shares the same gateway as the named cluster, excluding the named cluster+app.
 // Used to check cross-cluster conflicts before accepting an API route change.
 func (repman *ReplicationManager) allExternalGatewayRoutes(excludeClusterName, excludeAppName string) [][]config.Route {
+	// Snapshot the Clusters map under the repman lock to avoid racing with
+	// StartCluster / cluster removal, which mutate the map under that same lock.
+	repman.Lock()
+	clusterSnapshot := make(map[string]*cluster.Cluster, len(repman.Clusters))
+	for k, v := range repman.Clusters {
+		clusterSnapshot[k] = v
+	}
+	repman.Unlock()
+
 	var thisGateway string
-	if cl, ok := repman.Clusters[excludeClusterName]; ok {
+	if cl, ok := clusterSnapshot[excludeClusterName]; ok {
 		thisGateway = strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
 	}
 	if thisGateway == "" {
 		return nil
 	}
 	var others [][]config.Route
-	for _, cl := range repman.Clusters {
+	for _, cl := range clusterSnapshot {
 		if strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService)) != thisGateway {
 			continue
 		}
-		for _, app := range cl.Apps {
+		// GetAppsCopy snapshots cl.Apps under the cluster lock so we don't
+		// iterate a slice that another goroutine may be appending to.
+		for _, app := range cl.GetAppsCopy() {
 			if app == nil || app.AppConfig == nil {
 				continue
 			}
@@ -1705,7 +1756,7 @@ func (repman *ReplicationManager) allExternalGatewayRoutes(excludeClusterName, e
 			if conflicted, _ := cl.IsAppGatewayConflicted(app.AppConfig.AppHost, app.AppConfig.AppPort); conflicted {
 				continue
 			}
-			if normalized := config.NormalizedCopy(app.AppConfig.Deployment.Routes); len(normalized) > 0 {
+			if normalized := config.NormalizedCopy(app.GetDeploymentRoutesSnapshot()); len(normalized) > 0 {
 				others = append(others, normalized)
 			}
 		}
@@ -1760,39 +1811,57 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 			return
 		}
 
+		// Acquire per-gateway mutex and snapshot external routes once for the entire
+		// batch.  gwUnlock is called explicitly at every exit so the mutex is released
+		// right after the commit and before post-commit I/O (SaveConfig, etc.).
+		gwUnlock := func() {}
+		gw := strings.ToLower(strings.TrimSpace(mycluster.Conf.Cloud18GatewayService))
+		if gw != "" {
+			gwMu := repman.getGatewayMutex(gw)
+			gwMu.Lock()
+			gwUnlock = gwMu.Unlock
+		}
+		others := repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
+
 		for _, row := range body {
 			row.Normalize()
 			if err := row.Validate(); err != nil {
+				gwUnlock()
 				http.Error(w, "Invalid route: "+err.Error(), http.StatusBadRequest)
 				return
 			}
 			if err := row.Monitor.ValidateSecretRef(node.AppConfig.Deployment.Variables); err != nil {
+				gwUnlock()
 				http.Error(w, "Invalid route monitor: "+err.Error(), http.StatusBadRequest)
 				return
 			}
 
-			// Intra-app duplicate check: two routes with the same listener key
-			// inside one app are incoherent — always a hard reject.
+			// Hold node.Lock() across intra-app conflict check and append so that
+			// two concurrent adds can't both validate against the same pre-append state.
+			node.Lock()
 			existing := config.NormalizedCopy(node.AppConfig.Deployment.Routes)
 			if err := config.CheckGatewayConflicts([]config.Route{row}, existing); err != nil {
+				node.Unlock()
+				gwUnlock()
 				http.Error(w, "Duplicate route: "+err.Error(), http.StatusBadRequest)
 				return
 			}
-
-			// Cross-cluster conflict check: API route changes are rejected
-			// immediately; startup/reload of existing config is alert-only.
-			others := repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
 			if err := config.CheckGatewayConflicts([]config.Route{row}, others...); err != nil {
+				node.Unlock()
+				gwUnlock()
 				http.Error(w, "Gateway conflict: "+err.Error(), http.StatusBadRequest)
 				return
 			}
-
 			node.AppConfig.Deployment.Routes = append(node.AppConfig.Deployment.Routes, row)
+			node.Unlock()
 			affected = true
 		}
 		if affected {
+			node.Lock()
 			node.AppConfig.Deployment.EnforceSinglePrimary()
+			node.Unlock()
 		}
+		gwUnlock()
 
 	case "variables":
 		var body []config.VariableMapping
@@ -1952,12 +2021,24 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 
 	switch field {
 	case "routes":
+		gwUnlock := func() {}
+		gw := strings.ToLower(strings.TrimSpace(mycluster.Conf.Cloud18GatewayService))
+		if gw != "" {
+			gwMu := repman.getGatewayMutex(gw)
+			gwMu.Lock()
+			gwUnlock = gwMu.Unlock
+		}
+		node.Lock()
 		if index >= len(node.AppConfig.Deployment.Routes) {
+			node.Unlock()
+			gwUnlock()
 			http.Error(w, "Index out of range for routes", http.StatusInternalServerError)
 			return
 		}
 		node.AppConfig.Deployment.Routes = append(node.AppConfig.Deployment.Routes[:index], node.AppConfig.Deployment.Routes[index+1:]...)
 		node.AppConfig.Deployment.EnforceSinglePrimary()
+		node.Unlock()
+		gwUnlock()
 		// DNS cleanup for dropped managed host routes happens via the full
 		// reconcile path (update-routes / provision), not here.
 	case "variables":

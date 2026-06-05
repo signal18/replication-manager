@@ -28,18 +28,16 @@ func (repman *ReplicationManager) DeleteCluster(clusterName string) error {
 		}
 	}
 
+	repman.Lock()
 	var newClusterList []string
 	for i := 0; i < len(repman.ClusterList); i++ {
 		if repman.ClusterList[i] != clusterName {
 			newClusterList = append(newClusterList, repman.ClusterList[i])
 		}
 	}
-
 	repman.ClusterList = newClusterList
-	_, ok := repman.Clusters[clusterName]
-	if ok {
-		delete(repman.Clusters, clusterName)
-	}
+	delete(repman.Clusters, clusterName)
+	repman.Unlock()
 
 	err := os.RemoveAll(repman.Conf.WorkingDir + "/" + clusterName)
 	if err != nil {

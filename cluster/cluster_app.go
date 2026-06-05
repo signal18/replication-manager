@@ -379,25 +379,46 @@ func (cluster *Cluster) pruneEjectedAppsFromLiveList() {
 // allAppRoutes returns a normalized route slice per app for this cluster,
 // excluding apps that have a cached gateway conflict (their routes are blocked
 // from publication and must not occupy gateway address space for peer clusters).
+// Routes are read via GetDeploymentRoutesSnapshot so API mutations don't race
+// with the copy.
 func (cluster *Cluster) allAppRoutes() [][]config.Route {
+	// Snapshot conflicts and the live app list together under one lock so we
+	// don't race with MarkGatewayConflicts or app-list updates.
 	cluster.Lock()
 	conflicts := cluster.GatewayConflicts
+	apps := make([]*App, len(cluster.Apps))
+	copy(apps, cluster.Apps)
 	cluster.Unlock()
 
 	var result [][]config.Route
-	for _, appcnf := range cluster.Conf.Apps {
-		if appcnf == nil || appcnf.Deployment == nil {
+	for _, app := range apps {
+		if app == nil || app.AppConfig == nil {
 			continue
 		}
-		if _, conflicted := conflicts[appcnf.AppHost+":"+appcnf.AppPort]; conflicted {
+		if _, conflicted := conflicts[app.AppConfig.AppHost+":"+app.AppConfig.AppPort]; conflicted {
 			continue
 		}
-		normalized := config.NormalizedCopy(appcnf.Deployment.Routes)
-		if len(normalized) > 0 {
+		// GetDeploymentRoutesSnapshot holds the app lock while copying routes,
+		// preventing a race with concurrent API route mutations.
+		if normalized := config.NormalizedCopy(app.GetDeploymentRoutesSnapshot()); len(normalized) > 0 {
 			result = append(result, normalized)
 		}
 	}
 	return result
+}
+
+// GetAppsCopy returns a shallow copy of the Apps slice taken under the cluster
+// lock.  Use this in the server package to iterate apps without holding the
+// cluster lock for the duration of the loop.
+func (cluster *Cluster) GetAppsCopy() []*App {
+	cluster.Lock()
+	defer cluster.Unlock()
+	if len(cluster.Apps) == 0 {
+		return nil
+	}
+	cp := make([]*App, len(cluster.Apps))
+	copy(cp, cluster.Apps)
+	return cp
 }
 
 // WithdrawConflictedGatewayRoutes removes any HAProxy fragments that were
