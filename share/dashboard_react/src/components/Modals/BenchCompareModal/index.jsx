@@ -1,6 +1,6 @@
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton,
-  Box, VStack, HStack, Text, Badge, Table, Thead, Tbody, Tr, Th, Td, Select
+  Box, VStack, HStack, Text, Badge, Table, Thead, Tbody, Tr, Th, Td, Select, Spinner
 } from '@chakra-ui/react'
 import React, { useState, useEffect, useRef } from 'react'
 import { useSelector } from 'react-redux'
@@ -10,48 +10,63 @@ import { clusterService } from '../../../services/clusterService'
 import RMButton from '../../RMButton'
 import parentStyles from '../styles.module.scss'
 
-const RECORD_METRICS = [
-  { value: 'TPS', label: 'TPS' },
-  { value: 'QPS', label: 'QPS' },
-  { value: 'Latency', label: 'Latency (ms)' },
-  { value: 'ReadQPS', label: 'Read QPS' },
-  { value: 'WriteQPS', label: 'Write QPS' },
-  { value: 'ErrorPerSec', label: 'Errors/s' },
+const METRICS = [
+  { value: 'mysql_global_status_queries', label: 'Queries (QPS)', rate: true },
+  { value: 'mysql_global_status_com_select', label: 'SELECT/s', rate: true },
+  { value: 'mysql_global_status_com_insert', label: 'INSERT/s', rate: true },
+  { value: 'mysql_global_status_com_update', label: 'UPDATE/s', rate: true },
+  { value: 'mysql_global_status_com_delete', label: 'DELETE/s', rate: true },
+  { value: 'mysql_global_status_threads_running', label: 'Threads Running', rate: false },
+  { value: 'mysql_global_status_threads_connected', label: 'Threads Connected', rate: false },
+  { value: 'mysql_global_status_created_tmp_disk_tables', label: 'Tmp Disk Tables/s', rate: true },
+  { value: 'mysql_global_status_innodb_rows_read', label: 'InnoDB Rows Read/s', rate: true },
+  { value: 'mysql_global_status_innodb_rows_inserted', label: 'InnoDB Rows Inserted/s', rate: true },
+  { value: 'mysql_global_status_bytes_sent', label: 'Bytes Sent/s', rate: true },
+  { value: 'mysql_global_status_bytes_received', label: 'Bytes Received/s', rate: true },
 ]
 
 const COLORS = ['#3182ce', '#e53e3e', '#38a169', '#d69e2e', '#805ad5', '#dd6b20', '#319795', '#b83280']
 
-function BenchChart({ runs, metric, theme }) {
+// Build a label showing what changed vs the reference run
+function buildSeriesLabel(run, refRun, index) {
+  if (index === 0) {
+    return `REF ${run.testType} ${run.threads}t ${run.dbFlavor || ''}/${run.dbVersion || ''}`
+  }
+  const diffs = []
+  if (run.testType !== refRun.testType) diffs.push(run.testType)
+  if (run.threads !== refRun.threads) diffs.push(`${run.threads}t`)
+  if (run.dbFlavor !== refRun.dbFlavor || run.dbVersion !== refRun.dbVersion) {
+    diffs.push(`${run.dbFlavor || ''}/${run.dbVersion || ''}`)
+  }
+  if (run.proxyType !== refRun.proxyType) diffs.push(run.proxyType)
+  if (run.configTags !== refRun.configTags) diffs.push(`tags:${run.configTags}`)
+  if (diffs.length === 0) {
+    // Nothing obviously changed — show date
+    return `Run${index + 1} ${new Date(run.startedAt).toLocaleString()}`
+  }
+  return diffs.join(' ')
+}
+
+function BenchChart({ series, theme, metricLabel }) {
   const svgRef = useRef()
 
   useEffect(() => {
-    if (!svgRef.current || runs.length === 0) return
+    if (!svgRef.current || series.length === 0) return
 
     const svg = d3.select(svgRef.current)
     svg.selectAll('*').remove()
 
-    const margin = { top: 20, right: 120, bottom: 30, left: 50 }
-    const width = 750 - margin.left - margin.right
-    const height = 250 - margin.top - margin.bottom
+    const margin = { top: 20, right: 180, bottom: 35, left: 60 }
+    const width = 800 - margin.left - margin.right
+    const height = 280 - margin.top - margin.bottom
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
 
-    // Collect all data series
-    const series = runs.map((run, i) => {
-      const records = run.records || []
-      return {
-        label: i === 0
-          ? `REF ${run.testType} ${run.threads}t`
-          : `${run.testType} ${run.threads}t`,
-        color: COLORS[i % COLORS.length],
-        data: records.map((r, j) => ({ second: r.Second || j, value: r[metric] || 0 }))
-      }
-    }).filter(s => s.data.length > 0)
+    const validSeries = series.filter(s => s.data.length > 0)
+    if (validSeries.length === 0) return
 
-    if (series.length === 0) return
-
-    const maxX = d3.max(series, s => d3.max(s.data, d => d.second)) || 100
-    const maxY = d3.max(series, s => d3.max(s.data, d => d.value)) || 1
+    const maxX = d3.max(validSeries, s => d3.max(s.data, d => d.second)) || 100
+    const maxY = d3.max(validSeries, s => d3.max(s.data, d => d.value)) || 1
 
     const x = d3.scaleLinear().domain([0, maxX]).range([0, width])
     const y = d3.scaleLinear().domain([0, maxY * 1.1]).range([height, 0])
@@ -59,7 +74,13 @@ function BenchChart({ runs, metric, theme }) {
     const textColor = theme === 'dark' ? '#e2e8f0' : '#333'
     const gridColor = theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
 
-    // Grid
+    // Grid lines
+    g.append('g')
+      .call(d3.axisLeft(y).ticks(5).tickSize(-width))
+      .selectAll('.tick line').attr('stroke', gridColor)
+    g.selectAll('.domain').attr('stroke', textColor)
+
+    // Axes
     g.append('g')
       .attr('transform', `translate(0,${height})`)
       .call(d3.axisBottom(x).ticks(10))
@@ -68,49 +89,56 @@ function BenchChart({ runs, metric, theme }) {
       .call(d3.axisLeft(y).ticks(5))
       .selectAll('text').attr('fill', textColor)
     g.selectAll('.domain').attr('stroke', textColor)
-    g.selectAll('.tick line').attr('stroke', gridColor)
 
     // Lines
-    const line = d3.line().x(d => x(d.second)).y(d => y(d.value)).curve(d3.curveMonotoneX)
-    series.forEach(s => {
+    const line = d3.line().x(d => x(d.second)).y(d => y(d.value)).curve(d3.curveMonotoneX).defined(d => d.value != null)
+    validSeries.forEach(s => {
       g.append('path')
         .datum(s.data)
         .attr('fill', 'none')
         .attr('stroke', s.color)
-        .attr('stroke-width', 1.5)
+        .attr('stroke-width', s.isRef ? 2.5 : 1.5)
+        .attr('stroke-dasharray', s.isRef ? null : '6,3')
         .attr('d', line)
     })
 
     // Legend
     const legend = g.append('g').attr('transform', `translate(${width + 10}, 0)`)
-    series.forEach((s, i) => {
-      const row = legend.append('g').attr('transform', `translate(0,${i * 16})`)
-      row.append('rect').attr('width', 10).attr('height', 10).attr('fill', s.color)
-      row.append('text').attr('x', 14).attr('y', 9).text(s.label)
+    validSeries.forEach((s, i) => {
+      const row = legend.append('g').attr('transform', `translate(0,${i * 18})`)
+      row.append('line').attr('x1', 0).attr('x2', 14).attr('y1', 5).attr('y2', 5)
+        .attr('stroke', s.color).attr('stroke-width', s.isRef ? 2.5 : 1.5)
+        .attr('stroke-dasharray', s.isRef ? null : '6,3')
+      row.append('text').attr('x', 18).attr('y', 9).text(s.label)
         .attr('fill', textColor).attr('font-size', '10px')
     })
 
     // Axis labels
-    g.append('text').attr('x', width / 2).attr('y', height + 28).attr('text-anchor', 'middle')
-      .attr('fill', textColor).attr('font-size', '11px').text('Seconds')
+    g.append('text').attr('x', width / 2).attr('y', height + 30).attr('text-anchor', 'middle')
+      .attr('fill', textColor).attr('font-size', '11px').text('Seconds (from benchmark start)')
+    g.append('text').attr('transform', 'rotate(-90)').attr('x', -height / 2).attr('y', -45)
+      .attr('text-anchor', 'middle').attr('fill', textColor).attr('font-size', '11px').text(metricLabel)
 
-  }, [runs, metric, theme])
+  }, [series, theme, metricLabel])
 
-  return <svg ref={svgRef} width={750} height={250} />
+  return <svg ref={svgRef} width={800} height={280} />
 }
 
 function BenchCompareModal({ isOpen, closeModal, clusterName }) {
   const { theme } = useTheme()
   const baseURL = useSelector((state) => state?.auth?.baseURL)
   const [runs, setRuns] = useState([])
-  const [metric, setMetric] = useState('TPS')
-  const [showChart, setShowChart] = useState(false)
+  const [metric, setMetric] = useState('mysql_global_status_queries')
+  const [chartSeries, setChartSeries] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   const badgeVariant = theme === 'dark' ? 'solid' : 'subtle'
 
   useEffect(() => {
     if (isOpen && clusterName) {
-      setShowChart(false)
+      setChartSeries([])
+      setError('')
       clusterService.getSysbenchHistory(clusterName, baseURL)
         .then(res => {
           const data = res.data
@@ -120,12 +148,93 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
     }
   }, [isOpen, clusterName, baseURL])
 
+  const fetchGraphiteData = async () => {
+    if (runs.length === 0) return
+    setLoading(true)
+    setError('')
+    setChartSeries([])
+
+    const metricDef = METRICS.find(m => m.value === metric)
+    // Oldest run is the reference (index 0 after sorting by startedAt)
+    const sorted = [...runs].sort((a, b) => new Date(a.startedAt) - new Date(b.startedAt))
+    const refRun = sorted[0]
+
+    // Find the newest run to align the graphite time window
+    const newest = sorted[sorted.length - 1]
+    const newestStart = Math.floor(new Date(newest.startedAt).getTime() / 1000)
+    const newestEnd = Math.floor(new Date(newest.endedAt).getTime() / 1000)
+
+    try {
+      const results = await Promise.all(sorted.map(async (run, i) => {
+        const hostname = run.graphiteHost || clusterName
+        const rawMetric = `mysql.${hostname}.${metric}`
+        const wrapped = metricDef?.rate
+          ? `perSecond(keepLastValue(${rawMetric}))`
+          : rawMetric
+
+        const runStart = Math.floor(new Date(run.startedAt).getTime() / 1000)
+        let target
+        if (runStart === newestStart) {
+          target = wrapped
+        } else {
+          const shift = newestStart - runStart
+          target = `timeShift(${wrapped},'${shift}s')`
+        }
+
+        const params = new URLSearchParams()
+        params.set('format', 'raw')
+        params.set('from', newestStart.toString())
+        params.set('until', newestEnd.toString())
+        params.set('target', `alias(${target},'')`)
+        params.set('noCache', '1')
+
+        const res = await fetch(`/graphite/render?${params.toString()}`)
+        if (!res.ok) throw new Error(`Graphite returned ${res.status}`)
+        const text = await res.text()
+        if (!text.trim()) return null
+
+        // Parse raw format: name,startTime,endTime,step|val1,val2,...
+        const parts = text.split('|')
+        if (parts.length !== 2) return null
+        const timeInfo = parts[0].split(',')
+        const startTime = parseInt(timeInfo[1])
+        const step = parseInt(timeInfo[3])
+        const values = parts[1].split(',')
+
+        // Convert to seconds-from-start
+        const runDuration = Math.floor(new Date(run.endedAt).getTime() / 1000) - Math.floor(new Date(run.startedAt).getTime() / 1000)
+        const data = values.map((v, j) => ({
+          second: j * step,
+          value: v === 'None' ? null : parseFloat(v)
+        })).filter(d => d.second <= runDuration + step)
+
+        return {
+          label: buildSeriesLabel(run, refRun, i),
+          color: COLORS[i % COLORS.length],
+          isRef: i === 0,
+          data
+        }
+      }))
+
+      const valid = results.filter(Boolean)
+      if (valid.length === 0) {
+        setError('No data returned from graphite for any run')
+      }
+      setChartSeries(valid)
+    } catch (e) {
+      setError(`Graphite fetch failed: ${e.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const formatDate = (t) => t ? new Date(t).toLocaleString() : '-'
+  const metricLabel = METRICS.find(m => m.value === metric)?.label || metric
 
   return (
     <Modal isOpen={isOpen} onClose={closeModal} size='xl'>
       <ModalOverlay />
-      <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
+      <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent} maxW='860px'>
         <ModalHeader fontSize='md'>Compare Benchmarks</ModalHeader>
         <ModalCloseButton />
         <ModalBody pb={6}>
@@ -170,25 +279,29 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
 
                 <HStack spacing={3}>
                   <Select size='sm' value={metric} onChange={(e) => setMetric(e.target.value)} flex={1}>
-                    {RECORD_METRICS.map(m => (
+                    {METRICS.map(m => (
                       <option key={m.value} value={m.value}>{m.label}</option>
                     ))}
                   </Select>
-                  <RMButton size='small' colorScheme='blue' onClick={() => setShowChart(true)}>
-                    Show Graph
+                  <RMButton size='small' colorScheme='blue' onClick={fetchGraphiteData} isDisabled={loading}>
+                    {loading ? <Spinner size='xs' /> : 'Show Graph'}
                   </RMButton>
                 </HStack>
 
-                {showChart && (
+                {error && (
+                  <Text fontSize='sm' color='red.400' textAlign='center'>{error}</Text>
+                )}
+
+                {chartSeries.length > 0 && (
                   <Box borderRadius='md' overflow='hidden' bg={theme === 'light' ? 'gray.50' : 'rgba(255,255,255,0.05)'} p={2}>
-                    <BenchChart runs={runs} metric={metric} theme={theme} />
+                    <BenchChart series={chartSeries} theme={theme} metricLabel={metricLabel} />
                   </Box>
                 )}
               </>
             )}
 
             {runs.length === 0 && (
-              <Text fontSize='sm' color={theme === 'light' ? 'gray.500' : 'gray.500'} textAlign='center' py={4}>
+              <Text fontSize='sm' color='gray.500' textAlign='center' py={4}>
                 No benchmark runs recorded
               </Text>
             )}
