@@ -637,6 +637,19 @@ func (r Route) Clone() Route {
 	return r
 }
 
+// Label returns a compact human-readable identifier for the route.
+// Host routes: "cname:destPort". Port routes with cname: "cname:sourcePort -> destPort".
+// Port routes without cname (local-only checks): "sourcePort -> destPort".
+func (r Route) Label() string {
+	if r.Mode == "port" {
+		if r.CName == "" {
+			return r.SourcePort + " -> " + r.DestinationPort
+		}
+		return r.CName + ":" + r.SourcePort + " -> " + r.DestinationPort
+	}
+	return r.CName + ":" + r.DestinationPort
+}
+
 // Normalize fills in defaults and copies legacy fields so the Route is in
 // canonical form.  It is idempotent and must be called before Validate.
 func (r *Route) Normalize() {

@@ -170,7 +170,8 @@ func TestGetMonitoringStatusNoRoutesEmitsImmediately(t *testing.T) {
 }
 
 func TestGetMonitoringStatusUnsupportedProtocolEmitsImmediately(t *testing.T) {
-	app := newMonitoringTestApp([]config.Route{{Protocol: "bad", CName: "invalid", Port: "80", Primary: true}})
+	route := config.Route{Protocol: "bad", CName: "invalid", Port: "80", Primary: true}
+	app := newMonitoringTestApp([]config.Route{route})
 
 	status := app.GetMonitoringStatus()
 	if status != stateFailed {
@@ -179,7 +180,9 @@ func TestGetMonitoringStatusUnsupportedProtocolEmitsImmediately(t *testing.T) {
 	if _, ok := app.ErrState[ErrAppUnsupportedProto]; !ok {
 		t.Fatalf("expected immediate %s", ErrAppUnsupportedProto)
 	}
-	expected := fmt.Sprintf(config.ClusterError[ErrAppUnsupportedProto], "bad", app.GetId())
+	routeNorm := route
+	routeNorm.Normalize()
+	expected := fmt.Sprintf(config.ClusterError[ErrAppUnsupportedProto], "bad", app.GetId()) + " on route " + routeNorm.Label()
 	if got := app.ErrState[ErrAppUnsupportedProto].ErrDesc; got != expected {
 		t.Fatalf("unexpected %s description: got %q want %q", ErrAppUnsupportedProto, got, expected)
 	}

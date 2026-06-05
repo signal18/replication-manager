@@ -27,6 +27,7 @@ const (
 	ErrAppUnexpectedStatus = "APPERR002"
 	ErrAppTCPConnectFailed = "APPERR003"
 	ErrAppUnsupportedProto = "APPERR004"
+	ErrAppGatewayConflict  = "APPERR005"
 	appErrFailureThreshold = 3
 )
 

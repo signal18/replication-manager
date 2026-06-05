@@ -1059,6 +1059,15 @@ backend %s
 }
 
 func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
+	// Block publication for apps with a detected gateway conflict.  Conflicts are
+	// set at startup and cleared when the route config is fixed and the conflict
+	// check re-runs.  The rest of the cluster (monitoring, replication) is unaffected.
+	if app.AppConfig != nil {
+		if conflicted, reason := cluster.IsAppGatewayConflicted(app.AppConfig.AppHost, app.AppConfig.AppPort); conflicted {
+			return fmt.Errorf("gateway routes for app %q are blocked: %s — fix route config and reload to clear", app.Name, reason)
+		}
+	}
+
 	agents := app.GetAppAgents()
 	svc := cluster.OpenSVCConnect()
 	numBE := len(agents)
@@ -1107,12 +1116,27 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 				}
 			}
 		}
+		// Same-cluster other apps always contribute — they have equal priority.
 		collectOthers(cluster)
-		for _, cl := range cluster.clusterList {
-			if cl == nil || cl.Name == cluster.Name {
-				continue
+		// Peer clusters: apply "first wins" — only collect routes from clusters
+		// that appear BEFORE this cluster in clusterOrder.  Clusters appearing
+		// later cannot preempt an earlier cluster's gateway-listener ownership.
+		// Fall back to checking all peers if clusterOrder is not set.
+		if len(cluster.clusterOrder) > 0 {
+			for _, name := range cluster.clusterOrder {
+				if name == cluster.Name {
+					break
+				}
+				if peer, ok := cluster.clusterList[name]; ok {
+					collectOthers(peer)
+				}
 			}
-			collectOthers(cl)
+		} else {
+			for _, cl := range cluster.clusterList {
+				if cl != nil && cl.Name != cluster.Name {
+					collectOthers(cl)
+				}
+			}
 		}
 		if err := config.CheckGatewayConflicts(app.AppConfig.Deployment.Routes, externalRoutes...); err != nil {
 			return fmt.Errorf("gateway conflict for app %q: %w", app.Name, err)

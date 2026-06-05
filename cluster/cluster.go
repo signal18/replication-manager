@@ -167,6 +167,7 @@ type Cluster struct {
 	DiskType                      map[string]string          `json:"diskType" groups:"web"`
 	VMType                        map[string]bool            `json:"vmType" groups:"web"`
 	AppS3Providers                []string                   `json:"appS3Providers" groups:"web"`
+	GatewayConflicts              map[string]string          `json:"gatewayConflicts" groups:"web"`
 	// s3Providers groups S3 provider state and locking primitives in one place.
 	// Use the accessor methods (Add/Remove/Update/GetS3ProvidersSnapshot) and
 	// CRUD transaction lock helpers instead of direct field mutation.
@@ -176,6 +177,7 @@ type Cluster struct {
 	hostList                      []string                   `json:"-"`
 	proxyList                     []string                   `json:"-"`
 	clusterList                   map[string]*Cluster        `json:"-"`
+	clusterOrder                  []string                   `json:"-"` // ClusterList order; index = ownership priority
 	deprecatedKeys                map[string]map[string]bool `json:"-"`
 	slaves                        serverList                 `json:"slaves" groups:"apps"`
 	master                        *ServerMonitor             `json:"master" groups:"apps"`
@@ -654,7 +656,7 @@ func (cluster *Cluster) InitFromConf() {
 
 	if loadErr := cluster.LoadAppConfigs(); loadErr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
-			"Startup app config load failed (some apps may have been ejected): %v", loadErr)
+			"Startup app config load failed (some app configs may not have loaded): %v", loadErr)
 	}
 
 	// Configurator generates base configuration from tags, which is overridden by:
@@ -1932,6 +1934,29 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.ServerIdList = cluster.GetDBServerIdList()
 	cluster.StateMachine.RemoveFailoverState()
 
+	// Phase 3a: refresh cached intra-cluster conflict state.
+	cluster.RefreshGatewayConflicts()
+
+	// Phase 3b: alert on cross-cluster conflicts — same alert-only policy as
+	// startup and StartCluster.  Not cached; hard block lives in OpenSVCProvisionRoute.
+	// Iterate in clusterOrder for deterministic reporting across restarts.
+	gw := strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService))
+	if gw != "" {
+		var priorRoutes [][]config.Route
+		for _, name := range cluster.clusterOrder {
+			if name == cluster.Name {
+				break
+			}
+			peer, ok := cluster.clusterList[name]
+			if !ok || peer == nil {
+				continue
+			}
+			if strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) == gw {
+				priorRoutes = append(priorRoutes, peer.OwnGatewayRoutes(gw)...)
+			}
+		}
+		_, _ = cluster.DetectCrossClusterGatewayConflicts(priorRoutes)
+	}
 }
 
 func (cluster *Cluster) FailoverForce() error {

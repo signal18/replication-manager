@@ -62,25 +62,29 @@ func hostRouteApp(host, cname, destPort string) *config.AppConfig {
 }
 
 // ---------------------------------------------------------------------------
-// validateIntraClusterGatewayRoutes
+// DetectIntraClusterGatewayConflicts
 // ---------------------------------------------------------------------------
 
-func TestValidateIntraCluster_NoConflict_DifferentCNameDifferentPort(t *testing.T) {
+func TestDetectIntraCluster_NoConflict_DifferentCNameDifferentPort(t *testing.T) {
 	cl := newTestClusterForGateway(t, "c1", "ns/svc/gw")
 	cl.Conf.Apps = []*config.AppConfig{
 		portRouteApp("minio", "s3.gw.example.com", "9000", "9000"),
 		portRouteApp("console", "console.gw.example.com", "9001", "9001"),
 	}
 
-	if err := cl.validateIntraClusterGatewayRoutes(); err != nil {
+	conflicts, err := cl.DetectIntraClusterGatewayConflicts()
+	if err != nil {
 		t.Fatalf("expected no conflict, got: %v", err)
 	}
+	if len(conflicts) != 0 {
+		t.Fatalf("expected no conflicts, got %d", len(conflicts))
+	}
 	if len(cl.Conf.Apps) != 2 {
-		t.Fatalf("expected 2 apps to remain, got %d", len(cl.Conf.Apps))
+		t.Fatalf("detector must not mutate Conf.Apps; expected 2, got %d", len(cl.Conf.Apps))
 	}
 }
 
-func TestValidateIntraCluster_NoConflict_DifferentCNameSamePort(t *testing.T) {
+func TestDetectIntraCluster_NoConflict_DifferentCNameSamePort(t *testing.T) {
 	cl := newTestClusterForGateway(t, "c1", "ns/svc/gw")
 	cl.Conf.Apps = []*config.AppConfig{
 		portRouteApp("app-a", "a.gw.example.com", "9000", "9000"),
@@ -88,51 +92,64 @@ func TestValidateIntraCluster_NoConflict_DifferentCNameSamePort(t *testing.T) {
 	}
 
 	// Different CNAMEs on same sourcePort are not a conflict (key = cname:sourcePort).
-	if err := cl.validateIntraClusterGatewayRoutes(); err != nil {
+	conflicts, err := cl.DetectIntraClusterGatewayConflicts()
+	if err != nil {
 		t.Fatalf("expected no conflict for different cnames same sourcePort, got: %v", err)
 	}
+	if len(conflicts) != 0 {
+		t.Fatalf("expected no conflicts, got %d", len(conflicts))
+	}
 	if len(cl.Conf.Apps) != 2 {
-		t.Fatalf("expected 2 apps to remain, got %d", len(cl.Conf.Apps))
+		t.Fatalf("detector must not mutate Conf.Apps; expected 2, got %d", len(cl.Conf.Apps))
 	}
 }
 
-func TestValidateIntraCluster_ConflictEjectsLaterApp(t *testing.T) {
+// intra-cluster duplicate port listener → detector reports conflict, apps remain loaded
+func TestDetectIntraCluster_DuplicatePortListener_ReportsConflict(t *testing.T) {
 	cl := newTestClusterForGateway(t, "c1", "ns/svc/gw")
 	appA := portRouteApp("app-a", "gw.example.com", "9000", "9000")
 	appB := portRouteApp("app-b", "gw.example.com", "9000", "9001") // same cname + sourcePort
 	cl.Conf.Apps = []*config.AppConfig{appA, appB}
 
-	err := cl.validateIntraClusterGatewayRoutes()
+	conflicts, err := cl.DetectIntraClusterGatewayConflicts()
 	if err == nil {
 		t.Fatal("expected conflict error, got nil")
 	}
-
-	// app-a (first-loaded) must survive; app-b must be ejected.
-	if len(cl.Conf.Apps) != 1 {
-		t.Fatalf("expected 1 app to remain after eject, got %d", len(cl.Conf.Apps))
+	if len(conflicts) != 1 {
+		t.Fatalf("expected 1 conflict (app-b), got %d", len(conflicts))
 	}
-	if cl.Conf.Apps[0].AppHost != "app-a" {
-		t.Errorf("expected app-a to remain, got %q", cl.Conf.Apps[0].AppHost)
+	if conflicts[0].AppHost != "app-b" {
+		t.Errorf("expected app-b as conflicting app, got %q", conflicts[0].AppHost)
+	}
+
+	// Detector must NOT mutate Conf.Apps; both apps remain.
+	if len(cl.Conf.Apps) != 2 {
+		t.Fatalf("detector must not mutate Conf.Apps; expected 2, got %d", len(cl.Conf.Apps))
 	}
 }
 
-func TestValidateIntraCluster_HostRouteDuplicateCName(t *testing.T) {
+// intra-cluster duplicate host route → detector reports conflict, apps remain loaded
+func TestDetectIntraCluster_DuplicateHostRoute_ReportsConflict(t *testing.T) {
 	cl := newTestClusterForGateway(t, "c1", "ns/svc/gw")
-	cl.Conf.Apps = []*config.AppConfig{
-		hostRouteApp("svc-a", "shared.example.com", "8080"),
-		hostRouteApp("svc-b", "shared.example.com", "9090"),
-	}
+	appA := hostRouteApp("svc-a", "shared.example.com", "8080")
+	appB := hostRouteApp("svc-b", "shared.example.com", "9090")
+	cl.Conf.Apps = []*config.AppConfig{appA, appB}
 
-	err := cl.validateIntraClusterGatewayRoutes()
+	conflicts, err := cl.DetectIntraClusterGatewayConflicts()
 	if err == nil {
 		t.Fatal("expected conflict error for duplicate host cname, got nil")
 	}
-	if len(cl.Conf.Apps) != 1 {
-		t.Fatalf("expected 1 app to remain, got %d", len(cl.Conf.Apps))
+	if len(conflicts) != 1 {
+		t.Fatalf("expected 1 conflict, got %d", len(conflicts))
+	}
+
+	// Detector must NOT mutate Conf.Apps; both apps remain.
+	if len(cl.Conf.Apps) != 2 {
+		t.Fatalf("detector must not mutate Conf.Apps; expected 2, got %d", len(cl.Conf.Apps))
 	}
 }
 
-func TestValidateIntraCluster_HostAndPortSameCName_NoConflict(t *testing.T) {
+func TestDetectIntraCluster_HostAndPortSameCName_NoConflict(t *testing.T) {
 	// A host route and a port route may share the same CNAME.
 	cl := newTestClusterForGateway(t, "c1", "ns/svc/gw")
 	cl.Conf.Apps = []*config.AppConfig{
@@ -140,34 +157,43 @@ func TestValidateIntraCluster_HostAndPortSameCName_NoConflict(t *testing.T) {
 		portRouteApp("minio-port", "minio.example.com", "9000", "9000"),
 	}
 
-	if err := cl.validateIntraClusterGatewayRoutes(); err != nil {
+	conflicts, err := cl.DetectIntraClusterGatewayConflicts()
+	if err != nil {
 		t.Fatalf("expected no conflict for host+port routes sharing a cname, got: %v", err)
 	}
+	if len(conflicts) != 0 {
+		t.Fatalf("expected no conflicts, got %d", len(conflicts))
+	}
 	if len(cl.Conf.Apps) != 2 {
-		t.Fatalf("expected 2 apps to remain, got %d", len(cl.Conf.Apps))
+		t.Fatalf("detector must not mutate Conf.Apps; expected 2, got %d", len(cl.Conf.Apps))
 	}
 }
 
-func TestValidateIntraCluster_NoGatewayConfigured(t *testing.T) {
+func TestDetectIntraCluster_NoGatewayConfigured(t *testing.T) {
 	cl := newTestClusterForGateway(t, "c1", "") // no gateway service
 	cl.Conf.Apps = []*config.AppConfig{
 		portRouteApp("app-a", "gw.example.com", "9000", "9000"),
 		portRouteApp("app-b", "gw.example.com", "9000", "9001"), // would conflict if gateway were set
 	}
 
-	if err := cl.validateIntraClusterGatewayRoutes(); err != nil {
+	conflicts, err := cl.DetectIntraClusterGatewayConflicts()
+	if err != nil {
 		t.Fatalf("expected no validation when gateway not configured, got: %v", err)
 	}
+	if len(conflicts) != 0 {
+		t.Fatalf("expected no conflicts when gateway not configured, got %d", len(conflicts))
+	}
 	if len(cl.Conf.Apps) != 2 {
-		t.Fatalf("expected both apps to remain when gateway not configured, got %d", len(cl.Conf.Apps))
+		t.Fatalf("detector must not mutate Conf.Apps; expected 2, got %d", len(cl.Conf.Apps))
 	}
 }
 
 // ---------------------------------------------------------------------------
-// ValidateGatewayRouteConflicts (cross-cluster)
+// DetectCrossClusterGatewayConflicts
 // ---------------------------------------------------------------------------
 
-func TestValidateCrossCluster_ConflictEjectsApp(t *testing.T) {
+// cross-cluster duplicate route → detector reports conflict, no mutation, error returned
+func TestDetectCrossCluster_DuplicateRoute_ReportsConflict(t *testing.T) {
 	const gw = "ns/svc/shared-gw"
 
 	cl1 := newTestClusterForGateway(t, "cluster1", gw)
@@ -182,24 +208,28 @@ func TestValidateCrossCluster_ConflictEjectsApp(t *testing.T) {
 		{Name: "app-b", Host: "app-b", Port: "80", AppConfig: appBCnf, Mutex: &sync.Mutex{}},
 	}
 
-	// Simulate server startup loop: cl1 was processed first, so pass its routes as prior.
 	priorRoutes := cl1.OwnGatewayRoutes(gw)
-	err := cl2.ValidateGatewayRouteConflicts(priorRoutes)
+	conflicts, err := cl2.DetectCrossClusterGatewayConflicts(priorRoutes)
 	if err == nil {
 		t.Fatal("expected cross-cluster conflict error, got nil")
 	}
-	if len(cl2.Conf.Apps) != 0 {
-		t.Fatalf("expected app-b to be ejected from cluster2 Conf.Apps, got %d", len(cl2.Conf.Apps))
+	if len(conflicts) != 1 || conflicts[0].AppHost != "app-b" {
+		t.Fatalf("expected 1 conflict for app-b, got %v", conflicts)
 	}
-	if len(cl2.Apps) != 0 {
-		t.Fatalf("expected app-b to be ejected from cluster2 Apps, got %d", len(cl2.Apps))
+
+	// Detector must NOT mutate Conf.Apps or live Apps.
+	if len(cl2.Conf.Apps) != 1 {
+		t.Fatalf("detector must not mutate Conf.Apps; expected 1, got %d", len(cl2.Conf.Apps))
+	}
+	if len(cl2.Apps) != 1 {
+		t.Fatalf("detector must not mutate live Apps; expected 1, got %d", len(cl2.Apps))
 	}
 	if len(cl1.Conf.Apps) != 1 {
-		t.Fatalf("expected app-a in cluster1 to be untouched, got %d apps", len(cl1.Conf.Apps))
+		t.Fatalf("cl1 must be untouched; expected 1, got %d", len(cl1.Conf.Apps))
 	}
 }
 
-func TestValidateCrossCluster_NoConflict_DifferentCNameSamePort(t *testing.T) {
+func TestDetectCrossCluster_NoConflict_DifferentCNameSamePort(t *testing.T) {
 	const gw = "ns/svc/shared-gw"
 
 	cl1 := newTestClusterForGateway(t, "cluster1", gw)
@@ -216,30 +246,38 @@ func TestValidateCrossCluster_NoConflict_DifferentCNameSamePort(t *testing.T) {
 	}
 
 	priorRoutes := cl1.OwnGatewayRoutes(gw)
-	if err := cl2.ValidateGatewayRouteConflicts(priorRoutes); err != nil {
+	conflicts, err := cl2.DetectCrossClusterGatewayConflicts(priorRoutes)
+	if err != nil {
 		t.Fatalf("expected no conflict for different cnames, got: %v", err)
 	}
+	if len(conflicts) != 0 {
+		t.Fatalf("expected no conflicts, got %d", len(conflicts))
+	}
 	if len(cl2.Conf.Apps) != 1 {
-		t.Fatalf("expected 1 app in Conf.Apps, got %d", len(cl2.Conf.Apps))
+		t.Fatalf("detector must not mutate Conf.Apps; expected 1, got %d", len(cl2.Conf.Apps))
 	}
 	if len(cl2.Apps) != 1 {
-		t.Fatalf("expected 1 app in live Apps list, got %d", len(cl2.Apps))
+		t.Fatalf("detector must not mutate live Apps; expected 1, got %d", len(cl2.Apps))
 	}
 }
 
-func TestValidateCrossCluster_NoPeerOnSameGateway(t *testing.T) {
+func TestDetectCrossCluster_NoPeerOnSameGateway(t *testing.T) {
 	const gwA = "ns/svc/gw-a"
 	cl1 := newTestClusterForGateway(t, "cluster1", gwA)
 	cl1.Conf.Apps = []*config.AppConfig{
 		portRouteApp("app-a", "gw.example.com", "9000", "9000"),
 	}
 
-	// cl2 is on a different gateway — its routes must not be passed as prior for cl1.
-	if err := cl1.ValidateGatewayRouteConflicts(nil); err != nil {
+	// nil prior routes — first cluster on this gateway, no conflicts possible.
+	conflicts, err := cl1.DetectCrossClusterGatewayConflicts(nil)
+	if err != nil {
 		t.Fatalf("expected no conflict across different gateways, got: %v", err)
 	}
+	if len(conflicts) != 0 {
+		t.Fatalf("expected no conflicts, got %d", len(conflicts))
+	}
 	if len(cl1.Conf.Apps) != 1 {
-		t.Fatalf("expected app-a to remain, got %d apps", len(cl1.Conf.Apps))
+		t.Fatalf("detector must not mutate Conf.Apps; expected 1, got %d", len(cl1.Conf.Apps))
 	}
 }
 

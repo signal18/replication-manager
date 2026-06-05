@@ -2619,18 +2619,30 @@ func (repman *ReplicationManager) Run() error {
 	// Phase 2: wire cross-cluster state now that all clusters are initialised.
 	for _, cluster := range repman.Clusters {
 		cluster.SetClusterList(repman.Clusters)
+		cluster.SetClusterOrder(repman.ClusterList)
 		cluster.SetDeprecatedKeys(repman.DeprecatedKeys)
 		cluster.SetCarbonLogger(repman.clog)
 	}
 
-	// Phase 3: cross-cluster gateway validation — eject conflicting apps BEFORE
-	// any monitoring goroutine starts so there is no window where a conflicting
-	// app is live.  Iterate in ClusterList order (a slice) so the first cluster
-	// in the list always wins any listener conflict, making startup deterministic
-	// across restarts regardless of Go map iteration order.
-	//
-	// priorRoutesByGateway accumulates committed routes in declaration order so
-	// each cluster is only checked against clusters that appeared before it.
+	// Phase 3: gateway conflict detection.
+	// 3a caches intra-cluster conflicts for APPERR005 and monitoring.
+	// 3b logs cross-cluster conflicts only — the hard blocks live in
+	// OpenSVCProvisionRoute (live check) and the API reject path.
+	// Conflicts never prevent cluster start, monitoring, or replication.
+
+	// 3a: intra-cluster — cache so APPERR005 fires for same-cluster route collisions.
+	for _, gl := range repman.ClusterList {
+		cl, ok := repman.Clusters[gl]
+		if !ok {
+			continue
+		}
+		if conflicts, _ := cl.DetectIntraClusterGatewayConflicts(); len(conflicts) > 0 {
+			cl.MarkGatewayConflicts(conflicts)
+		}
+	}
+
+	// 3b: cross-cluster — alert only, do not cache.
+	// Detection runs in ClusterList order for deterministic logging across restarts.
 	priorRoutesByGateway := make(map[string][][]config.Route)
 	for _, gl := range repman.ClusterList {
 		cl, ok := repman.Clusters[gl]
@@ -2638,11 +2650,7 @@ func (repman *ReplicationManager) Run() error {
 			continue
 		}
 		gw := strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
-		if err := cl.ValidateGatewayRouteConflicts(priorRoutesByGateway[gw]); err != nil {
-			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
-				"Cross-cluster gateway conflict at startup — one or more apps removed from runtime state: %v", err)
-		}
-		// Accumulate surviving routes for clusters that follow in the list.
+		_, _ = cl.DetectCrossClusterGatewayConflicts(priorRoutesByGateway[gw])
 		priorRoutesByGateway[gw] = append(priorRoutesByGateway[gw], cl.OwnGatewayRoutes(gw)...)
 	}
 
@@ -2886,6 +2894,38 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	if err != nil {
 		return nil, err
 	}
+
+	// Mirror Phase 2: wire cross-cluster state so the new cluster can see peers.
+	cl.SetClusterList(repman.Clusters)
+	cl.SetClusterOrder(repman.ClusterList)
+	cl.SetDeprecatedKeys(repman.DeprecatedKeys)
+	cl.SetCarbonLogger(repman.clog)
+
+	// Mirror Phase 3a: refresh local cached conflict state (intra-cluster only).
+	cl.RefreshGatewayConflicts()
+
+	// Mirror Phase 3b: alert on cross-cluster conflicts — same policy as full
+	// startup: log only, do not cache.  Applies to git auto-discovery and
+	// dynamic API adds so operators see the conflict immediately.
+	// Iterate in ClusterList order for deterministic reporting.
+	gw := strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
+	if gw != "" {
+		var priorRoutes [][]config.Route
+		for _, name := range repman.ClusterList {
+			if name == clusterName {
+				break
+			}
+			peer := repman.Clusters[name]
+			if peer == nil {
+				continue
+			}
+			if strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) == gw {
+				priorRoutes = append(priorRoutes, peer.OwnGatewayRoutes(gw)...)
+			}
+		}
+		_, _ = cl.DetectCrossClusterGatewayConflicts(priorRoutes)
+	}
+
 	go cl.Run()
 	return cl, nil
 }

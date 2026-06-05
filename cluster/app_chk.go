@@ -19,8 +19,22 @@ func (app *App) GetMonitoringStatus() string {
 	cluster := app.ClusterGroup
 	routes := app.GetAppConfig().Deployment.Routes
 	var primaryStatus = stateAppRunning
-	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto}
+	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict}
 	errStates := make(map[string]state.State)
+
+	// Gateway conflict check: surface the conflict as WARN state and let the rest
+	// of the monitoring checks run — local reachability is independent of gateway
+	// route ownership.
+	if app.AppConfig != nil {
+		if conflicted, reason := cluster.IsAppGatewayConflicted(app.AppConfig.AppHost, app.AppConfig.AppPort); conflicted {
+			errStates[ErrAppGatewayConflict] = state.State{
+				ErrType:   "WARN",
+				ErrKey:    ErrAppGatewayConflict,
+				ErrDesc:   fmt.Sprintf(config.ClusterError[ErrAppGatewayConflict], app.GetId(), reason),
+				ServerUrl: app.Host,
+			}
+		}
+	}
 	failureThreshold := cluster.Conf.AppErrorDebounceThreshold
 	if failureThreshold <= 0 {
 		// Keep legacy default when the cluster-level override is unset/invalid.
@@ -71,6 +85,9 @@ func (app *App) GetMonitoringStatus() string {
 	for _, route := range routes {
 		routeKey := routeEndpoint(route)
 		routeStatus := config.RouteStatus{Route: route, Status: stateAppRunning}
+		routeNorm := route
+		routeNorm.Normalize()
+		routeLabel := " on route " + routeNorm.Label()
 		switch route.Protocol {
 		case "https":
 			httpStatus, _, err := app.GetAppHTTPStatus(route, false)
@@ -78,7 +95,7 @@ func (app *App) GetMonitoringStatus() string {
 				markSuccessfulRouteCheck(routeKey)
 			} else {
 				routeStatus.Status = stateAppWarning
-				primaryStatus = stateAppWarning
+				// Don't set primaryStatus yet — defer until local check outcome is known.
 
 				errKey := ErrAppConnectFailed
 				errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
@@ -97,7 +114,7 @@ func (app *App) GetMonitoringStatus() string {
 						errDesc = fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
 					}
 
-					debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc, ServerUrl: app.Host}}, err)
+					debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc + routeLabel, ServerUrl: app.Host}}, err)
 
 					if route.Primary {
 						primaryStatus = stateFailed
@@ -117,7 +134,7 @@ func (app *App) GetMonitoringStatus() string {
 					markSuccessfulRouteCheck(routeKey)
 				} else {
 					routeStatus.Status = stateAppWarning
-					primaryStatus = stateAppWarning
+					// Don't set primaryStatus yet — defer until local check outcome is known.
 					errKey := ErrAppConnectFailed
 					errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
 					if strings.HasPrefix(err.Error(), "unexpected status code") {
@@ -133,7 +150,7 @@ func (app *App) GetMonitoringStatus() string {
 							errKey = ErrAppConnectFailed
 							errDesc = fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
 						}
-						debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc, ServerUrl: app.Host}}, err)
+						debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc + routeLabel, ServerUrl: app.Host}}, err)
 						if route.Primary {
 							primaryStatus = stateFailed
 						} else {
@@ -148,7 +165,7 @@ func (app *App) GetMonitoringStatus() string {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo,
 					"Port-route HTTP check skipped for app %s (no cname defined), using local/backend check only", app.Name)
 				if err := app.GetAppLocalHTTPStatus2xx(route); err != nil {
-					debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err), ServerUrl: app.Host}}, err)
+					debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err) + routeLabel, ServerUrl: app.Host}}, err)
 					if route.Primary {
 						primaryStatus = stateFailed
 					} else {
@@ -165,12 +182,14 @@ func (app *App) GetMonitoringStatus() string {
 			if route.Mode == "port" && route.CName == "" {
 				if err := app.GetAppLocalTCPStatus(route); err != nil {
 					debouncedRecordAppErr(routeKey, []state.State{
-						{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), err), ServerUrl: app.Host},
-						{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err), ServerUrl: app.Host},
+						{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), err) + routeLabel, ServerUrl: app.Host},
+						{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err) + routeLabel, ServerUrl: app.Host},
 					}, err)
 					routeStatus.Status = stateFailed
 					if route.Primary {
 						primaryStatus = stateFailed
+					} else {
+						primaryStatus = stateAppWarning
 					}
 				} else {
 					markSuccessfulRouteCheck(routeKey)
@@ -187,8 +206,8 @@ func (app *App) GetMonitoringStatus() string {
 				if err := app.GetAppLocalTCPStatus(route); err != nil {
 					// Temporary compatibility: emit APPERR003 (canonical) and APPERR001 together.
 					debouncedRecordAppErr(routeKey, []state.State{
-						{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), err), ServerUrl: app.Host},
-						{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err), ServerUrl: app.Host},
+						{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), err) + routeLabel, ServerUrl: app.Host},
+						{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err) + routeLabel, ServerUrl: app.Host},
 					}, err)
 
 					routeStatus.Status = stateFailed
@@ -201,7 +220,7 @@ func (app *App) GetMonitoringStatus() string {
 			}
 		default:
 			// Keep APPERR004 argument order aligned with config.ClusterError format string.
-			errStates[ErrAppUnsupportedProto] = state.State{ErrType: "WARN", ErrKey: ErrAppUnsupportedProto, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppUnsupportedProto], route.Protocol, app.GetId()), ServerUrl: app.Host}
+			errStates[ErrAppUnsupportedProto] = state.State{ErrType: "WARN", ErrKey: ErrAppUnsupportedProto, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppUnsupportedProto], route.Protocol, app.GetId()) + routeLabel, ServerUrl: app.Host}
 			app.ResetAppErrConsecutiveCnt(routeKey)
 			routeStatus.Status = stateFailed
 
@@ -238,8 +257,15 @@ func (app *App) GetAppLocalHTTPStatus(route config.Route, getBody bool) (int, []
 	route.Mode = ""
 	a, b, err := app.GetAppHTTPStatus(route, getBody)
 	if err != nil {
-		route.Protocol = "http"
-		return app.GetAppHTTPStatus(route, getBody)
+		// If auth is configured on an HTTPS route, skip the HTTP fallback: a
+		// plain HTTP check without credentials cannot confirm the authenticated
+		// endpoint is working, so we report the original failure instead.
+		if route.Protocol == "https" && route.Monitor != nil && route.Monitor.AuthType != "" {
+			return -1, nil, err
+		}
+		fallback := route
+		fallback.Protocol = "http"
+		return app.GetAppHTTPStatus(fallback, getBody)
 	}
 	return a, b, nil
 }

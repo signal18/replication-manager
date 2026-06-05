@@ -1378,21 +1378,51 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					http.Error(w, "Invalid route monitor: "+err.Error(), http.StatusBadRequest)
 					return
 				}
-				node.AppConfig.Deployment.Routes[index] = row
-				node.AppConfig.Deployment.EnforceSinglePrimary()
 
-				// Monitor-only edits do not change route identity (cname, sourcePort,
-				// mode, protocol), so gateway conflict checks are not needed.
+				// Intra-app duplicate check: identity fields (cname, sourcePort,
+				// mode, protocol) are the same target as on the add path — two
+				// routes with the same listener key inside one app are incoherent
+				// regardless of other clusters, so this is always a hard reject.
+				// Monitor-only edits leave identity unchanged, so skip the check.
 				if !strings.HasPrefix(vars["key"], "monitor") {
+					peers := make([]config.Route, 0, len(node.AppConfig.Deployment.Routes)-1)
+					for i, r := range node.AppConfig.Deployment.Routes {
+						if i != index {
+							peers = append(peers, r)
+						}
+					}
+					if err := config.CheckGatewayConflicts([]config.Route{row}, config.NormalizedCopy(peers)); err != nil {
+						http.Error(w, "Duplicate route: "+err.Error(), http.StatusBadRequest)
+						return
+					}
+
 					others := repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
-					if err := config.CheckGatewayConflicts(node.AppConfig.Deployment.Routes, others...); err != nil {
-						// Roll back the change.
-						node.AppConfig.Deployment.Routes[index] = originalRow
-						node.AppConfig.Deployment.EnforceSinglePrimary()
+					if err := config.CheckGatewayConflicts([]config.Route{row}, others...); err != nil {
 						http.Error(w, "Gateway conflict: "+err.Error(), http.StatusBadRequest)
 						return
 					}
 				}
+
+				node.AppConfig.Deployment.Routes[index] = row
+				node.AppConfig.Deployment.EnforceSinglePrimary()
+
+				if row.Monitor != nil && row.Monitor.AuthType != "" {
+					switch row.Protocol {
+					case "http":
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+							"Route edit for app %s: monitor auth (%s) configured on plain HTTP route %s — credentials will be transmitted unencrypted",
+							node.Name, row.Monitor.AuthType, row.CName)
+					case "https":
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+							"Route edit for app %s: monitor auth (%s) configured on HTTPS route %s with unverified certificate (InsecureSkipVerify=true)",
+							node.Name, row.Monitor.AuthType, row.CName)
+					}
+				}
+
+				// Monitor-only edits do not change route identity (cname, sourcePort,
+				// mode, protocol), so gateway conflict detection is not needed.
+				// Non-monitor edits have within-app duplicates and cross-cluster
+				// gateway conflicts rejected immediately above.
 
 				// DNS cleanup for renamed or rekeyed managed host routes happens
 				// via the full reconcile path (update-routes / provision), not here.
@@ -1623,6 +1653,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 			mycluster.EnqueueRefreshAppTemplateMD5(node)
 
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
+			mycluster.RefreshGatewayConflicts()
 			w.Write([]byte("Deployment field modified"))
 		} else {
 			http.Error(w, "Server Not Found", http.StatusInternalServerError)
@@ -1647,30 +1678,19 @@ func routesReferencingSecretVar(routes []config.Route, varName string) []int {
 }
 
 // allExternalGatewayRoutes returns one normalized route-slice per app that
-// shares the same gateway as the named cluster, excluding the named cluster+app
-// so the caller can use the result as the "others" argument to
-// config.CheckGatewayConflicts.
-//
-// Apps on clusters with a different (or empty) Cloud18GatewayService cannot
-// conflict on the shared gateway, so they are excluded.
+// shares the same gateway as the named cluster, excluding the named cluster+app.
+// Used to check cross-cluster conflicts before accepting an API route change.
 func (repman *ReplicationManager) allExternalGatewayRoutes(excludeClusterName, excludeAppName string) [][]config.Route {
-	// Determine the gateway service that the excluded cluster belongs to.
-	// Cloud18GatewayService (namespace/type/service) uniquely identifies the
-	// shared HAProxy instance.  Two clusters with the same service share a
-	// single listener, so their routes can conflict.
 	var thisGateway string
 	if cl, ok := repman.Clusters[excludeClusterName]; ok {
 		thisGateway = strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
 	}
 	if thisGateway == "" {
-		// No gateway service configured — no shared-gateway conflicts possible.
 		return nil
 	}
-
 	var others [][]config.Route
 	for _, cl := range repman.Clusters {
-		clGateway := strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
-		if clGateway != thisGateway {
+		if strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService)) != thisGateway {
 			continue
 		}
 		for _, app := range cl.Apps {
@@ -1680,8 +1700,7 @@ func (repman *ReplicationManager) allExternalGatewayRoutes(excludeClusterName, e
 			if cl.Name == excludeClusterName && app.Name == excludeAppName {
 				continue
 			}
-			normalized := config.NormalizedCopy(app.AppConfig.Deployment.Routes)
-			if len(normalized) > 0 {
+			if normalized := config.NormalizedCopy(app.AppConfig.Deployment.Routes); len(normalized) > 0 {
 				others = append(others, normalized)
 			}
 		}
@@ -1747,14 +1766,16 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 				return
 			}
 
-			// Intra-app duplicate check: host routes key on cname, port routes on cname:sourcePort.
+			// Intra-app duplicate check: two routes with the same listener key
+			// inside one app are incoherent — always a hard reject.
 			existing := config.NormalizedCopy(node.AppConfig.Deployment.Routes)
 			if err := config.CheckGatewayConflicts([]config.Route{row}, existing); err != nil {
 				http.Error(w, "Duplicate route: "+err.Error(), http.StatusBadRequest)
 				return
 			}
 
-			// Cross-cluster gateway conflict check.
+			// Cross-cluster conflict check: API route changes are rejected
+			// immediately; startup/reload of existing config is alert-only.
 			others := repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
 			if err := config.CheckGatewayConflicts([]config.Route{row}, others...); err != nil {
 				http.Error(w, "Gateway conflict: "+err.Error(), http.StatusBadRequest)
@@ -1840,6 +1861,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 	mycluster.EnqueueRefreshAppTemplateMD5(node)
 
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
+	mycluster.RefreshGatewayConflicts()
 	json.NewEncoder(w).Encode(map[string]string{"message": "Deployment field row added"})
 }
 
@@ -1965,6 +1987,7 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 
 	// If we reach here, the row was successfully removed
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
+	mycluster.RefreshGatewayConflicts()
 	w.Write([]byte("Deployment field row removed"))
 }
 

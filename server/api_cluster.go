@@ -5709,8 +5709,7 @@ func (repman *ReplicationManager) handlerMuxSettingsReload(w http.ResponseWriter
 	repman.InitConfig(*repman.Conf, true)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		//mycluster.ReloadConfig(repman.Confs[vars["clusterName"]])
-		mycluster.ReloadConfig(*mycluster.Conf)
+		mycluster.ReloadConfig(repman.Confs[vars["clusterName"]])
 	} else {
 		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
