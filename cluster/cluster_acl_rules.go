@@ -194,8 +194,6 @@ var clusterACLRules = []ACLRule{
 
 	// Testing and Benchmarking
 	{"/actions/sysbench", nil, []string{config.GrantClusterBench, config.GrantClusterTest}},
-	{"/actions/sysbench-history", nil, []string{config.GrantClusterBench, config.GrantClusterTest}},
-	{"/actions/sysbench-compare", nil, []string{config.GrantClusterBench, config.GrantClusterTest}},
 	{"/tests/", nil, []string{config.GrantClusterTest}},
 
 	// Replication

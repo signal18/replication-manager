@@ -463,14 +463,6 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSysbench)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/sysbench-history", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSysbenchHistory)),
-	))
-	router.Handle("/api/clusters/{clusterName}/actions/sysbench-compare", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSysbenchCompare)),
-	))
 
 	router.Handle("/api/clusters/{clusterName}/actions/waitdatabases", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -682,6 +674,15 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxWebLog)),
 	))
 	router.Handle("/api/clusters/{clusterName}/topology/http-logs/{logType}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxWebLog)),
+	))
+	// Alias: cleaner route for logs by type
+	router.Handle("/api/clusters/{clusterName}/topology/logs", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxWebLog)),
+	))
+	router.Handle("/api/clusters/{clusterName}/topology/logs/{logType}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxWebLog)),
 	))

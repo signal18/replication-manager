@@ -141,7 +141,6 @@ export const clusterService = {
   // Test run APIs
   runSysbench,
   getSysbenchHistory,
-  getSysbenchCompare,
   runRegressionTests,
 
   // User management APIs
@@ -702,12 +701,8 @@ function runRegressionTests(clusterName, testName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/tests/actions/run/${testName}`)
 }
 
-function getSysbenchHistory(clusterName, last = 10, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/actions/sysbench-history?last=${last}`)
-}
-
-function getSysbenchCompare(clusterName, metric, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/actions/sysbench-compare?metric=${metric}`)
+function getSysbenchHistory(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/topology/logs/sysbench`)
 }
 //#endregion Test run APIs
 
