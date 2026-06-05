@@ -8,8 +8,10 @@ package cluster
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -31,6 +33,11 @@ type SysbenchLogEntry struct {
 	ProxyType    string                       `json:"proxyType"`    // proxysql, haproxy, maxscale, myproxy
 	ProxyVersion string                       `json:"proxyVersion"`
 	Replicas     int                          `json:"replicas"`
+	Cores        string                       `json:"cores"`        // prov-db-cpu-cores (docker cap)
+	MemoryMB     string                       `json:"memoryMB"`     // prov-db-memory in MB (docker cap)
+	DiskGB       string                       `json:"diskGB"`       // prov-db-disk-size in GB (docker cap)
+	DBU          float64                      `json:"dbu"`          // database units: max(cores/1, mem/4096, disk/40)
+	ClusterDBU   float64                      `json:"clusterDbu"`   // DBU × (replicas + 1)
 	ConfigTags   string                       `json:"configTags"`   // prov-db-tags at run time
 	ServicePlan  string                       `json:"servicePlan"`
 	Results      []SysBenchTpcResultPerMinute `json:"results"`
@@ -38,6 +45,7 @@ type SysbenchLogEntry struct {
 	AvgTPS       float64                      `json:"avgTps"`
 	AvgLatency   float64                      `json:"avgLatency"`
 	TotalErrors  int                          `json:"totalErrors"`
+	TPSPerDBU    float64                      `json:"tpsPerDbu"`    // avgTps / clusterDBU — performance efficiency
 }
 
 // SysbenchLog holds the full history of sysbench runs for a cluster.
@@ -73,6 +81,7 @@ func (cluster *Cluster) LoadSysbenchLog() {
 
 // LogSysbenchRun captures the context and results of a sysbench run and appends it to history.
 func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads int, tableSize int, duration int, startedAt time.Time, records []SysbenchRecord) {
+	dbNodes := len(cluster.Servers) // all database nodes (master + replicas)
 	entry := SysbenchLogEntry{
 		StartedAt:   startedAt,
 		EndedAt:     time.Now(),
@@ -86,8 +95,18 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 		ConfigTags:  cluster.Conf.ProvTags,
 		ServicePlan: cluster.Conf.ProvServicePlan,
 		Replicas:    len(cluster.slaves),
+		Cores:       cluster.Conf.ProvCores,
+		MemoryMB:    cluster.Conf.ProvMem,
+		DiskGB:      cluster.Conf.ProvDisk,
 		Records:     records,
 	}
+
+	// Compute DBU: 1 credit = 1 core / 4GB RAM / 40GB NVMe
+	cores, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
+	memMB, _ := strconv.ParseFloat(cluster.Conf.ProvMem, 64)
+	diskGB, _ := strconv.ParseFloat(cluster.Conf.ProvDisk, 64)
+	entry.DBU = math.Max(cores, math.Max(memMB/4096, diskGB/40))
+	entry.ClusterDBU = entry.DBU * float64(dbNodes)
 
 	// DB flavor + version from master
 	if master := cluster.GetMaster(); master != nil && master.DBVersion != nil {
@@ -117,6 +136,11 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 		entry.TotalErrors = totalErrors
 	}
 
+	// TPS per DBU — performance efficiency metric
+	if entry.ClusterDBU > 0 && entry.AvgTPS > 0 {
+		entry.TPSPerDBU = entry.AvgTPS / entry.ClusterDBU
+	}
+
 	// Append TPCM results
 	entry.Results = cluster.SysBenchTpcMResults
 
@@ -124,7 +148,7 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 	cluster.SaveSysbenchLog()
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH",
-		"Sysbench run logged: %s/%s threads=%d avgTPS=%.1f avgLatency=%.2fms flavor=%s/%s proxy=%s/%s replicas=%d tags=%s",
+		"Sysbench run logged: %s/%s threads=%d avgTPS=%.1f avgLatency=%.2fms flavor=%s/%s proxy=%s/%s replicas=%d DBU=%.1f clusterDBU=%.1f TPS/DBU=%.2f tags=%s",
 		testType, testMode, threads, entry.AvgTPS, entry.AvgLatency, entry.DBFlavor, entry.DBVersion,
-		entry.ProxyType, entry.ProxyVersion, entry.Replicas, entry.ConfigTags)
+		entry.ProxyType, entry.ProxyVersion, entry.Replicas, entry.DBU, entry.ClusterDBU, entry.TPSPerDBU, entry.ConfigTags)
 }
