@@ -10,15 +10,18 @@ import RMButton from '../../RMButton'
 import parentStyles from '../styles.module.scss'
 
 const METRICS = [
-  { value: 'mysql_global_status_questions', label: 'Questions (QPS)' },
+  { value: 'mysql_global_status_queries', label: 'Queries (QPS)' },
   { value: 'mysql_global_status_com_select', label: 'SELECT' },
   { value: 'mysql_global_status_com_insert', label: 'INSERT' },
   { value: 'mysql_global_status_com_update', label: 'UPDATE' },
   { value: 'mysql_global_status_com_delete', label: 'DELETE' },
   { value: 'mysql_global_status_threads_running', label: 'Threads Running' },
-  { value: 'mysql_global_status_connections', label: 'Connections' },
+  { value: 'mysql_global_status_threads_connected', label: 'Threads Connected' },
   { value: 'mysql_global_status_created_tmp_disk_tables', label: 'Tmp Disk Tables' },
-  { value: 'mysql_global_status_innodb_row_lock_waits', label: 'InnoDB Row Lock Waits' },
+  { value: 'mysql_global_status_innodb_rows_read', label: 'InnoDB Rows Read' },
+  { value: 'mysql_global_status_innodb_rows_inserted', label: 'InnoDB Rows Inserted' },
+  { value: 'mysql_global_status_bytes_sent', label: 'Bytes Sent' },
+  { value: 'mysql_global_status_bytes_received', label: 'Bytes Received' },
 ]
 
 // Fetch graphite PNG with credentials (img src doesn't send auth)
@@ -50,7 +53,7 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
   const monitor = useSelector((state) => state?.globalClusters?.monitor)
   const clusterData = useSelector((state) => state?.cluster?.clusterData)
   const [runs, setRuns] = useState([])
-  const [metric, setMetric] = useState('mysql_global_status_questions')
+  const [metric, setMetric] = useState('mysql_global_status_queries')
   const [graphiteUrl, setGraphiteUrl] = useState('')
 
   const badgeVariant = theme === 'dark' ? 'solid' : 'subtle'
@@ -78,10 +81,11 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
 
     // Wrap cumulative counters in perSecond() for rate-based display
     const rateMetrics = [
-      'mysql_global_status_questions', 'mysql_global_status_com_select',
+      'mysql_global_status_queries', 'mysql_global_status_com_select',
       'mysql_global_status_com_insert', 'mysql_global_status_com_update',
-      'mysql_global_status_com_delete', 'mysql_global_status_connections',
-      'mysql_global_status_created_tmp_disk_tables', 'mysql_global_status_innodb_row_lock_waits'
+      'mysql_global_status_com_delete', 'mysql_global_status_created_tmp_disk_tables',
+      'mysql_global_status_innodb_rows_read', 'mysql_global_status_innodb_rows_inserted',
+      'mysql_global_status_bytes_sent', 'mysql_global_status_bytes_received'
     ]
     const rawMetric = `mysql.${hostname}.${metric}`
     const fullMetric = rateMetrics.includes(metric) ? `perSecond(${rawMetric})` : rawMetric
