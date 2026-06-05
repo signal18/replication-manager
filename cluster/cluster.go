@@ -1936,10 +1936,13 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 
 	// Phase 3a: refresh cached intra-cluster conflict state.
 	cluster.RefreshGatewayConflicts()
+	cluster.WithdrawConflictedGatewayRoutes()
 
-	// Phase 3b: alert on cross-cluster conflicts — same alert-only policy as
-	// startup and StartCluster.  Not cached; hard block lives in OpenSVCProvisionRoute.
-	// Iterate in clusterOrder for deterministic reporting across restarts.
+	// Phase 3b: cache cross-cluster conflicts and withdraw stale fragments —
+	// same policy as 3a and startup.  Peer routes come only from clusters that
+	// appear before this one in clusterOrder (first-wins priority).
+	// RefreshGatewayConflicts above replaced the map with fresh intra-conflicts;
+	// MarkGatewayConflicts below adds cross-cluster ones without overwriting them.
 	gw := strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService))
 	if gw != "" {
 		var priorRoutes [][]config.Route
@@ -1955,7 +1958,10 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 				priorRoutes = append(priorRoutes, peer.OwnGatewayRoutes(gw)...)
 			}
 		}
-		_, _ = cluster.DetectCrossClusterGatewayConflicts(priorRoutes)
+		if conflicts, _ := cluster.DetectCrossClusterGatewayConflicts(priorRoutes); len(conflicts) > 0 {
+			cluster.MarkGatewayConflicts(conflicts)
+			cluster.WithdrawConflictedGatewayRoutes()
+		}
 	}
 }
 

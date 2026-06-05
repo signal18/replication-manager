@@ -249,12 +249,20 @@ func (cluster *Cluster) MarkGatewayConflicts(conflicts []GatewayConflict) {
 		return
 	}
 	cluster.Lock()
-	if cluster.GatewayConflicts == nil {
-		cluster.GatewayConflicts = make(map[string]string, len(conflicts))
+	// Copy-on-write: build a new map so callers that snapshotted the old pointer
+	// under a prior lock can read it safely without holding the lock.
+	size := len(conflicts)
+	if cluster.GatewayConflicts != nil {
+		size += len(cluster.GatewayConflicts)
+	}
+	next := make(map[string]string, size)
+	for k, v := range cluster.GatewayConflicts {
+		next[k] = v
 	}
 	for _, c := range conflicts {
-		cluster.GatewayConflicts[c.AppHost+":"+c.AppPort] = c.Detail
+		next[c.AppHost+":"+c.AppPort] = c.Detail
 	}
+	cluster.GatewayConflicts = next
 	cluster.Unlock()
 	for _, c := range conflicts {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
@@ -280,15 +288,26 @@ func (cluster *Cluster) IsAppGatewayConflicted(host, port string) (bool, string)
 // and OpenSVC publication unblock on the next cycle without requiring a restart.
 func (cluster *Cluster) ClearGatewayConflict(host, port string) {
 	cluster.Lock()
-	defer cluster.Unlock()
-	delete(cluster.GatewayConflicts, host+":"+port)
+	// Copy-on-write: produce a new map without the cleared entry so that
+	// concurrent readers holding the old snapshot are not affected.
+	if cluster.GatewayConflicts != nil {
+		key := host + ":" + port
+		next := make(map[string]string, len(cluster.GatewayConflicts))
+		for k, v := range cluster.GatewayConflicts {
+			if k != key {
+				next[k] = v
+			}
+		}
+		cluster.GatewayConflicts = next
+	}
+	cluster.Unlock()
 }
 
 // RefreshGatewayConflicts re-runs intra-cluster conflict detection for this
-// cluster and atomically replaces its GatewayConflicts map.  Only same-cluster
-// (intra) conflicts are cached; cross-cluster conflicts are checked live at
-// publish time (OpenSVCProvisionRoute) and rejected immediately on API route
-// edits.  APPERR005 and UI alerts reflect intra-cluster conflict state only.
+// cluster and atomically replaces the GatewayConflicts map with a fresh
+// intra-cluster snapshot.  Cross-cluster conflicts are then appended by the
+// caller via MarkGatewayConflicts so that both types are cached, APPERR005
+// fires for all blocked apps, and stale gateway fragments are withdrawn.
 func (cluster *Cluster) RefreshGatewayConflicts() {
 	gateway := strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService))
 	if gateway == "" {
@@ -357,11 +376,20 @@ func (cluster *Cluster) pruneEjectedAppsFromLiveList() {
 	cluster.Unlock()
 }
 
-// allAppRoutes returns a normalized route slice per loaded app for this cluster.
+// allAppRoutes returns a normalized route slice per app for this cluster,
+// excluding apps that have a cached gateway conflict (their routes are blocked
+// from publication and must not occupy gateway address space for peer clusters).
 func (cluster *Cluster) allAppRoutes() [][]config.Route {
+	cluster.Lock()
+	conflicts := cluster.GatewayConflicts
+	cluster.Unlock()
+
 	var result [][]config.Route
 	for _, appcnf := range cluster.Conf.Apps {
 		if appcnf == nil || appcnf.Deployment == nil {
+			continue
+		}
+		if _, conflicted := conflicts[appcnf.AppHost+":"+appcnf.AppPort]; conflicted {
 			continue
 		}
 		normalized := config.NormalizedCopy(appcnf.Deployment.Routes)
@@ -370,6 +398,36 @@ func (cluster *Cluster) allAppRoutes() [][]config.Route {
 		}
 	}
 	return result
+}
+
+// WithdrawConflictedGatewayRoutes removes any HAProxy fragments that were
+// previously published for apps now flagged with a gateway conflict.  Called
+// after MarkGatewayConflicts / RefreshGatewayConflicts so that stale fragments
+// left over from a prior (valid) run are cleaned up without waiting for the
+// next OpenSVCProvisionRoute cycle.  Best-effort: errors are logged as warnings.
+func (cluster *Cluster) WithdrawConflictedGatewayRoutes() {
+	if strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService)) == "" {
+		return
+	}
+	cluster.Lock()
+	conflicts := cluster.GatewayConflicts
+	apps := cluster.Apps
+	cluster.Unlock()
+	if len(conflicts) == 0 {
+		return
+	}
+	for _, app := range apps {
+		if app == nil || app.AppConfig == nil {
+			continue
+		}
+		if _, conflicted := conflicts[app.AppConfig.AppHost+":"+app.AppConfig.AppPort]; !conflicted {
+			continue
+		}
+		if err := cluster.withdrawGatewayRoutes(app); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"Failed to withdraw stale gateway routes for conflicted app %q: %v", app.Name, err)
+		}
+	}
 }
 
 // LoadConfig loads the configuration from a file to the configuration struct.

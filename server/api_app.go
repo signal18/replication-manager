@@ -1653,7 +1653,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 			mycluster.EnqueueRefreshAppTemplateMD5(node)
 
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
-			mycluster.RefreshGatewayConflicts()
+			repman.RecomputeGatewayConflicts(mycluster.Name, "")
 			w.Write([]byte("Deployment field modified"))
 		} else {
 			http.Error(w, "Server Not Found", http.StatusInternalServerError)
@@ -1698,6 +1698,11 @@ func (repman *ReplicationManager) allExternalGatewayRoutes(excludeClusterName, e
 				continue
 			}
 			if cl.Name == excludeClusterName && app.Name == excludeAppName {
+				continue
+			}
+			// Conflicted apps are blocked from publishing — exclude their routes
+			// so they don't falsely prevent other clusters from accepting routes.
+			if conflicted, _ := cl.IsAppGatewayConflicted(app.AppConfig.AppHost, app.AppConfig.AppPort); conflicted {
 				continue
 			}
 			if normalized := config.NormalizedCopy(app.AppConfig.Deployment.Routes); len(normalized) > 0 {
@@ -1861,7 +1866,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 	mycluster.EnqueueRefreshAppTemplateMD5(node)
 
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
-	mycluster.RefreshGatewayConflicts()
+	repman.RecomputeGatewayConflicts(mycluster.Name, "")
 	json.NewEncoder(w).Encode(map[string]string{"message": "Deployment field row added"})
 }
 
@@ -1987,7 +1992,7 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 
 	// If we reach here, the row was successfully removed
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
-	mycluster.RefreshGatewayConflicts()
+	repman.RecomputeGatewayConflicts(mycluster.Name, "")
 	w.Write([]byte("Deployment field row removed"))
 }
 

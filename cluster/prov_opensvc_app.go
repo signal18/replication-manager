@@ -992,6 +992,43 @@ func appRouteFragmentPrefix(opensvcDNS string) string {
 	return "haproxy.cfg.d/" + opensvcDNS + "_"
 }
 
+// withdrawGatewayRoutes deletes any HAProxy config fragments previously
+// published for app from the shared gateway service.  Used to clean up stale
+// fragments when an app is marked as gateway-conflicted so the live gateway
+// state matches the blocked publication state.  Best-effort: errors are
+// returned but logged by the caller as warnings rather than halting startup.
+func (cluster *Cluster) withdrawGatewayRoutes(app *App) error {
+	cloud18GatewayServiceConfig := strings.Split(cluster.Conf.Cloud18GatewayService, "/")
+	if len(cloud18GatewayServiceConfig) < 3 {
+		return nil
+	}
+	gwNamespace := cloud18GatewayServiceConfig[0]
+	gwService := cloud18GatewayServiceConfig[2]
+
+	svc := cluster.OpenSVCConnect()
+	opensvcDNS := app.Name + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
+	ownerPrefix := appRouteFragmentPrefix(opensvcDNS)
+	staleBranchPrefix := "haproxy.cfg.d/repman_" + cluster.Name + "_" + app.Name + "_"
+
+	existingKeys, err := svc.ListConfigKeys(gwNamespace, gwService)
+	if err != nil {
+		return fmt.Errorf("cannot list gateway config keys for conflict withdrawal (app %s): %w", app.Name, err)
+	}
+
+	var errs []error
+	for _, key := range existingKeys {
+		if !strings.HasPrefix(key, ownerPrefix) && !strings.HasPrefix(key, staleBranchPrefix) {
+			continue
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Withdrawing stale gateway fragment key=%s for conflicted app %s", key, app.Name)
+		if delErr := svc.DeleteConfigKeyValue(gwNamespace, gwService, key); delErr != nil {
+			errs = append(errs, fmt.Errorf("failed to delete fragment key=%s (app %s): %w", key, app.Name, delErr))
+		}
+	}
+	return errors.Join(errs...)
+}
+
 func buildRouteObjectName(route config.Route, opensvcDNS string) string {
 	if route.Mode == "port" {
 		return opensvcDNS + "_" + route.CName + "_" + route.SourcePort + "_" + route.DestinationPort
@@ -1109,6 +1146,11 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 					continue
 				}
 				if cl.Name == cluster.Name && other.Name == app.Name {
+					continue
+				}
+				// Conflicted apps are blocked from publication and must not
+				// be counted as owning gateway address space.
+				if conflicted, _ := cl.IsAppGatewayConflicted(other.AppConfig.AppHost, other.AppConfig.AppPort); conflicted {
 					continue
 				}
 				if normalized := config.NormalizedCopy(other.AppConfig.Deployment.Routes); len(normalized) > 0 {

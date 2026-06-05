@@ -257,12 +257,10 @@ func (app *App) GetAppLocalHTTPStatus(route config.Route, getBody bool) (int, []
 	route.Mode = ""
 	a, b, err := app.GetAppHTTPStatus(route, getBody)
 	if err != nil {
-		// If auth is configured on an HTTPS route, skip the HTTP fallback: a
-		// plain HTTP check without credentials cannot confirm the authenticated
-		// endpoint is working, so we report the original failure instead.
-		if route.Protocol == "https" && route.Monitor != nil && route.Monitor.AuthType != "" {
-			return -1, nil, err
-		}
+		// TLS terminates at HAProxy for all gateway-hosted routes, so the
+		// backend always speaks plain HTTP regardless of the external protocol
+		// or any auth configuration.  Always fall back to HTTP so a healthy
+		// backend is not misreported as down when the HTTPS check fails.
 		fallback := route
 		fallback.Protocol = "http"
 		return app.GetAppHTTPStatus(fallback, getBody)
