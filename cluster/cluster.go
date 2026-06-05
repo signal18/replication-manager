@@ -493,6 +493,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
 	cluster.InterventionHistory = make([]InterventionEntry, 0)
 	cluster.LoadInterventionHistory()
+	cluster.LoadSysbenchLog()
 	cluster.pluginSpikeCache = make(map[string]*logplugin.SpikeCache)
 	cluster.pluginRegistry = logplugin.NewRegistry()
 	if cluster.Conf.Arbitration {
