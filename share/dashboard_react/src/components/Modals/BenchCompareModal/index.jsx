@@ -21,6 +21,29 @@ const METRICS = [
   { value: 'mysql_global_status_innodb_row_lock_waits', label: 'InnoDB Row Lock Waits' },
 ]
 
+// Fetch graphite PNG with credentials (img src doesn't send auth)
+function GraphiteImage({ url }) {
+  const [imgSrc, setImgSrc] = useState(null)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    if (!url) return
+    setError(false)
+    fetch(url)
+      .then(res => {
+        if (!res.ok) throw new Error(res.status)
+        return res.blob()
+      })
+      .then(blob => setImgSrc(URL.createObjectURL(blob)))
+      .catch(() => setError(true))
+    return () => { if (imgSrc) URL.revokeObjectURL(imgSrc) }
+  }, [url])
+
+  if (error) return <Text fontSize='sm' color='red.400'>Failed to load graph</Text>
+  if (!imgSrc) return <Text fontSize='sm'>Loading graph...</Text>
+  return <img src={imgSrc} alt='Benchmark comparison' style={{ width: '100%' }} />
+}
+
 function BenchCompareModal({ isOpen, closeModal, clusterName }) {
   const { theme } = useTheme()
   const baseURL = useSelector((state) => state?.auth?.baseURL)
@@ -171,12 +194,7 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
 
                 {graphiteUrl && (
                   <Box borderRadius='md' overflow='hidden' bg={theme === 'light' ? 'gray.50' : 'rgba(255,255,255,0.05)'} p={2}>
-                    <img
-                      src={graphiteUrl}
-                      alt='Benchmark comparison'
-                      style={{ width: '100%' }}
-                      onError={(e) => { e.target.style.display = 'none' }}
-                    />
+                    <GraphiteImage url={graphiteUrl} />
                   </Box>
                 )}
               </>
