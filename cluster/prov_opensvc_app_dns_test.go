@@ -141,10 +141,10 @@ func TestReconcileStaleManagedCNAMEs_DropScriptConfigured_DeletesStale(t *testin
 }
 
 // ---------------------------------------------------------------------------
-// stale CNAME from a previous managed suffix — should hard-fail
+// stale CNAME from a previous managed suffix — should warn and retain
 // ---------------------------------------------------------------------------
 
-func TestReconcileStaleManagedCNAMEs_StaleUnderOldSuffix_HardFails(t *testing.T) {
+func TestReconcileStaleManagedCNAMEs_StaleUnderOldSuffix_WarnsAndRetains(t *testing.T) {
 	scriptDir := t.TempDir()
 	scriptPath := filepath.Join(scriptDir, "drop.sh")
 	if err := os.WriteFile(scriptPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
@@ -159,8 +159,12 @@ func TestReconcileStaleManagedCNAMEs_StaleUnderOldSuffix_HardFails(t *testing.T)
 	old := map[string]struct{}{externalFQDN: {}}
 	new_ := map[string]struct{}{}
 
-	_, err := cl.reconcileStaleManagedCNAMEs(app, old, new_)
-	if err == nil {
-		t.Fatal("expected hard-fail when stale CNAME does not match current managed suffix, got nil")
+	persisted, err := cl.reconcileStaleManagedCNAMEs(app, old, new_)
+	if err != nil {
+		t.Fatalf("expected no error when stale CNAME is under old suffix, got: %v", err)
+	}
+	// Entry must be retained in persisted for manual cleanup, not silently dropped.
+	if _, ok := persisted[externalFQDN]; !ok {
+		t.Fatalf("expected stale CNAME %q to be retained in persisted set for manual cleanup, got %v", externalFQDN, persisted)
 	}
 }

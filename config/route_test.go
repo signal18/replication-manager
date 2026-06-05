@@ -622,3 +622,79 @@ func TestValidate_RouteWithoutMonitorBackwardCompat(t *testing.T) {
 		t.Fatalf("backward-compat: unexpected error for route without monitor: %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Asymmetric port-mode route — Normalize preserves explicit ports
+// ---------------------------------------------------------------------------
+
+// TestNormalize_AsymmetricPortRoute verifies that Normalize does not overwrite
+// SourcePort or DestinationPort when they are already set, preserving an
+// intentionally asymmetric port-mode route (SourcePort != DestinationPort).
+//
+// This is the invariant the API handler relies on when rejecting a "port" field
+// edit on an asymmetric route: clearing both derived fields and calling
+// Normalize would silently collapse them to the same value.
+// TestNormalize_LegacyTCPRoute_InferredAsPortMode verifies that Normalize
+// promotes Mode=="" + Protocol=="tcp" to Mode=="port".  The API handler's
+// asymmetry guard uses the same inference so that legacy routes without an
+// explicit mode field cannot bypass the guard.
+func TestNormalize_LegacyTCPRoute_InferredAsPortMode(t *testing.T) {
+	r := Route{
+		// Mode intentionally absent — legacy on-disk format before the mode field.
+		Protocol:        "tcp",
+		CName:           "db.gateway.example.com",
+		SourcePort:      "33060",
+		DestinationPort: "3306",
+	}
+	r.Normalize()
+	if r.Mode != "port" {
+		t.Errorf("expected Mode inferred as %q for tcp route without explicit mode, got %q", "port", r.Mode)
+	}
+}
+
+func TestNormalize_AsymmetricPortRoute_PreservesDistinctPorts(t *testing.T) {
+	r := Route{
+		Mode:            "port",
+		Protocol:        "tcp",
+		CName:           "db.gateway.example.com",
+		Port:            "3306",
+		SourcePort:      "33060",
+		DestinationPort: "3306",
+	}
+	r.Normalize()
+
+	if r.SourcePort != "33060" {
+		t.Errorf("Normalize overwrote SourcePort: got %q, want %q", r.SourcePort, "33060")
+	}
+	if r.DestinationPort != "3306" {
+		t.Errorf("Normalize overwrote DestinationPort: got %q, want %q", r.DestinationPort, "3306")
+	}
+}
+
+// TestNormalize_AsymmetricPortRoute_CollapseAfterClear documents the dangerous
+// pattern that the API handler guards against: explicitly clearing SourcePort
+// and DestinationPort before calling Normalize causes them to be re-derived
+// from Port, making a previously asymmetric route symmetric.
+func TestNormalize_AsymmetricPortRoute_CollapseAfterClear(t *testing.T) {
+	r := Route{
+		Mode:            "port",
+		Protocol:        "tcp",
+		CName:           "db.gateway.example.com",
+		Port:            "9999",
+		SourcePort:      "33060",
+		DestinationPort: "3306",
+	}
+
+	// Simulate the dangerous pattern: clear both derived ports, then Normalize.
+	r.SourcePort = ""
+	r.DestinationPort = ""
+	r.Normalize()
+
+	// Both ports are now equal to Port — the asymmetry is lost.
+	if r.SourcePort != "9999" {
+		t.Errorf("expected SourcePort collapsed to Port value, got %q", r.SourcePort)
+	}
+	if r.DestinationPort != "9999" {
+		t.Errorf("expected DestinationPort collapsed to Port value, got %q", r.DestinationPort)
+	}
+}

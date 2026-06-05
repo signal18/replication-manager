@@ -337,11 +337,9 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 					if c, ok := repman.Clusters[f.Name()]; ok {
 						c.IsGitPull = true
 					}
-					for _, cluster := range repman.Clusters {
-						cluster.SetClusterList(repman.Clusters)
-					}
 					repman.ClusterList = append(repman.ClusterList, f.Name())
 					repman.Unlock()
+					repman.refreshAllPeers()
 				}
 			}
 		}

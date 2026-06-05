@@ -1433,10 +1433,15 @@ func (cluster *Cluster) reconcileStaleManagedCNAMEs(
 		shortLabel, managed := cluster.ManagedHostCNAME(fqdn)
 		if !managed {
 			// The FQDN was recorded under a previous managed suffix (cluster
-			// rename, domain/subdomain/zone config change, etc.).  Refuse to
-			// proceed rather than calling the drop-script with an empty or wrong
-			// label.
-			return nil, fmt.Errorf("stale CNAME %s (app %s) does not match the current managed suffix — the cluster config may have changed; delete %s to reset", fqdn, app.Name, managedCNAMEsFile(app))
+			// rename, domain/subdomain/zone config change, etc.).  Log a warning
+			// and retain the entry rather than aborting the whole reconcile — a
+			// misconfigured drop-script call with an empty label would be worse
+			// than leaving the entry for manual cleanup.
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"Stale CNAME %s (app %s) does not match the current managed suffix — skipping drop; retaining in state for manual cleanup",
+				fqdn, app.Name)
+			persisted[fqdn] = struct{}{}
+			continue
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"Deleting stale managed DNS record %s (app %s)", fqdn, app.Name)

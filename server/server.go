@@ -2958,6 +2958,30 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	return cl, nil
 }
 
+// refreshAllPeers propagates the current cluster map and priority order to
+// every running cluster.  Must be called after any mutation of repman.Clusters
+// or repman.ClusterList (dynamic API add, git auto-discovery) so that
+// cross-cluster lookups stay consistent across all clusters, not just the
+// newly started one.  It is intentionally separate from StartCluster() because
+// callers control when the ClusterList append is done relative to the start —
+// future StartCluster() callers must invoke this helper themselves after the
+// list is fully updated.
+func (repman *ReplicationManager) refreshAllPeers() {
+	repman.Lock()
+	clusterList := make([]string, len(repman.ClusterList))
+	copy(clusterList, repman.ClusterList)
+	clusters := make(map[string]*cluster.Cluster, len(repman.Clusters))
+	for k, v := range repman.Clusters {
+		clusters[k] = v
+	}
+	repman.Unlock()
+
+	for _, cl := range clusters {
+		cl.SetClusterList(clusters)
+		cl.SetClusterOrder(clusterList)
+	}
+}
+
 // recomputeConflictsForGateway performs a full intra- and cross-cluster gateway
 // conflict recomputation for every cluster currently attached to gw.
 // Phase 1 rebuilds each cluster's intra-cluster snapshot; Phase 2 runs

@@ -1326,6 +1326,27 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					}
 					row.CName = cname
 				case "port":
+					effectiveMode := strings.ToLower(strings.TrimSpace(row.Mode))
+					// Mirror Normalize()'s implicit-mode inference so that legacy routes
+					// saved with Mode=="" and Protocol=="tcp" are treated as port mode,
+					// not bypassing the asymmetry guard below.
+					if effectiveMode == "" {
+						if strings.ToLower(strings.TrimSpace(row.Protocol)) == "tcp" {
+							effectiveMode = "port"
+						} else {
+							effectiveMode = "host"
+						}
+					}
+					if effectiveMode == "port" && row.SourcePort != "" && row.DestinationPort != "" && row.SourcePort != row.DestinationPort {
+						// Resetting both derived ports from a single "port" value would
+						// silently collapse an asymmetric route (different SourcePort and
+						// DestinationPort) into a symmetric one.  Reject the edit and
+						// require the caller to use "sourceport" / "destport" explicitly.
+						node.Unlock()
+						gwUnlock()
+						http.Error(w, "use 'sourceport' and 'destport' to edit an asymmetric port-mode route", http.StatusBadRequest)
+						return
+					}
 					row.Port = newValue
 					// Normalize() only copies Port into DestinationPort/SourcePort
 					// when those fields are empty.  After first normalization they are
@@ -1333,7 +1354,6 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					// effective routing port.  Reset the derived fields here so
 					// Normalize() re-derives them from the new Port value.
 					row.DestinationPort = ""
-					effectiveMode := strings.ToLower(strings.TrimSpace(row.Mode))
 					if effectiveMode == "port" {
 						row.SourcePort = ""
 					}
