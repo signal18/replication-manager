@@ -463,11 +463,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSysbench)),
 	))
-	router.Handle("/api/clusters/{clusterName}/sysbench/history", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/sysbench-history", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSysbenchHistory)),
 	))
-	router.Handle("/api/clusters/{clusterName}/sysbench/compare", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/sysbench-compare", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSysbenchCompare)),
 	))

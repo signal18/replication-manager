@@ -703,11 +703,11 @@ function runRegressionTests(clusterName, testName, baseURL) {
 }
 
 function getSysbenchHistory(clusterName, last = 10, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/sysbench/history?last=${last}`)
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/sysbench-history?last=${last}`)
 }
 
 function getSysbenchCompare(clusterName, metric, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/sysbench/compare?metric=${metric}`)
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/sysbench-compare?metric=${metric}`)
 }
 //#endregion Test run APIs
 
