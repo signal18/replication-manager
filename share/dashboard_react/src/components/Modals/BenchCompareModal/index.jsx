@@ -33,7 +33,10 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
   useEffect(() => {
     if (isOpen && clusterName) {
       clusterService.getSysbenchHistory(clusterName, 10, baseURL)
-        .then(res => setRuns(res.data || []))
+        .then(res => {
+          const data = res.data
+          setRuns(Array.isArray(data) ? data : data?.entries || [])
+        })
         .catch(() => setRuns([]))
     }
   }, [isOpen, clusterName, baseURL])
