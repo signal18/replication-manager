@@ -463,6 +463,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSysbench)),
 	))
+	router.Handle("/api/clusters/{clusterName}/sysbench/history", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSysbenchHistory)),
+	))
+	router.Handle("/api/clusters/{clusterName}/sysbench/compare", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSysbenchCompare)),
+	))
 
 	router.Handle("/api/clusters/{clusterName}/actions/waitdatabases", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -6173,6 +6181,52 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 			mycluster.SetSysbenchThreads(r.URL.Query().Get("threads"))
 		}
 		go mycluster.RunSysbench()
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxClusterSysbenchHistory(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+		n := 10
+		if q := r.URL.Query().Get("last"); q != "" {
+			fmt.Sscanf(q, "%d", &n)
+		}
+		runs := mycluster.GetLastSysbenchRuns(n)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(runs)
+	} else {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxClusterSysbenchCompare(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+		metric := r.URL.Query().Get("metric")
+		if metric == "" {
+			metric = "mysql_global_status_questions"
+		}
+		result, err := mycluster.CompareSysbenchRuns(metric, nil)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result)
+	} else {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
 }
 
