@@ -79,6 +79,10 @@ const (
 func ParseRecord(str string) (SysbenchRecord, error) {
 	record := SysbenchRecord{}
 
+	// Normalize: sysbench v1 outputs "lat (ms, 95%)" with a space after comma
+	// but the format expects "lat (ms,95%)" without space
+	str = strings.Replace(str, "(ms, ", "(ms,", 1)
+
 	_, err := fmt.Sscanf(
 		str,
 		recordFormat,
