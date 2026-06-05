@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -82,7 +83,8 @@ func (cluster *Cluster) LoadSysbenchLog() {
 }
 
 // LogSysbenchRun captures the context and results of a sysbench run and appends it to history.
-func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads int, tableSize int, duration int, startedAt time.Time, records []SysbenchRecord) {
+// rawOutput is the full sysbench output for summary parsing when per-second records are empty.
+func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads int, tableSize int, duration int, startedAt time.Time, records []SysbenchRecord, rawOutput string) {
 	dbNodes := len(cluster.Servers) // all database nodes (master + replicas)
 	entry := SysbenchLogEntry{
 		StartedAt:   startedAt,
@@ -124,7 +126,7 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 		entry.ProxyVersion = prx.GetVersion()
 	}
 
-	// Compute averages from records
+	// Compute averages from per-second records
 	if len(records) > 0 {
 		var totalTPS, totalLatency float64
 		var totalErrors int
@@ -136,6 +138,13 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 		entry.AvgTPS = totalTPS / float64(len(records))
 		entry.AvgLatency = totalLatency / float64(len(records))
 		entry.TotalErrors = totalErrors
+	} else if rawOutput != "" {
+		// Fallback: parse the summary output when no per-second lines available
+		if summary := ParseSysbenchSummary(rawOutput); summary != nil {
+			entry.AvgTPS = summary.TPS
+			entry.AvgLatency = summary.AvgLatency
+			entry.TotalErrors = int(summary.Errors)
+		}
 	}
 
 	// TPS per DBU — performance efficiency metric
@@ -153,6 +162,63 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 		"Sysbench run logged: %s/%s threads=%d avgTPS=%.1f avgLatency=%.2fms flavor=%s/%s proxy=%s/%s replicas=%d DBU=%.1f clusterDBU=%.1f TPS/DBU=%.2f tags=%s",
 		testType, testMode, threads, entry.AvgTPS, entry.AvgLatency, entry.DBFlavor, entry.DBVersion,
 		entry.ProxyType, entry.ProxyVersion, entry.Replicas, entry.DBU, entry.ClusterDBU, entry.TPSPerDBU, entry.ConfigTags)
+}
+
+// SysbenchSummary holds parsed values from the sysbench summary output.
+type SysbenchSummary struct {
+	TPS        float64
+	QPS        float64
+	AvgLatency float64
+	P95Latency float64
+	Errors     float64
+	TotalTime  float64
+}
+
+// ParseSysbenchSummary extracts TPS, QPS, latency from the sysbench summary output
+// when per-second progress lines are not available.
+func ParseSysbenchSummary(output string) *SysbenchSummary {
+	s := &SysbenchSummary{}
+
+	// transactions: 21152 (211.45 per sec.)
+	reTPS := regexp.MustCompile(`transactions:\s+\d+\s+\((\d+\.?\d*)\s+per sec`)
+	if m := reTPS.FindStringSubmatch(output); len(m) > 1 {
+		s.TPS, _ = strconv.ParseFloat(m[1], 64)
+	}
+
+	// queries: 423040 (4228.96 per sec.)
+	reQPS := regexp.MustCompile(`queries:\s+\d+\s+\((\d+\.?\d*)\s+per sec`)
+	if m := reQPS.FindStringSubmatch(output); len(m) > 1 {
+		s.QPS, _ = strconv.ParseFloat(m[1], 64)
+	}
+
+	// avg: 37.83
+	reAvg := regexp.MustCompile(`avg:\s+(\d+\.?\d*)`)
+	if m := reAvg.FindStringSubmatch(output); len(m) > 1 {
+		s.AvgLatency, _ = strconv.ParseFloat(m[1], 64)
+	}
+
+	// 95th percentile: 38.94
+	reP95 := regexp.MustCompile(`95th percentile:\s+(\d+\.?\d*)`)
+	if m := reP95.FindStringSubmatch(output); len(m) > 1 {
+		s.P95Latency, _ = strconv.ParseFloat(m[1], 64)
+	}
+
+	// ignored errors: 0 (0.00 per sec.)
+	reErr := regexp.MustCompile(`ignored errors:\s+(\d+)`)
+	if m := reErr.FindStringSubmatch(output); len(m) > 1 {
+		s.Errors, _ = strconv.ParseFloat(m[1], 64)
+	}
+
+	// total time: 100.0327s
+	reTime := regexp.MustCompile(`total time:\s+(\d+\.?\d*)s`)
+	if m := reTime.FindStringSubmatch(output); len(m) > 1 {
+		s.TotalTime, _ = strconv.ParseFloat(m[1], 64)
+	}
+
+	if s.TPS == 0 && s.QPS == 0 {
+		return nil
+	}
+	return s
 }
 
 // SysbenchCompareResult holds multiple runs and a graphite render URL for comparison.

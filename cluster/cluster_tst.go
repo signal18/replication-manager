@@ -336,7 +336,7 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 	mode := "--oltp-test-mode=" + myMode
 
 	var cmdrun *exec.Cmd
-	cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, mode, requests, threads, "run")
+	cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, mode, requests, threads, "--report-interval=1", "run")
 
 	if err := cluster.ensureSysbenchVersionAvailable(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sysbench version check failed: %s", err)
@@ -354,7 +354,7 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 		tablesize = "--table-size=" + mySize
 		threads = "--threads=" + myThreads
 		time = "--time=" + myTime
-		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, threads, "run")
+		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, threads, "--report-interval=1", "run")
 		if cluster.Conf.SysbenchTest == "tpcc" {
 			override := map[string]string{"time": myTime, "threads": myThreads, "tablesize": mySize}
 			cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, cluster.prepareTpccParams(prx, "run", override)...)
@@ -379,7 +379,7 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 	iThreads, _ := strconv.Atoi(myThreads)
 	iTableSize, _ := strconv.Atoi(mySize)
 	iDuration, _ := strconv.Atoi(myTime)
-	cluster.LogSysbenchRun(myTest, myMode, iThreads, iTableSize, iDuration, startedAt, records)
+	cluster.LogSysbenchRun(myTest, myMode, iThreads, iTableSize, iDuration, startedAt, records, string(out))
 
 	return nil
 }
