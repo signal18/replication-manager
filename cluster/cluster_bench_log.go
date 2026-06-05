@@ -8,7 +8,9 @@ package cluster
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -151,4 +153,106 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 		"Sysbench run logged: %s/%s threads=%d avgTPS=%.1f avgLatency=%.2fms flavor=%s/%s proxy=%s/%s replicas=%d DBU=%.1f clusterDBU=%.1f TPS/DBU=%.2f tags=%s",
 		testType, testMode, threads, entry.AvgTPS, entry.AvgLatency, entry.DBFlavor, entry.DBVersion,
 		entry.ProxyType, entry.ProxyVersion, entry.Replicas, entry.DBU, entry.ClusterDBU, entry.TPSPerDBU, entry.ConfigTags)
+}
+
+// SysbenchCompareResult holds multiple runs and a graphite render URL for comparison.
+type SysbenchCompareResult struct {
+	Runs        []SysbenchLogEntry `json:"runs"`
+	Metric      string             `json:"metric"`
+	GraphiteURL string             `json:"graphiteUrl"`
+}
+
+// GetLastSysbenchRuns returns the last N runs from history (most recent first).
+func (cluster *Cluster) GetLastSysbenchRuns(n int) []SysbenchLogEntry {
+	entries := cluster.SysbenchHistory.Entries
+	if n <= 0 || n > 10 {
+		n = 10
+	}
+	if len(entries) < n {
+		n = len(entries)
+	}
+	// Return most recent first
+	result := make([]SysbenchLogEntry, n)
+	for i := 0; i < n; i++ {
+		result[i] = entries[len(entries)-1-i]
+	}
+	return result
+}
+
+// CompareSysbenchRuns builds a graphite render URL that overlays a chosen metric
+// from the selected runs, using timeShift to align all runs to the most recent one.
+// metric is a graphite metric suffix like "mysql_global_status_questions".
+// runIndices are positions in the history (0 = oldest). Pass nil for last 10.
+func (cluster *Cluster) CompareSysbenchRuns(metric string, runIndices []int) (*SysbenchCompareResult, error) {
+	entries := cluster.SysbenchHistory.Entries
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("no sysbench runs recorded")
+	}
+
+	// Default: last 10 runs
+	if len(runIndices) == 0 {
+		start := len(entries) - 10
+		if start < 0 {
+			start = 0
+		}
+		for i := start; i < len(entries); i++ {
+			runIndices = append(runIndices, i)
+		}
+	}
+
+	// Validate indices and collect runs
+	var runs []SysbenchLogEntry
+	for _, idx := range runIndices {
+		if idx < 0 || idx >= len(entries) {
+			return nil, fmt.Errorf("run index %d out of range (0-%d)", idx, len(entries)-1)
+		}
+		runs = append(runs, entries[idx])
+	}
+
+	result := &SysbenchCompareResult{
+		Runs:   runs,
+		Metric: metric,
+	}
+
+	// Build graphite render URL
+	apiURL := cluster.graphiteAPIURL()
+	if apiURL == "" {
+		return result, nil
+	}
+	master := cluster.GetMaster()
+	if master == nil {
+		return result, nil
+	}
+	hostname := master.graphiteHostname()
+	fullMetric := fmt.Sprintf("mysql.%s.%s", hostname, metric)
+
+	// Align all runs to the most recent one's time window
+	newest := runs[0]
+	for _, r := range runs {
+		if r.StartedAt.After(newest.StartedAt) {
+			newest = r
+		}
+	}
+
+	u, _ := url.Parse(apiURL + "/render/")
+	q := u.Query()
+	q.Set("format", "json")
+	q.Set("noCache", "1")
+	q.Set("from", strconv.FormatInt(newest.StartedAt.Unix(), 10))
+	q.Set("until", strconv.FormatInt(newest.EndedAt.Unix(), 10))
+
+	for i, run := range runs {
+		label := fmt.Sprintf("Run%d %s %dt %s/%s", i+1, run.TestType, run.Threads, run.DBFlavor, run.DBVersion)
+		if run.StartedAt.Equal(newest.StartedAt) {
+			q.Add("target", fmt.Sprintf("alias(%s,'%s')", fullMetric, label))
+		} else {
+			shift := newest.StartedAt.Sub(run.StartedAt)
+			q.Add("target", fmt.Sprintf("alias(timeShift(%s,'%ds'),'%s')", fullMetric, int(shift.Seconds()), label))
+		}
+	}
+
+	u.RawQuery = q.Encode()
+	result.GraphiteURL = u.String()
+
+	return result, nil
 }
