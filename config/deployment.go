@@ -748,6 +748,9 @@ func (r *Route) Validate() error {
 		if r.CName == "" {
 			return errors.New("host route requires a cname")
 		}
+		if strings.HasPrefix(r.CName, "*") {
+			return fmt.Errorf("host route cname cannot start with '*', got %q", r.CName)
+		}
 		if r.DestinationPort == "" {
 			return errors.New("host route requires a destination port")
 		}
@@ -757,6 +760,9 @@ func (r *Route) Validate() error {
 		}
 		if r.CName == "" {
 			return errors.New("port route requires a cname so the gateway listener can be resolved")
+		}
+		if strings.HasPrefix(r.CName, "*") {
+			return fmt.Errorf("port route cname cannot start with '*', got %q", r.CName)
 		}
 		if r.SourcePort == "" {
 			return errors.New("port route requires a source port")

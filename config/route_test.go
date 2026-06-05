@@ -53,6 +53,18 @@ func TestValidate_HostRouteRequiresCName(t *testing.T) {
 	}
 }
 
+func TestValidate_HostRouteRejectsWildcardCName(t *testing.T) {
+	r := Route{
+		Mode:            "host",
+		Protocol:        "https",
+		CName:           "*.api.example.com",
+		DestinationPort: "80",
+	}
+	if err := r.Validate(); err == nil {
+		t.Fatal("expected validation error for host route with wildcard cname, got nil")
+	}
+}
+
 func TestValidate_PortRouteRejectsColonInSourcePort(t *testing.T) {
 	r := Route{
 		Mode:            "port",
@@ -63,6 +75,19 @@ func TestValidate_PortRouteRejectsColonInSourcePort(t *testing.T) {
 	}
 	if err := r.Validate(); err == nil {
 		t.Fatal("expected error for colon in sourcePort, got nil")
+	}
+}
+
+func TestValidate_PortRouteRejectsWildcardCName(t *testing.T) {
+	r := Route{
+		Mode:            "port",
+		Protocol:        "http",
+		CName:           "*.gw.example.com",
+		SourcePort:      "9000",
+		DestinationPort: "9000",
+	}
+	if err := r.Validate(); err == nil {
+		t.Fatal("expected validation error for port route with wildcard cname, got nil")
 	}
 }
 
