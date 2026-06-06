@@ -183,6 +183,18 @@ export const clusterService = {
   storageFieldIndexAdd,
   storageFieldIndexDrop,
 
+  // Canonical storage v2 APIs
+  getCanonicalStorage,
+  addCanonicalVolume,
+  updateCanonicalVolume,
+  dropCanonicalVolume,
+  addCanonicalSource,
+  updateCanonicalSource,
+  dropCanonicalSource,
+  addCanonicalMount,
+  updateCanonicalMount,
+  dropCanonicalMount,
+
   connectDockerRegistry,
   getClusterPlugins,
 
@@ -842,6 +854,38 @@ function storageFieldIndexAdd(clusterName, appId, field, value, baseURL) {
 }
 function storageFieldIndexDrop(clusterName, appId, field, index, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/storages/${field}/index/${index}/drop`)
+}
+
+// Canonical storage v2 API (apps with storageLayoutVersion >= 2)
+function getCanonicalStorage(clusterName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/canonical/storage`)
+}
+function addCanonicalVolume(clusterName, appId, vol, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/canonical/volumes`, vol)
+}
+function updateCanonicalVolume(clusterName, appId, volName, vol, baseURL) {
+  return getApi(baseURL).put(`clusters/${clusterName}/apps/${appId}/canonical/volumes/${encodeURIComponent(volName)}`, vol)
+}
+function dropCanonicalVolume(clusterName, appId, volName, baseURL) {
+  return getApi(baseURL).delete(`clusters/${clusterName}/apps/${appId}/canonical/volumes/${encodeURIComponent(volName)}`)
+}
+function addCanonicalSource(clusterName, appId, src, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/canonical/sources`, src)
+}
+function updateCanonicalSource(clusterName, appId, srcName, src, baseURL) {
+  return getApi(baseURL).put(`clusters/${clusterName}/apps/${appId}/canonical/sources/${encodeURIComponent(srcName)}`, src)
+}
+function dropCanonicalSource(clusterName, appId, srcName, baseURL) {
+  return getApi(baseURL).delete(`clusters/${clusterName}/apps/${appId}/canonical/sources/${encodeURIComponent(srcName)}`)
+}
+function addCanonicalMount(clusterName, appId, mount, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/canonical/mounts`, mount)
+}
+function updateCanonicalMount(clusterName, appId, targetPath, mount, baseURL) {
+  return getApi(baseURL).put(`clusters/${clusterName}/apps/${appId}/canonical/mounts/${encodeURIComponent(targetPath)}`, mount)
+}
+function dropCanonicalMount(clusterName, appId, targetPath, baseURL) {
+  return getApi(baseURL).delete(`clusters/${clusterName}/apps/${appId}/canonical/mounts/${encodeURIComponent(targetPath)}`)
 }
 //#endregion App management APIs
 

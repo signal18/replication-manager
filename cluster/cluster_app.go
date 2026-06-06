@@ -502,6 +502,23 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 			}
 			return fmt.Errorf("invalid deployment path mapping in app config %q", filename)
 		}
+		// Auto-migrate legacy storage model to canonical v2 on every load.
+		// The migrated in-memory state will be persisted on the next save boundary.
+		defaultSize := appcnf.ProvAppDisk
+		if migrateErr := config.EnsureCanonicalStorage(appcnf.Deployment, defaultSize); migrateErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
+				"App config %q storage auto-migration failed (legacy config preserved): %v", filename, migrateErr)
+		}
+		// For already-canonical configs (v2 on disk), EnsureCanonicalStorage is a
+		// no-op.  Run an explicit validation pass so malformed canonical configs are
+		// caught at load time rather than silently failing later during provisioning.
+		if appcnf.Deployment.IsCanonical() {
+			if valErr := appcnf.Deployment.ValidateCanonicalStorage(); valErr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
+					"App config %q canonical storage is invalid: %v — fix config before restarting", filename, valErr)
+				return fmt.Errorf("invalid canonical storage in app config %q: %w", filename, valErr)
+			}
+		}
 		// Normalize routes eagerly so in-memory state always has canonical
 		// mode/sourcePort/destPort values, regardless of how old the TOML is.
 		appcnf.Deployment.NormalizeRoutes()

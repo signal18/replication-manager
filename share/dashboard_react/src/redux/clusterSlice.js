@@ -2358,6 +2358,166 @@ export const storageFieldIndexDrop = createGuardedAsyncThunk(
   }
 )
 
+// ---------------------------------------------------------------------------
+// Canonical storage v2 thunks
+// ---------------------------------------------------------------------------
+
+const canonicalRefresh = (clusterName, appId, thunkAPI) =>
+  thunkAPI.dispatch(getAppService({ clusterName, serviceName: 'deployment', appId }))
+
+export const addCanonicalVolume = createGuardedAsyncThunk(
+  'cluster/addCanonicalVolume',
+  async ({ clusterName, appId, vol }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.addCanonicalVolume(clusterName, appId, vol, baseURL)
+      if (status !== 200) throw new Error(data?.message || data)
+      showSuccessBanner('Canonical volume added!', status, thunkAPI)
+      canonicalRefresh(clusterName, appId, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error adding canonical volume', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const updateCanonicalVolume = createGuardedAsyncThunk(
+  'cluster/updateCanonicalVolume',
+  async ({ clusterName, appId, volName, vol }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.updateCanonicalVolume(clusterName, appId, volName, vol, baseURL)
+      if (status !== 200) throw new Error(data?.message || data)
+      showSuccessBanner('Canonical volume updated!', status, thunkAPI)
+      canonicalRefresh(clusterName, appId, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error updating canonical volume', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const dropCanonicalVolume = createGuardedAsyncThunk(
+  'cluster/dropCanonicalVolume',
+  async ({ clusterName, appId, volName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.dropCanonicalVolume(clusterName, appId, volName, baseURL)
+      if (status !== 200) throw new Error(data?.message || data)
+      showSuccessBanner('Canonical volume removed!', status, thunkAPI)
+      canonicalRefresh(clusterName, appId, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error removing canonical volume', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const addCanonicalSource = createGuardedAsyncThunk(
+  'cluster/addCanonicalSource',
+  async ({ clusterName, appId, src }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.addCanonicalSource(clusterName, appId, src, baseURL)
+      if (status !== 200) throw new Error(data?.message || data)
+      showSuccessBanner('Canonical source added!', status, thunkAPI)
+      canonicalRefresh(clusterName, appId, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error adding canonical source', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const updateCanonicalSource = createGuardedAsyncThunk(
+  'cluster/updateCanonicalSource',
+  async ({ clusterName, appId, srcName, src }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.updateCanonicalSource(clusterName, appId, srcName, src, baseURL)
+      if (status !== 200) throw new Error(data?.message || data)
+      showSuccessBanner('Canonical source updated!', status, thunkAPI)
+      canonicalRefresh(clusterName, appId, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error updating canonical source', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const dropCanonicalSource = createGuardedAsyncThunk(
+  'cluster/dropCanonicalSource',
+  async ({ clusterName, appId, srcName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.dropCanonicalSource(clusterName, appId, srcName, baseURL)
+      if (status !== 200) throw new Error(data?.message || data)
+      showSuccessBanner('Canonical source removed!', status, thunkAPI)
+      canonicalRefresh(clusterName, appId, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error removing canonical source', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const addCanonicalMount = createGuardedAsyncThunk(
+  'cluster/addCanonicalMount',
+  async ({ clusterName, appId, mount }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.addCanonicalMount(clusterName, appId, mount, baseURL)
+      if (status !== 200) throw new Error(data?.message || data)
+      showSuccessBanner('Canonical mount added!', status, thunkAPI)
+      canonicalRefresh(clusterName, appId, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error adding canonical mount', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const updateCanonicalMount = createGuardedAsyncThunk(
+  'cluster/updateCanonicalMount',
+  async ({ clusterName, appId, targetPath, mount }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.updateCanonicalMount(clusterName, appId, targetPath, mount, baseURL)
+      if (status !== 200) throw new Error(data?.message || data)
+      showSuccessBanner('Canonical mount updated!', status, thunkAPI)
+      canonicalRefresh(clusterName, appId, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error updating canonical mount', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const dropCanonicalMount = createGuardedAsyncThunk(
+  'cluster/dropCanonicalMount',
+  async ({ clusterName, appId, targetPath }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.dropCanonicalMount(clusterName, appId, targetPath, baseURL)
+      if (status !== 200) throw new Error(data?.message || data)
+      showSuccessBanner('Canonical mount removed!', status, thunkAPI)
+      canonicalRefresh(clusterName, appId, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error removing canonical mount', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const connectDockerRegistry = createGuardedAsyncThunk(
   'cluster/connectDockerRegistry',
   async ({ clusterName, dockerRegistry }, thunkAPI) => {

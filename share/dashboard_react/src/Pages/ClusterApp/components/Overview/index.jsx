@@ -1,5 +1,5 @@
 
-import { Heading, VStack, HStack, Flex, Text } from "@chakra-ui/react";
+import { Heading, VStack, HStack, Flex, Text, Alert, AlertIcon, AlertDescription } from "@chakra-ui/react";
 import { useDispatch, useSelector } from "react-redux";
 import styles from "./styles.module.scss";
 import AccordionComponent from "../../../../components/AccordionComponent";
@@ -84,6 +84,7 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
         }
       }, [clusterName, appId, field, index, dispatch, handleCloseConfirm]);
 
+    const isCanonical = (deployment?.storageLayoutVersion || 0) >= 2;
     const routes = useMemo(() => deployment?.routes || [], [deployment]);
     const storages = useMemo(() => deployment?.storages || {}, [deployment]);
     const gitClones = useMemo(() => storages?.gitClones || [], [storages]);
@@ -134,10 +135,20 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
                         heading={'ENV Variables'}
                         body={variableComponent}
                     />
-                    <AccordionComponent
-                        heading={'Storage Mappings'}
-                        body={pathComponent}
-                    />
+                    {isCanonical ? (
+                        <Alert status="info" borderRadius="md">
+                            <AlertIcon />
+                            <AlertDescription fontSize="sm">
+                                Storage paths are managed via the <strong>Storage</strong> tab (canonical v2 mode).
+                                Edit storage mappings there instead.
+                            </AlertDescription>
+                        </Alert>
+                    ) : (
+                        <AccordionComponent
+                            heading={'Storage Mappings'}
+                            body={pathComponent}
+                        />
+                    )}
                     <ConfirmModal
                         isOpen={isConfirmOpen}
                         closeModal={handleCloseConfirm}

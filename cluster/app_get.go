@@ -357,6 +357,42 @@ func (app *App) GetAppVolumeName(pool string, resolved bool) string {
 	return fmt.Sprintf("{name}-%s", pool)
 }
 
+// GetAppVolumeNamePerVolume returns a stable, identity-based OpenSVC volume name
+// derived from the app name and the canonical volume name (not the pool).
+//
+//	per-volume:  {app}-vol-{volName}  (template: {name}-vol-{volName})
+func (app *App) GetAppVolumeNamePerVolume(volName string, resolved bool) string {
+	if resolved {
+		return fmt.Sprintf("%s-vol-%s", app.Name, volName)
+	}
+	return fmt.Sprintf("{name}-vol-%s", volName)
+}
+
+// GetRuntimeVolumeName returns the OpenSVC runtime volume name for a canonical AppVolume,
+// branching on the app's PhysicalVolumeStrategy.
+func (app *App) GetRuntimeVolumeName(vol *config.AppVolume, resolved bool) string {
+	appcnf := app.GetAppConfig()
+	if appcnf == nil {
+		return app.GetAppVolumeNamePerVolume(vol.Name, resolved)
+	}
+	switch appcnf.Deployment.PhysicalVolumeStrategy {
+	case config.PhysicalVolumeStrategyLegacyPooled:
+		return app.GetAppVolumeName(vol.Pool, resolved)
+	default:
+		return app.GetAppVolumeNamePerVolume(vol.Name, resolved)
+	}
+}
+
+// GetCanonicalVolumes returns all canonical AppVolumes.  Returns nil when the
+// deployment has not been migrated to v2.
+func (app *App) GetCanonicalVolumes() config.AppVolumes {
+	appcnf := app.GetAppConfig()
+	if appcnf == nil || !appcnf.Deployment.IsCanonical() {
+		return nil
+	}
+	return appcnf.Deployment.AppVolumes
+}
+
 func (app *App) GetS3Mount(name string) (*config.S3Mount, int) {
 	appcnf := app.GetAppConfig()
 	if appcnf == nil {
@@ -384,7 +420,25 @@ func (app *App) GetVolumes(resolved bool) []string {
 		return volumes
 	}
 
-	for _, v := range app.AppConfig.Deployment.Storages.Volumes {
+	d := app.AppConfig.Deployment
+
+	// For canonical deployments use AppVolumes + strategy-aware naming.
+	if d.IsCanonical() && len(d.AppVolumes) > 0 {
+		for _, v := range d.AppVolumes {
+			if v.Name == "" {
+				continue
+			}
+			volumeName := app.GetRuntimeVolumeName(v, resolved)
+			if !distinctVolumes[volumeName] {
+				volumes = append(volumes, volumeName)
+				distinctVolumes[volumeName] = true
+			}
+		}
+		return volumes
+	}
+
+	// Legacy path: pool-grouped naming.
+	for _, v := range d.Storages.Volumes {
 		if v.Name != "" {
 			volumeName := app.GetAppVolumeName(v.PoolName, resolved)
 			if _, exists := distinctVolumes[volumeName]; !exists {

@@ -154,6 +154,71 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropStorageFieldRow)),
 	))
+
+	// Canonical storage v2 CRUD — volumes
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/canonical/volumes", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCanonicalVolumesList)),
+	)).Methods("GET")
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/canonical/volumes", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCanonicalVolumesAdd)),
+	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/canonical/volumes/{volName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCanonicalVolumesUpdate)),
+	)).Methods("PUT")
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/canonical/volumes/{volName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCanonicalVolumesDrop)),
+	)).Methods("DELETE")
+
+	// Canonical storage v2 CRUD — sources
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/canonical/sources", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCanonicalSourcesList)),
+	)).Methods("GET")
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/canonical/sources", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCanonicalSourcesAdd)),
+	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/canonical/sources/{srcName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCanonicalSourcesUpdate)),
+	)).Methods("PUT")
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/canonical/sources/{srcName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCanonicalSourcesDrop)),
+	)).Methods("DELETE")
+
+	// Canonical storage v2 CRUD — mounts
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/canonical/mounts", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCanonicalMountsList)),
+	)).Methods("GET")
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/canonical/mounts", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCanonicalMountsAdd)),
+	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/canonical/mounts/{targetPath:.*}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCanonicalMountsUpdate)),
+	)).Methods("PUT")
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/canonical/mounts/{targetPath:.*}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCanonicalMountsDrop)),
+	)).Methods("DELETE")
+
+	// Canonical storage — storage overview + migrate
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/canonical/storage", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCanonicalStorageGet)),
+	)).Methods("GET")
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/canonical/storage/actions/migrate", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCanonicalStorageMigrate)),
+	)).Methods("POST")
+
 	router.Handle("/api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/get-repo-tree", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGitRepoTree)),
@@ -516,6 +581,102 @@ func hydrateS3MountFromProvider(mycluster *cluster.Cluster, mount *config.S3Moun
 			mount.Region = region.Value
 		} else {
 			mount.Region = ""
+		}
+	default:
+		return fmt.Errorf("unsupported provider source %q", provider.ProviderSource)
+	}
+
+	return nil
+}
+
+// validateCanonicalS3Source enforces S3 source correctness for non-provider-linked
+// sources, mirroring the legacy S3 mount validation in handlerMuxAddStorage.
+// It also hydrates endpoint/credentials when the endpoint resolves to a sibling app.
+// For provider-linked sources (src.ProviderName != "") this is a no-op; hydration
+// is expected to have already been done by hydrateCanonicalS3SourceFromProvider.
+func validateCanonicalS3Source(mycluster *cluster.Cluster, src *config.AppSource) error {
+	if strings.TrimSpace(src.ProviderName) != "" {
+		return nil
+	}
+	if strings.TrimSpace(src.Endpoint) == "" {
+		return fmt.Errorf("S3 source requires either providerName or endpoint")
+	}
+	s3node, _ := mycluster.GetAppByURL(src.Endpoint)
+	if s3node != nil {
+		acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
+		if err != nil || acckey == nil {
+			return fmt.Errorf("S3 endpoint app does not have MINIO_ROOT_USER variable set")
+		}
+		secretkey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_PASSWORD", false)
+		if err != nil || secretkey == nil {
+			return fmt.Errorf("S3 endpoint app does not have MINIO_ROOT_PASSWORD variable set")
+		}
+		src.AccessKey = acckey.Value
+		src.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(src.Name, secretkey.Value))
+		region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
+		if region != nil {
+			src.Region = region.Value
+		} else {
+			src.Region = ""
+		}
+		return nil
+	}
+	// Custom standalone endpoint: both credentials must be present.
+	return validateStandaloneCustomEndpointCredentials(src.AccessKey, src.SecretKey)
+}
+
+// hydrateCanonicalS3SourceFromProvider applies provider-managed fields to a
+// provider-linked canonical AppSource{Type:s3}, mirroring hydrateS3MountFromProvider.
+func hydrateCanonicalS3SourceFromProvider(mycluster *cluster.Cluster, src *config.AppSource) error {
+	if src == nil {
+		return fmt.Errorf("canonical S3 source is nil")
+	}
+	providerName := strings.TrimSpace(src.ProviderName)
+	if providerName == "" {
+		return nil
+	}
+
+	var provider *config.S3Provider
+	for _, p := range mycluster.GetS3ProvidersSnapshot() {
+		if p.Name == providerName {
+			cp := p
+			provider = &cp
+			break
+		}
+	}
+	if provider == nil {
+		return fmt.Errorf("provider %q not found", providerName)
+	}
+
+	switch provider.ProviderSource {
+	case config.S3ProviderSourceCustom:
+		src.Endpoint = provider.Endpoint
+		src.Region = provider.Region
+		src.AccessKey = provider.AccessKey
+		src.SecretKey = provider.SecretKey
+	case config.S3ProviderSourceApp:
+		s3node, _ := mycluster.GetAppByURL(provider.ProviderApp)
+		if s3node == nil {
+			return fmt.Errorf("provider %q references unknown app endpoint %q", providerName, provider.ProviderApp)
+		}
+		acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
+		if err != nil || acckey == nil {
+			return fmt.Errorf("S3 endpoint app does not have MINIO_ROOT_USER variable set")
+		}
+		secretkey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_PASSWORD", false)
+		if err != nil || secretkey == nil {
+			return fmt.Errorf("S3 endpoint app does not have MINIO_ROOT_PASSWORD variable set")
+		}
+
+		src.Endpoint = provider.ProviderApp
+		src.AccessKey = acckey.Value
+		src.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(src.Name, secretkey.Value))
+
+		region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
+		if region != nil {
+			src.Region = region.Value
+		} else {
+			src.Region = ""
 		}
 	default:
 		return fmt.Errorf("unsupported provider source %q", provider.ProviderSource)
@@ -1569,6 +1730,10 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				}
 				node.AppConfig.Deployment.Variables[index] = row
 			case "paths":
+				if node.AppConfig.Deployment.IsCanonical() {
+					http.Error(w, "canonical app: use /canonical/mounts endpoints instead", http.StatusBadRequest)
+					return
+				}
 				if index >= len(node.AppConfig.Deployment.Paths) {
 					http.Error(w, "Index out of range for paths", http.StatusInternalServerError)
 					return
@@ -1922,6 +2087,10 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		affected = true
 
 	case "paths":
+		if node.AppConfig.Deployment.IsCanonical() {
+			http.Error(w, "canonical app: use /canonical/mounts endpoints instead", http.StatusBadRequest)
+			return
+		}
 		var body []config.PathMapping
 		body, err := decodeSlice[config.PathMapping](r, w, "path")
 		if err != nil {
@@ -2096,6 +2265,10 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 		}
 		node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables[:index], node.AppConfig.Deployment.Variables[index+1:]...)
 	case "paths":
+		if node.AppConfig.Deployment.IsCanonical() {
+			http.Error(w, "canonical app: use /canonical/mounts endpoints instead", http.StatusBadRequest)
+			return
+		}
 		if index >= len(node.AppConfig.Deployment.Paths) {
 			http.Error(w, "Index out of range for path", http.StatusInternalServerError)
 			return
@@ -2150,6 +2323,10 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 	node := mycluster.GetAppFromName(vars["appName"])
 	if node == nil {
 		http.Error(w, "Server Not Found", http.StatusInternalServerError)
+		return
+	}
+	if node.AppConfig.Deployment.IsCanonical() {
+		http.Error(w, "canonical app: use /canonical/sources, /canonical/volumes, /canonical/mounts endpoints instead", http.StatusBadRequest)
 		return
 	}
 	deployment := node.AppConfig.Deployment
@@ -2321,6 +2498,11 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
+			if node.AppConfig.Deployment.IsCanonical() {
+				http.Error(w, "canonical app: use /canonical/sources, /canonical/volumes, /canonical/mounts endpoints instead", http.StatusBadRequest)
+				return
+			}
+
 			var newValue string
 
 			type FieldValue struct {
@@ -2772,6 +2954,11 @@ func (repman *ReplicationManager) handlerMuxDropStorageFieldRow(w http.ResponseW
 	node := mycluster.GetAppFromName(vars["appName"])
 	if node == nil {
 		http.Error(w, "Server Not Found", http.StatusInternalServerError)
+		return
+	}
+
+	if node.AppConfig.Deployment.IsCanonical() {
+		http.Error(w, "canonical app: use /canonical/sources, /canonical/volumes, /canonical/mounts endpoints instead", http.StatusBadRequest)
 		return
 	}
 
@@ -4137,4 +4324,393 @@ func (repman *ReplicationManager) handlerMuxAppDropByName(w http.ResponseWriter,
 		return
 	}
 
+}
+
+// ---------------------------------------------------------------------------
+// Canonical storage v2 — helper
+// ---------------------------------------------------------------------------
+
+// canonicalStoragePrelude resolves and validates the cluster/app for canonical
+// storage endpoints, and auto-migrates the deployment to v2 if needed.
+// It writes the appropriate HTTP error and returns nil on failure.
+func (repman *ReplicationManager) canonicalStoragePrelude(w http.ResponseWriter, r *http.Request) (*cluster.Cluster, *cluster.App) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster not found", http.StatusNotFound)
+		return nil, nil
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return nil, nil
+	}
+	node := mycluster.GetAppFromName(vars["appName"])
+	if node == nil {
+		http.Error(w, "App not found", http.StatusNotFound)
+		return nil, nil
+	}
+	if node.AppConfig == nil || node.AppConfig.Deployment == nil {
+		http.Error(w, "App has no deployment config", http.StatusInternalServerError)
+		return nil, nil
+	}
+	// Auto-migrate to canonical v2 so CRUD always operates on canonical data.
+	defaultSize := node.AppConfig.ProvAppDisk
+	if err := config.EnsureCanonicalStorage(node.AppConfig.Deployment, defaultSize); err != nil {
+		http.Error(w, "Storage migration required before CRUD: "+err.Error(), http.StatusInternalServerError)
+		return nil, nil
+	}
+	return mycluster, node
+}
+
+// canonicalStorageSave validates canonical storage integrity, keeps legacy
+// read-model shadows in sync, and then persists.
+func (repman *ReplicationManager) canonicalStorageSave(w http.ResponseWriter, mycluster *cluster.Cluster, node *cluster.App, msg string) {
+	if err := node.AppConfig.Deployment.ValidateCanonicalStorage(); err != nil {
+		http.Error(w, "Canonical storage validation failed: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	// Regenerate legacy Storages.*/Paths fields so readers that have not yet
+	// been migrated to the canonical endpoints see up-to-date data.
+	node.AppConfig.Deployment.SyncLegacyShadows()
+	mycluster.EnqueueRefreshAppTemplateMD5(node)
+	mycluster.ConfigManager.SaveConfig(mycluster, false)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": msg})
+}
+
+// ---------------------------------------------------------------------------
+// Canonical storage v2 — overview + migrate
+// ---------------------------------------------------------------------------
+
+func (repman *ReplicationManager) handlerMuxCanonicalStorageGet(w http.ResponseWriter, r *http.Request) {
+	mycluster, node := repman.canonicalStoragePrelude(w, r)
+	if mycluster == nil {
+		return
+	}
+	_ = mycluster
+	d := node.AppConfig.Deployment
+	type response struct {
+		StorageLayoutVersion   config.StorageLayoutVersion   `json:"storageLayoutVersion"`
+		PhysicalVolumeStrategy config.PhysicalVolumeStrategy `json:"physicalVolumeStrategy"`
+		AppVolumes             config.AppVolumes             `json:"appVolumes"`
+		AppSources             config.AppSources             `json:"appSources"`
+		AppMounts              config.AppMounts              `json:"appMounts"`
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response{
+		StorageLayoutVersion:   d.StorageLayoutVersion,
+		PhysicalVolumeStrategy: d.PhysicalVolumeStrategy,
+		AppVolumes:             d.AppVolumes,
+		AppSources:             d.AppSources,
+		AppMounts:              d.AppMounts,
+	})
+}
+
+func (repman *ReplicationManager) handlerMuxCanonicalStorageMigrate(w http.ResponseWriter, r *http.Request) {
+	// canonicalStoragePrelude already guarantees the deployment is at v2 by calling
+	// EnsureCanonicalStorage.  Always save so the migrated model is durable — calling
+	// this endpoint on an already-canonical deployment is idempotent.
+	mycluster, node := repman.canonicalStoragePrelude(w, r)
+	if mycluster == nil {
+		return
+	}
+	repman.canonicalStorageSave(w, mycluster, node, "storage migrated to canonical v2 model")
+}
+
+// ---------------------------------------------------------------------------
+// Canonical storage v2 — volumes
+// ---------------------------------------------------------------------------
+
+func (repman *ReplicationManager) handlerMuxCanonicalVolumesList(w http.ResponseWriter, r *http.Request) {
+	_, node := repman.canonicalStoragePrelude(w, r)
+	if node == nil {
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	vols := node.AppConfig.Deployment.AppVolumes
+	if vols == nil {
+		vols = config.AppVolumes{}
+	}
+	json.NewEncoder(w).Encode(vols)
+}
+
+// validateCanonicalVolumeShared checks that if vol.Shared is set, the named pool
+// actually supports sharing according to the current OpenSVC pool list.
+// This is a best-effort check: if pool info is unavailable (OpenSVC unreachable or
+// pool not listed), the call returns nil to avoid blocking offline operations.
+func validateCanonicalVolumeShared(mycluster *cluster.Cluster, vol *config.AppVolume) error {
+	if !vol.Shared || vol.Pool == "" {
+		return nil
+	}
+	pools, err := mycluster.OpenSVCGetPoolInfoListFresh()
+	if err != nil {
+		return nil // pool info unavailable; skip validation
+	}
+	for _, p := range pools {
+		if p.Name == vol.Pool {
+			if !p.Shared {
+				return fmt.Errorf("volume %q sets Shared=true but pool %q does not support sharing", vol.Name, vol.Pool)
+			}
+			return nil
+		}
+	}
+	return nil // pool not in list; provisioning will catch it
+}
+
+func (repman *ReplicationManager) handlerMuxCanonicalVolumesAdd(w http.ResponseWriter, r *http.Request) {
+	mycluster, node := repman.canonicalStoragePrelude(w, r)
+	if mycluster == nil {
+		return
+	}
+	vol, err := decodeStruct[config.AppVolume](r, w, "canonical volume")
+	if err != nil {
+		return
+	}
+	if err := validateCanonicalVolumeShared(mycluster, vol); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := node.AppConfig.Deployment.InsertAppVolume(vol); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	repman.canonicalStorageSave(w, mycluster, node, "canonical volume added")
+}
+
+func (repman *ReplicationManager) handlerMuxCanonicalVolumesUpdate(w http.ResponseWriter, r *http.Request) {
+	mycluster, node := repman.canonicalStoragePrelude(w, r)
+	if mycluster == nil {
+		return
+	}
+	vars := mux.Vars(r)
+	vol, err := decodeStruct[config.AppVolume](r, w, "canonical volume")
+	if err != nil {
+		return
+	}
+	if err := validateCanonicalVolumeShared(mycluster, vol); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := node.AppConfig.Deployment.UpdateAppVolume(vars["volName"], vol); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	repman.canonicalStorageSave(w, mycluster, node, "canonical volume updated")
+}
+
+func (repman *ReplicationManager) handlerMuxCanonicalVolumesDrop(w http.ResponseWriter, r *http.Request) {
+	mycluster, node := repman.canonicalStoragePrelude(w, r)
+	if mycluster == nil {
+		return
+	}
+	vars := mux.Vars(r)
+	if err := node.AppConfig.Deployment.DropAppVolume(vars["volName"]); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	repman.canonicalStorageSave(w, mycluster, node, "canonical volume removed")
+}
+
+// ---------------------------------------------------------------------------
+// Canonical storage v2 — sources
+// ---------------------------------------------------------------------------
+
+func (repman *ReplicationManager) handlerMuxCanonicalSourcesList(w http.ResponseWriter, r *http.Request) {
+	_, node := repman.canonicalStoragePrelude(w, r)
+	if node == nil {
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	srcs := node.AppConfig.Deployment.AppSources
+	if srcs == nil {
+		srcs = config.AppSources{}
+	}
+	json.NewEncoder(w).Encode(srcs)
+}
+
+func (repman *ReplicationManager) handlerMuxCanonicalSourcesAdd(w http.ResponseWriter, r *http.Request) {
+	mycluster, node := repman.canonicalStoragePrelude(w, r)
+	if mycluster == nil {
+		return
+	}
+	src, err := decodeStruct[config.AppSource](r, w, "canonical source")
+	if err != nil {
+		return
+	}
+	// For provider-linked S3 sources, hydrate endpoint/credentials from the provider
+	// before saving (mirrors the legacy hydrateS3MountFromProvider flow).
+	if src.Type == config.AppSourceS3 && src.ProviderName != "" {
+		if err := hydrateCanonicalS3SourceFromProvider(mycluster, src); err != nil {
+			http.Error(w, "S3 provider hydration failed: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	// For all S3 sources: validate endpoint/credential completeness and hydrate
+	// from sibling-app when the endpoint resolves to one.
+	if src.Type == config.AppSourceS3 {
+		if err := validateCanonicalS3Source(mycluster, src); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	// Encrypt secrets before persist (mirrors legacy git/S3 flows).
+	if src.Pass != "" {
+		src.Pass = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(src.Name, src.Pass))
+	}
+	if src.SecretKey != "" {
+		src.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(src.Name, src.SecretKey))
+	}
+	if err := node.AppConfig.Deployment.InsertAppSource(src); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	repman.canonicalStorageSave(w, mycluster, node, "canonical source added")
+}
+
+func (repman *ReplicationManager) handlerMuxCanonicalSourcesUpdate(w http.ResponseWriter, r *http.Request) {
+	mycluster, node := repman.canonicalStoragePrelude(w, r)
+	if mycluster == nil {
+		return
+	}
+	vars := mux.Vars(r)
+	oldName := vars["srcName"]
+
+	src, err := decodeStruct[config.AppSource](r, w, "canonical source")
+	if err != nil {
+		return
+	}
+
+	// Fetch the currently stored source so we can preserve secrets the UI didn't resend.
+	oldSrc, _ := node.AppConfig.Deployment.GetAppSourceByName(oldName)
+
+	// For provider-linked S3 sources, hydrate endpoint/credentials from the provider.
+	if src.Type == config.AppSourceS3 && src.ProviderName != "" {
+		if err := hydrateCanonicalS3SourceFromProvider(mycluster, src); err != nil {
+			http.Error(w, "S3 provider hydration failed: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Secret handling: if the UI omits a secret field (empty string), preserve the
+	// stored encrypted value.  If a non-empty value arrives, treat it as new plaintext
+	// and re-encrypt — GetDecryptedPassword normalises encrypted→plaintext first, so
+	// double-encrypting an already-encrypted value is safe.
+	if src.Pass == "" && oldSrc != nil && oldSrc.Pass != "" {
+		src.Pass = oldSrc.Pass
+	} else if src.Pass != "" {
+		src.Pass = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(src.Name, src.Pass))
+	}
+
+	if src.SecretKey == "" && oldSrc != nil && oldSrc.SecretKey != "" {
+		src.SecretKey = oldSrc.SecretKey
+	} else if src.SecretKey != "" {
+		src.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(src.Name, src.SecretKey))
+	}
+
+	// For all S3 sources: validate endpoint/credential completeness after secret
+	// preservation so stored credentials are available for the validation check.
+	if src.Type == config.AppSourceS3 {
+		if err := validateCanonicalS3Source(mycluster, src); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	if err := node.AppConfig.Deployment.UpdateAppSource(oldName, src); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	repman.canonicalStorageSave(w, mycluster, node, "canonical source updated")
+}
+
+func (repman *ReplicationManager) handlerMuxCanonicalSourcesDrop(w http.ResponseWriter, r *http.Request) {
+	mycluster, node := repman.canonicalStoragePrelude(w, r)
+	if mycluster == nil {
+		return
+	}
+	vars := mux.Vars(r)
+	if err := node.AppConfig.Deployment.DropAppSource(vars["srcName"]); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	repman.canonicalStorageSave(w, mycluster, node, "canonical source removed")
+}
+
+// ---------------------------------------------------------------------------
+// Canonical storage v2 — mounts
+// ---------------------------------------------------------------------------
+
+func (repman *ReplicationManager) handlerMuxCanonicalMountsList(w http.ResponseWriter, r *http.Request) {
+	_, node := repman.canonicalStoragePrelude(w, r)
+	if node == nil {
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	mounts := node.AppConfig.Deployment.AppMounts
+	if mounts == nil {
+		mounts = config.AppMounts{}
+	}
+	json.NewEncoder(w).Encode(mounts)
+}
+
+func (repman *ReplicationManager) handlerMuxCanonicalMountsAdd(w http.ResponseWriter, r *http.Request) {
+	mycluster, node := repman.canonicalStoragePrelude(w, r)
+	if mycluster == nil {
+		return
+	}
+	m, err := decodeStruct[config.AppMount](r, w, "canonical mount")
+	if err != nil {
+		return
+	}
+	if err := node.AppConfig.Deployment.InsertAppMount(m); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	repman.canonicalStorageSave(w, mycluster, node, "canonical mount added")
+}
+
+func (repman *ReplicationManager) handlerMuxCanonicalMountsUpdate(w http.ResponseWriter, r *http.Request) {
+	mycluster, node := repman.canonicalStoragePrelude(w, r)
+	if mycluster == nil {
+		return
+	}
+	vars := mux.Vars(r)
+	targetPath := canonicalMountTargetPath(vars["targetPath"])
+	m, err := decodeStruct[config.AppMount](r, w, "canonical mount")
+	if err != nil {
+		return
+	}
+	if err := node.AppConfig.Deployment.UpdateAppMount(targetPath, m); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	repman.canonicalStorageSave(w, mycluster, node, "canonical mount updated")
+}
+
+func (repman *ReplicationManager) handlerMuxCanonicalMountsDrop(w http.ResponseWriter, r *http.Request) {
+	mycluster, node := repman.canonicalStoragePrelude(w, r)
+	if mycluster == nil {
+		return
+	}
+	vars := mux.Vars(r)
+	targetPath := canonicalMountTargetPath(vars["targetPath"])
+	if err := node.AppConfig.Deployment.DropAppMount(targetPath); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	repman.canonicalStorageSave(w, mycluster, node, "canonical mount removed")
+}
+
+// canonicalMountTargetPath reconstructs an absolute target path from the mux
+// wildcard variable (which strips the leading slash).
+func canonicalMountTargetPath(raw string) string {
+	if raw == "" {
+		return "/"
+	}
+	if !strings.HasPrefix(raw, "/") {
+		raw = "/" + raw
+	}
+	return filepath.Clean(raw)
 }

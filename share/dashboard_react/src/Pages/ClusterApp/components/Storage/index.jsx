@@ -1,7 +1,9 @@
+import PropTypes from "prop-types";
 import { VStack, Flex } from "@chakra-ui/react";
 import GitCloneSection from "./GitClone";
 import VolumeSection from "./Volume";
 import S3DirectorySection from "./S3Directory";
+import CanonicalStorage from "./CanonicalStorage";
 import styles from "./styles.module.scss";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
@@ -14,8 +16,10 @@ const GIT_CREDENTIAL_KEYS = ['repo', 'branch', 'pass', 'user'];
 
 export default function StoragePage({ clusterName, appId, appConfig }) {
   const dispatch = useDispatch();
+  const deployment = useSelector((state) => state.cluster?.app?.deployment);
   const storages = useSelector((state) => state.cluster?.app?.deployment?.storages);
   const opensvcPools = useSelector((state) => state.cluster?.opensvcPools || []);
+  const isCanonical = (deployment?.storageLayoutVersion || 0) >= 2;
   const isOpenSVCOrchestrator = useSelector((state) => state.cluster?.clusterData?.config?.provOrchestrator === "opensvc");
   const s3Providers = useSelector((state) => state.cluster?.clusterData?.appS3Providers);
   const clusterS3Providers = useSelector(selectClusterS3Providers);
@@ -222,6 +226,18 @@ export default function StoragePage({ clusterName, appId, appConfig }) {
       <S3DirectorySection appId={appId} rows={s3Mounts} s3ProvOptions={s3ProvOptions} clusterS3Providers={clusterS3Providers} {...actionProps} />
   ), [appId, s3Mounts, s3ProvOptions, clusterS3Providers, actionProps]);
 
+  if (isCanonical) {
+    return (
+      <CanonicalStorage
+        clusterName={clusterName}
+        appId={appId}
+        deployment={deployment}
+        opensvcPools={opensvcPools}
+        appConfig={appConfig}
+      />
+    );
+  }
+
   return (
     <Flex direction="column" className={styles.sectionWrapper}>
       <VStack spacing={3} align="stretch">
@@ -239,3 +255,12 @@ export default function StoragePage({ clusterName, appId, appConfig }) {
     </Flex>
   );
 }
+
+StoragePage.propTypes = {
+  clusterName: PropTypes.string.isRequired,
+  appId: PropTypes.string.isRequired,
+  appConfig: PropTypes.shape({
+    provAppHaTopology: PropTypes.string,
+    provAppDockerImg: PropTypes.string,
+  }),
+};

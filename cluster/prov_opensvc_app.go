@@ -383,35 +383,65 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 	}
 	svcsection[fmt.Sprintf("container#%02d", containernum)] = cluster.OpenSVCGetNamespaceContainerSection()
 
-	for _, gc := range deployment.Storages.GitClones {
-		if gc.Volume == nil {
-			if vol, err := deployment.GetVolumeByName(gc.VolumeName); err == nil {
-				gc.Volume = vol
-			} else {
-				return nil, fmt.Errorf("Git clone volume %s not found in deployment", gc.VolumeName)
+	if deployment.IsCanonical() {
+		// For canonical (v2) deployments iterate AppSources for git/s3 init containers.
+		for _, src := range deployment.AppSources {
+			switch src.Type {
+			case config.AppSourceGit:
+				vol, err := deployment.ResolveAppSourceVolume(src)
+				if err != nil {
+					return nil, fmt.Errorf("canonical git source %s: %w", src.Name, err)
+				}
+				containernum++
+				sectionName := fmt.Sprintf("container#%02dinit%s", containernum, src.Name)
+				svcsection[sectionName] = cluster.OpenSVCGetAppGitInitContainerSectionCanonical(app, src, vol)
+			case config.AppSourceS3:
+				vol, err := deployment.ResolveAppSourceVolume(src)
+				if err != nil {
+					return nil, fmt.Errorf("canonical s3 source %s: %w", src.Name, err)
+				}
+				// Resolve effective endpoint before generating the container section —
+				// mirrors the legacy resolveS3MountProvisioningEndpoint call.
+				if _, err := cluster.resolveCanonicalS3SourceEndpoint(app, src); err != nil {
+					return nil, fmt.Errorf("canonical s3 source %s: %w", src.Name, err)
+				}
+				containernum++
+				sectionName := fmt.Sprintf("container#%02dinit%s", containernum, src.Name)
+				svcsection[sectionName] = cluster.OpenSVCGetAppS3MountContainerSectionCanonical(app, src, vol)
 			}
 		}
-		containernum++
-		sectionName := fmt.Sprintf("container#%02dinit%s", containernum, gc.Name)
-		svcsection[sectionName] = cluster.OpenSVCGetAppGitInitContainerSection(app, gc)
-	}
-
-	for _, s3m := range deployment.Storages.S3Mounts {
-		if s3m.Volume == nil {
-			if vol, err := deployment.GetVolumeByName(s3m.VolumeName); err == nil {
-				s3m.Volume = vol
-			} else {
-				return nil, fmt.Errorf("S3 mount volume %s not found in deployment", s3m.VolumeName)
+	} else {
+		// Legacy path: iterate Storages.GitClones and S3Mounts.
+		for _, gc := range deployment.Storages.GitClones {
+			if gc.Volume == nil {
+				if vol, err := deployment.GetVolumeByName(gc.VolumeName); err == nil {
+					gc.Volume = vol
+				} else {
+					return nil, fmt.Errorf("Git clone volume %s not found in deployment", gc.VolumeName)
+				}
 			}
+			containernum++
+			sectionName := fmt.Sprintf("container#%02dinit%s", containernum, gc.Name)
+			svcsection[sectionName] = cluster.OpenSVCGetAppGitInitContainerSection(app, gc)
 		}
 
-		if _, err := cluster.resolveS3MountProvisioningEndpoint(app, s3m); err != nil {
-			return nil, err
-		}
+		for _, s3m := range deployment.Storages.S3Mounts {
+			if s3m.Volume == nil {
+				if vol, err := deployment.GetVolumeByName(s3m.VolumeName); err == nil {
+					s3m.Volume = vol
+				} else {
+					return nil, fmt.Errorf("S3 mount volume %s not found in deployment", s3m.VolumeName)
+				}
+			}
 
-		containernum++
-		sectionName := fmt.Sprintf("container#%02dinit%s", containernum, s3m.Name)
-		svcsection[sectionName] = cluster.OpenSVCGetAppS3MountContainerSection(app, s3m)
+			if _, err := cluster.resolveS3MountProvisioningEndpoint(app, s3m); err != nil {
+				return nil, err
+			}
+
+			containernum++
+			sectionName := fmt.Sprintf("container#%02dinit%s", containernum, s3m.Name)
+			svcsection[sectionName] = cluster.OpenSVCGetAppS3MountContainerSection(app, s3m)
+		}
 	}
 
 	svcsection["container#app"] = cluster.OpenSVCGetAppContainerSection(app)
@@ -477,10 +507,19 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV3(app *App) ([]byte, error) {
 }
 
 func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[string]string, app *App) (map[string]map[string]string, error) {
-
 	appcnf := app.AppConfig
 	if appcnf == nil {
 		return basemap, nil
+	}
+
+	// All canonical (v2) deployments generate from AppVolumes, branching on strategy.
+	if appcnf.Deployment.IsCanonical() {
+		switch appcnf.Deployment.PhysicalVolumeStrategy {
+		case config.PhysicalVolumeStrategyPerVolume:
+			return cluster.OpenSVCGetAppCanonicalVolumeSections(basemap, app)
+		default: // legacy-pooled
+			return cluster.OpenSVCGetAppCanonicalLegacyPooledVolumeSections(basemap, app)
+		}
 	}
 
 	deployment := appcnf.Deployment
@@ -553,6 +592,250 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 	}
 
 	return basemap, nil
+}
+
+// OpenSVCGetAppCanonicalVolumeSections generates one OpenSVC volume# section per
+// canonical AppVolume (per-volume strategy).  It is called by
+// OpenSVCGetAppVolumeSections when PhysicalVolumeStrategy == per-volume.
+func (cluster *Cluster) OpenSVCGetAppCanonicalVolumeSections(basemap map[string]map[string]string, app *App) (map[string]map[string]string, error) {
+	appcnf := app.AppConfig
+	if appcnf == nil {
+		return basemap, nil
+	}
+	deployment := appcnf.Deployment
+	if len(deployment.AppVolumes) == 0 {
+		return basemap, nil
+	}
+
+	poolList, err := cluster.OpenSVCGetPoolInfoListFresh()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch OpenSVC pool list: %w", err)
+	}
+	poolSet := make(map[string]opensvc.PoolInfo, len(poolList))
+	for _, p := range poolList {
+		if p.Name != "" {
+			poolSet[p.Name] = p
+		}
+	}
+
+	// Build source → directory contributions index.
+	dirsByVolume := make(map[string]map[string]struct{})
+	for _, src := range deployment.AppSources {
+		if src.VolumeName == "" || src.BasePath == "" {
+			continue
+		}
+		if _, ok := dirsByVolume[src.VolumeName]; !ok {
+			dirsByVolume[src.VolumeName] = make(map[string]struct{})
+		}
+		dirsByVolume[src.VolumeName][src.BasePath] = struct{}{}
+	}
+	// Also gather directories from canonical mounts.
+	for _, m := range deployment.AppMounts {
+		if m.SourceName == "" {
+			continue
+		}
+		src, err := deployment.GetAppSourceByName(m.SourceName)
+		if err != nil || src.VolumeName == "" {
+			continue
+		}
+		effectivePath := src.BasePath
+		if m.SourceSubPath != "" {
+			effectivePath = filepath.Join(src.BasePath, m.SourceSubPath)
+		}
+		// Contribute the parent directory.
+		dir := filepath.Dir(effectivePath)
+		if dir != "." && dir != "" {
+			if _, ok := dirsByVolume[src.VolumeName]; !ok {
+				dirsByVolume[src.VolumeName] = make(map[string]struct{})
+			}
+			dirsByVolume[src.VolumeName][dir+"/"] = struct{}{}
+		}
+	}
+
+	seq := 1
+	for _, vol := range deployment.AppVolumes {
+		poolInfo, ok := poolSet[vol.Pool]
+		if !ok {
+			return nil, fmt.Errorf("OpenSVC pool %q not found in runtime pool list", vol.Pool)
+		}
+
+		svcvol := make(map[string]string)
+		svcvol["name"] = app.GetAppVolumeNamePerVolume(vol.Name, false)
+		svcvol["pool"] = vol.Pool
+		svcvol["size"] = vol.Size
+		if vol.Shared || poolInfo.Shared {
+			svcvol["shared"] = "true"
+		}
+
+		dirs := make([]string, 0)
+		if dirMap, ok := dirsByVolume[vol.Name]; ok {
+			for d := range dirMap {
+				dirs = append(dirs, d)
+			}
+			sort.Strings(dirs)
+		}
+		svcvol["directories"] = strings.Join(dirs, " ")
+
+		basemap["volume#"+strconv.Itoa(seq)] = svcvol
+		seq++
+	}
+	return basemap, nil
+}
+
+// OpenSVCGetAppCanonicalLegacyPooledVolumeSections generates OpenSVC volume#
+// sections by grouping canonical AppVolumes by pool (legacy-pooled strategy).
+// This preserves the runtime physical layout of pre-migration apps while still
+// deriving directories from canonical AppSources and AppMounts.
+func (cluster *Cluster) OpenSVCGetAppCanonicalLegacyPooledVolumeSections(basemap map[string]map[string]string, app *App) (map[string]map[string]string, error) {
+	appcnf := app.AppConfig
+	if appcnf == nil {
+		return basemap, nil
+	}
+	deployment := appcnf.Deployment
+	if len(deployment.AppVolumes) == 0 {
+		return basemap, nil
+	}
+
+	poolList, err := cluster.OpenSVCGetPoolInfoListFresh()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch OpenSVC pool list: %w", err)
+	}
+	poolSet := make(map[string]opensvc.PoolInfo, len(poolList))
+	for _, p := range poolList {
+		if p.Name != "" {
+			poolSet[p.Name] = p
+		}
+	}
+
+	// Group canonical volumes by pool.
+	type poolEntry struct {
+		volNames []string
+		shared   bool
+	}
+	poolMap := make(map[string]*poolEntry)
+	for _, v := range deployment.AppVolumes {
+		if v.Pool == "" {
+			continue
+		}
+		e := poolMap[v.Pool]
+		if e == nil {
+			e = &poolEntry{}
+			poolMap[v.Pool] = e
+		}
+		e.volNames = append(e.volNames, v.Name)
+		if v.Shared {
+			e.shared = true
+		}
+	}
+
+	// Build directory contributions from canonical sources.
+	dirsByVolume := make(map[string]map[string]struct{})
+	for _, src := range deployment.AppSources {
+		if src.VolumeName == "" || src.BasePath == "" {
+			continue
+		}
+		if _, ok := dirsByVolume[src.VolumeName]; !ok {
+			dirsByVolume[src.VolumeName] = make(map[string]struct{})
+		}
+		dirsByVolume[src.VolumeName][src.BasePath] = struct{}{}
+	}
+	// Also gather directories from canonical mounts (mirrors per-volume strategy).
+	for _, m := range deployment.AppMounts {
+		if m.SourceName == "" {
+			continue
+		}
+		src, err := deployment.GetAppSourceByName(m.SourceName)
+		if err != nil || src.VolumeName == "" {
+			continue
+		}
+		effectivePath := src.BasePath
+		if m.SourceSubPath != "" {
+			effectivePath = filepath.Join(src.BasePath, m.SourceSubPath)
+		}
+		dir := filepath.Dir(effectivePath)
+		if dir != "." && dir != "" {
+			if _, ok := dirsByVolume[src.VolumeName]; !ok {
+				dirsByVolume[src.VolumeName] = make(map[string]struct{})
+			}
+			dirsByVolume[src.VolumeName][dir+"/"] = struct{}{}
+		}
+	}
+
+	seq := 1
+	for pool, entry := range poolMap {
+		poolInfo, ok := poolSet[pool]
+		if !ok {
+			return nil, fmt.Errorf("OpenSVC pool %q not found in runtime pool list", pool)
+		}
+
+		svcvol := make(map[string]string)
+		svcvol["name"] = app.GetAppVolumeName(pool, false)
+		svcvol["pool"] = pool
+		svcvol["size"] = "{env.size}"
+		if entry.shared || poolInfo.Shared {
+			svcvol["shared"] = "true"
+		}
+
+		directorySet := make(map[string]struct{})
+		for _, volName := range entry.volNames {
+			for dir := range dirsByVolume[volName] {
+				directorySet[dir] = struct{}{}
+			}
+		}
+
+		dirs := make([]string, 0, len(directorySet))
+		for d := range directorySet {
+			dirs = append(dirs, d)
+		}
+		sort.Strings(dirs)
+		svcvol["directories"] = strings.Join(dirs, " ")
+		basemap["volume#"+strconv.Itoa(seq)] = svcvol
+		seq++
+	}
+	return basemap, nil
+}
+
+// GetOpenSVCCanonicalDeploymentPathMapping generates the volume_mounts string from
+// canonical AppMounts.  Works for both per-volume and legacy-pooled strategies
+// by routing through GetRuntimeVolumeName.
+func (cluster *Cluster) GetOpenSVCCanonicalDeploymentPathMapping(app *App) string {
+	appcnf := app.GetAppConfig()
+	if appcnf == nil {
+		return ""
+	}
+	deployment := appcnf.Deployment
+	if len(deployment.AppMounts) == 0 {
+		return ""
+	}
+
+	var results []string
+	for _, m := range deployment.AppMounts {
+		src, err := deployment.GetAppSourceByName(m.SourceName)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+				"Skipping canonical mount targetPath=%q: source %q not found", m.TargetPath, m.SourceName)
+			continue
+		}
+		vol, err := deployment.ResolveAppSourceVolume(src)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+				"Skipping canonical mount targetPath=%q: %v", m.TargetPath, err)
+			continue
+		}
+
+		runtimeVolName := app.GetRuntimeVolumeName(vol, false)
+		effectiveSrcPath := src.BasePath
+		if m.SourceSubPath != "" {
+			effectiveSrcPath = filepath.Join(src.BasePath, m.SourceSubPath)
+		}
+
+		mapping := filepath.Join(runtimeVolName, effectiveSrcPath) + ":" + m.TargetPath
+		if m.ReadOnly {
+			mapping += ":ro"
+		}
+		results = append(results, mapping)
+	}
+	return strings.Join(results, " ")
 }
 
 func (cluster *Cluster) OpenSVCFoundAppAgent(app *App) (opensvc.Host, error) {
@@ -748,6 +1031,63 @@ func (cluster *Cluster) OpenSVCGetAppS3MountContainerSection(app *App, s3m *conf
 	return svccontainer
 }
 
+// OpenSVCGetAppGitInitContainerSectionCanonical generates a git init container
+// section from a canonical AppSource{Type:git}.
+// Uses the same env/secret variable pattern as the legacy GitClone path so
+// credentials are passed via OpenSVC config/secret objects.
+func (cluster *Cluster) OpenSVCGetAppGitInitContainerSectionCanonical(app *App, src *config.AppSource, vol *config.AppVolume) map[string]string {
+	svccontainer := make(map[string]string)
+	if cluster.Conf.ProvType != "docker" && cluster.Conf.ProvType != "podman" {
+		return svccontainer
+	}
+	svccontainer = cluster.OpenSVCGetAppGitInitDefaultSection(app)
+	runtimeVolName := app.GetRuntimeVolumeName(vol, false)
+	svccontainer["volume_mounts"] = fmt.Sprintf("/etc/localtime:/etc/localtime:ro %s:/bootstrap", runtimeVolName)
+	svccontainer["secrets_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeSecret)
+	svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
+	dirname := filepath.Join("/bootstrap", src.BasePath)
+
+	prefix := src.GetGitVariablePrefix()
+	branchKey := "$" + prefix + config.GitVarSuffixBranch
+	gituser := prefix + config.GitVarSuffixUser
+	gitpass := prefix + config.GitVarSuffixPass
+	gitURL := prefix + config.GitVarSuffixRepo
+
+	urlString := "$" + gitURL
+	if cluster.Conf.GetDecryptedPassword(src.Name, src.Pass) != "" {
+		if strings.Contains(src.Repo, "github.com") {
+			urlString = fmt.Sprintf("$%s@$%s", gitpass, gitURL)
+		} else {
+			urlString = fmt.Sprintf("$%s:$%s@$%s", gituser, gitpass, gitURL)
+		}
+	}
+
+	svccontainer["command"] = "-c 'rm -rf " + dirname + ";mkdir " + dirname + ";git clone -b " + branchKey + " https://" + urlString + " " + dirname + "'"
+	return svccontainer
+}
+
+// OpenSVCGetAppS3MountContainerSectionCanonical generates an S3 mount container
+// section from a canonical AppSource{Type:s3}.
+func (cluster *Cluster) OpenSVCGetAppS3MountContainerSectionCanonical(app *App, src *config.AppSource, vol *config.AppVolume) map[string]string {
+	svccontainer := make(map[string]string)
+	if cluster.Conf.ProvType != "docker" && cluster.Conf.ProvType != "podman" {
+		return svccontainer
+	}
+	svccontainer["type"] = "docker"
+	svccontainer["rm"] = "true"
+	svccontainer["image"] = "signal18/nfsmixr:latest"
+	svccontainer["netns"] = "container#01"
+	svccontainer["privileged"] = "true"
+	svccontainer["secrets_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeSecret)
+	svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
+	runtimeVolName := app.GetRuntimeVolumeName(vol, false)
+	svccontainer["volume_mounts"] = fmt.Sprintf("%s:/mnt:rw,rshared", filepath.Join(runtimeVolName, src.BasePath))
+	svccontainer["run_command"] = "-o allow_other -o nonempty --use-content-type --uid 33 --gid 33 -f"
+	svccontainer["blocking_post_provision"] = "sleep 3"
+	svccontainer["blocking_post_start"] = "sleep 3"
+	return svccontainer
+}
+
 func (cluster *Cluster) getAppDeploymentVariableValue(app *App, key string) (string, bool) {
 	if app == nil || app.AppConfig == nil || app.AppConfig.Deployment == nil {
 		return "", false
@@ -766,6 +1106,32 @@ func (cluster *Cluster) getAppDeploymentVariableValue(app *App, key string) (str
 	}
 
 	return "", false
+}
+
+// resolveCanonicalS3SourceEndpoint returns the effective endpoint for a canonical
+// AppSource{Type:s3}, mirroring resolveS3MountProvisioningEndpoint for legacy S3Mount.
+// Provider-linked sources should have Endpoint hydrated at save time via
+// hydrateCanonicalS3SourceFromProvider; this function handles the runtime fallback.
+func (cluster *Cluster) resolveCanonicalS3SourceEndpoint(app *App, src *config.AppSource) (string, error) {
+	if src == nil {
+		return "", errors.New("canonical S3 source is nil")
+	}
+	if src.Endpoint != "" {
+		return src.Endpoint, nil
+	}
+	// Try the variable map for an endpoint hydrated at save time.
+	prefix := src.GetS3VariablePrefix()
+	if ep, _ := cluster.getAppDeploymentVariableValue(app, prefix+config.S3VarSuffixEndpoint); ep != "" {
+		node, _ := cluster.GetAppByURL(ep)
+		if node != nil {
+			return "http://" + node.GetS3Endpoint(), nil
+		}
+		return ep, nil
+	}
+	return "", fmt.Errorf(
+		"canonical S3 source %s: endpoint is empty and no variable-map fallback found",
+		src.Name,
+	)
 }
 
 func (cluster *Cluster) resolveS3MountProvisioningEndpoint(app *App, s3m *config.S3Mount) (string, error) {
@@ -825,12 +1191,17 @@ func (cluster *Cluster) resolveS3MountProvisioningEndpoint(app *App, s3m *config
 }
 
 func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
-	var results []string
 	appcnf := app.GetAppConfig()
 	if appcnf == nil {
 		return ""
 	}
 
+	// All canonical (v2) deployments use canonical mount generation.
+	if appcnf.Deployment.IsCanonical() {
+		return cluster.GetOpenSVCCanonicalDeploymentPathMapping(app)
+	}
+
+	var results []string
 	deployment := appcnf.Deployment
 	deployment.SortPaths()
 	if len(deployment.Paths) == 0 {
@@ -915,71 +1286,117 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		}
 	}
 
-	for _, gc := range app.AppConfig.Deployment.Storages.GitClones {
-		prefix := gc.GetVariablePrefix()
-		envs := gc.GetEnvVariables()
-		for k, val := range envs {
-			vName := prefix + k
+	// Legacy git/S3 variable map writes — skipped for canonical deployments to avoid
+	// duplicating keys that are written by the canonical loop below.
+	if !app.AppConfig.Deployment.IsCanonical() {
+		for _, gc := range app.AppConfig.Deployment.Storages.GitClones {
+			prefix := gc.GetVariablePrefix()
+			envs := gc.GetEnvVariables()
+			for k, val := range envs {
+				vName := prefix + k
 
-			if k == config.GitVarSuffixRepo {
-				if strings.HasPrefix(val, "http://") || strings.HasPrefix(val, "https://") {
-					val = strings.TrimPrefix(val, "http://")
-					val = strings.TrimPrefix(val, "https://")
+				if k == config.GitVarSuffixRepo {
+					if strings.HasPrefix(val, "http://") || strings.HasPrefix(val, "https://") {
+						val = strings.TrimPrefix(val, "http://")
+						val = strings.TrimPrefix(val, "https://")
+					}
+				}
+				if k == config.GitVarSuffixBranch {
+					if val == "" {
+						val = "master"
+					}
+				}
+
+				err = svc.CreateConfigKeyValue(cluster.Name, app.Name, vName, val)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", vName, err)
 				}
 			}
-			if k == config.GitVarSuffixBranch {
-				if val == "" {
-					val = "master"
-				}
-			}
 
-			err = svc.CreateConfigKeyValue(cluster.Name, app.Name, vName, val)
+			err = svc.CreateSecretKeyValue(cluster.Name, app.Name, prefix+config.GitVarSuffixPass, cluster.Conf.GetDecryptedPassword(gc.Name, gc.GitPass))
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", vName, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", prefix+config.GitVarSuffixPass, err)
 			}
 		}
 
-		err = svc.CreateSecretKeyValue(cluster.Name, app.Name, prefix+config.GitVarSuffixPass, cluster.Conf.GetDecryptedPassword(gc.Name, gc.GitPass))
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", prefix+config.GitVarSuffixPass, err)
+		for _, s3m := range app.AppConfig.Deployment.Storages.S3Mounts {
+			effectiveEndpoint, err := cluster.resolveS3MountProvisioningEndpoint(app, s3m)
+			if err != nil {
+				return err
+			}
+
+			prefix := s3m.GetVariablePrefix()
+			envs := s3m.GetEnvVariables()
+			for k, val := range envs {
+				vName := prefix + k
+				if k == config.S3VarSuffixEndpoint {
+					val = effectiveEndpoint
+				} else if k == config.S3VarSuffixMountDir {
+					if val == "" {
+						val = "/mnt"
+					}
+				} else if k == config.S3VarSuffixRegion {
+					if val == "" {
+						val = "fr-east-1"
+					}
+				} else if k == config.S3VarSuffixBucket {
+					if val == "" {
+						val = app.Name
+					}
+				}
+
+				err = svc.CreateConfigKeyValue(cluster.Name, app.Name, vName, val)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", vName, err)
+				}
+			}
+
+			err = svc.CreateSecretKeyValue(cluster.Name, app.Name, prefix+config.S3VarSuffixSecretKey, cluster.Conf.GetDecryptedPassword(s3m.Name, s3m.SecretKey))
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", prefix+config.S3VarSuffixSecretKey, err)
+			}
 		}
 	}
 
-	for _, s3m := range app.AppConfig.Deployment.Storages.S3Mounts {
-		effectiveEndpoint, err := cluster.resolveS3MountProvisioningEndpoint(app, s3m)
-		if err != nil {
-			return err
-		}
-
-		prefix := s3m.GetVariablePrefix()
-		envs := s3m.GetEnvVariables()
-		for k, val := range envs {
-			vName := prefix + k
-			if k == config.S3VarSuffixEndpoint {
-				val = effectiveEndpoint
-			} else if k == config.S3VarSuffixMountDir {
-				if val == "" {
-					val = "/mnt"
+	// Canonical (v2) sources — all git and s3 types for canonical deployments.
+	if app.AppConfig.Deployment.IsCanonical() {
+		for _, src := range app.AppConfig.Deployment.AppSources {
+			switch src.Type {
+			case config.AppSourceGit:
+				prefix := src.GetGitVariablePrefix()
+				for k, val := range src.GetGitEnvVariables() {
+					vName := prefix + k
+					if err = svc.CreateConfigKeyValue(cluster.Name, app.Name, vName, val); err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add canonical git key to config: %s %s", vName, err)
+					}
 				}
-			} else if k == config.S3VarSuffixRegion {
-				if val == "" {
-					val = "fr-east-1"
+				if err = svc.CreateSecretKeyValue(cluster.Name, app.Name, prefix+config.GitVarSuffixPass, cluster.Conf.GetDecryptedPassword(src.Name, src.Pass)); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add canonical git secret: %s %s", prefix+config.GitVarSuffixPass, err)
 				}
-			} else if k == config.S3VarSuffixBucket {
-				if val == "" {
-					val = app.Name
+			case config.AppSourceS3:
+				// Resolve effective endpoint (handles provider-linked sources whose
+				// endpoint was hydrated at save time or stored in the variable map).
+				effectiveEndpoint, epErr := cluster.resolveCanonicalS3SourceEndpoint(app, src)
+				if epErr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot resolve canonical S3 source endpoint: %s %v", src.Name, epErr)
+					effectiveEndpoint = src.Endpoint
+				}
+				prefix := src.GetS3VariablePrefix()
+				for k, val := range src.GetS3EnvVariables() {
+					vName := prefix + k
+					if k == config.S3VarSuffixEndpoint {
+						val = effectiveEndpoint
+					} else if k == config.S3VarSuffixBucket && val == "" {
+						val = app.Name
+					}
+					if err = svc.CreateConfigKeyValue(cluster.Name, app.Name, vName, val); err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add canonical s3 key to config: %s %s", vName, err)
+					}
+				}
+				if err = svc.CreateSecretKeyValue(cluster.Name, app.Name, prefix+config.S3VarSuffixSecretKey, cluster.Conf.GetDecryptedPassword(src.Name, src.SecretKey)); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add canonical s3 secret: %s %s", prefix+config.S3VarSuffixSecretKey, err)
 				}
 			}
-
-			err = svc.CreateConfigKeyValue(cluster.Name, app.Name, vName, val)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", vName, err)
-			}
-		}
-
-		err = svc.CreateSecretKeyValue(cluster.Name, app.Name, prefix+config.S3VarSuffixSecretKey, cluster.Conf.GetDecryptedPassword(s3m.Name, s3m.SecretKey))
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", prefix+config.S3VarSuffixSecretKey, err)
 		}
 	}
 

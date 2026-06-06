@@ -12,12 +12,89 @@ import (
 	"sync"
 )
 
+// StorageLayoutVersion identifies which canonical storage model applies to a deployment.
+type StorageLayoutVersion int
+
+const (
+	StorageLayoutLegacy StorageLayoutVersion = 1
+	StorageLayoutV2     StorageLayoutVersion = 2
+)
+
+// PhysicalVolumeStrategy controls how OpenSVC volumes are generated at runtime.
+type PhysicalVolumeStrategy string
+
+const (
+	PhysicalVolumeStrategyLegacyPooled PhysicalVolumeStrategy = "legacy-pooled"
+	PhysicalVolumeStrategyPerVolume    PhysicalVolumeStrategy = "per-volume"
+)
+
+// AppVolume represents a real physical storage allocation.
+type AppVolume struct {
+	Name   string `mapstructure:"name" toml:"name" json:"name"`
+	Pool   string `mapstructure:"pool" toml:"pool" json:"pool"`
+	Size   string `mapstructure:"size" toml:"size" json:"size"`
+	Shared bool   `mapstructure:"shared" toml:"shared" json:"shared,omitempty"`
+}
+
+// AppSourceType identifies the kind of content source.
+type AppSourceType string
+
+const (
+	AppSourceDirectory AppSourceType = "directory"
+	AppSourceGit       AppSourceType = "git"
+	AppSourceS3        AppSourceType = "s3"
+)
+
+// AppSource represents a content root located inside a volume.
+type AppSource struct {
+	Name       string        `mapstructure:"name" toml:"name" json:"name"`
+	Type       AppSourceType `mapstructure:"type" toml:"type" json:"type"`
+	VolumeName string        `mapstructure:"volumeName" toml:"volumeName" json:"volumeName"`
+	BasePath   string        `mapstructure:"basePath" toml:"basePath" json:"basePath"`
+
+	// git fields
+	Repo   string `mapstructure:"repo" toml:"repo" json:"repo,omitempty"`
+	Branch string `mapstructure:"branch" toml:"branch" json:"branch,omitempty"`
+	User   string `mapstructure:"user" toml:"user" json:"user,omitempty"`
+	Pass   string `mapstructure:"pass" toml:"pass" json:"pass,omitempty"`
+
+	// s3 fields
+	Endpoint     string `mapstructure:"endpoint" toml:"endpoint" json:"endpoint,omitempty"`
+	Bucket       string `mapstructure:"bucket" toml:"bucket" json:"bucket,omitempty"`
+	Region       string `mapstructure:"region" toml:"region" json:"region,omitempty"`
+	AccessKey    string `mapstructure:"accessKey" toml:"accessKey" json:"accessKey,omitempty"`
+	SecretKey    string `mapstructure:"secretKey" toml:"secretKey" json:"secretKey,omitempty"`
+	ProviderName string `mapstructure:"providerName" toml:"providerName" json:"providerName,omitempty"`
+	MountDir     string `mapstructure:"mountDir" toml:"mountDir" json:"mountDir,omitempty"`
+}
+
+// AppMount represents a container-visible mapping from a source to an absolute target path.
+type AppMount struct {
+	Name          string `mapstructure:"name" toml:"name" json:"name,omitempty"`
+	SourceName    string `mapstructure:"sourceName" toml:"sourceName" json:"sourceName"`
+	SourceSubPath string `mapstructure:"sourceSubPath" toml:"sourceSubPath" json:"sourceSubPath,omitempty"`
+	TargetPath    string `mapstructure:"targetPath" toml:"targetPath" json:"targetPath"`
+	ReadOnly      bool   `mapstructure:"readOnly" toml:"readOnly" json:"readOnly,omitempty"`
+}
+
+type AppVolumes []*AppVolume
+type AppSources []*AppSource
+type AppMounts []*AppMount
+
 type Deployment struct {
 	PrimaryRoute Route          `mapstructure:"-"  toml:"-" json:"primaryRoute" groups:"apps"`
 	Routes       Routes         `mapstructure:"routes"  toml:"routes" json:"routes" groups:"apps"`
 	Storages     StorageMapping `mapstructure:"storages"  toml:"storages" json:"storages" groups:"apps"`
 	Paths        PathMaps       `mapstructure:"paths"  toml:"paths" json:"paths" groups:"apps"`
 	Variables    VariableMaps   `mapstructure:"variables"  toml:"variables" json:"variables" groups:"apps"`
+
+	// Canonical storage model (v2). When StorageLayoutVersion >= StorageLayoutV2,
+	// these fields are the authoritative source of truth for volumes, sources, and mounts.
+	AppVolumes             AppVolumes             `mapstructure:"app-volumes" toml:"app-volumes" json:"appVolumes,omitempty" groups:"apps"`
+	AppSources             AppSources             `mapstructure:"app-sources" toml:"app-sources" json:"appSources,omitempty" groups:"apps"`
+	AppMounts              AppMounts              `mapstructure:"app-mounts" toml:"app-mounts" json:"appMounts,omitempty" groups:"apps"`
+	StorageLayoutVersion   StorageLayoutVersion   `mapstructure:"storage-layout-version" toml:"storage-layout-version" json:"storageLayoutVersion,omitempty" groups:"apps"`
+	PhysicalVolumeStrategy PhysicalVolumeStrategy `mapstructure:"physical-volume-strategy" toml:"physical-volume-strategy" json:"physicalVolumeStrategy,omitempty" groups:"apps"`
 
 	// Use sync.RWMutex to protect concurrent access to Volumes and VolumeMappings
 	Mutex sync.RWMutex
@@ -1385,4 +1462,737 @@ func (s *S3Mount) GetSourcePoolName() string {
 		return s.Volume.PoolName
 	}
 	return "" // Return an empty string if the volume is not set
+}
+
+// IsCanonical reports whether this deployment has been migrated to the v2 storage model.
+func (d *Deployment) IsCanonical() bool {
+	return d.StorageLayoutVersion >= StorageLayoutV2
+}
+
+// GetAppVolumeByName returns the canonical AppVolume with the given name.
+func (d *Deployment) GetAppVolumeByName(name string) (*AppVolume, error) {
+	d.Mutex.RLock()
+	defer d.Mutex.RUnlock()
+	for _, v := range d.AppVolumes {
+		if v.Name == name {
+			return v, nil
+		}
+	}
+	return nil, fmt.Errorf("canonical volume %q not found", name)
+}
+
+// InsertAppVolume adds a new canonical volume.
+func (d *Deployment) InsertAppVolume(v *AppVolume) error {
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+	if v.Name == "" {
+		return errors.New("volume name is required")
+	}
+	if v.Pool == "" {
+		return errors.New("volume pool is required")
+	}
+	if v.Size == "" {
+		return errors.New("volume size is required")
+	}
+	for _, existing := range d.AppVolumes {
+		if existing.Name == v.Name {
+			return fmt.Errorf("canonical volume %q already exists", v.Name)
+		}
+	}
+	d.AppVolumes = append(d.AppVolumes, v)
+	return nil
+}
+
+// UpdateAppVolume replaces the canonical volume with the given name.
+// If the name changes, all sources that referenced the old name are updated.
+// Uses copy-swap so a validation failure leaves in-memory state unchanged.
+func (d *Deployment) UpdateAppVolume(name string, updated *AppVolume) error {
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+	if updated.Name == "" {
+		return errors.New("volume name is required")
+	}
+	if updated.Pool == "" {
+		return errors.New("volume pool is required")
+	}
+	if updated.Size == "" {
+		return errors.New("volume size is required")
+	}
+	idx := -1
+	for i, v := range d.AppVolumes {
+		if v.Name == name {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return fmt.Errorf("canonical volume %q not found", name)
+	}
+	// Guard against rename collision before mutating.
+	if updated.Name != name {
+		for _, v := range d.AppVolumes {
+			if v.Name == updated.Name {
+				return fmt.Errorf("canonical volume %q already exists", updated.Name)
+			}
+		}
+	}
+
+	// Snapshot slices for rollback (elements are pointers; snapshot preserves old ptrs).
+	oldVolumes := make(AppVolumes, len(d.AppVolumes))
+	copy(oldVolumes, d.AppVolumes)
+	oldSources := make(AppSources, len(d.AppSources))
+	copy(oldSources, d.AppSources)
+
+	// Apply: replace the volume and cascade the rename to sources using fresh copies.
+	d.AppVolumes[idx] = updated
+	if updated.Name != name {
+		for i, s := range d.AppSources {
+			if s.VolumeName == name {
+				ns := *s
+				ns.VolumeName = updated.Name
+				d.AppSources[i] = &ns
+			}
+		}
+	}
+
+	// Validate post-mutation state; rollback on failure.
+	if err := validateCanonicalStorageSlices(d.AppVolumes, d.AppSources, d.AppMounts); err != nil {
+		d.AppVolumes = oldVolumes
+		d.AppSources = oldSources
+		return err
+	}
+	return nil
+}
+
+// DropAppVolume removes a canonical volume.  It fails if any source still references it.
+func (d *Deployment) DropAppVolume(name string) error {
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+	for _, src := range d.AppSources {
+		if src.VolumeName == name {
+			return fmt.Errorf("cannot drop volume %q: source %q still references it", name, src.Name)
+		}
+	}
+	for i, v := range d.AppVolumes {
+		if v.Name == name {
+			d.AppVolumes = append(d.AppVolumes[:i], d.AppVolumes[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("canonical volume %q not found", name)
+}
+
+// GetAppSourceByName returns the canonical AppSource with the given name.
+func (d *Deployment) GetAppSourceByName(name string) (*AppSource, error) {
+	d.Mutex.RLock()
+	defer d.Mutex.RUnlock()
+	for _, s := range d.AppSources {
+		if s.Name == name {
+			return s, nil
+		}
+	}
+	return nil, fmt.Errorf("canonical source %q not found", name)
+}
+
+// InsertAppSource adds a new canonical source.
+func (d *Deployment) InsertAppSource(s *AppSource) error {
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+	if s.Name == "" {
+		return errors.New("source name is required")
+	}
+	if s.VolumeName == "" {
+		return errors.New("source volumeName is required")
+	}
+	if s.BasePath == "" {
+		return errors.New("source basePath is required")
+	}
+	if strings.Contains(s.BasePath, "..") {
+		return fmt.Errorf("invalid basePath %q: must not contain '..'", s.BasePath)
+	}
+	s.BasePath = normalizePath(s.BasePath)
+	if err := validateAppSourceType(s); err != nil {
+		return err
+	}
+	// Validate referenced volume exists
+	found := false
+	for _, v := range d.AppVolumes {
+		if v.Name == s.VolumeName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("source %q references unknown volume %q", s.Name, s.VolumeName)
+	}
+	for _, existing := range d.AppSources {
+		if existing.Name == s.Name {
+			return fmt.Errorf("canonical source %q already exists", s.Name)
+		}
+	}
+	d.AppSources = append(d.AppSources, s)
+	return nil
+}
+
+// UpdateAppSource replaces the canonical source with the given name.
+// If the name changes, all mounts that referenced the old name are updated.
+// Uses copy-swap so a validation failure leaves in-memory state unchanged.
+func (d *Deployment) UpdateAppSource(name string, updated *AppSource) error {
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+	if updated.Name == "" {
+		return errors.New("source name is required")
+	}
+	if updated.VolumeName == "" {
+		return errors.New("source volumeName is required")
+	}
+	if updated.BasePath == "" {
+		return errors.New("source basePath is required")
+	}
+	if strings.Contains(updated.BasePath, "..") {
+		return fmt.Errorf("invalid basePath %q: must not contain '..'", updated.BasePath)
+	}
+	updated.BasePath = normalizePath(updated.BasePath)
+	if err := validateAppSourceType(updated); err != nil {
+		return err
+	}
+	idx := -1
+	for i, s := range d.AppSources {
+		if s.Name == name {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return fmt.Errorf("canonical source %q not found", name)
+	}
+	// Guard against rename collision before mutating.
+	if updated.Name != name {
+		for _, s := range d.AppSources {
+			if s.Name == updated.Name {
+				return fmt.Errorf("canonical source %q already exists", updated.Name)
+			}
+		}
+	}
+	// Validate that the referenced volume exists.
+	found := false
+	for _, v := range d.AppVolumes {
+		if v.Name == updated.VolumeName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("source %q references unknown volume %q", updated.Name, updated.VolumeName)
+	}
+
+	// Snapshot slices for rollback.
+	oldSources := make(AppSources, len(d.AppSources))
+	copy(oldSources, d.AppSources)
+	oldMounts := make(AppMounts, len(d.AppMounts))
+	copy(oldMounts, d.AppMounts)
+
+	// Apply: replace the source and cascade the rename to mounts using fresh copies.
+	d.AppSources[idx] = updated
+	if updated.Name != name {
+		for i, m := range d.AppMounts {
+			if m.SourceName == name {
+				nm := *m
+				nm.SourceName = updated.Name
+				d.AppMounts[i] = &nm
+			}
+		}
+	}
+
+	// Validate post-mutation state; rollback on failure.
+	if err := validateCanonicalStorageSlices(d.AppVolumes, d.AppSources, d.AppMounts); err != nil {
+		d.AppSources = oldSources
+		d.AppMounts = oldMounts
+		return err
+	}
+	return nil
+}
+
+// DropAppSource removes a canonical source.  It fails if any mount still references it.
+func (d *Deployment) DropAppSource(name string) error {
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+	for _, m := range d.AppMounts {
+		if m.SourceName == name {
+			return fmt.Errorf("cannot drop source %q: mount %q still references it", name, m.TargetPath)
+		}
+	}
+	for i, s := range d.AppSources {
+		if s.Name == name {
+			d.AppSources = append(d.AppSources[:i], d.AppSources[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("canonical source %q not found", name)
+}
+
+// GetAppMountByTarget returns the canonical AppMount targeting the given container path.
+func (d *Deployment) GetAppMountByTarget(targetPath string) (*AppMount, error) {
+	targetPath = normalizeCanonicalMountTargetPath(targetPath)
+	d.Mutex.RLock()
+	defer d.Mutex.RUnlock()
+	for _, m := range d.AppMounts {
+		if m.TargetPath == targetPath {
+			return m, nil
+		}
+	}
+	return nil, fmt.Errorf("canonical mount with targetPath %q not found", targetPath)
+}
+
+// InsertAppMount adds a new canonical mount.
+func (d *Deployment) InsertAppMount(m *AppMount) error {
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+	if m.SourceName == "" {
+		return errors.New("mount sourceName is required")
+	}
+	if m.TargetPath == "" {
+		return errors.New("mount targetPath is required")
+	}
+	if !strings.HasPrefix(m.TargetPath, "/") {
+		return fmt.Errorf("mount targetPath %q must be absolute", m.TargetPath)
+	}
+	if m.TargetPath == "/" {
+		return errors.New("mount targetPath '/' is not allowed")
+	}
+	if strings.Contains(m.TargetPath, "..") {
+		return fmt.Errorf("mount targetPath %q must not contain '..'", m.TargetPath)
+	}
+	if m.SourceSubPath != "" && strings.Contains(m.SourceSubPath, "..") {
+		return fmt.Errorf("mount sourceSubPath %q must not contain '..'", m.SourceSubPath)
+	}
+	// Normalize after validation so stored keys are always canonical.
+	m.TargetPath = normalizeCanonicalMountTargetPath(m.TargetPath)
+	m.SourceSubPath = normalizeCanonicalMountSourceSubPath(m.SourceSubPath)
+	// Validate referenced source exists
+	found := false
+	for _, s := range d.AppSources {
+		if s.Name == m.SourceName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("mount references unknown source %q", m.SourceName)
+	}
+	for _, existing := range d.AppMounts {
+		if existing.TargetPath == m.TargetPath {
+			return fmt.Errorf("mount with targetPath %q already exists", m.TargetPath)
+		}
+	}
+	d.AppMounts = append(d.AppMounts, m)
+	return nil
+}
+
+// UpdateAppMount replaces the canonical mount with the given target path.
+// If targetPath changes, the old entry is removed and the new one is inserted (if
+// no other mount already occupies the new target).
+// Uses copy-swap so a validation failure leaves in-memory state unchanged.
+func (d *Deployment) UpdateAppMount(targetPath string, updated *AppMount) error {
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+	if updated.SourceName == "" {
+		return errors.New("mount sourceName is required")
+	}
+	if updated.TargetPath == "" {
+		return errors.New("mount targetPath is required")
+	}
+	if !strings.HasPrefix(updated.TargetPath, "/") {
+		return fmt.Errorf("mount targetPath %q must be absolute", updated.TargetPath)
+	}
+	if updated.TargetPath == "/" {
+		return errors.New("mount targetPath '/' is not allowed")
+	}
+	if strings.Contains(updated.TargetPath, "..") {
+		return fmt.Errorf("mount targetPath %q must not contain '..'", updated.TargetPath)
+	}
+	if updated.SourceSubPath != "" && strings.Contains(updated.SourceSubPath, "..") {
+		return fmt.Errorf("mount sourceSubPath %q must not contain '..'", updated.SourceSubPath)
+	}
+	// Normalize both the lookup key and the updated struct so stored keys are always canonical.
+	targetPath = normalizeCanonicalMountTargetPath(targetPath)
+	updated.TargetPath = normalizeCanonicalMountTargetPath(updated.TargetPath)
+	updated.SourceSubPath = normalizeCanonicalMountSourceSubPath(updated.SourceSubPath)
+	idx := -1
+	for i, m := range d.AppMounts {
+		if m.TargetPath == targetPath {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return fmt.Errorf("canonical mount with targetPath %q not found", targetPath)
+	}
+	// Guard against target-path collision before mutating.
+	if updated.TargetPath != targetPath {
+		for i, m := range d.AppMounts {
+			if i != idx && m.TargetPath == updated.TargetPath {
+				return fmt.Errorf("mount with targetPath %q already exists", updated.TargetPath)
+			}
+		}
+	}
+
+	// Snapshot for rollback.
+	oldMounts := make(AppMounts, len(d.AppMounts))
+	copy(oldMounts, d.AppMounts)
+
+	d.AppMounts[idx] = updated
+
+	// Validate post-mutation state; rollback on failure.
+	if err := validateCanonicalStorageSlices(d.AppVolumes, d.AppSources, d.AppMounts); err != nil {
+		d.AppMounts = oldMounts
+		return err
+	}
+	return nil
+}
+
+// DropAppMount removes a canonical mount by target path.
+func (d *Deployment) DropAppMount(targetPath string) error {
+	targetPath = normalizeCanonicalMountTargetPath(targetPath)
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+	for i, m := range d.AppMounts {
+		if m.TargetPath == targetPath {
+			d.AppMounts = append(d.AppMounts[:i], d.AppMounts[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("canonical mount with targetPath %q not found", targetPath)
+}
+
+// ValidateCanonicalStorage validates all canonical volumes, sources, and mounts.
+func (d *Deployment) ValidateCanonicalStorage() error {
+	return validateCanonicalStorageSlices(d.AppVolumes, d.AppSources, d.AppMounts)
+}
+
+func normalizeCanonicalMountTargetPath(targetPath string) string {
+	if targetPath == "" {
+		return ""
+	}
+	return filepath.Clean(targetPath)
+}
+
+func normalizeCanonicalMountSourceSubPath(sourceSubPath string) string {
+	if sourceSubPath == "" {
+		return ""
+	}
+	return filepath.Clean(sourceSubPath)
+}
+
+// validateAppSourceType returns an error when the source type is unknown or when
+// type-specific required fields are missing.
+func validateAppSourceType(s *AppSource) error {
+	switch s.Type {
+	case AppSourceDirectory:
+		// no additional required fields
+	case AppSourceGit:
+		if s.Repo == "" {
+			return fmt.Errorf("canonical git source %q requires repo field", s.Name)
+		}
+	case AppSourceS3:
+		if s.Bucket == "" {
+			return fmt.Errorf("canonical s3 source %q requires bucket field", s.Name)
+		}
+		if s.ProviderName == "" && s.Endpoint == "" {
+			return fmt.Errorf("canonical s3 source %q requires either providerName or endpoint", s.Name)
+		}
+	default:
+		return fmt.Errorf("canonical source %q has invalid type %q (must be directory, git, or s3)", s.Name, s.Type)
+	}
+	return nil
+}
+
+// validateCanonicalStorageSlices is the lock-free core of ValidateCanonicalStorage.
+// It may be called from within a locked CRUD method to validate the post-mutation
+// state before committing, enabling rollback on failure.
+func validateCanonicalStorageSlices(volumes AppVolumes, sources AppSources, mounts AppMounts) error {
+	volNames := make(map[string]bool, len(volumes))
+	for _, v := range volumes {
+		if v.Name == "" {
+			return errors.New("canonical volume has empty name")
+		}
+		if v.Pool == "" {
+			return fmt.Errorf("canonical volume %q has empty pool", v.Name)
+		}
+		if v.Size == "" {
+			return fmt.Errorf("canonical volume %q has empty size", v.Name)
+		}
+		if volNames[v.Name] {
+			return fmt.Errorf("duplicate canonical volume name %q", v.Name)
+		}
+		volNames[v.Name] = true
+	}
+
+	srcNames := make(map[string]bool, len(sources))
+	for _, s := range sources {
+		if s.Name == "" {
+			return errors.New("canonical source has empty name")
+		}
+		if s.VolumeName == "" {
+			return fmt.Errorf("canonical source %q has empty volumeName", s.Name)
+		}
+		if s.BasePath == "" {
+			return fmt.Errorf("canonical source %q has empty basePath", s.Name)
+		}
+		if strings.Contains(s.BasePath, "..") {
+			return fmt.Errorf("canonical source %q basePath %q must not contain '..'", s.Name, s.BasePath)
+		}
+		if !volNames[s.VolumeName] {
+			return fmt.Errorf("canonical source %q references unknown volume %q", s.Name, s.VolumeName)
+		}
+		if err := validateAppSourceType(s); err != nil {
+			return err
+		}
+		if srcNames[s.Name] {
+			return fmt.Errorf("duplicate canonical source name %q", s.Name)
+		}
+		srcNames[s.Name] = true
+	}
+
+	targetPaths := make(map[string]bool, len(mounts))
+	for _, m := range mounts {
+		if m.SourceName == "" {
+			return errors.New("canonical mount has empty sourceName")
+		}
+		if m.TargetPath == "" {
+			return errors.New("canonical mount has empty targetPath")
+		}
+		if !strings.HasPrefix(m.TargetPath, "/") {
+			return fmt.Errorf("canonical mount targetPath %q must be absolute", m.TargetPath)
+		}
+		if m.TargetPath == "/" {
+			return errors.New("canonical mount targetPath '/' is not allowed")
+		}
+		if strings.Contains(m.TargetPath, "..") {
+			return fmt.Errorf("canonical mount targetPath %q must not contain '..'", m.TargetPath)
+		}
+		if m.SourceSubPath != "" && strings.Contains(m.SourceSubPath, "..") {
+			return fmt.Errorf("canonical mount sourceSubPath %q must not contain '..'", m.SourceSubPath)
+		}
+		m.TargetPath = normalizeCanonicalMountTargetPath(m.TargetPath)
+		m.SourceSubPath = normalizeCanonicalMountSourceSubPath(m.SourceSubPath)
+		if !srcNames[m.SourceName] {
+			return fmt.Errorf("canonical mount references unknown source %q", m.SourceName)
+		}
+		if targetPaths[m.TargetPath] {
+			return fmt.Errorf("duplicate canonical mount targetPath %q", m.TargetPath)
+		}
+		targetPaths[m.TargetPath] = true
+	}
+	return nil
+}
+
+// ResolveAppSourceVolume returns the AppVolume backing the given AppSource.
+func (d *Deployment) ResolveAppSourceVolume(src *AppSource) (*AppVolume, error) {
+	d.Mutex.RLock()
+	defer d.Mutex.RUnlock()
+	for _, v := range d.AppVolumes {
+		if v.Name == src.VolumeName {
+			return v, nil
+		}
+	}
+	return nil, fmt.Errorf("source %q references unknown volume %q", src.Name, src.VolumeName)
+}
+
+// legacyShadowSourcePath builds the PathMapping.SourcePath for a shadow entry by
+// composing the canonical source's BasePath with the mount's SourceSubPath.
+// Legacy ResolvePointers rejects "/" and converts "" to "."; this function
+// emits "." for any result that would be empty or bare root.
+func legacyShadowSourcePath(basePath, sourceSubPath string) string {
+	var p string
+	if sourceSubPath == "" || sourceSubPath == "/" {
+		p = basePath
+	} else {
+		p = filepath.Join(basePath, sourceSubPath)
+	}
+	if p == "" || p == "/" {
+		return "."
+	}
+	return p
+}
+
+// SyncLegacyShadows regenerates the legacy Storages.* and Paths fields from the
+// canonical AppVolumes/AppSources/AppMounts model so that legacy readers (GetGitClone,
+// GetS3Mount, UI display endpoints that have not yet been migrated to canonical
+// endpoints) remain consistent after canonical-model edits.
+//
+// This must only be called on canonical (v2) deployments; it is a no-op otherwise.
+// Callers in the write path (canonicalStorageSave) must call this after every
+// canonical mutation and before persisting.
+func (d *Deployment) SyncLegacyShadows() {
+	if !d.IsCanonical() {
+		return
+	}
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+
+	// Build a source lookup and find each AppVolume's first directory source's BasePath
+	// so that legacy Volume.VolumeDir can be faithfully restored.
+	// (One directory source per volume is the typical migration case.)
+	srcByName := make(map[string]*AppSource, len(d.AppSources))
+	firstDirByVol := make(map[string]string, len(d.AppVolumes))
+	for _, src := range d.AppSources {
+		srcByName[src.Name] = src
+		if src.Type == AppSourceDirectory {
+			if _, set := firstDirByVol[src.VolumeName]; !set {
+				firstDirByVol[src.VolumeName] = src.BasePath
+			}
+		}
+	}
+
+	// Volumes: one legacy Volume per AppVolume.
+	// VolumeDir comes from the volume's first directory AppSource so existing
+	// readers (Volume.VolumeDir display, GetDockerMapping) work correctly.
+	newVols := make(Volumes, 0, len(d.AppVolumes))
+	for _, av := range d.AppVolumes {
+		newVols = append(newVols, &Volume{
+			Name:      av.Name,
+			PoolName:  av.Pool,
+			VolumeDir: firstDirByVol[av.Name], // empty string is fine when no dir source exists
+		})
+	}
+	d.Storages.Volumes = newVols
+
+	// Sources: map AppSources back to GitClones / S3Mounts.
+	newGits := make(GitClones, 0)
+	newS3s := make(S3Mounts, 0)
+	for _, src := range d.AppSources {
+		switch src.Type {
+		case AppSourceGit:
+			newGits = append(newGits, &GitClone{
+				Name:       src.Name,
+				GitRepo:    src.Repo,
+				GitBranch:  src.Branch,
+				VolumeName: src.VolumeName,
+				VolumeDir:  src.BasePath,
+				GitUser:    src.User,
+				GitPass:    src.Pass,
+			})
+		case AppSourceS3:
+			newS3s = append(newS3s, &S3Mount{
+				Name:         src.Name,
+				Endpoint:     src.Endpoint,
+				Bucket:       src.Bucket,
+				Region:       src.Region,
+				AccessKey:    src.AccessKey,
+				SecretKey:    src.SecretKey,
+				VolumeName:   src.VolumeName,
+				VolumeDir:    src.BasePath,
+				ProviderName: src.ProviderName,
+				MountDir:     src.MountDir,
+			})
+		}
+	}
+	d.Storages.GitClones = newGits
+	d.Storages.S3Mounts = newS3s
+
+	// Mounts: map AppMounts back to PathMappings.
+	// For directory-source mounts the legacy SourceType is "volume" and SourceName
+	// is the backing volume name (not the synthetic directory source name), matching
+	// the pre-migration shape that legacy readers (ResolvePointers, UI display)
+	// expect.  SourcePath is the mount's SourceSubPath (the subdirectory within the
+	// source's BasePath).
+	newPaths := make(PathMaps, 0, len(d.AppMounts))
+	for _, m := range d.AppMounts {
+		src, ok := srcByName[m.SourceName]
+		if !ok {
+			continue
+		}
+		var srcType SourceType
+		var legacySrcName string
+		switch src.Type {
+		case AppSourceGit:
+			srcType = SourceGit
+			legacySrcName = src.Name // git sources keep their own name
+		case AppSourceS3:
+			srcType = SourceS3
+			legacySrcName = src.Name // S3 sources keep their own name
+		case AppSourceDirectory:
+			srcType = SourceVolume
+			legacySrcName = src.VolumeName // directory sources map to volume name
+		default:
+			continue
+		}
+		pm := &PathMapping{
+			Name:       m.Name,
+			DockerPath: m.TargetPath,
+			SourceType: srcType,
+			SourceName: legacySrcName,
+			SourcePath: legacyShadowSourcePath(src.BasePath, m.SourceSubPath),
+			VolumeName: src.VolumeName,
+		}
+		newPaths = append(newPaths, pm)
+	}
+	d.Paths = newPaths
+}
+
+// NormalizeSizeWithUnit ensures a size string has a unit suffix (g/m/k).
+// If the value is a bare integer, "g" is appended.
+func NormalizeSizeWithUnit(s string) string {
+	if s == "" {
+		return "1g"
+	}
+	last := s[len(s)-1]
+	if last == 'g' || last == 'm' || last == 'k' || last == 'G' || last == 'M' || last == 'K' {
+		return strings.ToLower(s)
+	}
+	return strings.ToLower(s) + "g"
+}
+
+// ---------------------------------------------------------------------------
+// AppSource variable-handling helpers (mirrors GitClone / S3Mount patterns)
+// ---------------------------------------------------------------------------
+
+var appSourceTokenReplacer = strings.NewReplacer("-", "_", ".", "_", "/", "_")
+
+// GetGitVariablePrefix returns the env/secret variable prefix for a git AppSource.
+// Pattern: GIT_{UPPER_NAME}_
+func (s *AppSource) GetGitVariablePrefix() string {
+	return "GIT_" + strings.ToUpper(appSourceTokenReplacer.Replace(s.Name)) + "_"
+}
+
+// GetGitEnvVariables returns the non-secret environment variables for a git AppSource.
+func (s *AppSource) GetGitEnvVariables() map[string]string {
+	repo := s.Repo
+	repo = strings.TrimPrefix(repo, "http://")
+	repo = strings.TrimPrefix(repo, "https://")
+	branch := s.Branch
+	if branch == "" {
+		branch = "master"
+	}
+	return map[string]string{
+		GitVarSuffixRepo:   repo,
+		GitVarSuffixBranch: branch,
+		GitVarSuffixUser:   s.User,
+	}
+}
+
+// GetS3VariablePrefix returns the env/secret variable prefix for an s3 AppSource.
+// Pattern: {UPPER_NAME}_
+func (s *AppSource) GetS3VariablePrefix() string {
+	return strings.ToUpper(appSourceTokenReplacer.Replace(s.Name)) + "_"
+}
+
+// GetS3EnvVariables returns the non-secret environment variables for an s3 AppSource.
+func (s *AppSource) GetS3EnvVariables() map[string]string {
+	mountDir := s.MountDir
+	if mountDir == "" {
+		mountDir = "/mnt"
+	}
+	region := s.Region
+	if region == "" {
+		region = "fr-east-1"
+	}
+	return map[string]string{
+		S3VarSuffixBucket:    s.Bucket,
+		S3VarSuffixRegion:    region,
+		S3VarSuffixAccessKey: s.AccessKey,
+		S3VarSuffixMountDir:  mountDir,
+		S3VarSuffixEndpoint:  s.Endpoint,
+	}
 }
