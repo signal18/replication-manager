@@ -1,6 +1,6 @@
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton,
-  Box, VStack, HStack, Text, Badge, Table, Thead, Tbody, Tr, Th, Td, Select, Spinner
+  Box, VStack, HStack, Text, Badge, Table, Thead, Tbody, Tr, Th, Td, Select, Spinner, Checkbox
 } from '@chakra-ui/react'
 import React, { useState, useEffect, useRef } from 'react'
 import { useSelector } from 'react-redux'
@@ -128,6 +128,7 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
   const { theme } = useTheme()
   const baseURL = useSelector((state) => state?.auth?.baseURL)
   const [runs, setRuns] = useState([])
+  const [selected, setSelected] = useState(new Set())
   const [metric, setMetric] = useState('mysql_global_status_queries')
   const [chartSeries, setChartSeries] = useState([])
   const [loading, setLoading] = useState(false)
@@ -139,24 +140,43 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
     if (isOpen && clusterName) {
       setChartSeries([])
       setError('')
+      setSelected(new Set())
       clusterService.getSysbenchHistory(clusterName, baseURL)
         .then(res => {
           const data = res.data
-          setRuns(Array.isArray(data) ? data : data?.Entries || data?.entries || [])
+          const entries = Array.isArray(data) ? data : data?.Entries || data?.entries || []
+          setRuns(entries)
+          // Select only the last run by default
+          if (entries.length > 0) setSelected(new Set([entries.length - 1]))
         })
         .catch(() => setRuns([]))
     }
   }, [isOpen, clusterName, baseURL])
 
+  const toggleSelect = (i) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(i)) next.delete(i)
+      else next.add(i)
+      return next
+    })
+  }
+
+  const toggleAll = () => {
+    if (selected.size === runs.length) setSelected(new Set())
+    else setSelected(new Set(runs.map((_, i) => i)))
+  }
+
   const fetchGraphiteData = async () => {
-    if (runs.length === 0) return
+    const selectedRuns = runs.filter((_, i) => selected.has(i))
+    if (selectedRuns.length === 0) return
     setLoading(true)
     setError('')
     setChartSeries([])
 
     const metricDef = METRICS.find(m => m.value === metric)
-    // Oldest run is the reference (index 0 after sorting by startedAt)
-    const sorted = [...runs].sort((a, b) => new Date(a.startedAt) - new Date(b.startedAt))
+    // Oldest selected run is the reference (index 0 after sorting by startedAt)
+    const sorted = [...selectedRuns].sort((a, b) => new Date(a.startedAt) - new Date(b.startedAt))
     const refRun = sorted[0]
 
     // Find the newest run to align the graphite time window
@@ -246,6 +266,7 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
                   <Table size='sm' variant='simple'>
                     <Thead>
                       <Tr>
+                        <Th px={1}><Checkbox size='sm' isChecked={selected.size === runs.length} isIndeterminate={selected.size > 0 && selected.size < runs.length} onChange={toggleAll} /></Th>
                         <Th>#</Th>
                         <Th>Date</Th>
                         <Th>Test</Th>
@@ -259,7 +280,8 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
                     </Thead>
                     <Tbody>
                       {runs.map((run, i) => (
-                        <Tr key={i}>
+                        <Tr key={i} opacity={selected.has(i) ? 1 : 0.5} cursor='pointer' onClick={() => toggleSelect(i)}>
+                          <Td px={1}><Checkbox size='sm' isChecked={selected.has(i)} onChange={() => toggleSelect(i)} /></Td>
                           <Td>{i + 1}</Td>
                           <Td>{formatDate(run.startedAt)}</Td>
                           <Td>
@@ -283,8 +305,8 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
                       <option key={m.value} value={m.value}>{m.label}</option>
                     ))}
                   </Select>
-                  <RMButton size='small' colorScheme='blue' onClick={fetchGraphiteData} isDisabled={loading}>
-                    {loading ? <Spinner size='xs' /> : 'Show Graph'}
+                  <RMButton size='small' colorScheme='blue' onClick={fetchGraphiteData} isDisabled={loading || selected.size === 0}>
+                    {loading ? <Spinner size='xs' /> : `Show Graph (${selected.size})`}
                   </RMButton>
                 </HStack>
 
