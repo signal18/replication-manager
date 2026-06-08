@@ -1885,6 +1885,9 @@ func (d *Deployment) ValidateCanonicalStorage() error {
 // their cleaned form in place. It returns true if any value was changed, so
 // callers can decide whether the deployment needs to be persisted.
 func (d *Deployment) NormalizeCanonicalStorage() bool {
+	if !d.IsCanonical() {
+		return false
+	}
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
 	changed := false

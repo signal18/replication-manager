@@ -325,7 +325,8 @@ func TestValidateCanonicalStorage_AcceptsUnnormalizedMountTargetPath(t *testing.
 
 func TestNormalizeCanonicalStorage_RewritesMountPaths(t *testing.T) {
 	d := &Deployment{
-		AppVolumes: AppVolumes{{Name: "v1", Pool: "tank", Size: "1g"}},
+		StorageLayoutVersion: StorageLayoutV2,
+		AppVolumes:           AppVolumes{{Name: "v1", Pool: "tank", Size: "1g"}},
 		AppSources: AppSources{{Name: "s1", Type: AppSourceDirectory, VolumeName: "v1", BasePath: "/data"}},
 		AppMounts:  AppMounts{{SourceName: "s1", TargetPath: "/app//data/", SourceSubPath: "sub//dir/"}},
 	}
@@ -340,6 +341,19 @@ func TestNormalizeCanonicalStorage_RewritesMountPaths(t *testing.T) {
 	}
 	if changed := d.NormalizeCanonicalStorage(); changed {
 		t.Fatal("expected NormalizeCanonicalStorage to be idempotent and report no further change")
+	}
+}
+
+func TestNormalizeCanonicalStorage_NoOpOnLegacyDeployment(t *testing.T) {
+	d := &Deployment{
+		StorageLayoutVersion: StorageLayoutLegacy,
+		AppMounts:            AppMounts{{SourceName: "s1", TargetPath: "/app//data/", SourceSubPath: "sub//dir/"}},
+	}
+	if changed := d.NormalizeCanonicalStorage(); changed {
+		t.Fatal("expected NormalizeCanonicalStorage to be a no-op on a non-canonical deployment")
+	}
+	if got := d.AppMounts[0].TargetPath; got != "/app//data/" {
+		t.Fatalf("expected legacy deployment's AppMounts to be left untouched, got %q", got)
 	}
 }
 
