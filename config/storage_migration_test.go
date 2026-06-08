@@ -307,17 +307,39 @@ func TestValidateCanonicalStorage_MountRelativeTarget(t *testing.T) {
 	}
 }
 
-func TestValidateCanonicalStorage_NormalizesMountTargetPath(t *testing.T) {
+func TestValidateCanonicalStorage_AcceptsUnnormalizedMountTargetPath(t *testing.T) {
 	d := &Deployment{
 		AppVolumes: AppVolumes{{Name: "v1", Pool: "tank", Size: "1g"}},
 		AppSources: AppSources{{Name: "s1", Type: AppSourceDirectory, VolumeName: "v1", BasePath: "/data"}},
 		AppMounts:  AppMounts{{SourceName: "s1", TargetPath: "/app//data/"}},
 	}
 	if err := d.ValidateCanonicalStorage(); err != nil {
-		t.Fatalf("expected normalized mount targetPath to validate, got %v", err)
+		t.Fatalf("expected mount with unnormalized targetPath to validate, got %v", err)
+	}
+	// ValidateCanonicalStorage must be read-only: it must not rewrite the
+	// stored targetPath in place.
+	if got := d.AppMounts[0].TargetPath; got != "/app//data/" {
+		t.Fatalf("ValidateCanonicalStorage must not mutate targetPath, got %q", got)
+	}
+}
+
+func TestNormalizeCanonicalStorage_RewritesMountPaths(t *testing.T) {
+	d := &Deployment{
+		AppVolumes: AppVolumes{{Name: "v1", Pool: "tank", Size: "1g"}},
+		AppSources: AppSources{{Name: "s1", Type: AppSourceDirectory, VolumeName: "v1", BasePath: "/data"}},
+		AppMounts:  AppMounts{{SourceName: "s1", TargetPath: "/app//data/", SourceSubPath: "sub//dir/"}},
+	}
+	if changed := d.NormalizeCanonicalStorage(); !changed {
+		t.Fatal("expected NormalizeCanonicalStorage to report a change")
 	}
 	if got := d.AppMounts[0].TargetPath; got != "/app/data" {
 		t.Fatalf("expected normalized targetPath /app/data, got %q", got)
+	}
+	if got := d.AppMounts[0].SourceSubPath; got != "sub/dir" {
+		t.Fatalf("expected normalized sourceSubPath sub/dir, got %q", got)
+	}
+	if changed := d.NormalizeCanonicalStorage(); changed {
+		t.Fatal("expected NormalizeCanonicalStorage to be idempotent and report no further change")
 	}
 }
 
@@ -989,6 +1011,172 @@ func TestSyncLegacyShadows_Canonical(t *testing.T) {
 	if dirPath.SourcePath != "/data" {
 		t.Errorf("directory path SourcePath: want /data, got %q", dirPath.SourcePath)
 	}
+}
+
+func TestHasMissingLegacyShadows(t *testing.T) {
+	// canonicalWithAllFamilies has one source of each shadow-able type (directory,
+	// git, s3) so every legacy family (Volumes, GitClones, S3Mounts, Paths) can be
+	// dropped or truncated independently to prove per-family count detection.
+	canonicalWithAllFamilies := func() *Deployment {
+		return &Deployment{
+			StorageLayoutVersion:   StorageLayoutV2,
+			PhysicalVolumeStrategy: PhysicalVolumeStrategyPerVolume,
+			AppVolumes:             AppVolumes{{Name: "v1", Pool: "tank", Size: "2g"}},
+			AppSources: AppSources{
+				{Name: "dir-src", Type: AppSourceDirectory, VolumeName: "v1", BasePath: "/data"},
+				{Name: "git-src", Type: AppSourceGit, VolumeName: "v1", BasePath: "/src", Repo: "github.com/x/y", Branch: "main"},
+				{Name: "s3-src", Type: AppSourceS3, VolumeName: "v1", BasePath: "/s3", Bucket: "mybucket", Endpoint: "http://minio:9000"},
+			},
+			AppMounts: AppMounts{
+				{Name: "dir-mount", SourceName: "dir-src", TargetPath: "/app/data"},
+				{Name: "git-mount", SourceName: "git-src", TargetPath: "/app/src"},
+				{Name: "s3-mount", SourceName: "s3-src", TargetPath: "/app/s3"},
+			},
+		}
+	}
+	syncedWithAllFamilies := func() *Deployment {
+		d := canonicalWithAllFamilies()
+		d.SyncLegacyShadows()
+		return d
+	}
+
+	t.Run("legacy deployment is never reported as missing shadows", func(t *testing.T) {
+		d := &Deployment{
+			Storages: StorageMapping{Volumes: Volumes{{Name: "v1", PoolName: "tank"}}},
+		}
+		if d.HasMissingLegacyShadows() {
+			t.Error("legacy (v1) deployment must never report missing shadows")
+		}
+	})
+
+	t.Run("empty canonical deployment has nothing to shadow", func(t *testing.T) {
+		d := &Deployment{StorageLayoutVersion: StorageLayoutV2}
+		if d.HasMissingLegacyShadows() {
+			t.Error("canonical deployment with no AppVolumes/AppSources/AppMounts should not need shadows")
+		}
+	})
+
+	t.Run("populated canonical model without shadows is detected", func(t *testing.T) {
+		d := canonicalWithAllFamilies()
+		if !d.HasMissingLegacyShadows() {
+			t.Error("expected populated v2 deployment with empty shadows to report missing shadows")
+		}
+	})
+
+	t.Run("complete shadow set produced by SyncLegacyShadows is not re-reported", func(t *testing.T) {
+		d := syncedWithAllFamilies()
+		if d.HasMissingLegacyShadows() {
+			t.Error("expected no missing shadows immediately after SyncLegacyShadows populated them")
+		}
+	})
+
+	t.Run("freshly-migrated config with preserved (richer) legacy data is not flagged", func(t *testing.T) {
+		// MigrateStorageToCanonical preserves legacy Storages/Paths as-is — possibly
+		// with different content than SyncLegacyShadows would regenerate (e.g. a
+		// hand-set VolumeDir) — but always with one shadow entry per corresponding
+		// legacy element, which 1:1-maps to the derived canonical element. The count
+		// based check must treat this as "complete", not "stale", or every load of a
+		// migrated config would be rewritten — see the comment on HasMissingLegacyShadows.
+		d := &Deployment{
+			Storages: StorageMapping{
+				Volumes: Volumes{{Name: "data-volume", PoolName: "data", VolumeDir: "data"}},
+			},
+			Paths: PathMaps{
+				{Name: "web-root", SourceType: SourceVolume, SourceName: "data-volume", DockerPath: "/var/www/html", SourcePath: "/"},
+			},
+		}
+		if err := MigrateStorageToCanonical(d, "1g"); err != nil {
+			t.Fatalf("migration error: %v", err)
+		}
+		if !d.IsCanonical() {
+			t.Fatalf("expected migration to produce a canonical (v2) deployment")
+		}
+		if d.HasMissingLegacyShadows() {
+			t.Error("expected freshly-migrated config with preserved legacy shadows to not be reported as missing")
+		}
+	})
+
+	t.Run("freshly-migrated config with deduplicated Paths overcount is not flagged", func(t *testing.T) {
+		// MigrateStorageToCanonical deduplicates/skips legacy Paths when deriving
+		// AppMounts (e.g. two legacy paths normalizing to the same mount target
+		// collapse into a single canonical mount — see
+		// TestMigrateStorageToCanonical_NormalizesAndDeduplicatesMountTargets), so a
+		// freshly migrated deployment can legitimately end up with MORE preserved
+		// legacy Paths than the canonical model would derive. That overcount must
+		// not be mistaken for "missing/incomplete" shadows and trigger a flattening
+		// regeneration on every subsequent load.
+		d := &Deployment{
+			Storages: StorageMapping{
+				Volumes:   Volumes{{Name: "web-vol", PoolName: "tank", VolumeDir: "/web"}},
+				GitClones: GitClones{{Name: "site-git", VolumeName: "web-vol", VolumeDir: "/web/site", GitRepo: "github.com/example/site", GitBranch: "main"}},
+			},
+			Paths: PathMaps{
+				{Name: "canonical-a", SourceType: SourceGit, SourceName: "site-git", SourcePath: "/conf", DockerPath: "/app/data", VolumeName: "web-vol"},
+				{Name: "canonical-b", SourceType: SourceGit, SourceName: "site-git", SourcePath: "/conf", DockerPath: "/app//data/", VolumeName: "web-vol"},
+			},
+		}
+		if err := MigrateStorageToCanonical(d, "1g"); err != nil {
+			t.Fatalf("migration error: %v", err)
+		}
+		if !d.IsCanonical() {
+			t.Fatalf("expected migration to produce a canonical (v2) deployment")
+		}
+		if len(d.AppMounts) >= len(d.Paths) {
+			t.Fatalf("setup: expected dedup to leave fewer canonical mounts (%d) than preserved legacy paths (%d)",
+				len(d.AppMounts), len(d.Paths))
+		}
+		if d.HasMissingLegacyShadows() {
+			t.Error("expected preserved legacy Paths overcount (from migration dedup) to not be reported as missing")
+		}
+	})
+
+	t.Run("partial loss: volumes shadow missing while others survive", func(t *testing.T) {
+		d := syncedWithAllFamilies()
+		d.Storages.Volumes = nil
+		if !d.HasMissingLegacyShadows() {
+			t.Error("expected missing-shadow detection when only Storages.Volumes is empty")
+		}
+	})
+
+	t.Run("partial loss: gitclones shadow missing while others survive", func(t *testing.T) {
+		d := syncedWithAllFamilies()
+		d.Storages.GitClones = nil
+		if !d.HasMissingLegacyShadows() {
+			t.Error("expected missing-shadow detection when only Storages.GitClones is empty")
+		}
+	})
+
+	t.Run("partial loss: s3mounts shadow missing while others survive", func(t *testing.T) {
+		d := syncedWithAllFamilies()
+		d.Storages.S3Mounts = nil
+		if !d.HasMissingLegacyShadows() {
+			t.Error("expected missing-shadow detection when only Storages.S3Mounts is empty")
+		}
+	})
+
+	t.Run("partial loss: paths shadow missing while others survive", func(t *testing.T) {
+		d := syncedWithAllFamilies()
+		d.Paths = nil
+		if !d.HasMissingLegacyShadows() {
+			t.Error("expected missing-shadow detection when only Paths is empty")
+		}
+	})
+
+	t.Run("incomplete: paths shadow present but short an entry", func(t *testing.T) {
+		d := syncedWithAllFamilies()
+		d.Paths = d.Paths[:len(d.Paths)-1]
+		if !d.HasMissingLegacyShadows() {
+			t.Error("expected missing-shadow detection when Paths has fewer entries than AppMounts resolve to")
+		}
+	})
+
+	t.Run("incomplete: gitclones shadow present but short an entry", func(t *testing.T) {
+		d := syncedWithAllFamilies()
+		d.Storages.GitClones = d.Storages.GitClones[:0]
+		if !d.HasMissingLegacyShadows() {
+			t.Error("expected missing-shadow detection when GitClones has fewer entries than git AppSources")
+		}
+	})
 }
 
 func TestSyncLegacyShadows_SourcePathComposition(t *testing.T) {

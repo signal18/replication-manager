@@ -1537,7 +1537,14 @@ func (d *Deployment) UpdateAppVolume(name string, updated *AppVolume) error {
 		}
 	}
 
-	// Snapshot slices for rollback (elements are pointers; snapshot preserves old ptrs).
+	// Snapshot slices for rollback. This is a shallow copy: it preserves the old
+	// *pointers*, not deep copies of the pointed-to structs. That is only safe
+	// because the apply step below never mutates an existing AppVolume/AppSource
+	// in place — it always swaps in a replacement pointer (d.AppVolumes[idx] =
+	// updated, d.AppSources[i] = &ns) — and validateCanonicalStorageSlices is
+	// pure and does not write through its arguments. If either invariant changes,
+	// this snapshot must become a deep copy or rollback will silently fail to
+	// restore the original values.
 	oldVolumes := make(AppVolumes, len(d.AppVolumes))
 	copy(oldVolumes, d.AppVolumes)
 	oldSources := make(AppSources, len(d.AppSources))
@@ -1866,8 +1873,32 @@ func (d *Deployment) DropAppMount(targetPath string) error {
 }
 
 // ValidateCanonicalStorage validates all canonical volumes, sources, and mounts.
+// It is read-only and never mutates the deployment; callers that need to
+// canonicalize mount paths should use NormalizeCanonicalStorage.
 func (d *Deployment) ValidateCanonicalStorage() error {
+	d.Mutex.RLock()
+	defer d.Mutex.RUnlock()
 	return validateCanonicalStorageSlices(d.AppVolumes, d.AppSources, d.AppMounts)
+}
+
+// NormalizeCanonicalStorage rewrites canonical mount target/source-sub paths to
+// their cleaned form in place. It returns true if any value was changed, so
+// callers can decide whether the deployment needs to be persisted.
+func (d *Deployment) NormalizeCanonicalStorage() bool {
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+	changed := false
+	for _, m := range d.AppMounts {
+		if normalized := normalizeCanonicalMountTargetPath(m.TargetPath); normalized != m.TargetPath {
+			m.TargetPath = normalized
+			changed = true
+		}
+		if normalized := normalizeCanonicalMountSourceSubPath(m.SourceSubPath); normalized != m.SourceSubPath {
+			m.SourceSubPath = normalized
+			changed = true
+		}
+	}
+	return changed
 }
 
 func normalizeCanonicalMountTargetPath(targetPath string) string {
@@ -1907,9 +1938,10 @@ func validateAppSourceType(s *AppSource) error {
 	return nil
 }
 
-// validateCanonicalStorageSlices is the lock-free core of ValidateCanonicalStorage.
-// It may be called from within a locked CRUD method to validate the post-mutation
-// state before committing, enabling rollback on failure.
+// validateCanonicalStorageSlices is the lock-free, side-effect-free core of
+// ValidateCanonicalStorage. It may be called from within a locked CRUD method
+// to validate the post-mutation state before committing, enabling rollback on
+// failure, without normalizing (and thus mutating) the inspected entries.
 func validateCanonicalStorageSlices(volumes AppVolumes, sources AppSources, mounts AppMounts) error {
 	volNames := make(map[string]bool, len(volumes))
 	for _, v := range volumes {
@@ -1974,15 +2006,14 @@ func validateCanonicalStorageSlices(volumes AppVolumes, sources AppSources, moun
 		if m.SourceSubPath != "" && strings.Contains(m.SourceSubPath, "..") {
 			return fmt.Errorf("canonical mount sourceSubPath %q must not contain '..'", m.SourceSubPath)
 		}
-		m.TargetPath = normalizeCanonicalMountTargetPath(m.TargetPath)
-		m.SourceSubPath = normalizeCanonicalMountSourceSubPath(m.SourceSubPath)
+		normalizedTarget := normalizeCanonicalMountTargetPath(m.TargetPath)
 		if !srcNames[m.SourceName] {
 			return fmt.Errorf("canonical mount references unknown source %q", m.SourceName)
 		}
-		if targetPaths[m.TargetPath] {
-			return fmt.Errorf("duplicate canonical mount targetPath %q", m.TargetPath)
+		if targetPaths[normalizedTarget] {
+			return fmt.Errorf("duplicate canonical mount targetPath %q", normalizedTarget)
 		}
-		targetPaths[m.TargetPath] = true
+		targetPaths[normalizedTarget] = true
 	}
 	return nil
 }
@@ -2014,6 +2045,73 @@ func legacyShadowSourcePath(basePath, sourceSubPath string) string {
 		return "."
 	}
 	return p
+}
+// HasMissingLegacyShadows reports whether this is a canonical (v2) deployment
+// whose legacy Storages.*/Paths shadows are missing or incomplete relative to the
+// canonical model — either a family is entirely empty while its canonical
+// counterpart is populated, or a family has fewer entries than the canonical
+// model would produce. This happens for hand-authored or trimmed v2 TOML files
+// that were never (fully) round-tripped through SyncLegacyShadows — legacy
+// readers (UI display endpoints, GetGitClone, GetS3Mount) would otherwise see
+// incomplete storage/path data.
+//
+// Deliberately count-based, not content-based: MigrateStorageToCanonical
+// preserves the original legacy Storages/Paths values as-is (richer than what
+// SyncLegacyShadows can regenerate — e.g. a hand-set Volume.VolumeDir that
+// doesn't match any AppSource.BasePath), so comparing regenerated content against
+// preserved-from-migration content would misreport legitimate, richer legacy data
+// as "stale" and flatten it on every load.
+//
+// Each family is therefore checked for an UNDERcount only (shadow entries fewer
+// than the canonical model would produce), never an overcount. An undercount has
+// no legitimate explanation — every generation path (fresh migration or
+// SyncLegacyShadows) produces at least one shadow entry per corresponding
+// canonical element — so it safely identifies configs that genuinely need
+// (re)generation. An overcount, on the other hand, is exactly what a freshly
+// migrated config can legitimately have: MigrateStorageToCanonical deduplicates
+// and skips some legacy Paths when deriving AppMounts (e.g. duplicate normalized
+// mount targets, unresolvable sources — see storage_migration.go), so preserved
+// legacy Paths can outnumber the canonical mounts derived from them. Treating
+// that as "missing" would flatten intentionally preserved backward-compatible
+// shadow data on every load.
+func (d *Deployment) HasMissingLegacyShadows() bool {
+	if !d.IsCanonical() {
+		return false
+	}
+	if len(d.Storages.Volumes) < len(d.AppVolumes) {
+		return true
+	}
+
+	srcByName := make(map[string]*AppSource, len(d.AppSources))
+	var expectedGits, expectedS3s int
+	for _, src := range d.AppSources {
+		srcByName[src.Name] = src
+		switch src.Type {
+		case AppSourceGit:
+			expectedGits++
+		case AppSourceS3:
+			expectedS3s++
+		}
+	}
+	if len(d.Storages.GitClones) < expectedGits {
+		return true
+	}
+	if len(d.Storages.S3Mounts) < expectedS3s {
+		return true
+	}
+
+	var expectedPaths int
+	for _, m := range d.AppMounts {
+		src, ok := srcByName[m.SourceName]
+		if !ok {
+			continue
+		}
+		switch src.Type {
+		case AppSourceGit, AppSourceS3, AppSourceDirectory:
+			expectedPaths++
+		}
+	}
+	return len(d.Paths) < expectedPaths
 }
 
 // SyncLegacyShadows regenerates the legacy Storages.* and Paths fields from the

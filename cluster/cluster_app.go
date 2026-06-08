@@ -494,6 +494,7 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 		return err
 	}
 
+	var storageMigrated, storageNormalized, shadowsRepaired bool
 	if appcnf.Deployment != nil {
 		if resolveErrs := appcnf.Deployment.ResolvePaths(); len(resolveErrs) > 0 {
 			for _, resolveErr := range resolveErrs {
@@ -502,22 +503,47 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 			}
 			return fmt.Errorf("invalid deployment path mapping in app config %q", filename)
 		}
-		// Auto-migrate legacy storage model to canonical v2 on every load.
-		// The migrated in-memory state will be persisted on the next save boundary.
+		// Auto-migrate legacy storage model to canonical v2 on every load, and
+		// normalize any canonical mount paths that aren't already in cleaned
+		// form. Both are persisted below (alongside template canonicalization)
+		// so the migration runs at most once per config rather than on every restart.
 		defaultSize := appcnf.ProvAppDisk
-		if migrateErr := config.EnsureCanonicalStorage(appcnf.Deployment, defaultSize); migrateErr != nil {
+		var migrateErr error
+		storageMigrated, migrateErr = config.EnsureCanonicalStorage(appcnf.Deployment, defaultSize)
+		if migrateErr != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
 				"App config %q storage auto-migration failed (legacy config preserved): %v", filename, migrateErr)
 		}
 		// For already-canonical configs (v2 on disk), EnsureCanonicalStorage is a
-		// no-op.  Run an explicit validation pass so malformed canonical configs are
-		// caught at load time rather than silently failing later during provisioning.
+		// no-op.  Run an explicit validation pass — on the as-loaded (not yet
+		// normalized) values — so malformed canonical configs are caught at load
+		// time rather than silently failing later during provisioning.
+		//
+		// Validation MUST run before NormalizeCanonicalStorage: normalization uses
+		// filepath.Clean, which lexically resolves ".." segments (e.g.
+		// "/srv/../../etc" -> "/etc"). If normalization ran first, a forbidden
+		// traversal in the raw value would be silently rewritten into something
+		// that passes the ".." check, defeating it.
 		if appcnf.Deployment.IsCanonical() {
 			if valErr := appcnf.Deployment.ValidateCanonicalStorage(); valErr != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
 					"App config %q canonical storage is invalid: %v — fix config before restarting", filename, valErr)
 				return fmt.Errorf("invalid canonical storage in app config %q: %w", filename, valErr)
 			}
+		}
+		storageNormalized = appcnf.Deployment.NormalizeCanonicalStorage()
+		// Hand-authored or previously-trimmed v2 TOMLs can carry a canonical model
+		// (AppVolumes/AppSources/AppMounts) whose legacy Storages.*/Paths shadows —
+		// still relied on by older readers (UI display endpoints, GetGitClone,
+		// GetS3Mount) — are missing or undercounted relative to it. Detection is
+		// deliberately count-based rather than content-based: MigrateStorageToCanonical
+		// preserves original legacy values as-is (richer than SyncLegacyShadows can
+		// regenerate), so a content comparison would misreport legitimate preserved
+		// data as "stale" and flatten it on every load — see HasMissingLegacyShadows.
+		// Skipped when normalization already triggered a full SyncLegacyShadows below.
+		if !storageNormalized && appcnf.Deployment.HasMissingLegacyShadows() {
+			appcnf.Deployment.SyncLegacyShadows()
+			shadowsRepaired = true
 		}
 		// Normalize routes eagerly so in-memory state always has canonical
 		// mode/sourcePort/destPort values, regardless of how old the TOML is.
@@ -543,7 +569,43 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 		}
 	}
 
-	if canonicalRes.Changed {
+	if storageMigrated || storageNormalized || shadowsRepaired {
+		if storageNormalized {
+			// Normalization rewrote AppMounts target/source-sub paths in place.
+			// Any previously-synced legacy Storages.*/Paths shadow now points at
+			// the stale, un-normalized values, so it must be regenerated from the
+			// canonical model before we persist — canonicalStorageSave does the
+			// same after CRUD edits (see SyncLegacyShadows in deployment.go).
+			//
+			// This is NOT needed for a fresh migration: MigrateStorageToCanonical
+			// derives the canonical model FROM the legacy fields and intentionally
+			// preserves them as-is, so they are already consistent immediately
+			// after migration — regenerating them here would flatten richer
+			// preserved data (e.g. parent/child path hierarchies) for no benefit.
+			appcnf.Deployment.SyncLegacyShadows()
+		}
+		// Storage migration/normalization mutated the in-memory deployment, so
+		// the persisted form must come from re-marshalling the struct rather
+		// than the raw (pre-migration) canonicalContent bytes. Persisting here
+		// ensures the migration runs at most once per config.
+		marshalled, err := toml.Marshal(&appcnf)
+		if err != nil {
+			return err
+		}
+		t, err := toml.LoadBytes(marshalled)
+		if err != nil {
+			return err
+		}
+		if err := cluster.writeTomlAtomically(t, filename); err != nil {
+			return err
+		}
+		reason := "migration/normalization"
+		if shadowsRepaired && !storageMigrated && !storageNormalized {
+			reason = "legacy shadow repair"
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+			"Persisted canonical storage %s for app config %q", reason, filename)
+	} else if canonicalRes.Changed {
 		t, err := toml.LoadBytes(canonicalContent)
 		if err != nil {
 			return err

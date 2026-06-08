@@ -878,14 +878,24 @@ function updateCanonicalSource(clusterName, appId, srcName, src, baseURL) {
 function dropCanonicalSource(clusterName, appId, srcName, baseURL) {
   return getApi(baseURL).delete(`clusters/${clusterName}/apps/${appId}/canonical/sources/${encodeURIComponent(srcName)}`)
 }
+// Encodes a mount target path for use in a URL while preserving its literal
+// '/' separators, since the server route matches the path as a wildcard
+// segment (e.g. {targetPath:.*}) and does not decode percent-encoded slashes.
+function encodeMountTargetPath(targetPath) {
+  return targetPath
+    .replace(/^\//, '')
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/')
+}
 function addCanonicalMount(clusterName, appId, mount, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/canonical/mounts`, mount)
 }
 function updateCanonicalMount(clusterName, appId, targetPath, mount, baseURL) {
-  return getApi(baseURL).put(`clusters/${clusterName}/apps/${appId}/canonical/mounts/${encodeURIComponent(targetPath)}`, mount)
+  return getApi(baseURL).put(`clusters/${clusterName}/apps/${appId}/canonical/mounts/${encodeMountTargetPath(targetPath)}`, mount)
 }
 function dropCanonicalMount(clusterName, appId, targetPath, baseURL) {
-  return getApi(baseURL).delete(`clusters/${clusterName}/apps/${appId}/canonical/mounts/${encodeURIComponent(targetPath)}`)
+  return getApi(baseURL).delete(`clusters/${clusterName}/apps/${appId}/canonical/mounts/${encodeMountTargetPath(targetPath)}`)
 }
 //#endregion App management APIs
 

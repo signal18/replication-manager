@@ -596,6 +596,13 @@ func hydrateS3MountFromProvider(mycluster *cluster.Cluster, mount *config.S3Moun
 // is expected to have already been done by hydrateCanonicalS3SourceFromProvider.
 func validateCanonicalS3Source(mycluster *cluster.Cluster, src *config.AppSource) error {
 	if strings.TrimSpace(src.ProviderName) != "" {
+		// Defense in depth: hydrateCanonicalS3SourceFromProvider should already
+		// have populated endpoint/bucket from the provider. If it silently failed
+		// to do so upstream, reject rather than letting a credential-less source
+		// reach provisioning.
+		if strings.TrimSpace(src.Endpoint) == "" && strings.TrimSpace(src.Bucket) == "" {
+			return fmt.Errorf("provider-linked S3 source %q has neither endpoint nor bucket populated after provider hydration", src.Name)
+		}
 		return nil
 	}
 	if strings.TrimSpace(src.Endpoint) == "" {
@@ -4357,8 +4364,10 @@ func (repman *ReplicationManager) canonicalStoragePrelude(w http.ResponseWriter,
 	}
 	// Auto-migrate to canonical v2 so CRUD always operates on canonical data.
 	defaultSize := node.AppConfig.ProvAppDisk
-	if err := config.EnsureCanonicalStorage(node.AppConfig.Deployment, defaultSize); err != nil {
-		http.Error(w, "Storage migration required before CRUD: "+err.Error(), http.StatusInternalServerError)
+	if _, err := config.EnsureCanonicalStorage(node.AppConfig.Deployment, defaultSize); err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
+			"App %q storage migration to canonical model failed: %v", node.Name, err)
+		http.Error(w, "Storage migration required before CRUD: see server logs for details", http.StatusInternalServerError)
 		return nil, nil
 	}
 	return mycluster, node
@@ -4368,7 +4377,9 @@ func (repman *ReplicationManager) canonicalStoragePrelude(w http.ResponseWriter,
 // read-model shadows in sync, and then persists.
 func (repman *ReplicationManager) canonicalStorageSave(w http.ResponseWriter, mycluster *cluster.Cluster, node *cluster.App, msg string) {
 	if err := node.AppConfig.Deployment.ValidateCanonicalStorage(); err != nil {
-		http.Error(w, "Canonical storage validation failed: "+err.Error(), http.StatusBadRequest)
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
+			"App %q canonical storage validation failed: %v", node.Name, err)
+		http.Error(w, "Canonical storage validation failed: see server logs for details", http.StatusBadRequest)
 		return
 	}
 	// Regenerate legacy Storages.*/Paths fields so readers that have not yet

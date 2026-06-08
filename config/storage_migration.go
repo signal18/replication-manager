@@ -202,12 +202,17 @@ func MigrateStorageToCanonical(d *Deployment, defaultSize string) error {
 }
 
 // EnsureCanonicalStorage runs MigrateStorageToCanonical when needed.
-// It is safe to call on every load/save boundary.
-func EnsureCanonicalStorage(d *Deployment, defaultSize string) error {
+// It is safe to call on every load/save boundary. The returned bool reports
+// whether a migration actually rewrote the deployment, so callers can decide
+// whether the result needs to be persisted.
+func EnsureCanonicalStorage(d *Deployment, defaultSize string) (bool, error) {
 	if d == nil || d.StorageLayoutVersion >= StorageLayoutV2 {
-		return nil
+		return false, nil
 	}
-	return MigrateStorageToCanonical(d, defaultSize)
+	if err := MigrateStorageToCanonical(d, defaultSize); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // synthesizeSourceName returns a unique source name derived from volName that
