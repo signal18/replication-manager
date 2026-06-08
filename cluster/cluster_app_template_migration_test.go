@@ -150,6 +150,210 @@ func TestLoadAppConfig_PersistsStorageMigrationOnFirstLoad(t *testing.T) {
 	}
 }
 
+// rowBasedMigratedAppTemplateTOML is an already-canonical (v2) config in the
+// shape produced by the old, buggy row-based migration: one AppVolume per
+// legacy Volume row (mirroring the preserved Storages.Volumes shadow
+// row-for-row), no RuntimeName, strategy stamped legacy-pooled — exactly
+// what HasLegacyMigrationShape detects and RepairLegacyMigrationShape
+// corrects into a single merged, RuntimeName-carrying, per-volume AppVolume.
+const rowBasedMigratedAppTemplateTOML = `
+[deployment]
+storage-layout-version = 2
+physical-volume-strategy = "legacy-pooled"
+
+[deployment.storages]
+[[deployment.storages.volumes]]
+name = "etc-vol"
+poolname = "tank"
+volumedir = "/etc"
+
+[[deployment.storages.volumes]]
+name = "var-vol"
+poolname = "tank"
+volumedir = "/var"
+
+[[deployment.app-volumes]]
+name = "etc-vol"
+pool = "tank"
+size = "1g"
+
+[[deployment.app-volumes]]
+name = "var-vol"
+pool = "tank"
+size = "1g"
+
+[[deployment.app-sources]]
+name = "etc-vol-root"
+type = "directory"
+volumeName = "etc-vol"
+basePath = "/etc"
+
+[[deployment.app-sources]]
+name = "var-vol-root"
+type = "directory"
+volumeName = "var-vol"
+basePath = "/var"
+
+[[deployment.app-mounts]]
+sourceName = "etc-vol-root"
+targetPath = "/etc/myapp"
+
+[[deployment.app-mounts]]
+sourceName = "var-vol-root"
+targetPath = "/var/myapp"
+`
+
+// TestLoadAppConfig_RepairsRowBasedMigrationEvenWhenProvisioned guards against
+// regressing the fix to the third code-review finding on this branch: the
+// repair path used to skip already-provisioned apps (detected via the
+// opensvc_template.json marker), permanently stranding exactly the apps that
+// matter most — already running, wrongly migrated — in legacy-pooled's
+// forever-re-merge behavior. RuntimeName makes the rebuilt canonical model
+// safe for provisioned apps (it preserves the pre-existing {appname}-{pool}
+// physical OpenSVC volume identity), the same guarantee the ungated
+// V1-to-canonical migration above it already relies on. So the repair must
+// run unconditionally, marker or not.
+func TestLoadAppConfig_RepairsRowBasedMigrationEvenWhenProvisioned(t *testing.T) {
+	workingDir := t.TempDir()
+	appsDir := filepath.Join(workingDir, "apps")
+	if err := os.MkdirAll(appsDir, 0o755); err != nil {
+		t.Fatalf("mkdir apps dir failed: %v", err)
+	}
+
+	appFile := filepath.Join(appsDir, "row-migrated.toml")
+	content := "app-host = \"row-migrated\"\napp-port = \"8080\"\nprov-app-memory = \"128M\"\nprov-app-disk-size = \"1G\"\n" + rowBasedMigratedAppTemplateTOML
+	if err := os.WriteFile(appFile, []byte(content), 0o644); err != nil {
+		t.Fatalf("write app file failed: %v", err)
+	}
+
+	// Simulate an already-provisioned app by writing the opensvc_template.json
+	// marker the old gate checked for (cluster.Conf.WorkingDir/cluster.Name/apps/<host>).
+	dataDir := filepath.Join(workingDir, "test-cluster", "apps", "row-migrated")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("mkdir app data dir failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "opensvc_template.json"), []byte(`{}`), 0o644); err != nil {
+		t.Fatalf("write provisioned marker failed: %v", err)
+	}
+
+	cl := &Cluster{
+		Name:       "test-cluster",
+		WorkingDir: workingDir,
+		crcTable:   crc64.MakeTable(crc64.ECMA),
+		Conf: &config.Config{
+			WorkingDir:     workingDir,
+			Apps:           make([]*config.AppConfig, 0),
+			DefaultFlagMap: map[string]interface{}{"prov-app-memory": "128M", "prov-app-disk-size": "1G"},
+		},
+	}
+
+	if err := cl.LoadAppConfig(appsDir, "row-migrated"); err != nil {
+		t.Fatalf("LoadAppConfig failed: %v", err)
+	}
+
+	loaded := cl.GetAppConfig("row-migrated", "8080")
+	if loaded == nil || loaded.Deployment == nil {
+		t.Fatalf("expected app config to be loaded")
+	}
+	d := loaded.Deployment
+
+	if d.PhysicalVolumeStrategy != config.PhysicalVolumeStrategyPerVolume {
+		t.Fatalf("expected repair to stamp per-volume strategy even for a provisioned app, got %q", d.PhysicalVolumeStrategy)
+	}
+	if d.CanonicalStorageOrigin != config.CanonicalStorageOriginLegacyPooledV1 {
+		t.Fatalf("expected repair to stamp canonical storage origin %q, got %q", config.CanonicalStorageOriginLegacyPooledV1, d.CanonicalStorageOrigin)
+	}
+	if len(d.AppVolumes) != 1 {
+		t.Fatalf("expected the two same-pool legacy volumes to be merged into one AppVolume, got %d: %+v", len(d.AppVolumes), d.AppVolumes)
+	}
+	merged := d.AppVolumes[0]
+	if merged.Pool != "tank" {
+		t.Errorf("expected merged AppVolume on pool %q, got %q", "tank", merged.Pool)
+	}
+	if merged.RuntimeName == "" {
+		t.Error("expected repair to set RuntimeName, preserving the pre-existing {appname}-tank physical OpenSVC volume identity")
+	}
+	if got, want := merged.RuntimeName, "{name}-tank"; got != want {
+		t.Errorf("expected RuntimeName %q (matches old {appname}-{pool} identity), got %q", want, got)
+	}
+	if got, want := merged.CanonicalOrigin, config.CanonicalStorageOriginLegacyPooledV1; got != want {
+		t.Errorf("expected CanonicalOrigin %q on migrated legacy volume, got %q", want, got)
+	}
+	if len(d.AppSources) != 2 {
+		t.Fatalf("expected both legacy volumes' directory contributions to be preserved as separate sources on the merged volume, got %d: %+v", len(d.AppSources), d.AppSources)
+	}
+	for _, src := range d.AppSources {
+		if src.VolumeName != merged.Name {
+			t.Errorf("expected source %q to reference merged volume %q, got %q", src.Name, merged.Name, src.VolumeName)
+		}
+	}
+
+	rewritten, err := os.ReadFile(appFile)
+	if err != nil {
+		t.Fatalf("read rewritten app file failed: %v", err)
+	}
+	if strings.Contains(string(rewritten), `physical-volume-strategy = "legacy-pooled"`) {
+		t.Fatalf("expected repaired config to be persisted without the legacy-pooled stamp, got:\n%s", string(rewritten))
+	}
+	if !strings.Contains(string(rewritten), `canonical-storage-origin = "legacy-pooled-v1"`) {
+		t.Fatalf("expected repaired config to persist canonical-storage-origin marker, got:\n%s", string(rewritten))
+	}
+}
+
+const invalidNativeCanonicalRuntimeNameTOML = `
+[deployment]
+storage-layout-version = 2
+physical-volume-strategy = "per-volume"
+
+[[deployment.app-volumes]]
+name = "tank"
+pool = "tank"
+size = "1g"
+runtime-name = "{name}-tank"
+
+[[deployment.app-sources]]
+name = "tank-root"
+type = "directory"
+volumeName = "tank"
+basePath = "/data"
+
+[[deployment.app-mounts]]
+sourceName = "tank-root"
+targetPath = "/srv/app"
+`
+
+func TestLoadAppConfig_RejectsNativeCanonicalRuntimeName(t *testing.T) {
+	workingDir := t.TempDir()
+	appsDir := filepath.Join(workingDir, "apps")
+	if err := os.MkdirAll(appsDir, 0o755); err != nil {
+		t.Fatalf("mkdir apps dir failed: %v", err)
+	}
+
+	appFile := filepath.Join(appsDir, "native-runtime-name.toml")
+	content := "app-host = \"native-runtime-name\"\napp-port = \"8080\"\nprov-app-memory = \"128M\"\nprov-app-disk-size = \"1G\"\n" + invalidNativeCanonicalRuntimeNameTOML
+	if err := os.WriteFile(appFile, []byte(content), 0o644); err != nil {
+		t.Fatalf("write app file failed: %v", err)
+	}
+
+	cl := &Cluster{
+		Name:       "test-cluster",
+		WorkingDir: workingDir,
+		crcTable:   crc64.MakeTable(crc64.ECMA),
+		Conf: &config.Config{
+			WorkingDir:     workingDir,
+			Apps:           make([]*config.AppConfig, 0),
+			DefaultFlagMap: map[string]interface{}{"prov-app-memory": "128M", "prov-app-disk-size": "1G"},
+		},
+	}
+
+	if err := cl.LoadAppConfig(appsDir, "native-runtime-name"); err == nil {
+		t.Fatal("expected native V2 config carrying migration-only runtime-name to be rejected")
+	}
+	if len(cl.Conf.Apps) != 0 {
+		t.Fatalf("expected rejected app not to be registered, got %d apps", len(cl.Conf.Apps))
+	}
+}
+
 // legacyAppTemplateDuplicatePathsTOML declares two legacy [[deployment.paths]]
 // entries that resolve to the same source/subpath and normalize to the same
 // docker mount target ("/app/data" vs "/app//data/"). MigrateStorageToCanonical

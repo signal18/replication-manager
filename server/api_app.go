@@ -397,15 +397,84 @@ func validateTemplateNameForLocalWrite(workingDir, clusterName, templateName str
 	return err
 }
 
+func parseTemplateAppConfig(mycluster *cluster.Cluster, content []byte) (*config.AppConfig, error) {
+	appViper, err := mycluster.LoadTemplateToViper(content)
+	if err != nil {
+		return nil, err
+	}
+
+	appcnf := &config.AppConfig{Deployment: config.NewDeploymentConfig()}
+	if err := appViper.Unmarshal(appcnf); err != nil {
+		return nil, err
+	}
+	return appcnf, nil
+}
+
+func legacyOriginByRuntimeName(deployment *config.Deployment) map[string]config.CanonicalStorageOrigin {
+	result := make(map[string]config.CanonicalStorageOrigin)
+	if deployment == nil {
+		return result
+	}
+	for _, v := range deployment.AppVolumes {
+		if v == nil {
+			continue
+		}
+		if v.CanonicalOrigin == "" && v.RuntimeName == "" {
+			continue
+		}
+		key := v.RuntimeName
+		if key == "" {
+			key = "#missing-runtime-name:" + v.Name
+		}
+		result[key] = v.CanonicalOrigin
+	}
+	return result
+}
+
 func validateCanonicalTemplateContentForSave(mycluster *cluster.Cluster, templateName string, canonicalContent []byte) error {
-	appViper, err := mycluster.LoadTemplateToViper(canonicalContent)
+	appcnf, err := parseTemplateAppConfig(mycluster, canonicalContent)
 	if err != nil {
 		return err
 	}
 
-	appcnf := config.AppConfig{Deployment: config.NewDeploymentConfig()}
-	if err := appViper.Unmarshal(&appcnf); err != nil {
+	localPath, err := resolveLocalTemplateWritePath(mycluster.Conf.WorkingDir, mycluster.Name, templateName)
+	if err != nil {
 		return err
+	}
+	var existingApp *config.AppConfig
+	existingOrigin := config.CanonicalStorageOrigin("")
+	if currentContent, readErr := os.ReadFile(localPath); readErr == nil {
+		var parseErr error
+		existingApp, parseErr = parseTemplateAppConfig(mycluster, currentContent)
+		if parseErr != nil {
+			return fmt.Errorf("existing local template %q is invalid: %w", templateName, parseErr)
+		}
+		if existingApp.Deployment != nil {
+			existingOrigin = existingApp.Deployment.CanonicalStorageOrigin
+		}
+	} else if !errors.Is(readErr, os.ErrNotExist) {
+		return readErr
+	}
+	if appcnf.Deployment != nil && appcnf.Deployment.CanonicalStorageOrigin != existingOrigin {
+		if existingOrigin == "" {
+			return fmt.Errorf("canonical-storage-origin is migration-owned metadata and cannot be introduced by a raw template save")
+		}
+		if appcnf.Deployment.CanonicalStorageOrigin == "" {
+			return fmt.Errorf("canonical-storage-origin %q on migrated template %q cannot be removed by a raw template save", existingOrigin, templateName)
+		}
+		return fmt.Errorf("canonical-storage-origin %q does not match existing migrated template origin %q", appcnf.Deployment.CanonicalStorageOrigin, existingOrigin)
+	}
+	if existingOrigin != "" {
+		existingManaged := legacyOriginByRuntimeName(existingApp.Deployment)
+		newManaged := legacyOriginByRuntimeName(appcnf.Deployment)
+		if len(existingManaged) != len(newManaged) {
+			return fmt.Errorf("migration-owned volume metadata cannot be added or removed by a raw template save")
+		}
+		for runtimeName, origin := range existingManaged {
+			if newManaged[runtimeName] != origin {
+				return fmt.Errorf("migration-owned volume metadata for runtime-name %q cannot be changed by a raw template save", runtimeName)
+			}
+		}
 	}
 
 	if appcnf.Deployment != nil {
@@ -415,6 +484,14 @@ func validateCanonicalTemplateContentForSave(mycluster *cluster.Cluster, templat
 					"Template %q deployment path resolution error: %v", templateName, resolveErr)
 			}
 			return fmt.Errorf("invalid deployment path mapping for template %q", templateName)
+		}
+		if appcnf.Deployment.IsCanonical() {
+			if err := appcnf.Deployment.ValidateCanonicalStorage(); err != nil {
+				return fmt.Errorf("invalid canonical storage in template %q: %w", templateName, err)
+			}
+		}
+		if err := appcnf.Deployment.ValidateCanonicalLegacyOrigin(); err != nil {
+			return fmt.Errorf("invalid canonical storage metadata in template %q: %w", templateName, err)
 		}
 	}
 

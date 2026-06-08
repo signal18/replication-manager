@@ -370,7 +370,19 @@ func (app *App) GetAppVolumeNamePerVolume(volName string, resolved bool) string 
 
 // GetRuntimeVolumeName returns the OpenSVC runtime volume name for a canonical AppVolume,
 // branching on the app's PhysicalVolumeStrategy.
+//
+// AppVolumes carrying a RuntimeName override (set only by storage migration to
+// preserve a pre-existing pooled physical-volume identity) always resolve to
+// that override, regardless of strategy — this keeps already-provisioned
+// OpenSVC volumes intact even though the canonical model now tracks them
+// per-volume.
 func (app *App) GetRuntimeVolumeName(vol *config.AppVolume, resolved bool) string {
+	if vol.RuntimeName != "" {
+		if resolved {
+			return strings.ReplaceAll(vol.RuntimeName, "{name}", app.Name)
+		}
+		return vol.RuntimeName
+	}
 	appcnf := app.GetAppConfig()
 	if appcnf == nil {
 		return app.GetAppVolumeNamePerVolume(vol.Name, resolved)

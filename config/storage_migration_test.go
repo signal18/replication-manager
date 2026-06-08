@@ -12,8 +12,11 @@ func TestMigrateStorageToCanonical_EmptyDeployment(t *testing.T) {
 	if d.StorageLayoutVersion != StorageLayoutV2 {
 		t.Errorf("expected StorageLayoutV2, got %d", d.StorageLayoutVersion)
 	}
-	if d.PhysicalVolumeStrategy != PhysicalVolumeStrategyLegacyPooled {
-		t.Errorf("expected legacy-pooled, got %q", d.PhysicalVolumeStrategy)
+	if d.PhysicalVolumeStrategy != PhysicalVolumeStrategyPerVolume {
+		t.Errorf("expected per-volume, got %q", d.PhysicalVolumeStrategy)
+	}
+	if d.CanonicalStorageOrigin != CanonicalStorageOriginLegacyPooledV1 {
+		t.Errorf("expected canonical storage origin %q, got %q", CanonicalStorageOriginLegacyPooledV1, d.CanonicalStorageOrigin)
 	}
 }
 
@@ -52,14 +55,26 @@ func TestMigrateStorageToCanonical_LegacyVolume(t *testing.T) {
 		t.Fatalf("expected 1 canonical volume, got %d", len(d.AppVolumes))
 	}
 	vol := d.AppVolumes[0]
-	if vol.Name != "config-vol" {
-		t.Errorf("expected name=config-vol, got %q", vol.Name)
+	// The canonical volume represents the effective old pool-merged volume,
+	// so it is named after the pool (not the legacy row), and carries a
+	// RuntimeName override preserving the old "{appname}-{pool}" identity.
+	if vol.Name != "tank" {
+		t.Errorf("expected name=tank (pool-derived), got %q", vol.Name)
 	}
 	if vol.Pool != "tank" {
 		t.Errorf("expected pool=tank, got %q", vol.Pool)
 	}
 	if vol.Size != "5g" {
 		t.Errorf("expected size=5g, got %q", vol.Size)
+	}
+	if vol.RuntimeName != "{name}-tank" {
+		t.Errorf("expected runtimeName={name}-tank, got %q", vol.RuntimeName)
+	}
+	if vol.CanonicalOrigin != CanonicalStorageOriginLegacyPooledV1 {
+		t.Errorf("expected volume canonical origin %q, got %q", CanonicalStorageOriginLegacyPooledV1, vol.CanonicalOrigin)
+	}
+	if d.CanonicalStorageOrigin != CanonicalStorageOriginLegacyPooledV1 {
+		t.Errorf("expected canonical storage origin %q, got %q", CanonicalStorageOriginLegacyPooledV1, d.CanonicalStorageOrigin)
 	}
 
 	// Synthesized directory source for VolumeDir
@@ -70,14 +85,114 @@ func TestMigrateStorageToCanonical_LegacyVolume(t *testing.T) {
 	if src.Type != AppSourceDirectory {
 		t.Errorf("expected directory source, got %q", src.Type)
 	}
-	if src.VolumeName != "config-vol" {
-		t.Errorf("expected volumeName=config-vol, got %q", src.VolumeName)
+	if src.VolumeName != "tank" {
+		t.Errorf("expected volumeName=tank, got %q", src.VolumeName)
 	}
 	if src.BasePath != "/etc" {
 		t.Errorf("expected basePath=/etc, got %q", src.BasePath)
 	}
 	if src.Name != "config-vol-root" {
 		t.Errorf("expected name=config-vol-root, got %q", src.Name)
+	}
+}
+
+// TestMigrateStorageToCanonical_MergedPoolGroup verifies the behavior-based
+// migration contract: legacy volumes that the old runtime would have merged
+// into a single physical OpenSVC volume (because they share a pool — see
+// Volumes.GroupByPool / OpenSVCGetAppVolumeSections pre-canonical) must be
+// migrated into exactly ONE canonical AppVolume, with one AppSource per
+// legacy volume and a RuntimeName preserving the old "{appname}-{pool}"
+// physical identity — not one AppVolume per legacy row.
+func TestMigrateStorageToCanonical_MergedPoolGroup(t *testing.T) {
+	d := &Deployment{
+		Storages: StorageMapping{
+			Volumes: Volumes{
+				{Name: "etc-vol", PoolName: "tank", VolumeDir: "/etc"},
+				{Name: "var-vol", PoolName: "tank", VolumeDir: "/var"},
+			},
+		},
+	}
+	if err := MigrateStorageToCanonical(d, "1g"); err != nil {
+		t.Fatalf("migration error: %v", err)
+	}
+
+	if len(d.AppVolumes) != 1 {
+		t.Fatalf("expected exactly 1 merged canonical volume for shared pool %q, got %d: %v", "tank", len(d.AppVolumes), d.AppVolumes)
+	}
+	vol := d.AppVolumes[0]
+	if vol.Pool != "tank" {
+		t.Errorf("expected merged volume pool=tank, got %q", vol.Pool)
+	}
+	if vol.RuntimeName != "{name}-tank" {
+		t.Errorf("expected merged volume runtimeName={name}-tank (preserves old pooled identity), got %q", vol.RuntimeName)
+	}
+	if vol.CanonicalOrigin != CanonicalStorageOriginLegacyPooledV1 {
+		t.Errorf("expected merged volume canonical origin %q, got %q", CanonicalStorageOriginLegacyPooledV1, vol.CanonicalOrigin)
+	}
+
+	if len(d.AppSources) != 2 {
+		t.Fatalf("expected 2 directory sources (one per legacy volume), got %d: %v", len(d.AppSources), d.AppSources)
+	}
+	seenBasePaths := map[string]bool{}
+	for _, s := range d.AppSources {
+		if s.Type != AppSourceDirectory {
+			t.Errorf("expected directory source, got %q", s.Type)
+		}
+		if s.VolumeName != vol.Name {
+			t.Errorf("expected source %q to reference merged volume %q, got %q", s.Name, vol.Name, s.VolumeName)
+		}
+		seenBasePaths[s.BasePath] = true
+	}
+	if !seenBasePaths["/etc"] || !seenBasePaths["/var"] {
+		t.Errorf("expected sources for both /etc and /var, got base paths: %v", seenBasePaths)
+	}
+
+	if d.PhysicalVolumeStrategy != PhysicalVolumeStrategyPerVolume {
+		t.Errorf("expected per-volume strategy, got %q", d.PhysicalVolumeStrategy)
+	}
+	if d.CanonicalStorageOrigin != CanonicalStorageOriginLegacyPooledV1 {
+		t.Errorf("expected canonical storage origin %q, got %q", CanonicalStorageOriginLegacyPooledV1, d.CanonicalStorageOrigin)
+	}
+}
+
+// TestMigrateStorageToCanonical_SeparatePoolGroups verifies that legacy
+// volumes on distinct pools — which the old runtime never merged — remain
+// distinct canonical volumes after migration (one per pool, each with its
+// own RuntimeName preserving its old "{appname}-{pool}" identity).
+func TestMigrateStorageToCanonical_SeparatePoolGroups(t *testing.T) {
+	d := &Deployment{
+		Storages: StorageMapping{
+			Volumes: Volumes{
+				{Name: "etc-vol", PoolName: "tank", VolumeDir: "/etc"},
+				{Name: "data-vol", PoolName: "ssd", VolumeDir: "/data"},
+			},
+		},
+	}
+	if err := MigrateStorageToCanonical(d, "1g"); err != nil {
+		t.Fatalf("migration error: %v", err)
+	}
+
+	if len(d.AppVolumes) != 2 {
+		t.Fatalf("expected 2 separate canonical volumes (distinct pools), got %d: %v", len(d.AppVolumes), d.AppVolumes)
+	}
+	pools := map[string]string{} // pool -> runtimeName
+	for _, v := range d.AppVolumes {
+		pools[v.Pool] = v.RuntimeName
+		if v.CanonicalOrigin != CanonicalStorageOriginLegacyPooledV1 {
+			t.Errorf("expected pool %q canonical origin %q, got %q", v.Pool, CanonicalStorageOriginLegacyPooledV1, v.CanonicalOrigin)
+		}
+	}
+	if pools["tank"] != "{name}-tank" {
+		t.Errorf("expected tank volume runtimeName={name}-tank, got %q", pools["tank"])
+	}
+	if pools["ssd"] != "{name}-ssd" {
+		t.Errorf("expected ssd volume runtimeName={name}-ssd, got %q", pools["ssd"])
+	}
+	if d.CanonicalStorageOrigin != CanonicalStorageOriginLegacyPooledV1 {
+		t.Errorf("expected canonical storage origin %q, got %q", CanonicalStorageOriginLegacyPooledV1, d.CanonicalStorageOrigin)
+	}
+	if len(d.AppSources) != 2 {
+		t.Fatalf("expected 2 directory sources, got %d: %v", len(d.AppSources), d.AppSources)
 	}
 }
 
@@ -354,6 +469,66 @@ func TestNormalizeCanonicalStorage_NoOpOnLegacyDeployment(t *testing.T) {
 	}
 	if got := d.AppMounts[0].TargetPath; got != "/app//data/" {
 		t.Fatalf("expected legacy deployment's AppMounts to be left untouched, got %q", got)
+	}
+}
+
+func TestValidateCanonicalLegacyOrigin_RejectsNativeRuntimeName(t *testing.T) {
+	d := &Deployment{
+		StorageLayoutVersion:   StorageLayoutV2,
+		PhysicalVolumeStrategy: PhysicalVolumeStrategyPerVolume,
+		AppVolumes:             AppVolumes{{Name: "tank", Pool: "tank", Size: "1g", RuntimeName: "{name}-tank"}},
+	}
+	if err := d.ValidateCanonicalLegacyOrigin(); err == nil {
+		t.Fatal("expected native V2 config with runtime-name to be rejected")
+	}
+}
+
+func TestValidateCanonicalLegacyOrigin_RejectsNativeLegacyPooled(t *testing.T) {
+	d := &Deployment{
+		StorageLayoutVersion:   StorageLayoutV2,
+		PhysicalVolumeStrategy: PhysicalVolumeStrategyLegacyPooled,
+		AppVolumes:             AppVolumes{{Name: "tank", Pool: "tank", Size: "1g"}},
+	}
+	if err := d.ValidateCanonicalLegacyOrigin(); err == nil {
+		t.Fatal("expected native V2 config with legacy-pooled strategy to be rejected")
+	}
+}
+
+func TestValidateCanonicalLegacyOrigin_AllowsMigratedRuntimeName(t *testing.T) {
+	d := &Deployment{
+		StorageLayoutVersion:   StorageLayoutV2,
+		PhysicalVolumeStrategy: PhysicalVolumeStrategyPerVolume,
+		CanonicalStorageOrigin: CanonicalStorageOriginLegacyPooledV1,
+		AppVolumes:             AppVolumes{{Name: "tank", Pool: "tank", Size: "1g", CanonicalOrigin: CanonicalStorageOriginLegacyPooledV1, RuntimeName: "{name}-tank"}},
+	}
+	if err := d.ValidateCanonicalLegacyOrigin(); err != nil {
+		t.Fatalf("expected migrated legacy metadata to validate, got %v", err)
+	}
+}
+
+func TestValidateCanonicalLegacyOrigin_AllowsMigratedAndNewVolumes(t *testing.T) {
+	d := &Deployment{
+		StorageLayoutVersion:   StorageLayoutV2,
+		PhysicalVolumeStrategy: PhysicalVolumeStrategyPerVolume,
+		CanonicalStorageOrigin: CanonicalStorageOriginLegacyPooledV1,
+		AppVolumes: AppVolumes{
+			{Name: "tank", Pool: "tank", Size: "1g", CanonicalOrigin: CanonicalStorageOriginLegacyPooledV1, RuntimeName: "{name}-tank"},
+			{Name: "logs", Pool: "tank", Size: "1g"},
+		},
+	}
+	if err := d.ValidateCanonicalLegacyOrigin(); err != nil {
+		t.Fatalf("expected mixed migrated/native V2 metadata to validate, got %v", err)
+	}
+}
+
+func TestValidateCanonicalLegacyOrigin_RejectsNativeVolumeWithCanonicalOrigin(t *testing.T) {
+	d := &Deployment{
+		StorageLayoutVersion:   StorageLayoutV2,
+		PhysicalVolumeStrategy: PhysicalVolumeStrategyPerVolume,
+		AppVolumes:             AppVolumes{{Name: "tank", Pool: "tank", Size: "1g", CanonicalOrigin: CanonicalStorageOriginLegacyPooledV1}},
+	}
+	if err := d.ValidateCanonicalLegacyOrigin(); err == nil {
+		t.Fatal("expected native V2 config with canonical-origin metadata to be rejected")
 	}
 }
 
@@ -724,6 +899,297 @@ func TestMigrateStorageToCanonical_PreservesLegacyFields(t *testing.T) {
 	}
 	if len(d.AppVolumes) == 0 {
 		t.Error("expected canonical AppVolumes populated after migration")
+	}
+}
+
+// buildRowBasedMigratedDeployment constructs a deployment in the shape that
+// the OLD, row-based migration would have produced for two legacy volumes
+// sharing one pool: one AppVolume per legacy row (named after the row, not
+// the pool), no RuntimeName, strategy stamped legacy-pooled. This is the
+// "wrong" shape RepairLegacyMigrationShape must detect and correct.
+func buildRowBasedMigratedDeployment() *Deployment {
+	return &Deployment{
+		Storages: StorageMapping{
+			Volumes: Volumes{
+				{Name: "etc-vol", PoolName: "tank", VolumeDir: "/etc"},
+				{Name: "var-vol", PoolName: "tank", VolumeDir: "/var"},
+			},
+		},
+		AppVolumes: AppVolumes{
+			{Name: "etc-vol", Pool: "tank", Size: "1g"},
+			{Name: "var-vol", Pool: "tank", Size: "1g"},
+		},
+		AppSources: AppSources{
+			{Type: AppSourceDirectory, Name: "etc-vol-root", VolumeName: "etc-vol", BasePath: "/etc"},
+			{Type: AppSourceDirectory, Name: "var-vol-root", VolumeName: "var-vol", BasePath: "/var"},
+		},
+		StorageLayoutVersion:   StorageLayoutV2,
+		PhysicalVolumeStrategy: PhysicalVolumeStrategyLegacyPooled,
+	}
+}
+
+func TestHasLegacyMigrationShape_DetectsOldShape(t *testing.T) {
+	d := buildRowBasedMigratedDeployment()
+	if !d.HasLegacyMigrationShape() {
+		t.Error("expected row-based migration shape to be detected")
+	}
+}
+
+func TestHasLegacyMigrationShape_IgnoresCorrectedShape(t *testing.T) {
+	// What the corrected migration produces for the same legacy input: one
+	// merged AppVolume, RuntimeName set, per-volume strategy.
+	d := &Deployment{
+		Storages: StorageMapping{
+			Volumes: Volumes{
+				{Name: "etc-vol", PoolName: "tank", VolumeDir: "/etc"},
+				{Name: "var-vol", PoolName: "tank", VolumeDir: "/var"},
+			},
+		},
+		AppVolumes: AppVolumes{
+			{Name: "tank", Pool: "tank", Size: "1g", RuntimeName: "{name}-tank"},
+		},
+		AppSources: AppSources{
+			{Type: AppSourceDirectory, Name: "etc-vol-root", VolumeName: "tank", BasePath: "/etc"},
+			{Type: AppSourceDirectory, Name: "var-vol-root", VolumeName: "tank", BasePath: "/var"},
+		},
+		StorageLayoutVersion:   StorageLayoutV2,
+		PhysicalVolumeStrategy: PhysicalVolumeStrategyPerVolume,
+	}
+	if d.HasLegacyMigrationShape() {
+		t.Error("corrected canonical shape must not be flagged as row-based migration")
+	}
+}
+
+func TestHasLegacyMigrationShape_IgnoresHandAuthoredV2(t *testing.T) {
+	// A genuine hand-authored v2 config with multiple same-pool volumes:
+	// no legacy shadow row-shape match, no legacy-pooled stamp by default.
+	d := &Deployment{
+		AppVolumes: AppVolumes{
+			{Name: "logs", Pool: "tank", Size: "1g"},
+			{Name: "data", Pool: "tank", Size: "1g"},
+		},
+		StorageLayoutVersion:   StorageLayoutV2,
+		PhysicalVolumeStrategy: PhysicalVolumeStrategyPerVolume,
+	}
+	if d.HasLegacyMigrationShape() {
+		t.Error("hand-authored per-volume config must not be flagged as row-based migration")
+	}
+
+	// Even if a hand-authored config explicitly opts into legacy-pooled, it
+	// won't match the legacy-shadow row-shape (no Storages.Volumes preserved),
+	// so it must not be flagged.
+	d.PhysicalVolumeStrategy = PhysicalVolumeStrategyLegacyPooled
+	if d.HasLegacyMigrationShape() {
+		t.Error("hand-authored legacy-pooled config without matching legacy shadow must not be flagged")
+	}
+}
+
+func TestHasLegacyMigrationShape_IgnoresEditedV2AdditionOnWrongBase(t *testing.T) {
+	// If a previously wrong row-based migration somehow accumulates a new V2
+	// volume before repair, that new volume must not be mistaken for legacy
+	// input and re-merged on the next load. The old row-based migration emitted
+	// synthesized directory sources named <volume>-root; this user-added V2
+	// volume uses an arbitrary source name, so the detector must refuse to treat
+	// the whole config as pure legacy-derived row shape.
+	d := buildRowBasedMigratedDeployment()
+	d.Storages.Volumes = append(d.Storages.Volumes, &Volume{Name: "logs", PoolName: "tank", VolumeDir: "/logs"})
+	d.AppVolumes = append(d.AppVolumes, &AppVolume{Name: "logs", Pool: "tank", Size: "1g"})
+	d.AppSources = append(d.AppSources, &AppSource{Type: AppSourceDirectory, Name: "logs-src", VolumeName: "logs", BasePath: "/logs"})
+
+	if d.HasLegacyMigrationShape() {
+		t.Error("mixed config containing a user-added V2 volume must not be flagged as pure row-based migration")
+	}
+}
+
+func buildSeparatePoolsRowBasedMigratedDeployment() *Deployment {
+	return &Deployment{
+		Storages: StorageMapping{
+			Volumes: Volumes{
+				{Name: "etc-vol", PoolName: "tank", VolumeDir: "/etc"},
+				{Name: "data-vol", PoolName: "ssd", VolumeDir: "/data"},
+			},
+		},
+		AppVolumes: AppVolumes{
+			{Name: "etc-vol", Pool: "tank", Size: "1g"},
+			{Name: "data-vol", Pool: "ssd", Size: "1g"},
+		},
+		AppSources: AppSources{
+			{Type: AppSourceDirectory, Name: "etc-vol-root", VolumeName: "etc-vol", BasePath: "/etc"},
+			{Type: AppSourceDirectory, Name: "data-vol-root", VolumeName: "data-vol", BasePath: "/data"},
+		},
+		StorageLayoutVersion:   StorageLayoutV2,
+		PhysicalVolumeStrategy: PhysicalVolumeStrategyLegacyPooled,
+	}
+}
+
+func TestHasLegacyMigrationShape_DetectsSeparatePools(t *testing.T) {
+	// Row-shaped, legacy-pooled, no RuntimeName, mirrors the legacy shadow —
+	// the exact shape the old migration always produced, even though every
+	// legacy volume happens to sit on its own pool today. It must still be
+	// flagged: left stamped legacy-pooled, it stays trapped in pool-grouping
+	// runtime semantics forever, so any same-pool AppVolume added later would
+	// silently merge into the old {appname}-{pool} physical volume — exactly
+	// the forever-re-merge bug this migration rewrite exists to eliminate.
+	d := buildSeparatePoolsRowBasedMigratedDeployment()
+	if !d.HasLegacyMigrationShape() {
+		t.Error("row-shaped legacy-pooled config without RuntimeName must be flagged regardless of current pool sharing")
+	}
+}
+
+func TestRepairLegacyMigrationShape_CorrectsMergedGroup(t *testing.T) {
+	d := buildRowBasedMigratedDeployment()
+
+	repaired, err := RepairLegacyMigrationShape(d, "1g")
+	if err != nil {
+		t.Fatalf("repair error: %v", err)
+	}
+	if !repaired {
+		t.Fatal("expected repair to report a change")
+	}
+
+	if len(d.AppVolumes) != 1 {
+		t.Fatalf("expected 1 merged canonical volume after repair, got %d: %v", len(d.AppVolumes), d.AppVolumes)
+	}
+	vol := d.AppVolumes[0]
+	if vol.Pool != "tank" || vol.RuntimeName != "{name}-tank" {
+		t.Errorf("expected merged volume pool=tank runtimeName={name}-tank, got pool=%q runtimeName=%q", vol.Pool, vol.RuntimeName)
+	}
+	if vol.CanonicalOrigin != CanonicalStorageOriginLegacyPooledV1 {
+		t.Errorf("expected merged volume canonical origin %q, got %q", CanonicalStorageOriginLegacyPooledV1, vol.CanonicalOrigin)
+	}
+	if d.PhysicalVolumeStrategy != PhysicalVolumeStrategyPerVolume {
+		t.Errorf("expected per-volume strategy after repair, got %q", d.PhysicalVolumeStrategy)
+	}
+	if d.CanonicalStorageOrigin != CanonicalStorageOriginLegacyPooledV1 {
+		t.Errorf("expected canonical storage origin %q after repair, got %q", CanonicalStorageOriginLegacyPooledV1, d.CanonicalStorageOrigin)
+	}
+	if len(d.AppSources) != 2 {
+		t.Errorf("expected 2 sources preserved after repair, got %d", len(d.AppSources))
+	}
+	for _, s := range d.AppSources {
+		if s.VolumeName != "tank" {
+			t.Errorf("expected source %q to reference merged volume tank, got %q", s.Name, s.VolumeName)
+		}
+	}
+	// Legacy shadow must remain untouched.
+	if len(d.Storages.Volumes) != 2 {
+		t.Errorf("expected legacy Volumes shadow preserved (2), got %d", len(d.Storages.Volumes))
+	}
+}
+
+func TestRepairLegacyMigrationShape_CorrectsSeparatePoolGroups(t *testing.T) {
+	d := buildSeparatePoolsRowBasedMigratedDeployment()
+
+	repaired, err := RepairLegacyMigrationShape(d, "1g")
+	if err != nil {
+		t.Fatalf("repair error: %v", err)
+	}
+	if !repaired {
+		t.Fatal("expected repair to report a change")
+	}
+
+	if len(d.AppVolumes) != 2 {
+		t.Fatalf("expected 2 canonical volumes after repair (one per pool), got %d: %v", len(d.AppVolumes), d.AppVolumes)
+	}
+
+	byPool := make(map[string]*AppVolume, len(d.AppVolumes))
+	for _, v := range d.AppVolumes {
+		byPool[v.Pool] = v
+	}
+
+	for _, pool := range []string{"tank", "ssd"} {
+		v, ok := byPool[pool]
+		if !ok {
+			t.Fatalf("expected a canonical volume for pool %q after repair", pool)
+		}
+		if v.Name != pool {
+			t.Errorf("expected volume for pool %q to be renamed to the pool identity, got name %q", pool, v.Name)
+		}
+		wantRuntimeName := "{name}-" + pool
+		if v.RuntimeName != wantRuntimeName {
+			t.Errorf("expected RuntimeName %q for pool %q, got %q", wantRuntimeName, pool, v.RuntimeName)
+		}
+		if v.CanonicalOrigin != CanonicalStorageOriginLegacyPooledV1 {
+			t.Errorf("expected CanonicalOrigin %q for pool %q, got %q", CanonicalStorageOriginLegacyPooledV1, pool, v.CanonicalOrigin)
+		}
+	}
+
+	if d.PhysicalVolumeStrategy != PhysicalVolumeStrategyPerVolume {
+		t.Errorf("expected per-volume strategy after repair, got %q", d.PhysicalVolumeStrategy)
+	}
+	if d.CanonicalStorageOrigin != CanonicalStorageOriginLegacyPooledV1 {
+		t.Errorf("expected canonical storage origin %q after repair, got %q", CanonicalStorageOriginLegacyPooledV1, d.CanonicalStorageOrigin)
+	}
+
+	if len(d.AppSources) != 2 {
+		t.Fatalf("expected 2 sources preserved after repair, got %d", len(d.AppSources))
+	}
+	for _, s := range d.AppSources {
+		if _, ok := byPool[s.VolumeName]; !ok {
+			t.Errorf("expected source %q to reference a renamed pool-identity volume, got VolumeName %q", s.Name, s.VolumeName)
+		}
+	}
+}
+
+func TestRepairLegacyMigrationShape_NoOpWhenNotNeeded(t *testing.T) {
+	d := &Deployment{
+		AppVolumes: AppVolumes{
+			{Name: "tank", Pool: "tank", Size: "1g", CanonicalOrigin: CanonicalStorageOriginLegacyPooledV1, RuntimeName: "{name}-tank"},
+		},
+		StorageLayoutVersion:   StorageLayoutV2,
+		PhysicalVolumeStrategy: PhysicalVolumeStrategyPerVolume,
+	}
+	repaired, err := RepairLegacyMigrationShape(d, "1g")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repaired {
+		t.Error("expected no-op for an already-correct canonical config")
+	}
+}
+
+func TestInsertAppVolume_StripsRuntimeName(t *testing.T) {
+	d := &Deployment{}
+	vol := &AppVolume{Name: "newvol", Pool: "tank", Size: "1g", CanonicalOrigin: CanonicalStorageOriginLegacyPooledV1, RuntimeName: "{name}-tank"}
+	if err := d.InsertAppVolume(vol); err != nil {
+		t.Fatalf("InsertAppVolume error: %v", err)
+	}
+	if got := d.AppVolumes[0].CanonicalOrigin; got != "" {
+		t.Fatalf("expected user-authored insert to strip CanonicalOrigin, got %q", got)
+	}
+	if got := d.AppVolumes[0].RuntimeName; got != "" {
+		t.Fatalf("expected user-authored insert to strip RuntimeName, got %q", got)
+	}
+	if got := vol.CanonicalOrigin; got != "" {
+		t.Fatalf("expected inserted payload to be scrubbed of CanonicalOrigin in place too, got %q", got)
+	}
+	if got := vol.RuntimeName; got != "" {
+		t.Fatalf("expected inserted payload to be scrubbed in place too, got %q", got)
+	}
+}
+
+func TestUpdateAppVolume_PreservesStoredRuntimeName(t *testing.T) {
+	d := &Deployment{
+		AppVolumes: AppVolumes{{Name: "tank", Pool: "tank", Size: "1g", CanonicalOrigin: CanonicalStorageOriginLegacyPooledV1, RuntimeName: "{name}-tank"}},
+	}
+	updated := &AppVolume{Name: "tank-renamed", Pool: "tank", Size: "2g", RuntimeName: "{name}-evil"}
+	if err := d.UpdateAppVolume("tank", updated); err != nil {
+		t.Fatalf("UpdateAppVolume error: %v", err)
+	}
+	if got := d.AppVolumes[0].RuntimeName; got != "{name}-tank" {
+		t.Fatalf("expected stored RuntimeName preserved, got %q", got)
+	}
+	if got := d.AppVolumes[0].Name; got != "tank-renamed" {
+		t.Fatalf("expected rename to apply, got %q", got)
+	}
+	if got := d.AppVolumes[0].CanonicalOrigin; got != CanonicalStorageOriginLegacyPooledV1 {
+		t.Fatalf("expected stored CanonicalOrigin preserved, got %q", got)
+	}
+	if got := updated.RuntimeName; got != "{name}-tank" {
+		t.Fatalf("expected update payload RuntimeName to be overwritten with stored value, got %q", got)
+	}
+	if got := updated.CanonicalOrigin; got != CanonicalStorageOriginLegacyPooledV1 {
+		t.Fatalf("expected update payload CanonicalOrigin to be overwritten with stored value, got %q", got)
 	}
 }
 

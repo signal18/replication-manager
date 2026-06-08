@@ -660,7 +660,11 @@ func (cluster *Cluster) OpenSVCGetAppCanonicalVolumeSections(basemap map[string]
 		}
 
 		svcvol := make(map[string]string)
-		svcvol["name"] = app.GetAppVolumeNamePerVolume(vol.Name, false)
+		// Must match the resolution used by GetOpenSVCCanonicalDeploymentPathMapping
+		// for this volume's mounts — otherwise mounts reference a volume# section
+		// declared under a different name (e.g. a migrated volume's preserved
+		// RuntimeName vs. the standard per-volume name).
+		svcvol["name"] = app.GetRuntimeVolumeName(vol, false)
 		svcvol["pool"] = vol.Pool
 		svcvol["size"] = vol.Size
 		if vol.Shared || poolInfo.Shared {

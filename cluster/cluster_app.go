@@ -494,7 +494,7 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 		return err
 	}
 
-	var storageMigrated, storageNormalized, shadowsRepaired bool
+	var storageMigrated, storageNormalized, shadowsRepaired, storageRepaired bool
 	if appcnf.Deployment != nil {
 		if resolveErrs := appcnf.Deployment.ResolvePaths(); len(resolveErrs) > 0 {
 			for _, resolveErr := range resolveErrs {
@@ -529,6 +529,37 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
 					"App config %q canonical storage is invalid: %v — fix config before restarting", filename, valErr)
 				return fmt.Errorf("invalid canonical storage in app config %q: %w", filename, valErr)
+			}
+			// Configs that were auto-migrated by the old, row-based migration
+			// (one AppVolume per legacy Volume row, stamped legacy-pooled) are
+			// wrong: the old runtime actually merged same-pool volumes into a
+			// single physical OpenSVC volume, so the row-based shape both
+			// misrepresents pre-existing physical layout and would let new
+			// volumes silently re-merge into old pool groups forever (see
+			// MigrateStorageToCanonical doc comment). Repair them in place by
+			// rebuilding the canonical model from the preserved legacy shadow —
+			// unconditionally, the same as the original V1-to-canonical
+			// migration above (line ~512) already runs on every load
+			// regardless of provisioned state. Both transitions go through
+			// deriveCanonicalFromLegacy and rely on the same guarantee:
+			// RuntimeName preserves the pre-existing {appname}-{pool} physical
+			// OpenSVC volume identity, so an already-provisioned app's runtime
+			// expectations are not disturbed. Gating only the repair here
+			// would leave exactly the apps that matter most — already
+			// provisioned, wrongly migrated — permanently stuck reproducing
+			// the forever-re-merge bug this correction exists to eliminate.
+			if appcnf.Deployment.HasLegacyMigrationShape() {
+				var repairErr error
+				storageRepaired, repairErr = config.RepairLegacyMigrationShape(appcnf.Deployment, appcnf.ProvAppDisk)
+				if repairErr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
+						"App config %q row-based storage migration repair failed (config preserved): %v", filename, repairErr)
+				}
+			}
+			if metaErr := appcnf.Deployment.ValidateCanonicalLegacyOrigin(); metaErr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
+					"App config %q canonical storage metadata is invalid: %v — fix config before restarting", filename, metaErr)
+				return fmt.Errorf("invalid canonical storage metadata in app config %q: %w", filename, metaErr)
 			}
 		}
 		storageNormalized = appcnf.Deployment.NormalizeCanonicalStorage()
@@ -569,7 +600,7 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 		}
 	}
 
-	if storageMigrated || storageNormalized || shadowsRepaired {
+	if storageMigrated || storageNormalized || shadowsRepaired || storageRepaired {
 		if storageNormalized {
 			// Normalization rewrote AppMounts target/source-sub paths in place.
 			// Any previously-synced legacy Storages.*/Paths shadow now points at
@@ -577,11 +608,13 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 			// canonical model before we persist — canonicalStorageSave does the
 			// same after CRUD edits (see SyncLegacyShadows in deployment.go).
 			//
-			// This is NOT needed for a fresh migration: MigrateStorageToCanonical
-			// derives the canonical model FROM the legacy fields and intentionally
-			// preserves them as-is, so they are already consistent immediately
-			// after migration — regenerating them here would flatten richer
-			// preserved data (e.g. parent/child path hierarchies) for no benefit.
+			// This is NOT needed for a fresh migration or a row-based-migration
+			// repair: both MigrateStorageToCanonical and
+			// RepairLegacyMigrationShape derive the canonical model FROM the
+			// legacy fields and intentionally preserve them as-is, so they are
+			// already consistent immediately after — regenerating them here
+			// would flatten richer preserved data (e.g. parent/child path
+			// hierarchies) for no benefit.
 			appcnf.Deployment.SyncLegacyShadows()
 		}
 		// Storage migration/normalization mutated the in-memory deployment, so
@@ -600,7 +633,9 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 			return err
 		}
 		reason := "migration/normalization"
-		if shadowsRepaired && !storageMigrated && !storageNormalized {
+		if storageRepaired && !storageMigrated && !storageNormalized {
+			reason = "row-based migration repair"
+		} else if shadowsRepaired && !storageMigrated && !storageNormalized {
 			reason = "legacy shadow repair"
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
@@ -642,9 +677,10 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 	errormap := config.ParseConfigMeasurement(&appcnf, cluster.Conf.DefaultFlagMap, cluster.Conf.MeasurementAutoClampLimit)
 	if len(errormap) > 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error parsing app config %s: %v", appname, errormap)
+		return errormap
 	}
 
-	return errormap
+	return nil
 }
 
 // // LoadConfig loads the configuration from a file to the configuration struct.

@@ -87,6 +87,114 @@ dockerpath = "/srv/app/child"
 	if err := validateCanonicalTemplateContentForSave(cl, "local/invalid", invalidTemplate); err == nil {
 		t.Fatalf("expected invalid template content to fail validation")
 	}
+
+	invalidCanonicalRuntimeName := []byte(`
+[deployment]
+storage-layout-version = 2
+physical-volume-strategy = "per-volume"
+
+[[deployment.app-volumes]]
+name = "tank"
+pool = "tank"
+size = "1g"
+canonical-origin = "legacy-pooled-v1"
+runtime-name = "{name}-tank"
+
+[[deployment.app-sources]]
+name = "tank-root"
+type = "directory"
+volumeName = "tank"
+basePath = "/data"
+
+[[deployment.app-mounts]]
+sourceName = "tank-root"
+targetPath = "/srv/app"
+`)
+	if err := validateCanonicalTemplateContentForSave(cl, "local/runtime-name-invalid", invalidCanonicalRuntimeName); err == nil {
+		t.Fatalf("expected native V2 template carrying migration-only runtime-name to fail validation")
+	}
+
+	newTemplateWithOrigin := []byte(`
+[deployment]
+storage-layout-version = 2
+physical-volume-strategy = "per-volume"
+canonical-storage-origin = "legacy-pooled-v1"
+
+[[deployment.app-volumes]]
+name = "tank"
+pool = "tank"
+size = "1g"
+canonical-origin = "legacy-pooled-v1"
+runtime-name = "{name}-tank"
+
+[[deployment.app-sources]]
+name = "etc-vol-root"
+type = "directory"
+volumeName = "tank"
+basePath = "/etc"
+
+[[deployment.app-mounts]]
+sourceName = "etc-vol-root"
+targetPath = "/etc/myapp"
+`)
+	if err := validateCanonicalTemplateContentForSave(cl, "local/migrated-new-invalid", newTemplateWithOrigin); err == nil {
+		t.Fatalf("expected raw template save to reject introducing canonical-storage-origin on a new template")
+	}
+
+	localMigratedPath := filepath.Join(cl.Conf.WorkingDir, ".templates", "apps", "local", "migrated-valid.toml")
+	if err := os.MkdirAll(filepath.Dir(localMigratedPath), 0o755); err != nil {
+		t.Fatalf("mkdir local migrated template dir failed: %v", err)
+	}
+	if err := os.WriteFile(localMigratedPath, newTemplateWithOrigin, 0o644); err != nil {
+		t.Fatalf("write local migrated template failed: %v", err)
+	}
+	if err := validateCanonicalTemplateContentForSave(cl, "local/migrated-valid", newTemplateWithOrigin); err != nil {
+		t.Fatalf("expected migrated canonical template metadata to validate, got %v", err)
+	}
+
+	migratedTemplateWithExtraManagedVolume := []byte(`
+[deployment]
+storage-layout-version = 2
+physical-volume-strategy = "per-volume"
+canonical-storage-origin = "legacy-pooled-v1"
+
+[[deployment.app-volumes]]
+name = "tank"
+pool = "tank"
+size = "1g"
+canonical-origin = "legacy-pooled-v1"
+runtime-name = "{name}-tank"
+
+[[deployment.app-volumes]]
+name = "logs"
+pool = "tank"
+size = "1g"
+canonical-origin = "legacy-pooled-v1"
+runtime-name = "{name}-logs"
+
+[[deployment.app-sources]]
+name = "etc-vol-root"
+type = "directory"
+volumeName = "tank"
+basePath = "/etc"
+
+[[deployment.app-sources]]
+name = "logs-root"
+type = "directory"
+volumeName = "logs"
+basePath = "/logs"
+
+[[deployment.app-mounts]]
+sourceName = "etc-vol-root"
+targetPath = "/etc/myapp"
+
+[[deployment.app-mounts]]
+sourceName = "logs-root"
+targetPath = "/logs/myapp"
+`)
+	if err := validateCanonicalTemplateContentForSave(cl, "local/migrated-valid", migratedTemplateWithExtraManagedVolume); err == nil {
+		t.Fatalf("expected raw template save to reject introducing a new legacy-managed runtime identity into a migrated template")
+	}
 }
 
 func TestWriteTemplateContentAtomically(t *testing.T) {

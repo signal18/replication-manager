@@ -28,12 +28,36 @@ const (
 	PhysicalVolumeStrategyPerVolume    PhysicalVolumeStrategy = "per-volume"
 )
 
+// CanonicalStorageOrigin records which legacy runtime semantics, if any, were
+// used to derive the current canonical storage model. Empty means this is a
+// native/user-authored V2 config and must never be reinterpreted through
+// legacy rules. Non-empty values are migration-owned metadata only.
+type CanonicalStorageOrigin string
+
+const (
+	CanonicalStorageOriginLegacyPooledV1 CanonicalStorageOrigin = "legacy-pooled-v1"
+)
+
 // AppVolume represents a real physical storage allocation.
 type AppVolume struct {
 	Name   string `mapstructure:"name" toml:"name" json:"name"`
 	Pool   string `mapstructure:"pool" toml:"pool" json:"pool"`
 	Size   string `mapstructure:"size" toml:"size" json:"size"`
 	Shared bool   `mapstructure:"shared" toml:"shared" json:"shared,omitempty"`
+
+	// CanonicalOrigin marks volumes that were derived from legacy pooled V1
+	// semantics during migration/repair. Empty means this volume is native V2
+	// and must never carry migration-only runtime identity metadata.
+	CanonicalOrigin CanonicalStorageOrigin `mapstructure:"canonical-origin" toml:"canonical-origin" json:"canonicalOrigin,omitempty"`
+
+	// RuntimeName overrides the generated OpenSVC physical-volume name,
+	// stored in unresolved template form (e.g. "{name}-mypool"). It is set
+	// only by storage migration, to preserve the exact pre-migration
+	// pooled-volume identity ({appname}-{pool}) so already-provisioned
+	// physical volumes are never orphaned by a strategy/naming change.
+	// User-authored AppVolumes leave this empty and get standard
+	// per-volume naming. See (*App).GetRuntimeVolumeName.
+	RuntimeName string `mapstructure:"runtime-name" toml:"runtime-name" json:"runtimeName,omitempty"`
 }
 
 // AppSourceType identifies the kind of content source.
@@ -95,6 +119,7 @@ type Deployment struct {
 	AppMounts              AppMounts              `mapstructure:"app-mounts" toml:"app-mounts" json:"appMounts,omitempty" groups:"apps"`
 	StorageLayoutVersion   StorageLayoutVersion   `mapstructure:"storage-layout-version" toml:"storage-layout-version" json:"storageLayoutVersion,omitempty" groups:"apps"`
 	PhysicalVolumeStrategy PhysicalVolumeStrategy `mapstructure:"physical-volume-strategy" toml:"physical-volume-strategy" json:"physicalVolumeStrategy,omitempty" groups:"apps"`
+	CanonicalStorageOrigin CanonicalStorageOrigin `mapstructure:"canonical-storage-origin" toml:"canonical-storage-origin" json:"canonicalStorageOrigin,omitempty" groups:"apps"`
 
 	// Use sync.RWMutex to protect concurrent access to Volumes and VolumeMappings
 	Mutex sync.RWMutex
@@ -1485,6 +1510,11 @@ func (d *Deployment) GetAppVolumeByName(name string) (*AppVolume, error) {
 func (d *Deployment) InsertAppVolume(v *AppVolume) error {
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
+	// RuntimeName is reserved for migration/repair code paths that preserve an
+	// existing physical OpenSVC volume identity. User-authored canonical volume
+	// inserts must never set it, even if a client includes the field.
+	v.CanonicalOrigin = ""
+	v.RuntimeName = ""
 	if v.Name == "" {
 		return errors.New("volume name is required")
 	}
@@ -1528,6 +1558,11 @@ func (d *Deployment) UpdateAppVolume(name string, updated *AppVolume) error {
 	if idx == -1 {
 		return fmt.Errorf("canonical volume %q not found", name)
 	}
+	// RuntimeName is migration-owned metadata. Preserve the stored value
+	// regardless of what the client sent so migrated volumes keep their legacy
+	// physical identity and new V2 volumes cannot opt into one by API update.
+	updated.CanonicalOrigin = d.AppVolumes[idx].CanonicalOrigin
+	updated.RuntimeName = d.AppVolumes[idx].RuntimeName
 	// Guard against rename collision before mutating.
 	if updated.Name != name {
 		for _, v := range d.AppVolumes {
@@ -1879,6 +1914,67 @@ func (d *Deployment) ValidateCanonicalStorage() error {
 	d.Mutex.RLock()
 	defer d.Mutex.RUnlock()
 	return validateCanonicalStorageSlices(d.AppVolumes, d.AppSources, d.AppMounts)
+}
+
+// ValidateCanonicalLegacyOrigin validates migration-owned canonical storage
+// metadata that is orthogonal to structural storage validation. In particular,
+// it enforces the rule that legacy runtime semantics are applied only to
+// configs explicitly marked as migrated from the old legacy pooled V1
+// behavior; native/user-authored V2 configs must not carry migration-only
+// metadata such as RuntimeName overrides or legacy-pooled strategy.
+func (d *Deployment) ValidateCanonicalLegacyOrigin() error {
+	if d == nil {
+		return nil
+	}
+	d.Mutex.RLock()
+	defer d.Mutex.RUnlock()
+
+	if d.CanonicalStorageOrigin == "" {
+		if d.IsCanonical() && d.PhysicalVolumeStrategy == PhysicalVolumeStrategyLegacyPooled {
+			return fmt.Errorf("physical-volume-strategy %q is reserved for unrepaired legacy migrations and is not allowed on native V2 storage", d.PhysicalVolumeStrategy)
+		}
+		for _, v := range d.AppVolumes {
+			if v.CanonicalOrigin != "" {
+				return fmt.Errorf("canonical volume %q canonical-origin is reserved for migrated legacy storage", v.Name)
+			}
+			if v.RuntimeName != "" {
+				return fmt.Errorf("canonical volume %q runtime-name is reserved for migrated legacy storage", v.Name)
+			}
+		}
+		return nil
+	}
+
+	if !d.IsCanonical() {
+		return fmt.Errorf("canonical-storage-origin %q requires storage-layout-version >= %d", d.CanonicalStorageOrigin, StorageLayoutV2)
+	}
+	switch d.CanonicalStorageOrigin {
+	case CanonicalStorageOriginLegacyPooledV1:
+		if d.PhysicalVolumeStrategy != PhysicalVolumeStrategyPerVolume {
+			return fmt.Errorf("canonical-storage-origin %q requires physical-volume-strategy %q", d.CanonicalStorageOrigin, PhysicalVolumeStrategyPerVolume)
+		}
+		seenRuntimeNames := make(map[string]bool, len(d.AppVolumes))
+		for _, v := range d.AppVolumes {
+			if v.CanonicalOrigin == "" {
+				if v.RuntimeName != "" {
+					return fmt.Errorf("canonical volume %q runtime-name is reserved for legacy-derived volumes only", v.Name)
+				}
+				continue
+			}
+			if v.CanonicalOrigin != d.CanonicalStorageOrigin {
+				return fmt.Errorf("canonical volume %q canonical-origin %q does not match deployment origin %q", v.Name, v.CanonicalOrigin, d.CanonicalStorageOrigin)
+			}
+			if v.RuntimeName == "" {
+				return fmt.Errorf("canonical volume %q migrated from %q must preserve runtime-name", v.Name, d.CanonicalStorageOrigin)
+			}
+			if seenRuntimeNames[v.RuntimeName] {
+				return fmt.Errorf("duplicate migrated runtime-name %q", v.RuntimeName)
+			}
+			seenRuntimeNames[v.RuntimeName] = true
+		}
+	default:
+		return fmt.Errorf("unknown canonical-storage-origin %q", d.CanonicalStorageOrigin)
+	}
+	return nil
 }
 
 // NormalizeCanonicalStorage rewrites canonical mount target/source-sub paths to
