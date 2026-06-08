@@ -36,10 +36,11 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
         clusterName={clusterName}
         appId={appId}
         appConfig={appConfig}
+        config={config}
         user={user}
       />
     )
-  }, [clusterName, appId, appConfig, user])
+  }, [clusterName, appId, appConfig, config, user])
 
   const serviceOpenSvcComponent = useMemo(() => {
     return (

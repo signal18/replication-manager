@@ -687,6 +687,7 @@ type Config struct {
 	ProvAppCpuCores                           string                       `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores" groups:"apps"`
 	ProvAppAgents                             string                       `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents" groups:"apps"`
 	ProvAppHATopology                         string                       `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology" groups:"apps"`
+	ProvAppVolumeAllowAdvancedSize            bool                         `mapstructure:"prov-app-volume-allow-advanced-size" toml:"prov-app-volume-allow-advanced-size" json:"provAppVolumeAllowAdvancedSize" groups:"apps"`
 	ProvAppTemplateRepo                       string                       `mapstructure:"prov-app-template-repo" toml:"prov-app-template-repo" json:"provAppTemplateRepo" groups:"apps"`
 	ProvAppTemplateRepoBranch                 string                       `mapstructure:"prov-app-template-repo-branch" toml:"prov-app-template-repo-branch" json:"provAppTemplateRepoBranch" groups:"apps"`
 	ProvAppTemplateRepoUser                   string                       `mapstructure:"prov-app-template-repo-user" toml:"prov-app-template-repo-user" json:"provAppTemplateRepoUser" groups:"apps"`
@@ -1511,8 +1512,8 @@ const (
 
 // TaskDef describes a task's execution capabilities and default mode.
 type TaskDef struct {
-	Name       TaskName
-	Capability TaskExecCapability
+	Name          TaskName
+	Capability    TaskExecCapability
 	DefaultRemote bool // When Capability is TaskCapBoth, true = remote by default
 }
 
@@ -1523,32 +1524,32 @@ type TaskDef struct {
 // Both:       user chooses via scheduler-jobs-exec-{task} config (default in DefaultRemote).
 var TaskRegistry = map[TaskName]TaskDef{
 	// RemoteOnly — requires DB host filesystem or system access
-	ConstTaskXB:                {Name: ConstTaskXB, Capability: TaskCapRemoteOnly},
-	ConstTaskMB:                {Name: ConstTaskMB, Capability: TaskCapRemoteOnly},
-	ConstTaskReseedXB:          {Name: ConstTaskReseedXB, Capability: TaskCapRemoteOnly},
-	ConstTaskReseedMB:          {Name: ConstTaskReseedMB, Capability: TaskCapRemoteOnly},
-	ConstTaskFlashXB:           {Name: ConstTaskFlashXB, Capability: TaskCapRemoteOnly},
-	ConstTaskFlashMB:           {Name: ConstTaskFlashMB, Capability: TaskCapRemoteOnly},
+	ConstTaskXB:       {Name: ConstTaskXB, Capability: TaskCapRemoteOnly},
+	ConstTaskMB:       {Name: ConstTaskMB, Capability: TaskCapRemoteOnly},
+	ConstTaskReseedXB: {Name: ConstTaskReseedXB, Capability: TaskCapRemoteOnly},
+	ConstTaskReseedMB: {Name: ConstTaskReseedMB, Capability: TaskCapRemoteOnly},
+	ConstTaskFlashXB:  {Name: ConstTaskFlashXB, Capability: TaskCapRemoteOnly},
+	ConstTaskFlashMB:  {Name: ConstTaskFlashMB, Capability: TaskCapRemoteOnly},
 	// Both — orchestrator API (OpenSVC/K8S) handles locally, dbjobs uses systemctl
-	ConstTaskRestart:           {Name: ConstTaskRestart, Capability: TaskCapBoth, DefaultRemote: true},
-	ConstTaskStop:              {Name: ConstTaskStop, Capability: TaskCapBoth, DefaultRemote: true},
-	ConstTaskStart:             {Name: ConstTaskStart, Capability: TaskCapBoth, DefaultRemote: true},
-	ConstTaskError:             {Name: ConstTaskError, Capability: TaskCapRemoteOnly},
-	ConstTaskSlowQuery:         {Name: ConstTaskSlowQuery, Capability: TaskCapRemoteOnly},
-	ConstTaskSqlError:          {Name: ConstTaskSqlError, Capability: TaskCapRemoteOnly},
-	ConstTaskAuditLog:          {Name: ConstTaskAuditLog, Capability: TaskCapRemoteOnly},
-	ConstTaskZFS:               {Name: ConstTaskZFS, Capability: TaskCapRemoteOnly},
-	ConstTaskJobsCheck:         {Name: ConstTaskJobsCheck, Capability: TaskCapRemoteOnly},
-	ConstTaskJobsUpgrade:       {Name: ConstTaskJobsUpgrade, Capability: TaskCapRemoteOnly},
+	ConstTaskRestart:            {Name: ConstTaskRestart, Capability: TaskCapBoth, DefaultRemote: true},
+	ConstTaskStop:               {Name: ConstTaskStop, Capability: TaskCapBoth, DefaultRemote: true},
+	ConstTaskStart:              {Name: ConstTaskStart, Capability: TaskCapBoth, DefaultRemote: true},
+	ConstTaskError:              {Name: ConstTaskError, Capability: TaskCapRemoteOnly},
+	ConstTaskSlowQuery:          {Name: ConstTaskSlowQuery, Capability: TaskCapRemoteOnly},
+	ConstTaskSqlError:           {Name: ConstTaskSqlError, Capability: TaskCapRemoteOnly},
+	ConstTaskAuditLog:           {Name: ConstTaskAuditLog, Capability: TaskCapRemoteOnly},
+	ConstTaskZFS:                {Name: ConstTaskZFS, Capability: TaskCapRemoteOnly},
+	ConstTaskJobsCheck:          {Name: ConstTaskJobsCheck, Capability: TaskCapRemoteOnly},
+	ConstTaskJobsUpgrade:        {Name: ConstTaskJobsUpgrade, Capability: TaskCapRemoteOnly},
 	ConstTaskPrintCurrentConfig: {Name: ConstTaskPrintCurrentConfig, Capability: TaskCapRemoteOnly},
-	ConstTaskPrintDummyConfig:  {Name: ConstTaskPrintDummyConfig, Capability: TaskCapRemoteOnly},
+	ConstTaskPrintDummyConfig:   {Name: ConstTaskPrintDummyConfig, Capability: TaskCapRemoteOnly},
 
 	// Both — user can choose local (repman) or remote (dbjobs)
-	ConstTaskDump:      {Name: ConstTaskDump, Capability: TaskCapBoth, DefaultRemote: false},
-	ConstTaskMydumper:  {Name: ConstTaskMydumper, Capability: TaskCapBoth, DefaultRemote: false},
-	ConstTaskOptimize:  {Name: ConstTaskOptimize, Capability: TaskCapBoth, DefaultRemote: true},
+	ConstTaskDump:       {Name: ConstTaskDump, Capability: TaskCapBoth, DefaultRemote: false},
+	ConstTaskMydumper:   {Name: ConstTaskMydumper, Capability: TaskCapBoth, DefaultRemote: false},
+	ConstTaskOptimize:   {Name: ConstTaskOptimize, Capability: TaskCapBoth, DefaultRemote: true},
 	ConstTaskReseedDump: {Name: ConstTaskReseedDump, Capability: TaskCapBoth, DefaultRemote: false},
-	ConstTaskFlashDump: {Name: ConstTaskFlashDump, Capability: TaskCapBoth, DefaultRemote: false},
+	ConstTaskFlashDump:  {Name: ConstTaskFlashDump, Capability: TaskCapBoth, DefaultRemote: false},
 }
 
 // IsRemoteTask returns true if the task should be dispatched to the dbjobs

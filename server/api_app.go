@@ -3792,6 +3792,9 @@ func buildValidatedTempAppConfigFromTemplate(mycluster *cluster.Cluster, node *c
 			}
 			return nil, fmt.Errorf("invalid deployment path mapping for template %q", templateName)
 		}
+		if err := node.ValidateCanonicalDeploymentForCredits(tempConfig.Deployment); err != nil {
+			return nil, fmt.Errorf("template %q canonical storage violates app credit policy: %w", templateName, err)
+		}
 	}
 
 	return tempConfig, nil
@@ -4575,6 +4578,16 @@ func validateCanonicalVolumeShared(mycluster *cluster.Cluster, vol *config.AppVo
 	return nil // pool not in list; provisioning will catch it
 }
 
+func validateCanonicalVolumeCredits(app *cluster.App, replacingName string, vol *config.AppVolume) error {
+	if app == nil || app.AppConfig == nil || app.AppConfig.Deployment == nil {
+		return nil
+	}
+	if err := app.ValidateCanonicalVolumeSizeForCredits(app.AppConfig.Deployment.AppVolumes, replacingName, vol.Size); err != nil {
+		return err
+	}
+	return app.ValidateCanonicalVolumeBudget(app.AppConfig.Deployment.AppVolumes, replacingName, vol.Size)
+}
+
 func (repman *ReplicationManager) handlerMuxCanonicalVolumesAdd(w http.ResponseWriter, r *http.Request) {
 	mycluster, node := repman.canonicalStoragePrelude(w, r)
 	if mycluster == nil {
@@ -4585,6 +4598,10 @@ func (repman *ReplicationManager) handlerMuxCanonicalVolumesAdd(w http.ResponseW
 		return
 	}
 	if err := validateCanonicalVolumeShared(mycluster, vol); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validateCanonicalVolumeCredits(node, "", vol); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -4606,6 +4623,10 @@ func (repman *ReplicationManager) handlerMuxCanonicalVolumesUpdate(w http.Respon
 		return
 	}
 	if err := validateCanonicalVolumeShared(mycluster, vol); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validateCanonicalVolumeCredits(node, vars["volName"], vol); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

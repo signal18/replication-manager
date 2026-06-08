@@ -233,6 +233,10 @@ func (app *App) SetAppProvisionByCredit(creditPlanSize int) error {
 		return errors.New("credit planned must be a multiple of the number of agents for flex provisioning")
 	}
 
+	if err := app.ValidateCanonicalStorageBudgetForCredits(creditPlanSize); err != nil {
+		return err
+	}
+
 	// For flex provisioning, we divide the credit planned by the number of agents
 	provCredit := creditPlanSize / num_agents
 

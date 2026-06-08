@@ -3,6 +3,7 @@ package server
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/signal18/replication-manager/cluster"
@@ -187,6 +188,96 @@ volumename = "data-volume"
 	}
 	if node.AppConfig.Deployment == nil || len(node.AppConfig.Deployment.Paths) != 1 || node.AppConfig.Deployment.Paths[0].DockerPath != "/srv/app" {
 		t.Fatalf("deployment not updated from template: %+v", node.AppConfig.Deployment)
+	}
+}
+
+func TestResetAppFromTemplate_RejectsCanonicalVolumeOutsideCreditPolicy(t *testing.T) {
+	cl := &cluster.Cluster{Conf: &config.Config{WorkingDir: t.TempDir(), ProvAppDisk: "10"}}
+	node := &cluster.App{
+		AppConfig:            seedAppConfigForTemplateResetTests(),
+		AppClusterSubstitute: `{}`,
+	}
+	node.AppConfig.ProvAppCreditPlanned = 2
+
+	if err := writeLocalAppTemplate(cl.Conf.WorkingDir, "credit-invalid", `
+[deployment]
+storage-layout-version = 2
+physical-volume-strategy = "per-volume"
+
+[[deployment.app-volumes]]
+name = "data"
+pool = "tank"
+size = "15g"
+`); err != nil {
+		t.Fatalf("writeLocalAppTemplate: %v", err)
+	}
+
+	err := resetAppFromTemplateWithProjection(cl, node, "credit-invalid", false)
+	if err == nil {
+		t.Fatalf("expected credit policy error, got nil")
+	}
+	if got := err.Error(); got == "" || !strings.Contains(got, "credit policy") {
+		t.Fatalf("expected credit policy error, got %v", err)
+	}
+}
+
+func TestResetAppFromTemplate_AllowsGrandfatheredCanonicalVolumeSize(t *testing.T) {
+	cl := &cluster.Cluster{Conf: &config.Config{WorkingDir: t.TempDir(), ProvAppDisk: "10"}}
+	node := &cluster.App{
+		AppConfig:            seedAppConfigForTemplateResetTests(),
+		AppClusterSubstitute: `{}`,
+	}
+	node.AppConfig.ProvAppCreditPlanned = 1
+	node.AppConfig.Deployment = &config.Deployment{
+		StorageLayoutVersion:   config.StorageLayoutV2,
+		PhysicalVolumeStrategy: config.PhysicalVolumeStrategyPerVolume,
+		AppVolumes: config.AppVolumes{
+			{Name: "legacy", Pool: "tank", Size: "4g"},
+		},
+	}
+
+	if err := writeLocalAppTemplate(cl.Conf.WorkingDir, "credit-grandfathered", `
+[deployment]
+storage-layout-version = 2
+physical-volume-strategy = "per-volume"
+
+[[deployment.app-volumes]]
+name = "legacy"
+pool = "tank"
+size = "4g"
+`); err != nil {
+		t.Fatalf("writeLocalAppTemplate: %v", err)
+	}
+
+	if err := resetAppFromTemplateWithProjection(cl, node, "credit-grandfathered", false); err != nil {
+		t.Fatalf("expected unchanged legacy-sized template volume to be allowed, got %v", err)
+	}
+}
+
+func TestResetAppFromTemplate_AllowsAdvancedCanonicalVolumeSizeWhenEnabled(t *testing.T) {
+	cl := &cluster.Cluster{Conf: &config.Config{WorkingDir: t.TempDir(), ProvAppDisk: "10", ProvAppVolumeAllowAdvancedSize: true}}
+	node := &cluster.App{
+		ClusterGroup:         cl,
+		AppConfig:            seedAppConfigForTemplateResetTests(),
+		AppClusterSubstitute: `{}`,
+	}
+	node.AppConfig.ProvAppCreditPlanned = 2
+
+	if err := writeLocalAppTemplate(cl.Conf.WorkingDir, "credit-advanced", `
+[deployment]
+storage-layout-version = 2
+physical-volume-strategy = "per-volume"
+
+[[deployment.app-volumes]]
+name = "advanced"
+pool = "tank"
+size = "15g"
+`); err != nil {
+		t.Fatalf("writeLocalAppTemplate: %v", err)
+	}
+
+	if err := resetAppFromTemplateWithProjection(cl, node, "credit-advanced", false); err != nil {
+		t.Fatalf("expected advanced-sized template volume to be allowed when setting is enabled, got %v", err)
 	}
 }
 

@@ -58,6 +58,7 @@ func newAsymmetricRouteTestSetup(t *testing.T) (*ReplicationManager, *cluster.Cl
 	cl.Conf.Apps = []*config.AppConfig{appCnf}
 	cl.Apps = []*cluster.App{app}
 	cl.ConfigManager = newConfigManagerForTest()
+	app.ClusterGroup = cl
 	cl.APIUsers = map[string]cluster.APIUser{
 		compatTestUser: {
 			User:     compatTestUser,
@@ -303,5 +304,114 @@ func TestCanonicalStorageMutations_StillRequireDeploymentGrant(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for readonly canonical mutation, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCanonicalVolumeAdd_RejectsNonCreditSizedVolume(t *testing.T) {
+	repman, cl, app := newAsymmetricRouteTestSetup(t)
+	app.AppConfig.ProvAppCreditPlanned = 3
+
+	tok := issueCompatTestJWT(t, repman)
+	url := fmt.Sprintf("/api/clusters/%s/apps/%s/canonical/volumes", cl.Name, compatTestAppId)
+	req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader([]byte(`{"name":"extra","pool":"tank","size":"15g"}`)))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	req = setMuxVars(req, map[string]string{
+		"clusterName": cl.Name,
+		"appName":     compatTestAppId,
+	})
+
+	w := httptest.NewRecorder()
+	repman.handlerMuxCanonicalVolumesAdd(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for non credit-sized volume, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte("multiple of 10g")) {
+		t.Fatalf("expected multiple-of-budget-unit error, got: %s", w.Body.String())
+	}
+}
+
+func TestCanonicalVolumeAdd_RejectsCreditBudgetOverflow(t *testing.T) {
+	repman, cl, app := newAsymmetricRouteTestSetup(t)
+	app.AppConfig.ProvAppCreditPlanned = 2
+	app.AppConfig.Deployment.StorageLayoutVersion = config.StorageLayoutV2
+	app.AppConfig.Deployment.PhysicalVolumeStrategy = config.PhysicalVolumeStrategyPerVolume
+	app.AppConfig.Deployment.AppVolumes = config.AppVolumes{
+		{Name: "existing", Pool: "tank", Size: "20g"},
+	}
+
+	tok := issueCompatTestJWT(t, repman)
+	url := fmt.Sprintf("/api/clusters/%s/apps/%s/canonical/volumes", cl.Name, compatTestAppId)
+	req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader([]byte(`{"name":"extra","pool":"tank","size":"10g"}`)))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	req = setMuxVars(req, map[string]string{
+		"clusterName": cl.Name,
+		"appName":     compatTestAppId,
+	})
+
+	w := httptest.NewRecorder()
+	repman.handlerMuxCanonicalVolumesAdd(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for credit budget overflow, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte("exceeds credit storage budget 20g")) {
+		t.Fatalf("expected credit budget overflow error, got: %s", w.Body.String())
+	}
+}
+
+func TestCanonicalVolumeUpdate_AllowsUnchangedLegacySizedVolume(t *testing.T) {
+	repman, cl, app := newAsymmetricRouteTestSetup(t)
+	app.AppConfig.ProvAppCreditPlanned = 1
+	app.AppConfig.Deployment.StorageLayoutVersion = config.StorageLayoutV2
+	app.AppConfig.Deployment.PhysicalVolumeStrategy = config.PhysicalVolumeStrategyPerVolume
+	app.AppConfig.Deployment.AppVolumes = config.AppVolumes{
+		{Name: "legacy", Pool: "tank", Size: "4g"},
+	}
+
+	tok := issueCompatTestJWT(t, repman)
+	url := fmt.Sprintf("/api/clusters/%s/apps/%s/canonical/volumes/%s", cl.Name, compatTestAppId, "legacy")
+	req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader([]byte(`{"name":"legacy-renamed","pool":"tank","size":"4g"}`)))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	req = setMuxVars(req, map[string]string{
+		"clusterName": cl.Name,
+		"appName":     compatTestAppId,
+		"volName":     "legacy",
+	})
+
+	w := httptest.NewRecorder()
+	repman.handlerMuxCanonicalVolumesUpdate(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for unchanged legacy-sized volume update, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := app.AppConfig.Deployment.AppVolumes[0].Name; got != "legacy-renamed" {
+		t.Fatalf("expected volume rename to be applied, got %q", got)
+	}
+}
+
+func TestCanonicalVolumeAdd_AllowsAdvancedSizeWhenClusterSettingEnabled(t *testing.T) {
+	repman, cl, app := newAsymmetricRouteTestSetup(t)
+	app.AppConfig.ProvAppCreditPlanned = 3
+	cl.Conf.ProvAppVolumeAllowAdvancedSize = true
+
+	tok := issueCompatTestJWT(t, repman)
+	url := fmt.Sprintf("/api/clusters/%s/apps/%s/canonical/volumes", cl.Name, compatTestAppId)
+	req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader([]byte(`{"name":"advanced","pool":"tank","size":"15g"}`)))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	req = setMuxVars(req, map[string]string{
+		"clusterName": cl.Name,
+		"appName":     compatTestAppId,
+	})
+
+	w := httptest.NewRecorder()
+	repman.handlerMuxCanonicalVolumesAdd(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for advanced-sized volume when enabled, got %d: %s", w.Code, w.Body.String())
 	}
 }

@@ -14,7 +14,7 @@ import { clearCache, checkGitRepo, checkGitRepoByName } from "../../../../redux/
 
 const GIT_CREDENTIAL_KEYS = ['repo', 'branch', 'pass', 'user'];
 
-export default function StoragePage({ clusterName, appId, appConfig, user }) {
+export default function StoragePage({ clusterName, appId, appConfig, config, user }) {
   const dispatch = useDispatch();
   const deployment = useSelector((state) => state.cluster?.app?.deployment);
   const storages = useSelector((state) => state.cluster?.app?.deployment?.storages);
@@ -235,6 +235,7 @@ export default function StoragePage({ clusterName, appId, appConfig, user }) {
         deployment={deployment}
         opensvcPools={opensvcPools}
         appConfig={appConfig}
+        clusterConfig={config}
         user={user}
       />
     );
@@ -265,6 +266,7 @@ StoragePage.propTypes = {
     provAppHaTopology: PropTypes.string,
     provAppDockerImg: PropTypes.string,
   }),
+  config: PropTypes.object,
   user: PropTypes.shape({
     grants: PropTypes.object,
   }),

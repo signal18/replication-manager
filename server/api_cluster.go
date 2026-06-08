@@ -4631,6 +4631,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.TopologyStaging = applyIsActive(mycluster.Conf.TopologyStaging, isactive)
 	case "analyze-use-persistent":
 		mycluster.Conf.AnalyzeUsePersistent = applyIsActive(mycluster.Conf.AnalyzeUsePersistent, isactive)
+	case "prov-app-volume-allow-advanced-size":
+		mycluster.Conf.ProvAppVolumeAllowAdvancedSize = applyIsActive(mycluster.Conf.ProvAppVolumeAllowAdvancedSize, isactive)
 	case "log-plugin":
 		mycluster.Conf.LogPlugin = applyIsActive(mycluster.Conf.LogPlugin, isactive)
 	case "log-level-plugin":
@@ -9299,7 +9301,6 @@ func (repman *ReplicationManager) handlerMuxClusterIsInErrState(w http.ResponseW
 	}
 }
 
-
 // handlerMuxClusterCheckLogLevel handles the HTTP request to check if a specific log level is enabled for a given task in a cluster.
 // @Summary Check Cluster Log Level
 // @Description Checks if a specific log level is enabled for a given task in the specified cluster.
@@ -10221,9 +10222,9 @@ func (repman *ReplicationManager) handlerMuxInterventionStart(w http.ResponseWri
 		}
 
 		var body struct {
-			Reason    string `json:"reason"`
-			StartAt   string `json:"startAt"`
-			EndAt     string `json:"endAt"`
+			Reason  string `json:"reason"`
+			StartAt string `json:"startAt"`
+			EndAt   string `json:"endAt"`
 		}
 		if r.Body != nil {
 			json.NewDecoder(r.Body).Decode(&body)

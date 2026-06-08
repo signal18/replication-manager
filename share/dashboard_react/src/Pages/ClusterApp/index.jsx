@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import PageContainer from '../PageContainer'
 import styles from './styles.module.scss'
@@ -19,32 +19,47 @@ function ClusterApp() {
   const navigate = useNavigate()
   const selectedTabRef = useRef(1)
   const [selectedTab, setSelectedTab] = useState(1)
-  const [user, setUser] = useState(null)
   const [selectedApp, setSelectedApp] = useState(null)
 	const clusterName = params.cluster
 	const appId = params.appname
-  const tabs = useRef([])
 
   const loggedUser = useSelector((state) => state.auth.user)
   const refreshInterval = useSelector((state) => state.cluster.refreshInterval)
   const clusterApps = useSelector((state) => state.cluster.clusterApps)
   const clusterData = useSelector((state) => state.cluster.clusterData)
 
+  const user = useMemo(() => {
+    if (!clusterData?.apiUsers || !loggedUser) {
+      return null
+    }
+    return clusterData.apiUsers[loggedUser.User] || clusterData.apiUsers[loggedUser.Email] || null
+  }, [clusterData, loggedUser])
+
+  const tabs = useMemo(() => [
+    <>
+      <CustomIcon icon={HiArrowNarrowLeft} /> Dashboard
+    </>,
+    'App Overview',
+    'Storages',
+    'Service OpenSVC',
+    'Templates'
+  ], [])
+
   const callServices = () => {
     dispatch(getClusterApps({ clusterName }))
     dispatch(getClusterData({ clusterName }))
     if (!isAutoReloadPaused()) {
-      if (tabs.current[selectedTabRef.current] === 'App Overview') {
+      if (tabs[selectedTabRef.current] === 'App Overview') {
         dispatch(getAppService({ clusterName, serviceName: 'deployment', appId }))
         dispatch(getAppService({ clusterName, serviceName: 'substitution', appId }))
       }
-      if (tabs.current[selectedTabRef.current] === 'Storages') {
+      if (tabs[selectedTabRef.current] === 'Storages') {
         dispatch(getAppService({ clusterName, serviceName: 'deployment', appId }))
       }
-      if (tabs.current[selectedTabRef.current] === 'Service OpenSVC') {
+      if (tabs[selectedTabRef.current] === 'Service OpenSVC') {
         dispatch(getAppService({ clusterName, serviceName: 'service-opensvc', appId }))
       }
-      if (tabs.current[selectedTabRef.current] === 'Templates') {
+      if (tabs[selectedTabRef.current] === 'Templates') {
         dispatch(refreshAppTemplateRepo({ clusterName, silent: true }))
       }
     }
@@ -83,23 +98,7 @@ function ClusterApp() {
       const app = clusterApps.find((x) => x.id === appId)
       setSelectedApp(app)
     }
-    if (clusterData?.apiUsers && loggedUser) {
-        const apiUser = clusterData?.apiUsers[loggedUser.User] || clusterData?.apiUsers[loggedUser.Email]
-        if (apiUser) {
-          const authorizedTabs = [
-            <>
-              <CustomIcon icon={HiArrowNarrowLeft} /> Dashboard
-            </>
-          ]
-          authorizedTabs.push('App Overview')
-          authorizedTabs.push('Storages')
-          authorizedTabs.push('Service OpenSVC')
-          authorizedTabs.push('Templates')
-          tabs.current = authorizedTabs
-          setUser(apiUser)
-        }
-    }
-  }, [appId, clusterApps, loggedUser])
+  }, [appId, clusterApps])
 
 
   const handleTabChange = (tabIndex) => {
@@ -110,7 +109,7 @@ function ClusterApp() {
     }
   }
 
-  if (clusterApps?.length === 0 || !selectedApp) {
+  if (clusterApps?.length === 0 || !selectedApp || !clusterData?.apiUsers) {
     return (
       <PageContainer>
         <Box className={styles.container}>
@@ -128,7 +127,7 @@ function ClusterApp() {
         <TabItems
           tabIndex={selectedTab}
           onChange={handleTabChange}
-          options={tabs.current}
+          options={tabs}
           className={styles.tabs}
           tabContents={[
             null,
