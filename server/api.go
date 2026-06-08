@@ -548,28 +548,53 @@ func (repman *ReplicationManager) isValidRequest(r *http.Request) (bool, error) 
 }
 
 func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cluster.Cluster) (bool, string) {
+	validUser, meuser, authMethod, mepwd := repman.getValidClusterJWTUser(r, cluster)
+	if !validUser {
+		return false, ""
+	}
+	return cluster.IsValidACL(meuser, mepwd, r.URL.Path, authMethod), meuser
+}
 
+func (repman *ReplicationManager) IsValidClusterUser(r *http.Request, cluster *cluster.Cluster) (bool, string) {
+	validUser, meuser, _, _ := repman.getValidClusterJWTUser(r, cluster)
+	if !validUser {
+		return false, ""
+	}
+	return true, meuser
+}
+
+func (repman *ReplicationManager) getValidClusterJWTUser(r *http.Request, cluster *cluster.Cluster) (bool, string, string, string) {
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
 		return vk, nil
 	})
-	if err == nil {
-		claims := token.Claims.(jwt.MapClaims)
-		userinfo := claims["CustomUserInfo"]
-		mycutinfo := userinfo.(map[string]interface{})
-		meuser := mycutinfo["Name"].(string)
-		mepwd := mycutinfo["Password"].(string)
-		_, ok := mycutinfo["profile"]
-
-		if ok {
-			if strings.Contains(mycutinfo["profile"].(string), repman.Conf.OAuthProvider) /*&& strings.Contains(mycutinfo["email_verified"]*/ {
-				meuser = mycutinfo["email"].(string)
-				return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "oidc"), meuser
-			}
-		}
-		return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "password"), meuser
+	if err != nil {
+		return false, "", "", ""
 	}
-	return false, ""
+
+	claims := token.Claims.(jwt.MapClaims)
+	userinfo := claims["CustomUserInfo"]
+	mycutinfo := userinfo.(map[string]interface{})
+	meuser := mycutinfo["Name"].(string)
+	mepwd := mycutinfo["Password"].(string)
+
+	if profile, ok := mycutinfo["profile"]; ok {
+		if strings.Contains(profile.(string), repman.Conf.OAuthProvider) {
+			meuser = mycutinfo["email"].(string)
+			if _, exists := cluster.APIUsers[meuser]; exists {
+				return true, meuser, "oidc", mepwd
+			}
+			return false, "", "", ""
+		}
+	}
+
+	if user, exists := cluster.APIUsers[meuser]; exists {
+		if user.Password == cluster.Conf.GetDecryptedPassword("api-credentials", mepwd) {
+			return true, meuser, "password", mepwd
+		}
+	}
+
+	return false, "", "", ""
 }
 
 func (repman *ReplicationManager) DecryptJWTPassword(r *http.Request) (string, error) {

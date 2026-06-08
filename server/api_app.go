@@ -3325,7 +3325,6 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 	}
 }
 
-
 // handlerMuxGitCheckRepo validates a git repository URL, branch, and credentials
 // before the user creates path mappings. Uses git ls-remote internally.
 // @Summary Check Git Repository
@@ -4426,9 +4425,16 @@ func (repman *ReplicationManager) canonicalStoragePrelude(w http.ResponseWriter,
 		http.Error(w, "Cluster not found", http.StatusNotFound)
 		return nil, nil
 	}
-	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-		http.Error(w, "No valid ACL", http.StatusForbidden)
-		return nil, nil
+	if r.Method == http.MethodGet {
+		if valid, _ := repman.IsValidClusterUser(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return nil, nil
+		}
+	} else {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return nil, nil
+		}
 	}
 	node := mycluster.GetAppFromName(vars["appName"])
 	if node == nil {
@@ -4448,6 +4454,28 @@ func (repman *ReplicationManager) canonicalStoragePrelude(w http.ResponseWriter,
 		return nil, nil
 	}
 	return mycluster, node
+}
+
+func maskedCanonicalSources(srcs config.AppSources) config.AppSources {
+	if srcs == nil {
+		return nil
+	}
+	masked := make(config.AppSources, 0, len(srcs))
+	for _, src := range srcs {
+		if src == nil {
+			masked = append(masked, nil)
+			continue
+		}
+		copySrc := *src
+		if copySrc.Pass != "" {
+			copySrc.Pass = "*****"
+		}
+		if copySrc.SecretKey != "" {
+			copySrc.SecretKey = "*****"
+		}
+		masked = append(masked, &copySrc)
+	}
+	return masked
 }
 
 // canonicalStorageSave validates canonical storage integrity, keeps legacy
@@ -4491,7 +4519,7 @@ func (repman *ReplicationManager) handlerMuxCanonicalStorageGet(w http.ResponseW
 		StorageLayoutVersion:   d.StorageLayoutVersion,
 		PhysicalVolumeStrategy: d.PhysicalVolumeStrategy,
 		AppVolumes:             d.AppVolumes,
-		AppSources:             d.AppSources,
+		AppSources:             maskedCanonicalSources(d.AppSources),
 		AppMounts:              d.AppMounts,
 	})
 }
@@ -4615,7 +4643,7 @@ func (repman *ReplicationManager) handlerMuxCanonicalSourcesList(w http.Response
 	if srcs == nil {
 		srcs = config.AppSources{}
 	}
-	json.NewEncoder(w).Encode(srcs)
+	json.NewEncoder(w).Encode(maskedCanonicalSources(srcs))
 }
 
 func (repman *ReplicationManager) handlerMuxCanonicalSourcesAdd(w http.ResponseWriter, r *http.Request) {

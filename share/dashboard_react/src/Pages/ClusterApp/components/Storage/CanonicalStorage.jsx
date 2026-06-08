@@ -29,9 +29,16 @@ const columnHelper = createColumnHelper();
 const IDLE = "idle";
 const EDIT = "edit";
 const ADD = "add";
+const PER_VOLUME_STRATEGY = "per-volume";
 
 const nodeToValue = (node) => (node.type === "directory" && !node.path.endsWith("/") ? node.path + "/" : node.path);
 const nodeToString = (node) => node.name || node.path;
+
+const getRuntimeVolumeNameTemplate = (vol, physicalVolumeStrategy) => {
+  if (vol.runtimeName) return vol.runtimeName;
+  if (physicalVolumeStrategy === "legacy-pooled") return `{name}-${vol.pool}`;
+  return `{name}-vol-${vol.name}`;
+};
 
 // ---- Shared form helpers ----------------------------------------------------
 
@@ -154,7 +161,7 @@ VolumeForm.propTypes = {
   isSaveDisabled: PropTypes.bool,
 };
 
-function VolumesSection({ clusterName, appId, rows, opensvcPools, dispatch }) {
+function VolumesSection({ clusterName, appId, rows, opensvcPools, dispatch, canEdit, physicalVolumeStrategy }) {
   const [form, setForm] = useState({ mode: IDLE, data: { ...defaultVol }, original: null });
   const [confirm, setConfirm] = useState(null);
 
@@ -176,14 +183,35 @@ function VolumesSection({ clusterName, appId, rows, opensvcPools, dispatch }) {
     setConfirm(null);
   }, [clusterName, appId, dispatch]);
 
-  const isSaveDisabled = !form.data.pool || !form.data.size || (form.mode === ADD && !form.data.name);
+  const isSaveDisabled = !canEdit || !form.data.pool || !form.data.size || (form.mode === ADD && !form.data.name);
 
-  const columns = useMemo(() => [
-    columnHelper.accessor("name", { header: "Name" }),
-    columnHelper.accessor("pool", { header: "Pool" }),
-    columnHelper.accessor("size", { header: "Size" }),
-    columnHelper.accessor("shared", { header: "Shared", cell: (info) => (info.getValue() ? "yes" : "no") }),
-    columnHelper.display({
+  const columns = useMemo(() => {
+    const baseColumns = [
+      columnHelper.accessor("name", { header: "Canonical Name" }),
+      columnHelper.accessor("pool", { header: "Pool" }),
+      columnHelper.display({
+        id: "runtimeName",
+        header: "Runtime Name",
+        cell: (info) => {
+          const vol = info.row.original;
+          const runtimeName = getRuntimeVolumeNameTemplate(vol, physicalVolumeStrategy);
+          return (
+            <VStack align="start" spacing={1}>
+              <Text>{runtimeName}</Text>
+              {vol.runtimeName ? <Badge colorScheme="purple">legacy-derived</Badge> : <Badge colorScheme="blue">per-volume</Badge>}
+            </VStack>
+          );
+        },
+      }),
+      columnHelper.accessor("size", { header: "Size" }),
+      columnHelper.accessor("shared", { header: "Shared", cell: (info) => (info.getValue() ? "yes" : "no") }),
+    ];
+
+    if (!canEdit) {
+      return baseColumns;
+    }
+
+    return [...baseColumns, columnHelper.display({
       id: "actions", header: "",
       cell: (info) => (
         <HStack>
@@ -191,8 +219,8 @@ function VolumesSection({ clusterName, appId, rows, opensvcPools, dispatch }) {
           <RMIconButton icon={HiTrash} tooltip="Remove" onClick={() => setConfirm(info.row.original.name)} />
         </HStack>
       ),
-    }),
-  ], []);
+    })];
+  }, [canEdit, physicalVolumeStrategy]);
 
   return (
     <VStack align="stretch" spacing={3}>
@@ -200,9 +228,9 @@ function VolumesSection({ clusterName, appId, rows, opensvcPools, dispatch }) {
       {form.mode !== IDLE ? (
         <VolumeForm data={form.data} onChange={handleChange} pools={opensvcPools}
           isNew={form.mode === ADD} onSave={handleSave} onCancel={reset} isSaveDisabled={isSaveDisabled} />
-      ) : (
+      ) : canEdit ? (
         <RMButton size="sm" alignSelf="flex-start" onClick={startAdd}>Add Volume</RMButton>
-      )}
+      ) : null}
       <ConfirmModal isOpen={!!confirm} closeModal={() => setConfirm(null)}
         onConfirmClick={() => handleDrop(confirm)}
         title="Confirm Delete" body={`Remove volume "${confirm}"?`} />
@@ -215,6 +243,8 @@ VolumesSection.propTypes = {
   rows: PropTypes.array,
   opensvcPools: PropTypes.array,
   dispatch: PropTypes.func.isRequired,
+  canEdit: PropTypes.bool.isRequired,
+  physicalVolumeStrategy: PropTypes.string,
 };
 
 // ---- Sources ----------------------------------------------------------------
@@ -386,7 +416,7 @@ SourceForm.propTypes = {
   isSaveDisabled: PropTypes.bool,
 };
 
-function SourcesSection({ clusterName, appId, rows, volumes, dispatch }) {
+function SourcesSection({ clusterName, appId, rows, volumes, dispatch, canEdit }) {
   const s3Providers = useSelector(selectClusterS3Providers);
   const [form, setForm] = useState({ mode: IDLE, data: { ...defaultSrc }, original: null });
   const [confirm, setConfirm] = useState(null);
@@ -426,30 +456,38 @@ function SourcesSection({ clusterName, appId, rows, volumes, dispatch }) {
 
   const isSaveDisabled = useMemo(() => {
     const d = form.data;
+    if (!canEdit) return true;
     if (!d.volumeName || !d.basePath) return true;
     if (form.mode === ADD && !d.name) return true;
     if (d.type === "git" && !d.repo) return true;
     if (d.type === "s3" && (!d.bucket || (!d.endpoint && !d.providerName))) return true;
     return false;
-  }, [form]);
+  }, [canEdit, form]);
 
-  const columns = useMemo(() => [
-    columnHelper.accessor("name", { header: "Name" }),
-    columnHelper.accessor("type", {
-      header: "Type",
-      cell: (info) => (
-        <Badge colorScheme={info.getValue() === "git" ? "purple" : info.getValue() === "s3" ? "orange" : "blue"}>
-          {info.getValue()}
-        </Badge>
-      ),
-    }),
-    columnHelper.accessor("volumeName", { header: "Volume" }),
-    columnHelper.accessor("basePath", { header: "Base Path" }),
-    columnHelper.display({
-      id: "details", header: "Repo / Bucket",
-      cell: (info) => info.row.original.repo || info.row.original.bucket || "",
-    }),
-    columnHelper.display({
+  const columns = useMemo(() => {
+    const baseColumns = [
+      columnHelper.accessor("name", { header: "Name" }),
+      columnHelper.accessor("type", {
+        header: "Type",
+        cell: (info) => (
+          <Badge colorScheme={info.getValue() === "git" ? "purple" : info.getValue() === "s3" ? "orange" : "blue"}>
+            {info.getValue()}
+          </Badge>
+        ),
+      }),
+      columnHelper.accessor("volumeName", { header: "Volume" }),
+      columnHelper.accessor("basePath", { header: "Base Path" }),
+      columnHelper.display({
+        id: "details", header: "Repo / Bucket",
+        cell: (info) => info.row.original.repo || info.row.original.bucket || "",
+      }),
+    ];
+
+    if (!canEdit) {
+      return baseColumns;
+    }
+
+    return [...baseColumns, columnHelper.display({
       id: "actions", header: "",
       cell: (info) => (
         <HStack>
@@ -457,8 +495,8 @@ function SourcesSection({ clusterName, appId, rows, volumes, dispatch }) {
           <RMIconButton icon={HiTrash} tooltip="Remove" onClick={() => setConfirm(info.row.original.name)} />
         </HStack>
       ),
-    }),
-  ], [startEdit]);
+    })];
+  }, [canEdit, startEdit]);
 
   return (
     <VStack align="stretch" spacing={3}>
@@ -467,9 +505,9 @@ function SourcesSection({ clusterName, appId, rows, volumes, dispatch }) {
         <SourceForm data={form.data} onChange={handleChange} volumes={volumes}
           s3Providers={s3Providers} isNew={form.mode === ADD}
           onCheckGit={handleCheckGit} onSave={handleSave} onCancel={reset} isSaveDisabled={isSaveDisabled} />
-      ) : (
+      ) : canEdit ? (
         <RMButton size="sm" alignSelf="flex-start" onClick={startAdd}>Add Source</RMButton>
-      )}
+      ) : null}
       <ConfirmModal isOpen={!!confirm} closeModal={() => setConfirm(null)}
         onConfirmClick={() => handleDrop(confirm)}
         title="Confirm Delete" body={`Remove source "${confirm}"?`} />
@@ -482,6 +520,7 @@ SourcesSection.propTypes = {
   rows: PropTypes.array,
   volumes: PropTypes.array,
   dispatch: PropTypes.func.isRequired,
+  canEdit: PropTypes.bool.isRequired,
 };
 
 // ---- Mounts -----------------------------------------------------------------
@@ -569,7 +608,7 @@ MountForm.propTypes = {
   dispatch: PropTypes.func.isRequired,
 };
 
-function MountsSection({ clusterName, appId, rows, sources, dockerImage, dispatch }) {
+function MountsSection({ clusterName, appId, rows, sources, dockerImage, dispatch, canEdit }) {
   const [form, setForm] = useState({ mode: IDLE, data: { ...defaultMount }, original: null });
   const [confirm, setConfirm] = useState(null);
 
@@ -591,14 +630,21 @@ function MountsSection({ clusterName, appId, rows, sources, dockerImage, dispatc
     setConfirm(null);
   }, [clusterName, appId, dispatch]);
 
-  const isSaveDisabled = !form.data.sourceName || !form.data.targetPath;
+  const isSaveDisabled = !canEdit || !form.data.sourceName || !form.data.targetPath;
 
-  const columns = useMemo(() => [
-    columnHelper.accessor("sourceName", { header: "Source" }),
-    columnHelper.accessor("sourceSubPath", { header: "Sub-path" }),
-    columnHelper.accessor("targetPath", { header: "Container Path" }),
-    columnHelper.accessor("readOnly", { header: "RO", cell: (info) => (info.getValue() ? "yes" : "no") }),
-    columnHelper.display({
+  const columns = useMemo(() => {
+    const baseColumns = [
+      columnHelper.accessor("sourceName", { header: "Source" }),
+      columnHelper.accessor("sourceSubPath", { header: "Sub-path" }),
+      columnHelper.accessor("targetPath", { header: "Container Path" }),
+      columnHelper.accessor("readOnly", { header: "RO", cell: (info) => (info.getValue() ? "yes" : "no") }),
+    ];
+
+    if (!canEdit) {
+      return baseColumns;
+    }
+
+    return [...baseColumns, columnHelper.display({
       id: "actions", header: "",
       cell: (info) => (
         <HStack>
@@ -606,8 +652,8 @@ function MountsSection({ clusterName, appId, rows, sources, dockerImage, dispatc
           <RMIconButton icon={HiTrash} tooltip="Remove" onClick={() => setConfirm(info.row.original.targetPath)} />
         </HStack>
       ),
-    }),
-  ], []);
+    })];
+  }, [canEdit]);
 
   return (
     <VStack align="stretch" spacing={3}>
@@ -617,9 +663,9 @@ function MountsSection({ clusterName, appId, rows, sources, dockerImage, dispatc
           dockerImage={dockerImage} clusterName={clusterName}
           isNew={form.mode === ADD} onSave={handleSave} onCancel={reset}
           isSaveDisabled={isSaveDisabled} dispatch={dispatch} />
-      ) : (
+      ) : canEdit ? (
         <RMButton size="sm" alignSelf="flex-start" onClick={startAdd}>Add Mount</RMButton>
-      )}
+      ) : null}
       <ConfirmModal isOpen={!!confirm} closeModal={() => setConfirm(null)}
         onConfirmClick={() => handleDrop(confirm)}
         title="Confirm Delete" body={`Remove mount at "${confirm}"?`} />
@@ -633,12 +679,15 @@ MountsSection.propTypes = {
   sources: PropTypes.array,
   dockerImage: PropTypes.string,
   dispatch: PropTypes.func.isRequired,
+  canEdit: PropTypes.bool.isRequired,
 };
 
 // ---- Top-level canonical storage panel -------------------------------------
 
-export default function CanonicalStorage({ clusterName, appId, deployment, opensvcPools, appConfig }) {
+export default function CanonicalStorage({ clusterName, appId, deployment, opensvcPools, appConfig, user }) {
   const dispatch = useDispatch();
+  const canEdit = !!user?.grants?.["app-deployment"];
+  const physicalVolumeStrategy = deployment?.physicalVolumeStrategy || PER_VOLUME_STRATEGY;
 
   const appVolumes = useMemo(() => deployment?.appVolumes || [], [deployment]);
   const appSources = useMemo(() => deployment?.appSources || [], [deployment]);
@@ -647,18 +696,19 @@ export default function CanonicalStorage({ clusterName, appId, deployment, opens
 
   const volumesBody = useMemo(() => (
     <VolumesSection clusterName={clusterName} appId={appId}
-      rows={appVolumes} opensvcPools={opensvcPools} dispatch={dispatch} />
-  ), [clusterName, appId, appVolumes, opensvcPools, dispatch]);
+      rows={appVolumes} opensvcPools={opensvcPools} dispatch={dispatch}
+      canEdit={canEdit} physicalVolumeStrategy={physicalVolumeStrategy} />
+  ), [canEdit, clusterName, appId, appVolumes, opensvcPools, dispatch, physicalVolumeStrategy]);
 
   const sourcesBody = useMemo(() => (
     <SourcesSection clusterName={clusterName} appId={appId}
-      rows={appSources} volumes={appVolumes} dispatch={dispatch} />
-  ), [clusterName, appId, appSources, appVolumes, dispatch]);
+      rows={appSources} volumes={appVolumes} dispatch={dispatch} canEdit={canEdit} />
+  ), [canEdit, clusterName, appId, appSources, appVolumes, dispatch]);
 
   const mountsBody = useMemo(() => (
     <MountsSection clusterName={clusterName} appId={appId}
-      rows={appMounts} sources={appSources} dockerImage={dockerImage} dispatch={dispatch} />
-  ), [clusterName, appId, appMounts, appSources, dockerImage, dispatch]);
+      rows={appMounts} sources={appSources} dockerImage={dockerImage} dispatch={dispatch} canEdit={canEdit} />
+  ), [canEdit, clusterName, appId, appMounts, appSources, dockerImage, dispatch]);
 
   return (
     <Flex direction="column" className={styles.sectionWrapper}>
@@ -669,9 +719,23 @@ export default function CanonicalStorage({ clusterName, appId, deployment, opens
           <AlertDescription fontSize="sm">
             This app uses the canonical storage model. Manage volumes, sources, and mounts below.
             The legacy storages view is a read-only compatibility shadow.
+            Volume names are canonical identities; runtime names show the actual OpenSVC volume name template.
+            Migrated legacy volumes preserve their original <code>{"{name}-{pool}"}</code> runtime identity.
           </AlertDescription>
         </Box>
       </Alert>
+      {!canEdit && (
+        <Alert status="warning" mb={4} borderRadius="md">
+          <AlertIcon />
+          <Box>
+            <AlertTitle>Read-only canonical storage</AlertTitle>
+            <AlertDescription fontSize="sm">
+              You can inspect canonical storage, but the <code>app-deployment</code> grant is required to add,
+              edit, or remove volumes, sources, and mounts.
+            </AlertDescription>
+          </Box>
+        </Alert>
+      )}
       <VStack spacing={3} align="stretch">
         <AccordionComponent heading="Volumes" body={volumesBody} />
         <AccordionComponent heading="Sources" body={sourcesBody} />
@@ -687,5 +751,8 @@ CanonicalStorage.propTypes = {
   opensvcPools: PropTypes.array,
   appConfig: PropTypes.shape({
     provAppDockerImg: PropTypes.string,
+  }),
+  user: PropTypes.shape({
+    grants: PropTypes.object,
   }),
 };

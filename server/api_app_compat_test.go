@@ -77,11 +77,21 @@ func newAsymmetricRouteTestSetup(t *testing.T) (*ReplicationManager, *cluster.Cl
 
 func issueCompatTestJWT(t *testing.T, repman *ReplicationManager) string {
 	t.Helper()
+	return issueCompatTestJWTForUser(t, repman, compatTestUser)
+}
+
+func issueCompatTestJWTForUser(t *testing.T, repman *ReplicationManager, username string) string {
+	t.Helper()
+	return issueCompatTestJWTForCredentials(t, repman, username, "enc")
+}
+
+func issueCompatTestJWTForCredentials(t *testing.T, repman *ReplicationManager, username, password string) string {
+	t.Helper()
 	tok, err := repman.issueJWT(struct {
 		Name     string
 		Role     string
 		Password string
-	}{compatTestUser, "Member", "enc"}, "")
+	}{username, "Member", password}, "")
 	if err != nil {
 		t.Fatalf("issueJWT: %v", err)
 	}
@@ -170,5 +180,128 @@ func TestGetDeployment_ReturnsLegacyPortForAsymmetricRoute(t *testing.T) {
 	route := routes[0].(map[string]interface{})
 	if route["port"] != "9000:9001" {
 		t.Fatalf("expected port=9000:9001 in GET response for old clients, got %v", route["port"])
+	}
+}
+
+func TestCanonicalStorageGet_AllowsExistingAppUserWithoutDeploymentGrant(t *testing.T) {
+	repman, cl, _ := newAsymmetricRouteTestSetup(t)
+	cl.APIUsers["readonly"] = cluster.APIUser{
+		User:     "readonly",
+		Password: "enc",
+		Grants:   map[string]bool{config.GrantAppStart: true},
+	}
+
+	tok := issueCompatTestJWTForUser(t, repman, "readonly")
+	url := fmt.Sprintf("/api/clusters/%s/apps/%s/canonical/storage", cl.Name, compatTestAppId)
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req = setMuxVars(req, map[string]string{
+		"clusterName": cl.Name,
+		"appName":     compatTestAppId,
+	})
+
+	w := httptest.NewRecorder()
+	repman.handlerMuxCanonicalStorageGet(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for readonly canonical GET, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCanonicalStorageGet_MasksSecretsForReadonlyUser(t *testing.T) {
+	repman, cl, app := newAsymmetricRouteTestSetup(t)
+	app.AppConfig.Deployment.StorageLayoutVersion = config.StorageLayoutV2
+	app.AppConfig.Deployment.PhysicalVolumeStrategy = config.PhysicalVolumeStrategyPerVolume
+	app.AppConfig.Deployment.AppVolumes = config.AppVolumes{
+		{Name: "tank", Pool: "tank", Size: "1g"},
+	}
+	app.AppConfig.Deployment.AppSources = config.AppSources{
+		{Name: "git-src", Type: config.AppSourceGit, VolumeName: "tank", BasePath: "/repo", Pass: "supersecret"},
+		{Name: "s3-src", Type: config.AppSourceS3, VolumeName: "tank", BasePath: "/bucket", SecretKey: "topsecret"},
+	}
+	cl.APIUsers["readonly"] = cluster.APIUser{
+		User:     "readonly",
+		Password: "enc",
+		Grants:   map[string]bool{config.GrantAppStart: true},
+	}
+
+	tok := issueCompatTestJWTForUser(t, repman, "readonly")
+	url := fmt.Sprintf("/api/clusters/%s/apps/%s/canonical/storage", cl.Name, compatTestAppId)
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req = setMuxVars(req, map[string]string{
+		"clusterName": cl.Name,
+		"appName":     compatTestAppId,
+	})
+
+	w := httptest.NewRecorder()
+	repman.handlerMuxCanonicalStorageGet(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for readonly canonical GET, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		AppSources []map[string]any `json:"appSources"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal canonical response: %v", err)
+	}
+	if got := resp.AppSources[0]["pass"]; got != "*****" {
+		t.Fatalf("expected git pass to be masked, got %v", got)
+	}
+	if got := resp.AppSources[1]["secretKey"]; got != "*****" {
+		t.Fatalf("expected s3 secretKey to be masked, got %v", got)
+	}
+}
+
+func TestCanonicalStorageGet_DeniesWrongPasswordForExistingUsername(t *testing.T) {
+	repman, cl, _ := newAsymmetricRouteTestSetup(t)
+	cl.APIUsers["readonly"] = cluster.APIUser{
+		User:     "readonly",
+		Password: "enc",
+		Grants:   map[string]bool{config.GrantAppStart: true},
+	}
+
+	tok := issueCompatTestJWTForCredentials(t, repman, "readonly", "wrong-password")
+	url := fmt.Sprintf("/api/clusters/%s/apps/%s/canonical/storage", cl.Name, compatTestAppId)
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req = setMuxVars(req, map[string]string{
+		"clusterName": cl.Name,
+		"appName":     compatTestAppId,
+	})
+
+	w := httptest.NewRecorder()
+	repman.handlerMuxCanonicalStorageGet(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for readonly canonical GET with wrong password, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCanonicalStorageMutations_StillRequireDeploymentGrant(t *testing.T) {
+	repman, cl, _ := newAsymmetricRouteTestSetup(t)
+	cl.APIUsers["readonly"] = cluster.APIUser{
+		User:     "readonly",
+		Password: "enc",
+		Grants:   map[string]bool{config.GrantAppStart: true},
+	}
+
+	tok := issueCompatTestJWTForUser(t, repman, "readonly")
+	url := fmt.Sprintf("/api/clusters/%s/apps/%s/canonical/volumes", cl.Name, compatTestAppId)
+	req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader([]byte(`{"name":"tank","pool":"tank","size":"1g"}`)))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	req = setMuxVars(req, map[string]string{
+		"clusterName": cl.Name,
+		"appName":     compatTestAppId,
+	})
+
+	w := httptest.NewRecorder()
+	repman.handlerMuxCanonicalVolumesAdd(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for readonly canonical mutation, got %d: %s", w.Code, w.Body.String())
 	}
 }

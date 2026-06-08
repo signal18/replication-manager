@@ -127,6 +127,7 @@ var appACLRules = []ACLRule{
 	{"/actions/drop", nil, []string{config.GrantProvAppUnprovision}},
 	{"/deployment/", nil, []string{config.GrantAppDeployment}},
 	{"/storages/", nil, []string{config.GrantAppDeployment}},
+	{"/canonical/", nil, []string{config.GrantAppDeployment}},
 	{"/substitution", nil, []string{config.GrantAppDeployment}},
 	{"/resolve-template", nil, []string{config.GrantAppDeployment}},
 	{"/settings/actions/reset-from-template", nil, []string{config.GrantAppDeployment}},

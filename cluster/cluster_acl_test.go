@@ -579,6 +579,71 @@ func TestAppSettingsClearDoesNotFallbackToActionClear(t *testing.T) {
 	}
 }
 
+func TestCanonicalStorageACL(t *testing.T) {
+	cluster := setupACLTestCluster()
+	cluster.Name = "testcluster"
+
+	cluster.APIUsers["user_app_deploy"] = APIUser{
+		User: "user_app_deploy",
+		Grants: map[string]bool{
+			config.GrantAppDeployment: true,
+		},
+	}
+
+	tests := []struct {
+		name     string
+		user     string
+		url      string
+		expected bool
+	}{
+		{
+			name:     "App deployment grant can update canonical volume",
+			user:     "user_app_deploy",
+			url:      "/api/clusters/testcluster/apps/app1/canonical/volumes/tank",
+			expected: true,
+		},
+		{
+			name:     "App deployment grant can update canonical source",
+			user:     "user_app_deploy",
+			url:      "/api/clusters/testcluster/apps/app1/canonical/sources/src1",
+			expected: true,
+		},
+		{
+			name:     "App deployment grant can update canonical mount",
+			user:     "user_app_deploy",
+			url:      "/api/clusters/testcluster/apps/app1/canonical/mounts/app/data",
+			expected: true,
+		},
+		{
+			name:     "App deployment grant can migrate canonical storage",
+			user:     "user_app_deploy",
+			url:      "/api/clusters/testcluster/apps/app1/canonical/storage/actions/migrate",
+			expected: true,
+		},
+		{
+			name:     "User without app deployment grant cannot mutate canonical volume",
+			user:     "user_no_grants",
+			url:      "/api/clusters/testcluster/apps/app1/canonical/volumes/tank",
+			expected: false,
+		},
+		{
+			name:     "User with non-deployment app grants cannot mutate canonical storage",
+			user:     "user_app",
+			url:      "/api/clusters/testcluster/apps/app1/canonical/storage/actions/migrate",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := cluster.IsURLPassACL(tt.user, tt.url, false)
+			if result != tt.expected {
+				t.Errorf("Expected %v for user %s on %s, got %v", tt.expected, tt.user, tt.url, result)
+			}
+		})
+	}
+}
+
 // TestDBLogAccess tests database log access checking
 func TestDBLogAccess(t *testing.T) {
 	cluster := setupACLTestCluster()

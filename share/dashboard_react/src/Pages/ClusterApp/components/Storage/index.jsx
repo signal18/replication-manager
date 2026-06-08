@@ -14,23 +14,24 @@ import { clearCache, checkGitRepo, checkGitRepoByName } from "../../../../redux/
 
 const GIT_CREDENTIAL_KEYS = ['repo', 'branch', 'pass', 'user'];
 
-export default function StoragePage({ clusterName, appId, appConfig }) {
+export default function StoragePage({ clusterName, appId, appConfig, user }) {
   const dispatch = useDispatch();
   const deployment = useSelector((state) => state.cluster?.app?.deployment);
   const storages = useSelector((state) => state.cluster?.app?.deployment?.storages);
   const opensvcPools = useSelector((state) => state.cluster?.opensvcPools || []);
   const isCanonical = (deployment?.storageLayoutVersion || 0) >= 2;
+  const canEditCanonical = !!user?.grants?.['app-deployment'];
   const isOpenSVCOrchestrator = useSelector((state) => state.cluster?.clusterData?.config?.provOrchestrator === "opensvc");
   const s3Providers = useSelector((state) => state.cluster?.clusterData?.appS3Providers);
   const clusterS3Providers = useSelector(selectClusterS3Providers);
   const clusterApps = useSelector((state) => state.cluster?.clusterApps || []);
 
   useEffect(() => {
-    if (!clusterName || !isOpenSVCOrchestrator) {
+    if (!clusterName || !isOpenSVCOrchestrator || !canEditCanonical) {
       return;
     }
     dispatch(getOpenSVCPools({ clusterName }));
-  }, [clusterName, dispatch, isOpenSVCOrchestrator]);
+  }, [canEditCanonical, clusterName, dispatch, isOpenSVCOrchestrator]);
 
   const getAppEndpoint = useCallback((app) => {
     if (!app) return "";
@@ -234,6 +235,7 @@ export default function StoragePage({ clusterName, appId, appConfig }) {
         deployment={deployment}
         opensvcPools={opensvcPools}
         appConfig={appConfig}
+        user={user}
       />
     );
   }
@@ -262,5 +264,8 @@ StoragePage.propTypes = {
   appConfig: PropTypes.shape({
     provAppHaTopology: PropTypes.string,
     provAppDockerImg: PropTypes.string,
+  }),
+  user: PropTypes.shape({
+    grants: PropTypes.object,
   }),
 };
