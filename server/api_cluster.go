@@ -6182,6 +6182,9 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench threads to %s", r.URL.Query().Get("threads"))
 			mycluster.SetSysbenchThreads(r.URL.Query().Get("threads"))
 		}
+		if r.URL.Query().Get("test") != "" {
+			mycluster.SetSysbenchTest(r.URL.Query().Get("test"))
+		}
 		go mycluster.RunSysbench()
 	}
 }

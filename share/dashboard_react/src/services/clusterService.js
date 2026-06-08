@@ -693,8 +693,9 @@ function monitorAllSchemas(clusterName, baseURL) {
 //#endregion Database service APIs
 
 //#region Test run APIs
-function runSysbench(clusterName, threads, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/actions/sysbench?threads=${threads}`)
+function runSysbench(clusterName, threads, baseURL, test) {
+  const params = `threads=${threads}` + (test ? `&test=${test}` : '')
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/sysbench?${params}`)
 }
 
 function runRegressionTests(clusterName, testName, baseURL) {

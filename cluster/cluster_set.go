@@ -1348,6 +1348,15 @@ func (cluster *Cluster) SetClusterHead(ClusterName string) {
 	cluster.Conf.ClusterHead = ClusterName
 }
 
+func (cluster *Cluster) SetSysbenchTest(test string) {
+	if config.GetSysbenchTests()[test] {
+		cluster.Conf.SysbenchTest = test
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench test to %s", test)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unknown sysbench test: %s", test)
+	}
+}
+
 func (cluster *Cluster) SetSysbenchThreads(Threads string) {
 	i, err := strconv.Atoi(Threads)
 	if err == nil {
