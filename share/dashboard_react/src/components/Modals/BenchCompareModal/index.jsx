@@ -10,7 +10,7 @@ import { clusterService } from '../../../services/clusterService'
 import RMButton from '../../RMButton'
 import parentStyles from '../styles.module.scss'
 
-const METRICS = [
+const GRAPHITE_METRICS = [
   { value: 'mysql_global_status_queries', label: 'Queries (QPS)', rate: true },
   { value: 'mysql_global_status_com_select', label: 'SELECT/s', rate: true },
   { value: 'mysql_global_status_com_insert', label: 'INSERT/s', rate: true },
@@ -25,29 +25,38 @@ const METRICS = [
   { value: 'mysql_global_status_bytes_received', label: 'Bytes Received/s', rate: true },
 ]
 
+const SCALE_METRICS = [
+  { value: 'avgTps', label: 'TPS' },
+  { value: 'avgLatency', label: 'Latency (ms)' },
+  { value: 'tpsPerDbu', label: 'TPS/DBU' },
+]
+
 const COLORS = ['#3182ce', '#e53e3e', '#38a169', '#d69e2e', '#805ad5', '#dd6b20', '#319795', '#b83280']
+
+const isScaleRun = (run) => run.scaleResults?.length > 0
 
 // Build a label showing what changed vs the reference run
 function buildSeriesLabel(run, refRun, index) {
   if (index === 0) {
-    return `REF ${run.testType} ${run.threads}t ${run.dbFlavor || ''}/${run.dbVersion || ''}`
+    const threads = isScaleRun(run) ? 'scale' : `${run.threads}t`
+    return `REF ${run.testType} ${threads} ${run.dbFlavor || ''}/${run.dbVersion || ''}`
   }
   const diffs = []
   if (run.testType !== refRun.testType) diffs.push(run.testType)
-  if (run.threads !== refRun.threads) diffs.push(`${run.threads}t`)
+  if (!isScaleRun(run) && !isScaleRun(refRun) && run.threads !== refRun.threads) diffs.push(`${run.threads}t`)
   if (run.dbFlavor !== refRun.dbFlavor || run.dbVersion !== refRun.dbVersion) {
     diffs.push(`${run.dbFlavor || ''}/${run.dbVersion || ''}`)
   }
   if (run.proxyType !== refRun.proxyType) diffs.push(run.proxyType)
   if (run.configTags !== refRun.configTags) diffs.push(`tags:${run.configTags}`)
   if (diffs.length === 0) {
-    // Nothing obviously changed — show date
     return `Run${index + 1} ${new Date(run.startedAt).toLocaleString()}`
   }
   return diffs.join(' ')
 }
 
-function BenchChart({ series, theme, metricLabel }) {
+// Generic d3 line chart — used for both graphite time-series and scale charts
+function LineChart({ series, theme, xLabel, yLabel, xAccessor = 'x', yAccessor = 'y' }) {
   const svgRef = useRef()
 
   useEffect(() => {
@@ -65,8 +74,8 @@ function BenchChart({ series, theme, metricLabel }) {
     const validSeries = series.filter(s => s.data.length > 0)
     if (validSeries.length === 0) return
 
-    const maxX = d3.max(validSeries, s => d3.max(s.data, d => d.second)) || 100
-    const maxY = d3.max(validSeries, s => d3.max(s.data, d => d.value)) || 1
+    const maxX = d3.max(validSeries, s => d3.max(s.data, d => d[xAccessor])) || 100
+    const maxY = d3.max(validSeries, s => d3.max(s.data, d => d[yAccessor])) || 1
 
     const x = d3.scaleLinear().domain([0, maxX]).range([0, width])
     const y = d3.scaleLinear().domain([0, maxY * 1.1]).range([height, 0])
@@ -90,8 +99,8 @@ function BenchChart({ series, theme, metricLabel }) {
       .selectAll('text').attr('fill', textColor)
     g.selectAll('.domain').attr('stroke', textColor)
 
-    // Lines
-    const line = d3.line().x(d => x(d.second)).y(d => y(d.value)).curve(d3.curveMonotoneX).defined(d => d.value != null)
+    // Lines + dots
+    const line = d3.line().x(d => x(d[xAccessor])).y(d => y(d[yAccessor])).curve(d3.curveMonotoneX).defined(d => d[yAccessor] != null)
     validSeries.forEach(s => {
       g.append('path')
         .datum(s.data)
@@ -100,6 +109,15 @@ function BenchChart({ series, theme, metricLabel }) {
         .attr('stroke-width', s.isRef ? 2.5 : 1.5)
         .attr('stroke-dasharray', s.isRef ? null : '6,3')
         .attr('d', line)
+      // Data point dots for scale charts (few points)
+      if (s.data.length <= 20) {
+        g.selectAll(null).data(s.data.filter(d => d[yAccessor] != null)).enter()
+          .append('circle')
+          .attr('cx', d => x(d[xAccessor]))
+          .attr('cy', d => y(d[yAccessor]))
+          .attr('r', 3)
+          .attr('fill', s.color)
+      }
     })
 
     // Legend
@@ -115,11 +133,11 @@ function BenchChart({ series, theme, metricLabel }) {
 
     // Axis labels
     g.append('text').attr('x', width / 2).attr('y', height + 30).attr('text-anchor', 'middle')
-      .attr('fill', textColor).attr('font-size', '11px').text('Seconds (from benchmark start)')
+      .attr('fill', textColor).attr('font-size', '11px').text(xLabel)
     g.append('text').attr('transform', 'rotate(-90)').attr('x', -height / 2).attr('y', -45)
-      .attr('text-anchor', 'middle').attr('fill', textColor).attr('font-size', '11px').text(metricLabel)
+      .attr('text-anchor', 'middle').attr('fill', textColor).attr('font-size', '11px').text(yLabel)
 
-  }, [series, theme, metricLabel])
+  }, [series, theme, xLabel, yLabel, xAccessor, yAccessor])
 
   return <svg ref={svgRef} width={800} height={280} />
 }
@@ -130,7 +148,9 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
   const [runs, setRuns] = useState([])
   const [selected, setSelected] = useState(new Set())
   const [metric, setMetric] = useState('mysql_global_status_queries')
+  const [scaleMetric, setScaleMetric] = useState('avgTps')
   const [chartSeries, setChartSeries] = useState([])
+  const [chartMode, setChartMode] = useState(null) // 'graphite' | 'scale'
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -139,6 +159,7 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
   useEffect(() => {
     if (isOpen && clusterName) {
       setChartSeries([])
+      setChartMode(null)
       setError('')
       setSelected(new Set())
       clusterService.getSysbenchHistory(clusterName, baseURL)
@@ -146,7 +167,6 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
           const data = res.data
           const entries = Array.isArray(data) ? data : data?.Entries || data?.entries || []
           setRuns(entries)
-          // Select only the last run by default
           if (entries.length > 0) setSelected(new Set([entries.length - 1]))
         })
         .catch(() => setRuns([]))
@@ -167,19 +187,52 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
     else setSelected(new Set(runs.map((_, i) => i)))
   }
 
+  // Check if any selected run is a scale run
+  const selectedRuns = runs.filter((_, i) => selected.has(i))
+  const hasScaleRuns = selectedRuns.some(isScaleRun)
+
+  // Show scale chart from embedded scaleResults data
+  const showScaleChart = () => {
+    const sorted = [...selectedRuns].sort((a, b) => new Date(a.startedAt) - new Date(b.startedAt))
+    const refRun = sorted[0]
+
+    let idx = 0
+    const series = sorted.map((run) => {
+      const i = idx++
+      if (isScaleRun(run)) {
+        return {
+          label: buildSeriesLabel(run, refRun, i),
+          color: COLORS[i % COLORS.length],
+          isRef: i === 0,
+          data: run.scaleResults.map(sp => ({ x: sp.threads, y: sp[scaleMetric] || 0 }))
+        }
+      }
+      // Normal single-thread run: plot as a single point on the threads axis
+      const valMap = { avgTps: run.avgTps, avgLatency: run.avgLatency, tpsPerDbu: run.tpsPerDbu }
+      return {
+        label: buildSeriesLabel(run, refRun, i),
+        color: COLORS[i % COLORS.length],
+        isRef: i === 0,
+        data: [{ x: run.threads, y: valMap[scaleMetric] || 0 }]
+      }
+    })
+
+    setChartSeries(series)
+    setChartMode('scale')
+    setError(series.length === 0 ? 'No data in selected runs' : '')
+  }
+
+  // Fetch graphite time-series for all selected runs (normal + scale)
   const fetchGraphiteData = async () => {
-    const selectedRuns = runs.filter((_, i) => selected.has(i))
     if (selectedRuns.length === 0) return
     setLoading(true)
     setError('')
     setChartSeries([])
 
-    const metricDef = METRICS.find(m => m.value === metric)
-    // Oldest selected run is the reference (index 0 after sorting by startedAt)
+    const metricDef = GRAPHITE_METRICS.find(m => m.value === metric)
     const sorted = [...selectedRuns].sort((a, b) => new Date(a.startedAt) - new Date(b.startedAt))
     const refRun = sorted[0]
 
-    // Find the newest run to align the graphite time window
     const newest = sorted[sorted.length - 1]
     const newestStart = Math.floor(new Date(newest.startedAt).getTime() / 1000)
     const newestEnd = Math.floor(new Date(newest.endedAt).getTime() / 1000)
@@ -213,20 +266,17 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
         const text = await res.text()
         if (!text.trim()) return null
 
-        // Parse raw format: name,startTime,endTime,step|val1,val2,...
         const parts = text.split('|')
         if (parts.length !== 2) return null
         const timeInfo = parts[0].split(',')
-        const startTime = parseInt(timeInfo[1])
         const step = parseInt(timeInfo[3])
         const values = parts[1].split(',')
 
-        // Convert to seconds-from-start
         const runDuration = Math.floor(new Date(run.endedAt).getTime() / 1000) - Math.floor(new Date(run.startedAt).getTime() / 1000)
         const data = values.map((v, j) => ({
-          second: j * step,
-          value: v === 'None' ? null : parseFloat(v)
-        })).filter(d => d.second <= runDuration + step)
+          x: j * step,
+          y: v === 'None' ? null : parseFloat(v)
+        })).filter(d => d.x <= runDuration + step)
 
         return {
           label: buildSeriesLabel(run, refRun, i),
@@ -241,6 +291,7 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
         setError('No data returned from graphite for any run')
       }
       setChartSeries(valid)
+      setChartMode('graphite')
     } catch (e) {
       setError(`Graphite fetch failed: ${e.message}`)
     } finally {
@@ -249,7 +300,16 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
   }
 
   const formatDate = (t) => t ? new Date(t).toLocaleString() : '-'
-  const metricLabel = METRICS.find(m => m.value === metric)?.label || metric
+  const graphiteLabel = GRAPHITE_METRICS.find(m => m.value === metric)?.label || metric
+  const scaleLabel = SCALE_METRICS.find(m => m.value === scaleMetric)?.label || scaleMetric
+
+  const formatThreads = (run) => {
+    if (isScaleRun(run)) {
+      const pts = run.scaleResults
+      return `${pts[0]?.threads}→${pts[pts.length - 1]?.threads}`
+    }
+    return run.threads
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={closeModal} size='xl'>
@@ -271,7 +331,7 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
                         <Th>Date</Th>
                         <Th>Test</Th>
                         <Th>Threads</Th>
-                        <Th>Avg TPS</Th>
+                        <Th>Peak TPS</Th>
                         <Th>Avg Lat</Th>
                         <Th>DBU</Th>
                         <Th>TPS/DBU</Th>
@@ -285,9 +345,12 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
                           <Td>{i + 1}</Td>
                           <Td>{formatDate(run.startedAt)}</Td>
                           <Td>
-                            <Badge variant={badgeVariant} colorScheme='blue' size='sm'>{run.testType}</Badge>
+                            <HStack spacing={1}>
+                              <Badge variant={badgeVariant} colorScheme='blue' size='sm'>{run.testType}</Badge>
+                              {isScaleRun(run) && <Badge variant={badgeVariant} colorScheme='purple' size='sm'>scale</Badge>}
+                            </HStack>
                           </Td>
-                          <Td>{run.threads}</Td>
+                          <Td>{formatThreads(run)}</Td>
                           <Td fontWeight={600}>{run.avgTps?.toFixed(1)}</Td>
                           <Td>{run.avgLatency?.toFixed(2)}ms</Td>
                           <Td>{run.clusterDbu?.toFixed(1)}</Td>
@@ -299,14 +362,27 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
                   </Table>
                 </Box>
 
+                {/* Scale chart: threads vs metric — works for scale runs (curves) + normal runs (points) */}
+                <HStack spacing={3}>
+                  <Select size='sm' value={scaleMetric} onChange={(e) => setScaleMetric(e.target.value)} flex={1}>
+                    {SCALE_METRICS.map(m => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </Select>
+                  <RMButton size='small' colorScheme='purple' onClick={showScaleChart} isDisabled={selected.size === 0}>
+                    Scale Graph ({selected.size})
+                  </RMButton>
+                </HStack>
+
+                {/* Normal runs: graphite metric selector + show button */}
                 <HStack spacing={3}>
                   <Select size='sm' value={metric} onChange={(e) => setMetric(e.target.value)} flex={1}>
-                    {METRICS.map(m => (
+                    {GRAPHITE_METRICS.map(m => (
                       <option key={m.value} value={m.value}>{m.label}</option>
                     ))}
                   </Select>
                   <RMButton size='small' colorScheme='blue' onClick={fetchGraphiteData} isDisabled={loading || selected.size === 0}>
-                    {loading ? <Spinner size='xs' /> : `Show Graph (${selected.size})`}
+                    {loading ? <Spinner size='xs' /> : `Graphite Graph (${selectedRuns.length})`}
                   </RMButton>
                 </HStack>
 
@@ -316,7 +392,12 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
 
                 {chartSeries.length > 0 && (
                   <Box borderRadius='md' overflow='hidden' bg={theme === 'light' ? 'gray.50' : 'rgba(255,255,255,0.05)'} p={2}>
-                    <BenchChart series={chartSeries} theme={theme} metricLabel={metricLabel} />
+                    <LineChart
+                      series={chartSeries}
+                      theme={theme}
+                      xLabel={chartMode === 'scale' ? 'Threads' : 'Seconds (from benchmark start)'}
+                      yLabel={chartMode === 'scale' ? scaleLabel : graphiteLabel}
+                    />
                   </Box>
                 )}
               </>

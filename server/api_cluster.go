@@ -6178,14 +6178,19 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		if r.URL.Query().Get("threads") != "" {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench threads to %s", r.URL.Query().Get("threads"))
-			mycluster.SetSysbenchThreads(r.URL.Query().Get("threads"))
-		}
 		if r.URL.Query().Get("test") != "" {
 			mycluster.SetSysbenchTest(r.URL.Query().Get("test"))
 		}
-		go mycluster.RunSysbench()
+		if r.URL.Query().Get("threads") == "0" {
+			// threads=0 means scale from 1 to 2×cores
+			go mycluster.RunSysbenchScaleThreads()
+		} else {
+			if r.URL.Query().Get("threads") != "" {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench threads to %s", r.URL.Query().Get("threads"))
+				mycluster.SetSysbenchThreads(r.URL.Query().Get("threads"))
+			}
+			go mycluster.RunSysbench()
+		}
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"os/exec"
 	"strconv"
@@ -325,11 +326,11 @@ func (cluster *Cluster) ChecksumBench() bool {
 	return true
 }
 
-func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize string, myTime string, myMode string) error {
+func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize string, myTime string, myMode string, skipLog ...bool) (float64, float64, int, error) {
 	startedAt := time.Now()
 	prx := cluster.GetProxies()[0]
 	if prx == nil {
-		return errors.New("No proxy")
+		return 0, 0, 0, errors.New("No proxy")
 	}
 
 	test := "--test=" + myTest
@@ -344,13 +345,13 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 
 	if err := cluster.ensureSysbenchVersionAvailable(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sysbench version check failed: %s", err)
-		return err
+		return 0, 0, 0, err
 	}
 
 	useV1Syntax, err := cluster.shouldUseSysbenchV1Syntax()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sysbench syntax selection failed: %s", err)
-		return err
+		return 0, 0, 0, err
 	}
 
 	if useV1Syntax {
@@ -370,7 +371,7 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 	out, err := cmdrun.CombinedOutput()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s , %s", strings.ReplaceAll(string(out), cluster.GetDbPass(), "XXXX"), err)
-		return err
+		return 0, 0, 0, err
 	}
 	analyzer := cluster.NewSysbenchAnalyzer(false)
 	records, viols := analyzer.ParseToEnd(bytes.NewReader(out))
@@ -387,9 +388,39 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 	iThreads, _ := strconv.Atoi(myThreads)
 	iTableSize, _ := strconv.Atoi(mySize)
 	iDuration, _ := strconv.Atoi(myTime)
-	cluster.LogSysbenchRun(loggedTest, myMode, iThreads, iTableSize, iDuration, startedAt, records, string(out))
 
-	return nil
+	// Compute averages for return value
+	var avgTPS, avgLatency float64
+	var totalErrors int
+	if len(records) > 0 {
+		var sumTPS, sumLat float64
+		for _, r := range records {
+			sumTPS += r.TPS
+			sumLat += r.Latency
+			totalErrors += int(r.ErrorPerSec)
+		}
+		avgTPS = sumTPS / float64(len(records))
+		avgLatency = sumLat / float64(len(records))
+	} else if string(out) != "" {
+		if summary := ParseSysbenchSummary(string(out)); summary != nil {
+			avgTPS = summary.TPS
+			avgLatency = summary.AvgLatency
+			totalErrors = int(summary.Errors)
+		}
+	}
+
+	if len(skipLog) == 0 || !skipLog[0] {
+		cluster.LogSysbenchRun(loggedTest, myMode, iThreads, iTableSize, iDuration, startedAt, records, string(out))
+	}
+
+	return avgTPS, avgLatency, totalErrors, nil
+}
+
+// RunSysBenchResult holds stats returned by RunSysBench for use by callers like scale runs.
+type RunSysBenchResult struct {
+	AvgTPS      float64
+	AvgLatency  float64
+	TotalErrors int
 }
 
 func (cluster *Cluster) ExtractSybenchTPCM(records []SysbenchRecord) error {
@@ -432,7 +463,8 @@ func (cluster *Cluster) WriteSybenchTPCM() error {
 func (cluster *Cluster) RunBench() error {
 
 	if cluster.benchmarkType == "sysbench" {
-		return cluster.RunSysBench("oltp", strconv.Itoa(cluster.Conf.SysbenchThreads), "1000000", strconv.Itoa(cluster.Conf.SysbenchTime), "complex")
+		_, _, _, err := cluster.RunSysBench("oltp", strconv.Itoa(cluster.Conf.SysbenchThreads), "1000000", strconv.Itoa(cluster.Conf.SysbenchTime), "complex")
+		return err
 	}
 	if cluster.benchmarkType == "table" {
 		result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
@@ -451,12 +483,66 @@ func (cluster *Cluster) RunSysbench() error {
 	return nil
 }
 
+// RunSysbenchScaleThreads runs the configured test doubling threads from 1 up to 2×cores,
+// collecting all results into a single log entry with ScaleResults.
+func (cluster *Cluster) RunSysbenchScaleThreads() error {
+	cluster.CleanupBench()
+	cluster.PrepareBench()
+
+	cores, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
+	if cores < 1 {
+		cores = 2
+	}
+	maxThreads := int(cores * 2)
+	if maxThreads < 1 {
+		maxThreads = 2
+	}
+
+	startedAt := time.Now()
+	testType := cluster.Conf.SysbenchTest
+	if testType == "" {
+		testType = "oltp_read_write"
+	}
+
+	var scalePoints []SysbenchScalePoint
+	threads := 1
+	for threads <= maxThreads {
+		avgTPS, avgLatency, totalErrors, err := cluster.RunSysBench("oltp", strconv.Itoa(threads), "1000000", strconv.Itoa(cluster.Conf.SysbenchTime), "complex", true)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Scale run at %d threads failed: %s", threads, err)
+		} else {
+			sp := SysbenchScalePoint{
+				Threads:     threads,
+				AvgTPS:      avgTPS,
+				AvgLatency:  avgLatency,
+				TotalErrors: totalErrors,
+			}
+			// Compute TPS/DBU for this point
+			coresF, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
+			memMB, _ := strconv.ParseFloat(cluster.Conf.ProvMem, 64)
+			diskGB, _ := strconv.ParseFloat(cluster.Conf.ProvDisk, 64)
+			dbu := math.Max(coresF, math.Max(memMB/4096, diskGB/40))
+			clusterDBU := dbu * float64(len(cluster.Servers))
+			if clusterDBU > 0 && avgTPS > 0 {
+				sp.TPSPerDBU = avgTPS / clusterDBU
+			}
+			scalePoints = append(scalePoints, sp)
+		}
+		threads = threads * 2
+	}
+
+	if len(scalePoints) > 0 {
+		cluster.LogSysbenchScaleRun(testType, startedAt, scalePoints)
+	}
+	return nil
+}
+
 func (cluster *Cluster) RunSysbenchTPCPerMinuteIncreaseThreads() error {
 	cluster.CleanupBench()
 	cluster.PrepareBench()
 	threads := 1
 	for threads <= 256 {
-		cluster.RunSysBench("tpcc", strconv.Itoa(threads), "1000000", "60", "complex")
+		_, _, _, _ = cluster.RunSysBench("tpcc", strconv.Itoa(threads), "1000000", "60", "complex")
 		threads = threads * 2
 	}
 	cluster.WriteSybenchTPCM()

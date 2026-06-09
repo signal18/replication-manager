@@ -16,6 +16,7 @@ const SYSBENCH_TESTS = [
 ]
 
 const THREAD_OPTIONS = [
+  { name: '1-2xCPU', value: 0 },
   { name: 1, value: 1 },
   { name: 4, value: 4 },
   { name: 8, value: 8 },
@@ -54,7 +55,9 @@ function DropdownSysbench({ clusterName }) {
         <ConfirmModal
           isOpen={isConfirmModalOpen}
           closeModal={closeConfirmModal}
-          title={`Run ${selectedTest.name} with ${selectedThread.name} threads?`}
+          title={selectedThread.value === 0
+            ? `Run ${selectedTest.name} scaling threads from 1 to 2×CPU cores?`
+            : `Run ${selectedTest.name} with ${selectedThread.name} threads?`}
           onConfirmClick={runSysbench}
         />
       )}
