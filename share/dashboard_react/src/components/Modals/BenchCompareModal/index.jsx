@@ -12,6 +12,8 @@ import parentStyles from '../styles.module.scss'
 
 const GRAPHITE_METRICS = [
   { value: 'mysql_global_status_queries', label: 'Queries (QPS)', rate: true },
+  { value: 'mysql_global_status_com_commit', label: 'Commit/s', rate: true },
+  { value: 'mysql_global_status_com_rollback', label: 'Rollback/s', rate: true },
   { value: 'mysql_global_status_com_select', label: 'SELECT/s', rate: true },
   { value: 'mysql_global_status_com_insert', label: 'INSERT/s', rate: true },
   { value: 'mysql_global_status_com_update', label: 'UPDATE/s', rate: true },
