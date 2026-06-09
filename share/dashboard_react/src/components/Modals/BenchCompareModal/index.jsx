@@ -35,7 +35,7 @@ const SCALE_METRICS = [
 
 const COLORS = ['#3182ce', '#e53e3e', '#38a169', '#d69e2e', '#805ad5', '#dd6b20', '#319795', '#b83280']
 
-const isScaleRun = (run) => run.scaleResults?.length > 0
+const isScaleRun = (run) => !!run.isScale
 
 // Build a label showing what changed vs the reference run
 function buildSeriesLabel(run, refRun, index) {
@@ -193,30 +193,46 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
   const selectedRuns = runs.filter((_, i) => selected.has(i))
   const hasScaleRuns = selectedRuns.some(isScaleRun)
 
-  // Show scale chart from embedded scaleResults data
+  // Show scale chart — group scale entries by scaleGroup, normal entries as single points
   const showScaleChart = () => {
-    const sorted = [...selectedRuns].sort((a, b) => new Date(a.startedAt) - new Date(b.startedAt))
-    const refRun = sorted[0]
+    const series = []
 
-    let idx = 0
-    const series = sorted.map((run) => {
-      const i = idx++
-      if (isScaleRun(run)) {
-        return {
-          label: buildSeriesLabel(run, refRun, i),
-          color: COLORS[i % COLORS.length],
-          isRef: i === 0,
-          data: run.scaleResults.map(sp => ({ x: sp.threads, y: sp[scaleMetric] || 0 }))
-        }
+    // Group scale entries by scaleGroup
+    const scaleGroups = new Map()
+    const normalRuns = []
+    selectedRuns.forEach(run => {
+      if (isScaleRun(run) && run.scaleGroup) {
+        const key = run.scaleGroup
+        if (!scaleGroups.has(key)) scaleGroups.set(key, [])
+        scaleGroups.get(key).push(run)
+      } else {
+        normalRuns.push(run)
       }
-      // Normal single-thread run: plot as a single point on the threads axis
-      const valMap = { avgTps: run.avgTps, avgLatency: run.avgLatency, tpsPerDbu: run.tpsPerDbu }
-      return {
-        label: buildSeriesLabel(run, refRun, i),
+    })
+
+    // Each scale group becomes one series (curve)
+    let idx = 0
+    scaleGroups.forEach((entries, groupKey) => {
+      const sorted = [...entries].sort((a, b) => a.threads - b.threads)
+      const first = sorted[0]
+      const i = idx++
+      series.push({
+        label: `Scale ${first.testType} ${first.dbFlavor || ''}/${first.dbVersion || ''} ${new Date(groupKey).toLocaleDateString()}`,
         color: COLORS[i % COLORS.length],
         isRef: i === 0,
-        data: [{ x: run.threads, y: valMap[scaleMetric] || 0 }]
-      }
+        data: sorted.map(e => ({ x: e.threads, y: e[scaleMetric] || 0 }))
+      })
+    })
+
+    // Normal runs as single points
+    normalRuns.forEach(run => {
+      const i = idx++
+      series.push({
+        label: `${run.testType} ${run.threads}t ${run.dbFlavor || ''}/${run.dbVersion || ''}`,
+        color: COLORS[i % COLORS.length],
+        isRef: series.length === 0,
+        data: [{ x: run.threads, y: run[scaleMetric] || 0 }]
+      })
     })
 
     setChartSeries(series)
@@ -305,13 +321,6 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
   const graphiteLabel = GRAPHITE_METRICS.find(m => m.value === metric)?.label || metric
   const scaleLabel = SCALE_METRICS.find(m => m.value === scaleMetric)?.label || scaleMetric
 
-  const formatThreads = (run) => {
-    if (isScaleRun(run)) {
-      const pts = run.scaleResults
-      return `${pts[0]?.threads}→${pts[pts.length - 1]?.threads}`
-    }
-    return run.threads
-  }
 
   return (
     <Modal isOpen={isOpen} onClose={closeModal} size='xl'>
@@ -352,7 +361,7 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
                               {isScaleRun(run) && <Badge variant={badgeVariant} colorScheme='purple' size='sm'>scale</Badge>}
                             </HStack>
                           </Td>
-                          <Td>{formatThreads(run)}</Td>
+                          <Td>{run.threads}</Td>
                           <Td fontWeight={600}>{run.avgTps?.toFixed(1)}</Td>
                           <Td>{run.avgLatency?.toFixed(2)}ms</Td>
                           <Td>{run.clusterDbu?.toFixed(1)}</Td>

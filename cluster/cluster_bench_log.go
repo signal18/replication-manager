@@ -49,17 +49,9 @@ type SysbenchLogEntry struct {
 	AvgTPS       float64                      `json:"avgTps"`
 	AvgLatency   float64                      `json:"avgLatency"`
 	TotalErrors  int                          `json:"totalErrors"`
-	TPSPerDBU    float64                      `json:"tpsPerDbu"`    // avgTps / clusterDBU — performance efficiency
-	ScaleResults []SysbenchScalePoint         `json:"scaleResults,omitempty"` // populated for scaling runs (1-2xCPU)
-}
-
-// SysbenchScalePoint holds the result of a single thread count within a scaling run.
-type SysbenchScalePoint struct {
-	Threads    int     `json:"threads"`
-	AvgTPS     float64 `json:"avgTps"`
-	AvgLatency float64 `json:"avgLatency"`
-	TotalErrors int    `json:"totalErrors"`
-	TPSPerDBU  float64 `json:"tpsPerDbu"`
+	TPSPerDBU    float64                      `json:"tpsPerDbu"`              // avgTps / clusterDBU — performance efficiency
+	IsScale      bool                         `json:"isScale,omitempty"`      // true if part of a thread-scaling run
+	ScaleGroup   time.Time                    `json:"scaleGroup,omitempty"`   // ties scale entries together (start time of the scale run)
 }
 
 // SysbenchLog holds the full history of sysbench runs for a cluster.
@@ -95,7 +87,7 @@ func (cluster *Cluster) LoadSysbenchLog() {
 
 // LogSysbenchRun captures the context and results of a sysbench run and appends it to history.
 // rawOutput is the full sysbench output for summary parsing when per-second records are empty.
-func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads int, tableSize int, duration int, startedAt time.Time, records []SysbenchRecord, rawOutput string) {
+func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads int, tableSize int, duration int, startedAt time.Time, records []SysbenchRecord, rawOutput string, scaleGroup ...time.Time) {
 	dbNodes := len(cluster.Servers) // all database nodes (master + replicas)
 	entry := SysbenchLogEntry{
 		StartedAt:   startedAt,
@@ -164,6 +156,12 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 		entry.TPSPerDBU = entry.AvgTPS / entry.ClusterDBU
 	}
 
+	// Scale run metadata
+	if len(scaleGroup) > 0 && !scaleGroup[0].IsZero() {
+		entry.IsScale = true
+		entry.ScaleGroup = scaleGroup[0]
+	}
+
 	// Append TPCM results
 	entry.Results = cluster.SysBenchTpcMResults
 
@@ -174,67 +172,6 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 		"Sysbench run logged: %s/%s threads=%d avgTPS=%.1f avgLatency=%.2fms flavor=%s/%s proxy=%s/%s replicas=%d DBU=%.1f clusterDBU=%.1f TPS/DBU=%.2f tags=%s",
 		testType, testMode, threads, entry.AvgTPS, entry.AvgLatency, entry.DBFlavor, entry.DBVersion,
 		entry.ProxyType, entry.ProxyVersion, entry.Replicas, entry.DBU, entry.ClusterDBU, entry.TPSPerDBU, entry.ConfigTags)
-}
-
-// LogSysbenchScaleRun creates a single log entry for a thread-scaling run with per-thread results.
-func (cluster *Cluster) LogSysbenchScaleRun(testType string, startedAt time.Time, scalePoints []SysbenchScalePoint) {
-	dbNodes := len(cluster.Servers)
-	entry := SysbenchLogEntry{
-		StartedAt:    startedAt,
-		EndedAt:      time.Now(),
-		TestType:     testType,
-		Threads:      0, // 0 signals a scaling run
-		Tables:       cluster.Conf.SysbenchTables,
-		Scale:        cluster.Conf.SysbenchScale,
-		ConfigTags:   cluster.Conf.ProvTags,
-		ServicePlan:  cluster.Conf.ProvServicePlan,
-		Replicas:     len(cluster.slaves),
-		Cores:        cluster.Conf.ProvCores,
-		MemoryMB:     cluster.Conf.ProvMem,
-		DiskGB:       cluster.Conf.ProvDisk,
-		ScaleResults: scalePoints,
-	}
-
-	// Compute DBU
-	cores, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
-	memMB, _ := strconv.ParseFloat(cluster.Conf.ProvMem, 64)
-	diskGB, _ := strconv.ParseFloat(cluster.Conf.ProvDisk, 64)
-	entry.DBU = math.Max(cores, math.Max(memMB/4096, diskGB/40))
-	entry.ClusterDBU = entry.DBU * float64(dbNodes)
-
-	// DB flavor + version from master
-	if master := cluster.GetMaster(); master != nil && master.DBVersion != nil {
-		entry.DBFlavor = master.DBVersion.Flavor
-		entry.DBVersion = master.DBVersion.ToString()
-		entry.GraphiteHost = master.graphiteHostname()
-	}
-
-	// Proxy info
-	proxies := cluster.GetProxies()
-	if len(proxies) > 0 {
-		prx := proxies[0]
-		entry.ProxyType = prx.GetType()
-		entry.ProxyVersion = prx.GetVersion()
-	}
-
-	// Use the best TPS across scale points as the entry's avgTps
-	for _, sp := range scalePoints {
-		if sp.AvgTPS > entry.AvgTPS {
-			entry.AvgTPS = sp.AvgTPS
-			entry.AvgLatency = sp.AvgLatency
-			entry.Threads = sp.Threads
-		}
-	}
-	if entry.ClusterDBU > 0 && entry.AvgTPS > 0 {
-		entry.TPSPerDBU = entry.AvgTPS / entry.ClusterDBU
-	}
-
-	cluster.SysbenchHistory.Entries = append(cluster.SysbenchHistory.Entries, entry)
-	cluster.SaveSysbenchLog()
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH",
-		"Sysbench scale run logged: %s points=%d peakTPS=%.1f@%dt flavor=%s/%s clusterDBU=%.1f",
-		testType, len(scalePoints), entry.AvgTPS, entry.Threads, entry.DBFlavor, entry.DBVersion, entry.ClusterDBU)
 }
 
 // SysbenchSummary holds parsed values from the sysbench summary output.
