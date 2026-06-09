@@ -51,7 +51,7 @@ type SysbenchLogEntry struct {
 	TotalErrors  int                          `json:"totalErrors"`
 	TPSPerDBU    float64                      `json:"tpsPerDbu"`              // avgTps / clusterDBU — performance efficiency
 	IsScale      bool                         `json:"isScale,omitempty"`      // true if part of a thread-scaling run
-	ScaleGroup   time.Time                    `json:"scaleGroup,omitempty"`   // ties scale entries together (start time of the scale run)
+	ScaleGroup   *time.Time                   `json:"scaleGroup,omitempty"`   // ties scale entries together (start time of the scale run)
 }
 
 // SysbenchLog holds the full history of sysbench runs for a cluster.
@@ -159,7 +159,8 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 	// Scale run metadata
 	if len(scaleGroup) > 0 && !scaleGroup[0].IsZero() {
 		entry.IsScale = true
-		entry.ScaleGroup = scaleGroup[0]
+		t := scaleGroup[0]
+		entry.ScaleGroup = &t
 	}
 
 	// Append TPCM results
