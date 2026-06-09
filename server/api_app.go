@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/codegangsta/negroni"
@@ -1136,14 +1137,33 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
-			dep, err := json.MarshalIndent(node.AppConfig.Deployment, "", "\t")
+			// Take a locked JSON snapshot, then normalise and mask a copy so the
+			// GET path never mutates live deployment state.
+			node.Lock()
+			snapshot, snapErr := json.Marshal(node.AppConfig.Deployment)
+			node.Unlock()
+			if snapErr != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", snapErr)
+				http.Error(w, "Encoding error", http.StatusInternalServerError)
+				return
+			}
+
+			var depCopy config.Deployment
+			if unmarshalErr := json.Unmarshal(snapshot, &depCopy); unmarshalErr != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error decoding JSON: ", unmarshalErr)
+				http.Error(w, "Encoding error", http.StatusInternalServerError)
+				return
+			}
+			depCopy.NormalizeRoutes()
+
+			dep, err := json.MarshalIndent(&depCopy, "", "\t")
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				return
 			}
 
-			for vidx, v := range node.AppConfig.Deployment.Variables {
+			for vidx, v := range depCopy.Variables {
 				if v.Type == "secret" {
 					dep, err = sjson.SetBytes(dep, fmt.Sprintf("variables.%d.value", vidx), "*****")
 					if err != nil {
@@ -1154,7 +1174,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 				}
 			}
 
-			for gidx := range node.AppConfig.Deployment.Storages.GitClones {
+			for gidx := range depCopy.Storages.GitClones {
 				dep, err = sjson.SetBytes(dep, fmt.Sprintf("storages.gitClones.%d.pass", gidx), "*****")
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
@@ -1163,7 +1183,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 				}
 			}
 
-			for midx := range node.AppConfig.Deployment.Storages.S3Mounts {
+			for midx := range depCopy.Storages.S3Mounts {
 				dep, err = sjson.SetBytes(dep, fmt.Sprintf("storages.s3Mounts.%d.secretkey", midx), "*****")
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
@@ -1253,88 +1273,272 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 			}
 
 			if index < 0 {
-				http.Error(w, "Index cannot be negative", http.StatusInternalServerError)
+				http.Error(w, "Index cannot be negative", http.StatusBadRequest)
 				return
 			}
 
 			if vars["key"] == "" || vars["key"] == "undefined" {
 				// For gitClones, variables, and path, key is required
-				http.Error(w, "Key not provided", http.StatusInternalServerError)
+				http.Error(w, "Key not provided", http.StatusBadRequest)
 				return
 			}
 
 			switch vars["field"] {
 			// fields which are arrays of objects
 			case "routes":
+				// For identity-changing edits (non-monitor), acquire the per-gateway mutex
+				// before node.Lock() so that external-route snapshot and commit are
+				// serialized across clusters sharing the same gateway.
+				// gwUnlock is a no-op for monitor-only edits or when no gateway is set;
+				// it is called explicitly at every exit so the mutex is released right
+				// after the commit and before any post-commit I/O (SaveConfig, etc.).
+				gwUnlock := func() {}
+				var externalRoutes [][]config.Route
+				if !strings.HasPrefix(vars["key"], "monitor") {
+					gw := strings.ToLower(strings.TrimSpace(mycluster.Conf.Cloud18GatewayService))
+					if gw != "" {
+						gwMu := repman.getGatewayMutex(gw)
+						gwMu.Lock()
+						gwUnlock = gwMu.Unlock
+					}
+					externalRoutes = repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
+				}
+
+				// Hold node.Lock() for the full validate-mutate-write sequence so that:
+				//   a) the base row is always the live value (no stale-base overwrite), and
+				//   b) validation and commit are atomic w.r.t. concurrent same-app edits.
+				node.Lock()
 				if index >= len(node.AppConfig.Deployment.Routes) {
+					node.Unlock()
+					gwUnlock()
 					http.Error(w, "Index out of range for routes", http.StatusInternalServerError)
 					return
 				}
-
-				// Modify field based on key
+				row := node.AppConfig.Deployment.Routes[index].Clone()
 				switch vars["key"] {
-				case "cname":
-					if node.AppConfig.Deployment.Routes[index].CName == newValue {
-						http.Error(w, "CNAME unchanged", http.StatusInternalServerError)
-						return
+				case "name":
+					row.Name = newValue
+				case "mode":
+					row.Mode = strings.ToLower(strings.TrimSpace(newValue))
+					// Auto-align protocol to a valid default for the new mode so that
+					// the mode change doesn't fail validation mid-transition.
+					// host requires https; port requires http or tcp.
+					switch row.Mode {
+					case "host":
+						row.Protocol = "https"
+					case "port":
+						if row.Protocol != "http" && row.Protocol != "tcp" {
+							row.Protocol = "tcp"
+						}
 					}
-					for _, existing := range node.AppConfig.Deployment.Routes {
-						if existing.CName == newValue {
-							http.Error(w, "Cannot duplicate route with same CName", http.StatusInternalServerError)
+				case "cname":
+					cname := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(newValue)), ".")
+					for i, existing := range node.AppConfig.Deployment.Routes {
+						existing.Normalize() // handle legacy unnormalized in-memory routes
+						if i != index && strings.EqualFold(existing.CName, cname) {
+							node.Unlock()
+							gwUnlock()
+							http.Error(w, "Cannot duplicate route with same CName", http.StatusBadRequest)
 							return
 						}
 					}
-					node.AppConfig.Deployment.Routes[index].CName = newValue
+					row.CName = cname
 				case "port":
-					if node.AppConfig.Deployment.Routes[index].Port == newValue {
-						http.Error(w, "Port unchanged", http.StatusInternalServerError)
+					effectiveMode := strings.ToLower(strings.TrimSpace(row.Mode))
+					// Mirror Normalize()'s implicit-mode inference so that legacy routes
+					// saved with Mode=="" and Protocol=="tcp" are treated as port mode,
+					// not bypassing the asymmetry guard below.
+					if effectiveMode == "" {
+						if strings.ToLower(strings.TrimSpace(row.Protocol)) == "tcp" {
+							effectiveMode = "port"
+						} else {
+							effectiveMode = "host"
+						}
+					}
+					isAsymmetric := effectiveMode == "port" &&
+						row.SourcePort != "" && row.DestinationPort != "" &&
+						row.SourcePort != row.DestinationPort
+					if isAsymmetric && !strings.Contains(newValue, ":") {
+						node.Unlock()
+						gwUnlock()
+						http.Error(w, "use 'src:dst' format or 'sourceport'/'destport' to edit an asymmetric port-mode route", http.StatusBadRequest)
 						return
 					}
-					node.AppConfig.Deployment.Routes[index].Port = newValue
+					row.Port = newValue
+					// Normalize() only copies Port into DestinationPort/SourcePort
+					// when those fields are empty.  After first normalization they are
+					// already set, so a "port" edit would be a silent no-op for the
+					// effective routing port.  Reset the derived fields here so
+					// Normalize() re-derives them from the new Port value.
+					row.DestinationPort = ""
+					if effectiveMode == "port" {
+						row.SourcePort = ""
+					}
+				case "sourceport", "sourcePort":
+					row.SourcePort = newValue
+					row.Port = ""
+				case "destport", "destPort":
+					row.DestinationPort = newValue
+					row.Port = ""
 				case "protocol":
-					if node.AppConfig.Deployment.Routes[index].Protocol == newValue {
-						http.Error(w, "Protocol unchanged", http.StatusInternalServerError)
-						return
+					row.Protocol = strings.ToLower(strings.TrimSpace(newValue))
+				case "primary":
+					row.Primary = newValue == "true"
+				case "monitor.clear":
+					row.Monitor = nil
+				case "monitor.path":
+					if row.Monitor == nil {
+						row.Monitor = &config.RouteMonitor{}
 					}
-
-					if newValue != "tcp" && newValue != "https" {
-						http.Error(w, "Invalid protocol. Must be 'tcp' or 'https'", http.StatusInternalServerError)
-						return
+					row.Monitor.Path = newValue
+				case "monitor.auth-type":
+					if row.Monitor == nil {
+						row.Monitor = &config.RouteMonitor{}
 					}
-					node.AppConfig.Deployment.Routes[index].Protocol = newValue
+					row.Monitor.AuthType = strings.ToLower(strings.TrimSpace(newValue))
+				case "monitor.auth-user":
+					if row.Monitor == nil {
+						row.Monitor = &config.RouteMonitor{}
+					}
+					row.Monitor.AuthUser = newValue
+				case "monitor.auth-secret-var":
+					if newValue != "" {
+						v, verr := node.AppConfig.Deployment.GetVariableByName(newValue, true)
+						if verr != nil {
+							node.Unlock()
+							gwUnlock()
+							http.Error(w, "monitor auth-secret-var: variable not found: "+verr.Error(), http.StatusBadRequest)
+							return
+						}
+						if v.Type != config.VariableTypeSecret {
+							node.Unlock()
+							gwUnlock()
+							http.Error(w, "monitor auth-secret-var must reference a variable of type 'secret'", http.StatusBadRequest)
+							return
+						}
+					}
+					if row.Monitor == nil {
+						row.Monitor = &config.RouteMonitor{}
+					}
+					row.Monitor.AuthSecretVar = newValue
+				case "monitor.expect-status":
+					if newValue != "" {
+						if _, perr := config.ParseExpectStatus(newValue); perr != nil {
+							node.Unlock()
+							gwUnlock()
+							http.Error(w, "monitor expect-status: "+perr.Error(), http.StatusBadRequest)
+							return
+						}
+					}
+					if row.Monitor == nil {
+						row.Monitor = &config.RouteMonitor{}
+					}
+					row.Monitor.ExpectStatus = newValue
 				default:
-					http.Error(w, "Invalid key for routes", http.StatusInternalServerError)
+					node.Unlock()
+					gwUnlock()
+					http.Error(w, "Invalid key for routes", http.StatusBadRequest)
 					return
 				}
+
+				row.Normalize()
+				if err := row.Validate(); err != nil {
+					node.Unlock()
+					gwUnlock()
+					http.Error(w, "Invalid route: "+err.Error(), http.StatusBadRequest)
+					return
+				}
+				if err := row.Monitor.ValidateSecretRef(node.AppConfig.Deployment.Variables); err != nil {
+					node.Unlock()
+					gwUnlock()
+					http.Error(w, "Invalid route monitor: "+err.Error(), http.StatusBadRequest)
+					return
+				}
+				if !strings.HasPrefix(vars["key"], "monitor") {
+					peers := make([]config.Route, 0, len(node.AppConfig.Deployment.Routes)-1)
+					for i, r := range node.AppConfig.Deployment.Routes {
+						if i != index {
+							peers = append(peers, r)
+						}
+					}
+					if err := config.CheckGatewayConflicts([]config.Route{row}, config.NormalizedCopy(peers)); err != nil {
+						node.Unlock()
+						gwUnlock()
+						http.Error(w, "Duplicate route: "+err.Error(), http.StatusBadRequest)
+						return
+					}
+					if err := config.CheckGatewayConflicts([]config.Route{row}, externalRoutes...); err != nil {
+						node.Unlock()
+						gwUnlock()
+						http.Error(w, "Gateway conflict: "+err.Error(), http.StatusBadRequest)
+						return
+					}
+				}
+				node.AppConfig.Deployment.Routes[index] = row
+				node.AppConfig.Deployment.EnforceSinglePrimary()
+				node.Unlock()
+				gwUnlock()
+
+				if row.Monitor != nil && row.Monitor.AuthType != "" {
+					switch row.Protocol {
+					case "http":
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+							"Route edit for app %s: monitor auth (%s) configured on plain HTTP route %s — credentials will be transmitted unencrypted",
+							node.Name, row.Monitor.AuthType, row.CName)
+					case "https":
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+							"Route edit for app %s: monitor auth (%s) configured on HTTPS route %s with unverified certificate (InsecureSkipVerify=true)",
+							node.Name, row.Monitor.AuthType, row.CName)
+					}
+				}
+
+				// DNS cleanup for renamed or rekeyed managed host routes happens
+				// via the full reconcile path (update-routes / provision), not here.
 			case "variables":
 				if index >= len(node.AppConfig.Deployment.Variables) {
-					http.Error(w, "Index out of range for variables", http.StatusInternalServerError)
+					http.Error(w, "Index out of range for variables", http.StatusBadRequest)
 					return
 				}
 
 				row := node.AppConfig.Deployment.Variables[index]
 				if row.Locked {
-					http.Error(w, "Unable to change name of locked variable. Please change the source of the variable instead.", http.StatusInternalServerError)
+					http.Error(w, "Unable to change name of locked variable. Please change the source of the variable instead.", http.StatusBadRequest)
 					return
 				}
 				// Modify field based on key
 				switch vars["key"] {
 				case "name":
 					if row.Name == newValue {
-						http.Error(w, "Variable name unchanged", http.StatusInternalServerError)
+						http.Error(w, "Variable name unchanged", http.StatusBadRequest)
 						return
 					}
+					// Cascade rename into any route monitor that references this variable.
+					oldName := row.Name
+					node.Lock()
+					for i, r := range node.AppConfig.Deployment.Routes {
+						if r.Monitor != nil && r.Monitor.AuthSecretVar == oldName {
+							node.AppConfig.Deployment.Routes[i].Monitor.AuthSecretVar = newValue
+						}
+					}
+					node.Unlock()
 					row.Name = newValue
 				case "value":
 					if row.Value == newValue {
-						http.Error(w, "Variable value unchanged", http.StatusInternalServerError)
+						http.Error(w, "Variable value unchanged", http.StatusBadRequest)
 						return
 					}
 					row.Value = newValue
 				case "type":
 					if row.Type == newValue {
-						http.Error(w, "Variable type unchanged", http.StatusInternalServerError)
+						http.Error(w, "Variable type unchanged", http.StatusBadRequest)
 						return
+					}
+					// Reject type changes away from 'secret' when routes reference this variable.
+					if row.Type == config.VariableTypeSecret && newValue != config.VariableTypeSecret {
+						if refs := routesReferencingSecretVar(node.AppConfig.Deployment.Routes, row.Name); len(refs) > 0 {
+							http.Error(w, fmt.Sprintf("cannot change type of variable %q: referenced as auth-secret-var in %d route(s)", row.Name, len(refs)), http.StatusBadRequest)
+							return
+						}
 					}
 					row.Type = newValue
 				case "conditional":
@@ -1519,6 +1723,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 			mycluster.EnqueueRefreshAppTemplateMD5(node)
 
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
+			repman.RecomputeGatewayConflicts(mycluster.Name, "")
 			w.Write([]byte("Deployment field modified"))
 		} else {
 			http.Error(w, "Server Not Found", http.StatusInternalServerError)
@@ -1528,6 +1733,74 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
+}
+
+// routesReferencingSecretVar returns the indices of routes whose
+// monitor.auth-secret-var equals varName.
+func routesReferencingSecretVar(routes []config.Route, varName string) []int {
+	var out []int
+	for i, r := range routes {
+		if r.Monitor != nil && r.Monitor.AuthSecretVar == varName {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// getGatewayMutex returns the per-gateway serialization mutex for gw, creating
+// it on first use.  Holding this mutex across allExternalGatewayRoutes + node.Lock()
+// prevents two concurrent requests on different clusters from both passing the
+// cross-cluster conflict check and both committing conflicting routes.
+func (repman *ReplicationManager) getGatewayMutex(gw string) *sync.Mutex {
+	actual, _ := repman.gatewayMu.LoadOrStore(gw, new(sync.Mutex))
+	return actual.(*sync.Mutex)
+}
+
+// allExternalGatewayRoutes returns one normalized route-slice per app that
+// shares the same gateway as the named cluster, excluding the named cluster+app.
+// Used to check cross-cluster conflicts before accepting an API route change.
+func (repman *ReplicationManager) allExternalGatewayRoutes(excludeClusterName, excludeAppName string) [][]config.Route {
+	// Snapshot the Clusters map under the repman lock to avoid racing with
+	// StartCluster / cluster removal, which mutate the map under that same lock.
+	repman.Lock()
+	clusterSnapshot := make(map[string]*cluster.Cluster, len(repman.Clusters))
+	for k, v := range repman.Clusters {
+		clusterSnapshot[k] = v
+	}
+	repman.Unlock()
+
+	var thisGateway string
+	if cl, ok := clusterSnapshot[excludeClusterName]; ok {
+		thisGateway = strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
+	}
+	if thisGateway == "" {
+		return nil
+	}
+	var others [][]config.Route
+	for _, cl := range clusterSnapshot {
+		if strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService)) != thisGateway {
+			continue
+		}
+		// GetAppsCopy snapshots cl.Apps under the cluster lock so we don't
+		// iterate a slice that another goroutine may be appending to.
+		for _, app := range cl.GetAppsCopy() {
+			if app == nil || app.AppConfig == nil {
+				continue
+			}
+			if cl.Name == excludeClusterName && app.Name == excludeAppName {
+				continue
+			}
+			// Conflicted apps are blocked from publishing — exclude their routes
+			// so they don't falsely prevent other clusters from accepting routes.
+			if conflicted, _ := cl.IsAppGatewayConflicted(app.AppConfig.AppHost, app.AppConfig.AppPort); conflicted {
+				continue
+			}
+			if normalized := config.NormalizedCopy(app.GetDeploymentRoutesSnapshot()); len(normalized) > 0 {
+				others = append(others, normalized)
+			}
+		}
+	}
+	return others
 }
 
 // @Summary Add Deployment Field Row
@@ -1577,33 +1850,57 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 			return
 		}
 
+		// Acquire per-gateway mutex and snapshot external routes once for the entire
+		// batch.  gwUnlock is called explicitly at every exit so the mutex is released
+		// right after the commit and before post-commit I/O (SaveConfig, etc.).
+		gwUnlock := func() {}
+		gw := strings.ToLower(strings.TrimSpace(mycluster.Conf.Cloud18GatewayService))
+		if gw != "" {
+			gwMu := repman.getGatewayMutex(gw)
+			gwMu.Lock()
+			gwUnlock = gwMu.Unlock
+		}
+		others := repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
+
 		for _, row := range body {
-			if !isValidPortFormat(row.Port) {
-				http.Error(w, "Invalid port format. Expected hostPort with valid port numbers", http.StatusInternalServerError)
+			row.Normalize()
+			if err := row.Validate(); err != nil {
+				gwUnlock()
+				http.Error(w, "Invalid route: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := row.Monitor.ValidateSecretRef(node.AppConfig.Deployment.Variables); err != nil {
+				gwUnlock()
+				http.Error(w, "Invalid route monitor: "+err.Error(), http.StatusBadRequest)
 				return
 			}
 
-			if row.CName == "" {
-				http.Error(w, "CName must be provided for route", http.StatusInternalServerError)
+			// Hold node.Lock() across intra-app conflict check and append so that
+			// two concurrent adds can't both validate against the same pre-append state.
+			node.Lock()
+			existing := config.NormalizedCopy(node.AppConfig.Deployment.Routes)
+			if err := config.CheckGatewayConflicts([]config.Route{row}, existing); err != nil {
+				node.Unlock()
+				gwUnlock()
+				http.Error(w, "Duplicate route: "+err.Error(), http.StatusBadRequest)
 				return
 			}
-
-			if row.Protocol != "tcp" && row.Protocol != "https" {
-				http.Error(w, "Invalid protocol. Must be 'tcp' or 'https'", http.StatusInternalServerError)
+			if err := config.CheckGatewayConflicts([]config.Route{row}, others...); err != nil {
+				node.Unlock()
+				gwUnlock()
+				http.Error(w, "Gateway conflict: "+err.Error(), http.StatusBadRequest)
 				return
 			}
-
-			// Check for duplicate route
-			for _, existing := range node.AppConfig.Deployment.Routes {
-				if existing.CName == row.CName {
-					http.Error(w, "Cannot duplicate route with same CName", http.StatusInternalServerError)
-					return
-				}
-			}
-
 			node.AppConfig.Deployment.Routes = append(node.AppConfig.Deployment.Routes, row)
+			node.Unlock()
 			affected = true
 		}
+		if affected {
+			node.Lock()
+			node.AppConfig.Deployment.EnforceSinglePrimary()
+			node.Unlock()
+		}
+		gwUnlock()
 
 	case "variables":
 		var body []config.VariableMapping
@@ -1677,6 +1974,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 	mycluster.EnqueueRefreshAppTemplateMD5(node)
 
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
+	repman.RecomputeGatewayConflicts(mycluster.Name, "")
 	json.NewEncoder(w).Encode(map[string]string{"message": "Deployment field row added"})
 }
 
@@ -1705,17 +2003,11 @@ func decodeSlice[T any](r *http.Request, w http.ResponseWriter, typename string)
 }
 
 func isValidPortFormat(value string) bool {
-	parts := strings.Split(value, ":")
-	if len(parts) > 2 {
+	if strings.Contains(value, ":") {
 		return false
 	}
-	for _, part := range parts {
-		p, err := strconv.Atoi(part)
-		if err != nil || p < 0 || p > 65535 {
-			return false
-		}
-	}
-	return true
+	p, err := strconv.Atoi(value)
+	return err == nil && p >= 1 && p <= 65535
 }
 
 // @Summary Drop Deployment Field Row
@@ -1768,11 +2060,26 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 
 	switch field {
 	case "routes":
+		gwUnlock := func() {}
+		gw := strings.ToLower(strings.TrimSpace(mycluster.Conf.Cloud18GatewayService))
+		if gw != "" {
+			gwMu := repman.getGatewayMutex(gw)
+			gwMu.Lock()
+			gwUnlock = gwMu.Unlock
+		}
+		node.Lock()
 		if index >= len(node.AppConfig.Deployment.Routes) {
+			node.Unlock()
+			gwUnlock()
 			http.Error(w, "Index out of range for routes", http.StatusInternalServerError)
 			return
 		}
 		node.AppConfig.Deployment.Routes = append(node.AppConfig.Deployment.Routes[:index], node.AppConfig.Deployment.Routes[index+1:]...)
+		node.AppConfig.Deployment.EnforceSinglePrimary()
+		node.Unlock()
+		gwUnlock()
+		// DNS cleanup for dropped managed host routes happens via the full
+		// reconcile path (update-routes / provision), not here.
 	case "variables":
 		if index >= len(node.AppConfig.Deployment.Variables) {
 			http.Error(w, "Index out of range for variables", http.StatusInternalServerError)
@@ -1780,6 +2087,11 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 		}
 		if node.AppConfig.Deployment.Variables[index].Locked {
 			http.Error(w, "Unable to drop locked variable. Please drop the source of the variable instead.", http.StatusInternalServerError)
+			return
+		}
+		varName := node.AppConfig.Deployment.Variables[index].Name
+		if refs := routesReferencingSecretVar(node.AppConfig.Deployment.Routes, varName); len(refs) > 0 {
+			http.Error(w, fmt.Sprintf("cannot delete variable %q: referenced as auth-secret-var in %d route(s) — clear the monitor config first", varName, len(refs)), http.StatusBadRequest)
 			return
 		}
 		node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables[:index], node.AppConfig.Deployment.Variables[index+1:]...)
@@ -1800,6 +2112,7 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 
 	// If we reach here, the row was successfully removed
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
+	repman.RecomputeGatewayConflicts(mycluster.Name, "")
 	w.Write([]byte("Deployment field row removed"))
 }
 
@@ -2035,13 +2348,13 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 			}
 
 			if index < 0 {
-				http.Error(w, "Index cannot be negative", http.StatusInternalServerError)
+				http.Error(w, "Index cannot be negative", http.StatusBadRequest)
 				return
 			}
 
 			if vars["key"] == "" || vars["key"] == "undefined" {
 				// For gitClones, variables, and path, key is required
-				http.Error(w, "Key not provided", http.StatusInternalServerError)
+				http.Error(w, "Key not provided", http.StatusBadRequest)
 				return
 			}
 

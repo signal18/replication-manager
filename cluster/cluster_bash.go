@@ -37,6 +37,42 @@ func (cluster *Cluster) BashScriptAlert(alert alert.Alert) error {
 	return nil
 }
 
+// Cloud18ManagedSuffix returns the exact FQDN suffix that marks a hostname as
+// managed by this cluster (e.g. ".mycluster.ovh-fr-2.signal18.cloud18.io").
+// Returns "" when the cloud18 integration is not configured.
+func (cluster *Cluster) Cloud18ManagedSuffix() string {
+	if cluster.Conf.Cloud18Domain == "" || cluster.Conf.Cloud18SubDomain == "" {
+		return ""
+	}
+	subdomain := cluster.Conf.Cloud18SubDomain
+	if cluster.Conf.Cloud18SubDomainZone != "" {
+		subdomain = subdomain + "-" + cluster.Conf.Cloud18SubDomainZone
+	}
+	return "." + cluster.Name + "." + subdomain + "." + cluster.Conf.Cloud18Domain + ".cloud18.io"
+}
+
+// ManagedHostCNAME returns the short-form label (everything except the trailing
+// ".cloud18.io") and true when fullCname ends with the exact configured managed
+// application suffix for this cluster.  The short form is what the DNS provider
+// scripts expect; any provider-specific conversion happens inside the scripts.
+func (cluster *Cluster) ManagedHostCNAME(fullCname string) (shortCname string, managed bool) {
+	suffix := cluster.Cloud18ManagedSuffix()
+	if suffix == "" {
+		return "", false
+	}
+	lower := strings.ToLower(strings.TrimRight(fullCname, "."))
+	if !strings.HasSuffix(lower, strings.ToLower(suffix)) {
+		return "", false
+	}
+	// Strip the last two components (.cloud18.io) — that is the label the
+	// DNS provider scripts expect as their third argument.
+	slice := strings.Split(lower, ".")
+	if len(slice) <= 2 {
+		return "", false
+	}
+	return strings.Join(slice[:len(slice)-2], "."), true
+}
+
 func (cluster *Cluster) BashScriptProvDNS(cname string) error {
 	if cluster.Conf.Cloud18GatewayDomainName == "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", "Empty gateway for cloud18-gateway-domain-name")
@@ -48,9 +84,29 @@ func (cluster *Cluster) BashScriptProvDNS(cname string) error {
 		out, err := exec.Command(cluster.Conf.Cloud18DomainAddScript, cluster.Conf.Cloud18DomainUser, cluster.Conf.GetDecryptedValue("cloud18-domain-secret"), cname, cluster.Conf.Cloud18GatewayDomainName).CombinedOutput()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
+			return fmt.Errorf("domain add script failed for %s: %w", cname, err)
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling provision add domain script: %s", string(out))
 	}
+	return nil
+}
+
+// BashScriptDeprovDNS calls the cloud18-domain-drop-script to remove a managed
+// CNAME entry that is no longer needed (route dropped or renamed).
+func (cluster *Cluster) BashScriptDeprovDNS(cname string) error {
+	if cluster.Conf.Cloud18GatewayDomainName == "" {
+		return errors.New("empty gateway for cloud18-gateway-domain-name")
+	}
+	if cluster.Conf.Cloud18DomainDropScript == "" {
+		return nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling provision drop domain script for %s", cname)
+	out, err := exec.Command(cluster.Conf.Cloud18DomainDropScript, cluster.Conf.Cloud18DomainUser, cluster.Conf.GetDecryptedValue("cloud18-domain-secret"), cname, cluster.Conf.Cloud18GatewayDomainName).CombinedOutput()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
+		return fmt.Errorf("domain drop script failed for %s: %w", cname, err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Provision drop domain script complete: %s", string(out))
 	return nil
 }
 

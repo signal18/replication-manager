@@ -29,9 +29,7 @@ func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead str
 	repman.Unlock()
 	cluster, _ := repman.StartCluster(clusterName)
 
-	for _, cluster := range repman.Clusters {
-		cluster.SetClusterList(repman.Clusters)
-	}
+	repman.refreshAllPeers()
 	//fmt.Printf("ADD CLUSTER def map :\n")
 	//fmt.Printf("%s\n", repman.ImmuableFlagMaps)
 	//cluster.Conf.PrintConf()

@@ -1208,6 +1208,203 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/dropserver/{host}/{port}": {
+            "post": {
+                "description": "This endpoint allows dropping a server monitor or proxy monitor from a specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterMonitor"
+                ],
+                "summary": "Drop a server monitor from a cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Host",
+                        "name": "host",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Port",
+                        "name": "port",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Monitor dropped successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/actions/dropserver/{host}/{port}/{type}": {
+            "post": {
+                "description": "This endpoint allows dropping a server monitor or proxy monitor from a specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterMonitor"
+                ],
+                "summary": "Drop a server monitor from a cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Monitor Type (proxy or database)",
+                        "name": "type",
+                        "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Host",
+                        "name": "host",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Port",
+                        "name": "port",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Monitor dropped successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/actions/dropserver/{serverName}": {
+            "post": {
+                "description": "This endpoint allows dropping a server monitor or proxy monitor from a specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterMonitor"
+                ],
+                "summary": "Drop a server monitor from a cluster by name",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Monitor Server ID",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Monitor dropped successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/failover": {
             "post": {
                 "description": "This endpoint triggers a master failover for the specified cluster.",
@@ -1253,55 +1450,6 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "No cluster",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/clusters/{clusterName}/actions/jobs-upgrade": {
-            "get": {
-                "description": "Flags all servers within the specified cluster to allow jobs upgrade.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ClusterJobs"
-                ],
-                "summary": "Allow Jobs Upgrade on Cluster Servers",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Flagged for jobs upgrade",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "No cluster\" or \"No server",
                         "schema": {
                             "type": "string"
                         }
@@ -1620,55 +1768,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/actions/staging-reseed-from-parent": {
-            "post": {
-                "description": "Reseed the specified cluster from its parent cluster.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ClusterReplication"
-                ],
-                "summary": "Reseed from Parent Cluster",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Reseed from parent queued",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "No cluster",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/api/clusters/{clusterName}/actions/reset-failover-control": {
             "post": {
                 "description": "This endpoint resets the failover control for the specified cluster.",
@@ -1840,9 +1939,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/actions/rolling": {
+        "/api/clusters/{clusterName}/actions/rolling/{action}": {
             "post": {
-                "description": "This endpoint triggers a rolling restart for the specified cluster.",
+                "description": "Triggers one of: restart, reprov, upgrade, jobs-upgrade.\nreprov and upgrade are long-running and return 202 Accepted immediately; the operation runs in the background.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1852,7 +1951,7 @@ const docTemplate = `{
                 "tags": [
                     "ClusterMaintenance"
                 ],
-                "summary": "Handles the rolling restart process for a given cluster.",
+                "summary": "Trigger a rolling action on a cluster",
                 "parameters": [
                     {
                         "type": "string",
@@ -1868,11 +1967,36 @@ const docTemplate = `{
                         "name": "clusterName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "enum": [
+                            "restart",
+                            "reprov",
+                            "upgrade",
+                            "jobs-upgrade"
+                        ],
+                        "type": "string",
+                        "description": "Rolling action",
+                        "name": "action",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successfully triggered rolling restart",
+                        "description": "Action triggered successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "202": {
+                        "description": "Long-running action started in background (reprov, upgrade)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown rolling action",
                         "schema": {
                             "type": "string"
                         }
@@ -2155,6 +2279,55 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "Staging script reloaded",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/actions/staging-reseed-from-parent": {
+            "post": {
+                "description": "Reseed the specified cluster from its parent cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterReplication"
+                ],
+                "summary": "Reseed from Parent Cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Reseed from parent queued",
                         "schema": {
                             "type": "string"
                         }
@@ -2610,6 +2783,56 @@ const docTemplate = `{
                         "description": "No app found with the provided app ID\" or \"Cluster Not Found",
                         "schema": {
                             "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/check": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GitRepository"
+                ],
+                "summary": "Check Git Repository by Name",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App ID",
+                        "name": "appId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Git Clone Name",
+                        "name": "gitName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -3630,6 +3853,71 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/apps/{appName}/actions/update-routes": {
+            "post": {
+                "description": "Push route configuration to the OpenSVC gateway service for a given app",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Update App Routes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "App Routes Updated",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "App Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/apps/{appName}/deployment": {
             "get": {
                 "description": "Shows the deployments for that specific named app",
@@ -3911,6 +4199,72 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Error decoding JSON\" \"Server Not Found\" \"Deployment not found\" \"No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/apps/{appName}/git/actions/check": {
+            "post": {
+                "description": "Validates that a Git repository is reachable with the given credentials and that the branch exists.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GitRepository"
+                ],
+                "summary": "Check Git Repository",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Check result",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal error",
                         "schema": {
                             "type": "string"
                         }
@@ -4528,7 +4882,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/backups": {
             "get": {
-                "description": "This endpoint retrieves the backups for the specified cluster.",
+                "description": "This endpoint retrieves the backups for the specified cluster.\nRequired grant: cluster-show-backups",
                 "produces": [
                     "application/json"
                 ],
@@ -4583,7 +4937,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/backups/reconcile": {
             "post": {
-                "description": "This endpoint triggers a manual reconciliation check to detect drift between backup metadata files and restic snapshots.",
+                "description": "This endpoint triggers a manual reconciliation check to detect drift between backup metadata files and restic snapshots.\nRequired grant: db-backup",
                 "produces": [
                     "application/json"
                 ],
@@ -4638,7 +4992,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/backups/stats": {
             "get": {
-                "description": "This endpoint retrieves the backup stats for the specified cluster.",
+                "description": "This endpoint retrieves the backup stats for the specified cluster.\nRequired grant: cluster-show-backups",
                 "produces": [
                     "application/json"
                 ],
@@ -4690,7 +5044,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/backups/{backupID}/delete": {
             "post": {
-                "description": "Deletes a non-restic backup for the specified cluster.",
+                "description": "Deletes a non-restic backup for the specified cluster.\nRequired grant: db-backup",
                 "produces": [
                     "application/json"
                 ],
@@ -5042,6 +5396,67 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Error accepting subscription",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/ext-role/end": {
+            "post": {
+                "description": "This endpoint removes external operations for the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cloud18"
+                ],
+                "summary": "Remove external operations for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "User Form",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.CloudUserForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sponsor partnership removed!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error removing sponsor partnership",
                         "schema": {
                             "type": "string"
                         }
@@ -5637,6 +6052,58 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "No cluster\" or \"Error getting gateway nodes",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/opensvc-pools": {
+            "get": {
+                "description": "Retrieves the OpenSVC storage pool names of the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterGateway"
+                ],
+                "summary": "Get OpenSVC Pool List",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OpenSVC pool list fetched",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/server.PoolOption"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"Error getting OpenSVC pool list",
                         "schema": {
                             "type": "string"
                         }
@@ -6509,7 +6976,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/restic/purge/{snapshotID}": {
             "post": {
-                "description": "Purges the restic backup for the specified cluster.",
+                "description": "Purges the restic backup for the specified cluster.\nRequired grant: db-backup",
                 "produces": [
                     "application/json"
                 ],
@@ -7036,6 +7503,11 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/restic/task-queue/pause": {
+            "post": {
+                "responses": {}
+            }
+        },
         "/api/clusters/{clusterName}/restic/task-queue/reset": {
             "get": {
                 "description": "Empty the restic task queue for the specified cluster.",
@@ -7083,11 +7555,6 @@ const docTemplate = `{
                         }
                     }
                 }
-            }
-        },
-        "/api/clusters/{clusterName}/restic/task-queue/pause": {
-            "post": {
-                "responses": {}
             }
         },
         "/api/clusters/{clusterName}/restic/task-queue/resume": {
@@ -7198,67 +7665,6 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Error accepting subscription",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/clusters/{clusterName}/ext-role/end": {
-            "post": {
-                "description": "This endpoint removes external operations for the specified cluster.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Cloud18"
-                ],
-                "summary": "Remove external operations for a specific cluster",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "User Form",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/server.CloudUserForm"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Sponsor partnership removed!",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Error removing sponsor partnership",
                         "schema": {
                             "type": "string"
                         }
@@ -10746,6 +11152,109 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/update-opensvc-template": {
+            "post": {
+                "description": "Regenerates the OpenSVC service config template for the specified server and pushes it to OpenSVC. Does not reprovision or restart the service.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseProvision"
+                ],
+                "summary": "Update OpenSVC template for a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Template refreshed successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or error message",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/upgrade": {
+            "post": {
+                "tags": [
+                    "DatabaseActions"
+                ],
+                "summary": "Upgrade a single database server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Upgrade started",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/wait-innodb-purge": {
             "get": {
                 "description": "Waits for InnoDB purge on a specified server within a cluster.",
@@ -11098,6 +11607,73 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error generating/sending config",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/config-files": {
+            "get": {
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Get config override files for a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Config file contents",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/config-files-clear-delta": {
+            "post": {
+                "tags": [
+                    "DatabaseConfig"
+                ],
+                "summary": "Clear delta config file for a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Delta cleared",
                         "schema": {
                             "type": "string"
                         }
@@ -11599,48 +12175,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/is-slave-stopped": {
-            "get": {
-                "description": "Checks if a specified server within a cluster is in a slave Stop state.",
-                "produces": [
-                    "text/plain"
-                ],
-                "tags": [
-                    "Database"
-                ],
-                "summary": "Check if a server is in slave Stop state",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Server Name",
-                        "name": "serverName",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "200 -Server is in Slave Stop state!",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "500 -Server is not in Slave Stop state!\" or \"500 -No valid server!\" or \"500 -No cluster!",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/api/clusters/{clusterName}/servers/{serverName}/is-slave-error": {
             "get": {
                 "description": "Checks if a specified server within a cluster is in a slave error state.",
@@ -11676,6 +12210,90 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "500 -Server is not in Slave Error state!\" or \"500 -No valid server!\" or \"500 -No cluster!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/is-slave-late": {
+            "get": {
+                "description": "Checks if the specified server within the cluster is in a \"Slave Late\" state.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "replication"
+                ],
+                "summary": "Check if server is in Slave Late state",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "200 -Server is in Slave Late state!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "500 -No valid server!\" \"500 -Server is not in Slave Late state!\" \"500 -No cluster!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/is-slave-stopped": {
+            "get": {
+                "description": "Checks if a specified server within a cluster is in a slave Stop state.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Check if a server is in slave Stop state",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "200 -Server is in Slave Stop state!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "500 -Server is not in Slave Stop state!\" or \"500 -No valid server!\" or \"500 -No cluster!",
                         "schema": {
                             "type": "string"
                         }
@@ -13514,6 +14132,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/job-state/{taskname}/{jobstate}": {
+            "post": {
+                "tags": [
+                    "DatabaseTasks"
+                ],
+                "summary": "Update job state from dbjobs script",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server hostname",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server port",
+                        "name": "serverPort",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Task name",
+                        "name": "taskname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Job state: processing, done, error",
+                        "name": "jobstate",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/jobs-create-table": {
             "post": {
                 "description": "Creates a jobs tasks table on a specified server within a cluster if it does not already exist.",
@@ -13630,6 +14294,45 @@ const docTemplate = `{
                         }
                     }
                 }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname}": {
+            "post": {
+                "tags": [
+                    "DatabaseTasks"
+                ],
+                "summary": "Open a TCP receiver for a remote task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server hostname",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server port",
+                        "name": "serverPort",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Task name (xtrabackup, mariabackup, errorlog, etc.)",
+                        "name": "taskname",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
             }
         },
         "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/send-jobs-upgrade": {
@@ -14447,54 +15150,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-stopped": {
-            "get": {
-                "description": "Checks if a specified server within a cluster is in a slave Stop state.",
-                "produces": [
-                    "text/plain"
-                ],
-                "tags": [
-                    "Database"
-                ],
-                "summary": "Check if a server is in slave Stop state",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Server Name",
-                        "name": "serverName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Server Port",
-                        "name": "serverPort",
-                        "in": "path"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "200 -Server is in Slave Stop state!",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "500 -Server is not in Slave Stop state!\" or \"500 -No valid server!\" or \"500 -No cluster!",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-error": {
             "get": {
                 "description": "Checks if a specified server within a cluster is in a slave error state.",
@@ -14536,6 +15191,102 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "500 -Server is not in Slave Error state!\" or \"500 -No valid server!\" or \"500 -No cluster!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-late": {
+            "get": {
+                "description": "Checks if the specified server within the cluster is in a \"Slave Late\" state.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "replication"
+                ],
+                "summary": "Check if server is in Slave Late state",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "200 -Server is in Slave Late state!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "500 -No valid server!\" \"500 -Server is not in Slave Late state!\" \"500 -No cluster!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-stopped": {
+            "get": {
+                "description": "Checks if a specified server within a cluster is in a slave Stop state.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Check if a server is in slave Stop state",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "200 -Server is in Slave Stop state!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "500 -Server is not in Slave Stop state!\" or \"500 -No valid server!\" or \"500 -No cluster!",
                         "schema": {
                             "type": "string"
                         }
@@ -18745,9 +19496,9 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "JWT token",
+                        "description": "JWT token (upgrade_id present when async SSO upgrade started)",
                         "schema": {
-                            "$ref": "#/definitions/server.token"
+                            "$ref": "#/definitions/server.AuthTokenWithUpgrade"
                         }
                     },
                     "401": {
@@ -18959,7 +19710,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "OpenSVC server bash terminal container RID (allowed: container#db, container#jobs)",
+                        "description": "OpenSVC bash terminal container RID (server allowed: container#db, container#jobs; app allowed: container#app)",
                         "name": "rid",
                         "in": "query"
                     }
@@ -18978,7 +19729,121 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "No valid node\" or \"No valid cluster",
+                        "description": "No valid terminal target\" or \"No valid cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/terminal/connect/clusters/{clusterName}/apps/{appName}": {
+            "get": {
+                "description": "Establishes a WebSocket connection for a terminal session.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Terminal"
+                ],
+                "summary": "Terminal",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "OpenSVC bash terminal container RID (server allowed: container#db, container#jobs; app allowed: container#app)",
+                        "name": "rid",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Connected successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "No user provided",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No valid terminal target\" or \"No valid cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/terminal/connect/clusters/{clusterName}/apps/{appName}/{command}": {
+            "get": {
+                "description": "Establishes a WebSocket connection for a terminal session.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Terminal"
+                ],
+                "summary": "Terminal",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "OpenSVC bash terminal container RID (server allowed: container#db, container#jobs; app allowed: container#app)",
+                        "name": "rid",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Connected successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "No user provided",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No valid terminal target\" or \"No valid cluster",
                         "schema": {
                             "type": "string"
                         }
@@ -19022,7 +19887,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "OpenSVC server bash terminal container RID (allowed: container#db, container#jobs)",
+                        "description": "OpenSVC bash terminal container RID (server allowed: container#db, container#jobs; app allowed: container#app)",
                         "name": "rid",
                         "in": "query"
                     }
@@ -19041,7 +19906,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "No valid node\" or \"No valid cluster",
+                        "description": "No valid terminal target\" or \"No valid cluster",
                         "schema": {
                             "type": "string"
                         }
@@ -19085,7 +19950,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "OpenSVC server bash terminal container RID (allowed: container#db, container#jobs)",
+                        "description": "OpenSVC bash terminal container RID (server allowed: container#db, container#jobs; app allowed: container#app)",
                         "name": "rid",
                         "in": "query"
                     }
@@ -19104,7 +19969,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "No valid node\" or \"No valid cluster",
+                        "description": "No valid terminal target\" or \"No valid cluster",
                         "schema": {
                             "type": "string"
                         }
@@ -19148,7 +20013,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "OpenSVC server bash terminal container RID (allowed: container#db, container#jobs)",
+                        "description": "OpenSVC bash terminal container RID (server allowed: container#db, container#jobs; app allowed: container#app)",
                         "name": "rid",
                         "in": "query"
                     }
@@ -19167,7 +20032,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "No valid node\" or \"No valid cluster",
+                        "description": "No valid terminal target\" or \"No valid cluster",
                         "schema": {
                             "type": "string"
                         }
@@ -19211,7 +20076,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "OpenSVC server bash terminal container RID (allowed: container#db, container#jobs)",
+                        "description": "OpenSVC bash terminal container RID (server allowed: container#db, container#jobs; app allowed: container#app)",
                         "name": "rid",
                         "in": "query"
                     }
@@ -19230,7 +20095,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "No valid node\" or \"No valid cluster",
+                        "description": "No valid terminal target\" or \"No valid cluster",
                         "schema": {
                             "type": "string"
                         }
@@ -19438,203 +20303,6 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Error retrieving user info from token\" or \"Error Marshal",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/clusters/{clusterName}/actions/dropserver/{host}/{port}": {
-            "post": {
-                "description": "This endpoint allows dropping a server monitor or proxy monitor from a specified cluster.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ClusterMonitor"
-                ],
-                "summary": "Drop a server monitor from a cluster",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Host",
-                        "name": "host",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Port",
-                        "name": "port",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Monitor dropped successfully",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Cluster Not Found",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/clusters/{clusterName}/actions/dropserver/{host}/{port}/{type}": {
-            "post": {
-                "description": "This endpoint allows dropping a server monitor or proxy monitor from a specified cluster.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ClusterMonitor"
-                ],
-                "summary": "Drop a server monitor from a cluster",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Monitor Type (proxy or database)",
-                        "name": "type",
-                        "in": "path"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Host",
-                        "name": "host",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Port",
-                        "name": "port",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Monitor dropped successfully",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Cluster Not Found",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/clusters/{clusterName}/actions/dropserver/{serverName}": {
-            "post": {
-                "description": "This endpoint allows dropping a server monitor or proxy monitor from a specified cluster.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ClusterMonitor"
-                ],
-                "summary": "Drop a server monitor from a cluster by name",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Monitor Server ID",
-                        "name": "serverName",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Monitor dropped successfully",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Cluster Not Found",
                         "schema": {
                             "type": "string"
                         }
@@ -20514,54 +21182,6 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/clusters/{clusterName}/servers/{serverName}/is-slave-late": {
-            "get": {
-                "description": "Checks if the specified server within the cluster is in a \"Slave Late\" state.",
-                "produces": [
-                    "text/plain"
-                ],
-                "tags": [
-                    "replication"
-                ],
-                "summary": "Check if server is in Slave Late state",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Server Name",
-                        "name": "serverName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Server Port",
-                        "name": "serverPort",
-                        "in": "path"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "200 -Server is in Slave Late state!",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "500 -No valid server!\" \"500 -Server is not in Slave Late state!\" \"500 -No cluster!",
                         "schema": {
                             "type": "string"
                         }
@@ -21691,6 +22311,21 @@ const docTemplate = `{
                 "inRollingRestart": {
                     "type": "boolean"
                 },
+                "interventionCurrent": {
+                    "$ref": "#/definitions/cluster.InterventionEntry"
+                },
+                "interventionHistory": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.InterventionEntry"
+                    }
+                },
+                "interventionPending": {
+                    "$ref": "#/definitions/cluster.InterventionEntry"
+                },
+                "interventionSuppressedAlerts": {
+                    "type": "integer"
+                },
                 "isAlertDisable": {
                     "type": "boolean"
                 },
@@ -21725,6 +22360,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "isGitPush": {
+                    "type": "boolean"
+                },
+                "isIntervention": {
                     "type": "boolean"
                 },
                 "isLostMajority": {
@@ -22084,6 +22722,38 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.InterventionEntry": {
+            "type": "object",
+            "properties": {
+                "autoEndAt": {
+                    "description": "auto-unmute time (zero = manual)",
+                    "type": "string"
+                },
+                "endedAt": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "scheduledAt": {
+                    "description": "future start time (zero = immediate)",
+                    "type": "string"
+                },
+                "scope": {
+                    "description": "\"cluster\" or \"global\"",
+                    "type": "string"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "suppressedAlerts": {
+                    "type": "integer"
+                },
+                "user": {
+                    "type": "string"
+                }
+            }
+        },
         "cluster.PFSExplainRecord": {
             "type": "object",
             "properties": {
@@ -22195,6 +22865,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "state": {
+                    "type": "string"
+                },
+                "templateMD5": {
+                    "type": "string"
+                },
+                "templateMD5Prov": {
                     "type": "string"
                 },
                 "tunnel": {
@@ -23385,6 +24061,17 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "cname": {
+                    "description": "Existing host-route fields kept for backward compatibility.",
+                    "type": "string"
+                },
+                "destPort": {
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "Explicit source/destination fields.",
+                    "type": "string"
+                },
+                "name": {
                     "type": "string"
                 },
                 "port": {
@@ -23394,6 +24081,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "protocol": {
+                    "type": "string"
+                },
+                "sourcePort": {
                     "type": "string"
                 }
             }
@@ -23402,6 +24092,17 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "cname": {
+                    "description": "Existing host-route fields kept for backward compatibility.",
+                    "type": "string"
+                },
+                "destPort": {
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "Explicit source/destination fields.",
+                    "type": "string"
+                },
+                "name": {
                     "type": "string"
                 },
                 "port": {
@@ -23411,6 +24112,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "protocol": {
+                    "type": "string"
+                },
+                "sourcePort": {
                     "type": "string"
                 },
                 "status": {
@@ -23797,6 +24501,13 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "pendingDBCRC": {
+                    "description": "PendingDBCRC and PendingPrxCRC are CRC32 checksums of new compliance\nfiles found in PluginDataDir or embedded. Non-zero when an update is pending.",
+                    "type": "integer"
+                },
+                "pendingPrxCRC": {
+                    "type": "integer"
+                },
                 "proxyServersTags": {
                     "type": "array",
                     "items": {
@@ -24053,6 +24764,12 @@ const docTemplate = `{
                 "analyzeUseSql": {
                     "type": "boolean"
                 },
+                "apiAutologin": {
+                    "type": "boolean"
+                },
+                "apiAutologinUser": {
+                    "type": "string"
+                },
                 "apiBind": {
                     "type": "string"
                 },
@@ -24076,6 +24793,9 @@ const docTemplate = `{
                 },
                 "apiCredentialsSecureConfig": {
                     "type": "boolean"
+                },
+                "apiDashboardUser": {
+                    "type": "string"
                 },
                 "apiErrorDisregardPort": {
                     "type": "boolean"
@@ -24608,6 +25328,9 @@ const docTemplate = `{
                 "cloud18CostCurrency": {
                     "type": "string"
                 },
+                "cloud18CrmApiUrl": {
+                    "type": "string"
+                },
                 "cloud18DatabaseReadSrvRecord": {
                     "type": "string"
                 },
@@ -24622,6 +25345,12 @@ const docTemplate = `{
                 },
                 "cloud18DbaUserCredential": {
                     "type": "string"
+                },
+                "cloud18DisableForSale": {
+                    "type": "boolean"
+                },
+                "cloud18DisablePeers": {
+                    "type": "boolean"
                 },
                 "cloud18Domain": {
                     "type": "string"
@@ -24707,6 +25436,9 @@ const docTemplate = `{
                 "cloud18OpenSysops": {
                     "type": "boolean"
                 },
+                "cloud18PeerHealthMode": {
+                    "type": "string"
+                },
                 "cloud18PlatformDescription": {
                     "type": "string"
                 },
@@ -24751,6 +25483,9 @@ const docTemplate = `{
                 },
                 "cloud18SubscribedDbops": {
                     "type": "boolean"
+                },
+                "cloud18SubscriptionPlan": {
+                    "type": "string"
                 },
                 "clusterHead": {
                     "type": "string"
@@ -25487,6 +26222,12 @@ const docTemplate = `{
                 "monitoringKeyPathGitOverwrite": {
                     "type": "boolean"
                 },
+                "monitoringLogApiLogin": {
+                    "type": "boolean"
+                },
+                "monitoringLogApiLoginSilentUsers": {
+                    "type": "string"
+                },
                 "monitoringLongQueryLogLength": {
                     "type": "integer"
                 },
@@ -25555,6 +26296,9 @@ const docTemplate = `{
                 },
                 "monitoringProcesslistLimit": {
                     "type": "string"
+                },
+                "monitoringProcesslistQueryLength": {
+                    "type": "integer"
                 },
                 "monitoringProcesslistTransactions": {
                     "type": "boolean"
@@ -25641,6 +26385,15 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "monitoringTunnelKeyPath": {
+                    "type": "string"
+                },
+                "monitoringVariableChange": {
+                    "type": "boolean"
+                },
+                "monitoringVariableChangeIgnore": {
+                    "type": "string"
+                },
+                "monitoringVariableChangeScript": {
                     "type": "string"
                 },
                 "monitoringVariableDiff": {
@@ -25730,6 +26483,9 @@ const docTemplate = `{
                 "onpremiseSshStopProxyScript": {
                     "type": "string"
                 },
+                "onpremiseSshUpgradeDbScript": {
+                    "type": "string"
+                },
                 "opensvcAdminUser": {
                     "type": "string"
                 },
@@ -25741,6 +26497,9 @@ const docTemplate = `{
                 },
                 "opensvcHost": {
                     "type": "string"
+                },
+                "opensvcImageForcePull": {
+                    "type": "boolean"
                 },
                 "opensvcP12Certificate": {
                     "type": "string"
@@ -25754,8 +26513,14 @@ const docTemplate = `{
                 "opensvcUseCollectorApi": {
                     "type": "boolean"
                 },
+                "opensvcUseOrchestratedStart": {
+                    "type": "boolean"
+                },
                 "opensvcUser": {
                     "type": "string"
+                },
+                "opensvcV3ProvisionDelay": {
+                    "type": "integer"
                 },
                 "optimizeUseSql": {
                     "type": "boolean"
@@ -25814,8 +26579,8 @@ const docTemplate = `{
                 "provAppTemplateRepoUser": {
                     "type": "string"
                 },
-                "provAppVolumePools": {
-                    "type": "string"
+                "provAutoUpdateCompliance": {
+                    "type": "boolean"
                 },
                 "provDBApplyDynamicConfig": {
                     "type": "boolean"
@@ -25849,6 +26614,9 @@ const docTemplate = `{
                 },
                 "provDbClientBasedir": {
                     "type": "string"
+                },
+                "provDbConfig": {
+                    "type": "boolean"
                 },
                 "provDbConfigPreserve": {
                     "type": "boolean"
@@ -26415,6 +27183,12 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "schedulerDbServersSenderPorts": {
+                    "type": "string"
+                },
+                "schedulerJobsExecRemote": {
+                    "type": "string"
+                },
+                "schedulerJobsMode": {
                     "type": "string"
                 },
                 "schedulerJobsSsh": {
@@ -27260,6 +28034,9 @@ const docTemplate = `{
                 },
                 "prov-service-plan": {
                     "type": "string"
+                },
+                "repmgrVersion": {
+                    "type": "string"
                 }
             }
         },
@@ -27397,6 +28174,17 @@ const docTemplate = `{
                 }
             }
         },
+        "server.AuthTokenWithUpgrade": {
+            "type": "object",
+            "properties": {
+                "token": {
+                    "type": "string"
+                },
+                "upgrade_id": {
+                    "type": "string"
+                }
+            }
+        },
         "server.CloudUserForm": {
             "type": "object",
             "properties": {
@@ -27509,6 +28297,20 @@ const docTemplate = `{
                 }
             }
         },
+        "server.PoolOption": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "shared": {
+                    "type": "boolean"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
         "server.PreservedVarsCnfRequest": {
             "type": "object",
             "properties": {
@@ -27528,6 +28330,9 @@ const docTemplate = `{
         "server.ReplicationManager": {
             "type": "object",
             "properties": {
+                "activeInterventionCount": {
+                    "type": "integer"
+                },
                 "agents": {
                     "type": "array",
                     "items": {
@@ -27585,6 +28390,9 @@ const docTemplate = `{
                 "fullVersion": {
                     "type": "string"
                 },
+                "globalInterventionEntry": {
+                    "$ref": "#/definitions/cluster.InterventionEntry"
+                },
                 "graphiteTemplateList": {
                     "type": "object",
                     "additionalProperties": {
@@ -27601,6 +28409,12 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "isGitPush": {
+                    "type": "boolean"
+                },
+                "isGlobalIntervention": {
+                    "type": "boolean"
+                },
+                "isGlobalInterventionPending": {
                     "type": "boolean"
                 },
                 "isSavingConfig": {
@@ -28121,14 +28935,6 @@ const docTemplate = `{
                 }
             }
         },
-        "server.token": {
-            "type": "object",
-            "properties": {
-                "token": {
-                    "type": "string"
-                }
-            }
-        },
         "server.userCredentials": {
             "type": "object",
             "properties": {
@@ -28251,7 +29057,6 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "lastUpdate": {
-                    "description": "Last update time of the cache",
                     "type": "string"
                 },
                 "layers": {
@@ -28261,11 +29066,14 @@ const docTemplate = `{
                     }
                 },
                 "reference": {
-                    "description": "Reference to the image or repository",
                     "type": "string"
                 },
                 "tree": {
                     "$ref": "#/definitions/treehelper.FileEntry"
+                },
+                "truncated": {
+                    "description": "true when file count exceeded the limit",
+                    "type": "boolean"
                 }
             }
         },

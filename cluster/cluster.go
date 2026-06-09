@@ -167,6 +167,7 @@ type Cluster struct {
 	DiskType                      map[string]string          `json:"diskType" groups:"web"`
 	VMType                        map[string]bool            `json:"vmType" groups:"web"`
 	AppS3Providers                []string                   `json:"appS3Providers" groups:"web"`
+	GatewayConflicts              map[string]string          `json:"gatewayConflicts" groups:"web"`
 	// s3Providers groups S3 provider state and locking primitives in one place.
 	// Use the accessor methods (Add/Remove/Update/GetS3ProvidersSnapshot) and
 	// CRUD transaction lock helpers instead of direct field mutation.
@@ -176,6 +177,7 @@ type Cluster struct {
 	hostList                      []string                   `json:"-"`
 	proxyList                     []string                   `json:"-"`
 	clusterList                   map[string]*Cluster        `json:"-"`
+	clusterOrder                  []string                   `json:"-"` // ClusterList order; index = ownership priority
 	deprecatedKeys                map[string]map[string]bool `json:"-"`
 	slaves                        serverList                 `json:"slaves" groups:"apps"`
 	master                        *ServerMonitor             `json:"master" groups:"apps"`
@@ -654,7 +656,10 @@ func (cluster *Cluster) InitFromConf() {
 	}
 	cluster.SqlGeneralLog.AddHook(hookgen)
 
-	cluster.LoadAppConfigs()
+	if loadErr := cluster.LoadAppConfigs(); loadErr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
+			"Startup app config load failed (some app configs may not have loaded): %v", loadErr)
+	}
 
 	// Configurator generates base configuration from tags, which is overridden by:
 	// 1. Cluster-wide preserved variables
@@ -1931,6 +1936,35 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.ServerIdList = cluster.GetDBServerIdList()
 	cluster.StateMachine.RemoveFailoverState()
 
+	// Phase 3a: refresh cached intra-cluster conflict state.
+	cluster.RefreshGatewayConflicts()
+	cluster.WithdrawConflictedGatewayRoutes()
+
+	// Phase 3b: cache cross-cluster conflicts and withdraw stale fragments —
+	// same policy as 3a and startup.  Peer routes come only from clusters that
+	// appear before this one in clusterOrder (first-wins priority).
+	// RefreshGatewayConflicts above replaced the map with fresh intra-conflicts;
+	// MarkGatewayConflicts below adds cross-cluster ones without overwriting them.
+	gw := strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService))
+	if gw != "" {
+		var priorRoutes [][]config.Route
+		for _, name := range cluster.clusterOrder {
+			if name == cluster.Name {
+				break
+			}
+			peer, ok := cluster.clusterList[name]
+			if !ok || peer == nil {
+				continue
+			}
+			if strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) == gw {
+				priorRoutes = append(priorRoutes, peer.OwnGatewayRoutes(gw)...)
+			}
+		}
+		if conflicts, _ := cluster.DetectCrossClusterGatewayConflicts(priorRoutes); len(conflicts) > 0 {
+			cluster.MarkGatewayConflicts(conflicts)
+			cluster.WithdrawConflictedGatewayRoutes()
+		}
+	}
 }
 
 func (cluster *Cluster) FailoverForce() error {
@@ -2700,8 +2734,10 @@ func (c *Cluster) AddProxy(prx DatabaseProxy) {
 	c.Proxies = append(c.Proxies, prx)
 }
 
-func (c *Cluster) AddApp(app *App) {
-	c.initializeAppForRegistration(app)
+func (c *Cluster) AddApp(app *App) error {
+	if err := c.initializeAppForRegistration(app); err != nil {
+		return err
+	}
 	c.Lock()
 	c.Apps = append(c.Apps, app)
 	c.bumpAppListVersion()
@@ -2715,6 +2751,7 @@ func (c *Cluster) AddApp(app *App) {
 	} else {
 		c.Conf.Cloud18ApplicationCreditsUsed += app.AppConfig.ProvAppCreditUsed
 	}
+	return nil
 }
 
 func (cluster *Cluster) ConfigDiscovery() error {
