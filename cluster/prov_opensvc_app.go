@@ -1086,8 +1086,10 @@ frontend %s
 backend %s
     mode http
     balance leastconn
-    option http-keep-alive
-    option http-ignore-probes
+    option http-server-close
+    timeout connect 10s
+    timeout server 5m
+    timeout tunnel 1h
     default-server inter 5s fastinter 2s downinter 10s fall 3 rise 2
     server-template srv %d %s:%s resolvers cluster check init-addr none
 `, frontend, route.CName, route.SourcePort, backend, backend, numBE, opensvcDNS, route.DestinationPort)
@@ -1102,6 +1104,10 @@ backend %s
     cookie SERVER insert indirect nocache dynamic
     balance roundrobin
     dynamic-cookie-key mysecretphrase
+    option http-server-close
+    timeout connect 10s
+    timeout server 5m
+    timeout tunnel 1h
     server-template srv %d %s:%s resolvers cluster check init-addr none
 `, backend, route.CName, backend, numBE, opensvcDNS, route.DestinationPort)
 	}
