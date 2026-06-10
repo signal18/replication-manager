@@ -476,8 +476,12 @@ func (cluster *Cluster) RunSysbench() error {
 // RunSysbenchScaleThreads runs the configured test doubling threads from 1 up to 2×cores.
 // Each thread count is logged as a normal entry with IsScale=true and a shared ScaleGroup timestamp.
 func (cluster *Cluster) RunSysbenchScaleThreads() error {
+	scaleGroupTime := time.Now()
+
+	prepareStart := time.Now()
 	cluster.CleanupBench()
 	cluster.PrepareBench()
+	cluster.LogSysbenchStep("prepare", prepareStart, scaleGroupTime)
 
 	cores, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
 	if cores < 1 {
@@ -488,14 +492,17 @@ func (cluster *Cluster) RunSysbenchScaleThreads() error {
 		maxThreads = 2
 	}
 
-	scaleGroupTime := time.Now()
-
 	threads := 1
 	for threads <= maxThreads {
 		cluster.Conf.SysbenchThreads = threads
 		cluster.RunSysBench("oltp", strconv.Itoa(threads), "1000000", strconv.Itoa(cluster.Conf.SysbenchTime), "complex", scaleGroupTime)
 		threads = threads * 2
 	}
+
+	cleanupStart := time.Now()
+	cluster.CleanupBench()
+	cluster.LogSysbenchStep("cleanup", cleanupStart, scaleGroupTime)
+
 	return nil
 }
 

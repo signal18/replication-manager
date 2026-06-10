@@ -52,6 +52,7 @@ type SysbenchLogEntry struct {
 	TPSPerDBU    float64                      `json:"tpsPerDbu"`              // avgTps / clusterDBU — performance efficiency
 	IsScale      bool                         `json:"isScale,omitempty"`      // true if part of a thread-scaling run
 	ScaleGroup   *time.Time                   `json:"scaleGroup,omitempty"`   // ties scale entries together (start time of the scale run)
+	Step         string                       `json:"step,omitempty"`         // prepare, run, cleanup — only set for scale entries
 }
 
 // SysbenchLog holds the full history of sysbench runs for a cluster.
@@ -83,6 +84,20 @@ func (cluster *Cluster) LoadSysbenchLog() {
 		return
 	}
 	cluster.SysbenchHistory = log
+}
+
+// LogSysbenchStep logs a prepare or cleanup step within a scale run.
+func (cluster *Cluster) LogSysbenchStep(step string, startedAt time.Time, scaleGroup time.Time) {
+	t := scaleGroup
+	entry := SysbenchLogEntry{
+		StartedAt:  startedAt,
+		EndedAt:    time.Now(),
+		Step:       step,
+		IsScale:    true,
+		ScaleGroup: &t,
+	}
+	cluster.SysbenchHistory.Entries = append(cluster.SysbenchHistory.Entries, entry)
+	cluster.SaveSysbenchLog()
 }
 
 // LogSysbenchRun captures the context and results of a sysbench run and appends it to history.
@@ -159,6 +174,7 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 	// Scale run metadata
 	if len(scaleGroup) > 0 && !scaleGroup[0].IsZero() {
 		entry.IsScale = true
+		entry.Step = "run"
 		t := scaleGroup[0]
 		entry.ScaleGroup = &t
 	}

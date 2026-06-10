@@ -167,7 +167,9 @@ function BenchCompareModal({ isOpen, closeModal, clusterName }) {
       clusterService.getSysbenchHistory(clusterName, baseURL)
         .then(res => {
           const data = res.data
-          const entries = Array.isArray(data) ? data : data?.Entries || data?.entries || []
+          const allEntries = Array.isArray(data) ? data : data?.Entries || data?.entries || []
+          // Filter out prepare/cleanup steps — only show run entries
+          const entries = allEntries.filter(e => !e.step || e.step === 'run')
           setRuns(entries)
           if (entries.length > 0) setSelected(new Set([entries.length - 1]))
         })
