@@ -220,10 +220,6 @@ const TerminalComponent = () => {
       const socket = new WebSocket(url);
       socketRef.current = socket;
 
-      // Attach the terminal to the WebSocket using AttachAddon
-      const attachAddon = new AttachAddon(socket);
-      terminalInstanceRef.current.loadAddon(attachAddon);
-
       socket.onerror = () => {
         if (socketRef.current !== socket) {
           return;
@@ -236,8 +232,17 @@ const TerminalComponent = () => {
         if (socketRef.current !== socket) {
           return;
         }
-        setStatus('connected');
+        // Send auth first, then attach terminal addon after backend processes
+        // the token. AttachAddon intercepts messages — loading it before auth
+        // causes a race that only works when DevTools slows down JS execution.
         socket.send(JSON.stringify({ type: 'auth', token: getTokenByBaseURL(baseURL) }));
+        setTimeout(() => {
+          if (socketRef.current === socket && socket.readyState === WebSocket.OPEN) {
+            const attachAddon = new AttachAddon(socket);
+            terminalInstanceRef.current.loadAddon(attachAddon);
+            setStatus('connected');
+          }
+        }, 100);
       };
 
       socket.onclose = () => {
