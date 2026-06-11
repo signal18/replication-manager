@@ -220,6 +220,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 	}
 
 	backend_ip_host := make(map[string]string)
+	backend_svname_host := make(map[string]string) // svname → FQDN for DNS failure fallback
 	if proxy.HasDNS() {
 		// When using FQDN map server state host->IP to locate in show stats where it's only IPs
 		cmd := "show servers state"
@@ -254,6 +255,9 @@ func (proxy *HaproxyProxy) Refresh() error {
 			if len(line) > 17 {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "HAProxy adding IP map %s %s", line[4], line[17])
 				backend_ip_host[line[4]] = line[17]
+				if line[3] != "" && line[17] != "" {
+					backend_svname_host[line[3]] = line[17]
+				}
 			}
 		}
 
@@ -297,6 +301,10 @@ func (proxy *HaproxyProxy) Refresh() error {
 		if len(line) < 73 {
 			cluster.SetState("WARN0078", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0078"], err), ErrFrom: "MON"})
 			return errors.New(clusterError["WARN0078"])
+		}
+		// Skip FRONTEND/BACKEND summary lines — only process actual server entries
+		if line[1] == "FRONTEND" || line[1] == "BACKEND" {
+			continue
 		}
 		if strings.Contains(strings.ToLower(line[0]), cluster.Conf.HaproxyAPIWriteBackend) {
 			host := line[73]
@@ -376,9 +384,13 @@ func (proxy *HaproxyProxy) Refresh() error {
 				host = backend_ip_host[host]
 			}
 			srv := cluster.GetServerFromURL(host)
-			// if srv != nil && srv.Id != line[1] {
-			// 	cluster.SetState("WARN0144", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0144"], line[1], srv.Id, host), ErrFrom: "HAProxy", ServerUrl: srv.URL})
-			// }
+			if srv == nil && proxy.HasDNS() {
+				// DNS resolution may have failed (server DOWN/MAINT) — use the
+				// FQDN from show servers state via the svname→FQDN map.
+				if fqdn, ok := backend_svname_host[line[1]]; ok {
+					srv = cluster.GetServerFromURL(fqdn)
+				}
+			}
 
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "HAProxy stat lookup reader: host %s translated to %s", line[73], host)
 
