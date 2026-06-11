@@ -30,6 +30,9 @@ func TestBuildRouteFragment_HostRouteUsesOriginDevelopNames(t *testing.T) {
 	if !strings.Contains(fragment, "backend minio.crm.svc.cluster.local_9001") {
 		t.Fatalf("host backend name mismatch: %s", fragment)
 	}
+	if !strings.Contains(fragment, "timeout tunnel 1h") {
+		t.Fatalf("host fragment missing websocket timeout tunnel: %s", fragment)
+	}
 	if strings.Contains(fragment, "be_") || strings.Contains(fragment, "repman_") {
 		t.Fatalf("host fragment still contains tokenized naming: %s", fragment)
 	}
@@ -61,6 +64,9 @@ func TestBuildRouteFragment_PortRouteUsesReadableNames(t *testing.T) {
 	}
 	if !strings.Contains(fragment, "backend "+base+"_backend") {
 		t.Fatalf("port backend name mismatch: %s", fragment)
+	}
+	if !strings.Contains(fragment, "timeout tunnel 1h") {
+		t.Fatalf("port fragment missing websocket timeout tunnel: %s", fragment)
 	}
 	if strings.Contains(fragment, "be_") || strings.Contains(fragment, "fe_") || strings.Contains(fragment, "repman_") {
 		t.Fatalf("port fragment still contains tokenized naming: %s", fragment)
