@@ -38,6 +38,7 @@ import (
 	_ "net/http/pprof"
 	"net/url"
 	"os"
+	"strings"
 
 	basiclog "log"
 
@@ -46,6 +47,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
+	"github.com/signal18/replication-manager/config"
 	_ "github.com/signal18/replication-manager/docs"
 	log "github.com/sirupsen/logrus"
 	httpSwagger "github.com/swaggo/http-swagger"
@@ -381,8 +383,13 @@ func (repman *ReplicationManager) httpserver() {
 
 	// Middleware: translate h2 Extended CONNECT (RFC 8441) into h1-style
 	// WebSocket upgrade headers so gorilla/websocket can handle it.
+	// Also logs terminal requests for debugging h2/WebSocket issues.
 	wsH2Adapter := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/terminal/") {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "TERMINAL DEBUG: method=%s proto=%s url=%s headers=%v", r.Method, r.Proto, r.URL.String(), r.Header)
+		}
 		if r.Method == "CONNECT" && r.Header.Get(":protocol") == "websocket" {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "TERMINAL DEBUG: h2 Extended CONNECT detected, rewriting to GET+Upgrade")
 			r.Method = "GET"
 			r.Header.Set("Connection", "Upgrade")
 			r.Header.Set("Upgrade", "websocket")
