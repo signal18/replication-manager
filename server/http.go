@@ -383,13 +383,15 @@ func (repman *ReplicationManager) httpserver() {
 
 	// Middleware: translate h2 Extended CONNECT (RFC 8441) into h1-style
 	// WebSocket upgrade headers so gorilla/websocket can handle it.
-	// Also logs terminal requests for debugging h2/WebSocket issues.
+	// Debug logging gated on Verbose level >= 4.
 	wsH2Adapter := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "/terminal/") {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "TERMINAL DEBUG: method=%s proto=%s url=%s headers=%v", r.Method, r.Proto, r.URL.String(), r.Header)
+		if repman.Conf.Verbose && repman.Conf.LogLevel >= 4 && strings.Contains(r.URL.Path, "/terminal/") {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "TERMINAL: method=%s proto=%s url=%s headers=%v", r.Method, r.Proto, r.URL.String(), r.Header)
 		}
 		if r.Method == "CONNECT" && r.Header.Get(":protocol") == "websocket" {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "TERMINAL DEBUG: h2 Extended CONNECT detected, rewriting to GET+Upgrade")
+			if repman.Conf.Verbose && repman.Conf.LogLevel >= 4 {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "TERMINAL: h2 Extended CONNECT detected, rewriting to GET+Upgrade")
+			}
 			r.Method = "GET"
 			r.Header.Set("Connection", "Upgrade")
 			r.Header.Set("Upgrade", "websocket")
