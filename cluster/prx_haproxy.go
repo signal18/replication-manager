@@ -528,12 +528,18 @@ func (proxy *HaproxyProxy) setLastReadBackendStatus(status string) {
 }
 
 // HasAvailableReader returns true if the read backend currently has at least
-// one entry whose repman-reported state is not stateMaster (i.e. not the
-// current master/leader) and whose effective HAProxy status for this pass is
-// "UP".
+// one entry that is not the current master/leader's own row and whose
+// effective HAProxy status for this pass is "UP". The master/leader's row is
+// identified by host/port identity against cluster.GetMaster() rather than by
+// b.Status == stateMaster, because a Galera/Wsrep leader's repman state is
+// stateWsrep, not stateMaster (cluster.GetMaster() returns cluster.vmaster for
+// Wsrep topologies, where cluster.master == cluster.vmaster == leader).
 func (proxy *HaproxyProxy) HasAvailableReader() bool {
+	cluster := proxy.ClusterGroup
+	master := cluster.GetMaster()
 	for _, b := range proxy.BackendsRead {
-		if b.Status != stateMaster && b.PrxStatus == "UP" {
+		isMasterEntry := master != nil && b.Host == master.Host && b.Port == master.Port
+		if !isMasterEntry && b.PrxStatus == "UP" {
 			return true
 		}
 	}

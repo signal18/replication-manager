@@ -20,34 +20,59 @@ import (
 func TestHaproxyHasAvailableReader(t *testing.T) {
 	tests := []struct {
 		name     string
+		topology string
 		backends []Backend
 		want     bool
 	}{
 		{
 			name:     "no backends",
+			topology: config.TopoMasterSlave,
 			backends: nil,
 			want:     false,
 		},
 		{
-			name: "only master UP",
+			name:     "only master entry UP",
+			topology: config.TopoMasterSlave,
 			backends: []Backend{
-				{Status: stateMaster, PrxStatus: "UP"},
+				{Host: "127.0.0.1", Port: "3306", Status: stateMaster, PrxStatus: "UP"},
 			},
 			want: false,
 		},
 		{
-			name: "master UP and slave DRAIN",
+			name:     "master UP and slave DRAIN",
+			topology: config.TopoMasterSlave,
 			backends: []Backend{
-				{Status: stateMaster, PrxStatus: "UP"},
-				{Status: stateSlave, PrxStatus: "DRAIN"},
+				{Host: "127.0.0.1", Port: "3306", Status: stateMaster, PrxStatus: "UP"},
+				{Host: "127.0.0.1", Port: "3307", Status: stateSlave, PrxStatus: "DRAIN"},
 			},
 			want: false,
 		},
 		{
-			name: "master DRAIN and slave UP",
+			name:     "master DRAIN and slave UP",
+			topology: config.TopoMasterSlave,
 			backends: []Backend{
-				{Status: stateMaster, PrxStatus: "DRAIN"},
-				{Status: stateSlave, PrxStatus: "UP"},
+				{Host: "127.0.0.1", Port: "3306", Status: stateMaster, PrxStatus: "DRAIN"},
+				{Host: "127.0.0.1", Port: "3307", Status: stateSlave, PrxStatus: "UP"},
+			},
+			want: true,
+		},
+		{
+			// Regression test: a Wsrep leader's repman state is stateWsrep, never
+			// stateMaster, so its read-backend row must be excluded by host/port
+			// identity against cluster.GetMaster(), not by Status.
+			name:     "wsrep leader only entry UP is excluded",
+			topology: config.TopoMultiMasterWsrep,
+			backends: []Backend{
+				{Host: "127.0.0.1", Port: "3306", Status: stateWsrep, PrxStatus: "UP"},
+			},
+			want: false,
+		},
+		{
+			name:     "wsrep leader UP plus a second wsrep node UP returns true",
+			topology: config.TopoMultiMasterWsrep,
+			backends: []Backend{
+				{Host: "127.0.0.1", Port: "3306", Status: stateWsrep, PrxStatus: "UP"},
+				{Host: "127.0.0.1", Port: "3307", Status: stateWsrep, PrxStatus: "UP"},
 			},
 			want: true,
 		},
@@ -55,7 +80,19 @@ func TestHaproxyHasAvailableReader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			proxy := &HaproxyProxy{Proxy: Proxy{BackendsRead: tt.backends}}
+			cluster := setupTestCluster(t, 2)
+			defer cleanupTestCluster(t, cluster)
+
+			cluster.Servers[0].Host = "127.0.0.1"
+			cluster.Servers[0].Port = "3306"
+			cluster.Servers[1].Host = "127.0.0.1"
+			cluster.Servers[1].Port = "3307"
+
+			cluster.Topology = tt.topology
+			cluster.master = cluster.Servers[0]
+			cluster.vmaster = cluster.Servers[0]
+
+			proxy := &HaproxyProxy{Proxy: Proxy{BackendsRead: tt.backends, ClusterGroup: cluster}}
 			if got := proxy.HasAvailableReader(); got != tt.want {
 				t.Errorf("HasAvailableReader() = %v, want %v", got, tt.want)
 			}
@@ -155,6 +192,17 @@ func haproxyStatRow(pxname, svname, status, addr string) string {
 	fields := make([]string, 74)
 	fields[0], fields[1], fields[17], fields[73] = pxname, svname, status, addr
 	return strings.Join(fields, ",")
+}
+
+// cmdIndex returns the index of the first occurrence of want in commands, or
+// -1 if not present.
+func cmdIndex(commands []string, want string) int {
+	for i, c := range commands {
+		if c == want {
+			return i
+		}
+	}
+	return -1
 }
 
 // TestHaproxyRefreshMasterFallbackSamePass reproduces the same-pass
@@ -479,5 +527,14 @@ func TestHaproxyRefreshMasterStaleMaintSamePass(t *testing.T) {
 	}
 	if !hasCmd(wantMasterDrain) {
 		t.Errorf("Refresh() commands = %v, want to contain %q (master should be re-drained in the same pass after the stale MAINT is reconciled, since a slave reader is available)", commands, wantMasterDrain)
+	}
+
+	readyIdx := cmdIndex(commands, wantMasterReady)
+	drainIdx := cmdIndex(commands, wantMasterDrain)
+	if readyIdx < 0 || drainIdx < 0 {
+		t.Fatalf("Refresh() commands = %v, want both %q and %q present", commands, wantMasterReady, wantMasterDrain)
+	}
+	if readyIdx >= drainIdx {
+		t.Errorf("Refresh() commands = %v, want %q (index %d) before %q (index %d)", commands, wantMasterReady, readyIdx, wantMasterDrain, drainIdx)
 	}
 }
