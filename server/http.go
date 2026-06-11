@@ -379,8 +379,22 @@ func (repman *ReplicationManager) httpserver() {
 		handlers.AllowedOriginValidator(repman.handleOriginValidator),
 	)(router)
 
+	// Middleware: translate h2 Extended CONNECT (RFC 8441) into h1-style
+	// WebSocket upgrade headers so gorilla/websocket can handle it.
+	wsH2Adapter := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "CONNECT" && r.Header.Get(":protocol") == "websocket" {
+			r.Method = "GET"
+			r.Header.Set("Connection", "Upgrade")
+			r.Header.Set("Upgrade", "websocket")
+			if r.Header.Get("Sec-WebSocket-Version") == "" {
+				r.Header.Set("Sec-WebSocket-Version", "13")
+			}
+		}
+		corsHandler.ServeHTTP(w, r)
+	})
+
 	// Wrap with h2c for HTTP/2 over plain TCP (reverse proxy use case)
-	h2cHandler := h2c.NewHandler(corsHandler, &http2.Server{})
+	h2cHandler := h2c.NewHandler(wsH2Adapter, &http2.Server{})
 
 	server := &http.Server{
 		Addr:     repman.Conf.BindAddr + ":" + repman.Conf.HttpPort,
