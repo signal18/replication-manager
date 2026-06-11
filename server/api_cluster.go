@@ -6195,52 +6195,6 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 	}
 }
 
-func (repman *ReplicationManager) handlerMuxClusterSysbenchHistory(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", http.StatusForbidden)
-			return
-		}
-		n := 10
-		if q := r.URL.Query().Get("last"); q != "" {
-			fmt.Sscanf(q, "%d", &n)
-		}
-		runs := mycluster.GetLastSysbenchRuns(n)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(runs)
-	} else {
-		http.Error(w, "No cluster", http.StatusInternalServerError)
-	}
-}
-
-func (repman *ReplicationManager) handlerMuxClusterSysbenchCompare(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", http.StatusForbidden)
-			return
-		}
-		metric := r.URL.Query().Get("metric")
-		if metric == "" {
-			metric = "mysql_global_status_questions"
-		}
-		result, err := mycluster.CompareSysbenchRuns(metric, nil)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(result)
-	} else {
-		http.Error(w, "No cluster", http.StatusInternalServerError)
-	}
-}
-
 // handlerMuxClusterApplyDynamicConfig handles the application of dynamic configuration for a given cluster.
 // @Summary Apply dynamic configuration for a specific cluster
 // @Description This endpoint applies dynamic configuration for the specified cluster.

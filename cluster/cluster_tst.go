@@ -492,10 +492,16 @@ func (cluster *Cluster) RunSysbenchScaleThreads() error {
 		maxThreads = 2
 	}
 
+	origThreads := cluster.Conf.SysbenchThreads
+	defer func() { cluster.Conf.SysbenchThreads = origThreads }()
+
 	threads := 1
 	for threads <= maxThreads {
 		cluster.Conf.SysbenchThreads = threads
-		cluster.RunSysBench("oltp", strconv.Itoa(threads), "1000000", strconv.Itoa(cluster.Conf.SysbenchTime), "complex", scaleGroupTime)
+		_, _, _, err := cluster.RunSysBench("oltp", strconv.Itoa(threads), "1000000", strconv.Itoa(cluster.Conf.SysbenchTime), "complex", scaleGroupTime)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Scale run at %d threads failed: %s", threads, err)
+		}
 		threads = threads * 2
 	}
 

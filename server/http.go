@@ -392,12 +392,15 @@ func (repman *ReplicationManager) httpserver() {
 			if repman.Conf.Verbose && repman.Conf.LogLevel >= 4 {
 				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "TERMINAL: h2 Extended CONNECT detected, rewriting to GET+Upgrade")
 			}
-			r.Method = "GET"
-			r.Header.Set("Connection", "Upgrade")
-			r.Header.Set("Upgrade", "websocket")
-			if r.Header.Get("Sec-WebSocket-Version") == "" {
-				r.Header.Set("Sec-WebSocket-Version", "13")
+			r2 := r.Clone(r.Context())
+			r2.Method = "GET"
+			r2.Header.Set("Connection", "Upgrade")
+			r2.Header.Set("Upgrade", "websocket")
+			if r2.Header.Get("Sec-WebSocket-Version") == "" {
+				r2.Header.Set("Sec-WebSocket-Version", "13")
 			}
+			corsHandler.ServeHTTP(w, r2)
+			return
 		}
 		corsHandler.ServeHTTP(w, r)
 	})

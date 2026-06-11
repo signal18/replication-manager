@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -57,15 +58,22 @@ type SysbenchLogEntry struct {
 
 // SysbenchLog holds the full history of sysbench runs for a cluster.
 type SysbenchLog struct {
-	Entries []SysbenchLogEntry `json:"entries"`
+	sync.Mutex `json:"-"`
+	Entries    []SysbenchLogEntry `json:"entries"`
 }
 
 // SaveSysbenchLog writes the sysbench history to disk.
 func (cluster *Cluster) SaveSysbenchLog() error {
 	path := filepath.Join(cluster.WorkingDir, "sysbench.json")
-	os.MkdirAll(filepath.Dir(path), 0755)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
 
-	data, err := json.MarshalIndent(cluster.SysbenchHistory, "", "  ")
+	cluster.SysbenchHistory.Lock()
+	data, err := json.MarshalIndent(struct {
+		Entries []SysbenchLogEntry `json:"entries"`
+	}{Entries: cluster.SysbenchHistory.Entries}, "", "  ")
+	cluster.SysbenchHistory.Unlock()
 	if err != nil {
 		return err
 	}
@@ -75,15 +83,18 @@ func (cluster *Cluster) SaveSysbenchLog() error {
 // LoadSysbenchLog reads the sysbench history from disk.
 func (cluster *Cluster) LoadSysbenchLog() {
 	path := filepath.Join(cluster.WorkingDir, "sysbench.json")
-	bytes, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return
 	}
-	var log SysbenchLog
-	if err := json.Unmarshal(bytes, &log); err != nil {
+	var loaded SysbenchLog
+	if err := json.Unmarshal(raw, &loaded); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Corrupt sysbench.json, resetting history: %s", err)
 		return
 	}
-	cluster.SysbenchHistory = log
+	cluster.SysbenchHistory.Lock()
+	cluster.SysbenchHistory.Entries = loaded.Entries
+	cluster.SysbenchHistory.Unlock()
 }
 
 // LogSysbenchStep logs a prepare or cleanup step within a scale run.
@@ -96,7 +107,9 @@ func (cluster *Cluster) LogSysbenchStep(step string, startedAt time.Time, scaleG
 		IsScale:    true,
 		ScaleGroup: &t,
 	}
+	cluster.SysbenchHistory.Lock()
 	cluster.SysbenchHistory.Entries = append(cluster.SysbenchHistory.Entries, entry)
+	cluster.SysbenchHistory.Unlock()
 	cluster.SaveSysbenchLog()
 }
 
@@ -182,7 +195,9 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 	// Append TPCM results
 	entry.Results = cluster.SysBenchTpcMResults
 
+	cluster.SysbenchHistory.Lock()
 	cluster.SysbenchHistory.Entries = append(cluster.SysbenchHistory.Entries, entry)
+	cluster.SysbenchHistory.Unlock()
 	cluster.SaveSysbenchLog()
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH",
