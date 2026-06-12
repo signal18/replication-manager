@@ -61,7 +61,11 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/scripts /go/
 
 # Create symlinks and configure
 RUN ln -s build/binaries/replication-manager-pro replication-manager-pro && \
-        ln -s build/binaries/replication-manager-cli replication-manager-cli
+        ln -s build/binaries/replication-manager-cli replication-manager-cli && \
+        ln -s docker/dev/run.sh run.sh && \
+        ln -s docker/dev/stop.sh stop.sh && \
+        ln -s docker/dev/restart.sh restart.sh && \
+        ln -s docker/dev/wait.sh wait.sh
 
 RUN mkdir -p \
             /etc/replication-manager \
