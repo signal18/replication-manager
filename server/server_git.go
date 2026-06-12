@@ -215,6 +215,7 @@ func (repman *ReplicationManager) PushAllConfigsToGit() error {
 	repman.AddTempDirToGitignore()
 	repman.AddPluginDirToGitignore()
 	repman.AddDictTablesToGitignore()
+	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "*/variable-diff.json")
 
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Pushing All Configs To Git")
 

@@ -19,6 +19,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"os/user"
 	"runtime"
 	"slices"
@@ -410,6 +411,7 @@ type Alerts struct {
 
 type Diff struct {
 	Server        string `json:"serverName"`
+	Role          string `json:"role"`
 	VariableValue string `json:"variableValue"`
 }
 
@@ -2200,24 +2202,17 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 	}
 	masterVariables := cluster.GetMaster().Variables.ToNewMap()
 	exceptVariables := variableExceptions
-	variablesdiff := ""
+	hasDiff := false
 	var alldiff []VariableDiff
 	for k, v := range masterVariables {
 		var myvardiff VariableDiff
 		var myvalues []Diff
-		var mastervalue Diff
-		mastervalue.Server = cluster.GetMaster().URL
-		mastervalue.VariableValue = v
-		myvalues = append(myvalues, mastervalue)
+		myvalues = append(myvalues, Diff{Server: cluster.GetMaster().URL, Role: "leader", VariableValue: v})
 		for _, s := range cluster.slaves {
 			slaveVariables := s.Variables.ToNewMap()
 			if slaveVariables[k] != v && !exceptVariables[k] {
-				var slavevalue Diff
-				slavevalue.Server = s.URL
-				slavevalue.VariableValue = slaveVariables[k]
-				myvalues = append(myvalues, slavevalue)
-				variablesdiff += "+ Master Variable: " + k + " -> " + v + "\n"
-				variablesdiff += "- Slave: " + s.URL + " -> " + slaveVariables[k] + "\n"
+				myvalues = append(myvalues, Diff{Server: s.URL, Role: "replica", VariableValue: slaveVariables[k]})
+				hasDiff = true
 			}
 		}
 		if len(myvalues) > 1 {
@@ -2226,14 +2221,30 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 			alldiff = append(alldiff, myvardiff)
 		}
 	}
-	if variablesdiff != "" {
+	if hasDiff {
 		cluster.DiffVariables = alldiff
-		jtext, err := json.MarshalIndent(alldiff, " ", "\t")
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Encoding variables diff %s", err)
-			return
-		}
-		cluster.SetState("WARN0084", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0084"], string(jtext)), ErrFrom: "MON", ServerUrl: cluster.GetMaster().URL})
+		cluster.SaveVariableDiff(alldiff)
+		cluster.SetState("WARN0084", state.State{
+			ErrType:   "WARNING",
+			ErrDesc:   fmt.Sprintf(clusterError["WARN0084"], len(alldiff)),
+			ErrFrom:   "MON",
+			ServerUrl: cluster.GetMaster().URL,
+		})
+	} else {
+		cluster.DiffVariables = nil
+	}
+}
+
+// SaveVariableDiff persists the variable diff to a JSON file in the cluster's working directory.
+func (cluster *Cluster) SaveVariableDiff(diff []VariableDiff) {
+	path := filepath.Join(cluster.WorkingDir, "variable-diff.json")
+	data, err := json.MarshalIndent(diff, "", "  ")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Encoding variable diff: %s", err)
+		return
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Writing variable-diff.json: %s", err)
 	}
 }
 
