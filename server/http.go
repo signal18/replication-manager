@@ -38,6 +38,7 @@ import (
 	_ "net/http/pprof"
 	"net/url"
 	"os"
+	"strings"
 
 	basiclog "log"
 
@@ -46,9 +47,12 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
+	"github.com/signal18/replication-manager/config"
 	_ "github.com/signal18/replication-manager/docs"
 	log "github.com/sirupsen/logrus"
 	httpSwagger "github.com/swaggo/http-swagger"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 type HandlerManager struct {
@@ -370,14 +374,43 @@ func (repman *ReplicationManager) httpserver() {
 
 	repman.IsHttpListenerReady = true
 
+	corsHandler := handlers.CORS(
+		handlers.AllowCredentials(),
+		handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}),
+		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS"}),
+		handlers.AllowedOriginValidator(repman.handleOriginValidator),
+	)(router)
+
+	// Middleware: translate h2 Extended CONNECT (RFC 8441) into h1-style
+	// WebSocket upgrade headers so gorilla/websocket can handle it.
+	// Debug logging gated on Verbose level >= 4.
+	wsH2Adapter := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if repman.Conf.Verbose && repman.Conf.LogLevel >= 4 && strings.Contains(r.URL.Path, "/terminal/") {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "TERMINAL: method=%s proto=%s url=%s headers=%v", r.Method, r.Proto, r.URL.String(), r.Header)
+		}
+		if r.Method == "CONNECT" && r.Header.Get(":protocol") == "websocket" {
+			if repman.Conf.Verbose && repman.Conf.LogLevel >= 4 {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "TERMINAL: h2 Extended CONNECT detected, rewriting to GET+Upgrade")
+			}
+			r2 := r.Clone(r.Context())
+			r2.Method = "GET"
+			r2.Header.Set("Connection", "Upgrade")
+			r2.Header.Set("Upgrade", "websocket")
+			if r2.Header.Get("Sec-WebSocket-Version") == "" {
+				r2.Header.Set("Sec-WebSocket-Version", "13")
+			}
+			corsHandler.ServeHTTP(w, r2)
+			return
+		}
+		corsHandler.ServeHTTP(w, r)
+	})
+
+	// Wrap with h2c for HTTP/2 over plain TCP (reverse proxy use case)
+	h2cHandler := h2c.NewHandler(wsH2Adapter, &http2.Server{})
+
 	server := &http.Server{
-		Addr: repman.Conf.BindAddr + ":" + repman.Conf.HttpPort,
-		Handler: handlers.CORS(
-			handlers.AllowCredentials(),
-			handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}),
-			handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS"}),
-			handlers.AllowedOriginValidator(repman.handleOriginValidator),
-		)(router),
+		Addr:     repman.Conf.BindAddr + ":" + repman.Conf.HttpPort,
+		Handler:  h2cHandler,
 		ErrorLog: basiclog.New(repman.ApiLogAdapter, "", 0),
 	}
 	repman.httpServer = server

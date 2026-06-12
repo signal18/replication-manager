@@ -123,6 +123,7 @@ type DatabaseProxy interface {
 	GetProxyConfig() error
 	GetJanitorWeight() string
 	// GetInitContainer(collector opensvc.Collector) string
+	GetVersion() string
 	GetBindAddress() string
 	GetBindAddressExtraIPV6() string
 	GetUseSSL() string

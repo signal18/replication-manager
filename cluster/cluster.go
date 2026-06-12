@@ -315,6 +315,7 @@ type Cluster struct {
 	VersionsMap           *config.VersionsMap
 	SessionManager        *tty.SessionManager `json:"-"`
 	SysBenchTpcMResults   []SysBenchTpcResultPerMinute
+	SysbenchHistory       SysbenchLog                  `json:"sysbenchHistory"  groups:"web"`
 	OpenSVCStats          atomic.Value `json:"-"`
 	OrchestratorVersion   string       `json:"-"`
 	orchestratorVersionMu sync.RWMutex `json:"-"`
@@ -494,6 +495,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
 	cluster.InterventionHistory = make([]InterventionEntry, 0)
 	cluster.LoadInterventionHistory()
+	cluster.LoadSysbenchLog()
 	cluster.pluginSpikeCache = make(map[string]*logplugin.SpikeCache)
 	cluster.pluginRegistry = logplugin.NewRegistry()
 	if cluster.Conf.Arbitration {

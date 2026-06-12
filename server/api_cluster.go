@@ -677,6 +677,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxWebLog)),
 	))
+	// Alias: cleaner route for typed logs (security, workload, sysbench, etc.)
+	router.Handle("/api/clusters/{clusterName}/topology/logs/{logType}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxWebLog)),
+	))
 	router.Handle("/api/clusters/{clusterName}/topology/proxies", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxies)),
@@ -5516,16 +5521,21 @@ func (repman *ReplicationManager) handlerMuxLog(w http.ResponseWriter, r *http.R
 	}
 }
 
-// handlerMuxWebLog handles the retrieval of web logs.
-// @Summary Retrieve web logs
-// @Description This endpoint retrieves the web logs.
+// handlerMuxWebLog handles the retrieval of cluster logs by type.
+// @Summary Retrieve cluster logs by type
+// @Description Returns cluster logs for the specified type. Available types: general, task, security, workload, ddl, variable-change, sysbench. Without logType returns all logs.
 // @Tags ClusterTopology
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Success 200 {array} string "List of web logs"
-// @Failure 500 {string} string "Internal Server Error"
+// @Param clusterName path string true "Cluster Name"
+// @Param logType path string false "Log type: general, task, security, workload, ddl, variable-change, sysbench"
+// @Success 200 {object} map[string]interface{} "Log data"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found"
+// @Router /api/clusters/{clusterName}/topology/logs/{logType} [get]
 // @Router /api/clusters/{clusterName}/topology/http-logs [get]
 // @Router /api/clusters/{clusterName}/topology/http-logs/{logType} [get]
+// @Deprecated Use /topology/logs/{logType} instead of /topology/http-logs/{logType}
 func (repman *ReplicationManager) handlerMuxWebLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -6169,11 +6179,19 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		if r.URL.Query().Get("threads") != "" {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench threads to %s", r.URL.Query().Get("threads"))
-			mycluster.SetSysbenchThreads(r.URL.Query().Get("threads"))
+		if r.URL.Query().Get("test") != "" {
+			mycluster.SetSysbenchTest(r.URL.Query().Get("test"))
 		}
-		go mycluster.RunSysbench()
+		if r.URL.Query().Get("threads") == "0" {
+			// threads=0 means scale from 1 to 2×cores
+			go mycluster.RunSysbenchScaleThreads()
+		} else {
+			if r.URL.Query().Get("threads") != "" {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench threads to %s", r.URL.Query().Get("threads"))
+				mycluster.SetSysbenchThreads(r.URL.Query().Get("threads"))
+			}
+			go mycluster.RunSysbench()
+		}
 	}
 }
 
