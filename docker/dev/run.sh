@@ -2,9 +2,18 @@
 set -e
 arg="$1"
 
-SHAREDIR=/go/src/github.com/signal18/replication-manager/share
+WORKDIR=/go/src/github.com/signal18/replication-manager
+SHAREDIR=$WORKDIR/share
 PUBKEY=$SHAREDIR/plugins/plugin-signing.pub
+DATADIR=/var/lib/replication-manager
 COMMON_ARGS="--user=repman --http-root=$SHAREDIR/dashboard --monitoring-sharedir=$SHAREDIR --plugin-signing-public-key=$PUBKEY"
+
+# Symlink shared plugin dir to locally built plugins so all clusters use the dev build
+SHARED_PLUGINS=$DATADIR/plugins
+if [ ! -L "$SHARED_PLUGINS" ]; then
+	rm -rf "$SHARED_PLUGINS"
+	ln -s "$WORKDIR/build/plugins" "$SHARED_PLUGINS"
+fi
 
 if [ "$arg" == "v2" ] || [ "$arg" == "V2" ]; then
 make cli pro osc WITH_REACT=OFF
