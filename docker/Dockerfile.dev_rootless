@@ -88,7 +88,8 @@ RUN cp etc/local/config.toml.docker /etc/replication-manager/config.toml && \
 
 RUN bash scripts/post_install.sh
 
+RUN echo 'WORKDIR=/go/src/github.com/signal18/replication-manager; DEVDIR=$WORKDIR/docker/dev; for s in run.sh stop.sh restart.sh wait.sh; do [ ! -e "$WORKDIR/$s" ] && ln -s "$DEVDIR/$s" "$WORKDIR/$s"; done' >> /etc/bash.bashrc
+
 USER repman
-ENTRYPOINT ["/go/src/github.com/signal18/replication-manager/docker/dev/entrypoint.sh"]
 CMD ["/bin/bash"]
 EXPOSE 10001
