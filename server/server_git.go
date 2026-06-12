@@ -311,7 +311,7 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 		//check all dir of the datadir to check if a new cluster has been pull by git
 		for _, f := range files {
 			new_cluster_discover := true
-			if f.IsDir() && f.Name() != "graphite" && f.Name() != "backups" && f.Name() != ".git" && f.Name() != "cloud18.toml" && !strings.Contains(f.Name(), ".json") && !strings.Contains(f.Name(), ".csv") && f.Name() != ".pull" {
+			if f.IsDir() && f.Name() != "graphite" && f.Name() != "backups" && f.Name() != ".git" && f.Name() != "cloud18.toml" && !strings.Contains(f.Name(), ".json") && !strings.Contains(f.Name(), ".csv") && f.Name() != ".pull" && f.Name() != "plugins" {
 				for name := range repman.Clusters {
 					if name == f.Name() {
 						new_cluster_discover = false
@@ -347,63 +347,122 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 	}
 }
 
-// syncPluginsFromPull copies plugin binaries from the -pull git repo
-// (pullDir/{clusterName}/plugins/) into each cluster's working directory
-// (WorkingDir/{clusterName}/plugins/) and triggers a hot-reload only when
-// at least one file actually changed (MD5 comparison).
+// syncPluginsFromPull copies plugin binaries from the pull repo root
+// (pullDir/plugins/) into a shared directory (WorkingDir/plugins/) and
+// ensures each cluster's plugins/ is a symlink to that shared dir.
+//
+// On upgrade from per-cluster copies, existing real plugin directories are
+// migrated: contents are moved to the shared dir and replaced by a symlink.
 //
 // .sig files are NOT distributed via the pull repo — they are CI artifacts
 // shipped with the repman package in ShareDir/plugins/ to preserve the
 // chain of trust.
 func (repman *ReplicationManager) syncPluginsFromPull(pullDir string) {
-	for clusterName, cluster := range repman.Clusters {
-		srcDir := filepath.Join(pullDir, clusterName, logplugin.PluginDirName)
-		if _, err := os.Stat(srcDir); os.IsNotExist(err) {
-			continue
-		}
-		dstDir := logplugin.PluginDir(cluster.WorkingDir)
-		if err := os.MkdirAll(dstDir, 0755); err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlErr,
-				"[logplugin] cannot create plugin dir %s: %v", dstDir, err)
-			continue
-		}
+	sharedDir := filepath.Join(repman.Conf.WorkingDir, logplugin.PluginDirName)
+	if err := os.MkdirAll(sharedDir, 0755); err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlErr,
+			"[logplugin] cannot create shared plugin dir %s: %v", sharedDir, err)
+		return
+	}
+
+	srcDir := filepath.Join(pullDir, logplugin.PluginDirName)
+	changed := 0
+	if info, err := os.Stat(srcDir); err == nil && info.IsDir() {
 		entries, err := os.ReadDir(srcDir)
 		if err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
 				"[logplugin] cannot read pull plugin dir %s: %v", srcDir, err)
-			continue
+		} else {
+			for _, e := range entries {
+				if e.IsDir() {
+					continue
+				}
+				src := filepath.Join(srcDir, e.Name())
+				dst := filepath.Join(sharedDir, e.Name())
+
+				if filepath.Ext(e.Name()) == "" && repman.Conf.PluginSigningPublicKey != "" {
+					sigDir := filepath.Join(repman.Conf.ShareDir, "plugins")
+					if err := logplugin.VerifyPluginSignature(src, sigDir, repman.Conf.PluginSigningPublicKey); err != nil {
+						repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+							"[logplugin] skipping pull plugin %s: %v", e.Name(), err)
+						continue
+					}
+				}
+
+				if gitPluginFilesEqual(src, dst) {
+					continue
+				}
+
+				if err := gitPluginCopyFile(src, dst); err != nil {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+						"[logplugin] failed to copy plugin file %s: %v", e.Name(), err)
+					continue
+				}
+				if filepath.Ext(e.Name()) == "" {
+					os.Chmod(dst, 0755) // #nosec G302 — plugin binaries must be executable
+				}
+				changed++
+			}
 		}
-		changed := 0
+	}
+
+	reload := changed > 0
+	for _, cluster := range repman.Clusters {
+		clusterPluginDir := logplugin.PluginDir(cluster.WorkingDir)
+		if repman.ensurePluginSymlink(clusterPluginDir, sharedDir) {
+			reload = true
+		}
+	}
+
+	if reload {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlInfo,
+			"[logplugin] synced %d changed plugin file(s) to shared dir %s", changed, sharedDir)
+		for _, cluster := range repman.Clusters {
+			cluster.ReloadLogPlugins()
+		}
+	}
+}
+
+// ensurePluginSymlink makes sure clusterPluginDir is a symlink to sharedDir.
+// If it is a real directory (pre-upgrade), its contents are moved to sharedDir
+// and the directory is replaced with a symlink. Returns true if a migration
+// or symlink creation happened.
+func (repman *ReplicationManager) ensurePluginSymlink(clusterPluginDir, sharedDir string) bool {
+	fi, err := os.Lstat(clusterPluginDir)
+	if err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		return false
+	}
+
+	if err == nil && fi.IsDir() {
+		entries, _ := os.ReadDir(clusterPluginDir)
 		for _, e := range entries {
 			if e.IsDir() {
 				continue
 			}
-			src := filepath.Join(srcDir, e.Name())
-			dst := filepath.Join(dstDir, e.Name())
-
-			// Skip if destination exists and content is identical.
-			if gitPluginFilesEqual(src, dst) {
-				continue
+			src := filepath.Join(clusterPluginDir, e.Name())
+			dst := filepath.Join(sharedDir, e.Name())
+			if _, serr := os.Stat(dst); os.IsNotExist(serr) {
+				gitPluginCopyFile(src, dst)
+				if filepath.Ext(e.Name()) == "" {
+					os.Chmod(dst, 0755)
+				}
 			}
-
-			if err := gitPluginCopyFile(src, dst); err != nil {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
-					"[logplugin] failed to copy plugin file %s: %v", e.Name(), err)
-				continue
-			}
-			// Only set executable bit on actual binaries (no extension).
-			// .pub and .sig files must not be made executable.
-			if filepath.Ext(e.Name()) == "" {
-				os.Chmod(dst, 0755) // #nosec G302 — plugin binaries must be executable
-			}
-			changed++
 		}
-		if changed > 0 {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlInfo,
-				"[logplugin] synced %d changed plugin file(s) from pull repo for cluster %s", changed, clusterName)
-			cluster.ReloadLogPlugins()
-		}
+		os.RemoveAll(clusterPluginDir)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlInfo,
+			"[logplugin] migrated %s to symlink → %s", clusterPluginDir, sharedDir)
 	}
+
+	rel, err := filepath.Rel(filepath.Dir(clusterPluginDir), sharedDir)
+	if err != nil {
+		rel = sharedDir
+	}
+	if err := os.Symlink(rel, clusterPluginDir); err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlErr,
+			"[logplugin] cannot create symlink %s → %s: %v", clusterPluginDir, rel, err)
+		return false
+	}
+	return true
 }
 
 // syncPluginDataFromPull copies global plugin data files from the pull repo
