@@ -39,7 +39,7 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
-          submodules: false
+          submodules: true
 
       - name: Set up Go
         uses: actions/setup-go@v5
