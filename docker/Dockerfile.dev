@@ -84,7 +84,7 @@ RUN bash scripts/post_install.sh
 
 COPY --from=builder /go/src/github.com/signal18/replication-manager/docker/dev /go/src/github.com/signal18/replication-manager/docker/dev
 
-RUN echo 'WORKDIR=/go/src/github.com/signal18/replication-manager; DEVDIR=$WORKDIR/docker/dev; for s in run.sh stop.sh restart.sh wait.sh; do [ ! -e "$WORKDIR/$s" ] && ln -s "$DEVDIR/$s" "$WORKDIR/$s"; done' >> /etc/bash.bashrc
+RUN echo 'WORKDIR=/go/src/github.com/signal18/replication-manager; DEVDIR=$WORKDIR/docker/dev; for s in run.sh stop.sh restart.sh wait.sh; do [ ! -e "$WORKDIR/$s" ] && ln -s "$DEVDIR/$s" "$WORKDIR/$s"; done; if ! pgrep -f replication-manager > /dev/null 2>&1; then cd "$WORKDIR" && ./run.sh run; fi' >> /etc/bash.bashrc
 
 CMD ["/bin/bash"]
 EXPOSE 10001
