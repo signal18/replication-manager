@@ -286,7 +286,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       ),
       columnHelper.accessor(
         (row) => (
-          <VStack className={styles.cellStack}>
+          <VStack className={styles.cellStack} spacing={0.5}>
             <Box className={styles.cellValue}>{getBackupMethod(row.backupMethod)}</Box>
             <Box className={styles.cellValue}>{row.backupTool}</Box>
           </VStack>
@@ -304,7 +304,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       }),
       columnHelper.accessor(
         (row) => (
-          <VStack className={styles.cellStack}>
+          <VStack className={styles.cellStack} spacing={0.5}>
             <Box className={styles.cellValue}>{row.source}</Box>
             <Box className={styles.cellValue}>{row.dest}</Box>
           </VStack>
@@ -321,34 +321,29 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         id: 'backupSize',
         minWidth: 100
       }),
-      columnHelper.accessor((row) => (row.compressed ? 'Yes' : 'No'), {
-        cell: (info) => info.getValue(),
-        header: 'Compressed',
-        id: 'compression'
-      }),
       columnHelper.accessor(
         (row) => (
-          <VStack>
-            <div>{row.encrypted ? 'Yes' : 'No'}</div>
+          <VStack className={styles.cellStack} spacing={0.5}>
+            <Box className={styles.cellValue}>{`Compressed: ${row.compressed ? 'Yes' : 'No'}`}</Box>
+            <Box className={styles.cellValue}>{`Encrypted: ${row.encrypted ? 'Yes' : 'No'}`}</Box>
             {row.encrypted && (
-              <VStack className={styles.cellStack}>
+              <>
                 <Box className={styles.cellValue}>{row.encryptionAlgo}</Box>
                 <Box className={styles.cellValue}>{row.encryptionKey}</Box>
-              </VStack>
+              </>
             )}
           </VStack>
         ),
         {
           cell: (info) => info.getValue(),
-          header: 'Encryption Details',
-          id: 'encryption'
+          header: 'Compression / Encryption',
+          id: 'compressionEncryption'
         }
       ),
       columnHelper.accessor(
         (row) => (
-          <VStack className={styles.cellStack}>
-            <Box className={styles.cellValue}>{`File: ${row.binLogFileName}`}</Box>
-            <Box className={styles.cellValue}>{`Pos: ${row.binLogFilePos}`}</Box>
+          <VStack className={styles.cellStack} spacing={0.5}>
+            <Box className={styles.cellValue}>{`File: ${row.binLogFileName} / Pos: ${row.binLogFilePos}`}</Box>
             <Box className={styles.cellValue}>{`GTID: ${row.binLogUuid}`}</Box>
           </VStack>
         ),
@@ -358,15 +353,10 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
           id: 'binLogInfo'
         }
       ),
-      columnHelper.accessor((row) => row.retentionDays, {
+      columnHelper.accessor((row) => (row.completed ? 'Completed' : 'Pending'), {
         cell: (info) => info.getValue(),
-        header: 'Retention (Days)',
-        id: 'retention'
-      }),
-      columnHelper.accessor((row) => (row.completed ? 'Yes' : 'No'), {
-        cell: (info) => info.getValue(),
-        header: 'Completed',
-        id: 'completed'
+        header: 'Status',
+        id: 'status'
       }),
       columnHelper.display({
         id: 'actions',
@@ -374,6 +364,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         cell: (info) => (
           <RMIconButton
             icon={HiTrash}
+            colorScheme='red'
             tooltip='Delete backup'
             onClick={() => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: info.row.original.id } })}
             isDisabled={!user?.grants['db-backup']}
