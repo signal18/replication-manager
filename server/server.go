@@ -129,6 +129,7 @@ type ReplicationManager struct {
 	GraphiteTemplateList map[string]bool             `json:"graphiteTemplateList"`
 	ServerScopeList      map[string]bool             `json:"-"`
 	currentCluster       *cluster.Cluster            `json:"-"`
+	serverGlobals        *cluster.ServerGlobals      `json:"-"`
 	IsGlobalIntervention        bool                        `json:"isGlobalIntervention"`
 	IsGlobalInterventionPending bool                        `json:"isGlobalInterventionPending"`
 	GlobalInterventionEntry     *cluster.InterventionEntry  `json:"globalInterventionEntry,omitempty"`
@@ -818,6 +819,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.SchedulerDatabaseLogs, "scheduler-db-servers-logs", false, "Schedule database logs fetching")
 	flags.BoolVar(&conf.SchedulerDatabaseOptimize, "scheduler-db-servers-optimize", false, "Schedule database optimize")
 	flags.BoolVar(&conf.SchedulerDatabaseAnalyze, "scheduler-db-servers-analyze", true, "Schedule database analyze")
+
+	flags.IntVar(&conf.BackupConcurrentSlots, "backup-concurrent-slots", 1, "Number of backup slots available across all clusters. Logical and physical backups each consume one slot. 0 = unlimited.")
 
 	flags.StringVar(&conf.BackupLogicalCron, "scheduler-db-servers-logical-backup-cron", "0 0 1 * * 6", "Logical backup cron expression represents a set of times, using 6 space-separated fields.")
 	flags.StringVar(&conf.BackupPhysicalCron, "scheduler-db-servers-physical-backup-cron", "0 0 0 * * 0-4", "Physical backup cron expression represents a set of times, using 6 space-separated fields.")
@@ -2327,6 +2330,12 @@ func (repman *ReplicationManager) Run() error {
 	repman.InitWebTTY()
 	repman.DiskStatManager = misc.NewDiskStatManager()
 
+	// Initialize instance-wide shared resources for all clusters
+	repman.serverGlobals = &cluster.ServerGlobals{}
+	if repman.Conf.BackupConcurrentSlots > 0 {
+		repman.serverGlobals.BackupSemaphore = make(chan struct{}, repman.Conf.BackupConcurrentSlots)
+	}
+
 	repman.LoadPeerJson()
 	repman.LoadPartnersJson()
 	repman.UpdateLocalPeer()
@@ -2832,6 +2841,7 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	repman.currentCluster.WorkloadLogrus = repman.WorkloadLogrus
 	repman.currentCluster.MaintenanceLogrus = repman.MaintenanceLogrus
 	repman.currentCluster.Partner = &repman.Partner
+	repman.currentCluster.ServerGlobals = repman.serverGlobals
 	repman.currentCluster.ConfigManager = repman.ConfigManager
 
 	repman.currentCluster.CreateTemplateMD5Channel()

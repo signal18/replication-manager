@@ -1602,6 +1602,18 @@ export const runSysBench = createGuardedAsyncThunk('cluster/runSysBench', async 
   }
 })
 
+export const cleanupSysBench = createGuardedAsyncThunk('cluster/cleanupSysBench', async ({ clusterName, test }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.cleanupSysbench(clusterName, test, baseURL)
+    showSuccessBanner('Sysbench cleanup completed!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Sysbench cleanup failed!', error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
 export const runRegressionTests = createGuardedAsyncThunk(
   'cluster/runRegressionTests',
   async ({ clusterName, testName }, thunkAPI) => {

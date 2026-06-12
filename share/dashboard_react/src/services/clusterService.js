@@ -140,6 +140,7 @@ export const clusterService = {
 
   // Test run APIs
   runSysbench,
+  cleanupSysbench,
   getSysbenchHistory,
   runRegressionTests,
 
@@ -696,6 +697,11 @@ function monitorAllSchemas(clusterName, baseURL) {
 function runSysbench(clusterName, threads, baseURL, test) {
   const params = `threads=${threads}` + (test ? `&test=${test}` : '')
   return getApi(baseURL).get(`clusters/${clusterName}/actions/sysbench?${params}`)
+}
+
+function cleanupSysbench(clusterName, test, baseURL) {
+  const params = test ? `?test=${test}` : ''
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/sysbench-cleanup${params}`)
 }
 
 function runRegressionTests(clusterName, testName, baseURL) {

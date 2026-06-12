@@ -299,6 +299,7 @@ type Cluster struct {
 	MessageChan                         chan sharedlog.Message      `json:"-"`
 	ErrorConfigs                        config.ErrorConfigs         `json:"-"` //To store error config
 	Partner                             *config.Partner             `json:"partner" groups:"web"`
+	ServerGlobals                       *ServerGlobals              `json:"-"`
 	ConfigManager                       *manager.ConfigManager      `json:"-"`
 	failSendCount                       int                         `json:"-"`
 	MeetUserID                          string                      `json:"-"` //To store meet user id

@@ -249,6 +249,7 @@ var ClusterError = map[string]string{
 	"WARN0171":  "Server %s connection failed: %s",
 	"WARN0172":  "Intervention scheduled at %s by %s: %s",
 	"WARN0173":  "Intervention active since %s by %s: %s — notifications muted",
+	"WARN0174":  "Waiting for global backup slot (%d/%d in use)",
 	// Log-tailer plugin state codes (WARN0200-WARN0299 reserved for logplugin)
 	"WARN0200":  "Server %s has recent ERROR entries in database error log (last 24h)",
 	"WARN0201":  "Server %s has recent SQL errors in SQL error log (last 24h)",
