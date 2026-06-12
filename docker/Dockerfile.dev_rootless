@@ -58,6 +58,7 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binari
 COPY --from=builder /go/src/github.com/signal18/replication-manager/etc /go/src/github.com/signal18/replication-manager/etc
 COPY --from=builder /go/src/github.com/signal18/replication-manager/share /go/src/github.com/signal18/replication-manager/share
 COPY --from=builder /go/src/github.com/signal18/replication-manager/scripts /go/src/github.com/signal18/replication-manager/scripts
+COPY --from=builder /go/src/github.com/signal18/replication-manager/docker/dev /go/src/github.com/signal18/replication-manager/docker/dev
 
 # Create symlinks and configure
 RUN ln -s build/binaries/replication-manager-pro replication-manager-pro && \
@@ -88,5 +89,6 @@ RUN cp etc/local/config.toml.docker /etc/replication-manager/config.toml && \
 RUN bash scripts/post_install.sh
 
 USER repman
-CMD ["while true; do sleep 86400; done"]
+ENTRYPOINT ["/go/src/github.com/signal18/replication-manager/docker/dev/entrypoint.sh"]
+CMD ["/bin/bash"]
 EXPOSE 10001
