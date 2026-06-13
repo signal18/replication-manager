@@ -722,6 +722,8 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 				cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0073"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 			} else if task.task == "mariabackup" {
 				cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0073"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+			} else if task.task == "mysqldump" || task.task == "mydumper" {
+				cluster.SetState("WARN0175", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0175"], cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 			} else if task.task == "reseedxtrabackup" {
 				cluster.SetState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0074"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 			} else if task.task == "reseedmariabackup" {
@@ -740,6 +742,13 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 				cluster.SetState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0077"], cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 			}
 		}
+	}
+
+	if cluster.InPhysicalBackup || cluster.InResticPhysicalBackup {
+		cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0073"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+	}
+	if cluster.InLogicalBackup || cluster.InResticLogicalBackup {
+		cluster.SetState("WARN0175", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0175"], cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 	}
 
 	return nil
@@ -763,6 +772,8 @@ func (server *ServerMonitor) jobsCheckRunningFromMemory() error {
 			cluster.SetState("WARN0097", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0097"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		case config.ConstTaskXB, config.ConstTaskMB:
 			cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0073"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		case config.ConstTaskDump, config.ConstTaskMydumper:
+			cluster.SetState("WARN0175", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0175"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		case config.ConstTaskReseedXB, config.ConstTaskReseedMB:
 			cluster.SetState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0074"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		case config.ConstTaskReseedDump:
@@ -774,6 +785,14 @@ func (server *ServerMonitor) jobsCheckRunningFromMemory() error {
 		}
 		return true
 	})
+
+	if cluster.InResticPhysicalBackup {
+		cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0073"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+	}
+	if cluster.InResticLogicalBackup {
+		cluster.SetState("WARN0175", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0175"], cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+	}
+
 	return nil
 }
 

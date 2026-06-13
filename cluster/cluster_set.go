@@ -2137,16 +2137,10 @@ func (cluster *Cluster) SetLogMailerLevel(value int) {
 
 func (cluster *Cluster) SetInPhysicalBackupState(value bool) {
 	cluster.InPhysicalBackup = value
-	if !value && !cluster.InResticPhysicalBackup {
-		cluster.ServerGlobals.ReleaseBackupSlot()
-	}
 }
 
 func (cluster *Cluster) SetInLogicalBackupState(value bool) {
 	cluster.InLogicalBackup = value
-	if !value {
-		cluster.ServerGlobals.ReleaseBackupSlot()
-	}
 }
 
 func (cluster *Cluster) SetInBinlogBackupState(value bool) {
@@ -2161,9 +2155,6 @@ func (cluster *Cluster) SetInResticLogicalBackupState(value bool) {
 func (cluster *Cluster) SetInResticPhysicalBackupState(value bool) {
 	cluster.InResticPhysicalBackup = value
 	cluster.InResticBackup = cluster.InResticLogicalBackup || cluster.InResticPhysicalBackup
-	if !value && !cluster.InPhysicalBackup {
-		cluster.ServerGlobals.ReleaseBackupSlot()
-	}
 }
 
 func (cluster *Cluster) SetInResticBackupState(value bool) {

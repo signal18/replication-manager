@@ -1033,11 +1033,9 @@ func (cluster *Cluster) StateProcessing() {
 			cluster.GetStateMachine().CapturedState.Delete(s.ErrKey)
 			servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
 
-			// if s.ErrKey == "WARN0073" {
-			// 	for _, s := range cluster.Servers {
-			// 		s.SetBackupPhysicalCookie()
-			// 	}
-			// }
+			if s.ErrKey == "WARN0073" || s.ErrKey == "WARN0175" {
+				cluster.ServerGlobals.ReleaseBackupSlot()
+			}
 			if s.ErrKey == "WARN0074" && servertoreseed != nil {
 				task := "reseed" + cluster.Conf.BackupPhysicalType
 
