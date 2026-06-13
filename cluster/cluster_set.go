@@ -2171,9 +2171,11 @@ func (cluster *Cluster) CheckBackupStates() {
 		serverUrl = m.URL
 	}
 	if cluster.InPhysicalBackup || cluster.InResticPhysicalBackup {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "CheckBackupStates: setting WARN0073 (physical=%t, resticPhysical=%t)", cluster.InPhysicalBackup, cluster.InResticPhysicalBackup)
 		cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0073"], cluster.Conf.BackupPhysicalType, serverUrl), ErrFrom: "JOB", ServerUrl: serverUrl})
 	}
 	if cluster.InLogicalBackup || cluster.InResticLogicalBackup {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "CheckBackupStates: setting WARN0175 (logical=%t, resticLogical=%t)", cluster.InLogicalBackup, cluster.InResticLogicalBackup)
 		cluster.SetState("WARN0175", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0175"], cluster.Conf.BackupLogicalType, serverUrl), ErrFrom: "JOB", ServerUrl: serverUrl})
 	}
 }

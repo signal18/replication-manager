@@ -2445,6 +2445,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	resticEnabled := server.shouldRunRestic(opts)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Request logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
 	if server.IsDown() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical backup aborted: server %s is down (state=%s)", server.URL, server.State)
 		return errors.New("Can't backup when server down")
 	}
 
@@ -2461,9 +2462,11 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		}
 	}
 
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical backup acquiring slot for: %s (semaphore=%v)", server.URL, cluster.ServerGlobals != nil && cluster.ServerGlobals.BackupSemaphore != nil)
 	if !cluster.waitForBackupSlot() {
 		return errors.New("backup canceled: cluster shutting down")
 	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical backup slot acquired for: %s", server.URL)
 
 	var waited bool
 	for cluster.IsInBackup() {
