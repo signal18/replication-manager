@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signal18/replication-manager/config"
 	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
 	"github.com/sirupsen/logrus"
 )
@@ -404,21 +405,56 @@ func TestCheckRepoFiles(t *testing.T) {
 		"RESTIC_REPOSITORY=" + repoDir,
 	})
 
-	if err := repo.CheckRepoFiles(); err != nil {
-		t.Fatalf("expected init on missing config: %v", err)
+	// Fresh repo dir: no config, no data - explicit init required but still possible
+	if err := repo.CheckRepoFiles(); err == nil {
+		t.Fatalf("expected error when repo is not yet initialized")
 	}
-	if _, err := os.Stat(filepath.Join(repoDir, "config")); err != nil {
-		t.Fatalf("expected config after init: %v", err)
+	if !repo.CanInitRepo {
+		t.Fatalf("expected CanInitRepo true for a fresh, uninitialized repo")
 	}
 
-	if err := os.Remove(filepath.Join(repoDir, "config")); err != nil {
-		t.Fatalf("remove config: %v", err)
-	}
+	// Data exists without config: corrupted repo, cannot be auto/explicitly initialized
 	if err := os.MkdirAll(filepath.Join(repoDir, "data"), 0755); err != nil {
 		t.Fatalf("mkdir data: %v", err)
 	}
 	if err := repo.CheckRepoFiles(); err == nil {
 		t.Fatalf("expected error when config missing but data exists")
+	}
+	if repo.CanInitRepo {
+		t.Fatalf("expected CanInitRepo false when data exists without config")
+	}
+}
+
+func TestCheckRepoFilesSftp(t *testing.T) {
+	repo := newPausedRepo(t)
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=sftp:backup@10.0.0.1:/srv/restic-repo",
+	})
+
+	// Simulate state left over from a prior failed init attempt, so we can
+	// verify the sftp branch clears it rather than just leaving CanInitRepo
+	// at its zero-value default of true. The backoff deadline is set in the
+	// past so it doesn't short-circuit this call to CheckRepoFiles.
+	repo.CanInitRepo = false
+	repo.SetError(InitTask, errors.New("previous init failure"))
+	repo.errorMutex.Lock()
+	repo.lastInitError = errors.New("previous init failure")
+	repo.initErrorCount = 1
+	repo.initBackoffUntil = time.Now().Add(-time.Second)
+	repo.errorMutex.Unlock()
+
+	if err := repo.CheckRepoFiles(); err != nil {
+		t.Fatalf("expected no error for sftp repository, got %v", err)
+	}
+	if !repo.CanInitRepo {
+		t.Fatalf("expected CanInitRepo true for sftp repository")
+	}
+	if _, ok := repo.TaskErrors[InitTask]; ok {
+		t.Fatalf("expected InitTask error to be cleared for sftp repository")
+	}
+	if repo.shouldSkipInitDueToBackoff() {
+		t.Fatalf("expected init backoff to be cleared for sftp repository")
 	}
 }
 
@@ -1982,8 +2018,8 @@ func TestIsS3Repository(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isS3Repository(tt.repoPath); got != tt.want {
-				t.Errorf("isS3Repository(%q) = %v, want %v", tt.repoPath, got, tt.want)
+			if got := config.IsS3ResticRepository(tt.repoPath); got != tt.want {
+				t.Errorf("IsS3ResticRepository(%q) = %v, want %v", tt.repoPath, got, tt.want)
 			}
 		})
 	}

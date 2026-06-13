@@ -3866,12 +3866,22 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-level-file":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.LogFileLevel = val
+	case "backup-archive-mode":
+		if err := mycluster.SetBackupArchiveMode(value); err != nil {
+			return err
+		}
 	case "backup-restic-local-repository":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		mycluster.Conf.BackupResticLocalRepository = string(val)
+		repoPath := strings.TrimSpace(string(val))
+		if mycluster.Conf.BackupArchiveMode == config.ConstBackupArchiveModeResticSftp {
+			if err := cluster.ValidateResticSftpRepository(repoPath); err != nil {
+				return err
+			}
+		}
+		mycluster.Conf.BackupResticLocalRepository = repoPath
 		mycluster.ReloadResticEnv()
 	case "backup-restic-repository":
 		val, err := base64.StdEncoding.DecodeString(value)
@@ -4281,13 +4291,22 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "prov-object-allow-overwrite":
 		mycluster.Conf.ProvObjectAllowOverwrite = applyIsActive(mycluster.Conf.ProvObjectAllowOverwrite, isactive)
 	case "backup-restic-aws":
-		mycluster.Conf.BackupResticAws = applyIsActive(mycluster.Conf.BackupResticAws, isactive)
+		oldValue := mycluster.Conf.BackupResticAws
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mode := mycluster.Conf.DeriveBackupArchiveModeFromFlags(mycluster.Conf.BackupRestic, newValue)
+			if err = mycluster.SetBackupArchiveMode(mode); err != nil {
+				return err
+			}
+		}
 	case "backup-restic":
 		oldValue := mycluster.Conf.BackupRestic
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.BackupRestic = newValue
-			mycluster.CheckResticInstallation()
+			mode := mycluster.Conf.DeriveBackupArchiveModeFromFlags(newValue, mycluster.Conf.BackupResticAws)
+			if err = mycluster.SetBackupArchiveMode(mode); err != nil {
+				return err
+			}
 		}
 	case "backup-restic-purge-prune":
 		mycluster.Conf.BackupResticPurgePrune = applyIsActive(mycluster.Conf.BackupResticPurgePrune, isactive)

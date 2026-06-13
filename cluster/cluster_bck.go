@@ -30,8 +30,20 @@ import (
 
 var splitDumpTimestampRegex = regexp.MustCompile(`^\d+$`)
 
-func isS3ResticRepository(repoPath string) bool {
-	return strings.HasPrefix(strings.TrimSpace(repoPath), "s3:")
+// resticSftpRepoRegex matches the restic sftp backend repository syntax,
+// sftp:[user@]host:path, e.g. sftp:backup@10.0.0.1:/srv/restic-repo
+var resticSftpRepoRegex = regexp.MustCompile(`^sftp:[^:@\s]+(@[^:@\s]+)?:.+$`)
+
+// ValidateResticSftpRepository checks that repoPath matches the
+// sftp:[user@]host:/path syntax expected by restic's sftp backend, so a
+// malformed value is rejected with a clear error instead of an opaque
+// restic failure.
+func ValidateResticSftpRepository(repoPath string) error {
+	repoPath = strings.TrimSpace(repoPath)
+	if !resticSftpRepoRegex.MatchString(repoPath) {
+		return config.NewValidationError("backup-restic-local-repository", repoPath, "expected sftp:[user@]host:/path")
+	}
+	return nil
 }
 
 func buildResticS3RepoSpec(endpoint, bucket, prefix, clusterName string, appendCluster bool) (string, string) {
@@ -290,7 +302,7 @@ func filterResticEnv(cluster *Cluster, baseEnv []string, repoPath, password, cac
 		overrides = make(map[string]string)
 		allowlist = make(map[string]struct{})
 	}
-	isS3 := isS3ResticRepository(repoPath)
+	isS3 := config.IsS3ResticRepository(repoPath)
 	defaultRegion := ""
 	optionalAwsEnv := make(map[string]string)
 	// Reserved env vars cannot be overridden via backup-restic-additional-env.
@@ -415,10 +427,12 @@ func (cluster *Cluster) ResticGetEnv() []string {
 		} else {
 			repoPath = filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
 		}
-		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-			err := os.MkdirAll(repoPath, os.ModePerm)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", repoPath, err)
+		if !config.IsSftpResticRepository(repoPath) {
+			if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+				err := os.MkdirAll(repoPath, os.ModePerm)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", repoPath, err)
+				}
 			}
 		}
 	}

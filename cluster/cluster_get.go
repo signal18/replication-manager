@@ -1613,14 +1613,43 @@ func (cluster *Cluster) GetVaultToken() {
 	}
 }
 
-func (cluster *Cluster) GetResticLocalDir() string {
-	if cluster.Conf.BackupResticLocalRepository != "" {
-		return cluster.Conf.BackupResticLocalRepository // To support sftp repository e.g. sftp:user@host:/path/to/repo
+// initResticLocalDir resolves the default local restic archive directory used
+// for disk usage checks ahead of a restic backup and, when no repository has
+// been configured, persists it into BackupResticLocalRepository so later
+// WorkingDir changes don't shift the configured path. It also ensures the
+// directory exists on disk. This is called once from InitFromConf() at
+// startup; GetResticLocalDir is a pure read and can be called repeatedly
+// afterwards without side effects.
+func (cluster *Cluster) initResticLocalDir() {
+	repo := cluster.Conf.BackupResticLocalRepository
+	if repo != "" && !config.IsSftpResticRepository(repo) && !config.IsS3ResticRepository(repo) {
+		return
 	}
 
-	// Persist the restic local repo path to prevent wrong paths if WorkingDir change during runtime
-	cluster.Conf.BackupResticLocalRepository = cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/archive/" + cluster.Name
-	return cluster.Conf.BackupResticLocalRepository
+	defaultDir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/archive/" + cluster.Name
+	if repo == "" {
+		// Persist the restic local repo path to prevent wrong paths if WorkingDir change during runtime
+		cluster.Conf.BackupResticLocalRepository = defaultDir
+	}
+	if _, err := os.Stat(defaultDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(defaultDir, os.ModePerm); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", defaultDir, err)
+		}
+	}
+}
+
+// GetResticLocalDir returns a local filesystem directory to use for disk usage
+// checks ahead of a restic backup. For non-local repositories (s3:, sftp:),
+// backup-restic-local-repository holds the remote spec rather than a local
+// path, so the default per-cluster archive directory is returned instead.
+// This is a pure read; initResticLocalDir performs the one-time directory
+// creation and config persistence during startup.
+func (cluster *Cluster) GetResticLocalDir() string {
+	repo := cluster.Conf.BackupResticLocalRepository
+	if repo != "" && !config.IsSftpResticRepository(repo) && !config.IsS3ResticRepository(repo) {
+		return repo
+	}
+	return cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/archive/" + cluster.Name
 }
 
 func (cluster *Cluster) GetExecEnv() []string {

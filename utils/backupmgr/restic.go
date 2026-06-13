@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
 	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
 	"github.com/signal18/replication-manager/utils/s3helper"
@@ -348,6 +349,7 @@ const resticTaskStateTTL = 60 * time.Second
 type ResticManager struct {
 	BinaryPath           string
 	Env                  []string
+	envMutex             *sync.RWMutex // Protects Env, read by RunCommand* concurrently with the worker
 	AwsAccessKeyID       string
 	AwsSecretAccessKey   string
 	AwsRegion            string
@@ -416,6 +418,7 @@ func NewResticRepo(binaryPath string, msgChan chan sharedlog.Message, logmodule 
 		LogModule:            logmodule,
 		TaskQueue:            make([]*ResticTask, 0),
 		Mutex:                &sync.Mutex{},
+		envMutex:             &sync.RWMutex{},
 		currentTaskMutex:     &sync.Mutex{},
 		mountRefMutex:        &sync.Mutex{},
 		mountUsers:           make(map[string]struct{}),
@@ -445,6 +448,19 @@ func (repo *ResticManager) UpdateSnapshotList(snapshots []BackupSnapshot) {
 	for _, snap := range repo.Backups {
 		repo.BackupMap[snap.Id] = &snap
 	}
+}
+
+// ClearSnapshotList discards the cached snapshot list and stats.
+// Used when the repository configuration changes (e.g. backup-archive-mode
+// switches to a different backend/path) so stale snapshots from the
+// previous repository are no longer displayed until the next fetch.
+func (repo *ResticManager) ClearSnapshotList() {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+
+	repo.Backups = make([]BackupSnapshot, 0)
+	repo.BackupMap = make(map[string]*BackupSnapshot)
+	repo.BackupStat = BackupStat{}
 }
 
 func (repo *ResticManager) GetSnapshot(snapshotId string) *BackupSnapshot {
@@ -581,7 +597,19 @@ func (repo *ResticManager) ClearInitErrorBackoffManual() {
 }
 
 func (repo *ResticManager) SetEnv(env []string) {
+	repo.envMutex.Lock()
+	defer repo.envMutex.Unlock()
 	repo.Env = env
+}
+
+// getEnvCopy returns the process environment combined with repo.Env, suitable
+// for assigning to exec.Cmd.Env. It holds envMutex only long enough to copy
+// repo.Env, so it can be called freely from RunCommand* without contending
+// with SetEnv/UpdateEnvKey for the duration of the command.
+func (repo *ResticManager) getEnvCopy() []string {
+	repo.envMutex.RLock()
+	defer repo.envMutex.RUnlock()
+	return append(os.Environ(), repo.Env...)
 }
 
 // SetAwsConfig updates AWS settings for S3 repository handling.
@@ -596,6 +624,9 @@ func (repo *ResticManager) SetAwsConfig(accessKeyID, secretAccessKey, region, en
 
 // UpdateEnvKey updates the environment variable for the Restic repository
 func (repo *ResticManager) UpdateEnvKey(key, value string) {
+	repo.envMutex.Lock()
+	defer repo.envMutex.Unlock()
+
 	found := false
 	for i, env := range repo.Env {
 		if strings.HasPrefix(env, key+"=") {
@@ -611,6 +642,9 @@ func (repo *ResticManager) UpdateEnvKey(key, value string) {
 }
 
 func (repo *ResticManager) GetRepoPath() string {
+	repo.envMutex.RLock()
+	defer repo.envMutex.RUnlock()
+
 	for _, env := range repo.Env {
 		if strings.HasPrefix(env, "RESTIC_REPOSITORY") {
 			parts := strings.SplitN(env, "=", 2)
@@ -624,6 +658,9 @@ func (repo *ResticManager) GetRepoPath() string {
 }
 
 func (repo *ResticManager) GetCacheDirPath() string {
+	repo.envMutex.RLock()
+	defer repo.envMutex.RUnlock()
+
 	for _, env := range repo.Env {
 		if strings.HasPrefix(env, "RESTIC_CACHE_DIR") {
 			parts := strings.SplitN(env, "=", 2)
@@ -1428,7 +1465,7 @@ func (repo *ResticManager) DumpSnapshotWithOptions(opt ResticDumpOption, writer 
 	args = append(args, snapshotID, filePath)
 
 	cmd := exec.CommandContext(ctx, repo.BinaryPath, args...)
-	cmd.Env = append(os.Environ(), repo.Env...)
+	cmd.Env = repo.getEnvCopy()
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -1660,7 +1697,7 @@ func (repo *ResticManager) MountRepoWithOptions(opt ResticMountOption) error {
 	// Build command arguments
 	args := repo.buildMountArgs(opt)
 	cmd := exec.Command(repo.BinaryPath, args...)
-	cmd.Env = append(os.Environ(), repo.Env...)
+	cmd.Env = repo.getEnvCopy()
 
 	repo.Printf(logrus.InfoLevel, "Starting command: %s %v", repo.BinaryPath, args)
 	ptyFile, err := pty.Start(cmd)
@@ -2830,6 +2867,9 @@ func (repo *ResticManager) ShutdownWorker() {
 
 // getEnvValue extracts value from repo.Env slice by key
 func (repo *ResticManager) getEnvValue(key string) string {
+	repo.envMutex.RLock()
+	defer repo.envMutex.RUnlock()
+
 	prefix := key + "="
 	for _, env := range repo.Env {
 		if strings.HasPrefix(env, prefix) {
@@ -2837,11 +2877,6 @@ func (repo *ResticManager) getEnvValue(key string) string {
 		}
 	}
 	return ""
-}
-
-// isS3Repository checks if repository path uses S3 backend
-func isS3Repository(repoPath string) bool {
-	return strings.HasPrefix(repoPath, "s3:")
 }
 
 // parseS3URL parses S3 repository URL into components
@@ -3007,7 +3042,7 @@ func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) err
 		}
 
 		// No config, no data - return error to require explicit init
-		repo.CanInitRepo = false
+		repo.CanInitRepo = true
 		err = errors.New(errstr)
 		repo.SetError(InitTask, err)
 		repo.setInitErrorBackoff(err)
@@ -3116,7 +3151,7 @@ func (repo *ResticManager) CheckRepoFiles() error {
 	}
 
 	repopath := repo.GetRepoPath()
-	if isS3Repository(repopath) || repo.AwsBucket != "" {
+	if config.IsS3ResticRepository(repopath) || repo.AwsBucket != "" {
 		bucket, prefix, endpoint, err := repo.resolveS3RepoSpec(repopath)
 		if err != nil {
 			repo.CanInitRepo = false
@@ -3143,6 +3178,16 @@ func (repo *ResticManager) CheckRepoFiles() error {
 		return repo.checkS3RepoFiles(bucket, prefix, endpoint)
 	}
 
+	if config.IsSftpResticRepository(repopath) {
+		// Repo lives on a remote host via SSH/SFTP; skip local filesystem
+		// existence checks and let actual restic commands surface
+		// init-required errors naturally.
+		repo.CanInitRepo = true
+		delete(repo.TaskErrors, InitTask)
+		repo.clearInitErrorBackoff()
+		return nil
+	}
+
 	// Existing local filesystem logic
 	if _, err := os.Stat(filepath.Join(repopath, "config")); os.IsNotExist(err) {
 		// Check the repo data
@@ -3160,8 +3205,8 @@ func (repo *ResticManager) CheckRepoFiles() error {
 			err = errors.New(errstr)
 			repo.SetError(InitTask, err)
 			return err
-		} else { // Repo data does not exist (explicit init required)
-			repo.CanInitRepo = false
+		} else { // Repo data does not exist (explicit init required, but possible)
+			repo.CanInitRepo = true
 			err = errors.New(errstr)
 			repo.SetError(InitTask, err)
 			return err
@@ -3186,7 +3231,7 @@ func (repo *ResticManager) CheckRepoFiles() error {
 func (repo *ResticManager) RunCommand(args []string, loglevel logrus.Level, captureOutput bool) ([]byte, []byte, error) {
 	// Set up the command
 	cmd := exec.Command(repo.BinaryPath, args...)
-	cmd.Env = append(os.Environ(), repo.Env...)
+	cmd.Env = repo.getEnvCopy()
 
 	// Buffers for stdout and stderr
 	var stdoutBuf, stderrBuf bytes.Buffer
@@ -3255,7 +3300,7 @@ func (repo *ResticManager) RunCommand(args []string, loglevel logrus.Level, capt
 func (repo *ResticManager) RunCommandWithContext(ctx context.Context, args []string, loglevel logrus.Level, captureOutput bool) ([]byte, []byte, error) {
 	// Set up the command with context
 	cmd := exec.CommandContext(ctx, repo.BinaryPath, args...)
-	cmd.Env = append(os.Environ(), repo.Env...)
+	cmd.Env = repo.getEnvCopy()
 
 	// Buffers for stdout and stderr
 	var stdoutBuf, stderrBuf bytes.Buffer
@@ -3334,7 +3379,7 @@ func (repo *ResticManager) InitRepo(force bool) error {
 func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 	repopath := repo.GetRepoPath()
 	if opt.Force {
-		if isS3Repository(repopath) || repo.AwsBucket != "" {
+		if config.IsS3ResticRepository(repopath) || repo.AwsBucket != "" {
 			bucket, prefix, endpoint, err := repo.resolveS3RepoSpec(repopath)
 			if err != nil {
 				repo.CanInitRepo = false
@@ -3372,6 +3417,12 @@ func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 				repo.setInitErrorBackoff(err)
 				return err
 			}
+		} else if config.IsSftpResticRepository(repopath) {
+			repo.CanInitRepo = false
+			err := fmt.Errorf("force re-initialization is not supported for sftp repositories; remove the remote repository path manually over ssh before re-initializing")
+			repo.SetError(InitTask, err)
+			repo.setInitErrorBackoff(err)
+			return err
 		} else {
 			err := os.RemoveAll(repopath)
 			if err != nil {
@@ -3899,7 +3950,7 @@ func (repo *ResticManager) BackupWithOptions(opt ResticBackupOption) (string, er
 // This minimizes memory usage for large backups that produce many JSON status lines
 func (repo *ResticManager) runBackupCommand(args []string) ([]byte, []byte, error) {
 	cmd := exec.Command(repo.BinaryPath, args...)
-	cmd.Env = append(os.Environ(), repo.Env...)
+	cmd.Env = repo.getEnvCopy()
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -4337,10 +4388,14 @@ func (repo *ResticManager) TestPassword(newpass string) error {
 	repo.SetCanFetch(false)
 	defer repo.SetCanFetch(true)
 
-	// Temporarily add the new password file to the environment
-	originalEnv := repo.Env
+	// Temporarily add the new password file to the environment. originalEnv is
+	// a copy, since UpdateEnvKey may overwrite the RESTIC_PASSWORD entry in
+	// place rather than appending, which would otherwise mutate it too.
+	repo.envMutex.RLock()
+	originalEnv := append([]string(nil), repo.Env...)
+	repo.envMutex.RUnlock()
 	repo.UpdateEnvKey("RESTIC_PASSWORD", newpass)
-	defer func() { repo.Env = originalEnv }() // Restore original env after function
+	defer repo.SetEnv(originalEnv) // Restore original env after function
 
 	// Test the new password by listing keys
 	args := []string{"key", "list", "--json"}
