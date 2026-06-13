@@ -464,6 +464,35 @@ func (repman *ReplicationManager) ensurePluginSymlink(clusterPluginDir, sharedDi
 	return true
 }
 
+// ensurePluginSymlinksAtStartup creates the shared plugin dir and migrates
+// existing per-cluster real plugin dirs to symlinks. Called once at startup
+// so that locally built plugins are available before the first pull sync.
+func (repman *ReplicationManager) ensurePluginSymlinksAtStartup() {
+	sharedDir := filepath.Join(repman.Conf.WorkingDir, logplugin.PluginDirName)
+	fi, err := os.Lstat(sharedDir)
+	if err != nil {
+		if err := os.MkdirAll(sharedDir, 0755); err != nil {
+			return
+		}
+	} else if fi.Mode()&os.ModeSymlink != 0 {
+		// run.sh may have already created a symlink to build/plugins/
+	} else if !fi.IsDir() {
+		return
+	}
+	migrated := false
+	for _, cluster := range repman.Clusters {
+		clusterPluginDir := logplugin.PluginDir(cluster.WorkingDir)
+		if repman.ensurePluginSymlink(clusterPluginDir, sharedDir) {
+			migrated = true
+		}
+	}
+	if migrated {
+		for _, cluster := range repman.Clusters {
+			cluster.ReloadLogPlugins()
+		}
+	}
+}
+
 // syncPluginDataFromPull copies global plugin data files from the pull repo
 // root (pullDir/plugins/data/) into ShareDir/plugins/data/.  These files are
 // instance-wide (not per-cluster) — e.g. the enterprise-security-issues.json

@@ -2665,6 +2665,10 @@ func (repman *ReplicationManager) Run() error {
 		priorRoutesByGateway[gw] = append(priorRoutesByGateway[gw], cl.OwnGatewayRoutes(gw)...)
 	}
 
+	// Ensure per-cluster plugin dirs are symlinks to the shared dir so that
+	// locally built plugins are picked up immediately (not only after pull).
+	repman.ensurePluginSymlinksAtStartup()
+
 	// Phase 4: start monitoring goroutines after all validation is complete.
 	for _, gl := range repman.ClusterList {
 		if cl, ok := repman.Clusters[gl]; ok {
