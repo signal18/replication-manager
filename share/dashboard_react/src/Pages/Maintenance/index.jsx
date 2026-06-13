@@ -4,7 +4,7 @@ import { sizeOf, convertObjectToArray, formatBytes, formatDate, getBackupMethod,
 import AccordionComponent from '../../components/AccordionComponent'
 import { DataTable } from '../../components/DataTable'
 import styles from './styles.module.scss'
-import { Box, HStack, Progress, useDisclosure, VStack } from '@chakra-ui/react'
+import { Box, HStack, Progress, Tooltip, useDisclosure, VStack } from '@chakra-ui/react'
 import TableType3 from '../../components/TableType3'
 import { useDispatch, useSelector } from 'react-redux'
 import { TaskLogs } from '../Dashboard/components/Logs'
@@ -12,7 +12,7 @@ import DatabaseJobs from './DatabaseJobs'
 import { deleteBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
-import { HiCog, HiPause, HiPlay, HiTrash } from 'react-icons/hi'
+import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock } from 'react-icons/hi'
 import { showWarningToast } from '../../redux/toastSlice'
 
 const QueueMoveForm = React.memo(({ list = [], currentId, onChange = (dir, afterId) => { } }) => {
@@ -224,8 +224,16 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
 
   useEffect(() => {
     if (list) {
-      const arrData = convertObjectToArray(list)
-      setData(arrData.reverse())
+      const arrData = convertObjectToArray(list).reverse()
+      const dataWithColor = arrData.map((item) => {
+        const endTime = item.endTime ? new Date(item.endTime) : null
+        const hasEnded = endTime && !isNaN(endTime.getTime()) && endTime.getFullYear() > 1
+        return {
+          ...item,
+          rowColor: !item.completed && hasEnded ? 'red' : ''
+        }
+      })
+      setData(dataWithColor)
     } else {
       setData([])
     }
@@ -286,25 +294,21 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       ),
       columnHelper.accessor(
         (row) => (
-          <VStack className={styles.cellStack}>
+          <VStack className={styles.cellStack} spacing={0.5}>
             <Box className={styles.cellValue}>{getBackupMethod(row.backupMethod)}</Box>
             <Box className={styles.cellValue}>{row.backupTool}</Box>
+            <Box className={styles.cellValue}>{getBackupStrategy(row.backupStrategy)}</Box>
           </VStack>
         ),
         {
           cell: (info) => info.getValue(),
-          header: 'Backup Method / Tool',
+          header: 'Backup Method',
           id: 'backupMethod'
         }
       ),
-      columnHelper.accessor((row) => getBackupStrategy(row.backupStrategy), {
-        cell: (info) => info.getValue(),
-        header: 'Strategy',
-        id: 'strategy'
-      }),
       columnHelper.accessor(
         (row) => (
-          <VStack className={styles.cellStack}>
+          <VStack className={styles.cellStack} spacing={0.5}>
             <Box className={styles.cellValue}>{row.source}</Box>
             <Box className={styles.cellValue}>{row.dest}</Box>
           </VStack>
@@ -321,34 +325,10 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         id: 'backupSize',
         minWidth: 100
       }),
-      columnHelper.accessor((row) => (row.compressed ? 'Yes' : 'No'), {
-        cell: (info) => info.getValue(),
-        header: 'Compressed',
-        id: 'compression'
-      }),
       columnHelper.accessor(
         (row) => (
-          <VStack>
-            <div>{row.encrypted ? 'Yes' : 'No'}</div>
-            {row.encrypted && (
-              <VStack className={styles.cellStack}>
-                <Box className={styles.cellValue}>{row.encryptionAlgo}</Box>
-                <Box className={styles.cellValue}>{row.encryptionKey}</Box>
-              </VStack>
-            )}
-          </VStack>
-        ),
-        {
-          cell: (info) => info.getValue(),
-          header: 'Encryption Details',
-          id: 'encryption'
-        }
-      ),
-      columnHelper.accessor(
-        (row) => (
-          <VStack className={styles.cellStack}>
-            <Box className={styles.cellValue}>{`File: ${row.binLogFileName}`}</Box>
-            <Box className={styles.cellValue}>{`Pos: ${row.binLogFilePos}`}</Box>
+          <VStack className={styles.cellStack} spacing={0.5}>
+            <Box className={styles.cellValue}>{`File: ${row.binLogFileName} / Pos: ${row.binLogFilePos}`}</Box>
             <Box className={styles.cellValue}>{`GTID: ${row.binLogUuid}`}</Box>
           </VStack>
         ),
@@ -358,22 +338,42 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
           id: 'binLogInfo'
         }
       ),
-      columnHelper.accessor((row) => row.retentionDays, {
-        cell: (info) => info.getValue(),
-        header: 'Retention (Days)',
-        id: 'retention'
-      }),
-      columnHelper.accessor((row) => (row.completed ? 'Yes' : 'No'), {
-        cell: (info) => info.getValue(),
-        header: 'Completed',
-        id: 'completed'
-      }),
+      columnHelper.accessor(
+        (row) => (
+          <HStack className={styles.iconRow} spacing={2}>
+            <Tooltip label={row.completed ? 'Completed' : 'Pending'} hasArrow>
+              <Box className={`${styles.statusIcon} ${row.completed ? styles.statusIconActive : styles.statusIconPending}`}>
+                {row.completed ? <HiCheckCircle /> : <HiClock />}
+              </Box>
+            </Tooltip>
+            <Tooltip label={row.compressed ? 'Compressed' : 'Not compressed'} hasArrow>
+              <Box className={`${styles.statusIcon} ${row.compressed ? styles.statusIconActive : styles.statusIconInactive}`}>
+                {row.compressed ? <HiArchive /> : <HiOutlineArchive />}
+              </Box>
+            </Tooltip>
+            <Tooltip
+              label={row.encrypted ? `Encrypted${row.encryptionAlgo ? ` · ${row.encryptionAlgo}` : ''}` : 'Not encrypted'}
+              hasArrow
+            >
+              <Box className={`${styles.statusIcon} ${row.encrypted ? styles.statusIconActive : styles.statusIconInactive}`}>
+                {row.encrypted ? <HiLockClosed /> : <HiOutlineLockOpen />}
+              </Box>
+            </Tooltip>
+          </HStack>
+        ),
+        {
+          cell: (info) => info.getValue(),
+          header: 'Status',
+          id: 'status'
+        }
+      ),
       columnHelper.display({
         id: 'actions',
         header: 'Actions',
         cell: (info) => (
           <RMIconButton
             icon={HiTrash}
+            colorScheme='red'
             tooltip='Delete backup'
             onClick={() => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: info.row.original.id } })}
             isDisabled={!user?.grants['db-backup']}
