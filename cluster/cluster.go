@@ -1006,6 +1006,7 @@ func (cluster *Cluster) Run() {
 				cluster.CheckFailed()
 				cluster.IsConfigPathChange = cluster.HasConfigPathChanged()
 				cluster.SetStatus()
+				cluster.CheckBackupStates()
 				cluster.StateProcessing()
 				cluster.CheckHasFailCertLoadP12()
 				go cluster.GetSlowLogTable() // prevent blocking cycle

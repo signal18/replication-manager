@@ -506,7 +506,6 @@ func (server *ServerMonitor) NewLogTailer(logtype string) (*tail.Tail, error) {
 func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	cluster := server.ClusterGroup
 	defer wg.Done()
-	server.jobsCheckBackupStates()
 
 	if cluster.vmaster != nil {
 		if cluster.vmaster.ServerID == server.ServerID {

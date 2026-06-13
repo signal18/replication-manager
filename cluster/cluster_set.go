@@ -2165,6 +2165,19 @@ func (cluster *Cluster) SetInResticBackupState(value bool) {
 	}
 }
 
+func (cluster *Cluster) CheckBackupStates() {
+	serverUrl := ""
+	if m := cluster.GetMaster(); m != nil {
+		serverUrl = m.URL
+	}
+	if cluster.InPhysicalBackup || cluster.InResticPhysicalBackup {
+		cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0073"], cluster.Conf.BackupPhysicalType, serverUrl), ErrFrom: "JOB", ServerUrl: serverUrl})
+	}
+	if cluster.InLogicalBackup || cluster.InResticLogicalBackup {
+		cluster.SetState("WARN0175", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0175"], cluster.Conf.BackupLogicalType, serverUrl), ErrFrom: "JOB", ServerUrl: serverUrl})
+	}
+}
+
 func (cluster *Cluster) SetGraphiteWhitelistTemplate(value string) {
 	cluster.Conf.GraphiteWhitelistTemplate = value
 }
