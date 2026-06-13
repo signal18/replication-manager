@@ -159,6 +159,10 @@ func (cluster *Cluster) SetBackupArchiveMode(mode string) error {
 	cluster.CheckResticInstallation()
 	if cluster.ResticManager == nil {
 		cluster.StartResticManager()
+	} else {
+		// Repository backend/path may have changed, drop the stale snapshot
+		// list and stats until the next fetch against the new repository.
+		cluster.ResticManager.ClearSnapshotList()
 	}
 	cluster.ReloadResticEnv()
 	return nil

@@ -447,6 +447,19 @@ func (repo *ResticManager) UpdateSnapshotList(snapshots []BackupSnapshot) {
 	}
 }
 
+// ClearSnapshotList discards the cached snapshot list and stats.
+// Used when the repository configuration changes (e.g. backup-archive-mode
+// switches to a different backend/path) so stale snapshots from the
+// previous repository are no longer displayed until the next fetch.
+func (repo *ResticManager) ClearSnapshotList() {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+
+	repo.Backups = make([]BackupSnapshot, 0)
+	repo.BackupMap = make(map[string]*BackupSnapshot)
+	repo.BackupStat = BackupStat{}
+}
+
 func (repo *ResticManager) GetSnapshot(snapshotId string) *BackupSnapshot {
 	repo.Mutex.Lock()
 	defer repo.Mutex.Unlock()
