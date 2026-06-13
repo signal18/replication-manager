@@ -2751,22 +2751,26 @@ func (repman *ReplicationManager) Run() error {
 		// processClusterQueue is blocked waiting for gitMutex — compounding the delay.
 		repman.exit.Store(true)
 
+		repman.Logrus.Info("Shutdown: unmounting S3")
 		repman.UnMountS3()
 
-		// Stop ticker goroutines.
+		repman.Logrus.Info("Shutdown: stopping ticker goroutines")
 		close(quit_GitPull)
 		close(quit_PAT)
 
+		repman.Logrus.Infof("Shutdown: stopping %d clusters", len(repman.Clusters))
 		stopwg := sync.WaitGroup{}
 		for _, cl := range repman.Clusters {
 			stopwg.Add(1)
 			go func(c *cluster.Cluster) {
 				defer stopwg.Done()
+				repman.Logrus.Infof("Shutdown: stopping cluster %s", c.Name)
 				c.Stop()
+				repman.Logrus.Infof("Shutdown: cluster %s stopped", c.Name)
 			}(cl)
 		}
-		// Wait for all cluster.Stop() calls to complete, then unblock the main goroutine.
 		stopwg.Wait()
+		repman.Logrus.Info("Shutdown: all clusters stopped")
 		close(clustersDone)
 	}()
 
@@ -3200,19 +3204,20 @@ func (repman *ReplicationManager) resolveHostIp() string {
 }
 
 func (repman *ReplicationManager) Stop() {
-
+	repman.Logrus.Info("Stop: stopping global scheduler")
 	if repman.globalScheduler != nil {
 		repman.globalScheduler.Stop()
 	}
 
+	repman.Logrus.Info("Stop: shutting down login upgrade store")
 	if repman.LoginUpgradeStore != nil {
 		repman.LoginUpgradeStore.Shutdown()
 	}
 
+	repman.Logrus.Info("Stop: shutting down HTTP servers")
 	httpCtx, httpCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer httpCancel()
 
-	// Shut down both HTTP servers in parallel so neither consumes the other's budget.
 	var httpWg sync.WaitGroup
 	if repman.httpServer != nil {
 		httpWg.Add(1)
@@ -3233,6 +3238,7 @@ func (repman *ReplicationManager) Stop() {
 		}()
 	}
 	httpWg.Wait()
+	repman.Logrus.Info("Stop: HTTP servers stopped")
 
 	// GracefulStop waits for all in-flight RPCs; fall back to hard Stop if the
 	// deadline expires so long-lived streams don't hold up shutdown.

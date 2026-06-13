@@ -1193,25 +1193,29 @@ func (cluster *Cluster) StateProcessing() {
 
 func (cluster *Cluster) Stop() {
 	cluster.stopOnce.Do(func() {
-		// Signal the monitoring loop to stop before doing any blocking I/O.
-		// The lock is not held across the slow operations below to avoid deadlock
-		// with SaveConfig(wait=true) and ResticManager.UnmountRepo (5 min timeout).
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: signaling exit")
 		cluster.exit.Store(true)
 
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: stopping scheduler")
 		if cluster.scheduler != nil {
 			cluster.scheduler.Stop()
 		}
 
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: closing template MD5 worker")
 		cluster.CloseRefreshTemplateMD5Worker()
 
 		if cluster.ResticManager != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: unmounting restic repo")
 			if err := cluster.ResticManager.UnmountRepo(); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Restic unmount on shutdown failed: %s", err)
 			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: shutting down restic worker")
 			cluster.ResticManager.ShutdownWorker()
 		}
 
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: saving config")
 		cluster.ConfigManager.SaveConfig(cluster, true)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: done")
 	})
 }
 
