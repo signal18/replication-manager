@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signal18/replication-manager/config"
 	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
 	"github.com/sirupsen/logrus"
 )
@@ -1984,8 +1985,8 @@ func TestIsS3Repository(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isS3Repository(tt.repoPath); got != tt.want {
-				t.Errorf("isS3Repository(%q) = %v, want %v", tt.repoPath, got, tt.want)
+			if got := config.IsS3ResticRepository(tt.repoPath); got != tt.want {
+				t.Errorf("IsS3ResticRepository(%q) = %v, want %v", tt.repoPath, got, tt.want)
 			}
 		})
 	}

@@ -3458,6 +3458,24 @@ func (conf *Config) ApplyBackupArchiveMode(mode string) error {
 	return nil
 }
 
+// IsS3ResticRepository reports whether repoPath uses restic's S3 backend
+// ("s3:" prefix). repoPath is expected to already be trimmed of surrounding
+// whitespace, as is the case for BackupResticLocalRepository after
+// NormalizeBackupArchiveMode has run. Restic treats the scheme prefix as
+// case-sensitive, so this match is exact-case to match restic's own behavior.
+func IsS3ResticRepository(repoPath string) bool {
+	return strings.HasPrefix(repoPath, "s3:")
+}
+
+// IsSftpResticRepository reports whether repoPath uses restic's sftp backend
+// ("sftp:" prefix). repoPath is expected to already be trimmed of surrounding
+// whitespace, as is the case for BackupResticLocalRepository after
+// NormalizeBackupArchiveMode has run. Restic treats the scheme prefix as
+// case-sensitive, so this match is exact-case to match restic's own behavior.
+func IsSftpResticRepository(repoPath string) bool {
+	return strings.HasPrefix(repoPath, "sftp:")
+}
+
 // DeriveBackupArchiveModeFromFlags computes the canonical backup-archive-mode
 // for the given backup-restic / backup-restic-aws flag values. For the
 // restic-local vs restic-sftp ambiguity (both map to backup-restic=true,
@@ -3472,7 +3490,7 @@ func (conf *Config) DeriveBackupArchiveModeFromFlags(backupRestic, backupResticA
 		return ConstBackupArchiveModeNone
 	case backupResticAws:
 		return ConstBackupArchiveModeResticAws
-	case strings.HasPrefix(strings.TrimSpace(conf.BackupResticLocalRepository), "sftp:"):
+	case IsSftpResticRepository(conf.BackupResticLocalRepository):
 		return ConstBackupArchiveModeResticSftp
 	default:
 		return ConstBackupArchiveModeResticLocal
@@ -3484,7 +3502,18 @@ func (conf *Config) DeriveBackupArchiveModeFromFlags(backupRestic, backupResticA
 // backup-restic-local-repository (sftp: prefix), so an empty or "none" value
 // contradicted by a legacy backup-restic=true is re-derived from those flags.
 // Once resolved, backup-restic / backup-restic-aws are kept in sync with it.
+// It also trims BackupResticLocalRepository so IsS3ResticRepository /
+// IsSftpResticRepository can match prefixes without re-trimming.
+//
+// This is only called from Cluster.Init() at startup. If the server gains
+// support for hot-reloading TOML configuration, a backup-archive-mode (or
+// backup-restic-local-repository) value added or changed while the server is
+// running would be loaded by Viper but never normalized/trimmed here, and
+// callers reading these fields directly may see stale or inconsistent state
+// until the cluster is reinitialized.
 func (conf *Config) NormalizeBackupArchiveMode() {
+	conf.BackupResticLocalRepository = strings.TrimSpace(conf.BackupResticLocalRepository)
+
 	invalidValue := conf.ValidateBackupArchiveMode(conf.BackupArchiveMode) != nil
 	needsMigration := invalidValue ||
 		(conf.BackupArchiveMode == ConstBackupArchiveModeNone && conf.BackupRestic)

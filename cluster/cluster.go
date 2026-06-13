@@ -705,6 +705,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.initScheduler()
 	cluster.CheckDefaultUser(true)
 	cluster.RefreshToolVersions()
+	cluster.initResticLocalDir()
 	cluster.StartResticManager()
 
 	cluster.Conf.TopologyTarget = cluster.GetTopologyFromConf()

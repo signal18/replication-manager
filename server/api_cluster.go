@@ -3875,7 +3875,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		repoPath := string(val)
+		repoPath := strings.TrimSpace(string(val))
 		if mycluster.Conf.BackupArchiveMode == config.ConstBackupArchiveModeResticSftp {
 			if err := cluster.ValidateResticSftpRepository(repoPath); err != nil {
 				return err

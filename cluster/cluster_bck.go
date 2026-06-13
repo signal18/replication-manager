@@ -34,14 +34,6 @@ var splitDumpTimestampRegex = regexp.MustCompile(`^\d+$`)
 // sftp:[user@]host:path, e.g. sftp:backup@10.0.0.1:/srv/restic-repo
 var resticSftpRepoRegex = regexp.MustCompile(`^sftp:[^:@\s]+(@[^:@\s]+)?:.+$`)
 
-func isS3ResticRepository(repoPath string) bool {
-	return strings.HasPrefix(strings.TrimSpace(repoPath), "s3:")
-}
-
-func isSftpResticRepository(repoPath string) bool {
-	return strings.HasPrefix(strings.TrimSpace(repoPath), "sftp:")
-}
-
 // ValidateResticSftpRepository checks that repoPath matches the
 // sftp:[user@]host:/path syntax expected by restic's sftp backend, so a
 // malformed value is rejected with a clear error instead of an opaque
@@ -310,7 +302,7 @@ func filterResticEnv(cluster *Cluster, baseEnv []string, repoPath, password, cac
 		overrides = make(map[string]string)
 		allowlist = make(map[string]struct{})
 	}
-	isS3 := isS3ResticRepository(repoPath)
+	isS3 := config.IsS3ResticRepository(repoPath)
 	defaultRegion := ""
 	optionalAwsEnv := make(map[string]string)
 	// Reserved env vars cannot be overridden via backup-restic-additional-env.
@@ -435,7 +427,7 @@ func (cluster *Cluster) ResticGetEnv() []string {
 		} else {
 			repoPath = filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
 		}
-		if !isSftpResticRepository(repoPath) {
+		if !config.IsSftpResticRepository(repoPath) {
 			if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 				err := os.MkdirAll(repoPath, os.ModePerm)
 				if err != nil {

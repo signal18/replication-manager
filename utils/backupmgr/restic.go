@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
 	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
 	"github.com/signal18/replication-manager/utils/s3helper"
@@ -2852,16 +2853,6 @@ func (repo *ResticManager) getEnvValue(key string) string {
 	return ""
 }
 
-// isS3Repository checks if repository path uses S3 backend
-func isS3Repository(repoPath string) bool {
-	return strings.HasPrefix(repoPath, "s3:")
-}
-
-// isSftpRepository checks if repository path uses the sftp backend
-func isSftpRepository(repoPath string) bool {
-	return strings.HasPrefix(repoPath, "sftp:")
-}
-
 // parseS3URL parses S3 repository URL into components
 // Supports formats:
 //   - s3:https://endpoint/bucket/prefix (MinIO/custom endpoint)
@@ -3134,7 +3125,7 @@ func (repo *ResticManager) CheckRepoFiles() error {
 	}
 
 	repopath := repo.GetRepoPath()
-	if isS3Repository(repopath) || repo.AwsBucket != "" {
+	if config.IsS3ResticRepository(repopath) || repo.AwsBucket != "" {
 		bucket, prefix, endpoint, err := repo.resolveS3RepoSpec(repopath)
 		if err != nil {
 			repo.CanInitRepo = false
@@ -3161,7 +3152,7 @@ func (repo *ResticManager) CheckRepoFiles() error {
 		return repo.checkS3RepoFiles(bucket, prefix, endpoint)
 	}
 
-	if isSftpRepository(repopath) {
+	if config.IsSftpResticRepository(repopath) {
 		// Repo lives on a remote host via SSH/SFTP; skip local filesystem
 		// existence checks and let actual restic commands surface
 		// init-required errors naturally.
@@ -3362,7 +3353,7 @@ func (repo *ResticManager) InitRepo(force bool) error {
 func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 	repopath := repo.GetRepoPath()
 	if opt.Force {
-		if isS3Repository(repopath) || repo.AwsBucket != "" {
+		if config.IsS3ResticRepository(repopath) || repo.AwsBucket != "" {
 			bucket, prefix, endpoint, err := repo.resolveS3RepoSpec(repopath)
 			if err != nil {
 				repo.CanInitRepo = false
@@ -3400,7 +3391,7 @@ func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 				repo.setInitErrorBackoff(err)
 				return err
 			}
-		} else if isSftpRepository(repopath) {
+		} else if config.IsSftpResticRepository(repopath) {
 			repo.CanInitRepo = false
 			err := fmt.Errorf("force re-initialization is not supported for sftp repositories; remove the remote repository path manually over ssh before re-initializing")
 			repo.SetError(InitTask, err)
