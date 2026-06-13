@@ -48,6 +48,25 @@
       white-space: nowrap;
       text-align: start;
     }
+    .iconRow {
+      align-items: center;
+    }
+    .statusIcon {
+      display: inline-flex;
+      align-items: center;
+      font-size: rem(16);
+      flex-shrink: 0;
+    }
+    .statusIconActive {
+      color: var(--success-secondary-color);
+    }
+    .statusIconPending {
+      color: var(--warning-secondary-color);
+    }
+    .statusIconInactive {
+      color: var(--darkgray-color);
+      opacity: 0.5;
+    }
   }
   .snapshotContainer {
     width: 100%;
