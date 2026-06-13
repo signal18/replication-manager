@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/state"
@@ -37,10 +38,11 @@ func (sg *ServerGlobals) ReleaseBackupSlot() {
 }
 
 // waitForBackupSlot opens a WARN0174 state while waiting for a global backup
-// slot, then clears it once the slot is acquired.
-func (cluster *Cluster) waitForBackupSlot() {
+// slot, then clears it once the slot is acquired. Returns false if the
+// cluster is shutting down before a slot could be acquired.
+func (cluster *Cluster) waitForBackupSlot() bool {
 	if cluster.ServerGlobals == nil || cluster.ServerGlobals.BackupSemaphore == nil {
-		return
+		return true
 	}
 	inUse := len(cluster.ServerGlobals.BackupSemaphore)
 	total := cap(cluster.ServerGlobals.BackupSemaphore)
@@ -51,6 +53,16 @@ func (cluster *Cluster) waitForBackupSlot() {
 			ErrFrom: "BACKUP",
 		})
 	}
-	cluster.ServerGlobals.AcquireBackupSlot()
-	cluster.StateMachine.DeleteState("WARN0174")
+	for {
+		select {
+		case cluster.ServerGlobals.BackupSemaphore <- struct{}{}:
+			cluster.StateMachine.DeleteState("WARN0174")
+			return true
+		case <-time.After(2 * time.Second):
+			if cluster.exit.Load() {
+				cluster.StateMachine.DeleteState("WARN0174")
+				return false
+			}
+		}
+	}
 }

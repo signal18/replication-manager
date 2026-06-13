@@ -103,7 +103,9 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	}
 
 	cluster := server.ClusterGroup
-	cluster.waitForBackupSlot()
+	if !cluster.waitForBackupSlot() {
+		return errors.New("backup canceled: cluster shutting down")
+	}
 	defer cluster.ServerGlobals.ReleaseBackupSlot()
 
 	backupLine := server.resolveBackupLine(opts)
@@ -2452,7 +2454,9 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	}
 
 	cluster := server.ClusterGroup
-	cluster.waitForBackupSlot()
+	if !cluster.waitForBackupSlot() {
+		return errors.New("backup canceled: cluster shutting down")
+	}
 	defer cluster.ServerGlobals.ReleaseBackupSlot()
 
 	backupLine := server.resolveBackupLine(opts)
