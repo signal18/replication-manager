@@ -135,18 +135,28 @@ func (cluster *Cluster) SwitchProvDockerDaemonPrivate() {
 	cluster.Conf.ProvDockerDaemonPrivate = !cluster.Conf.ProvDockerDaemonPrivate
 }
 
+// SwitchBackupRestic toggles the legacy backup-restic flag, mapping the
+// resulting (backup-restic, backup-restic-aws) combination to its canonical
+// backup-archive-mode and applying it via SetBackupArchiveMode so the two
+// representations never drift out of sync.
 func (cluster *Cluster) SwitchBackupRestic() {
-	cluster.Conf.BackupRestic = !cluster.Conf.BackupRestic
-	cluster.CheckResticInstallation()
-	if cluster.ResticManager == nil {
-		cluster.StartResticManager()
+	newBackupRestic := !cluster.Conf.BackupRestic
+	mode := cluster.Conf.DeriveBackupArchiveModeFromFlags(newBackupRestic, cluster.Conf.BackupResticAws)
+	if err := cluster.SetBackupArchiveMode(mode); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed to switch backup-restic to mode %s: %s", mode, err)
 	}
-	cluster.ReloadResticEnv()
 }
 
+// SwitchBackupResticAws toggles the legacy backup-restic-aws flag, mapping the
+// resulting (backup-restic, backup-restic-aws) combination to its canonical
+// backup-archive-mode and applying it via SetBackupArchiveMode so the two
+// representations never drift out of sync.
 func (cluster *Cluster) SwitchBackupResticAws() {
-	cluster.Conf.BackupResticAws = !cluster.Conf.BackupResticAws
-	cluster.ReloadResticEnv()
+	newBackupResticAws := !cluster.Conf.BackupResticAws
+	mode := cluster.Conf.DeriveBackupArchiveModeFromFlags(cluster.Conf.BackupRestic, newBackupResticAws)
+	if err := cluster.SetBackupArchiveMode(mode); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed to switch backup-restic-aws to mode %s: %s", mode, err)
+	}
 }
 
 // SetBackupArchiveMode sets the canonical backup-archive-mode (none, restic-local,

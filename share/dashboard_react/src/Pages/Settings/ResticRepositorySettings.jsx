@@ -257,6 +257,7 @@ function ResticRepositorySettings({
   const [confirmEmptyPrefix, setConfirmEmptyPrefix] = useState(false)
   const archiveMode = config?.backupArchiveMode || 'none'
   const isAws = archiveMode === 'restic-aws'
+  const isSftp = archiveMode === 'restic-sftp'
   const awsBucket = (config?.backupResticAwsBucket || '').trim()
   const awsPrefix = (config?.backupResticAwsPrefix || '').trim()
   const awsEndpoint = (config?.backupResticAwsEndpoint || '').trim()
@@ -278,7 +279,7 @@ function ResticRepositorySettings({
     ? `s3:${trimmedEndpoint ? `${trimmedEndpoint}/` : ''}${awsBucket}${effectivePrefix ? `/${effectivePrefix}` : ''}`
     : effectiveLegacyRepoPath
   const isAwsPrefixEmpty = isAws && awsBucket && !awsPrefix
-  const isForceInitBlocked = initForce && isAwsPrefixEmpty && !confirmEmptyPrefix
+  const isForceInitBlocked = initForce && ((isAwsPrefixEmpty && !confirmEmptyPrefix) || isSftp)
 
   const handleSettingChange = (setting, value, encodeValue = false) =>
     dispatch(
@@ -977,7 +978,7 @@ function ResticRepositorySettings({
         body={
           <VStack align='start' spacing={3}>
             <Text>
-              Re-initialize the {archiveMode === 'restic-aws' ? 'S3/MinIO' : archiveMode === 'restic-sftp' ? 'SFTP' : 'local'} Restic repository:
+              Re-initialize the {isAws ? 'S3/MinIO' : isSftp ? 'SFTP' : 'local'} Restic repository:
             </Text>
             <Text 
               fontWeight='bold' 
@@ -993,15 +994,25 @@ function ResticRepositorySettings({
                 : config?.backupResticLocalRepository}
             </Text>
             <Divider />
-            <Checkbox
-              isChecked={initForce}
-              onChange={(e) => setInitForce(e.target.checked)}
-            >
-              <Text fontSize='sm'>
-                Force re-initialization (overwrite existing configuration)
-              </Text>
-            </Checkbox>
-            {initForce && (
+            {isSftp ? (
+              <Alert status='info' size='sm' borderRadius='md'>
+                <AlertIcon />
+                <Text fontSize='sm'>
+                  Force re-initialization is not supported for SFTP repositories. To re-initialize from
+                  scratch, remove the remote repository path manually over SSH first.
+                </Text>
+              </Alert>
+            ) : (
+              <Checkbox
+                isChecked={initForce}
+                onChange={(e) => setInitForce(e.target.checked)}
+              >
+                <Text fontSize='sm'>
+                  Force re-initialization (overwrite existing configuration)
+                </Text>
+              </Checkbox>
+            )}
+            {initForce && !isSftp && (
               <Alert status='warning' size='sm' borderRadius='md'>
                 <AlertIcon />
                 <Text fontSize='sm'>

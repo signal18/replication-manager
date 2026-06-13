@@ -3458,26 +3458,43 @@ func (conf *Config) ApplyBackupArchiveMode(mode string) error {
 	return nil
 }
 
+// DeriveBackupArchiveModeFromFlags computes the canonical backup-archive-mode
+// for the given backup-restic / backup-restic-aws flag values. For the
+// restic-local vs restic-sftp ambiguity (both map to backup-restic=true,
+// backup-restic-aws=false), the configured repository path is inspected for
+// an "sftp:" prefix. Callers that mutate the legacy flags should compute the
+// resulting mode with this helper and apply it via ApplyBackupArchiveMode (or
+// Cluster.SetBackupArchiveMode) so backup-restic / backup-restic-aws stay in
+// a combination the canonical mode can represent.
+func (conf *Config) DeriveBackupArchiveModeFromFlags(backupRestic, backupResticAws bool) string {
+	switch {
+	case !backupRestic:
+		return ConstBackupArchiveModeNone
+	case backupResticAws:
+		return ConstBackupArchiveModeResticAws
+	case strings.HasPrefix(strings.TrimSpace(conf.BackupResticLocalRepository), "sftp:"):
+		return ConstBackupArchiveModeResticSftp
+	default:
+		return ConstBackupArchiveModeResticLocal
+	}
+}
+
 // NormalizeBackupArchiveMode resolves backup-archive-mode at startup. Configs
 // predating this setting only have backup-restic / backup-restic-aws /
 // backup-restic-local-repository (sftp: prefix), so an empty or "none" value
 // contradicted by a legacy backup-restic=true is re-derived from those flags.
 // Once resolved, backup-restic / backup-restic-aws are kept in sync with it.
 func (conf *Config) NormalizeBackupArchiveMode() {
-	needsMigration := conf.ValidateBackupArchiveMode(conf.BackupArchiveMode) != nil ||
+	invalidValue := conf.ValidateBackupArchiveMode(conf.BackupArchiveMode) != nil
+	needsMigration := invalidValue ||
 		(conf.BackupArchiveMode == ConstBackupArchiveModeNone && conf.BackupRestic)
 
 	if needsMigration {
-		switch {
-		case !conf.BackupRestic:
-			conf.BackupArchiveMode = ConstBackupArchiveModeNone
-		case conf.BackupResticAws:
-			conf.BackupArchiveMode = ConstBackupArchiveModeResticAws
-		case strings.HasPrefix(strings.TrimSpace(conf.BackupResticLocalRepository), "sftp:"):
-			conf.BackupArchiveMode = ConstBackupArchiveModeResticSftp
-		default:
-			conf.BackupArchiveMode = ConstBackupArchiveModeResticLocal
+		if invalidValue {
+			log.WithFields(log.Fields{"cluster": "none", "type": "log", "module": "config"}).
+				Warnf("Invalid backup-archive-mode value %q, migrating from legacy backup-restic/backup-restic-aws settings", conf.BackupArchiveMode)
 		}
+		conf.BackupArchiveMode = conf.DeriveBackupArchiveModeFromFlags(conf.BackupRestic, conf.BackupResticAws)
 	}
 
 	conf.applyBackupArchiveModeFlags()

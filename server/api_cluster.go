@@ -4285,13 +4285,22 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "prov-object-allow-overwrite":
 		mycluster.Conf.ProvObjectAllowOverwrite = applyIsActive(mycluster.Conf.ProvObjectAllowOverwrite, isactive)
 	case "backup-restic-aws":
-		mycluster.Conf.BackupResticAws = applyIsActive(mycluster.Conf.BackupResticAws, isactive)
+		oldValue := mycluster.Conf.BackupResticAws
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mode := mycluster.Conf.DeriveBackupArchiveModeFromFlags(mycluster.Conf.BackupRestic, newValue)
+			if err = mycluster.SetBackupArchiveMode(mode); err != nil {
+				return err
+			}
+		}
 	case "backup-restic":
 		oldValue := mycluster.Conf.BackupRestic
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.BackupRestic = newValue
-			mycluster.CheckResticInstallation()
+			mode := mycluster.Conf.DeriveBackupArchiveModeFromFlags(newValue, mycluster.Conf.BackupResticAws)
+			if err = mycluster.SetBackupArchiveMode(mode); err != nil {
+				return err
+			}
 		}
 	case "backup-restic-purge-prune":
 		mycluster.Conf.BackupResticPurgePrune = applyIsActive(mycluster.Conf.BackupResticPurgePrune, isactive)
