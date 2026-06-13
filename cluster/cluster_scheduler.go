@@ -2,17 +2,12 @@ package cluster
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (cluster *Cluster) GetBackupLogicalFunction() func() {
 	return func() {
-		cluster.waitForBackupSlot()
-		defer cluster.ServerGlobals.ReleaseBackupSlot()
-
 		mysrv := cluster.GetBackupServer()
 		if mysrv != nil {
 			mysrv.JobBackupLogical(context.Background())
@@ -24,9 +19,6 @@ func (cluster *Cluster) GetBackupLogicalFunction() func() {
 
 func (cluster *Cluster) GetBackupPhysicalFunction() func() {
 	return func() {
-		cluster.waitForBackupSlot()
-		defer cluster.ServerGlobals.ReleaseBackupSlot()
-
 		mysrv := cluster.GetBackupServer()
 		if mysrv != nil {
 			mysrv.JobBackupPhysical()
@@ -34,25 +26,6 @@ func (cluster *Cluster) GetBackupPhysicalFunction() func() {
 			cluster.GetMaster().JobBackupPhysical()
 		}
 	}
-}
-
-// waitForBackupSlot opens a WARN0174 state while waiting for a global backup
-// slot, then clears it once the slot is acquired.
-func (cluster *Cluster) waitForBackupSlot() {
-	if cluster.ServerGlobals == nil || cluster.ServerGlobals.BackupSemaphore == nil {
-		return
-	}
-	inUse := len(cluster.ServerGlobals.BackupSemaphore)
-	total := cap(cluster.ServerGlobals.BackupSemaphore)
-	if inUse >= total {
-		cluster.SetState("WARN0174", state.State{
-			ErrType: "WARNING",
-			ErrDesc: fmt.Sprintf(config.ClusterError["WARN0174"], inUse, total),
-			ErrFrom: "BACKUP",
-		})
-	}
-	cluster.ServerGlobals.AcquireBackupSlot()
-	cluster.StateMachine.DeleteState("WARN0174")
 }
 
 func (cluster *Cluster) GetRotateLogsFunction() func() {

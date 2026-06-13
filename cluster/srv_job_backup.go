@@ -94,7 +94,6 @@ func (server *ServerMonitor) AfterJobProcess(conn *sqlx.Conn, task DBTask) error
 }
 
 func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions) error {
-	//server can be nil as no dicovered master
 	if server == nil {
 		return nil
 	}
@@ -104,6 +103,9 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	}
 
 	cluster := server.ClusterGroup
+	cluster.waitForBackupSlot()
+	defer cluster.ServerGlobals.ReleaseBackupSlot()
+
 	backupLine := server.resolveBackupLine(opts)
 	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
 	resticEnabled := server.shouldRunRestic(opts)
@@ -2442,7 +2444,6 @@ func (server *ServerMonitor) JobBackupLogical(ctx context.Context) error {
 
 func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, opts BackupRunOptions) error {
 	var err error
-	//server can be nil as no dicovered master
 	if server == nil {
 		return errors.New("No server defined")
 	}
@@ -2451,6 +2452,9 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	}
 
 	cluster := server.ClusterGroup
+	cluster.waitForBackupSlot()
+	defer cluster.ServerGlobals.ReleaseBackupSlot()
+
 	backupLine := server.resolveBackupLine(opts)
 	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
 	resticEnabled := server.shouldRunRestic(opts)

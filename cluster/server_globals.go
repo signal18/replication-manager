@@ -1,5 +1,12 @@
 package cluster
 
+import (
+	"fmt"
+
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
+)
+
 // ServerGlobals holds instance-wide shared resources passed from the server
 // to all clusters at init time. This avoids import cycles between server/
 // and cluster/ while giving clusters access to global coordination primitives.
@@ -27,4 +34,23 @@ func (sg *ServerGlobals) ReleaseBackupSlot() {
 		return
 	}
 	<-sg.BackupSemaphore
+}
+
+// waitForBackupSlot opens a WARN0174 state while waiting for a global backup
+// slot, then clears it once the slot is acquired.
+func (cluster *Cluster) waitForBackupSlot() {
+	if cluster.ServerGlobals == nil || cluster.ServerGlobals.BackupSemaphore == nil {
+		return
+	}
+	inUse := len(cluster.ServerGlobals.BackupSemaphore)
+	total := cap(cluster.ServerGlobals.BackupSemaphore)
+	if inUse >= total {
+		cluster.SetState("WARN0174", state.State{
+			ErrType: "WARNING",
+			ErrDesc: fmt.Sprintf(config.ClusterError["WARN0174"], inUse, total),
+			ErrFrom: "BACKUP",
+		})
+	}
+	cluster.ServerGlobals.AcquireBackupSlot()
+	cluster.StateMachine.DeleteState("WARN0174")
 }
