@@ -425,6 +425,39 @@ func TestCheckRepoFiles(t *testing.T) {
 	}
 }
 
+func TestCheckRepoFilesSftp(t *testing.T) {
+	repo := newPausedRepo(t)
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=sftp:backup@10.0.0.1:/srv/restic-repo",
+	})
+
+	// Simulate state left over from a prior failed init attempt, so we can
+	// verify the sftp branch clears it rather than just leaving CanInitRepo
+	// at its zero-value default of true. The backoff deadline is set in the
+	// past so it doesn't short-circuit this call to CheckRepoFiles.
+	repo.CanInitRepo = false
+	repo.SetError(InitTask, errors.New("previous init failure"))
+	repo.errorMutex.Lock()
+	repo.lastInitError = errors.New("previous init failure")
+	repo.initErrorCount = 1
+	repo.initBackoffUntil = time.Now().Add(-time.Second)
+	repo.errorMutex.Unlock()
+
+	if err := repo.CheckRepoFiles(); err != nil {
+		t.Fatalf("expected no error for sftp repository, got %v", err)
+	}
+	if !repo.CanInitRepo {
+		t.Fatalf("expected CanInitRepo true for sftp repository")
+	}
+	if _, ok := repo.TaskErrors[InitTask]; ok {
+		t.Fatalf("expected InitTask error to be cleared for sftp repository")
+	}
+	if repo.shouldSkipInitDueToBackoff() {
+		t.Fatalf("expected init backoff to be cleared for sftp repository")
+	}
+}
+
 func TestRunCommandAndInitRepo(t *testing.T) {
 	repo, repoDir, _, _ := newResticRepo(t, false)
 	if _, err := os.Stat(filepath.Join(repoDir, "config")); err != nil {
