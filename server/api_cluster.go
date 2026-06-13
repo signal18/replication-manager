@@ -3866,6 +3866,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-level-file":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.LogFileLevel = val
+	case "backup-archive-mode":
+		if err := mycluster.SetBackupArchiveMode(value); err != nil {
+			return err
+		}
 	case "backup-restic-local-repository":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {

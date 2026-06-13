@@ -112,6 +112,93 @@ Use conservative values unless you know the repo layout.
 
   const ResticPurgePruneTooltip = `${ResticPurgeBehaviorTooltip}${ResticPurgePruneTuningTooltip}`
 
+  const ResticPurgeFilterHostHelp = `**Filter Host**
+
+Limits forget/prune selection to snapshots created on the listed host(s).
+Accepts a comma- or space-separated list; multiple values are OR'd together.
+Combined with Filter Tag and Filter Path using AND.
+
+Maps to one or more restic \`--host\` flags.
+
+Config: \`backup-restic-purge-host\``
+
+  const ResticPurgeFilterTagHelp = `**Filter Tag**
+
+Limits forget/prune selection to snapshots matching the given tag(s).
+Space-separated; commas inside a tag mean AND (quote tags containing commas).
+Combined with Filter Host and Filter Path using AND.
+
+Maps to one or more restic \`--tag\` flags.
+
+Config: \`backup-restic-purge-tag\``
+
+  const ResticPurgeFilterPathHelp = `**Filter Path**
+
+Limits forget/prune selection to snapshots that include the given absolute path(s).
+Accepts a comma- or space-separated list; multiple values are OR'd together.
+Combined with Filter Host and Filter Tag using AND.
+
+Maps to one or more restic \`--path\` flags.
+
+Config: \`backup-restic-purge-path\``
+
+  const ResticPurgePruneSwitchHelp = `**Prune**
+
+When enabled, \`restic prune\` runs after \`forget\` to reclaim space freed by removed snapshots.
+Pruning can take significantly longer and use more I/O/CPU than forget alone.
+
+Maps to the restic \`--prune\` flag.
+
+Config: \`backup-restic-purge-prune\``
+
+  const ResticPurgePruneCompactHelp = `**Prune Compact**
+
+When enabled (and Prune is on), pack files are rewritten even if they would only shrink slightly, keeping the repository more compact at the cost of extra I/O.
+
+Maps to the restic \`--compact\` flag (prune only).
+
+Config: \`backup-restic-purge-prune-compact\``
+
+  const ResticPurgePruneMaxUnusedHelp = `**Max Unused**
+
+Caps the amount of unused (no longer referenced) data restic tolerates in the repository after pruning, as an absolute size (e.g. \`5G\`) or percentage (e.g. \`10%\`). \`unlimited\` disables the limit.
+
+Maps to the restic \`--max-unused\` flag (prune only). Leave empty to use restic's default.
+
+Config: \`backup-restic-purge-prune-max-unused\``
+
+  const ResticPurgePruneMaxRepackSizeHelp = `**Max Repack Size**
+
+Caps the total size of pack files that may be repacked during a single prune run (e.g. \`5G\`). Useful to bound how long/expensive a prune operation can get.
+
+Maps to the restic \`--max-repack-size\` flag (prune only). Leave empty for no limit.
+
+Config: \`backup-restic-purge-prune-max-repack-size\``
+
+  const ResticPurgePruneRepackCacheableOnlyHelp = `**Repack Cacheable Only**
+
+When enabled (and Prune is on), only repacks pack files containing cacheable data (metadata), skipping data blobs. Speeds up pruning at the cost of reclaiming less space.
+
+Maps to the restic \`--repack-cacheable-only\` flag (prune only).
+
+Config: \`backup-restic-purge-prune-repack-cacheable-only\``
+
+  const ResticPurgePruneRepackSmallHelp = `**Repack Small**
+
+When enabled (and Prune is on), small pack files are repacked together to reduce the total number of files in the repository.
+
+Maps to the restic \`--repack-small\` flag (prune only).
+
+Config: \`backup-restic-purge-prune-repack-small\``
+
+  const ResticPurgePruneRepackUncompressedHelp = `**Repack Uncompressed**
+
+When enabled (and Prune is on), pack files written in restic's older uncompressed format are repacked into the compressed format, reducing repository size over time.
+
+Maps to the restic \`--repack-uncompressed\` flag (prune only).
+
+Config: \`backup-restic-purge-prune-repack-uncompressed\``
+
   const togglePanel = (panelKey) => {
     setOpenPanels((prev) => ({
       ...prev,
@@ -186,6 +273,19 @@ Use conservative values unless you know the repo layout.
     })
     openCommonModal()
   }
+
+  const h = (content, title) => (
+    <RMIconButton
+      icon={HiQuestionMarkCircle}
+      iconFontsize='1rem'
+      variant='ghost'
+      style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }}
+      onClick={(event) => {
+        event?.stopPropagation?.()
+        openInfoModal(title, content)
+      }}
+    />
+  )
 
   const toInt = (value) => {
     const parsed = Number(value)
@@ -442,9 +542,76 @@ Use conservative values unless you know the repo layout.
     closePurgeModal()
   }
 
+  const ResticKeepRecentHelp = `**Keep Recent**
+
+Baseline retention rule applied on top of the hourly/daily/weekly/monthly/yearly buckets below.
+
+- Keep the **N** most recent snapshots, regardless of when they were created.
+- Keep snapshots created **within** a recent time window (e.g. \`2d\`, \`1d2h\`).
+
+A snapshot is retained if it matches either rule. Set Keep Last N to 0 and leave Keep Within blank to disable this rule.
+
+Config: \`backup-keep-last\` / \`backup-keep-within\``
+
+  const ResticKeepHourlyHelp = `**Keep Hourly**
+
+Retains one snapshot per hour for the most recent hours, in addition to any other matching rules.
+
+- Keep the **N** most recent hourly snapshots.
+- Keep snapshots created **within** a recent time window (e.g. \`2h\`, \`1d\`) for this bucket.
+
+Set Keep Last N to 0 and leave Keep Within blank to disable hourly retention.
+
+Config: \`backup-keep-hourly\` / \`backup-keep-within-hourly\``
+
+  const ResticKeepDailyHelp = `**Keep Daily**
+
+Retains one snapshot per day for the most recent days, in addition to any other matching rules.
+
+- Keep the **N** most recent daily snapshots.
+- Keep snapshots created **within** a recent time window (e.g. \`7d\`) for this bucket.
+
+Set Keep Last N to 0 and leave Keep Within blank to disable daily retention.
+
+Config: \`backup-keep-daily\` / \`backup-keep-within-daily\``
+
+  const ResticKeepWeeklyHelp = `**Keep Weekly**
+
+Retains one snapshot per week for the most recent weeks, in addition to any other matching rules.
+
+- Keep the **N** most recent weekly snapshots.
+- Keep snapshots created **within** a recent time window (e.g. \`28d\`) for this bucket.
+
+Set Keep Last N to 0 and leave Keep Within blank to disable weekly retention.
+
+Config: \`backup-keep-weekly\` / \`backup-keep-within-weekly\``
+
+  const ResticKeepMonthlyHelp = `**Keep Monthly**
+
+Retains one snapshot per month for the most recent months, in addition to any other matching rules.
+
+- Keep the **N** most recent monthly snapshots.
+- Keep snapshots created **within** a recent time window (e.g. \`6m\`) for this bucket.
+
+Set Keep Last N to 0 and leave Keep Within blank to disable monthly retention.
+
+Config: \`backup-keep-monthly\` / \`backup-keep-within-monthly\``
+
+  const ResticKeepYearlyHelp = `**Keep Yearly**
+
+Retains one snapshot per year for the most recent years, in addition to any other matching rules.
+
+- Keep the **N** most recent yearly snapshots.
+- Keep snapshots created **within** a recent time window (e.g. \`5y\`) for this bucket.
+
+Set Keep Last N to 0 and leave Keep Within blank to disable yearly retention.
+
+Config: \`backup-keep-yearly\` / \`backup-keep-within-yearly\``
+
   const sections = [
     {
       title: "Keep Recent",
+      help: ResticKeepRecentHelp,
       colA: (
         <NumberInput containerClassName={styles.marginCenter} value={config?.backupKeepLast} confirmTitle={"Confirm update 'backup-keep-last':"} min={0} showEditButton={true} showConfirmModal={true} onConfirm={(v) => { handleSave('backup-keep-last', v) }} />
       ),
@@ -454,6 +621,7 @@ Use conservative values unless you know the repo layout.
     },
     {
       title: "Keep Hourly",
+      help: ResticKeepHourlyHelp,
       colA: (
         <NumberInput containerClassName={styles.marginCenter} value={config?.backupKeepHourly} confirmTitle={"Confirm update 'backup-keep-hourly':"} min={0} showEditButton={true} showConfirmModal={true} onConfirm={(v) => { handleSave('backup-keep-hourly', v) }} />
       ),
@@ -463,6 +631,7 @@ Use conservative values unless you know the repo layout.
     },
     {
       title: "Keep Daily",
+      help: ResticKeepDailyHelp,
       colA: (
         <NumberInput containerClassName={styles.marginCenter} value={config?.backupKeepDaily} confirmTitle={"Confirm update 'backup-keep-daily':"} min={0} showEditButton={true} showConfirmModal={true} onConfirm={(v) => { handleSave('backup-keep-daily', v) }} />
       ),
@@ -472,6 +641,7 @@ Use conservative values unless you know the repo layout.
     },
     {
       title: "Keep Weekly",
+      help: ResticKeepWeeklyHelp,
       colA: (
         <NumberInput containerClassName={styles.marginCenter} value={config?.backupKeepWeekly} confirmTitle={"Confirm update 'backup-keep-weekly':"} min={0} showEditButton={true} showConfirmModal={true} onConfirm={(v) => { handleSave('backup-keep-weekly', v) }} />
       ),
@@ -481,6 +651,7 @@ Use conservative values unless you know the repo layout.
     },
     {
       title: "Keep Monthly",
+      help: ResticKeepMonthlyHelp,
       colA: (
         <NumberInput containerClassName={styles.marginCenter} value={config?.backupKeepMonthly} confirmTitle={"Confirm update 'backup-keep-monthly':"} min={0} showEditButton={true} showConfirmModal={true} onConfirm={(v) => { handleSave('backup-keep-monthly', v) }} />
       ),
@@ -490,6 +661,7 @@ Use conservative values unless you know the repo layout.
     },
     {
       title: "Keep Yearly",
+      help: ResticKeepYearlyHelp,
       colA: (
         <NumberInput containerClassName={styles.marginCenter} value={config?.backupKeepYearly} confirmTitle={"Confirm update 'backup-keep-yearly':"} min={0} showEditButton={true} showConfirmModal={true} onConfirm={(v) => { handleSave('backup-keep-yearly', v) }} />
       ),
@@ -510,7 +682,7 @@ Use conservative values unless you know the repo layout.
       >
         <HStack spacing={2} className={styles.purgeSelectionInfo}>
           <Text className={styles.purgeSelectionTitle}>Purge selection</Text>
-          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Purge Selection', ResticPurgeSelectionTooltip)} />
+          {h(ResticPurgeSelectionTooltip, 'Purge Selection')}
         </HStack>
         <HStack
           spacing={2}
@@ -551,7 +723,7 @@ Use conservative values unless you know the repo layout.
             <GridItem className={styles.rowLabel}>
               <HStack spacing={2}>
                 <Text>Group By</Text>
-                <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Restic Group By', ResticPurgeGroupByTooltip)} />
+                {h(ResticPurgeGroupByTooltip, 'Restic Group By')}
               </HStack>
             </GridItem>
             <GridItem className={styles.valueCell}>
@@ -568,7 +740,7 @@ Use conservative values unless you know the repo layout.
             <GridItem className={styles.rowLabel}>
               <HStack spacing={2}>
                 <Text>Keep Tag</Text>
-                <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Restic Keep Tag', ResticKeepTagTooltip)} />
+                {h(ResticKeepTagTooltip, 'Restic Keep Tag')}
               </HStack>
             </GridItem>
             <GridItem className={styles.valueCell}>
@@ -590,13 +762,7 @@ Use conservative values unless you know the repo layout.
         (
           <HStack spacing={2} className={styles.panelTitleRow}>
             <Text className={styles.panelTitle}>Filters</Text>
-            <RMIconButton
-              icon={HiQuestionMarkCircle}
-              onClick={(event) => {
-                event.stopPropagation()
-                openInfoModal('Restic Purge Filters', ResticPurgeFilterTooltip)
-              }}
-            />
+            {h(ResticPurgeFilterTooltip, 'Restic Purge Filters')}
           </HStack>
         ),
         (
@@ -608,8 +774,9 @@ Use conservative values unless you know the repo layout.
             w="full"
           >
             <GridItem className={styles.rowLabel}>
-              <HStack spacing={2}>
+              <HStack spacing={2} justify='space-between' width='full'>
                 <Text>Filter Host</Text>
+                {h(ResticPurgeFilterHostHelp, 'Filter Host')}
               </HStack>
             </GridItem>
             <GridItem className={styles.valueCell}>
@@ -621,8 +788,9 @@ Use conservative values unless you know the repo layout.
               />
             </GridItem>
             <GridItem className={styles.rowLabel}>
-              <HStack spacing={2}>
+              <HStack spacing={2} justify='space-between' width='full'>
                 <Text>Filter Tag</Text>
+                {h(ResticPurgeFilterTagHelp, 'Filter Tag')}
               </HStack>
             </GridItem>
             <GridItem className={styles.valueCell}>
@@ -634,8 +802,9 @@ Use conservative values unless you know the repo layout.
               />
             </GridItem>
             <GridItem className={styles.rowLabel}>
-              <HStack spacing={2}>
+              <HStack spacing={2} justify='space-between' width='full'>
                 <Text>Filter Path</Text>
+                {h(ResticPurgeFilterPathHelp, 'Filter Path')}
               </HStack>
             </GridItem>
             <GridItem className={styles.valueCell}>
@@ -654,13 +823,7 @@ Use conservative values unless you know the repo layout.
         (
           <HStack spacing={2} className={styles.panelTitleRow}>
             <Text className={styles.panelTitle}>Prune</Text>
-            <RMIconButton
-              icon={HiQuestionMarkCircle}
-              onClick={(event) => {
-                event.stopPropagation()
-                openInfoModal('Restic Prune Options', ResticPurgePruneTooltip)
-              }}
-            />
+            {h(ResticPurgePruneTooltip, 'Restic Prune Options')}
           </HStack>
         ),
         (
@@ -672,8 +835,9 @@ Use conservative values unless you know the repo layout.
             w="full"
           >
             <GridItem className={styles.rowLabel}>
-              <HStack spacing={2}>
+              <HStack spacing={2} justify='space-between' width='full'>
                 <Text>Prune</Text>
+                {h(ResticPurgePruneSwitchHelp, 'Prune')}
               </HStack>
             </GridItem>
             <GridItem className={styles.valueCell}>
@@ -688,8 +852,9 @@ Use conservative values unless you know the repo layout.
               />
             </GridItem>
             <GridItem className={styles.rowLabel}>
-              <HStack spacing={2}>
+              <HStack spacing={2} justify='space-between' width='full'>
                 <Text>Prune Compact</Text>
+                {h(ResticPurgePruneCompactHelp, 'Prune Compact')}
               </HStack>
             </GridItem>
             <GridItem className={styles.valueCell}>
@@ -705,8 +870,9 @@ Use conservative values unless you know the repo layout.
               />
             </GridItem>
             <GridItem className={styles.rowLabel}>
-              <HStack spacing={2}>
+              <HStack spacing={2} justify='space-between' width='full'>
                 <Text>Max Unused</Text>
+                {h(ResticPurgePruneMaxUnusedHelp, 'Max Unused')}
               </HStack>
             </GridItem>
             <GridItem className={styles.valueCell}>
@@ -719,8 +885,9 @@ Use conservative values unless you know the repo layout.
               />
             </GridItem>
             <GridItem className={styles.rowLabel}>
-              <HStack spacing={2}>
+              <HStack spacing={2} justify='space-between' width='full'>
                 <Text>Max Repack Size</Text>
+                {h(ResticPurgePruneMaxRepackSizeHelp, 'Max Repack Size')}
               </HStack>
             </GridItem>
             <GridItem className={styles.valueCell}>
@@ -733,8 +900,9 @@ Use conservative values unless you know the repo layout.
               />
             </GridItem>
             <GridItem className={styles.rowLabel}>
-              <HStack spacing={2}>
+              <HStack spacing={2} justify='space-between' width='full'>
                 <Text>Repack Cacheable Only</Text>
+                {h(ResticPurgePruneRepackCacheableOnlyHelp, 'Repack Cacheable Only')}
               </HStack>
             </GridItem>
             <GridItem className={styles.valueCell}>
@@ -750,8 +918,9 @@ Use conservative values unless you know the repo layout.
               />
             </GridItem>
             <GridItem className={styles.rowLabel}>
-              <HStack spacing={2}>
+              <HStack spacing={2} justify='space-between' width='full'>
                 <Text>Repack Small</Text>
+                {h(ResticPurgePruneRepackSmallHelp, 'Repack Small')}
               </HStack>
             </GridItem>
             <GridItem className={styles.valueCell}>
@@ -767,8 +936,9 @@ Use conservative values unless you know the repo layout.
               />
             </GridItem>
             <GridItem className={styles.rowLabel}>
-              <HStack spacing={2}>
+              <HStack spacing={2} justify='space-between' width='full'>
                 <Text>Repack Uncompressed</Text>
+                {h(ResticPurgePruneRepackUncompressedHelp, 'Repack Uncompressed')}
               </HStack>
             </GridItem>
             <GridItem className={styles.valueCell}>
@@ -800,17 +970,20 @@ Use conservative values unless you know the repo layout.
             <GridItem className={styles.headerCell} display={{ base: 'none', md: 'flex' }} />
             <GridItem className={styles.headerCell} display={{ base: 'none', md: 'flex' }}>
               <Text className={styles.headerText}>{columnTitles.keepLast}</Text>
-              <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Restic Keep Last N', ResticKeepLastNTooltip)} />
+              {h(ResticKeepLastNTooltip, 'Restic Keep Last N')}
             </GridItem>
             <GridItem className={styles.headerCell} display={{ base: 'none', md: 'flex' }}>
               <Text className={styles.headerText}>{columnTitles.keepWithin}</Text>
-              <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Restic Keep Within Duration', ResticKeepWithinTooltip)} />
+              {h(ResticKeepWithinTooltip, 'Restic Keep Within Duration')}
             </GridItem>
 
             {sections.map((section, index) => (
               <React.Fragment key={index}>
                 <GridItem className={styles.rowLabel}>
-                  {section.title}
+                  <HStack spacing={2} justify='space-between' width='full'>
+                    <Text>{section.title}</Text>
+                    {h(section.help, section.title)}
+                  </HStack>
                 </GridItem>
                 <GridItem className={styles.valueCell}>
                   <Text className={styles.mobileHeader} display={{ base: 'block', md: 'none' }}>

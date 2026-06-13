@@ -1613,14 +1613,27 @@ func (cluster *Cluster) GetVaultToken() {
 	}
 }
 
+// GetResticLocalDir returns a local filesystem directory to use for disk usage
+// checks ahead of a restic backup. For non-local repositories (s3:, sftp:),
+// backup-restic-local-repository holds the remote spec rather than a local
+// path, so the default per-cluster archive directory is used instead.
 func (cluster *Cluster) GetResticLocalDir() string {
-	if cluster.Conf.BackupResticLocalRepository != "" {
-		return cluster.Conf.BackupResticLocalRepository // To support sftp repository e.g. sftp:user@host:/path/to/repo
+	repo := strings.TrimSpace(cluster.Conf.BackupResticLocalRepository)
+	if repo != "" && !isSftpResticRepository(repo) && !isS3ResticRepository(repo) {
+		return repo
 	}
 
-	// Persist the restic local repo path to prevent wrong paths if WorkingDir change during runtime
-	cluster.Conf.BackupResticLocalRepository = cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/archive/" + cluster.Name
-	return cluster.Conf.BackupResticLocalRepository
+	defaultDir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/archive/" + cluster.Name
+	if repo == "" {
+		// Persist the restic local repo path to prevent wrong paths if WorkingDir change during runtime
+		cluster.Conf.BackupResticLocalRepository = defaultDir
+	}
+	if _, err := os.Stat(defaultDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(defaultDir, os.ModePerm); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", defaultDir, err)
+		}
+	}
+	return defaultDir
 }
 
 func (cluster *Cluster) GetExecEnv() []string {

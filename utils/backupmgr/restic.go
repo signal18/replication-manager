@@ -2844,6 +2844,11 @@ func isS3Repository(repoPath string) bool {
 	return strings.HasPrefix(repoPath, "s3:")
 }
 
+// isSftpRepository checks if repository path uses the sftp backend
+func isSftpRepository(repoPath string) bool {
+	return strings.HasPrefix(strings.ToLower(repoPath), "sftp:")
+}
+
 // parseS3URL parses S3 repository URL into components
 // Supports formats:
 //   - s3:https://endpoint/bucket/prefix (MinIO/custom endpoint)
@@ -3007,7 +3012,7 @@ func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) err
 		}
 
 		// No config, no data - return error to require explicit init
-		repo.CanInitRepo = false
+		repo.CanInitRepo = true
 		err = errors.New(errstr)
 		repo.SetError(InitTask, err)
 		repo.setInitErrorBackoff(err)
@@ -3143,6 +3148,16 @@ func (repo *ResticManager) CheckRepoFiles() error {
 		return repo.checkS3RepoFiles(bucket, prefix, endpoint)
 	}
 
+	if isSftpRepository(repopath) {
+		// Repo lives on a remote host via SSH/SFTP; skip local filesystem
+		// existence checks and let actual restic commands surface
+		// init-required errors naturally.
+		repo.CanInitRepo = true
+		delete(repo.TaskErrors, InitTask)
+		repo.clearInitErrorBackoff()
+		return nil
+	}
+
 	// Existing local filesystem logic
 	if _, err := os.Stat(filepath.Join(repopath, "config")); os.IsNotExist(err) {
 		// Check the repo data
@@ -3160,8 +3175,8 @@ func (repo *ResticManager) CheckRepoFiles() error {
 			err = errors.New(errstr)
 			repo.SetError(InitTask, err)
 			return err
-		} else { // Repo data does not exist (explicit init required)
-			repo.CanInitRepo = false
+		} else { // Repo data does not exist (explicit init required, but possible)
+			repo.CanInitRepo = true
 			err = errors.New(errstr)
 			repo.SetError(InitTask, err)
 			return err
@@ -3372,6 +3387,12 @@ func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 				repo.setInitErrorBackoff(err)
 				return err
 			}
+		} else if isSftpRepository(repopath) {
+			repo.CanInitRepo = false
+			err := fmt.Errorf("force re-initialization is not supported for sftp repositories; remove the remote repository path manually over ssh before re-initializing")
+			repo.SetError(InitTask, err)
+			repo.setInitErrorBackoff(err)
+			return err
 		} else {
 			err := os.RemoveAll(repopath)
 			if err != nil {

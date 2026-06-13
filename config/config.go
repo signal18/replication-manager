@@ -801,6 +801,7 @@ type Config struct {
 	BackupResticPurgePruneRepackCacheableOnly bool                         `mapstructure:"backup-restic-purge-prune-repack-cacheable-only" toml:"backup-restic-purge-prune-repack-cacheable-only" json:"backupResticPurgePruneRepackCacheableOnly"`
 	BackupResticPurgePruneRepackSmall         bool                         `mapstructure:"backup-restic-purge-prune-repack-small" toml:"backup-restic-purge-prune-repack-small" json:"backupResticPurgePruneRepackSmall"`
 	BackupResticPurgePruneRepackUncompressed  bool                         `mapstructure:"backup-restic-purge-prune-repack-uncompressed" toml:"backup-restic-purge-prune-repack-uncompressed" json:"backupResticPurgePruneRepackUncompressed"`
+	BackupArchiveMode                         string                       `mapstructure:"backup-archive-mode" toml:"backup-archive-mode" json:"backupArchiveMode"`
 	BackupRestic                              bool                         `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`
 	BackupResticBinaryPath                    string                       `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
 	BackupResticLocalRepository               string                       `mapstructure:"backup-restic-local-repository" toml:"backup-restic-local-repository" json:"backupResticLocalRepository"`
@@ -1194,6 +1195,14 @@ const (
 
 const (
 	ConstStreamingSubDir string = "backups"
+)
+
+// Backup archive mode picker: selects the Restic archive backend (or disables it).
+const (
+	ConstBackupArchiveModeNone        string = "none"
+	ConstBackupArchiveModeResticLocal string = "restic-local"
+	ConstBackupArchiveModeResticAws   string = "restic-aws"
+	ConstBackupArchiveModeResticSftp  string = "restic-sftp"
 )
 const (
 	ConstProxyMaxscale    string = "maxscale"
@@ -3408,6 +3417,70 @@ func parseResticMode(value int, defaultMode os.FileMode) os.FileMode {
 	}
 
 	return os.FileMode(parsed)
+}
+
+// ValidateBackupArchiveMode checks that mode is one of the supported
+// backup-archive-mode values: none, restic-local, restic-aws, restic-sftp.
+func (conf *Config) ValidateBackupArchiveMode(mode string) error {
+	switch mode {
+	case ConstBackupArchiveModeNone, ConstBackupArchiveModeResticLocal, ConstBackupArchiveModeResticAws, ConstBackupArchiveModeResticSftp:
+		return nil
+	default:
+		return NewValidationError("backup-archive-mode", mode, "expected one of: none, restic-local, restic-aws, restic-sftp")
+	}
+}
+
+// applyBackupArchiveModeFlags derives the legacy backup-restic / backup-restic-aws
+// flags from the canonical backup-archive-mode so existing Restic code paths
+// keep working unchanged.
+func (conf *Config) applyBackupArchiveModeFlags() {
+	switch conf.BackupArchiveMode {
+	case ConstBackupArchiveModeNone:
+		conf.BackupRestic = false
+		conf.BackupResticAws = false
+	case ConstBackupArchiveModeResticAws:
+		conf.BackupRestic = true
+		conf.BackupResticAws = true
+	case ConstBackupArchiveModeResticLocal, ConstBackupArchiveModeResticSftp:
+		conf.BackupRestic = true
+		conf.BackupResticAws = false
+	}
+}
+
+// ApplyBackupArchiveMode validates and sets backup-archive-mode, deriving the
+// underlying backup-restic / backup-restic-aws flags used by the Restic integration.
+func (conf *Config) ApplyBackupArchiveMode(mode string) error {
+	if err := conf.ValidateBackupArchiveMode(mode); err != nil {
+		return err
+	}
+	conf.BackupArchiveMode = mode
+	conf.applyBackupArchiveModeFlags()
+	return nil
+}
+
+// NormalizeBackupArchiveMode resolves backup-archive-mode at startup. Configs
+// predating this setting only have backup-restic / backup-restic-aws /
+// backup-restic-local-repository (sftp: prefix), so an empty or "none" value
+// contradicted by a legacy backup-restic=true is re-derived from those flags.
+// Once resolved, backup-restic / backup-restic-aws are kept in sync with it.
+func (conf *Config) NormalizeBackupArchiveMode() {
+	needsMigration := conf.ValidateBackupArchiveMode(conf.BackupArchiveMode) != nil ||
+		(conf.BackupArchiveMode == ConstBackupArchiveModeNone && conf.BackupRestic)
+
+	if needsMigration {
+		switch {
+		case !conf.BackupRestic:
+			conf.BackupArchiveMode = ConstBackupArchiveModeNone
+		case conf.BackupResticAws:
+			conf.BackupArchiveMode = ConstBackupArchiveModeResticAws
+		case strings.HasPrefix(strings.TrimSpace(conf.BackupResticLocalRepository), "sftp:"):
+			conf.BackupArchiveMode = ConstBackupArchiveModeResticSftp
+		default:
+			conf.BackupArchiveMode = ConstBackupArchiveModeResticLocal
+		}
+	}
+
+	conf.applyBackupArchiveModeFlags()
 }
 
 func (conf *Config) ValidateResticPermissions() error {

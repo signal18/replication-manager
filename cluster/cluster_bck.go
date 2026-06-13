@@ -34,6 +34,10 @@ func isS3ResticRepository(repoPath string) bool {
 	return strings.HasPrefix(strings.TrimSpace(repoPath), "s3:")
 }
 
+func isSftpResticRepository(repoPath string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(repoPath)), "sftp:")
+}
+
 func buildResticS3RepoSpec(endpoint, bucket, prefix, clusterName string, appendCluster bool) (string, string) {
 	bucket = strings.TrimSpace(bucket)
 	prefix = strings.Trim(prefix, "/")
@@ -415,10 +419,12 @@ func (cluster *Cluster) ResticGetEnv() []string {
 		} else {
 			repoPath = filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
 		}
-		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-			err := os.MkdirAll(repoPath, os.ModePerm)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", repoPath, err)
+		if !isSftpResticRepository(repoPath) {
+			if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+				err := os.MkdirAll(repoPath, os.ModePerm)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", repoPath, err)
+				}
 			}
 		}
 	}

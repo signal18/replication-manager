@@ -404,21 +404,23 @@ func TestCheckRepoFiles(t *testing.T) {
 		"RESTIC_REPOSITORY=" + repoDir,
 	})
 
-	if err := repo.CheckRepoFiles(); err != nil {
-		t.Fatalf("expected init on missing config: %v", err)
+	// Fresh repo dir: no config, no data - explicit init required but still possible
+	if err := repo.CheckRepoFiles(); err == nil {
+		t.Fatalf("expected error when repo is not yet initialized")
 	}
-	if _, err := os.Stat(filepath.Join(repoDir, "config")); err != nil {
-		t.Fatalf("expected config after init: %v", err)
+	if !repo.CanInitRepo {
+		t.Fatalf("expected CanInitRepo true for a fresh, uninitialized repo")
 	}
 
-	if err := os.Remove(filepath.Join(repoDir, "config")); err != nil {
-		t.Fatalf("remove config: %v", err)
-	}
+	// Data exists without config: corrupted repo, cannot be auto/explicitly initialized
 	if err := os.MkdirAll(filepath.Join(repoDir, "data"), 0755); err != nil {
 		t.Fatalf("mkdir data: %v", err)
 	}
 	if err := repo.CheckRepoFiles(); err == nil {
 		t.Fatalf("expected error when config missing but data exists")
+	}
+	if repo.CanInitRepo {
+		t.Fatalf("expected CanInitRepo false when data exists without config")
 	}
 }
 

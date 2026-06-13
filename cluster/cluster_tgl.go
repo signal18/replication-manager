@@ -149,6 +149,21 @@ func (cluster *Cluster) SwitchBackupResticAws() {
 	cluster.ReloadResticEnv()
 }
 
+// SetBackupArchiveMode sets the canonical backup-archive-mode (none, restic-local,
+// restic-aws, restic-sftp), deriving backup-restic / backup-restic-aws, and
+// applies the same side effects as toggling those legacy switches.
+func (cluster *Cluster) SetBackupArchiveMode(mode string) error {
+	if err := cluster.Conf.ApplyBackupArchiveMode(mode); err != nil {
+		return err
+	}
+	cluster.CheckResticInstallation()
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+	cluster.ReloadResticEnv()
+	return nil
+}
+
 func (cluster *Cluster) SwitchBackupBinlogs() {
 	cluster.Conf.BackupBinlogs = !cluster.Conf.BackupBinlogs
 	if cluster.Conf.BackupBinlogs {

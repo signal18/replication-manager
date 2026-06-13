@@ -450,6 +450,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	go cluster.ConsumeMessageChan()
 
 	*cluster.Conf = confs.ConfInit
+	cluster.Conf.NormalizeBackupArchiveMode()
 
 	cluster.tlog = tlog
 	cluster.htlog = loghttp
