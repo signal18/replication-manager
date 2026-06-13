@@ -30,12 +30,28 @@ import (
 
 var splitDumpTimestampRegex = regexp.MustCompile(`^\d+$`)
 
+// resticSftpRepoRegex matches the restic sftp backend repository syntax,
+// sftp:[user@]host:path, e.g. sftp:backup@10.0.0.1:/srv/restic-repo
+var resticSftpRepoRegex = regexp.MustCompile(`^sftp:[^:@\s]+(@[^:@\s]+)?:.+$`)
+
 func isS3ResticRepository(repoPath string) bool {
 	return strings.HasPrefix(strings.TrimSpace(repoPath), "s3:")
 }
 
 func isSftpResticRepository(repoPath string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(repoPath)), "sftp:")
+	return strings.HasPrefix(strings.TrimSpace(repoPath), "sftp:")
+}
+
+// ValidateResticSftpRepository checks that repoPath matches the
+// sftp:[user@]host:/path syntax expected by restic's sftp backend, so a
+// malformed value is rejected with a clear error instead of an opaque
+// restic failure.
+func ValidateResticSftpRepository(repoPath string) error {
+	repoPath = strings.TrimSpace(repoPath)
+	if !resticSftpRepoRegex.MatchString(repoPath) {
+		return config.NewValidationError("backup-restic-local-repository", repoPath, "expected sftp:[user@]host:/path")
+	}
+	return nil
 }
 
 func buildResticS3RepoSpec(endpoint, bucket, prefix, clusterName string, appendCluster bool) (string, string) {

@@ -2859,7 +2859,7 @@ func isS3Repository(repoPath string) bool {
 
 // isSftpRepository checks if repository path uses the sftp backend
 func isSftpRepository(repoPath string) bool {
-	return strings.HasPrefix(strings.ToLower(repoPath), "sftp:")
+	return strings.HasPrefix(repoPath, "sftp:")
 }
 
 // parseS3URL parses S3 repository URL into components
