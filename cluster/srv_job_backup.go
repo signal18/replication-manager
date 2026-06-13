@@ -106,7 +106,8 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	if !cluster.waitForBackupSlot() {
 		return errors.New("backup canceled: cluster shutting down")
 	}
-	defer cluster.ServerGlobals.ReleaseBackupSlot()
+	// Slot is released in JobFinishReceiveFile when the SST goroutine completes,
+	// NOT via defer here — the backup runs asynchronously after this function returns.
 
 	backupLine := server.resolveBackupLine(opts)
 	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
@@ -120,10 +121,6 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	}
 
 	cluster.SetInPhysicalBackupState(true)
-
-	// CRITICAL FIX: For physical backups, Restic transition happens in JobFinishReceiveFile
-	// We DON'T set InResticPhysicalBackup here because the backup hasn't completed yet
-	// The flag will be set atomically in AfterJobProcess when the backup file is received
 
 	// Prevent backing up with incompatible tools
 	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.1") && cluster.Conf.BackupPhysicalType == "xtrabackup" {
@@ -161,8 +158,10 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 
 	if err != nil {
 		cluster.SetInPhysicalBackupState(false)
+		cluster.ServerGlobals.ReleaseBackupSlot()
 		return nil
 	}
+	// SST goroutine is now running — it will release the slot in JobFinishReceiveFile
 
 	// Reset last backup meta
 	var prevId int64
@@ -2871,6 +2870,7 @@ func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, u
 			cluster.SetInResticLogicalBackupState(false)
 		case backupmgr.BackupMethodPhysical:
 			cluster.SetInResticPhysicalBackupState(false)
+			cluster.ServerGlobals.ReleaseBackupSlot()
 		}
 		return
 	}
@@ -2883,6 +2883,7 @@ func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, u
 			cluster.SetInResticLogicalBackupState(false)
 		case backupmgr.BackupMethodPhysical:
 			cluster.SetInResticPhysicalBackupState(false)
+			cluster.ServerGlobals.ReleaseBackupSlot()
 		}
 		return
 	}
@@ -2954,6 +2955,7 @@ func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, u
 				cluster.SetInResticLogicalBackupState(false)
 			case backupmgr.BackupMethodPhysical:
 				cluster.SetInResticPhysicalBackupState(false)
+				cluster.ServerGlobals.ReleaseBackupSlot()
 			}
 		}()
 
@@ -4129,6 +4131,13 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		server.DelWaitSqlErrorlogCookie()
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		backtype := "physical"
+		// The SST file has been received — mark the backup as completed.
+		// This used to rely on AfterJobProcess polling the DB job state, but
+		// file receipt can happen before the poll runs, causing a race where
+		// restic was skipped ("physical backup not completed").
+		if server.LastBackupMeta.Physical != nil {
+			server.LastBackupMeta.Physical.Completed = true
+		}
 		server.WriteBackupMetadata(backupmgr.BackupMethodPhysical)
 		if server.LastBackupMeta.Physical != nil && !server.LastBackupMeta.Physical.StartTime.IsZero() {
 			backupTool := server.LastBackupMeta.Physical.BackupTool
@@ -4139,26 +4148,24 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Physical backup %s completed in %s (started at %s) for: %s", backupTool, elapsed, server.LastBackupMeta.Physical.StartTime.Format(time.RFC3339), server.URL)
 		}
 
-		// CRITICAL: Transition from traditional backup lock to Restic lock atomically
+		// Transition from traditional backup lock to Restic lock atomically
 		// Set Restic flag BEFORE clearing physical backup flag
 		resticEnabled := server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.ResticEnabled
-		backupCompleted := server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.Completed
 		backupLine := backupmgr.BackupLineDefault
 		if server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.BackupLine != "" {
 			backupLine = server.LastBackupMeta.Physical.BackupLine
 		}
-		if resticEnabled && backupCompleted {
+		if resticEnabled {
 			cluster.SetInResticPhysicalBackupState(true)
 			resticPath := server.GetMyBackupDirectory()
 			if server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.IsAdhoc() && server.LastBackupMeta.Physical.Dest != "" {
 				resticPath = server.LastBackupMeta.Physical.Dest
 			}
-
-			// Create restic snapshot asynchronously and update metadata when complete
-			// Note: BackupRestic handles its own error logging and flag clearing if prerequisites fail
+			// Slot released when BackupRestic completes (InResticPhysicalBackup closes)
 			server.BackupRestic(backupmgr.BackupMethodPhysical, true, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupPhysicalType, backupLine, server.LastBackupMeta.Physical)...)
-		} else if resticEnabled && !backupCompleted {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Skipping restic backup because physical backup not completed for: %s", server.URL)
+		} else {
+			// No restic — release slot now (InPhysicalBackup closes)
+			cluster.ServerGlobals.ReleaseBackupSlot()
 		}
 
 		// Now safe to clear traditional backup flag

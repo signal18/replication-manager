@@ -134,6 +134,8 @@ type Cluster struct {
 	IsNeedStagingChange           bool                       `json:"isNeedStagingChange" groups:"web"`
 	IsConfigPathChange            bool                       `json:"isConfigPathChange" groups:"web"`
 	IsResticQueuePaused           bool                       `json:"isResticQueuePaused" groups:"web"`
+	BackupSlotsInUse              int                        `json:"backupSlotsInUse" groups:"web"`
+	BackupSlotsTotal              int                        `json:"backupSlotsTotal" groups:"web"`
 	SchemaMonitorRequested        int32                      `json:"-"`
 	Conf                          *config.Config             `json:"config" groups:"apps"`
 	Confs                         *config.ConfVersion        `json:"-"`
@@ -807,6 +809,10 @@ func (cluster *Cluster) Run() {
 			cluster.AppIdList = cluster.GetAppServerIdList()
 			if cluster.ResticManager != nil {
 				cluster.IsResticQueuePaused = cluster.ResticManager.IsPaused()
+			}
+			if cluster.ServerGlobals != nil && cluster.ServerGlobals.BackupSemaphore != nil {
+				cluster.BackupSlotsInUse = len(cluster.ServerGlobals.BackupSemaphore)
+				cluster.BackupSlotsTotal = cap(cluster.ServerGlobals.BackupSemaphore)
 			}
 			go cluster.CheckDefaultUser(false)
 
