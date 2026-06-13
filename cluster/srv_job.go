@@ -796,6 +796,16 @@ func (server *ServerMonitor) jobsCheckRunningFromMemory() error {
 	return nil
 }
 
+func (server *ServerMonitor) jobsCheckBackupStates() {
+	cluster := server.ClusterGroup
+	if cluster.InPhysicalBackup || cluster.InResticPhysicalBackup {
+		cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0073"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+	}
+	if cluster.InLogicalBackup || cluster.InResticLogicalBackup {
+		cluster.SetState("WARN0175", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0175"], cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+	}
+}
+
 func (server *ServerMonitor) JobsCheckPending(Conn *sqlx.Conn) error {
 	if server.ClusterGroup.Conf.SchedulerJobsMode == "api" {
 		return nil

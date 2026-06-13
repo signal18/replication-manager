@@ -1046,6 +1046,7 @@ func (server *ServerMonitor) Refresh() error {
 		} else {
 			server.jobsCheckRunningFromMemory()
 		}
+		server.jobsCheckBackupStates()
 
 		if cluster.Conf.MonitorProcessList {
 
