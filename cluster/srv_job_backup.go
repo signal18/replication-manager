@@ -106,8 +106,6 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	if !cluster.waitForBackupSlot() {
 		return errors.New("backup canceled: cluster shutting down")
 	}
-	// Slot is released in JobFinishReceiveFile when the SST goroutine completes,
-	// NOT via defer here — the backup runs asynchronously after this function returns.
 
 	backupLine := server.resolveBackupLine(opts)
 	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
@@ -158,10 +156,8 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 
 	if err != nil {
 		cluster.SetInPhysicalBackupState(false)
-		cluster.ServerGlobals.ReleaseBackupSlot()
 		return nil
 	}
-	// SST goroutine is now running — it will release the slot in JobFinishReceiveFile
 
 	// Reset last backup meta
 	var prevId int64
@@ -1795,8 +1791,6 @@ func (server *ServerMonitor) JobBackupScript(destination string) error {
 	var err error
 	cluster := server.ClusterGroup
 
-	defer cluster.SetInLogicalBackupState(false)
-
 	master := cluster.GetMaster()
 	if master == nil {
 		return fmt.Errorf("No master found. Cancel backup script on %s", server.URL)
@@ -1986,8 +1980,6 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 	if ctx == nil {
 		ctx = context.Background()
 	}
-
-	defer cluster.SetInLogicalBackupState(false)
 
 	//Block DDL For Backup
 	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.4") && cluster.Conf.BackupLockDDL {
@@ -2254,8 +2246,6 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 	// Mydumper is fine with split user since we can
 	server.LastBackupMeta.Logical.SplitUser = true
 
-	defer cluster.SetInLogicalBackupState(false)
-
 	dumper := cluster.VersionsMap.Get("mydumper")
 	if dumper == nil {
 		if err = cluster.RefreshMyDumperVersion(); err != nil {
@@ -2369,8 +2359,6 @@ func (server *ServerMonitor) JobBackupDumpling(outputdir string) error {
 	var err error
 	cluster := server.ClusterGroup
 
-	defer cluster.SetInLogicalBackupState(false)
-
 	conf := dumplingext.DefaultConfig()
 	conf.Database = ""
 	conf.Host = misc.Unbracket(server.Host)
@@ -2402,8 +2390,6 @@ func (server *ServerMonitor) JobBackupDumpling(outputdir string) error {
 func (server *ServerMonitor) JobBackupRiver() error {
 	var err error
 	cluster := server.ClusterGroup
-
-	defer cluster.SetInLogicalBackupState(false)
 
 	cfg := new(river.Config)
 	cfg.MyHost = server.URL
@@ -2453,10 +2439,6 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	}
 
 	cluster := server.ClusterGroup
-	if !cluster.waitForBackupSlot() {
-		return errors.New("backup canceled: cluster shutting down")
-	}
-	defer cluster.ServerGlobals.ReleaseBackupSlot()
 
 	backupLine := server.resolveBackupLine(opts)
 	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
@@ -2479,8 +2461,11 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		}
 	}
 
+	if !cluster.waitForBackupSlot() {
+		return errors.New("backup canceled: cluster shutting down")
+	}
+
 	var waited bool
-	//Wait for previous restic backup
 	for cluster.IsInBackup() {
 		waited = true
 		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Logical", cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
@@ -2488,8 +2473,6 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	}
 
 	cluster.SetInLogicalBackupState(true)
-
-	// Defer always clears traditional flag; Restic flag cleared by async goroutine
 	defer cluster.SetInLogicalBackupState(false)
 
 	if waited {
@@ -2768,11 +2751,8 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		if isAdhoc && server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.Dest != "" {
 			resticPath = server.LastBackupMeta.Logical.Dest
 		}
-		// Note: BackupRestic handles its own error logging and flag clearing if prerequisites fail
 		resticScheduled = true
 		server.BackupRestic(backupmgr.BackupMethodLogical, true, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupLogicalType, backupLine, server.LastBackupMeta.Logical)...)
-	} else if resticEnabled && err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Skipping restic backup because logical backup failed for: %s", server.URL)
 	}
 
 	return nil
@@ -2864,26 +2844,22 @@ func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, u
 	// Defensive checks - clear flag and return early if prerequisites not met
 	if !cluster.Conf.BackupRestic {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Restic backup called but disabled for %s", server.URL)
-		// Clear the flag that might have been set by caller
 		switch backupMethod {
 		case backupmgr.BackupMethodLogical:
 			cluster.SetInResticLogicalBackupState(false)
 		case backupmgr.BackupMethodPhysical:
 			cluster.SetInResticPhysicalBackupState(false)
-			cluster.ServerGlobals.ReleaseBackupSlot()
 		}
 		return
 	}
 
 	if cluster.ResticManager == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic manager not initialized for %s, cannot backup", server.URL)
-		// Clear the flag that might have been set by caller
 		switch backupMethod {
 		case backupmgr.BackupMethodLogical:
 			cluster.SetInResticLogicalBackupState(false)
 		case backupmgr.BackupMethodPhysical:
 			cluster.SetInResticPhysicalBackupState(false)
-			cluster.ServerGlobals.ReleaseBackupSlot()
 		}
 		return
 	}
@@ -2948,14 +2924,12 @@ func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, u
 
 	// Launch goroutine to wait for result and update metadata
 	go func() {
-		// Ensure flag is cleared when goroutine exits
 		defer func() {
 			switch backupMethod {
 			case backupmgr.BackupMethodLogical:
 				cluster.SetInResticLogicalBackupState(false)
 			case backupmgr.BackupMethodPhysical:
 				cluster.SetInResticPhysicalBackupState(false)
-				cluster.ServerGlobals.ReleaseBackupSlot()
 			}
 		}()
 
@@ -4161,14 +4135,9 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 			if server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.IsAdhoc() && server.LastBackupMeta.Physical.Dest != "" {
 				resticPath = server.LastBackupMeta.Physical.Dest
 			}
-			// Slot released when BackupRestic completes (InResticPhysicalBackup closes)
 			server.BackupRestic(backupmgr.BackupMethodPhysical, true, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupPhysicalType, backupLine, server.LastBackupMeta.Physical)...)
-		} else {
-			// No restic — release slot now (InPhysicalBackup closes)
-			cluster.ServerGlobals.ReleaseBackupSlot()
 		}
 
-		// Now safe to clear traditional backup flag
 		cluster.SetInPhysicalBackupState(false)
 	case "printdefault-current":
 		filename := filepath.Join(server.Datadir, "current.cnf")
