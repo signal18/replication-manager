@@ -380,12 +380,17 @@ func (repman *ReplicationManager) syncPluginsFromPull(pullDir string) {
 				src := filepath.Join(srcDir, e.Name())
 				dst := filepath.Join(sharedDir, e.Name())
 
-				if filepath.Ext(e.Name()) == "" && repman.Conf.PluginSigningPublicKey != "" {
-					sigDir := filepath.Join(repman.Conf.ShareDir, "plugins")
-					if err := logplugin.VerifyPluginSignature(src, sigDir, repman.Conf.PluginSigningPublicKey); err != nil {
+				if filepath.Ext(e.Name()) == "" {
+					if repman.Conf.PluginSigningPublicKey != "" {
+						sigDir := filepath.Join(repman.Conf.ShareDir, "plugins")
+						if err := logplugin.VerifyPluginSignature(src, sigDir, repman.Conf.PluginSigningPublicKey); err != nil {
+							repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+								"[logplugin] skipping pull plugin %s: %v", e.Name(), err)
+							continue
+						}
+					} else {
 						repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
-							"[logplugin] skipping pull plugin %s: %v", e.Name(), err)
-						continue
+							"[logplugin] copying unsigned pull plugin %s (no public key configured)", e.Name())
 					}
 				}
 
@@ -428,35 +433,53 @@ func (repman *ReplicationManager) syncPluginsFromPull(pullDir string) {
 // and the directory is replaced with a symlink. Returns true if a migration
 // or symlink creation happened.
 func (repman *ReplicationManager) ensurePluginSymlink(clusterPluginDir, sharedDir string) bool {
-	fi, err := os.Lstat(clusterPluginDir)
-	if err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		return false
-	}
-
-	if err == nil && fi.IsDir() {
-		entries, _ := os.ReadDir(clusterPluginDir)
-		for _, e := range entries {
-			if e.IsDir() {
-				continue
-			}
-			src := filepath.Join(clusterPluginDir, e.Name())
-			dst := filepath.Join(sharedDir, e.Name())
-			if _, serr := os.Stat(dst); os.IsNotExist(serr) {
-				gitPluginCopyFile(src, dst)
-				if filepath.Ext(e.Name()) == "" {
-					os.Chmod(dst, 0755)
-				}
-			}
-		}
-		os.RemoveAll(clusterPluginDir)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlInfo,
-			"[logplugin] migrated %s to symlink → %s", clusterPluginDir, sharedDir)
-	}
-
 	rel, err := filepath.Rel(filepath.Dir(clusterPluginDir), sharedDir)
 	if err != nil {
 		rel = sharedDir
 	}
+
+	fi, err := os.Lstat(clusterPluginDir)
+	if err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		target, rerr := os.Readlink(clusterPluginDir)
+		if rerr == nil && target == rel {
+			return false
+		}
+		os.Remove(clusterPluginDir)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlInfo,
+			"[logplugin] replacing stale symlink %s (was %s, want %s)", clusterPluginDir, target, rel)
+	}
+
+	if err == nil && fi.IsDir() {
+		entries, readErr := os.ReadDir(clusterPluginDir)
+		if readErr != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+				"[logplugin] cannot read plugin dir for migration %s: %v", clusterPluginDir, readErr)
+		} else {
+			for _, e := range entries {
+				if e.IsDir() {
+					continue
+				}
+				src := filepath.Join(clusterPluginDir, e.Name())
+				dst := filepath.Join(sharedDir, e.Name())
+				if _, serr := os.Stat(dst); os.IsNotExist(serr) {
+					if cerr := gitPluginCopyFile(src, dst); cerr != nil {
+						repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+							"[logplugin] migration copy failed %s: %v", e.Name(), cerr)
+					} else if filepath.Ext(e.Name()) == "" {
+						os.Chmod(dst, 0755)
+					}
+				}
+			}
+		}
+		if rerr := os.RemoveAll(clusterPluginDir); rerr != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlErr,
+				"[logplugin] cannot remove old plugin dir %s: %v — skipping symlink", clusterPluginDir, rerr)
+			return false
+		}
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlInfo,
+			"[logplugin] migrated %s to symlink → %s", clusterPluginDir, rel)
+	}
+
 	if err := os.Symlink(rel, clusterPluginDir); err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlErr,
 			"[logplugin] cannot create symlink %s → %s: %v", clusterPluginDir, rel, err)

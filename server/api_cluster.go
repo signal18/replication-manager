@@ -467,7 +467,7 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/actions/sysbench-cleanup", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSysbenchCleanup)),
-	))
+	)).Methods("POST")
 
 	router.Handle("/api/clusters/{clusterName}/actions/waitdatabases", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -6213,6 +6213,9 @@ func (repman *ReplicationManager) handlerMuxClusterSysbenchCleanup(w http.Respon
 			mycluster.SetSysbenchTest(r.URL.Query().Get("test"))
 		}
 		go mycluster.CleanupBench()
+		w.WriteHeader(http.StatusOK)
+	} else {
+		http.Error(w, "No cluster found:"+vars["clusterName"], http.StatusNotFound)
 	}
 }
 

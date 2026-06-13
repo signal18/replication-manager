@@ -2243,7 +2243,7 @@ func (cluster *Cluster) SaveVariableDiff(diff []VariableDiff) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Encoding variable diff: %s", err)
 		return
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Writing variable-diff.json: %s", err)
 	}
 }

@@ -701,7 +701,7 @@ function runSysbench(clusterName, threads, baseURL, test) {
 
 function cleanupSysbench(clusterName, test, baseURL) {
   const params = test ? `?test=${test}` : ''
-  return getApi(baseURL).get(`clusters/${clusterName}/actions/sysbench-cleanup${params}`)
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/sysbench-cleanup${params}`)
 }
 
 function runRegressionTests(clusterName, testName, baseURL) {
