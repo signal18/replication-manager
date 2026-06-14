@@ -489,7 +489,6 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 	}
 
 	deployment.Paths.Sort()
-	volumemap := deployment.Storages.Volumes.GroupByPool()
 	pathmap := deployment.Paths.GetVolumeDirs()
 
 	poolList, err := cluster.OpenSVCGetPoolInfoListFresh()
@@ -508,15 +507,15 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 	}
 
 	seq := 1
-	for pool, volumes := range volumemap {
-		poolInfo, ok := poolSet[pool]
+	for _, vol := range deployment.Storages.Volumes {
+		poolInfo, ok := poolSet[vol.PoolName]
 		if !ok {
-			return nil, fmt.Errorf("OpenSVC pool %q not found in runtime pool list", pool)
+			return nil, fmt.Errorf("OpenSVC pool %q not found in runtime pool list", vol.PoolName)
 		}
 
 		svcvol := make(map[string]string)
-		svcvol["name"] = app.GetAppVolumeName(pool, false)
-		svcvol["pool"] = pool
+		svcvol["name"] = vol.Name
+		svcvol["pool"] = vol.PoolName
 		svcvol["size"] = "{env.size}"
 		if poolInfo.Shared {
 			svcvol["shared"] = "true"
@@ -525,18 +524,16 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 		// Use set to avoid duplicate directories
 		directorySet := make(map[string]struct{})
 
-		for volName, baseDir := range volumes {
-			if baseDir != "" {
-				directorySet[baseDir] = struct{}{}
-			}
-			if mappedPaths, ok := pathmap[volName]; ok {
-				for _, path := range mappedPaths {
-					// if path is not end with "/", get parent directory
-					if !strings.HasSuffix(path, "/") {
-						path = filepath.Dir(path) + "/"
-					}
-					directorySet[filepath.Join(path)] = struct{}{}
+		for _, baseDir := range vol.GetVolumeDirs() {
+			directorySet[baseDir] = struct{}{}
+		}
+		if mappedPaths, ok := pathmap[vol.Name]; ok {
+			for _, path := range mappedPaths {
+				// if path is not end with "/", get parent directory
+				if !strings.HasSuffix(path, "/") {
+					path = filepath.Dir(path) + "/"
 				}
+				directorySet[filepath.Join(path)] = struct{}{}
 			}
 		}
 
@@ -703,7 +700,7 @@ func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc *confi
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer = cluster.OpenSVCGetAppGitInitDefaultSection(app)
-		svccontainer["volume_mounts"] = fmt.Sprintf("/etc/localtime:/etc/localtime:ro %s:/bootstrap", app.GetAppVolumeName(gc.GetSourcePoolName(), false))
+		svccontainer["volume_mounts"] = fmt.Sprintf("/etc/localtime:/etc/localtime:ro %s:/bootstrap", gc.GetSourceVolumeName())
 		svccontainer["secrets_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeSecret)
 		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
 		dirname := filepath.Join("/bootstrap", gc.GetSourcePath())
@@ -739,7 +736,7 @@ func (cluster *Cluster) OpenSVCGetAppS3MountContainerSection(app *App, s3m *conf
 		svccontainer["privileged"] = "true"
 		svccontainer["secrets_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeSecret)
 		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
-		diskname := app.GetAppVolumeName(s3m.GetSourcePoolName(), false)
+		diskname := s3m.GetSourceVolumeName()
 		svccontainer["volume_mounts"] = fmt.Sprintf("%s:/mnt:rw,rshared", filepath.Join(diskname, s3m.VolumeDir))
 		svccontainer["run_command"] = "-o allow_other -o nonempty --use-content-type --uid 33 --gid 33 -f"
 		svccontainer["blocking_post_provision"] = "sleep 3"
@@ -853,8 +850,7 @@ func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
 			continue
 		}
 
-		diskname := app.GetAppVolumeName(vol.PoolName, false)
-		results = append(results, path.GetDockerMapping(diskname))
+		results = append(results, path.GetDockerMapping(vol.Name))
 	}
 
 	return strings.Join(results, " ")

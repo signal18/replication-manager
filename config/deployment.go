@@ -1172,14 +1172,6 @@ func (gc *GitClone) GetSourceVolumeName() string {
 	return gc.VolumeName
 }
 
-func (gc *GitClone) GetSourcePoolName() string {
-	// Return the volume name associated with the git clone
-	if gc.Volume != nil {
-		return gc.Volume.PoolName
-	}
-	return ""
-}
-
 var gitVariableReplacer = strings.NewReplacer("-", "_", ".", "_", "/", "_")
 
 const GitVarSuffixRepo = "REPO"
@@ -1451,12 +1443,4 @@ func (s *S3Mount) GetSourceVolumeName() string {
 		return s.Volume.Name
 	}
 	return s.VolumeName
-}
-
-func (s *S3Mount) GetSourcePoolName() string {
-	// Return the volume name associated with the S3 mount
-	if s.Volume != nil {
-		return s.Volume.PoolName
-	}
-	return "" // Return an empty string if the volume is not set
 }

@@ -63,6 +63,44 @@ func TestGetOpenSVCDeploymentPathMappingRendersMultiVolumeMounts(t *testing.T) {
 	}
 }
 
+// TestGetOpenSVCDeploymentPathMappingUsesPathsOwnVolumeRow covers Phase 5
+// task 5: the disk name for a path mapping must come from the volume row
+// resolved by the path's own VolumeName (deployment.GetVolumeByName), not
+// from a pool-derived lookup. With a legacy, not-yet-canonicalized config
+// where multiple rows still share a pool, GetVolumeByPool would return the
+// first row for that pool, which can differ from the row the path actually
+// references.
+func TestGetOpenSVCDeploymentPathMappingUsesPathsOwnVolumeRow(t *testing.T) {
+	deployment := config.NewDeploymentConfig()
+	deployment.Storages.Volumes = config.Volumes{
+		{Name: "first-row", PoolName: "data", VolumeDir: "etc"},
+		{Name: "second-row", PoolName: "data", VolumeDir: "data"},
+	}
+	deployment.Paths = config.PathMaps{
+		{
+			Name:       "web-root",
+			DockerPath: "/var/www/html",
+			SourceType: config.SourceVolume,
+			SourceName: "second-row",
+			SourcePath: ".",
+			VolumeName: "second-row",
+		},
+	}
+
+	if errs := deployment.ResolvePaths(); len(errs) > 0 {
+		t.Fatalf("expected deployment paths to resolve, got %v", errs)
+	}
+
+	cluster := &Cluster{Name: "test", Conf: &config.Config{}}
+	app := &App{Name: "dolibarr", AppConfig: &config.AppConfig{Deployment: deployment}}
+
+	got := cluster.GetOpenSVCDeploymentPathMapping(app)
+	want := "second-row:/var/www/html"
+	if got != want {
+		t.Fatalf("expected mount mapping %q, got %q", want, got)
+	}
+}
+
 func TestResolvePathsParentNameByPathName(t *testing.T) {
 	deployment := config.NewDeploymentConfig()
 	deployment.Storages.Volumes = config.Volumes{
