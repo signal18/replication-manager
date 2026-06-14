@@ -30,6 +30,35 @@ parentname = "/var/www/html"
 dockerpath = "/var/www/html/assets"
 `
 
+const legacyMultiRowPoolVolumesTOML = `
+[deployment.storages]
+[[deployment.storages.volumes]]
+name = "data-volume"
+poolname = "data"
+volumedir = "data"
+
+[[deployment.storages.volumes]]
+name = "logs-volume"
+poolname = "data"
+volumedir = "logs"
+
+[[deployment.paths]]
+name = "web-root"
+dockerpath = "/var/www/html"
+srctype = "volume"
+srcname = "data-volume"
+volumename = "data-volume"
+srcpath = "."
+
+[[deployment.paths]]
+name = "log-dir"
+dockerpath = "/var/log/app"
+srctype = "volume"
+srcname = "logs-volume"
+volumename = "logs-volume"
+srcpath = "."
+`
+
 const invalidLegacyTemplateTOML = `
 [deployment.storages]
 
@@ -507,6 +536,156 @@ func TestRefreshTemplateContent_RepoSyncFailureFallsBackToStaleCache(t *testing.
 	localPath := filepath.Join(workingDir, ".templates", "apps", "repo-only.toml")
 	if _, err := os.Stat(localPath); !os.IsNotExist(err) {
 		t.Fatalf("expected no local template write from repo cache read, err=%v", err)
+	}
+}
+
+func TestLoadAppConfig_MergesMultiRowVolumePoolWithResolvedName(t *testing.T) {
+	workingDir := t.TempDir()
+	appsDir := filepath.Join(workingDir, "apps")
+	if err := os.MkdirAll(appsDir, 0o755); err != nil {
+		t.Fatalf("mkdir apps dir failed: %v", err)
+	}
+
+	appFile := filepath.Join(appsDir, "legacy-vol.toml")
+	content := "app-host = \"legacy-vol\"\napp-port = \"8080\"\nprov-app-memory = \"128M\"\nprov-app-disk-size = \"1G\"\n" + legacyMultiRowPoolVolumesTOML
+	if err := os.WriteFile(appFile, []byte(content), 0o644); err != nil {
+		t.Fatalf("write legacy app file failed: %v", err)
+	}
+
+	cluster := &Cluster{
+		Name:       "test-cluster",
+		WorkingDir: workingDir,
+		crcTable:   crc64.MakeTable(crc64.ECMA),
+		Conf: &config.Config{
+			WorkingDir:     workingDir,
+			Apps:           make([]*config.AppConfig, 0),
+			DefaultFlagMap: map[string]interface{}{"prov-app-memory": "128M", "prov-app-disk-size": "1G"},
+		},
+	}
+
+	if err := cluster.LoadAppConfig(appsDir, "legacy-vol"); err != nil && err.Error() != "" {
+		t.Fatalf("LoadAppConfig failed: %v", err)
+	}
+
+	if len(cluster.Conf.Apps) != 1 {
+		t.Fatalf("expected 1 app config to load, got %d", len(cluster.Conf.Apps))
+	}
+	appcnf := cluster.Conf.Apps[0]
+	if len(appcnf.Deployment.Storages.Volumes) != 1 {
+		t.Fatalf("expected volumes merged into 1 row, got %d", len(appcnf.Deployment.Storages.Volumes))
+	}
+	vol := appcnf.Deployment.Storages.Volumes[0]
+	if vol.Name != "legacy-vol-data" {
+		t.Fatalf("expected resolved volume name legacy-vol-data, got %q", vol.Name)
+	}
+	if vol.VolumeDir != "data logs" {
+		t.Fatalf("expected merged volumedir 'data logs', got %q", vol.VolumeDir)
+	}
+
+	for _, p := range appcnf.Deployment.Paths {
+		if p.SourceName != "legacy-vol-data" {
+			t.Fatalf("expected srcname rewritten to legacy-vol-data, got %q", p.SourceName)
+		}
+		if p.VolumeName != "legacy-vol-data" {
+			t.Fatalf("expected volumename rewritten to legacy-vol-data, got %q", p.VolumeName)
+		}
+	}
+
+	updated, err := os.ReadFile(appFile)
+	if err != nil {
+		t.Fatalf("read rewritten app file failed: %v", err)
+	}
+	got := string(updated)
+	if !strings.Contains(got, `name = "legacy-vol-data"`) {
+		t.Fatalf("expected canonical volume name in rewritten file, got:\n%s", got)
+	}
+	if !strings.Contains(got, `volumedir = "data logs"`) {
+		t.Fatalf("expected merged volumedir in rewritten file, got:\n%s", got)
+	}
+}
+
+func TestGetTemplateContent_MergesMultiRowVolumePoolWithTemplateName(t *testing.T) {
+	workingDir := t.TempDir()
+	localPath := filepath.Join(workingDir, ".templates", "apps", "legacy-vol.toml")
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+		t.Fatalf("mkdir local template dir failed: %v", err)
+	}
+	if err := os.WriteFile(localPath, []byte(legacyMultiRowPoolVolumesTOML), 0o644); err != nil {
+		t.Fatalf("write local legacy template failed: %v", err)
+	}
+
+	cluster := &Cluster{Conf: &config.Config{WorkingDir: workingDir}}
+
+	content, err := cluster.GetTemplateContent("legacy-vol")
+	if err != nil {
+		t.Fatalf("GetTemplateContent failed: %v", err)
+	}
+
+	got := string(content)
+	if !strings.Contains(got, `name = "{name}-data"`) {
+		t.Fatalf("expected canonical template volume name {name}-data, got:\n%s", got)
+	}
+	if !strings.Contains(got, `volumedir = "data logs"`) {
+		t.Fatalf("expected merged volumedir, got:\n%s", got)
+	}
+
+	rewritten, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read rewritten local template failed: %v", err)
+	}
+	if !strings.Contains(string(rewritten), `name = "{name}-data"`) {
+		t.Fatalf("expected local cache rewrite to canonical volume name, got:\n%s", string(rewritten))
+	}
+}
+
+func TestAddSeededApp_MergesMultiRowVolumePoolWithResolvedName(t *testing.T) {
+	workingDir := t.TempDir()
+	localPath := filepath.Join(workingDir, ".templates", "apps", "legacy-vol-seed.toml")
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+		t.Fatalf("mkdir local template dir failed: %v", err)
+	}
+	template := "app-port = \"8080\"\nprov-app-docker-img = \"nginx:latest\"\n" + legacyMultiRowPoolVolumesTOML
+	if err := os.WriteFile(localPath, []byte(template), 0o644); err != nil {
+		t.Fatalf("write local seed template failed: %v", err)
+	}
+
+	cluster := &Cluster{
+		Name:       "test-cluster",
+		WorkingDir: workingDir,
+		crcTable:   crc64.MakeTable(crc64.ECMA),
+		Conf: &config.Config{
+			WorkingDir: workingDir,
+			Apps:       make([]*config.AppConfig, 0),
+		},
+	}
+
+	if err := cluster.AddSeededApp("seed-vol-host", "8080", "nginx:latest", "legacy-vol-seed"); err != nil {
+		t.Fatalf("AddSeededApp failed: %v", err)
+	}
+
+	seeded := cluster.GetAppConfig("seed-vol-host", "8080")
+	if seeded == nil || seeded.Deployment == nil {
+		t.Fatalf("expected seeded app deployment to be loaded")
+	}
+
+	if len(seeded.Deployment.Storages.Volumes) != 1 {
+		t.Fatalf("expected volumes merged into 1 row, got %d", len(seeded.Deployment.Storages.Volumes))
+	}
+	vol := seeded.Deployment.Storages.Volumes[0]
+	if vol.Name != "seed-vol-host-data" {
+		t.Fatalf("expected resolved volume name seed-vol-host-data, got %q", vol.Name)
+	}
+	if vol.VolumeDir != "data logs" {
+		t.Fatalf("expected merged volumedir 'data logs', got %q", vol.VolumeDir)
+	}
+
+	for _, p := range seeded.Deployment.Paths {
+		if p.SourceName != "seed-vol-host-data" {
+			t.Fatalf("expected srcname rewritten to seed-vol-host-data, got %q", p.SourceName)
+		}
+		if p.VolumeName != "seed-vol-host-data" {
+			t.Fatalf("expected volumename rewritten to seed-vol-host-data, got %q", p.VolumeName)
+		}
 	}
 }
 
