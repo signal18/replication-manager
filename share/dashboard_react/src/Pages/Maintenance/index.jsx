@@ -265,8 +265,8 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       value: backupStats?.total_blob_count
     },
     {
-      key: 'Concurrent Backup Slots',
-      value: backupSlotsTotal > 0 ? `${backupSlotsInUse} / ${backupSlotsTotal}` : 'Unlimited'
+      key: 'Free Backup Slots',
+      value: backupSlotsTotal > 0 ? backupSlotsTotal - backupSlotsInUse : 'Unlimited'
     }
   ]
 
