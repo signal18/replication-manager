@@ -72,7 +72,7 @@ function AlertModal({ type, isOpen, closeModal, alerts }) {
         cell: (info) => {
           const row = info.row.original
           const value = info.getValue()
-          if (row.number === 'WARN0084') {
+          if (row.number?.startsWith('WARN0084')) {
             return (
               <Link color='blue.400' onClick={() => setShowVarDiff(true)} cursor='pointer'>
                 {value?.replace(/,(?!\s)/g, ', ') || ''}
@@ -91,7 +91,7 @@ function AlertModal({ type, isOpen, closeModal, alerts }) {
       }),
       columnHelper.accessor((row) => row.number, {
         id: 'number',
-        cell: (info) => info.getValue(),
+        cell: (info) => (info.getValue() || '').split('@')[0],
         header: () => <span>Number</span>,
         maxWidth: '200'
       })
