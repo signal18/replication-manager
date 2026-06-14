@@ -118,6 +118,7 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 		return server.JobBackupPhysicalWithOptions(opts)
 	}
 
+	server.IsInBackupPhysical = true
 	cluster.SetInPhysicalBackupState(true)
 
 	// Prevent backing up with incompatible tools
@@ -155,6 +156,7 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	}
 
 	if err != nil {
+		server.IsInBackupPhysical = false
 		cluster.SetInPhysicalBackupState(false)
 		return nil
 	}
@@ -202,6 +204,7 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 
 	_, err = server.JobInsertTask(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
 	if err != nil {
+		server.IsInBackupPhysical = false
 		cluster.SetInPhysicalBackupState(false)
 	}
 
@@ -2475,6 +2478,8 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		time.Sleep(1 * time.Second)
 	}
 
+	server.IsInBackupLogical = true
+	defer func() { server.IsInBackupLogical = false }()
 	cluster.SetInLogicalBackupState(true)
 	defer cluster.SetInLogicalBackupState(false)
 
@@ -4141,6 +4146,7 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 			server.BackupRestic(backupmgr.BackupMethodPhysical, true, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupPhysicalType, backupLine, server.LastBackupMeta.Physical)...)
 		}
 
+		server.IsInBackupPhysical = false
 		cluster.SetInPhysicalBackupState(false)
 	case "printdefault-current":
 		filename := filepath.Join(server.Datadir, "current.cnf")

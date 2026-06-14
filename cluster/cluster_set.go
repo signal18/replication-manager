@@ -2166,17 +2166,23 @@ func (cluster *Cluster) SetInResticBackupState(value bool) {
 }
 
 func (cluster *Cluster) CheckBackupStates() {
-	serverUrl := ""
-	if m := cluster.GetMaster(); m != nil {
-		serverUrl = m.URL
+	hasPhysical := false
+	hasLogical := false
+	for _, server := range cluster.Servers {
+		if server.IsInBackupPhysical {
+			hasPhysical = true
+			cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0073"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		}
+		if server.IsInBackupLogical {
+			hasLogical = true
+			cluster.SetState("WARN0175", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0175"], cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		}
 	}
-	if cluster.InPhysicalBackup || cluster.InResticPhysicalBackup {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "CheckBackupStates: setting WARN0073 (physical=%t, resticPhysical=%t)", cluster.InPhysicalBackup, cluster.InResticPhysicalBackup)
-		cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0073"], cluster.Conf.BackupPhysicalType, serverUrl), ErrFrom: "JOB", ServerUrl: serverUrl})
+	if cluster.InResticPhysicalBackup && !hasPhysical {
+		cluster.StateMachine.PreserveState("WARN0073")
 	}
-	if cluster.InLogicalBackup || cluster.InResticLogicalBackup {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "CheckBackupStates: setting WARN0175 (logical=%t, resticLogical=%t)", cluster.InLogicalBackup, cluster.InResticLogicalBackup)
-		cluster.SetState("WARN0175", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0175"], cluster.Conf.BackupLogicalType, serverUrl), ErrFrom: "JOB", ServerUrl: serverUrl})
+	if cluster.InResticLogicalBackup && !hasLogical {
+		cluster.StateMachine.PreserveState("WARN0175")
 	}
 }
 
