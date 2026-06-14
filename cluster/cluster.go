@@ -2235,13 +2235,49 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		cluster.SaveVariableDiff(alldiff)
 		cluster.SetState("WARN0084", state.State{
 			ErrType:   "WARNING",
-			ErrDesc:   fmt.Sprintf(clusterError["WARN0084"], len(alldiff)),
+			ErrDesc:   fmt.Sprintf(clusterError["WARN0084"], cluster.FormatVariableDiffTable(alldiff)),
 			ErrFrom:   "MON",
 			ServerUrl: cluster.GetMaster().URL,
 		})
 	} else {
 		cluster.DiffVariables = nil
 	}
+}
+
+func (cluster *Cluster) FormatVariableDiffTable(diffs []VariableDiff) string {
+	varW, srvW, roleW, valW := len("Variable"), len("Server"), len("Role"), len("Value")
+	type row struct{ v, s, r, val string }
+	var rows []row
+	for _, d := range diffs {
+		for _, dv := range d.DiffValues {
+			r := row{d.VariableName, dv.Server, dv.Role, dv.VariableValue}
+			if len(r.v) > varW {
+				varW = len(r.v)
+			}
+			if len(r.s) > srvW {
+				srvW = len(r.s)
+			}
+			if len(r.r) > roleW {
+				roleW = len(r.r)
+			}
+			if len(r.val) > valW {
+				valW = len(r.val)
+			}
+			rows = append(rows, r)
+		}
+	}
+	f := fmt.Sprintf("%%-%ds | %%-%ds | %%-%ds | %%-%ds", varW, srvW, roleW, valW)
+	sep := fmt.Sprintf(f, strings.Repeat("-", varW), strings.Repeat("-", srvW), strings.Repeat("-", roleW), strings.Repeat("-", valW))
+	sep = strings.ReplaceAll(sep, " | ", "-+-")
+	var b strings.Builder
+	fmt.Fprintf(&b, f, "Variable", "Server", "Role", "Value")
+	b.WriteString("\n")
+	b.WriteString(sep)
+	for _, r := range rows {
+		b.WriteString("\n")
+		fmt.Fprintf(&b, f, r.v, r.s, r.r, r.val)
+	}
+	return b.String()
 }
 
 // SaveVariableDiff persists the variable diff to a JSON file in the cluster's working directory.

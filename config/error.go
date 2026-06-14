@@ -162,7 +162,7 @@ var ClusterError = map[string]string{
 	"WARN0081":  "Cluster arbitrator error in reporting %s",
 	"WARN0082":  "Cluster arbitrator error in arbitration %s",
 	"WARN0083":  "Arbitration winner",
-	"WARN0084":  "%d variables differ between leader and replicas",
+	"WARN0084":  "Variables differ between leader and replicas:\n%s",
 	"WARN0085":  "Server %s in capture mode",
 	"WARN0086":  "Checksum table waiting replication sync on slave %s",
 	"WARN0087":  "Cluster same server_id %s %s",
