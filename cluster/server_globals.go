@@ -56,13 +56,18 @@ func (cluster *Cluster) waitForBackupSlot() bool {
 	for {
 		select {
 		case cluster.ServerGlobals.BackupSemaphore <- struct{}{}:
-			cluster.StateMachine.DeleteState("WARN0174")
 			return true
 		case <-time.After(2 * time.Second):
 			if cluster.exit.Load() {
-				cluster.StateMachine.DeleteState("WARN0174")
 				return false
 			}
+			inUse = len(cluster.ServerGlobals.BackupSemaphore)
+			total = cap(cluster.ServerGlobals.BackupSemaphore)
+			cluster.SetState("WARN0174", state.State{
+				ErrType: "WARNING",
+				ErrDesc: fmt.Sprintf(config.ClusterError["WARN0174"], inUse, total),
+				ErrFrom: "BACKUP",
+			})
 		}
 	}
 }
