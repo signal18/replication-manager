@@ -1288,7 +1288,7 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, level, format, args...)
 		},
 		Context:                   ctx,
-		RestoreFileWithContext:     restoreFile,
+		RestoreFileWithContext:    restoreFile,
 		RestoreFileWithoutDefiner: restoreFileWithoutDefiner,
 		DefinerStrict:             cluster.Conf.BackupRestoreDefinerStrict,
 	})
@@ -1764,8 +1764,8 @@ func (server *ServerMonitor) JobReseedBackupScript() error {
 }
 
 func (server *ServerMonitor) GetMyBackupDirectory() string {
+	s3dir := server.GetMyBackupDirectoryPath()
 	cluster := server.ClusterGroup
-	s3dir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + cluster.Name + "/" + server.Host + "_" + server.Port
 
 	if _, err := os.Stat(s3dir); os.IsNotExist(err) {
 		err := os.MkdirAll(s3dir, os.ModePerm)
@@ -1776,6 +1776,14 @@ func (server *ServerMonitor) GetMyBackupDirectory() string {
 
 	return s3dir + "/"
 
+}
+
+func (server *ServerMonitor) GetMyBackupDirectoryPath() string {
+	if server == nil || server.ClusterGroup == nil || server.ClusterGroup.Conf == nil {
+		return ""
+	}
+	cluster := server.ClusterGroup
+	return cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + cluster.Name + "/" + server.Host + "_" + server.Port
 }
 
 // JobBackupScript execute a backup script

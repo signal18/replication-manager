@@ -34,6 +34,11 @@ var splitDumpTimestampRegex = regexp.MustCompile(`^\d+$`)
 // sftp:[user@]host:path, e.g. sftp:backup@10.0.0.1:/srv/restic-repo
 var resticSftpRepoRegex = regexp.MustCompile(`^sftp:[^:@\s]+(@[^:@\s]+)?:.+$`)
 
+var (
+	resolveDiskFilesystem = misc.ResolveFilesystem
+	getDiskUsage          = disk.Usage
+)
+
 // ValidateResticSftpRepository checks that repoPath matches the
 // sftp:[user@]host:/path syntax expected by restic's sftp backend, so a
 // malformed value is rejected with a clear error instead of an opaque
@@ -1662,7 +1667,13 @@ func (cluster *Cluster) ResticPauseQueue() {
 }
 
 func (cluster *Cluster) UpdateDiskStat(dirpath string) error {
-	diskstat, err := disk.Usage(dirpath)
+	fsPath, err := resolveDiskFilesystem(dirpath)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error resolving disk filesystem for dir %s: %s", dirpath, err)
+		return err
+	}
+
+	diskstat, err := getDiskUsage(fsPath.Mountpoint)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting disk usage for dir %s: %s", dirpath, err)
 		return err
@@ -1674,7 +1685,8 @@ func (cluster *Cluster) UpdateDiskStat(dirpath string) error {
 		return err
 	}
 
-	cluster.DiskStatManager.UpdateStat(dirpath, diskstat)
+	diskstat.Path = fsPath.Mountpoint
+	cluster.DiskStatManager.UpdateStat(fsPath.Key, diskstat)
 
 	return nil
 }

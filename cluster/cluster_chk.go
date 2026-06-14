@@ -1385,7 +1385,7 @@ func (cluster *Cluster) CheckDisksUsage() {
 		reducePolicy = "Considering reducing restic keep-* policies to save disk space."
 	}
 
-	overThreshold := cluster.DiskStatManager.GetOverThresholdPaths(float64(cluster.Conf.BackupDiskTresholdWarn), float64(cluster.Conf.BackupDiskTresholdCrit))
+	overThreshold := cluster.DiskStatManager.GetOverThresholdPathsForKeys(cluster.getBackupDiskFilesystemKeys(), float64(cluster.Conf.BackupDiskTresholdWarn), float64(cluster.Conf.BackupDiskTresholdCrit))
 	for level, statlist := range overThreshold {
 		switch level {
 		case "critical":
@@ -1394,6 +1394,37 @@ func (cluster *Cluster) CheckDisksUsage() {
 			cluster.SetState("WARN0139", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0139"], statlist, cluster.Conf.BackupDiskTresholdWarn), ErrFrom: "JOB"})
 		}
 	}
+}
+
+func (cluster *Cluster) getBackupDiskFilesystemKeys() map[string]struct{} {
+	keys := make(map[string]struct{})
+	for _, backupPath := range cluster.backupPathsForDiskChecks() {
+		fsPath, err := resolveDiskFilesystem(backupPath)
+		if err != nil {
+			continue
+		}
+		keys[fsPath.Key] = struct{}{}
+	}
+	return keys
+}
+
+func (cluster *Cluster) backupPathsForDiskChecks() []string {
+	paths := make([]string, 0, len(cluster.Servers)+1)
+	if cluster == nil || cluster.Conf == nil {
+		return paths
+	}
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+		if backupPath := srv.GetMyBackupDirectoryPath(); backupPath != "" {
+			paths = append(paths, backupPath)
+		}
+	}
+	if cluster.Conf.BackupRestic {
+		paths = append(paths, cluster.GetResticLocalDir())
+	}
+	return paths
 }
 
 func (cluster *Cluster) CheckAllBackupEstimatedSize() {

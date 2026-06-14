@@ -387,6 +387,20 @@ type DiskStatManager struct {
 	Stats DiskUsageStatMap `json:"stats"`
 }
 
+type FilesystemPath struct {
+	Key        string
+	Mountpoint string
+}
+
+var (
+	statPathFunc       = os.Stat
+	evalSymlinksFunc   = filepath.EvalSymlinks
+	absPathFunc        = filepath.Abs
+	diskPartitionsFunc = disk.Partitions
+	partitionsCacheMu  sync.RWMutex
+	partitionsCache    []disk.PartitionStat
+)
+
 func NewDiskStatManager() *DiskStatManager {
 	return &DiskStatManager{
 		Stats: make(DiskUsageStatMap),
@@ -403,6 +417,16 @@ func (m *DiskStatManager) UpdateStat(name string, u *disk.UsageStat) {
 	}
 }
 
+func (m *DiskStatManager) ReplaceStats(stats DiskUsageStatMap) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if stats == nil {
+		m.Stats = make(DiskUsageStatMap)
+		return
+	}
+	m.Stats = stats
+}
+
 func (m *DiskStatManager) GetStat(name string) (*DiskUsageStat, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -410,35 +434,45 @@ func (m *DiskStatManager) GetStat(name string) (*DiskUsageStat, bool) {
 	return stat, ok
 }
 
-func (m *DiskStatManager) GetStatByClosestMount(path string) *DiskUsageStat {
+func (m *DiskStatManager) GetStatByPath(path string) *DiskUsageStat {
+	fsPath, err := ResolveFilesystem(path)
+	if err != nil {
+		return nil
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	cleanPath := filepath.Clean(path)
+	return m.Stats[fsPath.Key]
+}
 
-	for {
-		if stat, ok := m.Stats[cleanPath]; ok {
-			return stat
-		}
-
-		parent := filepath.Dir(cleanPath)
-		if parent == cleanPath {
-			break // reached root
-		}
-
-		cleanPath = parent
-	}
-
-	return nil
+func (m *DiskStatManager) GetStatByClosestMount(path string) *DiskUsageStat {
+	return m.GetStatByPath(path)
 }
 
 func (m *DiskStatManager) GetOverThresholdPaths(warn, crit float64) map[string][]DiskUsagePercentage {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	return getOverThresholdPathsLocked(m.Stats, nil, warn, crit)
+}
+
+func (m *DiskStatManager) GetOverThresholdPathsForKeys(keys map[string]struct{}, warn, crit float64) map[string][]DiskUsagePercentage {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return getOverThresholdPathsLocked(m.Stats, keys, warn, crit)
+}
+
+func getOverThresholdPathsLocked(stats DiskUsageStatMap, keys map[string]struct{}, warn, crit float64) map[string][]DiskUsagePercentage {
 	overThreshold := make(map[string][]DiskUsagePercentage)
 
-	for _, stat := range m.Stats {
+	for key, stat := range stats {
+		if keys != nil {
+			if _, ok := keys[key]; !ok {
+				continue
+			}
+		}
 		if stat.UsedPercent > crit {
 			overThreshold["critical"] = append(overThreshold["critical"], DiskUsagePercentage{Path: stat.Path, UsedPercent: stat.UsedPercent})
 		} else if stat.UsedPercent > warn {
@@ -476,6 +510,160 @@ func NewDiskUsageStat(u *disk.UsageStat) *DiskUsageStat {
 	d.LastUpdate = time.Now()
 
 	return d
+}
+
+func ResolveFilesystem(path string) (FilesystemPath, error) {
+	partitions, err := diskPartitionsFunc(true)
+	if err != nil {
+		partitions = cachedDiskPartitions()
+	} else {
+		storeDiskPartitions(partitions)
+	}
+
+	return ResolveFilesystemWithPartitions(path, partitions)
+}
+
+func ResolveFilesystemWithPartitions(path string, partitions []disk.PartitionStat) (FilesystemPath, error) {
+	if len(partitions) == 0 {
+		partitions = cachedDiskPartitions()
+	}
+	if len(partitions) > 0 {
+		storeDiskPartitions(partitions)
+	}
+
+	resolvedPath, info, err := resolveExistingPath(path)
+	if err != nil {
+		return FilesystemPath{}, err
+	}
+
+	if !info.IsDir() {
+		resolvedPath = filepath.Dir(resolvedPath)
+		info, err = statPathFunc(resolvedPath)
+		if err != nil {
+			return FilesystemPath{}, err
+		}
+	}
+
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return FilesystemPath{}, fmt.Errorf("unsupported filesystem stat for %s", resolvedPath)
+	}
+
+	if mountpoint, ok := resolveMountpointFromPartitions(resolvedPath, partitions); ok {
+		return FilesystemPath{
+			Key:        mountpoint,
+			Mountpoint: mountpoint,
+		}, nil
+	}
+
+	mountpoint := resolvedPath
+	for {
+		parent := filepath.Dir(mountpoint)
+		if parent == mountpoint {
+			break
+		}
+
+		parentInfo, err := statPathFunc(parent)
+		if err != nil {
+			return FilesystemPath{}, err
+		}
+
+		parentStat, ok := parentInfo.Sys().(*syscall.Stat_t)
+		if !ok {
+			return FilesystemPath{}, fmt.Errorf("unsupported filesystem stat for %s", parent)
+		}
+
+		if parentStat.Dev != stat.Dev {
+			break
+		}
+
+		mountpoint = parent
+	}
+
+	return FilesystemPath{
+		Key:        mountpoint,
+		Mountpoint: mountpoint,
+	}, nil
+}
+
+func resolveMountpointFromPartitions(path string, partitions []disk.PartitionStat) (string, bool) {
+	if len(partitions) == 0 {
+		return "", false
+	}
+
+	cleanPath := filepath.Clean(path)
+	bestMountpoint := ""
+	for _, partition := range partitions {
+		mountpoint := filepath.Clean(partition.Mountpoint)
+		if !pathWithinMount(cleanPath, mountpoint) {
+			continue
+		}
+		if len(mountpoint) > len(bestMountpoint) {
+			bestMountpoint = mountpoint
+		}
+	}
+
+	if bestMountpoint == "" {
+		return "", false
+	}
+
+	return bestMountpoint, true
+}
+
+func pathWithinMount(path string, mountpoint string) bool {
+	if mountpoint == "." {
+		return false
+	}
+	if mountpoint == string(os.PathSeparator) {
+		return strings.HasPrefix(path, mountpoint)
+	}
+	return path == mountpoint || strings.HasPrefix(path, mountpoint+string(os.PathSeparator))
+}
+
+func storeDiskPartitions(partitions []disk.PartitionStat) {
+	partitionsCacheMu.Lock()
+	defer partitionsCacheMu.Unlock()
+	if len(partitions) == 0 {
+		partitionsCache = nil
+		return
+	}
+	partitionsCache = append([]disk.PartitionStat(nil), partitions...)
+}
+
+func cachedDiskPartitions() []disk.PartitionStat {
+	partitionsCacheMu.RLock()
+	defer partitionsCacheMu.RUnlock()
+	if len(partitionsCache) == 0 {
+		return nil
+	}
+	return append([]disk.PartitionStat(nil), partitionsCache...)
+}
+
+func resolveExistingPath(path string) (string, os.FileInfo, error) {
+	cleanPath := filepath.Clean(path)
+	resolvedPath, err := absPathFunc(cleanPath)
+	if err != nil {
+		return "", nil, err
+	}
+
+	for {
+		candidate := resolvedPath
+		if evalPath, err := evalSymlinksFunc(candidate); err == nil {
+			candidate = evalPath
+		}
+
+		info, err := statPathFunc(candidate)
+		if err == nil {
+			return candidate, info, nil
+		}
+
+		parent := filepath.Dir(resolvedPath)
+		if parent == resolvedPath {
+			return "", nil, err
+		}
+
+		resolvedPath = parent
+	}
 }
 
 // isDirEmpty reports whether a directory contains no entries.

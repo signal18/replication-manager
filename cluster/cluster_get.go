@@ -1956,14 +1956,19 @@ func (cluster *Cluster) GetChangeMasterBaseOptForMxs(sl *ServerMonitor, master *
 }
 
 func (cluster *Cluster) GetDiskStat(dirpath string) (*misc.DiskUsageStat, error) {
-	diskstat := cluster.DiskStatManager.GetStatByClosestMount(dirpath)
+	fsPath, err := resolveDiskFilesystem(dirpath)
+	if err != nil {
+		return nil, fmt.Errorf("No disk stat found for backup directory %s", dirpath)
+	}
+
+	diskstat, _ := cluster.DiskStatManager.GetStat(fsPath.Key)
 	if diskstat == nil {
 		err := cluster.UpdateDiskStat(dirpath)
 		if err != nil {
 			return nil, fmt.Errorf("No disk stat found for backup directory %s", dirpath)
 		}
 
-		diskstat = cluster.DiskStatManager.GetStatByClosestMount(dirpath)
+		diskstat, _ = cluster.DiskStatManager.GetStat(fsPath.Key)
 		if diskstat == nil {
 			return nil, fmt.Errorf("No disk stat found for backup directory %s", dirpath)
 		}
