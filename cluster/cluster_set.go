@@ -2171,10 +2171,12 @@ func (cluster *Cluster) CheckBackupStates() {
 	for _, server := range cluster.Servers {
 		if server.IsInBackupPhysical {
 			hasPhysical = true
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "CheckBackupStates: server %s IsInBackupPhysical=true, setting WARN0073", server.URL)
 			cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0073"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		}
 		if server.IsInBackupLogical {
 			hasLogical = true
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "CheckBackupStates: server %s IsInBackupLogical=true, setting WARN0175", server.URL)
 			cluster.SetState("WARN0175", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0175"], cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		}
 	}
