@@ -219,8 +219,6 @@ type ServerMonitor struct {
 	ReplicationTags             string                      `json:"replicationTags"`
 	JobResults                  *config.TasksMap            `json:"jobResults"`
 	IsInSlowQueryCapture        bool
-	IsInBackupLogical           bool
-	IsInBackupPhysical          bool
 	IsInPFSQueryCapture         bool
 	PFSLastSnapshot             time.Time                   // timestamp of last periodic PFS digest snapshot flush
 	PFSLastExplainPurge         time.Time                   // timestamp of last explain cache purge run

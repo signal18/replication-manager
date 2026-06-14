@@ -118,8 +118,8 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 		return server.JobBackupPhysicalWithOptions(opts)
 	}
 
-	server.IsInBackupPhysical = true
 	cluster.SetInPhysicalBackupState(true)
+	cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0073"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 
 	// Prevent backing up with incompatible tools
 	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.1") && cluster.Conf.BackupPhysicalType == "xtrabackup" {
@@ -156,7 +156,6 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	}
 
 	if err != nil {
-		server.IsInBackupPhysical = false
 		cluster.SetInPhysicalBackupState(false)
 		return nil
 	}
@@ -2477,10 +2476,9 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		time.Sleep(1 * time.Second)
 	}
 
-	server.IsInBackupLogical = true
-	defer func() { server.IsInBackupLogical = false }()
 	cluster.SetInLogicalBackupState(true)
 	defer cluster.SetInLogicalBackupState(false)
+	cluster.SetState("WARN0175", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0175"], cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 
 	if waited {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Resuming logical backup %s after waiting for previous backup to finish for: %s", cluster.Conf.BackupLogicalType, server.URL)
@@ -4145,7 +4143,6 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 			server.BackupRestic(backupmgr.BackupMethodPhysical, true, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupPhysicalType, backupLine, server.LastBackupMeta.Physical)...)
 		}
 
-		server.IsInBackupPhysical = false
 		cluster.SetInPhysicalBackupState(false)
 	case "printdefault-current":
 		filename := filepath.Join(server.Datadir, "current.cnf")

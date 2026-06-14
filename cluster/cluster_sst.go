@@ -286,11 +286,6 @@ func (sst *SST) tcp_con_handle_to_restic() {
 		delete(SSTs.SSTconnections, port)
 		sst.cluster.SSTSenderFreePort(strconv.Itoa(port))
 		SSTs.Unlock()
-		if bsrv := sst.cluster.GetBackupServer(); bsrv != nil {
-			bsrv.IsInBackupPhysical = false
-		} else if m := sst.cluster.GetMaster(); m != nil {
-			m.IsInBackupPhysical = false
-		}
 		sst.cluster.SetInPhysicalBackupState(false)
 	}()
 
