@@ -2508,6 +2508,11 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						return
 					}
 
+					if newValue == "" {
+						http.Error(w, "Name cannot be empty", http.StatusInternalServerError)
+						return
+					}
+
 					old, _ := deployment.GetVolumeByName(newValue)
 					if old != nil {
 						http.Error(w, "Cannot duplicate volume with same name", http.StatusInternalServerError)
@@ -2531,18 +2536,41 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						http.Error(w, "PoolName cannot be empty", http.StatusInternalServerError)
 						return
 					}
+
+					// A row is canonical per pool: reject moving this row onto a
+					// pool that another saved row already owns.
+					if existing := deployment.GetVolumeByPool(newValue); existing != nil && existing != vol {
+						http.Error(w, fmt.Sprintf("a volume for pool %q already exists: %s", newValue, existing.Name), http.StatusInternalServerError)
+						return
+					}
+
+					oldPoolName := vol.PoolName
 					vol.PoolName = newValue
+					if err := vol.Validate(); err != nil {
+						vol.PoolName = oldPoolName
+						http.Error(w, "Error validating volume: "+err.Error(), http.StatusInternalServerError)
+						return
+					}
 
 				case "volumedir":
-					if vol.VolumeDir == newValue {
+					normalized := config.NormalizeVolumeDirs(newValue)
+					if normalized == vol.VolumeDir {
 						http.Error(w, "VolumeDir is the same as the current volume dir", http.StatusInternalServerError)
 						return
 					}
-					if newValue == "" {
+					if normalized == "" {
 						http.Error(w, "VolumeDir cannot be empty", http.StatusInternalServerError)
 						return
 					}
-					vol.VolumeDir = newValue
+
+					oldVolumeDir := vol.VolumeDir
+					vol.VolumeDir = normalized
+					if err := vol.Validate(); err != nil {
+						vol.VolumeDir = oldVolumeDir
+						http.Error(w, "Error validating volume: "+err.Error(), http.StatusInternalServerError)
+						return
+					}
+
 					deployment.ResolveVolumePaths(vol.Name)
 
 				default:

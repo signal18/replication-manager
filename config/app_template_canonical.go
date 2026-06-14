@@ -429,24 +429,6 @@ func canonicalVolumeName(appName, pool string) string {
 	return "{name}-" + pool
 }
 
-// normalizeVolumeDirs merges one or more whitespace-separated directory
-// lists into a single deduplicated, whitespace-separated list, preserving
-// first-seen order across all inputs.
-func normalizeVolumeDirs(dirs ...string) string {
-	tokens := make([]string, 0, len(dirs))
-	seen := make(map[string]struct{}, len(dirs))
-	for _, dir := range dirs {
-		for _, tok := range strings.Fields(dir) {
-			if _, dup := seen[tok]; dup {
-				continue
-			}
-			seen[tok] = struct{}{}
-			tokens = append(tokens, tok)
-		}
-	}
-	return strings.Join(tokens, " ")
-}
-
 func canonicalizeAppVolumes(deployment, storages map[string]any, volumes []any, appName string, res *AppTemplateCanonicalizationResult) error {
 	type volumeRow struct {
 		raw  map[string]any
@@ -485,7 +467,7 @@ func canonicalizeAppVolumes(deployment, storages map[string]any, volumes []any, 
 
 		if len(rows) == 1 && rows[0].name == canonicalName {
 			row := rows[0]
-			if normalized := normalizeVolumeDirs(row.dir); normalized != row.dir {
+			if normalized := NormalizeVolumeDirs(row.dir); normalized != row.dir {
 				row.raw["volumedir"] = normalized
 				res.Changed = true
 			}
@@ -505,7 +487,7 @@ func canonicalizeAppVolumes(deployment, storages map[string]any, volumes []any, 
 
 		merged["name"] = canonicalName
 		merged["poolname"] = pool
-		merged["volumedir"] = normalizeVolumeDirs(dirs...)
+		merged["volumedir"] = NormalizeVolumeDirs(dirs...)
 
 		newVolumes = append(newVolumes, merged)
 

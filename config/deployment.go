@@ -44,34 +44,53 @@ func (d *Deployment) GetVolumeByName(name string) (*Volume, error) {
 	return nil, fmt.Errorf("volume %s not found", name)
 }
 
+// findVolumeByPool returns the saved row for poolName, or nil if none
+// exists. Callers must hold d.Mutex.
+func (d *Deployment) findVolumeByPool(poolName string) *Volume {
+	for _, v := range d.Storages.Volumes {
+		if v.PoolName == poolName {
+			return v
+		}
+	}
+	return nil
+}
+
+// GetVolumeByPool returns the saved row for poolName, or nil if none exists.
+// It backs the one-row-per-pool invariant on writes: InsertVolume rejects new
+// rows for a pool that already has one, and poolname edits must not move a
+// row onto a pool another row already owns.
+func (d *Deployment) GetVolumeByPool(poolName string) *Volume {
+	d.Mutex.RLock()
+	defer d.Mutex.RUnlock()
+
+	return d.findVolumeByPool(poolName)
+}
+
 func (d *Deployment) InsertVolume(v *Volume) error {
 	// Use a mutex to protect concurrent access
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
 
-	// Validate the volume
-	if v.Name == "" {
-		return errors.New("volume name is required")
+	// Normalize before validating so duplicate/empty tokens don't slip in.
+	v.VolumeDir = NormalizeVolumeDirs(v.VolumeDir)
+
+	if err := v.Validate(); err != nil {
+		return err
 	}
 
-	if v.VolumeDir == "" {
-		return errors.New("volume directory is required")
-	}
-
-	// Check if the volume directory is valid
-	if strings.Contains(v.VolumeDir, "..") {
-		return fmt.Errorf("invalid volume directory: %s", v.VolumeDir)
-	}
-
-	// Check if the volume already exists
+	// Check if the volume already exists. A row is now canonical per pool, so
+	// any existing row for the same pool is a duplicate regardless of name or
+	// directory. Legacy configs with multiple rows per pool are still readable
+	// via GroupByPool and are consolidated by the canonicalization migration;
+	// this check only guards new writes.
 	for _, existingVolume := range d.Storages.Volumes {
 		if existingVolume.Name == v.Name {
 			return fmt.Errorf("volume already exists: %s", v.Name)
 		}
+	}
 
-		if existingVolume.VolumeDir == v.VolumeDir && existingVolume.PoolName == v.PoolName {
-			return fmt.Errorf("volume with same directory and pool already exists: %s", v.VolumeDir)
-		}
+	if existing := d.findVolumeByPool(v.PoolName); existing != nil {
+		return fmt.Errorf("a volume for pool %q already exists: %s", v.PoolName, existing.Name)
 	}
 
 	// Add the new volume
@@ -1226,6 +1245,61 @@ type Volume struct {
 	Name      string `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
 	PoolName  string `mapstructure:"poolname" toml:"poolname" json:"poolname" groups:"apps"`
 	VolumeDir string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"etc|log|var|data" groups:"apps"`
+}
+
+// GetVolumeDirs returns VolumeDir split into its whitespace-separated
+// directory tokens. A legacy single-directory value (e.g. "data") returns
+// a single token; a merged row (e.g. "etc log var data") returns one token
+// per directory.
+func (v *Volume) GetVolumeDirs() []string {
+	return strings.Fields(v.VolumeDir)
+}
+
+// NormalizeVolumeDirs merges one or more whitespace-separated directory
+// lists into a single deduplicated, whitespace-separated list, preserving
+// first-seen order across all inputs.
+func NormalizeVolumeDirs(dirs ...string) string {
+	tokens := make([]string, 0, len(dirs))
+	seen := make(map[string]struct{}, len(dirs))
+	for _, dir := range dirs {
+		for _, tok := range strings.Fields(dir) {
+			if _, dup := seen[tok]; dup {
+				continue
+			}
+			seen[tok] = struct{}{}
+			tokens = append(tokens, tok)
+		}
+	}
+	return strings.Join(tokens, " ")
+}
+
+// Validate checks that the volume row is structurally sound: it has a name,
+// a pool, and VolumeDir resolves to at least one relative, non-traversal
+// directory token.
+func (v *Volume) Validate() error {
+	if v.Name == "" {
+		return errors.New("volume name is required")
+	}
+
+	if v.PoolName == "" {
+		return errors.New("volume pool name is required")
+	}
+
+	dirs := v.GetVolumeDirs()
+	if len(dirs) == 0 {
+		return errors.New("volume directory is required")
+	}
+
+	for _, dir := range dirs {
+		if strings.Contains(dir, "..") {
+			return fmt.Errorf("invalid volume directory: %s", dir)
+		}
+		if strings.HasPrefix(dir, "/") {
+			return fmt.Errorf("volume directory must be relative: %s", dir)
+		}
+	}
+
+	return nil
 }
 
 func (v *Volume) GetSourcePath() string {
