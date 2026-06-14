@@ -3,6 +3,7 @@ package server
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/signal18/replication-manager/cluster"
@@ -86,6 +87,64 @@ dockerpath = "/srv/app/child"
 `)
 	if err := validateCanonicalTemplateContentForSave(cl, "local/invalid", invalidTemplate); err == nil {
 		t.Fatalf("expected invalid template content to fail validation")
+	}
+}
+
+// TestAppTemplateContentSave_MergesMultiRowVolumePool covers Phase 7: saving
+// edited template content must pass through the same canonical merge as
+// GetTemplateContent (CanonicalizeAppContent with appName=""), not just the
+// path/level migration. Otherwise a hand-edited template with two rows for
+// the same pool would be persisted un-merged, only to be silently rewritten
+// (and reported as a separate "Changed" canonicalization) the next time
+// GetTemplateContent loads it.
+func TestAppTemplateContentSave_MergesMultiRowVolumePool(t *testing.T) {
+	cl := &cluster.Cluster{Conf: &config.Config{WorkingDir: t.TempDir()}}
+
+	submitted := []byte(`
+[[deployment.storages.volumes]]
+name = "data-volume"
+poolname = "data"
+volumedir = "data"
+
+[[deployment.storages.volumes]]
+name = "logs-volume"
+poolname = "data"
+volumedir = "logs"
+
+[[deployment.paths]]
+name = "web-root"
+dockerpath = "/var/www/html"
+srctype = "volume"
+srcname = "data-volume"
+volumename = "data-volume"
+srcpath = "."
+
+[[deployment.paths]]
+name = "log-dir"
+dockerpath = "/var/log/app"
+srctype = "volume"
+srcname = "logs-volume"
+volumename = "logs-volume"
+srcpath = "."
+`)
+
+	canonicalContent, _, err := cluster.CanonicalizeAppContent(submitted, "")
+	if err != nil {
+		t.Fatalf("CanonicalizeAppContent failed: %v", err)
+	}
+	if err := validateCanonicalTemplateContentForSave(cl, "local/merge-on-save", canonicalContent); err != nil {
+		t.Fatalf("validateCanonicalTemplateContentForSave failed: %v", err)
+	}
+
+	got := string(canonicalContent)
+	if !strings.Contains(got, `name = "{name}-data"`) {
+		t.Fatalf("expected merged volume row named {name}-data, got:\n%s", got)
+	}
+	if !strings.Contains(got, `volumedir = "data logs"`) {
+		t.Fatalf("expected merged volumedir 'data logs', got:\n%s", got)
+	}
+	if strings.Contains(got, `"data-volume"`) || strings.Contains(got, `"logs-volume"`) {
+		t.Fatalf("expected legacy volume names rewritten away, got:\n%s", got)
 	}
 }
 

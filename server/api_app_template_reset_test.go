@@ -190,6 +190,63 @@ volumename = "data-volume"
 	}
 }
 
+// TestResetAppFromTemplate_VolumeNamesResolvedToAppName covers Phase 7: the
+// reset/preview projection must run the same canonical volume merge as
+// AddSeededApp/LoadAppConfig (CanonicalizeAppContent with appName =
+// node.Name), so a template-owned volume row ends up named "<app>-<pool>"
+// (the resolved-app convention) rather than left as the template's
+// "{name}-<pool>" placeholder or its original pre-canonical name.
+func TestResetAppFromTemplate_VolumeNamesResolvedToAppName(t *testing.T) {
+	cl := &cluster.Cluster{Conf: &config.Config{WorkingDir: t.TempDir()}}
+	node := &cluster.App{
+		Name:                 "myapp",
+		AppConfig:            seedAppConfigForTemplateResetTests(),
+		AppClusterSubstitute: `{}`,
+	}
+
+	if err := writeLocalAppTemplate(cl.Conf.WorkingDir, "vol-naming", `
+prov-app-docker-img = "templated/new:9"
+
+[deployment]
+[[deployment.storages.volumes]]
+name = "data-volume"
+poolname = "data"
+volumedir = "data"
+
+[[deployment.paths]]
+name = "root"
+dockerpath = "/srv/app"
+srctype = "volume"
+srcname = "data-volume"
+srcpath = "."
+volumename = "data-volume"
+`); err != nil {
+		t.Fatalf("writeLocalAppTemplate: %v", err)
+	}
+
+	if err := resetAppFromTemplateWithProjection(cl, node, "vol-naming", false); err != nil {
+		t.Fatalf("resetAppFromTemplateWithProjection: %v", err)
+	}
+
+	dep := node.AppConfig.Deployment
+	if dep == nil || len(dep.Storages.Volumes) != 1 {
+		t.Fatalf("expected 1 merged volume row, got %+v", dep)
+	}
+	if got := dep.Storages.Volumes[0].Name; got != "myapp-data" {
+		t.Fatalf("expected volume name resolved to myapp-data, got %q", got)
+	}
+
+	if len(dep.Paths) != 1 {
+		t.Fatalf("expected 1 path, got %d", len(dep.Paths))
+	}
+	if got := dep.Paths[0].SourceName; got != "myapp-data" {
+		t.Fatalf("expected path srcname resolved to myapp-data, got %q", got)
+	}
+	if got := dep.Paths[0].VolumeName; got != "myapp-data" {
+		t.Fatalf("expected path volumename resolved to myapp-data, got %q", got)
+	}
+}
+
 func TestBuildTemplateProjectionImpact_ReportsChangedTemplateOwnedFields(t *testing.T) {
 	current := seedAppConfigForTemplateResetTests()
 	projected := seedAppConfigForTemplateResetTests()

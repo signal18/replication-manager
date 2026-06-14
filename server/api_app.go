@@ -3526,7 +3526,7 @@ func buildValidatedTempAppConfigFromTemplate(mycluster *cluster.Cluster, node *c
 		return nil, err
 	}
 
-	canonicalContent, _, err := config.CanonicalizeAppTemplateTOML(parsedContent)
+	canonicalContent, _, err := cluster.CanonicalizeAppContent(parsedContent, node.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -3959,7 +3959,7 @@ func (repman *ReplicationManager) handlerMuxAppTemplateContentSave(w http.Respon
 		return
 	}
 
-	canonicalContent, _, err := config.CanonicalizeAppTemplateTOML([]byte(body.Content))
+	canonicalContent, _, err := cluster.CanonicalizeAppContent([]byte(body.Content), "")
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error canonicalizing template content: %v", err), http.StatusBadRequest)
 		return
@@ -4093,7 +4093,7 @@ func createLocalTemplateCopyFromTemplate(mycluster *cluster.Cluster, templateNam
 		return err
 	}
 
-	canonicalContent, _, err := config.CanonicalizeAppTemplateTOML(content)
+	canonicalContent, _, err := cluster.CanonicalizeAppContent(content, "")
 	if err != nil {
 		return err
 	}

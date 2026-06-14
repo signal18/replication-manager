@@ -451,14 +451,14 @@ func (cluster *Cluster) WithdrawConflictedGatewayRoutes() {
 	}
 }
 
-// canonicalizeAppContent runs the legacy path/level migration followed by the
+// CanonicalizeAppContent runs the legacy path/level migration followed by the
 // app-volume row merge over app/template TOML content. appName selects the
 // volume naming convention used by CanonicalizeAppVolumesTOML: "" for
 // template content ("{name}-<pool>"), or the resolved app's name for app
 // config content ("<app>-<pool>"). The combined result reports Changed if
 // either pass rewrote the content, so callers can drive a single atomic
 // rewrite from it.
-func canonicalizeAppContent(content []byte, appName string) ([]byte, config.AppTemplateCanonicalizationResult, error) {
+func CanonicalizeAppContent(content []byte, appName string) ([]byte, config.AppTemplateCanonicalizationResult, error) {
 	pathContent, res, err := config.CanonicalizeAppTemplateTOML(content)
 	if err != nil {
 		return nil, res, err
@@ -499,7 +499,7 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 		return err
 	}
 
-	canonicalContent, canonicalRes, err := canonicalizeAppContent(rawContent, appname)
+	canonicalContent, canonicalRes, err := CanonicalizeAppContent(rawContent, appname)
 	if err != nil {
 		return err
 	}
@@ -916,7 +916,7 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 			return err
 		}
 
-		canonicalContent, _, err := canonicalizeAppContent(resolvedContent, app.Name)
+		canonicalContent, _, err := CanonicalizeAppContent(resolvedContent, app.Name)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
 				"Error canonicalizing parsed template content for %s: %s", template, err)
@@ -1413,7 +1413,7 @@ func (cluster *Cluster) loadAndValidateLocalTemplate(path, normalizedName string
 	if err != nil {
 		return nil, err
 	}
-	canonicalContent, canonicalRes, canonErr := canonicalizeAppContent(content, "")
+	canonicalContent, canonicalRes, canonErr := CanonicalizeAppContent(content, "")
 	if canonErr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
 			"Error canonicalizing local template file %s: %s", path, canonErr)
@@ -1474,7 +1474,7 @@ func (cluster *Cluster) getTemplateContent(template string, forceRefresh bool) (
 		}
 	}
 
-	canonicalContent, _, err := canonicalizeAppContent(content, "")
+	canonicalContent, _, err := CanonicalizeAppContent(content, "")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
 			"Error canonicalizing template file %s: %s", normalizedTemplateName, err)
