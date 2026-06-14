@@ -16,6 +16,18 @@ type AppTemplateCanonicalizationResult struct {
 	UpdatedRootSourcePaths     int
 	UpdatedEmptySourcePaths    int
 	UnresolvedParentReferences []string
+
+	// MergedVolumePools is the number of deployment.storages.volumes pools
+	// whose legacy rows were canonicalized into a single row.
+	MergedVolumePools int
+	// MergedVolumeRows is the total number of legacy volume rows absorbed
+	// across all merged pools (including the row that becomes canonical).
+	MergedVolumeRows int
+	// RewrittenVolumeReferences is the number of entries (deployment.paths,
+	// git-clones, s3-mounts rows) that had at least one of their
+	// srcname/volumename fields retargeted to a merged volume's canonical
+	// name. An entry with both fields rewritten is still counted once.
+	RewrittenVolumeReferences int
 }
 
 func CanonicalizeAppTemplateTOML(content []byte) ([]byte, AppTemplateCanonicalizationResult, error) {
@@ -326,4 +338,277 @@ func pmToInt(v any, def int) int {
 	default:
 		return def
 	}
+}
+
+// CanonicalizeAppVolumesTOML rewrites deployment.storages.volumes so that
+// each OpenSVC pool is represented by a single row, named using the
+// convention historically produced at runtime by App.GetAppVolumeName:
+// "{name}-<pool>" for template content (appName == "") or "<appName>-<pool>"
+// for resolved app content (appName != ""). References in
+// deployment.paths, deployment.storages.git-clones and
+// deployment.storages.s3-mounts are rewritten to the merged row's name.
+//
+// srcpath (on paths) and volumedir (on git-clones/s3-mounts) are left
+// untouched: both are paths relative to the pool's OpenSVC volume mount
+// (named via App.GetAppVolumeName(pool, ...)), which is keyed by poolname
+// and therefore identical before and after merging same-pool rows.
+func CanonicalizeAppVolumesTOML(content []byte, appName string) ([]byte, AppTemplateCanonicalizationResult, error) {
+	var res AppTemplateCanonicalizationResult
+
+	t, err := toml.LoadBytes(content)
+	if err != nil {
+		return nil, res, err
+	}
+
+	raw := t.ToMap()
+	res, err = CanonicalizeAppVolumesRaw(raw, appName)
+	if err != nil {
+		return nil, res, err
+	}
+
+	if !res.Changed {
+		return content, res, nil
+	}
+
+	t, err = toml.TreeFromMap(raw)
+	if err != nil {
+		return nil, res, err
+	}
+
+	var buf bytes.Buffer
+	if _, err := t.WriteTo(&buf); err != nil {
+		return nil, res, err
+	}
+
+	return buf.Bytes(), res, nil
+}
+
+// CanonicalizeAppVolumesRaw merges deployment.storages.volumes rows so that
+// each poolname has exactly one row named per the historical
+// App.GetAppVolumeName convention, and rewrites references accordingly. See
+// CanonicalizeAppVolumesTOML for details.
+func CanonicalizeAppVolumesRaw(raw map[string]any, appName string) (AppTemplateCanonicalizationResult, error) {
+	var res AppTemplateCanonicalizationResult
+
+	deployment, ok := asAnyMap(raw["deployment"])
+	if !ok {
+		return res, nil
+	}
+
+	storages, ok := asAnyMap(deployment["storages"])
+	if !ok {
+		return res, nil
+	}
+
+	rawVolumes, ok := storages["volumes"]
+	if !ok {
+		return res, nil
+	}
+
+	volumes, ok := asAnySlice(rawVolumes)
+	if !ok {
+		return res, errors.New("deployment.storages.volumes must be an array")
+	}
+	if len(volumes) == 0 {
+		return res, nil
+	}
+
+	if err := canonicalizeAppVolumes(deployment, storages, volumes, appName, &res); err != nil {
+		return res, err
+	}
+
+	return res, nil
+}
+
+// canonicalVolumeName mirrors App.GetAppVolumeName: template content keeps
+// the OpenSVC "{name}" placeholder, resolved app content uses the app name.
+func canonicalVolumeName(appName, pool string) string {
+	if appName != "" {
+		return appName + "-" + pool
+	}
+	return "{name}-" + pool
+}
+
+// normalizeVolumeDirs merges one or more whitespace-separated directory
+// lists into a single deduplicated, whitespace-separated list, preserving
+// first-seen order across all inputs.
+func normalizeVolumeDirs(dirs ...string) string {
+	tokens := make([]string, 0, len(dirs))
+	seen := make(map[string]struct{}, len(dirs))
+	for _, dir := range dirs {
+		for _, tok := range strings.Fields(dir) {
+			if _, dup := seen[tok]; dup {
+				continue
+			}
+			seen[tok] = struct{}{}
+			tokens = append(tokens, tok)
+		}
+	}
+	return strings.Join(tokens, " ")
+}
+
+func canonicalizeAppVolumes(deployment, storages map[string]any, volumes []any, appName string, res *AppTemplateCanonicalizationResult) error {
+	type volumeRow struct {
+		raw  map[string]any
+		name string
+		dir  string
+	}
+
+	poolOrder := make([]string, 0, len(volumes))
+	rowsByPool := make(map[string][]volumeRow, len(volumes))
+
+	for _, v := range volumes {
+		vm, ok := asAnyMap(v)
+		if !ok {
+			return errors.New("deployment.storages.volumes entries must be tables")
+		}
+		pool := asTrimmedString(vm["poolname"])
+		if pool == "" {
+			return errors.New("deployment.storages.volumes entry missing poolname")
+		}
+		if _, seen := rowsByPool[pool]; !seen {
+			poolOrder = append(poolOrder, pool)
+		}
+		rowsByPool[pool] = append(rowsByPool[pool], volumeRow{
+			raw:  vm,
+			name: asTrimmedString(vm["name"]),
+			dir:  asTrimmedString(vm["volumedir"]),
+		})
+	}
+
+	renames := make(map[string]string)
+	newVolumes := make([]any, 0, len(poolOrder))
+
+	for _, pool := range poolOrder {
+		rows := rowsByPool[pool]
+		canonicalName := canonicalVolumeName(appName, pool)
+
+		if len(rows) == 1 && rows[0].name == canonicalName {
+			row := rows[0]
+			if normalized := normalizeVolumeDirs(row.dir); normalized != row.dir {
+				row.raw["volumedir"] = normalized
+				res.Changed = true
+			}
+			newVolumes = append(newVolumes, row.raw)
+			continue
+		}
+
+		merged := make(map[string]any, len(rows[0].raw))
+		for k, v := range rows[0].raw {
+			merged[k] = v
+		}
+
+		dirs := make([]string, 0, len(rows))
+		for _, row := range rows {
+			dirs = append(dirs, row.dir)
+		}
+
+		merged["name"] = canonicalName
+		merged["poolname"] = pool
+		merged["volumedir"] = normalizeVolumeDirs(dirs...)
+
+		newVolumes = append(newVolumes, merged)
+
+		res.Changed = true
+		res.MergedVolumePools++
+		res.MergedVolumeRows += len(rows)
+
+		for _, row := range rows {
+			if row.name == "" || row.name == canonicalName {
+				continue
+			}
+			renames[row.name] = canonicalName
+		}
+	}
+
+	if !res.Changed {
+		return nil
+	}
+
+	storages["volumes"] = newVolumes
+
+	if rawPaths, ok := deployment["paths"]; ok {
+		paths, ok := asAnySlice(rawPaths)
+		if !ok {
+			return errors.New("deployment.paths must be an array")
+		}
+		for _, p := range paths {
+			pm, ok := asAnyMap(p)
+			if !ok {
+				continue
+			}
+
+			rewritten := false
+
+			if SourceType(asTrimmedString(pm["srctype"])) == SourceVolume {
+				if srcName := asTrimmedString(pm["srcname"]); srcName != "" {
+					if newName, found := renames[srcName]; found {
+						pm["srcname"] = newName
+						rewritten = true
+					}
+				}
+			}
+
+			// volumename is rewritten independently of srctype/srcname: it is the
+			// field GetOpenSVCDeploymentPathMapping actually resolves against
+			// (deployment.GetVolumeByName). Paths sourced from a git-clone or
+			// s3-mount, or that inherited volumename from a parent path, persist
+			// their own volumename distinct from srcname (see InsertPath/ResolvePath),
+			// so it must be checked against renames on its own.
+			if volName := asTrimmedString(pm["volumename"]); volName != "" {
+				if newName, found := renames[volName]; found {
+					pm["volumename"] = newName
+					rewritten = true
+				}
+			}
+
+			if rewritten {
+				res.RewrittenVolumeReferences++
+			}
+		}
+	}
+
+	if err := rewriteVolumeNameReferences(storages, "git-clones", renames, res); err != nil {
+		return err
+	}
+	if err := rewriteVolumeNameReferences(storages, "s3-mounts", renames, res); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// rewriteVolumeNameReferences retargets volumename on entries under
+// deployment.storages[key] (git-clones or s3-mounts) that reference a
+// renamed volume. volumedir is left untouched: it is a path relative to the
+// pool's OpenSVC volume mount, which does not change when same-pool rows are
+// merged.
+func rewriteVolumeNameReferences(storages map[string]any, key string, renames map[string]string, res *AppTemplateCanonicalizationResult) error {
+	rawEntries, ok := storages[key]
+	if !ok {
+		return nil
+	}
+
+	entries, ok := asAnySlice(rawEntries)
+	if !ok {
+		return errors.New("deployment.storages." + key + " must be an array")
+	}
+
+	for _, e := range entries {
+		em, ok := asAnyMap(e)
+		if !ok {
+			continue
+		}
+
+		oldName := asTrimmedString(em["volumename"])
+		newName, found := renames[oldName]
+		if !found {
+			continue
+		}
+
+		em["volumename"] = newName
+		res.RewrittenVolumeReferences++
+	}
+
+	return nil
 }
