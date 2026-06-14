@@ -1741,10 +1741,15 @@ func (cluster *Cluster) GetAppConfig(apphost, port string) *config.AppConfig {
 	return cnf
 }
 
+// SetAppLocalVolume finds the saved app volume row whose VolumeDir tokens
+// include dir (e.g. "mnt"), matching whole directory tokens rather than a
+// string prefix so a merged row (e.g. "data mnt") matches on "mnt".
 func (cluster *Cluster) SetAppLocalVolume(app *App, dir string) (*config.Volume, error) {
 	for _, volume := range app.AppConfig.Deployment.Storages.Volumes {
-		if strings.HasPrefix(volume.VolumeDir, dir) {
-			return volume, nil
+		for _, d := range volume.GetVolumeDirs() {
+			if d == dir {
+				return volume, nil
+			}
 		}
 	}
 
@@ -1752,7 +1757,7 @@ func (cluster *Cluster) SetAppLocalVolume(app *App, dir string) (*config.Volume,
 }
 
 func (cluster *Cluster) SetAppLocalMountVolume(app *App) (*config.Volume, error) {
-	return cluster.SetAppLocalVolume(app, "mnt")
+	return cluster.SetAppLocalVolume(app, config.AppMountVolumeDir)
 }
 
 func (cluster *Cluster) GetOpenSVCStats() ([]opensvc.DaemonNodeStats, error) {

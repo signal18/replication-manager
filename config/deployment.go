@@ -1239,12 +1239,44 @@ type Volume struct {
 	VolumeDir string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"etc|log|var|data" groups:"apps"`
 }
 
+// AppMountVolumeDir is the directory token used to select (or seed) the app
+// volume that backs ad-hoc S3 mounts created via SetAppLocalMountVolume.
+const AppMountVolumeDir = "mnt"
+
 // GetVolumeDirs returns VolumeDir split into its whitespace-separated
 // directory tokens. A legacy single-directory value (e.g. "data") returns
 // a single token; a merged row (e.g. "etc log var data") returns one token
 // per directory.
 func (v *Volume) GetVolumeDirs() []string {
 	return strings.Fields(v.VolumeDir)
+}
+
+// DefaultSubdir returns the first directory token of VolumeDir, used as the
+// default subdirectory when autofilling VolumeDir for a git clone or S3
+// mount that is placed on this volume. Returns "" if VolumeDir has no
+// tokens (a saved row always has at least one, per Validate).
+func (v *Volume) DefaultSubdir() string {
+	dirs := v.GetVolumeDirs()
+	if len(dirs) == 0 {
+		return ""
+	}
+	return dirs[0]
+}
+
+// S3MountSubdir returns the directory token to use as the default
+// <subdir>/<resource-name> base when autofilling VolumeDir for an S3 mount
+// placed on this volume. If VolumeDir contains the AppMountVolumeDir token
+// ("mnt"), that token is returned regardless of its position, keeping S3
+// mounts grouped under "mnt" the same way SetAppLocalMountVolume seeds new
+// mounts on a merged row (e.g. "data mnt" -> "mnt"). Otherwise falls back to
+// DefaultSubdir().
+func (v *Volume) S3MountSubdir() string {
+	for _, dir := range v.GetVolumeDirs() {
+		if dir == AppMountVolumeDir {
+			return AppMountVolumeDir
+		}
+	}
+	return v.DefaultSubdir()
 }
 
 // NormalizeVolumeDirs merges one or more whitespace-separated directory

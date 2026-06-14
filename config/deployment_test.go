@@ -30,6 +30,52 @@ func TestVolume_GetVolumeDirs(t *testing.T) {
 	}
 }
 
+func TestVolume_DefaultSubdir(t *testing.T) {
+	cases := []struct {
+		name string
+		dir  string
+		want string
+	}{
+		{"empty", "", ""},
+		{"single", "data", "data"},
+		{"merged returns first token", "etc log var data", "etc"},
+		{"mnt merged after data returns first token", "data mnt", "data"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			v := &Volume{VolumeDir: tc.dir}
+			if got := v.DefaultSubdir(); got != tc.want {
+				t.Fatalf("DefaultSubdir() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestVolume_S3MountSubdir(t *testing.T) {
+	cases := []struct {
+		name string
+		dir  string
+		want string
+	}{
+		{"empty", "", ""},
+		{"single non-mnt", "data", "data"},
+		{"single mnt", "mnt", "mnt"},
+		{"mnt merged after data returns mnt token", "data mnt", "mnt"},
+		{"mnt merged before others returns mnt token", "mnt etc", "mnt"},
+		{"no mnt token falls back to first token", "etc log var data", "etc"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			v := &Volume{VolumeDir: tc.dir}
+			if got := v.S3MountSubdir(); got != tc.want {
+				t.Fatalf("S3MountSubdir() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestNormalizeVolumeDirs(t *testing.T) {
 	cases := []struct {
 		name string

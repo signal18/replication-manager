@@ -2273,7 +2273,7 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 				return
 			}
 			row.VolumeName = row.Volume.Name
-			row.VolumeDir = filepath.Join(row.Volume.VolumeDir, row.Name)
+			row.VolumeDir = filepath.Join(config.AppMountVolumeDir, row.Name)
 		}
 
 		err = deployment.InsertS3Mount(row)
@@ -2441,7 +2441,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					}
 					// Check for duplicate git volume path
 					if deployment.HasDuplicateGitVolumePath(gc.Name, newValue, gc.VolumeDir) {
-						gc.VolumeDir = filepath.Join(newvol.VolumeDir, gc.Name)
+						gc.VolumeDir = filepath.Join(newvol.DefaultSubdir(), gc.Name)
 					}
 					gc.VolumeName = newValue
 					gc.Volume = newvol
@@ -2455,7 +2455,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 							http.Error(w, "Error getting volume by name: "+err.Error(), http.StatusInternalServerError)
 							return
 						}
-						newValue = filepath.Join(curvol.VolumeDir, gc.Name)
+						newValue = filepath.Join(curvol.DefaultSubdir(), gc.Name)
 					}
 
 					if gc.VolumeDir == newValue {
@@ -2697,7 +2697,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					}
 
 					if deployment.HasDuplicateS3VolumePath(newValue, s3Mount.VolumeDir) {
-						s3Mount.VolumeDir = filepath.Join(newvol.VolumeDir, s3Mount.Name)
+						s3Mount.VolumeDir = filepath.Join(newvol.S3MountSubdir(), s3Mount.Name)
 					}
 					s3Mount.VolumeName = newValue
 
@@ -2720,7 +2720,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 							http.Error(w, "Error getting volume by name: "+err.Error(), http.StatusInternalServerError)
 							return
 						}
-						newValue = filepath.Join(curvol.VolumeDir, s3Mount.Name)
+						newValue = filepath.Join(curvol.S3MountSubdir(), s3Mount.Name)
 					}
 
 					if deployment.HasDuplicateS3VolumePath(s3Mount.VolumeName, newValue) {
