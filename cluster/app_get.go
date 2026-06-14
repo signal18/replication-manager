@@ -350,7 +350,18 @@ func (app *App) GetAppVolume(name string) (*config.Volume, int) {
 	return nil, -1
 }
 
+// GetAppVolumeName returns the runtime and provisioned volume name for pool.
+// Each OpenSVC pool has exactly one saved deployment.storages.volumes row
+// (see config.CanonicalizeAppVolumesTOML), and that row's Name is the actual
+// volume identity; pool is only used to look it up, not to derive it. If no
+// saved row exists yet (content that hasn't been through canonicalization),
+// fall back to the historical {name}-<pool> / <app>-<pool> convention.
 func (app *App) GetAppVolumeName(pool string, resolved bool) string {
+	if appcnf := app.GetAppConfig(); appcnf != nil {
+		if vol := appcnf.Deployment.GetVolumeByPool(pool); vol != nil && vol.Name != "" {
+			return vol.Name
+		}
+	}
 	if resolved {
 		return fmt.Sprintf("%s-%s", app.Name, pool)
 	}

@@ -45,9 +45,11 @@ func TestGetOpenSVCDeploymentPathMappingRendersMultiVolumeMounts(t *testing.T) {
 		t.Fatalf("expected 2 mount mappings, got %d: %q", len(tokens), got)
 	}
 
+	// GetAppVolumeName now returns the saved row's Name directly (the
+	// runtime/provisioned identity), not a pool-derived {name}-<pool> name.
 	expected := map[string]bool{
-		"{name}-data:/var/www/html":      false,
-		"{name}-docs:/var/www/documents": false,
+		"data-volume:/var/www/html":      false,
+		"docs-volume:/var/www/documents": false,
 	}
 	for _, token := range tokens {
 		if _, ok := expected[token]; ok {
