@@ -204,11 +204,10 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 
 	_, err = server.JobInsertTask(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
 	if err != nil {
-		server.IsInBackupPhysical = false
-		cluster.SetInPhysicalBackupState(false)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to insert physical backup task: %s (backup continues via SST)", err)
 	}
 
-	return err
+	return nil
 }
 
 func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
