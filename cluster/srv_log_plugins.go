@@ -495,7 +495,20 @@ func (cluster *Cluster) CheckLogPlugins() {
 	// duplicated auto-fixable / risk logic on the frontend.
 	cluster.SecurityRemediations = cluster.GetRemediationPlan()
 	cluster.WorkloadRemediations = cluster.GetWorkloadRemediationPlan()
-	cluster.WorkloadStates = cluster.WorkloadStateMachine.GetOpenStates()
+	allWorkload := cluster.WorkloadStateMachine.GetOpenStates()
+	seenTags := make(map[string]bool)
+	workload := make([]state.State, 0, len(allWorkload))
+	for _, s := range allWorkload {
+		if strings.HasPrefix(s.ErrKey, "WTAG") {
+			if seenTags[s.ErrKey] {
+				continue
+			}
+			seenTags[s.ErrKey] = true
+			s.ServerUrl = ""
+		}
+		workload = append(workload, s)
+	}
+	cluster.WorkloadStates = workload
 	slices.SortStableFunc(cluster.WorkloadStates, func(a, b state.State) int {
 		ak, bk := a.ErrKey+"\x00"+a.ServerUrl, b.ErrKey+"\x00"+b.ServerUrl
 		if ak < bk {

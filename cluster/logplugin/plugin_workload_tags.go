@@ -73,7 +73,7 @@ func (p *WorkloadTagsPlugin) Evaluate(src LogSource) EvaluateResult {
 		findings = append(findings, Finding{
 			ErrKey:      "WTAG0033",
 			Severity:    SeverityWorkload,
-			Description: fmt.Sprintf("Server %s uses Events (event_scheduler=ON)", src.ServerURL),
+			Description: "Events (event_scheduler=ON)",
 		})
 	}
 
@@ -96,7 +96,7 @@ func appendFeatureTag(findings []Finding, src LogSource, statusKey, errKey, tag,
 		findings = append(findings, Finding{
 			ErrKey:      errKey,
 			Severity:    SeverityWorkload,
-			Description: fmt.Sprintf("Server %s uses %s (%s=%d)", src.ServerURL, tag, statusKey, v),
+			Description: fmt.Sprintf("%s (%s)", desc, statusKey),
 		})
 	}
 	return findings
@@ -115,7 +115,7 @@ func appendHandlerTag(findings []Finding, src LogSource) []Finding {
 			findings = append(findings, Finding{
 				ErrKey:      "WTAG0020",
 				Severity:    SeverityWorkload,
-				Description: fmt.Sprintf("Server %s has heavy full-scan workload (handler_read_rnd_next/handler_read_key=%.0f)", src.ServerURL, ratio),
+				Description: fmt.Sprintf("Heavy full-scan workload (handler_read_rnd_next/handler_read_key=%.0f)", ratio),
 			})
 		}
 	}
@@ -127,7 +127,7 @@ func appendHandlerTag(findings []Finding, src LogSource) []Finding {
 			findings = append(findings, Finding{
 				ErrKey:      "WTAG0021",
 				Severity:    SeverityWorkload,
-				Description: fmt.Sprintf("Server %s has write-intensive workload (write ratio=%.0f%%)", src.ServerURL, writeRatio*100),
+				Description: fmt.Sprintf("Write-intensive workload (write ratio=%.0f%%)", writeRatio*100),
 			})
 		}
 	}
@@ -187,7 +187,7 @@ func appendOptimizerTags(findings []Finding, src LogSource) []Finding {
 			findings = append(findings, Finding{
 				ErrKey:      c.errKey,
 				Severity:    SeverityWorkload,
-				Description: fmt.Sprintf("Server %s optimizer: %s %s (%s)", src.ServerURL, c.tag, state, c.flag),
+				Description: fmt.Sprintf("Optimizer: %s %s (%s)", c.tag, state, c.flag),
 			})
 		}
 	}
@@ -202,7 +202,7 @@ func appendOptimizerProblems(findings []Finding, src LogSource) []Finding {
 		findings = append(findings, Finding{
 			ErrKey:      "WTAG0150",
 			Severity:    SeverityWorkload,
-			Description: fmt.Sprintf("Server %s has joins without indexes (Select_full_join=%d)", src.ServerURL, selectFullJoin),
+			Description: fmt.Sprintf("Joins without indexes (Select_full_join=%d)", selectFullJoin),
 			Remediations: []Remediation{{
 				Type:        "sql",
 				Description: "Add indexes to join columns identified by EXPLAIN on slow queries",
@@ -216,7 +216,7 @@ func appendOptimizerProblems(findings []Finding, src LogSource) []Finding {
 		findings = append(findings, Finding{
 			ErrKey:      "WTAG0151",
 			Severity:    SeverityWorkload,
-			Description: fmt.Sprintf("Server %s has joins requiring range check per row (Select_range_check=%d)", src.ServerURL, selectRangeCheck),
+			Description: fmt.Sprintf("Joins requiring range check per row (Select_range_check=%d)", selectRangeCheck),
 		})
 	}
 
@@ -225,7 +225,7 @@ func appendOptimizerProblems(findings []Finding, src LogSource) []Finding {
 		findings = append(findings, Finding{
 			ErrKey:      "WTAG0152",
 			Severity:    SeverityWorkload,
-			Description: fmt.Sprintf("Server %s has multi-pass sorts (Sort_merge_passes=%d)", src.ServerURL, sortMergePasses),
+			Description: fmt.Sprintf("Multi-pass sorts (Sort_merge_passes=%d)", sortMergePasses),
 			Remediations: []Remediation{{
 				Type:        "my_cnf",
 				Description: "Increase sort_buffer_size to reduce merge passes",
@@ -243,7 +243,7 @@ func appendOptimizerProblems(findings []Finding, src LogSource) []Finding {
 			findings = append(findings, Finding{
 				ErrKey:      "WTAG0153",
 				Severity:    SeverityWorkload,
-				Description: fmt.Sprintf("Server %s has high disk temp table ratio (%.0f%%, %d/%d)", src.ServerURL, ratio, tmpDisk, tmpTotal),
+				Description: fmt.Sprintf("High disk temp table ratio (%.0f%%, %d/%d)", ratio, tmpDisk, tmpTotal),
 				Remediations: []Remediation{{
 					Type:        "my_cnf",
 					Description: "Increase tmp_table_size and max_heap_table_size",

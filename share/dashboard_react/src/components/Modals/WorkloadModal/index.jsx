@@ -23,16 +23,13 @@ function WorkloadModal({ isOpen, closeModal }) {
   const allStates = clusterData?.workloadStates || []
 
   const tags = useMemo(() => {
-    const seen = new Map()
-    for (const s of allStates) {
-      const key = (s.ErrKey || '').split('@')[0]
-      if (!key.startsWith('WTAG')) continue
-      if (seen.has(key)) continue
-      const desc = s.ErrDesc || ''
-      const label = desc.replace(/^Server \S+ uses /, '').replace(/^Server \S+ optimizer: /, '').replace(/ \(.*/, '')
-      seen.set(key, { key, label, desc })
-    }
-    return [...seen.values()]
+    return allStates
+      .filter((s) => (s.ErrKey || '').startsWith('WTAG'))
+      .map((s) => {
+        const desc = s.ErrDesc || ''
+        const label = desc.replace(/ \(.*/, '')
+        return { key: s.ErrKey, label, desc }
+      })
   }, [allStates])
 
   const statesArray = useMemo(
