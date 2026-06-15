@@ -12,6 +12,11 @@ import { HiTrash } from "react-icons/hi";
 
 const defaultVol = { name: "", poolname: "", volumedir: "" };
 
+// AppConfigVersionV2 mirrors config.AppConfigVersionV2 (config/app_template_canonical.go):
+// the app-config-version marker at/above which intentional multiple volume
+// rows per pool are allowed (Phase 11).
+const AppConfigVersionV2 = 2;
+
 const columnHelper = createColumnHelper()
 
 // volumedir lists the volume's top-level directories as a whitespace-separated
@@ -23,6 +28,7 @@ const VolumeSection = ({
     rows = [],
     opensvcPools = [],
     appHaTopology = '',
+    appConfigVersion = 0,
     fieldName = "volumes",
     title = "Saved Volumes",
     newTitle = "Add New Volume",
@@ -79,13 +85,18 @@ const VolumeSection = ({
         return options.sort((a, b) => a.name.localeCompare(b.name));
     }, [opensvcPools, appHaTopology]);
 
-    // A pool can back at most one saved volume row (config.Deployment.InsertVolume /
-    // the "poolname" modify case both enforce this). Used to keep the pool
-    // dropdowns from offering pools already claimed by another row.
-    const usedPoolNames = useMemo(
-        () => new Set((rows || []).map((row) => row.poolname).filter(Boolean)),
-        [rows]
-    );
+    // A pool can back at most one saved volume row for unflagged/V1 content
+    // (config.Deployment.InsertVolume / the "poolname" modify case both
+    // enforce this below AppConfigVersionV2). Used to keep the pool
+    // dropdowns from offering pools already claimed by another row. Once an
+    // app is flagged V2 (Phase 11), multiple intentional rows per pool are
+    // allowed, so this stays empty and every pool remains selectable.
+    const usedPoolNames = useMemo(() => {
+        if (appConfigVersion >= AppConfigVersionV2) {
+            return new Set();
+        }
+        return new Set((rows || []).map((row) => row.poolname).filter(Boolean));
+    }, [rows, appConfigVersion]);
 
     const handleAddItem = () => {
         setIsVisible(true);

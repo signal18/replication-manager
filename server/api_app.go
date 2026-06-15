@@ -2185,7 +2185,7 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			return
 		}
 
-		err := deployment.InsertVolume(row)
+		err := deployment.InsertVolume(row, node.AppConfig.AppConfigVersion)
 		if err != nil {
 			http.Error(w, "Error inserting volume mapping: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -2537,11 +2537,14 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						return
 					}
 
-					// A row is canonical per pool: reject moving this row onto a
-					// pool that another saved row already owns.
-					if existing := deployment.GetVolumeByPool(newValue); existing != nil && existing != vol {
-						http.Error(w, fmt.Sprintf("a volume for pool %q already exists: %s", newValue, existing.Name), http.StatusInternalServerError)
-						return
+					// A row is canonical per pool for V1/unflagged content: reject
+					// moving this row onto a pool that another saved row already
+					// owns. V2 apps allow intentional multiple rows per pool.
+					if node.AppConfig.AppConfigVersion < config.AppConfigVersionV2 {
+						if existing := deployment.GetVolumeByPool(newValue); existing != nil && existing != vol {
+							http.Error(w, fmt.Sprintf("a volume for pool %q already exists: %s", newValue, existing.Name), http.StatusInternalServerError)
+							return
+						}
 					}
 
 					oldPoolName := vol.PoolName

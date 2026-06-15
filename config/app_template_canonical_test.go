@@ -341,6 +341,64 @@ srcpath = "."
 	}
 }
 
+// TestCanonicalizeAppVolumesTOML_V2FlaggedMultiRowPoolNotMerged covers Phase
+// 11 task 1: once content is flagged app-config-version = 2, intentional
+// multiple deployment.storages.volumes rows sharing a poolname are left
+// untouched -- contrast with
+// TestCanonicalizeAppVolumesTOML_MultiRowMergedIntoOnePool, which still
+// merges same-pool rows for unflagged/V1 content.
+func TestCanonicalizeAppVolumesTOML_V2FlaggedMultiRowPoolNotMerged(t *testing.T) {
+	versioned := []byte(`
+app-config-version = 2
+
+[deployment.storages]
+[[deployment.storages.volumes]]
+name = "myapp-data"
+poolname = "data"
+volumedir = "data"
+
+[[deployment.storages.volumes]]
+name = "myapp-data-logs"
+poolname = "data"
+volumedir = "logs"
+
+[[deployment.paths]]
+name = "web-root"
+dockerpath = "/var/www/html"
+srctype = "volume"
+srcname = "myapp-data"
+volumename = "myapp-data"
+srcpath = "."
+
+[[deployment.paths]]
+name = "log-dir"
+dockerpath = "/var/log/app"
+srctype = "volume"
+srcname = "myapp-data-logs"
+volumename = "myapp-data-logs"
+srcpath = "."
+`)
+
+	out, res, err := CanonicalizeAppVolumesTOML(versioned, "myapp")
+	if err != nil {
+		t.Fatalf("canonicalize failed: %v", err)
+	}
+	if res.Changed {
+		t.Fatalf("expected no changes for already-V2 multi-row content, got %+v", res)
+	}
+	if string(out) != string(versioned) {
+		t.Fatalf("expected output to equal input unchanged:\nin:\n%s\nout:\n%s", versioned, out)
+	}
+
+	volumes, paths := loadVolumesAndPaths(t, out)
+	if len(volumes) != 2 {
+		t.Fatalf("expected both volume rows to be preserved, got %d", len(volumes))
+	}
+	if len(paths) != 2 {
+		t.Fatalf("expected both path references to be preserved, got %d", len(paths))
+	}
+}
+
 func TestCanonicalizeAppVolumesTOML_Idempotent(t *testing.T) {
 	legacy := []byte(`
 [deployment.storages]

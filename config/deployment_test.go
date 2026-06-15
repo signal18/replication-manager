@@ -131,7 +131,7 @@ func TestDeployment_InsertVolume_NormalizesVolumeDir(t *testing.T) {
 	d := NewDeploymentConfig()
 	d.Storages = *NewStorageMapping()
 
-	err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "data", VolumeDir: "data data  log"})
+	err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "data", VolumeDir: "data data  log"}, 0)
 	if err != nil {
 		t.Fatalf("InsertVolume() error = %v", err)
 	}
@@ -149,16 +149,16 @@ func TestDeployment_InsertVolume_RejectsInvalidRow(t *testing.T) {
 	d := NewDeploymentConfig()
 	d.Storages = *NewStorageMapping()
 
-	if err := d.InsertVolume(&Volume{Name: "", PoolName: "data", VolumeDir: "data"}); err == nil {
+	if err := d.InsertVolume(&Volume{Name: "", PoolName: "data", VolumeDir: "data"}, 0); err == nil {
 		t.Fatalf("expected error for missing name")
 	}
-	if err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "", VolumeDir: "data"}); err == nil {
+	if err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "", VolumeDir: "data"}, 0); err == nil {
 		t.Fatalf("expected error for missing pool name")
 	}
-	if err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "data", VolumeDir: ""}); err == nil {
+	if err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "data", VolumeDir: ""}, 0); err == nil {
 		t.Fatalf("expected error for missing volume directory")
 	}
-	if err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "data", VolumeDir: "../etc"}); err == nil {
+	if err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "data", VolumeDir: "../etc"}, 0); err == nil {
 		t.Fatalf("expected error for traversal volume directory")
 	}
 }
@@ -167,30 +167,56 @@ func TestDeployment_InsertVolume_RejectsDuplicateName(t *testing.T) {
 	d := NewDeploymentConfig()
 	d.Storages = *NewStorageMapping()
 
-	if err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "data", VolumeDir: "data"}); err != nil {
+	if err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "data", VolumeDir: "data"}, 0); err != nil {
 		t.Fatalf("first InsertVolume() error = %v", err)
 	}
 
-	err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "other", VolumeDir: "log"})
+	err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "other", VolumeDir: "log"}, 0)
 	if err == nil {
 		t.Fatalf("expected error for duplicate volume name")
 	}
 }
 
-// TestDeployment_InsertVolume_RejectsDuplicatePool covers Phase 2 task 4:
-// new writes for a pool that already has a saved row are rejected, even
-// when the name and directory differ from the existing row.
-func TestDeployment_InsertVolume_RejectsDuplicatePool(t *testing.T) {
+// TestDeployment_InsertVolume_RejectsDuplicatePoolWhenV1 covers Phase 2 task
+// 4: for unflagged/V1 content (appConfigVersion < AppConfigVersionV2), new
+// writes for a pool that already has a saved row are rejected, even when the
+// name and directory differ from the existing row.
+func TestDeployment_InsertVolume_RejectsDuplicatePoolWhenV1(t *testing.T) {
 	d := NewDeploymentConfig()
 	d.Storages = *NewStorageMapping()
 
-	if err := d.InsertVolume(&Volume{Name: "app-data", PoolName: "data", VolumeDir: "etc"}); err != nil {
+	if err := d.InsertVolume(&Volume{Name: "app-data", PoolName: "data", VolumeDir: "etc"}, 0); err != nil {
 		t.Fatalf("first InsertVolume() error = %v", err)
 	}
 
-	err := d.InsertVolume(&Volume{Name: "app-data-2", PoolName: "data", VolumeDir: "log"})
+	err := d.InsertVolume(&Volume{Name: "app-data-2", PoolName: "data", VolumeDir: "log"}, 0)
 	if err == nil {
 		t.Fatalf("expected error inserting a second row for an existing pool")
+	}
+}
+
+// TestDeployment_InsertVolume_AllowsMultipleRowsPerPoolWhenV2 covers Phase 11
+// task 1: once content is flagged V2 (appConfigVersion >= AppConfigVersionV2),
+// intentional additional rows for a pool that already has one are allowed.
+func TestDeployment_InsertVolume_AllowsMultipleRowsPerPoolWhenV2(t *testing.T) {
+	d := NewDeploymentConfig()
+	d.Storages = *NewStorageMapping()
+
+	if err := d.InsertVolume(&Volume{Name: "app-data", PoolName: "data", VolumeDir: "etc"}, AppConfigVersionV2); err != nil {
+		t.Fatalf("first InsertVolume() error = %v", err)
+	}
+
+	if err := d.InsertVolume(&Volume{Name: "app-data-2", PoolName: "data", VolumeDir: "log"}, AppConfigVersionV2); err != nil {
+		t.Fatalf("second InsertVolume() for an existing pool error = %v, want nil", err)
+	}
+
+	if len(d.Storages.Volumes) != 2 {
+		t.Fatalf("len(Storages.Volumes) = %d, want 2", len(d.Storages.Volumes))
+	}
+
+	// Name remains a global identity constraint regardless of version.
+	if err := d.InsertVolume(&Volume{Name: "app-data", PoolName: "other", VolumeDir: "var"}, AppConfigVersionV2); err == nil {
+		t.Fatalf("expected error inserting a duplicate volume name")
 	}
 }
 
@@ -201,7 +227,7 @@ func TestDeployment_GetVolumeByPool(t *testing.T) {
 	d := NewDeploymentConfig()
 	d.Storages = *NewStorageMapping()
 
-	if err := d.InsertVolume(&Volume{Name: "app-data", PoolName: "data", VolumeDir: "etc"}); err != nil {
+	if err := d.InsertVolume(&Volume{Name: "app-data", PoolName: "data", VolumeDir: "etc"}, 0); err != nil {
 		t.Fatalf("InsertVolume() error = %v", err)
 	}
 
@@ -217,10 +243,10 @@ func TestDeployment_InsertVolume_AllowsDistinctPools(t *testing.T) {
 	d := NewDeploymentConfig()
 	d.Storages = *NewStorageMapping()
 
-	if err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "data", VolumeDir: "data"}); err != nil {
+	if err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "data", VolumeDir: "data"}, 0); err != nil {
 		t.Fatalf("InsertVolume(data) error = %v", err)
 	}
-	if err := d.InsertVolume(&Volume{Name: "docs-volume", PoolName: "docs", VolumeDir: "docs"}); err != nil {
+	if err := d.InsertVolume(&Volume{Name: "docs-volume", PoolName: "docs", VolumeDir: "docs"}, 0); err != nil {
 		t.Fatalf("InsertVolume(docs) error = %v", err)
 	}
 

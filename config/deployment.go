@@ -44,8 +44,14 @@ func (d *Deployment) GetVolumeByName(name string) (*Volume, error) {
 	return nil, fmt.Errorf("volume %s not found", name)
 }
 
-// findVolumeByPool returns the saved row for poolName, or nil if none
+// findVolumeByPool returns the first saved row for poolName, or nil if none
 // exists. Callers must hold d.Mutex.
+//
+// This is a single-row lookup: for V1 content (app-config-version <
+// AppConfigVersionV2) a pool has at most one row, so "first" is "only". For
+// V2 content a pool may legitimately have multiple intentional rows (see
+// Phase 11); this function only ever returns the first one. Callers that need
+// to consider all rows for a pool must iterate d.Storages.Volumes directly.
 func (d *Deployment) findVolumeByPool(poolName string) *Volume {
 	for _, v := range d.Storages.Volumes {
 		if v.PoolName == poolName {
@@ -55,10 +61,12 @@ func (d *Deployment) findVolumeByPool(poolName string) *Volume {
 	return nil
 }
 
-// GetVolumeByPool returns the saved row for poolName, or nil if none exists.
-// It backs the one-row-per-pool invariant on writes: InsertVolume rejects new
-// rows for a pool that already has one, and poolname edits must not move a
-// row onto a pool another row already owns.
+// GetVolumeByPool returns the first saved row for poolName, or nil if none
+// exists. It backs the one-row-per-pool invariant on writes for V1 content:
+// InsertVolume rejects new rows for a pool that already has one, and poolname
+// edits must not move a row onto a pool another row already owns -- but only
+// while appConfigVersion < AppConfigVersionV2. V2 content may have multiple
+// rows per pool; see findVolumeByPool.
 func (d *Deployment) GetVolumeByPool(poolName string) *Volume {
 	d.Mutex.RLock()
 	defer d.Mutex.RUnlock()
@@ -66,7 +74,17 @@ func (d *Deployment) GetVolumeByPool(poolName string) *Volume {
 	return d.findVolumeByPool(poolName)
 }
 
-func (d *Deployment) InsertVolume(v *Volume) error {
+// InsertVolume appends v to Storages.Volumes after normalizing and
+// validating it. appConfigVersion is the owning AppConfig's persisted
+// app-config-version marker (config.AppConfig.AppConfigVersion):
+//
+//   - appConfigVersion < AppConfigVersionV2 (V1/unflagged): a pool may back at
+//     most one saved row, matching the canonicalization migration's
+//     one-row-per-pool invariant.
+//   - appConfigVersion >= AppConfigVersionV2: multiple intentional rows per
+//     pool are allowed (Phase 11). The row's Name must still be globally
+//     unique.
+func (d *Deployment) InsertVolume(v *Volume, appConfigVersion int) error {
 	// Use a mutex to protect concurrent access
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
@@ -78,19 +96,18 @@ func (d *Deployment) InsertVolume(v *Volume) error {
 		return err
 	}
 
-	// Check if the volume already exists. A row is now canonical per pool, so
-	// any existing row for the same pool is a duplicate regardless of name or
-	// directory. Legacy configs with multiple rows per pool are still readable
-	// via GroupByPool and are consolidated by the canonicalization migration;
-	// this check only guards new writes.
+	// Check if the volume already exists. Name is the row's identity and must
+	// be globally unique regardless of app-config-version.
 	for _, existingVolume := range d.Storages.Volumes {
 		if existingVolume.Name == v.Name {
 			return fmt.Errorf("volume already exists: %s", v.Name)
 		}
 	}
 
-	if existing := d.findVolumeByPool(v.PoolName); existing != nil {
-		return fmt.Errorf("a volume for pool %q already exists: %s", v.PoolName, existing.Name)
+	if appConfigVersion < AppConfigVersionV2 {
+		if existing := d.findVolumeByPool(v.PoolName); existing != nil {
+			return fmt.Errorf("a volume for pool %q already exists: %s", v.PoolName, existing.Name)
+		}
 	}
 
 	// Add the new volume

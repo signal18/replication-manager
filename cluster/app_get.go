@@ -351,11 +351,15 @@ func (app *App) GetAppVolume(name string) (*config.Volume, int) {
 }
 
 // GetAppVolumeName returns the runtime and provisioned volume name for pool.
-// Each OpenSVC pool has exactly one saved deployment.storages.volumes row
-// (see config.CanonicalizeAppVolumesTOML), and that row's Name is the actual
-// volume identity; pool is only used to look it up, not to derive it. If no
-// saved row exists yet (content that hasn't been through canonicalization),
-// fall back to the historical {name}-<pool> / <app>-<pool> convention.
+// For V1/unflagged content, each OpenSVC pool has exactly one saved
+// deployment.storages.volumes row (see config.CanonicalizeAppVolumesTOML),
+// and that row's Name is the actual volume identity; pool is only used to
+// look it up, not to derive it. V2 content may have multiple intentional
+// rows for the same pool (see Deployment.GetVolumeByPool); this lookup
+// returns only the first one, so callers that need every row for a pool
+// (e.g. GetVolumes) must iterate Storages.Volumes directly. If no saved row
+// exists yet (content that hasn't been through canonicalization), fall back
+// to the historical {name}-<pool> / <app>-<pool> convention.
 func (app *App) GetAppVolumeName(pool string, resolved bool) string {
 	if appcnf := app.GetAppConfig(); appcnf != nil {
 		if vol := appcnf.Deployment.GetVolumeByPool(pool); vol != nil && vol.Name != "" {
@@ -395,13 +399,17 @@ func (app *App) GetVolumes(resolved bool) []string {
 		return volumes
 	}
 
+	// Each saved row's Name is its own identity (enforced unique by
+	// InsertVolume), so use it directly rather than re-deriving it via
+	// GetAppVolumeName, which is keyed by pool and would collapse multiple
+	// V2 rows sharing a pool down to the first row's name.
 	for _, v := range app.AppConfig.Deployment.Storages.Volumes {
-		if v.Name != "" {
-			volumeName := app.GetAppVolumeName(v.PoolName, resolved)
-			if _, exists := distinctVolumes[volumeName]; !exists {
-				volumes = append(volumes, volumeName)
-				distinctVolumes[volumeName] = true
-			}
+		if v.Name == "" {
+			continue
+		}
+		if _, exists := distinctVolumes[v.Name]; !exists {
+			volumes = append(volumes, v.Name)
+			distinctVolumes[v.Name] = true
 		}
 	}
 

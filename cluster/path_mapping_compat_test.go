@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -98,6 +99,71 @@ func TestGetOpenSVCDeploymentPathMappingUsesPathsOwnVolumeRow(t *testing.T) {
 	want := "second-row:/var/www/html"
 	if got != want {
 		t.Fatalf("expected mount mapping %q, got %q", want, got)
+	}
+}
+
+// TestGetOpenSVCDeploymentPathMappingRendersMultiRowSamePoolMounts covers
+// Phase 11 task 7: two intentional V2 rows sharing a poolname, each
+// referenced by its own deployment.Paths entry, must both resolve and both
+// produce their own "<rowName>:<dockerpath>" mount mapping.
+func TestGetOpenSVCDeploymentPathMappingRendersMultiRowSamePoolMounts(t *testing.T) {
+	deployment := config.NewDeploymentConfig()
+	deployment.Storages.Volumes = config.Volumes{
+		{Name: "myapp-data", PoolName: "data", VolumeDir: "etc"},
+		{Name: "myapp-data-logs", PoolName: "data", VolumeDir: "log"},
+	}
+	deployment.Paths = config.PathMaps{
+		{
+			Name:       "web-root",
+			DockerPath: "/var/www/html",
+			SourceType: config.SourceVolume,
+			SourceName: "myapp-data",
+			SourcePath: ".",
+			VolumeName: "myapp-data",
+		},
+		{
+			Name:       "log-dir",
+			DockerPath: "/var/log/app",
+			SourceType: config.SourceVolume,
+			SourceName: "myapp-data-logs",
+			SourcePath: ".",
+			VolumeName: "myapp-data-logs",
+		},
+	}
+
+	if errs := deployment.ResolvePaths(); len(errs) > 0 {
+		t.Fatalf("expected deployment paths to resolve, got %v", errs)
+	}
+
+	appcnf := &config.AppConfig{AppConfigVersion: config.AppConfigVersionV2, Deployment: deployment}
+	cluster := &Cluster{Name: "test", Conf: &config.Config{}}
+	app := &App{Name: "myapp", AppConfig: appcnf}
+
+	got := cluster.GetOpenSVCDeploymentPathMapping(app)
+	tokens := strings.Fields(got)
+	if len(tokens) != 2 {
+		t.Fatalf("expected 2 mount mappings, got %d: %q", len(tokens), got)
+	}
+
+	expected := map[string]bool{
+		"myapp-data:/var/www/html":     false,
+		"myapp-data-logs:/var/log/app": false,
+	}
+	for _, token := range tokens {
+		if _, ok := expected[token]; ok {
+			expected[token] = true
+		}
+	}
+	for token, found := range expected {
+		if !found {
+			t.Fatalf("expected mount mapping %q in %q", token, got)
+		}
+	}
+
+	volumes := app.GetVolumes(true)
+	wantVolumes := []string{"myapp-data", "myapp-data-logs"}
+	if len(volumes) != len(wantVolumes) || volumes[0] != wantVolumes[0] || volumes[1] != wantVolumes[1] {
+		t.Fatalf("expected GetVolumes() = %v, got %v", wantVolumes, volumes)
 	}
 }
 
@@ -221,6 +287,36 @@ func TestOpenSVCAppVolumeSection_PathDerivedDirectoryMergedWithVolumeDir(t *test
 	}
 	if want := "data data/uploads logs"; got["directories"] != want {
 		t.Fatalf("expected directories %q, got %q", want, got["directories"])
+	}
+}
+
+// TestOpenSVCAppVolumeSection_MultiRowSamePoolDistinctSections covers Phase
+// 11 task 8: two intentional V2 rows sharing a poolname must each produce
+// their own "volume#N" section -- mirroring the per-row loop in
+// OpenSVCGetAppVolumeSections -- with distinct name/directories but the same
+// pool.
+func TestOpenSVCAppVolumeSection_MultiRowSamePoolDistinctSections(t *testing.T) {
+	volumes := config.Volumes{
+		{Name: "myapp-data", PoolName: "data", VolumeDir: "etc"},
+		{Name: "myapp-data-logs", PoolName: "data", VolumeDir: "log"},
+	}
+
+	basemap := make(map[string]map[string]string)
+	for i, vol := range volumes {
+		basemap["volume#"+strconv.Itoa(i+1)] = openSVCAppVolumeSection(vol, nil, true)
+	}
+
+	first := basemap["volume#1"]
+	second := basemap["volume#2"]
+
+	if first["name"] != "myapp-data" || second["name"] != "myapp-data-logs" {
+		t.Fatalf("expected distinct names, got %q and %q", first["name"], second["name"])
+	}
+	if first["pool"] != "data" || second["pool"] != "data" {
+		t.Fatalf("expected both rows to share pool %q, got %q and %q", "data", first["pool"], second["pool"])
+	}
+	if first["directories"] != "etc" || second["directories"] != "log" {
+		t.Fatalf("expected distinct directories, got %q and %q", first["directories"], second["directories"])
 	}
 }
 

@@ -366,6 +366,11 @@ func pmToInt(v any, def int) int {
 // untouched: both are paths relative to the pool's OpenSVC volume mount
 // (named via App.GetAppVolumeName(pool, ...)), which is keyed by poolname
 // and therefore identical before and after merging same-pool rows.
+//
+// Collapsing multiple rows on the same pool into one only applies to
+// unflagged/V1 content (app-config-version < AppConfigVersionV2); see
+// CanonicalizeAppVolumesRaw for the V2 gate and the template-placeholder
+// rename exception that still applies to V2 content.
 func CanonicalizeAppVolumesTOML(content []byte, appName string) ([]byte, AppTemplateCanonicalizationResult, error) {
 	var res AppTemplateCanonicalizationResult
 
@@ -401,6 +406,16 @@ func CanonicalizeAppVolumesTOML(content []byte, appName string) ([]byte, AppTemp
 // each poolname has exactly one row named per the historical
 // App.GetAppVolumeName convention, and rewrites references accordingly. See
 // CanonicalizeAppVolumesTOML for details.
+//
+// Phase 11 V2 gate: once content is flagged app-config-version >=
+// AppConfigVersionV2, multiple rows sharing a poolname are intentional and
+// are no longer collapsed into one. The one exception is template-variable
+// resolution: canonicalizeAppVolumes still renames a lone row that is still
+// named with the unresolved OpenSVC "{name}-<pool>" placeholder to
+// "<appName>-<pool>" when appName is non-empty -- that is instantiating or
+// resetting a template for a specific app, not an ambiguous V1 duplicate.
+// Unflagged/V1 content (app-config-version < AppConfigVersionV2) always goes
+// through the full merge below, regardless of row count.
 func CanonicalizeAppVolumesRaw(raw map[string]any, appName string) (AppTemplateCanonicalizationResult, error) {
 	var res AppTemplateCanonicalizationResult
 
@@ -427,7 +442,9 @@ func CanonicalizeAppVolumesRaw(raw map[string]any, appName string) (AppTemplateC
 		return res, nil
 	}
 
-	if err := canonicalizeAppVolumes(deployment, storages, volumes, appName, &res); err != nil {
+	isV1 := AppConfigVersionFromRaw(raw) < AppConfigVersionV2
+
+	if err := canonicalizeAppVolumes(deployment, storages, volumes, appName, isV1, &res); err != nil {
 		return res, err
 	}
 
@@ -443,7 +460,7 @@ func canonicalVolumeName(appName, pool string) string {
 	return "{name}-" + pool
 }
 
-func canonicalizeAppVolumes(deployment, storages map[string]any, volumes []any, appName string, res *AppTemplateCanonicalizationResult) error {
+func canonicalizeAppVolumes(deployment, storages map[string]any, volumes []any, appName string, isV1 bool, res *AppTemplateCanonicalizationResult) error {
 	type volumeRow struct {
 		raw  map[string]any
 		name string
@@ -487,6 +504,20 @@ func canonicalizeAppVolumes(deployment, storages map[string]any, volumes []any, 
 			}
 			newVolumes = append(newVolumes, row.raw)
 			continue
+		}
+
+		if !isV1 {
+			// V2: the only rewrite left is resolving a lone unresolved
+			// "{name}-<pool>" template placeholder to "<appName>-<pool>" for
+			// a specific app. Multiple rows on this pool, or a single row
+			// with an intentionally custom name, are left as-is.
+			placeholderName := canonicalVolumeName("", pool)
+			if !(len(rows) == 1 && appName != "" && rows[0].name == placeholderName) {
+				for _, row := range rows {
+					newVolumes = append(newVolumes, row.raw)
+				}
+				continue
+			}
 		}
 
 		merged := make(map[string]any, len(rows[0].raw))

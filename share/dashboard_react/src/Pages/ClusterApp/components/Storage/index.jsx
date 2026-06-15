@@ -208,6 +208,7 @@ export default function StoragePage({ clusterName, appId, appConfig }) {
       <VolumeSection
         opensvcPools={opensvcPools}
         appHaTopology={appConfig?.provAppHaTopology}
+        appConfigVersion={appConfig?.appConfigVersion}
         fieldName="volumes"
         title="Saved Volumes"
         newTitle="Add New Volume"
@@ -216,7 +217,7 @@ export default function StoragePage({ clusterName, appId, appConfig }) {
         rows={volumes}
         {...actionProps}
       />
-  ), [volumes, opensvcPools, appConfig?.provAppHaTopology, actionProps]);
+  ), [volumes, opensvcPools, appConfig?.provAppHaTopology, appConfig?.appConfigVersion, actionProps]);
 
   const s3Component = useMemo(() => (
       <S3DirectorySection appId={appId} rows={s3Mounts} s3ProvOptions={s3ProvOptions} clusterS3Providers={clusterS3Providers} {...actionProps} />

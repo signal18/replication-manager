@@ -186,6 +186,67 @@ level = 0
 	}
 }
 
+// TestAppTemplateContentSave_V2FlaggedMultiRowPoolPreserved covers Phase 11
+// task 10: a V2-flagged template with two intentional same-pool volume rows
+// stays multi-row through CanonicalizeAppContent and
+// validateCanonicalTemplateContentForSave -- contrast with
+// TestAppTemplateContentSave_MergesMultiRowVolumePool, which is V1 and still
+// merges same-pool rows into one.
+func TestAppTemplateContentSave_V2FlaggedMultiRowPoolPreserved(t *testing.T) {
+	cl := &cluster.Cluster{Conf: &config.Config{WorkingDir: t.TempDir()}}
+
+	submitted := []byte(`
+app-config-version = 2
+
+[[deployment.storages.volumes]]
+name = "myapp-data"
+poolname = "data"
+volumedir = "etc"
+
+[[deployment.storages.volumes]]
+name = "myapp-data-logs"
+poolname = "data"
+volumedir = "log"
+
+[[deployment.paths]]
+name = "web-root"
+dockerpath = "/var/www/html"
+srctype = "volume"
+srcname = "myapp-data"
+volumename = "myapp-data"
+srcpath = "."
+level = 0
+
+[[deployment.paths]]
+name = "log-dir"
+dockerpath = "/var/log/app"
+srctype = "volume"
+srcname = "myapp-data-logs"
+volumename = "myapp-data-logs"
+srcpath = "."
+level = 0
+`)
+
+	canonicalContent, res, err := cluster.CanonicalizeAppContent(submitted, "")
+	if err != nil {
+		t.Fatalf("CanonicalizeAppContent failed: %v", err)
+	}
+	if res.Changed {
+		t.Fatalf("expected no changes for already-V2 multi-row content, got %+v", res)
+	}
+	if err := validateCanonicalTemplateContentForSave(cl, "local/v2-multi-row", canonicalContent); err != nil {
+		t.Fatalf("validateCanonicalTemplateContentForSave failed: %v", err)
+	}
+
+	got := string(canonicalContent)
+	if !strings.Contains(got, `name = "myapp-data"`) || !strings.Contains(got, `name = "myapp-data-logs"`) {
+		t.Fatalf("expected both volume rows preserved, got:\n%s", got)
+	}
+	if strings.Contains(got, `volumedir = "etc log"`) {
+		t.Fatalf("expected rows not merged, got:\n%s", got)
+	}
+}
+
 func TestWriteTemplateContentAtomically(t *testing.T) {
 	workDir := t.TempDir()
 	path := filepath.Join(workDir, ".templates", "apps", "local", "custom.toml")

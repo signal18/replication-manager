@@ -68,3 +68,32 @@ func TestGetVolumes_ReturnsDistinctSavedRowNames(t *testing.T) {
 		t.Fatalf("expected %v, got %v", want, got)
 	}
 }
+
+// TestGetVolumes_ReturnsDistinctNamesForMultiRowSamePool covers Phase 11 task
+// 5: two intentional V2 rows sharing a poolname must both be returned, each
+// under its own Name. Before the fix, GetVolumes deduped via
+// GetAppVolumeName(v.PoolName, ...), which is keyed by pool and returns only
+// the first row's name for both entries, silently dropping the second
+// volume.
+func TestGetVolumes_ReturnsDistinctNamesForMultiRowSamePool(t *testing.T) {
+	app := &App{
+		Name: "myapp",
+		AppConfig: &config.AppConfig{
+			AppConfigVersion: config.AppConfigVersionV2,
+			Deployment: &config.Deployment{
+				Storages: config.StorageMapping{
+					Volumes: config.Volumes{
+						{Name: "myapp-data", PoolName: "data", VolumeDir: "etc"},
+						{Name: "myapp-data-logs", PoolName: "data", VolumeDir: "log"},
+					},
+				},
+			},
+		},
+	}
+
+	got := app.GetVolumes(true)
+	want := []string{"myapp-data", "myapp-data-logs"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+}
