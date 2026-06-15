@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VStack, Input, HStack, Heading, Flex, Box, Text } from "@chakra-ui/react";
 import styles from "./styles.module.scss";
 import TextForm from "../../../../components/TextForm";
@@ -10,8 +10,15 @@ import { HiTrash } from "react-icons/hi";
 import Dropdown from "../../../../components/Dropdown";
 import SyncDiffTable from "../../../../components/SyncDiffTable";
 import { extractApiErrorMessage, redactSensitiveInfo } from "../../../../utils/apiError";
+import {
+  buildVolumeDir,
+  defaultS3Subdir,
+  extractSubDir,
+  getVolumeDirTokens,
+  matchVolumeDirToken,
+} from "./volumeDirUtils";
 
-const defaultS3 = { name: "", endpoint: "", bucket: "", region: "", accesskey: "", secretkey: "", providerName: "" };
+const defaultS3 = { name: "", endpoint: "", bucket: "", region: "", accesskey: "", secretkey: "", providerName: "", volumename: "", volumedir: "", subpath: "" };
 const providerSourceOptions = [
   { value: "app", name: "Sibling App" },
   { value: "custom", name: "Custom Endpoint" },
@@ -69,6 +76,7 @@ const S3DirectorySection = ({
     rows = [],
     appId = "",
     fieldName = "s3Mounts",
+    volumeOptions = [],
     s3ProvOptions = [],
     clusterS3Providers = [],
     onRowArrayChange,
@@ -128,13 +136,13 @@ const S3DirectorySection = ({
                 header: '',
                 meta: {
                     renderExpansion: (row) => {
-                        return (<S3DirectoryRowForm appId={appId} fieldName={fieldName} s3ProvOptions={s3ProvOptions} clusterS3Providers={clusterS3Providers} s3directory={row.original} index={row.index} onChange={onRowArrayChange} onSaveAsProvider={onSaveAsProvider} onPreviewSync={onPreviewSync} onApplySync={onApplySync} />);
+                        return (<S3DirectoryRowForm appId={appId} fieldName={fieldName} volumeOptions={volumeOptions} s3ProvOptions={s3ProvOptions} clusterS3Providers={clusterS3Providers} s3directory={row.original} index={row.index} onChange={onRowArrayChange} onSaveAsProvider={onSaveAsProvider} onPreviewSync={onPreviewSync} onApplySync={onApplySync} />);
                     },
                 },
                 cell: () => null,
             }
         ],
-        [appId, fieldName, onRowArrayChange, onRowDropIndex, s3ProvOptions, clusterS3Providers, onSaveAsProvider, onPreviewSync, onApplySync]
+        [appId, fieldName, volumeOptions, onRowArrayChange, onRowDropIndex, s3ProvOptions, clusterS3Providers, onSaveAsProvider, onPreviewSync, onApplySync]
     )
 
     return (
@@ -153,7 +161,7 @@ const S3DirectorySection = ({
                         Add New S3 Directory
                     </Heading>
                     <Box className={styles.tableContainer}>
-                        <S3DirectoryNewForm s3ProvOptions={s3ProvOptions} clusterS3Providers={clusterS3Providers} onSave={handleSaveAdd} onCancel={handleCancel} onSaveAsProvider={onSaveAsProvider} />
+                        <S3DirectoryNewForm volumeOptions={volumeOptions} s3ProvOptions={s3ProvOptions} clusterS3Providers={clusterS3Providers} onSave={handleSaveAdd} onCancel={handleCancel} onSaveAsProvider={onSaveAsProvider} />
                     </Box>
                 </VStack>
             ) : (
@@ -171,8 +179,9 @@ const S3DirectorySection = ({
 
 export default React.memo(S3DirectorySection);
 
-const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, clusterS3Providers = [], s3directory, index, onChange, onSaveAsProvider = () => Promise.resolve(), onPreviewSync = () => Promise.resolve(), onApplySync = () => Promise.resolve() }) => {
+const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, volumeOptions = [], s3ProvOptions, clusterS3Providers = [], s3directory, index, onChange, onSaveAsProvider = () => Promise.resolve(), onPreviewSync = () => Promise.resolve(), onApplySync = () => Promise.resolve() }) => {
     const s3 = s3directory || defaultS3;
+    const { volumename, volumedir } = s3;
     const [providerSource, setProviderSource] = useState(() =>
       endpointExistsInProviders(s3.endpoint, s3ProvOptions) ? "app" : "custom"
     );
@@ -218,6 +227,31 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, c
       () => !!s3.providerName && !(clusterS3Providers || []).some((p) => p.name === s3.providerName),
       [s3.providerName, clusterS3Providers]
     );
+
+    // Phase 14: explicit V2 S3 mount placement - selected saved volume row,
+    // selected directory token within that row, and selected relative
+    // subdirectory beneath that token.
+    const vol = useMemo(() => volumeOptions.find((opt) => opt.value === volumename), [volumeOptions, volumename]);
+    const availableDirs = useMemo(() => getVolumeDirTokens(vol?.volumedir), [vol]);
+    const srcbasepath = useMemo(() => matchVolumeDirToken(volumedir, vol?.volumedir, defaultS3Subdir), [volumedir, vol]);
+    const subpath = useMemo(() => extractSubDir(volumedir, srcbasepath), [volumedir, srcbasepath]);
+
+    const handleVolume = useCallback((value) => {
+      const newVol = volumeOptions.find((opt) => opt.value === value);
+      const newDirs = getVolumeDirTokens(newVol?.volumedir);
+      const newBase = newDirs.includes(srcbasepath) ? srcbasepath : defaultS3Subdir(newVol?.volumedir);
+      const newValue = newVol ? buildVolumeDir(newBase, subpath, s3.name) : volumedir;
+      onChange(fieldName, index, "volumename", newVol ? newVol.value : "");
+      onChange(fieldName, index, "volumedir", newValue);
+    }, [fieldName, index, volumeOptions, srcbasepath, subpath, s3.name, volumedir, onChange]);
+
+    const handleBaseDir = useCallback((value) => {
+      onChange(fieldName, index, "volumedir", buildVolumeDir(value, subpath, s3.name));
+    }, [fieldName, index, subpath, s3.name, onChange]);
+
+    const handleSubPath = useCallback((value) => {
+      onChange(fieldName, index, "volumedir", buildVolumeDir(srcbasepath, value, s3.name));
+    }, [fieldName, index, srcbasepath, s3.name, onChange]);
 
     const handleProviderSourceChange = (option) => {
       const nextSource = option?.value || option;
@@ -420,6 +454,30 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, c
                     <Text mb={1}>Bucket:</Text>
                     <TextForm placeholder="Bucket" value={s3.bucket} onSave={(value) => onChange(fieldName, index, "bucket", value)} />
                 </Flex>
+                <Flex direction="column" flex="1">
+                    <Text mb={1}>Volume:</Text>
+                    <Dropdown key={`s3-volume-${index}`} placeholder="Volume" confirmTitle="Change Volume" options={volumeOptions} selectedValue={volumename} onChange={(value) => handleVolume(value)} />
+                </Flex>
+                {availableDirs.length > 1 ? (
+                    <Flex direction="column" flex="1">
+                        <Text mb={1}>Volume Dir:</Text>
+                        <Dropdown
+                          key={`s3-basedir-${index}`}
+                          placeholder="Volume Dir"
+                          confirmTitle="Change Volume Dir"
+                          options={availableDirs.map((dir) => ({ value: dir, name: dir }))}
+                          selectedValue={srcbasepath}
+                          onChange={(value) => handleBaseDir(value)}
+                        />
+                    </Flex>
+                ) : (
+                    srcbasepath && (<Text key={`${volumename}-basepath`} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)
+                )}
+                <Flex direction="column" flex="1">
+                    <Text mb={1}>Sub Dir:</Text>
+                    <TextForm key={`s3-subdir-${index}`} placeholder="Volume Sub Dir" confirmTitle="Change Volume Sub Dir" value={subpath} onSave={(value) => handleSubPath(value)} />
+                    <Text>Fullpath: {volumedir || "(auto-assigned on save)"}</Text>
+                </Flex>
                 <Flex direction="column" flex="1" gap={1}>
                     <Text
                       as="button"
@@ -514,17 +572,33 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, s3ProvOptions, c
     )
 })
 
-const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers = [], onSave = () => { }, onCancel = () => { }, onSaveAsProvider = () => Promise.resolve() }) => {
+const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers = [], volumeOptions = [], onSave = () => { }, onCancel = () => { }, onSaveAsProvider = () => Promise.resolve() }) => {
     const [s3, setS3] = useState(defaultS3);
     const [providerSource, setProviderSource] = useState(s3ProvOptions?.length ? "app" : "custom");
     const [showSaveProviderUI, setShowSaveProviderUI] = useState(false);
     const [providerName, setProviderName] = useState("");
     const [saveProviderError, setSaveProviderError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const { volumename, volumedir, subpath } = s3;
     const duplicateProviderAdvisory = useMemo(
       () => getDuplicateProviderAdvisory(providerName, clusterS3Providers),
       [providerName, clusterS3Providers]
     );
+
+    // Phase 14: explicit V2 S3 mount placement for the "Add new" form.
+    const vol = useMemo(() => volumeOptions.find((opt) => opt.value === volumename), [volumeOptions, volumename]);
+    const availableDirs = useMemo(() => getVolumeDirTokens(vol?.volumedir), [vol]);
+    const srcbasepath = useMemo(() => matchVolumeDirToken(volumedir, vol?.volumedir, defaultS3Subdir), [volumedir, vol]);
+
+    // Phase 16: a bare directory-token volumedir (no Sub Dir typed yet) gets
+    // the generated mount name appended server-side, so preview that here
+    // rather than showing the bare token as if it were the final path.
+    const fullpathPreview = useMemo(() => {
+      if (!volumedir) return "(auto-assigned on save)";
+      const trimmedSub = typeof subpath === "string" ? subpath.trim() : "";
+      if (!trimmedSub || trimmedSub === "/") return `${volumedir}/<name auto-assigned on save>`;
+      return volumedir;
+    }, [volumedir, subpath]);
 
     const valid = useMemo(() => {
         return s3.endpoint && s3.bucket;
@@ -544,6 +618,28 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers 
     const handleArrayChange = (key, value) => {
         setS3((prev) => ({ ...prev, [key]: value }));
     }
+
+    const handleVolume = (option) => {
+        const newDirs = getVolumeDirTokens(option?.volumedir);
+        const newBase = newDirs.includes(srcbasepath) ? srcbasepath : defaultS3Subdir(option?.volumedir);
+        setS3((prev) => ({
+            ...prev,
+            volumename: option?.value || "",
+            volumedir: buildVolumeDir(newBase, subpath, "", { preserveBareToken: true }),
+        }));
+    };
+
+    const handleBaseDir = (option) => {
+        handleArrayChange("volumedir", buildVolumeDir(option?.value, subpath, "", { preserveBareToken: true }));
+    };
+
+    const handleSubPath = (value) => {
+        setS3((prev) => ({
+            ...prev,
+            subpath: value,
+            volumedir: buildVolumeDir(srcbasepath, value, "", { preserveBareToken: true }),
+        }));
+    };
 
     const handleProviderSourceChange = (option) => {
       const nextSource = option?.value || option;
@@ -662,6 +758,29 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers 
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Region:</Text>
                     <Input placeholder="e.g. us-east-1" value={s3.region} onChange={(e) => handleArrayChange("region", e.target.value)} />
+                </Flex>
+                <Flex direction="column" flex="1">
+                    <Text mb={1}>Volume:</Text>
+                    <Dropdown key="s3-volume-new" placeholder="Volume" options={volumeOptions} selectedValue={volumename} onChange={(option) => handleVolume(option)} />
+                </Flex>
+                {availableDirs.length > 1 ? (
+                    <Flex direction="column" flex="1">
+                        <Text mb={1}>Volume Dir:</Text>
+                        <Dropdown
+                          key="s3-basedir-new"
+                          placeholder="Volume Dir"
+                          options={availableDirs.map((dir) => ({ value: dir, name: dir }))}
+                          selectedValue={srcbasepath}
+                          onChange={(option) => handleBaseDir(option)}
+                        />
+                    </Flex>
+                ) : (
+                    srcbasepath && (<Text key={`${volumename}-basepath`} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)
+                )}
+                <Flex direction="column" flex="1">
+                    <Text mb={1}>Sub Dir:</Text>
+                    <Input key="s3-subdir-new" placeholder="Volume Sub Dir" value={subpath} onChange={(e) => handleSubPath(e.target.value)} />
+                    <Text>Fullpath: {fullpathPreview}</Text>
                 </Flex>
                 {providerSource === "custom" && (
                   <>

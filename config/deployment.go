@@ -44,33 +44,69 @@ func (d *Deployment) GetVolumeByName(name string) (*Volume, error) {
 	return nil, fmt.Errorf("volume %s not found", name)
 }
 
-func (d *Deployment) InsertVolume(v *Volume) error {
+// findVolumeByPool returns the first saved row for poolName, or nil if none
+// exists. Callers must hold d.Mutex.
+//
+// This is a single-row lookup: for V1 content (app-config-version <
+// AppConfigVersionV2) a pool has at most one row, so "first" is "only". For
+// V2 content a pool may legitimately have multiple intentional rows (see
+// Phase 11); this function only ever returns the first one. Callers that need
+// to consider all rows for a pool must iterate d.Storages.Volumes directly.
+func (d *Deployment) findVolumeByPool(poolName string) *Volume {
+	for _, v := range d.Storages.Volumes {
+		if v.PoolName == poolName {
+			return v
+		}
+	}
+	return nil
+}
+
+// GetVolumeByPool returns the first saved row for poolName, or nil if none
+// exists. It backs the one-row-per-pool invariant on writes for V1 content:
+// InsertVolume rejects new rows for a pool that already has one, and poolname
+// edits must not move a row onto a pool another row already owns -- but only
+// while appConfigVersion < AppConfigVersionV2. V2 content may have multiple
+// rows per pool; see findVolumeByPool.
+func (d *Deployment) GetVolumeByPool(poolName string) *Volume {
+	d.Mutex.RLock()
+	defer d.Mutex.RUnlock()
+
+	return d.findVolumeByPool(poolName)
+}
+
+// InsertVolume appends v to Storages.Volumes after normalizing and
+// validating it. appConfigVersion is the owning AppConfig's persisted
+// app-config-version marker (config.AppConfig.AppConfigVersion):
+//
+//   - appConfigVersion < AppConfigVersionV2 (V1/unflagged): a pool may back at
+//     most one saved row, matching the canonicalization migration's
+//     one-row-per-pool invariant.
+//   - appConfigVersion >= AppConfigVersionV2: multiple intentional rows per
+//     pool are allowed (Phase 11). The row's Name must still be globally
+//     unique.
+func (d *Deployment) InsertVolume(v *Volume, appConfigVersion int) error {
 	// Use a mutex to protect concurrent access
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
 
-	// Validate the volume
-	if v.Name == "" {
-		return errors.New("volume name is required")
+	// Normalize before validating so duplicate/empty tokens don't slip in.
+	v.VolumeDir = NormalizeVolumeDirs(v.VolumeDir)
+
+	if err := v.Validate(); err != nil {
+		return err
 	}
 
-	if v.VolumeDir == "" {
-		return errors.New("volume directory is required")
-	}
-
-	// Check if the volume directory is valid
-	if strings.Contains(v.VolumeDir, "..") {
-		return fmt.Errorf("invalid volume directory: %s", v.VolumeDir)
-	}
-
-	// Check if the volume already exists
+	// Check if the volume already exists. Name is the row's identity and must
+	// be globally unique regardless of app-config-version.
 	for _, existingVolume := range d.Storages.Volumes {
 		if existingVolume.Name == v.Name {
 			return fmt.Errorf("volume already exists: %s", v.Name)
 		}
+	}
 
-		if existingVolume.VolumeDir == v.VolumeDir && existingVolume.PoolName == v.PoolName {
-			return fmt.Errorf("volume with same directory and pool already exists: %s", v.VolumeDir)
+	if appConfigVersion < AppConfigVersionV2 {
+		if existing := d.findVolumeByPool(v.PoolName); existing != nil {
+			return fmt.Errorf("a volume for pool %q already exists: %s", v.PoolName, existing.Name)
 		}
 	}
 
@@ -245,6 +281,44 @@ func (d *Deployment) GetGitPaths(name string) []*PathMapping {
 	return paths
 }
 
+// syncPathVolumeName applies the canonical PathMapping.VolumeName resolution
+// rule once pointers have been resolved via ResolvePointers:
+//
+//  1. a path with a resolved direct Source always has VolumeName refreshed
+//     from Source.GetSourceVolumeName(), overwriting any stale value
+//  2. a path that declares a SourceType but whose Source did not resolve has
+//     VolumeName cleared, so provisioning does not fall back to a stale or
+//     mismatched volume
+//  3. a path with no direct source inherits VolumeName from its Parent, if any
+//  4. a root path with neither a source nor a parent is left untouched
+func syncPathVolumeName(p *PathMapping) {
+	switch {
+	case p.Source != nil:
+		p.VolumeName = p.Source.GetSourceVolumeName()
+	case p.SourceType != "":
+		p.VolumeName = ""
+	case p.Parent != nil:
+		p.VolumeName = p.Parent.VolumeName
+	}
+}
+
+// resolvePathMapping resolves p's Parent/Source pointers and synchronizes its
+// VolumeName via syncPathVolumeName. It does not lock d.Mutex; callers are
+// responsible for any required locking.
+func (d *Deployment) resolvePathMapping(p *PathMapping) error {
+	if err := p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths); err != nil {
+		return err
+	}
+
+	syncPathVolumeName(p)
+
+	if p.SourceType != "" && p.Source == nil {
+		return fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath)
+	}
+
+	return nil
+}
+
 func (d *Deployment) InsertPath(p PathMapping) error {
 	// Use a mutex to protect concurrent access
 	d.Mutex.Lock()
@@ -255,21 +329,13 @@ func (d *Deployment) InsertPath(p PathMapping) error {
 		if existingPath.DockerPath == p.DockerPath {
 			return fmt.Errorf("path mapping already exists for target path: %s", p.DockerPath)
 		}
-
-		if existingPath.Name == p.ParentName {
-			// If the parent name matches, set the parent pointer
-			p.Parent = existingPath
-		}
 	}
 
-	// Validate the path mapping
-	p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths)
-	if p.SourceName != "" && p.Source == nil {
-		return fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath)
-	} else if p.Source != nil {
-		p.VolumeName = p.Source.GetSourceVolumeName() // Use the source's volume name if available
-	} else {
-		p.VolumeName = p.Parent.VolumeName // Inherit volume name from parent if no source is specified
+	if err := d.resolvePathMapping(&p); err != nil {
+		return err
+	}
+	if p.SourceType == "" && p.SourceName != "" {
+		return fmt.Errorf("source type is required for path mapping %s", p.DockerPath)
 	}
 
 	// Add the new path mapping
@@ -285,21 +351,32 @@ func (d *Deployment) ResolveGitPaths(gitname string) {
 	}
 }
 
+// ResolvePath resolves p's pointers and VolumeName via resolvePathMapping. If
+// p's VolumeName changes as a result, the change is cascaded to any child
+// paths (matched by ParentName) that have no direct source of their own, so
+// inherited bindings stay in sync immediately after a source or backing
+// volume change.
 func (d *Deployment) ResolvePath(p *PathMapping) error {
-	err := p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths)
-	if err != nil {
+	oldVolumeName := p.VolumeName
+
+	if err := d.resolvePathMapping(p); err != nil {
 		return err
 	}
 
-	if p.Parent != nil {
-		if p.VolumeName == "" {
-			p.VolumeName = p.Parent.VolumeName // Inherit volume name from parent if no source is specified
+	var childErrs []error
+	if p.VolumeName != oldVolumeName && p.Name != "" {
+		for _, child := range d.Paths {
+			if child == p || child.SourceType != "" || child.ParentName != p.Name {
+				continue
+			}
+			if err := d.ResolvePath(child); err != nil {
+				childErrs = append(childErrs, err)
+			}
 		}
 	}
 
-	// If the path is not resolved, log a warning
-	if p.SourceType != "" && p.Source == nil {
-		return fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath)
+	if len(childErrs) > 0 {
+		return errors.Join(childErrs...)
 	}
 
 	return nil
@@ -311,31 +388,64 @@ func (d *Deployment) ResolvePaths() []error {
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
 
+	appendErr := func(err error) {
+		if errs == nil {
+			errs = make([]error, 0)
+		}
+		errs = append(errs, err)
+	}
+
+	// Pass 1: resolve pointers for every path and synchronize VolumeName for
+	// paths with a direct source. Paths without a direct source keep their
+	// current VolumeName until the inheritance pass below.
 	for _, p := range d.Paths {
-		// Resolve pointers for each path mapping
-		err := p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths)
-		if err != nil {
-			if errs == nil {
-				errs = make([]error, 0)
-			}
-			errs = append(errs, err)
+		if err := p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths); err != nil {
+			appendErr(err)
 			continue
 		}
 
-		if p.Parent != nil {
-			if p.VolumeName == "" {
-				p.VolumeName = p.Parent.VolumeName // Inherit volume name from parent if no source is specified
+		if p.SourceType != "" {
+			syncPathVolumeName(p)
+			if p.Source == nil {
+				appendErr(fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath))
 			}
-		}
-
-		// If the path is not resolved, log a warning
-		if p.SourceType != "" && p.Source == nil {
-			if errs == nil {
-				errs = make([]error, 0)
-			}
-			errs = append(errs, fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath))
 		}
 	}
+
+	for _, p := range d.Paths {
+		if p.SourceType == "" && p.Parent != nil {
+			p.VolumeName = ""
+		}
+	}
+
+	// Pass 2: propagate VolumeName from parents to children with no direct
+	// source, iterating to a fixed point so inheritance converges regardless
+	// of d.Paths ordering.
+	for i := 0; i < len(d.Paths); i++ {
+		changed := false
+		for _, p := range d.Paths {
+			if p.SourceType != "" || p.Parent == nil {
+				continue
+			}
+			if p.Parent.VolumeName == "" {
+				continue
+			}
+			if p.VolumeName != p.Parent.VolumeName {
+				p.VolumeName = p.Parent.VolumeName
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+
+	for _, p := range d.Paths {
+		if p.SourceType == "" && p.Parent != nil && p.VolumeName == "" {
+			appendErr(fmt.Errorf("inherited volume not resolved for path mapping %s via parent %s", p.DockerPath, p.ParentName))
+		}
+	}
+
 	return errs
 }
 
@@ -618,7 +728,7 @@ type Route struct {
 	Primary  bool   `mapstructure:"primary" toml:"primary" json:"primary" groups:"apps"`
 
 	// Explicit source/destination fields.
-	Mode            string `mapstructure:"mode" toml:"mode" json:"mode" groups:"apps"`            // host | port
+	Mode            string `mapstructure:"mode" toml:"mode" json:"mode" groups:"apps"` // host | port
 	SourcePort      string `mapstructure:"sourceport" toml:"sourceport" json:"sourcePort" groups:"apps"`
 	DestinationPort string `mapstructure:"destport" toml:"destport" json:"destPort" groups:"apps"`
 
@@ -1054,6 +1164,12 @@ func (p PathMapping) GetDockerMapping(volname string) string {
 }
 
 func (pm *PathMapping) ResolvePointers(volumes Volumes, gits GitClones, s3s S3Mounts, parents PathMaps) error {
+	// Clear any previously resolved pointers before re-resolving. Path mappings
+	// are mutated in place across API edits, so stale Parent/Source pointers must
+	// not survive a source or parent change.
+	pm.Parent = nil
+	pm.Source = nil
+
 	// Resolve Parent
 	if pm.ParentName != "" {
 		for _, parent := range parents {
@@ -1153,14 +1269,6 @@ func (gc *GitClone) GetSourceVolumeName() string {
 	return gc.VolumeName
 }
 
-func (gc *GitClone) GetSourcePoolName() string {
-	// Return the volume name associated with the git clone
-	if gc.Volume != nil {
-		return gc.Volume.PoolName
-	}
-	return ""
-}
-
 var gitVariableReplacer = strings.NewReplacer("-", "_", ".", "_", "/", "_")
 
 const GitVarSuffixRepo = "REPO"
@@ -1228,12 +1336,112 @@ type Volume struct {
 	VolumeDir string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"etc|log|var|data" groups:"apps"`
 }
 
-func (v *Volume) GetSourcePath() string {
-	// Ensure the volume directory starts with a slash
-	if !strings.HasPrefix(v.VolumeDir, "/") {
-		return "/" + v.VolumeDir
+// AppMountVolumeDir is the directory token used to select (or seed) the app
+// volume that backs ad-hoc S3 mounts created via SetAppLocalMountVolume.
+const AppMountVolumeDir = "mnt"
+
+// GetVolumeDirs returns VolumeDir split into its whitespace-separated
+// directory tokens. A legacy single-directory value (e.g. "data") returns
+// a single token; a merged row (e.g. "etc log var data") returns one token
+// per directory.
+func (v *Volume) GetVolumeDirs() []string {
+	return strings.Fields(v.VolumeDir)
+}
+
+// DefaultSubdir returns the first directory token of VolumeDir, used as the
+// default subdirectory when autofilling VolumeDir for a git clone or S3
+// mount that is placed on this volume. Returns "" if VolumeDir has no
+// tokens (a saved row always has at least one, per Validate).
+func (v *Volume) DefaultSubdir() string {
+	dirs := v.GetVolumeDirs()
+	if len(dirs) == 0 {
+		return ""
 	}
-	return v.VolumeDir
+	return dirs[0]
+}
+
+// S3MountSubdir returns the directory token to use as the default
+// <subdir>/<resource-name> base when autofilling VolumeDir for an S3 mount
+// placed on this volume. If VolumeDir contains the AppMountVolumeDir token
+// ("mnt"), that token is returned regardless of its position, keeping S3
+// mounts grouped under "mnt" the same way SetAppLocalMountVolume seeds new
+// mounts on a merged row (e.g. "data mnt" -> "mnt"). Otherwise falls back to
+// DefaultSubdir().
+func (v *Volume) S3MountSubdir() string {
+	for _, dir := range v.GetVolumeDirs() {
+		if dir == AppMountVolumeDir {
+			return AppMountVolumeDir
+		}
+	}
+	return v.DefaultSubdir()
+}
+
+// NormalizeVolumeDirs merges one or more whitespace-separated directory
+// lists into a single deduplicated, whitespace-separated list, preserving
+// first-seen order across all inputs.
+func NormalizeVolumeDirs(dirs ...string) string {
+	tokens := make([]string, 0, len(dirs))
+	seen := make(map[string]struct{}, len(dirs))
+	for _, dir := range dirs {
+		for _, tok := range strings.Fields(dir) {
+			if _, dup := seen[tok]; dup {
+				continue
+			}
+			seen[tok] = struct{}{}
+			tokens = append(tokens, tok)
+		}
+	}
+	return strings.Join(tokens, " ")
+}
+
+// Validate checks that the volume row is structurally sound: it has a name,
+// a pool, and VolumeDir resolves to at least one relative, non-traversal
+// directory token.
+func (v *Volume) Validate() error {
+	if v.Name == "" {
+		return errors.New("volume name is required")
+	}
+
+	if v.PoolName == "" {
+		return errors.New("volume pool name is required")
+	}
+
+	dirs := v.GetVolumeDirs()
+	if len(dirs) == 0 {
+		return errors.New("volume directory is required")
+	}
+
+	for _, dir := range dirs {
+		if strings.Contains(dir, "..") {
+			return fmt.Errorf("invalid volume directory: %s", dir)
+		}
+		if strings.HasPrefix(dir, "/") {
+			return fmt.Errorf("volume directory must be relative: %s", dir)
+		}
+	}
+
+	return nil
+}
+
+// GetSourcePath returns a legacy-compatible single-path view of VolumeDir for
+// callers that still expect a Volume to expose one path prefix. For a
+// multi-token VolumeDir (for example "data logs"), only the first token is
+// returned so legacy callers never receive the invalid literal path
+// "/data logs". Modern direct-volume path mappings must not use this helper to
+// derive root semantics: they are rooted at the saved volume row itself and use
+// "." explicitly.
+func (v *Volume) GetSourcePath() string {
+	dir := v.DefaultSubdir()
+	if dir == "" {
+		// Preserve the historical empty-value shape as closely as possible for
+		// deprecated callers. Validate() rejects empty VolumeDir for saved rows,
+		// so this is only for defensive compatibility.
+		return "/"
+	}
+	if !strings.HasPrefix(dir, "/") {
+		return "/" + dir
+	}
+	return dir
 }
 
 func (v *Volume) GetSourceName() string {
@@ -1377,12 +1585,4 @@ func (s *S3Mount) GetSourceVolumeName() string {
 		return s.Volume.Name
 	}
 	return s.VolumeName
-}
-
-func (s *S3Mount) GetSourcePoolName() string {
-	// Return the volume name associated with the S3 mount
-	if s.Volume != nil {
-		return s.Volume.PoolName
-	}
-	return "" // Return an empty string if the volume is not set
 }

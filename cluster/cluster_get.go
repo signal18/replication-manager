@@ -1741,18 +1741,50 @@ func (cluster *Cluster) GetAppConfig(apphost, port string) *config.AppConfig {
 	return cnf
 }
 
+// SetAppLocalVolume finds the saved app volume row whose VolumeDir tokens
+// include dir (e.g. "mnt"), matching whole directory tokens rather than a
+// string prefix so a merged row (e.g. "data mnt") matches on "mnt". Under an
+// intentional V2 multi-volume layout, more than one saved row may expose dir;
+// in that case SetAppLocalVolume fails closed instead of silently returning
+// the first match, so callers must require an explicit volume selection.
 func (cluster *Cluster) SetAppLocalVolume(app *App, dir string) (*config.Volume, error) {
+	var match *config.Volume
 	for _, volume := range app.AppConfig.Deployment.Storages.Volumes {
-		if strings.HasPrefix(volume.VolumeDir, dir) {
-			return volume, nil
+		for _, d := range volume.GetVolumeDirs() {
+			if d == dir {
+				if match != nil {
+					return nil, fmt.Errorf("multiple saved app volumes expose directory %q: explicit volume selection is required", dir)
+				}
+				match = volume
+				break
+			}
 		}
 	}
 
-	return nil, fmt.Errorf("no existing app volume found for directory %q: explicit volume/pool selection is required", dir)
+	if match == nil {
+		return nil, fmt.Errorf("no existing app volume found for directory %q: explicit volume/pool selection is required", dir)
+	}
+
+	return match, nil
 }
 
+// SetAppLocalMountVolume returns the default saved volume row to place an
+// ad-hoc S3 mount on when the caller has not specified VolumeName/VolumeDir
+// explicitly. Selection is fail-closed under ambiguity (Phase 14):
+//   - if exactly one saved volume row exposes the "mnt" directory token, use it
+//   - else if the app has exactly one saved volume row in total, use it
+//   - otherwise return an error: explicit placement is required
 func (cluster *Cluster) SetAppLocalMountVolume(app *App) (*config.Volume, error) {
-	return cluster.SetAppLocalVolume(app, "mnt")
+	vol, err := cluster.SetAppLocalVolume(app, config.AppMountVolumeDir)
+	if err == nil {
+		return vol, nil
+	}
+
+	if volumes := app.AppConfig.Deployment.Storages.Volumes; len(volumes) == 1 {
+		return volumes[0], nil
+	}
+
+	return nil, fmt.Errorf("default S3 mount volume is ambiguous: %w", err)
 }
 
 func (cluster *Cluster) GetOpenSVCStats() ([]opensvc.DaemonNodeStats, error) {
