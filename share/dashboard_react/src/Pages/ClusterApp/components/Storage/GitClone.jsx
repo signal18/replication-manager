@@ -44,6 +44,25 @@ const maskString = (str, mask = '*') => {
     return str.replaceAll(/./g, mask)
 }
 
+// volumedir lists the volume's available top-level directories as a
+// whitespace-separated string (see config.Volume.GetVolumeDirs()).
+const getVolumeDirTokens = (volumedir) =>
+    typeof volumedir === "string" ? volumedir.split(/\s+/).filter(Boolean) : [];
+
+// Mirrors config.Volume.DefaultSubdir(): the first directory token, used as
+// the default base path when assigning a volume to a git clone.
+const defaultSubdir = (volumedir) => getVolumeDirTokens(volumedir)[0] || "";
+
+// Finds which of the volume's directory tokens `path` is rooted under
+// (either equal to the token or "<token>/..."), falling back to the
+// volume's default subdir if no token matches (e.g. legacy paths predating
+// the multi-directory volume merge).
+const matchVolumeDirToken = (path, volumedir) => {
+    const dirs = getVolumeDirTokens(volumedir);
+    const match = dirs.find((dir) => path === dir || path.startsWith(`${dir}/`));
+    return match || defaultSubdir(volumedir);
+};
+
 const GitCloneSection = React.memo(function GitCloneSection({
     rows = [],
     volumeOptions = [],
@@ -183,12 +202,14 @@ const GitRowForm = React.memo(function GitRowForm({ fieldName, gitClone, index, 
     }, [gc.name]);
 
     const vol = useMemo(() => volumeOptions.find((opt) => opt.value === volumename), [volumeOptions, volumename]);
-    const srcbasepath = vol ? vol.volumedir : "";
+    const availableDirs = useMemo(() => getVolumeDirTokens(vol?.volumedir), [vol]);
+    const srcbasepath = useMemo(() => matchVolumeDirToken(volumedir, vol?.volumedir), [volumedir, vol]);
     const subpath = useMemo(() => volumedir.startsWith(srcbasepath) ? volumedir.substring(srcbasepath.length + 1) : volumedir, [volumedir, srcbasepath]);
 
     const handleVolume = useCallback((value) => {
         const vol = volumeOptions.find((opt) => opt.value === value);
-        const newValue = vol ? vol.volumedir + (subpath.startsWith("/") ? subpath : "/" + subpath) : volumedir;
+        const base = defaultSubdir(vol?.volumedir);
+        const newValue = vol ? base + (subpath.startsWith("/") ? subpath : "/" + subpath) : volumedir;
         onChange(fieldName, index, "volumename", vol ? vol.value : "");
         onChange(fieldName, index, "volumedir", newValue);
     }, [fieldName, index, volumeOptions, subpath, volumedir, onChange]);
@@ -261,6 +282,7 @@ const GitRowForm = React.memo(function GitRowForm({ fieldName, gitClone, index, 
                     <Text mb={1}>Volume:</Text>
                     <Dropdown key={`volume-${index}`} placeholder="Volume" confirmTitle="Change Volume" options={volumeOptions} selectedValue={volumename} onChange={(value) => handleVolume(value)} />
                     {srcbasepath && (<Text key={volumename} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)}
+                    {availableDirs.length > 1 && (<Text key={`${volumename}-dirs`} mb={1} fontSize="sm" color="gray.500">Volume directories: {availableDirs.join(', ')}</Text>)}
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Sub Dir:</Text>
@@ -278,9 +300,14 @@ const GitNewForm = React.memo(function GitNewForm({ volumeOptions, onSave = () =
     const { theme } = useTheme();
     const { name, repo, branch, user, pass, volumename, volumedir, subpath } = gc;
 
+    const availableDirs = useMemo(() => {
+        const vol = volumeOptions.find((opt) => opt.value === volumename);
+        return getVolumeDirTokens(vol?.volumedir);
+    }, [volumeOptions, volumename]);
+
     const srcbasepath = useMemo(() => {
         const vol = volumeOptions.find((opt) => opt.value === volumename);
-        return vol ? vol.volumedir : "";
+        return defaultSubdir(vol?.volumedir);
     }, [volumeOptions, volumename]);
 
     const valid = useMemo(() => name && repo && branch && volumedir, [name, repo, branch, volumedir]);
@@ -300,7 +327,8 @@ const GitNewForm = React.memo(function GitNewForm({ volumeOptions, onSave = () =
 
     const handleVolume = useCallback((option) => {
         const newSubpath = !subpath.trim() || subpath.trim() === "/" ? name : subpath;
-        const newValue = option.volumedir + (newSubpath.startsWith("/") ? newSubpath : "/" + newSubpath);
+        const base = defaultSubdir(option.volumedir);
+        const newValue = base + (newSubpath.startsWith("/") ? newSubpath : "/" + newSubpath);
         handleArrayChange("volumename", option.value);
         handleArrayChange("volumedir", newValue);
     }, [name, subpath, handleArrayChange]);
@@ -376,6 +404,7 @@ const GitNewForm = React.memo(function GitNewForm({ volumeOptions, onSave = () =
                     <Text mb={1}>Volume:</Text>
                     <Dropdown key={`volume-new`} placeholder="Volume" options={volumeOptions} selectedValue={volumename} onChange={(option) => handleVolume(option)} />
                     {srcbasepath && (<Text key={volumename} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)}
+                    {availableDirs.length > 1 && (<Text key={`${volumename}-dirs`} mb={1} fontSize="sm" color="gray.500">Volume directories: {availableDirs.join(', ')}</Text>)}
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>

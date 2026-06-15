@@ -14,6 +14,11 @@ const defaultVol = { name: "", poolname: "", volumedir: "" };
 
 const columnHelper = createColumnHelper()
 
+// volumedir lists the volume's top-level directories as a whitespace-separated
+// string (see config.Volume.GetVolumeDirs()).
+const getVolumeDirTokens = (volumedir) =>
+    typeof volumedir === "string" ? volumedir.split(/\s+/).filter(Boolean) : [];
+
 const VolumeSection = ({
     rows = [],
     opensvcPools = [],
@@ -74,6 +79,14 @@ const VolumeSection = ({
         return options.sort((a, b) => a.name.localeCompare(b.name));
     }, [opensvcPools, appHaTopology]);
 
+    // A pool can back at most one saved volume row (config.Deployment.InsertVolume /
+    // the "poolname" modify case both enforce this). Used to keep the pool
+    // dropdowns from offering pools already claimed by another row.
+    const usedPoolNames = useMemo(
+        () => new Set((rows || []).map((row) => row.poolname).filter(Boolean)),
+        [rows]
+    );
+
     const handleAddItem = () => {
         setIsVisible(true);
         onPauseAutoReload();
@@ -102,7 +115,7 @@ const VolumeSection = ({
             columnHelper.accessor((row) => row.poolname, {
                 header: 'Pool Name'
             }),
-            columnHelper.accessor((row) => row.volumedir, {
+            columnHelper.accessor((row) => getVolumeDirTokens(row.volumedir).join(', '), {
                 header: 'Volume Dir'
             }),
             columnHelper.display({
@@ -120,13 +133,13 @@ const VolumeSection = ({
                 header: '',
                 meta: {
                     renderExpansion: (row) => {
-                        return (<VolumeRowForm poolOptions={poolOptions} fieldName={fieldName} volume={row.original} index={row.index} onChange={onRowArrayChange} />);
+                        return (<VolumeRowForm poolOptions={poolOptions} usedPoolNames={usedPoolNames} fieldName={fieldName} volume={row.original} index={row.index} onChange={onRowArrayChange} />);
                     },
                 },
                 cell: () => null,
             }
         ],
-        [fieldName, onRowArrayChange, onRowDropIndex, poolOptions]
+        [fieldName, onRowArrayChange, onRowDropIndex, poolOptions, usedPoolNames]
     )
 
     return (
@@ -145,7 +158,7 @@ const VolumeSection = ({
                         {newTitle}
                     </Heading>
                     <Box className={styles.tableContainer}>
-                        <VolumeNewForm onSave={handleSaveAdd} onCancel={handleCancel} saveCaption={saveCaption} poolOptions={poolOptions} />
+                        <VolumeNewForm onSave={handleSaveAdd} onCancel={handleCancel} saveCaption={saveCaption} poolOptions={poolOptions} usedPoolNames={usedPoolNames} />
                     </Box>
                 </VStack>
             ) : (
@@ -163,8 +176,21 @@ const VolumeSection = ({
 
 export default React.memo(VolumeSection);
 
-const VolumeRowForm = React.memo(({ fieldName, volume, index, poolOptions = [], onChange }) => {
+const VolumeRowForm = React.memo(({ fieldName, volume, index, poolOptions = [], usedPoolNames, onChange }) => {
     const vol = volume || defaultVol;
+
+    const availableDirs = useMemo(() => getVolumeDirTokens(vol.volumedir), [vol.volumedir]);
+
+    // Exclude pools already claimed by another row, but always keep this row's
+    // own pool selectable even if it was filtered out of poolOptions upstream
+    // (e.g. a non-shared pool no longer reported by opensvcPools).
+    const rowPoolOptions = useMemo(() => {
+        const filtered = poolOptions.filter((opt) => opt.value === vol.poolname || !usedPoolNames?.has(opt.value));
+        if (vol.poolname && !filtered.some((opt) => opt.value === vol.poolname)) {
+            return [...filtered, { value: vol.poolname, name: vol.poolname }];
+        }
+        return filtered;
+    }, [poolOptions, usedPoolNames, vol.poolname]);
 
     return (
         <Flex className={styles.variableRowForm} w="100%" align="flex-start" gap={4}>
@@ -175,19 +201,28 @@ const VolumeRowForm = React.memo(({ fieldName, volume, index, poolOptions = [], 
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Pool Name:</Text>
-                    <Dropdown placeholder="Pool Name" confirmTitle="Change Pool Name" options={poolOptions} selectedValue={vol.poolname} onChange={(value) => onChange(fieldName, index, "poolname", value)} />
+                    <Dropdown placeholder="Pool Name" confirmTitle="Change Pool Name" options={rowPoolOptions} selectedValue={vol.poolname} onChange={(value) => onChange(fieldName, index, "poolname", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>
                     <TextForm placeholder="Volume Dir" confirmTitle="Change Volume Dir" value={vol.volumedir} onSave={(value) => onChange(fieldName, index, "volumedir", value)} />
+                    {availableDirs.length > 1 && (<Text mb={1} fontSize="sm" color="gray.500">Directories: {availableDirs.join(', ')}</Text>)}
                 </Flex>
             </Flex>
         </Flex>
     )
 })
 
-const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => { }, poolOptions = [], onCancel = () => { } }) => {
+const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => { }, poolOptions = [], usedPoolNames, onCancel = () => { } }) => {
     const [vol, setVol] = useState(defaultVol);
+
+    const availableDirs = useMemo(() => getVolumeDirTokens(vol.volumedir), [vol.volumedir]);
+
+    // A new row can only target a pool not already claimed by an existing row.
+    const availablePoolOptions = useMemo(
+        () => poolOptions.filter((opt) => !usedPoolNames?.has(opt.value)),
+        [poolOptions, usedPoolNames]
+    );
 
     const valid = useMemo(() => {
         return vol.name && vol.poolname && vol.volumedir;
@@ -217,11 +252,12 @@ const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => 
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Pool Name:</Text>
-                    <Dropdown placeholder="Pool Name" options={poolOptions} selectedValue={vol.poolname} onChange={(option) => handleArrayChange("poolname", option.value)} />
+                    <Dropdown placeholder="Pool Name" options={availablePoolOptions} selectedValue={vol.poolname} onChange={(option) => handleArrayChange("poolname", option.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>
                     <Input placeholder="Volume Dir" value={vol.volumedir} onChange={(e) => handleArrayChange("volumedir", e.target.value)} />
+                    {availableDirs.length > 1 && (<Text mb={1} fontSize="sm" color="gray.500">Directories: {availableDirs.join(', ')}</Text>)}
                 </Flex>
                 <Flex direction="column" flex="1">
                     <HStack spacing={2} mt={4}>

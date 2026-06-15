@@ -38,16 +38,25 @@ const nodeToString = (node) => node.name || node.path;
 
 const normalizeSubPath = (value) => {
   const raw = typeof value === 'string' ? value.trim() : '';
-  if (!raw || raw === '/') return '/';
+  if (!raw || raw === '/' || raw === '.') return '/';
   return raw.startsWith('/') ? raw : `/${raw}`;
 };
 
 const composeSourcePath = (srcbasepath, subpath) => {
   const normalizedSubPath = normalizeSubPath(subpath);
-  if (!srcbasepath) return normalizedSubPath;
+  if (!srcbasepath) {
+    // Volume-type sources have no single base path: srcpath is relative to
+    // the pool's disk root, where "." denotes the root itself.
+    return normalizedSubPath === '/' ? '.' : normalizedSubPath.slice(1);
+  }
   if (normalizedSubPath === '/') return srcbasepath;
   return `${srcbasepath}${normalizedSubPath}`.replace('//', '/');
 };
+
+// volumedir lists the pool's available top-level directories as a
+// whitespace-separated string (see config.Volume.GetVolumeDirs()).
+const getVolumeDirTokens = (volumedir) =>
+  typeof volumedir === 'string' ? volumedir.split(/\s+/).filter(Boolean) : [];
 
 const getDisplaySubPath = (srcpath, srcbasepath) => {
   const sourcePath = typeof srcpath === 'string' ? srcpath : '';
@@ -102,10 +111,14 @@ const PathSection = ({
     const vol = srctype === "volume" ? volumeOptions.find(opt => opt.name === srcname) : null;
     const gc = srctype === "git" ? gitOptions.find(opt => opt.value === srcname) : null;
     const s3 = srctype === "s3" ? s3Options.find(opt => opt.value === srcname) : null;
-    const srcbasepath = srctype === "volume" ? vol?.volumedir || "" : srctype === "git" ? gc?.volumedir || "" : srctype === "s3" ? s3?.volumedir || "" : "";
+    // Volume-type sources have no single base path: vol.volumedir lists the
+    // pool's available top-level directories, not a literal srcpath prefix.
+    const srcbasepath = srctype === "git" ? gc?.volumedir || "" : srctype === "s3" ? s3?.volumedir || "" : "";
+    const availableDirs = srctype === "volume" ? getVolumeDirTokens(vol?.volumedir) : [];
     return {
       ...row,
       srcbasepath: srcbasepath,
+      availableDirs,
       subpath: getDisplaySubPath(srcpath, srcbasepath),
       parentname: parentname || parent.value,
       parentpath: parent.dockerpath || parent.srcpath,
@@ -156,7 +169,7 @@ const PathSection = ({
       columnHelper.accessor((row) => row.srcname, {
         header: 'Source Name'
       }),
-      columnHelper.accessor((row) => row.srcbasepath, {
+      columnHelper.accessor((row) => row.srctype === 'volume' ? (row.availableDirs || []).join(', ') : row.srcbasepath, {
         header: 'Storage Base Path'
       }),
       columnHelper.accessor((row) => row.subpath, {
@@ -266,16 +279,22 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gi
   }, [parentsrctype, parentGitTree, dockerTree, parentpath, parentsrcpath]);
 
   const { srcTree, srcbasepath } = useMemo(() => {
-    if (srctype === "vol" && vol) {
-      return { srcTree: dockerTree, srcbasepath: vol?.volumedir || "" };
-    } else if (srctype === "git" && gc) {
+    if (srctype === "git" && gc) {
       return { srcTree: gitTree, srcbasepath: gc?.volumedir || "" };
     } else if (srctype === "s3" && s3) {
       return { srcTree: s3Tree, srcbasepath: s3?.volumedir || "" };
     } else {
+      // Volume-type sources (and the unset/default state) have no single
+      // base path: vol.volumedir lists the pool's available top-level
+      // directories, and srcpath is itself relative to the pool disk root.
       return { srcTree: dockerTree, srcbasepath: "" };
     }
-  }, [srctype, gitTree, s3Tree, dockerTree]);
+  }, [srctype, gc, s3, gitTree, s3Tree, dockerTree]);
+
+  const availableDirs = useMemo(
+    () => srctype === "volume" ? getVolumeDirTokens(vol?.volumedir) : [],
+    [srctype, vol]
+  );
 
   const subpath = useMemo(() => {
     return getDisplaySubPath(srcpath, srcbasepath);
@@ -338,9 +357,10 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gi
         <Text mb={1}>{srcLabel}</Text>
         <Dropdown key={srctype} confirmTitle={"Source changed"} placeholder="Source" options={srcOptions} selectedValue={srcname} onChange={(value) => onRowArrayChange(fieldName, index, "srcname", value)} />
         {srcbasepath && (<Text key={srcname} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)}
+        {srctype === 'volume' && availableDirs.length > 0 && (<Text key={`${srcname}-dirs`} mb={1} fontSize="sm" color="gray.500">Available directories: {availableDirs.join(', ')}</Text>)}
       </Flex>
     );
-  }, [srctype, volumeOptions, gitOptions, s3Options]);
+  }, [srctype, volumeOptions, gitOptions, s3Options, srcname, srcbasepath, availableDirs]);
 
   const handleOnTreeSelect = useCallback((subpaths) => {
     if (typeof subpaths === 'string') {
@@ -432,6 +452,11 @@ const PathNewForm = React.memo(({ clusterName, appId, parentRow, gitOptions, vol
     [srctype, srcname, s3Options]
   );
 
+  const availableDirs = useMemo(
+    () => srctype === "volume" ? getVolumeDirTokens(vol?.volumedir) : [],
+    [srctype, vol]
+  );
+
   const srcDropdown = useMemo(() => {
     let srcOptions = [];
     let srcLabel = '';
@@ -457,9 +482,10 @@ const PathNewForm = React.memo(({ clusterName, appId, parentRow, gitOptions, vol
         <Text mb={1}>{srcLabel}</Text>
         <Dropdown key={srctype} placeholder="Source" options={srcOptions} selectedValue={srcname} onChange={(option) => handleArrayChange("srcname", option.value)} />
         {srcbasepath && (<Text key={srcname} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)}
+        {srctype === 'volume' && availableDirs.length > 0 && (<Text key={`${srcname}-dirs`} mb={1} fontSize="sm" color="gray.500">Available directories: {availableDirs.join(', ')}</Text>)}
       </Flex>
     );
-  }, [srctype, volumeOptions, gitOptions, s3Options]);
+  }, [srctype, volumeOptions, gitOptions, s3Options, srcname, srcbasepath, availableDirs]);
 
   const parent = useMemo(() => (parentRow || { name: "", dockerpath: "", srcpath: "", srctype: "", srcname: "" }), [parentRow]);
   const { name: parentname, dockerpath: parentpath, srctype: parentsrctype, srcname: parentsrcname, srcpath: parentsrcpath } = parent;
@@ -510,16 +536,16 @@ const PathNewForm = React.memo(({ clusterName, appId, parentRow, gitOptions, vol
       } else if (key === "dockersubpath") {
         newPath.dockersubpath = (parentpath + (value.startsWith("/") ? value : `/${value}`)).replace("//", "/");
       } else if (key === "srcname") {
-        if (prev.srctype === "volume") {
-          const found = volumeOptions.find(opt => opt.name === value);
-          newPath.srcbasepath = found ? found.volumedir : "";
-        } else if (prev.srctype === "git") {
+        if (prev.srctype === "git") {
           const found = gitOptions.find(opt => opt.value === value);
           newPath.srcbasepath = found ? found.volumedir : "";
         } else if (prev.srctype === "s3") {
           const found = s3Options.find(opt => opt.value === value);
           newPath.srcbasepath = found ? found.volumedir : "";
         } else {
+          // Volume-type sources (and the unset/default state) have no
+          // single base path: vol.volumedir lists the pool's available
+          // top-level directories, not a literal srcpath prefix.
           newPath.srcbasepath = "";
         }
         newPath.srcpath = composeSourcePath(newPath.srcbasepath, newPath.subpath);
