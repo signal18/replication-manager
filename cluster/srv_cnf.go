@@ -697,8 +697,8 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype
 							vs.Preserved = vs.Config
 							vs.PreservedSource = "unknown-variable"
 						}
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-							"Unknown variable detected by DB: %s — removed from delta/preserved, added to agreed for review", varName)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+							"Unknown variable detected by DB on %s: %s — removed from delta/preserved, added to agreed for review", server.URL, varName)
 					}
 				}
 			}
