@@ -93,8 +93,8 @@ func (p *WorkloadTagsPlugin) Evaluate(src LogSource) EvaluateResult {
 	}
 }
 
-// fmtPct formats a count/total percentage for display. Returns "" when total is 0.
-func fmtPct(count, total int64) string {
+// FmtPct formats a count/total percentage for display. Returns "" when total is 0.
+func FmtPct(count, total int64) string {
 	if total <= 0 || count <= 0 {
 		return ""
 	}
@@ -114,7 +114,9 @@ func appendFeatureTag(findings []Finding, src LogSource, questions int64, status
 		findings = append(findings, Finding{
 			ErrKey:      errKey,
 			Severity:    SeverityWorkload,
-			Description: fmt.Sprintf("%s%s", desc, fmtPct(v, questions)),
+			Description: desc,
+			Count:       v,
+			Total:       questions,
 		})
 	}
 	return findings
@@ -133,7 +135,9 @@ func appendHandlerTag(findings []Finding, src LogSource, questions int64) []Find
 			findings = append(findings, Finding{
 				ErrKey:      "WTAG0020",
 				Severity:    SeverityWorkload,
-				Description: fmt.Sprintf("Heavy full-scan workload (rnd_next/read_key=%.0f)%s", ratio, fmtPct(readRndNext, questions)),
+				Description: fmt.Sprintf("Heavy full-scan workload (rnd_next/read_key=%.0f)", ratio),
+				Count:       readRndNext,
+				Total:       questions,
 			})
 		}
 	}
@@ -145,7 +149,9 @@ func appendHandlerTag(findings []Finding, src LogSource, questions int64) []Find
 			findings = append(findings, Finding{
 				ErrKey:      "WTAG0021",
 				Severity:    SeverityWorkload,
-				Description: fmt.Sprintf("Write-intensive workload (write ratio=%.0f%%)%s", writeRatio*100, fmtPct(writeTotal, questions)),
+				Description: fmt.Sprintf("Write-intensive workload (write ratio=%.0f%%)", writeRatio*100),
+				Count:       writeTotal,
+				Total:       questions,
 			})
 		}
 	}
@@ -220,7 +226,9 @@ func appendOptimizerProblems(findings []Finding, src LogSource, questions int64)
 		findings = append(findings, Finding{
 			ErrKey:      "WTAG0150",
 			Severity:    SeverityWorkload,
-			Description: fmt.Sprintf("Joins without indexes (Select_full_join=%d)%s", selectFullJoin, fmtPct(selectFullJoin, questions)),
+			Description: fmt.Sprintf("Joins without indexes (Select_full_join=%d)", selectFullJoin),
+			Count:       selectFullJoin,
+			Total:       questions,
 			Remediations: []Remediation{{
 				Type:        "sql",
 				Description: "Add indexes to join columns identified by EXPLAIN on slow queries",
@@ -234,7 +242,9 @@ func appendOptimizerProblems(findings []Finding, src LogSource, questions int64)
 		findings = append(findings, Finding{
 			ErrKey:      "WTAG0151",
 			Severity:    SeverityWorkload,
-			Description: fmt.Sprintf("Joins requiring range check per row (Select_range_check=%d)%s", selectRangeCheck, fmtPct(selectRangeCheck, questions)),
+			Description: fmt.Sprintf("Joins requiring range check per row (Select_range_check=%d)", selectRangeCheck),
+			Count:       selectRangeCheck,
+			Total:       questions,
 		})
 	}
 
@@ -243,7 +253,9 @@ func appendOptimizerProblems(findings []Finding, src LogSource, questions int64)
 		findings = append(findings, Finding{
 			ErrKey:      "WTAG0152",
 			Severity:    SeverityWorkload,
-			Description: fmt.Sprintf("Multi-pass sorts (Sort_merge_passes=%d)%s", sortMergePasses, fmtPct(sortMergePasses, questions)),
+			Description: fmt.Sprintf("Multi-pass sorts (Sort_merge_passes=%d)", sortMergePasses),
+			Count:       sortMergePasses,
+			Total:       questions,
 			Remediations: []Remediation{{
 				Type:        "my_cnf",
 				Description: "Increase sort_buffer_size to reduce merge passes",
@@ -261,7 +273,9 @@ func appendOptimizerProblems(findings []Finding, src LogSource, questions int64)
 			findings = append(findings, Finding{
 				ErrKey:      "WTAG0153",
 				Severity:    SeverityWorkload,
-				Description: fmt.Sprintf("High disk temp table ratio (%.0f%%, %d/%d)%s", ratio, tmpDisk, tmpTotal, fmtPct(tmpDisk, questions)),
+				Description: fmt.Sprintf("High disk temp table ratio (%.0f%%, %d/%d)", ratio, tmpDisk, tmpTotal),
+				Count:       tmpDisk,
+				Total:       questions,
 				Remediations: []Remediation{{
 					Type:        "my_cnf",
 					Description: "Increase tmp_table_size and max_heap_table_size",

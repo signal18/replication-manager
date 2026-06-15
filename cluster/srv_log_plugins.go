@@ -214,6 +214,13 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			st.ServerUrl = server.URL
 			compositeKey := fmt.Sprintf("%s@%s", f.ErrKey, server.URL)
 
+			if f.Severity == logplugin.SeverityWorkload && f.Count > 0 && strings.HasPrefix(f.ErrKey, "WTAG") {
+				prev := cluster.wtagCounters[f.ErrKey]
+				prev[0] += f.Count
+				prev[1] += f.Total
+				cluster.wtagCounters[f.ErrKey] = prev
+			}
+
 			isSecurity := f.Severity == logplugin.SeveritySecurity
 			isWorkload := f.Severity == logplugin.SeverityWorkload
 
@@ -418,6 +425,7 @@ func (cluster *Cluster) CheckLogPlugins() {
 	if cluster.pluginSpikeCache == nil {
 		cluster.pluginSpikeCache = make(map[string]*logplugin.SpikeCache)
 	}
+	cluster.wtagCounters = make(map[string][2]int64)
 	if cluster.pluginRegistry == nil {
 		cluster.pluginRegistry = logplugin.NewRegistry()
 	}
@@ -510,6 +518,9 @@ func (cluster *Cluster) CheckLogPlugins() {
 			seenTags[tagKey] = true
 			s.ErrKey = tagKey
 			s.ServerUrl = ""
+			if ct, ok := cluster.wtagCounters[tagKey]; ok && ct[1] > 0 {
+				s.ErrDesc += logplugin.FmtPct(ct[0], ct[1])
+			}
 		}
 		workload = append(workload, s)
 	}

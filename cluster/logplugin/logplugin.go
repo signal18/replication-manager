@@ -71,6 +71,8 @@ type Finding struct {
 	Severity     Severity
 	Description  string
 	Remediations []Remediation
+	Count        int64
+	Total        int64
 }
 
 // ToState converts a Finding to a cluster state.State.
