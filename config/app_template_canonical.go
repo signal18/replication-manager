@@ -28,7 +28,21 @@ type AppTemplateCanonicalizationResult struct {
 	// srcname/volumename fields retargeted to a merged volume's canonical
 	// name. An entry with both fields rewritten is still counted once.
 	RewrittenVolumeReferences int
+
+	// StampedAppConfigVersion reports whether the top-level
+	// app-config-version marker was missing or stale and was (re)written to
+	// AppConfigVersionV2.
+	StampedAppConfigVersion bool
 }
+
+// AppConfigVersionV2 is the persisted app-config-version value that marks
+// app/template TOML content as already matching the V1 -> V2 migration
+// baseline implemented by CanonicalizeAppTemplateRaw/CanonicalizeAppVolumesRaw.
+const AppConfigVersionV2 = 2
+
+// appConfigVersionKey is the top-level TOML key holding the persisted
+// app-config-version marker.
+const appConfigVersionKey = "app-config-version"
 
 func CanonicalizeAppTemplateTOML(content []byte) ([]byte, AppTemplateCanonicalizationResult, error) {
 	var res AppTemplateCanonicalizationResult
@@ -593,4 +607,57 @@ func rewriteVolumeNameReferences(storages map[string]any, key string, renames ma
 	}
 
 	return nil
+}
+
+// AppConfigVersionFromRaw returns the top-level app-config-version marker
+// from raw TOML content, or 0 if it is missing or not an integer.
+func AppConfigVersionFromRaw(raw map[string]any) int {
+	return pmToInt(raw[appConfigVersionKey], 0)
+}
+
+// StampAppConfigVersionRaw sets the top-level app-config-version marker to
+// AppConfigVersionV2 if it is missing or older than AppConfigVersionV2.
+// Already-V2 (or newer) content is left untouched. Returns true if raw was
+// modified.
+func StampAppConfigVersionRaw(raw map[string]any) bool {
+	if AppConfigVersionFromRaw(raw) >= AppConfigVersionV2 {
+		return false
+	}
+	raw[appConfigVersionKey] = AppConfigVersionV2
+	return true
+}
+
+// StampAppConfigVersionTOML ensures content carries a top-level
+// app-config-version marker at or above AppConfigVersionV2, rewriting
+// content only when the marker is missing or stale. Content whose marker is
+// already >= AppConfigVersionV2 is returned unchanged (byte-identical), so
+// repeated canonicalization passes over already-flagged V2 content do not
+// keep rewriting it.
+func StampAppConfigVersionTOML(content []byte) ([]byte, AppTemplateCanonicalizationResult, error) {
+	var res AppTemplateCanonicalizationResult
+
+	t, err := toml.LoadBytes(content)
+	if err != nil {
+		return nil, res, err
+	}
+
+	raw := t.ToMap()
+	if !StampAppConfigVersionRaw(raw) {
+		return content, res, nil
+	}
+
+	res.Changed = true
+	res.StampedAppConfigVersion = true
+
+	t, err = toml.TreeFromMap(raw)
+	if err != nil {
+		return nil, res, err
+	}
+
+	var buf bytes.Buffer
+	if _, err := t.WriteTo(&buf); err != nil {
+		return nil, res, err
+	}
+
+	return buf.Bytes(), res, nil
 }

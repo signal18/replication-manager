@@ -146,6 +146,44 @@ srcpath = "."
 	if strings.Contains(got, `"data-volume"`) || strings.Contains(got, `"logs-volume"`) {
 		t.Fatalf("expected legacy volume names rewritten away, got:\n%s", got)
 	}
+	if !strings.Contains(got, "app-config-version = 2") {
+		t.Fatalf("expected app-config-version = 2 to be stamped on save, got:\n%s", got)
+	}
+}
+
+// TestAppTemplateContentSave_AlreadyV2NoOp covers Phase 10 task 4 for the
+// template save flow: re-saving already-V2 canonical content does not
+// produce a second rewrite of the version marker (CanonicalizeAppContent is
+// idempotent on already-flagged content).
+func TestAppTemplateContentSave_AlreadyV2NoOp(t *testing.T) {
+	versioned := []byte(`
+app-config-version = 2
+
+[[deployment.storages.volumes]]
+name = "{name}-data"
+poolname = "data"
+volumedir = "data"
+
+[[deployment.paths]]
+name = "web-root"
+dockerpath = "/var/www/html"
+srctype = "volume"
+srcname = "{name}-data"
+volumename = "{name}-data"
+srcpath = "."
+level = 0
+`)
+
+	canonicalContent, res, err := cluster.CanonicalizeAppContent(versioned, "")
+	if err != nil {
+		t.Fatalf("CanonicalizeAppContent failed: %v", err)
+	}
+	if res.Changed {
+		t.Fatalf("expected no changes for already-V2 canonical content, got %+v", res)
+	}
+	if string(canonicalContent) != string(versioned) {
+		t.Fatalf("expected output to equal input unchanged:\nin:\n%s\nout:\n%s", versioned, canonicalContent)
+	}
 }
 
 func TestWriteTemplateContentAtomically(t *testing.T) {
@@ -198,6 +236,16 @@ srcpath = "."
 	localPath := filepath.Join(workDir, ".templates", "apps", "local", "copyme.toml")
 	if _, err := os.Stat(localPath); err != nil {
 		t.Fatalf("expected local template copy at %s, err=%v", localPath, err)
+	}
+
+	// Phase 10 task 5: the local copy is created via CanonicalizeAppContent,
+	// so it must carry the app-config-version = 2 marker.
+	copied, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read local template copy failed: %v", err)
+	}
+	if !strings.Contains(string(copied), "app-config-version = 2") {
+		t.Fatalf("expected app-config-version = 2 in local template copy, got:\n%s", copied)
 	}
 }
 

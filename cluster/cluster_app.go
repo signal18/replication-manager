@@ -451,13 +451,14 @@ func (cluster *Cluster) WithdrawConflictedGatewayRoutes() {
 	}
 }
 
-// CanonicalizeAppContent runs the legacy path/level migration followed by the
-// app-volume row merge over app/template TOML content. appName selects the
-// volume naming convention used by CanonicalizeAppVolumesTOML: "" for
-// template content ("{name}-<pool>"), or the resolved app's name for app
-// config content ("<app>-<pool>"). The combined result reports Changed if
-// either pass rewrote the content, so callers can drive a single atomic
-// rewrite from it.
+// CanonicalizeAppContent runs the legacy path/level migration and the
+// app-volume row merge over app/template TOML content, then stamps the
+// result with the explicit app-config-version marker (see
+// config.StampAppConfigVersionTOML). appName selects the volume naming
+// convention used by CanonicalizeAppVolumesTOML: "" for template content
+// ("{name}-<pool>"), or the resolved app's name for app config content
+// ("<app>-<pool>"). The combined result reports Changed if any pass rewrote
+// the content, so callers can drive a single atomic rewrite from it.
 func CanonicalizeAppContent(content []byte, appName string) ([]byte, config.AppTemplateCanonicalizationResult, error) {
 	pathContent, res, err := config.CanonicalizeAppTemplateTOML(content)
 	if err != nil {
@@ -474,7 +475,15 @@ func CanonicalizeAppContent(content []byte, appName string) ([]byte, config.AppT
 	res.MergedVolumeRows = volRes.MergedVolumeRows
 	res.RewrittenVolumeReferences = volRes.RewrittenVolumeReferences
 
-	return volContent, res, nil
+	versionedContent, versionRes, err := config.StampAppConfigVersionTOML(volContent)
+	if err != nil {
+		return nil, res, err
+	}
+
+	res.Changed = res.Changed || versionRes.Changed
+	res.StampedAppConfigVersion = versionRes.StampedAppConfigVersion
+
+	return versionedContent, res, nil
 }
 
 // LoadConfig loads the configuration from a file to the configuration struct.

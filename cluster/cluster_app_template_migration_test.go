@@ -778,6 +778,153 @@ func TestAddSeededApp_MergesMultiRowVolumePoolWithResolvedName(t *testing.T) {
 	}
 }
 
+// TestLoadAppConfig_StampsAppConfigVersionOnLegacyContent covers Phase 10
+// tasks 1, 3, 4 and 5 for the app config load flow: loading unversioned
+// legacy app config content stamps app-config-version = 2 into both the
+// rewritten file and the unmarshalled AppConfig, and a second load of the
+// now-V2 content does not rewrite the file again.
+func TestLoadAppConfig_StampsAppConfigVersionOnLegacyContent(t *testing.T) {
+	workingDir := t.TempDir()
+	appsDir := filepath.Join(workingDir, "apps")
+	if err := os.MkdirAll(appsDir, 0o755); err != nil {
+		t.Fatalf("mkdir apps dir failed: %v", err)
+	}
+
+	appFile := filepath.Join(appsDir, "legacy-version.toml")
+	content := "app-host = \"legacy-version\"\napp-port = \"8080\"\nprov-app-memory = \"128M\"\nprov-app-disk-size = \"1G\"\n" + legacyAppTemplateTOML
+	if err := os.WriteFile(appFile, []byte(content), 0o644); err != nil {
+		t.Fatalf("write legacy app file failed: %v", err)
+	}
+
+	newCluster := func() *Cluster {
+		return &Cluster{
+			Name:       "test-cluster",
+			WorkingDir: workingDir,
+			crcTable:   crc64.MakeTable(crc64.ECMA),
+			Conf: &config.Config{
+				WorkingDir:     workingDir,
+				Apps:           make([]*config.AppConfig, 0),
+				DefaultFlagMap: map[string]interface{}{"prov-app-memory": "128M", "prov-app-disk-size": "1G"},
+			},
+		}
+	}
+
+	first := newCluster()
+	if err := first.LoadAppConfig(appsDir, "legacy-version"); err != nil && err.Error() != "" {
+		t.Fatalf("first LoadAppConfig failed: %v", err)
+	}
+	if len(first.Conf.Apps) != 1 {
+		t.Fatalf("expected 1 app config to load, got %d", len(first.Conf.Apps))
+	}
+	if got := first.Conf.Apps[0].AppConfigVersion; got != config.AppConfigVersionV2 {
+		t.Fatalf("expected AppConfigVersion %d, got %d", config.AppConfigVersionV2, got)
+	}
+
+	firstPass, err := os.ReadFile(appFile)
+	if err != nil {
+		t.Fatalf("read rewritten app file failed: %v", err)
+	}
+	if !strings.Contains(string(firstPass), "app-config-version = 2") {
+		t.Fatalf("expected app-config-version = 2 in rewritten file, got:\n%s", firstPass)
+	}
+
+	second := newCluster()
+	if err := second.LoadAppConfig(appsDir, "legacy-version"); err != nil && err.Error() != "" {
+		t.Fatalf("second LoadAppConfig failed: %v", err)
+	}
+	secondPass, err := os.ReadFile(appFile)
+	if err != nil {
+		t.Fatalf("read app file after second load failed: %v", err)
+	}
+	if string(firstPass) != string(secondPass) {
+		t.Fatalf("expected second load not to rewrite already-V2 config\nfirst:\n%s\nsecond:\n%s", firstPass, secondPass)
+	}
+	if got := second.Conf.Apps[0].AppConfigVersion; got != config.AppConfigVersionV2 {
+		t.Fatalf("expected AppConfigVersion %d on second load, got %d", config.AppConfigVersionV2, got)
+	}
+}
+
+// TestGetTemplateContent_StampsAppConfigVersionOnLocalCache covers Phase 10
+// tasks 1, 3 and 4 for the template load flow: an unversioned local template
+// is rewritten with app-config-version = 2, and a second load of the now-V2
+// cache does not rewrite the file again.
+func TestGetTemplateContent_StampsAppConfigVersionOnLocalCache(t *testing.T) {
+	workingDir := t.TempDir()
+	localPath := filepath.Join(workingDir, ".templates", "apps", "legacy-version.toml")
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+		t.Fatalf("mkdir local template dir failed: %v", err)
+	}
+	if err := os.WriteFile(localPath, []byte(legacyAppTemplateTOML), 0o644); err != nil {
+		t.Fatalf("write local legacy template failed: %v", err)
+	}
+
+	cluster := &Cluster{Conf: &config.Config{WorkingDir: workingDir}}
+
+	content, err := cluster.GetTemplateContent("legacy-version")
+	if err != nil {
+		t.Fatalf("GetTemplateContent failed: %v", err)
+	}
+	if !strings.Contains(string(content), "app-config-version = 2") {
+		t.Fatalf("expected app-config-version = 2 in returned content, got:\n%s", content)
+	}
+
+	firstPass, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read rewritten local template failed: %v", err)
+	}
+	if !strings.Contains(string(firstPass), "app-config-version = 2") {
+		t.Fatalf("expected app-config-version = 2 in rewritten local cache, got:\n%s", firstPass)
+	}
+
+	if _, err := cluster.GetTemplateContent("legacy-version"); err != nil {
+		t.Fatalf("second GetTemplateContent failed: %v", err)
+	}
+	secondPass, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read local template after second load failed: %v", err)
+	}
+	if string(firstPass) != string(secondPass) {
+		t.Fatalf("expected second load not to rewrite already-V2 template\nfirst:\n%s\nsecond:\n%s", firstPass, secondPass)
+	}
+}
+
+// TestAddSeededApp_StampsAppConfigVersion covers Phase 10 task 5 for the
+// seeded-app creation flow: a seeded app resolved from an unversioned
+// template ends up flagged with AppConfigVersion = config.AppConfigVersionV2.
+func TestAddSeededApp_StampsAppConfigVersion(t *testing.T) {
+	workingDir := t.TempDir()
+	localPath := filepath.Join(workingDir, ".templates", "apps", "legacy-version-seed.toml")
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+		t.Fatalf("mkdir local template dir failed: %v", err)
+	}
+	template := "app-port = \"8080\"\nprov-app-docker-img = \"nginx:latest\"\n" + legacyAppTemplateTOML
+	if err := os.WriteFile(localPath, []byte(template), 0o644); err != nil {
+		t.Fatalf("write local seed template failed: %v", err)
+	}
+
+	cluster := &Cluster{
+		Name:       "test-cluster",
+		WorkingDir: workingDir,
+		crcTable:   crc64.MakeTable(crc64.ECMA),
+		Conf: &config.Config{
+			WorkingDir: workingDir,
+			Apps:       make([]*config.AppConfig, 0),
+		},
+	}
+
+	if err := cluster.AddSeededApp("seed-version-host", "8080", "nginx:latest", "legacy-version-seed"); err != nil {
+		t.Fatalf("AddSeededApp failed: %v", err)
+	}
+
+	seeded := cluster.GetAppConfig("seed-version-host", "8080")
+	if seeded == nil {
+		t.Fatalf("expected seeded app config to be loaded")
+	}
+	if got := seeded.AppConfigVersion; got != config.AppConfigVersionV2 {
+		t.Fatalf("expected AppConfigVersion %d, got %d", config.AppConfigVersionV2, got)
+	}
+}
+
 func TestRefreshTemplateContent_RepoSyncFailureWithoutCacheReturnsError(t *testing.T) {
 	workingDir := t.TempDir()
 

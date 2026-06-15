@@ -247,6 +247,48 @@ volumename = "data-volume"
 	}
 }
 
+// TestBuildValidatedTempAppConfigFromTemplate_StampsAppConfigVersion covers
+// Phase 10 task 5 for the template reset/preview flow: the temp config built
+// from an unversioned template's canonicalized content (CanonicalizeAppContent
+// via buildValidatedTempAppConfigFromTemplate) is flagged with
+// AppConfigVersion = config.AppConfigVersionV2.
+func TestBuildValidatedTempAppConfigFromTemplate_StampsAppConfigVersion(t *testing.T) {
+	cl := &cluster.Cluster{Conf: &config.Config{WorkingDir: t.TempDir()}}
+	node := &cluster.App{
+		Name:                 "myapp",
+		AppConfig:            seedAppConfigForTemplateResetTests(),
+		AppClusterSubstitute: `{}`,
+	}
+
+	if err := writeLocalAppTemplate(cl.Conf.WorkingDir, "version-stamp", `
+prov-app-docker-img = "templated/new:9"
+
+[deployment]
+[[deployment.storages.volumes]]
+name = "data-volume"
+poolname = "data"
+volumedir = "data"
+
+[[deployment.paths]]
+name = "root"
+dockerpath = "/srv/app"
+srctype = "volume"
+srcname = "data-volume"
+srcpath = "."
+volumename = "data-volume"
+`); err != nil {
+		t.Fatalf("writeLocalAppTemplate: %v", err)
+	}
+
+	tempConfig, err := buildValidatedTempAppConfigFromTemplate(cl, node, "version-stamp", false)
+	if err != nil {
+		t.Fatalf("buildValidatedTempAppConfigFromTemplate: %v", err)
+	}
+	if got := tempConfig.AppConfigVersion; got != config.AppConfigVersionV2 {
+		t.Fatalf("expected AppConfigVersion %d, got %d", config.AppConfigVersionV2, got)
+	}
+}
+
 func TestBuildTemplateProjectionImpact_ReportsChangedTemplateOwnedFields(t *testing.T) {
 	current := seedAppConfigForTemplateResetTests()
 	projected := seedAppConfigForTemplateResetTests()

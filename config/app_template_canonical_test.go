@@ -713,3 +713,83 @@ func TestCanonicalizeAppTemplateRaw_UnresolvedParentReportedOnce(t *testing.T) {
 		t.Fatalf("expected unresolved parent %q, got %q", "missing-parent", res.UnresolvedParentReferences[0])
 	}
 }
+
+// TestStampAppConfigVersionTOML_UnversionedContentIsStamped covers Phase 10
+// task 1/3: content with no app-config-version marker is rewritten with
+// app-config-version = 2.
+func TestStampAppConfigVersionTOML_UnversionedContentIsStamped(t *testing.T) {
+	unversioned := []byte(`
+app-host = "myapp"
+app-port = "8080"
+`)
+
+	out, res, err := StampAppConfigVersionTOML(unversioned)
+	if err != nil {
+		t.Fatalf("stamp failed: %v", err)
+	}
+	if !res.Changed {
+		t.Fatalf("expected stamping to report changes")
+	}
+	if !res.StampedAppConfigVersion {
+		t.Fatalf("expected StampedAppConfigVersion to be true")
+	}
+	if !strings.Contains(string(out), "app-config-version = 2") {
+		t.Fatalf("expected app-config-version = 2 in output, got:\n%s", out)
+	}
+}
+
+// TestStampAppConfigVersionTOML_AlreadyV2NoOp covers Phase 10 task 4:
+// content already marked app-config-version = 2 must remain byte-identical.
+func TestStampAppConfigVersionTOML_AlreadyV2NoOp(t *testing.T) {
+	versioned := []byte(`
+app-config-version = 2
+app-host = "myapp"
+app-port = "8080"
+`)
+
+	out, res, err := StampAppConfigVersionTOML(versioned)
+	if err != nil {
+		t.Fatalf("stamp failed: %v", err)
+	}
+	if res.Changed {
+		t.Fatalf("expected no changes for already-V2 content, got %+v", res)
+	}
+	if res.StampedAppConfigVersion {
+		t.Fatalf("expected StampedAppConfigVersion to be false for already-V2 content")
+	}
+	if string(out) != string(versioned) {
+		t.Fatalf("expected output to equal input unchanged:\nin:\n%s\nout:\n%s", versioned, out)
+	}
+}
+
+// TestStampAppConfigVersionTOML_StaleVersionIsBumped covers a marker older
+// than AppConfigVersionV2 being bumped up to the current version.
+func TestStampAppConfigVersionTOML_StaleVersionIsBumped(t *testing.T) {
+	stale := []byte(`
+app-config-version = 1
+app-host = "myapp"
+`)
+
+	out, res, err := StampAppConfigVersionTOML(stale)
+	if err != nil {
+		t.Fatalf("stamp failed: %v", err)
+	}
+	if !res.Changed || !res.StampedAppConfigVersion {
+		t.Fatalf("expected stale version to be bumped, got %+v", res)
+	}
+	if !strings.Contains(string(out), "app-config-version = 2") {
+		t.Fatalf("expected app-config-version = 2 in output, got:\n%s", out)
+	}
+}
+
+func TestAppConfigVersionFromRaw(t *testing.T) {
+	if v := AppConfigVersionFromRaw(map[string]any{}); v != 0 {
+		t.Fatalf("expected 0 for missing marker, got %d", v)
+	}
+	if v := AppConfigVersionFromRaw(map[string]any{"app-config-version": int64(2)}); v != 2 {
+		t.Fatalf("expected 2 for int64 marker, got %d", v)
+	}
+	if v := AppConfigVersionFromRaw(map[string]any{"app-config-version": "not-a-number"}); v != 0 {
+		t.Fatalf("expected 0 for non-numeric marker, got %d", v)
+	}
+}
