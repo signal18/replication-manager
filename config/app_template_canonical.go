@@ -520,6 +520,14 @@ func canonicalizeAppVolumes(deployment, storages map[string]any, volumes []any, 
 			}
 		}
 
+		// V1 same-pool duplicates are treated as one ambiguous logical volume, not
+		// as independently meaningful persisted objects. The first row becomes the
+		// canonical baseline carrier for any extra/raw fields, while later rows
+		// contribute only to the merged directory set and row-name rewrite map.
+		// Unknown/raw fields present only on rows[1..n] are intentionally not
+		// merged, because there is no defined V1 conflict-resolution rule for them
+		// and the canonicalization goal is to collapse the duplicates to one
+		// deterministic baseline row.
 		merged := make(map[string]any, len(rows[0].raw))
 		for k, v := range rows[0].raw {
 			merged[k] = v

@@ -1401,12 +1401,25 @@ func (v *Volume) Validate() error {
 	return nil
 }
 
+// GetSourcePath returns a legacy-compatible single-path view of VolumeDir for
+// callers that still expect a Volume to expose one path prefix. For a
+// multi-token VolumeDir (for example "data logs"), only the first token is
+// returned so legacy callers never receive the invalid literal path
+// "/data logs". Modern direct-volume path mappings must not use this helper to
+// derive root semantics: they are rooted at the saved volume row itself and use
+// "." explicitly.
 func (v *Volume) GetSourcePath() string {
-	// Ensure the volume directory starts with a slash
-	if !strings.HasPrefix(v.VolumeDir, "/") {
-		return "/" + v.VolumeDir
+	dir := v.DefaultSubdir()
+	if dir == "" {
+		// Preserve the historical empty-value shape as closely as possible for
+		// deprecated callers. Validate() rejects empty VolumeDir for saved rows,
+		// so this is only for defensive compatibility.
+		return "/"
 	}
-	return v.VolumeDir
+	if !strings.HasPrefix(dir, "/") {
+		return "/" + dir
+	}
+	return dir
 }
 
 func (v *Volume) GetSourceName() string {

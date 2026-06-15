@@ -399,6 +399,53 @@ srcpath = "."
 	}
 }
 
+// TestCanonicalizeAppVolumesTOML_MultiRowMergedUsesFirstRowAsBaseline
+// documents the intentional V1 merge policy for same-pool duplicate rows: the
+// first row acts as the canonical/raw-field baseline carrier, while later rows
+// contribute only their directories and row-name rewrite information. Unknown
+// raw fields present only on later rows are intentionally not merged because
+// V1 duplicates are treated as one ambiguous logical volume, not as distinct
+// persisted objects with a field-by-field conflict-resolution contract.
+func TestCanonicalizeAppVolumesTOML_MultiRowMergedUsesFirstRowAsBaseline(t *testing.T) {
+	legacy := []byte(`
+[deployment.storages]
+[[deployment.storages.volumes]]
+name = "data-volume"
+poolname = "data"
+volumedir = "data"
+firstonly = "keep-me"
+
+[[deployment.storages.volumes]]
+name = "logs-volume"
+poolname = "data"
+volumedir = "logs"
+secondonly = "drop-me"
+`)
+
+	canonical, res, err := CanonicalizeAppVolumesTOML(legacy, "")
+	if err != nil {
+		t.Fatalf("canonicalize failed: %v", err)
+	}
+	if !res.Changed {
+		t.Fatalf("expected canonicalization to report changes")
+	}
+
+	volumes, _ := loadVolumesAndPaths(t, canonical)
+	if len(volumes) != 1 {
+		t.Fatalf("expected volumes to merge into one row, got %d", len(volumes))
+	}
+	merged := volumes[0]
+	if got := asTrimmedString(merged["firstonly"]); got != "keep-me" {
+		t.Fatalf("expected first-row raw field preserved as baseline, got %q", got)
+	}
+	if _, ok := merged["secondonly"]; ok {
+		t.Fatalf("expected later-row raw field to be intentionally dropped, got %+v", merged["secondonly"])
+	}
+	if got := asTrimmedString(merged["volumedir"]); got != "data logs" {
+		t.Fatalf("expected merged volumedir 'data logs', got %q", got)
+	}
+}
+
 // TestCanonicalizeAppVolumesTOML_V2SameVolumeRowsGitCloneReferencePreserved is
 // a Phase 11 follow-up to
 // TestCanonicalizeAppVolumesTOML_V2FlaggedMultiRowPoolNotMerged: a git-clone

@@ -76,6 +76,27 @@ func TestVolume_S3MountSubdir(t *testing.T) {
 	}
 }
 
+func TestVolume_GetSourcePath(t *testing.T) {
+	cases := []struct {
+		name string
+		dir  string
+		want string
+	}{
+		{"single token row", "data", "/data"},
+		{"multi-token row uses first token", "data logs", "/data"},
+		{"empty row preserves root slash", "", "/"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			v := &Volume{VolumeDir: tc.dir}
+			if got := v.GetSourcePath(); got != tc.want {
+				t.Fatalf("GetSourcePath() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestNormalizeVolumeDirs(t *testing.T) {
 	cases := []struct {
 		name string
