@@ -1,4 +1,6 @@
-import { Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay } from '@chakra-ui/react'
+import {
+  Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay
+} from '@chakra-ui/react'
 import React, { useState, useEffect, useMemo } from 'react'
 import { useSelector } from 'react-redux'
 import NotFound from '../../NotFound'
@@ -11,12 +13,10 @@ import { useTheme } from '../../../ThemeProvider'
 function AlertModal({ type, isOpen, closeModal, alerts }) {
   const { theme } = useTheme()
   const {
-    common: { isMobile, isTablet, isDesktop },
-    cluster: { clusterAlerts }
+    common: { isMobile, isTablet, isDesktop }
   } = useSelector((state) => state)
 
-  const source = alerts ?? clusterAlerts
-
+  const source = alerts ?? useSelector((state) => state.cluster.clusterAlerts)
   const [data, setData] = useState([])
 
   useEffect(() => {
@@ -34,11 +34,11 @@ function AlertModal({ type, isOpen, closeModal, alerts }) {
     () => [
       columnHelper.accessor((row) => row.desc, {
         id: 'desc',
-        cell: (info) => {
-          const value = info.getValue()
-          // Add space after comma if not present
-          return value?.replace(/,(?!\s)/g, ', ') || ''
-        },
+        cell: (info) => (
+          <span style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
+            {info.getValue()?.replace(/,(?!\s)/g, ', ') || ''}
+          </span>
+        ),
         header: () => <span>Description</span>
       }),
       columnHelper.accessor((row) => row.from, {
@@ -49,7 +49,7 @@ function AlertModal({ type, isOpen, closeModal, alerts }) {
       }),
       columnHelper.accessor((row) => row.number, {
         id: 'number',
-        cell: (info) => info.getValue(),
+        cell: (info) => (info.getValue() || '').split('@')[0],
         header: () => <span>Number</span>,
         maxWidth: '200'
       })

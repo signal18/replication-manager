@@ -220,10 +220,6 @@ const TerminalComponent = () => {
       const socket = new WebSocket(url);
       socketRef.current = socket;
 
-      // Attach the terminal to the WebSocket using AttachAddon
-      const attachAddon = new AttachAddon(socket);
-      terminalInstanceRef.current.loadAddon(attachAddon);
-
       socket.onerror = () => {
         if (socketRef.current !== socket) {
           return;
@@ -231,6 +227,10 @@ const TerminalComponent = () => {
         console.error('WebSocket error');
         setStatus('error');
       };
+
+      // Attach the terminal to the WebSocket using AttachAddon
+      const attachAddon = new AttachAddon(socket);
+      terminalInstanceRef.current.loadAddon(attachAddon);
 
       socket.onopen = () => {
         if (socketRef.current !== socket) {

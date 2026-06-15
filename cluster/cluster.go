@@ -19,6 +19,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"os/user"
 	"runtime"
 	"slices"
@@ -133,6 +134,8 @@ type Cluster struct {
 	IsNeedStagingChange           bool                       `json:"isNeedStagingChange" groups:"web"`
 	IsConfigPathChange            bool                       `json:"isConfigPathChange" groups:"web"`
 	IsResticQueuePaused           bool                       `json:"isResticQueuePaused" groups:"web"`
+	BackupSlotsInUse              int                        `json:"backupSlotsInUse" groups:"web"`
+	BackupSlotsTotal              int                        `json:"backupSlotsTotal" groups:"web"`
 	SchemaMonitorRequested        int32                      `json:"-"`
 	Conf                          *config.Config             `json:"config" groups:"apps"`
 	Confs                         *config.ConfVersion        `json:"-"`
@@ -167,6 +170,7 @@ type Cluster struct {
 	DiskType                      map[string]string          `json:"diskType" groups:"web"`
 	VMType                        map[string]bool            `json:"vmType" groups:"web"`
 	AppS3Providers                []string                   `json:"appS3Providers" groups:"web"`
+	GatewayConflicts              map[string]string          `json:"gatewayConflicts" groups:"web"`
 	// s3Providers groups S3 provider state and locking primitives in one place.
 	// Use the accessor methods (Add/Remove/Update/GetS3ProvidersSnapshot) and
 	// CRUD transaction lock helpers instead of direct field mutation.
@@ -176,6 +180,7 @@ type Cluster struct {
 	hostList                      []string                   `json:"-"`
 	proxyList                     []string                   `json:"-"`
 	clusterList                   map[string]*Cluster        `json:"-"`
+	clusterOrder                  []string                   `json:"-"` // ClusterList order; index = ownership priority
 	deprecatedKeys                map[string]map[string]bool `json:"-"`
 	slaves                        serverList                 `json:"slaves" groups:"apps"`
 	master                        *ServerMonitor             `json:"master" groups:"apps"`
@@ -297,6 +302,7 @@ type Cluster struct {
 	MessageChan                         chan sharedlog.Message      `json:"-"`
 	ErrorConfigs                        config.ErrorConfigs         `json:"-"` //To store error config
 	Partner                             *config.Partner             `json:"partner" groups:"web"`
+	ServerGlobals                       *ServerGlobals              `json:"-"`
 	ConfigManager                       *manager.ConfigManager      `json:"-"`
 	failSendCount                       int                         `json:"-"`
 	MeetUserID                          string                      `json:"-"` //To store meet user id
@@ -313,6 +319,7 @@ type Cluster struct {
 	VersionsMap           *config.VersionsMap
 	SessionManager        *tty.SessionManager `json:"-"`
 	SysBenchTpcMResults   []SysBenchTpcResultPerMinute
+	SysbenchHistory       SysbenchLog                  `json:"sysbenchHistory"  groups:"web"`
 	OpenSVCStats          atomic.Value `json:"-"`
 	OrchestratorVersion   string       `json:"-"`
 	orchestratorVersionMu sync.RWMutex `json:"-"`
@@ -406,6 +413,7 @@ type Alerts struct {
 
 type Diff struct {
 	Server        string `json:"serverName"`
+	Role          string `json:"role"`
 	VariableValue string `json:"variableValue"`
 }
 
@@ -447,6 +455,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	go cluster.ConsumeMessageChan()
 
 	*cluster.Conf = confs.ConfInit
+	cluster.Conf.NormalizeBackupArchiveMode()
 
 	cluster.tlog = tlog
 	cluster.htlog = loghttp
@@ -492,6 +501,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
 	cluster.InterventionHistory = make([]InterventionEntry, 0)
 	cluster.LoadInterventionHistory()
+	cluster.LoadSysbenchLog()
 	cluster.pluginSpikeCache = make(map[string]*logplugin.SpikeCache)
 	cluster.pluginRegistry = logplugin.NewRegistry()
 	if cluster.Conf.Arbitration {
@@ -652,7 +662,10 @@ func (cluster *Cluster) InitFromConf() {
 	}
 	cluster.SqlGeneralLog.AddHook(hookgen)
 
-	cluster.LoadAppConfigs()
+	if loadErr := cluster.LoadAppConfigs(); loadErr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
+			"Startup app config load failed (some app configs may not have loaded): %v", loadErr)
+	}
 
 	// Configurator generates base configuration from tags, which is overridden by:
 	// 1. Cluster-wide preserved variables
@@ -697,6 +710,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.initScheduler()
 	cluster.CheckDefaultUser(true)
 	cluster.RefreshToolVersions()
+	cluster.initResticLocalDir()
 	cluster.StartResticManager()
 
 	cluster.Conf.TopologyTarget = cluster.GetTopologyFromConf()
@@ -797,6 +811,10 @@ func (cluster *Cluster) Run() {
 			cluster.AppIdList = cluster.GetAppServerIdList()
 			if cluster.ResticManager != nil {
 				cluster.IsResticQueuePaused = cluster.ResticManager.IsPaused()
+			}
+			if cluster.ServerGlobals != nil && cluster.ServerGlobals.BackupSemaphore != nil {
+				cluster.BackupSlotsInUse = len(cluster.ServerGlobals.BackupSemaphore)
+				cluster.BackupSlotsTotal = cap(cluster.ServerGlobals.BackupSemaphore)
 			}
 			go cluster.CheckDefaultUser(false)
 
@@ -990,6 +1008,7 @@ func (cluster *Cluster) Run() {
 				cluster.CheckFailed()
 				cluster.IsConfigPathChange = cluster.HasConfigPathChanged()
 				cluster.SetStatus()
+				cluster.CheckBackupStates()
 				cluster.StateProcessing()
 				cluster.CheckHasFailCertLoadP12()
 				go cluster.GetSlowLogTable() // prevent blocking cycle
@@ -1017,11 +1036,9 @@ func (cluster *Cluster) StateProcessing() {
 			cluster.GetStateMachine().CapturedState.Delete(s.ErrKey)
 			servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
 
-			// if s.ErrKey == "WARN0073" {
-			// 	for _, s := range cluster.Servers {
-			// 		s.SetBackupPhysicalCookie()
-			// 	}
-			// }
+			if s.ErrKey == "WARN0073" || s.ErrKey == "WARN0175" {
+				cluster.ServerGlobals.ReleaseBackupSlot()
+			}
 			if s.ErrKey == "WARN0074" && servertoreseed != nil {
 				task := "reseed" + cluster.Conf.BackupPhysicalType
 
@@ -1183,25 +1200,29 @@ func (cluster *Cluster) StateProcessing() {
 
 func (cluster *Cluster) Stop() {
 	cluster.stopOnce.Do(func() {
-		// Signal the monitoring loop to stop before doing any blocking I/O.
-		// The lock is not held across the slow operations below to avoid deadlock
-		// with SaveConfig(wait=true) and ResticManager.UnmountRepo (5 min timeout).
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: signaling exit")
 		cluster.exit.Store(true)
 
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: stopping scheduler")
 		if cluster.scheduler != nil {
 			cluster.scheduler.Stop()
 		}
 
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: closing template MD5 worker")
 		cluster.CloseRefreshTemplateMD5Worker()
 
 		if cluster.ResticManager != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: unmounting restic repo")
 			if err := cluster.ResticManager.UnmountRepo(); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Restic unmount on shutdown failed: %s", err)
 			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: shutting down restic worker")
 			cluster.ResticManager.ShutdownWorker()
 		}
 
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: saving config")
 		cluster.ConfigManager.SaveConfig(cluster, true)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: done")
 	})
 }
 
@@ -1929,6 +1950,35 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.ServerIdList = cluster.GetDBServerIdList()
 	cluster.StateMachine.RemoveFailoverState()
 
+	// Phase 3a: refresh cached intra-cluster conflict state.
+	cluster.RefreshGatewayConflicts()
+	cluster.WithdrawConflictedGatewayRoutes()
+
+	// Phase 3b: cache cross-cluster conflicts and withdraw stale fragments —
+	// same policy as 3a and startup.  Peer routes come only from clusters that
+	// appear before this one in clusterOrder (first-wins priority).
+	// RefreshGatewayConflicts above replaced the map with fresh intra-conflicts;
+	// MarkGatewayConflicts below adds cross-cluster ones without overwriting them.
+	gw := strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService))
+	if gw != "" {
+		var priorRoutes [][]config.Route
+		for _, name := range cluster.clusterOrder {
+			if name == cluster.Name {
+				break
+			}
+			peer, ok := cluster.clusterList[name]
+			if !ok || peer == nil {
+				continue
+			}
+			if strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) == gw {
+				priorRoutes = append(priorRoutes, peer.OwnGatewayRoutes(gw)...)
+			}
+		}
+		if conflicts, _ := cluster.DetectCrossClusterGatewayConflicts(priorRoutes); len(conflicts) > 0 {
+			cluster.MarkGatewayConflicts(conflicts)
+			cluster.WithdrawConflictedGatewayRoutes()
+		}
+	}
 }
 
 func (cluster *Cluster) FailoverForce() error {
@@ -1956,6 +2006,9 @@ func (cluster *Cluster) FailoverForce() error {
 
 	if err != nil {
 		for _, s := range cluster.StateMachine.GetStates() {
+			if i := strings.IndexByte(s, '\n'); i >= 0 {
+				s = s[:i]
+			}
 			cluster.LogPrint(s)
 		}
 		// Test for ERR00012 - No master detected
@@ -2163,24 +2216,17 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 	}
 	masterVariables := cluster.GetMaster().Variables.ToNewMap()
 	exceptVariables := variableExceptions
-	variablesdiff := ""
+	hasDiff := false
 	var alldiff []VariableDiff
 	for k, v := range masterVariables {
 		var myvardiff VariableDiff
 		var myvalues []Diff
-		var mastervalue Diff
-		mastervalue.Server = cluster.GetMaster().URL
-		mastervalue.VariableValue = v
-		myvalues = append(myvalues, mastervalue)
+		myvalues = append(myvalues, Diff{Server: cluster.GetMaster().URL, Role: "leader", VariableValue: v})
 		for _, s := range cluster.slaves {
 			slaveVariables := s.Variables.ToNewMap()
 			if slaveVariables[k] != v && !exceptVariables[k] {
-				var slavevalue Diff
-				slavevalue.Server = s.URL
-				slavevalue.VariableValue = slaveVariables[k]
-				myvalues = append(myvalues, slavevalue)
-				variablesdiff += "+ Master Variable: " + k + " -> " + v + "\n"
-				variablesdiff += "- Slave: " + s.URL + " -> " + slaveVariables[k] + "\n"
+				myvalues = append(myvalues, Diff{Server: s.URL, Role: "replica", VariableValue: slaveVariables[k]})
+				hasDiff = true
 			}
 		}
 		if len(myvalues) > 1 {
@@ -2189,14 +2235,74 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 			alldiff = append(alldiff, myvardiff)
 		}
 	}
-	if variablesdiff != "" {
+	if hasDiff {
 		cluster.DiffVariables = alldiff
-		jtext, err := json.MarshalIndent(alldiff, " ", "\t")
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Encoding variables diff %s", err)
-			return
+		cluster.SaveVariableDiff(alldiff)
+		for _, d := range alldiff {
+			for _, dv := range d.DiffValues {
+				if dv.Role != "leader" {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+						"Variable %s differs on %s (%s): %s", d.VariableName, dv.Server, dv.Role, dv.VariableValue)
+				}
+			}
 		}
-		cluster.SetState("WARN0084", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0084"], string(jtext)), ErrFrom: "MON", ServerUrl: cluster.GetMaster().URL})
+		cluster.SetState("WARN0084", state.State{
+			ErrType:   "WARNING",
+			ErrDesc:   fmt.Sprintf(clusterError["WARN0084"], cluster.FormatVariableDiffTable(alldiff)),
+			ErrFrom:   "MON",
+			ServerUrl: cluster.GetMaster().URL,
+		})
+	} else {
+		cluster.DiffVariables = nil
+	}
+}
+
+func (cluster *Cluster) FormatVariableDiffTable(diffs []VariableDiff) string {
+	varW, srvW, roleW, valW := len("Variable"), len("Server"), len("Role"), len("Value")
+	type row struct{ v, s, r, val string }
+	var rows []row
+	for _, d := range diffs {
+		for _, dv := range d.DiffValues {
+			r := row{d.VariableName, dv.Server, dv.Role, dv.VariableValue}
+			if len(r.v) > varW {
+				varW = len(r.v)
+			}
+			if len(r.s) > srvW {
+				srvW = len(r.s)
+			}
+			if len(r.r) > roleW {
+				roleW = len(r.r)
+			}
+			if len(r.val) > valW {
+				valW = len(r.val)
+			}
+			rows = append(rows, r)
+		}
+	}
+	f := fmt.Sprintf("%%-%ds | %%-%ds | %%-%ds | %%-%ds", varW, srvW, roleW, valW)
+	sep := fmt.Sprintf(f, strings.Repeat("-", varW), strings.Repeat("-", srvW), strings.Repeat("-", roleW), strings.Repeat("-", valW))
+	sep = strings.ReplaceAll(sep, " | ", "-+-")
+	var b strings.Builder
+	fmt.Fprintf(&b, f, "Variable", "Server", "Role", "Value")
+	b.WriteString("\n")
+	b.WriteString(sep)
+	for _, r := range rows {
+		b.WriteString("\n")
+		fmt.Fprintf(&b, f, r.v, r.s, r.r, r.val)
+	}
+	return b.String()
+}
+
+// SaveVariableDiff persists the variable diff to a JSON file in the cluster's working directory.
+func (cluster *Cluster) SaveVariableDiff(diff []VariableDiff) {
+	path := filepath.Join(cluster.WorkingDir, "variable-diff.json")
+	data, err := json.MarshalIndent(diff, "", "  ")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Encoding variable diff: %s", err)
+		return
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Writing variable-diff.json: %s", err)
 	}
 }
 
@@ -2698,8 +2804,10 @@ func (c *Cluster) AddProxy(prx DatabaseProxy) {
 	c.Proxies = append(c.Proxies, prx)
 }
 
-func (c *Cluster) AddApp(app *App) {
-	c.initializeAppForRegistration(app)
+func (c *Cluster) AddApp(app *App) error {
+	if err := c.initializeAppForRegistration(app); err != nil {
+		return err
+	}
 	c.Lock()
 	c.Apps = append(c.Apps, app)
 	c.bumpAppListVersion()
@@ -2713,6 +2821,7 @@ func (c *Cluster) AddApp(app *App) {
 	} else {
 		c.Conf.Cloud18ApplicationCreditsUsed += app.AppConfig.ProvAppCreditUsed
 	}
+	return nil
 }
 
 func (cluster *Cluster) ConfigDiscovery() error {

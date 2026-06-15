@@ -58,10 +58,16 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binari
 COPY --from=builder /go/src/github.com/signal18/replication-manager/etc /go/src/github.com/signal18/replication-manager/etc
 COPY --from=builder /go/src/github.com/signal18/replication-manager/share /go/src/github.com/signal18/replication-manager/share
 COPY --from=builder /go/src/github.com/signal18/replication-manager/scripts /go/src/github.com/signal18/replication-manager/scripts
+COPY --from=builder /go/src/github.com/signal18/replication-manager/docker/dev /go/src/github.com/signal18/replication-manager/docker/dev
 
 # Create symlinks and configure
 RUN ln -s build/binaries/replication-manager-pro replication-manager-pro && \
-        ln -s build/binaries/replication-manager-cli replication-manager-cli
+        ln -s build/binaries/replication-manager-osc replication-manager-osc && \
+        ln -s build/binaries/replication-manager-cli replication-manager-cli && \
+        ln -s docker/dev/run.sh run.sh && \
+        ln -s docker/dev/stop.sh stop.sh && \
+        ln -s docker/dev/restart.sh restart.sh && \
+        ln -s docker/dev/wait.sh wait.sh
 
 RUN mkdir -p \
             /etc/replication-manager \
@@ -82,6 +88,8 @@ RUN cp etc/local/config.toml.docker /etc/replication-manager/config.toml && \
 
 RUN bash scripts/post_install.sh
 
+RUN echo 'WORKDIR=/go/src/github.com/signal18/replication-manager; DEVDIR=$WORKDIR/docker/dev; for s in run.sh stop.sh restart.sh wait.sh; do [ ! -e "$WORKDIR/$s" ] && ln -s "$DEVDIR/$s" "$WORKDIR/$s"; done' >> /etc/bash.bashrc
+
 USER repman
-CMD ["while true; do sleep 86400; done"]
+CMD ["/bin/bash"]
 EXPOSE 10001

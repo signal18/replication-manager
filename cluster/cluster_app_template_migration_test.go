@@ -30,6 +30,35 @@ parentname = "/var/www/html"
 dockerpath = "/var/www/html/assets"
 `
 
+const legacyMultiRowPoolVolumesTOML = `
+[deployment.storages]
+[[deployment.storages.volumes]]
+name = "data-volume"
+poolname = "data"
+volumedir = "data"
+
+[[deployment.storages.volumes]]
+name = "logs-volume"
+poolname = "data"
+volumedir = "logs"
+
+[[deployment.paths]]
+name = "web-root"
+dockerpath = "/var/www/html"
+srctype = "volume"
+srcname = "data-volume"
+volumename = "data-volume"
+srcpath = "."
+
+[[deployment.paths]]
+name = "log-dir"
+dockerpath = "/var/log/app"
+srctype = "volume"
+srcname = "logs-volume"
+volumename = "logs-volume"
+srcpath = "."
+`
+
 const invalidLegacyTemplateTOML = `
 [deployment.storages]
 
@@ -507,6 +536,392 @@ func TestRefreshTemplateContent_RepoSyncFailureFallsBackToStaleCache(t *testing.
 	localPath := filepath.Join(workingDir, ".templates", "apps", "repo-only.toml")
 	if _, err := os.Stat(localPath); !os.IsNotExist(err) {
 		t.Fatalf("expected no local template write from repo cache read, err=%v", err)
+	}
+}
+
+func TestLoadAppConfig_MergesMultiRowVolumePoolWithResolvedName(t *testing.T) {
+	workingDir := t.TempDir()
+	appsDir := filepath.Join(workingDir, "apps")
+	if err := os.MkdirAll(appsDir, 0o755); err != nil {
+		t.Fatalf("mkdir apps dir failed: %v", err)
+	}
+
+	appFile := filepath.Join(appsDir, "legacy-vol.toml")
+	content := "app-host = \"legacy-vol\"\napp-port = \"8080\"\nprov-app-memory = \"128M\"\nprov-app-disk-size = \"1G\"\n" + legacyMultiRowPoolVolumesTOML
+	if err := os.WriteFile(appFile, []byte(content), 0o644); err != nil {
+		t.Fatalf("write legacy app file failed: %v", err)
+	}
+
+	cluster := &Cluster{
+		Name:       "test-cluster",
+		WorkingDir: workingDir,
+		crcTable:   crc64.MakeTable(crc64.ECMA),
+		Conf: &config.Config{
+			WorkingDir:     workingDir,
+			Apps:           make([]*config.AppConfig, 0),
+			DefaultFlagMap: map[string]interface{}{"prov-app-memory": "128M", "prov-app-disk-size": "1G"},
+		},
+	}
+
+	if err := cluster.LoadAppConfig(appsDir, "legacy-vol"); err != nil && err.Error() != "" {
+		t.Fatalf("LoadAppConfig failed: %v", err)
+	}
+
+	if len(cluster.Conf.Apps) != 1 {
+		t.Fatalf("expected 1 app config to load, got %d", len(cluster.Conf.Apps))
+	}
+	appcnf := cluster.Conf.Apps[0]
+	if len(appcnf.Deployment.Storages.Volumes) != 1 {
+		t.Fatalf("expected volumes merged into 1 row, got %d", len(appcnf.Deployment.Storages.Volumes))
+	}
+	vol := appcnf.Deployment.Storages.Volumes[0]
+	if vol.Name != "legacy-vol-data" {
+		t.Fatalf("expected resolved volume name legacy-vol-data, got %q", vol.Name)
+	}
+	if vol.VolumeDir != "data logs" {
+		t.Fatalf("expected merged volumedir 'data logs', got %q", vol.VolumeDir)
+	}
+
+	for _, p := range appcnf.Deployment.Paths {
+		if p.SourceName != "legacy-vol-data" {
+			t.Fatalf("expected srcname rewritten to legacy-vol-data, got %q", p.SourceName)
+		}
+		if p.VolumeName != "legacy-vol-data" {
+			t.Fatalf("expected volumename rewritten to legacy-vol-data, got %q", p.VolumeName)
+		}
+	}
+
+	updated, err := os.ReadFile(appFile)
+	if err != nil {
+		t.Fatalf("read rewritten app file failed: %v", err)
+	}
+	got := string(updated)
+	if !strings.Contains(got, `name = "legacy-vol-data"`) {
+		t.Fatalf("expected canonical volume name in rewritten file, got:\n%s", got)
+	}
+	if !strings.Contains(got, `volumedir = "data logs"`) {
+		t.Fatalf("expected merged volumedir in rewritten file, got:\n%s", got)
+	}
+}
+
+// TestLoadAppConfig_RewritesLegacyConfigOnlyOnce covers Phase 9 task 1/2: a
+// legacy multi-row-pool app config is canonicalized and rewritten to disk on
+// the first load, but a second load of the now-canonical file must not
+// trigger another rewrite (CanonicalizeAppContent reports Changed=false on
+// already-canonical content).
+func TestLoadAppConfig_RewritesLegacyConfigOnlyOnce(t *testing.T) {
+	workingDir := t.TempDir()
+	appsDir := filepath.Join(workingDir, "apps")
+	if err := os.MkdirAll(appsDir, 0o755); err != nil {
+		t.Fatalf("mkdir apps dir failed: %v", err)
+	}
+
+	appFile := filepath.Join(appsDir, "legacy-vol.toml")
+	content := "app-host = \"legacy-vol\"\napp-port = \"8080\"\nprov-app-memory = \"128M\"\nprov-app-disk-size = \"1G\"\n" + legacyMultiRowPoolVolumesTOML
+	if err := os.WriteFile(appFile, []byte(content), 0o644); err != nil {
+		t.Fatalf("write legacy app file failed: %v", err)
+	}
+
+	newCluster := func() *Cluster {
+		return &Cluster{
+			Name:       "test-cluster",
+			WorkingDir: workingDir,
+			crcTable:   crc64.MakeTable(crc64.ECMA),
+			Conf: &config.Config{
+				WorkingDir:     workingDir,
+				Apps:           make([]*config.AppConfig, 0),
+				DefaultFlagMap: map[string]interface{}{"prov-app-memory": "128M", "prov-app-disk-size": "1G"},
+			},
+		}
+	}
+
+	if err := newCluster().LoadAppConfig(appsDir, "legacy-vol"); err != nil && err.Error() != "" {
+		t.Fatalf("first LoadAppConfig failed: %v", err)
+	}
+	firstPass, err := os.ReadFile(appFile)
+	if err != nil {
+		t.Fatalf("read app file after first load failed: %v", err)
+	}
+
+	if err := newCluster().LoadAppConfig(appsDir, "legacy-vol"); err != nil && err.Error() != "" {
+		t.Fatalf("second LoadAppConfig failed: %v", err)
+	}
+	secondPass, err := os.ReadFile(appFile)
+	if err != nil {
+		t.Fatalf("read app file after second load failed: %v", err)
+	}
+
+	if string(firstPass) != string(secondPass) {
+		t.Fatalf("expected second load not to rewrite already-canonical config\nfirst:\n%s\nsecond:\n%s", firstPass, secondPass)
+	}
+}
+
+// TestGetTemplateContent_RewritesLegacyTemplateOnlyOnce covers Phase 9 task
+// 1/2: a legacy multi-row-pool template is canonicalized and rewritten to the
+// local cache on the first load, but a second load of the now-canonical cache
+// must not trigger another rewrite.
+func TestGetTemplateContent_RewritesLegacyTemplateOnlyOnce(t *testing.T) {
+	workingDir := t.TempDir()
+	localPath := filepath.Join(workingDir, ".templates", "apps", "legacy-vol.toml")
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+		t.Fatalf("mkdir local template dir failed: %v", err)
+	}
+	if err := os.WriteFile(localPath, []byte(legacyMultiRowPoolVolumesTOML), 0o644); err != nil {
+		t.Fatalf("write local legacy template failed: %v", err)
+	}
+
+	cluster := &Cluster{Conf: &config.Config{WorkingDir: workingDir}}
+
+	if _, err := cluster.GetTemplateContent("legacy-vol"); err != nil {
+		t.Fatalf("first GetTemplateContent failed: %v", err)
+	}
+	firstPass, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read local template after first load failed: %v", err)
+	}
+
+	if _, err := cluster.GetTemplateContent("legacy-vol"); err != nil {
+		t.Fatalf("second GetTemplateContent failed: %v", err)
+	}
+	secondPass, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read local template after second load failed: %v", err)
+	}
+
+	if string(firstPass) != string(secondPass) {
+		t.Fatalf("expected second load not to rewrite already-canonical template\nfirst:\n%s\nsecond:\n%s", firstPass, secondPass)
+	}
+}
+
+func TestGetTemplateContent_MergesMultiRowVolumePoolWithTemplateName(t *testing.T) {
+	workingDir := t.TempDir()
+	localPath := filepath.Join(workingDir, ".templates", "apps", "legacy-vol.toml")
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+		t.Fatalf("mkdir local template dir failed: %v", err)
+	}
+	if err := os.WriteFile(localPath, []byte(legacyMultiRowPoolVolumesTOML), 0o644); err != nil {
+		t.Fatalf("write local legacy template failed: %v", err)
+	}
+
+	cluster := &Cluster{Conf: &config.Config{WorkingDir: workingDir}}
+
+	content, err := cluster.GetTemplateContent("legacy-vol")
+	if err != nil {
+		t.Fatalf("GetTemplateContent failed: %v", err)
+	}
+
+	got := string(content)
+	if !strings.Contains(got, `name = "{name}-data"`) {
+		t.Fatalf("expected canonical template volume name {name}-data, got:\n%s", got)
+	}
+	if !strings.Contains(got, `volumedir = "data logs"`) {
+		t.Fatalf("expected merged volumedir, got:\n%s", got)
+	}
+
+	rewritten, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read rewritten local template failed: %v", err)
+	}
+	if !strings.Contains(string(rewritten), `name = "{name}-data"`) {
+		t.Fatalf("expected local cache rewrite to canonical volume name, got:\n%s", string(rewritten))
+	}
+}
+
+func TestAddSeededApp_MergesMultiRowVolumePoolWithResolvedName(t *testing.T) {
+	workingDir := t.TempDir()
+	localPath := filepath.Join(workingDir, ".templates", "apps", "legacy-vol-seed.toml")
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+		t.Fatalf("mkdir local template dir failed: %v", err)
+	}
+	template := "app-port = \"8080\"\nprov-app-docker-img = \"nginx:latest\"\n" + legacyMultiRowPoolVolumesTOML
+	if err := os.WriteFile(localPath, []byte(template), 0o644); err != nil {
+		t.Fatalf("write local seed template failed: %v", err)
+	}
+
+	cluster := &Cluster{
+		Name:       "test-cluster",
+		WorkingDir: workingDir,
+		crcTable:   crc64.MakeTable(crc64.ECMA),
+		Conf: &config.Config{
+			WorkingDir: workingDir,
+			Apps:       make([]*config.AppConfig, 0),
+		},
+	}
+
+	if err := cluster.AddSeededApp("seed-vol-host", "8080", "nginx:latest", "legacy-vol-seed"); err != nil {
+		t.Fatalf("AddSeededApp failed: %v", err)
+	}
+
+	seeded := cluster.GetAppConfig("seed-vol-host", "8080")
+	if seeded == nil || seeded.Deployment == nil {
+		t.Fatalf("expected seeded app deployment to be loaded")
+	}
+
+	if len(seeded.Deployment.Storages.Volumes) != 1 {
+		t.Fatalf("expected volumes merged into 1 row, got %d", len(seeded.Deployment.Storages.Volumes))
+	}
+	vol := seeded.Deployment.Storages.Volumes[0]
+	if vol.Name != "seed-vol-host-data" {
+		t.Fatalf("expected resolved volume name seed-vol-host-data, got %q", vol.Name)
+	}
+	if vol.VolumeDir != "data logs" {
+		t.Fatalf("expected merged volumedir 'data logs', got %q", vol.VolumeDir)
+	}
+
+	for _, p := range seeded.Deployment.Paths {
+		if p.SourceName != "seed-vol-host-data" {
+			t.Fatalf("expected srcname rewritten to seed-vol-host-data, got %q", p.SourceName)
+		}
+		if p.VolumeName != "seed-vol-host-data" {
+			t.Fatalf("expected volumename rewritten to seed-vol-host-data, got %q", p.VolumeName)
+		}
+	}
+}
+
+// TestLoadAppConfig_StampsAppConfigVersionOnLegacyContent covers Phase 10
+// tasks 1, 3, 4 and 5 for the app config load flow: loading unversioned
+// legacy app config content stamps app-config-version = 2 into both the
+// rewritten file and the unmarshalled AppConfig, and a second load of the
+// now-V2 content does not rewrite the file again.
+func TestLoadAppConfig_StampsAppConfigVersionOnLegacyContent(t *testing.T) {
+	workingDir := t.TempDir()
+	appsDir := filepath.Join(workingDir, "apps")
+	if err := os.MkdirAll(appsDir, 0o755); err != nil {
+		t.Fatalf("mkdir apps dir failed: %v", err)
+	}
+
+	appFile := filepath.Join(appsDir, "legacy-version.toml")
+	content := "app-host = \"legacy-version\"\napp-port = \"8080\"\nprov-app-memory = \"128M\"\nprov-app-disk-size = \"1G\"\n" + legacyAppTemplateTOML
+	if err := os.WriteFile(appFile, []byte(content), 0o644); err != nil {
+		t.Fatalf("write legacy app file failed: %v", err)
+	}
+
+	newCluster := func() *Cluster {
+		return &Cluster{
+			Name:       "test-cluster",
+			WorkingDir: workingDir,
+			crcTable:   crc64.MakeTable(crc64.ECMA),
+			Conf: &config.Config{
+				WorkingDir:     workingDir,
+				Apps:           make([]*config.AppConfig, 0),
+				DefaultFlagMap: map[string]interface{}{"prov-app-memory": "128M", "prov-app-disk-size": "1G"},
+			},
+		}
+	}
+
+	first := newCluster()
+	if err := first.LoadAppConfig(appsDir, "legacy-version"); err != nil && err.Error() != "" {
+		t.Fatalf("first LoadAppConfig failed: %v", err)
+	}
+	if len(first.Conf.Apps) != 1 {
+		t.Fatalf("expected 1 app config to load, got %d", len(first.Conf.Apps))
+	}
+	if got := first.Conf.Apps[0].AppConfigVersion; got != config.AppConfigVersionV2 {
+		t.Fatalf("expected AppConfigVersion %d, got %d", config.AppConfigVersionV2, got)
+	}
+
+	firstPass, err := os.ReadFile(appFile)
+	if err != nil {
+		t.Fatalf("read rewritten app file failed: %v", err)
+	}
+	if !strings.Contains(string(firstPass), "app-config-version = 2") {
+		t.Fatalf("expected app-config-version = 2 in rewritten file, got:\n%s", firstPass)
+	}
+
+	second := newCluster()
+	if err := second.LoadAppConfig(appsDir, "legacy-version"); err != nil && err.Error() != "" {
+		t.Fatalf("second LoadAppConfig failed: %v", err)
+	}
+	secondPass, err := os.ReadFile(appFile)
+	if err != nil {
+		t.Fatalf("read app file after second load failed: %v", err)
+	}
+	if string(firstPass) != string(secondPass) {
+		t.Fatalf("expected second load not to rewrite already-V2 config\nfirst:\n%s\nsecond:\n%s", firstPass, secondPass)
+	}
+	if got := second.Conf.Apps[0].AppConfigVersion; got != config.AppConfigVersionV2 {
+		t.Fatalf("expected AppConfigVersion %d on second load, got %d", config.AppConfigVersionV2, got)
+	}
+}
+
+// TestGetTemplateContent_StampsAppConfigVersionOnLocalCache covers Phase 10
+// tasks 1, 3 and 4 for the template load flow: an unversioned local template
+// is rewritten with app-config-version = 2, and a second load of the now-V2
+// cache does not rewrite the file again.
+func TestGetTemplateContent_StampsAppConfigVersionOnLocalCache(t *testing.T) {
+	workingDir := t.TempDir()
+	localPath := filepath.Join(workingDir, ".templates", "apps", "legacy-version.toml")
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+		t.Fatalf("mkdir local template dir failed: %v", err)
+	}
+	if err := os.WriteFile(localPath, []byte(legacyAppTemplateTOML), 0o644); err != nil {
+		t.Fatalf("write local legacy template failed: %v", err)
+	}
+
+	cluster := &Cluster{Conf: &config.Config{WorkingDir: workingDir}}
+
+	content, err := cluster.GetTemplateContent("legacy-version")
+	if err != nil {
+		t.Fatalf("GetTemplateContent failed: %v", err)
+	}
+	if !strings.Contains(string(content), "app-config-version = 2") {
+		t.Fatalf("expected app-config-version = 2 in returned content, got:\n%s", content)
+	}
+
+	firstPass, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read rewritten local template failed: %v", err)
+	}
+	if !strings.Contains(string(firstPass), "app-config-version = 2") {
+		t.Fatalf("expected app-config-version = 2 in rewritten local cache, got:\n%s", firstPass)
+	}
+
+	if _, err := cluster.GetTemplateContent("legacy-version"); err != nil {
+		t.Fatalf("second GetTemplateContent failed: %v", err)
+	}
+	secondPass, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read local template after second load failed: %v", err)
+	}
+	if string(firstPass) != string(secondPass) {
+		t.Fatalf("expected second load not to rewrite already-V2 template\nfirst:\n%s\nsecond:\n%s", firstPass, secondPass)
+	}
+}
+
+// TestAddSeededApp_StampsAppConfigVersion covers Phase 10 task 5 for the
+// seeded-app creation flow: a seeded app resolved from an unversioned
+// template ends up flagged with AppConfigVersion = config.AppConfigVersionV2.
+func TestAddSeededApp_StampsAppConfigVersion(t *testing.T) {
+	workingDir := t.TempDir()
+	localPath := filepath.Join(workingDir, ".templates", "apps", "legacy-version-seed.toml")
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+		t.Fatalf("mkdir local template dir failed: %v", err)
+	}
+	template := "app-port = \"8080\"\nprov-app-docker-img = \"nginx:latest\"\n" + legacyAppTemplateTOML
+	if err := os.WriteFile(localPath, []byte(template), 0o644); err != nil {
+		t.Fatalf("write local seed template failed: %v", err)
+	}
+
+	cluster := &Cluster{
+		Name:       "test-cluster",
+		WorkingDir: workingDir,
+		crcTable:   crc64.MakeTable(crc64.ECMA),
+		Conf: &config.Config{
+			WorkingDir: workingDir,
+			Apps:       make([]*config.AppConfig, 0),
+		},
+	}
+
+	if err := cluster.AddSeededApp("seed-version-host", "8080", "nginx:latest", "legacy-version-seed"); err != nil {
+		t.Fatalf("AddSeededApp failed: %v", err)
+	}
+
+	seeded := cluster.GetAppConfig("seed-version-host", "8080")
+	if seeded == nil {
+		t.Fatalf("expected seeded app config to be loaded")
+	}
+	if got := seeded.AppConfigVersion; got != config.AppConfigVersionV2 {
+		t.Fatalf("expected AppConfigVersion %d, got %d", config.AppConfigVersionV2, got)
 	}
 }
 

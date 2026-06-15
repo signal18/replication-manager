@@ -486,15 +486,19 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 	}
 
 	tag := config.GetTagsForLog(config.ConstLogModGeneral)
+	logDesc := st.ErrDesc
+	if i := strings.IndexByte(logDesc, '\n'); i >= 0 {
+		logDesc = logDesc[:i]
+	}
 	logformat := "[%s] [%s] %s - " + format
-	logargs := []interface{}{cluster.Name, tag, padright(level, " ", 5), st.ErrKey, st.ErrDesc}
+	logargs := []interface{}{cluster.Name, tag, padright(level, " ", 5), st.ErrKey, logDesc}
 
 	if cluster.tlog != nil && cluster.tlog.Len > 0 {
 		cluster.tlog.Add(fmt.Sprintf(logformat, logargs...))
 	}
 
 	if cluster.Conf.HttpServ {
-		httpmsg := fmt.Sprintf("[%s] %s", tag, fmt.Sprintf(format, st.ErrKey, st.ErrDesc))
+		httpmsg := fmt.Sprintf("[%s] %s", tag, fmt.Sprintf(format, st.ErrKey, logDesc))
 		msg := s18log.HttpMessage{
 			Group:     cluster.Name,
 			Level:     level,
@@ -522,19 +526,19 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 	if cluster.Conf.Daemon {
 		// wrap logrus levels
 		if resolved {
-			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "RESOLV", "code": st.ErrKey, "channel": "StdOut"}).Warn(st.ErrDesc)
+			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "RESOLV", "code": st.ErrKey, "channel": "StdOut"}).Warn(logDesc)
 			if !cluster.IsIntervention && strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
 				if cluster.LogSlack.HasActiveHook() {
 					slackFields["status"] = "RESOLV"
-					cluster.LogSlack.WithFields(slackFields).Info(st.ErrDesc)
+					cluster.LogSlack.WithFields(slackFields).Info(logDesc)
 				}
 			}
 		} else {
-			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "OPENED", "code": st.ErrKey, "channel": "StdOut"}).Warn(st.ErrDesc)
+			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "OPENED", "code": st.ErrKey, "channel": "StdOut"}).Warn(logDesc)
 			if !cluster.IsIntervention && strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
 				if cluster.LogSlack.HasActiveHook() {
 					slackFields["status"] = "OPENED"
-					cluster.LogSlack.WithFields(slackFields).Error(st.ErrDesc)
+					cluster.LogSlack.WithFields(slackFields).Error(logDesc)
 				}
 			}
 		}

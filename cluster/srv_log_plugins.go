@@ -567,6 +567,15 @@ func (cluster *Cluster) ReloadLogPlugins() {
 			)
 		}
 	}
+	for _, p := range cluster.pluginRegistry.All() {
+		cluster.LogModulePrintf(
+			cluster.Conf.Verbose,
+			config.ConstLogModGeneral,
+			config.LvlInfo,
+			"[logplugin] plugin loaded: %s",
+			p.Name(),
+		)
+	}
 	if n > 0 {
 		cluster.LogModulePrintf(
 			cluster.Conf.Verbose,

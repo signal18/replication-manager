@@ -41,6 +41,10 @@ jobs:
               - '**/*.go'
               - 'Dockerfile*'
               - 'docker/Dockerfile*'
+              - 'Makefile'
+              - 'share/**'
+              - 'etc/**'
+              - '.github/workflows/**'
 
   # OSC (Open Source Community) - Only on tags
   build-osc:
@@ -56,7 +60,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: false
+          submodules: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -132,7 +136,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: false
+          submodules: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -205,7 +209,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: false
+          submodules: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -278,7 +282,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: false
+          submodules: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -349,7 +353,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: false
+          submodules: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -412,7 +416,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: false
+          submodules: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -472,7 +476,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: false
+          submodules: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -563,7 +567,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: false
+          submodules: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -650,7 +654,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: false
+          submodules: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -723,7 +727,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: false
+          submodules: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

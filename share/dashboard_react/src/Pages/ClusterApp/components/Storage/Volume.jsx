@@ -8,9 +8,15 @@ import RMIconButton from "../../../../components/RMIconButton";
 import Dropdown from "../../../../components/Dropdown";
 import { DataTable } from "../../../../components/DataTable";
 import { HiTrash } from "react-icons/hi";
+import { getVolumeDirTokens } from "./volumeDirUtils";
 
 
 const defaultVol = { name: "", poolname: "", volumedir: "" };
+
+// AppConfigVersionV2 mirrors config.AppConfigVersionV2 (config/app_template_canonical.go):
+// the app-config-version marker at/above which intentional multiple volume
+// rows per pool are allowed (Phase 11).
+const AppConfigVersionV2 = 2;
 
 const columnHelper = createColumnHelper()
 
@@ -18,6 +24,7 @@ const VolumeSection = ({
     rows = [],
     opensvcPools = [],
     appHaTopology = '',
+    appConfigVersion = 0,
     fieldName = "volumes",
     title = "Saved Volumes",
     newTitle = "Add New Volume",
@@ -74,6 +81,19 @@ const VolumeSection = ({
         return options.sort((a, b) => a.name.localeCompare(b.name));
     }, [opensvcPools, appHaTopology]);
 
+    // A pool can back at most one saved volume row for unflagged/V1 content
+    // (config.Deployment.InsertVolume / the "poolname" modify case both
+    // enforce this below AppConfigVersionV2). Used to keep the pool
+    // dropdowns from offering pools already claimed by another row. Once an
+    // app is flagged V2 (Phase 11), multiple intentional rows per pool are
+    // allowed, so this stays empty and every pool remains selectable.
+    const usedPoolNames = useMemo(() => {
+        if (appConfigVersion >= AppConfigVersionV2) {
+            return new Set();
+        }
+        return new Set((rows || []).map((row) => row.poolname).filter(Boolean));
+    }, [rows, appConfigVersion]);
+
     const handleAddItem = () => {
         setIsVisible(true);
         onPauseAutoReload();
@@ -102,7 +122,7 @@ const VolumeSection = ({
             columnHelper.accessor((row) => row.poolname, {
                 header: 'Pool Name'
             }),
-            columnHelper.accessor((row) => row.volumedir, {
+            columnHelper.accessor((row) => getVolumeDirTokens(row.volumedir).join(', '), {
                 header: 'Volume Dir'
             }),
             columnHelper.display({
@@ -120,13 +140,13 @@ const VolumeSection = ({
                 header: '',
                 meta: {
                     renderExpansion: (row) => {
-                        return (<VolumeRowForm poolOptions={poolOptions} fieldName={fieldName} volume={row.original} index={row.index} onChange={onRowArrayChange} />);
+                        return (<VolumeRowForm poolOptions={poolOptions} usedPoolNames={usedPoolNames} fieldName={fieldName} volume={row.original} index={row.index} onChange={onRowArrayChange} />);
                     },
                 },
                 cell: () => null,
             }
         ],
-        [fieldName, onRowArrayChange, onRowDropIndex, poolOptions]
+        [fieldName, onRowArrayChange, onRowDropIndex, poolOptions, usedPoolNames]
     )
 
     return (
@@ -145,7 +165,7 @@ const VolumeSection = ({
                         {newTitle}
                     </Heading>
                     <Box className={styles.tableContainer}>
-                        <VolumeNewForm onSave={handleSaveAdd} onCancel={handleCancel} saveCaption={saveCaption} poolOptions={poolOptions} />
+                        <VolumeNewForm onSave={handleSaveAdd} onCancel={handleCancel} saveCaption={saveCaption} poolOptions={poolOptions} usedPoolNames={usedPoolNames} />
                     </Box>
                 </VStack>
             ) : (
@@ -163,8 +183,21 @@ const VolumeSection = ({
 
 export default React.memo(VolumeSection);
 
-const VolumeRowForm = React.memo(({ fieldName, volume, index, poolOptions = [], onChange }) => {
+const VolumeRowForm = React.memo(({ fieldName, volume, index, poolOptions = [], usedPoolNames, onChange }) => {
     const vol = volume || defaultVol;
+
+    const availableDirs = useMemo(() => getVolumeDirTokens(vol.volumedir), [vol.volumedir]);
+
+    // Exclude pools already claimed by another row, but always keep this row's
+    // own pool selectable even if it was filtered out of poolOptions upstream
+    // (e.g. a non-shared pool no longer reported by opensvcPools).
+    const rowPoolOptions = useMemo(() => {
+        const filtered = poolOptions.filter((opt) => opt.value === vol.poolname || !usedPoolNames?.has(opt.value));
+        if (vol.poolname && !filtered.some((opt) => opt.value === vol.poolname)) {
+            return [...filtered, { value: vol.poolname, name: vol.poolname }];
+        }
+        return filtered;
+    }, [poolOptions, usedPoolNames, vol.poolname]);
 
     return (
         <Flex className={styles.variableRowForm} w="100%" align="flex-start" gap={4}>
@@ -175,19 +208,28 @@ const VolumeRowForm = React.memo(({ fieldName, volume, index, poolOptions = [], 
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Pool Name:</Text>
-                    <Dropdown placeholder="Pool Name" confirmTitle="Change Pool Name" options={poolOptions} selectedValue={vol.poolname} onChange={(value) => onChange(fieldName, index, "poolname", value)} />
+                    <Dropdown placeholder="Pool Name" confirmTitle="Change Pool Name" options={rowPoolOptions} selectedValue={vol.poolname} onChange={(value) => onChange(fieldName, index, "poolname", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>
                     <TextForm placeholder="Volume Dir" confirmTitle="Change Volume Dir" value={vol.volumedir} onSave={(value) => onChange(fieldName, index, "volumedir", value)} />
+                    {availableDirs.length > 1 && (<Text mb={1} fontSize="sm" color="gray.500">Directories: {availableDirs.join(', ')}</Text>)}
                 </Flex>
             </Flex>
         </Flex>
     )
 })
 
-const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => { }, poolOptions = [], onCancel = () => { } }) => {
+const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => { }, poolOptions = [], usedPoolNames, onCancel = () => { } }) => {
     const [vol, setVol] = useState(defaultVol);
+
+    const availableDirs = useMemo(() => getVolumeDirTokens(vol.volumedir), [vol.volumedir]);
+
+    // A new row can only target a pool not already claimed by an existing row.
+    const availablePoolOptions = useMemo(
+        () => poolOptions.filter((opt) => !usedPoolNames?.has(opt.value)),
+        [poolOptions, usedPoolNames]
+    );
 
     const valid = useMemo(() => {
         return vol.name && vol.poolname && vol.volumedir;
@@ -217,11 +259,12 @@ const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => 
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Pool Name:</Text>
-                    <Dropdown placeholder="Pool Name" options={poolOptions} selectedValue={vol.poolname} onChange={(option) => handleArrayChange("poolname", option.value)} />
+                    <Dropdown placeholder="Pool Name" options={availablePoolOptions} selectedValue={vol.poolname} onChange={(option) => handleArrayChange("poolname", option.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>
                     <Input placeholder="Volume Dir" value={vol.volumedir} onChange={(e) => handleArrayChange("volumedir", e.target.value)} />
+                    {availableDirs.length > 1 && (<Text mb={1} fontSize="sm" color="gray.500">Directories: {availableDirs.join(', ')}</Text>)}
                 </Flex>
                 <Flex direction="column" flex="1">
                     <HStack spacing={2} mt={4}>

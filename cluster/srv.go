@@ -1043,6 +1043,8 @@ func (server *ServerMonitor) Refresh() error {
 		if cluster.Conf.MonitorScheduler {
 			server.JobsCheckStates()
 			server.JobsCheckRunning()
+		} else {
+			server.jobsCheckRunningFromMemory()
 		}
 
 		if cluster.Conf.MonitorProcessList {

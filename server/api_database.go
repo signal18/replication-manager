@@ -536,29 +536,28 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/jobs-create-table", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsCreateTable)),
 	))
-	// Job dispatch endpoints — require db-jobs grant via ACL rules
+	// Job dispatch endpoints — needs/{taskname} is unprotected for backward
+	// compatibility with old dbjobs scripts (pre-3.1.25) that use encrypted
+	// body auth instead of JWT. The handler is read-only (returns true/false).
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{taskname}", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeeds)),
 	))
+	// Job endpoints use SecretLoginCheck (encrypted body auth) internally,
+	// so validateTokenMiddleware is not needed and breaks backward compatibility
+	// with old dbjobs scripts (pre-3.1.25) that don't use JWT.
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{task}", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersWriteLog)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname}", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReceiveTask)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/job-state/{taskname}/{jobstate}", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobState)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-jobs-check", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsCheckReceiver)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/send-jobs-upgrade", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsUpgradeSender)),
 	))
 	router.Handle("/api/terminal/connect/clusters/{clusterName}/servers/{serverName}", negroni.New(

@@ -3,6 +3,7 @@ package server
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/signal18/replication-manager/cluster"
@@ -89,6 +90,173 @@ dockerpath = "/srv/app/child"
 	}
 }
 
+// TestAppTemplateContentSave_MergesMultiRowVolumePool covers Phase 7: saving
+// edited template content must pass through the same canonical merge as
+// GetTemplateContent (CanonicalizeAppContent with appName=""), not just the
+// path/level migration. Otherwise a hand-edited template with two rows for
+// the same pool would be persisted un-merged, only to be silently rewritten
+// (and reported as a separate "Changed" canonicalization) the next time
+// GetTemplateContent loads it.
+func TestAppTemplateContentSave_MergesMultiRowVolumePool(t *testing.T) {
+	cl := &cluster.Cluster{Conf: &config.Config{WorkingDir: t.TempDir()}}
+
+	submitted := []byte(`
+[[deployment.storages.volumes]]
+name = "data-volume"
+poolname = "data"
+volumedir = "data"
+
+[[deployment.storages.volumes]]
+name = "logs-volume"
+poolname = "data"
+volumedir = "logs"
+
+[[deployment.paths]]
+name = "web-root"
+dockerpath = "/var/www/html"
+srctype = "volume"
+srcname = "data-volume"
+volumename = "data-volume"
+srcpath = "."
+
+[[deployment.paths]]
+name = "log-dir"
+dockerpath = "/var/log/app"
+srctype = "volume"
+srcname = "logs-volume"
+volumename = "logs-volume"
+srcpath = "."
+`)
+
+	canonicalContent, _, err := cluster.CanonicalizeAppContent(submitted, "")
+	if err != nil {
+		t.Fatalf("CanonicalizeAppContent failed: %v", err)
+	}
+	if err := validateCanonicalTemplateContentForSave(cl, "local/merge-on-save", canonicalContent); err != nil {
+		t.Fatalf("validateCanonicalTemplateContentForSave failed: %v", err)
+	}
+
+	got := string(canonicalContent)
+	if !strings.Contains(got, `name = "{name}-data"`) {
+		t.Fatalf("expected merged volume row named {name}-data, got:\n%s", got)
+	}
+	if !strings.Contains(got, `volumedir = "data logs"`) {
+		t.Fatalf("expected merged volumedir 'data logs', got:\n%s", got)
+	}
+	if strings.Contains(got, `"data-volume"`) || strings.Contains(got, `"logs-volume"`) {
+		t.Fatalf("expected legacy volume names rewritten away, got:\n%s", got)
+	}
+	if !strings.Contains(got, "app-config-version = 2") {
+		t.Fatalf("expected app-config-version = 2 to be stamped on save, got:\n%s", got)
+	}
+}
+
+// TestAppTemplateContentSave_AlreadyV2NoOp covers Phase 10 task 4 for the
+// template save flow: re-saving already-V2 canonical content does not
+// produce a second rewrite of the version marker (CanonicalizeAppContent is
+// idempotent on already-flagged content).
+func TestAppTemplateContentSave_AlreadyV2NoOp(t *testing.T) {
+	versioned := []byte(`
+app-config-version = 2
+
+[[deployment.storages.volumes]]
+name = "{name}-data"
+poolname = "data"
+volumedir = "data"
+
+[[deployment.paths]]
+name = "web-root"
+dockerpath = "/var/www/html"
+srctype = "volume"
+srcname = "{name}-data"
+volumename = "{name}-data"
+srcpath = "."
+level = 0
+`)
+
+	canonicalContent, res, err := cluster.CanonicalizeAppContent(versioned, "")
+	if err != nil {
+		t.Fatalf("CanonicalizeAppContent failed: %v", err)
+	}
+	if res.Changed {
+		t.Fatalf("expected no changes for already-V2 canonical content, got %+v", res)
+	}
+	if string(canonicalContent) != string(versioned) {
+		t.Fatalf("expected output to equal input unchanged:\nin:\n%s\nout:\n%s", versioned, canonicalContent)
+	}
+}
+
+// TestAppTemplateContentSave_V2FlaggedMultiRowPoolPreserved covers Phase 11
+// task 10: a V2-flagged template with two intentional same-pool volume rows
+// stays multi-row through CanonicalizeAppContent and
+// validateCanonicalTemplateContentForSave -- contrast with
+// TestAppTemplateContentSave_MergesMultiRowVolumePool, which is V1 and still
+// merges same-pool rows into one.
+func TestAppTemplateContentSave_V2FlaggedMultiRowPoolPreserved(t *testing.T) {
+	cl := &cluster.Cluster{Conf: &config.Config{WorkingDir: t.TempDir()}}
+
+	submitted := []byte(`
+app-config-version = 2
+
+[[deployment.storages.volumes]]
+name = "myapp-data"
+poolname = "data"
+volumedir = "etc"
+
+[[deployment.storages.volumes]]
+name = "myapp-data-logs"
+poolname = "data"
+volumedir = "log"
+
+[[deployment.storages.s3-mounts]]
+name = "media"
+volumename = "myapp-data-logs"
+volumedir = "log/media"
+
+[[deployment.paths]]
+name = "web-root"
+dockerpath = "/var/www/html"
+srctype = "volume"
+srcname = "myapp-data"
+volumename = "myapp-data"
+srcpath = "."
+level = 0
+
+[[deployment.paths]]
+name = "log-dir"
+dockerpath = "/var/log/app"
+srctype = "volume"
+srcname = "myapp-data-logs"
+volumename = "myapp-data-logs"
+srcpath = "."
+level = 0
+`)
+
+	canonicalContent, res, err := cluster.CanonicalizeAppContent(submitted, "")
+	if err != nil {
+		t.Fatalf("CanonicalizeAppContent failed: %v", err)
+	}
+	if res.Changed {
+		t.Fatalf("expected no changes for already-V2 multi-row content, got %+v", res)
+	}
+	if err := validateCanonicalTemplateContentForSave(cl, "local/v2-multi-row", canonicalContent); err != nil {
+		t.Fatalf("validateCanonicalTemplateContentForSave failed: %v", err)
+	}
+
+	got := string(canonicalContent)
+	if !strings.Contains(got, `name = "myapp-data"`) || !strings.Contains(got, `name = "myapp-data-logs"`) {
+		t.Fatalf("expected both volume rows preserved, got:\n%s", got)
+	}
+	if strings.Contains(got, `volumedir = "etc log"`) {
+		t.Fatalf("expected rows not merged, got:\n%s", got)
+	}
+	// Phase 15 task 4: an explicit non-"mnt" S3 mount placement must survive
+	// the canonicalize/save round trip unchanged.
+	if !strings.Contains(got, `volumedir = "log/media"`) {
+		t.Fatalf("expected s3-mount explicit volumedir \"log/media\" preserved, got:\n%s", got)
+	}
+}
+
 func TestWriteTemplateContentAtomically(t *testing.T) {
 	workDir := t.TempDir()
 	path := filepath.Join(workDir, ".templates", "apps", "local", "custom.toml")
@@ -139,6 +307,16 @@ srcpath = "."
 	localPath := filepath.Join(workDir, ".templates", "apps", "local", "copyme.toml")
 	if _, err := os.Stat(localPath); err != nil {
 		t.Fatalf("expected local template copy at %s, err=%v", localPath, err)
+	}
+
+	// Phase 10 task 5: the local copy is created via CanonicalizeAppContent,
+	// so it must carry the app-config-version = 2 marker.
+	copied, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read local template copy failed: %v", err)
+	}
+	if !strings.Contains(string(copied), "app-config-version = 2") {
+		t.Fatalf("expected app-config-version = 2 in local template copy, got:\n%s", copied)
 	}
 }
 

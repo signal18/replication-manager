@@ -1,10 +1,13 @@
 package config
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -41,33 +44,69 @@ func (d *Deployment) GetVolumeByName(name string) (*Volume, error) {
 	return nil, fmt.Errorf("volume %s not found", name)
 }
 
-func (d *Deployment) InsertVolume(v *Volume) error {
+// findVolumeByPool returns the first saved row for poolName, or nil if none
+// exists. Callers must hold d.Mutex.
+//
+// This is a single-row lookup: for V1 content (app-config-version <
+// AppConfigVersionV2) a pool has at most one row, so "first" is "only". For
+// V2 content a pool may legitimately have multiple intentional rows (see
+// Phase 11); this function only ever returns the first one. Callers that need
+// to consider all rows for a pool must iterate d.Storages.Volumes directly.
+func (d *Deployment) findVolumeByPool(poolName string) *Volume {
+	for _, v := range d.Storages.Volumes {
+		if v.PoolName == poolName {
+			return v
+		}
+	}
+	return nil
+}
+
+// GetVolumeByPool returns the first saved row for poolName, or nil if none
+// exists. It backs the one-row-per-pool invariant on writes for V1 content:
+// InsertVolume rejects new rows for a pool that already has one, and poolname
+// edits must not move a row onto a pool another row already owns -- but only
+// while appConfigVersion < AppConfigVersionV2. V2 content may have multiple
+// rows per pool; see findVolumeByPool.
+func (d *Deployment) GetVolumeByPool(poolName string) *Volume {
+	d.Mutex.RLock()
+	defer d.Mutex.RUnlock()
+
+	return d.findVolumeByPool(poolName)
+}
+
+// InsertVolume appends v to Storages.Volumes after normalizing and
+// validating it. appConfigVersion is the owning AppConfig's persisted
+// app-config-version marker (config.AppConfig.AppConfigVersion):
+//
+//   - appConfigVersion < AppConfigVersionV2 (V1/unflagged): a pool may back at
+//     most one saved row, matching the canonicalization migration's
+//     one-row-per-pool invariant.
+//   - appConfigVersion >= AppConfigVersionV2: multiple intentional rows per
+//     pool are allowed (Phase 11). The row's Name must still be globally
+//     unique.
+func (d *Deployment) InsertVolume(v *Volume, appConfigVersion int) error {
 	// Use a mutex to protect concurrent access
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
 
-	// Validate the volume
-	if v.Name == "" {
-		return errors.New("volume name is required")
+	// Normalize before validating so duplicate/empty tokens don't slip in.
+	v.VolumeDir = NormalizeVolumeDirs(v.VolumeDir)
+
+	if err := v.Validate(); err != nil {
+		return err
 	}
 
-	if v.VolumeDir == "" {
-		return errors.New("volume directory is required")
-	}
-
-	// Check if the volume directory is valid
-	if strings.Contains(v.VolumeDir, "..") {
-		return fmt.Errorf("invalid volume directory: %s", v.VolumeDir)
-	}
-
-	// Check if the volume already exists
+	// Check if the volume already exists. Name is the row's identity and must
+	// be globally unique regardless of app-config-version.
 	for _, existingVolume := range d.Storages.Volumes {
 		if existingVolume.Name == v.Name {
 			return fmt.Errorf("volume already exists: %s", v.Name)
 		}
+	}
 
-		if existingVolume.VolumeDir == v.VolumeDir && existingVolume.PoolName == v.PoolName {
-			return fmt.Errorf("volume with same directory and pool already exists: %s", v.VolumeDir)
+	if appConfigVersion < AppConfigVersionV2 {
+		if existing := d.findVolumeByPool(v.PoolName); existing != nil {
+			return fmt.Errorf("a volume for pool %q already exists: %s", v.PoolName, existing.Name)
 		}
 	}
 
@@ -242,6 +281,44 @@ func (d *Deployment) GetGitPaths(name string) []*PathMapping {
 	return paths
 }
 
+// syncPathVolumeName applies the canonical PathMapping.VolumeName resolution
+// rule once pointers have been resolved via ResolvePointers:
+//
+//  1. a path with a resolved direct Source always has VolumeName refreshed
+//     from Source.GetSourceVolumeName(), overwriting any stale value
+//  2. a path that declares a SourceType but whose Source did not resolve has
+//     VolumeName cleared, so provisioning does not fall back to a stale or
+//     mismatched volume
+//  3. a path with no direct source inherits VolumeName from its Parent, if any
+//  4. a root path with neither a source nor a parent is left untouched
+func syncPathVolumeName(p *PathMapping) {
+	switch {
+	case p.Source != nil:
+		p.VolumeName = p.Source.GetSourceVolumeName()
+	case p.SourceType != "":
+		p.VolumeName = ""
+	case p.Parent != nil:
+		p.VolumeName = p.Parent.VolumeName
+	}
+}
+
+// resolvePathMapping resolves p's Parent/Source pointers and synchronizes its
+// VolumeName via syncPathVolumeName. It does not lock d.Mutex; callers are
+// responsible for any required locking.
+func (d *Deployment) resolvePathMapping(p *PathMapping) error {
+	if err := p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths); err != nil {
+		return err
+	}
+
+	syncPathVolumeName(p)
+
+	if p.SourceType != "" && p.Source == nil {
+		return fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath)
+	}
+
+	return nil
+}
+
 func (d *Deployment) InsertPath(p PathMapping) error {
 	// Use a mutex to protect concurrent access
 	d.Mutex.Lock()
@@ -252,21 +329,13 @@ func (d *Deployment) InsertPath(p PathMapping) error {
 		if existingPath.DockerPath == p.DockerPath {
 			return fmt.Errorf("path mapping already exists for target path: %s", p.DockerPath)
 		}
-
-		if existingPath.Name == p.ParentName {
-			// If the parent name matches, set the parent pointer
-			p.Parent = existingPath
-		}
 	}
 
-	// Validate the path mapping
-	p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths)
-	if p.SourceName != "" && p.Source == nil {
-		return fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath)
-	} else if p.Source != nil {
-		p.VolumeName = p.Source.GetSourceVolumeName() // Use the source's volume name if available
-	} else {
-		p.VolumeName = p.Parent.VolumeName // Inherit volume name from parent if no source is specified
+	if err := d.resolvePathMapping(&p); err != nil {
+		return err
+	}
+	if p.SourceType == "" && p.SourceName != "" {
+		return fmt.Errorf("source type is required for path mapping %s", p.DockerPath)
 	}
 
 	// Add the new path mapping
@@ -282,21 +351,32 @@ func (d *Deployment) ResolveGitPaths(gitname string) {
 	}
 }
 
+// ResolvePath resolves p's pointers and VolumeName via resolvePathMapping. If
+// p's VolumeName changes as a result, the change is cascaded to any child
+// paths (matched by ParentName) that have no direct source of their own, so
+// inherited bindings stay in sync immediately after a source or backing
+// volume change.
 func (d *Deployment) ResolvePath(p *PathMapping) error {
-	err := p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths)
-	if err != nil {
+	oldVolumeName := p.VolumeName
+
+	if err := d.resolvePathMapping(p); err != nil {
 		return err
 	}
 
-	if p.Parent != nil {
-		if p.VolumeName == "" {
-			p.VolumeName = p.Parent.VolumeName // Inherit volume name from parent if no source is specified
+	var childErrs []error
+	if p.VolumeName != oldVolumeName && p.Name != "" {
+		for _, child := range d.Paths {
+			if child == p || child.SourceType != "" || child.ParentName != p.Name {
+				continue
+			}
+			if err := d.ResolvePath(child); err != nil {
+				childErrs = append(childErrs, err)
+			}
 		}
 	}
 
-	// If the path is not resolved, log a warning
-	if p.SourceType != "" && p.Source == nil {
-		return fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath)
+	if len(childErrs) > 0 {
+		return errors.Join(childErrs...)
 	}
 
 	return nil
@@ -308,31 +388,64 @@ func (d *Deployment) ResolvePaths() []error {
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
 
+	appendErr := func(err error) {
+		if errs == nil {
+			errs = make([]error, 0)
+		}
+		errs = append(errs, err)
+	}
+
+	// Pass 1: resolve pointers for every path and synchronize VolumeName for
+	// paths with a direct source. Paths without a direct source keep their
+	// current VolumeName until the inheritance pass below.
 	for _, p := range d.Paths {
-		// Resolve pointers for each path mapping
-		err := p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths)
-		if err != nil {
-			if errs == nil {
-				errs = make([]error, 0)
-			}
-			errs = append(errs, err)
+		if err := p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths); err != nil {
+			appendErr(err)
 			continue
 		}
 
-		if p.Parent != nil {
-			if p.VolumeName == "" {
-				p.VolumeName = p.Parent.VolumeName // Inherit volume name from parent if no source is specified
+		if p.SourceType != "" {
+			syncPathVolumeName(p)
+			if p.Source == nil {
+				appendErr(fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath))
 			}
-		}
-
-		// If the path is not resolved, log a warning
-		if p.SourceType != "" && p.Source == nil {
-			if errs == nil {
-				errs = make([]error, 0)
-			}
-			errs = append(errs, fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath))
 		}
 	}
+
+	for _, p := range d.Paths {
+		if p.SourceType == "" && p.Parent != nil {
+			p.VolumeName = ""
+		}
+	}
+
+	// Pass 2: propagate VolumeName from parents to children with no direct
+	// source, iterating to a fixed point so inheritance converges regardless
+	// of d.Paths ordering.
+	for i := 0; i < len(d.Paths); i++ {
+		changed := false
+		for _, p := range d.Paths {
+			if p.SourceType != "" || p.Parent == nil {
+				continue
+			}
+			if p.Parent.VolumeName == "" {
+				continue
+			}
+			if p.VolumeName != p.Parent.VolumeName {
+				p.VolumeName = p.Parent.VolumeName
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+
+	for _, p := range d.Paths {
+		if p.SourceType == "" && p.Parent != nil && p.VolumeName == "" {
+			appendErr(fmt.Errorf("inherited volume not resolved for path mapping %s via parent %s", p.DockerPath, p.ParentName))
+		}
+	}
+
 	return errs
 }
 
@@ -500,11 +613,440 @@ func (d *Deployment) GetVariableByName(name string, lock bool) (*VariableMapping
 
 type Routes []Route
 
+// RouteMonitor holds optional per-route monitoring customization for HTTP/HTTPS routes.
+type RouteMonitor struct {
+	Path          string `mapstructure:"path" toml:"path" json:"path,omitempty" groups:"apps"`
+	AuthType      string `mapstructure:"auth-type" toml:"auth-type" json:"authType,omitempty" groups:"apps"`
+	AuthUser      string `mapstructure:"auth-user" toml:"auth-user" json:"authUser,omitempty" groups:"apps"`
+	AuthSecretVar string `mapstructure:"auth-secret-var" toml:"auth-secret-var" json:"authSecretVar,omitempty" groups:"apps"`
+	ExpectStatus  string `mapstructure:"expect-status" toml:"expect-status" json:"expectStatus,omitempty" groups:"apps"`
+}
+
+// Normalize fills in defaults and canonicalizes all fields.  It is idempotent
+// and must be called before Validate.
+func (m *RouteMonitor) Normalize() {
+	m.Path = strings.TrimSpace(m.Path)
+	m.AuthType = strings.ToLower(strings.TrimSpace(m.AuthType))
+	m.AuthUser = strings.TrimSpace(m.AuthUser)
+	m.AuthSecretVar = strings.TrimSpace(m.AuthSecretVar)
+	m.ExpectStatus = strings.TrimSpace(m.ExpectStatus)
+
+	if m.AuthType == "none" {
+		m.AuthType = ""
+	}
+	if m.Path == "" {
+		m.Path = "/"
+	} else if !strings.HasPrefix(m.Path, "/") {
+		m.Path = "/" + m.Path
+	}
+	if m.ExpectStatus == "" {
+		m.ExpectStatus = "200"
+	}
+}
+
+// Validate returns an error when the monitor config is structurally invalid.
+// Call Normalize before Validate.
+func (m *RouteMonitor) Validate() error {
+	switch m.AuthType {
+	case "", "basic", "bearer":
+	default:
+		return fmt.Errorf("auth-type must be 'none', 'basic', or 'bearer', got %q", m.AuthType)
+	}
+	if m.AuthType == "basic" {
+		if m.AuthUser == "" {
+			return errors.New("basic auth requires auth-user")
+		}
+		if m.AuthSecretVar == "" {
+			return errors.New("basic auth requires auth-secret-var")
+		}
+	}
+	if m.AuthType == "bearer" && m.AuthSecretVar == "" {
+		return errors.New("bearer auth requires auth-secret-var")
+	}
+	if m.Path != "" && !strings.HasPrefix(m.Path, "/") {
+		return fmt.Errorf("path must start with '/', got %q", m.Path)
+	}
+	if m.ExpectStatus != "" {
+		if _, err := ParseExpectStatus(m.ExpectStatus); err != nil {
+			return fmt.Errorf("expect-status: %w", err)
+		}
+	}
+	return nil
+}
+
+// ValidateSecretRef checks that auth-secret-var references an existing secret variable.
+// It is nil-safe: a nil receiver returns nil immediately.
+func (m *RouteMonitor) ValidateSecretRef(variables VariableMaps) error {
+	if m == nil || m.AuthSecretVar == "" {
+		return nil
+	}
+	for _, v := range variables {
+		if v.Name == m.AuthSecretVar {
+			if v.Type != VariableTypeSecret {
+				return fmt.Errorf("auth-secret-var %q must reference a variable of type 'secret', got %q", m.AuthSecretVar, v.Type)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("auth-secret-var %q references a variable that does not exist", m.AuthSecretVar)
+}
+
+// ParseExpectStatus parses a comma-separated list of HTTP status codes.
+// Each code must be a valid integer in the range 100-599.  Duplicates are
+// silently deduplicated.
+func ParseExpectStatus(s string) ([]int, error) {
+	parts := strings.Split(s, ",")
+	seen := make(map[int]bool)
+	var codes []int
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, errors.New("empty element in expect-status")
+		}
+		n, err := strconv.Atoi(part)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a valid HTTP status code", part)
+		}
+		if n < 100 || n > 599 {
+			return nil, fmt.Errorf("%d is not a valid HTTP status code (must be 100–599)", n)
+		}
+		if !seen[n] {
+			seen[n] = true
+			codes = append(codes, n)
+		}
+	}
+	return codes, nil
+}
+
 type Route struct {
-	CName    string `mapstructure:"cname"  toml:"cname" json:"cname" groups:"apps"`
-	Port     string `mapstructure:"port"  toml:"port" json:"port" groups:"apps"`
-	Protocol string `mapstructure:"protocol"  toml:"protocol" json:"protocol" options:"https|tcp" groups:"apps"`
-	Primary  bool   `mapstructure:"primary"  toml:"primary" json:"primary" groups:"apps"`
+	Name string `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
+
+	// Existing host-route fields kept for backward compatibility.
+	CName    string `mapstructure:"cname" toml:"cname" json:"cname" groups:"apps"`
+	Port     string `mapstructure:"port" toml:"port" json:"port,omitempty" groups:"apps"`
+	Protocol string `mapstructure:"protocol" toml:"protocol" json:"protocol" groups:"apps"`
+	Primary  bool   `mapstructure:"primary" toml:"primary" json:"primary" groups:"apps"`
+
+	// Explicit source/destination fields.
+	Mode            string `mapstructure:"mode" toml:"mode" json:"mode" groups:"apps"` // host | port
+	SourcePort      string `mapstructure:"sourceport" toml:"sourceport" json:"sourcePort" groups:"apps"`
+	DestinationPort string `mapstructure:"destport" toml:"destport" json:"destPort" groups:"apps"`
+
+	// Optional per-route monitoring customization.  Nil means no monitor block
+	// was configured; legacy routes keep nil so no defaults are injected.
+	Monitor *RouteMonitor `mapstructure:"monitor" toml:"monitor" json:"monitor,omitempty" groups:"apps"`
+}
+
+// Clone returns a deep copy of the Route, duplicating the Monitor pointer so
+// mutations to the copy do not affect the original.
+func (r Route) Clone() Route {
+	if r.Monitor != nil {
+		m := *r.Monitor
+		r.Monitor = &m
+	}
+	return r
+}
+
+// Label returns a compact human-readable identifier for the route.
+// Host routes: "cname:destPort". Port routes: "cname:sourcePort -> destPort".
+func (r Route) Label() string {
+	if r.Mode == "port" {
+		return r.CName + ":" + r.SourcePort + " -> " + r.DestinationPort
+	}
+	return r.CName + ":" + r.DestinationPort
+}
+
+// Normalize fills in defaults and copies legacy fields so the Route is in
+// canonical form.  It is idempotent and must be called before Validate.
+func (r *Route) Normalize() {
+	r.Mode = strings.ToLower(strings.TrimSpace(r.Mode))
+	r.Protocol = strings.ToLower(strings.TrimSpace(r.Protocol))
+	r.CName = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(r.CName)), ".")
+	if r.Monitor != nil {
+		r.Monitor.Normalize()
+	}
+
+	if r.Mode == "" {
+		// Legacy compatibility: a route saved with protocol=tcp but no explicit
+		// mode is a TCP port-forward, not a host-mode HTTP route.
+		if r.Protocol == "tcp" {
+			r.Mode = "port"
+		} else {
+			r.Mode = "host"
+		}
+	}
+
+	if r.Mode == "host" {
+		if r.Protocol == "" {
+			r.Protocol = "https"
+		}
+		// Legacy: port means destination port for host routes.
+		if r.DestinationPort == "" && r.Port != "" {
+			r.DestinationPort = r.Port
+		}
+		// SourcePort is intentionally left empty for host routes because the
+		// shared gateway frontend owns the bind port.
+		if r.DestinationPort != "" {
+			r.Port = r.DestinationPort
+		}
+	}
+
+	if r.Mode == "port" {
+		sourceFromPort := r.Port
+		destinationFromPort := r.Port
+		if idx := strings.Index(r.Port, ":"); idx >= 0 {
+			sourceFromPort = r.Port[:idx]
+			destinationFromPort = r.Port[idx+1:]
+		}
+		if r.Port != "" && r.SourcePort == "" && r.DestinationPort == "" {
+			// Legacy "9000:9001" means asymmetric port-forward; "9000" means symmetric.
+			r.SourcePort = sourceFromPort
+			r.DestinationPort = destinationFromPort
+		} else {
+			if r.SourcePort == "" && r.Port != "" {
+				r.SourcePort = sourceFromPort
+			}
+			if r.DestinationPort == "" && r.Port != "" {
+				r.DestinationPort = destinationFromPort
+			}
+		}
+		if r.SourcePort != "" || r.DestinationPort != "" {
+			if r.SourcePort == r.DestinationPort {
+				r.Port = r.SourcePort
+			} else {
+				r.Port = r.SourcePort + ":" + r.DestinationPort
+			}
+		}
+	}
+}
+
+// Validate returns an error when the route is not in a legal state.
+// Call Normalize before Validate.
+func (r *Route) Validate() error {
+	if r.Mode != "host" && r.Mode != "port" {
+		return fmt.Errorf("route mode must be 'host' or 'port', got %q", r.Mode)
+	}
+
+	if r.SourcePort != "" {
+		if strings.Contains(r.SourcePort, ":") {
+			return fmt.Errorf("sourcePort must be a single port number, got %q", r.SourcePort)
+		}
+		if err := validateSinglePort(r.SourcePort); err != nil {
+			return fmt.Errorf("sourcePort: %w", err)
+		}
+	}
+	if r.DestinationPort != "" {
+		if strings.Contains(r.DestinationPort, ":") {
+			return fmt.Errorf("destPort must be a single port number, got %q", r.DestinationPort)
+		}
+		if err := validateSinglePort(r.DestinationPort); err != nil {
+			return fmt.Errorf("destPort: %w", err)
+		}
+	}
+
+	switch r.Mode {
+	case "host":
+		if r.Port != "" && strings.Contains(r.Port, ":") {
+			return fmt.Errorf("host route port must be a single port number, got %q", r.Port)
+		}
+		if r.Protocol == "tcp" {
+			return fmt.Errorf("host-mode tcp route must be migrated manually to mode=port")
+		}
+		if r.Protocol != "https" {
+			return fmt.Errorf("host route protocol must be 'https' in phase 1, got %q", r.Protocol)
+		}
+		if r.CName == "" {
+			return errors.New("host route requires a cname")
+		}
+		if strings.HasPrefix(r.CName, "*") {
+			return fmt.Errorf("host route cname cannot start with '*', got %q", r.CName)
+		}
+		if r.DestinationPort == "" {
+			return errors.New("host route requires a destination port")
+		}
+	case "port":
+		if r.Protocol != "http" && r.Protocol != "tcp" {
+			return fmt.Errorf("port route protocol must be 'http' or 'tcp' in phase 1, got %q", r.Protocol)
+		}
+		if r.CName == "" {
+			return errors.New("port route requires a cname so the gateway listener can be resolved")
+		}
+		if strings.HasPrefix(r.CName, "*") {
+			return fmt.Errorf("port route cname cannot start with '*', got %q", r.CName)
+		}
+		if r.SourcePort == "" {
+			return errors.New("port route requires a source port")
+		}
+		if r.DestinationPort == "" {
+			return errors.New("port route requires a destination port")
+		}
+	}
+
+	if r.Monitor != nil {
+		if err := r.Monitor.Validate(); err != nil {
+			return fmt.Errorf("monitor: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func validateSinglePort(s string) error {
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 || n > 65535 {
+		return fmt.Errorf("%q is not a valid port number", s)
+	}
+	return nil
+}
+
+// NormalizeRoutes normalizes all routes in the deployment and enforces a
+// single primary route.
+func (d *Deployment) NormalizeRoutes() {
+	for i := range d.Routes {
+		d.Routes[i].Normalize()
+	}
+	d.EnforceSinglePrimary()
+}
+
+// ValidateRoutes validates all routes after normalization.  It returns the
+// first error found and the index of the offending route.  It also validates
+// monitor secret-var references against d.Variables so the check runs on every
+// write path (API save, deployment load).
+func (d *Deployment) ValidateRoutes() error {
+	for i, r := range d.Routes {
+		if err := r.Validate(); err != nil {
+			return fmt.Errorf("route[%d]: %w", i, err)
+		}
+		if r.Monitor != nil {
+			if err := r.Monitor.ValidateSecretRef(d.Variables); err != nil {
+				return fmt.Errorf("route[%d] monitor: %w", i, err)
+			}
+		}
+	}
+	return nil
+}
+
+// NormalizedCopy returns a new slice with every route cloned and normalized so
+// that CheckGatewayConflicts sees canonical Mode/SourcePort values even for
+// routes that were persisted before normalization was applied on write.
+func NormalizedCopy(routes []Route) []Route {
+	out := make([]Route, len(routes))
+	for i, r := range routes {
+		out[i] = r.Clone()
+	}
+	for i := range out {
+		out[i].Normalize()
+	}
+	return out
+}
+
+// CheckGatewayConflicts checks for shared-gateway collisions.
+// Host-route collision keys are (cname).
+// Port-route collision keys are (cname, sourcePort).
+func CheckGatewayConflicts(current []Route, others ...[]Route) error {
+	seenCNames := make(map[string]bool)
+	seenListeners := make(map[string]bool) // cname:sourcePort
+
+	for _, routes := range append([][]Route{current}, others...) {
+		for _, r := range routes {
+			switch r.Mode {
+			case "host":
+				if r.CName != "" {
+					if seenCNames[r.CName] {
+						return fmt.Errorf("cname %q is already reserved by another route on the shared gateway", r.CName)
+					}
+					seenCNames[r.CName] = true
+				}
+			case "port":
+				if r.SourcePort != "" {
+					listenerKey := r.CName + ":" + r.SourcePort
+					if seenListeners[listenerKey] {
+						return fmt.Errorf("listener %q is already reserved by another route on the shared gateway", listenerKey)
+					}
+					seenListeners[listenerKey] = true
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// EnforceSinglePrimary ensures exactly one route is marked primary.  If
+// multiple routes are already primary, the first wins and the rest are
+// demoted.  If none is primary, the first route is promoted.
+// PrimaryRoute is updated in sync with the flags.
+func (d *Deployment) EnforceSinglePrimary() {
+	foundPrimary := -1
+	for i, r := range d.Routes {
+		if r.Primary {
+			if foundPrimary == -1 {
+				foundPrimary = i
+			} else {
+				d.Routes[i].Primary = false
+			}
+		}
+	}
+	if foundPrimary == -1 && len(d.Routes) > 0 {
+		d.Routes[0].Primary = true
+		foundPrimary = 0
+	}
+	if foundPrimary >= 0 {
+		d.PrimaryRoute = d.Routes[foundPrimary]
+	} else {
+		d.PrimaryRoute = Route{}
+	}
+}
+
+var routeTokenSanitizerRe = regexp.MustCompile(`[^a-zA-Z0-9_]`)
+
+// sanitizeToken replaces non-alphanumeric/underscore characters with '_' and
+// lowercases the result.
+func sanitizeToken(s string) string {
+	return strings.ToLower(routeTokenSanitizerRe.ReplaceAllString(s, "_"))
+}
+
+// shortHash returns an 8-character hex prefix of the SHA-256 hash of s.
+func shortHash(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return fmt.Sprintf("%x", h[:4])
+}
+
+// BuildRouteToken returns a stable per-route fragment identity string.
+//
+//	host route -> host_<destPort>_<shortHash(cname)>
+//	port route -> port_<sourcePort>_<destPort>_<shortHash(cname+sourcePort+destPort)>
+func BuildRouteToken(r Route) string {
+	switch r.Mode {
+	case "port":
+		return sanitizeToken(fmt.Sprintf("port_%s_%s_%s", r.SourcePort, r.DestinationPort, shortHash(r.CName+r.SourcePort+r.DestinationPort)))
+	default: // host
+		return sanitizeToken(fmt.Sprintf("host_%s_%s", r.DestinationPort, shortHash(r.CName)))
+	}
+}
+
+// BuildGlobalRouteToken returns the globally unique HAProxy object name prefix
+// derived from cluster, app, and route identity.
+func BuildGlobalRouteToken(clusterName, appName string, routeToken string) string {
+	return sanitizeToken(clusterName + "_" + appName + "_" + routeToken)
+}
+
+// BuildRouteStateKey returns a stable monitoring/debounce key for the route.
+// It includes mode, protocol, ports, and a hash of the CNAME so it survives
+// route renames while remaining distinct from the HAProxy fragment identity
+// (BuildRouteToken).  The key changes only when route identity or protocol
+// changes, not on cosmetic name edits.
+//
+//	host route -> monitor_host_<protocol>_<destPort>_<shortHash(cname)>
+//	port route -> monitor_port_<protocol>_<sourcePort>_<destPort>_<shortHash(cname)>
+func BuildRouteStateKey(r Route) string {
+	switch r.Mode {
+	case "port":
+		return sanitizeToken(fmt.Sprintf("monitor_port_%s_%s_%s_%s",
+			r.Protocol, r.SourcePort, r.DestinationPort, shortHash(r.CName+r.SourcePort+r.DestinationPort)))
+	default: // host
+		return sanitizeToken(fmt.Sprintf("monitor_host_%s_%s_%s",
+			r.Protocol, r.DestinationPort, shortHash(r.CName)))
+	}
 }
 
 type RouteStatus struct {
@@ -622,6 +1164,12 @@ func (p PathMapping) GetDockerMapping(volname string) string {
 }
 
 func (pm *PathMapping) ResolvePointers(volumes Volumes, gits GitClones, s3s S3Mounts, parents PathMaps) error {
+	// Clear any previously resolved pointers before re-resolving. Path mappings
+	// are mutated in place across API edits, so stale Parent/Source pointers must
+	// not survive a source or parent change.
+	pm.Parent = nil
+	pm.Source = nil
+
 	// Resolve Parent
 	if pm.ParentName != "" {
 		for _, parent := range parents {
@@ -721,14 +1269,6 @@ func (gc *GitClone) GetSourceVolumeName() string {
 	return gc.VolumeName
 }
 
-func (gc *GitClone) GetSourcePoolName() string {
-	// Return the volume name associated with the git clone
-	if gc.Volume != nil {
-		return gc.Volume.PoolName
-	}
-	return ""
-}
-
 var gitVariableReplacer = strings.NewReplacer("-", "_", ".", "_", "/", "_")
 
 const GitVarSuffixRepo = "REPO"
@@ -796,12 +1336,112 @@ type Volume struct {
 	VolumeDir string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"etc|log|var|data" groups:"apps"`
 }
 
-func (v *Volume) GetSourcePath() string {
-	// Ensure the volume directory starts with a slash
-	if !strings.HasPrefix(v.VolumeDir, "/") {
-		return "/" + v.VolumeDir
+// AppMountVolumeDir is the directory token used to select (or seed) the app
+// volume that backs ad-hoc S3 mounts created via SetAppLocalMountVolume.
+const AppMountVolumeDir = "mnt"
+
+// GetVolumeDirs returns VolumeDir split into its whitespace-separated
+// directory tokens. A legacy single-directory value (e.g. "data") returns
+// a single token; a merged row (e.g. "etc log var data") returns one token
+// per directory.
+func (v *Volume) GetVolumeDirs() []string {
+	return strings.Fields(v.VolumeDir)
+}
+
+// DefaultSubdir returns the first directory token of VolumeDir, used as the
+// default subdirectory when autofilling VolumeDir for a git clone or S3
+// mount that is placed on this volume. Returns "" if VolumeDir has no
+// tokens (a saved row always has at least one, per Validate).
+func (v *Volume) DefaultSubdir() string {
+	dirs := v.GetVolumeDirs()
+	if len(dirs) == 0 {
+		return ""
 	}
-	return v.VolumeDir
+	return dirs[0]
+}
+
+// S3MountSubdir returns the directory token to use as the default
+// <subdir>/<resource-name> base when autofilling VolumeDir for an S3 mount
+// placed on this volume. If VolumeDir contains the AppMountVolumeDir token
+// ("mnt"), that token is returned regardless of its position, keeping S3
+// mounts grouped under "mnt" the same way SetAppLocalMountVolume seeds new
+// mounts on a merged row (e.g. "data mnt" -> "mnt"). Otherwise falls back to
+// DefaultSubdir().
+func (v *Volume) S3MountSubdir() string {
+	for _, dir := range v.GetVolumeDirs() {
+		if dir == AppMountVolumeDir {
+			return AppMountVolumeDir
+		}
+	}
+	return v.DefaultSubdir()
+}
+
+// NormalizeVolumeDirs merges one or more whitespace-separated directory
+// lists into a single deduplicated, whitespace-separated list, preserving
+// first-seen order across all inputs.
+func NormalizeVolumeDirs(dirs ...string) string {
+	tokens := make([]string, 0, len(dirs))
+	seen := make(map[string]struct{}, len(dirs))
+	for _, dir := range dirs {
+		for _, tok := range strings.Fields(dir) {
+			if _, dup := seen[tok]; dup {
+				continue
+			}
+			seen[tok] = struct{}{}
+			tokens = append(tokens, tok)
+		}
+	}
+	return strings.Join(tokens, " ")
+}
+
+// Validate checks that the volume row is structurally sound: it has a name,
+// a pool, and VolumeDir resolves to at least one relative, non-traversal
+// directory token.
+func (v *Volume) Validate() error {
+	if v.Name == "" {
+		return errors.New("volume name is required")
+	}
+
+	if v.PoolName == "" {
+		return errors.New("volume pool name is required")
+	}
+
+	dirs := v.GetVolumeDirs()
+	if len(dirs) == 0 {
+		return errors.New("volume directory is required")
+	}
+
+	for _, dir := range dirs {
+		if strings.Contains(dir, "..") {
+			return fmt.Errorf("invalid volume directory: %s", dir)
+		}
+		if strings.HasPrefix(dir, "/") {
+			return fmt.Errorf("volume directory must be relative: %s", dir)
+		}
+	}
+
+	return nil
+}
+
+// GetSourcePath returns a legacy-compatible single-path view of VolumeDir for
+// callers that still expect a Volume to expose one path prefix. For a
+// multi-token VolumeDir (for example "data logs"), only the first token is
+// returned so legacy callers never receive the invalid literal path
+// "/data logs". Modern direct-volume path mappings must not use this helper to
+// derive root semantics: they are rooted at the saved volume row itself and use
+// "." explicitly.
+func (v *Volume) GetSourcePath() string {
+	dir := v.DefaultSubdir()
+	if dir == "" {
+		// Preserve the historical empty-value shape as closely as possible for
+		// deprecated callers. Validate() rejects empty VolumeDir for saved rows,
+		// so this is only for defensive compatibility.
+		return "/"
+	}
+	if !strings.HasPrefix(dir, "/") {
+		return "/" + dir
+	}
+	return dir
 }
 
 func (v *Volume) GetSourceName() string {
@@ -945,12 +1585,4 @@ func (s *S3Mount) GetSourceVolumeName() string {
 		return s.Volume.Name
 	}
 	return s.VolumeName
-}
-
-func (s *S3Mount) GetSourcePoolName() string {
-	// Return the volume name associated with the S3 mount
-	if s.Volume != nil {
-		return s.Volume.PoolName
-	}
-	return "" // Return an empty string if the volume is not set
 }

@@ -464,6 +464,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSysbench)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/actions/sysbench-cleanup", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSysbenchCleanup)),
+	)).Methods("POST")
+
 	router.Handle("/api/clusters/{clusterName}/actions/waitdatabases", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterWaitDatabases)),
@@ -674,6 +679,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxWebLog)),
 	))
 	router.Handle("/api/clusters/{clusterName}/topology/http-logs/{logType}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxWebLog)),
+	))
+	// Alias: cleaner route for typed logs (security, workload, sysbench, etc.)
+	router.Handle("/api/clusters/{clusterName}/topology/logs/{logType}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxWebLog)),
 	))
@@ -3861,12 +3871,22 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-level-file":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.LogFileLevel = val
+	case "backup-archive-mode":
+		if err := mycluster.SetBackupArchiveMode(value); err != nil {
+			return err
+		}
 	case "backup-restic-local-repository":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		mycluster.Conf.BackupResticLocalRepository = string(val)
+		repoPath := strings.TrimSpace(string(val))
+		if mycluster.Conf.BackupArchiveMode == config.ConstBackupArchiveModeResticSftp {
+			if err := cluster.ValidateResticSftpRepository(repoPath); err != nil {
+				return err
+			}
+		}
+		mycluster.Conf.BackupResticLocalRepository = repoPath
 		mycluster.ReloadResticEnv()
 	case "backup-restic-repository":
 		val, err := base64.StdEncoding.DecodeString(value)
@@ -4276,13 +4296,22 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "prov-object-allow-overwrite":
 		mycluster.Conf.ProvObjectAllowOverwrite = applyIsActive(mycluster.Conf.ProvObjectAllowOverwrite, isactive)
 	case "backup-restic-aws":
-		mycluster.Conf.BackupResticAws = applyIsActive(mycluster.Conf.BackupResticAws, isactive)
+		oldValue := mycluster.Conf.BackupResticAws
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mode := mycluster.Conf.DeriveBackupArchiveModeFromFlags(mycluster.Conf.BackupRestic, newValue)
+			if err = mycluster.SetBackupArchiveMode(mode); err != nil {
+				return err
+			}
+		}
 	case "backup-restic":
 		oldValue := mycluster.Conf.BackupRestic
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.BackupRestic = newValue
-			mycluster.CheckResticInstallation()
+			mode := mycluster.Conf.DeriveBackupArchiveModeFromFlags(newValue, mycluster.Conf.BackupResticAws)
+			if err = mycluster.SetBackupArchiveMode(mode); err != nil {
+				return err
+			}
 		}
 	case "backup-restic-purge-prune":
 		mycluster.Conf.BackupResticPurgePrune = applyIsActive(mycluster.Conf.BackupResticPurgePrune, isactive)
@@ -5516,16 +5545,21 @@ func (repman *ReplicationManager) handlerMuxLog(w http.ResponseWriter, r *http.R
 	}
 }
 
-// handlerMuxWebLog handles the retrieval of web logs.
-// @Summary Retrieve web logs
-// @Description This endpoint retrieves the web logs.
+// handlerMuxWebLog handles the retrieval of cluster logs by type.
+// @Summary Retrieve cluster logs by type
+// @Description Returns cluster logs for the specified type. Available types: general, task, security, workload, ddl, variable-change, sysbench. Without logType returns all logs.
 // @Tags ClusterTopology
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Success 200 {array} string "List of web logs"
-// @Failure 500 {string} string "Internal Server Error"
+// @Param clusterName path string true "Cluster Name"
+// @Param logType path string false "Log type: general, task, security, workload, ddl, variable-change, sysbench"
+// @Success 200 {object} map[string]interface{} "Log data"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found"
+// @Router /api/clusters/{clusterName}/topology/logs/{logType} [get]
 // @Router /api/clusters/{clusterName}/topology/http-logs [get]
 // @Router /api/clusters/{clusterName}/topology/http-logs/{logType} [get]
+// @Deprecated Use /topology/logs/{logType} instead of /topology/http-logs/{logType}
 func (repman *ReplicationManager) handlerMuxWebLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -5709,8 +5743,9 @@ func (repman *ReplicationManager) handlerMuxSettingsReload(w http.ResponseWriter
 	repman.InitConfig(*repman.Conf, true)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		//mycluster.ReloadConfig(repman.Confs[vars["clusterName"]])
-		mycluster.ReloadConfig(*mycluster.Conf)
+		prevGW := mycluster.Conf.Cloud18GatewayService
+		mycluster.ReloadConfig(repman.Confs[vars["clusterName"]])
+		repman.RecomputeGatewayConflicts(vars["clusterName"], prevGW)
 	} else {
 		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
@@ -6168,11 +6203,38 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		if r.URL.Query().Get("threads") != "" {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench threads to %s", r.URL.Query().Get("threads"))
-			mycluster.SetSysbenchThreads(r.URL.Query().Get("threads"))
+		if r.URL.Query().Get("test") != "" {
+			mycluster.SetSysbenchTest(r.URL.Query().Get("test"))
 		}
-		go mycluster.RunSysbench()
+		if r.URL.Query().Get("threads") == "0" {
+			// threads=0 means scale from 1 to 2×cores
+			go mycluster.RunSysbenchScaleThreads()
+		} else {
+			if r.URL.Query().Get("threads") != "" {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench threads to %s", r.URL.Query().Get("threads"))
+				mycluster.SetSysbenchThreads(r.URL.Query().Get("threads"))
+			}
+			go mycluster.RunSysbench()
+		}
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxClusterSysbenchCleanup(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+		if r.URL.Query().Get("test") != "" {
+			mycluster.SetSysbenchTest(r.URL.Query().Get("test"))
+		}
+		go mycluster.CleanupBench()
+		w.WriteHeader(http.StatusOK)
+	} else {
+		http.Error(w, "No cluster found:"+vars["clusterName"], http.StatusNotFound)
 	}
 }
 

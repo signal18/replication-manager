@@ -1289,6 +1289,16 @@ func (cluster *Cluster) SetClusterList(clusters map[string]*Cluster) {
 	cluster.Unlock()
 }
 
+// SetClusterOrder stores the ordered cluster-name slice that determines
+// gateway-route ownership priority (first entry = highest priority).
+// Must be called alongside SetClusterList so OpenSVCProvisionRoute can
+// apply "first wins" conflict resolution at publish time.
+func (cluster *Cluster) SetClusterOrder(order []string) {
+	cluster.Lock()
+	cluster.clusterOrder = order
+	cluster.Unlock()
+}
+
 func (cluster *Cluster) SetDeprecatedKeys(keys map[string]map[string]bool) {
 	cluster.deprecatedKeys = keys
 }
@@ -1346,6 +1356,15 @@ func (cl *Cluster) SetArbitratorReport() error {
 // SetClusterHead for MariaDB spider we can arbtitraty shard tables to child clusters
 func (cluster *Cluster) SetClusterHead(ClusterName string) {
 	cluster.Conf.ClusterHead = ClusterName
+}
+
+func (cluster *Cluster) SetSysbenchTest(test string) {
+	if config.GetSysbenchTests()[test] {
+		cluster.Conf.SysbenchTest = test
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench test to %s", test)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unknown sysbench test: %s", test)
+	}
 }
 
 func (cluster *Cluster) SetSysbenchThreads(Threads string) {
@@ -2143,6 +2162,15 @@ func (cluster *Cluster) SetInResticBackupState(value bool) {
 	if !value {
 		cluster.InResticLogicalBackup = false
 		cluster.InResticPhysicalBackup = false
+	}
+}
+
+func (cluster *Cluster) CheckBackupStates() {
+	if cluster.InPhysicalBackup || cluster.InResticPhysicalBackup {
+		cluster.StateMachine.PreserveState("WARN0073")
+	}
+	if cluster.InLogicalBackup || cluster.InResticLogicalBackup {
+		cluster.StateMachine.PreserveState("WARN0175")
 	}
 }
 
