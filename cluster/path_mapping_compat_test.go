@@ -181,6 +181,49 @@ func TestResolvePathsRootSourcePathSlash_IsRejected(t *testing.T) {
 	}
 }
 
+// TestOpenSVCAppVolumeSection_MultiDirectoryVolumeDir covers Phase 5/9: a
+// merged multi-pool volume row (VolumeDir = "etc log var data") must be
+// rendered as separate OpenSVC "directories" entries, not a single literal
+// directory name containing spaces.
+func TestOpenSVCAppVolumeSection_MultiDirectoryVolumeDir(t *testing.T) {
+	vol := &config.Volume{Name: "myapp-data", PoolName: "data", VolumeDir: "etc log var data"}
+
+	got := openSVCAppVolumeSection(vol, nil, true)
+
+	if got["name"] != "myapp-data" {
+		t.Fatalf("expected name myapp-data, got %q", got["name"])
+	}
+	if got["pool"] != "data" {
+		t.Fatalf("expected pool data, got %q", got["pool"])
+	}
+	if got["shared"] != "true" {
+		t.Fatalf("expected shared=true for shared pool, got %q", got["shared"])
+	}
+	if want := "data etc log var"; got["directories"] != want {
+		t.Fatalf("expected directories %q, got %q", want, got["directories"])
+	}
+}
+
+// TestOpenSVCAppVolumeSection_PathDerivedDirectoryMergedWithVolumeDir covers
+// merging VolumeDir tokens with directories derived from
+// deployment.Paths.GetVolumeDirs(), deduplicated and sorted, and confirms the
+// "shared" key is omitted for a non-shared pool.
+func TestOpenSVCAppVolumeSection_PathDerivedDirectoryMergedWithVolumeDir(t *testing.T) {
+	vol := &config.Volume{Name: "myapp-data", PoolName: "data", VolumeDir: "data"}
+	pathmap := map[string][]string{
+		"myapp-data": {"data/uploads/file.txt", "logs/"},
+	}
+
+	got := openSVCAppVolumeSection(vol, pathmap, false)
+
+	if _, ok := got["shared"]; ok {
+		t.Fatalf("expected no shared key for non-shared pool, got %q", got["shared"])
+	}
+	if want := "data data/uploads logs"; got["directories"] != want {
+		t.Fatalf("expected directories %q, got %q", want, got["directories"])
+	}
+}
+
 func TestPathMapsSort_UsesLevelThenPath(t *testing.T) {
 	paths := config.PathMaps{
 		{Name: "child-b", Level: 1, ParentName: "root", DockerPath: "/root/b"},

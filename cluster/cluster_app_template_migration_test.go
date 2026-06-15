@@ -604,6 +604,95 @@ func TestLoadAppConfig_MergesMultiRowVolumePoolWithResolvedName(t *testing.T) {
 	}
 }
 
+// TestLoadAppConfig_RewritesLegacyConfigOnlyOnce covers Phase 9 task 1/2: a
+// legacy multi-row-pool app config is canonicalized and rewritten to disk on
+// the first load, but a second load of the now-canonical file must not
+// trigger another rewrite (CanonicalizeAppContent reports Changed=false on
+// already-canonical content).
+func TestLoadAppConfig_RewritesLegacyConfigOnlyOnce(t *testing.T) {
+	workingDir := t.TempDir()
+	appsDir := filepath.Join(workingDir, "apps")
+	if err := os.MkdirAll(appsDir, 0o755); err != nil {
+		t.Fatalf("mkdir apps dir failed: %v", err)
+	}
+
+	appFile := filepath.Join(appsDir, "legacy-vol.toml")
+	content := "app-host = \"legacy-vol\"\napp-port = \"8080\"\nprov-app-memory = \"128M\"\nprov-app-disk-size = \"1G\"\n" + legacyMultiRowPoolVolumesTOML
+	if err := os.WriteFile(appFile, []byte(content), 0o644); err != nil {
+		t.Fatalf("write legacy app file failed: %v", err)
+	}
+
+	newCluster := func() *Cluster {
+		return &Cluster{
+			Name:       "test-cluster",
+			WorkingDir: workingDir,
+			crcTable:   crc64.MakeTable(crc64.ECMA),
+			Conf: &config.Config{
+				WorkingDir:     workingDir,
+				Apps:           make([]*config.AppConfig, 0),
+				DefaultFlagMap: map[string]interface{}{"prov-app-memory": "128M", "prov-app-disk-size": "1G"},
+			},
+		}
+	}
+
+	if err := newCluster().LoadAppConfig(appsDir, "legacy-vol"); err != nil && err.Error() != "" {
+		t.Fatalf("first LoadAppConfig failed: %v", err)
+	}
+	firstPass, err := os.ReadFile(appFile)
+	if err != nil {
+		t.Fatalf("read app file after first load failed: %v", err)
+	}
+
+	if err := newCluster().LoadAppConfig(appsDir, "legacy-vol"); err != nil && err.Error() != "" {
+		t.Fatalf("second LoadAppConfig failed: %v", err)
+	}
+	secondPass, err := os.ReadFile(appFile)
+	if err != nil {
+		t.Fatalf("read app file after second load failed: %v", err)
+	}
+
+	if string(firstPass) != string(secondPass) {
+		t.Fatalf("expected second load not to rewrite already-canonical config\nfirst:\n%s\nsecond:\n%s", firstPass, secondPass)
+	}
+}
+
+// TestGetTemplateContent_RewritesLegacyTemplateOnlyOnce covers Phase 9 task
+// 1/2: a legacy multi-row-pool template is canonicalized and rewritten to the
+// local cache on the first load, but a second load of the now-canonical cache
+// must not trigger another rewrite.
+func TestGetTemplateContent_RewritesLegacyTemplateOnlyOnce(t *testing.T) {
+	workingDir := t.TempDir()
+	localPath := filepath.Join(workingDir, ".templates", "apps", "legacy-vol.toml")
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+		t.Fatalf("mkdir local template dir failed: %v", err)
+	}
+	if err := os.WriteFile(localPath, []byte(legacyMultiRowPoolVolumesTOML), 0o644); err != nil {
+		t.Fatalf("write local legacy template failed: %v", err)
+	}
+
+	cluster := &Cluster{Conf: &config.Config{WorkingDir: workingDir}}
+
+	if _, err := cluster.GetTemplateContent("legacy-vol"); err != nil {
+		t.Fatalf("first GetTemplateContent failed: %v", err)
+	}
+	firstPass, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read local template after first load failed: %v", err)
+	}
+
+	if _, err := cluster.GetTemplateContent("legacy-vol"); err != nil {
+		t.Fatalf("second GetTemplateContent failed: %v", err)
+	}
+	secondPass, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read local template after second load failed: %v", err)
+	}
+
+	if string(firstPass) != string(secondPass) {
+		t.Fatalf("expected second load not to rewrite already-canonical template\nfirst:\n%s\nsecond:\n%s", firstPass, secondPass)
+	}
+}
+
 func TestGetTemplateContent_MergesMultiRowVolumePoolWithTemplateName(t *testing.T) {
 	workingDir := t.TempDir()
 	localPath := filepath.Join(workingDir, ".templates", "apps", "legacy-vol.toml")
