@@ -524,6 +524,22 @@ func hydrateS3MountFromProvider(mycluster *cluster.Cluster, mount *config.S3Moun
 	return nil
 }
 
+// volumeHasDirectoryToken reports whether dir is exactly one of vol's
+// whitespace-separated VolumeDir tokens (e.g. "data" in "data mnt"), as
+// opposed to a full relative path (e.g. "data/custom-media"). Used to detect
+// an explicit bare directory-token S3 mount placement (Phase 16).
+func volumeHasDirectoryToken(vol *config.Volume, dir string) bool {
+	if vol == nil {
+		return false
+	}
+	for _, tok := range vol.GetVolumeDirs() {
+		if tok == dir {
+			return true
+		}
+	}
+	return false
+}
+
 // @Summary Shows the apps for that specific named cluster
 // @Description Shows the apps for that specific named cluster
 // @Tags Apps
@@ -2287,6 +2303,13 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			}
 			if row.VolumeDir == "" {
 				row.VolumeDir = filepath.Join(row.Volume.S3MountSubdir(), row.Name)
+			} else if volumeHasDirectoryToken(row.Volume, row.VolumeDir) {
+				// Phase 16: the "Add new" form has no Name field yet, so an
+				// explicit directory-token choice with no subdirectory is
+				// submitted as the bare token (e.g. "data"). Append the
+				// generated mount name so this explicit token choice is
+				// preserved instead of being mistaken for "unspecified".
+				row.VolumeDir = filepath.Join(row.VolumeDir, row.Name)
 			}
 		}
 

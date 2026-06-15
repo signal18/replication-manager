@@ -336,6 +336,11 @@ level = 0
 	if len(dep.Storages.S3Mounts) != 1 || dep.Storages.S3Mounts[0].VolumeName != "myapp-data-logs" {
 		t.Fatalf("expected s3-mount to keep referencing myapp-data-logs, got %+v", dep.Storages.S3Mounts)
 	}
+	// Phase 15 task 4: explicit non-"mnt" S3 placement must survive the reset
+	// flow unchanged, not be snapped back to a "mnt/..." default.
+	if dep.Storages.S3Mounts[0].VolumeDir != "logs/media" {
+		t.Fatalf("expected s3-mount explicit volumedir \"logs/media\" preserved, got %q", dep.Storages.S3Mounts[0].VolumeDir)
+	}
 
 	if len(dep.Paths) != 2 {
 		t.Fatalf("expected 2 paths, got %d", len(dep.Paths))

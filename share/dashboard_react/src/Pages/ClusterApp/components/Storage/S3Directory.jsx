@@ -77,16 +77,23 @@ const extractSubDir = (volumedir, baseDirToken) => {
 };
 
 // Builds the full S3Mount.volumedir to persist from a selected base directory
-// token and a subdirectory beneath it. A blank/"/" subdirectory defers to the
-// backend default (Volume.S3MountSubdir() + generated mount name, Phase 14
-// task 1) by returning "" when mountNameFallback is unknown (the "Add" form
-// has no Name field yet); otherwise the subdirectory defaults to
-// mountNameFallback, matching the saved-row behaviour.
+// token and a subdirectory beneath it. A blank/"/" subdirectory defaults the
+// subdirectory to mountNameFallback when known (saved-row behaviour). On the
+// "Add" form mountNameFallback is unknown (no Name field yet), so a blank
+// subdirectory instead persists the bare baseDirToken (Phase 16): the backend
+// appends the generated mount name to an explicit bare-token VolumeDir
+// (Volume.S3MountSubdir() + generated mount name, Phase 14 task 1, applies the
+// same way to an explicit token). This preserves the user's explicit
+// directory-token choice instead of discarding it as "" - which the backend
+// would otherwise treat as fully unspecified and re-default to the mnt-biased
+// suggestion. Returns "" only when no directory token is selected at all.
 const buildVolumeDir = (baseDirToken, subDir, mountNameFallback) => {
   const trimmed = typeof subDir === "string" ? subDir.trim() : "";
   if (!trimmed || trimmed === "/") {
-    if (!mountNameFallback) return "";
-    return baseDirToken ? `${baseDirToken}/${mountNameFallback}` : mountNameFallback;
+    if (mountNameFallback) {
+      return baseDirToken ? `${baseDirToken}/${mountNameFallback}` : mountNameFallback;
+    }
+    return baseDirToken || "";
   }
   const cleanSub = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
   return baseDirToken ? `${baseDirToken}/${cleanSub}` : cleanSub;
@@ -639,6 +646,16 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers 
     const availableDirs = useMemo(() => getVolumeDirTokens(vol?.volumedir), [vol]);
     const srcbasepath = useMemo(() => matchVolumeDirToken(volumedir, vol?.volumedir), [volumedir, vol]);
 
+    // Phase 16: a bare directory-token volumedir (no Sub Dir typed yet) gets
+    // the generated mount name appended server-side, so preview that here
+    // rather than showing the bare token as if it were the final path.
+    const fullpathPreview = useMemo(() => {
+      if (!volumedir) return "(auto-assigned on save)";
+      const trimmedSub = typeof subpath === "string" ? subpath.trim() : "";
+      if (!trimmedSub || trimmedSub === "/") return `${volumedir}/<name auto-assigned on save>`;
+      return volumedir;
+    }, [volumedir, subpath]);
+
     const valid = useMemo(() => {
         return s3.endpoint && s3.bucket;
     }, [s3.endpoint, s3.bucket]);
@@ -819,7 +836,7 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers 
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Sub Dir:</Text>
                     <Input key="s3-subdir-new" placeholder="Volume Sub Dir" value={subpath} onChange={(e) => handleSubPath(e.target.value)} />
-                    <Text>Fullpath: {volumedir || "(auto-assigned on save)"}</Text>
+                    <Text>Fullpath: {fullpathPreview}</Text>
                 </Flex>
                 {providerSource === "custom" && (
                   <>

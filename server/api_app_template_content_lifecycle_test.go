@@ -208,6 +208,11 @@ name = "myapp-data-logs"
 poolname = "data"
 volumedir = "log"
 
+[[deployment.storages.s3-mounts]]
+name = "media"
+volumename = "myapp-data-logs"
+volumedir = "log/media"
+
 [[deployment.paths]]
 name = "web-root"
 dockerpath = "/var/www/html"
@@ -244,6 +249,11 @@ level = 0
 	}
 	if strings.Contains(got, `volumedir = "etc log"`) {
 		t.Fatalf("expected rows not merged, got:\n%s", got)
+	}
+	// Phase 15 task 4: an explicit non-"mnt" S3 mount placement must survive
+	// the canonicalize/save round trip unchanged.
+	if !strings.Contains(got, `volumedir = "log/media"`) {
+		t.Fatalf("expected s3-mount explicit volumedir \"log/media\" preserved, got:\n%s", got)
 	}
 }
 
