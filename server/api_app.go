@@ -1644,9 +1644,15 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 
 					switch newValue {
 					case string(config.SourceGit), string(config.SourceS3), string(config.SourceVolume):
-						// Reset source name and path if type changes
+						// Reset source name/path/volume together so the row never
+						// carries stale values from the previous source type. The
+						// row is intentionally left incomplete (SourceType set,
+						// SourceName empty) until a follow-up "srcname" edit
+						// supplies the new source.
 						pm.SourceType = newSourceType
-						pm.SourceName = "" // Reset source name if type changes
+						pm.SourceName = ""
+						pm.SourcePath = ""
+						pm.VolumeName = ""
 						if node.HasProvisionCookie() {
 							node.SetReprovCookie()
 						}
@@ -1677,9 +1683,11 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 							pm.SourcePath = source.GetSourcePath()
 						}
 					case config.SourceVolume:
-						source, err := deployment.GetVolumeByName(newValue)
-						if err == nil {
-							pm.SourcePath = source.GetSourcePath()
+						// Phase 8 model: direct volume sources are relative to
+						// the volume root, represented as "." -- not
+						// Volume.GetSourcePath() (raw volumedir).
+						if _, err := deployment.GetVolumeByName(newValue); err == nil {
+							pm.SourcePath = "."
 						}
 					default:
 						http.Error(w, "Invalid source type. Must be 'git', 's3', or 'volume'", http.StatusInternalServerError)
@@ -1697,21 +1705,24 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					if newValue != "" && newValue != "/" {
 						pm.SourcePath = newValue
 					} else if pm.SourceName != "" {
+						// Reset/blank srcpath: derive the default from the path's
+						// CURRENT source identity (pm.SourceName/pm.SourceType),
+						// not from the just-submitted reset value ("" or "/").
 						switch pm.SourceType {
 						case config.SourceGit:
-							source, err := deployment.GetGitClone(newValue)
+							source, err := deployment.GetGitClone(pm.SourceName)
 							if err == nil {
 								pm.SourcePath = source.GetSourcePath()
 							}
 						case config.SourceS3:
-							source, err := deployment.GetS3Mount(newValue)
+							source, err := deployment.GetS3Mount(pm.SourceName)
 							if err == nil {
 								pm.SourcePath = source.GetSourcePath()
 							}
 						case config.SourceVolume:
-							source, err := deployment.GetVolumeByName(newValue)
-							if err == nil {
-								pm.SourcePath = source.GetSourcePath()
+							// Phase 8 model: direct volume root is "."
+							if _, err := deployment.GetVolumeByName(pm.SourceName); err == nil {
+								pm.SourcePath = "."
 							}
 						default:
 							http.Error(w, "Invalid source type. Must be 'git', 's3', or 'volume'", http.StatusInternalServerError)
@@ -1727,6 +1738,11 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					return
 				}
 
+				// Resolve failures are warning-only and do not abort persistence:
+				// field-by-field edits (e.g. "srctype" followed later by
+				// "srcname") intentionally pass through a momentarily incomplete
+				// row, and GetOpenSVCDeploymentPathMapping already skips
+				// unresolved/incomplete path mappings at provisioning time.
 				err := deployment.ResolvePath(pm)
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error resolving path after modification: ", err)
@@ -2556,10 +2572,13 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						return
 					}
 
-					paths := deployment.GetVolumePaths(vol.Name)
+					oldName := vol.Name
+					paths := deployment.GetVolumePaths(oldName)
 					vol.Name = newValue
 					for _, p := range paths {
-						p.SourceName = vol.Name
+						if p.SourceType == config.SourceVolume && p.SourceName == oldName {
+							p.SourceName = vol.Name
+						}
 						deployment.ResolvePath(p)
 					}
 
@@ -3122,7 +3141,6 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 		return
 	}
 }
-
 
 // handlerMuxGitCheckRepo validates a git repository URL, branch, and credentials
 // before the user creates path mappings. Uses git ls-remote internally.

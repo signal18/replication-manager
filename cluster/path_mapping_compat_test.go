@@ -247,6 +247,345 @@ func TestResolvePathsRootSourcePathSlash_IsRejected(t *testing.T) {
 	}
 }
 
+// TestResolvePath_DirectVolumeSourceChange_UpdatesVolumeName covers Path
+// Storage Mapping Fix Plan Test Plan item 1: switching a direct volume path
+// from one saved volume row to another must refresh VolumeName from the new
+// source, not retain the old binding.
+func TestResolvePath_DirectVolumeSourceChange_UpdatesVolumeName(t *testing.T) {
+	deployment := config.NewDeploymentConfig()
+	deployment.Storages.Volumes = config.Volumes{
+		{Name: "vol-a", PoolName: "a", VolumeDir: "data"},
+		{Name: "vol-b", PoolName: "b", VolumeDir: "docs"},
+	}
+
+	path := &config.PathMapping{
+		Name:       "web-root",
+		DockerPath: "/var/www/html",
+		SourceType: config.SourceVolume,
+		SourceName: "vol-a",
+		SourcePath: ".",
+		VolumeName: "vol-a",
+	}
+	deployment.Paths = config.PathMaps{path}
+
+	if errs := deployment.ResolvePaths(); len(errs) > 0 {
+		t.Fatalf("expected initial resolve to succeed, got %v", errs)
+	}
+	if path.VolumeName != "vol-a" {
+		t.Fatalf("expected initial volumename vol-a, got %q", path.VolumeName)
+	}
+
+	// Simulate the "srcname" modify branch switching the direct volume source.
+	path.SourceName = "vol-b"
+	path.SourcePath = "."
+	if err := deployment.ResolvePath(path); err != nil {
+		t.Fatalf("expected resolve to succeed, got %v", err)
+	}
+	if path.VolumeName != "vol-b" {
+		t.Fatalf("expected volumename to follow source change to vol-b, got %q", path.VolumeName)
+	}
+}
+
+// TestResolvePath_GitSourceChange_UpdatesVolumeName covers Test Plan item 1: a
+// git-backed path switched to a git clone hosted on a different volume row
+// must refresh VolumeName accordingly.
+func TestResolvePath_GitSourceChange_UpdatesVolumeName(t *testing.T) {
+	deployment := config.NewDeploymentConfig()
+	deployment.Storages.Volumes = config.Volumes{
+		{Name: "vol-a", PoolName: "a", VolumeDir: "data"},
+		{Name: "vol-b", PoolName: "b", VolumeDir: "docs"},
+	}
+	gitA := &config.GitClone{Name: "git-a", VolumeName: "vol-a", VolumeDir: "repo-a"}
+	gitB := &config.GitClone{Name: "git-b", VolumeName: "vol-b", VolumeDir: "repo-b"}
+	deployment.Storages.GitClones = config.GitClones{gitA, gitB}
+
+	path := &config.PathMapping{
+		Name:       "src",
+		DockerPath: "/app/src",
+		SourceType: config.SourceGit,
+		SourceName: "git-a",
+		SourcePath: gitA.GetSourcePath(),
+		VolumeName: "vol-a",
+	}
+	deployment.Paths = config.PathMaps{path}
+
+	if errs := deployment.ResolvePaths(); len(errs) > 0 {
+		t.Fatalf("expected initial resolve to succeed, got %v", errs)
+	}
+	if path.VolumeName != "vol-a" {
+		t.Fatalf("expected initial volumename vol-a, got %q", path.VolumeName)
+	}
+
+	path.SourceName = "git-b"
+	path.SourcePath = gitB.GetSourcePath()
+	if err := deployment.ResolvePath(path); err != nil {
+		t.Fatalf("expected resolve to succeed, got %v", err)
+	}
+	if path.VolumeName != "vol-b" {
+		t.Fatalf("expected volumename to follow git source change to vol-b, got %q", path.VolumeName)
+	}
+}
+
+// TestResolvePath_S3SourceChange_UpdatesVolumeName covers Test Plan item 1: an
+// s3-backed path switched to an s3 mount hosted on a different volume row
+// must refresh VolumeName accordingly.
+func TestResolvePath_S3SourceChange_UpdatesVolumeName(t *testing.T) {
+	deployment := config.NewDeploymentConfig()
+	deployment.Storages.Volumes = config.Volumes{
+		{Name: "vol-a", PoolName: "a", VolumeDir: "data"},
+		{Name: "vol-b", PoolName: "b", VolumeDir: "docs"},
+	}
+	s3A := &config.S3Mount{Name: "s3-a", VolumeName: "vol-a", VolumeDir: "uploads-a"}
+	s3B := &config.S3Mount{Name: "s3-b", VolumeName: "vol-b", VolumeDir: "uploads-b"}
+	deployment.Storages.S3Mounts = config.S3Mounts{s3A, s3B}
+
+	path := &config.PathMapping{
+		Name:       "uploads",
+		DockerPath: "/app/uploads",
+		SourceType: config.SourceS3,
+		SourceName: "s3-a",
+		SourcePath: s3A.GetSourcePath(),
+		VolumeName: "vol-a",
+	}
+	deployment.Paths = config.PathMaps{path}
+
+	if errs := deployment.ResolvePaths(); len(errs) > 0 {
+		t.Fatalf("expected initial resolve to succeed, got %v", errs)
+	}
+	if path.VolumeName != "vol-a" {
+		t.Fatalf("expected initial volumename vol-a, got %q", path.VolumeName)
+	}
+
+	path.SourceName = "s3-b"
+	path.SourcePath = s3B.GetSourcePath()
+	if err := deployment.ResolvePath(path); err != nil {
+		t.Fatalf("expected resolve to succeed, got %v", err)
+	}
+	if path.VolumeName != "vol-b" {
+		t.Fatalf("expected volumename to follow s3 source change to vol-b, got %q", path.VolumeName)
+	}
+}
+
+// TestVolumeRename_PropagatesToDependentAndChildPaths covers Test Plan item 2
+// (volume rename refreshes dependent path volume binding) and item 8 (child
+// paths inherit the refreshed VolumeName via cascade), plus item 6
+// (provisioning follows the refreshed VolumeName).
+func TestVolumeRename_PropagatesToDependentAndChildPaths(t *testing.T) {
+	deployment := config.NewDeploymentConfig()
+	vol := &config.Volume{Name: "data-volume", PoolName: "data", VolumeDir: "data"}
+	deployment.Storages.Volumes = config.Volumes{vol}
+
+	parent := &config.PathMapping{
+		Name:       "web-root",
+		DockerPath: "/var/www/html",
+		SourceType: config.SourceVolume,
+		SourceName: "data-volume",
+		SourcePath: ".",
+		VolumeName: "data-volume",
+	}
+	child := &config.PathMapping{
+		Name:       "assets",
+		ParentName: "web-root",
+		DockerPath: "/var/www/html/assets",
+	}
+	deployment.Paths = config.PathMaps{parent, child}
+
+	if errs := deployment.ResolvePaths(); len(errs) > 0 {
+		t.Fatalf("expected initial resolve to succeed, got %v", errs)
+	}
+	if parent.VolumeName != "data-volume" || child.VolumeName != "data-volume" {
+		t.Fatalf("expected both paths bound to data-volume initially, got parent=%q child=%q", parent.VolumeName, child.VolumeName)
+	}
+
+	// Simulate the volumes "name" modify handler's rename flow: paths whose
+	// current VolumeName matches the old name are re-resolved, but only direct
+	// volume-source paths rewrite SourceName to the new row name. Inherited
+	// child paths keep empty source fields and pick up the renamed VolumeName
+	// via ResolvePath()'s parent cascade.
+	oldName := vol.Name
+	paths := deployment.GetVolumePaths(oldName)
+	vol.Name = "renamed-volume"
+	for _, p := range paths {
+		if p.SourceType == config.SourceVolume && p.SourceName == oldName {
+			p.SourceName = vol.Name
+		}
+		deployment.ResolvePath(p)
+	}
+
+	if parent.VolumeName != "renamed-volume" {
+		t.Fatalf("expected parent volumename to follow rename, got %q", parent.VolumeName)
+	}
+	if child.VolumeName != "renamed-volume" {
+		t.Fatalf("expected child volumename to follow rename via cascade, got %q", child.VolumeName)
+	}
+
+	cluster := &Cluster{Name: "test", Conf: &config.Config{}}
+	app := &App{Name: "myapp", AppConfig: &config.AppConfig{Deployment: deployment}}
+	got := cluster.GetOpenSVCDeploymentPathMapping(app)
+	tokens := strings.Fields(got)
+	if len(tokens) != 2 {
+		t.Fatalf("expected 2 mount mappings, got %d: %q", len(tokens), got)
+	}
+	expected := map[string]bool{
+		"renamed-volume:/var/www/html":        false,
+		"renamed-volume:/var/www/html/assets": false,
+	}
+	for _, token := range tokens {
+		if _, ok := expected[token]; ok {
+			expected[token] = true
+		}
+	}
+	for token, found := range expected {
+		if !found {
+			t.Fatalf("expected mount mapping %q in %q", token, got)
+		}
+	}
+}
+
+// TestResolveGitPaths_VolumeNameReassignment_UpdatesDependentPath covers Test
+// Plan item 2: a Git Clone volumename reassignment must refresh the
+// VolumeName of paths that source from it.
+func TestResolveGitPaths_VolumeNameReassignment_UpdatesDependentPath(t *testing.T) {
+	deployment := config.NewDeploymentConfig()
+	volA := &config.Volume{Name: "vol-a", PoolName: "a", VolumeDir: "data"}
+	volB := &config.Volume{Name: "vol-b", PoolName: "b", VolumeDir: "docs"}
+	deployment.Storages.Volumes = config.Volumes{volA, volB}
+
+	gc := &config.GitClone{Name: "git-x", VolumeName: "vol-a", VolumeDir: "repo"}
+	deployment.Storages.GitClones = config.GitClones{gc}
+
+	path := &config.PathMapping{
+		Name:       "src",
+		DockerPath: "/app/src",
+		SourceType: config.SourceGit,
+		SourceName: "git-x",
+		SourcePath: gc.GetSourcePath(),
+		VolumeName: "vol-a",
+	}
+	deployment.Paths = config.PathMaps{path}
+
+	if errs := deployment.ResolvePaths(); len(errs) > 0 {
+		t.Fatalf("expected initial resolve to succeed, got %v", errs)
+	}
+	if path.VolumeName != "vol-a" {
+		t.Fatalf("expected initial volumename vol-a, got %q", path.VolumeName)
+	}
+
+	// Simulate the gitClones "volumename" modify handler.
+	gc.VolumeName = "vol-b"
+	gc.Volume = volB
+	deployment.ResolveGitPaths(gc.Name)
+
+	if path.VolumeName != "vol-b" {
+		t.Fatalf("expected dependent path volumename to follow git clone reassignment, got %q", path.VolumeName)
+	}
+}
+
+// TestResolveS3MountPaths_VolumeNameReassignment_UpdatesDependentPath covers
+// Test Plan item 2: an S3 Mount volumename reassignment must refresh the
+// VolumeName of paths that source from it.
+func TestResolveS3MountPaths_VolumeNameReassignment_UpdatesDependentPath(t *testing.T) {
+	deployment := config.NewDeploymentConfig()
+	volA := &config.Volume{Name: "vol-a", PoolName: "a", VolumeDir: "data"}
+	volB := &config.Volume{Name: "vol-b", PoolName: "b", VolumeDir: "docs"}
+	deployment.Storages.Volumes = config.Volumes{volA, volB}
+
+	s3m := &config.S3Mount{Name: "s3-x", VolumeName: "vol-a", VolumeDir: "uploads"}
+	deployment.Storages.S3Mounts = config.S3Mounts{s3m}
+
+	path := &config.PathMapping{
+		Name:       "uploads",
+		DockerPath: "/app/uploads",
+		SourceType: config.SourceS3,
+		SourceName: "s3-x",
+		SourcePath: s3m.GetSourcePath(),
+		VolumeName: "vol-a",
+	}
+	deployment.Paths = config.PathMaps{path}
+
+	if errs := deployment.ResolvePaths(); len(errs) > 0 {
+		t.Fatalf("expected initial resolve to succeed, got %v", errs)
+	}
+	if path.VolumeName != "vol-a" {
+		t.Fatalf("expected initial volumename vol-a, got %q", path.VolumeName)
+	}
+
+	// Simulate the s3Mounts "volumename" modify handler.
+	s3m.VolumeName = "vol-b"
+	s3m.Volume = volB
+	deployment.ResolveS3MountPaths(s3m.Name)
+
+	if path.VolumeName != "vol-b" {
+		t.Fatalf("expected dependent path volumename to follow s3 mount reassignment, got %q", path.VolumeName)
+	}
+}
+
+// TestResolvePath_UnresolvedSource_ClearsStaleVolumeName covers Test Plan item
+// 5: a path edit that fails re-resolution because its source no longer
+// exists must not leave a stale VolumeName behind, so provisioning does not
+// silently mount the wrong volume.
+func TestResolvePath_UnresolvedSource_ClearsStaleVolumeName(t *testing.T) {
+	deployment := config.NewDeploymentConfig()
+	deployment.Storages.Volumes = config.Volumes{
+		{Name: "vol-a", PoolName: "a", VolumeDir: "data"},
+	}
+
+	path := &config.PathMapping{
+		Name:       "web-root",
+		DockerPath: "/var/www/html",
+		SourceType: config.SourceVolume,
+		SourceName: "nonexistent-vol",
+		SourcePath: ".",
+		VolumeName: "vol-a", // stale binding from before the source changed
+	}
+	deployment.Paths = config.PathMaps{path}
+
+	if err := deployment.ResolvePath(path); err == nil {
+		t.Fatalf("expected resolve error for unresolved source, got nil")
+	}
+	if path.VolumeName != "" {
+		t.Fatalf("expected stale volumename to be cleared on unresolved source, got %q", path.VolumeName)
+	}
+}
+
+// TestResolvePath_SrcTypeTransition_ClearsStaleVolumeName covers Test Plan
+// item 7: changing srctype must not leave a stale VolumeName from the
+// previous source type, even while the row is momentarily incomplete pending
+// a follow-up srcname edit.
+func TestResolvePath_SrcTypeTransition_ClearsStaleVolumeName(t *testing.T) {
+	deployment := config.NewDeploymentConfig()
+	deployment.Storages.Volumes = config.Volumes{
+		{Name: "vol-a", PoolName: "a", VolumeDir: "data"},
+	}
+
+	path := &config.PathMapping{
+		Name:       "web-root",
+		DockerPath: "/var/www/html",
+		SourceType: config.SourceVolume,
+		SourceName: "vol-a",
+		SourcePath: ".",
+		VolumeName: "vol-a",
+	}
+	deployment.Paths = config.PathMaps{path}
+	if errs := deployment.ResolvePaths(); len(errs) > 0 {
+		t.Fatalf("expected initial resolve to succeed, got %v", errs)
+	}
+
+	// Simulate the "srctype" modify handler's volume -> git transition: reset
+	// source name/path/volume together.
+	path.SourceType = config.SourceGit
+	path.SourceName = ""
+	path.SourcePath = ""
+	path.VolumeName = ""
+
+	if err := deployment.ResolvePath(path); err == nil {
+		t.Fatalf("expected resolve error for incomplete srctype transition, got nil")
+	}
+	if path.VolumeName != "" {
+		t.Fatalf("expected no stale volumename to survive srctype transition, got %q", path.VolumeName)
+	}
+}
+
 // TestOpenSVCAppVolumeSection_MultiDirectoryVolumeDir covers Phase 5/9: a
 // merged multi-pool volume row (VolumeDir = "etc log var data") must be
 // rendered as separate OpenSVC "directories" entries, not a single literal

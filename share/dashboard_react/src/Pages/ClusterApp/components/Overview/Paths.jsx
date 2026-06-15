@@ -107,7 +107,7 @@ const PathSection = ({
 
   const resolvedRows = useMemo(() => rows.map((row) => {
     const { srctype, srcname, srcpath, parentname } = row;
-    const parent = rows.find(r => r.name === row.name) || { dockerpath: "", srcpath: "", srctype: "", srcname: "" };
+    const parent = rows.find(r => r.name === row.parentname) || { dockerpath: "", srcpath: "", srctype: "", srcname: "" };
     const vol = srctype === "volume" ? volumeOptions.find(opt => opt.name === srcname) : null;
     const gc = srctype === "git" ? gitOptions.find(opt => opt.value === srcname) : null;
     const s3 = srctype === "s3" ? s3Options.find(opt => opt.value === srcname) : null;

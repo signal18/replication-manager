@@ -281,6 +281,44 @@ func (d *Deployment) GetGitPaths(name string) []*PathMapping {
 	return paths
 }
 
+// syncPathVolumeName applies the canonical PathMapping.VolumeName resolution
+// rule once pointers have been resolved via ResolvePointers:
+//
+//  1. a path with a resolved direct Source always has VolumeName refreshed
+//     from Source.GetSourceVolumeName(), overwriting any stale value
+//  2. a path that declares a SourceType but whose Source did not resolve has
+//     VolumeName cleared, so provisioning does not fall back to a stale or
+//     mismatched volume
+//  3. a path with no direct source inherits VolumeName from its Parent, if any
+//  4. a root path with neither a source nor a parent is left untouched
+func syncPathVolumeName(p *PathMapping) {
+	switch {
+	case p.Source != nil:
+		p.VolumeName = p.Source.GetSourceVolumeName()
+	case p.SourceType != "":
+		p.VolumeName = ""
+	case p.Parent != nil:
+		p.VolumeName = p.Parent.VolumeName
+	}
+}
+
+// resolvePathMapping resolves p's Parent/Source pointers and synchronizes its
+// VolumeName via syncPathVolumeName. It does not lock d.Mutex; callers are
+// responsible for any required locking.
+func (d *Deployment) resolvePathMapping(p *PathMapping) error {
+	if err := p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths); err != nil {
+		return err
+	}
+
+	syncPathVolumeName(p)
+
+	if p.SourceType != "" && p.Source == nil {
+		return fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath)
+	}
+
+	return nil
+}
+
 func (d *Deployment) InsertPath(p PathMapping) error {
 	// Use a mutex to protect concurrent access
 	d.Mutex.Lock()
@@ -291,21 +329,13 @@ func (d *Deployment) InsertPath(p PathMapping) error {
 		if existingPath.DockerPath == p.DockerPath {
 			return fmt.Errorf("path mapping already exists for target path: %s", p.DockerPath)
 		}
-
-		if existingPath.Name == p.ParentName {
-			// If the parent name matches, set the parent pointer
-			p.Parent = existingPath
-		}
 	}
 
-	// Validate the path mapping
-	p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths)
-	if p.SourceName != "" && p.Source == nil {
-		return fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath)
-	} else if p.Source != nil {
-		p.VolumeName = p.Source.GetSourceVolumeName() // Use the source's volume name if available
-	} else {
-		p.VolumeName = p.Parent.VolumeName // Inherit volume name from parent if no source is specified
+	if err := d.resolvePathMapping(&p); err != nil {
+		return err
+	}
+	if p.SourceType == "" && p.SourceName != "" {
+		return fmt.Errorf("source type is required for path mapping %s", p.DockerPath)
 	}
 
 	// Add the new path mapping
@@ -321,21 +351,25 @@ func (d *Deployment) ResolveGitPaths(gitname string) {
 	}
 }
 
+// ResolvePath resolves p's pointers and VolumeName via resolvePathMapping. If
+// p's VolumeName changes as a result, the change is cascaded to any child
+// paths (matched by ParentName) that have no direct source of their own, so
+// inherited bindings stay in sync immediately after a source or backing
+// volume change.
 func (d *Deployment) ResolvePath(p *PathMapping) error {
-	err := p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths)
-	if err != nil {
+	oldVolumeName := p.VolumeName
+
+	if err := d.resolvePathMapping(p); err != nil {
 		return err
 	}
 
-	if p.Parent != nil {
-		if p.VolumeName == "" {
-			p.VolumeName = p.Parent.VolumeName // Inherit volume name from parent if no source is specified
+	if p.VolumeName != oldVolumeName && p.Name != "" {
+		for _, child := range d.Paths {
+			if child == p || child.SourceType != "" || child.ParentName != p.Name {
+				continue
+			}
+			d.ResolvePath(child)
 		}
-	}
-
-	// If the path is not resolved, log a warning
-	if p.SourceType != "" && p.Source == nil {
-		return fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath)
 	}
 
 	return nil
@@ -347,31 +381,49 @@ func (d *Deployment) ResolvePaths() []error {
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
 
+	appendErr := func(err error) {
+		if errs == nil {
+			errs = make([]error, 0)
+		}
+		errs = append(errs, err)
+	}
+
+	// Pass 1: resolve pointers for every path and synchronize VolumeName for
+	// paths with a direct source. Paths without a direct source keep their
+	// current VolumeName until the inheritance pass below.
 	for _, p := range d.Paths {
-		// Resolve pointers for each path mapping
-		err := p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths)
-		if err != nil {
-			if errs == nil {
-				errs = make([]error, 0)
-			}
-			errs = append(errs, err)
+		if err := p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths); err != nil {
+			appendErr(err)
 			continue
 		}
 
-		if p.Parent != nil {
-			if p.VolumeName == "" {
-				p.VolumeName = p.Parent.VolumeName // Inherit volume name from parent if no source is specified
+		if p.SourceType != "" {
+			syncPathVolumeName(p)
+			if p.Source == nil {
+				appendErr(fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath))
 			}
-		}
-
-		// If the path is not resolved, log a warning
-		if p.SourceType != "" && p.Source == nil {
-			if errs == nil {
-				errs = make([]error, 0)
-			}
-			errs = append(errs, fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath))
 		}
 	}
+
+	// Pass 2: propagate VolumeName from parents to children with no direct
+	// source, iterating to a fixed point so inheritance converges regardless
+	// of d.Paths ordering.
+	for i := 0; i < len(d.Paths); i++ {
+		changed := false
+		for _, p := range d.Paths {
+			if p.SourceType != "" || p.Parent == nil {
+				continue
+			}
+			if p.VolumeName != p.Parent.VolumeName {
+				p.VolumeName = p.Parent.VolumeName
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+
 	return errs
 }
 
@@ -654,7 +706,7 @@ type Route struct {
 	Primary  bool   `mapstructure:"primary" toml:"primary" json:"primary" groups:"apps"`
 
 	// Explicit source/destination fields.
-	Mode            string `mapstructure:"mode" toml:"mode" json:"mode" groups:"apps"`            // host | port
+	Mode            string `mapstructure:"mode" toml:"mode" json:"mode" groups:"apps"` // host | port
 	SourcePort      string `mapstructure:"sourceport" toml:"sourceport" json:"sourcePort" groups:"apps"`
 	DestinationPort string `mapstructure:"destport" toml:"destport" json:"destPort" groups:"apps"`
 
@@ -1090,6 +1142,12 @@ func (p PathMapping) GetDockerMapping(volname string) string {
 }
 
 func (pm *PathMapping) ResolvePointers(volumes Volumes, gits GitClones, s3s S3Mounts, parents PathMaps) error {
+	// Clear any previously resolved pointers before re-resolving. Path mappings
+	// are mutated in place across API edits, so stale Parent/Source pointers must
+	// not survive a source or parent change.
+	pm.Parent = nil
+	pm.Source = nil
+
 	// Resolve Parent
 	if pm.ParentName != "" {
 		for _, parent := range parents {
