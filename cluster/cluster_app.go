@@ -451,6 +451,41 @@ func (cluster *Cluster) WithdrawConflictedGatewayRoutes() {
 	}
 }
 
+// CanonicalizeAppContent runs the legacy path/level migration and the
+// app-volume row merge over app/template TOML content, then stamps the
+// result with the explicit app-config-version marker (see
+// config.StampAppConfigVersionTOML). appName selects the volume naming
+// convention used by CanonicalizeAppVolumesTOML: "" for template content
+// ("{name}-<pool>"), or the resolved app's name for app config content
+// ("<app>-<pool>"). The combined result reports Changed if any pass rewrote
+// the content, so callers can drive a single atomic rewrite from it.
+func CanonicalizeAppContent(content []byte, appName string) ([]byte, config.AppTemplateCanonicalizationResult, error) {
+	pathContent, res, err := config.CanonicalizeAppTemplateTOML(content)
+	if err != nil {
+		return nil, res, err
+	}
+
+	volContent, volRes, err := config.CanonicalizeAppVolumesTOML(pathContent, appName)
+	if err != nil {
+		return nil, res, err
+	}
+
+	res.Changed = res.Changed || volRes.Changed
+	res.MergedVolumePools = volRes.MergedVolumePools
+	res.MergedVolumeRows = volRes.MergedVolumeRows
+	res.RewrittenVolumeReferences = volRes.RewrittenVolumeReferences
+
+	versionedContent, versionRes, err := config.StampAppConfigVersionTOML(volContent)
+	if err != nil {
+		return nil, res, err
+	}
+
+	res.Changed = res.Changed || versionRes.Changed
+	res.StampedAppConfigVersion = versionRes.StampedAppConfigVersion
+
+	return versionedContent, res, nil
+}
+
 // LoadConfig loads the configuration from a file to the configuration struct.
 // If the file does not exist, it will return an error.
 // If the file exists but cannot be read, it will return the old configuration and the error.
@@ -473,7 +508,7 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 		return err
 	}
 
-	canonicalContent, canonicalRes, err := config.CanonicalizeAppTemplateTOML(rawContent)
+	canonicalContent, canonicalRes, err := CanonicalizeAppContent(rawContent, appname)
 	if err != nil {
 		return err
 	}
@@ -891,7 +926,7 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 			return err
 		}
 
-		canonicalContent, _, err := config.CanonicalizeAppTemplateTOML(resolvedContent)
+		canonicalContent, _, err := CanonicalizeAppContent(resolvedContent, app.Name)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
 				"Error canonicalizing parsed template content for %s: %s", template, err)
@@ -1388,7 +1423,7 @@ func (cluster *Cluster) loadAndValidateLocalTemplate(path, normalizedName string
 	if err != nil {
 		return nil, err
 	}
-	canonicalContent, canonicalRes, canonErr := config.CanonicalizeAppTemplateTOML(content)
+	canonicalContent, canonicalRes, canonErr := CanonicalizeAppContent(content, "")
 	if canonErr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
 			"Error canonicalizing local template file %s: %s", path, canonErr)
@@ -1449,7 +1484,7 @@ func (cluster *Cluster) getTemplateContent(template string, forceRefresh bool) (
 		}
 	}
 
-	canonicalContent, _, err := config.CanonicalizeAppTemplateTOML(content)
+	canonicalContent, _, err := CanonicalizeAppContent(content, "")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
 			"Error canonicalizing template file %s: %s", normalizedTemplateName, err)

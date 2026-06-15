@@ -455,6 +455,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	go cluster.ConsumeMessageChan()
 
 	*cluster.Conf = confs.ConfInit
+	cluster.Conf.NormalizeBackupArchiveMode()
 
 	cluster.tlog = tlog
 	cluster.htlog = loghttp
@@ -709,6 +710,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.initScheduler()
 	cluster.CheckDefaultUser(true)
 	cluster.RefreshToolVersions()
+	cluster.initResticLocalDir()
 	cluster.StartResticManager()
 
 	cluster.Conf.TopologyTarget = cluster.GetTopologyFromConf()

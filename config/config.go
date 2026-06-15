@@ -802,6 +802,7 @@ type Config struct {
 	BackupResticPurgePruneRepackCacheableOnly bool                         `mapstructure:"backup-restic-purge-prune-repack-cacheable-only" toml:"backup-restic-purge-prune-repack-cacheable-only" json:"backupResticPurgePruneRepackCacheableOnly"`
 	BackupResticPurgePruneRepackSmall         bool                         `mapstructure:"backup-restic-purge-prune-repack-small" toml:"backup-restic-purge-prune-repack-small" json:"backupResticPurgePruneRepackSmall"`
 	BackupResticPurgePruneRepackUncompressed  bool                         `mapstructure:"backup-restic-purge-prune-repack-uncompressed" toml:"backup-restic-purge-prune-repack-uncompressed" json:"backupResticPurgePruneRepackUncompressed"`
+	BackupArchiveMode                         string                       `mapstructure:"backup-archive-mode" toml:"backup-archive-mode" json:"backupArchiveMode"`
 	BackupRestic                              bool                         `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`
 	BackupResticBinaryPath                    string                       `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
 	BackupResticLocalRepository               string                       `mapstructure:"backup-restic-local-repository" toml:"backup-restic-local-repository" json:"backupResticLocalRepository"`
@@ -1002,31 +1003,36 @@ func init() {
 }
 
 type AppConfig struct {
-	ProvAppType           string      `mapstructure:"prov-app-service-type" toml:"prov-app-service-type" json:"provAppServiceType"`
-	ProvAppMem            string      `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
-	ProvAppCpuCores       string      `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores"`
-	ProvAppDisk           string      `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
-	ProvAppDiskType       string      `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
-	ProvAppDockerImg      string      `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
-	ProvAppDockerCmd      string      `mapstructure:"prov-app-docker-cmd" toml:"prov-app-docker-cmd" json:"provAppDockerCmd"`
-	ProvAppRouteAddr      string      `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
-	ProvAppRoutePort      string      `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
-	ProvAppRouteMask      string      `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
-	ProvAppTemplate       string      `mapstructure:"prov-app-template" toml:"prov-app-template" json:"provAppTemplate"`
-	ProvAppAgents         string      `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
-	ProvAppHATopology     string      `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology"`
-	ProvAppAgentsFailover string      `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
-	ProvAppCreditUsed     int         `mapstructure:"prov-app-credit-used" toml:"prov-app-credit-used" json:"provAppCreditUsed"`
-	ProvAppCreditPlanned  int         `mapstructure:"prov-app-credit-planned" toml:"prov-app-credit-planned" json:"provAppCreditPlanned"`
-	AppHost               string      `mapstructure:"app-host" toml:"app-host" json:"appHost"`
-	AppHostsIPV6          string      `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
-	AppPort               string      `mapstructure:"app-port" toml:"app-port" json:"appPort"`
-	AppDbUser             string      `mapstructure:"app-db-user" toml:"app-db-user" json:"appDbUser" groups:"apps"`
-	AppDbPass             string      `mapstructure:"app-db-pass" toml:"app-db-pass" json:"appDbPass" groups:"apps"`
-	AppDbPassClear        string      `mapstructure:"app-db-pass-clear" toml:"-" json:"-" app:"-"`
-	AppDbSchema           string      `mapstructure:"app-db-schema" toml:"app-db-schema" json:"appDbSchema" groups:"apps"`
-	AppS3Provider         bool        `mapstructure:"app-s3-provider" toml:"app-s3-provider" json:"appS3Provider"`
-	Deployment            *Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment" groups:"apps"`
+	ProvAppType           string `mapstructure:"prov-app-service-type" toml:"prov-app-service-type" json:"provAppServiceType"`
+	ProvAppMem            string `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
+	ProvAppCpuCores       string `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores"`
+	ProvAppDisk           string `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
+	ProvAppDiskType       string `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
+	ProvAppDockerImg      string `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
+	ProvAppDockerCmd      string `mapstructure:"prov-app-docker-cmd" toml:"prov-app-docker-cmd" json:"provAppDockerCmd"`
+	ProvAppRouteAddr      string `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
+	ProvAppRoutePort      string `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
+	ProvAppRouteMask      string `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
+	ProvAppTemplate       string `mapstructure:"prov-app-template" toml:"prov-app-template" json:"provAppTemplate"`
+	ProvAppAgents         string `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
+	ProvAppHATopology     string `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology"`
+	ProvAppAgentsFailover string `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
+	ProvAppCreditUsed     int    `mapstructure:"prov-app-credit-used" toml:"prov-app-credit-used" json:"provAppCreditUsed"`
+	ProvAppCreditPlanned  int    `mapstructure:"prov-app-credit-planned" toml:"prov-app-credit-planned" json:"provAppCreditPlanned"`
+	AppHost               string `mapstructure:"app-host" toml:"app-host" json:"appHost"`
+	AppHostsIPV6          string `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
+	AppPort               string `mapstructure:"app-port" toml:"app-port" json:"appPort"`
+	AppDbUser             string `mapstructure:"app-db-user" toml:"app-db-user" json:"appDbUser" groups:"apps"`
+	AppDbPass             string `mapstructure:"app-db-pass" toml:"app-db-pass" json:"appDbPass" groups:"apps"`
+	AppDbPassClear        string `mapstructure:"app-db-pass-clear" toml:"-" json:"-" app:"-"`
+	AppDbSchema           string `mapstructure:"app-db-schema" toml:"app-db-schema" json:"appDbSchema" groups:"apps"`
+	AppS3Provider         bool   `mapstructure:"app-s3-provider" toml:"app-s3-provider" json:"appS3Provider"`
+	// AppConfigVersion is the explicit persisted migration marker stamped by
+	// cluster.CanonicalizeAppContent. 0/missing means unflagged legacy (V1)
+	// content; AppConfigVersionV2 means content already matches the V1 -> V2
+	// migration baseline and does not need re-canonicalizing for shape alone.
+	AppConfigVersion int         `mapstructure:"app-config-version" toml:"app-config-version" json:"appConfigVersion"`
+	Deployment       *Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment" groups:"apps"`
 }
 
 func (appcnf *AppConfig) GetDeploymentVariables(name string) *VariableMapping {
@@ -1195,6 +1201,14 @@ const (
 
 const (
 	ConstStreamingSubDir string = "backups"
+)
+
+// Backup archive mode picker: selects the Restic archive backend (or disables it).
+const (
+	ConstBackupArchiveModeNone        string = "none"
+	ConstBackupArchiveModeResticLocal string = "restic-local"
+	ConstBackupArchiveModeResticAws   string = "restic-aws"
+	ConstBackupArchiveModeResticSftp  string = "restic-sftp"
 )
 const (
 	ConstProxyMaxscale    string = "maxscale"
@@ -1512,8 +1526,8 @@ const (
 
 // TaskDef describes a task's execution capabilities and default mode.
 type TaskDef struct {
-	Name       TaskName
-	Capability TaskExecCapability
+	Name          TaskName
+	Capability    TaskExecCapability
 	DefaultRemote bool // When Capability is TaskCapBoth, true = remote by default
 }
 
@@ -1524,32 +1538,32 @@ type TaskDef struct {
 // Both:       user chooses via scheduler-jobs-exec-{task} config (default in DefaultRemote).
 var TaskRegistry = map[TaskName]TaskDef{
 	// RemoteOnly — requires DB host filesystem or system access
-	ConstTaskXB:                {Name: ConstTaskXB, Capability: TaskCapRemoteOnly},
-	ConstTaskMB:                {Name: ConstTaskMB, Capability: TaskCapRemoteOnly},
-	ConstTaskReseedXB:          {Name: ConstTaskReseedXB, Capability: TaskCapRemoteOnly},
-	ConstTaskReseedMB:          {Name: ConstTaskReseedMB, Capability: TaskCapRemoteOnly},
-	ConstTaskFlashXB:           {Name: ConstTaskFlashXB, Capability: TaskCapRemoteOnly},
-	ConstTaskFlashMB:           {Name: ConstTaskFlashMB, Capability: TaskCapRemoteOnly},
+	ConstTaskXB:       {Name: ConstTaskXB, Capability: TaskCapRemoteOnly},
+	ConstTaskMB:       {Name: ConstTaskMB, Capability: TaskCapRemoteOnly},
+	ConstTaskReseedXB: {Name: ConstTaskReseedXB, Capability: TaskCapRemoteOnly},
+	ConstTaskReseedMB: {Name: ConstTaskReseedMB, Capability: TaskCapRemoteOnly},
+	ConstTaskFlashXB:  {Name: ConstTaskFlashXB, Capability: TaskCapRemoteOnly},
+	ConstTaskFlashMB:  {Name: ConstTaskFlashMB, Capability: TaskCapRemoteOnly},
 	// Both — orchestrator API (OpenSVC/K8S) handles locally, dbjobs uses systemctl
-	ConstTaskRestart:           {Name: ConstTaskRestart, Capability: TaskCapBoth, DefaultRemote: true},
-	ConstTaskStop:              {Name: ConstTaskStop, Capability: TaskCapBoth, DefaultRemote: true},
-	ConstTaskStart:             {Name: ConstTaskStart, Capability: TaskCapBoth, DefaultRemote: true},
-	ConstTaskError:             {Name: ConstTaskError, Capability: TaskCapRemoteOnly},
-	ConstTaskSlowQuery:         {Name: ConstTaskSlowQuery, Capability: TaskCapRemoteOnly},
-	ConstTaskSqlError:          {Name: ConstTaskSqlError, Capability: TaskCapRemoteOnly},
-	ConstTaskAuditLog:          {Name: ConstTaskAuditLog, Capability: TaskCapRemoteOnly},
-	ConstTaskZFS:               {Name: ConstTaskZFS, Capability: TaskCapRemoteOnly},
-	ConstTaskJobsCheck:         {Name: ConstTaskJobsCheck, Capability: TaskCapRemoteOnly},
-	ConstTaskJobsUpgrade:       {Name: ConstTaskJobsUpgrade, Capability: TaskCapRemoteOnly},
+	ConstTaskRestart:            {Name: ConstTaskRestart, Capability: TaskCapBoth, DefaultRemote: true},
+	ConstTaskStop:               {Name: ConstTaskStop, Capability: TaskCapBoth, DefaultRemote: true},
+	ConstTaskStart:              {Name: ConstTaskStart, Capability: TaskCapBoth, DefaultRemote: true},
+	ConstTaskError:              {Name: ConstTaskError, Capability: TaskCapRemoteOnly},
+	ConstTaskSlowQuery:          {Name: ConstTaskSlowQuery, Capability: TaskCapRemoteOnly},
+	ConstTaskSqlError:           {Name: ConstTaskSqlError, Capability: TaskCapRemoteOnly},
+	ConstTaskAuditLog:           {Name: ConstTaskAuditLog, Capability: TaskCapRemoteOnly},
+	ConstTaskZFS:                {Name: ConstTaskZFS, Capability: TaskCapRemoteOnly},
+	ConstTaskJobsCheck:          {Name: ConstTaskJobsCheck, Capability: TaskCapRemoteOnly},
+	ConstTaskJobsUpgrade:        {Name: ConstTaskJobsUpgrade, Capability: TaskCapRemoteOnly},
 	ConstTaskPrintCurrentConfig: {Name: ConstTaskPrintCurrentConfig, Capability: TaskCapRemoteOnly},
-	ConstTaskPrintDummyConfig:  {Name: ConstTaskPrintDummyConfig, Capability: TaskCapRemoteOnly},
+	ConstTaskPrintDummyConfig:   {Name: ConstTaskPrintDummyConfig, Capability: TaskCapRemoteOnly},
 
 	// Both — user can choose local (repman) or remote (dbjobs)
-	ConstTaskDump:      {Name: ConstTaskDump, Capability: TaskCapBoth, DefaultRemote: false},
-	ConstTaskMydumper:  {Name: ConstTaskMydumper, Capability: TaskCapBoth, DefaultRemote: false},
-	ConstTaskOptimize:  {Name: ConstTaskOptimize, Capability: TaskCapBoth, DefaultRemote: true},
+	ConstTaskDump:       {Name: ConstTaskDump, Capability: TaskCapBoth, DefaultRemote: false},
+	ConstTaskMydumper:   {Name: ConstTaskMydumper, Capability: TaskCapBoth, DefaultRemote: false},
+	ConstTaskOptimize:   {Name: ConstTaskOptimize, Capability: TaskCapBoth, DefaultRemote: true},
 	ConstTaskReseedDump: {Name: ConstTaskReseedDump, Capability: TaskCapBoth, DefaultRemote: false},
-	ConstTaskFlashDump: {Name: ConstTaskFlashDump, Capability: TaskCapBoth, DefaultRemote: false},
+	ConstTaskFlashDump:  {Name: ConstTaskFlashDump, Capability: TaskCapBoth, DefaultRemote: false},
 }
 
 // IsRemoteTask returns true if the task should be dispatched to the dbjobs
@@ -3409,6 +3423,116 @@ func parseResticMode(value int, defaultMode os.FileMode) os.FileMode {
 	}
 
 	return os.FileMode(parsed)
+}
+
+// ValidateBackupArchiveMode checks that mode is one of the supported
+// backup-archive-mode values: none, restic-local, restic-aws, restic-sftp.
+func (conf *Config) ValidateBackupArchiveMode(mode string) error {
+	switch mode {
+	case ConstBackupArchiveModeNone, ConstBackupArchiveModeResticLocal, ConstBackupArchiveModeResticAws, ConstBackupArchiveModeResticSftp:
+		return nil
+	default:
+		return NewValidationError("backup-archive-mode", mode, "expected one of: none, restic-local, restic-aws, restic-sftp")
+	}
+}
+
+// applyBackupArchiveModeFlags derives the legacy backup-restic / backup-restic-aws
+// flags from the canonical backup-archive-mode so existing Restic code paths
+// keep working unchanged.
+func (conf *Config) applyBackupArchiveModeFlags() {
+	switch conf.BackupArchiveMode {
+	case ConstBackupArchiveModeNone:
+		conf.BackupRestic = false
+		conf.BackupResticAws = false
+	case ConstBackupArchiveModeResticAws:
+		conf.BackupRestic = true
+		conf.BackupResticAws = true
+	case ConstBackupArchiveModeResticLocal, ConstBackupArchiveModeResticSftp:
+		conf.BackupRestic = true
+		conf.BackupResticAws = false
+	}
+}
+
+// ApplyBackupArchiveMode validates and sets backup-archive-mode, deriving the
+// underlying backup-restic / backup-restic-aws flags used by the Restic integration.
+func (conf *Config) ApplyBackupArchiveMode(mode string) error {
+	if err := conf.ValidateBackupArchiveMode(mode); err != nil {
+		return err
+	}
+	conf.BackupArchiveMode = mode
+	conf.applyBackupArchiveModeFlags()
+	return nil
+}
+
+// IsS3ResticRepository reports whether repoPath uses restic's S3 backend
+// ("s3:" prefix). repoPath is expected to already be trimmed of surrounding
+// whitespace, as is the case for BackupResticLocalRepository after
+// NormalizeBackupArchiveMode has run. Restic treats the scheme prefix as
+// case-sensitive, so this match is exact-case to match restic's own behavior.
+func IsS3ResticRepository(repoPath string) bool {
+	return strings.HasPrefix(repoPath, "s3:")
+}
+
+// IsSftpResticRepository reports whether repoPath uses restic's sftp backend
+// ("sftp:" prefix). repoPath is expected to already be trimmed of surrounding
+// whitespace, as is the case for BackupResticLocalRepository after
+// NormalizeBackupArchiveMode has run. Restic treats the scheme prefix as
+// case-sensitive, so this match is exact-case to match restic's own behavior.
+func IsSftpResticRepository(repoPath string) bool {
+	return strings.HasPrefix(repoPath, "sftp:")
+}
+
+// DeriveBackupArchiveModeFromFlags computes the canonical backup-archive-mode
+// for the given backup-restic / backup-restic-aws flag values. For the
+// restic-local vs restic-sftp ambiguity (both map to backup-restic=true,
+// backup-restic-aws=false), the configured repository path is inspected for
+// an "sftp:" prefix. Callers that mutate the legacy flags should compute the
+// resulting mode with this helper and apply it via ApplyBackupArchiveMode (or
+// Cluster.SetBackupArchiveMode) so backup-restic / backup-restic-aws stay in
+// a combination the canonical mode can represent.
+func (conf *Config) DeriveBackupArchiveModeFromFlags(backupRestic, backupResticAws bool) string {
+	switch {
+	case !backupRestic:
+		return ConstBackupArchiveModeNone
+	case backupResticAws:
+		return ConstBackupArchiveModeResticAws
+	case IsSftpResticRepository(conf.BackupResticLocalRepository):
+		return ConstBackupArchiveModeResticSftp
+	default:
+		return ConstBackupArchiveModeResticLocal
+	}
+}
+
+// NormalizeBackupArchiveMode resolves backup-archive-mode at startup. Configs
+// predating this setting only have backup-restic / backup-restic-aws /
+// backup-restic-local-repository (sftp: prefix), so an empty or "none" value
+// contradicted by a legacy backup-restic=true is re-derived from those flags.
+// Once resolved, backup-restic / backup-restic-aws are kept in sync with it.
+// It also trims BackupResticLocalRepository so IsS3ResticRepository /
+// IsSftpResticRepository can match prefixes without re-trimming.
+//
+// This is only called from Cluster.Init() at startup. If the server gains
+// support for hot-reloading TOML configuration, a backup-archive-mode (or
+// backup-restic-local-repository) value added or changed while the server is
+// running would be loaded by Viper but never normalized/trimmed here, and
+// callers reading these fields directly may see stale or inconsistent state
+// until the cluster is reinitialized.
+func (conf *Config) NormalizeBackupArchiveMode() {
+	conf.BackupResticLocalRepository = strings.TrimSpace(conf.BackupResticLocalRepository)
+
+	invalidValue := conf.ValidateBackupArchiveMode(conf.BackupArchiveMode) != nil
+	needsMigration := invalidValue ||
+		(conf.BackupArchiveMode == ConstBackupArchiveModeNone && conf.BackupRestic)
+
+	if needsMigration {
+		if invalidValue {
+			log.WithFields(log.Fields{"cluster": "none", "type": "log", "module": "config"}).
+				Warnf("Invalid backup-archive-mode value %q, migrating from legacy backup-restic/backup-restic-aws settings", conf.BackupArchiveMode)
+		}
+		conf.BackupArchiveMode = conf.DeriveBackupArchiveModeFromFlags(conf.BackupRestic, conf.BackupResticAws)
+	}
+
+	conf.applyBackupArchiveModeFlags()
 }
 
 func (conf *Config) ValidateResticPermissions() error {

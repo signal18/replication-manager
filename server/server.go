@@ -851,6 +851,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.BackupLogicalDumpSystemTables, "backup-logical-dump-system-tables", false, "Backup restore the mysql database")
 	flags.StringVar(&conf.BackupLogicalType, "backup-logical-type", "mysqldump", "type of logical backup: river|mysqldump|mydumper")
 	flags.StringVar(&conf.BackupPhysicalType, "backup-physical-type", "xtrabackup", "type of physical backup: xtrabackup|mariabackup")
+	flags.StringVar(&conf.BackupArchiveMode, "backup-archive-mode", "", "Restic archive backend: none, restic-local, restic-aws, restic-sftp (empty derives from legacy backup-restic flags)")
 	flags.BoolVar(&conf.BackupRestic, "backup-restic", false, "Use restic to archive and restore backups")
 	flags.StringVar(&conf.BackupResticTags, "backup-restic-tags", "tenant,cluster,engine,version,backup-type,backup-tool,line", "Comma-separated restic tags or templates (e.g. cluster,backup-type,line,env:prod). Quote a tag to keep it literal.")
 	flags.StringVar(&conf.BackupResticHost, "backup-restic-host", "", "Restic backup --host override. Empty uses restic default hostname (no alias).")

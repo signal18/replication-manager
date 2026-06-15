@@ -135,18 +135,47 @@ func (cluster *Cluster) SwitchProvDockerDaemonPrivate() {
 	cluster.Conf.ProvDockerDaemonPrivate = !cluster.Conf.ProvDockerDaemonPrivate
 }
 
+// SwitchBackupRestic toggles the legacy backup-restic flag, mapping the
+// resulting (backup-restic, backup-restic-aws) combination to its canonical
+// backup-archive-mode and applying it via SetBackupArchiveMode so the two
+// representations never drift out of sync.
 func (cluster *Cluster) SwitchBackupRestic() {
-	cluster.Conf.BackupRestic = !cluster.Conf.BackupRestic
+	newBackupRestic := !cluster.Conf.BackupRestic
+	mode := cluster.Conf.DeriveBackupArchiveModeFromFlags(newBackupRestic, cluster.Conf.BackupResticAws)
+	if err := cluster.SetBackupArchiveMode(mode); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed to switch backup-restic to mode %s: %s", mode, err)
+	}
+}
+
+// SwitchBackupResticAws toggles the legacy backup-restic-aws flag, mapping the
+// resulting (backup-restic, backup-restic-aws) combination to its canonical
+// backup-archive-mode and applying it via SetBackupArchiveMode so the two
+// representations never drift out of sync.
+func (cluster *Cluster) SwitchBackupResticAws() {
+	newBackupResticAws := !cluster.Conf.BackupResticAws
+	mode := cluster.Conf.DeriveBackupArchiveModeFromFlags(cluster.Conf.BackupRestic, newBackupResticAws)
+	if err := cluster.SetBackupArchiveMode(mode); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed to switch backup-restic-aws to mode %s: %s", mode, err)
+	}
+}
+
+// SetBackupArchiveMode sets the canonical backup-archive-mode (none, restic-local,
+// restic-aws, restic-sftp), deriving backup-restic / backup-restic-aws, and
+// applies the same side effects as toggling those legacy switches.
+func (cluster *Cluster) SetBackupArchiveMode(mode string) error {
+	if err := cluster.Conf.ApplyBackupArchiveMode(mode); err != nil {
+		return err
+	}
 	cluster.CheckResticInstallation()
 	if cluster.ResticManager == nil {
 		cluster.StartResticManager()
+	} else {
+		// Repository backend/path may have changed, drop the stale snapshot
+		// list and stats until the next fetch against the new repository.
+		cluster.ResticManager.ClearSnapshotList()
 	}
 	cluster.ReloadResticEnv()
-}
-
-func (cluster *Cluster) SwitchBackupResticAws() {
-	cluster.Conf.BackupResticAws = !cluster.Conf.BackupResticAws
-	cluster.ReloadResticEnv()
+	return nil
 }
 
 func (cluster *Cluster) SwitchBackupBinlogs() {

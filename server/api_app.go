@@ -524,6 +524,22 @@ func hydrateS3MountFromProvider(mycluster *cluster.Cluster, mount *config.S3Moun
 	return nil
 }
 
+// volumeHasDirectoryToken reports whether dir is exactly one of vol's
+// whitespace-separated VolumeDir tokens (e.g. "data" in "data mnt"), as
+// opposed to a full relative path (e.g. "data/custom-media"). Used to detect
+// an explicit bare directory-token S3 mount placement (Phase 16).
+func volumeHasDirectoryToken(vol *config.Volume, dir string) bool {
+	if vol == nil {
+		return false
+	}
+	for _, tok := range vol.GetVolumeDirs() {
+		if tok == dir {
+			return true
+		}
+	}
+	return false
+}
+
 // @Summary Shows the apps for that specific named cluster
 // @Description Shows the apps for that specific named cluster
 // @Tags Apps
@@ -1628,9 +1644,15 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 
 					switch newValue {
 					case string(config.SourceGit), string(config.SourceS3), string(config.SourceVolume):
-						// Reset source name and path if type changes
+						// Reset source name/path/volume together so the row never
+						// carries stale values from the previous source type. The
+						// row is intentionally left incomplete (SourceType set,
+						// SourceName empty) until a follow-up "srcname" edit
+						// supplies the new source.
 						pm.SourceType = newSourceType
-						pm.SourceName = "" // Reset source name if type changes
+						pm.SourceName = ""
+						pm.SourcePath = ""
+						pm.VolumeName = ""
 						if node.HasProvisionCookie() {
 							node.SetReprovCookie()
 						}
@@ -1661,9 +1683,11 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 							pm.SourcePath = source.GetSourcePath()
 						}
 					case config.SourceVolume:
-						source, err := deployment.GetVolumeByName(newValue)
-						if err == nil {
-							pm.SourcePath = source.GetSourcePath()
+						// Phase 8 model: direct volume sources are relative to
+						// the volume root, represented as "." -- not
+						// Volume.GetSourcePath() (raw volumedir).
+						if _, err := deployment.GetVolumeByName(newValue); err == nil {
+							pm.SourcePath = "."
 						}
 					default:
 						http.Error(w, "Invalid source type. Must be 'git', 's3', or 'volume'", http.StatusInternalServerError)
@@ -1681,21 +1705,24 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					if newValue != "" && newValue != "/" {
 						pm.SourcePath = newValue
 					} else if pm.SourceName != "" {
+						// Reset/blank srcpath: derive the default from the path's
+						// CURRENT source identity (pm.SourceName/pm.SourceType),
+						// not from the just-submitted reset value ("" or "/").
 						switch pm.SourceType {
 						case config.SourceGit:
-							source, err := deployment.GetGitClone(newValue)
+							source, err := deployment.GetGitClone(pm.SourceName)
 							if err == nil {
 								pm.SourcePath = source.GetSourcePath()
 							}
 						case config.SourceS3:
-							source, err := deployment.GetS3Mount(newValue)
+							source, err := deployment.GetS3Mount(pm.SourceName)
 							if err == nil {
 								pm.SourcePath = source.GetSourcePath()
 							}
 						case config.SourceVolume:
-							source, err := deployment.GetVolumeByName(newValue)
-							if err == nil {
-								pm.SourcePath = source.GetSourcePath()
+							// Phase 8 model: direct volume root is "."
+							if _, err := deployment.GetVolumeByName(pm.SourceName); err == nil {
+								pm.SourcePath = "."
 							}
 						default:
 							http.Error(w, "Invalid source type. Must be 'git', 's3', or 'volume'", http.StatusInternalServerError)
@@ -1711,6 +1738,11 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					return
 				}
 
+				// Resolve failures are warning-only and do not abort persistence:
+				// field-by-field edits (e.g. "srctype" followed later by
+				// "srcname") intentionally pass through a momentarily incomplete
+				// row, and GetOpenSVCDeploymentPathMapping already skips
+				// unresolved/incomplete path mappings at provisioning time.
 				err := deployment.ResolvePath(pm)
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error resolving path after modification: ", err)
@@ -2185,7 +2217,7 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			return
 		}
 
-		err := deployment.InsertVolume(row)
+		err := deployment.InsertVolume(row, node.AppConfig.AppConfigVersion)
 		if err != nil {
 			http.Error(w, "Error inserting volume mapping: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -2267,13 +2299,34 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 		}
 
 		if row.VolumeName == "" {
+			// Phase 14 task 1: legacy-compatible autofill, only when S3 placement is unspecified.
 			row.Volume, err = mycluster.SetAppLocalMountVolume(node)
 			if err != nil {
 				http.Error(w, "Volume selection required before adding storage: "+err.Error(), http.StatusBadRequest)
 				return
 			}
 			row.VolumeName = row.Volume.Name
-			row.VolumeDir = filepath.Join(row.Volume.VolumeDir, row.Name)
+			row.VolumeDir = filepath.Join(row.Volume.S3MountSubdir(), row.Name)
+		} else {
+			// Phase 14 task 2/3: explicit V2 placement - resolve and preserve the
+			// selected saved volume row, defaulting VolumeDir via S3MountSubdir()
+			// (mnt as suggestion only, task 4) when the caller picked a volume but
+			// left the directory unspecified.
+			row.Volume, err = deployment.GetVolumeByName(row.VolumeName)
+			if err != nil {
+				http.Error(w, "Error getting volume by name: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			if row.VolumeDir == "" {
+				row.VolumeDir = filepath.Join(row.Volume.S3MountSubdir(), row.Name)
+			} else if volumeHasDirectoryToken(row.Volume, row.VolumeDir) {
+				// Phase 16: the "Add new" form has no Name field yet, so an
+				// explicit directory-token choice with no subdirectory is
+				// submitted as the bare token (e.g. "data"). Append the
+				// generated mount name so this explicit token choice is
+				// preserved instead of being mistaken for "unspecified".
+				row.VolumeDir = filepath.Join(row.VolumeDir, row.Name)
+			}
 		}
 
 		err = deployment.InsertS3Mount(row)
@@ -2441,7 +2494,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					}
 					// Check for duplicate git volume path
 					if deployment.HasDuplicateGitVolumePath(gc.Name, newValue, gc.VolumeDir) {
-						gc.VolumeDir = filepath.Join(newvol.VolumeDir, gc.Name)
+						gc.VolumeDir = filepath.Join(newvol.DefaultSubdir(), gc.Name)
 					}
 					gc.VolumeName = newValue
 					gc.Volume = newvol
@@ -2455,7 +2508,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 							http.Error(w, "Error getting volume by name: "+err.Error(), http.StatusInternalServerError)
 							return
 						}
-						newValue = filepath.Join(curvol.VolumeDir, gc.Name)
+						newValue = filepath.Join(curvol.DefaultSubdir(), gc.Name)
 					}
 
 					if gc.VolumeDir == newValue {
@@ -2508,16 +2561,24 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						return
 					}
 
+					if newValue == "" {
+						http.Error(w, "Name cannot be empty", http.StatusInternalServerError)
+						return
+					}
+
 					old, _ := deployment.GetVolumeByName(newValue)
 					if old != nil {
 						http.Error(w, "Cannot duplicate volume with same name", http.StatusInternalServerError)
 						return
 					}
 
-					paths := deployment.GetVolumePaths(vol.Name)
+					oldName := vol.Name
+					paths := deployment.GetVolumePaths(oldName)
 					vol.Name = newValue
 					for _, p := range paths {
-						p.SourceName = vol.Name
+						if p.SourceType == config.SourceVolume && p.SourceName == oldName {
+							p.SourceName = vol.Name
+						}
 						deployment.ResolvePath(p)
 					}
 
@@ -2531,18 +2592,44 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						http.Error(w, "PoolName cannot be empty", http.StatusInternalServerError)
 						return
 					}
+
+					// A row is canonical per pool for V1/unflagged content: reject
+					// moving this row onto a pool that another saved row already
+					// owns. V2 apps allow intentional multiple rows per pool.
+					if node.AppConfig.AppConfigVersion < config.AppConfigVersionV2 {
+						if existing := deployment.GetVolumeByPool(newValue); existing != nil && existing != vol {
+							http.Error(w, fmt.Sprintf("a volume for pool %q already exists: %s", newValue, existing.Name), http.StatusBadRequest)
+							return
+						}
+					}
+
+					oldPoolName := vol.PoolName
 					vol.PoolName = newValue
+					if err := vol.Validate(); err != nil {
+						vol.PoolName = oldPoolName
+						http.Error(w, "Error validating volume: "+err.Error(), http.StatusInternalServerError)
+						return
+					}
 
 				case "volumedir":
-					if vol.VolumeDir == newValue {
+					normalized := config.NormalizeVolumeDirs(newValue)
+					if normalized == vol.VolumeDir {
 						http.Error(w, "VolumeDir is the same as the current volume dir", http.StatusInternalServerError)
 						return
 					}
-					if newValue == "" {
+					if normalized == "" {
 						http.Error(w, "VolumeDir cannot be empty", http.StatusInternalServerError)
 						return
 					}
-					vol.VolumeDir = newValue
+
+					oldVolumeDir := vol.VolumeDir
+					vol.VolumeDir = normalized
+					if err := vol.Validate(); err != nil {
+						vol.VolumeDir = oldVolumeDir
+						http.Error(w, "Error validating volume: "+err.Error(), http.StatusInternalServerError)
+						return
+					}
+
 					deployment.ResolveVolumePaths(vol.Name)
 
 				default:
@@ -2669,9 +2756,10 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					}
 
 					if deployment.HasDuplicateS3VolumePath(newValue, s3Mount.VolumeDir) {
-						s3Mount.VolumeDir = filepath.Join(newvol.VolumeDir, s3Mount.Name)
+						s3Mount.VolumeDir = filepath.Join(newvol.S3MountSubdir(), s3Mount.Name)
 					}
 					s3Mount.VolumeName = newValue
+					s3Mount.Volume = newvol
 
 					deployment.ResolveS3MountPaths(s3Mount.Name)
 				case "region":
@@ -2692,7 +2780,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 							http.Error(w, "Error getting volume by name: "+err.Error(), http.StatusInternalServerError)
 							return
 						}
-						newValue = filepath.Join(curvol.VolumeDir, s3Mount.Name)
+						newValue = filepath.Join(curvol.S3MountSubdir(), s3Mount.Name)
 					}
 
 					if deployment.HasDuplicateS3VolumePath(s3Mount.VolumeName, newValue) {
@@ -3053,7 +3141,6 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 		return
 	}
 }
-
 
 // handlerMuxGitCheckRepo validates a git repository URL, branch, and credentials
 // before the user creates path mappings. Uses git ls-remote internally.
@@ -3498,7 +3585,7 @@ func buildValidatedTempAppConfigFromTemplate(mycluster *cluster.Cluster, node *c
 		return nil, err
 	}
 
-	canonicalContent, _, err := config.CanonicalizeAppTemplateTOML(parsedContent)
+	canonicalContent, _, err := cluster.CanonicalizeAppContent(parsedContent, node.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -3547,11 +3634,20 @@ func applyTemplateOwnedProjection(dst, src *config.AppConfig, templateName strin
 	//   AppHost, AppPort, AppHostsIPV6, AppDbUser, AppDbPass, AppDbSchema,
 	//   AppS3Provider, ProvAppCreditUsed, ProvAppCreditPlanned.
 	// - Template-owned (overwritten from validated template):
-	//   Deployment, ProvAppTemplate, ProvAppDockerImg, ProvAppDockerCmd, ProvAppType,
-	//   ProvAppMem, ProvAppCpuCores, ProvAppDisk, ProvAppDiskType, ProvAppRouteAddr,
-	//   ProvAppRoutePort, ProvAppRouteMask, ProvAppAgents, ProvAppHATopology,
+	//   Deployment, AppConfigVersion, ProvAppTemplate, ProvAppDockerImg,
+	//   ProvAppDockerCmd, ProvAppType, ProvAppMem, ProvAppCpuCores,
+	//   ProvAppDisk, ProvAppDiskType, ProvAppRouteAddr, ProvAppRoutePort,
+	//   ProvAppRouteMask, ProvAppAgents, ProvAppHATopology,
 	//   ProvAppAgentsFailover.
+	//
+	// AppConfigVersion travels with Deployment: src.Deployment was
+	// canonicalized under src.AppConfigVersion's V1/V2 gate
+	// (CanonicalizeAppVolumesRaw), so leaving dst.AppConfigVersion at a stale
+	// value would let the next load/save canonicalization pass
+	// re-interpret an intentional V2 multi-row Deployment as V1 and merge it
+	// back to one row per pool.
 	dst.Deployment = src.Deployment
+	dst.AppConfigVersion = src.AppConfigVersion
 	dst.ProvAppTemplate = templateName
 	dst.ProvAppDockerImg = src.ProvAppDockerImg
 	dst.ProvAppDockerCmd = src.ProvAppDockerCmd
@@ -3931,7 +4027,7 @@ func (repman *ReplicationManager) handlerMuxAppTemplateContentSave(w http.Respon
 		return
 	}
 
-	canonicalContent, _, err := config.CanonicalizeAppTemplateTOML([]byte(body.Content))
+	canonicalContent, _, err := cluster.CanonicalizeAppContent([]byte(body.Content), "")
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error canonicalizing template content: %v", err), http.StatusBadRequest)
 		return
@@ -4065,7 +4161,7 @@ func createLocalTemplateCopyFromTemplate(mycluster *cluster.Cluster, templateNam
 		return err
 	}
 
-	canonicalContent, _, err := config.CanonicalizeAppTemplateTOML(content)
+	canonicalContent, _, err := cluster.CanonicalizeAppContent(content, "")
 	if err != nil {
 		return err
 	}

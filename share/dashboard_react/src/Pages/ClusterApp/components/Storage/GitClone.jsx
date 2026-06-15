@@ -11,6 +11,13 @@ import Dropdown from "../../../../components/Dropdown";
 import { DataTable } from "../../../../components/DataTable";
 import { HiTrash } from "react-icons/hi";
 import { useTheme } from "../../../../ThemeProvider";
+import {
+    buildVolumeDir,
+    defaultSubdir,
+    extractSubDir,
+    getVolumeDirTokens,
+    matchVolumeDirToken,
+} from "./volumeDirUtils";
 
 const defaultGit = {
     name: "",
@@ -183,21 +190,26 @@ const GitRowForm = React.memo(function GitRowForm({ fieldName, gitClone, index, 
     }, [gc.name]);
 
     const vol = useMemo(() => volumeOptions.find((opt) => opt.value === volumename), [volumeOptions, volumename]);
-    const srcbasepath = vol ? vol.volumedir : "";
-    const subpath = useMemo(() => volumedir.startsWith(srcbasepath) ? volumedir.substring(srcbasepath.length + 1) : volumedir, [volumedir, srcbasepath]);
+    const availableDirs = useMemo(() => getVolumeDirTokens(vol?.volumedir), [vol]);
+    const srcbasepath = useMemo(() => matchVolumeDirToken(volumedir, vol?.volumedir, defaultSubdir), [volumedir, vol]);
+    const subpath = useMemo(() => extractSubDir(volumedir, srcbasepath), [volumedir, srcbasepath]);
 
     const handleVolume = useCallback((value) => {
-        const vol = volumeOptions.find((opt) => opt.value === value);
-        const newValue = vol ? vol.volumedir + (subpath.startsWith("/") ? subpath : "/" + subpath) : volumedir;
-        onChange(fieldName, index, "volumename", vol ? vol.value : "");
+        const newVol = volumeOptions.find((opt) => opt.value === value);
+        const newDirs = getVolumeDirTokens(newVol?.volumedir);
+        const newBase = newDirs.includes(srcbasepath) ? srcbasepath : defaultSubdir(newVol?.volumedir);
+        const newValue = newVol ? buildVolumeDir(newBase, subpath, name) : volumedir;
+        onChange(fieldName, index, "volumename", newVol ? newVol.value : "");
         onChange(fieldName, index, "volumedir", newValue);
-    }, [fieldName, index, volumeOptions, subpath, volumedir, onChange]);
+    }, [fieldName, index, volumeOptions, srcbasepath, subpath, name, volumedir, onChange]);
+
+    const handleBaseDir = useCallback((value) => {
+        onChange(fieldName, index, "volumedir", buildVolumeDir(value, subpath, name));
+    }, [fieldName, index, subpath, name, onChange]);
 
     const handleSubPath = useCallback((value) => {
-        value = !value.trim() || value.trim() === "/" ? name : value;
-        const newValue = srcbasepath + (value.startsWith("/") ? value : "/" + value);
-        onChange(fieldName, index, "volumedir", newValue);
-    }, [fieldName, index, name, srcbasepath, onChange]);
+        onChange(fieldName, index, "volumedir", buildVolumeDir(srcbasepath, value, name));
+    }, [fieldName, index, srcbasepath, name, onChange]);
 
     const handleCheckConnection = useCallback(async () => {
         if (!onCheckGit || !gc.name) return;
@@ -260,8 +272,22 @@ const GitRowForm = React.memo(function GitRowForm({ fieldName, gitClone, index, 
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume:</Text>
                     <Dropdown key={`volume-${index}`} placeholder="Volume" confirmTitle="Change Volume" options={volumeOptions} selectedValue={volumename} onChange={(value) => handleVolume(value)} />
-                    {srcbasepath && (<Text key={volumename} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)}
                 </Flex>
+                {availableDirs.length > 1 ? (
+                    <Flex direction="column" flex="1">
+                        <Text mb={1}>Volume Dir:</Text>
+                        <Dropdown
+                            key={`git-basedir-${index}`}
+                            placeholder="Volume Dir"
+                            confirmTitle="Change Volume Dir"
+                            options={availableDirs.map((dir) => ({ value: dir, name: dir }))}
+                            selectedValue={srcbasepath}
+                            onChange={(value) => handleBaseDir(value)}
+                        />
+                    </Flex>
+                ) : (
+                    srcbasepath && (<Text key={`${volumename}-basepath`} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)
+                )}
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Sub Dir:</Text>
                     <TextForm key={`volume-dir-${index}`} placeholder="Volume Sub Dir" confirmTitle="Change Volume Sub Dir" value={subpath} onSave={(value) => handleSubPath(value)} />
@@ -278,10 +304,9 @@ const GitNewForm = React.memo(function GitNewForm({ volumeOptions, onSave = () =
     const { theme } = useTheme();
     const { name, repo, branch, user, pass, volumename, volumedir, subpath } = gc;
 
-    const srcbasepath = useMemo(() => {
-        const vol = volumeOptions.find((opt) => opt.value === volumename);
-        return vol ? vol.volumedir : "";
-    }, [volumeOptions, volumename]);
+    const vol = useMemo(() => volumeOptions.find((opt) => opt.value === volumename), [volumeOptions, volumename]);
+    const availableDirs = useMemo(() => getVolumeDirTokens(vol?.volumedir), [vol]);
+    const srcbasepath = useMemo(() => matchVolumeDirToken(volumedir, vol?.volumedir, defaultSubdir), [volumedir, vol]);
 
     const valid = useMemo(() => name && repo && branch && volumedir, [name, repo, branch, volumedir]);
 
@@ -299,17 +324,19 @@ const GitNewForm = React.memo(function GitNewForm({ volumeOptions, onSave = () =
     }, [onCancel]);
 
     const handleVolume = useCallback((option) => {
-        const newSubpath = !subpath.trim() || subpath.trim() === "/" ? name : subpath;
-        const newValue = option.volumedir + (newSubpath.startsWith("/") ? newSubpath : "/" + newSubpath);
+        const newDirs = getVolumeDirTokens(option?.volumedir);
+        const newBase = newDirs.includes(srcbasepath) ? srcbasepath : defaultSubdir(option?.volumedir);
         handleArrayChange("volumename", option.value);
-        handleArrayChange("volumedir", newValue);
-    }, [name, subpath, handleArrayChange]);
+        handleArrayChange("volumedir", buildVolumeDir(newBase, subpath, name));
+    }, [name, subpath, srcbasepath, handleArrayChange]);
+
+    const handleBaseDir = useCallback((option) => {
+        handleArrayChange("volumedir", buildVolumeDir(option.value, subpath, name));
+    }, [subpath, name, handleArrayChange]);
 
     const handleSubPath = useCallback((value) => {
         handleArrayChange("subpath", value);
-        const newSubpath = !value.trim() || value.trim() === "/" ? name : value;
-        const newValue = srcbasepath + (newSubpath.startsWith("/") ? newSubpath : "/" + newSubpath);
-        handleArrayChange("volumedir", newValue);
+        handleArrayChange("volumedir", buildVolumeDir(srcbasepath, value, name));
     }, [name, srcbasepath, handleArrayChange]);
 
     const handleCheckRepo = useCallback(async () => {
@@ -375,11 +402,24 @@ const GitNewForm = React.memo(function GitNewForm({ volumeOptions, onSave = () =
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume:</Text>
                     <Dropdown key={`volume-new`} placeholder="Volume" options={volumeOptions} selectedValue={volumename} onChange={(option) => handleVolume(option)} />
-                    {srcbasepath && (<Text key={volumename} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)}
                 </Flex>
+                {availableDirs.length > 1 ? (
+                    <Flex direction="column" flex="1">
+                        <Text mb={1}>Volume Dir:</Text>
+                        <Dropdown
+                            key={`git-basedir-new`}
+                            placeholder="Volume Dir"
+                            options={availableDirs.map((dir) => ({ value: dir, name: dir }))}
+                            selectedValue={srcbasepath}
+                            onChange={(option) => handleBaseDir(option)}
+                        />
+                    </Flex>
+                ) : (
+                    srcbasepath && (<Text key={`${volumename}-basepath`} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)
+                )}
                 <Flex direction="column" flex="1">
-                    <Text mb={1}>Volume Dir:</Text>
-                    <Input key={`volume-dir-new`} placeholder="Volume Dir" value={subpath} onChange={(e) => handleSubPath(e.target.value)} />
+                    <Text mb={1}>Sub Dir:</Text>
+                    <Input key={`volume-dir-new`} placeholder="Volume Sub Dir" value={subpath} onChange={(e) => handleSubPath(e.target.value)} />
                     <Text>Fullpath: {volumedir}</Text>
                 </Flex>
                 <Flex direction="column" flex="1">
