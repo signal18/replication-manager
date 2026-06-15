@@ -220,8 +220,8 @@ export default function StoragePage({ clusterName, appId, appConfig }) {
   ), [volumes, opensvcPools, appConfig?.provAppHaTopology, appConfig?.appConfigVersion, actionProps]);
 
   const s3Component = useMemo(() => (
-      <S3DirectorySection appId={appId} rows={s3Mounts} s3ProvOptions={s3ProvOptions} clusterS3Providers={clusterS3Providers} {...actionProps} />
-  ), [appId, s3Mounts, s3ProvOptions, clusterS3Providers, actionProps]);
+      <S3DirectorySection appId={appId} rows={s3Mounts} s3ProvOptions={s3ProvOptions} clusterS3Providers={clusterS3Providers} volumeOptions={volumeOptions} {...actionProps} />
+  ), [appId, s3Mounts, s3ProvOptions, clusterS3Providers, volumeOptions, actionProps]);
 
   return (
     <Flex direction="column" className={styles.sectionWrapper}>

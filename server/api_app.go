@@ -2267,13 +2267,27 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 		}
 
 		if row.VolumeName == "" {
+			// Phase 14 task 1: legacy-compatible autofill, only when S3 placement is unspecified.
 			row.Volume, err = mycluster.SetAppLocalMountVolume(node)
 			if err != nil {
 				http.Error(w, "Volume selection required before adding storage: "+err.Error(), http.StatusBadRequest)
 				return
 			}
 			row.VolumeName = row.Volume.Name
-			row.VolumeDir = filepath.Join(config.AppMountVolumeDir, row.Name)
+			row.VolumeDir = filepath.Join(row.Volume.S3MountSubdir(), row.Name)
+		} else {
+			// Phase 14 task 2/3: explicit V2 placement - resolve and preserve the
+			// selected saved volume row, defaulting VolumeDir via S3MountSubdir()
+			// (mnt as suggestion only, task 4) when the caller picked a volume but
+			// left the directory unspecified.
+			row.Volume, err = deployment.GetVolumeByName(row.VolumeName)
+			if err != nil {
+				http.Error(w, "Error getting volume by name: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			if row.VolumeDir == "" {
+				row.VolumeDir = filepath.Join(row.Volume.S3MountSubdir(), row.Name)
+			}
 		}
 
 		err = deployment.InsertS3Mount(row)
@@ -2703,6 +2717,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						s3Mount.VolumeDir = filepath.Join(newvol.S3MountSubdir(), s3Mount.Name)
 					}
 					s3Mount.VolumeName = newValue
+					s3Mount.Volume = newvol
 
 					deployment.ResolveS3MountPaths(s3Mount.Name)
 				case "region":
