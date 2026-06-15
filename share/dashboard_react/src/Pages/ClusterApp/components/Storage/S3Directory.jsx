@@ -10,6 +10,13 @@ import { HiTrash } from "react-icons/hi";
 import Dropdown from "../../../../components/Dropdown";
 import SyncDiffTable from "../../../../components/SyncDiffTable";
 import { extractApiErrorMessage, redactSensitiveInfo } from "../../../../utils/apiError";
+import {
+  buildVolumeDir,
+  defaultS3Subdir,
+  extractSubDir,
+  getVolumeDirTokens,
+  matchVolumeDirToken,
+} from "./volumeDirUtils";
 
 const defaultS3 = { name: "", endpoint: "", bucket: "", region: "", accesskey: "", secretkey: "", providerName: "", volumename: "", volumedir: "", subpath: "" };
 const providerSourceOptions = [
@@ -34,69 +41,6 @@ const getDuplicateProviderAdvisory = (name, clusterS3Providers = []) => {
 const hasCustomBlankCredentials = (providerSource, s3 = {}) => {
   if (providerSource !== "custom") return false;
   return !s3.accesskey && !s3.secretkey;
-};
-
-// volumedir lists the volume's available top-level directories as a
-// whitespace-separated string (see config.Volume.GetVolumeDirs()).
-const getVolumeDirTokens = (volumedir) =>
-  typeof volumedir === "string" ? volumedir.split(/\s+/).filter(Boolean) : [];
-
-// Mirrors config.Volume.DefaultSubdir(): the first directory token.
-const defaultSubdir = (volumedir) => getVolumeDirTokens(volumedir)[0] || "";
-
-const APP_MOUNT_VOLUME_DIR = "mnt";
-
-// Mirrors config.Volume.S3MountSubdir(): "mnt" is the default *suggestion*
-// for S3 mount placement when the volume exposes it, falling back to the
-// volume's first directory token otherwise. This is only a suggestion
-// (Phase 14 task 4) - explicit volumename/volumedir placement always wins.
-const defaultS3Subdir = (volumedir) => {
-  const dirs = getVolumeDirTokens(volumedir);
-  return dirs.includes(APP_MOUNT_VOLUME_DIR) ? APP_MOUNT_VOLUME_DIR : defaultSubdir(volumedir);
-};
-
-// Finds which of the volume's directory tokens `path` is rooted under
-// (either equal to the token or "<token>/..."), falling back to the
-// volume's mnt-biased default suggestion if no token matches (e.g. an
-// unplaced new mount, or a legacy path predating the multi-dir merge).
-const matchVolumeDirToken = (path, volumedir) => {
-  const dirs = getVolumeDirTokens(volumedir);
-  const match = dirs.find((dir) => path === dir || path.startsWith(`${dir}/`));
-  return match || defaultS3Subdir(volumedir);
-};
-
-// Splits a persisted S3Mount.volumedir into the portion beneath
-// `baseDirToken`, the inverse of buildVolumeDir. Falls back to the full value
-// when it isn't rooted under baseDirToken (legacy path, or a volume with no
-// directory tokens at all).
-const extractSubDir = (volumedir, baseDirToken) => {
-  if (!baseDirToken) return volumedir;
-  if (volumedir === baseDirToken) return "";
-  if (volumedir.startsWith(`${baseDirToken}/`)) return volumedir.substring(baseDirToken.length + 1);
-  return volumedir;
-};
-
-// Builds the full S3Mount.volumedir to persist from a selected base directory
-// token and a subdirectory beneath it. A blank/"/" subdirectory defaults the
-// subdirectory to mountNameFallback when known (saved-row behaviour). On the
-// "Add" form mountNameFallback is unknown (no Name field yet), so a blank
-// subdirectory instead persists the bare baseDirToken (Phase 16): the backend
-// appends the generated mount name to an explicit bare-token VolumeDir
-// (Volume.S3MountSubdir() + generated mount name, Phase 14 task 1, applies the
-// same way to an explicit token). This preserves the user's explicit
-// directory-token choice instead of discarding it as "" - which the backend
-// would otherwise treat as fully unspecified and re-default to the mnt-biased
-// suggestion. Returns "" only when no directory token is selected at all.
-const buildVolumeDir = (baseDirToken, subDir, mountNameFallback) => {
-  const trimmed = typeof subDir === "string" ? subDir.trim() : "";
-  if (!trimmed || trimmed === "/") {
-    if (mountNameFallback) {
-      return baseDirToken ? `${baseDirToken}/${mountNameFallback}` : mountNameFallback;
-    }
-    return baseDirToken || "";
-  }
-  const cleanSub = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
-  return baseDirToken ? `${baseDirToken}/${cleanSub}` : cleanSub;
 };
 
 const columnHelper = createColumnHelper()
@@ -289,7 +233,7 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, volumeOptions = 
     // subdirectory beneath that token.
     const vol = useMemo(() => volumeOptions.find((opt) => opt.value === volumename), [volumeOptions, volumename]);
     const availableDirs = useMemo(() => getVolumeDirTokens(vol?.volumedir), [vol]);
-    const srcbasepath = useMemo(() => matchVolumeDirToken(volumedir, vol?.volumedir), [volumedir, vol]);
+    const srcbasepath = useMemo(() => matchVolumeDirToken(volumedir, vol?.volumedir, defaultS3Subdir), [volumedir, vol]);
     const subpath = useMemo(() => extractSubDir(volumedir, srcbasepath), [volumedir, srcbasepath]);
 
     const handleVolume = useCallback((value) => {
@@ -644,7 +588,7 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers 
     // Phase 14: explicit V2 S3 mount placement for the "Add new" form.
     const vol = useMemo(() => volumeOptions.find((opt) => opt.value === volumename), [volumeOptions, volumename]);
     const availableDirs = useMemo(() => getVolumeDirTokens(vol?.volumedir), [vol]);
-    const srcbasepath = useMemo(() => matchVolumeDirToken(volumedir, vol?.volumedir), [volumedir, vol]);
+    const srcbasepath = useMemo(() => matchVolumeDirToken(volumedir, vol?.volumedir, defaultS3Subdir), [volumedir, vol]);
 
     // Phase 16: a bare directory-token volumedir (no Sub Dir typed yet) gets
     // the generated mount name appended server-side, so preview that here
@@ -681,19 +625,19 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers 
         setS3((prev) => ({
             ...prev,
             volumename: option?.value || "",
-            volumedir: buildVolumeDir(newBase, subpath, ""),
+            volumedir: buildVolumeDir(newBase, subpath, "", { preserveBareToken: true }),
         }));
     };
 
     const handleBaseDir = (option) => {
-        handleArrayChange("volumedir", buildVolumeDir(option?.value, subpath, ""));
+        handleArrayChange("volumedir", buildVolumeDir(option?.value, subpath, "", { preserveBareToken: true }));
     };
 
     const handleSubPath = (value) => {
         setS3((prev) => ({
             ...prev,
             subpath: value,
-            volumedir: buildVolumeDir(srcbasepath, value, ""),
+            volumedir: buildVolumeDir(srcbasepath, value, "", { preserveBareToken: true }),
         }));
     };
 

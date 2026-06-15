@@ -11,6 +11,13 @@ import Dropdown from "../../../../components/Dropdown";
 import { DataTable } from "../../../../components/DataTable";
 import { HiTrash } from "react-icons/hi";
 import { useTheme } from "../../../../ThemeProvider";
+import {
+    buildVolumeDir,
+    defaultSubdir,
+    extractSubDir,
+    getVolumeDirTokens,
+    matchVolumeDirToken,
+} from "./volumeDirUtils";
 
 const defaultGit = {
     name: "",
@@ -43,46 +50,6 @@ const formatGitError = (err) => {
 const maskString = (str, mask = '*') => {
     return str.replaceAll(/./g, mask)
 }
-
-// volumedir lists the volume's available top-level directories as a
-// whitespace-separated string (see config.Volume.GetVolumeDirs()).
-const getVolumeDirTokens = (volumedir) =>
-    typeof volumedir === "string" ? volumedir.split(/\s+/).filter(Boolean) : [];
-
-// Mirrors config.Volume.DefaultSubdir(): the first directory token, used as
-// the default base path when assigning a volume to a git clone.
-const defaultSubdir = (volumedir) => getVolumeDirTokens(volumedir)[0] || "";
-
-// Finds which of the volume's directory tokens `path` is rooted under
-// (either equal to the token or "<token>/..."), falling back to the
-// volume's default subdir if no token matches (e.g. legacy paths predating
-// the multi-directory volume merge).
-const matchVolumeDirToken = (path, volumedir) => {
-    const dirs = getVolumeDirTokens(volumedir);
-    const match = dirs.find((dir) => path === dir || path.startsWith(`${dir}/`));
-    return match || defaultSubdir(volumedir);
-};
-
-// Splits a persisted GitClone.volumedir into the portion beneath
-// `baseDirToken`, the inverse of buildVolumeDir. Falls back to the full value
-// when it isn't rooted under baseDirToken (e.g. a legacy path predating the
-// multi-directory volume merge, or a volume with no directory tokens at all).
-const extractSubDir = (volumedir, baseDirToken) => {
-    if (!baseDirToken) return volumedir;
-    if (volumedir === baseDirToken) return "";
-    if (volumedir.startsWith(`${baseDirToken}/`)) return volumedir.substring(baseDirToken.length + 1);
-    return volumedir;
-};
-
-// Builds the full GitClone.volumedir to persist from a selected base
-// directory token and a subdirectory beneath it, defaulting a blank
-// subdirectory to `cloneNameFallback` (the git clone name).
-const buildVolumeDir = (baseDirToken, subDir, cloneNameFallback) => {
-    const trimmed = typeof subDir === "string" ? subDir.trim() : "";
-    const sub = !trimmed || trimmed === "/" ? cloneNameFallback : subDir;
-    const cleanSub = sub.startsWith("/") ? sub.slice(1) : sub;
-    return baseDirToken ? `${baseDirToken}/${cleanSub}` : cleanSub;
-};
 
 const GitCloneSection = React.memo(function GitCloneSection({
     rows = [],
@@ -224,7 +191,7 @@ const GitRowForm = React.memo(function GitRowForm({ fieldName, gitClone, index, 
 
     const vol = useMemo(() => volumeOptions.find((opt) => opt.value === volumename), [volumeOptions, volumename]);
     const availableDirs = useMemo(() => getVolumeDirTokens(vol?.volumedir), [vol]);
-    const srcbasepath = useMemo(() => matchVolumeDirToken(volumedir, vol?.volumedir), [volumedir, vol]);
+    const srcbasepath = useMemo(() => matchVolumeDirToken(volumedir, vol?.volumedir, defaultSubdir), [volumedir, vol]);
     const subpath = useMemo(() => extractSubDir(volumedir, srcbasepath), [volumedir, srcbasepath]);
 
     const handleVolume = useCallback((value) => {
@@ -339,7 +306,7 @@ const GitNewForm = React.memo(function GitNewForm({ volumeOptions, onSave = () =
 
     const vol = useMemo(() => volumeOptions.find((opt) => opt.value === volumename), [volumeOptions, volumename]);
     const availableDirs = useMemo(() => getVolumeDirTokens(vol?.volumedir), [vol]);
-    const srcbasepath = useMemo(() => matchVolumeDirToken(volumedir, vol?.volumedir), [volumedir, vol]);
+    const srcbasepath = useMemo(() => matchVolumeDirToken(volumedir, vol?.volumedir, defaultSubdir), [volumedir, vol]);
 
     const valid = useMemo(() => name && repo && branch && volumedir, [name, repo, branch, volumedir]);
 

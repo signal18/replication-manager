@@ -363,13 +363,20 @@ func (d *Deployment) ResolvePath(p *PathMapping) error {
 		return err
 	}
 
+	var childErrs []error
 	if p.VolumeName != oldVolumeName && p.Name != "" {
 		for _, child := range d.Paths {
 			if child == p || child.SourceType != "" || child.ParentName != p.Name {
 				continue
 			}
-			d.ResolvePath(child)
+			if err := d.ResolvePath(child); err != nil {
+				childErrs = append(childErrs, err)
+			}
 		}
+	}
+
+	if len(childErrs) > 0 {
+		return errors.Join(childErrs...)
 	}
 
 	return nil
@@ -405,6 +412,12 @@ func (d *Deployment) ResolvePaths() []error {
 		}
 	}
 
+	for _, p := range d.Paths {
+		if p.SourceType == "" && p.Parent != nil {
+			p.VolumeName = ""
+		}
+	}
+
 	// Pass 2: propagate VolumeName from parents to children with no direct
 	// source, iterating to a fixed point so inheritance converges regardless
 	// of d.Paths ordering.
@@ -414,6 +427,9 @@ func (d *Deployment) ResolvePaths() []error {
 			if p.SourceType != "" || p.Parent == nil {
 				continue
 			}
+			if p.Parent.VolumeName == "" {
+				continue
+			}
 			if p.VolumeName != p.Parent.VolumeName {
 				p.VolumeName = p.Parent.VolumeName
 				changed = true
@@ -421,6 +437,12 @@ func (d *Deployment) ResolvePaths() []error {
 		}
 		if !changed {
 			break
+		}
+	}
+
+	for _, p := range d.Paths {
+		if p.SourceType == "" && p.Parent != nil && p.VolumeName == "" {
+			appendErr(fmt.Errorf("inherited volume not resolved for path mapping %s via parent %s", p.DockerPath, p.ParentName))
 		}
 	}
 

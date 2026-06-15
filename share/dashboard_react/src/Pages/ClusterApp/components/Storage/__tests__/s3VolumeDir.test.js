@@ -8,44 +8,13 @@
 // Run with: node src/Pages/ClusterApp/components/Storage/__tests__/s3VolumeDir.test.js
 // Or via: npm run test:s3-volume-dir
 
-// --- Pure helpers copied from S3Directory.jsx for isolated testing ---
-
-const getVolumeDirTokens = (volumedir) =>
-  typeof volumedir === "string" ? volumedir.split(/\s+/).filter(Boolean) : [];
-
-const defaultSubdir = (volumedir) => getVolumeDirTokens(volumedir)[0] || "";
-
-const APP_MOUNT_VOLUME_DIR = "mnt";
-
-const defaultS3Subdir = (volumedir) => {
-  const dirs = getVolumeDirTokens(volumedir);
-  return dirs.includes(APP_MOUNT_VOLUME_DIR) ? APP_MOUNT_VOLUME_DIR : defaultSubdir(volumedir);
-};
-
-const matchVolumeDirToken = (path, volumedir) => {
-  const dirs = getVolumeDirTokens(volumedir);
-  const match = dirs.find((dir) => path === dir || path.startsWith(`${dir}/`));
-  return match || defaultS3Subdir(volumedir);
-};
-
-const extractSubDir = (volumedir, baseDirToken) => {
-  if (!baseDirToken) return volumedir;
-  if (volumedir === baseDirToken) return "";
-  if (volumedir.startsWith(`${baseDirToken}/`)) return volumedir.substring(baseDirToken.length + 1);
-  return volumedir;
-};
-
-const buildVolumeDir = (baseDirToken, subDir, mountNameFallback) => {
-  const trimmed = typeof subDir === "string" ? subDir.trim() : "";
-  if (!trimmed || trimmed === "/") {
-    if (mountNameFallback) {
-      return baseDirToken ? `${baseDirToken}/${mountNameFallback}` : mountNameFallback;
-    }
-    return baseDirToken || "";
-  }
-  const cleanSub = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
-  return baseDirToken ? `${baseDirToken}/${cleanSub}` : cleanSub;
-};
+const {
+  buildVolumeDir,
+  defaultS3Subdir,
+  extractSubDir,
+  getVolumeDirTokens,
+  matchVolumeDirToken,
+} = await import('../volumeDirUtils.js');
 
 // --- S3DirectoryRowForm (existing-mount editor) state derivation/handlers ---
 
@@ -53,7 +22,7 @@ function rowView(s3, volumeOptions) {
   const { volumename, volumedir } = s3;
   const vol = volumeOptions.find((opt) => opt.value === volumename);
   const availableDirs = getVolumeDirTokens(vol?.volumedir);
-  const srcbasepath = matchVolumeDirToken(volumedir, vol?.volumedir);
+  const srcbasepath = matchVolumeDirToken(volumedir, vol?.volumedir, defaultS3Subdir);
   const subpath = extractSubDir(volumedir, srcbasepath);
   return { vol, availableDirs, srcbasepath, subpath };
 }
@@ -92,7 +61,7 @@ function newView(s3, volumeOptions) {
   const { volumename, volumedir } = s3;
   const vol = volumeOptions.find((opt) => opt.value === volumename);
   const availableDirs = getVolumeDirTokens(vol?.volumedir);
-  const srcbasepath = matchVolumeDirToken(volumedir, vol?.volumedir);
+  const srcbasepath = matchVolumeDirToken(volumedir, vol?.volumedir, defaultS3Subdir);
   return { vol, availableDirs, srcbasepath };
 }
 
@@ -102,17 +71,17 @@ function newHandleVolume(s3, volumeOptions, newVolumeValue) {
   const newVol = volumeOptions.find((opt) => opt.value === newVolumeValue);
   const newDirs = getVolumeDirTokens(newVol?.volumedir);
   const newBase = newDirs.includes(srcbasepath) ? srcbasepath : defaultS3Subdir(newVol?.volumedir);
-  return { ...s3, volumename: newVol ? newVol.value : "", volumedir: buildVolumeDir(newBase, subpath, "") };
+  return { ...s3, volumename: newVol ? newVol.value : "", volumedir: buildVolumeDir(newBase, subpath, "", { preserveBareToken: true }) };
 }
 
 function newHandleBaseDir(s3, baseDirToken) {
   const { subpath } = s3;
-  return { ...s3, volumedir: buildVolumeDir(baseDirToken, subpath, "") };
+  return { ...s3, volumedir: buildVolumeDir(baseDirToken, subpath, "", { preserveBareToken: true }) };
 }
 
 function newHandleSubPath(s3, volumeOptions, value) {
   const { srcbasepath } = newView(s3, volumeOptions);
-  return { ...s3, subpath: value, volumedir: buildVolumeDir(srcbasepath, value, "") };
+  return { ...s3, subpath: value, volumedir: buildVolumeDir(srcbasepath, value, "", { preserveBareToken: true }) };
 }
 
 // --- Test fixtures ---
@@ -167,11 +136,11 @@ console.log("\nTest Suite: defaultS3Subdir — mnt is the default suggestion, no
 
 console.log("\nTest Suite: matchVolumeDirToken — exact token match wins, mnt-biased default is only the fallback");
 {
-  assertEqual(matchVolumeDirToken("data/uploads", "data mnt"), "data", "a path rooted under 'data' resolves to 'data', not the mnt suggestion");
-  assertEqual(matchVolumeDirToken("mnt/uploads", "data mnt"), "mnt", "a path rooted under 'mnt' resolves to 'mnt'");
-  assertEqual(matchVolumeDirToken("", "data mnt"), "mnt", "an unplaced mount (blank path) on a volume with mnt suggests mnt");
-  assertEqual(matchVolumeDirToken("", "data log"), "data", "an unplaced mount on a volume without mnt suggests the first token");
-  assertEqual(matchVolumeDirToken("legacy-bucket-name", "data mnt"), "mnt", "a legacy path with no '/' (predating multi-dir merge) falls back to the mnt suggestion");
+  assertEqual(matchVolumeDirToken("data/uploads", "data mnt", defaultS3Subdir), "data", "a path rooted under 'data' resolves to 'data', not the mnt suggestion");
+  assertEqual(matchVolumeDirToken("mnt/uploads", "data mnt", defaultS3Subdir), "mnt", "a path rooted under 'mnt' resolves to 'mnt'");
+  assertEqual(matchVolumeDirToken("", "data mnt", defaultS3Subdir), "mnt", "an unplaced mount (blank path) on a volume with mnt suggests mnt");
+  assertEqual(matchVolumeDirToken("", "data log", defaultS3Subdir), "data", "an unplaced mount on a volume without mnt suggests the first token");
+  assertEqual(matchVolumeDirToken("legacy-bucket-name", "data mnt", defaultS3Subdir), "mnt", "a legacy path with no '/' (predating multi-dir merge) falls back to the mnt suggestion");
 }
 
 console.log("\nTest Suite: extractSubDir — splits a persisted volumedir into token + subdirectory");
@@ -183,9 +152,9 @@ console.log("\nTest Suite: extractSubDir — splits a persisted volumedir into t
 
 console.log("\nTest Suite: buildVolumeDir — Task 1/Phase 16, blank placement persists the selected token, deferring only when none is selected");
 {
-  assertEqual(buildVolumeDir("mnt", "", ""), "mnt", "blank Sub Dir with no mount-name fallback (Add form) persists the bare selected token");
-  assertEqual(buildVolumeDir("mnt", "/", ""), "mnt", "a bare '/' Sub Dir is treated the same as blank");
-  assertEqual(buildVolumeDir("", "", ""), "", "no token selected and no mount-name fallback fully defers volumedir to the backend");
+  assertEqual(buildVolumeDir("mnt", "", "", { preserveBareToken: true }), "mnt", "blank Sub Dir with no mount-name fallback (Add form) persists the bare selected token");
+  assertEqual(buildVolumeDir("mnt", "/", "", { preserveBareToken: true }), "mnt", "a bare '/' Sub Dir is treated the same as blank");
+  assertEqual(buildVolumeDir("", "", "", { preserveBareToken: true }), "", "no token selected and no mount-name fallback fully defers volumedir to the backend");
   assertEqual(buildVolumeDir("mnt", "", "my-mount"), "mnt/my-mount", "blank Sub Dir on an existing row falls back to the mount's own name");
   assertEqual(buildVolumeDir("mnt", "uploads", ""), "mnt/uploads", "an explicit Sub Dir always wins, even with no mount-name fallback");
   assertEqual(buildVolumeDir("", "uploads", ""), "uploads", "no base token still persists the explicit subdirectory");

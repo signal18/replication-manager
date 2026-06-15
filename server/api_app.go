@@ -2598,7 +2598,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					// owns. V2 apps allow intentional multiple rows per pool.
 					if node.AppConfig.AppConfigVersion < config.AppConfigVersionV2 {
 						if existing := deployment.GetVolumeByPool(newValue); existing != nil && existing != vol {
-							http.Error(w, fmt.Sprintf("a volume for pool %q already exists: %s", newValue, existing.Name), http.StatusInternalServerError)
+							http.Error(w, fmt.Sprintf("a volume for pool %q already exists: %s", newValue, existing.Name), http.StatusBadRequest)
 							return
 						}
 					}

@@ -586,6 +586,53 @@ func TestResolvePath_SrcTypeTransition_ClearsStaleVolumeName(t *testing.T) {
 	}
 }
 
+// TestResolvePaths_ChildOfUnresolvedParentReportsInheritedError covers the
+// hardening fix in ResolvePaths pass 2: when a parent path's direct source
+// fails to resolve, a child path that depends on inherited VolumeName should
+// not silently keep/accept an empty binding. The child now reports its own
+// inherited-resolution error as well.
+func TestResolvePaths_ChildOfUnresolvedParentReportsInheritedError(t *testing.T) {
+	deployment := config.NewDeploymentConfig()
+	deployment.Paths = config.PathMaps{
+		{
+			Name:       "web-root",
+			DockerPath: "/var/www/html",
+			SourceType: config.SourceVolume,
+			SourceName: "missing-volume",
+			SourcePath: ".",
+			VolumeName: "stale-volume",
+		},
+		{
+			Name:       "assets",
+			ParentName: "web-root",
+			DockerPath: "/var/www/html/assets",
+			VolumeName: "stale-volume",
+		},
+	}
+
+	errs := deployment.ResolvePaths()
+	if len(errs) < 2 {
+		t.Fatalf("expected parent and child resolution errors, got %v", errs)
+	}
+	if deployment.Paths[0].VolumeName != "" {
+		t.Fatalf("expected unresolved parent volumename cleared, got %q", deployment.Paths[0].VolumeName)
+	}
+	if deployment.Paths[1].VolumeName != "" {
+		t.Fatalf("expected child inherited volumename cleared, got %q", deployment.Paths[1].VolumeName)
+	}
+
+	foundChildErr := false
+	for _, err := range errs {
+		if strings.Contains(err.Error(), "inherited volume not resolved") && strings.Contains(err.Error(), "web-root") {
+			foundChildErr = true
+			break
+		}
+	}
+	if !foundChildErr {
+		t.Fatalf("expected inherited child resolution error in %v", errs)
+	}
+}
+
 // TestOpenSVCAppVolumeSection_MultiDirectoryVolumeDir covers Phase 5/9: a
 // merged multi-pool volume row (VolumeDir = "etc log var data") must be
 // rendered as separate OpenSVC "directories" entries, not a single literal

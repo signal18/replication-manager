@@ -7,32 +7,13 @@
 // Run with: node src/Pages/ClusterApp/components/Storage/__tests__/gitCloneVolumeDir.test.js
 // Or via: npm run test:git-clone-volume-dir
 
-// --- Pure helpers copied from GitClone.jsx for isolated testing ---
-
-const getVolumeDirTokens = (volumedir) =>
-  typeof volumedir === "string" ? volumedir.split(/\s+/).filter(Boolean) : [];
-
-const defaultSubdir = (volumedir) => getVolumeDirTokens(volumedir)[0] || "";
-
-const matchVolumeDirToken = (path, volumedir) => {
-  const dirs = getVolumeDirTokens(volumedir);
-  const match = dirs.find((dir) => path === dir || path.startsWith(`${dir}/`));
-  return match || defaultSubdir(volumedir);
-};
-
-const extractSubDir = (volumedir, baseDirToken) => {
-  if (!baseDirToken) return volumedir;
-  if (volumedir === baseDirToken) return "";
-  if (volumedir.startsWith(`${baseDirToken}/`)) return volumedir.substring(baseDirToken.length + 1);
-  return volumedir;
-};
-
-const buildVolumeDir = (baseDirToken, subDir, cloneNameFallback) => {
-  const trimmed = typeof subDir === "string" ? subDir.trim() : "";
-  const sub = !trimmed || trimmed === "/" ? cloneNameFallback : subDir;
-  const cleanSub = sub.startsWith("/") ? sub.slice(1) : sub;
-  return baseDirToken ? `${baseDirToken}/${cleanSub}` : cleanSub;
-};
+const {
+  buildVolumeDir,
+  defaultSubdir,
+  extractSubDir,
+  getVolumeDirTokens,
+  matchVolumeDirToken,
+} = await import('../volumeDirUtils.js');
 
 // --- GitRowForm (existing-row editor) state derivation/handlers, mirroring GitClone.jsx ---
 
@@ -40,7 +21,7 @@ function rowView(gc, volumeOptions) {
   const { volumename, volumedir } = gc;
   const vol = volumeOptions.find((opt) => opt.value === volumename);
   const availableDirs = getVolumeDirTokens(vol?.volumedir);
-  const srcbasepath = matchVolumeDirToken(volumedir, vol?.volumedir);
+  const srcbasepath = matchVolumeDirToken(volumedir, vol?.volumedir, defaultSubdir);
   const subpath = extractSubDir(volumedir, srcbasepath);
   return { vol, availableDirs, srcbasepath, subpath };
 }
@@ -75,7 +56,7 @@ function newView(gc, volumeOptions) {
   const { volumename, volumedir } = gc;
   const vol = volumeOptions.find((opt) => opt.value === volumename);
   const availableDirs = getVolumeDirTokens(vol?.volumedir);
-  const srcbasepath = matchVolumeDirToken(volumedir, vol?.volumedir);
+  const srcbasepath = matchVolumeDirToken(volumedir, vol?.volumedir, defaultSubdir);
   return { vol, availableDirs, srcbasepath };
 }
 

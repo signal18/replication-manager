@@ -6,35 +6,13 @@
 // Run with: node src/Pages/ClusterApp/components/Storage/__tests__/volumeDirTokens.test.js
 // Or via: npm run test:volume-dir-tokens
 
-// --- Logic copied from GitClone.jsx / Volume.jsx / Paths.jsx for isolated testing ---
-
-const getVolumeDirTokens = (volumedir) =>
-  typeof volumedir === "string" ? volumedir.split(/\s+/).filter(Boolean) : [];
-
-const defaultSubdir = (volumedir) => getVolumeDirTokens(volumedir)[0] || "";
-
-const matchVolumeDirToken = (path, volumedir) => {
-  const dirs = getVolumeDirTokens(volumedir);
-  const match = dirs.find((dir) => path === dir || path.startsWith(`${dir}/`));
-  return match || defaultSubdir(volumedir);
-};
-
-// --- Logic copied from Paths.jsx for isolated testing ---
-
-const normalizeSubPath = (value) => {
-  const raw = typeof value === 'string' ? value.trim() : '';
-  if (!raw || raw === '/' || raw === '.') return '/';
-  return raw.startsWith('/') ? raw : `/${raw}`;
-};
-
-const composeSourcePath = (srcbasepath, subpath) => {
-  const normalizedSubPath = normalizeSubPath(subpath);
-  if (!srcbasepath) {
-    return normalizedSubPath === '/' ? '.' : normalizedSubPath.slice(1);
-  }
-  if (normalizedSubPath === '/') return srcbasepath;
-  return `${srcbasepath}${normalizedSubPath}`.replace('//', '/');
-};
+const {
+  composeSourcePath,
+  defaultSubdir,
+  getVolumeDirTokens,
+  matchVolumeDirToken,
+  normalizeSubPath,
+} = await import('../volumeDirUtils.js');
 
 // --- Test Runner ---
 

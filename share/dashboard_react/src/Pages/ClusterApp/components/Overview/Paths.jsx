@@ -13,6 +13,11 @@ import { showErrorToast } from '../../../../redux/toastSlice';
 import { getDockerTree, getGitTree, hashMurmur } from '../../../../redux/pathSlice';
 import { createColumnHelper } from '@tanstack/react-table';
 import { DataTable } from '../../../../components/DataTable';
+import {
+  composeSourcePath,
+  getDisplaySubPath,
+  getVolumeDirTokens,
+} from '../Storage/volumeDirUtils';
 
 const sourceTypes = [
   { value: '', name: 'Select Source', isChildOption: true },
@@ -35,40 +40,6 @@ const defaultPath = {
 
 const nodeToValue = (node) => (node.type === "directory" && !node.path.endsWith("/") ? node.path + "/" : node.path);
 const nodeToString = (node) => node.name || node.path;
-
-const normalizeSubPath = (value) => {
-  const raw = typeof value === 'string' ? value.trim() : '';
-  if (!raw || raw === '/' || raw === '.') return '/';
-  return raw.startsWith('/') ? raw : `/${raw}`;
-};
-
-const composeSourcePath = (srcbasepath, subpath) => {
-  const normalizedSubPath = normalizeSubPath(subpath);
-  if (!srcbasepath) {
-    // Volume-type sources have no single base path: srcpath is relative to
-    // the pool's disk root, where "." denotes the root itself.
-    return normalizedSubPath === '/' ? '.' : normalizedSubPath.slice(1);
-  }
-  if (normalizedSubPath === '/') return srcbasepath;
-  return `${srcbasepath}${normalizedSubPath}`.replace('//', '/');
-};
-
-// volumedir lists the pool's available top-level directories as a
-// whitespace-separated string (see config.Volume.GetVolumeDirs()).
-const getVolumeDirTokens = (volumedir) =>
-  typeof volumedir === 'string' ? volumedir.split(/\s+/).filter(Boolean) : [];
-
-const getDisplaySubPath = (srcpath, srcbasepath) => {
-  const sourcePath = typeof srcpath === 'string' ? srcpath : '';
-  const basePath = typeof srcbasepath === 'string' ? srcbasepath : '';
-
-  if (basePath && sourcePath && sourcePath.startsWith(basePath)) {
-    const rel = sourcePath.slice(basePath.length);
-    return normalizeSubPath(rel);
-  }
-
-  return normalizeSubPath(sourcePath);
-};
 
 const columnHelper = createColumnHelper()
 

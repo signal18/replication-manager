@@ -179,8 +179,8 @@ func TestModifyVolumePoolname_RejectsMoveOntoUsedPoolWhenV1(t *testing.T) {
 	w := httptest.NewRecorder()
 	repman.handlerMuxModifyStorageField(w, req)
 
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 moving onto used pool on V1, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 moving onto used pool on V1, got %d: %s", w.Code, w.Body.String())
 	}
 	if app.AppConfig.Deployment.Storages.Volumes[1].PoolName != "docs" {
 		t.Fatalf("expected second row poolname unchanged, got %q", app.AppConfig.Deployment.Storages.Volumes[1].PoolName)

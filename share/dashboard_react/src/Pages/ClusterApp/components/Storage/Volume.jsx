@@ -8,6 +8,7 @@ import RMIconButton from "../../../../components/RMIconButton";
 import Dropdown from "../../../../components/Dropdown";
 import { DataTable } from "../../../../components/DataTable";
 import { HiTrash } from "react-icons/hi";
+import { getVolumeDirTokens } from "./volumeDirUtils";
 
 
 const defaultVol = { name: "", poolname: "", volumedir: "" };
@@ -18,11 +19,6 @@ const defaultVol = { name: "", poolname: "", volumedir: "" };
 const AppConfigVersionV2 = 2;
 
 const columnHelper = createColumnHelper()
-
-// volumedir lists the volume's top-level directories as a whitespace-separated
-// string (see config.Volume.GetVolumeDirs()).
-const getVolumeDirTokens = (volumedir) =>
-    typeof volumedir === "string" ? volumedir.split(/\s+/).filter(Boolean) : [];
 
 const VolumeSection = ({
     rows = [],

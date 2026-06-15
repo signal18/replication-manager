@@ -362,8 +362,10 @@ func (app *App) GetAppVolume(name string) (*config.Volume, int) {
 // to the historical {name}-<pool> / <app>-<pool> convention.
 func (app *App) GetAppVolumeName(pool string, resolved bool) string {
 	if appcnf := app.GetAppConfig(); appcnf != nil {
-		if vol := appcnf.Deployment.GetVolumeByPool(pool); vol != nil && vol.Name != "" {
-			return vol.Name
+		if appcnf.Deployment != nil {
+			if vol := appcnf.Deployment.GetVolumeByPool(pool); vol != nil && vol.Name != "" {
+				return vol.Name
+			}
 		}
 	}
 	if resolved {

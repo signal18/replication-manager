@@ -47,6 +47,20 @@ func TestGetAppVolumeName_FallsBackWhenNoSavedRow(t *testing.T) {
 	}
 }
 
+func TestGetAppVolumeName_NilDeploymentFallsBack(t *testing.T) {
+	app := &App{
+		Name:      "myapp",
+		AppConfig: &config.AppConfig{},
+	}
+
+	if got := app.GetAppVolumeName("data", true); got != "myapp-data" {
+		t.Fatalf("expected resolved fallback myapp-data, got %q", got)
+	}
+	if got := app.GetAppVolumeName("data", false); got != "{name}-data" {
+		t.Fatalf("expected template fallback {name}-data, got %q", got)
+	}
+}
+
 func TestGetVolumes_ReturnsDistinctSavedRowNames(t *testing.T) {
 	app := &App{
 		Name: "myapp",
