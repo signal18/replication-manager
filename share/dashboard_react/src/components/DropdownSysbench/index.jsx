@@ -5,7 +5,7 @@ import RMButton from '../RMButton'
 import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
 import ConfirmModal from '../Modals/ConfirmModal'
-import { runSysBench } from '../../redux/clusterSlice'
+import { runSysBench, cleanupSysBench } from '../../redux/clusterSlice'
 
 const SYSBENCH_TESTS = [
   { name: 'oltp_read_write', value: 'oltp_read_write' },
@@ -29,6 +29,7 @@ const THREAD_OPTIONS = [
 function DropdownSysbench({ clusterName }) {
   const dispatch = useDispatch()
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
+  const [isCleanupConfirmOpen, setIsCleanupConfirmOpen] = useState(false)
   const [selectedThread, setSelectedThread] = useState(THREAD_OPTIONS[0])
   const [selectedTest, setSelectedTest] = useState(SYSBENCH_TESTS[0])
 
@@ -51,6 +52,9 @@ function DropdownSysbench({ clusterName }) {
       <RMButton type='button' onClick={openConfirmModal}>
         Run
       </RMButton>
+      <RMButton type='button' colorScheme='red' onClick={() => setIsCleanupConfirmOpen(true)}>
+        Cleanup
+      </RMButton>
       {isConfirmModalOpen && (
         <ConfirmModal
           isOpen={isConfirmModalOpen}
@@ -59,6 +63,17 @@ function DropdownSysbench({ clusterName }) {
             ? `Run ${selectedTest.name} scaling threads from 1 to 2×CPU cores?`
             : `Run ${selectedTest.name} with ${selectedThread.name} threads?`}
           onConfirmClick={runSysbench}
+        />
+      )}
+      {isCleanupConfirmOpen && (
+        <ConfirmModal
+          isOpen={isCleanupConfirmOpen}
+          closeModal={() => setIsCleanupConfirmOpen(false)}
+          title={`Drop ${selectedTest.name} benchmark tables?`}
+          onConfirmClick={() => {
+            dispatch(cleanupSysBench({ clusterName, test: selectedTest.value }))
+            setIsCleanupConfirmOpen(false)
+          }}
         />
       )}
     </Flex>

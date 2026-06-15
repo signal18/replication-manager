@@ -256,6 +256,9 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
     }
   }, [selectedCluster?.name, resticQueue])
 
+  const backupSlotsTotal = selectedCluster?.backupSlotsTotal || 0
+  const backupSlotsInUse = selectedCluster?.backupSlotsInUse || 0
+
   const backupDataStats = [
     {
       key: 'Total Size',
@@ -268,6 +271,10 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
     {
       key: 'Total Blob Count',
       value: backupStats?.total_blob_count
+    },
+    {
+      key: 'Free Backup Slots',
+      value: backupSlotsTotal > 0 ? backupSlotsTotal - backupSlotsInUse : 'Unlimited'
     }
   ]
 

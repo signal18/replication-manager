@@ -39,6 +39,19 @@ function GlobalSettings({ config }) {
 
   const dataObject = [
     {
+      key: 'Concurrent Backup Slots',
+      value: (
+        <NumberInput
+          min={0}
+          value={config?.backupConcurrentSlots ?? 1}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change 'backup-concurrent-slots' to: `}
+          onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'backup-concurrent-slots', value: value }))}
+        />
+      )
+    },
+    {
       key: 'Global Intervention',
       value: (
         <RMSwitch

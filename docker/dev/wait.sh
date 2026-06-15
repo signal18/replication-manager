@@ -23,7 +23,7 @@ while true; do
     fi
 
     # Process is still running, sleep before checking again
-    echo "$PROCESSES"
+    echo "$PROCESS_COUNT"
     sleep 5
 done
 

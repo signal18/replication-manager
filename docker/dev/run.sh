@@ -20,7 +20,7 @@ make cli pro osc WITH_REACT=OFF
 cp share/opensvc/moduleset_mariadb.svc.mrm.db.json /usr/share/replication-manager/opensvc/
 ./wait.sh replication-manager-pro;
 ./wait.sh replication-manager-osc;
-./replication-manager-osc monitor $COMMON_ARGS &
+./replication-manager-osc monitor $COMMON_ARGS > /var/log/replication-manager/replication-manager.log 2>&1 &
 pid="$!"
 elif [ "$arg" == "skip" ] || [ "$arg" == "SKIP" ]; then
 make cli pro WITH_REACT=OFF

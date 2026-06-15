@@ -598,9 +598,10 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 	errormap := config.ParseConfigMeasurement(&appcnf, cluster.Conf.DefaultFlagMap, cluster.Conf.MeasurementAutoClampLimit)
 	if len(errormap) > 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error parsing app config %s: %v", appname, errormap)
+		return errormap
 	}
 
-	return errormap
+	return nil
 }
 
 // // LoadConfig loads the configuration from a file to the configuration struct.

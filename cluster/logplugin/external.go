@@ -471,21 +471,22 @@ func LoadPluginsFromDir(pluginDir string, reg *Registry, opts LoadOptions) (load
 		}
 		binPath := filepath.Join(pluginDir, e.Name())
 
+		name := pluginNameFromBinary(e.Name())
+		// Skip external plugins that duplicate a built-in enterprise plugin.
+		// The built-in versions have additional protections (free plan warnings,
+		// error handling, correct severity routing).
+		// This check must run before signature verification so that portal-deployed
+		// enterprise binaries are silently skipped even when .sig files are absent.
+		builtinName := strings.TrimPrefix(name, "plugin-")
+		if reg.Has(builtinName) {
+			continue
+		}
+
 		if verifyEnabled {
 			if verr := VerifyPluginSignature(binPath, sigDir, opts.PubKeyPath); verr != nil {
 				rejections = append(rejections, fmt.Sprintf("%s: %v", e.Name(), verr))
 				continue
 			}
-		}
-
-		name := pluginNameFromBinary(e.Name())
-		// Skip external plugins that duplicate a built-in enterprise plugin.
-		// The built-in versions have additional protections (free plan warnings,
-		// error handling, correct severity routing).
-		builtinName := strings.TrimPrefix(name, "plugin-")
-		if reg.Has(builtinName) {
-			rejections = append(rejections, fmt.Sprintf("%s: skipped — built-in %q takes priority", name, builtinName))
-			continue
 		}
 		reg.replace(name, NewExternalLogPlugin(name, binPath, DefaultPluginTimeout))
 		loaded++

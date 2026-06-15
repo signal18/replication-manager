@@ -2165,6 +2165,15 @@ func (cluster *Cluster) SetInResticBackupState(value bool) {
 	}
 }
 
+func (cluster *Cluster) CheckBackupStates() {
+	if cluster.InPhysicalBackup || cluster.InResticPhysicalBackup {
+		cluster.StateMachine.PreserveState("WARN0073")
+	}
+	if cluster.InLogicalBackup || cluster.InResticLogicalBackup {
+		cluster.StateMachine.PreserveState("WARN0175")
+	}
+}
+
 func (cluster *Cluster) SetGraphiteWhitelistTemplate(value string) {
 	cluster.Conf.GraphiteWhitelistTemplate = value
 }

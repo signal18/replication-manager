@@ -162,7 +162,7 @@ var ClusterError = map[string]string{
 	"WARN0081":  "Cluster arbitrator error in reporting %s",
 	"WARN0082":  "Cluster arbitrator error in arbitration %s",
 	"WARN0083":  "Arbitration winner",
-	"WARN0084":  "Variable diff:\n %s",
+	"WARN0084":  "Variables differ between leader and replicas:\n%s",
 	"WARN0085":  "Server %s in capture mode",
 	"WARN0086":  "Checksum table waiting replication sync on slave %s",
 	"WARN0087":  "Cluster same server_id %s %s",
@@ -249,6 +249,8 @@ var ClusterError = map[string]string{
 	"WARN0171":  "Server %s connection failed: %s",
 	"WARN0172":  "Intervention scheduled at %s by %s: %s",
 	"WARN0173":  "Intervention active since %s by %s: %s — notifications muted",
+	"WARN0174":  "Waiting for global backup slot (%d/%d in use)",
+	"WARN0175":  "Running logical backup %s on server %s",
 	// Log-tailer plugin state codes (WARN0200-WARN0299 reserved for logplugin)
 	"WARN0200":  "Server %s has recent ERROR entries in database error log (last 24h)",
 	"WARN0201":  "Server %s has recent SQL errors in SQL error log (last 24h)",

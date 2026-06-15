@@ -129,6 +129,7 @@ type ReplicationManager struct {
 	GraphiteTemplateList map[string]bool             `json:"graphiteTemplateList"`
 	ServerScopeList      map[string]bool             `json:"-"`
 	currentCluster       *cluster.Cluster            `json:"-"`
+	serverGlobals        *cluster.ServerGlobals      `json:"-"`
 	IsGlobalIntervention        bool                        `json:"isGlobalIntervention"`
 	IsGlobalInterventionPending bool                        `json:"isGlobalInterventionPending"`
 	GlobalInterventionEntry     *cluster.InterventionEntry  `json:"globalInterventionEntry,omitempty"`
@@ -818,6 +819,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.SchedulerDatabaseLogs, "scheduler-db-servers-logs", false, "Schedule database logs fetching")
 	flags.BoolVar(&conf.SchedulerDatabaseOptimize, "scheduler-db-servers-optimize", false, "Schedule database optimize")
 	flags.BoolVar(&conf.SchedulerDatabaseAnalyze, "scheduler-db-servers-analyze", true, "Schedule database analyze")
+
+	flags.IntVar(&conf.BackupConcurrentSlots, "backup-concurrent-slots", 1, "Number of backup slots available across all clusters. Logical and physical backups each consume one slot. 0 = unlimited.")
 
 	flags.StringVar(&conf.BackupLogicalCron, "scheduler-db-servers-logical-backup-cron", "0 0 1 * * 6", "Logical backup cron expression represents a set of times, using 6 space-separated fields.")
 	flags.StringVar(&conf.BackupPhysicalCron, "scheduler-db-servers-physical-backup-cron", "0 0 0 * * 0-4", "Physical backup cron expression represents a set of times, using 6 space-separated fields.")
@@ -2328,6 +2331,12 @@ func (repman *ReplicationManager) Run() error {
 	repman.InitWebTTY()
 	repman.DiskStatManager = misc.NewDiskStatManager()
 
+	// Initialize instance-wide shared resources for all clusters
+	repman.serverGlobals = &cluster.ServerGlobals{}
+	if repman.Conf.BackupConcurrentSlots > 0 {
+		repman.serverGlobals.BackupSemaphore = make(chan struct{}, repman.Conf.BackupConcurrentSlots)
+	}
+
 	repman.LoadPeerJson()
 	repman.LoadPartnersJson()
 	repman.UpdateLocalPeer()
@@ -2743,22 +2752,26 @@ func (repman *ReplicationManager) Run() error {
 		// processClusterQueue is blocked waiting for gitMutex — compounding the delay.
 		repman.exit.Store(true)
 
+		repman.Logrus.Info("Shutdown: unmounting S3")
 		repman.UnMountS3()
 
-		// Stop ticker goroutines.
+		repman.Logrus.Info("Shutdown: stopping ticker goroutines")
 		close(quit_GitPull)
 		close(quit_PAT)
 
+		repman.Logrus.Infof("Shutdown: stopping %d clusters", len(repman.Clusters))
 		stopwg := sync.WaitGroup{}
 		for _, cl := range repman.Clusters {
 			stopwg.Add(1)
 			go func(c *cluster.Cluster) {
 				defer stopwg.Done()
+				repman.Logrus.Infof("Shutdown: stopping cluster %s", c.Name)
 				c.Stop()
+				repman.Logrus.Infof("Shutdown: cluster %s stopped", c.Name)
 			}(cl)
 		}
-		// Wait for all cluster.Stop() calls to complete, then unblock the main goroutine.
 		stopwg.Wait()
+		repman.Logrus.Info("Shutdown: all clusters stopped")
 		close(clustersDone)
 	}()
 
@@ -2837,6 +2850,7 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	repman.currentCluster.WorkloadLogrus = repman.WorkloadLogrus
 	repman.currentCluster.MaintenanceLogrus = repman.MaintenanceLogrus
 	repman.currentCluster.Partner = &repman.Partner
+	repman.currentCluster.ServerGlobals = repman.serverGlobals
 	repman.currentCluster.ConfigManager = repman.ConfigManager
 
 	repman.currentCluster.CreateTemplateMD5Channel()
@@ -3191,19 +3205,20 @@ func (repman *ReplicationManager) resolveHostIp() string {
 }
 
 func (repman *ReplicationManager) Stop() {
-
+	repman.Logrus.Info("Stop: stopping global scheduler")
 	if repman.globalScheduler != nil {
 		repman.globalScheduler.Stop()
 	}
 
+	repman.Logrus.Info("Stop: shutting down login upgrade store")
 	if repman.LoginUpgradeStore != nil {
 		repman.LoginUpgradeStore.Shutdown()
 	}
 
+	repman.Logrus.Info("Stop: shutting down HTTP servers")
 	httpCtx, httpCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer httpCancel()
 
-	// Shut down both HTTP servers in parallel so neither consumes the other's budget.
 	var httpWg sync.WaitGroup
 	if repman.httpServer != nil {
 		httpWg.Add(1)
@@ -3224,6 +3239,7 @@ func (repman *ReplicationManager) Stop() {
 		}()
 	}
 	httpWg.Wait()
+	repman.Logrus.Info("Stop: HTTP servers stopped")
 
 	// GracefulStop waits for all in-flight RPCs; fall back to hard Stop if the
 	// deadline expires so long-lived streams don't hold up shutdown.
