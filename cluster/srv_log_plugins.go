@@ -569,7 +569,7 @@ func (cluster *Cluster) ReloadLogPlugins() {
 	for _, p := range cluster.pluginRegistry.All() {
 		cluster.LogModulePrintf(
 			cluster.Conf.Verbose,
-			config.ConstLogModPlugin,
+			config.ConstLogModGeneral,
 			config.LvlInfo,
 			"[logplugin] plugin loaded: %s",
 			p.Name(),
