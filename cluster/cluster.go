@@ -2004,6 +2004,9 @@ func (cluster *Cluster) FailoverForce() error {
 
 	if err != nil {
 		for _, s := range cluster.StateMachine.GetStates() {
+			if i := strings.IndexByte(s, '\n'); i >= 0 {
+				s = s[:i]
+			}
 			cluster.LogPrint(s)
 		}
 		// Test for ERR00012 - No master detected
@@ -2233,6 +2236,14 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 	if hasDiff {
 		cluster.DiffVariables = alldiff
 		cluster.SaveVariableDiff(alldiff)
+		for _, d := range alldiff {
+			for _, dv := range d.DiffValues {
+				if dv.Role != "leader" {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+						"Variable %s differs on %s (%s): %s", d.VariableName, dv.Server, dv.Role, dv.VariableValue)
+				}
+			}
+		}
 		cluster.SetState("WARN0084", state.State{
 			ErrType:   "WARNING",
 			ErrDesc:   fmt.Sprintf(clusterError["WARN0084"], cluster.FormatVariableDiffTable(alldiff)),
