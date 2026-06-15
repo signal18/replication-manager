@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import {
   Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay,
-  HStack, Button, Tooltip, Badge
+  HStack, Button, Tooltip, Badge, Wrap, WrapItem, Text, Box
 } from '@chakra-ui/react'
 import { useSelector, useDispatch } from 'react-redux'
 import { DataTable } from '../../DataTable'
@@ -20,7 +20,25 @@ function WorkloadModal({ isOpen, closeModal }) {
   const baseURL = useSelector((state) => state.auth?.baseURL || '')
   const [fixing, setFixing] = useState({})
 
-  const statesArray = clusterData?.workloadStates || []
+  const allStates = clusterData?.workloadStates || []
+
+  const tags = useMemo(() => {
+    const seen = new Map()
+    for (const s of allStates) {
+      const key = (s.ErrKey || '').split('@')[0]
+      if (!key.startsWith('WTAG')) continue
+      if (seen.has(key)) continue
+      const desc = s.ErrDesc || ''
+      const label = desc.replace(/^Server \S+ uses /, '').replace(/^Server \S+ optimizer: /, '').replace(/ \(.*/, '')
+      seen.set(key, { key, label, desc })
+    }
+    return [...seen.values()]
+  }, [allStates])
+
+  const statesArray = useMemo(
+    () => allStates.filter((s) => !(s.ErrKey || '').startsWith('WTAG')),
+    [allStates]
+  )
 
   // Build a lookup from err_key → RemediationEntry from the workload remediation plan.
   const remediationByKey = useMemo(() => {
@@ -117,13 +135,29 @@ function WorkloadModal({ isOpen, closeModal }) {
         maxH='90%'
         overflow='hidden'>
         <ModalHeader style={{ background: 'var(--chakra-colors-purple-500)', color: 'white' }}>
-          Workload Spikes ({statesArray.length})
+          Workload ({tags.length > 0 ? `${tags.length} tags` : ''}{tags.length > 0 && statesArray.length > 0 ? ', ' : ''}{statesArray.length > 0 ? `${statesArray.length} findings` : ''})
         </ModalHeader>
         <ModalCloseButton color='white' />
         <ModalBody overflowY='auto' pb={6}>
-          {statesArray.length === 0 ? (
+          {tags.length > 0 && (
+            <Box mb={4}>
+              <Text fontSize='sm' fontWeight='bold' mb={2}>Feature Tags</Text>
+              <Wrap spacing={2}>
+                {tags.map((t) => (
+                  <WrapItem key={t.key}>
+                    <Tooltip label={t.desc} placement='top'>
+                      <Badge colorScheme='purple' variant='subtle' px={2} py={1} borderRadius='md'>
+                        {t.label}
+                      </Badge>
+                    </Tooltip>
+                  </WrapItem>
+                ))}
+              </Wrap>
+            </Box>
+          )}
+          {statesArray.length === 0 && tags.length === 0 ? (
             <NotFound text='No active workload findings' />
-          ) : (
+          ) : statesArray.length === 0 ? null : (
             <DataTable
               key='WorkloadStates'
               columns={columns}
