@@ -34,7 +34,11 @@ function AlertModal({ type, isOpen, closeModal, alerts }) {
     () => [
       columnHelper.accessor((row) => row.desc, {
         id: 'desc',
-        cell: (info) => info.getValue()?.replace(/,(?!\s)/g, ', ') || '',
+        cell: (info) => (
+          <span style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
+            {info.getValue()?.replace(/,(?!\s)/g, ', ') || ''}
+          </span>
+        ),
         header: () => <span>Description</span>
       }),
       columnHelper.accessor((row) => row.from, {
