@@ -399,6 +399,130 @@ srcpath = "."
 	}
 }
 
+// TestCanonicalizeAppVolumesTOML_V2SameVolumeRowsGitCloneReferencePreserved is
+// a Phase 11 follow-up to
+// TestCanonicalizeAppVolumesTOML_V2FlaggedMultiRowPoolNotMerged: a git-clone
+// row referencing the *second* row of a V2-flagged same-pool pair must keep
+// pointing at that row's own name. Under the V1 merge
+// (TestCanonicalizeAppVolumesTOML_GitCloneAndS3MountReferencesRewritten) the
+// two rows would be merged into one and the git-clone's volumename rewritten
+// to the merged name; for V2 content there is no merge, so the reference must
+// stay untouched and distinct from the other row.
+func TestCanonicalizeAppVolumesTOML_V2SameVolumeRowsGitCloneReferencePreserved(t *testing.T) {
+	versioned := []byte(`
+app-config-version = 2
+
+[deployment.storages]
+[[deployment.storages.volumes]]
+name = "myapp-data"
+poolname = "data"
+volumedir = "data"
+
+[[deployment.storages.volumes]]
+name = "myapp-data-logs"
+poolname = "data"
+volumedir = "logs"
+
+[[deployment.storages.git-clones]]
+name = "app-src"
+volumename = "myapp-data-logs"
+volumedir = "logs/app-src"
+`)
+
+	out, res, err := CanonicalizeAppVolumesTOML(versioned, "myapp")
+	if err != nil {
+		t.Fatalf("canonicalize failed: %v", err)
+	}
+	if res.Changed {
+		t.Fatalf("expected no changes for already-V2 multi-row content, got %+v", res)
+	}
+	if string(out) != string(versioned) {
+		t.Fatalf("expected output to equal input unchanged:\nin:\n%s\nout:\n%s", versioned, out)
+	}
+
+	tree, err := toml.LoadBytes(out)
+	if err != nil {
+		t.Fatalf("load canonical toml failed: %v", err)
+	}
+	raw := tree.ToMap()
+	deployment, _ := asAnyMap(raw["deployment"])
+	storages, _ := asAnyMap(deployment["storages"])
+
+	volumesAny, ok := asAnySlice(storages["volumes"])
+	if !ok || len(volumesAny) != 2 {
+		t.Fatalf("expected both volume rows to be preserved, got %d", len(volumesAny))
+	}
+
+	gitClonesAny, ok := asAnySlice(storages["git-clones"])
+	if !ok || len(gitClonesAny) != 1 {
+		t.Fatalf("expected 1 git-clone entry")
+	}
+	gc, _ := asAnyMap(gitClonesAny[0])
+	if v := asTrimmedString(gc["volumename"]); v != "myapp-data-logs" {
+		t.Fatalf("expected git-clone volumename to remain myapp-data-logs, got %q", v)
+	}
+}
+
+// TestCanonicalizeAppVolumesTOML_V2SameVolumeRowsS3MountReferencePreserved
+// mirrors
+// TestCanonicalizeAppVolumesTOML_V2SameVolumeRowsGitCloneReferencePreserved
+// for an s3-mount row referencing the second row of a V2-flagged same-pool
+// pair.
+func TestCanonicalizeAppVolumesTOML_V2SameVolumeRowsS3MountReferencePreserved(t *testing.T) {
+	versioned := []byte(`
+app-config-version = 2
+
+[deployment.storages]
+[[deployment.storages.volumes]]
+name = "myapp-data"
+poolname = "data"
+volumedir = "data"
+
+[[deployment.storages.volumes]]
+name = "myapp-data-logs"
+poolname = "data"
+volumedir = "logs"
+
+[[deployment.storages.s3-mounts]]
+name = "media"
+volumename = "myapp-data-logs"
+volumedir = "logs/media"
+`)
+
+	out, res, err := CanonicalizeAppVolumesTOML(versioned, "myapp")
+	if err != nil {
+		t.Fatalf("canonicalize failed: %v", err)
+	}
+	if res.Changed {
+		t.Fatalf("expected no changes for already-V2 multi-row content, got %+v", res)
+	}
+	if string(out) != string(versioned) {
+		t.Fatalf("expected output to equal input unchanged:\nin:\n%s\nout:\n%s", versioned, out)
+	}
+
+	tree, err := toml.LoadBytes(out)
+	if err != nil {
+		t.Fatalf("load canonical toml failed: %v", err)
+	}
+	raw := tree.ToMap()
+	deployment, _ := asAnyMap(raw["deployment"])
+	storages, _ := asAnyMap(deployment["storages"])
+
+	volumesAny, ok := asAnySlice(storages["volumes"])
+	if !ok || len(volumesAny) != 2 {
+		t.Fatalf("expected both volume rows to be preserved, got %d", len(volumesAny))
+	}
+
+	s3MountsAny, ok := asAnySlice(storages["s3-mounts"])
+	if !ok || len(s3MountsAny) != 1 {
+		t.Fatalf("expected 1 s3-mount entry")
+	}
+	s3, _ := asAnyMap(s3MountsAny[0])
+	if v := asTrimmedString(s3["volumename"]); v != "myapp-data-logs" {
+		t.Fatalf("expected s3-mount volumename to remain myapp-data-logs, got %q", v)
+	}
+}
+
 func TestCanonicalizeAppVolumesTOML_Idempotent(t *testing.T) {
 	legacy := []byte(`
 [deployment.storages]

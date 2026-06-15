@@ -3578,11 +3578,20 @@ func applyTemplateOwnedProjection(dst, src *config.AppConfig, templateName strin
 	//   AppHost, AppPort, AppHostsIPV6, AppDbUser, AppDbPass, AppDbSchema,
 	//   AppS3Provider, ProvAppCreditUsed, ProvAppCreditPlanned.
 	// - Template-owned (overwritten from validated template):
-	//   Deployment, ProvAppTemplate, ProvAppDockerImg, ProvAppDockerCmd, ProvAppType,
-	//   ProvAppMem, ProvAppCpuCores, ProvAppDisk, ProvAppDiskType, ProvAppRouteAddr,
-	//   ProvAppRoutePort, ProvAppRouteMask, ProvAppAgents, ProvAppHATopology,
+	//   Deployment, AppConfigVersion, ProvAppTemplate, ProvAppDockerImg,
+	//   ProvAppDockerCmd, ProvAppType, ProvAppMem, ProvAppCpuCores,
+	//   ProvAppDisk, ProvAppDiskType, ProvAppRouteAddr, ProvAppRoutePort,
+	//   ProvAppRouteMask, ProvAppAgents, ProvAppHATopology,
 	//   ProvAppAgentsFailover.
+	//
+	// AppConfigVersion travels with Deployment: src.Deployment was
+	// canonicalized under src.AppConfigVersion's V1/V2 gate
+	// (CanonicalizeAppVolumesRaw), so leaving dst.AppConfigVersion at a stale
+	// value would let the next load/save canonicalization pass
+	// re-interpret an intentional V2 multi-row Deployment as V1 and merge it
+	// back to one row per pool.
 	dst.Deployment = src.Deployment
+	dst.AppConfigVersion = src.AppConfigVersion
 	dst.ProvAppTemplate = templateName
 	dst.ProvAppDockerImg = src.ProvAppDockerImg
 	dst.ProvAppDockerCmd = src.ProvAppDockerCmd

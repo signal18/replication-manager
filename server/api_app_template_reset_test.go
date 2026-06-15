@@ -247,6 +247,108 @@ volumename = "data-volume"
 	}
 }
 
+// TestResetAppFromTemplate_V2MultiRowSamePoolPreserved is a Phase 11
+// follow-up to TestResetAppFromTemplate_VolumeNamesResolvedToAppName: a
+// V2-flagged template with two intentional same-pool volume rows (plus a
+// git-clone and an s3-mount referencing those rows) must reset onto an app
+// with both rows preserved -- not merged into the single "<app>-<pool>" row
+// the V1 path produces -- and with each path/git-clone/s3-mount reference
+// staying pointed at its own distinct row.
+func TestResetAppFromTemplate_V2MultiRowSamePoolPreserved(t *testing.T) {
+	cl := &cluster.Cluster{Conf: &config.Config{WorkingDir: t.TempDir()}}
+	node := &cluster.App{
+		Name:                 "myapp",
+		AppConfig:            seedAppConfigForTemplateResetTests(),
+		AppClusterSubstitute: `{}`,
+	}
+
+	if err := writeLocalAppTemplate(cl.Conf.WorkingDir, "v2-multi-row", `
+app-config-version = 2
+
+prov-app-docker-img = "templated/new:9"
+
+[deployment]
+[[deployment.storages.volumes]]
+name = "myapp-data"
+poolname = "data"
+volumedir = "data"
+
+[[deployment.storages.volumes]]
+name = "myapp-data-logs"
+poolname = "data"
+volumedir = "logs"
+
+[[deployment.storages.git-clones]]
+name = "app-src"
+volumename = "myapp-data"
+volumedir = "data/app-src"
+
+[[deployment.storages.s3-mounts]]
+name = "media"
+volumename = "myapp-data-logs"
+volumedir = "logs/media"
+
+[[deployment.paths]]
+name = "root"
+dockerpath = "/srv/app"
+srctype = "volume"
+srcname = "myapp-data"
+srcpath = "."
+volumename = "myapp-data"
+level = 0
+
+[[deployment.paths]]
+name = "log-dir"
+dockerpath = "/srv/log"
+srctype = "volume"
+srcname = "myapp-data-logs"
+srcpath = "."
+volumename = "myapp-data-logs"
+level = 0
+`); err != nil {
+		t.Fatalf("writeLocalAppTemplate: %v", err)
+	}
+
+	if err := resetAppFromTemplateWithProjection(cl, node, "v2-multi-row", false); err != nil {
+		t.Fatalf("resetAppFromTemplateWithProjection: %v", err)
+	}
+
+	if got := node.AppConfig.AppConfigVersion; got != config.AppConfigVersionV2 {
+		t.Fatalf("expected AppConfigVersion %d, got %d", config.AppConfigVersionV2, got)
+	}
+
+	dep := node.AppConfig.Deployment
+	if dep == nil || len(dep.Storages.Volumes) != 2 {
+		t.Fatalf("expected both volume rows preserved, got %+v", dep)
+	}
+	if dep.Storages.Volumes[0].Name != "myapp-data" || dep.Storages.Volumes[1].Name != "myapp-data-logs" {
+		t.Fatalf("expected distinct volume row names myapp-data/myapp-data-logs, got %q/%q",
+			dep.Storages.Volumes[0].Name, dep.Storages.Volumes[1].Name)
+	}
+	if dep.Storages.Volumes[0].VolumeDir != "data" || dep.Storages.Volumes[1].VolumeDir != "logs" {
+		t.Fatalf("expected volumedir left unmerged (data/logs), got %q/%q",
+			dep.Storages.Volumes[0].VolumeDir, dep.Storages.Volumes[1].VolumeDir)
+	}
+
+	if len(dep.Storages.GitClones) != 1 || dep.Storages.GitClones[0].VolumeName != "myapp-data" {
+		t.Fatalf("expected git-clone to keep referencing myapp-data, got %+v", dep.Storages.GitClones)
+	}
+	if len(dep.Storages.S3Mounts) != 1 || dep.Storages.S3Mounts[0].VolumeName != "myapp-data-logs" {
+		t.Fatalf("expected s3-mount to keep referencing myapp-data-logs, got %+v", dep.Storages.S3Mounts)
+	}
+
+	if len(dep.Paths) != 2 {
+		t.Fatalf("expected 2 paths, got %d", len(dep.Paths))
+	}
+	srcnames := map[string]string{}
+	for _, p := range dep.Paths {
+		srcnames[p.Name] = p.SourceName
+	}
+	if srcnames["root"] != "myapp-data" || srcnames["log-dir"] != "myapp-data-logs" {
+		t.Fatalf("expected distinct path srcnames, got %+v", srcnames)
+	}
+}
+
 // TestBuildValidatedTempAppConfigFromTemplate_StampsAppConfigVersion covers
 // Phase 10 task 5 for the template reset/preview flow: the temp config built
 // from an unversioned template's canonicalized content (CanonicalizeAppContent
