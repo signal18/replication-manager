@@ -500,10 +500,15 @@ func (cluster *Cluster) CheckLogPlugins() {
 	workload := make([]state.State, 0, len(allWorkload))
 	for _, s := range allWorkload {
 		if strings.HasPrefix(s.ErrKey, "WTAG") {
-			if seenTags[s.ErrKey] {
+			tagKey := s.ErrKey
+			if i := strings.IndexByte(tagKey, '@'); i >= 0 {
+				tagKey = tagKey[:i]
+			}
+			if seenTags[tagKey] {
 				continue
 			}
-			seenTags[s.ErrKey] = true
+			seenTags[tagKey] = true
+			s.ErrKey = tagKey
 			s.ServerUrl = ""
 		}
 		workload = append(workload, s)

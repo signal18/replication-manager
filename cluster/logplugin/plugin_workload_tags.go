@@ -38,36 +38,40 @@ func (p *WorkloadTagsPlugin) Evaluate(src LogSource) EvaluateResult {
 	}
 
 	var findings []Finding
+	questions := getStatus(src.ServerStatus, "queries")
+	if questions == 0 {
+		questions = getStatus(src.ServerStatus, "questions")
+	}
 
 	// ── Feature detection from SHOW GLOBAL STATUS ──
 	// MariaDB Feature_* counters track actual feature usage since server start.
-	findings = appendFeatureTag(findings, src, "feature_cte", "WTAG0001", "OptCte", "Common Table Expressions (WITH)")
-	findings = appendFeatureTag(findings, src, "feature_window_functions", "WTAG0002", "OptWindowFunctions", "Window functions (OVER)")
-	findings = appendFeatureTag(findings, src, "feature_json", "WTAG0003", "Json", "JSON functions")
-	findings = appendFeatureTag(findings, src, "feature_dynamic_columns", "WTAG0004", "DynamicColumns", "Dynamic columns")
-	findings = appendFeatureTag(findings, src, "feature_fulltext", "WTAG0005", "FullText", "Full-text search")
-	findings = appendFeatureTag(findings, src, "feature_gis", "WTAG0006", "Gis", "GIS / spatial functions")
-	findings = appendFeatureTag(findings, src, "feature_locale", "WTAG0007", "Locale", "Locale-dependent functions")
-	findings = appendFeatureTag(findings, src, "feature_subquery", "WTAG0008", "Subquery", "Subqueries")
-	findings = appendFeatureTag(findings, src, "feature_timezone", "WTAG0009", "Timezone", "Timezone conversions")
-	findings = appendFeatureTag(findings, src, "feature_trigger", "WTAG0010", "Triggers", "Triggers")
-	findings = appendFeatureTag(findings, src, "feature_xml", "WTAG0011", "Xml", "XML functions")
-	findings = appendFeatureTag(findings, src, "feature_system_versioning", "WTAG0012", "VersionedTables", "System-versioned tables")
-	findings = appendFeatureTag(findings, src, "feature_application_time_periods", "WTAG0013", "ApplicationTimePeriods", "Application-time period tables")
-	findings = appendFeatureTag(findings, src, "feature_insert_returning", "WTAG0014", "InsertReturning", "INSERT ... RETURNING")
-	findings = appendFeatureTag(findings, src, "feature_into_outfile", "WTAG0015", "IntoOutfile", "SELECT INTO OUTFILE")
-	findings = appendFeatureTag(findings, src, "feature_custom_aggregate_functions", "WTAG0016", "CustomAggregate", "Custom aggregate functions")
-	findings = appendFeatureTag(findings, src, "feature_invisible_columns", "WTAG0017", "InvisibleColumns", "Invisible columns")
+	findings = appendFeatureTag(findings, src, questions, "feature_cte", "WTAG0001", "OptCte", "Common Table Expressions (WITH)")
+	findings = appendFeatureTag(findings, src, questions, "feature_window_functions", "WTAG0002", "OptWindowFunctions", "Window functions (OVER)")
+	findings = appendFeatureTag(findings, src, questions, "feature_json", "WTAG0003", "Json", "JSON functions")
+	findings = appendFeatureTag(findings, src, questions, "feature_dynamic_columns", "WTAG0004", "DynamicColumns", "Dynamic columns")
+	findings = appendFeatureTag(findings, src, questions, "feature_fulltext", "WTAG0005", "FullText", "Full-text search")
+	findings = appendFeatureTag(findings, src, questions, "feature_gis", "WTAG0006", "Gis", "GIS / spatial functions")
+	findings = appendFeatureTag(findings, src, questions, "feature_locale", "WTAG0007", "Locale", "Locale-dependent functions")
+	findings = appendFeatureTag(findings, src, questions, "feature_subquery", "WTAG0008", "Subquery", "Subqueries")
+	findings = appendFeatureTag(findings, src, questions, "feature_timezone", "WTAG0009", "Timezone", "Timezone conversions")
+	findings = appendFeatureTag(findings, src, questions, "feature_trigger", "WTAG0010", "Triggers", "Triggers")
+	findings = appendFeatureTag(findings, src, questions, "feature_xml", "WTAG0011", "Xml", "XML functions")
+	findings = appendFeatureTag(findings, src, questions, "feature_system_versioning", "WTAG0012", "VersionedTables", "System-versioned tables")
+	findings = appendFeatureTag(findings, src, questions, "feature_application_time_periods", "WTAG0013", "ApplicationTimePeriods", "Application-time period tables")
+	findings = appendFeatureTag(findings, src, questions, "feature_insert_returning", "WTAG0014", "InsertReturning", "INSERT ... RETURNING")
+	findings = appendFeatureTag(findings, src, questions, "feature_into_outfile", "WTAG0015", "IntoOutfile", "SELECT INTO OUTFILE")
+	findings = appendFeatureTag(findings, src, questions, "feature_custom_aggregate_functions", "WTAG0016", "CustomAggregate", "Custom aggregate functions")
+	findings = appendFeatureTag(findings, src, questions, "feature_invisible_columns", "WTAG0017", "InvisibleColumns", "Invisible columns")
 
 	// Handler-based workload pattern detection
 	findings = appendHandlerTag(findings, src)
 
 	// Prepared statements
-	findings = appendFeatureTag(findings, src, "prepared_stmt_count", "WTAG0030", "PreparedStmt", "Prepared statements")
+	findings = appendFeatureTag(findings, src, questions, "prepared_stmt_count", "WTAG0030", "PreparedStmt", "Prepared statements")
 	// XA transactions
-	findings = appendFeatureTag(findings, src, "com_xa_start", "WTAG0031", "Xa", "XA transactions")
+	findings = appendFeatureTag(findings, src, questions, "com_xa_start", "WTAG0031", "Xa", "XA transactions")
 	// Stored routines
-	findings = appendFeatureTag(findings, src, "com_call_procedure", "WTAG0032", "StoredProcs", "Stored procedures")
+	findings = appendFeatureTag(findings, src, questions, "com_call_procedure", "WTAG0032", "StoredProcs", "Stored procedures")
 	// Events
 	if getVar(src.ServerVariables, "event_scheduler") == "ON" {
 		findings = append(findings, Finding{
@@ -90,13 +94,24 @@ func (p *WorkloadTagsPlugin) Evaluate(src LogSource) EvaluateResult {
 }
 
 // appendFeatureTag adds a finding if the STATUS counter is > 0.
-func appendFeatureTag(findings []Finding, src LogSource, statusKey, errKey, tag, desc string) []Finding {
+func appendFeatureTag(findings []Finding, src LogSource, questions int64, statusKey, errKey, tag, desc string) []Finding {
 	v := getStatus(src.ServerStatus, statusKey)
 	if v > 0 {
+		pct := ""
+		if questions > 0 {
+			p := float64(v) / float64(questions) * 100
+			if p >= 1 {
+				pct = fmt.Sprintf(" %.0f%%", p)
+			} else if p >= 0.01 {
+				pct = fmt.Sprintf(" %.2f%%", p)
+			} else {
+				pct = " <0.01%"
+			}
+		}
 		findings = append(findings, Finding{
 			ErrKey:      errKey,
 			Severity:    SeverityWorkload,
-			Description: fmt.Sprintf("%s (%s)", desc, statusKey),
+			Description: fmt.Sprintf("%s%s", desc, pct),
 		})
 	}
 	return findings

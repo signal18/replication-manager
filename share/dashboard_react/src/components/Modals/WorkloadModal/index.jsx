@@ -27,8 +27,10 @@ function WorkloadModal({ isOpen, closeModal }) {
       .filter((s) => (s.ErrKey || '').startsWith('WTAG'))
       .map((s) => {
         const desc = s.ErrDesc || ''
-        const label = desc.replace(/ \(.*/, '')
-        return { key: s.ErrKey, label, desc }
+        const pctMatch = desc.match(/\s(\d+[\d.]*%|<[\d.]+%)$/)
+        const label = desc.replace(/\s(\d+[\d.]*%|<[\d.]+%)$/, '').replace(/ \(.*/, '')
+        const pct = pctMatch ? pctMatch[1] : ''
+        return { key: s.ErrKey, label, pct, desc }
       })
   }, [allStates])
 
@@ -144,7 +146,7 @@ function WorkloadModal({ isOpen, closeModal }) {
                   <WrapItem key={t.key}>
                     <Tooltip label={t.desc} placement='top'>
                       <Badge colorScheme='purple' variant='subtle' px={2} py={1} borderRadius='md'>
-                        {t.label}
+                        {t.label}{t.pct ? ` ${t.pct}` : ''}
                       </Badge>
                     </Tooltip>
                   </WrapItem>
