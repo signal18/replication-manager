@@ -64,7 +64,7 @@ func (p *WorkloadTagsPlugin) Evaluate(src LogSource) EvaluateResult {
 	findings = appendFeatureTag(findings, src, questions, "feature_invisible_columns", "WTAG0017", "InvisibleColumns", "Invisible columns")
 
 	// Handler-based workload pattern detection
-	findings = appendHandlerTag(findings, src)
+	findings = appendHandlerTag(findings, src, questions)
 
 	// Prepared statements
 	findings = appendFeatureTag(findings, src, questions, "prepared_stmt_count", "WTAG0030", "PreparedStmt", "Prepared statements")
@@ -85,7 +85,7 @@ func (p *WorkloadTagsPlugin) Evaluate(src LogSource) EvaluateResult {
 	findings = appendOptimizerTags(findings, src)
 
 	// ── Optimizer problem indicators from STATUS ──
-	findings = appendOptimizerProblems(findings, src)
+	findings = appendOptimizerProblems(findings, src, questions)
 
 	return EvaluateResult{
 		Findings:     findings,
@@ -93,32 +93,35 @@ func (p *WorkloadTagsPlugin) Evaluate(src LogSource) EvaluateResult {
 	}
 }
 
+// fmtPct formats a count/total percentage for display. Returns "" when total is 0.
+func fmtPct(count, total int64) string {
+	if total <= 0 || count <= 0 {
+		return ""
+	}
+	p := float64(count) / float64(total) * 100
+	if p >= 1 {
+		return fmt.Sprintf(" %.0f%%", p)
+	} else if p >= 0.01 {
+		return fmt.Sprintf(" %.2f%%", p)
+	}
+	return " <0.01%"
+}
+
 // appendFeatureTag adds a finding if the STATUS counter is > 0.
 func appendFeatureTag(findings []Finding, src LogSource, questions int64, statusKey, errKey, tag, desc string) []Finding {
 	v := getStatus(src.ServerStatus, statusKey)
 	if v > 0 {
-		pct := ""
-		if questions > 0 {
-			p := float64(v) / float64(questions) * 100
-			if p >= 1 {
-				pct = fmt.Sprintf(" %.0f%%", p)
-			} else if p >= 0.01 {
-				pct = fmt.Sprintf(" %.2f%%", p)
-			} else {
-				pct = " <0.01%"
-			}
-		}
 		findings = append(findings, Finding{
 			ErrKey:      errKey,
 			Severity:    SeverityWorkload,
-			Description: fmt.Sprintf("%s%s", desc, pct),
+			Description: fmt.Sprintf("%s%s", desc, fmtPct(v, questions)),
 		})
 	}
 	return findings
 }
 
 // appendHandlerTag detects broad workload patterns from handler counters.
-func appendHandlerTag(findings []Finding, src LogSource) []Finding {
+func appendHandlerTag(findings []Finding, src LogSource, questions int64) []Finding {
 	readKey := getStatus(src.ServerStatus, "handler_read_key")
 	readRndNext := getStatus(src.ServerStatus, "handler_read_rnd_next")
 	writeTotal := getStatus(src.ServerStatus, "handler_write")
@@ -130,7 +133,7 @@ func appendHandlerTag(findings []Finding, src LogSource) []Finding {
 			findings = append(findings, Finding{
 				ErrKey:      "WTAG0020",
 				Severity:    SeverityWorkload,
-				Description: fmt.Sprintf("Heavy full-scan workload (handler_read_rnd_next/handler_read_key=%.0f)", ratio),
+				Description: fmt.Sprintf("Heavy full-scan workload (rnd_next/read_key=%.0f)%s", ratio, fmtPct(readRndNext, questions)),
 			})
 		}
 	}
@@ -142,7 +145,7 @@ func appendHandlerTag(findings []Finding, src LogSource) []Finding {
 			findings = append(findings, Finding{
 				ErrKey:      "WTAG0021",
 				Severity:    SeverityWorkload,
-				Description: fmt.Sprintf("Write-intensive workload (write ratio=%.0f%%)", writeRatio*100),
+				Description: fmt.Sprintf("Write-intensive workload (write ratio=%.0f%%)%s", writeRatio*100, fmtPct(writeTotal, questions)),
 			})
 		}
 	}
@@ -211,13 +214,13 @@ func appendOptimizerTags(findings []Finding, src LogSource) []Finding {
 }
 
 // appendOptimizerProblems detects optimizer problem indicators from STATUS.
-func appendOptimizerProblems(findings []Finding, src LogSource) []Finding {
+func appendOptimizerProblems(findings []Finding, src LogSource, questions int64) []Finding {
 	selectFullJoin := getStatus(src.ServerStatus, "select_full_join")
 	if selectFullJoin > 0 {
 		findings = append(findings, Finding{
 			ErrKey:      "WTAG0150",
 			Severity:    SeverityWorkload,
-			Description: fmt.Sprintf("Joins without indexes (Select_full_join=%d)", selectFullJoin),
+			Description: fmt.Sprintf("Joins without indexes (Select_full_join=%d)%s", selectFullJoin, fmtPct(selectFullJoin, questions)),
 			Remediations: []Remediation{{
 				Type:        "sql",
 				Description: "Add indexes to join columns identified by EXPLAIN on slow queries",
@@ -231,7 +234,7 @@ func appendOptimizerProblems(findings []Finding, src LogSource) []Finding {
 		findings = append(findings, Finding{
 			ErrKey:      "WTAG0151",
 			Severity:    SeverityWorkload,
-			Description: fmt.Sprintf("Joins requiring range check per row (Select_range_check=%d)", selectRangeCheck),
+			Description: fmt.Sprintf("Joins requiring range check per row (Select_range_check=%d)%s", selectRangeCheck, fmtPct(selectRangeCheck, questions)),
 		})
 	}
 
@@ -240,7 +243,7 @@ func appendOptimizerProblems(findings []Finding, src LogSource) []Finding {
 		findings = append(findings, Finding{
 			ErrKey:      "WTAG0152",
 			Severity:    SeverityWorkload,
-			Description: fmt.Sprintf("Multi-pass sorts (Sort_merge_passes=%d)", sortMergePasses),
+			Description: fmt.Sprintf("Multi-pass sorts (Sort_merge_passes=%d)%s", sortMergePasses, fmtPct(sortMergePasses, questions)),
 			Remediations: []Remediation{{
 				Type:        "my_cnf",
 				Description: "Increase sort_buffer_size to reduce merge passes",
@@ -258,7 +261,7 @@ func appendOptimizerProblems(findings []Finding, src LogSource) []Finding {
 			findings = append(findings, Finding{
 				ErrKey:      "WTAG0153",
 				Severity:    SeverityWorkload,
-				Description: fmt.Sprintf("High disk temp table ratio (%.0f%%, %d/%d)", ratio, tmpDisk, tmpTotal),
+				Description: fmt.Sprintf("High disk temp table ratio (%.0f%%, %d/%d)%s", ratio, tmpDisk, tmpTotal, fmtPct(tmpDisk, questions)),
 				Remediations: []Remediation{{
 					Type:        "my_cnf",
 					Description: "Increase tmp_table_size and max_heap_table_size",
