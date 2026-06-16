@@ -50,7 +50,7 @@ func (p *WorkloadPFSDigestPlugin) Evaluate(src LogSource) EvaluateResult {
 
 	findings = appendCoveringRatio(findings, src, digestCoverage)
 	findings = appendExplainCoverage(findings, src, explainCoverage)
-	findings = appendExplainFullScan(findings, src, digestCoverage, explainCoverage)
+	findings = appendExplainAccessType(findings, src, digestCoverage, explainCoverage)
 
 	return EvaluateResult{
 		Findings:     findings,
@@ -170,55 +170,98 @@ func appendExplainCoverage(findings []Finding, src LogSource, explainCoverage fl
 	return findings
 }
 
-// appendExplainFullScan computes the cost of full table scans as a
-// fraction of total row operations. For each EXPLAIN plan step,
-// rows × exec_count gives the estimated row work. Steps with type=ALL
-// are full scans. The effective coverage (digestCoverage × explainCoverage)
-// tells what fraction of the total workload this observation represents.
-func appendExplainFullScan(findings []Finding, src LogSource, digestCoverage, explainCoverage float64) []Finding {
+// appendExplainAccessType computes the row-operation cost per EXPLAIN
+// access type. For each plan step, rows × exec_count gives the estimated
+// row work. Tags are emitted for full scan (ALL), range, and ref access.
+func appendExplainAccessType(findings []Finding, src LogSource, digestCoverage, explainCoverage float64) []Finding {
 	if len(src.PFSExplainPlans) == 0 {
 		return findings
 	}
 
-	var fullScanRows, totalRows int64
-	fullScanDigests := 0
+	type accessStats struct {
+		rows    int64
+		digests int
+	}
+	stats := make(map[string]*accessStats)
+	var totalRows int64
 
 	for _, e := range src.PFSExplainPlans {
-		hasFullScan := false
+		seen := make(map[string]bool)
 		for _, r := range e.Plan {
 			rows := parseRows(r.Rows)
 			rowWork := rows * e.ExecCount
 			totalRows += rowWork
-			if r.Type == "ALL" {
-				fullScanRows += rowWork
-				hasFullScan = true
+
+			bucket := classifyAccess(r.Type)
+			if bucket == "" {
+				continue
 			}
-		}
-		if hasFullScan {
-			fullScanDigests++
+			s := stats[bucket]
+			if s == nil {
+				s = &accessStats{}
+				stats[bucket] = s
+			}
+			s.rows += rowWork
+			if !seen[bucket] {
+				s.digests++
+				seen[bucket] = true
+			}
 		}
 	}
 
-	if fullScanDigests > 0 && totalRows > 0 {
-		observedPct := float64(fullScanRows) / float64(totalRows) * 100
-		effectiveCoverage := digestCoverage * explainCoverage * 100
+	if totalRows == 0 {
+		return findings
+	}
 
-		desc := fmt.Sprintf("Full scan row cost %.0f%% (%d/%d digests)",
-			observedPct, fullScanDigests, len(src.PFSExplainPlans))
-		if effectiveCoverage > 0 {
-			desc += fmt.Sprintf(" observed %.0f%% of workload", effectiveCoverage)
+	effectiveCoverage := digestCoverage * explainCoverage * 100
+	coverageSuffix := ""
+	if effectiveCoverage > 0 {
+		coverageSuffix = fmt.Sprintf(" observed %.0f%% of workload", effectiveCoverage)
+	}
+
+	type tagDef struct {
+		errKey string
+		bucket string
+		label  string
+	}
+	tags := []tagDef{
+		{"WTAG0210", "full_scan", "Full scan (type=ALL)"},
+		{"WTAG0211", "range", "Range scan (type=range)"},
+		{"WTAG0212", "ref", "Index lookup (type=ref/eq_ref/const)"},
+	}
+
+	for _, t := range tags {
+		s := stats[t.bucket]
+		if s == nil || s.rows == 0 {
+			continue
 		}
+		pct := float64(s.rows) / float64(totalRows) * 100
+		desc := fmt.Sprintf("%s row cost %.0f%% (%d/%d digests)%s",
+			t.label, pct, s.digests, len(src.PFSExplainPlans), coverageSuffix)
 
 		findings = append(findings, Finding{
-			ErrKey:      "WTAG0210",
+			ErrKey:      t.errKey,
 			Severity:    SeverityWorkload,
 			Description: desc,
-			Count:       fullScanRows,
+			Count:       s.rows,
 			Total:       totalRows,
 		})
 	}
 
 	return findings
+}
+
+func classifyAccess(typ string) string {
+	switch typ {
+	case "ALL":
+		return "full_scan"
+	case "range", "index":
+		return "range"
+	case "ref", "eq_ref", "const", "system":
+		return "ref"
+	default:
+		return ""
+	}
 }
 
 func parseRows(s string) int64 {
