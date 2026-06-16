@@ -19,6 +19,7 @@ package logplugin
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -51,6 +52,7 @@ func (p *WorkloadPFSDigestPlugin) Evaluate(src LogSource) EvaluateResult {
 	findings = appendCoveringRatio(findings, src, digestCoverage)
 	findings = appendExplainCoverage(findings, src, explainCoverage)
 	findings = appendExplainAccessType(findings, src, digestCoverage, explainCoverage)
+	findings = appendExplainExtra(findings, src, digestCoverage, explainCoverage)
 	findings = appendDigestTmpDisk(findings, src, digestCoverage)
 
 	return EvaluateResult{
@@ -246,6 +248,84 @@ func appendExplainAccessType(findings []Finding, src LogSource, digestCoverage, 
 			Description: desc,
 			Count:       s.rows,
 			Total:       totalRows,
+		})
+	}
+
+	return findings
+}
+
+// appendExplainExtra computes row cost for optimizer features visible
+// in the EXPLAIN Extra column: ICP, filesort, temporary, covering index.
+func appendExplainExtra(findings []Finding, src LogSource, digestCoverage, explainCoverage float64) []Finding {
+	if len(src.PFSExplainPlans) == 0 {
+		return findings
+	}
+
+	type extraStats struct {
+		rows    int64
+		digests int
+	}
+
+	type extraTag struct {
+		errKey  string
+		label   string
+		pattern string
+	}
+	tags := []extraTag{
+		{"WTAG0230", "ICP", "Using index condition"},
+		{"WTAG0231", "Filesort", "Using filesort"},
+		{"WTAG0232", "Temporary table", "Using temporary"},
+		{"WTAG0233", "Covering index", "Using index"},
+	}
+
+	stats := make(map[string]*extraStats)
+	var totalRows int64
+
+	for _, e := range src.PFSExplainPlans {
+		seen := make(map[string]bool)
+		for _, r := range e.Plan {
+			rows := parseRows(r.Rows)
+			rowWork := rows * e.ExecCount
+			totalRows += rowWork
+
+			for _, t := range tags {
+				if strings.Contains(r.Extra, t.pattern) && !seen[t.errKey] {
+					s := stats[t.errKey]
+					if s == nil {
+						s = &extraStats{}
+						stats[t.errKey] = s
+					}
+					s.rows += rowWork
+					s.digests++
+					seen[t.errKey] = true
+				}
+			}
+		}
+	}
+
+	if totalRows == 0 {
+		return findings
+	}
+
+	effectiveCoverage := digestCoverage * explainCoverage * 100
+	coverageSuffix := ""
+	if effectiveCoverage > 0 {
+		coverageSuffix = fmt.Sprintf(" observed %.0f%% of workload", effectiveCoverage)
+	}
+
+	for _, t := range tags {
+		s := stats[t.errKey]
+		if s == nil || s.rows == 0 {
+			continue
+		}
+		pct := float64(s.rows) / float64(totalRows) * 100
+		findings = append(findings, Finding{
+			ErrKey:   t.errKey,
+			Severity: SeverityWorkload,
+			Description: fmt.Sprintf("%s row cost %.0f%% (%d/%d digests)%s",
+				t.label, pct, s.digests, len(src.PFSExplainPlans), coverageSuffix),
+			Count: s.rows,
+			Total: totalRows,
 		})
 	}
 
