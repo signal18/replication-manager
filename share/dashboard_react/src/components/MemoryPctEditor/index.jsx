@@ -27,7 +27,7 @@ function MemoryPctEditor({ label, value, isDisabled, onSave }) {
   const MIN_PCT = 10
 
   const minViolations = items.filter(
-    (e) => MIN_PCT_KEYS.includes(e.key) && e.pct > 0 && e.pct < MIN_PCT
+    (e) => MIN_PCT_KEYS.includes(e.key) && e.pct < MIN_PCT
   )
   const isValid = total === 100 && minViolations.length === 0
 
@@ -42,7 +42,7 @@ function MemoryPctEditor({ label, value, isDisabled, onSave }) {
     if (!draft) return
     const newTotal = draft.reduce((s, e) => s + e.pct, 0)
     const hasMinViolation = draft.some(
-      (e) => MIN_PCT_KEYS.includes(e.key) && e.pct > 0 && e.pct < MIN_PCT
+      (e) => MIN_PCT_KEYS.includes(e.key) && e.pct < MIN_PCT
     )
     if (newTotal === 100 && !hasMinViolation && onSave) {
       onSave(draft.map((e) => `${e.key}:${e.pct}`).join(','))
@@ -81,7 +81,7 @@ function MemoryPctEditor({ label, value, isDisabled, onSave }) {
             <NumberInput
               size='xs'
               w='65px'
-              min={0}
+              min={MIN_PCT_KEYS.includes(e.key) ? MIN_PCT : 0}
               max={100}
               value={e.pct}
               isDisabled={isDisabled}
