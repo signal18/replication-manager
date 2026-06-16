@@ -167,6 +167,23 @@ type StdioServerVersion struct {
 	Release int    `json:"release"`
 }
 
+// StdioPFSExplain is one cached EXPLAIN plan for a PFS digest.
+type StdioPFSExplain struct {
+	Digest     string              `json:"digest"`
+	DigestText string              `json:"digest_text"`
+	ExecCount  int64               `json:"exec_count"`
+	Plan       []StdioExplainRow   `json:"plan"`
+}
+
+// StdioExplainRow is one row from an EXPLAIN output.
+type StdioExplainRow struct {
+	Table string `json:"table"`
+	Type  string `json:"type"`  // ALL, index, range, ref, eq_ref, const, system
+	Key   string `json:"key"`
+	Rows  string `json:"rows"`
+	Extra string `json:"extra"`
+}
+
 // StdioBinlogEvent is a single QUERY_EVENT captured from a server's binary log.
 // Passed to plugins that inspect binlog content (e.g. cleartext-password, credit-card).
 type StdioBinlogEvent struct {
@@ -206,6 +223,8 @@ type LogSource struct {
 	PFSLastTruncate time.Time
 	// PFSExplainCount is the number of digests that have a cached EXPLAIN plan.
 	PFSExplainCount int
+	// PFSExplainPlans carries the cached EXPLAIN plans keyed by digest hash.
+	PFSExplainPlans []StdioPFSExplain
 	// ProcessList is a snapshot of the current processlist.
 	// Populated when Conf.MonitoringProcesslist is enabled.
 	ProcessList []StdioProcess

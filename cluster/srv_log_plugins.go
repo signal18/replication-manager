@@ -97,6 +97,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			PFSQueries:       snapshotPFSQueries(server),
 			PFSLastTruncate:  server.PFSLastSnapshot,
 			PFSExplainCount:  snapshotPFSExplainCount(server),
+			PFSExplainPlans:  snapshotPFSExplainPlans(server),
 			ProcessList:      snapshotProcessList(server),
 			MetaDataLocks:    snapshotMetaDataLocks(server),
 			BinlogEvents:     snapshotBinlogEvents(server),
@@ -671,6 +672,42 @@ func snapshotPFSExplainCount(server *ServerMonitor) int {
 	n := len(server.PFSExplainCache)
 	server.PFSExplainCacheMu.Unlock()
 	return n
+}
+
+func snapshotPFSExplainPlans(server *ServerMonitor) []logplugin.StdioPFSExplain {
+	server.PFSExplainCacheMu.Lock()
+	defer server.PFSExplainCacheMu.Unlock()
+	if len(server.PFSExplainCache) == 0 {
+		return nil
+	}
+	pfsMap := make(map[string]int64)
+	if server.PFSQueries != nil {
+		for _, q := range server.PFSQueries.ToNewMap() {
+			if q != nil {
+				pfsMap[q.Digest] = q.Exec_count
+			}
+		}
+	}
+	out := make([]logplugin.StdioPFSExplain, 0, len(server.PFSExplainCache))
+	for _, rec := range server.PFSExplainCache {
+		rows := make([]logplugin.StdioExplainRow, 0, len(rec.Plan))
+		for _, r := range rec.Plan {
+			rows = append(rows, logplugin.StdioExplainRow{
+				Table: r.Table.String,
+				Type:  r.Type.String,
+				Key:   r.Key.String,
+				Rows:  r.Rows.String,
+				Extra: r.Extra.String,
+			})
+		}
+		out = append(out, logplugin.StdioPFSExplain{
+			Digest:     rec.Digest,
+			DigestText: rec.DigestText,
+			ExecCount:  pfsMap[rec.Digest],
+			Plan:       rows,
+		})
+	}
+	return out
 }
 
 // snapshotProcessList returns a wire-format snapshot of the processlist.

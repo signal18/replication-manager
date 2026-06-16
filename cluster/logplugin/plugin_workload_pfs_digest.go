@@ -46,6 +46,7 @@ func (p *WorkloadPFSDigestPlugin) Evaluate(src LogSource) EvaluateResult {
 
 	findings = appendCoveringRatio(findings, src)
 	findings = appendExplainCoverage(findings, src)
+	findings = appendExplainFullScan(findings, src)
 
 	return EvaluateResult{
 		Findings:     findings,
@@ -147,6 +148,47 @@ func appendExplainCoverage(findings []Finding, src LogSource) []Finding {
 		Count:       int64(explained),
 		Total:       int64(totalDigests),
 	})
+
+	return findings
+}
+
+// appendExplainFullScan reports the percentage of queries that have a
+// full table scan (type=ALL) at any position in the EXPLAIN plan.
+// Uses exec_count weighting so a full-scan query running 10000 times
+// counts more than one running 10 times.
+func appendExplainFullScan(findings []Finding, src LogSource) []Finding {
+	if len(src.PFSExplainPlans) == 0 {
+		return findings
+	}
+
+	var fullScanExec, totalExec int64
+	fullScanDigests := 0
+
+	for _, e := range src.PFSExplainPlans {
+		hasFullScan := false
+		for _, r := range e.Plan {
+			if r.Type == "ALL" {
+				hasFullScan = true
+				break
+			}
+		}
+		totalExec += e.ExecCount
+		if hasFullScan {
+			fullScanExec += e.ExecCount
+			fullScanDigests++
+		}
+	}
+
+	if fullScanDigests > 0 {
+		findings = append(findings, Finding{
+			ErrKey:   "WTAG0210",
+			Severity: SeverityWorkload,
+			Description: fmt.Sprintf("Full scan queries %d/%d digests (type=ALL in EXPLAIN)",
+				fullScanDigests, len(src.PFSExplainPlans)),
+			Count: fullScanExec,
+			Total: totalExec,
+		})
+	}
 
 	return findings
 }
