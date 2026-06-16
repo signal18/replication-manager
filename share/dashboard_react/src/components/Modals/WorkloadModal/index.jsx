@@ -22,7 +22,7 @@ function WorkloadModal({ isOpen, closeModal }) {
 
   const allStates = clusterData?.workloadStates || []
 
-  const tags = useMemo(() => {
+  const allTags = useMemo(() => {
     return allStates
       .filter((s) => (s.ErrKey || '').startsWith('WTAG'))
       .map((s) => {
@@ -30,9 +30,14 @@ function WorkloadModal({ isOpen, closeModal }) {
         const pctMatch = desc.match(/\s(\d+[\d.]*%|<[\d.]+%)$/)
         const label = desc.replace(/\s(\d+[\d.]*%|<[\d.]+%)$/, '').replace(/ \(.*/, '')
         const pct = pctMatch ? pctMatch[1] : ''
-        return { key: s.ErrKey, label, pct, desc }
+        const num = parseInt((s.ErrKey || '').replace('WTAG', ''), 10) || 0
+        const isDigest = num >= 200
+        return { key: s.ErrKey, label, pct, desc, isDigest }
       })
   }, [allStates])
+
+  const statusTags = useMemo(() => allTags.filter((t) => !t.isDigest), [allTags])
+  const digestTags = useMemo(() => allTags.filter((t) => t.isDigest), [allTags])
 
   const statesArray = useMemo(
     () => allStates.filter((s) => !(s.ErrKey || '').startsWith('WTAG')),
@@ -134,15 +139,15 @@ function WorkloadModal({ isOpen, closeModal }) {
         maxH='90%'
         overflow='hidden'>
         <ModalHeader style={{ background: 'var(--chakra-colors-purple-500)', color: 'white' }}>
-          Workload ({tags.length > 0 ? `${tags.length} tags` : ''}{tags.length > 0 && statesArray.length > 0 ? ', ' : ''}{statesArray.length > 0 ? `${statesArray.length} findings` : ''})
+          Workload ({allTags.length > 0 ? `${allTags.length} tags` : ''}{allTags.length > 0 && statesArray.length > 0 ? ', ' : ''}{statesArray.length > 0 ? `${statesArray.length} findings` : ''})
         </ModalHeader>
         <ModalCloseButton color='white' />
         <ModalBody overflowY='auto' pb={6}>
-          {tags.length > 0 && (
+          {statusTags.length > 0 && (
             <Box mb={4}>
               <Text fontSize='sm' fontWeight='bold' mb={2}>Feature Tags</Text>
               <Wrap spacing={2}>
-                {tags.map((t) => (
+                {statusTags.map((t) => (
                   <WrapItem key={t.key}>
                     <Tooltip label={t.desc} placement='top'>
                       <Badge colorScheme='purple' variant='subtle' px={2} py={1} borderRadius='md'>
@@ -154,7 +159,23 @@ function WorkloadModal({ isOpen, closeModal }) {
               </Wrap>
             </Box>
           )}
-          {statesArray.length === 0 && tags.length === 0 ? (
+          {digestTags.length > 0 && (
+            <Box mb={4}>
+              <Text fontSize='sm' fontWeight='bold' mb={2}>Digest Tags</Text>
+              <Wrap spacing={2}>
+                {digestTags.map((t) => (
+                  <WrapItem key={t.key}>
+                    <Tooltip label={t.desc} placement='top'>
+                      <Badge colorScheme='teal' variant='subtle' px={2} py={1} borderRadius='md'>
+                        {t.label}{t.pct ? ` ${t.pct}` : ''}
+                      </Badge>
+                    </Tooltip>
+                  </WrapItem>
+                ))}
+              </Wrap>
+            </Box>
+          )}
+          {statesArray.length === 0 && allTags.length === 0 ? (
             <NotFound text='No active workload findings' />
           ) : statesArray.length === 0 ? null : (
             <DataTable
