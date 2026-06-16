@@ -22,7 +22,14 @@ function MemoryPctEditor({ label, value, isDisabled, onSave }) {
   const [draft, setDraft] = useState(null)
   const items = draft || entries
   const total = items.reduce((s, e) => s + e.pct, 0)
-  const isValid = total === 100
+
+  const MIN_PCT_KEYS = ['aria', 'myisam']
+  const MIN_PCT = 10
+
+  const minViolations = items.filter(
+    (e) => MIN_PCT_KEYS.includes(e.key) && e.pct > 0 && e.pct < MIN_PCT
+  )
+  const isValid = total === 100 && minViolations.length === 0
 
   const handleChange = (idx, newVal) => {
     const next = (draft || entries.map((e) => ({ ...e }))).map((e, i) =>
@@ -34,7 +41,10 @@ function MemoryPctEditor({ label, value, isDisabled, onSave }) {
   const handleBlur = () => {
     if (!draft) return
     const newTotal = draft.reduce((s, e) => s + e.pct, 0)
-    if (newTotal === 100 && onSave) {
+    const hasMinViolation = draft.some(
+      (e) => MIN_PCT_KEYS.includes(e.key) && e.pct > 0 && e.pct < MIN_PCT
+    )
+    if (newTotal === 100 && !hasMinViolation && onSave) {
       onSave(draft.map((e) => `${e.key}:${e.pct}`).join(','))
     }
     setDraft(null)
@@ -45,7 +55,9 @@ function MemoryPctEditor({ label, value, isDisabled, onSave }) {
       <Flex align='center' mb={1} gap={2}>
         <Text fontSize='sm' fontWeight='bold'>{label}</Text>
         <Text fontSize='xs' color={isValid ? 'green.500' : 'red.500'}>
-          {total}%{!isValid && ' (must be 100%)'}
+          {total}%
+          {total !== 100 && ' (must be 100%)'}
+          {minViolations.length > 0 && ` (${minViolations.map((e) => e.key).join(', ')} min ${MIN_PCT}%)`}
         </Text>
       </Flex>
       <Flex h='24px' w='100%' borderRadius='md' overflow='hidden' mb={2}>
