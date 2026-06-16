@@ -96,6 +96,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			SpikeCache:       spikeCache[cacheKey],
 			PFSQueries:       snapshotPFSQueries(server),
 			PFSLastTruncate:  server.PFSLastSnapshot,
+			PFSExplainCount:  snapshotPFSExplainCount(server),
 			ProcessList:      snapshotProcessList(server),
 			MetaDataLocks:    snapshotMetaDataLocks(server),
 			BinlogEvents:     snapshotBinlogEvents(server),
@@ -663,6 +664,13 @@ func snapshotPFSQueries(server *ServerMonitor) []logplugin.StdioPFSQuery {
 		})
 	}
 	return out
+}
+
+func snapshotPFSExplainCount(server *ServerMonitor) int {
+	server.PFSExplainCacheMu.Lock()
+	n := len(server.PFSExplainCache)
+	server.PFSExplainCacheMu.Unlock()
+	return n
 }
 
 // snapshotProcessList returns a wire-format snapshot of the processlist.

@@ -204,6 +204,8 @@ type LogSource struct {
 	// Zero value means never truncated. Used to query Graphite for the
 	// queries delta over the same window as the PFS counters.
 	PFSLastTruncate time.Time
+	// PFSExplainCount is the number of digests that have a cached EXPLAIN plan.
+	PFSExplainCount int
 	// ProcessList is a snapshot of the current processlist.
 	// Populated when Conf.MonitoringProcesslist is enabled.
 	ProcessList []StdioProcess

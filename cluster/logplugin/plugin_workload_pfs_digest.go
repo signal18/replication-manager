@@ -45,6 +45,7 @@ func (p *WorkloadPFSDigestPlugin) Evaluate(src LogSource) EvaluateResult {
 	var findings []Finding
 
 	findings = appendCoveringRatio(findings, src)
+	findings = appendExplainCoverage(findings, src)
 
 	return EvaluateResult{
 		Findings:     findings,
@@ -125,4 +126,27 @@ func fetchQueriesSinceTruncate(src LogSource) int64 {
 	}
 
 	return 0
+}
+
+// appendExplainCoverage reports what percentage of PFS digests have
+// a cached EXPLAIN plan. Digests without explains are blind spots —
+// you can see exec_count and rows_scanned but not the query plan.
+func appendExplainCoverage(findings []Finding, src LogSource) []Finding {
+	totalDigests := len(src.PFSQueries)
+	if totalDigests == 0 {
+		return findings
+	}
+
+	explained := src.PFSExplainCount
+	pct := float64(explained) / float64(totalDigests) * 100
+
+	findings = append(findings, Finding{
+		ErrKey:      "WTAG0201",
+		Severity:    SeverityWorkload,
+		Description: fmt.Sprintf("PFS digest explain coverage %.0f%% (%d/%d digests have EXPLAIN)", pct, explained, totalDigests),
+		Count:       int64(explained),
+		Total:       int64(totalDigests),
+	})
+
+	return findings
 }
