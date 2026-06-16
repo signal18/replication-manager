@@ -361,3 +361,53 @@ div.settingsContainer {
   text-transform: uppercase;
   cursor: pointer;
 }
+
+.subsectionHeader {
+  padding: rem(2) rem(2) rem(4);
+  border-bottom: 1px solid var(--tertiary-color);
+  margin-top: rem(4);
+}
+
+.subsectionTitle {
+  font-size: rem(11);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: rem(0.4);
+  color: var(--secondary-color);
+}
+
+.subsectionAdvancedHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: rem(4) rem(10);
+  border: 1px dashed var(--tertiary-color);
+  border-radius: rem(6);
+  background-color: var(--quaternary-color);
+  cursor: pointer;
+  gap: rem(8);
+  margin-top: rem(4);
+}
+
+.subsectionAdvancedTitle {
+  font-size: rem(11);
+  font-weight: 600;
+  color: var(--darkgray-color);
+  text-transform: uppercase;
+  letter-spacing: rem(0.3);
+}
+
+.subsectionAdvancedBody {
+  padding: rem(4) rem(4) rem(4) rem(12);
+  border-left: 2px solid var(--tertiary-color);
+  margin-top: rem(4);
+  opacity: 0.9;
+}
+
+.repositoryActionsBox {
+  padding: rem(10) rem(12);
+  border: 1px solid var(--tertiary-color);
+  border-radius: rem(6);
+  background-color: var(--quaternary-color);
+}

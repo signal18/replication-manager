@@ -56,8 +56,8 @@ const buildClusterStateSignature = (items) =>
 const buildProxyStagingList = (proxies) =>
   proxies
     ?.filter((proxy) => proxy.isStaging)
-    .map((proxy) => proxy.name)
-    .join(',') || ''
+    ?.map((proxy) => proxy.name)
+    ?.join(',') || ''
 
 const fulfilledHandlers = {
   'cluster/getClusterData': (state, action) => {
