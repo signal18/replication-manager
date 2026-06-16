@@ -51,6 +51,7 @@ func (p *WorkloadPFSDigestPlugin) Evaluate(src LogSource) EvaluateResult {
 	findings = appendCoveringRatio(findings, src, digestCoverage)
 	findings = appendExplainCoverage(findings, src, explainCoverage)
 	findings = appendExplainAccessType(findings, src, digestCoverage, explainCoverage)
+	findings = appendDigestTmpDisk(findings, src, digestCoverage)
 
 	return EvaluateResult{
 		Findings:     findings,
@@ -270,4 +271,41 @@ func parseRows(s string) int64 {
 	}
 	n, _ := strconv.ParseInt(s, 10, 64)
 	return n
+}
+
+// appendDigestTmpDisk computes the percentage of query executions that
+// create on-disk temp tables, weighted by exec_count from PFS digests.
+func appendDigestTmpDisk(findings []Finding, src LogSource, digestCoverage float64) []Finding {
+	if len(src.PFSQueries) == 0 {
+		return findings
+	}
+
+	var tmpDiskExec, totalExec int64
+	tmpDiskDigests := 0
+
+	for _, q := range src.PFSQueries {
+		totalExec += q.ExecCount
+		if q.PlanTmpDisk > 0 {
+			tmpDiskExec += q.ExecCount
+			tmpDiskDigests++
+		}
+	}
+
+	if tmpDiskDigests > 0 && totalExec > 0 {
+		coverageSuffix := ""
+		if digestCoverage > 0 {
+			coverageSuffix = fmt.Sprintf(" observed %.0f%% of workload", digestCoverage*100)
+		}
+
+		findings = append(findings, Finding{
+			ErrKey:   "WTAG0220",
+			Severity: SeverityWorkload,
+			Description: fmt.Sprintf("Disk tmp table queries %d/%d digests%s",
+				tmpDiskDigests, len(src.PFSQueries), coverageSuffix),
+			Count: tmpDiskExec,
+			Total: totalExec,
+		})
+	}
+
+	return findings
 }
