@@ -21,10 +21,12 @@ function MemoryPctEditor({ label, value, totalMemoryMB, isDisabled, onSave }) {
     })
   }, [value])
 
+  const memMB = useMemo(() => parseFloat(totalMemoryMB) || 0, [totalMemoryMB])
+
   const step = useMemo(() => {
-    if (!totalMemoryMB || totalMemoryMB <= 0) return 1
-    return Math.max(1, Math.round((MIN_STEP_MB / totalMemoryMB) * 100))
-  }, [totalMemoryMB])
+    if (memMB <= 0) return 1
+    return Math.max(1, Math.round((MIN_STEP_MB / memMB) * 100))
+  }, [memMB])
 
   const [draft, setDraft] = useState(null)
   const items = draft || entries
@@ -35,8 +37,8 @@ function MemoryPctEditor({ label, value, totalMemoryMB, isDisabled, onSave }) {
   const dragRef = useRef(null)
 
   const mbLabel = (pct) => {
-    if (!totalMemoryMB || totalMemoryMB <= 0) return ''
-    const mb = Math.round(totalMemoryMB * pct / 100)
+    if (memMB <= 0) return ''
+    const mb = Math.round(memMB * pct / 100)
     return mb >= 1024 ? `${(mb / 1024).toFixed(1)}GB` : `${mb}MB`
   }
 
