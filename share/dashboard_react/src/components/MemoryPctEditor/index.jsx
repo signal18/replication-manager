@@ -53,7 +53,7 @@ function MemoryPctEditor({ label, value, totalMemoryMB, isDisabled, onSave }) {
     const hasMinViolation = draft.some(
       (e) => MIN_PCT_KEYS.includes(e.key) && e.pct < MIN_PCT
     )
-    if (total === 100 && !hasMinViolation && onSave) {
+    if (total <= 100 && !hasMinViolation && onSave) {
       onSave(draft.map((e) => `${e.key}:${e.pct}`).join(','))
     }
     setDraft(null)
@@ -74,8 +74,8 @@ function MemoryPctEditor({ label, value, totalMemoryMB, isDisabled, onSave }) {
     <Box w='100%'>
       <Flex align='center' mb={2} gap={2}>
         <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>{label}</Text>
-        <Text fontSize='xs' fontWeight='bold' color={free === 0 ? 'green.500' : 'orange.500'}>
-          {free > 0 ? `${free}% free (${mbLabel(free)})` : '100% allocated'}
+        <Text fontSize='xs' fontWeight='bold' color={free < 0 ? 'red.500' : free === 0 ? 'green.500' : 'gray.500'}>
+          {free < 0 ? `${-free}% over allocated!` : free > 0 ? `${free}% free (${mbLabel(free)})` : '100% allocated'}
         </Text>
       </Flex>
 
