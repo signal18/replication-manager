@@ -130,7 +130,7 @@ const ResticAwsAccessKeyIdHelp = `**Backup Restic AWS Access Key ID**
 
 Access key ID used to authenticate to the S3 (or S3-compatible) bucket configured below.
 
-Leave empty to fall back to the default AWS credential chain (environment variables, shared credentials file, or instance role).
+Use the access key assigned to this S3 repository configuration.
 
 Config: \`backup-restic-aws-access-key-id\``
 
@@ -138,7 +138,7 @@ const ResticAwsAccessSecretHelp = `**Backup Restic AWS Access Secret**
 
 Secret access key paired with "Backup restic aws access key id". Stored encrypted.
 
-Leave empty to fall back to the default AWS credential chain.
+Use the secret key paired with the access key above. Stored encrypted.
 
 Config: \`backup-restic-aws-access-secret\``
 
@@ -146,7 +146,7 @@ const ResticAwsRegionHelp = `**Backup Restic AWS Region**
 
 AWS region of the S3 bucket (e.g. \`us-east-1\`, \`eu-west-1\`).
 
-Some S3-compatible services require this even when a custom endpoint is set. Leave empty to use the AWS SDK's default region resolution.
+Some S3-compatible services require this even when a custom endpoint is set. Leave empty only if the runtime environment already provides a usable AWS region (for example \`AWS_REGION\` or \`AWS_DEFAULT_REGION\`).
 
 Config: \`backup-restic-aws-region\``
 
@@ -673,7 +673,9 @@ function ResticRepositorySettings({
                           placeholder='us-east-1, eu-west-1, etc.'
                           onSave={(value) => handleSettingChange('backup-restic-aws-region', value)}
                         />
-                        <Text className={styles.helperText}>Empty uses AWS SDK default region resolution.</Text>
+                        <Text className={styles.helperText}>
+                          Leave empty only if the runtime environment already provides a usable AWS region (for example AWS_REGION or AWS_DEFAULT_REGION).
+                        </Text>
                       </GridItem>
                     </Grid>
                   </Stack>
@@ -731,7 +733,7 @@ function ResticRepositorySettings({
                       </GridItem>
                     </Grid>
                     <Text className={styles.helperText}>
-                      Empty credentials fall back to the default AWS credential chain (environment variables, shared credentials file, or instance role).
+                      Provide the access key and secret for this S3 repository configuration.
                     </Text>
                   </Stack>
 
