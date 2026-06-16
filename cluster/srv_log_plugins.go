@@ -95,6 +95,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			GraphiteHostname: hostname,
 			SpikeCache:       spikeCache[cacheKey],
 			PFSQueries:       snapshotPFSQueries(server),
+			PFSLastTruncate:  server.PFSLastSnapshot,
 			ProcessList:      snapshotProcessList(server),
 			MetaDataLocks:    snapshotMetaDataLocks(server),
 			BinlogEvents:     snapshotBinlogEvents(server),

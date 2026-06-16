@@ -200,6 +200,10 @@ type LogSource struct {
 	// PFSQueries is a snapshot of performance_schema digest statistics.
 	// Populated when Conf.MonitoringPFS is enabled. Empty slice when unavailable.
 	PFSQueries []StdioPFSQuery
+	// PFSLastTruncate is when the PFS digest table was last truncated.
+	// Zero value means never truncated. Used to query Graphite for the
+	// queries delta over the same window as the PFS counters.
+	PFSLastTruncate time.Time
 	// ProcessList is a snapshot of the current processlist.
 	// Populated when Conf.MonitoringProcesslist is enabled.
 	ProcessList []StdioProcess
