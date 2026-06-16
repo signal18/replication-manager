@@ -123,7 +123,8 @@ func appendFeatureTag(findings []Finding, src LogSource, questions int64, status
 }
 
 // appendHandlerTag detects broad workload patterns from handler counters.
-func appendHandlerTag(findings []Finding, src LogSource, questions int64) []Finding {
+// Handler counters are row-level (not query-level) so no query percentage.
+func appendHandlerTag(findings []Finding, src LogSource, _ int64) []Finding {
 	readKey := getStatus(src.ServerStatus, "handler_read_key")
 	readRndNext := getStatus(src.ServerStatus, "handler_read_rnd_next")
 	writeTotal := getStatus(src.ServerStatus, "handler_write")
@@ -136,8 +137,6 @@ func appendHandlerTag(findings []Finding, src LogSource, questions int64) []Find
 				ErrKey:      "WTAG0020",
 				Severity:    SeverityWorkload,
 				Description: fmt.Sprintf("Heavy full-scan workload (rnd_next/read_key=%.0f)", ratio),
-				Count:       readRndNext,
-				Total:       questions,
 			})
 		}
 	}
@@ -150,8 +149,6 @@ func appendHandlerTag(findings []Finding, src LogSource, questions int64) []Find
 				ErrKey:      "WTAG0021",
 				Severity:    SeverityWorkload,
 				Description: fmt.Sprintf("Write-intensive workload (write ratio=%.0f%%)", writeRatio*100),
-				Count:       writeTotal,
-				Total:       questions,
 			})
 		}
 	}
@@ -220,15 +217,15 @@ func appendOptimizerTags(findings []Finding, src LogSource) []Finding {
 }
 
 // appendOptimizerProblems detects optimizer problem indicators from STATUS.
-func appendOptimizerProblems(findings []Finding, src LogSource, questions int64) []Finding {
+// These counters are query-level but already carry their own context (raw count,
+// ratio) so no queries-based percentage is added.
+func appendOptimizerProblems(findings []Finding, src LogSource, _ int64) []Finding {
 	selectFullJoin := getStatus(src.ServerStatus, "select_full_join")
 	if selectFullJoin > 0 {
 		findings = append(findings, Finding{
 			ErrKey:      "WTAG0150",
 			Severity:    SeverityWorkload,
 			Description: fmt.Sprintf("Joins without indexes (Select_full_join=%d)", selectFullJoin),
-			Count:       selectFullJoin,
-			Total:       questions,
 			Remediations: []Remediation{{
 				Type:        "sql",
 				Description: "Add indexes to join columns identified by EXPLAIN on slow queries",
@@ -243,8 +240,6 @@ func appendOptimizerProblems(findings []Finding, src LogSource, questions int64)
 			ErrKey:      "WTAG0151",
 			Severity:    SeverityWorkload,
 			Description: fmt.Sprintf("Joins requiring range check per row (Select_range_check=%d)", selectRangeCheck),
-			Count:       selectRangeCheck,
-			Total:       questions,
 		})
 	}
 
@@ -254,8 +249,6 @@ func appendOptimizerProblems(findings []Finding, src LogSource, questions int64)
 			ErrKey:      "WTAG0152",
 			Severity:    SeverityWorkload,
 			Description: fmt.Sprintf("Multi-pass sorts (Sort_merge_passes=%d)", sortMergePasses),
-			Count:       sortMergePasses,
-			Total:       questions,
 			Remediations: []Remediation{{
 				Type:        "my_cnf",
 				Description: "Increase sort_buffer_size to reduce merge passes",
@@ -274,8 +267,6 @@ func appendOptimizerProblems(findings []Finding, src LogSource, questions int64)
 				ErrKey:      "WTAG0153",
 				Severity:    SeverityWorkload,
 				Description: fmt.Sprintf("High disk temp table ratio (%.0f%%, %d/%d)", ratio, tmpDisk, tmpTotal),
-				Count:       tmpDisk,
-				Total:       questions,
 				Remediations: []Remediation{{
 					Type:        "my_cnf",
 					Description: "Increase tmp_table_size and max_heap_table_size",
