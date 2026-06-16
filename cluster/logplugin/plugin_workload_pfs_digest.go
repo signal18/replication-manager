@@ -22,22 +22,22 @@ import (
 )
 
 func init() {
-	Register(&WorkloadPFSPlugin{})
+	Register(&WorkloadPFSDigestPlugin{})
 }
 
-type WorkloadPFSPlugin struct{}
+type WorkloadPFSDigestPlugin struct{}
 
-func (p *WorkloadPFSPlugin) Name() string              { return "workload-pfs" }
-func (p *WorkloadPFSPlugin) DefaultSeverity() Severity { return SeverityWorkload }
+func (p *WorkloadPFSDigestPlugin) Name() string              { return "workload-pfs-digest" }
+func (p *WorkloadPFSDigestPlugin) DefaultSeverity() Severity { return SeverityWorkload }
 
-func (p *WorkloadPFSPlugin) Prerequisites() []Prerequisite {
+func (p *WorkloadPFSDigestPlugin) Prerequisites() []Prerequisite {
 	return []Prerequisite{{
 		ConfigKey:   "monitoring-performance-schema-queries",
 		Description: "PFS query digest monitoring must be enabled",
 	}}
 }
 
-func (p *WorkloadPFSPlugin) Evaluate(src LogSource) EvaluateResult {
+func (p *WorkloadPFSDigestPlugin) Evaluate(src LogSource) EvaluateResult {
 	if !src.IsEnabled() || len(src.PFSQueries) == 0 {
 		return EvaluateResult{}
 	}
