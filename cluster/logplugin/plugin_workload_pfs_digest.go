@@ -45,9 +45,12 @@ func (p *WorkloadPFSDigestPlugin) Evaluate(src LogSource) EvaluateResult {
 
 	var findings []Finding
 
-	findings = appendCoveringRatio(findings, src)
-	findings = appendExplainCoverage(findings, src)
-	findings = appendExplainFullScan(findings, src)
+	digestCoverage := computeDigestCoverage(src)
+	explainCoverage := computeExplainCoverage(src)
+
+	findings = appendCoveringRatio(findings, src, digestCoverage)
+	findings = appendExplainCoverage(findings, src, explainCoverage)
+	findings = appendExplainFullScan(findings, src, digestCoverage, explainCoverage)
 
 	return EvaluateResult{
 		Findings:     findings,
@@ -55,11 +58,42 @@ func (p *WorkloadPFSDigestPlugin) Evaluate(src LogSource) EvaluateResult {
 	}
 }
 
-// appendCoveringRatio computes what percentage of total queries the PFS
-// digest table covers. Uses Graphite to get the queries delta since the
-// last PFS truncate, and compares with sum(exec_count) from digests.
-func appendCoveringRatio(findings []Finding, src LogSource) []Finding {
+// computeDigestCoverage returns the fraction (0.0–1.0) of total queries
+// captured by PFS digests. Returns 0 if Graphite data is unavailable.
+func computeDigestCoverage(src LogSource) float64 {
 	if src.PFSLastTruncate.IsZero() {
+		return 0
+	}
+	pfsTotal := int64(0)
+	for _, q := range src.PFSQueries {
+		pfsTotal += q.ExecCount
+	}
+	if pfsTotal == 0 {
+		return 0
+	}
+	graphiteQueries := fetchQueriesSinceTruncate(src)
+	if graphiteQueries <= 0 {
+		return 0
+	}
+	r := float64(pfsTotal) / float64(graphiteQueries)
+	if r > 1 {
+		return 1
+	}
+	return r
+}
+
+// computeExplainCoverage returns the fraction (0.0–1.0) of PFS digests
+// that have a cached EXPLAIN plan.
+func computeExplainCoverage(src LogSource) float64 {
+	total := len(src.PFSQueries)
+	if total == 0 {
+		return 0
+	}
+	return float64(src.PFSExplainCount) / float64(total)
+}
+
+func appendCoveringRatio(findings []Finding, src LogSource, digestCoverage float64) []Finding {
+	if digestCoverage <= 0 {
 		return findings
 	}
 
@@ -67,29 +101,15 @@ func appendCoveringRatio(findings []Finding, src LogSource) []Finding {
 	for _, q := range src.PFSQueries {
 		pfsTotal += q.ExecCount
 	}
-	if pfsTotal == 0 {
-		return findings
-	}
-
 	graphiteQueries := fetchQueriesSinceTruncate(src)
-	if graphiteQueries <= 0 {
-		return findings
-	}
-
-	pct := float64(pfsTotal) / float64(graphiteQueries) * 100
-	if pct > 100 {
-		pct = 100
-	}
-
-	desc := fmt.Sprintf("PFS digest coverage %.0f%% (%d/%d queries since last truncate)",
-		pct, pfsTotal, graphiteQueries)
 
 	findings = append(findings, Finding{
 		ErrKey:      "WTAG0200",
 		Severity:    SeverityWorkload,
-		Description: desc,
-		Count:       pfsTotal,
-		Total:       graphiteQueries,
+		Description: fmt.Sprintf("PFS digest coverage %.0f%% (%d/%d queries since last truncate)",
+			digestCoverage*100, pfsTotal, graphiteQueries),
+		Count: pfsTotal,
+		Total: graphiteQueries,
 	})
 
 	return findings
@@ -130,24 +150,21 @@ func fetchQueriesSinceTruncate(src LogSource) int64 {
 	return 0
 }
 
-// appendExplainCoverage reports what percentage of PFS digests have
-// a cached EXPLAIN plan. Digests without explains are blind spots —
-// you can see exec_count and rows_scanned but not the query plan.
-func appendExplainCoverage(findings []Finding, src LogSource) []Finding {
+func appendExplainCoverage(findings []Finding, src LogSource, explainCoverage float64) []Finding {
 	totalDigests := len(src.PFSQueries)
 	if totalDigests == 0 {
 		return findings
 	}
 
 	explained := src.PFSExplainCount
-	pct := float64(explained) / float64(totalDigests) * 100
 
 	findings = append(findings, Finding{
 		ErrKey:      "WTAG0201",
 		Severity:    SeverityWorkload,
-		Description: fmt.Sprintf("PFS digest explain coverage %.0f%% (%d/%d digests have EXPLAIN)", pct, explained, totalDigests),
-		Count:       int64(explained),
-		Total:       int64(totalDigests),
+		Description: fmt.Sprintf("PFS digest explain coverage %.0f%% (%d/%d digests have EXPLAIN)",
+			explainCoverage*100, explained, totalDigests),
+		Count: int64(explained),
+		Total: int64(totalDigests),
 	})
 
 	return findings
@@ -156,9 +173,9 @@ func appendExplainCoverage(findings []Finding, src LogSource) []Finding {
 // appendExplainFullScan computes the cost of full table scans as a
 // fraction of total row operations. For each EXPLAIN plan step,
 // rows × exec_count gives the estimated row work. Steps with type=ALL
-// are full scans. The ratio shows how much of the total row work is
-// attributable to full scans.
-func appendExplainFullScan(findings []Finding, src LogSource) []Finding {
+// are full scans. The effective coverage (digestCoverage × explainCoverage)
+// tells what fraction of the total workload this observation represents.
+func appendExplainFullScan(findings []Finding, src LogSource, digestCoverage, explainCoverage float64) []Finding {
 	if len(src.PFSExplainPlans) == 0 {
 		return findings
 	}
@@ -183,13 +200,21 @@ func appendExplainFullScan(findings []Finding, src LogSource) []Finding {
 	}
 
 	if fullScanDigests > 0 && totalRows > 0 {
+		observedPct := float64(fullScanRows) / float64(totalRows) * 100
+		effectiveCoverage := digestCoverage * explainCoverage * 100
+
+		desc := fmt.Sprintf("Full scan row cost %.0f%% (%d/%d digests)",
+			observedPct, fullScanDigests, len(src.PFSExplainPlans))
+		if effectiveCoverage > 0 {
+			desc += fmt.Sprintf(" observed %.0f%% of workload", effectiveCoverage)
+		}
+
 		findings = append(findings, Finding{
-			ErrKey:   "WTAG0210",
-			Severity: SeverityWorkload,
-			Description: fmt.Sprintf("Full scan row cost %d/%d digests (type=ALL in EXPLAIN)",
-				fullScanDigests, len(src.PFSExplainPlans)),
-			Count: fullScanRows,
-			Total: totalRows,
+			ErrKey:      "WTAG0210",
+			Severity:    SeverityWorkload,
+			Description: desc,
+			Count:       fullScanRows,
+			Total:       totalRows,
 		})
 	}
 
