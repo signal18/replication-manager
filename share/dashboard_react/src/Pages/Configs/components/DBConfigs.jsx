@@ -23,6 +23,7 @@ import modalStyles from '../../../components/Modals/styles.module.scss'
 
 import PreservedVariablesEditor from '../../../components/PreservedVariablesEditor'
 import ConfigFilesPanel from '../../../components/ConfigFilesPanel'
+import MemoryPctEditor from '../../../components/MemoryPctEditor'
 import { convertSize } from '../../../utility/common'
 
 function DBConfigs({ selectedCluster, user }) {
@@ -419,6 +420,51 @@ function DBConfigs({ selectedCluster, user }) {
                     setSetting({
                       clusterName: selectedCluster?.name,
                       setting: 'prov-db-cpu-cores',
+                      value: value
+                    })
+                  )
+              )
+            }}
+          />
+        </Flex>
+      )
+    },
+    {
+      key: 'Memory Allocation',
+      value: (
+        <Flex direction='column' gap={4} w='100%'>
+          <MemoryPctEditor
+            label='Shared Buffers'
+            value={selectedCluster?.config?.provDbMemorySharedPct}
+            isDisabled={user?.grants['proxy-config-flag'] == false}
+            onSave={(value) => {
+              setConfirmTitle('Confirm shared buffer memory allocation change?')
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'prov-db-memory-shared-pct',
+                      value: value
+                    })
+                  )
+              )
+            }}
+          />
+          <MemoryPctEditor
+            label='Per-Thread Buffers'
+            value={selectedCluster?.config?.provDbMemoryThreadedPct}
+            isDisabled={user?.grants['proxy-config-flag'] == false}
+            onSave={(value) => {
+              setConfirmTitle('Confirm per-thread memory allocation change?')
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'prov-db-memory-threaded-pct',
                       value: value
                     })
                   )
