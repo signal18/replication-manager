@@ -671,6 +671,12 @@ func snapshotPFSExplainCount(server *ServerMonitor) int {
 	server.PFSExplainCacheMu.Lock()
 	n := len(server.PFSExplainCache)
 	server.PFSExplainCacheMu.Unlock()
+	if server.PFSQueries != nil {
+		total := len(server.PFSQueries.ToNewMap())
+		if n > total {
+			n = total
+		}
+	}
 	return n
 }
 

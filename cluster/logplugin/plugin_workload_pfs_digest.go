@@ -46,13 +46,20 @@ func (p *WorkloadPFSDigestPlugin) Evaluate(src LogSource) EvaluateResult {
 
 	var findings []Finding
 
-	digestCoverage := computeDigestCoverage(src)
+	pfsTotal := int64(0)
+	for _, q := range src.PFSQueries {
+		pfsTotal += q.ExecCount
+	}
+	graphiteQueries := fetchQueriesSinceTruncate(src)
+	graphiteHandlerRows := fetchHandlerRowsSinceTruncate(src)
+
+	digestCoverage := computeDigestCoverage(pfsTotal, graphiteQueries)
 	explainCoverage := computeExplainCoverage(src)
 
-	findings = appendCoveringRatio(findings, src, digestCoverage)
+	findings = appendCoveringRatio(findings, pfsTotal, graphiteQueries, digestCoverage)
 	findings = appendExplainCoverage(findings, src, explainCoverage)
-	findings = appendExplainAccessType(findings, src, digestCoverage, explainCoverage)
-	findings = appendExplainExtra(findings, src, digestCoverage, explainCoverage)
+	findings = appendExplainAccessType(findings, src, graphiteHandlerRows)
+	findings = appendExplainExtra(findings, src, graphiteHandlerRows)
 	findings = appendDigestTmpDisk(findings, src, digestCoverage)
 
 	return EvaluateResult{
@@ -61,21 +68,8 @@ func (p *WorkloadPFSDigestPlugin) Evaluate(src LogSource) EvaluateResult {
 	}
 }
 
-// computeDigestCoverage returns the fraction (0.0–1.0) of total queries
-// captured by PFS digests. Returns 0 if Graphite data is unavailable.
-func computeDigestCoverage(src LogSource) float64 {
-	if src.PFSLastTruncate.IsZero() {
-		return 0
-	}
-	pfsTotal := int64(0)
-	for _, q := range src.PFSQueries {
-		pfsTotal += q.ExecCount
-	}
-	if pfsTotal == 0 {
-		return 0
-	}
-	graphiteQueries := fetchQueriesSinceTruncate(src)
-	if graphiteQueries <= 0 {
+func computeDigestCoverage(pfsTotal, graphiteQueries int64) float64 {
+	if pfsTotal <= 0 || graphiteQueries <= 0 {
 		return 0
 	}
 	r := float64(pfsTotal) / float64(graphiteQueries)
@@ -95,24 +89,16 @@ func computeExplainCoverage(src LogSource) float64 {
 	return float64(src.PFSExplainCount) / float64(total)
 }
 
-func appendCoveringRatio(findings []Finding, src LogSource, digestCoverage float64) []Finding {
+func appendCoveringRatio(findings []Finding, pfsTotal, graphiteQueries int64, digestCoverage float64) []Finding {
 	if digestCoverage <= 0 {
 		return findings
 	}
-
-	pfsTotal := int64(0)
-	for _, q := range src.PFSQueries {
-		pfsTotal += q.ExecCount
-	}
-	graphiteQueries := fetchQueriesSinceTruncate(src)
 
 	findings = append(findings, Finding{
 		ErrKey:      "WTAG0200",
 		Severity:    SeverityWorkload,
 		Description: fmt.Sprintf("PFS digest coverage %.0f%% (%d/%d queries since last truncate)",
 			digestCoverage*100, pfsTotal, graphiteQueries),
-		Count: pfsTotal,
-		Total: graphiteQueries,
 	})
 
 	return findings
@@ -122,7 +108,7 @@ func appendCoveringRatio(findings []Finding, src LogSource, digestCoverage float
 // between PFSLastTruncate and now using the integral() function on the
 // derivative of the queries counter.
 func fetchQueriesSinceTruncate(src LogSource) int64 {
-	if src.GraphiteAPIURL == "" || src.GraphiteHostname == "" {
+	if src.GraphiteAPIURL == "" || src.GraphiteHostname == "" || src.PFSLastTruncate.IsZero() {
 		return 0
 	}
 
@@ -153,6 +139,38 @@ func fetchQueriesSinceTruncate(src LogSource) int64 {
 	return 0
 }
 
+// fetchHandlerRowsSinceTruncate queries Graphite for the total handler row
+// operations (all handler_read_* counters) since the last PFS truncate.
+func fetchHandlerRowsSinceTruncate(src LogSource) int64 {
+	if src.GraphiteAPIURL == "" || src.GraphiteHostname == "" || src.PFSLastTruncate.IsZero() {
+		return 0
+	}
+
+	elapsed := time.Since(src.PFSLastTruncate)
+	if elapsed < time.Minute {
+		return 0
+	}
+
+	fromMinutes := int(elapsed.Minutes()) + 1
+	from := fmt.Sprintf("-%dmin", fromMinutes)
+
+	target := fmt.Sprintf("integral(nonNegativeDerivative(sumSeries(mysql.%s.mysql_global_status_handler_read_*)))",
+		src.GraphiteHostname)
+
+	points, err := FetchGraphiteMetric(src.GraphiteAPIURL, target, from, "now")
+	if err != nil || len(points) == 0 {
+		return 0
+	}
+
+	for i := len(points) - 1; i >= 0; i-- {
+		if points[i].Value != nil {
+			return int64(*points[i].Value)
+		}
+	}
+
+	return 0
+}
+
 func appendExplainCoverage(findings []Finding, src LogSource, explainCoverage float64) []Finding {
 	totalDigests := len(src.PFSQueries)
 	if totalDigests == 0 {
@@ -166,8 +184,6 @@ func appendExplainCoverage(findings []Finding, src LogSource, explainCoverage fl
 		Severity:    SeverityWorkload,
 		Description: fmt.Sprintf("PFS digest explain coverage %.0f%% (%d/%d digests have EXPLAIN)",
 			explainCoverage*100, explained, totalDigests),
-		Count: int64(explained),
-		Total: int64(totalDigests),
 	})
 
 	return findings
@@ -176,7 +192,7 @@ func appendExplainCoverage(findings []Finding, src LogSource, explainCoverage fl
 // appendExplainAccessType computes the row-operation cost per EXPLAIN
 // access type. For each plan step, rows × exec_count gives the estimated
 // row work. Tags are emitted for full scan (ALL), range, and ref access.
-func appendExplainAccessType(findings []Finding, src LogSource, digestCoverage, explainCoverage float64) []Finding {
+func appendExplainAccessType(findings []Finding, src LogSource, graphiteHandlerRows int64) []Finding {
 	if len(src.PFSExplainPlans) == 0 {
 		return findings
 	}
@@ -186,14 +202,14 @@ func appendExplainAccessType(findings []Finding, src LogSource, digestCoverage, 
 		digests int
 	}
 	stats := make(map[string]*accessStats)
-	var totalRows int64
+	var totalExplainRows int64
 
 	for _, e := range src.PFSExplainPlans {
 		seen := make(map[string]bool)
 		for _, r := range e.Plan {
 			rows := parseRows(r.Rows)
 			rowWork := rows * e.ExecCount
-			totalRows += rowWork
+			totalExplainRows += rowWork
 
 			bucket := classifyAccess(r.Type)
 			if bucket == "" {
@@ -212,14 +228,18 @@ func appendExplainAccessType(findings []Finding, src LogSource, digestCoverage, 
 		}
 	}
 
-	if totalRows == 0 {
+	if totalExplainRows == 0 {
 		return findings
 	}
 
-	effectiveCoverage := digestCoverage * explainCoverage * 100
-	coverageSuffix := ""
-	if effectiveCoverage > 0 {
-		coverageSuffix = fmt.Sprintf(" observed %.0f%% of workload", effectiveCoverage)
+	// Row-based coverage: explain rows vs total handler rows from Graphite
+	rowCoverageSuffix := ""
+	if graphiteHandlerRows > 0 {
+		rowCoverage := float64(totalExplainRows) / float64(graphiteHandlerRows) * 100
+		if rowCoverage > 100 {
+			rowCoverage = 100
+		}
+		rowCoverageSuffix = fmt.Sprintf(" observed %.0f%% of row operations", rowCoverage)
 	}
 
 	type tagDef struct {
@@ -238,16 +258,16 @@ func appendExplainAccessType(findings []Finding, src LogSource, digestCoverage, 
 		if s == nil || s.rows == 0 {
 			continue
 		}
-		pct := float64(s.rows) / float64(totalRows) * 100
+		pct := float64(s.rows) / float64(totalExplainRows) * 100
 		desc := fmt.Sprintf("%s row cost %.0f%% (%d/%d digests)%s",
-			t.label, pct, s.digests, len(src.PFSExplainPlans), coverageSuffix)
+			t.label, pct, s.digests, len(src.PFSExplainPlans), rowCoverageSuffix)
 
 		findings = append(findings, Finding{
 			ErrKey:      t.errKey,
 			Severity:    SeverityWorkload,
 			Description: desc,
 			Count:       s.rows,
-			Total:       totalRows,
+			Total:       totalExplainRows,
 		})
 	}
 
@@ -256,7 +276,7 @@ func appendExplainAccessType(findings []Finding, src LogSource, digestCoverage, 
 
 // appendExplainExtra computes row cost for optimizer features visible
 // in the EXPLAIN Extra column: ICP, filesort, temporary, covering index.
-func appendExplainExtra(findings []Finding, src LogSource, digestCoverage, explainCoverage float64) []Finding {
+func appendExplainExtra(findings []Finding, src LogSource, graphiteHandlerRows int64) []Finding {
 	if len(src.PFSExplainPlans) == 0 {
 		return findings
 	}
@@ -279,14 +299,14 @@ func appendExplainExtra(findings []Finding, src LogSource, digestCoverage, expla
 	}
 
 	stats := make(map[string]*extraStats)
-	var totalRows int64
+	var totalExplainRows int64
 
 	for _, e := range src.PFSExplainPlans {
 		seen := make(map[string]bool)
 		for _, r := range e.Plan {
 			rows := parseRows(r.Rows)
 			rowWork := rows * e.ExecCount
-			totalRows += rowWork
+			totalExplainRows += rowWork
 
 			for _, t := range tags {
 				if strings.Contains(r.Extra, t.pattern) && !seen[t.errKey] {
@@ -303,14 +323,17 @@ func appendExplainExtra(findings []Finding, src LogSource, digestCoverage, expla
 		}
 	}
 
-	if totalRows == 0 {
+	if totalExplainRows == 0 {
 		return findings
 	}
 
-	effectiveCoverage := digestCoverage * explainCoverage * 100
-	coverageSuffix := ""
-	if effectiveCoverage > 0 {
-		coverageSuffix = fmt.Sprintf(" observed %.0f%% of workload", effectiveCoverage)
+	rowCoverageSuffix := ""
+	if graphiteHandlerRows > 0 {
+		rowCoverage := float64(totalExplainRows) / float64(graphiteHandlerRows) * 100
+		if rowCoverage > 100 {
+			rowCoverage = 100
+		}
+		rowCoverageSuffix = fmt.Sprintf(" observed %.0f%% of row operations", rowCoverage)
 	}
 
 	for _, t := range tags {
@@ -318,14 +341,14 @@ func appendExplainExtra(findings []Finding, src LogSource, digestCoverage, expla
 		if s == nil || s.rows == 0 {
 			continue
 		}
-		pct := float64(s.rows) / float64(totalRows) * 100
+		pct := float64(s.rows) / float64(totalExplainRows) * 100
 		findings = append(findings, Finding{
 			ErrKey:   t.errKey,
 			Severity: SeverityWorkload,
 			Description: fmt.Sprintf("%s row cost %.0f%% (%d/%d digests)%s",
-				t.label, pct, s.digests, len(src.PFSExplainPlans), coverageSuffix),
+				t.label, pct, s.digests, len(src.PFSExplainPlans), rowCoverageSuffix),
 			Count: s.rows,
-			Total: totalRows,
+			Total: totalExplainRows,
 		})
 	}
 
