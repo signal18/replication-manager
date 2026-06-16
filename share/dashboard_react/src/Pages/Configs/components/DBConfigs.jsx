@@ -436,6 +436,7 @@ function DBConfigs({ selectedCluster, user }) {
           <MemoryPctEditor
             label='Shared Buffers'
             value={selectedCluster?.config?.provDbMemorySharedPct}
+            totalMemoryMB={selectedCluster?.config?.provDbMemory}
             isDisabled={user?.grants['proxy-config-flag'] == false}
             onSave={(value) => {
               setConfirmTitle('Confirm shared buffer memory allocation change?')
@@ -455,6 +456,7 @@ function DBConfigs({ selectedCluster, user }) {
           <MemoryPctEditor
             label='Per-Thread Buffers'
             value={selectedCluster?.config?.provDbMemoryThreadedPct}
+            totalMemoryMB={selectedCluster?.config?.provDbMemory}
             isDisabled={user?.grants['proxy-config-flag'] == false}
             onSave={(value) => {
               setConfirmTitle('Confirm per-thread memory allocation change?')

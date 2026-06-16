@@ -11,8 +11,10 @@ const COLORS = [
 
 const MIN_PCT_KEYS = ['aria', 'myisam']
 const MIN_PCT = 10
+const ALLOW_ZERO_KEYS = ['querycache']
+const MIN_STEP_MB = 128
 
-function MemoryPctEditor({ label, value, isDisabled, onSave }) {
+function MemoryPctEditor({ label, value, totalMemoryMB, isDisabled, onSave }) {
   const entries = useMemo(() => {
     if (!value) return []
     return value.split(',').map((part, i) => {
@@ -21,17 +23,29 @@ function MemoryPctEditor({ label, value, isDisabled, onSave }) {
     })
   }, [value])
 
+  const step = useMemo(() => {
+    if (!totalMemoryMB || totalMemoryMB <= 0) return 1
+    return Math.max(1, Math.round((MIN_STEP_MB / totalMemoryMB) * 100))
+  }, [totalMemoryMB])
+
   const [draft, setDraft] = useState(null)
   const items = draft || entries
   const allocated = items.reduce((s, e) => s + e.pct, 0)
   const free = 100 - allocated
 
+  const snapToStep = useCallback((val, key) => {
+    if (ALLOW_ZERO_KEYS.includes(key) && val < step) return 0
+    return Math.round(val / step) * step
+  }, [step])
+
   const handleChange = useCallback((idx, newVal) => {
     setDraft((prev) => {
       const base = prev || entries.map((e) => ({ ...e }))
-      return base.map((e, i) => (i === idx ? { ...e, pct: newVal } : e))
+      const key = base[idx].key
+      const snapped = snapToStep(newVal, key)
+      return base.map((e, i) => (i === idx ? { ...e, pct: snapped } : e))
     })
-  }, [entries])
+  }, [entries, snapToStep])
 
   const handleChangeEnd = useCallback(() => {
     if (!draft) return
@@ -50,18 +64,24 @@ function MemoryPctEditor({ label, value, isDisabled, onSave }) {
     return 100 - others
   }, [items])
 
+  const mbLabel = (pct) => {
+    if (!totalMemoryMB || totalMemoryMB <= 0) return ''
+    const mb = Math.round(totalMemoryMB * pct / 100)
+    return mb >= 1024 ? `${(mb / 1024).toFixed(1)}GB` : `${mb}MB`
+  }
+
   return (
     <Box w='100%'>
       <Flex align='center' mb={2} gap={2}>
         <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>{label}</Text>
         <Text fontSize='xs' fontWeight='bold' color={free === 0 ? 'green.500' : 'orange.500'}>
-          {free > 0 ? `${free}% free` : '100% allocated'}
+          {free > 0 ? `${free}% free (${mbLabel(free)})` : '100% allocated'}
         </Text>
       </Flex>
 
       <Flex h='20px' w='100%' borderRadius='md' overflow='hidden' mb={3} bg='gray.200'>
         {items.map((e) => (
-          <Tooltip key={e.key} label={`${e.key}: ${e.pct}%`} placement='top'>
+          <Tooltip key={e.key} label={`${e.key}: ${e.pct}% (${mbLabel(e.pct)})`} placement='top'>
             <Box
               h='100%'
               bg={e.color}
@@ -84,6 +104,7 @@ function MemoryPctEditor({ label, value, isDisabled, onSave }) {
               <Slider
                 min={min}
                 max={max}
+                step={step}
                 value={e.pct}
                 isDisabled={isDisabled}
                 onChange={(val) => handleChange(i, val)}
@@ -96,7 +117,9 @@ function MemoryPctEditor({ label, value, isDisabled, onSave }) {
                 </SliderTrack>
                 <SliderThumb boxSize={3} />
               </Slider>
-              <Text fontSize='xs' w='30px' textAlign='right' color='var(--text-color)'>{e.pct}%</Text>
+              <Text fontSize='xs' w='65px' textAlign='right' flexShrink={0} color='var(--text-color)'>
+                {e.pct}% {mbLabel(e.pct)}
+              </Text>
             </Flex>
           )
         })}
