@@ -1,5 +1,5 @@
 import { Box, Flex, Grid, GridItem, HStack, Stack, Text, VStack, Checkbox, Alert, AlertIcon, Divider, useDisclosure } from '@chakra-ui/react'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { HiChevronDown, HiChevronUp, HiQuestionMarkCircle, HiRefresh } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
 import RMButton from '../../components/RMButton'
@@ -245,6 +245,7 @@ function ResticRepositorySettings({
   )
   const [isStorageOpen, setIsStorageOpen] = useState(() => readStoredState('storage', false))
   const [isTaggingOpen, setIsTaggingOpen] = useState(() => readStoredState('tagging', false))
+  const [isLegacyOpen, setIsLegacyOpen] = useState(!(config?.backupResticAwsBucket || '').trim())
   const areAllSectionsOpen = isConnectionOpen && isStorageOpen && isTaggingOpen
 
   // Restic init modal state
@@ -280,6 +281,10 @@ function ResticRepositorySettings({
     : effectiveLegacyRepoPath
   const isAwsPrefixEmpty = isAws && awsBucket && !awsPrefix
   const isForceInitBlocked = initForce && ((isAwsPrefixEmpty && !confirmEmptyPrefix) || isSftp)
+
+  useEffect(() => {
+    setIsLegacyOpen(!awsBucket)
+  }, [awsBucket])
 
   const handleSettingChange = (setting, value, encodeValue = false) =>
     dispatch(
@@ -611,265 +616,340 @@ function ResticRepositorySettings({
               )}
 
               {archiveMode === 'restic-aws' && (
-                <Stack spacing={{ base: 1, md: 2 }}>
-                  <Grid
-                    className={styles.resticMountGrid}
-                    templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                    columnGap={3}
-                    rowGap={1}
-                    w='full'
-                  >
-                    <GridItem className={styles.rowLabel}>
-                      <HStack spacing={1} justify='space-between' width='full'>
-                        <Text>Backup restic aws access key id</Text>
-                        {h(ResticAwsAccessKeyIdHelp, 'Backup Restic AWS Access Key ID')}
-                      </HStack>
-                    </GridItem>
-                    <GridItem className={styles.valueCell}>
-                      <TextForm
-                        value={config?.backupResticAwsAccessKeyId}
-                        confirmTitle={`Confirm backup-restic-aws-access-key-id to `}
-                        className={styles.textbox}
-                        size='sm'
-                        onSave={(value) => handleSettingChange('backup-restic-aws-access-key-id', value)}
-                      />
-                    </GridItem>
-                  </Grid>
-
-                  <Grid
-                    className={styles.resticMountGrid}
-                    templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                    columnGap={3}
-                    rowGap={1}
-                    w='full'
-                  >
-                    <GridItem className={styles.rowLabel}>
-                      <HStack spacing={1} justify='space-between' width='full'>
-                        <Text>Backup restic aws access secret</Text>
-                        {h(ResticAwsAccessSecretHelp, 'Backup Restic AWS Access Secret')}
-                      </HStack>
-                    </GridItem>
-                    <GridItem className={styles.valueCell}>
-                      <TextForm
-                        value={config?.backupResticAwsAccessSecret}
-                        confirmTitle={`Confirm backup-restic-aws-access-secret to `}
-                        className={styles.textbox}
-                        size='sm'
-                        onSave={(value) => handleSettingChange('backup-restic-aws-access-secret', value, true)}
-                      />
-                    </GridItem>
-                  </Grid>
-
-                  <Grid
-                    className={styles.resticMountGrid}
-                    templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                    columnGap={3}
-                    rowGap={1}
-                    w='full'
-                  >
-                    <GridItem className={styles.rowLabel}>
-                      <HStack spacing={1} justify='space-between' width='full'>
-                        <Text>Backup restic aws region</Text>
-                        {h(ResticAwsRegionHelp, 'Backup Restic AWS Region')}
-                      </HStack>
-                    </GridItem>
-                    <GridItem className={styles.valueCell}>
-                      <TextForm
-                        value={config?.backupResticAwsRegion}
-                        confirmTitle={`Confirm backup-restic-aws-region to `}
-                        className={styles.textbox}
-                        size='sm'
-                        placeholder='us-east-1, eu-west-1, etc.'
-                        onSave={(value) => handleSettingChange('backup-restic-aws-region', value)}
-                      />
-                      <Text className={styles.helperText}>Empty uses AWS SDK default region resolution.</Text>
-                    </GridItem>
-                  </Grid>
-
-                  <Grid
-                    className={styles.resticMountGrid}
-                    templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                    columnGap={3}
-                    rowGap={1}
-                    w='full'
-                  >
-                    <GridItem className={styles.rowLabel}>
-                      <HStack spacing={1} justify='space-between' width='full'>
-                        <Text>Backup restic aws endpoint</Text>
-                        {h(ResticAwsEndpointHelp, 'Backup Restic AWS Endpoint')}
-                      </HStack>
-                    </GridItem>
-                    <GridItem className={styles.valueCell}>
-                      <TextForm
-                        value={config?.backupResticAwsEndpoint}
-                        confirmTitle={`Confirm backup-restic-aws-endpoint to `}
-                        className={styles.textbox}
-                        size='sm'
-                        placeholder='https://s3.amazonaws.com or https://minio.example.com'
-                        regexPattern='^https?://[A-Za-z0-9.-]+(?::\\d+)?(?:/.*)?$'
-                        onSave={(value) => handleSettingChange('backup-restic-aws-endpoint', value, true)}
-                      />
-                      <Text className={styles.helperText}>
-                        Optional custom S3 endpoint (http/https with host; leave empty for AWS). Do not use s3:// here.
-                      </Text>
-                    </GridItem>
-                  </Grid>
-
-                  <Grid
-                    className={styles.resticMountGrid}
-                    templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                    columnGap={3}
-                    rowGap={1}
-                    w='full'
-                  >
-                    <GridItem className={styles.rowLabel}>
-                      <HStack spacing={1} justify='space-between' width='full'>
-                        <Text>Backup restic aws bucket</Text>
-                        {h(ResticAwsBucketHelp, 'Backup Restic AWS Bucket')}
-                      </HStack>
-                    </GridItem>
-                    <GridItem className={styles.valueCell}>
-                      <TextForm
-                        value={config?.backupResticAwsBucket}
-                        confirmTitle={`Confirm backup-restic-aws-bucket to `}
-                        className={styles.textbox}
-                        size='sm'
-                        placeholder='bucket-name'
-                        regexPattern='^[^/\\\\]*$'
-                        onSave={(value) => handleSettingChange('backup-restic-aws-bucket', value)}
-                      />
-                      <Text className={styles.helperText}>Bucket name must not contain &apos;/&apos; or &apos;\\&apos;.</Text>
-                    </GridItem>
-                  </Grid>
-
-                  <Grid
-                    className={styles.resticMountGrid}
-                    templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                    columnGap={3}
-                    rowGap={1}
-                    w='full'
-                  >
-                    <GridItem className={styles.rowLabel}>
-                      <HStack spacing={1} justify='space-between' width='full'>
-                        <Text>Backup restic aws prefix</Text>
-                        {h(ResticAwsPrefixHelp, 'Backup Restic AWS Prefix')}
-                      </HStack>
-                    </GridItem>
-                    <GridItem className={styles.valueCell}>
-                      <TextForm
-                        value={config?.backupResticAwsPrefix}
-                        confirmTitle={`Confirm backup-restic-aws-prefix to `}
-                        className={styles.textbox}
-                        size='sm'
-                        placeholder='optional/prefix/path'
-                        onSave={(value) => handleSettingChange('backup-restic-aws-prefix', value, true)}
-                      />
-                      <Text className={styles.helperText}>Optional bucket prefix/path (no leading slash).</Text>
-                    </GridItem>
-                  </Grid>
-
-                  <Grid
-                    className={styles.resticMountGrid}
-                    templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                    columnGap={3}
-                    rowGap={1}
-                    w='full'
-                  >
-                    <GridItem className={styles.rowLabel}>
-                      <HStack spacing={1} justify='space-between' width='full'>
-                        <Text>Effective S3 repository</Text>
-                        {h(ResticEffectiveS3RepoHelp, 'Effective S3 Repository')}
-                      </HStack>
-                    </GridItem>
-                    <GridItem className={styles.valueCell}>
-                      <Text
-                        fontWeight='bold'
-                        fontSize='sm'
-                        fontFamily='monospace'
-                        bg='gray.100'
-                        p={2}
-                        borderRadius='md'
-                        wordBreak='break-all'
-                      >
-                        {awsRepoPath || 's3:<bucket>/<prefix>'}
-                      </Text>
-                      <Text className={styles.helperText}>
-                        Preview of the S3 repository path after applying append-cluster rules.
-                      </Text>
-                    </GridItem>
-                  </Grid>
-
-                  <Grid
-                    className={styles.resticMountGrid}
-                    templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                    columnGap={3}
-                    rowGap={1}
-                    w='full'
-                  >
-                    <GridItem className={styles.rowLabel}>
-                      <HStack spacing={1} justify='space-between' width='full'>
-                        <Text>Legacy repository URL (fallback)</Text>
-                        {h(ResticLegacyRepoUrlHelp, 'Legacy Repository URL (fallback)')}
-                      </HStack>
-                    </GridItem>
-                    <GridItem className={styles.valueCell}>
-                      <HStack width='100%' spacing={2}>
+                <Stack spacing={{ base: 2, md: 3 }}>
+                  {/* 1. Repository target */}
+                  <Box className={styles.subsectionHeader}>
+                    <Text className={styles.subsectionTitle}>Repository target</Text>
+                  </Box>
+                  <Stack spacing={{ base: 1, md: 2 }}>
+                    <Grid
+                      className={styles.resticMountGrid}
+                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                      columnGap={3}
+                      rowGap={1}
+                      w='full'
+                    >
+                      <GridItem className={styles.rowLabel}>
+                        <HStack spacing={1} justify='space-between' width='full'>
+                          <Text>Backup restic aws bucket</Text>
+                          {h(ResticAwsBucketHelp, 'Backup Restic AWS Bucket')}
+                        </HStack>
+                      </GridItem>
+                      <GridItem className={styles.valueCell}>
                         <TextForm
-                          value={config?.backupResticRepository}
-                          confirmTitle={`Confirm backup-restic-repository to `}
+                          value={config?.backupResticAwsBucket}
+                          confirmTitle={`Confirm backup-restic-aws-bucket to `}
                           className={styles.textbox}
                           size='sm'
-                          onSave={(value) => handleSettingChange('backup-restic-repository', value, true)}
+                          placeholder='bucket-name'
+                          regexPattern='^[^/\\\\]*$'
+                          onSave={(value) => handleSettingChange('backup-restic-aws-bucket', value)}
                         />
+                        <Text className={styles.helperText}>Bucket name must not contain &apos;/&apos; or &apos;\\&apos;.</Text>
+                      </GridItem>
+                    </Grid>
+
+                    <Grid
+                      className={styles.resticMountGrid}
+                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                      columnGap={3}
+                      rowGap={1}
+                      w='full'
+                    >
+                      <GridItem className={styles.rowLabel}>
+                        <HStack spacing={1} justify='space-between' width='full'>
+                          <Text>Backup restic aws prefix</Text>
+                          {h(ResticAwsPrefixHelp, 'Backup Restic AWS Prefix')}
+                        </HStack>
+                      </GridItem>
+                      <GridItem className={styles.valueCell}>
+                        <TextForm
+                          value={config?.backupResticAwsPrefix}
+                          confirmTitle={`Confirm backup-restic-aws-prefix to `}
+                          className={styles.textbox}
+                          size='sm'
+                          placeholder='optional/prefix/path'
+                          onSave={(value) => handleSettingChange('backup-restic-aws-prefix', value, true)}
+                        />
+                        <Text className={styles.helperText}>Optional bucket prefix/path (no leading slash).</Text>
+                      </GridItem>
+                    </Grid>
+
+                    <Grid
+                      className={styles.resticMountGrid}
+                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                      columnGap={3}
+                      rowGap={1}
+                      w='full'
+                    >
+                      <GridItem className={styles.rowLabel}>
+                        <HStack spacing={1} justify='space-between' width='full'>
+                          <Text>Backup restic repo append cluster</Text>
+                          {h(ResticRepoAppendClusterHelp, 'Restic Repo Append Cluster')}
+                        </HStack>
+                      </GridItem>
+                      <GridItem className={styles.valueCell}>
+                        <HStack spacing={2} align='center'>
+                          <RMSwitch
+                            isChecked={config?.backupResticRepoAppendCluster}
+                            isDisabled={user?.grants['cluster-settings'] == false}
+                            confirmTitle={'Confirm switch settings for backup-restic-repo-append-cluster?'}
+                            onChange={() => handleSwitchChange('backup-restic-repo-append-cluster')}
+                          />
+                        </HStack>
+                      </GridItem>
+                    </Grid>
+
+                    <Grid
+                      className={styles.resticMountGrid}
+                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                      columnGap={3}
+                      rowGap={1}
+                      w='full'
+                    >
+                      <GridItem className={styles.rowLabel}>
+                        <HStack spacing={1} justify='space-between' width='full'>
+                          <Text>Effective S3 repository</Text>
+                          {h(ResticEffectiveS3RepoHelp, 'Effective S3 Repository')}
+                        </HStack>
+                      </GridItem>
+                      <GridItem className={styles.valueCell}>
+                        <Text
+                          fontWeight='bold'
+                          fontSize='sm'
+                          fontFamily='monospace'
+                          bg='gray.100'
+                          p={2}
+                          borderRadius='md'
+                          wordBreak='break-all'
+                        >
+                          {awsRepoPath || 's3:<bucket>/<prefix>'}
+                        </Text>
+                        <Text className={styles.helperText}>
+                          Preview of the S3 repository path after applying append-cluster rules.
+                        </Text>
+                      </GridItem>
+                    </Grid>
+                  </Stack>
+
+                  {/* 2. Provider connection */}
+                  <Box className={styles.subsectionHeader}>
+                    <Text className={styles.subsectionTitle}>Provider connection</Text>
+                  </Box>
+                  <Stack spacing={{ base: 1, md: 2 }}>
+                    <Grid
+                      className={styles.resticMountGrid}
+                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                      columnGap={3}
+                      rowGap={1}
+                      w='full'
+                    >
+                      <GridItem className={styles.rowLabel}>
+                        <HStack spacing={1} justify='space-between' width='full'>
+                          <Text>Backup restic aws endpoint</Text>
+                          {h(ResticAwsEndpointHelp, 'Backup Restic AWS Endpoint')}
+                        </HStack>
+                      </GridItem>
+                      <GridItem className={styles.valueCell}>
+                        <TextForm
+                          value={config?.backupResticAwsEndpoint}
+                          confirmTitle={`Confirm backup-restic-aws-endpoint to `}
+                          className={styles.textbox}
+                          size='sm'
+                          placeholder='https://s3.amazonaws.com or https://minio.example.com'
+                          regexPattern='^https?://[A-Za-z0-9.-]+(?::\\d+)?(?:/.*)?$'
+                          onSave={(value) => handleSettingChange('backup-restic-aws-endpoint', value, true)}
+                        />
+                        <Text className={styles.helperText}>
+                          Optional custom S3 endpoint (http/https with host; leave empty for AWS). Do not use s3:// here.
+                        </Text>
+                      </GridItem>
+                    </Grid>
+
+                    <Grid
+                      className={styles.resticMountGrid}
+                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                      columnGap={3}
+                      rowGap={1}
+                      w='full'
+                    >
+                      <GridItem className={styles.rowLabel}>
+                        <HStack spacing={1} justify='space-between' width='full'>
+                          <Text>Backup restic aws region</Text>
+                          {h(ResticAwsRegionHelp, 'Backup Restic AWS Region')}
+                        </HStack>
+                      </GridItem>
+                      <GridItem className={styles.valueCell}>
+                        <TextForm
+                          value={config?.backupResticAwsRegion}
+                          confirmTitle={`Confirm backup-restic-aws-region to `}
+                          className={styles.textbox}
+                          size='sm'
+                          placeholder='us-east-1, eu-west-1, etc.'
+                          onSave={(value) => handleSettingChange('backup-restic-aws-region', value)}
+                        />
+                        <Text className={styles.helperText}>Empty uses AWS SDK default region resolution.</Text>
+                      </GridItem>
+                    </Grid>
+                  </Stack>
+
+                  {/* 3. Credentials */}
+                  <Box className={styles.subsectionHeader}>
+                    <Text className={styles.subsectionTitle}>Credentials</Text>
+                  </Box>
+                  <Stack spacing={{ base: 1, md: 2 }}>
+                    <Grid
+                      className={styles.resticMountGrid}
+                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                      columnGap={3}
+                      rowGap={1}
+                      w='full'
+                    >
+                      <GridItem className={styles.rowLabel}>
+                        <HStack spacing={1} justify='space-between' width='full'>
+                          <Text>Backup restic aws access key id</Text>
+                          {h(ResticAwsAccessKeyIdHelp, 'Backup Restic AWS Access Key ID')}
+                        </HStack>
+                      </GridItem>
+                      <GridItem className={styles.valueCell}>
+                        <TextForm
+                          value={config?.backupResticAwsAccessKeyId}
+                          confirmTitle={`Confirm backup-restic-aws-access-key-id to `}
+                          className={styles.textbox}
+                          size='sm'
+                          onSave={(value) => handleSettingChange('backup-restic-aws-access-key-id', value)}
+                        />
+                      </GridItem>
+                    </Grid>
+
+                    <Grid
+                      className={styles.resticMountGrid}
+                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                      columnGap={3}
+                      rowGap={1}
+                      w='full'
+                    >
+                      <GridItem className={styles.rowLabel}>
+                        <HStack spacing={1} justify='space-between' width='full'>
+                          <Text>Backup restic aws access secret</Text>
+                          {h(ResticAwsAccessSecretHelp, 'Backup Restic AWS Access Secret')}
+                        </HStack>
+                      </GridItem>
+                      <GridItem className={styles.valueCell}>
+                        <TextForm
+                          value={config?.backupResticAwsAccessSecret}
+                          confirmTitle={`Confirm backup-restic-aws-access-secret to `}
+                          className={styles.textbox}
+                          size='sm'
+                          onSave={(value) => handleSettingChange('backup-restic-aws-access-secret', value, true)}
+                        />
+                      </GridItem>
+                    </Grid>
+                    <Text className={styles.helperText}>
+                      Empty credentials fall back to the default AWS credential chain (environment variables, shared credentials file, or instance role).
+                    </Text>
+                  </Stack>
+
+                  {/* 4. Repository actions */}
+                  <Box className={styles.subsectionHeader}>
+                    <Text className={styles.subsectionTitle}>Repository initialization</Text>
+                  </Box>
+                  <Box className={styles.repositoryActionsBox}>
+                    <Stack spacing={2}>
+                      <Text className={styles.helperText}>
+                        Initialize the effective S3 repository shown in <strong>Repository target</strong> above.
+                      </Text>
+                      <Box>
                         <RMButton
                           size='sm'
                           colorScheme='blue'
                           onClick={handleResticInit}
                           isDisabled={user?.grants['cluster-settings'] === false}
-                          title="Re-initialize S3 repository"
                         >
-                          <HiRefresh />
+                          Initialize repository
                         </RMButton>
-                        {h(
-                          'Re-initialize the S3/MinIO Restic repository. This creates a new repository configuration at the specified S3 bucket/path. Force re-initialization deletes all objects under the configured bucket/prefix. Ensure AWS credentials and bucket path are correct before initializing.',
-                          'Re-initialize S3 Repository'
-                        )}
-                      </HStack>
-                      <Text className={styles.helperText}>
-                        Used only when AWS is enabled and the S3 bucket field is empty. For custom S3 services use
-                        s3:https://server:port/bucket in this field.
-                      </Text>
-                    </GridItem>
-                  </Grid>
+                      </Box>
+                    </Stack>
+                  </Box>
+
+                  {/* 5. Advanced compatibility fallback */}
+                  <HStack
+                    as='button'
+                    type='button'
+                    spacing={2}
+                    onClick={() => setIsLegacyOpen((prev) => !prev)}
+                    aria-expanded={isLegacyOpen}
+                    aria-controls='restic-repo-legacy-fallback'
+                    className={styles.subsectionAdvancedHeader}
+                  >
+                    <Text className={styles.subsectionAdvancedTitle}>Advanced compatibility fallback</Text>
+                    <Box className={styles.panelChevron}>{isLegacyOpen ? <HiChevronUp /> : <HiChevronDown />}</Box>
+                  </HStack>
+                  {isLegacyOpen && (
+                    <Box id='restic-repo-legacy-fallback' className={styles.subsectionAdvancedBody}>
+                      <Stack spacing={{ base: 1, md: 2 }}>
+                        <Grid
+                          className={styles.resticMountGrid}
+                          templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                          columnGap={3}
+                          rowGap={1}
+                          w='full'
+                        >
+                          <GridItem className={styles.rowLabel}>
+                            <HStack spacing={1} justify='space-between' width='full'>
+                              <Text>Legacy repository URL (fallback)</Text>
+                              {h(ResticLegacyRepoUrlHelp, 'Legacy Repository URL (fallback)')}
+                            </HStack>
+                          </GridItem>
+                          <GridItem className={styles.valueCell}>
+                            <TextForm
+                              value={config?.backupResticRepository}
+                              confirmTitle={`Confirm backup-restic-repository to `}
+                              className={styles.textbox}
+                              size='sm'
+                              onSave={(value) => handleSettingChange('backup-restic-repository', value, true)}
+                            />
+                            <Text className={styles.helperText}>
+                              Used only when the S3 bucket field is empty. For custom S3 services, use
+                              s3:https://server:port/bucket in this field. New configurations should prefer the
+                              dedicated bucket/prefix/endpoint/region fields above.
+                            </Text>
+                          </GridItem>
+                        </Grid>
+                      </Stack>
+                    </Box>
+                  )}
                 </Stack>
               )}
 
               {archiveMode !== 'none' && (
                 <Stack spacing={{ base: 1, md: 2 }}>
-                  <Grid
-                    className={styles.resticMountGrid}
-                    templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                    columnGap={3}
-                    rowGap={1}
-                    w='full'
-                  >
-                    <GridItem className={styles.rowLabel}>
-                      <HStack spacing={1} justify='space-between' width='full'>
-                        <Text>Backup restic repo append cluster</Text>
-                        {h(ResticRepoAppendClusterHelp, 'Restic Repo Append Cluster')}
-                      </HStack>
-                    </GridItem>
-                    <GridItem className={styles.valueCell}>
-                      <HStack spacing={2} align='center'>
-                        <RMSwitch
-                          isChecked={config?.backupResticRepoAppendCluster}
-                          isDisabled={user?.grants['cluster-settings'] == false}
-                          confirmTitle={'Confirm switch settings for backup-restic-repo-append-cluster?'}
-                          onChange={() => handleSwitchChange('backup-restic-repo-append-cluster')}
-                        />
-                      </HStack>
-                    </GridItem>
-                  </Grid>
+                  {archiveMode !== 'restic-aws' && (
+                    <Grid
+                      className={styles.resticMountGrid}
+                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                      columnGap={3}
+                      rowGap={1}
+                      w='full'
+                    >
+                      <GridItem className={styles.rowLabel}>
+                        <HStack spacing={1} justify='space-between' width='full'>
+                          <Text>Backup restic repo append cluster</Text>
+                          {h(ResticRepoAppendClusterHelp, 'Restic Repo Append Cluster')}
+                        </HStack>
+                      </GridItem>
+                      <GridItem className={styles.valueCell}>
+                        <HStack spacing={2} align='center'>
+                          <RMSwitch
+                            isChecked={config?.backupResticRepoAppendCluster}
+                            isDisabled={user?.grants['cluster-settings'] == false}
+                            confirmTitle={'Confirm switch settings for backup-restic-repo-append-cluster?'}
+                            onChange={() => handleSwitchChange('backup-restic-repo-append-cluster')}
+                          />
+                        </HStack>
+                      </GridItem>
+                    </Grid>
+                  )}
 
                   <Grid
                     className={styles.resticMountGrid}
