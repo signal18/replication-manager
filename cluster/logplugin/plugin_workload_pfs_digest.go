@@ -121,7 +121,7 @@ func fetchQueriesSinceTruncate(src LogSource) int64 {
 	fromMinutes := int(elapsed.Minutes()) + 1
 	from := fmt.Sprintf("-%dmin", fromMinutes)
 
-	target := fmt.Sprintf("integral(nonNegativeDerivative(mysql.%s.mysql_global_status_queries))",
+	target := fmt.Sprintf("integral(keepLastValue(nonNegativeDerivative(mysql.%s.mysql_global_status_queries)))",
 		src.GraphiteHostname)
 
 	points, err := FetchGraphiteMetric(src.GraphiteAPIURL, target, from, "now")
@@ -154,7 +154,7 @@ func fetchHandlerRowsSinceTruncate(src LogSource) int64 {
 	fromMinutes := int(elapsed.Minutes()) + 1
 	from := fmt.Sprintf("-%dmin", fromMinutes)
 
-	target := fmt.Sprintf("integral(nonNegativeDerivative(sumSeries(mysql.%s.mysql_global_status_handler_read_*)))",
+	target := fmt.Sprintf("integral(sumSeries(keepLastValue(nonNegativeDerivative(mysql.%s.mysql_global_status_handler_read_*))))",
 		src.GraphiteHostname)
 
 	points, err := FetchGraphiteMetric(src.GraphiteAPIURL, target, from, "now")
