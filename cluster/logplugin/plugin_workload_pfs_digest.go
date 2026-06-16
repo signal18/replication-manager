@@ -18,6 +18,7 @@ package logplugin
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -152,43 +153,53 @@ func appendExplainCoverage(findings []Finding, src LogSource) []Finding {
 	return findings
 }
 
-// appendExplainFullScan reports the percentage of queries that have a
-// full table scan (type=ALL) at any position in the EXPLAIN plan.
-// Uses exec_count weighting so a full-scan query running 10000 times
-// counts more than one running 10 times.
+// appendExplainFullScan computes the cost of full table scans as a
+// fraction of total row operations. For each EXPLAIN plan step,
+// rows × exec_count gives the estimated row work. Steps with type=ALL
+// are full scans. The ratio shows how much of the total row work is
+// attributable to full scans.
 func appendExplainFullScan(findings []Finding, src LogSource) []Finding {
 	if len(src.PFSExplainPlans) == 0 {
 		return findings
 	}
 
-	var fullScanExec, totalExec int64
+	var fullScanRows, totalRows int64
 	fullScanDigests := 0
 
 	for _, e := range src.PFSExplainPlans {
 		hasFullScan := false
 		for _, r := range e.Plan {
+			rows := parseRows(r.Rows)
+			rowWork := rows * e.ExecCount
+			totalRows += rowWork
 			if r.Type == "ALL" {
+				fullScanRows += rowWork
 				hasFullScan = true
-				break
 			}
 		}
-		totalExec += e.ExecCount
 		if hasFullScan {
-			fullScanExec += e.ExecCount
 			fullScanDigests++
 		}
 	}
 
-	if fullScanDigests > 0 {
+	if fullScanDigests > 0 && totalRows > 0 {
 		findings = append(findings, Finding{
 			ErrKey:   "WTAG0210",
 			Severity: SeverityWorkload,
-			Description: fmt.Sprintf("Full scan queries %d/%d digests (type=ALL in EXPLAIN)",
+			Description: fmt.Sprintf("Full scan row cost %d/%d digests (type=ALL in EXPLAIN)",
 				fullScanDigests, len(src.PFSExplainPlans)),
-			Count: fullScanExec,
-			Total: totalExec,
+			Count: fullScanRows,
+			Total: totalRows,
 		})
 	}
 
 	return findings
+}
+
+func parseRows(s string) int64 {
+	if s == "" {
+		return 0
+	}
+	n, _ := strconv.ParseInt(s, 10, 64)
+	return n
 }
