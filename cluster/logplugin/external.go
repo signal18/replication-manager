@@ -131,6 +131,7 @@ type StdioPFSQuery struct {
 	RowsSent      int64   `json:"rows_sent"`
 	RowsSentAvg   int64   `json:"rows_sent_avg"`
 	RowsScanned   int64   `json:"rows_scanned"`
+	SortRows      int64   `json:"sort_rows"`
 	PlanFullScan  string  `json:"plan_full_scan"` // "YES" / "NO"
 	PlanTmpDisk   int64   `json:"plan_tmp_disk"`
 	PlanTmpMem    int64   `json:"plan_tmp_mem"`

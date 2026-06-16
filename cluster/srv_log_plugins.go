@@ -658,6 +658,7 @@ func snapshotPFSQueries(server *ServerMonitor) []logplugin.StdioPFSQuery {
 			RowsSent:      q.Rows_sent,
 			RowsSentAvg:   q.Rows_sent_avg,
 			RowsScanned:   q.Rows_scanned,
+			SortRows:      q.Sort_rows,
 			PlanFullScan:  q.Plan_full_scan,
 			PlanTmpDisk:   q.Plan_tmp_disk,
 			PlanTmpMem:    q.Plan_tmp_mem,

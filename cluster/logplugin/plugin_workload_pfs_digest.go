@@ -61,6 +61,7 @@ func (p *WorkloadPFSDigestPlugin) Evaluate(src LogSource) EvaluateResult {
 	findings = appendExplainAccessType(findings, src, graphiteHandlerRows)
 	findings = appendExplainExtra(findings, src, graphiteHandlerRows)
 	findings = appendDigestTmpDisk(findings, src, digestCoverage)
+	findings = appendDigestSortRows(findings, src, graphiteHandlerRows)
 
 	return EvaluateResult{
 		Findings:     findings,
@@ -409,6 +410,46 @@ func appendDigestTmpDisk(findings []Finding, src LogSource, digestCoverage float
 			Total: totalExec,
 		})
 	}
+
+	return findings
+}
+
+func appendDigestSortRows(findings []Finding, src LogSource, graphiteHandlerRows int64) []Finding {
+	if len(src.PFSQueries) == 0 {
+		return findings
+	}
+
+	var totalSortRows int64
+	sortDigests := 0
+
+	for _, q := range src.PFSQueries {
+		if q.SortRows > 0 {
+			totalSortRows += q.SortRows
+			sortDigests++
+		}
+	}
+
+	if totalSortRows <= 0 {
+		return findings
+	}
+
+	rowCoverageSuffix := ""
+	if graphiteHandlerRows > 0 {
+		pct := float64(totalSortRows) / float64(graphiteHandlerRows) * 100
+		if pct > 100 {
+			pct = 100
+		}
+		rowCoverageSuffix = fmt.Sprintf(" %.0f%% of row operations", pct)
+	}
+
+	findings = append(findings, Finding{
+		ErrKey:   "WTAG0240",
+		Severity: SeverityWorkload,
+		Description: fmt.Sprintf("Sorted rows (%d/%d digests)%s",
+			sortDigests, len(src.PFSQueries), rowCoverageSuffix),
+		Count: totalSortRows,
+		Total: graphiteHandlerRows,
+	})
 
 	return findings
 }

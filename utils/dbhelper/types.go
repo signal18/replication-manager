@@ -85,6 +85,7 @@ type PFSQuery struct {
 	Rows_sent        int64           `json:"rowsSent"`
 	Rows_sent_avg    int64           `json:"rowsSentAvg"`
 	Rows_scanned     int64           `json:"rowsScanned"`
+	Sort_rows        int64           `json:"sortRows"`
 	Value            string          `json:"value"`
 }
 
