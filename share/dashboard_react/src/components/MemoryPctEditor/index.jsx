@@ -120,7 +120,7 @@ function MemoryPctEditor({ label, value, totalMemoryMB, isDisabled, onSave }) {
         borderRadius='md'
         overflow='visible'
         bg='gray.200'
-        cursor={isDisabled ? 'default' : 'col-resize'}
+        cursor='default'
         userSelect='none'
       >
         <Flex h='100%' w='100%' borderRadius='md' overflow='hidden'>
