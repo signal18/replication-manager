@@ -3536,6 +3536,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetDBCores(value)
 	case "prov-db-memory":
 		mycluster.SetDBMemorySize(value)
+	case "prov-db-memory-shared-pct":
+		mycluster.Conf.ProvMemSharedPct = value
+	case "prov-db-memory-threaded-pct":
+		mycluster.Conf.ProvMemThreadedPct = value
 	case "prov-db-disk-iops":
 		mycluster.SetDBDiskIOPS(value)
 	case "prov-db-max-connections":
