@@ -1,0 +1,41 @@
+{
+  "description": "Slow Query Regression — WARN0301\n\nCompares current slow-log average latency against the PFS historical baseline. Fires when current_avg_ms / pfs_avg_ms >= regression-factor (default 3x). Up to 5 regressions reported per tick.",
+  "prerequisites": [
+    {
+      "config_key": "monitoring-performance-schema-queries",
+      "description": "Performance Schema query digest monitoring must be enabled for PFS-based regression detection (monitoring-performance-schema-queries=true)"
+    }
+  ],
+  "config_keys": [
+    {
+      "key": "timeframe-hours",
+      "label": "Timeframe (hours)",
+      "type": "int",
+      "default": "1",
+      "min": 1,
+      "max": 1440,
+      "step": 1,
+      "help": "Only slow log events within this rolling window are inspected."
+    },
+    {
+      "key": "regression-factor",
+      "label": "Regression factor (x)",
+      "type": "float",
+      "default": "3.0",
+      "min": 1.0,
+      "max": 20.0,
+      "step": 0.5,
+      "help": "A query is flagged when its current slow-log average latency is this many times higher than its PFS historical average."
+    },
+    {
+      "key": "min-executions",
+      "label": "Min PFS executions for baseline",
+      "type": "int",
+      "default": "5",
+      "min": 1,
+      "max": 10000,
+      "step": 1,
+      "help": "Query digests with fewer historical executions in PFS are excluded — not enough data for reliable baseline."
+    }
+  ]
+}

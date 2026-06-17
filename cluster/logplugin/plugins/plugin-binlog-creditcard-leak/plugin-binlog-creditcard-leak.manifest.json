@@ -1,0 +1,26 @@
+{
+  "description": "Binlog Credit Card Leak — WARN0311\n\nScans binlog QUERY events for potential credit card PANs using regex + Luhn algorithm validation. Supports Visa, Mastercard, Amex, Discover, UnionPay. PANs are masked in findings.",
+  "prerequisites": [],
+  "config_keys": [
+    {
+      "key": "timeframe-hours",
+      "label": "Timeframe (hours)",
+      "type": "int",
+      "default": "1",
+      "min": 1,
+      "max": 1440,
+      "step": 1,
+      "help": "Only binlog events within this rolling window are scanned."
+    },
+    {
+      "key": "max-findings",
+      "label": "Max findings per evaluation",
+      "type": "int",
+      "default": "10",
+      "min": 1,
+      "max": 100,
+      "step": 1,
+      "help": "Caps the number of findings emitted in a single monitoring tick."
+    }
+  ]
+}

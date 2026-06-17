@@ -1,0 +1,41 @@
+{
+  "description": "Full Table Scan Spike — WARN0304\n\nReads performance_schema digest stats and fires when both:\n- full_scan_exec / total_exec >= scan-ratio-threshold (default 30%)\n- full_scan_exec >= min-full-scan-count (default 10)\n\nIgnores digests with fewer than min-exec-count executions.",
+  "prerequisites": [
+    {
+      "config_key": "monitoring-performance-schema-queries",
+      "description": "Performance Schema query digest monitoring must be enabled (monitoring-performance-schema-queries=true)"
+    }
+  ],
+  "config_keys": [
+    {
+      "key": "scan-ratio-threshold",
+      "label": "Full-scan ratio threshold",
+      "type": "float",
+      "default": "0.3",
+      "min": 0.05,
+      "max": 1.0,
+      "step": 0.05,
+      "help": "Fraction of total high-frequency query executions that must use a full table scan to fire."
+    },
+    {
+      "key": "min-full-scan-count",
+      "label": "Min full-scan count",
+      "type": "int",
+      "default": "10",
+      "min": 1,
+      "max": 10000,
+      "step": 1,
+      "help": "Absolute minimum number of full-scan executions required before firing."
+    },
+    {
+      "key": "min-exec-count",
+      "label": "Min execution count",
+      "type": "int",
+      "default": "5",
+      "min": 1,
+      "max": 10000,
+      "step": 1,
+      "help": "Query digests with fewer total executions are ignored."
+    }
+  ]
+}

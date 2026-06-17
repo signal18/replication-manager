@@ -1,0 +1,5 @@
+{
+  "description": "InnoDB Corruption Detector — WARN0300\n\nScans the error log for InnoDB corruption indicators in the last 24 hours. Detected keywords: corruption, corrupted, Database page corruption, checksum mismatch, etc.",
+  "prerequisites": [],
+  "config_keys": []
+}

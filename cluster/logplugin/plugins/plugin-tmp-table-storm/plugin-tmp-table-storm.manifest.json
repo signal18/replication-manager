@@ -1,0 +1,41 @@
+{
+  "description": "Temp Table Disk Storm — WARN0306\n\nReads PFS to detect queries creating on-disk temporary tables. Fires when:\n- On-disk tmp count >= disk-tmp-threshold (default 20), or\n- disk_tmp / (disk_tmp + mem_tmp) >= ratio-threshold (default 20%)\n\nCommon causes: missing indexes on GROUP BY/ORDER BY columns, or tmp_table_size too small.",
+  "prerequisites": [
+    {
+      "config_key": "monitoring-performance-schema-queries",
+      "description": "Performance Schema query digest monitoring must be enabled (monitoring-performance-schema-queries=true)"
+    }
+  ],
+  "config_keys": [
+    {
+      "key": "disk-tmp-threshold",
+      "label": "On-disk tmp table threshold",
+      "type": "int",
+      "default": "20",
+      "min": 1,
+      "max": 10000,
+      "step": 1,
+      "help": "Fires when total count of PFS queries creating on-disk temporary tables reaches this value."
+    },
+    {
+      "key": "ratio-threshold",
+      "label": "Disk/total tmp ratio threshold",
+      "type": "float",
+      "default": "0.2",
+      "min": 0.05,
+      "max": 1.0,
+      "step": 0.05,
+      "help": "Fires when fraction of temporary tables spilling to disk exceeds this ratio."
+    },
+    {
+      "key": "min-exec-count",
+      "label": "Min execution count",
+      "type": "int",
+      "default": "3",
+      "min": 1,
+      "max": 10000,
+      "step": 1,
+      "help": "Query digests with fewer total executions are ignored."
+    }
+  ]
+}

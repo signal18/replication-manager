@@ -1,0 +1,5 @@
+{
+  "description": "Local Infile Security — SEC0102\n\nChecks whether local_infile is enabled, which allows clients to read server-side files via LOAD DATA LOCAL INFILE.",
+  "prerequisites": [],
+  "config_keys": []
+}

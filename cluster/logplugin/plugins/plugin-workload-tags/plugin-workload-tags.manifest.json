@@ -1,0 +1,5 @@
+{
+  "description": "Workload Feature Tags — WTAG0001+\n\nDetects MariaDB feature usage from SHOW GLOBAL STATUS Feature_* counters and handler statistics. Produces tags for: CTE, window functions, JSON, dynamic columns, full-text search, GIS, subqueries, triggers, XML, system versioning, and handler-based access patterns.",
+  "prerequisites": [],
+  "config_keys": []
+}

@@ -330,6 +330,46 @@ type LogPluginWithDefaultSeverity interface {
 	DefaultSeverity() Severity
 }
 
+// PluginManifest describes a plugin's metadata, config schema, and prerequisites
+// in a format suitable for the frontend. External plugins load this from a
+// .manifest.json sidecar; built-in plugins may implement LogPluginWithManifest.
+type PluginManifest struct {
+	Description   string                `json:"description"`
+	Tier          string                `json:"tier,omitempty"` // "free", "pro", "enterprise" — empty defaults to "free"
+	Prerequisites []ManifestPrereq      `json:"prerequisites"`
+	ConfigKeys    []ManifestConfigKey   `json:"config_keys"`
+}
+
+type ManifestPrereq struct {
+	ConfigKey   string `json:"config_key"`
+	Description string `json:"description"`
+}
+
+type ManifestConfigKey struct {
+	Key     string          `json:"key"`
+	Label   string          `json:"label"`
+	Type    string          `json:"type"` // int, float, text, bool, enum
+	Default string          `json:"default"`
+	Help    string          `json:"help,omitempty"`
+	Min     *float64        `json:"min,omitempty"`
+	Max     *float64        `json:"max,omitempty"`
+	Step    *float64        `json:"step,omitempty"`
+	Options []ManifestEnumOption `json:"options,omitempty"`
+}
+
+type ManifestEnumOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+// LogPluginWithManifest is an optional extension of LogPlugin.
+// Plugins that carry a manifest allow the API to serve config schema
+// and descriptions to the frontend without hardcoding.
+type LogPluginWithManifest interface {
+	LogPlugin
+	Manifest() *PluginManifest
+}
+
 // LogPlugin is the interface every log-tailer plugin must implement.
 type LogPlugin interface {
 	Name() string

@@ -1,0 +1,5 @@
+{
+  "description": "Security Score: Auth\n\nComputes binary pass/fail security score checks for authentication configuration.",
+  "prerequisites": [],
+  "config_keys": []
+}

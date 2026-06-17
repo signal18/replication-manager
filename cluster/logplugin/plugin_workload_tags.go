@@ -21,9 +21,8 @@ import (
 	"strings"
 )
 
-func init() {
-	Register(&WorkloadTagsPlugin{})
-}
+// Built-in registration disabled — now shipped as external plugin plugin-workload-tags.
+// func init() { Register(&WorkloadTagsPlugin{}) }
 
 // WorkloadTagsPlugin implements LogPlugin.
 type WorkloadTagsPlugin struct{}

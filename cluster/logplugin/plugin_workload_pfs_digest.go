@@ -23,9 +23,8 @@ import (
 	"time"
 )
 
-func init() {
-	Register(&WorkloadPFSDigestPlugin{})
-}
+// Built-in registration disabled — now shipped as external plugin plugin-workload-pfs-digest.
+// func init() { Register(&WorkloadPFSDigestPlugin{}) }
 
 type WorkloadPFSDigestPlugin struct{}
 

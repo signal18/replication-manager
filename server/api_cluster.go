@@ -35,6 +35,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/cluster/configurator"
+	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dockerhelper"
@@ -6456,9 +6457,10 @@ func (repman *ReplicationManager) handlerMuxClusterPlugins(w http.ResponseWriter
 	}
 
 	type PluginInfo struct {
-		Name    string            `json:"name"`
-		Enabled bool              `json:"enabled"`
-		Config  map[string]string `json:"config"`
+		Name     string                  `json:"name"`
+		Enabled  bool                    `json:"enabled"`
+		Config   map[string]string       `json:"config"`
+		Manifest *logplugin.PluginManifest `json:"manifest,omitempty"`
 	}
 
 	plugins := mycluster.PluginRegistry().All()
@@ -6475,11 +6477,15 @@ func (repman *ReplicationManager) handlerMuxClusterPlugins(w http.ResponseWriter
 		if v, ok := cfg["enabled"]; ok {
 			enabled = v != "false"
 		}
-		result = append(result, PluginInfo{
+		info := PluginInfo{
 			Name:    p.Name(),
 			Enabled: enabled,
 			Config:  cfg,
-		})
+		}
+		if mp, ok := p.(logplugin.LogPluginWithManifest); ok {
+			info.Manifest = mp.Manifest()
+		}
+		result = append(result, info)
 	}
 
 	e := json.NewEncoder(w)

@@ -1,0 +1,20 @@
+{
+  "description": "Weak Authentication — SEC0101\n\nAudits mysql.user for accounts using weak or deprecated authentication plugins (mysql_native_password, mysql_old_password). Safe plugins: ed25519, caching_sha2_password, auth_gssapi, unix_socket, parsec.",
+  "prerequisites": [],
+  "config_keys": [
+    {
+      "key": "ignored-users",
+      "label": "Ignored users",
+      "type": "text",
+      "default": "",
+      "help": "Comma-separated list of user@host pairs or bare usernames to exclude from checks."
+    },
+    {
+      "key": "include-empty",
+      "label": "Flag empty-plugin accounts",
+      "type": "bool",
+      "default": "true",
+      "help": "When enabled, accounts with empty authentication_string and no explicit plugin are also flagged as weak auth."
+    }
+  ]
+}

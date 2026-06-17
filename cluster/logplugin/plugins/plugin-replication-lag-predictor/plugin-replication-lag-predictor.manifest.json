@@ -1,0 +1,26 @@
+{
+  "description": "Replication Lag Predictor — WARN0303\n\nDetects DML write bursts in the slow log before lag appears in seconds_behind_master. Fires when DML count in window / window-mins >= write-rate-threshold queries/min.",
+  "prerequisites": [],
+  "config_keys": [
+    {
+      "key": "window-mins",
+      "label": "Observation window (minutes)",
+      "type": "int",
+      "default": "5",
+      "min": 1,
+      "max": 1440,
+      "step": 1,
+      "help": "Slow log entries older than this window are excluded from the DML rate calculation."
+    },
+    {
+      "key": "write-rate-threshold",
+      "label": "DML write rate threshold (q/min)",
+      "type": "int",
+      "default": "50",
+      "min": 1,
+      "max": 10000,
+      "step": 1,
+      "help": "Fires when DML statements appear in the slow log at this rate or higher."
+    }
+  ]
+}

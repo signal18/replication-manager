@@ -1,0 +1,31 @@
+{
+  "description": "Metadata Lock Contention — WARN0305\n\nRequires the MariaDB METADATA_LOCK_INFO plugin. Fires when:\n- Any single MDL wait >= lock-wait-ms-threshold ms (default 5000ms), or\n- Total concurrent MDL waits >= lock-count-threshold (default 3)",
+  "prerequisites": [
+    {
+      "config_key": "monitoring-processlist",
+      "description": "processlist monitoring must be enabled (monitoring-processlist=true)"
+    }
+  ],
+  "config_keys": [
+    {
+      "key": "lock-wait-ms-threshold",
+      "label": "Lock wait threshold (ms)",
+      "type": "int",
+      "default": "5000",
+      "min": 100,
+      "max": 300000,
+      "step": 100,
+      "help": "Any single metadata lock wait longer than this value fires. MDL waits block all concurrent DML on the affected table."
+    },
+    {
+      "key": "lock-count-threshold",
+      "label": "Concurrent lock wait threshold",
+      "type": "int",
+      "default": "3",
+      "min": 1,
+      "max": 10000,
+      "step": 1,
+      "help": "If no single wait exceeds the duration threshold but total concurrent MDL waits exceed this count, fires."
+    }
+  ]
+}

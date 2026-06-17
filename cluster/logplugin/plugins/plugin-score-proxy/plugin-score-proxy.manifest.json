@@ -1,0 +1,5 @@
+{
+  "description": "Security Score: Proxy\n\nComputes binary pass/fail security score checks for proxy security.",
+  "prerequisites": [],
+  "config_keys": []
+}
