@@ -1,0 +1,5 @@
+{
+  "description": "Security Score: LTS\n\nComputes pass/fail check for whether the database version is a supported LTS release.",
+  "prerequisites": [],
+  "config_keys": []
+}

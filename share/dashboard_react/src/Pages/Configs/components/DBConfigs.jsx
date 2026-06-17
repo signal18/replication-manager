@@ -1,5 +1,5 @@
-import { Alert, AlertIcon, Box, Button, Flex, HStack, Text, VStack } from '@chakra-ui/react'
-import React, { useEffect, useState } from 'react'
+import { Alert, AlertIcon, Box, Button, Flex, HStack, Text, VStack, Slider, SliderTrack, SliderFilledTrack, SliderThumb, Tooltip } from '@chakra-ui/react'
+import React, { useEffect, useState, useCallback } from 'react'
 import RMSwitch from '../../../components/RMSwitch'
 import TableType2 from '../../../components/TableType2'
 import styles from '../styles.module.scss'
@@ -23,7 +23,54 @@ import modalStyles from '../../../components/Modals/styles.module.scss'
 
 import PreservedVariablesEditor from '../../../components/PreservedVariablesEditor'
 import ConfigFilesPanel from '../../../components/ConfigFilesPanel'
+import MemoryPctEditor from '../../../components/MemoryPctEditor'
 import { convertSize } from '../../../utility/common'
+
+function DBUSlider({ value, isDisabled, onChange }) {
+  const [draft, setDraft] = useState(null)
+  const [showTooltip, setShowTooltip] = useState(false)
+  const current = draft !== null ? draft : value
+
+  const formatDBU = useCallback((dbu) => {
+    const mem = dbu * 4096
+    const memLabel = mem >= 1024 ? `${mem / 1024}GB` : `${mem}MB`
+    return `${dbu} DBU — ${dbu} cores, ${memLabel} mem, ${dbu * 40}GB disk, ${dbu * 1000} IO/s`
+  }, [])
+
+  return (
+    <Box w='100%'>
+      <Flex justify='space-between' mb={1}>
+        <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>Database Units (DBU)</Text>
+        <Text fontSize='sm' fontWeight='semibold' color='var(--text-color)'>{formatDBU(current)}</Text>
+      </Flex>
+      <Slider
+        min={1}
+        max={512}
+        step={1}
+        value={current}
+        isDisabled={isDisabled}
+        onChange={(v) => setDraft(v)}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        onChangeEnd={(v) => {
+          setDraft(null)
+          if (v !== value && onChange) onChange(v)
+        }}
+      >
+        <SliderTrack h='8px' borderRadius='full' bg='gray.200'>
+          <SliderFilledTrack bg='blue.400' />
+        </SliderTrack>
+        <Tooltip label={formatDBU(current)} placement='top' isOpen={showTooltip || draft !== null} hasArrow>
+          <SliderThumb boxSize={5} bg='blue.500' />
+        </Tooltip>
+      </Slider>
+      <Flex justify='space-between' mt={1}>
+        <Text fontSize='9px' color='gray.500'>1 DBU</Text>
+        <Text fontSize='9px' color='gray.500'>512 DBU</Text>
+      </Flex>
+    </Box>
+  )
+}
 
 function DBConfigs({ selectedCluster, user }) {
   const [replicationTags, setReplicationTags] = useState([])
@@ -318,11 +365,36 @@ function DBConfigs({ selectedCluster, user }) {
     {
       key: 'Resources',
       value: (
-        <Flex className={styles.resources}>
+        <Flex direction='column' gap={4} w='100%'>
+          <DBUSlider
+            isDisabled={user?.grants['proxy-config-flag'] == false}
+            value={Math.ceil(Math.max(
+              (parseFloat(selectedCluster?.config?.provDbCpuCores) || 1),
+              (parseFloat(convertSize(selectedCluster?.config?.provDbMemory,"M","M")) || 4096) / 4096,
+              (parseFloat(convertSize(selectedCluster?.config?.provDbDiskSize,"G","G")) || 40) / 40,
+              (parseFloat(selectedCluster?.config?.provDbDiskIops) || 1000) / 1000
+            ))}
+            onChange={(dbu) => {
+              const mem = dbu * 4096
+              const disk = dbu * 40
+              const iops = dbu * 1000
+              setConfirmTitle(`Confirm DBU change to ${dbu} (${dbu} cores, ${mem >= 1024 ? (mem/1024) + 'GB' : mem + 'MB'} mem, ${disk}GB disk, ${iops} IO/s)`)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () => {
+                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-cpu-cores', value: dbu }))
+                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-memory', value: mem }))
+                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-disk-size', value: disk }))
+                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-disk-iops', value: iops }))
+                }
+              )
+            }}
+          />
+          <Flex className={styles.resources} flexWrap='wrap'>
           <Gauge
             isDisabled={user?.grants['proxy-config-flag'] == false}
-            minValue={1}
-            maxValue={25600}
+            minValue={4096}
+            maxValue={1048576}
             value={convertSize(selectedCluster?.config?.provDbMemory,"M","M")}
             text={'Memory'}
             width={150}
@@ -332,7 +404,7 @@ function DBConfigs({ selectedCluster, user }) {
             step={256}
             appendTextToValue='MB'
             handleStepChange={(value) => {
-              setConfirmTitle(`Confirm memory change to ${value}`)
+              setConfirmTitle(`Confirm memory change to ${value >= 1024 ? (value/1024) + 'GB' : value + 'MB'}`)
               setIsConfirmModalOpen(true)
               setConfirmHandler(
                 () => () =>
@@ -348,8 +420,8 @@ function DBConfigs({ selectedCluster, user }) {
           />
           <Gauge
             isDisabled={user?.grants['proxy-config-flag'] == false}
-            minValue={1}
-            maxValue={10000}
+            minValue={10}
+            maxValue={20480}
             value={convertSize(selectedCluster?.config?.provDbDiskSize,"G","G")}
             text={'Disk size'}
             width={150}
@@ -359,7 +431,7 @@ function DBConfigs({ selectedCluster, user }) {
             step={10}
             appendTextToValue='GB'
             handleStepChange={(value) => {
-              setConfirmTitle(`Confirm disk size change to ${value}`)
+              setConfirmTitle(`Confirm disk size change to ${value}GB`)
               setIsConfirmModalOpen(true)
               setConfirmHandler(
                 () => () =>
@@ -402,7 +474,7 @@ function DBConfigs({ selectedCluster, user }) {
           <Gauge
             isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={1}
-            maxValue={256}
+            maxValue={512}
             value={selectedCluster?.config?.provDbCpuCores}
             text={'Cores'}
             width={150}
@@ -419,6 +491,54 @@ function DBConfigs({ selectedCluster, user }) {
                     setSetting({
                       clusterName: selectedCluster?.name,
                       setting: 'prov-db-cpu-cores',
+                      value: value
+                    })
+                  )
+              )
+            }}
+          />
+          </Flex>
+        </Flex>
+      )
+    },
+    {
+      key: 'Memory Allocation',
+      value: (
+        <Flex direction='column' gap={4} w='100%'>
+          <MemoryPctEditor
+            label='Shared Buffers'
+            value={selectedCluster?.config?.provDbMemorySharedPct}
+            totalMemoryMB={selectedCluster?.config?.provDbMemory}
+            isDisabled={user?.grants['proxy-config-flag'] == false}
+            onSave={(value, changed) => {
+              setConfirmTitle(`Change ${changed || 'shared buffer'} allocation?`)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'prov-db-memory-shared-pct',
+                      value: value
+                    })
+                  )
+              )
+            }}
+          />
+          <MemoryPctEditor
+            label='Per-Thread Buffers'
+            value={selectedCluster?.config?.provDbMemoryThreadedPct}
+            totalMemoryMB={selectedCluster?.config?.provDbMemory}
+            isDisabled={user?.grants['proxy-config-flag'] == false}
+            onSave={(value, changed) => {
+              setConfirmTitle(`Change ${changed || 'per-thread buffer'} allocation?`)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'prov-db-memory-threaded-pct',
                       value: value
                     })
                   )

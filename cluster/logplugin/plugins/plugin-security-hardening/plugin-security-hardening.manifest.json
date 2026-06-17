@@ -1,0 +1,13 @@
+{
+  "description": "Security Hardening — SEC0103-SEC0118\n\nChecks CIS MySQL/MariaDB Benchmark hardening controls: require_secure_transport, general_log, secure_file_priv, skip_name_resolve, anonymous users, wildcard-host privileges, password validation plugins.",
+  "prerequisites": [],
+  "config_keys": [
+    {
+      "key": "wildcard-priv-ignored-users",
+      "label": "Wildcard priv ignored users",
+      "type": "text",
+      "default": "",
+      "help": "Comma-separated list of accounts to suppress from the wildcard-host privilege advisory (SEC0108)."
+    }
+  ]
+}

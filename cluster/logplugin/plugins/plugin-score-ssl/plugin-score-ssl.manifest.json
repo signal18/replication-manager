@@ -1,0 +1,5 @@
+{
+  "description": "Security Score: SSL\n\nComputes binary pass/fail security score checks for SSL/TLS configuration.",
+  "prerequisites": [],
+  "config_keys": []
+}

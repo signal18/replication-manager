@@ -10,7 +10,8 @@ RUN apt-get update && apt-get -y install curl ca-certificates && \
 COPY . .
 ARG PLUGIN_SIGNER_USER=""
 ARG PLUGIN_SIGNER_TOKEN=""
-RUN make pro cli PLUGIN_SIGNER_USER="$PLUGIN_SIGNER_USER" PLUGIN_SIGNER_TOKEN="$PLUGIN_SIGNER_TOKEN"
+ARG PLUGIN_PUSH="OFF"
+RUN make pro cli PLUGIN_SIGNER_USER="$PLUGIN_SIGNER_USER" PLUGIN_SIGNER_TOKEN="$PLUGIN_SIGNER_TOKEN" PLUGIN_PUSH="$PLUGIN_PUSH"
 RUN go install github.com/moul/gotty-client/cmd/gotty-client@v1.10.0
 
 FROM debian:bookworm-slim

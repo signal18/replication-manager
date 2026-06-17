@@ -1,0 +1,5 @@
+{
+  "description": "Security Score: Audit\n\nComputes binary pass/fail security score checks for audit logging configuration.",
+  "prerequisites": [],
+  "config_keys": []
+}

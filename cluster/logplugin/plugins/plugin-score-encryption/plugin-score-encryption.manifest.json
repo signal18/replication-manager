@@ -1,0 +1,5 @@
+{
+  "description": "Security Score: Encryption\n\nComputes binary pass/fail security score checks for data-at-rest encryption configuration.",
+  "prerequisites": [],
+  "config_keys": []
+}

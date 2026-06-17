@@ -12,7 +12,7 @@ import (
 // WireVersion is the version of the stdin/stdout JSON protocol.
 // Increment this when a breaking change is made to Request or Response.
 // The Makefile reads this value to organise the plugin distribution repository.
-const WireVersion = 1
+const WireVersion = 2
 
 // ServerVersion carries the already-parsed database version so plugins
 // do not need to re-parse the raw version string from ServerVariables.
@@ -22,6 +22,23 @@ type ServerVersion struct {
 	Major   int    `json:"major"`
 	Minor   int    `json:"minor"`
 	Release int    `json:"release"`
+}
+
+// PFSExplainRow is one row from an EXPLAIN output.
+type PFSExplainRow struct {
+	Table string `json:"table"`
+	Type  string `json:"type"`  // ALL, index, range, ref, eq_ref, const, system
+	Key   string `json:"key"`
+	Rows  string `json:"rows"`
+	Extra string `json:"extra"`
+}
+
+// PFSExplain is one cached EXPLAIN plan for a PFS digest.
+type PFSExplain struct {
+	Digest     string           `json:"digest"`
+	DigestText string           `json:"digest_text"`
+	ExecCount  int64            `json:"exec_count"`
+	Plan       []PFSExplainRow  `json:"plan"`
 }
 
 // Request is written to the plugin's stdin as a single JSON object.
@@ -34,11 +51,15 @@ type Request struct {
 	SlowLog          []SlowMsg         `json:"slow_log"`
 	AuditLog         []Msg             `json:"audit_log"`
 	PFSQueries       []PFSQuery        `json:"pfs_queries"`
+	PFSExplainPlans  []PFSExplain      `json:"pfs_explain_plans,omitempty"`
+	PFSExplainCount  int               `json:"pfs_explain_count"`
+	PFSLastTruncate  string            `json:"pfs_last_truncate,omitempty"` // RFC3339
 	ProcessList      []Process         `json:"process_list"`
 	MetaDataLocks    []MDL             `json:"metadata_locks"`
 	BinlogEvents     []BinlogEvent     `json:"binlog_events"`
 	ServerVersion    ServerVersion     `json:"server_version"`    // pre-parsed version (use instead of ServerVariables["version"])
 	ServerVariables  map[string]string `json:"server_variables"`  // SHOW GLOBAL VARIABLES snapshot
+	ServerStatus     map[string]string `json:"server_status"`     // SHOW GLOBAL STATUS snapshot
 	DatabaseUsers    []DBUser          `json:"database_users"`    // mysql.user snapshot (no hashes)
 	ClusterContext   ClusterContext    `json:"cluster_context"`   // cluster-level facts
 	PluginDataDir    string            `json:"plugin_data_dir"`   // path to plugin sidecar data files
@@ -107,6 +128,7 @@ type PFSQuery struct {
 	RowsSent      int64   `json:"rows_sent"`
 	RowsSentAvg   int64   `json:"rows_sent_avg"`
 	RowsScanned   int64   `json:"rows_scanned"`
+	SortRows      int64   `json:"sort_rows"`
 	PlanFullScan  string  `json:"plan_full_scan"` // "YES" / "NO"
 	PlanTmpDisk   int64   `json:"plan_tmp_disk"`
 	PlanTmpMem    int64   `json:"plan_tmp_mem"`
@@ -158,8 +180,10 @@ type Remediation struct {
 
 type Finding struct {
 	ErrKey       string        `json:"err_key"`
-	Severity     string        `json:"severity"` // "WARNING", "ERROR", or "SECURITY"
+	Severity     string        `json:"severity"` // "WARNING", "ERROR", "SECURITY", or "WORKLOAD"
 	Description  string        `json:"description"`
+	Count        int64         `json:"count,omitempty"`
+	Total        int64         `json:"total,omitempty"`
 	Remediations []Remediation `json:"remediations,omitempty"`
 }
 

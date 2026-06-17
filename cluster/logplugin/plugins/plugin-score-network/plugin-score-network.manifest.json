@@ -1,0 +1,5 @@
+{
+  "description": "Security Score: Network\n\nComputes binary pass/fail security score checks for network security configuration.",
+  "prerequisites": [],
+  "config_keys": []
+}

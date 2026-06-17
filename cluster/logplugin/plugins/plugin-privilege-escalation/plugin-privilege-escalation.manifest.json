@@ -1,0 +1,23 @@
+{
+  "description": "Privilege Escalation — WARN0308\n\nWatches the audit log for DDL that modifies user privileges: GRANT, REVOKE, CREATE USER, ALTER USER, DROP USER, RENAME USER, SET PASSWORD. Fires when performed by an account not in allowed-admin-users.",
+  "prerequisites": [],
+  "config_keys": [
+    {
+      "key": "allowed-admin-users",
+      "label": "Allowed admin users",
+      "type": "text",
+      "default": "root,replication_manager",
+      "help": "Comma-separated list of accounts permitted to execute privilege-changing DDL."
+    },
+    {
+      "key": "timeframe-hours",
+      "label": "Timeframe (hours)",
+      "type": "int",
+      "default": "24",
+      "min": 1,
+      "max": 1440,
+      "step": 1,
+      "help": "Only audit events within this rolling window are inspected."
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "description": "Error Storm Detector — WARN0302\n\nGroups error log entries by a template fingerprint (strips numbers and quoted strings) then fires when any template appears >= storm-threshold times within storm-window-mins minutes.",
+  "prerequisites": [],
+  "config_keys": [
+    {
+      "key": "storm-threshold",
+      "label": "Storm occurrence threshold",
+      "type": "int",
+      "default": "10",
+      "min": 1,
+      "max": 10000,
+      "step": 1,
+      "help": "Number of occurrences of the same error template within the window to fire."
+    },
+    {
+      "key": "storm-window-mins",
+      "label": "Storm window (minutes)",
+      "type": "int",
+      "default": "5",
+      "min": 1,
+      "max": 1440,
+      "step": 1,
+      "help": "Rolling time window for counting error occurrences."
+    }
+  ]
+}

@@ -95,11 +95,15 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			GraphiteHostname: hostname,
 			SpikeCache:       spikeCache[cacheKey],
 			PFSQueries:       snapshotPFSQueries(server),
+			PFSLastTruncate:  server.PFSLastSnapshot,
+			PFSExplainCount:  snapshotPFSExplainCount(server),
+			PFSExplainPlans:  snapshotPFSExplainPlans(server),
 			ProcessList:      snapshotProcessList(server),
 			MetaDataLocks:    snapshotMetaDataLocks(server),
 			BinlogEvents:     snapshotBinlogEvents(server),
 			ServerVersion:    snapshotServerVersion(server),
 			ServerVariables:  snapshotServerVariables(server),
+			ServerStatus:     snapshotServerStatus(server),
 			DatabaseUsers:    snapshotDatabaseUsers(server),
 			ClusterContext:   buildClusterContext(cluster, server),
 			PluginDataDir:    cluster.Conf.ShareDir + "/plugins/data",
@@ -212,6 +216,13 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			st := f.ToState("PLUGIN")
 			st.ServerUrl = server.URL
 			compositeKey := fmt.Sprintf("%s@%s", f.ErrKey, server.URL)
+
+			if f.Severity == logplugin.SeverityWorkload && f.Count > 0 && strings.HasPrefix(f.ErrKey, "WTAG") {
+				prev := cluster.wtagCounters[f.ErrKey]
+				prev[0] += f.Count
+				prev[1] += f.Total
+				cluster.wtagCounters[f.ErrKey] = prev
+			}
 
 			isSecurity := f.Severity == logplugin.SeveritySecurity
 			isWorkload := f.Severity == logplugin.SeverityWorkload
@@ -417,6 +428,7 @@ func (cluster *Cluster) CheckLogPlugins() {
 	if cluster.pluginSpikeCache == nil {
 		cluster.pluginSpikeCache = make(map[string]*logplugin.SpikeCache)
 	}
+	cluster.wtagCounters = make(map[string][2]int64)
 	if cluster.pluginRegistry == nil {
 		cluster.pluginRegistry = logplugin.NewRegistry()
 	}
@@ -494,7 +506,28 @@ func (cluster *Cluster) CheckLogPlugins() {
 	// duplicated auto-fixable / risk logic on the frontend.
 	cluster.SecurityRemediations = cluster.GetRemediationPlan()
 	cluster.WorkloadRemediations = cluster.GetWorkloadRemediationPlan()
-	cluster.WorkloadStates = cluster.WorkloadStateMachine.GetOpenStates()
+	allWorkload := cluster.WorkloadStateMachine.GetOpenStates()
+	seenTags := make(map[string]bool)
+	workload := make([]state.State, 0, len(allWorkload))
+	for _, s := range allWorkload {
+		if strings.HasPrefix(s.ErrKey, "WTAG") {
+			tagKey := s.ErrKey
+			if i := strings.IndexByte(tagKey, '@'); i >= 0 {
+				tagKey = tagKey[:i]
+			}
+			if seenTags[tagKey] {
+				continue
+			}
+			seenTags[tagKey] = true
+			s.ErrKey = tagKey
+			s.ServerUrl = ""
+			if ct, ok := cluster.wtagCounters[tagKey]; ok && ct[1] > 0 {
+				s.ErrDesc += logplugin.FmtPct(ct[0], ct[1])
+			}
+		}
+		workload = append(workload, s)
+	}
+	cluster.WorkloadStates = workload
 	slices.SortStableFunc(cluster.WorkloadStates, func(a, b state.State) int {
 		ak, bk := a.ErrKey+"\x00"+a.ServerUrl, b.ErrKey+"\x00"+b.ServerUrl
 		if ak < bk {
@@ -625,10 +658,60 @@ func snapshotPFSQueries(server *ServerMonitor) []logplugin.StdioPFSQuery {
 			RowsSent:      q.Rows_sent,
 			RowsSentAvg:   q.Rows_sent_avg,
 			RowsScanned:   q.Rows_scanned,
+			SortRows:      q.Sort_rows,
 			PlanFullScan:  q.Plan_full_scan,
 			PlanTmpDisk:   q.Plan_tmp_disk,
 			PlanTmpMem:    q.Plan_tmp_mem,
 			LastSeen:      q.Last_seen,
+		})
+	}
+	return out
+}
+
+func snapshotPFSExplainCount(server *ServerMonitor) int {
+	server.PFSExplainCacheMu.Lock()
+	n := len(server.PFSExplainCache)
+	server.PFSExplainCacheMu.Unlock()
+	if server.PFSQueries != nil {
+		total := len(server.PFSQueries.ToNewMap())
+		if n > total {
+			n = total
+		}
+	}
+	return n
+}
+
+func snapshotPFSExplainPlans(server *ServerMonitor) []logplugin.StdioPFSExplain {
+	server.PFSExplainCacheMu.Lock()
+	defer server.PFSExplainCacheMu.Unlock()
+	if len(server.PFSExplainCache) == 0 {
+		return nil
+	}
+	pfsMap := make(map[string]int64)
+	if server.PFSQueries != nil {
+		for _, q := range server.PFSQueries.ToNewMap() {
+			if q != nil {
+				pfsMap[q.Digest] = q.Exec_count
+			}
+		}
+	}
+	out := make([]logplugin.StdioPFSExplain, 0, len(server.PFSExplainCache))
+	for _, rec := range server.PFSExplainCache {
+		rows := make([]logplugin.StdioExplainRow, 0, len(rec.Plan))
+		for _, r := range rec.Plan {
+			rows = append(rows, logplugin.StdioExplainRow{
+				Table: r.Table.String,
+				Type:  r.Type.String,
+				Key:   r.Key.String,
+				Rows:  r.Rows.String,
+				Extra: r.Extra.String,
+			})
+		}
+		out = append(out, logplugin.StdioPFSExplain{
+			Digest:     rec.Digest,
+			DigestText: rec.DigestText,
+			ExecCount:  pfsMap[rec.Digest],
+			Plan:       rows,
 		})
 	}
 	return out
@@ -778,6 +861,23 @@ func snapshotServerVariables(server *ServerMonitor) map[string]string {
 		return nil
 	}
 	raw := server.Variables.ToNewMap()
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		out[strings.ToLower(k)] = v
+	}
+	return out
+}
+
+// snapshotServerStatus returns a copy of the server's global status map
+// for consumption by plugins. Keys are lowercased.
+func snapshotServerStatus(server *ServerMonitor) map[string]string {
+	if server.Status == nil {
+		return nil
+	}
+	raw := server.Status.ToNewMap()
 	if len(raw) == 0 {
 		return nil
 	}

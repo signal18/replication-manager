@@ -1,0 +1,50 @@
+{
+  "description": "Off-Hours Access — WARN0309\n\nScans the audit log for connections or DML outside business hours from non-exempt accounts. Useful for PCI-DSS and HIPAA compliance auditing.",
+  "prerequisites": [],
+  "config_keys": [
+    {
+      "key": "allowed-hours-start",
+      "label": "Business hours start (0-23)",
+      "type": "int",
+      "default": "8",
+      "min": 0,
+      "max": 23,
+      "step": 1,
+      "help": "Hour of day (local time) from which database activity is considered normal."
+    },
+    {
+      "key": "allowed-hours-end",
+      "label": "Business hours end (1-24)",
+      "type": "int",
+      "default": "20",
+      "min": 1,
+      "max": 24,
+      "step": 1,
+      "help": "Hour of day (local time) after which database activity is considered off-hours."
+    },
+    {
+      "key": "always-allowed-users",
+      "label": "Always-allowed users",
+      "type": "text",
+      "default": "root,replication_manager",
+      "help": "Comma-separated list of accounts never flagged for off-hours access."
+    },
+    {
+      "key": "allowed-operations",
+      "label": "Watched audit operations",
+      "type": "text",
+      "default": "QUERY,QUERY_DML,QUERY_DDL,CONNECT",
+      "help": "Comma-separated list of audit log operation types to inspect."
+    },
+    {
+      "key": "timeframe-hours",
+      "label": "Timeframe (hours)",
+      "type": "int",
+      "default": "1",
+      "min": 1,
+      "max": 1440,
+      "step": 1,
+      "help": "Only audit events within this rolling window are inspected."
+    }
+  ]
+}

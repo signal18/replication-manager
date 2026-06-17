@@ -68,7 +68,10 @@ type StdioRequest struct {
 	AuditLog    []StdioMsg     `json:"audit_log"`
 
 	// Performance Schema query statistics (populated when PFS monitoring is on)
-	PFSQueries []StdioPFSQuery `json:"pfs_queries"`
+	PFSQueries      []StdioPFSQuery   `json:"pfs_queries"`
+	PFSExplainPlans []StdioPFSExplain `json:"pfs_explain_plans,omitempty"`
+	PFSExplainCount int               `json:"pfs_explain_count"`
+	PFSLastTruncate string            `json:"pfs_last_truncate,omitempty"`
 
 	// Current processlist (populated when processlist monitoring is on)
 	ProcessList []StdioProcess `json:"process_list"`
@@ -83,6 +86,8 @@ type StdioRequest struct {
 	ServerVersion   StdioServerVersion `json:"server_version"`
 	// ServerVariables is a snapshot of SHOW GLOBAL VARIABLES (non-sensitive).
 	ServerVariables map[string]string  `json:"server_variables"`
+	// ServerStatus is a snapshot of SHOW GLOBAL STATUS.
+	ServerStatus    map[string]string  `json:"server_status"`
 
 	// DatabaseUsers is a snapshot of mysql.user rows (no password hashes).
 	DatabaseUsers []StdioDBUser `json:"database_users"`
@@ -131,6 +136,7 @@ type StdioPFSQuery struct {
 	RowsSent      int64   `json:"rows_sent"`
 	RowsSentAvg   int64   `json:"rows_sent_avg"`
 	RowsScanned   int64   `json:"rows_scanned"`
+	SortRows      int64   `json:"sort_rows"`
 	PlanFullScan  string  `json:"plan_full_scan"` // "YES" / "NO"
 	PlanTmpDisk   int64   `json:"plan_tmp_disk"`
 	PlanTmpMem    int64   `json:"plan_tmp_mem"`
@@ -184,6 +190,8 @@ type stdioFinding struct {
 	ErrKey       string             `json:"err_key"`
 	Severity     string             `json:"severity"`
 	Description  string             `json:"description"`
+	Count        int64              `json:"count,omitempty"`
+	Total        int64              `json:"total,omitempty"`
 	Remediations []stdioRemediation `json:"remediations,omitempty"`
 }
 
@@ -200,7 +208,8 @@ type ExternalLogPlugin struct {
 	name         string
 	binPath      string
 	timeout      time.Duration
-	prerequisites []Prerequisite // loaded from <binary>.prerequisites.json, may be nil
+	prerequisites []Prerequisite  // loaded from manifest or legacy sidecar, may be nil
+	manifest     *PluginManifest  // loaded from <binary>.manifest.json, may be nil
 }
 
 // prerequisitesSidecar is the JSON structure of the sidecar file.
@@ -212,11 +221,16 @@ type prerequisitesSidecar struct {
 }
 
 // NewExternalLogPlugin creates a wrapper for the executable at binPath.
-// If a <binPath>.prerequisites.json sidecar exists, prerequisites are loaded
-// from it; errors reading the sidecar are silently ignored.
+// If a <binPath>.manifest.json sidecar exists, its metadata, prerequisites,
+// and config schema are loaded. Falls back to legacy .prerequisites.json.
 func NewExternalLogPlugin(name, binPath string, timeout time.Duration) *ExternalLogPlugin {
 	p := &ExternalLogPlugin{name: name, binPath: binPath, timeout: timeout}
-	p.prerequisites = loadPrerequisitesSidecar(binPath + ".prerequisites.json")
+	p.manifest = loadManifestSidecar(binPath + ".manifest.json")
+	if p.manifest != nil {
+		p.prerequisites = manifestToPrerequisites(p.manifest)
+	} else {
+		p.prerequisites = loadPrerequisitesSidecar(binPath + ".prerequisites.json")
+	}
 	return p
 }
 
@@ -247,6 +261,36 @@ func (p *ExternalLogPlugin) Name() string { return p.name }
 
 // Prerequisites implements LogPluginWithPrerequisites when the sidecar was loaded.
 func (p *ExternalLogPlugin) Prerequisites() []Prerequisite { return p.prerequisites }
+
+// Manifest implements LogPluginWithManifest when a .manifest.json was loaded.
+func (p *ExternalLogPlugin) Manifest() *PluginManifest { return p.manifest }
+
+// loadManifestSidecar reads and parses a .manifest.json sidecar file.
+func loadManifestSidecar(path string) *PluginManifest {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var m PluginManifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil
+	}
+	return &m
+}
+
+// manifestToPrerequisites converts manifest prerequisites to the internal type.
+func manifestToPrerequisites(m *PluginManifest) []Prerequisite {
+	if m == nil || len(m.Prerequisites) == 0 {
+		return nil
+	}
+	out := make([]Prerequisite, 0, len(m.Prerequisites))
+	for _, p := range m.Prerequisites {
+		if p.ConfigKey != "" {
+			out = append(out, Prerequisite{ConfigKey: p.ConfigKey, Description: p.Description})
+		}
+	}
+	return out
+}
 
 // DefaultSeverity implements LogPluginWithDefaultSeverity.
 // Used by RunLogPlugins to route debug messages to the correct dedicated log
@@ -279,11 +323,15 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 		SlowLog:          src.SlowLog,
 		AuditLog:         msgsToWire(src.AuditLog),
 		PFSQueries:       pfsToWire(src.PFSQueries),
+		PFSExplainPlans:  src.PFSExplainPlans,
+		PFSExplainCount:  src.PFSExplainCount,
+		PFSLastTruncate:  formatTime(src.PFSLastTruncate),
 		ProcessList:      processToWire(src.ProcessList),
 		MetaDataLocks:    mdlToWire(src.MetaDataLocks),
 		BinlogEvents:     src.BinlogEvents,
 		ServerVersion:    src.ServerVersion,
 		ServerVariables:  src.ServerVariables,
+		ServerStatus:     src.ServerStatus,
 		DatabaseUsers:    src.DatabaseUsers,
 		ClusterContext:   src.ClusterContext,
 		PluginDataDir:    src.PluginDataDir,
@@ -356,6 +404,8 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 			ErrKey:       sf.ErrKey,
 			Severity:     sev,
 			Description:  sf.Description,
+			Count:        sf.Count,
+			Total:        sf.Total,
 			Remediations: remeds,
 		})
 	}
@@ -545,6 +595,13 @@ func processToWire(procs []StdioProcess) []StdioProcess {
 
 func mdlToWire(mdls []StdioMDL) []StdioMDL {
 	return mdls // already in wire format
+}
+
+func formatTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(time.RFC3339)
 }
 
 func pluginErrFinding(pluginName, serverURL, msg string) []Finding {

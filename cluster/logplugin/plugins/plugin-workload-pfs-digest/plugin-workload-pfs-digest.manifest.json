@@ -1,0 +1,10 @@
+{
+  "description": "PFS Digest Analysis — WTAG0200+\n\nAnalyzes performance_schema digest data and EXPLAIN plans to produce workload coverage and optimization tags.",
+  "prerequisites": [
+    {
+      "config_key": "monitoring-performance-schema-queries",
+      "description": "PFS query digest monitoring must be enabled for digest workload analysis (monitoring-performance-schema-queries=true)"
+    }
+  ],
+  "config_keys": []
+}

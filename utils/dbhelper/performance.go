@@ -249,6 +249,7 @@ func GetQueries(db *sqlx.DB, version *version.Version) (map[string]PFSQuery, str
 	A.SUM_ROWS_SENT AS rows_sent,
 	ROUND(A.SUM_ROWS_SENT / A.COUNT_STAR) AS rows_sent_avg,
 	A.SUM_ROWS_EXAMINED AS rows_scanned,
+	A.SUM_SORT_ROWS AS sort_rows,
 	round(A.sum_timer_wait/1000000000000, 6) as value
 	FROM performance_schema.events_statements_summary_by_digest A
 	WHERE A.digest_text is not null`
@@ -267,7 +268,7 @@ func GetQueries(db *sqlx.DB, version *version.Version) (map[string]PFSQuery, str
 			&v.Plan_full_scan, &v.Plan_tmp_disk, &v.Plan_tmp_mem,
 			&v.Exec_count, &v.Err_count, &v.Warn_count,
 			&v.Exec_time_total, &v.Exec_time_max, &v.Exec_time_avg_ms,
-			&v.Rows_sent, &v.Rows_sent_avg, &v.Rows_scanned, &v.Value,
+			&v.Rows_sent, &v.Rows_sent_avg, &v.Rows_scanned, &v.Sort_rows, &v.Value,
 		)
 		if err != nil {
 			return nil, query, errors.New("Could not get results from status scan")

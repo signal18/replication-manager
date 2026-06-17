@@ -339,6 +339,9 @@ type Cluster struct {
 	// pluginSpikeCache holds the last DetectSpike result per server+plugin pair.
 	// Keyed as "serverURL:pluginName". Prevents graphite HTTP on every tick.
 	pluginSpikeCache map[string]*logplugin.SpikeCache `json:"-"`
+	// wtagCounters accumulates WTAG finding Count/Total across all servers
+	// during CheckLogPlugins. Reset each tick, used for cluster-level percentage.
+	wtagCounters map[string][2]int64 `json:"-"`
 	// pluginRegistry is a per-cluster plugin registry seeded with built-in plugins
 	// and extended with external plugins loaded from cluster.WorkingDir/plugins/.
 	// Kept separate from GlobalRegistry so that one cluster's external plugins do
