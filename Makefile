@@ -160,6 +160,8 @@ plugins: $(PLUGIN_SIGNER_BIN)
 	$(MAKE) plugin-sigs
 	@if [ "$(PLUGIN_PUSH)" = "ON" ]; then \
 		$(MAKE) plugin-push || echo "WARNING: plugin-push failed (non-fatal)"; \
+	elif [ "$(PLUGIN_PUSH)" = "OFF" ]; then \
+		echo "PLUGIN_PUSH=OFF — skipping push"; \
 	elif [ -n "$(PLUGIN_SIGNER_USER)" ] && [ -n "$(PLUGIN_SIGNER_TOKEN)" ] && [ -d "$(PLUGIN_SIGNER_CLONE)/.git" ]; then \
 		WIREDIR="$(PLUGIN_SIGNER_CLONE)/plugins/$(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)"; \
 		if [ ! -d "$$WIREDIR" ]; then \

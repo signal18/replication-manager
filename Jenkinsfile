@@ -56,9 +56,11 @@ pipeline {
         stage('Build nightly') {
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
-                        def Image = docker.build('signal18/replication-manager:nightly', '-f docker/Dockerfile.pro .')
-                        Image.push('nightly')
+                    withCredentials([usernamePassword(credentialsId: 'plugin-signer', usernameVariable: 'PLUGIN_USER', passwordVariable: 'PLUGIN_TOKEN')]) {
+                        docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
+                            def Image = docker.build('signal18/replication-manager:nightly', "--build-arg PLUGIN_SIGNER_USER=${PLUGIN_USER} --build-arg PLUGIN_SIGNER_TOKEN=${PLUGIN_TOKEN} -f docker/Dockerfile.pro .")
+                            Image.push('nightly')
+                        }
                     }
                 }
             }
@@ -66,9 +68,11 @@ pipeline {
         stage('Build nightly rootless') {
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
-                        def Image = docker.build('signal18/replication-manager:nightly-rootless', '-f docker/Dockerfile.pro_rootless .')
-                        Image.push('nightly-rootless')
+                    withCredentials([usernamePassword(credentialsId: 'plugin-signer', usernameVariable: 'PLUGIN_USER', passwordVariable: 'PLUGIN_TOKEN')]) {
+                        docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
+                            def Image = docker.build('signal18/replication-manager:nightly-rootless', "--build-arg PLUGIN_SIGNER_USER=${PLUGIN_USER} --build-arg PLUGIN_SIGNER_TOKEN=${PLUGIN_TOKEN} -f docker/Dockerfile.pro_rootless .")
+                            Image.push('nightly-rootless')
+                        }
                     }
                 }
             }
