@@ -80,85 +80,81 @@ func (configurator *Configurator) GetConfigReplicationDomain(ClusterName string)
 	return configurator.ClusterConfig.ProvDomain
 }
 
-// GetConfigInnoDBBPSize configure 80% of the ConfigMemory in Megabyte
-func (configurator *Configurator) GetConfigInnoDBBPSize() string {
+const memReserveMB int64 = 2048
+
+func (configurator *Configurator) getUsableMemoryMB() (int64, error) {
 	containermem, err := strconv.ParseInt(configurator.ClusterConfig.ProvMem, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	usable := containermem - memReserveMB
+	if usable < 0 {
+		usable = 0
+	}
+	return usable, nil
+}
+
+func (configurator *Configurator) GetConfigInnoDBBPSize() string {
+	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
 		return "128"
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-
-	containermem = containermem * int64(sharedmempcts["innodb"]) / 100
-	s10 := strconv.FormatInt(containermem, 10)
-	return s10
+	return strconv.FormatInt(usable*int64(sharedmempcts["innodb"])/100, 10)
 }
 
 func (configurator *Configurator) GetConfigMyISAMKeyBufferSize() string {
-	containermem, err := strconv.ParseInt(configurator.ClusterConfig.ProvMem, 10, 64)
+	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
 		return "128"
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-
-	containermem = containermem * int64(sharedmempcts["myisam"]) / 100
-	s10 := strconv.FormatInt(containermem, 10)
-	return s10
+	return strconv.FormatInt(usable*int64(sharedmempcts["myisam"])/100, 10)
 }
 
 func (configurator *Configurator) GetConfigTokuDBBufferSize() string {
-	containermem, err := strconv.ParseInt(configurator.ClusterConfig.ProvMem, 10, 64)
+	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
 		return "128"
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-
-	containermem = containermem * int64(sharedmempcts["tokudb"]) / 100
-	s10 := strconv.FormatInt(containermem, 10)
-	return s10
+	return strconv.FormatInt(usable*int64(sharedmempcts["tokudb"])/100, 10)
 }
 
 func (configurator *Configurator) GetConfigQueryCacheSize() string {
-	containermem, err := strconv.ParseInt(configurator.ClusterConfig.ProvMem, 10, 64)
+	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
 		return "128"
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	containermem = containermem * int64(sharedmempcts["querycache"]) / 100
-	s10 := strconv.FormatInt(containermem, 10)
-	return s10
+	return strconv.FormatInt(usable*int64(sharedmempcts["querycache"])/100, 10)
 }
 
 func (configurator *Configurator) GetConfigAriaCacheSize() string {
-	containermem, err := strconv.ParseInt(configurator.ClusterConfig.ProvMem, 10, 64)
+	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
 		return "128"
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	containermem = containermem * int64(sharedmempcts["aria"]) / 100
-	s10 := strconv.FormatInt(containermem, 10)
-	return s10
+	return strconv.FormatInt(usable*int64(sharedmempcts["aria"])/100, 10)
 }
 
 func (configurator *Configurator) GetConfigS3CacheSize() string {
-	containermem, err := strconv.ParseInt(configurator.ClusterConfig.ProvMem, 10, 64)
+	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
 		return "128"
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	containermem = containermem * int64(sharedmempcts["s3"]) / 100
-	s10 := strconv.FormatInt(containermem, 10)
-	return s10
+	return strconv.FormatInt(usable*int64(sharedmempcts["s3"])/100, 10)
 }
 
 func (configurator *Configurator) GetConfigRocksDBCacheSize() string {
-	containermem, err := strconv.ParseInt(configurator.ClusterConfig.ProvMem, 10, 64)
+	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
 		return "128"
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	containermem = containermem * int64(sharedmempcts["rocksdb"]) / 100
-	s10 := strconv.FormatInt(containermem, 10)
-	return s10
+	return strconv.FormatInt(usable*int64(sharedmempcts["rocksdb"])/100, 10)
 }
 
 func (configurator *Configurator) GetConfigMyISAMKeyBufferSegements() string {

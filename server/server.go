@@ -1007,7 +1007,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvTags, "prov-db-tags", "semisync,row,innodb,noquerycache,threadpool,slow,pfs,docker,linux,readonly,diskmonitor,sqlerror,compressbinlog", "playbook configuration tags")
 	flags.StringVar(&conf.ProvDomain, "prov-db-domain", "0", "Config domain id for the cluster")
 	flags.StringVar(&conf.ProvMem, "prov-db-memory", "256M", "Memory in M for micro service VM")
-	flags.StringVar(&conf.ProvMemSharedPct, "prov-db-memory-shared-pct", "threads:16,innodb:60,myisam:10,aria:10,rocksdb:1,tokudb:1,s3:1,archive:1,querycache:0,tidesdb:1", "% memory shared per buffer")
+	flags.StringVar(&conf.ProvMemSharedPct, "prov-db-memory-shared-pct", "threads:16,innodb:55,myisam:10,aria:10,rocksdb:1,tokudb:0,s3:1,archive:1,querycache:0,tidesdb:1", "% memory shared per buffer")
 	flags.StringVar(&conf.ProvMemThreadedPct, "prov-db-memory-threaded-pct", "tmp:70,join:20,sort:10", "% memory allocted per threads")
 	flags.StringVar(&conf.ProvDisk, "prov-db-disk-size", "20", "Disk in g for micro service VM")
 	flags.IntVar(&conf.ProvExpireLogDays, "prov-db-expire-log-days", 5, "Keep binlogs that nunmber of days")

@@ -438,8 +438,8 @@ function DBConfigs({ selectedCluster, user }) {
             value={selectedCluster?.config?.provDbMemorySharedPct}
             totalMemoryMB={selectedCluster?.config?.provDbMemory}
             isDisabled={user?.grants['proxy-config-flag'] == false}
-            onSave={(value) => {
-              setConfirmTitle('Confirm shared buffer memory allocation change?')
+            onSave={(value, changed) => {
+              setConfirmTitle(`Change ${changed || 'shared buffer'} allocation?`)
               setIsConfirmModalOpen(true)
               setConfirmHandler(
                 () => () =>
@@ -458,8 +458,8 @@ function DBConfigs({ selectedCluster, user }) {
             value={selectedCluster?.config?.provDbMemoryThreadedPct}
             totalMemoryMB={selectedCluster?.config?.provDbMemory}
             isDisabled={user?.grants['proxy-config-flag'] == false}
-            onSave={(value) => {
-              setConfirmTitle('Confirm per-thread memory allocation change?')
+            onSave={(value, changed) => {
+              setConfirmTitle(`Change ${changed || 'per-thread buffer'} allocation?`)
               setIsConfirmModalOpen(true)
               setConfirmHandler(
                 () => () =>
