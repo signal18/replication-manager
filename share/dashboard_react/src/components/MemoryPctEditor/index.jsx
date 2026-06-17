@@ -66,8 +66,8 @@ function MemoryPctEditor({ label, value, totalMemoryMB, isDisabled, onSave }) {
       const pxFromLeft = clientX - br.left
       const totalPct = Math.max(0, Math.min(100, (pxFromLeft / br.width) * 100))
 
-      const rightOfSegment = si.slice(0, di + 1).reduce((s, en) => s + en.pct, 0)
-      const rawPct = rightOfSegment - totalPct
+      const leftOfSegment = si.slice(0, di).reduce((s, en) => s + en.pct, 0)
+      const rawPct = totalPct - leftOfSegment
       const others = si.reduce((s, en, i) => (i === di ? s : s + en.pct), 0)
       const maxPct = 100 - others
       const newPct = snap(Math.max(0, Math.min(maxPct, rawPct)), si[di].key)
@@ -166,8 +166,7 @@ function MemoryPctEditor({ label, value, totalMemoryMB, isDisabled, onSave }) {
         </Flex>
 
         {items.map((e, i) => {
-          if (i === 0) return null
-          const leftPct = items.slice(0, i).reduce((s, en) => s + en.pct, 0)
+          const leftPct = items.slice(0, i + 1).reduce((s, en) => s + en.pct, 0)
           if (e.pct === 0 && ALLOW_ZERO_KEYS.includes(e.key)) return null
           return (
             <Tooltip key={`handle-${e.key}`} label={`Resize ${e.key}`} placement='top' openDelay={300}>
