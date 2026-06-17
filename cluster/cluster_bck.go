@@ -502,17 +502,16 @@ func (cluster *Cluster) CheckResticErrors() {
 		cluster.StartResticManager()
 	}
 
-	// If repo cannot be initialized, all other errors are not relevant. So we just fetch the init repo errors
-	if !cluster.ResticManager.CanInitRepo && cluster.ResticManager.HasAnyError() {
-		err := cluster.ResticManager.FetchAndClearError(backupmgr.InitTask)
+	// Keep WARN0095 open persistently without consuming the error so it does not
+	// reopen on every monitor cycle. GetInitIssue covers both fresh TaskErrors
+	// and lastInitError that persists through backoff periods.
+	if err, hasIssue := cluster.ResticManager.GetInitIssue(); hasIssue {
 		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic repository issue: %s", err)
-		}
 		return
 	}
 
-	for task, err := range cluster.ResticManager.FetchAndClearErrors() {
+	// Transient non-init task errors are one-shot and cleared each cycle.
+	for task, err := range cluster.ResticManager.FetchAndClearErrorsExcept(backupmgr.InitTask) {
 		switch task {
 		case backupmgr.FetchTask:
 			cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err), ErrFrom: "BACKUP"})
@@ -520,9 +519,6 @@ func (cluster *Cluster) CheckResticErrors() {
 		case backupmgr.PurgeTask:
 			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic purge error: %s", err)
-		case backupmgr.InitTask:
-			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic repository issue: %s", err)
 		case backupmgr.UnlockTask:
 			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic unlock error: %s", err)
@@ -530,7 +526,6 @@ func (cluster *Cluster) CheckResticErrors() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unknown restic task error: %s", err)
 		}
 	}
-
 }
 
 func (cluster *Cluster) CheckResticConfigBackup() {

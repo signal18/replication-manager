@@ -2355,3 +2355,46 @@ func TestInitErrorBackoffPreventsFlooding(t *testing.T) {
 			originalCount, repo.initErrorCount)
 	}
 }
+
+func TestGetInitIssue(t *testing.T) {
+	repo := NewResticRepo("", nil, config.ConstLogModRestic)
+
+	// No error set: GetInitIssue should return false.
+	if _, ok := repo.GetInitIssue(); ok {
+		t.Fatal("expected no issue when neither TaskErrors nor lastInitError is set")
+	}
+
+	// TaskErrors[InitTask] set: should return that error.
+	taskErr := errors.New("task init error")
+	repo.SetError(InitTask, taskErr)
+	got, ok := repo.GetInitIssue()
+	if !ok {
+		t.Fatal("expected issue when TaskErrors[InitTask] is set")
+	}
+	if got != taskErr {
+		t.Fatalf("GetInitIssue returned %v, want %v", got, taskErr)
+	}
+
+	// After consuming TaskErrors[InitTask] via setInitErrorBackoff (which sets lastInitError),
+	// GetInitIssue should fall back to lastInitError.
+	backoffErr := errors.New("backoff init error")
+	repo.setInitErrorBackoff(backoffErr)
+	// Manually clear TaskErrors[InitTask] to simulate it having been consumed.
+	repo.errorMutex.Lock()
+	delete(repo.TaskErrors, InitTask)
+	repo.errorMutex.Unlock()
+
+	got, ok = repo.GetInitIssue()
+	if !ok {
+		t.Fatal("expected issue when lastInitError is set after TaskErrors consumed")
+	}
+	if got != backoffErr {
+		t.Fatalf("GetInitIssue returned %v, want %v", got, backoffErr)
+	}
+
+	// After ClearInitErrorBackoffManual, both are cleared.
+	repo.ClearInitErrorBackoffManual()
+	if _, ok := repo.GetInitIssue(); ok {
+		t.Fatal("expected no issue after ClearInitErrorBackoffManual")
+	}
+}

@@ -584,6 +584,52 @@ func (repo *ResticManager) FetchAndClearError(task TaskType) error {
 	return errs
 }
 
+// GetInitIssue returns the current init error without consuming it.
+// It first checks TaskErrors[InitTask], then falls back to lastInitError (which
+// persists through backoff periods even after TaskErrors is consumed).
+// Returns (error, true) when an issue is present, (nil, false) otherwise.
+func (repo *ResticManager) GetInitIssue() (error, bool) {
+	repo.errorMutex.Lock()
+	defer repo.errorMutex.Unlock()
+	if err, exists := repo.TaskErrors[InitTask]; exists && err != nil {
+		return err, true
+	}
+	if repo.lastInitError != nil {
+		return repo.lastInitError, true
+	}
+	return nil, false
+}
+
+// FetchAndClearErrorsExcept returns and clears all TaskErrors except those for
+// the given task types. Excluded tasks are left in the map untouched.
+func (repo *ResticManager) FetchAndClearErrorsExcept(excludedTasks ...TaskType) map[TaskType]error {
+	repo.errorMutex.Lock()
+	defer repo.errorMutex.Unlock()
+
+	if len(repo.TaskErrors) == 0 {
+		return nil
+	}
+
+	excluded := make(map[TaskType]struct{}, len(excludedTasks))
+	for _, t := range excludedTasks {
+		excluded[t] = struct{}{}
+	}
+
+	errs := make(map[TaskType]error)
+	for k, v := range repo.TaskErrors {
+		if _, skip := excluded[k]; !skip {
+			errs[k] = v
+		}
+	}
+	for k := range errs {
+		delete(repo.TaskErrors, k)
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return errs
+}
+
 // ClearInitErrorBackoffManual clears init error backoff and allows immediate retry
 // Useful when configuration has been fixed by the user
 func (repo *ResticManager) ClearInitErrorBackoffManual() {

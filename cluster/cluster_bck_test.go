@@ -1084,3 +1084,159 @@ func TestCheckResticErrors_InitTaskWithCanInitRepo(t *testing.T) {
 		t.Fatalf("expected WARN0095 ErrDesc to contain 'initialization required', got %q", st.ErrDesc)
 	}
 }
+
+// TestCheckResticErrors_WARN0095Lifecycle verifies that WARN0095 stays open
+// across monitor cycles while an init issue persists, produces no reopen churn
+// on the second cycle, and resolves exactly once after the issue is cleared.
+func TestCheckResticErrors_WARN0095Lifecycle(t *testing.T) {
+	sm := new(state.StateMachine)
+	sm.Init()
+
+	conf := &config.Config{BackupRestic: true}
+	rm := backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
+	rm.SetError(backupmgr.InitTask, errors.New("repo config is missing"))
+
+	cluster := &Cluster{
+		Name:          "test",
+		Conf:          conf,
+		StateMachine:  sm,
+		ResticManager: rm,
+	}
+
+	// Cycle 1: issue present → WARN0095 opens.
+	cluster.CheckResticErrors()
+	sm.ClearState() // OldState = CurState (has WARN0095), CurState = empty
+
+	if !sm.IsInState("WARN0095") {
+		t.Fatal("cycle 1: expected WARN0095 to be open")
+	}
+
+	// Cycle 2: issue still present → WARN0095 must remain open with no reopen event.
+	cluster.CheckResticErrors() // sets CurState again
+	newlyOpened := sm.GetLastOpenedStates()
+	if _, reopened := newlyOpened["WARN0095"]; reopened {
+		t.Fatal("cycle 2: WARN0095 should not reopen (no churn expected)")
+	}
+	sm.ClearState()
+
+	if !sm.IsInState("WARN0095") {
+		t.Fatal("cycle 2: expected WARN0095 to remain open")
+	}
+
+	// Simulate init success: clear both TaskErrors[InitTask] and lastInitError.
+	rm.FetchAndClearError(backupmgr.InitTask)
+	rm.ClearInitErrorBackoffManual()
+
+	// Cycle 3: no issue → WARN0095 must resolve.
+	cluster.CheckResticErrors() // does NOT set WARN0095
+	resolved := sm.GetLastResolvedStates()
+	found := false
+	for _, s := range resolved {
+		if s.ErrKey == "WARN0095" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("cycle 3: expected WARN0095 to appear in resolved states")
+	}
+	sm.ClearState()
+
+	if sm.IsInState("WARN0095") {
+		t.Fatal("cycle 3: expected WARN0095 to be gone after init success")
+	}
+}
+
+// TestCheckResticErrors_WARN0095ResolvesWithoutPstates30 proves that WARN0095
+// resolves in the very next cycle after the init issue clears, without relying
+// on pstates30 preservation to carry the state. This is the regression guard
+// for removing WARN0095 from pstates30.
+func TestCheckResticErrors_WARN0095ResolvesWithoutPstates30(t *testing.T) {
+	sm := new(state.StateMachine)
+	sm.Init()
+
+	conf := &config.Config{BackupRestic: true}
+	rm := backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
+	rm.SetError(backupmgr.InitTask, errors.New("repo config is missing"))
+
+	cluster := &Cluster{
+		Name:          "test",
+		Conf:          conf,
+		StateMachine:  sm,
+		ResticManager: rm,
+	}
+
+	// Cycle 1: issue present → open WARN0095, then end cycle.
+	cluster.CheckResticErrors()
+	sm.ClearState()
+
+	// Clear the init issue before cycle 2 (no pstates30 preservation applied).
+	rm.FetchAndClearError(backupmgr.InitTask)
+	rm.ClearInitErrorBackoffManual()
+
+	// Cycle 2: CheckResticErrors does not set WARN0095; it must resolve immediately.
+	cluster.CheckResticErrors()
+	resolved := sm.GetLastResolvedStates()
+	found := false
+	for _, s := range resolved {
+		if s.ErrKey == "WARN0095" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected WARN0095 to resolve in the same cycle the issue clears, without pstates30 preservation")
+	}
+}
+
+// TestCheckResticErrors_TransientErrorsCleared verifies that non-init task errors
+// (FetchTask, PurgeTask, UnlockTask) are consumed after one cycle and do not
+// prevent the state from resolving the following cycle.
+func TestCheckResticErrors_TransientErrorsCleared(t *testing.T) {
+	cases := []struct {
+		name     string
+		taskType backupmgr.TaskType
+		warnKey  string
+	}{
+		{"fetch", backupmgr.FetchTask, "WARN0093"},
+		{"purge", backupmgr.PurgeTask, "WARN0094"},
+		{"unlock", backupmgr.UnlockTask, "WARN0095"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sm := new(state.StateMachine)
+			sm.Init()
+			conf := &config.Config{BackupRestic: true}
+			rm := backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
+			rm.SetError(tc.taskType, errors.New("transient error"))
+
+			cluster := &Cluster{
+				Name:          "test",
+				Conf:          conf,
+				StateMachine:  sm,
+				ResticManager: rm,
+			}
+
+			// Cycle 1: error present → warning set.
+			cluster.CheckResticErrors()
+			sm.ClearState()
+			if !sm.IsInState(tc.warnKey) {
+				t.Fatalf("cycle 1: expected %s to be open", tc.warnKey)
+			}
+
+			// Cycle 2: error consumed, not re-raised → warning resolves.
+			cluster.CheckResticErrors()
+			resolved := sm.GetLastResolvedStates()
+			found := false
+			for _, s := range resolved {
+				if s.ErrKey == tc.warnKey {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("cycle 2: expected %s to resolve after transient error cleared", tc.warnKey)
+			}
+		})
+	}
+}
