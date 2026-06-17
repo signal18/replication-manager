@@ -479,6 +479,7 @@ func (cluster *Cluster) ReloadResticEnv() {
 		)
 		// Clear init error backoff when environment changes (credentials/config may be fixed)
 		cluster.ResticManager.ClearInitErrorBackoffManual()
+		cluster.ResticManager.AutoInit = cluster.Conf.BackupResticAutoInit
 	}
 }
 

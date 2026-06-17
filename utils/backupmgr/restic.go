@@ -371,6 +371,7 @@ type ResticManager struct {
 	stopCh               chan struct{} // Stop channel to signal the goroutine to stop
 	CanFetch             bool
 	CanInitRepo          bool
+	AutoInit             bool
 	NeedPurgeNow         bool
 	PurgeNowOption       ResticPurgeOption
 	isPaused             bool
@@ -3059,8 +3060,11 @@ func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) err
 			return err
 		}
 
-		// No config, no data - return error to require explicit init
+		// No config, no data - fresh repository
 		repo.CanInitRepo = true
+		if repo.AutoInit {
+			return repo.InitRepoWithOptions(ResticInitOption{})
+		}
 		err = errors.New("repository initialization required: " + errstr)
 		repo.SetError(InitTask, err)
 		repo.setInitErrorBackoff(err)
@@ -3225,6 +3229,9 @@ func (repo *ResticManager) CheckRepoFiles() error {
 			return err
 		} else { // Repo data does not exist (explicit init required, but possible)
 			repo.CanInitRepo = true
+			if repo.AutoInit {
+				return repo.InitRepoWithOptions(ResticInitOption{})
+			}
 			err = errors.New("repository initialization required: " + errstr)
 			repo.SetError(InitTask, err)
 			return err
@@ -3477,6 +3484,7 @@ func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 	}
 
 	// Only add fetch task on successful initialization
+	delete(repo.TaskErrors, InitTask)
 	repo.AddFetchTask()
 	repo.clearInitErrorBackoff()
 

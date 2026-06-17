@@ -508,6 +508,203 @@ func TestCheckS3RepoFilesCorruptRepo(t *testing.T) {
 	}
 }
 
+func TestCheckRepoFilesAutoInitDisabled(t *testing.T) {
+	repo := newPausedRepo(t)
+	repoDir, _, _ := getTestingDirs(t)
+	resetSharedDirs(t)
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=" + repoDir,
+	})
+	repo.AutoInit = false
+
+	err := repo.CheckRepoFiles()
+	if err == nil {
+		t.Fatal("expected error for fresh repo with auto-init disabled")
+	}
+	if !strings.Contains(err.Error(), "initialization required") {
+		t.Fatalf("expected 'initialization required', got %q", err.Error())
+	}
+	if !repo.CanInitRepo {
+		t.Fatal("expected CanInitRepo true for fresh repo")
+	}
+	if _, statErr := os.Stat(filepath.Join(repoDir, "config")); !os.IsNotExist(statErr) {
+		t.Fatal("repo must not have been initialized when auto-init is disabled")
+	}
+}
+
+func TestCheckRepoFilesAutoInitEnabled(t *testing.T) {
+	repo := newPausedRepo(t)
+	repoDir, _, _ := getTestingDirs(t)
+	resetSharedDirs(t)
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=" + repoDir,
+	})
+	repo.AutoInit = true
+
+	if err := repo.CheckRepoFiles(); err != nil {
+		t.Fatalf("expected no error after auto-init, got %v", err)
+	}
+	if !repo.CanInitRepo {
+		t.Fatal("expected CanInitRepo true after successful auto-init")
+	}
+	if _, err := os.Stat(filepath.Join(repoDir, "config")); err != nil {
+		t.Fatalf("expected repo config to exist after auto-init: %v", err)
+	}
+	if _, stale := repo.TaskErrors[InitTask]; stale {
+		t.Fatal("expected InitTask error to be cleared after successful auto-init")
+	}
+}
+
+func TestCheckRepoFilesAutoInitCorrupt(t *testing.T) {
+	repo := newPausedRepo(t)
+	repoDir, _, _ := getTestingDirs(t)
+	resetSharedDirs(t)
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=" + repoDir,
+	})
+	repo.AutoInit = true
+	if err := os.MkdirAll(filepath.Join(repoDir, "data"), 0755); err != nil {
+		t.Fatalf("mkdir data: %v", err)
+	}
+
+	err := repo.CheckRepoFiles()
+	if err == nil {
+		t.Fatal("expected error for corrupt repo")
+	}
+	if repo.CanInitRepo {
+		t.Fatal("expected CanInitRepo false for corrupt repo")
+	}
+	if _, statErr := os.Stat(filepath.Join(repoDir, "config")); !os.IsNotExist(statErr) {
+		t.Fatal("repo must not have been initialized for corrupt state")
+	}
+}
+
+func TestCheckS3RepoFilesAutoInitDisabled(t *testing.T) {
+	repo := newPausedRepo(t)
+	repo.s3existenceProber = func(bucket, configKey, dataPrefix string) (bool, error, bool, error) {
+		return false, nil, false, nil
+	}
+	repo.AutoInit = false
+
+	err := repo.checkS3RepoFiles("test-bucket", "", "")
+	if err == nil {
+		t.Fatal("expected error for fresh S3 repo with auto-init disabled")
+	}
+	if !strings.Contains(err.Error(), "initialization required") {
+		t.Fatalf("expected 'initialization required', got %q", err.Error())
+	}
+	if !repo.CanInitRepo {
+		t.Fatal("expected CanInitRepo true for fresh S3 repo")
+	}
+}
+
+func TestCheckS3RepoFilesAutoInitEnabled(t *testing.T) {
+	repo := newPausedRepo(t)
+	repoDir, _, _ := getTestingDirs(t)
+	resetSharedDirs(t)
+	// RESTIC_REPOSITORY points to a local dir so restic init succeeds without a real S3 endpoint.
+	// s3existenceProber simulates the fresh-S3 probe result independently.
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=" + repoDir,
+	})
+	repo.s3existenceProber = func(bucket, configKey, dataPrefix string) (bool, error, bool, error) {
+		return false, nil, false, nil
+	}
+	repo.AutoInit = true
+
+	if err := repo.checkS3RepoFiles("test-bucket", "", ""); err != nil {
+		t.Fatalf("expected no error after S3 auto-init, got %v", err)
+	}
+	if !repo.CanInitRepo {
+		t.Fatal("expected CanInitRepo true after successful S3 auto-init")
+	}
+	if _, err := os.Stat(filepath.Join(repoDir, "config")); err != nil {
+		t.Fatalf("expected repo config to exist after auto-init: %v", err)
+	}
+	if _, stale := repo.TaskErrors[InitTask]; stale {
+		t.Fatal("expected InitTask error to be cleared after successful S3 auto-init")
+	}
+}
+
+func TestCheckS3RepoFilesAutoInitCorrupt(t *testing.T) {
+	repo := newPausedRepo(t)
+	repo.s3existenceProber = func(bucket, configKey, dataPrefix string) (bool, error, bool, error) {
+		return false, nil, true, nil // no config, data exists → corrupt
+	}
+	repo.AutoInit = true
+
+	err := repo.checkS3RepoFiles("test-bucket", "", "")
+	if err == nil {
+		t.Fatal("expected error for corrupt S3 repo")
+	}
+	if repo.CanInitRepo {
+		t.Fatal("expected CanInitRepo false for corrupt S3 repo")
+	}
+	if strings.Contains(err.Error(), "initialization required") {
+		t.Fatalf("corrupt S3 error must not contain 'initialization required', got %q", err.Error())
+	}
+}
+
+func TestCheckRepoFilesSftpAutoInitIgnored(t *testing.T) {
+	repo := newPausedRepo(t)
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=sftp:backup@10.0.0.1:/srv/restic-repo",
+	})
+	repo.AutoInit = true
+
+	if err := repo.CheckRepoFiles(); err != nil {
+		t.Fatalf("expected no error for sftp repo, got %v", err)
+	}
+	if !repo.CanInitRepo {
+		t.Fatal("expected CanInitRepo true for sftp repo")
+	}
+	// AutoInit must have no effect on SFTP: no init attempt means no task error.
+	if _, attempted := repo.TaskErrors[InitTask]; attempted {
+		t.Fatal("expected no InitTask error for sftp repo: auto-init must not have been attempted")
+	}
+}
+
+func TestCheckRepoFilesAutoInitFailure(t *testing.T) {
+	repo := newPausedRepo(t)
+	repoDir, _, _ := getTestingDirs(t)
+	resetSharedDirs(t)
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=" + repoDir,
+	})
+	repo.AutoInit = true
+	repo.BinaryPath = "/nonexistent/restic"
+
+	err := repo.CheckRepoFiles()
+	if err == nil {
+		t.Fatal("expected error when auto-init fails")
+	}
+	if repo.CanInitRepo {
+		t.Fatal("expected CanInitRepo false after failed auto-init")
+	}
+	storedErr, hasErr := repo.TaskErrors[InitTask]
+	if !hasErr {
+		t.Fatal("expected InitTask error to be set after failed auto-init")
+	}
+	if storedErr == nil || storedErr.Error() != err.Error() {
+		t.Fatalf("stored init error %v does not match returned error %v", storedErr, err)
+	}
+	repo.errorMutex.Lock()
+	count := repo.initErrorCount
+	repo.errorMutex.Unlock()
+	if count == 0 {
+		t.Fatal("expected initErrorCount > 0 after failed auto-init")
+	}
+	if !repo.shouldSkipInitDueToBackoff() {
+		t.Fatal("expected backoff to be active after failed auto-init")
+	}
+}
+
 func TestRunCommandAndInitRepo(t *testing.T) {
 	repo, repoDir, _, _ := newResticRepo(t, false)
 	if _, err := os.Stat(filepath.Join(repoDir, "config")); err != nil {
