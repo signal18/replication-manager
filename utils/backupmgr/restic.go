@@ -406,6 +406,10 @@ type ResticManager struct {
 	lastInitError    error     // Last init error encountered
 	initErrorCount   int       // Number of consecutive init errors
 	initBackoffUntil time.Time // Don't retry init until this time
+	// s3existenceProber is a test seam; nil in production.
+	// When set, checkS3RepoFiles calls it instead of creating a real S3 client.
+	// It receives bucket, configKey, dataPrefix and returns existence + error for each.
+	s3existenceProber func(bucket, configKey, dataPrefix string) (configExists bool, configErr error, dataExists bool, dataErr error)
 }
 
 // NewResticRepo initializes the repository manager
@@ -2980,20 +2984,13 @@ func (repo *ResticManager) resolveS3RepoSpec(repopath string) (bucket, prefix, e
 
 // checkS3RepoFiles verifies S3 repository structure and initializes if needed
 func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) error {
-	// Create S3 client
-	client, err := s3helper.NewClient(repo.AwsAccessKeyID, repo.AwsSecretAccessKey, "", repo.AwsRegion, endpoint)
-	if err != nil {
-		repo.CanInitRepo = false
-		err = fmt.Errorf("failed to create S3 client: %w", err)
-		repo.SetError(InitTask, err)
-		repo.setInitErrorBackoff(err)
-		return err
-	}
-
-	// Build config object key
 	configKey := "config"
 	if prefix != "" {
 		configKey = prefix + "/config"
+	}
+	dataPrefix := "data/"
+	if prefix != "" {
+		dataPrefix = prefix + "/data/"
 	}
 
 	endpointDisplay := endpoint
@@ -3003,27 +3000,48 @@ func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) err
 	repo.Printf(logrus.DebugLevel, "Checking S3 repository: endpoint=%s bucket=%s prefix=%s",
 		endpointDisplay, bucket, prefix)
 
-	// Check if config exists
-	configExists, err := s3helper.CheckObjectExists(client, bucket, configKey)
-	if err != nil {
-		repo.CanInitRepo = false
-		repo.SetError(InitTask, err)
-		repo.setInitErrorBackoff(err)
-		return err
+	// Probe existence: use test seam if set, otherwise use real S3 client.
+	var configExists bool
+	var getDataExists func() (bool, error)
+
+	if repo.s3existenceProber != nil {
+		ce, ceErr, de, deErr := repo.s3existenceProber(bucket, configKey, dataPrefix)
+		if ceErr != nil {
+			repo.CanInitRepo = false
+			repo.SetError(InitTask, ceErr)
+			repo.setInitErrorBackoff(ceErr)
+			return ceErr
+		}
+		configExists = ce
+		getDataExists = func() (bool, error) { return de, deErr }
+	} else {
+		client, err := s3helper.NewClient(repo.AwsAccessKeyID, repo.AwsSecretAccessKey, "", repo.AwsRegion, endpoint)
+		if err != nil {
+			repo.CanInitRepo = false
+			err = fmt.Errorf("failed to create S3 client: %w", err)
+			repo.SetError(InitTask, err)
+			repo.setInitErrorBackoff(err)
+			return err
+		}
+		var checkErr error
+		configExists, checkErr = s3helper.CheckObjectExists(client, bucket, configKey)
+		if checkErr != nil {
+			repo.CanInitRepo = false
+			repo.SetError(InitTask, checkErr)
+			repo.setInitErrorBackoff(checkErr)
+			return checkErr
+		}
+		getDataExists = func() (bool, error) {
+			return s3helper.ListPrefixHasRealObjects(client, bucket, dataPrefix)
+		}
 	}
 
 	if !configExists {
 		// Config missing - check for data directory
 		errstr := "repo config is missing"
 
-		dataPrefix := "data/"
-		if prefix != "" {
-			dataPrefix = prefix + "/data/"
-		}
-
-		dataExists, err := s3helper.ListPrefixHasRealObjects(client, bucket, dataPrefix)
+		dataExists, err := getDataExists()
 		if err != nil {
-			// Error checking data
 			repo.CanInitRepo = false
 			err = fmt.Errorf("%s and failed to check repo data: %w", errstr, err)
 			repo.SetError(InitTask, err)
@@ -3043,13 +3061,13 @@ func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) err
 
 		// No config, no data - return error to require explicit init
 		repo.CanInitRepo = true
-		err = errors.New(errstr)
+		err = errors.New("repository initialization required: " + errstr)
 		repo.SetError(InitTask, err)
 		repo.setInitErrorBackoff(err)
 		return err
 	}
 
-	// Config exists or was just initialized
+	// Config exists
 	repo.CanInitRepo = true
 	delete(repo.TaskErrors, InitTask)
 	repo.clearInitErrorBackoff()
@@ -3182,9 +3200,9 @@ func (repo *ResticManager) CheckRepoFiles() error {
 		// Repo lives on a remote host via SSH/SFTP; skip local filesystem
 		// existence checks and let actual restic commands surface
 		// init-required errors naturally.
+		// Do not clear prior init failure state — a passive SFTP check cannot
+		// confirm the repository is healthy.
 		repo.CanInitRepo = true
-		delete(repo.TaskErrors, InitTask)
-		repo.clearInitErrorBackoff()
 		return nil
 	}
 
@@ -3207,7 +3225,7 @@ func (repo *ResticManager) CheckRepoFiles() error {
 			return err
 		} else { // Repo data does not exist (explicit init required, but possible)
 			repo.CanInitRepo = true
-			err = errors.New(errstr)
+			err = errors.New("repository initialization required: " + errstr)
 			repo.SetError(InitTask, err)
 			return err
 		}

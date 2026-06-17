@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func TestSplitResticKeepTagTemplates(t *testing.T) {
@@ -1049,5 +1051,36 @@ func TestResticS3EffectivePrefixForInit(t *testing.T) {
 	effective, ok = cluster.ResticS3EffectivePrefixForInit()
 	if ok {
 		t.Fatalf("expected no update when prefix already ends with cluster name")
+	}
+}
+
+func TestCheckResticErrors_InitTaskWithCanInitRepo(t *testing.T) {
+	sm := new(state.StateMachine)
+	sm.Init()
+
+	conf := &config.Config{BackupRestic: true}
+	rm := backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
+	rm.CanInitRepo = true
+	rm.SetError(backupmgr.InitTask, errors.New("repository initialization required: repo config is missing"))
+
+	cluster := &Cluster{
+		Name:          "test",
+		Conf:          conf,
+		StateMachine:  sm,
+		ResticManager: rm,
+	}
+
+	cluster.CheckResticErrors()
+
+	if !cluster.StateMachine.IsInState("WARN0095") {
+		t.Fatalf("expected WARN0095 to be set after CheckResticErrors with InitTask error")
+	}
+
+	st, ok := (*cluster.StateMachine.OldState)["WARN0095"]
+	if !ok {
+		t.Fatalf("expected WARN0095 entry in state machine")
+	}
+	if !strings.Contains(st.ErrDesc, "initialization required") {
+		t.Fatalf("expected WARN0095 ErrDesc to contain 'initialization required', got %q", st.ErrDesc)
 	}
 }

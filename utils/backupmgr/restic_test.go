@@ -406,22 +406,30 @@ func TestCheckRepoFiles(t *testing.T) {
 	})
 
 	// Fresh repo dir: no config, no data - explicit init required but still possible
-	if err := repo.CheckRepoFiles(); err == nil {
+	freshErr := repo.CheckRepoFiles()
+	if freshErr == nil {
 		t.Fatalf("expected error when repo is not yet initialized")
 	}
 	if !repo.CanInitRepo {
 		t.Fatalf("expected CanInitRepo true for a fresh, uninitialized repo")
+	}
+	if !strings.Contains(freshErr.Error(), "initialization required") {
+		t.Fatalf("expected fresh-repo error to contain 'initialization required', got %q", freshErr.Error())
 	}
 
 	// Data exists without config: corrupted repo, cannot be auto/explicitly initialized
 	if err := os.MkdirAll(filepath.Join(repoDir, "data"), 0755); err != nil {
 		t.Fatalf("mkdir data: %v", err)
 	}
-	if err := repo.CheckRepoFiles(); err == nil {
+	corruptErr := repo.CheckRepoFiles()
+	if corruptErr == nil {
 		t.Fatalf("expected error when config missing but data exists")
 	}
 	if repo.CanInitRepo {
 		t.Fatalf("expected CanInitRepo false when data exists without config")
+	}
+	if strings.Contains(corruptErr.Error(), "initialization required") {
+		t.Fatalf("corrupt-repo error must not contain 'initialization required', got %q", corruptErr.Error())
 	}
 }
 
@@ -432,10 +440,11 @@ func TestCheckRepoFilesSftp(t *testing.T) {
 		"RESTIC_REPOSITORY=sftp:backup@10.0.0.1:/srv/restic-repo",
 	})
 
-	// Simulate state left over from a prior failed init attempt, so we can
-	// verify the sftp branch clears it rather than just leaving CanInitRepo
-	// at its zero-value default of true. The backoff deadline is set in the
-	// past so it doesn't short-circuit this call to CheckRepoFiles.
+	// Simulate state left over from a prior failed init attempt. The backoff
+	// deadline is set in the past so it does not short-circuit the call to
+	// CheckRepoFiles. After the call we verify that CanInitRepo is true but
+	// the prior failure state is preserved — a passive SFTP check cannot
+	// confirm the repository is healthy, so it must not erase a real failure.
 	repo.CanInitRepo = false
 	repo.SetError(InitTask, errors.New("previous init failure"))
 	repo.errorMutex.Lock()
@@ -450,11 +459,52 @@ func TestCheckRepoFilesSftp(t *testing.T) {
 	if !repo.CanInitRepo {
 		t.Fatalf("expected CanInitRepo true for sftp repository")
 	}
-	if _, ok := repo.TaskErrors[InitTask]; ok {
-		t.Fatalf("expected InitTask error to be cleared for sftp repository")
+	if _, ok := repo.TaskErrors[InitTask]; !ok {
+		t.Fatalf("expected InitTask error to be retained for sftp repository")
 	}
-	if repo.shouldSkipInitDueToBackoff() {
-		t.Fatalf("expected init backoff to be cleared for sftp repository")
+	repo.errorMutex.Lock()
+	lastErr := repo.lastInitError
+	repo.errorMutex.Unlock()
+	if lastErr == nil {
+		t.Fatalf("expected init error backoff state to be retained for sftp repository")
+	}
+}
+
+func TestCheckS3RepoFilesFreshRepo(t *testing.T) {
+	repo := newPausedRepo(t)
+	// Wire the test seam: no config, no data (fresh bucket).
+	repo.s3existenceProber = func(bucket, configKey, dataPrefix string) (bool, error, bool, error) {
+		return false, nil, false, nil
+	}
+
+	err := repo.checkS3RepoFiles("test-bucket", "", "")
+	if err == nil {
+		t.Fatalf("expected error for fresh S3 repo")
+	}
+	if !repo.CanInitRepo {
+		t.Fatalf("expected CanInitRepo true for fresh S3 repo")
+	}
+	if !strings.Contains(err.Error(), "initialization required") {
+		t.Fatalf("expected 'initialization required' in error, got %q", err.Error())
+	}
+}
+
+func TestCheckS3RepoFilesCorruptRepo(t *testing.T) {
+	repo := newPausedRepo(t)
+	// Wire the test seam: no config but data exists (corrupt bucket).
+	repo.s3existenceProber = func(bucket, configKey, dataPrefix string) (bool, error, bool, error) {
+		return false, nil, true, nil
+	}
+
+	err := repo.checkS3RepoFiles("test-bucket", "", "")
+	if err == nil {
+		t.Fatalf("expected error for corrupt S3 repo")
+	}
+	if repo.CanInitRepo {
+		t.Fatalf("expected CanInitRepo false for corrupt S3 repo")
+	}
+	if strings.Contains(err.Error(), "initialization required") {
+		t.Fatalf("corrupt S3 repo error must not contain 'initialization required', got %q", err.Error())
 	}
 }
 
