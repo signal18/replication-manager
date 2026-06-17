@@ -41,7 +41,7 @@ type SysbenchLogEntry struct {
 	Cores        string                       `json:"cores"`        // prov-db-cpu-cores (docker cap)
 	MemoryMB     string                       `json:"memoryMB"`     // prov-db-memory in MB (docker cap)
 	DiskGB       string                       `json:"diskGB"`       // prov-db-disk-size in GB (docker cap)
-	DBU          float64                      `json:"dbu"`          // database units: max(cores/1, mem/4096, disk/40)
+	DBU          float64                      `json:"dbu"`          // database units: max(cores/1, mem/4096, disk/40, iops/1000)
 	ClusterDBU   float64                      `json:"clusterDbu"`   // DBU × (replicas + 1)
 	ConfigTags   string                       `json:"configTags"`   // prov-db-tags at run time
 	ServicePlan  string                       `json:"servicePlan"`
@@ -136,11 +136,12 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 		Records:     records,
 	}
 
-	// Compute DBU: 1 credit = 1 core / 4GB RAM / 40GB NVMe
+	// Compute DBU: 1 unit = 1 core / 4GB RAM / 40GB NVMe / 1000 IOPS
 	cores, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
 	memMB, _ := strconv.ParseFloat(cluster.Conf.ProvMem, 64)
 	diskGB, _ := strconv.ParseFloat(cluster.Conf.ProvDisk, 64)
-	entry.DBU = math.Max(cores, math.Max(memMB/4096, diskGB/40))
+	iops, _ := strconv.ParseFloat(cluster.Conf.ProvIops, 64)
+	entry.DBU = math.Max(cores, math.Max(memMB/4096, math.Max(diskGB/40, iops/1000)))
 	entry.ClusterDBU = entry.DBU * float64(dbNodes)
 
 	// DB flavor + version from master

@@ -319,11 +319,43 @@ function DBConfigs({ selectedCluster, user }) {
     {
       key: 'Resources',
       value: (
-        <Flex className={styles.resources}>
+        <Flex className={styles.resources} flexWrap='wrap'>
           <Gauge
             isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={1}
-            maxValue={25600}
+            maxValue={512}
+            value={Math.ceil(Math.max(
+              (parseFloat(selectedCluster?.config?.provDbCpuCores) || 1),
+              (parseFloat(convertSize(selectedCluster?.config?.provDbMemory,"M","M")) || 4096) / 4096,
+              (parseFloat(convertSize(selectedCluster?.config?.provDbDiskSize,"G","G")) || 40) / 40,
+              (parseFloat(selectedCluster?.config?.provDbDiskIops) || 1000) / 1000
+            ))}
+            text={'DBU'}
+            width={150}
+            height={105}
+            hideMinMax={false}
+            showStep={true}
+            step={1}
+            handleStepChange={(dbu) => {
+              const mem = dbu * 4096
+              const disk = dbu * 40
+              const iops = dbu * 1000
+              setConfirmTitle(`Confirm DBU change to ${dbu} (${dbu} cores, ${mem >= 1024 ? (mem/1024) + 'GB' : mem + 'MB'} mem, ${disk}GB disk, ${iops} IO/s)`)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () => {
+                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-cpu-cores', value: dbu }))
+                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-memory', value: mem }))
+                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-disk-size', value: disk }))
+                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-disk-iops', value: iops }))
+                }
+              )
+            }}
+          />
+          <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
+            minValue={4096}
+            maxValue={1048576}
             value={convertSize(selectedCluster?.config?.provDbMemory,"M","M")}
             text={'Memory'}
             width={150}
@@ -333,7 +365,7 @@ function DBConfigs({ selectedCluster, user }) {
             step={256}
             appendTextToValue='MB'
             handleStepChange={(value) => {
-              setConfirmTitle(`Confirm memory change to ${value}`)
+              setConfirmTitle(`Confirm memory change to ${value >= 1024 ? (value/1024) + 'GB' : value + 'MB'}`)
               setIsConfirmModalOpen(true)
               setConfirmHandler(
                 () => () =>
@@ -349,8 +381,8 @@ function DBConfigs({ selectedCluster, user }) {
           />
           <Gauge
             isDisabled={user?.grants['proxy-config-flag'] == false}
-            minValue={1}
-            maxValue={10000}
+            minValue={10}
+            maxValue={20480}
             value={convertSize(selectedCluster?.config?.provDbDiskSize,"G","G")}
             text={'Disk size'}
             width={150}
@@ -360,7 +392,7 @@ function DBConfigs({ selectedCluster, user }) {
             step={10}
             appendTextToValue='GB'
             handleStepChange={(value) => {
-              setConfirmTitle(`Confirm disk size change to ${value}`)
+              setConfirmTitle(`Confirm disk size change to ${value}GB`)
               setIsConfirmModalOpen(true)
               setConfirmHandler(
                 () => () =>
@@ -403,7 +435,7 @@ function DBConfigs({ selectedCluster, user }) {
           <Gauge
             isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={1}
-            maxValue={256}
+            maxValue={512}
             value={selectedCluster?.config?.provDbCpuCores}
             text={'Cores'}
             width={150}
