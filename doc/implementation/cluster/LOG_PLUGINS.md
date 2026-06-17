@@ -56,7 +56,8 @@ exit ≠0 = error    (repman logs WARN0203 and skips state injection)
 The plugin has **5 seconds** to complete. If it exceeds this deadline the server
 kills it and records a timeout finding (WARN0203).
 
-The current wire version is **2** (`WireVersion = 2` in `wire.go`).
+The current wire version is **2** (`WireVersion = 2` in `wire.go`), introduced in
+v3.1.30. Wire v1 plugins continue to work — new fields are additive.
 
 ### Request
 
@@ -308,10 +309,13 @@ detected. Return a non-zero exit code only for fatal plugin errors — not for
 
 ## Plugin Manifest
 
+*Added in v3.1.30.*
+
 Every plugin should ship a `.manifest.json` sidecar file alongside its binary.
 The manifest makes the plugin self-describing — the frontend renders config UI,
 descriptions, and help text dynamically from the manifest without hardcoded
-switch/case statements.
+switch/case statements. New plugins can be deployed with full UI support without
+a frontend release.
 
 File naming: `<plugin-binary-name>.manifest.json` in the same directory as the
 binary source.
@@ -767,6 +771,9 @@ For dev builds without credentials, a local keypair is generated automatically.
 
 ### plugin-workload-tags
 
+*Added in v3.1.30.* Previously a built-in plugin (`workload-tags`), moved to
+an external plugin for dynamic deployment without recompilation.
+
 Detects which MariaDB/MySQL features are actively used by the workload using
 `SHOW GLOBAL STATUS` counters and `SHOW GLOBAL VARIABLES` analysis.
 
@@ -787,6 +794,9 @@ Detects which MariaDB/MySQL features are actively used by the workload using
 **No configurable parameters.** Detection is purely status-counter based.
 
 ### plugin-workload-pfs-digest
+
+*Added in v3.1.30.* Previously a built-in plugin (`workload-pfs-digest`), moved
+to an external plugin for dynamic deployment without recompilation.
 
 Analyses `performance_schema.events_statements_summary_by_digest` and cached
 EXPLAIN plans to produce workload coverage and optimization tags.
