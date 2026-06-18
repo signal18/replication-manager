@@ -448,6 +448,29 @@ export const resticInitRepo = createGuardedAsyncThunk(
         { allowEmptyPrefix },
         baseURL
       )
+      if (!status || status < 200 || status >= 300) {
+        const msg = (data && typeof data === 'object' && data.message)
+          ? data.message
+          : (typeof data === 'string' && data) ? data : 'Initialize repository request failed'
+        return thunkAPI.rejectWithValue({ errorMessage: msg, errorStatus: status || 500 })
+      }
+      return { data, status }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const resticCheckConfig = createGuardedAsyncThunk(
+  'cluster/resticCheckConfig',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.resticCheckConfig(clusterName, baseURL)
+      if (!status || status < 200 || status >= 300) {
+        const msg = (data && typeof data === 'object' && data.message) ? data.message : 'Check repository request failed'
+        return thunkAPI.rejectWithValue({ errorMessage: msg, errorStatus: status || 500 })
+      }
       return { data, status }
     } catch (error) {
       return handleError(error, thunkAPI)

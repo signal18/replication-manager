@@ -3,12 +3,15 @@ package cluster
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
 )
 
 func TestPrepareResticReseedPathsUsesMetadataDest(t *testing.T) {
@@ -241,5 +244,217 @@ func TestBuildResticMountSnapshotCandidatesTimeTemplate(t *testing.T) {
 	}
 	if candidates[0].Path != filepath.Join(mountDir, "snapshots", "2026-02-01_10-00-00") {
 		t.Fatalf("unexpected candidate path %q", candidates[0].Path)
+	}
+}
+
+// TestResticCheckConfigManualNoSideEffects verifies that ResticCheckConfigManual:
+//   - returns initialization_required for a fresh (uninitialized) repo
+//   - does not create a repository config file
+//   - does not enqueue unlock or fetch tasks
+func TestResticCheckConfigManualNoSideEffects(t *testing.T) {
+	resticPath, err := exec.LookPath("restic")
+	if err != nil {
+		t.Skip("restic binary not found, skipping cluster manual-check test")
+	}
+
+	repoDir, err := os.MkdirTemp("", "cluster-restic-check-*")
+	if err != nil {
+		t.Fatalf("create temp repo dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(repoDir) })
+
+	msgChan := make(chan sharedlog.Message, 64)
+	t.Cleanup(func() {
+		for len(msgChan) > 0 {
+			<-msgChan
+		}
+	})
+
+	cl := &Cluster{
+		Conf: &config.Config{
+			BackupRestic:           true,
+			BackupResticBinaryPath: resticPath,
+			BackupResticPassword:   "testpassword",
+			BackupResticLocalRepository: repoDir,
+		},
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
+		MessageChan:   msgChan,
+	}
+	// Inject env so SetEnv inside ensureResticManagerBase picks up the right repo.
+	cl.Conf.BackupResticRepository = repoDir
+
+	if cl.ResticManager != nil {
+		t.Fatal("precondition: ResticManager should be nil before the call")
+	}
+
+	result := cl.ResticCheckConfigManual()
+
+	if result.Status != backupmgr.ManualCheckStatusInitRequired {
+		t.Fatalf("expected initialization_required, got %s: %s", result.Status, result.Message)
+	}
+	if result.FetchQueued {
+		t.Fatal("fetch must not be queued for initialization_required result")
+	}
+
+	// No repo config should have been created.
+	if _, statErr := os.Stat(filepath.Join(repoDir, "config")); statErr == nil {
+		t.Fatal("repository config must not be created during manual check")
+	}
+
+	if cl.ResticManager == nil {
+		t.Fatal("ResticManager should be set after manual check (ensureResticManagerBase ran)")
+	}
+
+	// No unlock or fetch tasks should be in the queue.
+	cl.ResticManager.Mutex.Lock()
+	queue := make([]*backupmgr.ResticTask, len(cl.ResticManager.TaskQueue))
+	copy(queue, cl.ResticManager.TaskQueue)
+	cl.ResticManager.Mutex.Unlock()
+
+	for _, task := range queue {
+		switch task.Type {
+		case backupmgr.UnlockTask:
+			t.Errorf("unexpected unlock task in queue after manual check")
+		case backupmgr.FetchTask:
+			t.Errorf("unexpected fetch task in queue after manual check")
+		}
+	}
+
+	// Confirm the string fields are populated.
+	if strings.TrimSpace(result.Message) == "" {
+		t.Fatal("expected non-empty message in result")
+	}
+	if !result.CanInit {
+		t.Fatal("expected CanInit true for fresh repo")
+	}
+}
+
+// TestResticCheckConfigManualSuppressesFetch verifies that after a manual check
+// returns initialization_required, a subsequent ResticFetchRepo call does not
+// enqueue a new fetch task.
+func TestResticCheckConfigManualSuppressesFetch(t *testing.T) {
+	resticPath, err := exec.LookPath("restic")
+	if err != nil {
+		t.Skip("restic binary not found, skipping cluster fetch-suppression test")
+	}
+
+	repoDir, err := os.MkdirTemp("", "cluster-restic-suppress-*")
+	if err != nil {
+		t.Fatalf("create temp repo dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(repoDir) })
+
+	msgChan := make(chan sharedlog.Message, 64)
+	t.Cleanup(func() {
+		for len(msgChan) > 0 {
+			<-msgChan
+		}
+	})
+
+	cl := &Cluster{
+		Conf: &config.Config{
+			BackupRestic:                true,
+			BackupResticBinaryPath:      resticPath,
+			BackupResticPassword:        "testpassword",
+			BackupResticLocalRepository: repoDir,
+			BackupResticRepository:      repoDir,
+		},
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
+		MessageChan:   msgChan,
+	}
+
+	// Manual check classifies the fresh repo and sets repoState = initialization_required.
+	result := cl.ResticCheckConfigManual()
+	if result.Status != backupmgr.ManualCheckStatusInitRequired {
+		t.Fatalf("precondition: expected initialization_required, got %s", result.Status)
+	}
+
+	// Drain any tasks queued during the check (there should be none, but guard anyway).
+	cl.ResticManager.Mutex.Lock()
+	cl.ResticManager.TaskQueue = cl.ResticManager.TaskQueue[:0]
+	cl.ResticManager.Mutex.Unlock()
+
+	// ResticFetchRepo must not enqueue a fetch when repo state is initialization_required.
+	cl.ResticFetchRepo()
+
+	cl.ResticManager.Mutex.Lock()
+	queueLen := len(cl.ResticManager.TaskQueue)
+	cl.ResticManager.Mutex.Unlock()
+
+	if queueLen != 0 {
+		t.Fatalf("expected no tasks queued after fetch on init-required repo, got %d", queueLen)
+	}
+}
+
+// TestReloadResticEnvClearsRepoState verifies that ReloadResticEnv resets a
+// stale initialization_required state so ResticFetchRepo is no longer suppressed.
+func TestReloadResticEnvClearsRepoState(t *testing.T) {
+	resticPath, err := exec.LookPath("restic")
+	if err != nil {
+		t.Skip("restic binary not found, skipping reload-clears-state test")
+	}
+
+	repoDir, err := os.MkdirTemp("", "cluster-restic-reload-*")
+	if err != nil {
+		t.Fatalf("create temp repo dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(repoDir) })
+
+	msgChan := make(chan sharedlog.Message, 64)
+	t.Cleanup(func() {
+		for len(msgChan) > 0 {
+			<-msgChan
+		}
+	})
+
+	cl := &Cluster{
+		Conf: &config.Config{
+			BackupRestic:                true,
+			BackupResticBinaryPath:      resticPath,
+			BackupResticPassword:        "testpassword",
+			BackupResticLocalRepository: repoDir,
+			BackupResticRepository:      repoDir,
+		},
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
+		MessageChan:   msgChan,
+	}
+
+	// Step 1: manual check classifies the fresh repo as initialization_required.
+	result := cl.ResticCheckConfigManual()
+	if result.Status != backupmgr.ManualCheckStatusInitRequired {
+		t.Fatalf("precondition: expected initialization_required, got %s", result.Status)
+	}
+	if cl.ResticManager.GetRepoState() != backupmgr.ManualCheckStatusInitRequired {
+		t.Fatal("precondition: repoState should be initialization_required after manual check")
+	}
+
+	// Step 2: simulate operator changing repo config (e.g. different path).
+	newRepoDir, err := os.MkdirTemp("", "cluster-restic-reload-new-*")
+	if err != nil {
+		t.Fatalf("create new temp repo dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(newRepoDir) })
+	cl.Conf.BackupResticLocalRepository = newRepoDir
+	cl.Conf.BackupResticRepository = newRepoDir
+
+	// Step 3: reload must clear the cached state.
+	cl.ReloadResticEnv()
+	if cl.ResticManager.GetRepoState() != "" {
+		t.Fatalf("expected repoState cleared after ReloadResticEnv, got %q", cl.ResticManager.GetRepoState())
+	}
+
+	// Step 4: ResticFetchRepo should now be unblocked (will enqueue a fetch task).
+	cl.ResticManager.Mutex.Lock()
+	cl.ResticManager.TaskQueue = cl.ResticManager.TaskQueue[:0]
+	cl.ResticManager.Mutex.Unlock()
+
+	cl.ResticFetchRepo()
+
+	cl.ResticManager.Mutex.Lock()
+	queueLen := len(cl.ResticManager.TaskQueue)
+	cl.ResticManager.Mutex.Unlock()
+
+	if queueLen == 0 {
+		t.Fatal("expected fetch task to be enqueued after repoState was cleared by ReloadResticEnv")
 	}
 }

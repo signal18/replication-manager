@@ -181,6 +181,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticUnlock)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/restic/check-config", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticCheckConfig)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/restic/init", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticInitRepo)),
@@ -8514,6 +8519,27 @@ func (repman *ReplicationManager) handlerMuxResticInitRepo(w http.ResponseWriter
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Restic repository initialized"))
+	})
+}
+
+// handlerMuxResticCheckConfig handles the HTTP request to manually validate the restic
+// repository configuration for a given cluster.
+// @Summary Check Restic Repository Config
+// @Description Validates the current restic repository configuration read-only. Returns ok, initialization_required, or error.
+// @Tags ClusterRestic
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} backupmgr.ManualCheckResult "Repository check result"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/restic/check-config [post]
+func (repman *ReplicationManager) handlerMuxResticCheckConfig(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
+		result := mycluster.ResticCheckConfigManual()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(result)
 	})
 }
 

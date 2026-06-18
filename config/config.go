@@ -847,6 +847,7 @@ type Config struct {
 	BackupResticReseedCleanup              bool                   `mapstructure:"backup-restic-reseed-cleanup" toml:"backup-restic-reseed-cleanup" json:"backupResticReseedCleanup"`
 	BackupResticReseedTimeout              int                    `mapstructure:"backup-restic-reseed-timeout" toml:"backup-restic-reseed-timeout" json:"backupResticReseedTimeout"`
 	BackupResticAllowUnsafeMount           bool                   `mapstructure:"backup-restic-allow-unsafe-mount" toml:"backup-restic-allow-unsafe-mount" json:"backupResticAllowUnsafeMount"`
+	BackupResticAutoInit                   bool                   `mapstructure:"backup-restic-auto-init" toml:"backup-restic-auto-init" json:"backupResticAutoInit"`
 	BackupReconcileInterval                int                    `mapstructure:"backup-reconcile-interval" toml:"backup-reconcile-interval" json:"backupReconcileInterval"`
 	BackupReconcileAutoCleanup             bool                   `mapstructure:"backup-reconcile-auto-cleanup" toml:"backup-reconcile-auto-cleanup" json:"backupReconcileAutoCleanup"`
 	BackupStreaming                        bool                   `mapstructure:"backup-streaming" toml:"backup-streaming" json:"backupStreaming"`

@@ -113,6 +113,53 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
     'backup-restic-mount-target-dir overrides the final mount target when set.'
   ].join('  \n')
 
+  const ResticMountVerboseHelp = `**Restic Mount Verbose Level**
+
+Controls how much output the restic mount command produces.
+
+- **0** (default): standard output.
+- **1–3**: progressively more detail; higher values log individual FUSE operations.
+
+Setting verbose > 0 while quiet mode is enabled is not allowed — quiet mode requires verbose = 0.
+
+Config: \`backup-restic-mount-verbose\``
+
+  const ResticMountAllowOtherHelp = `Passes \`--allow-other\` to the FUSE mount, making the mount point accessible to all local users on the host.
+
+Requires \`user_allow_other\` to be set in \`/etc/fuse.conf\`.
+
+**Security:** every local user on the host gains read access to the mounted snapshots.
+
+Config: \`backup-restic-mount-allow-other\``
+
+  const ResticMountNoDefaultPermissionsHelp = `Disables kernel \`default_permissions\` checks on the mounted filesystem.
+
+When enabled, Unix mode bits are ignored and the kernel does not enforce standard permission checks. Access control is handled entirely by the FUSE driver.
+
+Config: \`backup-restic-mount-no-default-permissions\``
+
+  const ResticMountOwnerRootHelp = `Reports all files in the mount as owned by root, regardless of the original backup owner.
+
+Config: \`backup-restic-mount-owner-root\``
+
+  const ResticMountNoLockHelp = `Skips repository locking during the mount operation.
+
+Useful when another process already holds the lock or when mounting a read-only copy. Without locking, concurrent writes to the repository may cause inconsistencies.
+
+Config: \`backup-restic-mount-no-lock\``
+
+  const ResticMountQuietHelp = `Suppresses most output; only minimal status messages are shown.
+
+Requires verbose level = 0. Setting verbose > 0 while quiet mode is active is not allowed.
+
+Config: \`backup-restic-mount-quiet\``
+
+  const ResticMountAllowUnsafeMountHelp = `Allows the manager to attach to an existing mount point that was created outside this process.
+
+Use with caution: if the external mount uses different repository credentials or options, data may appear inconsistent or inaccessible.
+
+Config: \`backup-restic-allow-unsafe-mount\``
+
   const openCommonModal = () => {
     setIsCommonModalOpen(true)
   }
@@ -132,6 +179,19 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
     })
     openCommonModal()
   }
+
+  const h = (content, title, stopPropagation = false) => (
+    <RMIconButton
+      icon={HiQuestionMarkCircle}
+      iconFontsize='1rem'
+      variant='ghost'
+      style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }}
+      onClick={(event) => {
+        if (stopPropagation) event.stopPropagation()
+        openInfoModal(title, content)
+      }}
+    />
+  )
 
   const handleSettingChange = (setting, value) =>
     dispatch(
@@ -296,13 +356,7 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
             title: (
               <HStack spacing={2} align='center'>
                 <Text className={styles.panelTitle}>Mount control</Text>
-                <RMIconButton
-                  icon={HiQuestionMarkCircle}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    openInfoModal('Restic Mount Control', ResticMountControlHelp)
-                  }}
-                />
+                {h(ResticMountControlHelp, 'Restic Mount Control', true)}
               </HStack>
             ),
             description: 'Manually mount or unmount the restic repository using current settings.',
@@ -412,13 +466,7 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
             title: (
               <HStack spacing={2} align='center'>
                 <Text className={styles.panelTitle}>Mount destination</Text>
-                <RMIconButton
-                  icon={HiQuestionMarkCircle}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    openInfoModal('Restic Mount Destination', ResticMountDestinationHelp)
-                  }}
-                />
+                {h(ResticMountDestinationHelp, 'Restic Mount Destination', true)}
               </HStack>
             ),
             description: 'Choose where restic mounts snapshots for inspection or restore.',
@@ -444,7 +492,6 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                       placeholder='(empty = default mount path)'
                       onSave={(value) => handleSettingChange('backup-restic-mount-target-dir', value)}
                     />
-                    <Text className={styles.helperText}>Empty value uses the default mount path.</Text>
                   </GridItem>
                 </Grid>
               </Stack>
@@ -458,13 +505,7 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
             title: (
               <HStack spacing={2} align='center'>
                 <Text className={styles.panelTitle}>Snapshot filters</Text>
-                <RMIconButton
-                  icon={HiQuestionMarkCircle}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    openInfoModal('Restic Mount Filters', ResticMountFiltersHelp)
-                  }}
-                />
+                {h(ResticMountFiltersHelp, 'Restic Mount Filters', true)}
               </HStack>
             ),
             description: 'Limit which snapshots appear inside the mount.',
@@ -491,7 +532,6 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                         placeholder='host1,host2'
                         onSave={(value) => handleSettingChange('backup-restic-mount-host', value)}
                       />
-                      <Text className={styles.helperText}>Comma-separated hostnames; empty means no filter.</Text>
                     </GridItem>
                   </Grid>
 
@@ -514,9 +554,6 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                         placeholder='tag1 tag2'
                         onSave={(value) => handleSettingChange('backup-restic-mount-tag', value)}
                       />
-                      <Text className={styles.helperText}>
-                        Space-separated tags; commas inside a tag mean AND. Empty means no filter.
-                      </Text>
                     </GridItem>
                   </Grid>
 
@@ -539,7 +576,6 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                         placeholder='/var/lib/mysql,/srv/data'
                         onSave={(value) => handleSettingChange('backup-restic-mount-path', value)}
                       />
-                      <Text className={styles.helperText}>Absolute paths only; empty means no filter.</Text>
                     </GridItem>
                   </Grid>
                 </Stack>
@@ -554,13 +590,7 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
             title: (
               <HStack spacing={2} align='center'>
                 <Text className={styles.panelTitle}>Mount templates</Text>
-                <RMIconButton
-                  icon={HiQuestionMarkCircle}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    openInfoModal('Restic Mount Templates', ResticMountTemplatesHelp)
-                  }}
-                />
+                {h(ResticMountTemplatesHelp, 'Restic Mount Templates', true)}
               </HStack>
             ),
             description: 'Control the virtual layout and timestamp formatting inside the mount.',
@@ -587,9 +617,6 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                         placeholder='(comma-separated templates)'
                         onSave={(value) => handleSettingChange('backup-restic-mount-path-template', value)}
                       />
-                      <Text className={styles.helperText}>
-                        Multiple templates allowed; leave empty for defaults.
-                      </Text>
                     </GridItem>
                   </Grid>
 
@@ -612,7 +639,6 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                         placeholder='2006-01-02T15:04:05Z07:00'
                         onSave={(value) => handleSettingChange('backup-restic-mount-time-template', value)}
                       />
-                      <Text className={styles.helperText}>Use Go time layout; leave empty for defaults.</Text>
                     </GridItem>
                   </Grid>
                 </Stack>
@@ -638,7 +664,10 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                     w='full'
                   >
                     <GridItem className={styles.rowLabel}>
-                      <Text>Restic mount allow other users</Text>
+                      <HStack spacing={1} justify='space-between' width='full'>
+                        <Text>Restic mount allow other users</Text>
+                        {h(ResticMountAllowOtherHelp, 'Restic Mount Allow Other Users')}
+                      </HStack>
                     </GridItem>
                     <GridItem className={styles.valueCell}>
                       <RMSwitch
@@ -663,7 +692,10 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                     w='full'
                   >
                     <GridItem className={styles.rowLabel}>
-                      <Text>Restic mount ignore default permissions</Text>
+                      <HStack spacing={1} justify='space-between' width='full'>
+                        <Text>Restic mount ignore default permissions</Text>
+                        {h(ResticMountNoDefaultPermissionsHelp, 'Restic Mount Ignore Default Permissions')}
+                      </HStack>
                     </GridItem>
                     <GridItem className={styles.valueCell}>
                       <RMSwitch
@@ -672,9 +704,6 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                         confirmTitle={'Confirm switch settings for backup-restic-mount-no-default-permissions?'}
                         onChange={() => handleSwitchChange('backup-restic-mount-no-default-permissions')}
                       />
-                      <Text className={styles.helperText}>
-                        Disables kernel permission checks (default_permissions) and ignores Unix mode bits.
-                      </Text>
                     </GridItem>
                   </Grid>
 
@@ -686,7 +715,10 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                     w='full'
                   >
                     <GridItem className={styles.rowLabel}>
-                      <Text>Restic mount owner root</Text>
+                      <HStack spacing={1} justify='space-between' width='full'>
+                        <Text>Restic mount owner root</Text>
+                        {h(ResticMountOwnerRootHelp, 'Restic Mount Owner Root')}
+                      </HStack>
                     </GridItem>
                     <GridItem className={styles.valueCell}>
                       <RMSwitch
@@ -695,7 +727,6 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                         confirmTitle={'Confirm switch settings for backup-restic-mount-owner-root?'}
                         onChange={() => handleSwitchChange('backup-restic-mount-owner-root')}
                       />
-                      <Text className={styles.helperText}>Show mounted files as owned by root.</Text>
                     </GridItem>
                   </Grid>
                 </Stack>
@@ -721,7 +752,10 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                     w='full'
                   >
                     <GridItem className={styles.rowLabel}>
-                      <Text>Restic mount no lock</Text>
+                      <HStack spacing={1} justify='space-between' width='full'>
+                        <Text>Restic mount no lock</Text>
+                        {h(ResticMountNoLockHelp, 'Restic Mount No Lock')}
+                      </HStack>
                     </GridItem>
                     <GridItem className={styles.valueCell}>
                       <RMSwitch
@@ -730,7 +764,6 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                         confirmTitle={'Confirm switch settings for backup-restic-mount-no-lock?'}
                         onChange={() => handleSwitchChange('backup-restic-mount-no-lock')}
                       />
-                      <Text className={styles.helperText}>Skip repository locking during mount.</Text>
                     </GridItem>
                   </Grid>
 
@@ -742,7 +775,10 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                     w='full'
                   >
                     <GridItem className={styles.rowLabel}>
-                      <Text>Restic mount verbose level (0-3)</Text>
+                      <HStack spacing={1} justify='space-between' width='full'>
+                        <Text>Restic mount verbose level (0-3)</Text>
+                        {h(ResticMountVerboseHelp, 'Restic Mount Verbose Level')}
+                      </HStack>
                     </GridItem>
                     <GridItem className={styles.valueCell}>
                       <NumberInput
@@ -754,9 +790,6 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                         confirmTitle={`Confirm backup-restic-mount-verbose to: `}
                         onConfirm={(value) => handleSettingChange('backup-restic-mount-verbose', value)}
                       />
-                      <Text className={styles.helperText}>
-                        Range 0-3; 0 is default, 1-3 increase detail (quiet requires 0).
-                      </Text>
                     </GridItem>
                   </Grid>
 
@@ -768,7 +801,10 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                     w='full'
                   >
                     <GridItem className={styles.rowLabel}>
-                      <Text>Restic mount quiet mode</Text>
+                      <HStack spacing={1} justify='space-between' width='full'>
+                        <Text>Restic mount quiet mode</Text>
+                        {h(ResticMountQuietHelp, 'Restic Mount Quiet Mode')}
+                      </HStack>
                     </GridItem>
                     <GridItem className={styles.valueCell}>
                       <RMSwitch
@@ -777,7 +813,6 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                         confirmTitle={'Confirm switch settings for backup-restic-mount-quiet?'}
                         onChange={() => handleSwitchChange('backup-restic-mount-quiet')}
                       />
-                      <Text className={styles.helperText}>Reduce output to minimal status messages.</Text>
                     </GridItem>
                   </Grid>
 
@@ -789,7 +824,10 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                     w='full'
                   >
                     <GridItem className={styles.rowLabel}>
-                      <Text>Allow unsafe restic mount (reuse external mount)</Text>
+                      <HStack spacing={1} justify='space-between' width='full'>
+                        <Text>Allow unsafe restic mount (reuse external mount)</Text>
+                        {h(ResticMountAllowUnsafeMountHelp, 'Allow Unsafe Restic Mount')}
+                      </HStack>
                     </GridItem>
                     <GridItem className={styles.valueCell}>
                       <RMSwitch
@@ -798,7 +836,6 @@ If a reseed is running, Unmount will wait until the job finishes before stopping
                         confirmTitle={'Confirm switch settings for backup-restic-allow-unsafe-mount?'}
                         onChange={() => handleSwitchChange('backup-restic-allow-unsafe-mount')}
                       />
-                      <Text className={styles.helperText}>Allow reuse of an existing mount point.</Text>
                     </GridItem>
                   </Grid>
                 </Stack>

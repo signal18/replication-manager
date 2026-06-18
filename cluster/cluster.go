@@ -776,7 +776,7 @@ func (cluster *Cluster) initScheduler() {
 var pstates30 = []string{
 	"WARN0084",             // Variables diff
 	"ERR00090", "WARN0102", // Config related
-	"WARN0093", "WARN0095", "WARN0134", "WARN0145", // Restic related
+	"WARN0093", "WARN0134", "WARN0145", // Restic related
 	"WARN0101", "WARN0111", "WARN0112", // Backup related
 	"WARN0141", "WARN0142", "WARN0143", "WARN0150", "WARN0151", // Tresholds
 	"WARN0153",             // Job related
@@ -1012,6 +1012,7 @@ func (cluster *Cluster) Run() {
 				cluster.IsConfigPathChange = cluster.HasConfigPathChanged()
 				cluster.SetStatus()
 				cluster.CheckBackupStates()
+				cluster.CheckResticErrors()
 				cluster.StateProcessing()
 				cluster.CheckHasFailCertLoadP12()
 				go cluster.GetSlowLogTable() // prevent blocking cycle
