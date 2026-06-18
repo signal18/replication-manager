@@ -416,10 +416,11 @@ type ResticManager struct {
 	currentTask          *ResticTaskState
 	currentTaskMutex     *sync.Mutex
 	// Error backoff state to prevent log flooding
-	lastInitError    error     // Last init error encountered
-	initErrorCount   int       // Number of consecutive init errors
-	initBackoffUntil time.Time // Don't retry init until this time
-	bootInitDone     bool      // prevents repeated auto-init on subsequent FetchRepo calls
+	lastInitError    error             // Last init error encountered
+	initErrorCount   int               // Number of consecutive init errors
+	initBackoffUntil time.Time         // Don't retry init until this time
+	bootInitDone     bool              // prevents repeated auto-init on subsequent FetchRepo calls
+	repoState        ManualCheckStatus // Most recently classified repository state
 	// s3existenceProber is a test seam; nil in production.
 	// When set, checkS3RepoFiles calls it instead of creating a real S3 client.
 	// It receives bucket, configKey, dataPrefix and returns existence + error for each.
@@ -611,6 +612,30 @@ func (repo *ResticManager) GetInitIssue() (error, bool) {
 		return repo.lastInitError, true
 	}
 	return nil, false
+}
+
+// GetRepoState returns the most recently classified repository state.
+// Returns empty string when the state has not yet been determined.
+func (repo *ResticManager) GetRepoState() ManualCheckStatus {
+	repo.errorMutex.Lock()
+	defer repo.errorMutex.Unlock()
+	return repo.repoState
+}
+
+func (repo *ResticManager) setRepoState(state ManualCheckStatus) {
+	repo.errorMutex.Lock()
+	defer repo.errorMutex.Unlock()
+	repo.repoState = state
+}
+
+// ClearRepoState discards the cached repository state so that the next
+// classification attempt (boot, pre-backup, or manual check) starts fresh.
+// Call this whenever repo-targeting config changes to prevent a stale
+// initialization_required state from suppressing passive fetches indefinitely.
+func (repo *ResticManager) ClearRepoState() {
+	repo.errorMutex.Lock()
+	defer repo.errorMutex.Unlock()
+	repo.repoState = ""
 }
 
 // FetchAndClearErrorsExcept returns and clears all TaskErrors except those for
@@ -3076,6 +3101,7 @@ func (repo *ResticManager) checkS3RepoFilesWithPolicy(bucket, prefix, endpoint s
 			repo.CanInitRepo = false
 			repo.SetError(InitTask, ceErr)
 			repo.setInitErrorBackoff(ceErr)
+			repo.setRepoState(ManualCheckStatusError)
 			return ceErr
 		}
 		configExists = ce
@@ -3087,6 +3113,7 @@ func (repo *ResticManager) checkS3RepoFilesWithPolicy(bucket, prefix, endpoint s
 			err = fmt.Errorf("failed to create S3 client: %w", err)
 			repo.SetError(InitTask, err)
 			repo.setInitErrorBackoff(err)
+			repo.setRepoState(ManualCheckStatusError)
 			return err
 		}
 		var checkErr error
@@ -3095,6 +3122,7 @@ func (repo *ResticManager) checkS3RepoFilesWithPolicy(bucket, prefix, endpoint s
 			repo.CanInitRepo = false
 			repo.SetError(InitTask, checkErr)
 			repo.setInitErrorBackoff(checkErr)
+			repo.setRepoState(ManualCheckStatusError)
 			return checkErr
 		}
 		getDataExists = func() (bool, error) {
@@ -3112,6 +3140,7 @@ func (repo *ResticManager) checkS3RepoFilesWithPolicy(bucket, prefix, endpoint s
 			err = fmt.Errorf("%s and failed to check repo data: %w", errstr, err)
 			repo.SetError(InitTask, err)
 			repo.setInitErrorBackoff(err)
+			repo.setRepoState(ManualCheckStatusError)
 			return err
 		}
 
@@ -3122,6 +3151,7 @@ func (repo *ResticManager) checkS3RepoFilesWithPolicy(bucket, prefix, endpoint s
 			err = errors.New(errstr)
 			repo.SetError(InitTask, err)
 			repo.setInitErrorBackoff(err)
+			repo.setRepoState(ManualCheckStatusError)
 			return err
 		}
 
@@ -3130,6 +3160,7 @@ func (repo *ResticManager) checkS3RepoFilesWithPolicy(bucket, prefix, endpoint s
 		if policy != initPolicyPassive && repo.AutoInit {
 			return repo.InitRepoWithOptions(ResticInitOption{})
 		}
+		repo.setRepoState(ManualCheckStatusInitRequired)
 		err = errors.New("repository initialization required: " + errstr)
 		repo.SetError(InitTask, err)
 		repo.setInitErrorBackoff(err)
@@ -3140,6 +3171,7 @@ func (repo *ResticManager) checkS3RepoFilesWithPolicy(bucket, prefix, endpoint s
 	repo.CanInitRepo = true
 	delete(repo.TaskErrors, InitTask)
 	repo.clearInitErrorBackoff()
+	repo.setRepoState(ManualCheckStatusOK)
 
 	return nil
 }
@@ -3258,20 +3290,22 @@ func (repo *ResticManager) checkRepoFilesWithPolicy(policy initPolicy) error {
 			repo.setInitErrorBackoff(err)
 			return err
 		}
-		client, err := s3helper.NewClient(repo.AwsAccessKeyID, repo.AwsSecretAccessKey, "", repo.AwsRegion, endpoint)
-		if err != nil {
-			repo.CanInitRepo = false
-			err = fmt.Errorf("failed to create S3 client: %w", err)
-			repo.SetError(InitTask, err)
-			repo.setInitErrorBackoff(err)
-			return err
-		}
-		if err := s3helper.EnsurePrefixMarker(client, bucket, prefix); err != nil {
-			repo.CanInitRepo = false
-			err = fmt.Errorf("failed to create S3 prefix marker: %w", err)
-			repo.SetError(InitTask, err)
-			repo.setInitErrorBackoff(err)
-			return err
+		if policy != initPolicyPassive {
+			client, err := s3helper.NewClient(repo.AwsAccessKeyID, repo.AwsSecretAccessKey, "", repo.AwsRegion, endpoint)
+			if err != nil {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("failed to create S3 client: %w", err)
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
+			if err := s3helper.EnsurePrefixMarker(client, bucket, prefix); err != nil {
+				repo.CanInitRepo = false
+				err = fmt.Errorf("failed to create S3 prefix marker: %w", err)
+				repo.SetError(InitTask, err)
+				repo.setInitErrorBackoff(err)
+				return err
+			}
 		}
 		return repo.checkS3RepoFilesWithPolicy(bucket, prefix, endpoint, policy)
 	}
@@ -3295,12 +3329,14 @@ func (repo *ResticManager) checkRepoFilesWithPolicy(policy initPolicy) error {
 			repo.CanInitRepo = false
 			err = errors.New(errstr)
 			repo.SetError(InitTask, err)
+			repo.setRepoState(ManualCheckStatusError)
 			return err
 		} else if err != nil && !os.IsNotExist(err) {
 			errstr += " and failed to check repo data: " + err.Error()
 			repo.CanInitRepo = false
 			err = errors.New(errstr)
 			repo.SetError(InitTask, err)
+			repo.setRepoState(ManualCheckStatusError)
 			return err
 		}
 		// Fresh repo: no config, no data.
@@ -3308,6 +3344,7 @@ func (repo *ResticManager) checkRepoFilesWithPolicy(policy initPolicy) error {
 		if policy != initPolicyPassive && repo.AutoInit {
 			return repo.InitRepoWithOptions(ResticInitOption{})
 		}
+		repo.setRepoState(ManualCheckStatusInitRequired)
 		err = errors.New("repository initialization required: " + errstr)
 		repo.SetError(InitTask, err)
 		return err
@@ -3315,14 +3352,291 @@ func (repo *ResticManager) checkRepoFilesWithPolicy(policy initPolicy) error {
 		repo.CanInitRepo = false
 		err = fmt.Errorf("failed to check repo config: %w", err)
 		repo.SetError(InitTask, err)
+		repo.setRepoState(ManualCheckStatusError)
 		return err
 	}
 
 	repo.CanInitRepo = true
 	delete(repo.TaskErrors, InitTask)
 	repo.clearInitErrorBackoff()
+	repo.setRepoState(ManualCheckStatusOK)
 
 	return nil
+}
+
+// ManualCheckStatus indicates the outcome of a manual repository validation.
+type ManualCheckStatus string
+
+const (
+	ManualCheckStatusOK           ManualCheckStatus = "ok"
+	ManualCheckStatusInitRequired ManualCheckStatus = "initialization_required"
+	ManualCheckStatusError        ManualCheckStatus = "error"
+)
+
+// ManualCheckResult holds the outcome of a manual repository configuration check.
+type ManualCheckResult struct {
+	Status      ManualCheckStatus `json:"status"`
+	Message     string            `json:"message"`
+	CanInit     bool              `json:"can_init"`
+	FetchQueued bool              `json:"fetch_queued"`
+	RepoPath    string            `json:"repo_path,omitempty"`
+}
+
+// isResticInitRequiredError returns true when restic stderr indicates the repository
+// is not yet initialized (as opposed to a credential or network failure).
+func isResticInitRequiredError(stderr string) bool {
+	lower := strings.ToLower(stderr)
+	return strings.Contains(lower, "repository does not exist") ||
+		strings.Contains(lower, "is there a repository") ||
+		strings.Contains(lower, "please initialize the repository")
+}
+
+// validateRepoAccessReadOnly runs a lightweight read-only restic snapshots command to
+// confirm live repository access. Returns initRequired=true when stderr signals the
+// repository is not initialized, or a non-nil accessErr on any other failure.
+func (repo *ResticManager) validateRepoAccessReadOnly() (initRequired bool, accessErr error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	_, stderr, runErr := repo.RunCommandWithContext(ctx, []string{"snapshots", "--no-lock", "--json"}, logrus.DebugLevel, false)
+	if runErr != nil {
+		stderrStr := strings.TrimSpace(string(stderr))
+		if isResticInitRequiredError(stderrStr) {
+			return true, nil
+		}
+		if stderrStr != "" {
+			return false, errors.New(stderrStr)
+		}
+		return false, runErr
+	}
+	return false, nil
+}
+
+// validateLocalRepoManual classifies a local filesystem repository state read-only and
+// confirms access with a restic command when the config file is present.
+func (repo *ResticManager) validateLocalRepoManual(repoPath string) ManualCheckResult {
+	_, configErr := os.Stat(filepath.Join(repoPath, "config"))
+	if os.IsNotExist(configErr) {
+		_, dataErr := os.Stat(filepath.Join(repoPath, "data"))
+		if dataErr == nil {
+			return ManualCheckResult{
+				Status:  ManualCheckStatusError,
+				Message: "repository config is missing but data directory exists (corrupt repository)",
+				CanInit: false,
+			}
+		} else if os.IsNotExist(dataErr) {
+			return ManualCheckResult{
+				Status:  ManualCheckStatusInitRequired,
+				Message: "repository is not yet initialized",
+				CanInit: true,
+			}
+		}
+		return ManualCheckResult{
+			Status:  ManualCheckStatusError,
+			Message: fmt.Sprintf("failed to check repository data directory: %v", dataErr),
+			CanInit: false,
+		}
+	} else if configErr != nil {
+		return ManualCheckResult{
+			Status:  ManualCheckStatusError,
+			Message: fmt.Sprintf("failed to check repository config: %v", configErr),
+			CanInit: false,
+		}
+	}
+
+	initRequired, err := repo.validateRepoAccessReadOnly()
+	if initRequired {
+		return ManualCheckResult{
+			Status:  ManualCheckStatusInitRequired,
+			Message: "repository is not yet initialized",
+			CanInit: true,
+		}
+	}
+	if err != nil {
+		return ManualCheckResult{
+			Status:  ManualCheckStatusError,
+			Message: err.Error(),
+			CanInit: false,
+		}
+	}
+	return ManualCheckResult{
+		Status:  ManualCheckStatusOK,
+		Message: "repository configuration verified",
+		CanInit: true,
+	}
+}
+
+// validateS3RepoManual classifies an S3 repository state using read-only probes only
+// (no EnsurePrefixMarker writes) and confirms access with a restic command when the
+// config object is present.
+func (repo *ResticManager) validateS3RepoManual(repoPath string) ManualCheckResult {
+	bucket, prefix, endpoint, err := repo.resolveS3RepoSpec(repoPath)
+	if err != nil {
+		return ManualCheckResult{
+			Status:  ManualCheckStatusError,
+			Message: fmt.Sprintf("failed to parse S3 repository URL: %v", err),
+		}
+	}
+
+	configKey := "config"
+	if prefix != "" {
+		configKey = prefix + "/config"
+	}
+	dataPrefix := "data/"
+	if prefix != "" {
+		dataPrefix = prefix + "/data/"
+	}
+
+	var configExists bool
+	var dataExists bool
+
+	if repo.s3existenceProber != nil {
+		ce, ceErr, de, deErr := repo.s3existenceProber(bucket, configKey, dataPrefix)
+		if ceErr != nil {
+			return ManualCheckResult{
+				Status:  ManualCheckStatusError,
+				Message: fmt.Sprintf("failed to probe S3 config key: %v", ceErr),
+				CanInit: false,
+			}
+		}
+		if deErr != nil {
+			return ManualCheckResult{
+				Status:  ManualCheckStatusError,
+				Message: fmt.Sprintf("failed to probe S3 data prefix: %v", deErr),
+				CanInit: false,
+			}
+		}
+		configExists = ce
+		dataExists = de
+	} else {
+		client, clientErr := s3helper.NewClient(repo.AwsAccessKeyID, repo.AwsSecretAccessKey, "", repo.AwsRegion, endpoint)
+		if clientErr != nil {
+			return ManualCheckResult{
+				Status:  ManualCheckStatusError,
+				Message: fmt.Sprintf("failed to create S3 client: %v", clientErr),
+				CanInit: false,
+			}
+		}
+		configExists, err = s3helper.CheckObjectExists(client, bucket, configKey)
+		if err != nil {
+			return ManualCheckResult{
+				Status:  ManualCheckStatusError,
+				Message: fmt.Sprintf("failed to check S3 config key: %v", err),
+				CanInit: false,
+			}
+		}
+		if !configExists {
+			dataExists, err = s3helper.ListPrefixHasRealObjects(client, bucket, dataPrefix)
+			if err != nil {
+				return ManualCheckResult{
+					Status:  ManualCheckStatusError,
+					Message: fmt.Sprintf("failed to check S3 data prefix: %v", err),
+					CanInit: false,
+				}
+			}
+		}
+	}
+
+	if !configExists {
+		if dataExists {
+			return ManualCheckResult{
+				Status:  ManualCheckStatusError,
+				Message: "S3 repository config is missing but data objects exist (corrupt repository)",
+				CanInit: false,
+			}
+		}
+		return ManualCheckResult{
+			Status:  ManualCheckStatusInitRequired,
+			Message: "S3 repository is not yet initialized",
+			CanInit: true,
+		}
+	}
+
+	initRequired, err := repo.validateRepoAccessReadOnly()
+	if initRequired {
+		return ManualCheckResult{
+			Status:  ManualCheckStatusInitRequired,
+			Message: "S3 repository is not yet initialized",
+			CanInit: true,
+		}
+	}
+	if err != nil {
+		return ManualCheckResult{
+			Status:  ManualCheckStatusError,
+			Message: err.Error(),
+			CanInit: false,
+		}
+	}
+	return ManualCheckResult{
+		Status:  ManualCheckStatusOK,
+		Message: "S3 repository configuration verified",
+		CanInit: true,
+	}
+}
+
+// ValidateRepoConfigManual performs a read-only manual check of the current repository
+// configuration. It never attempts auto-initialization and never alters auto-init
+// policy state or error backoff state. It updates repoState so that the general
+// fetch suppression guard reflects the latest manual classification.
+func (repo *ResticManager) ValidateRepoConfigManual() ManualCheckResult {
+	result := repo.classifyRepoManual()
+	repo.setRepoState(result.Status)
+	return result
+}
+
+// classifyRepoManual performs the read-only classification logic for ValidateRepoConfigManual.
+func (repo *ResticManager) classifyRepoManual() ManualCheckResult {
+	repoPath := repo.GetRepoPath()
+	if strings.TrimSpace(repoPath) == "" {
+		return ManualCheckResult{
+			Status:  ManualCheckStatusError,
+			Message: "repository path is not configured",
+			CanInit: false,
+		}
+	}
+	if strings.TrimSpace(repo.BinaryPath) == "" {
+		return ManualCheckResult{
+			Status:  ManualCheckStatusError,
+			Message: "restic binary path is not configured",
+			CanInit: false,
+		}
+	}
+
+	if config.IsS3ResticRepository(repoPath) || repo.AwsBucket != "" {
+		result := repo.validateS3RepoManual(repoPath)
+		result.RepoPath = repoPath
+		return result
+	}
+
+	if config.IsSftpResticRepository(repoPath) {
+		initRequired, err := repo.validateRepoAccessReadOnly()
+		if initRequired {
+			return ManualCheckResult{
+				Status:   ManualCheckStatusInitRequired,
+				Message:  "SFTP repository is not yet initialized",
+				CanInit:  true,
+				RepoPath: repoPath,
+			}
+		}
+		if err != nil {
+			return ManualCheckResult{
+				Status:   ManualCheckStatusError,
+				Message:  err.Error(),
+				CanInit:  false,
+				RepoPath: repoPath,
+			}
+		}
+		return ManualCheckResult{
+			Status:   ManualCheckStatusOK,
+			Message:  "SFTP repository configuration verified",
+			CanInit:  true,
+			RepoPath: repoPath,
+		}
+	}
+
+	result := repo.validateLocalRepoManual(repoPath)
+	result.RepoPath = repoPath
+	return result
 }
 
 // RunCommand executes a command within the context of a Restic repository, capturing stdout and stderr.

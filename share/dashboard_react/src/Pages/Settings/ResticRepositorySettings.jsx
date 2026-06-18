@@ -8,7 +8,7 @@ import TextForm from '../../components/TextForm'
 import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
-import { resticInitRepo } from '../../redux/clusterSlice'
+import { resticInitRepo, resticCheckConfig } from '../../redux/clusterSlice'
 import styles from './styles.module.scss'
 import tableStyles from '../../components/TableType2/styles.module.scss'
 
@@ -286,6 +286,10 @@ function ResticRepositorySettings({
     setIsLegacyOpen(!awsBucket)
   }, [awsBucket])
 
+  useEffect(() => {
+    setCheckResult(null)
+  }, [archiveMode])
+
   const handleSettingChange = (setting, value, encodeValue = false) =>
     dispatch(
       setSetting({
@@ -326,6 +330,47 @@ function ResticRepositorySettings({
     } catch (error) {
       console.error('Failed to initialize repository:', error)
       onCloseInitModal()
+    }
+  }
+
+  // Check repository state
+  const [isCheckLoading, setIsCheckLoading] = useState(false)
+  const [checkResult, setCheckResult] = useState(null)
+  const {
+    isOpen: isChecklistModalOpen,
+    onOpen: onOpenChecklistModal,
+    onClose: onCloseChecklistModal
+  } = useDisclosure()
+  const [checklistConfirmedTarget, setChecklistConfirmedTarget] = useState(false)
+  const [checklistConfirmedNew, setChecklistConfirmedNew] = useState(false)
+  const isChecklistReady = checklistConfirmedTarget && checklistConfirmedNew
+
+  const handleCheckRepo = async () => {
+    setIsCheckLoading(true)
+    setCheckResult(null)
+    try {
+      const result = await dispatch(resticCheckConfig({ clusterName })).unwrap()
+      const data = result?.data
+      setCheckResult(data)
+      if (data?.status === 'initialization_required') {
+        setChecklistConfirmedTarget(false)
+        setChecklistConfirmedNew(false)
+        onOpenChecklistModal()
+      }
+    } catch (error) {
+      setCheckResult({ status: 'error', message: error?.errorMessage || error?.message || String(error) })
+    } finally {
+      setIsCheckLoading(false)
+    }
+  }
+
+  const handleChecklistConfirmInit = async () => {
+    onCloseChecklistModal()
+    try {
+      await dispatch(resticInitRepo({ clusterName, force: false })).unwrap()
+      setCheckResult({ status: 'ok', message: 'Repository initialized. Snapshot refresh queued.' })
+    } catch (error) {
+      setCheckResult({ status: 'error', message: error?.errorMessage || error?.message || String(error) })
     }
   }
 
@@ -537,29 +582,47 @@ function ResticRepositorySettings({
                       </HStack>
                     </GridItem>
                     <GridItem className={styles.valueCell}>
-                      <HStack width='100%' spacing={2}>
-                        <TextForm
-                          value={config?.backupResticLocalRepository}
-                          confirmTitle={`Confirm backup-restic-local-repository to `}
-                          className={styles.textbox}
-                          size='sm'
-                          placeholder='/var/lib/repman/backups/archive'
-                          onSave={(value) => handleSettingChange('backup-restic-local-repository', value, true)}
-                        />
-                        <RMButton
-                          size='sm'
-                          colorScheme='blue'
-                          onClick={handleResticInit}
-                          isDisabled={user?.grants['cluster-settings'] === false}
-                          title="Re-initialize local repository"
-                        >
-                          <HiRefresh />
-                        </RMButton>
-                        {h(
-                          'Re-initialize the local Restic repository. This creates a new repository configuration at the specified path. Use with caution - only needed if the repository is corrupted or being set up for the first time.',
-                          'Re-initialize Local Repository'
+                      <Stack spacing={1} width='100%'>
+                        <HStack width='100%' spacing={2}>
+                          <TextForm
+                            value={config?.backupResticLocalRepository}
+                            confirmTitle={`Confirm backup-restic-local-repository to `}
+                            className={styles.textbox}
+                            size='sm'
+                            placeholder='/var/lib/repman/backups/archive'
+                            onSave={(value) => handleSettingChange('backup-restic-local-repository', value, true)}
+                          />
+                          <RMButton
+                            size='sm'
+                            colorScheme='green'
+                            onClick={handleCheckRepo}
+                            isLoading={isCheckLoading}
+                            isDisabled={user?.grants['cluster-settings'] === false}
+                            title="Check local repository"
+                          >
+                            Check
+                          </RMButton>
+                          <RMButton
+                            size='sm'
+                            colorScheme='blue'
+                            onClick={handleResticInit}
+                            isDisabled={user?.grants['cluster-settings'] === false}
+                            title="Re-initialize local repository"
+                          >
+                            <HiRefresh />
+                          </RMButton>
+                          {h(
+                            'Re-initialize the local Restic repository. This creates a new repository configuration at the specified path. Use with caution - only needed if the repository is corrupted or being set up for the first time.',
+                            'Re-initialize Local Repository'
+                          )}
+                        </HStack>
+                        {checkResult && checkResult.status !== 'initialization_required' && (
+                          <Alert status={checkResult.status === 'ok' ? 'success' : 'error'} size='sm' borderRadius='md'>
+                            <AlertIcon />
+                            <Text fontSize='sm'>{checkResult.message}</Text>
+                          </Alert>
                         )}
-                      </HStack>
+                      </Stack>
                     </GridItem>
                   </Grid>
                 </Stack>
@@ -581,29 +644,47 @@ function ResticRepositorySettings({
                       </HStack>
                     </GridItem>
                     <GridItem className={styles.valueCell}>
-                      <HStack width='100%' spacing={2}>
-                        <TextForm
-                          value={config?.backupResticLocalRepository}
-                          confirmTitle={`Confirm backup-restic-local-repository to `}
-                          className={styles.textbox}
-                          size='sm'
-                          placeholder='sftp:user@host:/path/to/repo'
-                          onSave={(value) => handleSettingChange('backup-restic-local-repository', value, true)}
-                        />
-                        <RMButton
-                          size='sm'
-                          colorScheme='blue'
-                          onClick={handleResticInit}
-                          isDisabled={user?.grants['cluster-settings'] === false}
-                          title="Re-initialize SFTP repository"
-                        >
-                          <HiRefresh />
-                        </RMButton>
-                        {h(
-                          'Re-initialize the SFTP Restic repository. This creates a new repository configuration at the configured sftp:user@host:/path. Force re-initialization is not supported for SFTP repositories - remove the remote repository path manually over SSH before re-initializing.',
-                          'Re-initialize SFTP Repository'
+                      <Stack spacing={1} width='100%'>
+                        <HStack width='100%' spacing={2}>
+                          <TextForm
+                            value={config?.backupResticLocalRepository}
+                            confirmTitle={`Confirm backup-restic-local-repository to `}
+                            className={styles.textbox}
+                            size='sm'
+                            placeholder='sftp:user@host:/path/to/repo'
+                            onSave={(value) => handleSettingChange('backup-restic-local-repository', value, true)}
+                          />
+                          <RMButton
+                            size='sm'
+                            colorScheme='green'
+                            onClick={handleCheckRepo}
+                            isLoading={isCheckLoading}
+                            isDisabled={user?.grants['cluster-settings'] === false}
+                            title="Check SFTP repository"
+                          >
+                            Check
+                          </RMButton>
+                          <RMButton
+                            size='sm'
+                            colorScheme='blue'
+                            onClick={handleResticInit}
+                            isDisabled={user?.grants['cluster-settings'] === false}
+                            title="Re-initialize SFTP repository"
+                          >
+                            <HiRefresh />
+                          </RMButton>
+                          {h(
+                            'Re-initialize the SFTP Restic repository. This creates a new repository configuration at the configured sftp:user@host:/path. Force re-initialization is not supported for SFTP repositories - remove the remote repository path manually over SSH before re-initializing.',
+                            'Re-initialize SFTP Repository'
+                          )}
+                        </HStack>
+                        {checkResult && checkResult.status !== 'initialization_required' && (
+                          <Alert status={checkResult.status === 'ok' ? 'success' : 'error'} size='sm' borderRadius='md'>
+                            <AlertIcon />
+                            <Text fontSize='sm'>{checkResult.message}</Text>
+                          </Alert>
                         )}
-                      </HStack>
+                      </Stack>
                       <Text className={styles.helperText}>
                         Stored in backup-restic-local-repository using restic&apos;s sftp syntax
                         (sftp:user@host:/path/to/repo). The user in the path is an SSH login authenticated via
@@ -861,7 +942,16 @@ function ResticRepositorySettings({
                       <Text className={styles.helperText}>
                         Initialize the effective S3 repository shown in <strong>Repository target</strong> above.
                       </Text>
-                      <Box>
+                      <HStack spacing={2}>
+                        <RMButton
+                          size='sm'
+                          colorScheme='green'
+                          onClick={handleCheckRepo}
+                          isLoading={isCheckLoading}
+                          isDisabled={user?.grants['cluster-settings'] === false}
+                        >
+                          Check repository
+                        </RMButton>
                         <RMButton
                           size='sm'
                           colorScheme='blue'
@@ -870,7 +960,13 @@ function ResticRepositorySettings({
                         >
                           Initialize repository
                         </RMButton>
-                      </Box>
+                      </HStack>
+                      {checkResult && checkResult.status !== 'initialization_required' && (
+                        <Alert status={checkResult.status === 'ok' ? 'success' : 'error'} size='sm' borderRadius='md'>
+                          <AlertIcon />
+                          <Text fontSize='sm'>{checkResult.message}</Text>
+                        </Alert>
+                      )}
                     </Stack>
                   </Box>
 
@@ -1052,6 +1148,49 @@ function ResticRepositorySettings({
           )
         })}
       </Stack>
+
+      <ConfirmModal
+        isOpen={isChecklistModalOpen}
+        closeModal={onCloseChecklistModal}
+        title="Initialize Restic Repository"
+        body={
+          <VStack align='start' spacing={3}>
+            <Text>
+              The {isAws ? 'S3/MinIO' : isSftp ? 'SFTP' : 'local'} repository is not yet initialized:
+            </Text>
+            <Text
+              fontWeight='bold'
+              fontSize='sm'
+              fontFamily='monospace'
+              bg='gray.100'
+              p={2}
+              borderRadius='md'
+              wordBreak='break-all'
+            >
+              {isAws ? awsRepoPath : config?.backupResticLocalRepository}
+            </Text>
+            <Divider />
+            <Checkbox
+              isChecked={checklistConfirmedTarget}
+              onChange={(e) => setChecklistConfirmedTarget(e.target.checked)}
+            >
+              <Text fontSize='sm'>I confirmed this is the intended repository target.</Text>
+            </Checkbox>
+            <Checkbox
+              isChecked={checklistConfirmedNew}
+              onChange={(e) => setChecklistConfirmedNew(e.target.checked)}
+            >
+              <Text fontSize='sm'>I understand this will create a new restic repository here.</Text>
+            </Checkbox>
+          </VStack>
+        }
+        onConfirmClick={handleChecklistConfirmInit}
+        confirmButtonText="Initialize"
+        confirmButtonProps={{
+          isDisabled: !isChecklistReady,
+          colorScheme: 'blue'
+        }}
+      />
 
       <ConfirmModal
         isOpen={isInitModalOpen}

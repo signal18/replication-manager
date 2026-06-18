@@ -2702,3 +2702,232 @@ func TestS3BootAutoInitRunsOnce(t *testing.T) {
 		t.Fatalf("expected 'initialization required', got %q", err.Error())
 	}
 }
+
+// --- ValidateRepoConfigManual tests ---
+
+func TestValidateRepoConfigManualMissingPath(t *testing.T) {
+	repo := newPausedRepo(t)
+	// No RESTIC_REPOSITORY set, GetRepoPath returns ""
+	result := repo.ValidateRepoConfigManual()
+	if result.Status != ManualCheckStatusError {
+		t.Fatalf("expected error with missing repo path, got %s: %s", result.Status, result.Message)
+	}
+}
+
+func TestValidateRepoConfigManualFreshLocal(t *testing.T) {
+	repo := newPausedRepo(t)
+	repoDir, cacheDir, _ := getTestingDirs(t)
+	resetSharedDirs(t)
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=" + repoDir,
+		"RESTIC_CACHE_DIR=" + cacheDir,
+	})
+
+	result := repo.ValidateRepoConfigManual()
+	if result.Status != ManualCheckStatusInitRequired {
+		t.Fatalf("expected initialization_required for fresh repo, got %s: %s", result.Status, result.Message)
+	}
+	if !result.CanInit {
+		t.Fatalf("expected CanInit true for fresh repo")
+	}
+	if result.FetchQueued {
+		t.Fatalf("expected FetchQueued false for init-required result")
+	}
+}
+
+func TestValidateRepoConfigManualCorruptLocal(t *testing.T) {
+	repo := newPausedRepo(t)
+	repoDir, cacheDir, _ := getTestingDirs(t)
+	resetSharedDirs(t)
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=" + repoDir,
+		"RESTIC_CACHE_DIR=" + cacheDir,
+	})
+	// Create data dir without config file to simulate corruption.
+	if err := os.MkdirAll(filepath.Join(repoDir, "data"), 0755); err != nil {
+		t.Fatalf("mkdir data: %v", err)
+	}
+
+	result := repo.ValidateRepoConfigManual()
+	if result.Status != ManualCheckStatusError {
+		t.Fatalf("expected error for corrupt repo, got %s: %s", result.Status, result.Message)
+	}
+	if result.CanInit {
+		t.Fatalf("expected CanInit false for corrupt repo")
+	}
+}
+
+func TestValidateRepoConfigManualValidLocal(t *testing.T) {
+	repo, repoDir, cacheDir, _ := newResticRepo(t, false)
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=" + repoDir,
+		"RESTIC_CACHE_DIR=" + cacheDir,
+	})
+
+	result := repo.ValidateRepoConfigManual()
+	if result.Status != ManualCheckStatusOK {
+		t.Fatalf("expected ok for valid repo, got %s: %s", result.Status, result.Message)
+	}
+	if result.RepoPath != repoDir {
+		t.Fatalf("expected repo path %s, got %s", repoDir, result.RepoPath)
+	}
+}
+
+func TestValidateRepoConfigManualFreshS3(t *testing.T) {
+	repo := newPausedRepo(t)
+	repo.s3existenceProber = func(bucket, configKey, dataPrefix string) (bool, error, bool, error) {
+		return false, nil, false, nil // no config, no data
+	}
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=s3:https://minio.example.com/mybucket/myprefix",
+	})
+
+	result := repo.ValidateRepoConfigManual()
+	if result.Status != ManualCheckStatusInitRequired {
+		t.Fatalf("expected initialization_required for fresh S3 repo, got %s: %s", result.Status, result.Message)
+	}
+	if !result.CanInit {
+		t.Fatalf("expected CanInit true for fresh S3 repo")
+	}
+}
+
+func TestValidateRepoConfigManualCorruptS3(t *testing.T) {
+	repo := newPausedRepo(t)
+	repo.s3existenceProber = func(bucket, configKey, dataPrefix string) (bool, error, bool, error) {
+		return false, nil, true, nil // no config, data exists → corrupt
+	}
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=s3:https://minio.example.com/mybucket/myprefix",
+	})
+
+	result := repo.ValidateRepoConfigManual()
+	if result.Status != ManualCheckStatusError {
+		t.Fatalf("expected error for corrupt S3 repo, got %s: %s", result.Status, result.Message)
+	}
+	if result.CanInit {
+		t.Fatalf("expected CanInit false for corrupt S3 repo")
+	}
+}
+
+func TestValidateRepoConfigManualS3ProbeError(t *testing.T) {
+	repo := newPausedRepo(t)
+	repo.s3existenceProber = func(bucket, configKey, dataPrefix string) (bool, error, bool, error) {
+		return false, errors.New("connection refused"), false, nil
+	}
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=s3:https://minio.example.com/mybucket/myprefix",
+	})
+
+	result := repo.ValidateRepoConfigManual()
+	if result.Status != ManualCheckStatusError {
+		t.Fatalf("expected error on S3 probe failure, got %s: %s", result.Status, result.Message)
+	}
+}
+
+func TestValidateRepoConfigManualDoesNotAutoInit(t *testing.T) {
+	repo := newPausedRepo(t)
+	repoDir, cacheDir, _ := getTestingDirs(t)
+	resetSharedDirs(t)
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=" + repoDir,
+		"RESTIC_CACHE_DIR=" + cacheDir,
+	})
+	repo.AutoInit = true // must be ignored by manual check
+
+	result := repo.ValidateRepoConfigManual()
+	// Fresh repo: must return init_required, never ok (no auto-init)
+	if result.Status != ManualCheckStatusInitRequired {
+		t.Fatalf("expected initialization_required; auto-init must not run during manual check, got %s: %s", result.Status, result.Message)
+	}
+	// Confirm repo was not actually initialized
+	if _, err := os.Stat(filepath.Join(repoDir, "config")); err == nil {
+		t.Fatal("repository was initialized during manual check but should not have been")
+	}
+}
+
+// --- ValidateRepoConfigManual sets repoState ---
+
+func TestValidateRepoConfigManualSetsStateInitRequired(t *testing.T) {
+	repo := newPausedRepo(t)
+	repoDir, cacheDir, _ := getTestingDirs(t)
+	resetSharedDirs(t)
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=" + repoDir,
+		"RESTIC_CACHE_DIR=" + cacheDir,
+	})
+
+	result := repo.ValidateRepoConfigManual()
+	if result.Status != ManualCheckStatusInitRequired {
+		t.Fatalf("expected initialization_required, got %s", result.Status)
+	}
+	if got := repo.GetRepoState(); got != ManualCheckStatusInitRequired {
+		t.Fatalf("GetRepoState() = %s after init-required check, want initialization_required", got)
+	}
+}
+
+func TestValidateRepoConfigManualSetsStateOK(t *testing.T) {
+	repo, repoDir, cacheDir, _ := newResticRepo(t, false)
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=" + repoDir,
+		"RESTIC_CACHE_DIR=" + cacheDir,
+	})
+
+	result := repo.ValidateRepoConfigManual()
+	if result.Status != ManualCheckStatusOK {
+		t.Fatalf("expected ok, got %s: %s", result.Status, result.Message)
+	}
+	if got := repo.GetRepoState(); got != ManualCheckStatusOK {
+		t.Fatalf("GetRepoState() = %s after ok check, want ok", got)
+	}
+}
+
+func TestValidateRepoConfigManualSetsStateError(t *testing.T) {
+	repo := newPausedRepo(t)
+	repoDir, cacheDir, _ := getTestingDirs(t)
+	resetSharedDirs(t)
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=" + repoDir,
+		"RESTIC_CACHE_DIR=" + cacheDir,
+	})
+	// Corrupt repo: data dir present but no config file.
+	if err := os.MkdirAll(filepath.Join(repoDir, "data"), 0755); err != nil {
+		t.Fatalf("mkdir data: %v", err)
+	}
+
+	result := repo.ValidateRepoConfigManual()
+	if result.Status != ManualCheckStatusError {
+		t.Fatalf("expected error for corrupt repo, got %s", result.Status)
+	}
+	if got := repo.GetRepoState(); got != ManualCheckStatusError {
+		t.Fatalf("GetRepoState() = %s after error check, want error", got)
+	}
+}
+
+func TestValidateRepoConfigManualFreshS3SetsState(t *testing.T) {
+	repo := newPausedRepo(t)
+	repo.s3existenceProber = func(bucket, configKey, dataPrefix string) (bool, error, bool, error) {
+		return false, nil, false, nil // no config, no data → fresh
+	}
+	repo.SetEnv([]string{
+		"RESTIC_PASSWORD=testpassword",
+		"RESTIC_REPOSITORY=s3:https://minio.example.com/mybucket/myprefix",
+	})
+
+	result := repo.ValidateRepoConfigManual()
+	if result.Status != ManualCheckStatusInitRequired {
+		t.Fatalf("expected initialization_required for fresh S3 repo, got %s", result.Status)
+	}
+	if got := repo.GetRepoState(); got != ManualCheckStatusInitRequired {
+		t.Fatalf("GetRepoState() = %s after S3 init-required check, want initialization_required", got)
+	}
+}
