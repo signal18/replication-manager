@@ -93,6 +93,8 @@ const resticTaskType = (rtt) => {
       return "restore"
     case 7:
       return "check"
+    case 8:
+      return "copy"
     default:
       return "Unknown"
   }

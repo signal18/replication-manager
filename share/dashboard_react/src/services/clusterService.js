@@ -35,6 +35,7 @@ export const clusterService = {
   getResticMountStatus,
   resticInitRepo,
   resticCheckConfig,
+  resticCopyRepo,
 
   // Security / workload remediation APIs
   fixSecState,
@@ -936,6 +937,10 @@ function resticInitRepo(clusterName, force, options, baseURL) {
 
 function resticCheckConfig(clusterName, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/restic/check-config`)
+}
+
+function resticCopyRepo(clusterName, payload, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/restic/copy`, payload)
 }
 
 function fixSecState(clusterName, errKey, baseURL, tag) {

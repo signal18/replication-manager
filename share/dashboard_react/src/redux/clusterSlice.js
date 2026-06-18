@@ -478,6 +478,31 @@ export const resticCheckConfig = createGuardedAsyncThunk(
   }
 )
 
+// Plain thunk, not createAsyncThunk: payload with secrets stays only in the call-stack closure
+// and is never stored in any module-level structure or placed in Redux action metadata.
+// showSuccessBanner/showErrorBanner only use thunkAPI.dispatch, so { dispatch } suffices.
+export const resticCopyRepo = (clusterName, payload) => async (dispatch, getState) => {
+  const thunkAPI = { dispatch }
+  try {
+    const baseURL = getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.resticCopyRepo(clusterName, payload, baseURL)
+    if (!status || status < 200 || status >= 300) {
+      const msg = (data && typeof data === 'object' && data.message)
+        ? data.message
+        : 'Restic repository copy failed!'
+      showErrorBanner('Restic repository copy failed!', msg, thunkAPI)
+      throw { errorMessage: msg, errorStatus: status || 500 }
+    }
+    showSuccessBanner('Restic repository copy queued!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    if (!error.errorMessage) {
+      showErrorBanner('Restic repository copy failed!', error, thunkAPI)
+    }
+    throw error
+  }
+}
+
 export const getJobs = createGuardedAsyncThunk('cluster/getJobs', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''

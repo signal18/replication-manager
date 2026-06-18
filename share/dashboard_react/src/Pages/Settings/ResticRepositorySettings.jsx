@@ -1,5 +1,5 @@
-import { Box, Flex, Grid, GridItem, HStack, Stack, Text, VStack, Checkbox, Alert, AlertIcon, Divider, useDisclosure } from '@chakra-ui/react'
-import React, { useState, useEffect } from 'react'
+import { Box, Flex, FormControl, FormLabel, Grid, GridItem, HStack, Input, Select, Stack, Text, VStack, Checkbox, Alert, AlertIcon, Divider, useDisclosure } from '@chakra-ui/react'
+import React, { useState, useEffect, useRef } from 'react'
 import { HiChevronDown, HiChevronUp, HiQuestionMarkCircle, HiRefresh } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
 import RMButton from '../../components/RMButton'
@@ -8,7 +8,7 @@ import TextForm from '../../components/TextForm'
 import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
-import { resticInitRepo, resticCheckConfig } from '../../redux/clusterSlice'
+import { resticInitRepo, resticCheckConfig, resticCopyRepo, getResticCurrentTask } from '../../redux/clusterSlice'
 import styles from './styles.module.scss'
 import tableStyles from '../../components/TableType2/styles.module.scss'
 
@@ -345,6 +345,29 @@ function ResticRepositorySettings({
   const [checklistConfirmedNew, setChecklistConfirmedNew] = useState(false)
   const isChecklistReady = checklistConfirmedTarget && checklistConfirmedNew
 
+  // Copy modal state
+  const { isOpen: isCopyModalOpen, onOpen: onOpenCopyModal, onClose: onCloseCopyModal } = useDisclosure()
+  const [copySourceMode, setCopySourceMode] = useState('restic-local')
+  const [copySourceRepo, setCopySourceRepo] = useState('')
+  const [copySourcePassword, setCopySourcePassword] = useState('')
+  const [copySourceKeyHint, setCopySourceKeyHint] = useState('')
+  const [copySourceAwsEndpoint, setCopySourceAwsEndpoint] = useState('')
+  const [copySourceAwsBucket, setCopySourceAwsBucket] = useState('')
+  const [copySourceAwsPrefix, setCopySourceAwsPrefix] = useState('')
+  const [copySourceAwsAccessKeyId, setCopySourceAwsAccessKeyId] = useState('')
+  const [copySourceAwsAccessSecret, setCopySourceAwsAccessSecret] = useState('')
+  const [copySourceAwsRegion, setCopySourceAwsRegion] = useState('')
+  const [copyInitDestination, setCopyInitDestination] = useState(false)
+  const [copyCopyChunkerParams, setCopyCopyChunkerParams] = useState(false)
+  const [copySnapshotIds, setCopySnapshotIds] = useState('')
+  const [copyFilterHost, setCopyFilterHost] = useState('')
+  const [copyFilterPath, setCopyFilterPath] = useState('')
+  const [copyFilterTag, setCopyFilterTag] = useState('')
+  const [copyError, setCopyError] = useState(null)
+  const [copySubmitting, setCopySubmitting] = useState(false)
+  const [showCopyAdvancedFilters, setShowCopyAdvancedFilters] = useState(false)
+  const copySubmitGenRef = useRef(0)
+
   const handleCheckRepo = async () => {
     setIsCheckLoading(true)
     setCheckResult(null)
@@ -371,6 +394,100 @@ function ResticRepositorySettings({
       setCheckResult({ status: 'ok', message: 'Repository initialized. Snapshot refresh queued.' })
     } catch (error) {
       setCheckResult({ status: 'error', message: error?.errorMessage || error?.message || String(error) })
+    }
+  }
+
+  const resetCopyForm = () => {
+    setCopySourceMode('restic-local')
+    setCopySourceRepo('')
+    setCopySourcePassword('')
+    setCopySourceKeyHint('')
+    setCopySourceAwsEndpoint('')
+    setCopySourceAwsBucket('')
+    setCopySourceAwsPrefix('')
+    setCopySourceAwsAccessKeyId('')
+    setCopySourceAwsAccessSecret('')
+    setCopySourceAwsRegion('')
+    setCopyInitDestination(false)
+    setCopyCopyChunkerParams(false)
+    setCopySnapshotIds('')
+    setCopyFilterHost('')
+    setCopyFilterPath('')
+    setCopyFilterTag('')
+    setCopyError(null)
+    setCopySubmitting(false)
+    setShowCopyAdvancedFilters(false)
+  }
+
+  const handleCloseCopyModal = () => {
+    copySubmitGenRef.current++
+    resetCopyForm()
+    onCloseCopyModal()
+  }
+
+  const validateCopyForm = () => {
+    if (!copySourcePassword.trim()) return 'Source password is required.'
+    if ((copySourceMode === 'restic-local' || copySourceMode === 'restic-sftp') && !copySourceRepo.trim()) {
+      return 'Source repository path is required.'
+    }
+    if (copySourceMode === 'restic-aws' && !copySourceAwsBucket.trim()) {
+      return 'Source S3 bucket is required.'
+    }
+    if (copyCopyChunkerParams && !copyInitDestination) {
+      return 'Copy chunker parameters requires init destination to be enabled.'
+    }
+    return null
+  }
+
+  const buildCopyPayload = () => {
+    const splitFilter = (text) => text.split(',').map((s) => s.trim()).filter(Boolean)
+    const snapshotIds = splitFilter(copySnapshotIds)
+    const host = snapshotIds.length > 0 ? [] : splitFilter(copyFilterHost)
+    const path = snapshotIds.length > 0 ? [] : splitFilter(copyFilterPath)
+    const tag = snapshotIds.length > 0 ? [] : splitFilter(copyFilterTag)
+    const source = { mode: copySourceMode, password: copySourcePassword }
+    if (copySourceKeyHint.trim()) source.key_hint = copySourceKeyHint.trim()
+    if (copySourceMode === 'restic-aws') {
+      source.aws = {
+        endpoint: copySourceAwsEndpoint.trim(),
+        bucket: copySourceAwsBucket.trim(),
+        prefix: copySourceAwsPrefix.trim(),
+        access_key_id: copySourceAwsAccessKeyId.trim(),
+        access_secret: copySourceAwsAccessSecret,
+        region: copySourceAwsRegion.trim()
+      }
+    } else {
+      source.repository = copySourceRepo.trim()
+    }
+    return {
+      source,
+      init_destination: copyInitDestination,
+      copy_chunker_params: copyCopyChunkerParams,
+      snapshot_ids: snapshotIds,
+      host,
+      path,
+      tag
+    }
+  }
+
+  const handleCopySubmit = async () => {
+    const err = validateCopyForm()
+    if (err) { setCopyError(err); return }
+    setCopyError(null)
+    const submitGen = ++copySubmitGenRef.current
+    setCopySubmitting(true)
+    try {
+      await dispatch(resticCopyRepo(clusterName, buildCopyPayload()))
+      if (copySubmitGenRef.current === submitGen) {
+        onCloseCopyModal()
+        resetCopyForm()
+        dispatch(getResticCurrentTask({ clusterName }))
+      }
+    } catch (error) {
+      if (copySubmitGenRef.current === submitGen) {
+        setCopyError(error?.errorMessage || error?.message || 'Copy request failed.')
+        setCopySubmitting(false)
+      }
     }
   }
 
@@ -611,6 +728,17 @@ function ResticRepositorySettings({
                             'Re-initialize Local Repository'
                           )}
                         </HStack>
+                        <HStack>
+                          <RMButton
+                            size='sm'
+                            colorScheme='orange'
+                            onClick={onOpenCopyModal}
+                            isDisabled={user?.grants['cluster-process'] === false}
+                            title='Migrate/copy snapshots from another repository into this one'
+                          >
+                            Migrate/copy snapshots
+                          </RMButton>
+                        </HStack>
                         {checkResult && checkResult.status !== 'initialization_required' && (
                           <Alert status={checkResult.status === 'ok' ? 'success' : 'error'} size='sm' borderRadius='md'>
                             <AlertIcon />
@@ -672,6 +800,17 @@ function ResticRepositorySettings({
                             'Re-initialize the SFTP Restic repository. This creates a new repository configuration at the configured sftp:user@host:/path. Force re-initialization is not supported for SFTP repositories - remove the remote repository path manually over SSH before re-initializing.',
                             'Re-initialize SFTP Repository'
                           )}
+                        </HStack>
+                        <HStack>
+                          <RMButton
+                            size='sm'
+                            colorScheme='orange'
+                            onClick={onOpenCopyModal}
+                            isDisabled={user?.grants['cluster-process'] === false}
+                            title='Migrate/copy snapshots from another repository into this one'
+                          >
+                            Migrate/copy snapshots
+                          </RMButton>
                         </HStack>
                         {checkResult && checkResult.status !== 'initialization_required' && (
                           <Alert status={checkResult.status === 'ok' ? 'success' : 'error'} size='sm' borderRadius='md'>
@@ -936,6 +1075,14 @@ function ResticRepositorySettings({
                           isDisabled={user?.grants['cluster-settings'] === false}
                         >
                           Initialize repository
+                        </RMButton>
+                        <RMButton
+                          size='sm'
+                          colorScheme='orange'
+                          onClick={onOpenCopyModal}
+                          isDisabled={user?.grants['cluster-process'] === false}
+                        >
+                          Migrate/copy snapshots
                         </RMButton>
                       </HStack>
                       {checkResult && checkResult.status !== 'initialization_required' && (
@@ -1234,10 +1381,196 @@ function ResticRepositorySettings({
         }
         onConfirmClick={handleConfirmInit}
         confirmButtonText="Initialize"
-        confirmButtonProps={{ 
+        confirmButtonProps={{
           isDisabled: isForceInitBlocked,
-          colorScheme: initForce ? 'red' : 'blue' 
+          colorScheme: initForce ? 'red' : 'blue'
         }}
+      />
+
+      <ConfirmModal
+        isOpen={isCopyModalOpen}
+        closeModal={handleCloseCopyModal}
+        title="Migrate / Copy Snapshots"
+        onConfirmClick={handleCopySubmit}
+        confirmButtonText="Queue copy"
+        confirmButtonProps={{ isLoading: copySubmitting, colorScheme: 'orange' }}
+        body={
+          <VStack align='start' spacing={4}>
+            <Box w='full'>
+              <Text fontSize='sm' fontWeight='semibold' mb={1}>Destination (read-only)</Text>
+              <Text
+                fontSize='sm'
+                fontFamily='monospace'
+                bg='gray.100'
+                p={2}
+                borderRadius='md'
+                wordBreak='break-all'
+                w='full'
+              >
+                {isAws ? (awsRepoPath || 's3:<bucket>/<prefix>') : (config?.backupResticLocalRepository || '(not configured)')}
+              </Text>
+              {!isAws && appendCluster && (
+                <Text fontSize='xs' color='gray.500' mt={1}>
+                  Effective path may include /{clusterName} suffix if not already present.
+                </Text>
+              )}
+              <Text fontSize='xs' color='gray.500' mt={1}>
+                Repository configuration will not be changed by this copy operation.
+              </Text>
+            </Box>
+
+            <Divider />
+
+            <FormControl>
+              <FormLabel fontSize='sm'>Source repository type</FormLabel>
+              <Select size='sm' value={copySourceMode} onChange={(e) => setCopySourceMode(e.target.value)}>
+                <option value='restic-local'>Local filesystem</option>
+                <option value='restic-sftp'>SFTP</option>
+                <option value='restic-aws'>S3 / Object storage</option>
+              </Select>
+            </FormControl>
+
+            {(copySourceMode === 'restic-local' || copySourceMode === 'restic-sftp') && (
+              <FormControl isRequired>
+                <FormLabel fontSize='sm'>
+                  {copySourceMode === 'restic-sftp' ? 'Source SFTP URI' : 'Source repository path'}
+                </FormLabel>
+                <Input
+                  size='sm'
+                  value={copySourceRepo}
+                  onChange={(e) => setCopySourceRepo(e.target.value)}
+                  placeholder={copySourceMode === 'restic-sftp' ? 'sftp:user@host:/path/to/repo' : '/path/to/source/repo'}
+                />
+                {copySourceMode === 'restic-sftp' && (
+                  <Text fontSize='xs' color='gray.500' mt={1}>
+                    SSH auth uses the running process&apos;s key-based SSH config. Password-based SSH is not supported.
+                  </Text>
+                )}
+              </FormControl>
+            )}
+
+            {copySourceMode === 'restic-aws' && (
+              <VStack spacing={3} w='full' align='start'>
+                <FormControl>
+                  <FormLabel fontSize='sm'>Source S3 endpoint</FormLabel>
+                  <Input size='sm' value={copySourceAwsEndpoint} onChange={(e) => setCopySourceAwsEndpoint(e.target.value)} placeholder='https://minio.example.com' />
+                </FormControl>
+                <FormControl isRequired>
+                  <FormLabel fontSize='sm'>Source S3 bucket</FormLabel>
+                  <Input size='sm' value={copySourceAwsBucket} onChange={(e) => setCopySourceAwsBucket(e.target.value)} placeholder='bucket-name' />
+                </FormControl>
+                <FormControl>
+                  <FormLabel fontSize='sm'>Source S3 prefix</FormLabel>
+                  <Input size='sm' value={copySourceAwsPrefix} onChange={(e) => setCopySourceAwsPrefix(e.target.value)} placeholder='optional/prefix' />
+                </FormControl>
+                <FormControl>
+                  <FormLabel fontSize='sm'>Source S3 access key ID</FormLabel>
+                  <Input size='sm' value={copySourceAwsAccessKeyId} onChange={(e) => setCopySourceAwsAccessKeyId(e.target.value)} />
+                </FormControl>
+                <FormControl>
+                  <FormLabel fontSize='sm'>Source S3 access secret</FormLabel>
+                  <Input size='sm' type='password' value={copySourceAwsAccessSecret} onChange={(e) => setCopySourceAwsAccessSecret(e.target.value)} />
+                </FormControl>
+                <FormControl>
+                  <FormLabel fontSize='sm'>Source S3 region</FormLabel>
+                  <Input size='sm' value={copySourceAwsRegion} onChange={(e) => setCopySourceAwsRegion(e.target.value)} placeholder='us-east-1' />
+                </FormControl>
+              </VStack>
+            )}
+
+            <FormControl isRequired>
+              <FormLabel fontSize='sm'>Source repository password</FormLabel>
+              <Input size='sm' type='password' value={copySourcePassword} onChange={(e) => setCopySourcePassword(e.target.value)} />
+            </FormControl>
+
+            <FormControl>
+              <FormLabel fontSize='sm'>
+                Source key hint{' '}
+                <Text as='span' fontSize='xs' color='gray.500'>(optional)</Text>
+              </FormLabel>
+              <Input size='sm' value={copySourceKeyHint} onChange={(e) => setCopySourceKeyHint(e.target.value)} placeholder='key ID hint for multi-key repos' />
+            </FormControl>
+
+            <Divider />
+
+            <Checkbox
+              isChecked={copyInitDestination}
+              onChange={(e) => {
+                setCopyInitDestination(e.target.checked)
+                if (!e.target.checked) setCopyCopyChunkerParams(false)
+              }}
+            >
+              <Text fontSize='sm'>Initialize destination before copy</Text>
+            </Checkbox>
+            <Checkbox
+              isChecked={copyCopyChunkerParams}
+              isDisabled={!copyInitDestination}
+              onChange={(e) => setCopyCopyChunkerParams(e.target.checked)}
+            >
+              <Text fontSize='sm'>
+                Copy chunker parameters{' '}
+                <Text as='span' fontSize='xs' color='gray.500'>(requires init destination)</Text>
+              </Text>
+            </Checkbox>
+
+            <HStack
+              as='button'
+              type='button'
+              spacing={1}
+              onClick={() => setShowCopyAdvancedFilters((prev) => !prev)}
+            >
+              <Text fontSize='sm' color='blue.500'>Advanced filters</Text>
+              <Box fontSize='sm'>{showCopyAdvancedFilters ? <HiChevronUp /> : <HiChevronDown />}</Box>
+            </HStack>
+
+            {showCopyAdvancedFilters && (
+              <VStack spacing={3} w='full' align='start'>
+                <FormControl>
+                  <FormLabel fontSize='sm'>
+                    Snapshot IDs{' '}
+                    <Text as='span' fontSize='xs' color='gray.500'>(comma-separated; overrides host/path/tag filters)</Text>
+                  </FormLabel>
+                  <Input size='sm' value={copySnapshotIds} onChange={(e) => setCopySnapshotIds(e.target.value)} placeholder='abc123, def456' />
+                </FormControl>
+                <FormControl>
+                  <FormLabel fontSize='sm'>
+                    Filter by host{' '}
+                    <Text as='span' fontSize='xs' color='gray.500'>(comma-separated)</Text>
+                  </FormLabel>
+                  <Input size='sm' value={copyFilterHost} onChange={(e) => setCopyFilterHost(e.target.value)} />
+                </FormControl>
+                <FormControl>
+                  <FormLabel fontSize='sm'>
+                    Filter by path{' '}
+                    <Text as='span' fontSize='xs' color='gray.500'>(comma-separated)</Text>
+                  </FormLabel>
+                  <Input size='sm' value={copyFilterPath} onChange={(e) => setCopyFilterPath(e.target.value)} />
+                </FormControl>
+                <FormControl>
+                  <FormLabel fontSize='sm'>
+                    Filter by tag{' '}
+                    <Text as='span' fontSize='xs' color='gray.500'>(comma-separated)</Text>
+                  </FormLabel>
+                  <Input size='sm' value={copyFilterTag} onChange={(e) => setCopyFilterTag(e.target.value)} />
+                </FormControl>
+              </VStack>
+            )}
+
+            <Alert status='info' size='sm' borderRadius='md'>
+              <AlertIcon />
+              <Text fontSize='xs'>
+                Snapshots will be copied into the destination repository above. The copy job will appear in the Restic task queue and may take time to complete.
+              </Text>
+            </Alert>
+
+            {copyError && (
+              <Alert status='error' size='sm' borderRadius='md'>
+                <AlertIcon />
+                <Text fontSize='sm'>{copyError}</Text>
+              </Alert>
+            )}
+          </VStack>
+        }
       />
     </VStack>
   )
