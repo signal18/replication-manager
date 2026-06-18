@@ -80,7 +80,7 @@ var rs = routes{
 	},
 	route{
 		"Forget",
-		"PST",
+		"POST",
 		"/forget/",
 		handlerForget,
 	},
@@ -93,6 +93,7 @@ type response struct {
 
 var (
 	arbitratorCluster *cluster.Cluster
+	arbitratorDB      *sqlx.DB
 )
 
 func init() {
@@ -121,17 +122,23 @@ var arbitratorCmd = &cobra.Command{
 			arbitratorCluster.SetLogStdout()
 		}
 
-		db, err := getArbitratorBackendStorageConnection()
+		var err error
+		arbitratorDB, err = getArbitratorBackendStorageConnection()
 		if err != nil {
 			log.Fatal("Error opening arbitrator database: ", err)
 		}
 
-		err = db.Ping()
+		if RepMan.Confs["arbitrator"].ArbitratorDriver == "sqlite" {
+			arbitratorDB.SetMaxOpenConns(1)
+			arbitratorDB.SetMaxIdleConns(1)
+		}
+
+		err = arbitratorDB.Ping()
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		err = dbhelper.SetHeartbeatTable(db)
+		err = dbhelper.SetHeartbeatTable(arbitratorDB)
 		if err != nil {
 			log.WithError(err).Error("Error creating tables")
 		}
@@ -154,6 +161,13 @@ func getArbitratorBackendStorageConnection() (*sqlx.DB, error) {
 	return db, err
 }
 
+func getArbitratorDB() (*sqlx.DB, error) {
+	if arbitratorDB == nil {
+		return nil, fmt.Errorf("arbitrator database is not initialized")
+	}
+	return arbitratorDB, nil
+}
+
 func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 	var h server.Heartbeat
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1048576))
@@ -172,18 +186,20 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 		w.WriteHeader(422) // unprocessable entity
 		if err = json.NewEncoder(w).Encode(err); err != nil {
-			log.Errorln(err)
 			w.WriteHeader(500)
+			log.Errorln(err)
+			return
 		}
+		return
 	}
 	var send response
 
-	db, err := getArbitratorBackendStorageConnection()
+	db, err := getArbitratorDB()
 	if err != nil {
-		arbitratorCluster.LogModulePrintf(arbitratorCluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error opening arbitrator database: %s", err)
+		log.Errorf("Error opening arbitrator database: %s", err)
+		w.WriteHeader(500)
 		return
 	}
-	defer db.Close()
 	res := dbhelper.RequestArbitration(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
 	electedmaster := dbhelper.GetArbitrationMaster(db, h.Secret, h.Cluster)
 	if res {
@@ -197,7 +213,8 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 
 	if err := json.NewEncoder(w).Encode(send); err != nil {
-		panic(err)
+		log.Errorln(err)
+		return
 	}
 
 }
@@ -206,7 +223,9 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1048576))
 
 	if err != nil {
-		panic(err)
+		log.Errorln(err)
+		w.WriteHeader(500)
+		return
 	}
 	//log.Printf("INFO: Hearbeat receive:%s", string(body))
 	if err = r.Body.Close(); err != nil {
@@ -226,14 +245,12 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var send string
-	db, err := getArbitratorBackendStorageConnection()
+	db, err := getArbitratorDB()
 	if err != nil {
-		arbitratorCluster.LogModulePrintf(arbitratorCluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error opening arbitrator database: %s", err)
+		log.Errorf("Error opening arbitrator database: %s", err)
 		w.WriteHeader(500)
-		log.Errorln(err)
 		return
 	}
-	defer db.Close()
 	res := dbhelper.WriteHeartbeat(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
 	if res == nil {
 		send = `{"heartbeat":"succed"}`
@@ -279,14 +296,12 @@ func handlerForget(w http.ResponseWriter, r *http.Request) {
 
 	//	currentCluster := new(cluster.Cluster)
 	var send string
-	db, err := getArbitratorBackendStorageConnection()
+	db, err := getArbitratorDB()
 	if err != nil {
-		arbitratorCluster.LogModulePrintf(arbitratorCluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error opening arbitrator database: %s", err)
+		log.Errorf("Error opening arbitrator database: %s", err)
 		w.WriteHeader(500)
-		log.Errorln(err)
 		return
 	}
-	defer db.Close()
 	res := dbhelper.ForgetArbitration(db, h.Secret)
 	if res == nil {
 		send = `{"heartbeat":"succed"}`
