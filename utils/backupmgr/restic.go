@@ -47,6 +47,18 @@ const (
 	MoveLast  MoveType = "last"
 )
 
+// initPolicy controls whether automatic repository initialization may be attempted.
+type initPolicy int
+
+const (
+	// initPolicyPassive classifies repo state only; never attempts auto-init.
+	initPolicyPassive initPolicy = iota
+	// initPolicyBoot allows one auto-init attempt during manager startup.
+	initPolicyBoot
+	// initPolicyPreBackup allows an auto-init retry immediately before backup.
+	initPolicyPreBackup
+)
+
 func GetTaskName(taskType TaskType) string {
 	switch taskType {
 	case InitTask:
@@ -407,6 +419,7 @@ type ResticManager struct {
 	lastInitError    error     // Last init error encountered
 	initErrorCount   int       // Number of consecutive init errors
 	initBackoffUntil time.Time // Don't retry init until this time
+	bootInitDone     bool      // prevents repeated auto-init on subsequent FetchRepo calls
 	// s3existenceProber is a test seam; nil in production.
 	// When set, checkS3RepoFiles calls it instead of creating a real S3 client.
 	// It receives bucket, configKey, dataPrefix and returns existence + error for each.
@@ -3029,8 +3042,14 @@ func (repo *ResticManager) resolveS3RepoSpec(repopath string) (bucket, prefix, e
 	return bucket, prefix, endpoint, nil
 }
 
-// checkS3RepoFiles verifies S3 repository structure and initializes if needed
+// checkS3RepoFiles verifies S3 repository structure without attempting auto-init.
 func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) error {
+	return repo.checkS3RepoFilesWithPolicy(bucket, prefix, endpoint, initPolicyPassive)
+}
+
+// checkS3RepoFilesWithPolicy verifies S3 repository structure.
+// When policy is not passive and AutoInit is true, it may attempt initialization.
+func (repo *ResticManager) checkS3RepoFilesWithPolicy(bucket, prefix, endpoint string, policy initPolicy) error {
 	configKey := "config"
 	if prefix != "" {
 		configKey = prefix + "/config"
@@ -3108,7 +3127,7 @@ func (repo *ResticManager) checkS3RepoFiles(bucket, prefix, endpoint string) err
 
 		// No config, no data - fresh repository
 		repo.CanInitRepo = true
-		if repo.AutoInit {
+		if policy != initPolicyPassive && repo.AutoInit {
 			return repo.InitRepoWithOptions(ResticInitOption{})
 		}
 		err = errors.New("repository initialization required: " + errstr)
@@ -3205,10 +3224,21 @@ func (repo *ResticManager) shouldSkipInitDueToBackoff() bool {
 	return false
 }
 
+// CheckRepoFiles validates repository state without attempting auto-init.
+// It is safe to call from periodic/background paths.
 func (repo *ResticManager) CheckRepoFiles() error {
-	// Check if we're in backoff period due to repeated init failures
-	if repo.shouldSkipInitDueToBackoff() {
-		// Return cached error without retrying or logging
+	return repo.checkRepoFilesWithPolicy(initPolicyPassive)
+}
+
+// checkRepoFilesWithPolicy validates repository state and optionally attempts
+// automatic initialization depending on policy:
+//   - initPolicyPassive: classify state only; respects backoff; never inits
+//   - initPolicyBoot: may init once at startup; bypasses backoff
+//   - initPolicyPreBackup: may init before backup; bypasses backoff
+func (repo *ResticManager) checkRepoFilesWithPolicy(policy initPolicy) error {
+	// Passive mode respects backoff to avoid log flooding from periodic checks.
+	// Boot and pre-backup policies bypass backoff so they can retry.
+	if policy == initPolicyPassive && repo.shouldSkipInitDueToBackoff() {
 		repo.errorMutex.Lock()
 		cachedErr := repo.lastInitError
 		repo.errorMutex.Unlock()
@@ -3243,7 +3273,7 @@ func (repo *ResticManager) CheckRepoFiles() error {
 			repo.setInitErrorBackoff(err)
 			return err
 		}
-		return repo.checkS3RepoFiles(bucket, prefix, endpoint)
+		return repo.checkS3RepoFilesWithPolicy(bucket, prefix, endpoint, policy)
 	}
 
 	if config.IsSftpResticRepository(repopath) {
@@ -3256,9 +3286,8 @@ func (repo *ResticManager) CheckRepoFiles() error {
 		return nil
 	}
 
-	// Existing local filesystem logic
+	// Local filesystem check
 	if _, err := os.Stat(filepath.Join(repopath, "config")); os.IsNotExist(err) {
-		// Check the repo data
 		errstr := "repo config is missing"
 		_, err := os.Stat(filepath.Join(repopath, "data"))
 		if err == nil {
@@ -3267,21 +3296,21 @@ func (repo *ResticManager) CheckRepoFiles() error {
 			err = errors.New(errstr)
 			repo.SetError(InitTask, err)
 			return err
-		} else if err != nil && !os.IsNotExist(err) { // Not a not-exist error (i.e., other error)
+		} else if err != nil && !os.IsNotExist(err) {
 			errstr += " and failed to check repo data: " + err.Error()
 			repo.CanInitRepo = false
 			err = errors.New(errstr)
 			repo.SetError(InitTask, err)
 			return err
-		} else { // Repo data does not exist (explicit init required, but possible)
-			repo.CanInitRepo = true
-			if repo.AutoInit {
-				return repo.InitRepoWithOptions(ResticInitOption{})
-			}
-			err = errors.New("repository initialization required: " + errstr)
-			repo.SetError(InitTask, err)
-			return err
 		}
+		// Fresh repo: no config, no data.
+		repo.CanInitRepo = true
+		if policy != initPolicyPassive && repo.AutoInit {
+			return repo.InitRepoWithOptions(ResticInitOption{})
+		}
+		err = errors.New("repository initialization required: " + errstr)
+		repo.SetError(InitTask, err)
+		return err
 	} else if err != nil {
 		repo.CanInitRepo = false
 		err = fmt.Errorf("failed to check repo config: %w", err)
@@ -3290,7 +3319,7 @@ func (repo *ResticManager) CheckRepoFiles() error {
 	}
 
 	repo.CanInitRepo = true
-	delete(repo.TaskErrors, InitTask) // Clear any previous init errors
+	delete(repo.TaskErrors, InitTask)
 	repo.clearInitErrorBackoff()
 
 	return nil
@@ -3584,7 +3613,9 @@ func (repo *ResticManager) fetchRepoSnapshots() error {
 	return nil // Success
 }
 
-// FetchRepo performs the fetch for snapshots and stats
+// FetchRepo performs the fetch for snapshots and stats.
+// The first call uses the boot auto-init policy (one-shot); subsequent calls
+// are passive and will not retry initialization automatically.
 func (repo *ResticManager) FetchRepo() error {
 	// Check if the repo is able to fetch and initialized
 	if !repo.GetCanFetch() {
@@ -3594,8 +3625,20 @@ func (repo *ResticManager) FetchRepo() error {
 	repo.SetCanFetch(false)
 	defer repo.SetCanFetch(true)
 
-	// Check if the repo is initialized
-	if err := repo.CheckRepoFiles(); err != nil {
+	// Determine policy: boot-time init is allowed once per manager lifetime.
+	repo.errorMutex.Lock()
+	bootDone := repo.bootInitDone
+	if !bootDone {
+		repo.bootInitDone = true
+	}
+	repo.errorMutex.Unlock()
+
+	policy := initPolicyPassive
+	if !bootDone {
+		policy = initPolicyBoot
+	}
+
+	if err := repo.checkRepoFilesWithPolicy(policy); err != nil {
 		return err
 	}
 
@@ -3918,6 +3961,13 @@ func (repo *ResticManager) BackupWithOptions(opt ResticBackupOption) (string, er
 
 	repo.SetCanFetch(false)
 	defer repo.SetCanFetch(true)
+
+	// Ensure the repository is ready before backup; retry init if fresh and
+	// auto-init is enabled. This bypasses passive backoff so a real backup
+	// attempt can recover from a failed boot init.
+	if err := repo.checkRepoFilesWithPolicy(initPolicyPreBackup); err != nil {
+		return "", err
+	}
 
 	// Prepare the arguments for the "backup" command
 	args := []string{"backup", "--json"}
