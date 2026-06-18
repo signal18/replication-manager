@@ -491,11 +491,6 @@ function ResticRepositorySettings({
                       onChange={(value) => handleArchiveModeChange(value)}
                     />
                   </Flex>
-                  <Text className={styles.helperText}>
-                    backup-archive-mode selects the Restic storage backend. None disables Restic backups. Local and
-                    SFTP use the local repository path (Storage section). S3 enables the AWS/S3 settings below.
-                    Switching does not erase the values stored for other types.
-                  </Text>
                 </GridItem>
               </Grid>
 
@@ -685,12 +680,6 @@ function ResticRepositorySettings({
                           </Alert>
                         )}
                       </Stack>
-                      <Text className={styles.helperText}>
-                        Stored in backup-restic-local-repository using restic&apos;s sftp syntax
-                        (sftp:user@host:/path/to/repo). The user in the path is an SSH login authenticated via
-                        SSH key only (no password). See (?) for SSH key setup and how this differs from the
-                        repository password above.
-                      </Text>
                     </GridItem>
                   </Grid>
                 </Stack>
@@ -726,9 +715,6 @@ function ResticRepositorySettings({
                           regexPattern='^https?://[A-Za-z0-9.-]+(?::\\d+)?(?:/.*)?$'
                           onSave={(value) => handleSettingChange('backup-restic-aws-endpoint', value, true)}
                         />
-                        <Text className={styles.helperText}>
-                          Optional custom S3 endpoint (http/https with host; leave empty for AWS). Do not use s3:// here.
-                        </Text>
                       </GridItem>
                     </Grid>
 
@@ -754,9 +740,6 @@ function ResticRepositorySettings({
                           placeholder='us-east-1, eu-west-1, etc.'
                           onSave={(value) => handleSettingChange('backup-restic-aws-region', value)}
                         />
-                        <Text className={styles.helperText}>
-                          Leave empty only if the runtime environment already provides a usable AWS region (for example AWS_REGION or AWS_DEFAULT_REGION).
-                        </Text>
                       </GridItem>
                     </Grid>
                   </Stack>
@@ -813,9 +796,6 @@ function ResticRepositorySettings({
                         />
                       </GridItem>
                     </Grid>
-                    <Text className={styles.helperText}>
-                      Provide the access key and secret for this S3 repository configuration.
-                    </Text>
                   </Stack>
 
                   {/* 3. Repository target */}
@@ -926,9 +906,6 @@ function ResticRepositorySettings({
                         >
                           {awsRepoPath || 's3:<bucket>/<prefix>'}
                         </Text>
-                        <Text className={styles.helperText}>
-                          Preview of the S3 repository path after applying append-cluster rules.
-                        </Text>
                       </GridItem>
                     </Grid>
                   </Stack>
@@ -1007,11 +984,6 @@ function ResticRepositorySettings({
                               size='sm'
                               onSave={(value) => handleSettingChange('backup-restic-repository', value, true)}
                             />
-                            <Text className={styles.helperText}>
-                              Used only when the S3 bucket field is empty. For custom S3 services, use
-                              s3:https://server:port/bucket in this field. New configurations should prefer the
-                              dedicated bucket/prefix/endpoint/region fields above.
-                            </Text>
                           </GridItem>
                         </Grid>
                       </Stack>
@@ -1071,9 +1043,6 @@ function ResticRepositorySettings({
                         placeholder='AWS_SESSION_TOKEN, NO_PROXY="host1,host2"'
                         onSave={(value) => handleSettingChange('backup-restic-additional-env', value)}
                       />
-                      <Text className={styles.helperText}>
-                        Optional env vars to pass to restic (comma or space separated KEY or KEY=VALUE). Quote values with commas.
-                      </Text>
                     </GridItem>
                   </Grid>
                 </Stack>

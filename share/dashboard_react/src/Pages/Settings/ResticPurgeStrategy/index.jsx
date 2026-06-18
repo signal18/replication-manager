@@ -733,9 +733,6 @@ Config: \`backup-keep-yearly\` / \`backup-keep-within-yearly\``
                 confirmTitle={"Confirm update 'backup-restic-purge-group-by':"}
                 onSave={(v) => { handleSave('backup-restic-purge-group-by', v) }}
               />
-              <Text className={styles.helperText}>
-                Allowed values: host, paths, tags. Comma-separated for multiple.
-              </Text>
             </GridItem>
             <GridItem className={styles.rowLabel}>
               <HStack spacing={2}>
@@ -750,9 +747,6 @@ Config: \`backup-keep-yearly\` / \`backup-keep-within-yearly\``
                 confirmTitle={"Confirm update 'backup-restic-purge-keep-tag':"}
                 onSave={(v) => { handleSave('backup-restic-purge-keep-tag', v) }}
               />
-              <Text className={styles.helperText}>
-                Space-separated tags, e.g. line:adhoc env:prod. Quote tags with commas.
-              </Text>
             </GridItem>
           </Grid>
         )
