@@ -3329,6 +3329,7 @@ func (repo *ResticManager) checkRepoFilesWithPolicy(policy initPolicy) error {
 			repo.CanInitRepo = false
 			err = errors.New(errstr)
 			repo.SetError(InitTask, err)
+			repo.setInitErrorBackoff(err)
 			repo.setRepoState(ManualCheckStatusError)
 			return err
 		} else if err != nil && !os.IsNotExist(err) {
@@ -3336,6 +3337,7 @@ func (repo *ResticManager) checkRepoFilesWithPolicy(policy initPolicy) error {
 			repo.CanInitRepo = false
 			err = errors.New(errstr)
 			repo.SetError(InitTask, err)
+			repo.setInitErrorBackoff(err)
 			repo.setRepoState(ManualCheckStatusError)
 			return err
 		}

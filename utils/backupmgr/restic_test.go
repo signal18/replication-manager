@@ -582,6 +582,9 @@ func TestCheckRepoFilesAutoInitCorrupt(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(repoDir, "config")); !os.IsNotExist(statErr) {
 		t.Fatal("repo must not have been initialized for corrupt state")
 	}
+	if !repo.shouldSkipInitDueToBackoff() {
+		t.Fatal("expected backoff to be active after corrupt local repo detection")
+	}
 }
 
 func TestCheckS3RepoFilesAutoInitDisabled(t *testing.T) {
