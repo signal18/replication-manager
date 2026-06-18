@@ -180,6 +180,19 @@ Config: \`backup-restic-allow-unsafe-mount\``
     openCommonModal()
   }
 
+  const h = (content, title, stopPropagation = false) => (
+    <RMIconButton
+      icon={HiQuestionMarkCircle}
+      iconFontsize='1rem'
+      variant='ghost'
+      style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }}
+      onClick={(event) => {
+        if (stopPropagation) event.stopPropagation()
+        openInfoModal(title, content)
+      }}
+    />
+  )
+
   const handleSettingChange = (setting, value) =>
     dispatch(
       setSetting({
@@ -343,13 +356,7 @@ Config: \`backup-restic-allow-unsafe-mount\``
             title: (
               <HStack spacing={2} align='center'>
                 <Text className={styles.panelTitle}>Mount control</Text>
-                <RMIconButton
-                  icon={HiQuestionMarkCircle}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    openInfoModal('Restic Mount Control', ResticMountControlHelp)
-                  }}
-                />
+                {h(ResticMountControlHelp, 'Restic Mount Control', true)}
               </HStack>
             ),
             description: 'Manually mount or unmount the restic repository using current settings.',
@@ -459,13 +466,7 @@ Config: \`backup-restic-allow-unsafe-mount\``
             title: (
               <HStack spacing={2} align='center'>
                 <Text className={styles.panelTitle}>Mount destination</Text>
-                <RMIconButton
-                  icon={HiQuestionMarkCircle}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    openInfoModal('Restic Mount Destination', ResticMountDestinationHelp)
-                  }}
-                />
+                {h(ResticMountDestinationHelp, 'Restic Mount Destination', true)}
               </HStack>
             ),
             description: 'Choose where restic mounts snapshots for inspection or restore.',
@@ -504,13 +505,7 @@ Config: \`backup-restic-allow-unsafe-mount\``
             title: (
               <HStack spacing={2} align='center'>
                 <Text className={styles.panelTitle}>Snapshot filters</Text>
-                <RMIconButton
-                  icon={HiQuestionMarkCircle}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    openInfoModal('Restic Mount Filters', ResticMountFiltersHelp)
-                  }}
-                />
+                {h(ResticMountFiltersHelp, 'Restic Mount Filters', true)}
               </HStack>
             ),
             description: 'Limit which snapshots appear inside the mount.',
@@ -595,13 +590,7 @@ Config: \`backup-restic-allow-unsafe-mount\``
             title: (
               <HStack spacing={2} align='center'>
                 <Text className={styles.panelTitle}>Mount templates</Text>
-                <RMIconButton
-                  icon={HiQuestionMarkCircle}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    openInfoModal('Restic Mount Templates', ResticMountTemplatesHelp)
-                  }}
-                />
+                {h(ResticMountTemplatesHelp, 'Restic Mount Templates', true)}
               </HStack>
             ),
             description: 'Control the virtual layout and timestamp formatting inside the mount.',
@@ -677,13 +666,7 @@ Config: \`backup-restic-allow-unsafe-mount\``
                     <GridItem className={styles.rowLabel}>
                       <HStack spacing={1} justify='space-between' width='full'>
                         <Text>Restic mount allow other users</Text>
-                        <RMIconButton
-                          icon={HiQuestionMarkCircle}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            openInfoModal('Restic Mount Allow Other Users', ResticMountAllowOtherHelp)
-                          }}
-                        />
+                        {h(ResticMountAllowOtherHelp, 'Restic Mount Allow Other Users')}
                       </HStack>
                     </GridItem>
                     <GridItem className={styles.valueCell}>
@@ -711,13 +694,7 @@ Config: \`backup-restic-allow-unsafe-mount\``
                     <GridItem className={styles.rowLabel}>
                       <HStack spacing={1} justify='space-between' width='full'>
                         <Text>Restic mount ignore default permissions</Text>
-                        <RMIconButton
-                          icon={HiQuestionMarkCircle}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            openInfoModal('Restic Mount Ignore Default Permissions', ResticMountNoDefaultPermissionsHelp)
-                          }}
-                        />
+                        {h(ResticMountNoDefaultPermissionsHelp, 'Restic Mount Ignore Default Permissions')}
                       </HStack>
                     </GridItem>
                     <GridItem className={styles.valueCell}>
@@ -740,13 +717,7 @@ Config: \`backup-restic-allow-unsafe-mount\``
                     <GridItem className={styles.rowLabel}>
                       <HStack spacing={1} justify='space-between' width='full'>
                         <Text>Restic mount owner root</Text>
-                        <RMIconButton
-                          icon={HiQuestionMarkCircle}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            openInfoModal('Restic Mount Owner Root', ResticMountOwnerRootHelp)
-                          }}
-                        />
+                        {h(ResticMountOwnerRootHelp, 'Restic Mount Owner Root')}
                       </HStack>
                     </GridItem>
                     <GridItem className={styles.valueCell}>
@@ -783,13 +754,7 @@ Config: \`backup-restic-allow-unsafe-mount\``
                     <GridItem className={styles.rowLabel}>
                       <HStack spacing={1} justify='space-between' width='full'>
                         <Text>Restic mount no lock</Text>
-                        <RMIconButton
-                          icon={HiQuestionMarkCircle}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            openInfoModal('Restic Mount No Lock', ResticMountNoLockHelp)
-                          }}
-                        />
+                        {h(ResticMountNoLockHelp, 'Restic Mount No Lock')}
                       </HStack>
                     </GridItem>
                     <GridItem className={styles.valueCell}>
@@ -812,13 +777,7 @@ Config: \`backup-restic-allow-unsafe-mount\``
                     <GridItem className={styles.rowLabel}>
                       <HStack spacing={1} justify='space-between' width='full'>
                         <Text>Restic mount verbose level (0-3)</Text>
-                        <RMIconButton
-                          icon={HiQuestionMarkCircle}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            openInfoModal('Restic Mount Verbose Level', ResticMountVerboseHelp)
-                          }}
-                        />
+                        {h(ResticMountVerboseHelp, 'Restic Mount Verbose Level')}
                       </HStack>
                     </GridItem>
                     <GridItem className={styles.valueCell}>
@@ -844,13 +803,7 @@ Config: \`backup-restic-allow-unsafe-mount\``
                     <GridItem className={styles.rowLabel}>
                       <HStack spacing={1} justify='space-between' width='full'>
                         <Text>Restic mount quiet mode</Text>
-                        <RMIconButton
-                          icon={HiQuestionMarkCircle}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            openInfoModal('Restic Mount Quiet Mode', ResticMountQuietHelp)
-                          }}
-                        />
+                        {h(ResticMountQuietHelp, 'Restic Mount Quiet Mode')}
                       </HStack>
                     </GridItem>
                     <GridItem className={styles.valueCell}>
@@ -873,13 +826,7 @@ Config: \`backup-restic-allow-unsafe-mount\``
                     <GridItem className={styles.rowLabel}>
                       <HStack spacing={1} justify='space-between' width='full'>
                         <Text>Allow unsafe restic mount (reuse external mount)</Text>
-                        <RMIconButton
-                          icon={HiQuestionMarkCircle}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            openInfoModal('Allow Unsafe Restic Mount', ResticMountAllowUnsafeMountHelp)
-                          }}
-                        />
+                        {h(ResticMountAllowUnsafeMountHelp, 'Allow Unsafe Restic Mount')}
                       </HStack>
                     </GridItem>
                     <GridItem className={styles.valueCell}>
