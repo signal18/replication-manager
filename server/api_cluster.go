@@ -246,6 +246,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticRestoreConfig)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/restic/copy", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticCopy)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/certificates", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCertificates)),
@@ -8519,6 +8524,38 @@ func (repman *ReplicationManager) handlerMuxResticInitRepo(w http.ResponseWriter
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Restic repository initialized"))
+	})
+}
+
+// handlerMuxResticCopy handles the HTTP request to queue a repository copy task.
+// @Summary Copy Restic Repository
+// @Description Copies snapshots from a source repository into the cluster's configured Restic repository.
+// @Tags ClusterRestic
+// @Accept json
+// @Produce plain
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body backupmgr.ResticCopyOption true "Copy options"
+// @Success 200 {string} string "Restic repository copy queued"
+// @Failure 400 {string} string "Invalid payload or guardrail rejection"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/restic/copy [post]
+func (repman *ReplicationManager) handlerMuxResticCopy(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
+		var opt backupmgr.ResticCopyOption
+		if err := json.NewDecoder(r.Body).Decode(&opt); err != nil && err != io.EOF {
+			http.Error(w, "Error decoding request body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if err := mycluster.ResticCopyRepoWithOptions(opt); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Restic repository copy queued"))
 	})
 }
 

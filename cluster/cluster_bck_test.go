@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -1239,4 +1240,191 @@ func TestCheckResticErrors_TransientErrorsCleared(t *testing.T) {
 			}
 		})
 	}
+}
+
+// --- ResticCopyRepoWithOptions unit tests ---
+
+func newCopyTestCluster(t *testing.T, resticEnabled bool) *Cluster {
+	t.Helper()
+	rm := backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
+	rm.PauseWorker()
+	t.Cleanup(rm.ShutdownWorker)
+	return &Cluster{
+		Name:          "test-cluster",
+		Conf:          &config.Config{BackupRestic: resticEnabled},
+		ResticManager: rm,
+	}
+}
+
+func TestResticCopyRepoWithOptionsResticDisabled(t *testing.T) {
+	cluster := newCopyTestCluster(t, false)
+	opt := backupmgr.ResticCopyOption{
+		Source: backupmgr.ResticCopySourceOption{
+			Mode:       config.ConstBackupArchiveModeResticLocal,
+			Repository: "/some/path",
+			Password:   "pass",
+		},
+	}
+	if err := cluster.ResticCopyRepoWithOptions(opt); err == nil {
+		t.Fatal("expected error when restic is disabled, got nil")
+	}
+}
+
+func TestResticCopyRepoWithOptionsInvalidMode(t *testing.T) {
+	cluster := newCopyTestCluster(t, true)
+	opt := backupmgr.ResticCopyOption{
+		Source: backupmgr.ResticCopySourceOption{
+			Mode:       "invalid-mode",
+			Repository: "/some/path",
+			Password:   "pass",
+		},
+	}
+	if err := cluster.ResticCopyRepoWithOptions(opt); err == nil {
+		t.Fatal("expected error for invalid source mode, got nil")
+	}
+}
+
+func TestResticCopyRepoWithOptionsMissingPassword(t *testing.T) {
+	cluster := newCopyTestCluster(t, true)
+	opt := backupmgr.ResticCopyOption{
+		Source: backupmgr.ResticCopySourceOption{
+			Mode:       config.ConstBackupArchiveModeResticLocal,
+			Repository: "/some/path",
+		},
+	}
+	if err := cluster.ResticCopyRepoWithOptions(opt); err == nil {
+		t.Fatal("expected error for missing source password, got nil")
+	}
+}
+
+func TestResticCopyRepoWithOptionsMalformedSFTP(t *testing.T) {
+	cluster := newCopyTestCluster(t, true)
+	opt := backupmgr.ResticCopyOption{
+		Source: backupmgr.ResticCopySourceOption{
+			Mode:       config.ConstBackupArchiveModeResticSftp,
+			Repository: "not-sftp-format",
+			Password:   "pass",
+		},
+	}
+	err := cluster.ResticCopyRepoWithOptions(opt)
+	if err == nil {
+		t.Fatal("expected error for malformed SFTP repo, got nil")
+	}
+	if !strings.Contains(err.Error(), "sftp:") {
+		t.Errorf("expected error to mention sftp format, got: %v", err)
+	}
+}
+
+func TestResticCopyRepoWithOptionsChunkerWithoutInit(t *testing.T) {
+	cluster := newCopyTestCluster(t, true)
+	opt := backupmgr.ResticCopyOption{
+		Source: backupmgr.ResticCopySourceOption{
+			Mode:       config.ConstBackupArchiveModeResticLocal,
+			Repository: "/some/path",
+			Password:   "pass",
+		},
+		CopyChunkerParams: true,
+		InitDestination:   false,
+	}
+	err := cluster.ResticCopyRepoWithOptions(opt)
+	if err == nil {
+		t.Fatal("expected error when copy_chunker_params=true without init_destination, got nil")
+	}
+	if !strings.Contains(err.Error(), "copy_chunker_params") {
+		t.Errorf("expected error to mention copy_chunker_params, got: %v", err)
+	}
+}
+
+func TestResticCopyRepoWithOptionsValidQueues(t *testing.T) {
+	cluster := newCopyTestCluster(t, true) // worker paused + shutdown registered
+	opt := backupmgr.ResticCopyOption{
+		Source: backupmgr.ResticCopySourceOption{
+			Mode:       config.ConstBackupArchiveModeResticLocal,
+			Repository: "/some/src",
+			Password:   "pass",
+		},
+	}
+	if err := cluster.ResticCopyRepoWithOptions(opt); err != nil {
+		t.Fatalf("unexpected error for valid options: %v", err)
+	}
+	cluster.ResticManager.Mutex.Lock()
+	qlen := len(cluster.ResticManager.TaskQueue)
+	var firstType backupmgr.TaskType
+	if qlen > 0 {
+		firstType = cluster.ResticManager.TaskQueue[0].Type
+	}
+	cluster.ResticManager.Mutex.Unlock()
+	if qlen == 0 {
+		t.Fatal("expected copy task to be queued, got empty queue")
+	}
+	if firstType != backupmgr.CopyTask {
+		t.Errorf("expected CopyTask type, got %v", firstType)
+	}
+}
+
+// TestResticCopyRepoWithOptionsG4Preflight verifies that copy_chunker_params=true
+// against an already-initialized destination is rejected synchronously (before
+// queueing), not silently inside the worker. Requires the restic binary.
+func TestResticCopyRepoWithOptionsG4Preflight(t *testing.T) {
+	resticPath, err := exec.LookPath("restic")
+	if err != nil {
+		t.Skip("restic binary not found, skipping integration test")
+	}
+
+	base := t.TempDir()
+	dstDir := filepath.Join(base, "dst")
+	cacheDir := filepath.Join(base, "cache")
+	if err := os.MkdirAll(dstDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	rm := backupmgr.NewResticRepo(resticPath, nil, config.ConstLogModRestic)
+	rm.SetEnv([]string{
+		"RESTIC_REPOSITORY=" + dstDir,
+		"RESTIC_PASSWORD=dstpass",
+		"RESTIC_CACHE_DIR=" + cacheDir,
+		"HOME=" + base,
+	})
+	defer rm.ShutdownWorker()
+	if err := rm.InitRepo(false); err != nil {
+		t.Fatalf("init dst repo: %v", err)
+	}
+	if err := rm.FetchRepo(); err != nil {
+		t.Fatalf("fetch dst repo: %v", err)
+	}
+
+	cluster := &Cluster{
+		Name:          "test-cluster",
+		Conf:          &config.Config{BackupRestic: true},
+		ResticManager: rm,
+	}
+	opt := backupmgr.ResticCopyOption{
+		Source: backupmgr.ResticCopySourceOption{
+			Mode:       config.ConstBackupArchiveModeResticLocal,
+			Repository: "/some/src",
+			Password:   "srcpass",
+		},
+		InitDestination:   true,
+		CopyChunkerParams: true,
+	}
+	copyErr := cluster.ResticCopyRepoWithOptions(opt)
+	if copyErr == nil {
+		t.Fatal("expected error for G4 preflight violation, got nil")
+	}
+	if !strings.Contains(copyErr.Error(), "already initialized") {
+		t.Errorf("expected 'already initialized' in error, got: %v", copyErr)
+	}
+	// Verify nothing was queued — the rejection happened before AddCopyTask.
+	rm.Mutex.Lock()
+	for _, task := range rm.TaskQueue {
+		if task.Type == backupmgr.CopyTask {
+			rm.Mutex.Unlock()
+			t.Error("copy task was queued despite preflight rejection")
+			return
+		}
+	}
+	rm.Mutex.Unlock()
 }

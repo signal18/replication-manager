@@ -532,10 +532,48 @@ func (cluster *Cluster) CheckResticErrors() {
 		case backupmgr.UnlockTask:
 			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic unlock error: %s", err)
+		case backupmgr.CopyTask:
+			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic repository copy error: %s", err)
 		default:
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unknown restic task error: %s", err)
 		}
 	}
+}
+
+// ResticCopyRepoWithOptions validates and enqueues a repository copy task.
+// Static validation (mode, repo string, password, S3 credential mismatch) is
+// performed before queueing. One destination-state case is also preflight-checked
+// synchronously: init_destination+copy_chunker_params against an already-initialized
+// repo (G4). Other destination failures (e.g. corrupt/inaccessible repo) are still
+// detected asynchronously inside the worker.
+func (cluster *Cluster) ResticCopyRepoWithOptions(opt backupmgr.ResticCopyOption) error {
+	if !cluster.Conf.BackupRestic {
+		return fmt.Errorf("restic backup is not enabled")
+	}
+
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+
+	if err := cluster.ResticManager.ValidateCopyOption(opt); err != nil {
+		return err
+	}
+
+	// G4: applying copy_chunker_params to an already-initialized destination is an
+	// error that can be detected synchronously, so reject it here rather than letting
+	// it fail silently inside the worker after the HTTP handler has returned 200.
+	if opt.InitDestination && opt.CopyChunkerParams {
+		result := cluster.ResticManager.ValidateRepoConfigManual()
+		if result.Status == backupmgr.ManualCheckStatusOK {
+			return fmt.Errorf("destination repository is already initialized; copy_chunker_params cannot be applied to an existing repository")
+		}
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+		"Queuing restic repository copy from source mode %q", opt.Source.Mode)
+	cluster.ResticManager.AddCopyTask(opt)
+	return nil
 }
 
 func (cluster *Cluster) CheckResticConfigBackup() {

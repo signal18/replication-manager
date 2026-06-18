@@ -37,6 +37,7 @@ const (
 	ChangePassTask
 	RestoreTask
 	CheckTask
+	CopyTask
 )
 
 type MoveType string
@@ -77,6 +78,8 @@ func GetTaskName(taskType TaskType) string {
 		return "restore"
 	case CheckTask:
 		return "check"
+	case CopyTask:
+		return "copy"
 	default:
 		return "Unknown"
 	}
@@ -145,6 +148,7 @@ type ResticTask struct {
 	InitOpt       *ResticInitOption       `json:"init_opt,omitempty"`       // Options for InitTask
 	FetchOpt      *ResticFetchOption      `json:"fetch_opt,omitempty"`      // Options for FetchTask
 	CheckOpt      *ResticCheckOption      `json:"check_opt,omitempty"`      // Options for CheckTask
+	CopyOpt       *ResticCopyOption       `json:"-"`                        // Options for CopyTask — excluded from JSON to prevent credential leakage
 	resultCh      chan ResticResult
 }
 
@@ -1047,6 +1051,14 @@ func (repo *ResticManager) worker() {
 				// Update check timestamps on success
 				isFullCheck := opt.ReadData
 				repo.UpdateLastCheckTime(isFullCheck)
+			}
+			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
+		case CopyTask:
+			var err error
+			if task.CopyOpt != nil {
+				err = repo.CopyRepoWithOptions(*task.CopyOpt)
+			} else {
+				err = errors.New("CopyTask requires CopyOpt to be set")
 			}
 			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		default:
@@ -3894,8 +3906,14 @@ func (repo *ResticManager) fetchRepoStat() error {
 		return fmt.Errorf("failed to fetch repo: %v, stderr: %s", err, stderr)
 	}
 
+	// restic stats --json writes a progress line to stdout before the JSON object
+	// (e.g. "[0:00] 100% ..."). Skip everything before the first '{'.
+	jsonStart := bytes.IndexByte(stdout, '{')
+	if jsonStart < 0 {
+		return fmt.Errorf("no JSON object in stats output: %q", stdout)
+	}
 	var backupstat BackupStat
-	err = json.Unmarshal(stdout, &backupstat)
+	err = json.Unmarshal(stdout[jsonStart:], &backupstat)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal backup stat: %w", err)
 	}
