@@ -173,7 +173,7 @@ var ClusterError = map[string]string{
 	"WARN0092":  "ProxySQL could not load query rules from runtime (%s)",
 	"WARN0093":  "Restic fetch repo issue: %s",
 	"WARN0094":  "Restic purge repo issue: %s",
-	"WARN0095":  "Restic init repo issue: %s",
+	"WARN0095":  "Restic repository issue: %s",
 	"WARN0096":  "Restart database server via job request %s",
 	"WARN0097":  "Stop database server via job request %s",
 	"WARN0098":  "ProxySQL could not load global variables from runtime (%s)",

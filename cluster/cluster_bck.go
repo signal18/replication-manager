@@ -450,36 +450,47 @@ func (cluster *Cluster) ResticGetEnv() []string {
 	)
 }
 
-func (cluster *Cluster) ReloadResticEnv() {
-	if cluster.ResticManager != nil {
-		cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
-		bucket := ""
-		prefix := ""
-		endpoint := ""
-		if cluster.Conf.BackupResticAws && strings.TrimSpace(cluster.Conf.BackupResticAwsBucket) != "" {
-			_, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
-			_, prefix = buildResticS3RepoSpec(
-				cluster.Conf.BackupResticAwsEndpoint,
-				cluster.Conf.BackupResticAwsBucket,
-				cluster.Conf.BackupResticAwsPrefix,
-				cluster.Name,
-				appendCluster,
-			)
-			bucket = strings.TrimSpace(cluster.Conf.BackupResticAwsBucket)
-			endpoint = strings.TrimSpace(cluster.Conf.BackupResticAwsEndpoint)
-		}
-
-		cluster.ResticManager.SetAwsConfig(
-			cluster.Conf.BackupResticAwsAccessKeyId,
-			cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"),
-			cluster.Conf.BackupResticAwsRegion,
-			endpoint,
-			bucket,
-			prefix,
+// reloadResticEnvCore updates the restic environment from current configuration.
+// When clearBackoff is true, the init error backoff counter is also reset
+// (used when credentials/config may have changed). When false (manual check path),
+// the backoff state is preserved to avoid resetting throttling unintentionally.
+func (cluster *Cluster) reloadResticEnvCore(clearBackoff bool) {
+	if cluster.ResticManager == nil {
+		return
+	}
+	cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
+	bucket := ""
+	prefix := ""
+	endpoint := ""
+	if cluster.Conf.BackupResticAws && strings.TrimSpace(cluster.Conf.BackupResticAwsBucket) != "" {
+		_, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
+		_, prefix = buildResticS3RepoSpec(
+			cluster.Conf.BackupResticAwsEndpoint,
+			cluster.Conf.BackupResticAwsBucket,
+			cluster.Conf.BackupResticAwsPrefix,
+			cluster.Name,
+			appendCluster,
 		)
-		// Clear init error backoff when environment changes (credentials/config may be fixed)
+		bucket = strings.TrimSpace(cluster.Conf.BackupResticAwsBucket)
+		endpoint = strings.TrimSpace(cluster.Conf.BackupResticAwsEndpoint)
+	}
+	cluster.ResticManager.SetAwsConfig(
+		cluster.Conf.BackupResticAwsAccessKeyId,
+		cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"),
+		cluster.Conf.BackupResticAwsRegion,
+		endpoint,
+		bucket,
+		prefix,
+	)
+	if clearBackoff {
 		cluster.ResticManager.ClearInitErrorBackoffManual()
 	}
+	cluster.ResticManager.ClearRepoState()
+	cluster.ResticManager.AutoInit = cluster.Conf.BackupResticAutoInit
+}
+
+func (cluster *Cluster) ReloadResticEnv() {
+	cluster.reloadResticEnvCore(true)
 }
 
 func (cluster *Cluster) CheckResticInstallation() {
@@ -501,17 +512,16 @@ func (cluster *Cluster) CheckResticErrors() {
 		cluster.StartResticManager()
 	}
 
-	// If repo cannot be initialized, all other errors are not relevant. So we just fetch the init repo errors
-	if !cluster.ResticManager.CanInitRepo && cluster.ResticManager.HasAnyError() {
-		err := cluster.ResticManager.FetchAndClearError(backupmgr.InitTask)
+	// Keep WARN0095 open persistently without consuming the error so it does not
+	// reopen on every monitor cycle. GetInitIssue covers both fresh TaskErrors
+	// and lastInitError that persists through backoff periods.
+	if err, hasIssue := cluster.ResticManager.GetInitIssue(); hasIssue {
 		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic init error: %s", err)
-		}
 		return
 	}
 
-	for task, err := range cluster.ResticManager.FetchAndClearErrors() {
+	// Transient non-init task errors are one-shot and cleared each cycle.
+	for task, err := range cluster.ResticManager.FetchAndClearErrorsExcept(backupmgr.InitTask) {
 		switch task {
 		case backupmgr.FetchTask:
 			cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err), ErrFrom: "BACKUP"})
@@ -526,7 +536,6 @@ func (cluster *Cluster) CheckResticErrors() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unknown restic task error: %s", err)
 		}
 	}
-
 }
 
 func (cluster *Cluster) CheckResticConfigBackup() {
@@ -539,11 +548,10 @@ func (cluster *Cluster) CheckResticConfigBackup() {
 	}
 }
 
-func (cluster *Cluster) StartResticManager() error {
-	if !cluster.Conf.BackupRestic {
-		return nil
-	}
-
+// ensureResticManagerBase creates a fresh ResticManager, applies configuration, assigns it
+// to cluster.ResticManager, and calls ReloadResticEnv. It has no startup side effects
+// (no mount recovery, no unlock/fetch queuing, no auto-init).
+func (cluster *Cluster) ensureResticManagerBase() {
 	resticManager := backupmgr.NewResticRepo(cluster.Conf.BackupResticBinaryPath, cluster.MessageChan, config.ConstLogModRestic)
 	if err := cluster.Conf.ValidateResticPermissions(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Invalid restic permission config: %s", err)
@@ -557,10 +565,18 @@ func (cluster *Cluster) StartResticManager() error {
 	resticManager.AutoDetectAndDisableMount()
 	cluster.ResticManager = resticManager
 	cluster.ReloadResticEnv()
+}
+
+func (cluster *Cluster) StartResticManager() error {
+	if !cluster.Conf.BackupRestic {
+		return nil
+	}
+
+	cluster.ensureResticManagerBase()
 	if cluster.ResticManager.RecoverMountStateOnStartup() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Recovered restic mount state on startup")
 	}
-	resticManager.AddUnlockTask() // Queue unlock first to avoid fetch-before-unlock race on startup.
+	cluster.ResticManager.AddUnlockTask() // Queue unlock first to avoid fetch-before-unlock race on startup.
 	go cluster.ResticFetchRepo()
 	return nil
 }
@@ -733,10 +749,48 @@ func (cluster *Cluster) ResticFetchRepo() {
 		cluster.StartResticManager()
 	}
 
+	// Do not queue passive fetches when the repo is known to be uninitialized.
+	// The WARN0095 warning remains open via CheckResticErrors; fetch resumes
+	// after a successful manual check or init.
+	if cluster.ResticManager.GetRepoState() == backupmgr.ManualCheckStatusInitRequired {
+		return
+	}
+
 	// Check if no other fetch task queued
 	if !cluster.ResticManager.HasFetchQueue() {
 		cluster.ResticManager.AddFetchTask()
 	}
+}
+
+// ResticCheckConfigManual performs a read-only manual validation of the current restic
+// repository configuration. When cluster.ResticManager is nil it is created via
+// ensureResticManagerBase (no mount recovery, no unlock/fetch tasks, no auto-init).
+// Queues a fetch only when validation succeeds.
+func (cluster *Cluster) ResticCheckConfigManual() backupmgr.ManualCheckResult {
+	if !cluster.Conf.BackupRestic {
+		return backupmgr.ManualCheckResult{
+			Status:  backupmgr.ManualCheckStatusError,
+			Message: "restic backup is not enabled",
+		}
+	}
+
+	if cluster.ResticManager == nil {
+		cluster.ensureResticManagerBase()
+	} else {
+		// Refresh env config without clearing backoff: manual check is read-only
+		// and should not inadvertently reset init throttling state.
+		cluster.reloadResticEnvCore(false)
+	}
+
+	result := cluster.ResticManager.ValidateRepoConfigManual()
+
+	if result.Status == backupmgr.ManualCheckStatusOK {
+		cluster.ResticFetchRepo()
+		result.FetchQueued = true
+		result.Message = "Repository configuration verified. Snapshot refresh queued."
+	}
+
+	return result
 }
 
 func (cluster *Cluster) BackupResticConfig() error {
