@@ -46,7 +46,7 @@ export default defineConfig({
               : parts[0]
 
             if (packageName === 'react-gauge-component' || packageName.startsWith('d3')) {
-              return `${prefix}/gauge-d3`
+              return
             }
 
             return `${prefix}/${packageName}`
