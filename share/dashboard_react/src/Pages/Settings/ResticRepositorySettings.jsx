@@ -97,6 +97,18 @@ Switching types does not erase the values stored for the other types, so you can
 
 Config: \`backup-archive-mode\``
 
+const ResticS3ModeHelp = `**S3 Source-of-Truth Selector**
+
+Controls which set of S3 configuration fields is used as the authoritative source for the Restic repository path and credentials.
+
+- **Auto** (default): at startup the server probes both the new (bucket/prefix/endpoint) config and the legacy repository URL, picks whichever is reachable first (new is tried first), and persists the winner as \`new\` or \`legacy\` in config. If neither is reachable, it falls back to presence-based selection and retries on the next restart. The UI preview for auto mode is approximate — it reflects field presence, not the actual runtime probe result.
+- **New**: uses only \`backup-restic-aws-bucket\`, \`backup-restic-aws-prefix\`, \`backup-restic-aws-endpoint\`, and related credential fields.
+- **Legacy**: uses only \`backup-restic-repository\` as the repository URL.
+
+This selector applies to the active destination, startup checks, init behavior, and saved-source copy/migration so all operations see the same S3 source of truth.
+
+Config: \`backup-restic-s3-mode\``
+
 const ResticBinaryPathHelp = `**Backup Restic Binary Path**
 
 Filesystem path to the \`restic\` executable used for all backup, restore, and maintenance operations on this cluster.
@@ -174,9 +186,11 @@ Combined with "Backup restic repo append cluster": if enabled and the last prefi
 
 Config: \`backup-restic-aws-prefix\``
 
-const ResticEffectiveS3RepoHelp = `**Effective S3 Repository**
+const ResticEffectiveS3RepoHelp = `**Effective S3 Repository (preview)**
 
 Read-only preview of the full \`s3:\` repository path that restic will use, built from the endpoint, bucket, and prefix above plus the append-cluster rule.
+
+**When mode is \`auto\`:** this preview is approximate — it resolves based on which fields are populated in the UI, not the actual runtime probe. At startup the server probes both new and legacy configs and uses whichever is reachable; the runtime path may differ from what is shown here. Set the mode to \`new\` or \`legacy\` explicitly for an authoritative preview.
 
 This field is computed - it cannot be edited directly.`
 
@@ -259,6 +273,7 @@ function ResticRepositorySettings({
   const archiveMode = config?.backupArchiveMode || 'none'
   const isAws = archiveMode === 'restic-aws'
   const isSftp = archiveMode === 'restic-sftp'
+  const s3Mode = config?.backupResticS3Mode || 'auto'
   const awsBucket = (config?.backupResticAwsBucket || '').trim()
   const awsPrefix = (config?.backupResticAwsPrefix || '').trim()
   const awsEndpoint = (config?.backupResticAwsEndpoint || '').trim()
@@ -276,8 +291,10 @@ function ResticRepositorySettings({
   const effectiveLegacyRepoPath = appendCluster && clusterName && legacyRepoPath && !legacyHasClusterSuffix
     ? `${legacyRepoPath}${clusterSuffix}`
     : legacyRepoPath
-  const awsRepoPath = awsBucket
-    ? `s3:${trimmedEndpoint ? `${trimmedEndpoint}/` : ''}${awsBucket}${effectivePrefix ? `/${effectivePrefix}` : ''}`
+  // Compute effective repo path aligned with the backend s3Mode selector.
+  const resolvedS3Mode = s3Mode === 'new' ? 'new' : (s3Mode === 'legacy' ? 'legacy' : (awsBucket ? 'new' : 'legacy'))
+  const awsRepoPath = resolvedS3Mode === 'new'
+    ? (awsBucket ? `s3:${trimmedEndpoint ? `${trimmedEndpoint}/` : ''}${awsBucket}${effectivePrefix ? `/${effectivePrefix}` : ''}` : '')
     : effectiveLegacyRepoPath
   const isAwsPrefixEmpty = isAws && awsBucket && !awsPrefix
   const isForceInitBlocked = initForce && ((isAwsPrefixEmpty && !confirmEmptyPrefix) || isSftp)
@@ -844,6 +861,36 @@ function ResticRepositorySettings({
 
               {archiveMode === 'restic-aws' && (
                 <Stack spacing={{ base: 2, md: 3 }}>
+                  {/* 0. S3 mode selector */}
+                  <Stack spacing={{ base: 1, md: 2 }}>
+                    <Grid
+                      className={styles.resticMountGrid}
+                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                      columnGap={3}
+                      rowGap={1}
+                      w='full'
+                    >
+                      <GridItem className={styles.rowLabel}>
+                        <HStack spacing={1} justify='space-between' width='full'>
+                          <Text>S3 source-of-truth mode</Text>
+                          {h(ResticS3ModeHelp, 'S3 Source-of-Truth Mode')}
+                        </HStack>
+                      </GridItem>
+                      <GridItem className={styles.valueCell}>
+                        <Select
+                          size='sm'
+                          value={s3Mode}
+                          isDisabled={user?.grants['cluster-settings'] === false}
+                          onChange={(e) => handleSettingChange('backup-restic-s3-mode', e.target.value)}
+                        >
+                          <option value='auto'>Auto (probe new then legacy at startup; persist winner)</option>
+                          <option value='new'>New (bucket / prefix / endpoint fields only)</option>
+                          <option value='legacy'>Legacy (backup-restic-repository URL only)</option>
+                        </Select>
+                      </GridItem>
+                    </Grid>
+                  </Stack>
+
                   {/* 1. Provider connection */}
                   <Box className={styles.subsectionHeader}>
                     <Text className={styles.subsectionTitle}>Provider connection</Text>
@@ -1047,7 +1094,12 @@ function ResticRepositorySettings({
                     >
                       <GridItem className={styles.rowLabel}>
                         <HStack spacing={1} justify='space-between' width='full'>
-                          <Text>Effective S3 repository</Text>
+                          <Text>
+                            Effective S3 repository
+                            {s3Mode === 'auto' && (
+                              <Text as='span' fontSize='xs' color='orange.500' ml={1}>(approximate — auto mode)</Text>
+                            )}
+                          </Text>
                           {h(ResticEffectiveS3RepoHelp, 'Effective S3 Repository')}
                         </HStack>
                       </GridItem>

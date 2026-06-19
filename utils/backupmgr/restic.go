@@ -417,6 +417,7 @@ type ResticManager struct {
 	AllowUnsafeMount     bool                // If true, allow using mount created by other process
 	MountRecoveryEnabled bool                // If true, recover/cleanup stale mounts on startup
 	OnPurgeComplete      func(ResticPurgeOption)
+	OnBootFetchSuccess   func() // called once when the startup fetch task succeeds
 	currentTask          *ResticTaskState
 	currentTaskMutex     *sync.Mutex
 	// Error backoff state to prevent log flooding
@@ -3950,6 +3951,9 @@ func (repo *ResticManager) fetchRepoSnapshots() error {
 // FetchRepo performs the fetch for snapshots and stats.
 // The first call uses the boot auto-init policy (one-shot); subsequent calls
 // are passive and will not retry initialization automatically.
+// When the first (boot) fetch succeeds, OnBootFetchSuccess is called once in a
+// goroutine so the cluster layer can promote "auto" to the concrete S3 mode that
+// was actually used.
 func (repo *ResticManager) FetchRepo() error {
 	// Check if the repo is able to fetch and initialized
 	if !repo.GetCanFetch() {
@@ -3967,8 +3971,9 @@ func (repo *ResticManager) FetchRepo() error {
 	}
 	repo.errorMutex.Unlock()
 
+	wasBootFetch := !bootDone
 	policy := initPolicyPassive
-	if !bootDone {
+	if wasBootFetch {
 		policy = initPolicyBoot
 	}
 
@@ -3993,7 +3998,94 @@ func (repo *ResticManager) FetchRepo() error {
 		return fmt.Errorf("failed to fetch repo stat: %w", err)
 	}
 
-	return nil // Success
+	// Boot fetch succeeded: fire the one-shot callback regardless of which task
+	// path led here (UnlockTask→FetchRepo, an explicit FetchTask, etc.).
+	if wasBootFetch {
+		repo.Mutex.Lock()
+		cb := repo.OnBootFetchSuccess
+		repo.Mutex.Unlock()
+		if cb != nil {
+			go cb()
+		}
+	}
+
+	return nil
+}
+
+// S3ProbeUsable reports whether a ProbeS3Candidate result means the S3
+// configuration is usable.  A nil error means the repo is initialized and
+// accessible.  An "initialization required" error means the bucket is reachable
+// but contains no restic repository yet — still usable (auto-init can finish it).
+// Any other error means the config is not reachable.
+func S3ProbeUsable(err error) bool {
+	if err == nil {
+		return true
+	}
+	return strings.Contains(err.Error(), "initialization required")
+}
+
+// ProbeS3Candidate performs a read-only S3 existence check against the given
+// parameters without permanently altering manager state.  It saves all mutable
+// fields, temporarily applies the probe parameters, runs a passive S3 check,
+// then restores everything.
+//
+// Callers should check the returned error with S3ProbeUsable to determine
+// whether the config is usable.
+//
+// ProbeS3Candidate is safe to call before the worker is started.  It must NOT
+// be called while other goroutines are actively mutating the manager's S3 or
+// error-backoff state.
+func (repo *ResticManager) ProbeS3Candidate(bucket, prefix, endpoint, accessKeyID, secretKey, region string) error {
+	// Save unguarded mutable fields.
+	savedCanInit := repo.CanInitRepo
+	savedBucket := repo.AwsBucket
+	savedPrefix := repo.AwsPrefix
+	savedEndpoint := repo.AwsEndpoint
+	savedKeyID := repo.AwsAccessKeyID
+	savedSecret := repo.AwsSecretAccessKey
+	savedRegion := repo.AwsRegion
+
+	// Save errorMutex-guarded fields (repoState is also guarded by errorMutex,
+	// matching GetRepoState / setRepoState).
+	repo.errorMutex.Lock()
+	savedLastErr := repo.lastInitError
+	savedErrCount := repo.initErrorCount
+	savedBackoff := repo.initBackoffUntil
+	savedRepoState := repo.repoState
+	savedTaskErrors := make(map[TaskType]error, len(repo.TaskErrors))
+	for k, v := range repo.TaskErrors {
+		savedTaskErrors[k] = v
+	}
+	repo.errorMutex.Unlock()
+
+	// Apply probe parameters.
+	repo.AwsBucket = bucket
+	repo.AwsPrefix = prefix
+	repo.AwsEndpoint = endpoint
+	repo.AwsAccessKeyID = accessKeyID
+	repo.AwsSecretAccessKey = secretKey
+	repo.AwsRegion = region
+
+	probeErr := repo.checkS3RepoFilesWithPolicy(bucket, prefix, endpoint, initPolicyPassive)
+
+	// Restore all mutable state.
+	repo.CanInitRepo = savedCanInit
+	repo.AwsBucket = savedBucket
+	repo.AwsPrefix = savedPrefix
+	repo.AwsEndpoint = savedEndpoint
+	repo.AwsAccessKeyID = savedKeyID
+	repo.AwsSecretAccessKey = savedSecret
+	repo.AwsRegion = savedRegion
+
+	repo.errorMutex.Lock()
+	repo.lastInitError = savedLastErr
+	repo.initErrorCount = savedErrCount
+	repo.initBackoffUntil = savedBackoff
+	repo.repoState = savedRepoState
+	repo.TaskErrors = savedTaskErrors
+	repo.errorMutex.Unlock()
+
+	return probeErr
 }
 
 // GetKeepWithinTime returns the arguments to keep within

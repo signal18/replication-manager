@@ -1741,3 +1741,323 @@ func TestSavedS3SourceRejectsUnsupportedMode(t *testing.T) {
 		t.Fatal("expected error for unsupported mode with use_saved_config, got nil")
 	}
 }
+
+// ── backup-restic-s3-mode resolver tests ──────────────────────────────────────
+
+func newS3ModeCluster(conf *config.Config) *Cluster {
+	if conf.Secrets == nil {
+		conf.Secrets = make(map[string]config.Secret)
+		conf.Secrets["backup-restic-aws-access-secret"] = config.Secret{Value: "secret"}
+		conf.Secrets["backup-restic-password"] = config.Secret{Value: "pass"}
+	}
+	conf.BackupResticAws = true
+	return &Cluster{Name: "mycluster", Conf: conf}
+}
+
+func TestResolveResticS3_AutoResolvesToNew(t *testing.T) {
+	cluster := newS3ModeCluster(&config.Config{
+		BackupResticS3Mode:            config.ConstResticS3ModeAuto,
+		BackupResticAwsBucket:         "mybucket",
+		BackupResticAwsPrefix:         "myprefix",
+		BackupResticAwsEndpoint:       "https://s3.example.com",
+		BackupResticRepoAppendCluster: false,
+	})
+	res, err := resolveResticS3(cluster.Conf, cluster.Name, cluster)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Mode != config.ConstResticS3ModeNew {
+		t.Errorf("expected mode=new, got %q", res.Mode)
+	}
+	if res.Bucket != "mybucket" {
+		t.Errorf("expected bucket=mybucket, got %q", res.Bucket)
+	}
+	if res.Endpoint != "https://s3.example.com" {
+		t.Errorf("expected endpoint, got %q", res.Endpoint)
+	}
+}
+
+func TestResolveResticS3_AutoResolvesToLegacy(t *testing.T) {
+	cluster := newS3ModeCluster(&config.Config{
+		BackupResticS3Mode:            config.ConstResticS3ModeAuto,
+		BackupResticAwsBucket:         "", // no bucket → fall back
+		BackupResticRepository:        "s3:https://s3.example.com/legacybucket/prefix",
+		BackupResticRepoAppendCluster: false,
+	})
+	res, err := resolveResticS3(cluster.Conf, cluster.Name, cluster)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Mode != config.ConstResticS3ModeLegacy {
+		t.Errorf("expected mode=legacy, got %q", res.Mode)
+	}
+	if res.Bucket != "legacybucket" {
+		t.Errorf("expected bucket=legacybucket, got %q", res.Bucket)
+	}
+}
+
+func TestResolveResticS3_AutoFailsWhenNeitherConfigured(t *testing.T) {
+	cluster := newS3ModeCluster(&config.Config{
+		BackupResticS3Mode:     config.ConstResticS3ModeAuto,
+		BackupResticAwsBucket:  "",
+		BackupResticRepository: "", // not an S3 URL
+	})
+	_, err := resolveResticS3(cluster.Conf, cluster.Name, cluster)
+	if err == nil {
+		t.Fatal("expected error when neither bucket nor S3 URL is configured")
+	}
+}
+
+func TestResolveResticS3_NewIgnoresLegacyURL(t *testing.T) {
+	cluster := newS3ModeCluster(&config.Config{
+		BackupResticS3Mode:            config.ConstResticS3ModeNew,
+		BackupResticAwsBucket:         "newbucket",
+		BackupResticRepository:        "s3:legacy-bucket/prefix", // should be ignored
+		BackupResticRepoAppendCluster: false,
+	})
+	res, err := resolveResticS3(cluster.Conf, cluster.Name, cluster)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Mode != config.ConstResticS3ModeNew {
+		t.Errorf("expected mode=new, got %q", res.Mode)
+	}
+	if res.Bucket != "newbucket" {
+		t.Errorf("expected newbucket, got %q", res.Bucket)
+	}
+	if strings.Contains(res.RepoPath, "legacy") {
+		t.Errorf("legacy URL leaked into resolved path: %q", res.RepoPath)
+	}
+}
+
+func TestResolveResticS3_NewFailsWhenNoBucket(t *testing.T) {
+	cluster := newS3ModeCluster(&config.Config{
+		BackupResticS3Mode:     config.ConstResticS3ModeNew,
+		BackupResticAwsBucket:  "",
+		BackupResticRepository: "s3:legacy-bucket/prefix",
+	})
+	_, err := resolveResticS3(cluster.Conf, cluster.Name, cluster)
+	if err == nil {
+		t.Fatal("expected error for mode=new with no bucket")
+	}
+}
+
+func TestResolveResticS3_LegacyIgnoresNewFields(t *testing.T) {
+	cluster := newS3ModeCluster(&config.Config{
+		BackupResticS3Mode:            config.ConstResticS3ModeLegacy,
+		BackupResticAwsBucket:         "newbucket", // present but must be ignored
+		BackupResticRepository:        "s3:legacy-bucket/prefix",
+		BackupResticRepoAppendCluster: false,
+	})
+	res, err := resolveResticS3(cluster.Conf, cluster.Name, cluster)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Mode != config.ConstResticS3ModeLegacy {
+		t.Errorf("expected mode=legacy, got %q", res.Mode)
+	}
+	if res.Bucket != "legacy-bucket" {
+		t.Errorf("expected legacy-bucket, got %q", res.Bucket)
+	}
+	if strings.Contains(res.RepoPath, "newbucket") {
+		t.Errorf("new bucket leaked into resolved path: %q", res.RepoPath)
+	}
+}
+
+func TestResolveResticS3_LegacyFailsForNonS3URL(t *testing.T) {
+	cluster := newS3ModeCluster(&config.Config{
+		BackupResticS3Mode:     config.ConstResticS3ModeLegacy,
+		BackupResticRepository: "/local/path/to/repo",
+	})
+	_, err := resolveResticS3(cluster.Conf, cluster.Name, cluster)
+	if err == nil {
+		t.Fatal("expected error for mode=legacy with non-S3 repository URL")
+	}
+}
+
+func TestResolveResticS3_AppendCluster(t *testing.T) {
+	cluster := newS3ModeCluster(&config.Config{
+		BackupResticS3Mode:            config.ConstResticS3ModeNew,
+		BackupResticAwsBucket:         "mybucket",
+		BackupResticAwsPrefix:         "",
+		BackupResticRepoAppendCluster: true,
+	})
+	res, err := resolveResticS3(cluster.Conf, cluster.Name, cluster)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Prefix != "mycluster" {
+		t.Errorf("expected prefix=mycluster, got %q", res.Prefix)
+	}
+	if !strings.HasSuffix(res.RepoPath, "/mycluster") {
+		t.Errorf("expected repo path to end with /mycluster, got %q", res.RepoPath)
+	}
+}
+
+// ── boot promotion tests ──────────────────────────────────────────────────────
+
+func newBootCluster(conf *config.Config) (*Cluster, *backupmgr.ResticManager) {
+	if conf.Secrets == nil {
+		conf.Secrets = make(map[string]config.Secret)
+		conf.Secrets["backup-restic-aws-access-secret"] = config.Secret{Value: "secret"}
+		conf.Secrets["backup-restic-password"] = config.Secret{Value: "pass"}
+	}
+	rm := backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
+	rm.PauseWorker()
+	cluster := &Cluster{
+		Name:          "mycluster",
+		Conf:          conf,
+		ResticManager: rm,
+	}
+	return cluster, rm
+}
+
+func TestPromoteResticS3Mode_AutoToNew(t *testing.T) {
+	cluster, _ := newBootCluster(&config.Config{
+		BackupResticAws:               true,
+		BackupResticS3Mode:            config.ConstResticS3ModeAuto,
+		BackupResticAwsBucket:         "mybucket",
+		BackupResticRepoAppendCluster: false,
+	})
+	cluster.promoteResticS3ModeOnBootSuccess()
+	if cluster.Conf.BackupResticS3Mode != config.ConstResticS3ModeNew {
+		t.Errorf("expected mode=new after promotion, got %q", cluster.Conf.BackupResticS3Mode)
+	}
+}
+
+func TestPromoteResticS3Mode_AutoToLegacy(t *testing.T) {
+	cluster, _ := newBootCluster(&config.Config{
+		BackupResticAws:               true,
+		BackupResticS3Mode:            config.ConstResticS3ModeAuto,
+		BackupResticAwsBucket:         "",
+		BackupResticRepository:        "s3:legacy-bucket/prefix",
+		BackupResticRepoAppendCluster: false,
+	})
+	cluster.promoteResticS3ModeOnBootSuccess()
+	if cluster.Conf.BackupResticS3Mode != config.ConstResticS3ModeLegacy {
+		t.Errorf("expected mode=legacy after promotion, got %q", cluster.Conf.BackupResticS3Mode)
+	}
+}
+
+func TestPromoteResticS3Mode_AlreadyNewSkips(t *testing.T) {
+	cluster, _ := newBootCluster(&config.Config{
+		BackupResticAws:       true,
+		BackupResticS3Mode:    config.ConstResticS3ModeNew,
+		BackupResticAwsBucket: "mybucket",
+	})
+	cluster.promoteResticS3ModeOnBootSuccess()
+	// Should remain "new", not re-derive.
+	if cluster.Conf.BackupResticS3Mode != config.ConstResticS3ModeNew {
+		t.Errorf("expected mode=new unchanged, got %q", cluster.Conf.BackupResticS3Mode)
+	}
+}
+
+func TestPromoteResticS3Mode_NonS3Skips(t *testing.T) {
+	cluster, _ := newBootCluster(&config.Config{
+		BackupResticAws:    false, // not S3
+		BackupResticS3Mode: config.ConstResticS3ModeAuto,
+	})
+	cluster.promoteResticS3ModeOnBootSuccess()
+	// Should remain auto; not S3, so no promotion.
+	if cluster.Conf.BackupResticS3Mode != config.ConstResticS3ModeAuto {
+		t.Errorf("expected mode=auto unchanged for non-S3, got %q", cluster.Conf.BackupResticS3Mode)
+	}
+}
+
+func TestPromoteResticS3Mode_HookClearsItself(t *testing.T) {
+	cluster, rm := newBootCluster(&config.Config{
+		BackupResticAws:               true,
+		BackupResticS3Mode:            config.ConstResticS3ModeAuto,
+		BackupResticAwsBucket:         "mybucket",
+		BackupResticRepoAppendCluster: false,
+	})
+	rm.OnBootFetchSuccess = func() {
+		cluster.promoteResticS3ModeOnBootSuccess()
+	}
+	// Call twice to verify the hook clears itself after the first invocation.
+	cluster.promoteResticS3ModeOnBootSuccess()
+	cluster.Conf.BackupResticS3Mode = config.ConstResticS3ModeAuto // reset manually
+	cluster.promoteResticS3ModeOnBootSuccess()                      // second call should be no-op (hook already nil)
+	// The hook should have been cleared on the first call; the second should be a no-op.
+	if rm.OnBootFetchSuccess != nil {
+		t.Error("expected OnBootFetchSuccess to be nil after first invocation")
+	}
+}
+
+// ── config normalization tests ────────────────────────────────────────────────
+
+func TestNormalizeResticS3Mode_EmptyBecomesAuto(t *testing.T) {
+	conf := &config.Config{BackupResticS3Mode: ""}
+	conf.NormalizeResticS3Mode()
+	if conf.BackupResticS3Mode != config.ConstResticS3ModeAuto {
+		t.Errorf("expected auto, got %q", conf.BackupResticS3Mode)
+	}
+}
+
+func TestNormalizeResticS3Mode_InvalidBecomesAuto(t *testing.T) {
+	conf := &config.Config{BackupResticS3Mode: "invalid-value"}
+	conf.NormalizeResticS3Mode()
+	if conf.BackupResticS3Mode != config.ConstResticS3ModeAuto {
+		t.Errorf("expected auto, got %q", conf.BackupResticS3Mode)
+	}
+}
+
+func TestNormalizeResticS3Mode_ValidUnchanged(t *testing.T) {
+	for _, mode := range []string{"auto", "new", "legacy"} {
+		conf := &config.Config{BackupResticS3Mode: mode}
+		conf.NormalizeResticS3Mode()
+		if conf.BackupResticS3Mode != mode {
+			t.Errorf("mode %q changed to %q after normalization", mode, conf.BackupResticS3Mode)
+		}
+	}
+}
+
+// ── saved-source copy selector alignment test ─────────────────────────────────
+
+func TestSavedS3SourceObeysS3ModeNew(t *testing.T) {
+	cluster := newSavedSourceCluster(t, &config.Config{
+		BackupRestic:                  true,
+		BackupResticS3Mode:            config.ConstResticS3ModeNew,
+		BackupResticAwsBucket:         "newbucket",
+		BackupResticRepository:        "s3:legacy-bucket/prefix",
+		BackupResticRepoAppendCluster: false,
+	}, "pass", "secret")
+
+	resolved, err := cluster.resticResolveSavedCopySource(config.ConstBackupArchiveModeResticAws, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resolved.AWS == nil {
+		t.Fatal("expected AWS config, got nil")
+	}
+	if resolved.AWS.Bucket != "newbucket" {
+		t.Errorf("expected newbucket, got %q", resolved.AWS.Bucket)
+	}
+	if strings.Contains(resolved.AWS.Bucket, "legacy") {
+		t.Errorf("legacy bucket leaked into resolved config: %q", resolved.AWS.Bucket)
+	}
+}
+
+func TestSavedS3SourceObeysS3ModeLegacy(t *testing.T) {
+	cluster := newSavedSourceCluster(t, &config.Config{
+		BackupRestic:                  true,
+		BackupResticS3Mode:            config.ConstResticS3ModeLegacy,
+		BackupResticAwsBucket:         "newbucket", // present but must be ignored
+		BackupResticRepository:        "s3:legacy-bucket/legacy-prefix",
+		BackupResticRepoAppendCluster: false,
+	}, "pass", "secret")
+
+	resolved, err := cluster.resticResolveSavedCopySource(config.ConstBackupArchiveModeResticAws, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resolved.AWS == nil {
+		t.Fatal("expected AWS config, got nil")
+	}
+	if resolved.AWS.Bucket != "legacy-bucket" {
+		t.Errorf("expected legacy-bucket, got %q", resolved.AWS.Bucket)
+	}
+	if strings.Contains(resolved.AWS.Bucket, "new") {
+		t.Errorf("new bucket leaked into resolved config: %q", resolved.AWS.Bucket)
+	}
+}

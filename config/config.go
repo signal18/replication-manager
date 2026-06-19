@@ -848,6 +848,7 @@ type Config struct {
 	BackupResticReseedTimeout              int                    `mapstructure:"backup-restic-reseed-timeout" toml:"backup-restic-reseed-timeout" json:"backupResticReseedTimeout"`
 	BackupResticAllowUnsafeMount           bool                   `mapstructure:"backup-restic-allow-unsafe-mount" toml:"backup-restic-allow-unsafe-mount" json:"backupResticAllowUnsafeMount"`
 	BackupResticAutoInit                   bool                   `mapstructure:"backup-restic-auto-init" toml:"backup-restic-auto-init" json:"backupResticAutoInit"`
+	BackupResticS3Mode                     string                 `mapstructure:"backup-restic-s3-mode" toml:"backup-restic-s3-mode" json:"backupResticS3Mode"`
 	BackupReconcileInterval                int                    `mapstructure:"backup-reconcile-interval" toml:"backup-reconcile-interval" json:"backupReconcileInterval"`
 	BackupReconcileAutoCleanup             bool                   `mapstructure:"backup-reconcile-auto-cleanup" toml:"backup-reconcile-auto-cleanup" json:"backupReconcileAutoCleanup"`
 	BackupStreaming                        bool                   `mapstructure:"backup-streaming" toml:"backup-streaming" json:"backupStreaming"`
@@ -1210,6 +1211,13 @@ const (
 	ConstBackupArchiveModeResticLocal string = "restic-local"
 	ConstBackupArchiveModeResticAws   string = "restic-aws"
 	ConstBackupArchiveModeResticSftp  string = "restic-sftp"
+)
+
+// Restic S3 mode selector: controls which S3 configuration fields are authoritative.
+const (
+	ConstResticS3ModeAuto   string = "auto"
+	ConstResticS3ModeNew    string = "new"
+	ConstResticS3ModeLegacy string = "legacy"
 )
 const (
 	ConstProxyMaxscale    string = "maxscale"
@@ -3534,6 +3542,26 @@ func (conf *Config) NormalizeBackupArchiveMode() {
 	}
 
 	conf.applyBackupArchiveModeFlags()
+	conf.NormalizeResticS3Mode()
+}
+
+// ValidateResticS3Mode reports an error when mode is not one of the allowed
+// backup-restic-s3-mode values: auto, new, legacy.
+func (conf *Config) ValidateResticS3Mode(mode string) error {
+	switch mode {
+	case ConstResticS3ModeAuto, ConstResticS3ModeNew, ConstResticS3ModeLegacy:
+		return nil
+	default:
+		return NewValidationError("backup-restic-s3-mode", mode, "expected one of: auto, new, legacy")
+	}
+}
+
+// NormalizeResticS3Mode maps an empty or invalid BackupResticS3Mode to "auto".
+// Called from NormalizeBackupArchiveMode so it runs once at cluster init time.
+func (conf *Config) NormalizeResticS3Mode() {
+	if conf.ValidateResticS3Mode(conf.BackupResticS3Mode) != nil {
+		conf.BackupResticS3Mode = ConstResticS3ModeAuto
+	}
 }
 
 func (conf *Config) ValidateResticPermissions() error {

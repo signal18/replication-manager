@@ -3912,6 +3912,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.ReloadResticEnv()
 	case "backup-restic-aws-access-key-id":
 		mycluster.Conf.BackupResticAwsAccessKeyId = value
+		mycluster.ReloadResticEnv()
 	case "backup-restic-aws-access-secret":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
@@ -3922,6 +3923,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		new_secret.Value = mycluster.Conf.BackupResticAwsAccessSecret
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret")
 		mycluster.Conf.Secrets["backup-restic-aws-access-secret"] = new_secret
+		mycluster.ReloadResticEnv()
 	case "backup-restic-aws-region":
 		mycluster.Conf.BackupResticAwsRegion = value
 		mycluster.ReloadResticEnv()
@@ -3941,6 +3943,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupResticAwsPrefix = string(val)
+		mycluster.ReloadResticEnv()
+	case "backup-restic-s3-mode":
+		if err := mycluster.Conf.ValidateResticS3Mode(value); err != nil {
+			return fmt.Errorf("invalid backup-restic-s3-mode: %w", err)
+		}
+		mycluster.Conf.BackupResticS3Mode = value
 		mycluster.ReloadResticEnv()
 	case "backup-restic-additional-env":
 		if err := cluster.ValidateResticAdditionalEnvOverrides(value); err != nil {
