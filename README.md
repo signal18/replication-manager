@@ -1,42 +1,48 @@
-## Replication Manager
+## Replication Manager for MariaDB and MySQL
 
-Replication Manager is a high-availability orchestrator for MariaDB, MySQL, and Percona Server replication topologies.
+Replication Manager is an open-source MariaDB monitoring, backup, and high-availability tool. It provides automated failover, scheduled maintenance, and full observability for MariaDB, MySQL, and Percona Server replication topologies.
 
-The main features are:
+### Key features
 
-**Replication & Topology**
- * Replication monitoring with support for GTID, multi-source, and delayed replication
- * Topology detection and leader election across async, semi-sync, multi-master, mesh, wsrep, group replication, and relay topologies
+**MariaDB & MySQL Monitoring**
+ * Real-time replication monitoring with support for GTID, multi-source, and delayed replication
+ * Topology detection across async, semi-sync, multi-master, mesh, wsrep, group replication, and relay topologies
+ * Performance schema digest analysis and workload tagging
+ * Processlist and long-running transaction monitoring
+ * NOC slideshow — full-screen auto-rotating display of all monitored clusters
+ * Multi-cluster management from a single instance
+
+**MariaDB & MySQL Backup and Recovery**
+ * Scheduled logical and physical backups via mysqldump, mydumper, mariabackup, and xtrabackup
+ * Snapshot backups and point-in-time recovery via Restic
+ * S3-compatible object storage backend for backup repositories
+ * Backup retention policies with automatic purge
+
+**MariaDB & MySQL Maintenance**
+ * Scheduled table optimization and analysis
+ * Automated log archiving and table defragmentation
+ * Rolling restart and reprovisioning
+ * Schema monitoring and checksum verification
+ * SLA tracking
+
+**MariaDB & MySQL Failover and Switchover**
+ * Leader election and automatic primary election on failure detection (failover)
  * Controlled replica-to-primary promotion (switchover)
- * Automatic primary election on failure detection (failover)
  * Replication best-practice enforcement
  * Near-zero data loss targeting across most failure scenarios
  * Automatic database rejoining and reseeding
 
-**Cluster Management**
- * Multi-cluster management from a single instance
- * SLA tracking
- * Traffic capture on high load
- * Staging with multi-source clusters
- * Scriptable states and events
- * Remote script execution via SSH
-
 **Proxy Integration**
  * Automated backend management for ProxySQL, MaxScale, HAProxy, and Spider
-
-**Backup & Recovery**
- * Logical and physical backups via mysqldump, mydumper, mariabackup, and xtrabackup
- * Snapshot backups and point-in-time recovery via Restic
- * S3-compatible object storage backend for backup repositories
- * Automated log archiving and table defragmentation
 
 **Observability & Alerting**
  * Metrics history exposed via the Carbon/Graphite API
  * Alerting via email, Pushover, Slack, Teams, and Mattermost
+ * Extensible log plugin system for security, compliance, and workload analysis
  * Per-module log level configuration
 
 **Operations & Security**
- * Built-in database and proxy configurator
+ * Built-in database and proxy configurator with tag-based config tracking
  * Credential rotation for replication and monitoring accounts, with HashiCorp Vault integration
  * Encrypted secrets in configuration files, with support for multi-layer config inheritance
  * OAuth2 SSO compatible with GitLab, GitHub, and any OIDC provider
