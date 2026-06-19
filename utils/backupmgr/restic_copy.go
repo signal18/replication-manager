@@ -34,11 +34,12 @@ type ResticCopySourceAWSOption struct {
 // request body, but the entire ResticCopyOption is tagged json:"-" on ResticTask to
 // prevent credential leakage through queue/current-task API responses.
 type ResticCopySourceOption struct {
-	Mode       string                     `json:"mode,omitempty"`
-	Repository string                     `json:"repository,omitempty"`
-	Password   string                     `json:"password,omitempty"`
-	KeyHint    string                     `json:"key_hint,omitempty"`
-	AWS        *ResticCopySourceAWSOption `json:"aws,omitempty"`
+	Mode            string                     `json:"mode,omitempty"`
+	Repository      string                     `json:"repository,omitempty"`
+	Password        string                     `json:"password,omitempty"`
+	KeyHint         string                     `json:"key_hint,omitempty"`
+	AWS             *ResticCopySourceAWSOption `json:"aws,omitempty"`
+	UseSavedConfig  bool                       `json:"use_saved_config,omitempty"`
 }
 
 // ResticCopyOption holds all parameters for a repository copy task.

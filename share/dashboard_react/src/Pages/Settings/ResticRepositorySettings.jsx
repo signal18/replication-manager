@@ -347,6 +347,8 @@ function ResticRepositorySettings({
 
   // Copy modal state
   const { isOpen: isCopyModalOpen, onOpen: onOpenCopyModal, onClose: onCloseCopyModal } = useDisclosure()
+  // copySourceStrategy: 'manual' | 'saved-local' | 'saved-s3'
+  const [copySourceStrategy, setCopySourceStrategy] = useState('manual')
   const [copySourceMode, setCopySourceMode] = useState('restic-local')
   const [copySourceRepo, setCopySourceRepo] = useState('')
   const [copySourcePassword, setCopySourcePassword] = useState('')
@@ -367,6 +369,9 @@ function ResticRepositorySettings({
   const [copySubmitting, setCopySubmitting] = useState(false)
   const [showCopyAdvancedFilters, setShowCopyAdvancedFilters] = useState(false)
   const copySubmitGenRef = useRef(0)
+  // savedS3Available: structured bucket config OR a legacy backup-restic-repository S3 URL
+  const savedS3LegacyAvailable = !awsBucket && legacyRepoPath.startsWith('s3:')
+  const savedS3Available = Boolean(awsBucket) || savedS3LegacyAvailable
 
   const handleCheckRepo = async () => {
     setIsCheckLoading(true)
@@ -398,6 +403,7 @@ function ResticRepositorySettings({
   }
 
   const resetCopyForm = () => {
+    setCopySourceStrategy('manual')
     setCopySourceMode('restic-local')
     setCopySourceRepo('')
     setCopySourcePassword('')
@@ -426,12 +432,14 @@ function ResticRepositorySettings({
   }
 
   const validateCopyForm = () => {
-    if (!copySourcePassword.trim()) return 'Source password is required.'
-    if ((copySourceMode === 'restic-local' || copySourceMode === 'restic-sftp') && !copySourceRepo.trim()) {
-      return 'Source repository path is required.'
-    }
-    if (copySourceMode === 'restic-aws' && !copySourceAwsBucket.trim()) {
-      return 'Source S3 bucket is required.'
+    if (copySourceStrategy === 'manual') {
+      if (!copySourcePassword.trim()) return 'Source password is required.'
+      if ((copySourceMode === 'restic-local' || copySourceMode === 'restic-sftp') && !copySourceRepo.trim()) {
+        return 'Source repository path is required.'
+      }
+      if (copySourceMode === 'restic-aws' && !copySourceAwsBucket.trim()) {
+        return 'Source S3 bucket is required.'
+      }
     }
     if (copyCopyChunkerParams && !copyInitDestination) {
       return 'Copy chunker parameters requires init destination to be enabled.'
@@ -445,19 +453,29 @@ function ResticRepositorySettings({
     const host = snapshotIds.length > 0 ? [] : splitFilter(copyFilterHost)
     const path = snapshotIds.length > 0 ? [] : splitFilter(copyFilterPath)
     const tag = snapshotIds.length > 0 ? [] : splitFilter(copyFilterTag)
-    const source = { mode: copySourceMode, password: copySourcePassword }
-    if (copySourceKeyHint.trim()) source.key_hint = copySourceKeyHint.trim()
-    if (copySourceMode === 'restic-aws') {
-      source.aws = {
-        endpoint: copySourceAwsEndpoint.trim(),
-        bucket: copySourceAwsBucket.trim(),
-        prefix: copySourceAwsPrefix.trim(),
-        access_key_id: copySourceAwsAccessKeyId.trim(),
-        access_secret: copySourceAwsAccessSecret,
-        region: copySourceAwsRegion.trim()
-      }
+
+    let source
+    if (copySourceStrategy === 'saved-local') {
+      source = { mode: 'restic-local', use_saved_config: true }
+      if (copySourceKeyHint.trim()) source.key_hint = copySourceKeyHint.trim()
+    } else if (copySourceStrategy === 'saved-s3') {
+      source = { mode: 'restic-aws', use_saved_config: true }
+      if (copySourceKeyHint.trim()) source.key_hint = copySourceKeyHint.trim()
     } else {
-      source.repository = copySourceRepo.trim()
+      source = { mode: copySourceMode, password: copySourcePassword }
+      if (copySourceKeyHint.trim()) source.key_hint = copySourceKeyHint.trim()
+      if (copySourceMode === 'restic-aws') {
+        source.aws = {
+          endpoint: copySourceAwsEndpoint.trim(),
+          bucket: copySourceAwsBucket.trim(),
+          prefix: copySourceAwsPrefix.trim(),
+          access_key_id: copySourceAwsAccessKeyId.trim(),
+          access_secret: copySourceAwsAccessSecret,
+          region: copySourceAwsRegion.trim()
+        }
+      } else {
+        source.repository = copySourceRepo.trim()
+      }
     }
     return {
       source,
@@ -1422,66 +1440,100 @@ function ResticRepositorySettings({
             <Divider />
 
             <FormControl>
-              <FormLabel fontSize='sm'>Source repository type</FormLabel>
-              <Select size='sm' value={copySourceMode} onChange={(e) => setCopySourceMode(e.target.value)}>
-                <option value='restic-local'>Local filesystem</option>
-                <option value='restic-sftp'>SFTP</option>
-                <option value='restic-aws'>S3 / Object storage</option>
+              <FormLabel fontSize='sm'>Source input</FormLabel>
+              <Select size='sm' value={copySourceStrategy} onChange={(e) => setCopySourceStrategy(e.target.value)}>
+                <option value='manual'>Manual entry</option>
+                <option value='saved-local'>Use saved Local/SFTP config</option>
+                <option value='saved-s3' disabled={!savedS3Available}>Use saved S3 config{!savedS3Available ? ' (no S3 config stored)' : ''}</option>
               </Select>
             </FormControl>
 
-            {(copySourceMode === 'restic-local' || copySourceMode === 'restic-sftp') && (
-              <FormControl isRequired>
-                <FormLabel fontSize='sm'>
-                  {copySourceMode === 'restic-sftp' ? 'Source SFTP URI' : 'Source repository path'}
-                </FormLabel>
-                <Input
-                  size='sm'
-                  value={copySourceRepo}
-                  onChange={(e) => setCopySourceRepo(e.target.value)}
-                  placeholder={copySourceMode === 'restic-sftp' ? 'sftp:user@host:/path/to/repo' : '/path/to/source/repo'}
-                />
-                {copySourceMode === 'restic-sftp' && (
-                  <Text fontSize='xs' color='gray.500' mt={1}>
-                    SSH auth uses the running process&apos;s key-based SSH config. Password-based SSH is not supported.
-                  </Text>
+            {copySourceStrategy === 'saved-local' && (
+              <Alert status='info' size='sm' borderRadius='md'>
+                <AlertIcon />
+                <Text fontSize='xs'>
+                  Source repository and password will be resolved from the cluster&apos;s current stored Local/SFTP configuration. No secrets are sent from this form.
+                </Text>
+              </Alert>
+            )}
+
+            {copySourceStrategy === 'saved-s3' && (
+              <Alert status='info' size='sm' borderRadius='md'>
+                <AlertIcon />
+                <Text fontSize='xs'>
+                  {awsBucket
+                    ? <>Source repository, credentials, and password will be resolved from the cluster&apos;s current stored S3 configuration (bucket: <strong>{awsBucket}</strong>). No secrets are sent from this form.</>
+                    : <>Source repository and password will be resolved from the stored S3 URL in <strong>backup-restic-repository</strong>. No secrets are sent from this form.</>
+                  }
+                </Text>
+              </Alert>
+            )}
+
+            {copySourceStrategy === 'manual' && (
+              <>
+                <FormControl>
+                  <FormLabel fontSize='sm'>Source repository type</FormLabel>
+                  <Select size='sm' value={copySourceMode} onChange={(e) => setCopySourceMode(e.target.value)}>
+                    <option value='restic-local'>Local filesystem</option>
+                    <option value='restic-sftp'>SFTP</option>
+                    <option value='restic-aws'>S3 / Object storage</option>
+                  </Select>
+                </FormControl>
+
+                {(copySourceMode === 'restic-local' || copySourceMode === 'restic-sftp') && (
+                  <FormControl isRequired>
+                    <FormLabel fontSize='sm'>
+                      {copySourceMode === 'restic-sftp' ? 'Source SFTP URI' : 'Source repository path'}
+                    </FormLabel>
+                    <Input
+                      size='sm'
+                      value={copySourceRepo}
+                      onChange={(e) => setCopySourceRepo(e.target.value)}
+                      placeholder={copySourceMode === 'restic-sftp' ? 'sftp:user@host:/path/to/repo' : '/path/to/source/repo'}
+                    />
+                    {copySourceMode === 'restic-sftp' && (
+                      <Text fontSize='xs' color='gray.500' mt={1}>
+                        SSH auth uses the running process&apos;s key-based SSH config. Password-based SSH is not supported.
+                      </Text>
+                    )}
+                  </FormControl>
                 )}
-              </FormControl>
-            )}
 
-            {copySourceMode === 'restic-aws' && (
-              <VStack spacing={3} w='full' align='start'>
-                <FormControl>
-                  <FormLabel fontSize='sm'>Source S3 endpoint</FormLabel>
-                  <Input size='sm' value={copySourceAwsEndpoint} onChange={(e) => setCopySourceAwsEndpoint(e.target.value)} placeholder='https://minio.example.com' />
-                </FormControl>
+                {copySourceMode === 'restic-aws' && (
+                  <VStack spacing={3} w='full' align='start'>
+                    <FormControl>
+                      <FormLabel fontSize='sm'>Source S3 endpoint</FormLabel>
+                      <Input size='sm' value={copySourceAwsEndpoint} onChange={(e) => setCopySourceAwsEndpoint(e.target.value)} placeholder='https://minio.example.com' />
+                    </FormControl>
+                    <FormControl isRequired>
+                      <FormLabel fontSize='sm'>Source S3 bucket</FormLabel>
+                      <Input size='sm' value={copySourceAwsBucket} onChange={(e) => setCopySourceAwsBucket(e.target.value)} placeholder='bucket-name' />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel fontSize='sm'>Source S3 prefix</FormLabel>
+                      <Input size='sm' value={copySourceAwsPrefix} onChange={(e) => setCopySourceAwsPrefix(e.target.value)} placeholder='optional/prefix' />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel fontSize='sm'>Source S3 access key ID</FormLabel>
+                      <Input size='sm' value={copySourceAwsAccessKeyId} onChange={(e) => setCopySourceAwsAccessKeyId(e.target.value)} />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel fontSize='sm'>Source S3 access secret</FormLabel>
+                      <Input size='sm' type='password' value={copySourceAwsAccessSecret} onChange={(e) => setCopySourceAwsAccessSecret(e.target.value)} />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel fontSize='sm'>Source S3 region</FormLabel>
+                      <Input size='sm' value={copySourceAwsRegion} onChange={(e) => setCopySourceAwsRegion(e.target.value)} placeholder='us-east-1' />
+                    </FormControl>
+                  </VStack>
+                )}
+
                 <FormControl isRequired>
-                  <FormLabel fontSize='sm'>Source S3 bucket</FormLabel>
-                  <Input size='sm' value={copySourceAwsBucket} onChange={(e) => setCopySourceAwsBucket(e.target.value)} placeholder='bucket-name' />
+                  <FormLabel fontSize='sm'>Source repository password</FormLabel>
+                  <Input size='sm' type='password' value={copySourcePassword} onChange={(e) => setCopySourcePassword(e.target.value)} />
                 </FormControl>
-                <FormControl>
-                  <FormLabel fontSize='sm'>Source S3 prefix</FormLabel>
-                  <Input size='sm' value={copySourceAwsPrefix} onChange={(e) => setCopySourceAwsPrefix(e.target.value)} placeholder='optional/prefix' />
-                </FormControl>
-                <FormControl>
-                  <FormLabel fontSize='sm'>Source S3 access key ID</FormLabel>
-                  <Input size='sm' value={copySourceAwsAccessKeyId} onChange={(e) => setCopySourceAwsAccessKeyId(e.target.value)} />
-                </FormControl>
-                <FormControl>
-                  <FormLabel fontSize='sm'>Source S3 access secret</FormLabel>
-                  <Input size='sm' type='password' value={copySourceAwsAccessSecret} onChange={(e) => setCopySourceAwsAccessSecret(e.target.value)} />
-                </FormControl>
-                <FormControl>
-                  <FormLabel fontSize='sm'>Source S3 region</FormLabel>
-                  <Input size='sm' value={copySourceAwsRegion} onChange={(e) => setCopySourceAwsRegion(e.target.value)} placeholder='us-east-1' />
-                </FormControl>
-              </VStack>
+              </>
             )}
-
-            <FormControl isRequired>
-              <FormLabel fontSize='sm'>Source repository password</FormLabel>
-              <Input size='sm' type='password' value={copySourcePassword} onChange={(e) => setCopySourcePassword(e.target.value)} />
-            </FormControl>
 
             <FormControl>
               <FormLabel fontSize='sm'>

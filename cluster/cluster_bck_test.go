@@ -1428,3 +1428,316 @@ func TestResticCopyRepoWithOptionsG4Preflight(t *testing.T) {
 	}
 	rm.Mutex.Unlock()
 }
+
+// --- saved-source resolution tests ---
+
+// newSavedSourceCluster builds a minimal cluster configured for saved-source tests.
+// password and awsSecret are stored in conf.Secrets so GetDecryptedValue returns them.
+func newSavedSourceCluster(t *testing.T, conf *config.Config, password, awsSecret string) *Cluster {
+	t.Helper()
+	if conf.Secrets == nil {
+		conf.Secrets = make(map[string]config.Secret)
+	}
+	conf.Secrets["backup-restic-password"] = config.Secret{Value: password}
+	conf.Secrets["backup-restic-aws-access-secret"] = config.Secret{Value: awsSecret}
+	rm := backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
+	rm.PauseWorker()
+	t.Cleanup(rm.ShutdownWorker)
+	return &Cluster{
+		Name:          "mycluster",
+		Conf:          conf,
+		ResticManager: rm,
+	}
+}
+
+// TestSavedS3SourceAppendClusterFalseNonAwsDest verifies that when the current
+// destination is NOT S3 (BackupResticAws=false) and BackupResticRepoAppendCluster=false,
+// the saved S3 preset does NOT append the cluster name to the prefix.
+// This is the core regression case: resolveResticRepoPolicy used to force
+// appendCluster=true when BackupResticAws was false, corrupting the saved S3 prefix.
+func TestSavedS3SourceAppendClusterFalseNonAwsDest(t *testing.T) {
+	cluster := newSavedSourceCluster(t, &config.Config{
+		BackupRestic:                true,
+		BackupResticAws:             false, // current destination is local, not S3
+		BackupResticRepoAppendCluster: false,
+		BackupResticAwsBucket:       "mybucket",
+		BackupResticAwsPrefix:       "myprefix",
+		BackupResticAwsEndpoint:     "https://s3.example.com",
+		BackupResticAwsRegion:       "us-east-1",
+		BackupResticAwsAccessKeyId:  "AKID",
+	}, "resticpass", "secretkey")
+
+	resolved, err := cluster.resticResolveSavedCopySource(config.ConstBackupArchiveModeResticAws, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resolved.AWS == nil {
+		t.Fatal("expected AWS config in resolved option, got nil")
+	}
+	// With appendCluster=false and cluster name not already in bucket/prefix,
+	// the effective prefix should be exactly the stored prefix with no cluster suffix.
+	if resolved.AWS.Prefix != "myprefix" {
+		t.Errorf("expected prefix %q, got %q (cluster name must not be appended when append=false)", "myprefix", resolved.AWS.Prefix)
+	}
+	if resolved.AWS.Bucket != "mybucket" {
+		t.Errorf("expected bucket %q, got %q", "mybucket", resolved.AWS.Bucket)
+	}
+	if resolved.Password != "resticpass" {
+		t.Errorf("expected password resolved from config, got %q", resolved.Password)
+	}
+}
+
+// TestSavedS3SourceAppendClusterTrueAddsClusterName verifies that when
+// BackupResticRepoAppendCluster=true and the cluster name is not yet in the prefix,
+// the saved S3 resolution appends it exactly once.
+func TestSavedS3SourceAppendClusterTrueAddsClusterName(t *testing.T) {
+	cluster := newSavedSourceCluster(t, &config.Config{
+		BackupRestic:                true,
+		BackupResticAws:             false, // current destination is local — should not affect S3 source
+		BackupResticRepoAppendCluster: true,
+		BackupResticAwsBucket:       "mybucket",
+		BackupResticAwsPrefix:       "backup",
+		BackupResticAwsEndpoint:     "",
+		BackupResticAwsRegion:       "eu-west-1",
+		BackupResticAwsAccessKeyId:  "AKID",
+	}, "pass", "secret")
+
+	resolved, err := cluster.resticResolveSavedCopySource(config.ConstBackupArchiveModeResticAws, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "backup/" + cluster.Name
+	if resolved.AWS.Prefix != want {
+		t.Errorf("expected prefix %q, got %q", want, resolved.AWS.Prefix)
+	}
+}
+
+// TestSavedS3SourceFreezeOnQueueTime verifies that after ResticCopyRepoWithOptions
+// resolves and queues a saved-source task, mutating the cluster config does not
+// change the copy option already stored in the queue.
+func TestSavedS3SourceFreezeOnQueueTime(t *testing.T) {
+	conf := &config.Config{
+		BackupRestic:                true,
+		BackupResticAws:             false,
+		BackupResticRepoAppendCluster: true,
+		BackupResticAwsBucket:       "original-bucket",
+		BackupResticAwsPrefix:       "pfx",
+		BackupResticAwsRegion:       "us-east-1",
+		BackupResticAwsAccessKeyId:  "AKID",
+	}
+	cluster := newSavedSourceCluster(t, conf, "original-pass", "original-secret")
+
+	opt := backupmgr.ResticCopyOption{
+		Source: backupmgr.ResticCopySourceOption{
+			Mode:           config.ConstBackupArchiveModeResticAws,
+			UseSavedConfig: true,
+		},
+	}
+	if err := cluster.ResticCopyRepoWithOptions(opt); err != nil {
+		t.Fatalf("unexpected error queueing saved-source task: %v", err)
+	}
+
+	// Mutate config after queueing.
+	conf.BackupResticAwsBucket = "changed-bucket"
+	conf.Secrets["backup-restic-password"] = config.Secret{Value: "changed-pass"}
+
+	// Read the queued task option.
+	cluster.ResticManager.Mutex.Lock()
+	var queued *backupmgr.ResticCopyOption
+	for _, task := range cluster.ResticManager.TaskQueue {
+		if task.Type == backupmgr.CopyTask {
+			queued = task.CopyOpt
+			break
+		}
+	}
+	cluster.ResticManager.Mutex.Unlock()
+
+	if queued == nil {
+		t.Fatal("no copy task in queue")
+	}
+	if queued.Source.AWS == nil {
+		t.Fatal("expected AWS config in queued task, got nil")
+	}
+	if queued.Source.AWS.Bucket != "original-bucket" {
+		t.Errorf("queued task bucket changed: got %q, want %q (config mutation must not affect frozen queue entry)", queued.Source.AWS.Bucket, "original-bucket")
+	}
+	if queued.Source.Password != "original-pass" {
+		t.Errorf("queued task password changed: got %q (config mutation must not affect frozen queue entry)", queued.Source.Password)
+	}
+}
+
+// TestSavedS3SourceRejectsHybridPayload verifies that a request combining
+// use_saved_config=true with inline manual fields is rejected.
+func TestSavedS3SourceRejectsHybridPayload(t *testing.T) {
+	cluster := newSavedSourceCluster(t, &config.Config{
+		BackupRestic:          true,
+		BackupResticAwsBucket: "mybucket",
+	}, "pass", "secret")
+
+	opt := backupmgr.ResticCopyOption{
+		Source: backupmgr.ResticCopySourceOption{
+			Mode:           config.ConstBackupArchiveModeResticAws,
+			UseSavedConfig: true,
+			Password:       "inline-password", // hybrid: inline field present
+		},
+	}
+	err := cluster.ResticCopyRepoWithOptions(opt)
+	if err == nil {
+		t.Fatal("expected error for hybrid saved-source payload, got nil")
+	}
+	if !strings.Contains(err.Error(), "use_saved_config") {
+		t.Errorf("expected error to mention use_saved_config, got: %v", err)
+	}
+}
+
+// TestSavedS3SourceRejectsWhenNeitherStructuredNorLegacy verifies that the saved S3
+// preset fails with a clear error when both backup-restic-aws-bucket and
+// backup-restic-repository (S3 URL) are absent or unusable.
+func TestSavedS3SourceRejectsWhenNeitherStructuredNorLegacy(t *testing.T) {
+	cluster := newSavedSourceCluster(t, &config.Config{
+		BackupRestic:            true,
+		BackupResticAwsBucket:   "",            // no structured bucket
+		BackupResticRepository:  "/local/path", // not an S3 URL
+	}, "pass", "secret")
+
+	opt := backupmgr.ResticCopyOption{
+		Source: backupmgr.ResticCopySourceOption{
+			Mode:           config.ConstBackupArchiveModeResticAws,
+			UseSavedConfig: true,
+		},
+	}
+	err := cluster.ResticCopyRepoWithOptions(opt)
+	if err == nil {
+		t.Fatal("expected error when neither structured nor legacy S3 config is present, got nil")
+	}
+	if !strings.Contains(err.Error(), "backup-restic-aws-bucket") || !strings.Contains(err.Error(), "backup-restic-repository") {
+		t.Errorf("expected error to mention both config fields, got: %v", err)
+	}
+}
+
+// TestSavedS3SourceLegacyFallbackResolvesSuccessfully verifies that the saved S3 preset
+// resolves from backup-restic-repository when backup-restic-aws-bucket is absent.
+func TestSavedS3SourceLegacyFallbackResolvesSuccessfully(t *testing.T) {
+	cases := []struct {
+		name           string
+		legacyURL      string
+		wantBucket     string
+		wantEndpoint   string
+		wantPrefixHint string // substring that must appear in resolved prefix (or empty for any)
+	}{
+		{
+			name:       "bucket only",
+			legacyURL:  "s3:mybucket",
+			wantBucket: "mybucket",
+		},
+		{
+			name:           "bucket with prefix",
+			legacyURL:      "s3:mybucket/myprefix",
+			wantBucket:     "mybucket",
+			wantPrefixHint: "myprefix",
+		},
+		{
+			name:         "hostname endpoint",
+			legacyURL:    "s3:s3.amazonaws.com/mybucket",
+			wantEndpoint: "s3.amazonaws.com",
+			wantBucket:   "mybucket",
+		},
+		{
+			name:           "hostname endpoint with prefix",
+			legacyURL:      "s3:s3.amazonaws.com/mybucket/pfx",
+			wantEndpoint:   "s3.amazonaws.com",
+			wantBucket:     "mybucket",
+			wantPrefixHint: "pfx",
+		},
+		{
+			name:         "https endpoint",
+			legacyURL:    "s3:https://minio.example.com/mybucket",
+			wantEndpoint: "https://minio.example.com",
+			wantBucket:   "mybucket",
+		},
+		{
+			name:           "https endpoint with prefix",
+			legacyURL:      "s3:https://minio.example.com/mybucket/pfx",
+			wantEndpoint:   "https://minio.example.com",
+			wantBucket:     "mybucket",
+			wantPrefixHint: "pfx",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cluster := newSavedSourceCluster(t, &config.Config{
+				BackupRestic:                  true,
+				BackupResticAwsBucket:         "", // force legacy path
+				BackupResticRepository:        tc.legacyURL,
+				BackupResticRepoAppendCluster: false,
+			}, "resticpass", "awssecret")
+
+			resolved, err := cluster.resticResolveSavedCopySource(config.ConstBackupArchiveModeResticAws, "")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if resolved.AWS == nil {
+				t.Fatal("expected AWS config, got nil")
+			}
+			if resolved.AWS.Bucket != tc.wantBucket {
+				t.Errorf("bucket: got %q, want %q", resolved.AWS.Bucket, tc.wantBucket)
+			}
+			if resolved.AWS.Endpoint != tc.wantEndpoint {
+				t.Errorf("endpoint: got %q, want %q", resolved.AWS.Endpoint, tc.wantEndpoint)
+			}
+			if tc.wantPrefixHint != "" && !strings.Contains(resolved.AWS.Prefix, tc.wantPrefixHint) {
+				t.Errorf("prefix %q does not contain expected hint %q", resolved.AWS.Prefix, tc.wantPrefixHint)
+			}
+			if resolved.Password != "resticpass" {
+				t.Errorf("password: got %q", resolved.Password)
+			}
+		})
+	}
+}
+
+// TestSavedS3SourceStructuredPrecedenceOverLegacy verifies that when both
+// backup-restic-aws-bucket and backup-restic-repository are configured, the
+// structured bucket config is used and the legacy URL is ignored.
+func TestSavedS3SourceStructuredPrecedenceOverLegacy(t *testing.T) {
+	cluster := newSavedSourceCluster(t, &config.Config{
+		BackupRestic:                  true,
+		BackupResticAwsBucket:         "structured-bucket",
+		BackupResticAwsPrefix:         "structured-prefix",
+		BackupResticRepository:        "s3:legacy-bucket/legacy-prefix",
+		BackupResticRepoAppendCluster: false,
+	}, "pass", "secret")
+
+	resolved, err := cluster.resticResolveSavedCopySource(config.ConstBackupArchiveModeResticAws, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resolved.AWS == nil {
+		t.Fatal("expected AWS config, got nil")
+	}
+	if resolved.AWS.Bucket != "structured-bucket" {
+		t.Errorf("expected structured bucket, got %q", resolved.AWS.Bucket)
+	}
+	if strings.Contains(resolved.AWS.Prefix, "legacy") {
+		t.Errorf("legacy prefix leaked into resolved config: %q", resolved.AWS.Prefix)
+	}
+}
+
+// TestSavedS3SourceRejectsUnsupportedMode verifies that use_saved_config=true with
+// mode restic-sftp is rejected (sftp is local-preset territory, not saved-S3).
+func TestSavedS3SourceRejectsUnsupportedMode(t *testing.T) {
+	cluster := newSavedSourceCluster(t, &config.Config{
+		BackupRestic: true,
+	}, "pass", "")
+
+	opt := backupmgr.ResticCopyOption{
+		Source: backupmgr.ResticCopySourceOption{
+			Mode:           config.ConstBackupArchiveModeResticSftp,
+			UseSavedConfig: true,
+		},
+	}
+	err := cluster.ResticCopyRepoWithOptions(opt)
+	if err == nil {
+		t.Fatal("expected error for unsupported mode with use_saved_config, got nil")
+	}
+}

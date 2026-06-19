@@ -46,6 +46,65 @@ func ValidateResticSftpRepository(repoPath string) error {
 	return nil
 }
 
+// parseLegacyS3ResticRepo decomposes a legacy restic S3 repository URL of the form
+//
+//	s3:[scheme://host/]bucket[/prefix...]
+//
+// into its endpoint, bucket, and raw prefix components. The scheme (http/https) is
+// preserved in the returned endpoint. A bare hostname (containing a dot or colon) is
+// also returned as the endpoint. bucket-only and bucket/prefix forms produce an empty
+// endpoint. The returned prefix is the raw stored value without any cluster suffix;
+// callers that need append-cluster behaviour must pass it through buildResticS3RepoSpec.
+func parseLegacyS3ResticRepo(rawURL string) (endpoint, bucket, prefix string, err error) {
+	if !config.IsS3ResticRepository(rawURL) {
+		return "", "", "", fmt.Errorf("not an S3 repository URL: %q", rawURL)
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(rawURL, "s3:"))
+	if rest == "" {
+		return "", "", "", fmt.Errorf("S3 repository URL is empty after s3: prefix")
+	}
+
+	// Explicit scheme (https:// or http://).
+	if strings.HasPrefix(rest, "https://") || strings.HasPrefix(rest, "http://") {
+		schemeSep := strings.Index(rest, "://")
+		afterScheme := rest[schemeSep+3:] // "host/bucket[/prefix]"
+		slashIdx := strings.Index(afterScheme, "/")
+		if slashIdx < 0 {
+			return "", "", "", fmt.Errorf("S3 repository URL %q has a scheme and host but no bucket", rawURL)
+		}
+		endpoint = rest[:schemeSep+3+slashIdx] // "scheme://host"
+		rest = afterScheme[slashIdx+1:]         // "bucket[/prefix]"
+	} else {
+		// No scheme: first path segment is either a bare hostname (contains "." or ":")
+		// or the bucket name. This mirrors how restic itself distinguishes the two forms:
+		// "s3:s3.amazonaws.com/bucket" vs "s3:bucket/prefix".
+		slashIdx := strings.Index(rest, "/")
+		if slashIdx >= 0 {
+			first := rest[:slashIdx]
+			if strings.ContainsAny(first, ".:") {
+				endpoint = first
+				rest = rest[slashIdx+1:] // "bucket[/prefix]"
+			}
+			// else: no separating character → rest stays "bucket[/prefix]"
+		}
+		// no slash → rest is just "bucket"
+	}
+
+	// rest is now "bucket[/prefix...]"
+	slashIdx := strings.Index(rest, "/")
+	if slashIdx < 0 {
+		bucket = rest
+	} else {
+		bucket = rest[:slashIdx]
+		prefix = rest[slashIdx+1:]
+	}
+	bucket = strings.TrimSpace(bucket)
+	if bucket == "" {
+		return "", "", "", fmt.Errorf("could not extract bucket from S3 repository URL %q", rawURL)
+	}
+	return endpoint, bucket, prefix, nil
+}
+
 func buildResticS3RepoSpec(endpoint, bucket, prefix, clusterName string, appendCluster bool) (string, string) {
 	bucket = strings.TrimSpace(bucket)
 	prefix = strings.Trim(prefix, "/")
@@ -541,6 +600,109 @@ func (cluster *Cluster) CheckResticErrors() {
 	}
 }
 
+// resticResolveSavedCopySource resolves the cluster's currently stored configuration
+// for the given backend type into an effective ResticCopySourceOption. The resolved
+// option is frozen in memory before queueing so later config changes cannot alter
+// the already-queued task (Guardrail S6). Secrets are never exposed to the caller
+// beyond the returned struct (Guardrail S0/S3).
+//
+// requestedMode must be config.ConstBackupArchiveModeResticLocal or
+// config.ConstBackupArchiveModeResticAws. For Local/SFTP, the effective mode in the
+// returned option may be upgraded to restic-sftp when the resolved path matches
+// SFTP syntax. keyHint is passed through unchanged.
+func (cluster *Cluster) resticResolveSavedCopySource(requestedMode, keyHint string) (backupmgr.ResticCopySourceOption, error) {
+	password := cluster.Conf.GetDecryptedValue("backup-restic-password")
+	if password == "" {
+		return backupmgr.ResticCopySourceOption{}, fmt.Errorf("saved source config is incomplete: backup-restic-password is empty")
+	}
+
+	switch requestedMode {
+	case config.ConstBackupArchiveModeResticLocal:
+		localRepoPath, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
+		var repoPath string
+		if localRepoPath != "" {
+			repoPath = localRepoPath
+			if appendCluster && shouldAppendClusterNameLocal(repoPath, cluster.Name) {
+				repoPath = filepath.Join(repoPath, cluster.Name)
+			}
+		} else {
+			repoPath = filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
+		}
+		if repoPath == "" {
+			return backupmgr.ResticCopySourceOption{}, fmt.Errorf("saved Local/SFTP source config is incomplete: effective repository path could not be resolved")
+		}
+		inferredMode := config.ConstBackupArchiveModeResticLocal
+		if config.IsSftpResticRepository(repoPath) {
+			inferredMode = config.ConstBackupArchiveModeResticSftp
+		}
+		return backupmgr.ResticCopySourceOption{
+			Mode:       inferredMode,
+			Repository: repoPath,
+			Password:   password,
+			KeyHint:    keyHint,
+		}, nil
+
+	case config.ConstBackupArchiveModeResticAws:
+		// Use the stored append flag directly instead of resolveResticRepoPolicy.
+		// resolveResticRepoPolicy gates on conf.BackupResticAws to decide whether to
+		// honour appendCluster=false, so it would corrupt saved S3 source prefix
+		// interpretation whenever the operator switches the destination away from AWS.
+		// shouldAppendClusterNameS3 inside buildResticS3RepoSpec still prevents
+		// double-appending, so passing the raw stored flag is safe.
+		appendCluster := cluster.Conf.BackupResticRepoAppendCluster
+
+		// Structured S3 config takes precedence (Guardrail S9). When bucket is absent,
+		// fall back to the legacy backup-restic-repository S3 URL if one is configured.
+		bucket := strings.TrimSpace(cluster.Conf.BackupResticAwsBucket)
+		var endpoint, rawPrefix, accessKeyID, accessSecret, region string
+
+		if bucket != "" {
+			endpoint = strings.TrimSpace(cluster.Conf.BackupResticAwsEndpoint)
+			rawPrefix = cluster.Conf.BackupResticAwsPrefix
+			accessKeyID = cluster.Conf.BackupResticAwsAccessKeyId
+			accessSecret = cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret")
+			region = strings.TrimSpace(cluster.Conf.BackupResticAwsRegion)
+		} else {
+			legacyURL := strings.TrimSpace(cluster.Conf.BackupResticRepository)
+			if !config.IsS3ResticRepository(legacyURL) {
+				return backupmgr.ResticCopySourceOption{}, fmt.Errorf(
+					"saved S3 source config is incomplete: neither backup-restic-aws-bucket nor a valid backup-restic-repository S3 URL is configured")
+			}
+			parsedEndpoint, parsedBucket, parsedPrefix, parseErr := parseLegacyS3ResticRepo(legacyURL)
+			if parseErr != nil {
+				return backupmgr.ResticCopySourceOption{}, fmt.Errorf(
+					"saved S3 source config is incomplete: neither backup-restic-aws-bucket nor a valid backup-restic-repository S3 URL is configured")
+			}
+			bucket = parsedBucket
+			endpoint = parsedEndpoint
+			rawPrefix = parsedPrefix
+			// Legacy URL carries no structured access keys; use whatever AWS credentials
+			// are stored (BackupResticAwsAccessKeyId/Secret), or ambient auth if empty.
+			accessKeyID = cluster.Conf.BackupResticAwsAccessKeyId
+			accessSecret = cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret")
+			region = strings.TrimSpace(cluster.Conf.BackupResticAwsRegion)
+		}
+
+		_, effectivePrefix := buildResticS3RepoSpec(endpoint, bucket, rawPrefix, cluster.Name, appendCluster)
+		return backupmgr.ResticCopySourceOption{
+			Mode:     config.ConstBackupArchiveModeResticAws,
+			Password: password,
+			KeyHint:  keyHint,
+			AWS: &backupmgr.ResticCopySourceAWSOption{
+				Endpoint:     endpoint,
+				Bucket:       bucket,
+				Prefix:       effectivePrefix,
+				AccessKeyID:  accessKeyID,
+				AccessSecret: accessSecret,
+				Region:       region,
+			},
+		}, nil
+
+	default:
+		return backupmgr.ResticCopySourceOption{}, fmt.Errorf("saved-source preset is not supported for mode %q: use restic-local or restic-aws", requestedMode)
+	}
+}
+
 // ResticCopyRepoWithOptions validates and enqueues a repository copy task.
 // Static validation (mode, repo string, password, S3 credential mismatch) is
 // performed before queueing. One destination-state case is also preflight-checked
@@ -554,6 +716,23 @@ func (cluster *Cluster) ResticCopyRepoWithOptions(opt backupmgr.ResticCopyOption
 
 	if cluster.ResticManager == nil {
 		cluster.StartResticManager()
+	}
+
+	// When use_saved_config=true, resolve the cluster's stored config for the
+	// requested backend type into a concrete source option before validation/queueing.
+	// Hybrid payloads that mix use_saved_config with inline manual fields are rejected
+	// to avoid ambiguous resolution (Guardrail S1/S3).
+	if opt.Source.UseSavedConfig {
+		src := opt.Source
+		hasInline := src.Repository != "" || src.Password != "" || src.AWS != nil
+		if hasInline {
+			return fmt.Errorf("saved-source payload is invalid: inline repository/password/aws fields are not allowed when use_saved_config=true")
+		}
+		resolved, err := cluster.resticResolveSavedCopySource(src.Mode, src.KeyHint)
+		if err != nil {
+			return err
+		}
+		opt.Source = resolved
 	}
 
 	if err := cluster.ResticManager.ValidateCopyOption(opt); err != nil {
