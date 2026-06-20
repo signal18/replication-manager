@@ -567,7 +567,7 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 			svccontainer["run_args"] = svccontainer["run_args"] + " --user mysql"
 		}
 		if server.ClusterGroup.Conf.ProvDBDockerRunArgsLimit {
-			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + server.ClusterGroup.Conf.ProvMem + "m --memory-swap=" + server.ClusterGroup.Conf.ProvMem + "m --cpus=" + server.ClusterGroup.Conf.ProvCores + ".0"
+			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + server.ClusterGroup.Conf.ProvMem + " --memory-swap=" + server.ClusterGroup.Conf.ProvMem + " --cpus=" + server.ClusterGroup.Conf.ProvCores + ".0"
 			// this need to find the device with df in container
 			//  --device-read-iops=" + server.ClusterGroup.Conf.ProvIops +".0" --device-write-iops=device" + server.ClusterGroup.Conf.ProvIops
 		}

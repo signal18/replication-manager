@@ -138,8 +138,10 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 
 	// Compute DBU: 1 unit = 1 core / 4GB RAM / 40GB NVMe / 1000 IOPS
 	cores, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
-	memMB, _ := strconv.ParseFloat(cluster.Conf.ProvMem, 64)
-	diskGB, _ := strconv.ParseFloat(cluster.Conf.ProvDisk, 64)
+	memMBi, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+	memMB := float64(memMBi)
+	diskGBi, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
+	diskGB := float64(diskGBi)
 	iops, _ := strconv.ParseFloat(cluster.Conf.ProvIops, 64)
 	entry.DBU = math.Max(cores, math.Max(memMB/4096, math.Max(diskGB/40, iops/1000)))
 	entry.ClusterDBU = entry.DBU * float64(dbNodes)

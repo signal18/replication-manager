@@ -682,7 +682,7 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 		}
 
 		if cluster.Conf.ProvDBDockerRunArgsLimit {
-			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + cluster.GetAppMemory(app.AppConfig) + "m --memory-swap=" + cluster.GetAppMemory(app.AppConfig) + "m --cpus=" + cluster.GetAppCores(app.AppConfig) + ".0"
+			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + cluster.GetAppMemory(app.AppConfig) + " --memory-swap=" + cluster.GetAppMemory(app.AppConfig) + " --cpus=" + cluster.GetAppCores(app.AppConfig) + ".0"
 		}
 
 		svccontainer["volume_mounts"] = cluster.GetOpenSVCDeploymentPathMapping(app)
